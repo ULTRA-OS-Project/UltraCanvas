@@ -93,6 +93,9 @@ TEST(publish_writes_what_the_store_reads_and_verifies) {
     hello.releases[0].depends.clear();
     hello.icon = "media/org.ultraos.hello/icon.png";
     hello.screenshots = {"media/org.ultraos.hello/shot.png", "https://cdn.example/far.png"};
+    // The web store's sizes: copied beside the original; the one over its
+    // budget is listed in the warnings.
+    hello.iconVariants = {{"webp", 64, "media/org.ultraos.hello/icon-64.webp"}, {"webp", 256, "media/org.ultraos.hello/icon-256.webp"}};
     REQUIRE(db.PutComponent(hello).Ok());
     PackageFile f;
     f.sha256 = imported.Value().sha256;
@@ -102,6 +105,8 @@ TEST(publish_writes_what_the_store_reads_and_verifies) {
     REQUIRE(db.PutPackageFile(f).Ok());
     std::filesystem::create_directories(UltraCanvas::PathFromUtf8(Join(dir, "media/org.ultraos.hello")));
     REQUIRE(WriteFile(Join(dir, "media/org.ultraos.hello/icon.png"), "PNG"));
+    REQUIRE(WriteFile(Join(dir, "media/org.ultraos.hello/icon-64.webp"), "WEBP"));
+    REQUIRE(WriteFile(Join(dir, "media/org.ultraos.hello/icon-256.webp"), std::string(13 * 1024, 'x')));   // over the 12 KB budget
     const auto key = NewSigningKey("pass", KeyCost::Fast());
     REQUIRE(key.Ok());
     const auto added = db.AddKey("test", key.Value().publicKeyHex, key.Value().sealed.Bytes());
@@ -119,10 +124,15 @@ TEST(publish_writes_what_the_store_reads_and_verifies) {
     REQUIRE_EQ(r.sequence, uint64_t(1));
     REQUIRE_EQ(r.apps, size_t(1));
     REQUIRE_EQ(r.packagesCopied, size_t(1));
-    REQUIRE_EQ(r.mediaCopied, size_t(1));     // the icon; the screenshot is missing (warned), the far one is a URL
-    bool warnedShot = false;
-    for (const std::string& w : r.warnings) if (w.find("shot.png") != std::string::npos) warnedShot = true;
+    REQUIRE_EQ(r.mediaCopied, size_t(3));     // the icon and its two sizes; the screenshot is missing (warned), the far one is a URL
+    bool warnedShot = false, warnedBudget = false;
+    for (const std::string& w : r.warnings) {
+        if (w.find("shot.png") != std::string::npos) warnedShot = true;
+        if (w.find("icon-256.webp") != std::string::npos && w.find("over the 12 KB budget") != std::string::npos) warnedBudget = true;
+    }
     REQUIRE(warnedShot);
+    REQUIRE(warnedBudget);
+    REQUIRE_EQ(ReadFile(Join(options.outDirUtf8, "media/org.ultraos.hello/icon-64.webp")), std::string("WEBP"));
     REQUIRE_EQ(db.Sequence(), uint64_t(1));
     REQUIRE_EQ(db.Setting("catalog.published_at"), std::string("2026-10-27T10:00:00Z"));
     REQUIRE_EQ(ReadFile(Join(options.outDirUtf8, "packages/" + f.sha256 + ".zip")), std::string("hello bytes"));
@@ -140,6 +150,7 @@ TEST(publish_writes_what_the_store_reads_and_verifies) {
     REQUIRE_EQ(parsed.Value().sequence, uint64_t(1));
     REQUIRE_EQ(parsed.Value().apps[0].releases[0].packages[0].url, "https://store.example/v1/packages/" + f.sha256 + ".zip");
     REQUIRE_EQ(parsed.Value().apps[0].icon, std::string("media/org.ultraos.hello/icon.png"));
+    REQUIRE_EQ(parsed.Value().apps[0].iconVariants.size(), size_t(2));   // the catalog names the sizes
     // Schema 2: the catalog announces every active key, so a store that
     // accepted it trusts the next key before the binary carrying it ships.
     REQUIRE_EQ(parsed.Value().schema, 2);

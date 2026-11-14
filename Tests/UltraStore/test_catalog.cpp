@@ -245,3 +245,34 @@ TEST(the_catalog_names_the_payment_service_and_its_licence_key) {
     REQUIRE(!ParseCatalog(R"({"schema": 2, "sequence": 1, "payment_url": "ftp://x", "apps": []})"));
     REQUIRE(!ParseCatalog(R"({"schema": 2, "sequence": 1, "licence_key": "abc", "apps": []})"));
 }
+
+TEST(the_picture_variants_round_trip_and_a_catalog_without_them_parses) {
+    Catalog original = FixtureCatalog();
+    Component& video = original.apps[0];
+    video.iconVariants = {{"avif", 64, "media/org.ultraos.ultravideo/icon-64.avif"}, {"webp", 256, "media/org.ultraos.ultravideo/icon-256.webp"}};
+    video.screenshotVariants = {{{"avif", 560, "media/org.ultraos.ultravideo/shot-1-560.avif"}, {"webp", 1120, "media/org.ultraos.ultravideo/shot-1-1120.webp"}}, {}};
+    const Result<Catalog> parsed = ParseCatalog(SerializeCatalog(original));
+    REQUIRE(parsed);
+    const Component* v = parsed.Value().FindApp("org.ultraos.ultravideo");
+    REQUIRE(v != nullptr);
+    REQUIRE_EQ(v->iconVariants.size(), size_t(2));
+    REQUIRE_EQ(v->iconVariants[1].format, std::string("webp"));
+    REQUIRE_EQ(v->iconVariants[1].width, 256);
+    REQUIRE_EQ(v->iconVariants[1].url, std::string("media/org.ultraos.ultravideo/icon-256.webp"));
+    REQUIRE_EQ(v->screenshotVariants.size(), size_t(2));
+    REQUIRE_EQ(v->screenshotVariants[0].size(), size_t(2));
+    REQUIRE_EQ(v->screenshotVariants[0][0].width, 560);
+    REQUIRE(v->screenshotVariants[1].empty());
+    // The other apps carry none, and a half entry is left out, never refused.
+    REQUIRE(parsed.Value().FindApp("org.ultraos.linuxtool")->iconVariants.empty());
+    std::string json = SerializeCatalog(original);
+    const std::string key = "\"icon_variants\":";
+    const size_t at = json.find(key);
+    REQUIRE(at != std::string::npos);
+    const size_t listEnd = json.find(']', at);
+    json.replace(at, listEnd + 1 - at, key + " [{\"format\": \"avif\"}, 7, {\"format\": \"webp\", \"width\": 128, \"url\": \"media/x/icon-128.webp\"}]");
+    const Result<Catalog> fixed = ParseCatalog(json);
+    REQUIRE(fixed);
+    REQUIRE_EQ(fixed.Value().FindApp("org.ultraos.ultravideo")->iconVariants.size(), size_t(1));
+    REQUIRE_EQ(fixed.Value().FindApp("org.ultraos.ultravideo")->iconVariants[0].width, 128);
+}

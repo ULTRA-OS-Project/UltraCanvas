@@ -448,7 +448,13 @@ void AdminWindow::FillForm() {
         remove->onClick = [this, shot]() {
             std::string error;
             ReadForm(error);
-            draft_.screenshots.erase(std::remove(draft_.screenshots.begin(), draft_.screenshots.end(), shot), draft_.screenshots.end());
+            // The variants run beside the screenshots: the removed one's go too.
+            draft_.screenshotVariants.resize(draft_.screenshots.size());
+            for (size_t i = draft_.screenshots.size(); i-- > 0;) {
+                if (draft_.screenshots[i] != shot) continue;
+                draft_.screenshots.erase(draft_.screenshots.begin() + static_cast<long>(i));
+                draft_.screenshotVariants.erase(draft_.screenshotVariants.begin() + static_cast<long>(i));
+            }
             draftDirty_ = true;
             FillForm();
         };
@@ -522,7 +528,10 @@ bool AdminWindow::ReadForm(std::string& error) {
     c.updates.period = UltraStore::ParseUpdatePeriod(kPeriods[std::max(0, fUpdatePeriod_->GetSelectedIndex())]);
     c.updates.until = Trim(fUntil_->GetText());
     c.sourceLanguage = Trim(fSourceLanguage_->GetText());
-    c.icon = Trim(fIcon_->GetText());
+    if (const std::string icon = Trim(fIcon_->GetText()); icon != c.icon) {
+        c.icon = icon;
+        c.iconVariants.clear();   // the variants were made from the picture named before
+    }
     // The texts of the language shown.
     const std::string summary = fSummary_->GetText(), description = fDescription_->GetText();
     const bool hadSummary = c.summary.byLanguage.count(formLanguage_) > 0;
@@ -598,16 +607,31 @@ bool AdminWindow::EnsureDraftSaved(std::function<void()> then) {
 // ===========================================================================
 // Pictures
 // ===========================================================================
+namespace {
+// "Icon copied into the media store as media/x/icon.png, 6 sizes for the
+// web store", with the import's warnings after it.
+std::string MediaStatus(const std::string& format, const ImportedMedia& media) {
+    std::string text = TrF(format, media.original);
+    if (!media.variants.empty()) text += " - " + TrF("{0} web sizes", std::to_string(media.variants.size()));
+    for (const std::string& w : media.warnings) text += "; " + w;
+    return text;
+}
+} // namespace
+
 void AdminWindow::PickIcon() {
     FileDialogOptions opts;
     opts.SetTitle(Tr("The app's icon")).AddFilter(Tr("Pictures"), "png;svg;jpg;jpeg;webp").SetParentWindow(window_.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
         if (result != DialogResult::OK || path.empty()) return;
-        const auto imported = ImportMedia(path, store_.dir, draft_.id);
+        const auto imported = ImportMediaVariants(path, store_.dir, draft_.id, MediaKind::Icon);
         if (!imported) { SetStatus(imported.error.message, true); return; }
-        fIcon_->SetText(imported.Value());
+        std::string error;
+        ReadForm(error);
+        draft_.icon = imported.Value().original;
+        draft_.iconVariants = imported.Value().variants;
+        fIcon_->SetText(draft_.icon);
         draftDirty_ = true;
-        SetStatus(TrF("Icon copied into the media store as {0}", imported.Value()));
+        SetStatus(MediaStatus(Tr("Icon copied into the media store as {0}"), imported.Value()), !imported.Value().warnings.empty());
     });
 }
 
@@ -616,14 +640,22 @@ void AdminWindow::PickScreenshot() {
     opts.SetTitle(Tr("A screenshot")).AddFilter(Tr("Pictures"), "png;jpg;jpeg;webp").SetParentWindow(window_.get());
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
         if (result != DialogResult::OK || path.empty()) return;
-        const auto imported = ImportMedia(path, store_.dir, draft_.id);
+        const auto imported = ImportMediaVariants(path, store_.dir, draft_.id, MediaKind::Screenshot);
         if (!imported) { SetStatus(imported.error.message, true); return; }
         std::string error;
         ReadForm(error);
-        if (std::find(draft_.screenshots.begin(), draft_.screenshots.end(), imported.Value()) == draft_.screenshots.end()) draft_.screenshots.push_back(imported.Value());
+        const ImportedMedia& media = imported.Value();
+        draft_.screenshotVariants.resize(draft_.screenshots.size());
+        const auto at = std::find(draft_.screenshots.begin(), draft_.screenshots.end(), media.original);
+        if (at == draft_.screenshots.end()) {
+            draft_.screenshots.push_back(media.original);
+            draft_.screenshotVariants.push_back(media.variants);
+        } else {
+            draft_.screenshotVariants[static_cast<size_t>(at - draft_.screenshots.begin())] = media.variants;
+        }
         FillForm();
         draftDirty_ = true;
-        SetStatus(TrF("Screenshot copied into the media store as {0}", imported.Value()));
+        SetStatus(MediaStatus(Tr("Screenshot copied into the media store as {0}"), media), !media.warnings.empty());
     });
 }
 

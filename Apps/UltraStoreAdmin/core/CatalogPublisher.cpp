@@ -9,6 +9,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "CatalogPublisher.h"
 
+#include "PackageStore.h"
+
 #include "Affiliates.h"
 #include "PageFrame.h"
 
@@ -246,9 +248,27 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
                 ++report.mediaCopied;
                 return true;
             };
+            // A variant over its budget (PackageStore.h, MediaBudget) is
+            // listed: the web store's pages are measured, and a heavy
+            // picture is the usual reason a page is over.
+            auto copyVariants = [&](const Component& c, const std::vector<UltraStore::MediaVariant>& list, MediaKind kind) -> bool {
+                for (const UltraStore::MediaVariant& v : list) {
+                    if (!copyMedia(c, v.url)) return false;
+                    const fs::path from = media / UltraCanvas::PathFromUtf8(v.url);
+                    const auto size = fs::is_regular_file(from, ec) ? fs::file_size(from, ec) : 0;
+                    const size_t budget = MediaBudget(kind, v.width);
+                    if (budget && size > budget) {
+                        report.warnings.push_back(c.id + ": " + v.url + " is " + std::to_string((size + 1023) / 1024) + " KB, over the " +
+                                                  std::to_string(budget / 1024) + " KB budget at " + std::to_string(v.width) + " px");
+                    }
+                }
+                return true;
+            };
             for (const Component& c : catalog.apps) {
                 if (!copyMedia(c, c.icon)) return R::Failure(ErrorCode::IoError, error);
+                if (!copyVariants(c, c.iconVariants, MediaKind::Icon)) return R::Failure(ErrorCode::IoError, error);
                 for (const std::string& s : c.screenshots) if (!copyMedia(c, s)) return R::Failure(ErrorCode::IoError, error);
+                for (const auto& list : c.screenshotVariants) if (!copyVariants(c, list, MediaKind::Screenshot)) return R::Failure(ErrorCode::IoError, error);
             }
         }
     }

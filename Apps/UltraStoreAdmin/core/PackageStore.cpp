@@ -1,7 +1,10 @@
 // Apps/UltraStoreAdmin/core/PackageStore.cpp
+// Version: 0.3.0 - ImportMediaVariants
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "PackageStore.h"
+
+#include "UltraCanvasImage.h"   // UCImageRaster: the variants are written through the image library
 
 #include "Verifier.h"
 
@@ -125,6 +128,92 @@ Result<std::string> ImportMedia(const std::string& sourceUtf8, const std::string
         if (ec) return R::Failure(ErrorCode::IoError, "Could not copy into the media store", ec.message());
     }
     return R::Succeed(relative);
+}
+
+const std::vector<int>& MediaWidths(MediaKind kind) {
+    static const std::vector<int> icon = {64, 128, 256};
+    static const std::vector<int> shot = {560, 1120};
+    return kind == MediaKind::Icon ? icon : shot;
+}
+
+size_t MediaBudget(MediaKind kind, int width) {
+    if (width <= 0) return 0;
+    // 12 KB at 256 px and 120 KB at 1120 px, scaled with the area (integer
+    // arithmetic, so the reference sizes are exact).
+    const uint64_t reference = kind == MediaKind::Icon ? 12u * 1024 : 120u * 1024;
+    const uint64_t referenceWidth = kind == MediaKind::Icon ? 256 : 1120;
+    const uint64_t w = static_cast<uint64_t>(width);
+    return static_cast<size_t>(reference * w * w / (referenceWidth * referenceWidth));
+}
+
+Result<ImportedMedia> ImportMediaVariants(const std::string& sourceUtf8, const std::string& storeDirUtf8,
+                                          const std::string& componentId, MediaKind kind) {
+    using R = Result<ImportedMedia>;
+    const auto original = ImportMedia(sourceUtf8, storeDirUtf8, componentId);
+    if (!original) return R::Failure(original.error.code, original.error.message, original.error.detail);
+    ImportedMedia out;
+    out.original = original.Value();
+
+    // The image library is started by the window; the command line and the
+    // tests come here without one. Starting it twice is harmless.
+    static const bool imageLibrary = UltraCanvas::UCImageRaster::InitializeImageSubsysterm("UltraStoreAdmin");
+    if (!imageLibrary) {
+        out.warnings.push_back(out.original + ": the image library did not start, so no variants were written (the store shows the original)");
+        return R::Succeed(std::move(out));
+    }
+    const fs::path target = UltraCanvas::PathFromUtf8(storeDirUtf8) / UltraCanvas::PathFromUtf8(out.original);
+    auto picture = UltraCanvas::UCImageRaster::Load(UltraCanvas::PathToUtf8(target), /*loadOnlyHeader=*/false);
+    if (!picture || picture->GetWidth() <= 0 || picture->GetHeight() <= 0) {
+        out.warnings.push_back(out.original + ": the picture does not decode here, so no variants were written (the store shows the original)");
+        return R::Succeed(std::move(out));
+    }
+    const int sourceWidth = picture->GetWidth();
+    // The widths the original covers; a smaller original gives its own
+    // width once, so the store still has a browser format for it.
+    std::vector<int> widths;
+    for (int w : MediaWidths(kind)) if (w <= sourceWidth) widths.push_back(w);
+    if (widths.empty()) widths.push_back(sourceWidth);
+
+    const std::string folder = out.original.substr(0, out.original.rfind('/') + 1);
+    std::string stem = out.original.substr(folder.size());
+    if (const size_t dot = stem.rfind('.'); dot != std::string::npos && dot > 0) stem.erase(dot);
+
+    struct Format { const char* name; UltraCanvas::UCImageSaveFormat format; };
+    static const Format kFormats[] = {{"avif", UltraCanvas::UCImageSaveFormat::AVIF}, {"webp", UltraCanvas::UCImageSaveFormat::WEBP}};
+    std::vector<std::string> cannotWrite;
+    for (int width : widths) {
+        for (const Format& f : kFormats) {
+            UltraCanvas::UCImageSave::ImageExportOptions options;
+            options.format = f.format;
+            options.targetWidth = width;
+            options.maintainAspectRatio = true;
+            options.preserveMetadata = false;
+            options.preserveTransparency = kind == MediaKind::Icon;
+            options.webp.lossless = kind == MediaKind::Icon;
+            options.webp.quality = 80;
+            options.avif.quality = 65;
+            const std::string relative = folder + stem + "-" + std::to_string(width) + "." + f.name;
+            const fs::path file = UltraCanvas::PathFromUtf8(storeDirUtf8) / UltraCanvas::PathFromUtf8(relative);
+            const std::string error = picture->Save(UltraCanvas::PathToUtf8(file), options);
+            std::error_code ec;
+            if (!error.empty() || !fs::is_regular_file(file, ec)) {
+                if (std::find(cannotWrite.begin(), cannotWrite.end(), f.name) == cannotWrite.end()) cannotWrite.push_back(f.name);
+                fs::remove(file, ec);
+                continue;
+            }
+            out.variants.push_back({f.name, width, relative});
+            const size_t budget = MediaBudget(kind, width);
+            const auto size = fs::file_size(file, ec);
+            if (!ec && budget && size > budget) {
+                out.warnings.push_back(relative + ": " + std::to_string((size + 1023) / 1024) + " KB, over the " +
+                                       std::to_string(budget / 1024) + " KB budget at " + std::to_string(width) + " px");
+            }
+        }
+    }
+    for (const std::string& f : cannotWrite) {
+        out.warnings.push_back(out.original + ": this machine's image library writes no " + f + ", so the web store has no " + f + " of it");
+    }
+    return R::Succeed(std::move(out));
 }
 
 std::string AdminStore::DatabasePath() const { return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "admin.sqlite"); }
