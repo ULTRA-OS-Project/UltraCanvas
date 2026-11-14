@@ -88636,8 +88636,15 @@ line (Chrome 137), so the test runs Playwright's Chromium.
   into them fails to load with the missing symbol named.
 - **One app per page, in the window it creates.** As on any UltraCanvas
   page.
-- **Resources.** The runtime carries the bundled fonts; an app's own files
-  (images, data) are its own to fetch.
+- **Resources.** The runtime carries fonts: by default Manrope and Inter
+  cut to Latin, Greek and Cyrillic (`UCR_FONTS=subset`, 332 KB, made with
+  fonttools' `pyftsubset` at build time), or every file of `media/fonts`
+  with `UCR_FONTS=all`. An app's own files (images, data, its translation
+  catalogues) are its own to fetch; the UltraStore web store fetches its
+  catalogues into `media/locale/` and calls `UltraLocalisation::Load`.
+- **The UI-free modules an app may call** - UltraLocalisation and
+  UltraCrypt (with libsodium from the sysroot) - are in the main module
+  whole, not only what the library's own code pulls from them.
 - **Firefox and Safari** are untried.
 
 ## What would make it a product
