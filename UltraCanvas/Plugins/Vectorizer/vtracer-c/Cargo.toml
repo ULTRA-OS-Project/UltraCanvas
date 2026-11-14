@@ -8,7 +8,19 @@ publish     = false
 
 [lib]
 name       = "vtracer_c"
-crate-type = ["staticlib", "cdylib"]
+# The archive alone. The plugin links libvtracer_c.a (and an installed package
+# names that archive by path); nothing in the tree loads a vtracer_c shared
+# library, and asking for one cost more than it gave:
+#   * On Windows, Corrosion lists the import library deps/libvtracer_c.dll.a as
+#     a byproduct of the cdylib and copies it beside the archive. rustc writes
+#     that file only when it links the cdylib, so any build where it is absent
+#     dies in the copy - "No such file or directory" - after cargo has already
+#     reported success. It took out every x86_64 Windows build on 2026-11-14.
+#   * A stray BUILD_SHARED_LIBS=ON in the cache made Corrosion hand the plugin
+#     the DLL instead of the archive (see UltraCanvas/CMakeLists.txt, where
+#     libdatachannel's option() is kept out of the cache for that reason).
+# Both go away with the cdylib, as does a link step nobody waited for.
+crate-type = ["staticlib"]
 
 [dependencies]
 vtracer      = "=0.6.5"
