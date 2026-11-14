@@ -2603,7 +2603,10 @@ jobs:
       - name: Package UltraCanvasStart on its own (Linux, Windows)
         if: runner.os != 'macOS'
         run: |
-          have_archive() { ls dist-start/*.tar.xz dist-start/*.zip 2>/dev/null | grep -q .; }
+          # A glob test, not `ls ... | grep`: under this shell's pipefail the
+          # pattern with no match (*.zip on Linux, *.tar.xz on Windows) made
+          # ls fail the pipeline while grep had found the archive (#1248).
+          have_archive() { for f in dist-start/*.tar.xz dist-start/*.zip; do [ -e "$f" ] && return 0; done; return 1; }
           scripts/package-ultracanvasstart.sh
           if ! have_archive; then
             echo "::warning::package-ultracanvasstart.sh ended without an archive in dist-start/ - running it once more"
