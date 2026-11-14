@@ -32,8 +32,9 @@ OAuth2 — `UltraNet/UltraNetOAuth2.h`) and **UltraDatabase** (local store).
 > (`ui/UltraSocialTheme.h`). Until an account exists the window shows
 > UltraMail's start page for UltraSocial: the app icon, the name, one line
 > on what it does and an "Add social account" button, with the networks it
-> can post to underneath. After that it shows the compose view — a toolbar
-> (logo, name, "Add account"), a "New post" card (one text area, adaptation
+> can post to underneath, and a gear in its top-right corner that opens
+> Settings. After that it shows the compose view — a toolbar
+> (logo, name, "Add account", the same Settings gear), a "New post" card (one text area, adaptation
 > warnings, image chips via the file picker, Post later… / Post), a "Post
 > to" card (the network's initial in its colour, a checkbox and a live
 > character counter per account that turns orange over the limit), the
@@ -42,6 +43,18 @@ OAuth2 — `UltraNet/UltraNetOAuth2.h`) and **UltraDatabase** (local store).
 > link). The cards follow the window as it is resized. The add-account
 > wizard has a network picker with per-network fields and the network's
 > hint in a box under them.
+> **Settings** hold what every account of a network shares, set as
+> standard (`engine/UltraSocialSettings.h`): the default Mastodon instance
+> (`mastodon.social`) and Bluesky server (`bsky.social`), and the app
+> registration Reddit, X and LinkedIn sign in through. A build ships its own
+> registration with `-DULTRASOCIAL_REDDIT_CLIENT_ID=…`,
+> `-DULTRASOCIAL_X_CLIENT_ID=…`, `-DULTRASOCIAL_LINKEDIN_CLIENT_ID=…` and
+> `-DULTRASOCIAL_LINKEDIN_CLIENT_SECRET=…`; the Settings dialog changes any
+> of them (*Reset to standard* restores them). The add-account form then
+> asks only for what is the account's own - a network with a registration
+> in Settings shows no client-id fields - and a client id it does have to
+> ask for (Settings have none) is kept in Settings after the sign-in.
+> Settings live in the credential vault (LinkedIn's client secret is one).
 > Sign-in and publishing run on worker threads and marshal back through a
 > main-thread timer queue, so the window stays live while the browser
 > consent or a slow network round-trip is in flight.
@@ -110,6 +123,8 @@ Apps/UltraSocial/
     UltraSocialPublisher.{h,cpp}       the one publish path (now + scheduled),
                                        outbox flush with retry/backoff
     UltraSocialWebUtil.{h,cpp}         JSON/form requests, multipart bodies, media IO
+    UltraSocialSettings.{h,cpp}        sign-in settings: standard values, vault
+                                       storage, filling the add-account form
     connectors/
       UltraSocialMastodonConnector.{h,cpp}
       UltraSocialBlueskyConnector.{h,cpp}
@@ -124,7 +139,9 @@ Apps/UltraSocial/
     UltraSocialAccountWizard.{h,cpp}   add-account dialog
     UltraSocialComposeView.{h,cpp}     toolbar + compose / targets /
                                        scheduled / recent-posts cards
-    UltraSocialStartPage.{h,cpp}       first-run page (no account yet)
+    UltraSocialStartPage.{h,cpp}       first-run page (no account yet),
+                                       Settings gear top right
+    UltraSocialSettingsDialog.{h,cpp}  the sign-in Settings dialog
     UltraSocialTheme.h                 UltraMail's colours, sizes and styles,
                                        per-network avatar colours
   main.cpp                             UltraCanvasApplication bootstrap

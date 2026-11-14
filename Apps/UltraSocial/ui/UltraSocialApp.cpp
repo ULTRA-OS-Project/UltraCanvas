@@ -1,10 +1,13 @@
 // Apps/UltraSocial/ui/UltraSocialApp.cpp
+// Version: 0.3.0 - set up as standard: the servers and app registrations
+//                  sign-in uses come from Settings (the gear on the start
+//                  page and in the toolbar), not from every add-account form
 // Version: 0.2.0 - UltraMail's first-run start page; the compose view fills
 //                  and follows the window; the account wizard's client id
 //                  reaches the connector; the data folder is made private
 //                  and the database is ultrasocial.db
 // Version: 0.1.0 (Phase 1)
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialApp.h"
 
@@ -65,6 +68,7 @@ bool UltraSocialApp::Initialize(const std::string& dataDir) {
                      UltraVault::DeviceKeyVault::DescribeUnlockStatus(
                              vault_.GetLastUnlockStatus()).c_str());
     dataDir_ = dataDir;
+    signInSettings_ = LoadSignInSettings(vault_);
 
     store_.ListAccounts(accounts_);
     return true;
@@ -81,11 +85,13 @@ std::shared_ptr<UltraCanvasWindow> UltraSocialApp::CreateMainWindow() {
     // Start page - the only thing on screen until the first account exists:
     // logo, app name and the "Add social account" button, as in UltraMail.
     window_->AddChild(startPage_.Build());
-    startPage_.onAddAccount = [this]() { HandleAddAccount(); };
+    startPage_.onAddAccount   = [this]() { HandleAddAccount(); };
+    startPage_.onOpenSettings = [this]() { HandleOpenSettings(); };
 
     // Compose view - toolbar and cards, once an account exists.
     window_->AddChild(composeView_.Build());
     composeView_.onAddAccount = [this]() { HandleAddAccount(); };
+    composeView_.onOpenSettings = [this]() { HandleOpenSettings(); };
     composeView_.onAddMedia   = [this]() { HandleAddMedia(); };
     composeView_.onPost       = [this]() { HandlePost(); };
     composeView_.onPostLater  = [this]() { HandlePostLater(); };
@@ -225,8 +231,37 @@ void UltraSocialApp::DrainUiQueue() {
 }
 
 void UltraSocialApp::HandleAddAccount() {
-    wizard_.Show(window_.get(),
+    wizard_.Show(window_.get(), signInSettings_,
                  [this](const WizardInput& input) { HandleWizardSubmit(input); });
+}
+
+void UltraSocialApp::RememberRegistration(const WizardInput& input) {
+    if (input.clientId.empty() || !NeedsClientId(input.network, signInSettings_)) return;
+    SignInSettings updated = signInSettings_;
+    switch (input.network) {
+        case SocialNetwork::Reddit: updated.redditClientId = input.clientId; break;
+        case SocialNetwork::X:      updated.xClientId      = input.clientId; break;
+        case SocialNetwork::LinkedIn:
+            updated.linkedInClientId = input.clientId;
+            if (!input.secret.empty()) updated.linkedInClientSecret = input.secret;
+            break;
+        default: return;
+    }
+    if (SaveSignInSettings(vault_, updated)) signInSettings_ = LoadSignInSettings(vault_);
+}
+
+void UltraSocialApp::HandleOpenSettings() {
+    settingsDialog_.Show(window_.get(), signInSettings_,
+                         [this](const SignInSettings& edited) {
+        if (!SaveSignInSettings(vault_, edited)) {
+            UltraCanvasDialogManager::ShowError(
+                "Could not save the settings: the credential vault is not "
+                "available.", "Settings", nullptr, window_.get());
+            return;
+        }
+        // Read back, so a field left empty shows its standard value again.
+        signInSettings_ = LoadSignInSettings(vault_);
+    });
 }
 
 void UltraSocialApp::HandleWizardSubmit(const WizardInput& input) {
@@ -235,7 +270,8 @@ void UltraSocialApp::HandleWizardSubmit(const WizardInput& input) {
 
     // Sign-in blocks — on the OAuth path for as long as the browser consent
     // takes — so it runs on a worker thread.
-    std::thread([this, connector, input]() {
+    const SignInSettings settings = signInSettings_;
+    std::thread([this, connector, input, settings]() {
         AuthInput auth;
         auth.server     = input.server;
         auth.identifier = input.identifier;
@@ -245,13 +281,16 @@ void UltraSocialApp::HandleWizardSubmit(const WizardInput& input) {
         // refused with "sign-in needs your app's client id" however it was
         // filled in.
         auth.clientId   = input.clientId;
+        // What the form left empty comes from Settings: the default server,
+        // and the app registration the form no longer asks for.
+        ApplySignInSettings(input.network, settings, auth);
         auth.onOpenUrl  = [](const std::string& url) { OpenURL(url); };
 
         Account account;
         std::string credentials;
         auto result = connector->Authenticate(auth, account, credentials);
 
-        RunOnUiThread([this, result, account, credentials]() {
+        RunOnUiThread([this, result, account, credentials, input]() {
             if (!result) {
                 UltraCanvasDialogManager::ShowError(
                     result.message, "Sign-in failed", nullptr, window_.get());
@@ -264,6 +303,7 @@ void UltraSocialApp::HandleWizardSubmit(const WizardInput& input) {
                 return;
             }
             store_.UpsertAccount(account);
+            RememberRegistration(input);
             Refresh();
             UltraCanvasDialogManager::ShowInformation(
                 "Connected " + account.handle + ".", "Account added",
