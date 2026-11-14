@@ -1,7 +1,5 @@
 // Apps/UltraDesktop/ui/UltraDesktopCategoryBoard.cpp
 // The Sticker board: files sorted into categories. See the header.
-// Version: 0.5.0 - the hover preview opens when the pointer stops on a card;
-//                  no picture of a PDF in a build without MuPDF
 // Version: 0.4.0 - the context menu, three card displays, the hover preview
 // Version: 0.3.0 - thumbnails as UltraFiler makes them (RenderFileThumbnail):
 //                  a PDF's first page, a page of a document's text
@@ -295,7 +293,9 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
 }
 
 UltraDesktopCategoryBoard::~UltraDesktopCategoryBoard() {
-    StopHoverTimer();
+    if (hoverTimer_ != InvalidTimerId) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(hoverTimer_);
+    }
 }
 
 void UltraDesktopCategoryBoard::LoadFrom(const DesktopSettings& settings) {

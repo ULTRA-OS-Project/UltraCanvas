@@ -22,9 +22,6 @@
 // and the size of the hover preview - the larger picture of a file that
 // opens beside its card as soon as the pointer comes to rest on it.
 // UOS-Settings offers the same two choices.
-// Version: 0.6.0 - the hover preview opens when the pointer stops on a card
-//                  (a short rest, not two seconds), its picture made while
-//                  the pointer is on its way
 // Version: 0.5.0 - the Delete key asks first and does what the menu's Delete
 //                  does (the file to the trash, a note deleted)
 // Version: 0.4.0 - AddFilesToCategory (a drop on the wallpaper: "Unsorted"); MakeFilePicture shared
