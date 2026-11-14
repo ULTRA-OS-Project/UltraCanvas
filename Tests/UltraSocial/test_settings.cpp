@@ -36,7 +36,7 @@ TEST(settings_vault_roundtrip_and_fallback) {
     std::error_code ec;
     std::filesystem::remove_all(dir, ec);
     {
-        CredentialVault vault(PathToUtf8(dir));
+        CredentialVault vault(UltraCanvas::PathToUtf8(dir));
         REQUIRE(vault.TryAutoUnlock());
         // Nothing saved yet: the standard values.
         REQUIRE(LoadSignInSettings(vault) == DefaultSignInSettings());
@@ -47,7 +47,7 @@ TEST(settings_vault_roundtrip_and_fallback) {
         REQUIRE(SaveSignInSettings(vault, edited));
     }
     {
-        CredentialVault vault(PathToUtf8(dir));
+        CredentialVault vault(UltraCanvas::PathToUtf8(dir));
         REQUIRE(vault.TryAutoUnlock());
         const SignInSettings loaded = LoadSignInSettings(vault);
         REQUIRE_EQ(loaded.mastodonInstance, std::string{"mastodon.social"});
