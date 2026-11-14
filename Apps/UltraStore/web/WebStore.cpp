@@ -10,6 +10,7 @@
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasCard.h"
 #include "UltraCanvasChip.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
@@ -202,7 +203,7 @@ void WebStore::LoadLocale(std::function<void()> then) {
                 if (token.expired()) return;
                 // Into the virtual file system, where the module's Tr reads.
                 std::error_code ec;
-                const std::filesystem::path dir = std::filesystem::path(folder) / tag;
+                const std::filesystem::path dir = PathFromUtf8(folder) / PathFromUtf8(tag);
                 std::filesystem::create_directories(dir, ec);
                 { std::ofstream out(dir / "UltraStore.json", std::ios::binary | std::ios::trunc); out << store; }
                 if (okStandard) { std::ofstream out(dir / "Standard.json", std::ios::binary | std::ios::trunc); out << standard; }
