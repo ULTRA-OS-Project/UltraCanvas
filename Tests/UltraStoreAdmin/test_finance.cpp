@@ -57,13 +57,20 @@ TEST(a_reversal_takes_the_partners_credits_back_in_proportion) {
     REQUIRE(whole.Ok());
     REQUIRE_EQ(whole.Value().affiliateCredit, std::string("4.78"));
     REQUIRE(whole.Value().revoked);
+    // A sale recorded by hand has no reference: its number in the ledger names it.
+    const auto byHand = RecordSale(db, "ANNA-20", "org.ultraos.hello", "10.00", "EUR", "2026-10-06T12:00:00Z");
+    REQUIRE(byHand.Ok());
+    const auto byNumber = RecordReversal(db, "refund", std::to_string(byHand.Value().id), "", "10.00", "EUR", "2026-10-22T09:00:00Z");
+    REQUIRE(byNumber.Ok());
+    REQUIRE_EQ(byNumber.Value().app, std::string("org.ultraos.hello"));
+    REQUIRE_EQ(byNumber.Value().affiliateCredit, std::string("2.00"));
     const auto unknown = RecordReversal(db, "refund", "ord-x", "org.ultraos.other", "5.00", "EUR");
     REQUIRE(unknown.Ok());
     REQUIRE(unknown.Value().affiliate.empty());
     REQUIRE_EQ(unknown.Value().affiliateCredit, std::string("0.00"));
     REQUIRE(!RecordReversal(db, "gift", "ord1", "", "1.00", "EUR").Ok());
     REQUIRE(!RecordReversal(db, "refund", "ord1", "", "abc", "EUR").Ok());
-    REQUIRE_EQ(db.Reversals().Value().size(), size_t(3));
+    REQUIRE_EQ(db.Reversals().Value().size(), size_t(4));
     REQUIRE(db.HasReversalReference("ord1/cb"));
     REQUIRE(!db.HasReversalReference(""));
     RemoveDir(dir);

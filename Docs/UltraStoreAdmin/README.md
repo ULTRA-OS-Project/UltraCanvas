@@ -142,7 +142,7 @@ code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy
 code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>
 sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list
 sale sync [--from <url>] [--token <t>]                   the paid orders and the subscriptions' renewals from the payment service, once each, and its refunds and chargebacks
-sale reversal <refund|chargeback> <reference> <amount> <currency> [--at <iso8601>]   a reversal by hand; the partners' credits go back in proportion
+sale reversal <refund|chargeback> <reference|sale-no> <amount> <currency> [--at <iso8601>]   a reversal by hand, of the sale with that reference or that number in `sale list`; the partners' credits go back in proportion
 sale reversals
 finance report [<YYYY-MM>|<YYYY>]                        the statement by currency, the apps, the partners and what they are owed, the months
 finance periods | statement [<period>] [-o <file.csv>]   the months with a sale; the report as CSV, for the books

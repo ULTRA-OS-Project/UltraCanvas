@@ -136,8 +136,18 @@ Result<ReversalRecord> RecordReversal(AdminDatabase& db, const std::string& kind
     v.currency = currency;
     v.affiliateCredit = v.recruiterCredit = "0.00";
     v.revoked = revoked;
-    if (const auto sale = db.SaleByReference(reverses); sale) {
+    // The sale it takes back: by the payment service's reference, or, for a
+    // sale recorded by hand (which has none), by its number in the ledger.
+    auto sale = db.SaleByReference(reverses);
+    if (!sale && !reverses.empty() && reverses.find_first_not_of("0123456789") == std::string::npos) {
+        if (const auto all = db.Sales()) {
+            const int64_t id = std::atoll(reverses.c_str());   // locale-ok: digits only
+            for (const SaleRecord& s : all.Value()) if (s.id == id) { sale = Result<SaleRecord>::Succeed(s); break; }
+        }
+    }
+    if (sale) {
         const SaleRecord& s = sale.Value();
+        if (!s.reference.empty()) v.reverses = s.reference;
         if (v.app.empty()) v.app = s.app;
         if (s.currency == currency) {
             int64_t paid = 0, affiliateCredit = 0, recruiterCredit = 0;

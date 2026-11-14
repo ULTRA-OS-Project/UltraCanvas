@@ -113,7 +113,7 @@ int UltraStoreAdmin::Cli::Usage(FILE* to) {
         "  code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]\n"
         "  code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>\n"
         "  sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list | sync [--from <url>] [--token <t>]\n"
-        "  sale reversal <refund|chargeback> <reference> <amount> <currency> [--at <iso8601>] | reversals\n"
+        "  sale reversal <refund|chargeback> <reference|sale-no> <amount> <currency> [--at <iso8601>] | reversals\n"
         "  finance report [<YYYY-MM>|<YYYY>] | periods | statement [<YYYY-MM>|<YYYY>] [-o <file.csv>]\n"
         "  market standing | submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]\n"
         "  market submissions | withdraw <submission> | notices [--all] | ack <notice> | terms [accept <version> --by <name>] | reports\n"

@@ -34,9 +34,11 @@ std::string JoinMoney(const ByCurrency& sums);                                  
 std::string SubtractDecimals(const std::string& a, const std::string& b);                   // a - b, two places, may be negative
 
 // A reversal into the ledger, with the credits it takes back worked out from
-// the sale it reverses (by reference): the same share of the amount reversed
-// that the sale credited, to the cent, never more than the sale credited. A
-// reversal of a sale the ledger does not know takes nothing back.
+// the sale it reverses - named by the payment service's reference, or by its
+// number in the ledger for a sale recorded by hand: the same share of the
+// amount reversed that the sale credited, to the cent, never more than the
+// sale credited. A reversal of a sale the ledger does not know takes nothing
+// back and is listed under no app.
 Result<ReversalRecord> RecordReversal(AdminDatabase& db, const std::string& kind, const std::string& reverses,
                                       const std::string& app, const std::string& amount, const std::string& currency,
                                       const std::string& at = {}, const std::string& reference = {}, bool revoked = false);
