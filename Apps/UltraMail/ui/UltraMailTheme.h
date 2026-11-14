@@ -8,6 +8,8 @@
 // Nothing here paints anything. These are values handed to catalogue elements
 // through their own SetStyle / SetTextColor / SetBorders APIs, per the
 // framework rule that applications never hand-roll a widget.
+// Version: 0.9.1 - MakeDialogHeader: the explaining text starts at the top of its box; centred, a
+//                  text wrapped taller than its box spilled up over the bold title
 // Version: 0.9.0 - the look follows a change of the theme while UltraMail is open: Role (a
 //                  colour function), Follow / ReapplyLook (every element styled through
 //                  here is styled again from the new theme), SetFill / SetInk / SetFrame;
@@ -723,6 +725,9 @@ MakeDialogHeader(const std::string& id, const std::string& icon, const std::stri
     if (!text.empty()) {
         auto line = MakeLine(id + ".text", text, textHeight, SizeBody(), TextSecondary);
         line->SetWrap(UltraCanvas::TextWrap::WrapWord);
+        // From the top of its box: centred (a label's default), wrapped text
+        // taller than `textHeight` spilled upward over the bold title.
+        line->SetAlignment(UltraCanvas::TextAlignment::Left, UltraCanvas::VerticalAlignment::Top);
         words->AddChild(line);
     }
     header->AddChild(words);
