@@ -396,8 +396,9 @@ namespace {
         elements.push_back({element, kind, active});
     }
 
-    // Flat command-bar button (Windows 11 style): quiet until hovered. The
-    // icon is drawn as a mask in the text colour, so it follows the ink.
+    // Flat command-bar button (Windows 11 style): quiet until hovered. A
+    // line-art icon is drawn as a mask in the text colour, so it follows the
+    // ink (IconDrawnAsMask); a bitmap keeps its colours.
     void ApplyToolLook(UltraCanvasButton& b, const FilerLook& look) {
         b.SetColors(look.button, look.hover);
         b.SetTextColors(look.ink);
@@ -812,6 +813,15 @@ namespace {
         return row;
     }
 
+    // Whether a button draws `iconFile` as a mask in its text colour (the
+    // theme's ink). That suits the line-art SVGs, but turns a full-colour
+    // bitmap such as drive.png into a solid black square - those keep their
+    // own colours.
+    bool IconDrawnAsMask(const std::string& iconFile) {
+        return iconFile.size() >= 4 &&
+               iconFile.compare(iconFile.size() - 4, 4, ".svg") == 0;
+    }
+
     // Flat command-bar button (Windows 11 style): quiet until hovered.
     // `label` may be empty for an icon-only button; width 0 = auto-size.
     std::shared_ptr<UltraCanvasButton> MakeToolButton(
@@ -827,7 +837,7 @@ namespace {
             b->SetIconSize(15, 15);
             b->SetIconPosition(ButtonIconPosition::Left);
             b->SetIconSpacing(label.empty() ? 0 : 5);
-            b->SetUseIconAsMask(true);   // drawn in the text colour: the theme's ink
+            b->SetUseIconAsMask(IconDrawnAsMask(iconFile));   // line art in the theme's ink
         }
         if (onClick) b->SetOnClick(std::move(onClick));
         b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -869,7 +879,7 @@ namespace {
         b.SetIcon(IconPath(iconFile));
         b.SetIconSize(diameter / 2, diameter / 2);
         b.SetIconSpacing(0);
-        b.SetUseIconAsMask(true);   // drawn in the text colour: the theme's ink
+        b.SetUseIconAsMask(IconDrawnAsMask(iconFile));   // line art in the theme's ink
         b.SetTooltip(tooltip);
         if (onClick) b.SetOnClick(std::move(onClick));
     }
@@ -7910,16 +7920,9 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         pie->onSliceClick = [this, path](size_t) { NavigateTo(path); };
         card->AddChild(pie);
 
-        // The drive's name is the button that opens it. A tool button draws
-        // its icon as a mask in the ink colour, which suits the line-art SVGs
-        // but turns a full-colour bitmap (drive.png) into a black square:
-        // those keep their own colours.
-        auto open = MakeToolButton(id + "-open", label, source.icon, 0,
-                                   [this, path]() { NavigateTo(path); });
-        const std::string& icon = source.icon;
-        const bool svg = icon.size() >= 4 && icon.compare(icon.size() - 4, 4, ".svg") == 0;
-        if (!svg) open->SetUseIconAsMask(false);
-        card->AddChild(open);
+        // The drive's name is the button that opens it.
+        card->AddChild(MakeToolButton(id + "-open", label, source.icon, 0,
+                                      [this, path]() { NavigateTo(path); }));
 
         auto usage = CreateLabel(id + "-usage", 0, 0, kComputerCardWidth, 18, "");
         usage->SetFontSize(UiFontSize());
