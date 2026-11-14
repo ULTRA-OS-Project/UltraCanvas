@@ -4,6 +4,10 @@
 // correctly: folder sync, envelope sync with needs-answer computation,
 // incremental fetch, raw-body caching (parseable by MimeCodec) and two-sided
 // flag changes.
+// Version: 0.8.0 - the ~x escapes from the UCD's NFC quick check (Indic vowel
+//                  signs, Hangul jamo; precomposed Greek no longer escaped)
+// Version: 0.7.0 - trailing dot / space, Windows device names, the Unicode forms
+//                  of a name (macOS); MigrateBodyCache from the third layout
 // Version: 0.6.0 - letters outside ASCII in the case mask ("Über" / "über")
 // Version: 0.5.0 - "a/b" and "a_b" get directories of their own; the escapes;
 //                  MigrateBodyCache from both earlier layouts
@@ -16,6 +20,7 @@
 #include "test_framework.h"
 
 #include "UltraMailSyncEngine.h"
+#include "UltraMailNfcEscapeTable.h"
 #include "UltraMailSyncService.h"
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
@@ -412,6 +417,34 @@ TEST(cache_directory_of_a_folder) {
     REQUIRE_EQ(CacheDirectoryOf("\xce\x91\xce\xb8"), std::string("\xce\x91\xce\xb8"));     // Αθ
     REQUIRE_EQ(CacheDirectoryOf("\xce\xb1\xce\x98"), std::string("\xce\xb1\xce\x98~3"));   // αΘ
     REQUIRE_EQ(CacheDirectoryOf("\xe5\x8f\x97\xe4\xbf\xa1"), std::string("\xe5\x8f\x97\xe4\xbf\xa1"));   // no case
+    // Windows drops a trailing dot or space and refuses its device names;
+    // macOS takes the composed and decomposed spelling of "über" as one name.
+    REQUIRE_EQ(CacheDirectoryOf("Notes."), std::string("Notes~t"));
+    REQUIRE_EQ(CacheDirectoryOf("Notes "), std::string("Notes~n"));
+    REQUIRE_EQ(CacheDirectoryOf("."), std::string("~t"));
+    REQUIRE_EQ(CacheDirectoryOf(".."), std::string(".~t"));
+    REQUIRE_EQ(CacheDirectoryOf("A. B"), std::string("A. B"));            // a dot inside stays
+    REQUIRE_EQ(CacheDirectoryOf("Con"), std::string("C~zon"));
+    REQUIRE_EQ(CacheDirectoryOf("CON"), std::string("CON~6"));            // the mask makes it no device
+    REQUIRE_EQ(CacheDirectoryOf("con"), std::string("con~1"));            // the mask makes it no device
+    REQUIRE_EQ(CacheDirectoryOf("Nul.Txt"), std::string("N~zul.Txt"));
+    REQUIRE_EQ(CacheDirectoryOf("Com1"), std::string("C~zom1"));
+    REQUIRE_EQ(CacheDirectoryOf("Com10"), std::string("Com10"));          // not a device
+    REQUIRE_EQ(CacheDirectoryOf("Console"), std::string("Console"));
+    REQUIRE_EQ(CacheDirectoryOf("U" "\xcc\x88" "ber"), std::string("U~x000308ber"));   // U + combining diaeresis
+    REQUIRE_EQ(CacheDirectoryOf("\xe2\x84\xa6"), std::string("~x002126"));           // the Ohm sign
+    // Every character the NFC quick check does not pass, from the Unicode data:
+    // Tamil O written as its two parts, and Hangul GA as its two jamo, are
+    // escaped; the precomposed forms - already NFC - stay as they are.
+    REQUIRE_EQ(CacheDirectoryOf("\xe0\xae\x92\xe0\xaf\x97"), std::string("\xe0\xae\x92~x000bd7"));  // U+0B92 U+0BD7
+    REQUIRE_EQ(CacheDirectoryOf("\xe0\xae\x94"), std::string("\xe0\xae\x94"));                         // U+0B94
+    REQUIRE_EQ(CacheDirectoryOf("\xe1\x84\x80\xe1\x85\xa1"), std::string("\xe1\x84\x80~x001161"));  // U+1100 U+1161
+    REQUIRE_EQ(CacheDirectoryOf("\xea\xb0\x80"), std::string("\xea\xb0\x80"));                         // U+AC00
+    REQUIRE_EQ(CacheDirectoryOf("\xe1\xbc\x80"), std::string("\xe1\xbc\x80"));                         // U+1F00, NFC
+    REQUIRE_EQ(CacheDirectoryOf("\xe1\xbd\xb1"), std::string("~x001f71"));                               // U+1F71, not NFC
+    REQUIRE_EQ(FolderOfCacheDirectory("C~zon"), std::string("Con"));
+    REQUIRE_EQ(FolderOfCacheDirectory("Notes~t"), std::string("Notes."));
+    REQUIRE_EQ(FolderOfCacheDirectory("U~x000308ber"), std::string("U" "\xcc\x88" "ber"));
     REQUIRE_EQ(FolderOfCacheDirectory("A~uB"), std::string("A_B"));
     REQUIRE_EQ(FolderOfCacheDirectory("A_B"), std::string("A/B"));
 
@@ -419,7 +452,13 @@ TEST(cache_directory_of_a_folder) {
                                              "work~1", "Work~1", "inbox", "Inbox", "INBOX",
                                              "a/b", "a_b", "a\\b", "a:b", "A/b", "A_B", "a~ub",
                                              "a~b", "a~~b", "a__b", "a/_b", "a_/b", "What?",
-                                             "\xc3\x9c" "ber", "\xc3\xbc" "ber", "\xc3\x9c" "BER" };
+                                             "\xc3\x9c" "ber", "\xc3\xbc" "ber", "\xc3\x9c" "BER",
+                                             "U" "\xcc\x88" "ber", "u" "\xcc\x88" "ber",
+                                             "Notes", "Notes.", "Notes ", "Notes~t", ".", "..",
+                                             "Con", "CON", "con", "C~zon", "Nul.Txt", "Com1",
+                                             "\xe2\x84\xa6", "\xce\xa9",
+                                             "\xe0\xae\x92\xe0\xaf\x97", "\xe0\xae\x94",
+                                             "\xe1\x84\x80\xe1\x85\xa1", "\xea\xb0\x80" };
     // Every name reads back from its directory, and no two share one.
     for (const std::string& name : twins)
         REQUIRE_EQ(FolderOfCacheDirectory(CacheDirectoryOf(name)), name);
@@ -513,6 +552,40 @@ TEST(migrate_body_cache_moves_a_name_with_a_letter_outside_ascii) {
     REQUIRE_EQ(MigrateBodyCache(fx.emlDir, fx.store), 1);
     REQUIRE(fs::exists(UltraCanvas::PathFromUtf8(CachedBodyPath(fx.emlDir, "erika", ueber, 3))));
     REQUIRE(!fs::exists(account / UltraCanvas::PathFromUtf8(ueber)));
+}
+
+// The third layout (#1221) cached "Notes." under "Notes." - which Windows
+// cannot make - and a decomposed "über" with its combining mark: both move.
+// The generated table: ranges sorted and apart - NeedsCodeEscape searches it
+// in halves.
+TEST(nfc_escape_table_is_sorted) {
+    char32_t previous = 0;
+    bool first = true;
+    for (const NfcEscapeRange& r : kNfcEscapeRanges) {
+        REQUIRE(r.first <= r.last);
+        if (!first) REQUIRE(r.first > previous + 1);
+        previous = r.last;
+        first = false;
+    }
+    REQUIRE(!first);
+}
+
+TEST(migrate_body_cache_moves_the_third_layout) {
+    Fixture fx("migrate-layout3");
+    const std::string decomposed = "U" "\xcc\x88" "ber";
+    for (const std::string& name : { std::string("Notes."), decomposed }) {
+        Folder f; f.accountId = "erika"; f.name = name;
+        REQUIRE(fx.store.UpsertFolder(f).success);
+    }
+    const fs::path account = UltraCanvas::PathFromUtf8(fx.emlDir) / "erika";
+    for (const std::string& name : { std::string("Notes."), decomposed }) {
+        fs::create_directories(account / UltraCanvas::PathFromUtf8(name));
+        std::ofstream(account / UltraCanvas::PathFromUtf8(name) / "4.eml") << "raw";
+    }
+    REQUIRE_EQ(MigrateBodyCache(fx.emlDir, fx.store), 2);
+    REQUIRE(fs::exists(account / "Notes~t" / "4.eml"));
+    REQUIRE(fs::exists(account / "U~x000308ber" / "4.eml"));
+    REQUIRE(!fs::exists(account / "Notes."));
 }
 
 TEST(migrate_body_cache_splits_a_directory_case_twins_shared) {
