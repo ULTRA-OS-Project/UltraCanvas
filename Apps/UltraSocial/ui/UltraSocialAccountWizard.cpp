@@ -57,7 +57,7 @@ struct NetworkForm {
     const char* configuredHint;
 };
 
-constexpr std::array<NetworkForm, 7> kForms{{
+constexpr std::array<NetworkForm, 8> kForms{{
     { SocialNetwork::Mastodon, "Mastodon / Fediverse",
       "Enter your instance — UltraSocial registers itself there and signs "
       "you in through your browser; no keys needed. Advanced: paste an "
@@ -119,6 +119,14 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "Server", "(default)",
       "Page ID", "e.g. 103245...",
       "Page access token", "EAAB…",
+      "", "", nullptr },
+    { SocialNetwork::Discord, "Discord channel",
+      "In Discord, open the channel's settings > Integrations > Webhooks, "
+      "create a webhook (its name and avatar are what posts show), copy "
+      "its URL and paste it here. Discord allows no posting as yourself.",
+      "", "",
+      "", "",
+      "Webhook URL", "https://discord.com/api/webhooks/…",
       "", "", nullptr },
 }};
 

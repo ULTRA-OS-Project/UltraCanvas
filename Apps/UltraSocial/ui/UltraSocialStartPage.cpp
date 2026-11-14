@@ -31,7 +31,7 @@ constexpr float kSettingsSide = 32.0f;   // the square gear button, top right
 constexpr SocialNetwork kNetworks[] = {
     SocialNetwork::Mastodon, SocialNetwork::Bluesky, SocialNetwork::Telegram,
     SocialNetwork::Reddit,   SocialNetwork::X,       SocialNetwork::LinkedIn,
-    SocialNetwork::Facebook,
+    SocialNetwork::Facebook, SocialNetwork::Discord,
 };
 } // namespace
 
@@ -121,8 +121,8 @@ std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
     }
     networks->AddChild(row);
     auto caption = Theme::MakeText("startNetworksCaption",
-                                   "Mastodon, Bluesky, Telegram, Reddit, X, LinkedIn "
-                                   "and Facebook Pages",
+                                   "Mastodon, Bluesky, Telegram, Reddit, X, LinkedIn, "
+                                   "Facebook Pages and Discord",
                                    Theme::kSizeSecondary, Theme::kTextMuted);
     caption->SetAlignment(TextAlignment::Center);
     networks->AddChild(caption);

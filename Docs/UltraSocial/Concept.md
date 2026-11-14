@@ -45,6 +45,7 @@ churns.
 | **Mastodon** (+ Fediverse: GoToSocial, Pleroma…) | `POST /api/v1/statuses`, media via `POST /api/v2/media` | OAuth2; **dynamic client registration** (`POST /api/v1/apps`) — no pre-registered keys needed | Free, no review | **1** |
 | **Bluesky** (AT Protocol) | `com.atproto.repo.createRecord` with an `app.bsky.feed.post` record; blobs via `com.atproto.repo.uploadBlob` | App password (`createSession`) today; OAuth rolling out | Free, no review | **1** |
 | **Telegram channels** | Bot API `sendMessage` / `sendPhoto` / `sendVideo` to a channel the bot administers | Bot token from @BotFather (pasted once) | Free | **1** |
+| **Discord channels** | Channel webhook: `POST <webhook-url>?wait=true` (`content`, or multipart `payload_json` + `files[n]`) | Webhook URL pasted once (it carries its own token); no sign-in, no app. Posts show the webhook's name - Discord allows no posting as a user | Free, no review | **1** |
 | **Reddit** | OAuth2 `POST /api/submit` | OAuth2 code flow; "installed app" type = public client, no secret | Free tier (~100 requests/min per client); subreddit rules apply | **2** |
 | **X (Twitter)** | `POST /2/tweets` (+ media upload endpoint) | OAuth 2.0 + PKCE (public client supported for native apps) | Free tier caps writes to roughly hundreds of posts/month; paid tiers above that; pricing/limits have changed repeatedly | **2** |
 | **LinkedIn** | Versioned `/rest/posts` | OAuth2 `w_member_social` via the "Share on LinkedIn" product | App must be created and product-approved in the LinkedIn developer portal; confidential client (needs a secret) | **3** |
@@ -71,6 +72,7 @@ engineering.
 | Reddit | 300 title + 40k selftext | link/image/video post kinds |
 | LinkedIn | ~3000 | images, one video |
 | Facebook Page | ~63k | rich |
+| Discord | 2000 message content | up to 10 attachments, ≤ 10 MB each without boosts |
 
 ---
 
