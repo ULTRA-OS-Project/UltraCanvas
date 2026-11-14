@@ -1,6 +1,7 @@
 {
   "@language": "en",
   "@inherited": [
+    "All",
     "Apply",
     "Cancel",
     "Cancelled",
@@ -85,7 +86,6 @@
   "About this app": "About this app",
   "Additional trusted keys": "Additional trusted keys",
   "Age rating": "Age rating",
-  "All": "All",
   "All apps": "All apps",
   "already installed": "already installed",
   "Already installed: {0}.": "Already installed: {0}.",

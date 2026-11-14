@@ -1,9 +1,17 @@
 // core/UltraCanvasListDelegate.cpp
 // Default item delegate rendering for ListView
+// Version: 1.1.0 - ApplyTheme
 #include "UltraCanvasListDelegate.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasListModel.h"
 
 namespace UltraCanvas {
+
+    void UltraCanvasDefaultListDelegate::ApplyTheme(const UltraCanvasTheme& theme) {
+        if (!textColorByHand) textColor = theme.roles.ink;
+        if (!selectedTextColorByHand) selectedTextColor = theme.roles.onAccent;
+        if (!fontSizeByHand) fontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
+    }
 
     void UltraCanvasDefaultListDelegate::RenderItem(IRenderContext* ctx, const IListModel* model,
                                                      int row, int column,

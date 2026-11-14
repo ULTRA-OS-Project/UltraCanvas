@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.24.0 - an HTML message sits on its own white page, framed and set in on a dark look; the header, the bars and the warning strip follow a change of the look
 // Version: 0.23.1 - the warning strip's advice, footnotes and crypto caution title go
 //                   through Tr (they were English only)
 // Version: 0.23.0 - the warning strip in markup: the domain mismatch and the scan's
@@ -73,7 +74,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailStorage.h"
@@ -127,11 +128,11 @@ constexpr float kHeaderHeight = 44.0f;
 // One sender check as a small bordered label: the method's name, in the
 // colour of its result, the details as its tooltip.
 std::shared_ptr<UltraCanvasLabel> MakeAuthTag(const std::string& id, const AuthCheck& check) {
-    const Color color = check.state == AuthCheckState::Passed ? Theme::TrustFriend()
-                      : check.state == AuthCheckState::Failed ? Theme::TrustScam()
-                                                              : Theme::TextMuted();
+    const Theme::Role color = check.state == AuthCheckState::Passed ? Theme::TrustFriend
+                            : check.state == AuthCheckState::Failed ? Theme::TrustScam
+                                                                    : Theme::TextMuted;
     auto tag = Theme::MakeText(id, check.label, Theme::SizeSmall(), color, FontWeight::Bold);
-    tag->SetBorders(1.0f, color, 3.0f);
+    Theme::SetFrame(tag, 1.0f, color, 3.0f);
     tag->SetPadding(1.0f, 4.0f);
     tag->SetTooltip(check.tooltip);
     tag->layoutItem.SetFlexShrink(0);
@@ -434,7 +435,7 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     // width and grows downward instead of overflowing horizontally (which drew
     // a scrollbar and painted over the header row). Never shrink it.
     subject_ = Theme::MakeText("prevSubject", Tr("Select a message"), kSubjectFont,
-                               Theme::TextPrimary(), FontWeight::Bold);
+                               Theme::TextPrimary, FontWeight::Bold);
     subject_->SetWrap(TextWrap::WrapWord);
     root_->AddChild(subject_);
     subject_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -472,9 +473,9 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     // Auto-height labels so each sizes to its own glyph line — a fixed-height
     // box cropped the second line regardless of the row height.
     from_ = Theme::MakeText("prevFrom", "", Theme::SizeBody(),
-                            Theme::TextPrimary(), FontWeight::Bold);
+                            Theme::TextPrimary, FontWeight::Bold);
     to_   = Theme::MakeText("prevTo", "", Theme::SizeSecondary(),
-                            Theme::TextSecondary());
+                            Theme::TextSecondary);
     who->AddChild(from_);
     who->AddChild(to_);
     header->AddChild(who);
@@ -488,7 +489,7 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     authRow_->layoutItem.SetFlexShrink(0);
 
     date_ = Theme::MakeLine("prevDate", "", kHeaderLine, Theme::SizeSecondary(),
-                            Theme::TextSecondary());
+                            Theme::TextSecondary);
     date_->SetElementSize(Size2Df(kDateWidth, kHeaderLine));
     date_->SetAlignment(TextAlignment::Right);
     header->AddChild(date_);
@@ -515,10 +516,10 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     warning_->SetPadding(8.0f, 10.0f);
     warningTitle_ = Theme::MakeText("prevWarningTitle", "", Theme::SizeBody(),
-                                    Theme::TrustScam(), FontWeight::Bold);
+                                    Theme::TrustScam, FontWeight::Bold);
     warningTitle_->SetWrap(TextWrap::WrapWord);
     warningText_ = Theme::MakeText("prevWarningText", "", Theme::SizeSecondary(),
-                                   Theme::TextPrimary());
+                                   Theme::TextPrimary);
     warningText_->SetWrap(TextWrap::WrapWord);
     warning_->AddChild(warningTitle_);
     warning_->AddChild(warningText_);
@@ -537,10 +538,10 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
                       .SetFlexGap(6)
                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     remoteBar_->SetPadding(6.0f, 10.0f);
-    remoteBar_->SetBackgroundColor(Theme::Sidebar());
-    remoteBar_->SetBorders(1.0f, Theme::CardBorder(), Theme::kControlRadius);
+    Theme::SetFill(remoteBar_, Theme::Sidebar);
+    Theme::SetFrame(remoteBar_, 1.0f, Theme::CardBorder, Theme::kControlRadius);
     remoteText_ = Theme::MakeText("prevRemoteText", "", Theme::SizeSecondary(),
-                                  Theme::TextSecondary());
+                                  Theme::TextSecondary);
     remoteText_->SetWrap(TextWrap::WrapWord);
     remoteBar_->AddChild(remoteText_);
     remoteText_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -577,17 +578,17 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
                     .SetFlexGap(Theme::kInnerGap)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     codeBar_->SetPadding(6.0f, 10.0f);
-    codeBar_->SetBackgroundColor(Theme::Sidebar());
-    codeBar_->SetBorders(1.0f, Theme::CardBorder(), Theme::kControlRadius);
+    Theme::SetFill(codeBar_, Theme::Sidebar);
+    Theme::SetFrame(codeBar_, 1.0f, Theme::CardBorder, Theme::kControlRadius);
     if (auto st = codeBar_->GetContainerStyle(); true) {
         st.autoShowScrollbars = false;
         codeBar_->SetContainerStyle(st);
     }
     auto codeCaption = Theme::MakeText("prevCodeCaption", Tr("Code"), Theme::SizeSecondary(),
-                                       Theme::TextSecondary());
+                                       Theme::TextSecondary);
     codeBar_->AddChild(codeCaption);
     codeCaption->layoutItem.SetFlexShrink(0);
-    codeText_ = Theme::MakeText("prevCodeText", "", Theme::SizeHeading(), Theme::TextPrimary(),
+    codeText_ = Theme::MakeText("prevCodeText", "", Theme::SizeHeading(), Theme::TextPrimary,
                                 FontWeight::Bold);
     codeText_->SetSelectable(true);
     codeBar_->AddChild(codeText_);
@@ -779,6 +780,22 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             // stay beside the bar too.
             auto page = std::make_shared<UltraCanvasContainer>("prevBodyPage", 0, 0, 0, 0);
             page->size.width = CSSLayout::Dimension::Pct(100.0f);
+            // The message's own page: its colours are the sender's, made for
+            // the white page a mail program shows them on - so the page stays
+            // white, and on a dark look it is a framed sheet with a margin of
+            // its own inside the dark pane rather than text in the sender's
+            // dark grey on the dark ground. A mail with a background of its
+            // own paints it over the page.
+            Theme::Follow(page, "paper", [](UltraCanvasContainer& p) {
+                const bool dark = Theme::Dark();
+                p.SetBackgroundColor(Colors::White);
+                p.SetBorders(dark ? 1.0f : 0.0f, dark ? Theme::CardBorder() : Colors::Transparent,
+                             dark ? Theme::kControlRadius : 0.0f);
+                const float margin = dark ? 12.0f : 0.0f;
+                p.SetPadding(margin, margin, margin, margin);
+                p.InvalidateLayout();
+                p.RequestRedraw();
+            });
             r.root->size.width = CSSLayout::Dimension::Pct(100.0f);
             page->AddChild(r.root);
             scroll->page = page;
@@ -834,7 +851,8 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     {
         // The message list's scrollbar (ScrollbarStyle::Modern), not the text
         // area's classic 15px square one.
-        const ScrollbarStyle modern = ScrollbarStyle::Modern();
+        const ScrollbarStyle modern = ScrollbarStyle::FromTheme(UltraCanvasTheme::Current(),
+                                                                ScrollbarStyle::Modern());
         auto& ts = text->GetStyle();
         ts.scrollbarWidth        = modern.trackSize;
         ts.scrollbarCornerRadius = static_cast<float>(modern.thumbCornerRadius);
@@ -1284,9 +1302,9 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
             return;
         }
         warningText_->SetTextIsMarkup(false);
-        warning_->SetBackgroundColor(Theme::TrustSpamSoft());
-        warning_->SetBorders(1.0f, Theme::TrustSpam(), Theme::kControlRadius);
-        warningTitle_->SetTextColor(Theme::TrustSpam());
+        Theme::SetFill(warning_, Theme::TrustSpamSoft);
+        Theme::SetFrame(warning_, 1.0f, Theme::TrustSpam, Theme::kControlRadius);
+        Theme::SetInk(warningTitle_, Theme::TrustSpam);
         warningTitle_->SetText("\xE2\x9A\xA0 " + Tr("Caution: this message is about cryptocurrency"));
         warningText_->SetText(cryptoAdvice);
         warning_->SetVisible(true);
@@ -1319,10 +1337,10 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     // The scam the scan named comes first: a love letter that links to a
     // "verification" site is a romance scam, and is told as one.
     const bool scam = status.cls == SenderClass::Scam || phishing;
-    const Color accent = scam ? Theme::TrustScam() : Theme::TrustSpam();
-    warning_->SetBackgroundColor(scam ? Theme::TrustScamSoft() : Theme::TrustSpamSoft());
-    warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
-    warningTitle_->SetTextColor(accent);
+    const Color accent = scam ? Theme::TrustScam() : Theme::TrustSpam();   // the markup's
+    Theme::SetFill(warning_, scam ? Theme::TrustScamSoft : Theme::TrustSpamSoft);
+    Theme::SetFrame(warning_, 1.0f, scam ? Theme::TrustScam : Theme::TrustSpam, Theme::kControlRadius);
+    Theme::SetInk(warningTitle_, scam ? Theme::TrustScam : Theme::TrustSpam);
     const std::string what = romance                ? Tr("romance scam")
                            : phishing || lookalike || webPage ? Tr("phishing")
                            : cryptoScam ? Tr("cryptocurrency scam")
@@ -1459,7 +1477,7 @@ void MessagePreview::Clear() {
         subject_->SetText(Tr("Select a message to read it here"));
         subject_->SetFontSize(Theme::SizeHeading());
         subject_->SetFontWeight(FontWeight::Normal);
-        subject_->SetTextColor(Theme::TextMuted());
+        Theme::SetInk(subject_, Theme::TextMuted);
     }
     if (actions_) actions_->SetVisible(false);
     if (header_)  header_->SetVisible(false);
@@ -1630,7 +1648,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         subject_->SetText(subject.empty() ? "(no subject)" : subject);
         subject_->SetFontSize(kSubjectFont);
         subject_->SetFontWeight(FontWeight::Bold);
-        subject_->SetTextColor(Theme::TextPrimary());
+        Theme::SetInk(subject_, Theme::TextPrimary);
         subject_->SetTooltip(subject);
     }
     if (actions_) actions_->SetVisible(true);

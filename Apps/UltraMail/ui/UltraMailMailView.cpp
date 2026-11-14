@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.22.0 - the panes, the folder tree and the message list follow a change of the look (Theme::Follow); the cards are the look's
 // Version: 0.21.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.20.0 - SetSecureKeys / onCertificateLearnt for signed and encrypted mail
 // Version: 0.19.1 - RescanSender reads the message files through UltraMailStorage
@@ -164,6 +165,9 @@ SplitPaneStyle GapSplitterStyle() {
     s.splitterHoverColor     = Theme::CardBorder();
     s.splitterActiveColor    = Theme::Accent();
     return s;
+}
+void StyleGapSplitter(const std::shared_ptr<UltraCanvasSplitPane>& split) {
+    Theme::Follow(split, "style", [](UltraCanvasSplitPane& p) { p.SetSplitPaneStyle(GapSplitterStyle()); });
 }
 
 // ---------------------------------------------------------------------------
@@ -371,12 +375,12 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
     auto contentPane = outerSplit_->AddPane(3.0);
     outerSplit_->SetPaneMinSize(0, kFolderMinWidth);
     outerSplit_->SetPaneMinSize(1, kListMinWidth + kPreviewMinWidth);
-    outerSplit_->SetSplitPaneStyle(GapSplitterStyle());
+    StyleGapSplitter(outerSplit_);
 
     // Left: the folder tree (one email root per account, mailboxes beneath).
     folderBox_ = CreateGroupBox("folderBox", 0, 0, 0, 0, Tr("Folders"));
     folderBox_->SetFrameStyle(GroupBoxFrameStyle::Header);
-    folderBox_->SetVisualStyle(Theme::CardGroupBox(6.0f));
+    Theme::StyleCardGroupBox(folderBox_, 6.0f);
     folderTree_ = std::make_shared<UltraCanvasTreeView>("folderTree", 0, 0, 0, 0);
     folderTree_->SetRootVisible(false);
     folderTree_->SetShowExpandButtons(true);
@@ -385,10 +389,8 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
     folderTree_->SetIndentSize(14);
     folderTree_->SetFontSize(Theme::SizeBody());
     folderTree_->SetSelectionMode(TreeSelectionMode::Single);
-    folderTree_->SetBackgroundColor(Theme::CardBackground());
-    folderTree_->SetSelectionColor(Theme::RowSelected());
-    folderTree_->SetHoverColor(Theme::RowHover());
-    folderTree_->SetTextColor(Theme::TextPrimary());
+    Theme::SetFill(folderTree_, Theme::CardBackground);
+    Theme::StyleTreeRows(folderTree_);
     folderTree_->onNodeSelected = [this](TreeNode* node) {
         if (suppressTreeCallback_ || !node) return;
         auto it = folderNodeId_.find(node->data.nodeId);
@@ -422,7 +424,7 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
 void MailView::BuildListBox() {
     listBox_ = CreateGroupBox("listBox", 0, 0, 0, 0, Tr("Inbox"));
     listBox_->SetFrameStyle(GroupBoxFrameStyle::Header);
-    listBox_->SetVisualStyle(Theme::CardGroupBox(6.0f));
+    Theme::StyleCardGroupBox(listBox_, 6.0f);
 
     model_ = std::make_shared<UltraCanvasMultiColumnListModel>();
     model_->SetColumns({
@@ -444,16 +446,10 @@ void MailView::BuildListBox() {
     list_->SetSelection(std::make_shared<UltraCanvasSingleSelection>());
 
     ListViewStyle st;
-    st.backgroundColor          = Theme::CardBackground();
     st.showHeader               = true;
     st.headerHeight             = kHeaderHeight;
-    st.headerBackgroundColor    = Theme::Sidebar();
-    st.headerTextColor          = Theme::TextSecondary();
-    st.headerFontSize           = Theme::SizeSecondary();
     st.rowHeight                = kRowHeight;
     st.showGridLines            = false;
-    st.selectionBackgroundColor = Theme::RowSelected();
-    st.hoverBackgroundColor     = Theme::RowHover();
     list_->SetStyle(st);
 
     auto d = std::make_shared<MessageColorDelegate>();
@@ -461,8 +457,22 @@ void MailView::BuildListBox() {
     d->badges      = &rowBadges_;
     d->badgeColumn = 1;
     d->badgeSide   = Theme::kBadgeSize;
-    d->unreadColor = Theme::TextPrimary();
-    d->readColor   = Theme::TextSecondary();
+    // The list's and the rows' colours, again when the look changes.
+    Theme::Follow(list_, "style", [d](UltraCanvasListView& l) {
+        ListViewStyle look = ListViewStyle::FromTheme(UltraCanvasTheme::Current(), l.GetStyle());
+        look.backgroundColor          = Theme::CardBackground();
+        look.alternateRowColor        = Theme::CardBackground();
+        look.headerBackgroundColor    = Theme::Sidebar();
+        look.headerTextColor          = Theme::TextSecondary();
+        look.headerFontSize           = Theme::SizeSecondary();
+        look.gridLineColor            = Theme::Divider();
+        look.selectionBackgroundColor = Theme::RowSelected();
+        look.hoverBackgroundColor     = Theme::RowHover();
+        l.SetStyle(look);
+        d->unreadColor = Theme::TextPrimary();
+        d->readColor   = Theme::TextSecondary();
+        l.RequestRedraw();
+    });
     d->fontSize    = Theme::SizeBody();
     d->rowHeight   = kRowHeight;
     d->clipIcon    = NormalizePath(GetResourcesDir() + "media/icons/paperclip.svg");
@@ -524,7 +534,7 @@ void MailView::BuildListBox() {
 void MailView::BuildMessageBox() {
     messageBox_ = CreateGroupBox("messageBox", 0, 0, 0, 0, Tr("Message"));
     messageBox_->SetFrameStyle(GroupBoxFrameStyle::Header);
-    messageBox_->SetVisualStyle(Theme::CardGroupBox(Theme::kPagePadding));
+    Theme::StyleCardGroupBox(messageBox_, Theme::kPagePadding);
     preview_.onSaveAttachment = [this](const Attachment& a) {
         if (onSaveAttachment) onSaveAttachment(a);
     };
@@ -614,7 +624,7 @@ void MailView::ApplyContentLayout() {
         auto pp = innerSplit_->AddPane(1.0);
         innerSplit_->SetPaneMinSize(0, kListMinWidth);
         innerSplit_->SetPaneMinSize(1, kPreviewMinWidth);
-        innerSplit_->SetSplitPaneStyle(GapSplitterStyle());
+        StyleGapSplitter(innerSplit_);
         FillWith(lp, listBox_);
         FillWith(pp, messageBox_);
         contentHost_->AddChild(innerSplit_);
@@ -1056,7 +1066,6 @@ void MailView::RebuildFolderTree() {
         const std::string accNode = kAccountNodePrefix + accId;
         TreeNodeData accData(accNode, account.email.empty() ? account.displayName
                                                             : account.email);
-        accData.textColor = Theme::TextPrimary();
         folderTree_->AddNode(kTreeRootId, accData);
         // Clicking the account row opens its inbox.
         folderNodeId_[accNode] = {accId, "INBOX"};
@@ -1080,7 +1089,6 @@ void MailView::RebuildFolderTree() {
         // created even if the folder list has no INBOX row yet.
         const std::string inboxNode = kFolderNodePrefix + accId + "::INBOX";
         TreeNodeData inboxData(inboxNode, "Inbox");
-        inboxData.textColor = Theme::TextPrimary();
         folderTree_->AddNode(accNode, inboxData);
         folderNodeId_[inboxNode] = {accId, "INBOX"};
 
@@ -1112,7 +1120,6 @@ void MailView::RebuildFolderTree() {
                     const std::string nodeId = kFolderNodePrefix + accId + "::" + path;
                     if (created.insert(nodeId).second) {
                         TreeNodeData data(nodeId, FolderDisplayName(path, delim));
-                        data.textColor = Theme::TextPrimary();
                         folderTree_->AddNode(parent, data);
                         folderNodeId_[nodeId] = {accId, path};
                     }

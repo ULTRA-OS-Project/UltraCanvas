@@ -1,6 +1,13 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.18.1 - the scrolled pages and tables take the theme's scrollbars
+//                  (ContainerStyle::FromTheme), not the light default
+// Version: 0.18.0 - Desktop > Theme is the system look (Appearance.conf), the
+//                  same as Appearance > Look: one look for every application
+// Version: 0.17.0 - Desktop > Info bar: a switch for each icon of the desktop's
+//                  info panel; --page opens the window on a page (ShowSettingsPage)
+// Version: 0.16.0 - Desktop: the battery's percentage badge, on or off
 // Version: 0.15.0 - every text through Tr / TrF / TrN; the window's colours and sizes are the theme's (the kit's functions)
 // Version: 0.14.0 - Appearance > Look: Appearance.conf (the look, accent, font, size, scale, contrast)
 //                  with a preview strip styled from the theme the choices give
@@ -120,6 +127,7 @@ namespace {
     constexpr int kScrollbarRoom = 22;
 
     constexpr const char* kPageDesktop        = "desktop";
+    constexpr const char* kPageInfoBar        = "desktop/info-bar";
     constexpr const char* kSectionFileDialogs = "file-dialogs";
     constexpr const char* kPageLastFolder     = "file-dialogs/last-folder";
     constexpr const char* kSectionAppearance  = "appearance";
@@ -234,7 +242,7 @@ namespace {
         {
             // Vertically only: a vertical bar narrows the rows, which must not
             // turn into a horizontal overflow of its own width.
-            ContainerStyle cs;
+            ContainerStyle cs = ContainerStyle::FromTheme();   // the theme's scrollbars
             cs.autoShowScrollbars = true;
             cs.autoShowHorizontalScrollbar = false;
             rows->SetContainerStyle(cs);
@@ -297,6 +305,7 @@ bool UOSSettingsWindow::Create() {
     if (!UltraCanvasSettingsWindow::Create(nullptr, "UOS-Settings " + version_, options)) return false;
 
     AddTreeNode("settings", kPageDesktop, Tr("Desktop"));
+    AddTreeNode(kPageDesktop, kPageInfoBar, Tr("Info bar"));
     AddTreeNode("settings", kPageLanguage, Tr("Language"));
     AddTreeNode(kPageLanguage, kPageTranslations, Tr("Translations"));
     AddTreeNode("settings", kSectionFileDialogs, Tr("File dialogs"));
@@ -312,6 +321,7 @@ bool UOSSettingsWindow::Create() {
     AddTreeNode(kSectionNetwork, kPageProxy, Tr("Proxy"));
 
     BuildDesktopPage();
+    BuildInfoBarPage();
     BuildLastFolderPage();
     BuildLanguagePage();
     BuildTranslationsPage();
@@ -326,6 +336,7 @@ bool UOSSettingsWindow::Create() {
     onPageShown = [this](const std::string& pageId) {
         if (pageId == kPageLastFolder) RefreshLastFolderPage();
         if (pageId == kPageDesktop) RefreshDesktopPage();
+        if (pageId == kPageInfoBar) RefreshInfoBarPage();
         if (pageId == kPageCertificates) RefreshCertificatesPage();
         if (pageId == kPageLook) RefreshLookPage();
         if (pageId == kPageEmoji) RefreshEmojiPage();
@@ -346,6 +357,99 @@ void UOSSettingsWindow::Show() {
     if (window) window->Show();
 }
 
+void UOSSettingsWindow::ShowSettingsPage(const std::string& pageId) {
+    if (pageId.empty() || pages.find(pageId) == pages.end()) return;
+    SelectPage(pageId);
+}
+
+// ===== DESKTOP > INFO BAR =====
+
+void UOSSettingsWindow::BuildInfoBarPage() {
+    auto page = std::make_shared<UltraCanvasContainer>("uos-page-infobar");
+    page->layout.SetFlexColumn().SetFlexGap(0)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    {
+        ContainerStyle cs = ContainerStyle::FromTheme();   // the theme's scrollbars
+        cs.autoShowScrollbars = true;
+        cs.autoShowHorizontalScrollbar = false;
+        page->SetContainerStyle(cs);
+    }
+
+    auto title = MakeLabel("uos-ib-title", Tr("Info bar"), TitleFontSize());
+    title->SetFontWeight(FontWeight::Bold);
+    page->AddChild(title);
+    auto caption = MakeText("uos-ib-caption",
+            Tr("The icons at the foot of the desktop's right bar. Untick one and it "
+               "leaves the bar; the desktop takes the change over within a second."));
+    caption->SetMargin(6, 0, 10, 0);
+    page->AddChild(caption);
+
+    infoItems_.clear();
+    for (const UltraDesktop::InfoItem& item : UltraDesktop::DesktopSettings::InfoItems()) {
+        const std::string id = std::string("uos-ib-") + item.id;
+        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 520, 26, Tr(item.label));
+        box->layoutItem.SetFlexShrink(0);
+        box->onStateChanged = [this](CheckedState, CheckedState) {
+            if (!refreshing_) SaveInfoBarPage();
+        };
+        infoItems_.emplace_back(item.id, box);
+        page->AddChild(box);
+    }
+
+    infoBarStatus_ = MakeLabel("uos-ib-status", "", TextFontSize(), MutedTextColor());
+    infoBarStatus_->SetMargin(10, 0, 0, 0);
+    page->AddChild(infoBarStatus_);
+
+    auto spacer = std::make_shared<UltraCanvasContainer>("uos-ib-spacer");
+    spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    spacer->size.height = CSSLayout::Dimension::Px(24);
+    page->AddChild(spacer);
+    page->AddChild(MakeNotes("uos-ib-note", {
+            Tr("The same is on the desktop: a right click on an icon of the info bar "
+               "offers \"Hide this icon\" and \"Info bar icons...\", which opens this "
+               "page. The battery's right-click menu also switches its percentage "
+               "badge (Desktop > Battery)."),
+            Tr("A hidden icon's service keeps running: a hidden battery still warns "
+               "when it runs low, and a hidden mail icon still lets UltraMail fetch "
+               "mail.")}));
+
+    pages[kPageInfoBar] = page;
+    pageArea->AddChild(page);
+}
+
+void UOSSettingsWindow::RefreshInfoBarPage() {
+    UltraDesktop::DesktopSettings settings;
+    std::string error;
+    const std::string path = UltraDesktop::DesktopSettings::DefaultPath();
+    const bool read = settings.Load(path, &error);
+    refreshing_ = true;
+    for (auto& [id, box] : infoItems_) box->SetChecked(settings.ShowsInfoItem(id));
+    refreshing_ = false;
+    if (infoBarStatus_) {
+        infoBarStatus_->SetText(read ? TrF("Settings file: {0}", path)
+                                     : TrF("The settings file could not be read: {0}", error));
+    }
+}
+
+void UOSSettingsWindow::SaveInfoBarPage() {
+    if (refreshing_) return;
+    const std::string path = UltraDesktop::DesktopSettings::DefaultPath();
+    if (path.empty()) return;
+    // Read, change, write: only the icons are this page's.
+    UltraDesktop::DesktopSettings settings;
+    std::string error;
+    settings.Load(path, &error);
+    for (const auto& [id, box] : infoItems_) settings.SetShowsInfoItem(id, box->IsChecked());
+    if (!settings.Save(path, &error)) {
+        if (infoBarStatus_) infoBarStatus_->SetText(TrF("Not saved: {0}", error));
+        return;
+    }
+    if (infoBarStatus_) infoBarStatus_->SetText(TrF("Saved to {0}", path));
+}
+
 // ===== DESKTOP =====
 
 void UOSSettingsWindow::BuildDesktopPage() {
@@ -358,7 +462,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     {
         // The longest page: in a large desktop font its rows outgrow the
         // window, so it scrolls rather than losing its last rows under the bar.
-        ContainerStyle cs;
+        ContainerStyle cs = ContainerStyle::FromTheme();   // the theme's scrollbars
         cs.autoShowScrollbars = true;
         cs.autoShowHorizontalScrollbar = false;
         page->SetContainerStyle(cs);
@@ -421,8 +525,11 @@ void UOSSettingsWindow::BuildDesktopPage() {
     addRow("uos-dt-edge-row", "Taskbar", edge_);
 
     theme_ = std::make_shared<UltraCanvasDropdown>("uos-dt-theme", 0, 0, 200, 28);
+    // The look of every application, the desktop's bars included - the
+    // same setting as Appearance > Look, written to Appearance.conf.
     theme_->AddItem(Tr("Dark"), "dark");
     theme_->AddItem(Tr("Light"), "light");
+    theme_->AddItem(Tr("As the system"), "system");
     theme_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
@@ -436,6 +543,16 @@ void UOSSettingsWindow::BuildDesktopPage() {
     };
     addRow("uos-dt-drop-row", "Dropped files", dropFiles_);
 
+    // The battery on the right bar: its percentage as a badge, or the icon
+    // alone (whose fill shows the level either way).
+    battery_ = std::make_shared<UltraCanvasDropdown>("uos-dt-battery", 0, 0, 220, 28);
+    battery_->AddItem(Tr("Icon and percentage"), "percent");
+    battery_->AddItem(Tr("Icon only"), "icon");
+    battery_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-battery-row", "Battery", battery_);
+
     wallpaper_ = std::make_shared<UltraCanvasTextInput>("uos-dt-wallpaper", 0, 0, 260, 28);
     wallpaper_->SetPlaceholder(Tr("ULTRA OS A (the default picture)"));
     wireText(wallpaper_);
@@ -446,6 +563,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
 
     ramDisc_ = std::make_shared<UltraCanvasTextInput>("uos-dt-ramdisc", 0, 0, 260, 28);
     ramDisc_->SetPlaceholder(Tr("None: no RAM disc button"));
+    ramDisc_->SetTooltip(Tr("\"ultrafiler\": UltraFiler shows its RAM disc, or offers to make one. A folder: that folder opens. Empty: no RAM disc button."));
     wireText(ramDisc_);
     addRow("uos-dt-ramdisc-row", "RAM disc", ramDisc_);
 
@@ -566,8 +684,9 @@ void UOSSettingsWindow::BuildDesktopPage() {
     std::vector<std::string> noteTexts = {
             Tr("Changes are saved at once - a text field when you leave it or press "
                "Return - and a running desktop takes them over within a second."),
-            Tr("The RAM disc is the folder the desktop's drive button opens - empty, "
-               "no button; the file manager is the program its folder buttons start. "
+            Tr("The RAM disc button: \"ultrafiler\" has UltraFiler show its RAM disc, "
+               "or offer to make one when there is none; a folder opens that folder; "
+               "empty, no button. The file manager is the program its folder buttons start. "
                "Virtual desktops are asked of the window manager, which may offer a "
                "different number."),
             Tr("The Apps window sorts the applications into Office, Internet, "
@@ -617,8 +736,12 @@ void UOSSettingsWindow::RefreshDesktopPage() {
                                 : settings.taskbarEdge == UltraDesktop::TaskbarEdge::Bottom ? 2 : 0,
                                 false);
     }
-    if (theme_) theme_->SetSelectedIndex(settings.theme == "light" ? 1 : 0, false);
+    if (theme_) {
+        const std::string look = AppearanceSettings::Load().look;
+        theme_->SetSelectedIndex(look == "dark" ? 0 : look == "light" ? 1 : 2, false);
+    }
     if (dropFiles_) dropFiles_->SetSelectedIndex(settings.dropFilesOn == "desktop" ? 1 : 0, false);
+    if (battery_) battery_->SetSelectedIndex(settings.batteryPercent ? 0 : 1, false);
     if (wallpaper_) wallpaper_->SetText(settings.wallpaper);
     if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
     if (filer_) filer_->SetText(settings.filerProgram);
@@ -663,8 +786,18 @@ void UOSSettingsWindow::SaveDesktopPage() {
                              : index == 2 ? UltraDesktop::TaskbarEdge::Bottom
                                           : UltraDesktop::TaskbarEdge::Left;
     }
-    if (theme_) settings.theme = theme_->GetSelectedIndex() == 1 ? "light" : "dark";
+    if (theme_) {
+        // Appearance.conf, not the desktop's file: every application's look.
+        AppearanceSettings appearance = AppearanceSettings::Load();
+        const int index = theme_->GetSelectedIndex();
+        const std::string look = index == 0 ? "dark" : index == 1 ? "light" : "system";
+        if (appearance.look != look) {
+            appearance.look = look;
+            appearance.Save();
+        }
+    }
     if (dropFiles_) settings.dropFilesOn = dropFiles_->GetSelectedIndex() == 1 ? "desktop" : "board";
+    if (battery_) settings.batteryPercent = battery_->GetSelectedIndex() != 1;
     if (wallpaper_) settings.wallpaper = wallpaper_->GetText();
     if (ramDisc_) settings.ramDiscPath = ramDisc_->GetText();   // "" = no RAM disc button
     if (filer_ && !filer_->GetText().empty()) settings.filerProgram = filer_->GetText();

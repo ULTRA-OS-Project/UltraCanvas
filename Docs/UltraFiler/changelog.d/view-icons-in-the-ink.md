@@ -1,0 +1,1 @@
+- **The view-mode dropdown's glyphs show in the dark look.** They are drawn in the dropdown's text colour (framework `SetIconsAsMask`), not black on the dark field.

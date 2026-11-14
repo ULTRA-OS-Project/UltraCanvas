@@ -35,7 +35,7 @@
 
 **UltraCanvasScrollbar** is a standalone scrollbar control with full interaction support: thumb dragging, track paging, mouse-wheel scrolling, and optional arrow buttons. It works in either vertical or horizontal orientation and is configured through a single `ScrollbarStyle` struct that controls dimensions, colours (with separate normal / hover / pressed states), corner radius / end shape, an optional custom image (PNG or SVG) thumb handle, and scrolling behaviour. Several built-in style presets are provided, and a `std::function<void(int)> onScrollChange` callback reports live position changes.
 
-**Version:** 1.1.0 - `ScrollbarStyle::FromTheme`, `ApplyTheme`: a standalone bar follows the theme
+**Version:** 1.2.0 - a quieter thumb under a dark theme (`ScrollbarStyle::FromTheme`)
 **Header:** `include/UltraCanvasScrollbar.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasUIElement`
@@ -202,7 +202,11 @@ ScrollbarStyle& GetStyleRef();
 on the track and the thumb: the panel for the track with the hover fill and
 a hairline, the control border for the thumb, faint and muted ink as it is
 hovered and pressed, muted ink for the arrows on the panel; `scrollbar.track`
-and `scrollbar.thumb` where a theme names them. Under the theme policy a new
+and `scrollbar.thumb` where a theme names them. Under a dark theme that does
+not name `scrollbar.thumb`, the thumb is the track mixed a quarter of the way
+toward the ink (a third hovered, nearly half pressed), its border the thumb
+itself: it shows on the dark track without the glare of the light look's
+control-border grey. Under the theme policy a new
 standalone bar follows the theme by itself (`ApplyTheme`); a `SetStyle` by
 hand stops that. The bars an element owns (a list's, a tree's, a
 container's) take their owner's style, so they follow through the owner.

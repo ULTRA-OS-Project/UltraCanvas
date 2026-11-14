@@ -1,6 +1,7 @@
 // core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp
 // The list model and row painter for a clipboard history. See
 // include/UltraCanvasClipboardHistoryView.h.
+// Version: 1.4.0 - the Link tile from the style; a dark theme's selected row in the soft accent with ink
 // Version: 1.3.0 - every text through Tr (UltraLocalisation): sections, sizes, ages, the
 //                  description line, the action tooltips, an image's and files' titles
 // Version: 1.2.0 - the Save as action (ClipboardRowStyle::saveAction)
@@ -230,6 +231,9 @@ ClipboardRowStyle ClipboardRowStyle::Dark() {
     s.copiedBackground = Color(30, 70, 45);
     s.tileBackground = Color(55, 55, 55);
     s.tileBorder = Color(70, 70, 70);
+    s.linkTileBackground = Color(30, 58, 95);
+    s.linkTileBorder = Colors::Transparent;
+    s.linkGlyph = Color(147, 197, 253);
     s.selectionBackground = Color(56, 56, 56);
     s.hoverBackground = Color(44, 44, 44);
     s.listBackground = Color(31, 31, 31);
@@ -546,10 +550,9 @@ void ClipboardHistoryRowDelegate::PaintThumbnail(IRenderContext* ctx, const Clip
             bar(30, 35, 10, Color(37, 99, 235));
             break;
         case ClipboardEntryKind::Link: {
-            tileFill(style.compact ? Color(30, 58, 95) : Color(232, 241, 251),
-                     style.compact ? Colors::Transparent : Color(207, 227, 247));
+            tileFill(style.linkTileBackground, style.linkTileBorder);
             if (auto icon = UCImage::Get(IconsDir(iconsDir) + "link.svg")) {
-                ctx->DrawMask(style.compact ? Color(147, 197, 253) : Colors::Selection, *icon,
+                ctx->DrawMask(style.linkGlyph, *icon,
                               Rect2Dd(tile.x + 12 * s, tile.y + 12 * s, 24 * s, 24 * s), ImageFitMode::Contain);
             }
             break;
@@ -612,7 +615,7 @@ void ClipboardHistoryRowDelegate::PaintActions(IRenderContext* ctx, const Clipbo
         const double x = left + i * style.actionSize;
         const Point2Dd centre(x + style.actionSize / 2.0, r.y + r.height / 2.0);
         const bool hovered = row == hoverRow && actions[i] == hoverAction;
-        Color colour = selectedLight ? Colors::White
+        Color colour = selectedLight ? style.selectedTitleColor
                      : (option.isHovered || option.isSelected) ? style.actionActiveColor : style.actionColor;
         std::string icon = iconOf(actions[i]);
         if (i == 0 && copied) {
@@ -623,7 +626,7 @@ void ClipboardHistoryRowDelegate::PaintActions(IRenderContext* ctx, const Clipbo
         } else if (hovered) {
             const bool destructive = actions[i] == ClipboardRowAction::Delete;
             ctx->SetFillPaint(destructive ? style.deleteHoverBackground
-                              : selectedLight ? Color(255, 255, 255, 60) : style.actionHoverBackground);
+                              : selectedLight ? style.selectedTitleColor.WithAlpha(60) : style.actionHoverBackground);
             ctx->FillCircle(centre, style.actionSize / 2.0);
             if (destructive) colour = style.deleteHoverColor;
         }
@@ -695,7 +698,7 @@ void ClipboardHistoryRowDelegate::RenderItem(IRenderContext* ctx, const IListMod
     if (entry.pinned) {
         if (auto pin = UCImage::Get(IconsDir(iconsDir) + "pin.svg")) {
             const double side = style.compact ? 13 : 15;
-            ctx->DrawMask(selectedLight ? Colors::White : style.pinColor, *pin,
+            ctx->DrawMask(selectedLight ? style.selectedTitleColor : style.pinColor, *pin,
                           Rect2Dd(textX, rect.y + rect.height * 0.32 - side / 2, side, side), ImageFitMode::Contain);
             titleX += side + 5;
         }
@@ -725,8 +728,10 @@ ClipboardRowStyle ClipboardRowStyle::FromTheme(const UltraCanvasTheme& theme, co
     const ThemeRoles& r = theme.roles;
     s.titleColor = r.ink;
     s.metaColor = r.inkMuted;
-    s.selectedTitleColor = r.onAccent;
-    s.selectedMetaColor = r.onAccent.WithAlpha(220);
+    // Under a dark theme the accent is a light blue that neither white nor
+    // dark text reads well on: the selected row is the soft accent with ink.
+    s.selectedTitleColor = theme.dark ? r.ink : r.onAccent;
+    s.selectedMetaColor = theme.dark ? r.inkMuted : r.onAccent.WithAlpha(220);
     s.headerColor = r.inkMuted;
     s.headerBackground = r.panel;
     s.divider = r.line;
@@ -738,7 +743,12 @@ ClipboardRowStyle ClipboardRowStyle::FromTheme(const UltraCanvasTheme& theme, co
     s.pinColor = r.accent;
     s.tileBackground = r.panel;
     s.tileBorder = r.line;
-    s.selectionBackground = r.accent;
+    s.selectionBackground = theme.dark ? r.accentSoft : r.accent;
+    if (theme.dark) {
+        s.linkTileBackground = r.accentSoft;
+        s.linkTileBorder = Colors::Transparent;
+        s.linkGlyph = r.accent;
+    }
     s.hoverBackground = r.hover;
     s.listBackground = r.well;
     return s;

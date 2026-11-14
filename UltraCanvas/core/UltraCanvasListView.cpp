@@ -1,5 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Version: 1.8.0 - the theme reaches the delegate (IItemDelegate::ApplyTheme), also one set after construction
 // Version: 1.7.0 - SetSelectsOnContextMenu(false): a right press leaves the selection as it is
 // Version: 1.6.0 - SetColumnFitting
 // Version: 1.5.0 - a horizontal scrollbar when the columns are wider than the view
@@ -68,11 +69,7 @@ namespace UltraCanvas {
     void UltraCanvasListView::ApplyTheme(const UltraCanvasTheme& theme) {
         SetStyle(ListViewStyle::FromTheme(theme, viewStyle));
         SetBordersColor(theme.roles.lineStrong);
-        if (auto* standard = dynamic_cast<UltraCanvasDefaultListDelegate*>(delegate.get())) {
-            standard->SetTextColor(theme.roles.ink);
-            standard->SetSelectedTextColor(theme.roles.onAccent);
-            standard->SetFontSize(static_cast<float>(theme.FontSize(ThemeTextRole::Body)));
-        }
+        if (delegate) delegate->ApplyTheme(theme);
     }
 
     // ===== MODEL / DELEGATE / SELECTION WIRING =====
@@ -139,6 +136,10 @@ namespace UltraCanvas {
 
     void UltraCanvasListView::SetDelegate(std::shared_ptr<IItemDelegate> newDelegate) {
         delegate = newDelegate ? newDelegate : std::make_shared<UltraCanvasDefaultListDelegate>();
+        // A delegate set after the list was made takes the theme the list
+        // already has (and every change after, through ApplyTheme), unless
+        // the application styled it itself.
+        if (GetFollowTheme()) delegate->ApplyTheme(UltraCanvasTheme::Current());
         InvalidateRowGeometry();
         UpdateScrollbar();
         RequestRedraw();

@@ -1,5 +1,7 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
+// Version: 1.12.0 - SetMaskColor: the picture drawn as a mask in one colour (its alpha kept), so a black
+//                  line icon can be shown in the theme's ink; SetTintColor keeps its multiply
 // Version: 1.11.0 - LoadFromPixmap: a picture already made (a file's icon or thumbnail)
 // Version: 1.10.0 - onContextMenu: a right-click on the image (it no longer counts as a click)
 // Version: 1.9.0 - SetBoxAspectRatio: the shape the box keeps when its height
@@ -10,7 +12,7 @@
 // Version: 1.4.0 - ImagePosition moved to UltraCanvasCommonTypes.h (FitImageRect)
 // Version: 1.3.0 - SetImageRepeat: the image tiles across the element (either axis)
 // Version: 1.2.0 - SetImagePosition: where the fitted image sits in the element
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -67,6 +69,7 @@ private:
     bool repeatX = false;           // tile across / down the element
     bool repeatY = false;
     Color tintColor = Colors::White;
+    Color maskColor = Colors::Transparent;   // see SetMaskColor
     float opacity = 1.0f;
     bool smoothScaling = true;
     
@@ -180,6 +183,16 @@ public:
     // strength. Drawn with render-context groups (the Cairo context has them);
     // a context without groups draws the picture untinted.
     void SetTintColor(const Color& color) { tintColor = color; RequestRedraw(); }
+    // Draws the picture as a mask in `color`: every pixel takes the colour,
+    // at the picture's own alpha (times the colour's), so a black line icon
+    // shows in the theme's ink - lighter than it is, which a multiplying
+    // tint cannot do. Colors::Transparent, the default, draws the picture in
+    // its own colours. Wins over SetTintColor. Drawn with render-context
+    // groups like the tint; a context without groups draws the picture as
+    // it is.
+    void SetMaskColor(const Color& color) { maskColor = color; RequestRedraw(); }
+    const Color& GetMaskColor() const { return maskColor; }
+    bool IsDrawnAsMask() const { return maskColor.a > 0; }
     void SetOpacity(float alpha) { opacity = std::max(0.0f, std::min(1.0f, alpha)); RequestRedraw(); }
     float GetOpacity() const { return opacity; }
     void SetRotation(float degrees) { rotation = degrees; RequestRedraw(); }

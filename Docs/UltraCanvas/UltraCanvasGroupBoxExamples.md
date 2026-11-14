@@ -30,7 +30,7 @@ visually frames a set of related child elements under a caption. It extends
 layout, and scrolling machinery while adding a titled frame and optional
 interactive behaviour.
 
-**Version:** 1.4.0 - `GroupBoxVisualStyle::FromTheme`, `ApplyTheme`: the group box follows the theme
+**Version:** 1.5.0 - `SectionCard(theme)` / `SectionPageColor(theme)`: the section card from the theme, dark under a dark one
 **Header:** `include/UltraCanvasGroupBox.h`
 **Namespace:** `UltraCanvas`
 **Base Class:** `UltraCanvasContainer`
@@ -46,9 +46,10 @@ interactive behaviour.
   `GroupBoxVisualStyle`.
 - **Style Presets**: `GroupBoxVisualStyle::Default()`,
   `GroupBoxVisualStyle::Card()` (iOS-like grouped card) and
-  `GroupBoxVisualStyle::SectionCard()` (a window section as a white card on
-  the light page of `Colors::SectionPage` - the look UltraMail's panes and
-  UltraPaint's side panel share).
+  `GroupBoxVisualStyle::SectionCard()` (a window section as a card on the
+  page of `SectionPageColor()` - white on `Colors::SectionPage` under a light
+  theme, the theme's panel on its ground under a dark one; the look
+  UltraMail's panes and UltraPaint's side panel share).
 - **Activator (checkbox or switch)**: an optional checkbox- or switch-style
   toggle in the title bar that enables/disables (greys out) the contained
   children. It can be placed on the **left or right** side of the title bar.
@@ -221,14 +222,18 @@ gb->SetCollapsible(true);
 
 ### Sections of a window as cards
 
-`SectionCard()` is one section of a window as a white card: a hairline border,
+`SectionCard()` is one section of a window as a card: a hairline border,
 8 px corners, the caption in bold grey over a hairline separator, 8 px of
 padding inside. It is drawn for the `Header` frame style and for a page of
-`Colors::SectionPage` around the cards - on a white page a white card shows
-nothing but its hairline. Its colours are compile-time constants beside the
-other UI colours (`Colors::SectionCardBackground`, `SectionCardBorder`,
-`SectionCardCaption`), so a container drawn as a matching card can use them
-too; a list inside a card takes `Colors::ListRowHover`
+`SectionPageColor()` around the cards - on a page of its own colour a card
+shows nothing but its hairline. It comes from the theme
+(`SectionCard(theme)`; `SectionCard()` and `SectionPageColor()` read the
+current one): under a light theme its colours are compile-time constants
+beside the other UI colours (`Colors::SectionCardBackground`,
+`SectionCardBorder`, `SectionCardCaption`, on `Colors::SectionPage`), so a
+container drawn as a matching card can use them too; under a dark theme the
+card is the theme's panel in a hairline (`line`) with the caption in muted
+ink, on the theme's ground. A list inside a light card takes `Colors::ListRowHover`
 and `Colors::ListRowSelected` for its rows (see
 `UltraCanvasListViewExamples.md`). Applications that share them look alike,
 and stay alike when they change; UltraMail and UltraPaint both build their
@@ -239,11 +244,11 @@ size to the application's body size, the padding.
 auto panel = CreateContainer("sidePanel", 0, 0, 300, 0);
 panel->layout.SetFlexColumn().SetFlexGap(8);
 panel->SetPadding(8);
-panel->SetBackgroundColor(Colors::SectionPage);
+panel->SetBackgroundColor(GroupBoxVisualStyle::SectionPageColor());   // the page under the cards, for the look
 
 auto layers = CreateGroupBox("layers", 0, 0, 268, 0, "Layers");
 layers->SetFrameStyle(GroupBoxFrameStyle::Header);
-GroupBoxVisualStyle card = GroupBoxVisualStyle::SectionCard();
+GroupBoxVisualStyle card = GroupBoxVisualStyle::SectionCard();   // the current theme's; SectionCard(theme) for another
 card.titleFont.fontSize = 9.0f;     // the application's body size
 card.contentPadding = 6.0f;
 layers->SetVisualStyle(card);

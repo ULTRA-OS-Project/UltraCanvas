@@ -1,5 +1,8 @@
 // Apps/UltraDesktop/ui/UltraDesktopCategoryBoard.cpp
 // The Sticker board: files sorted into categories. See the header.
+// Version: 0.5.0 - the board's ground, its bar and its title from the theme in
+//                  force, again when it changes (ApplyLook); a light design on the
+//                  theme's ground in a dark look
 // Version: 0.4.0 - the context menu, three card displays, the hover preview
 // Version: 0.3.0 - thumbnails as UltraFiler makes them (RenderFileThumbnail):
 //                  a PDF's first page, a page of a document's text
@@ -26,6 +29,7 @@
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasTrash.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "Plugins/Charts/UltraCanvasKanbanBoard.h"
@@ -178,7 +182,6 @@ const std::vector<std::string>& UltraDesktopCategoryBoard::DefaultCategories() {
 UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifier,
                                                      UltraDesktopWindow* desktop)
     : UltraCanvasContainer(identifier, 0, 0, 0, 0), desktop_(desktop) {
-    SetBackgroundColor(Color(250, 250, 250, 255));
     ContainerStyle plain;
     plain.autoShowScrollbars = false;
     SetContainerStyle(plain);
@@ -186,7 +189,7 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
 
     // The bar: the title, the display style, "Add category", close.
     auto bar = CreateContainer("CategoryBoard.Bar", 0, 0, 0, kBarHeight);
-    bar->SetBackgroundColor(Color(0, 0, 0, 18));
+    bar_ = bar;
     bar->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center).SetFlexGap(8);
     bar->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(kBarHeight));
     bar->SetPadding(0, 8, 0, 12);
@@ -196,7 +199,9 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     title_ = CreateLabel("CategoryBoard.Title", 150, 24, "Sticker board");
     title_->SetFontSize(13);
     title_->SetFontWeight(FontWeight::Bold);
-    title_->SetTextColor(Color(50, 50, 50, 255));
+    // Its size and weight are the board's own: the colour is set from the
+    // theme by ApplyLook, not by the framework's re-style.
+    title_->SetFollowTheme(false);
     title_->SetTooltip("Drop files onto a category to add them; double-click one to open it.");
     title_->layoutItem.SetFlexShrink(0.0f);
     bar->AddChild(title_);
@@ -268,10 +273,28 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     };
     board_->onCardHoverChanged = [this](int cardId) { OnCardHover(cardId); };
     AddChild(board_);
-    SetDesign(kDesigns[0].key);
+    ApplyLook();   // and the first design, Sticky notes
+    // The look changes (the desktop's Theme menu, UOS-Settings, the host):
+    // the bar, its title and the board's ground follow. The display style
+    // is the person's choice (Dark among them) and stays.
+    themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
+}
+
+void UltraDesktopCategoryBoard::ApplyLook() {
+    const ThemeRoles& r = UltraCanvasTheme::Current().roles;
+    SetBackgroundColor(r.ground);
+    if (bar_) {
+        bar_->SetBackgroundColor(r.raised);
+        bar_->SetBorderBottom(1, r.line);
+    }
+    if (title_) title_->SetTextColor(r.ink);
+    // The board's design again, over the new look's ground.
+    if (board_) SetDesign(design_);
+    RequestRedraw();
 }
 
 UltraDesktopCategoryBoard::~UltraDesktopCategoryBoard() {
+    if (themeHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     if (hoverTimer_ != InvalidTimerId) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(hoverTimer_);
     }
@@ -308,6 +331,28 @@ void UltraDesktopCategoryBoard::SetDesign(const std::string& design) {
     style.cardTitleFontSize = kCardTitleFont;
     style.cardTextFontSize = kCardTextFont;
     style.metaFontSize = kCardMetaFont;
+    // In a dark look a light design keeps its cards and column colours but
+    // stands on the theme's ground: the board's ground, the column tracks,
+    // the rules, "+ Add card" and the card editor from the theme, so the
+    // board is not a white sheet in a dark desktop. The Dark design, and
+    // every design in a light look, stay as they are drawn.
+    const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+    if (theme.dark && design_ != "dark") {
+        const ThemeRoles& r = theme.roles;
+        style.background = r.ground;
+        style.columnTrackColor = r.panel;
+        style.separatorColor = r.line;
+        style.laneSeparatorColor = r.line;
+        style.titleColor = r.ink;
+        style.legendTextColor = r.inkMuted;
+        style.addButtonColor = r.inkMuted;
+        style.editorPanelColor = r.raised;
+        style.editorFieldColor = r.well;
+        style.editorTextColor = r.ink;
+        style.editorAccentColor = r.accent;
+        style.selectionColor = r.accent;
+        style.dropIndicatorColor = r.accent;
+    }
     board_->SetToday(Today());
     ApplyDisplayStyle();
 }

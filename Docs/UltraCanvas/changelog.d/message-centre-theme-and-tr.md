@@ -1,0 +1,1 @@
+- **The message centre follows the theme** (`MessageCenterStyle::FromTheme`, `UltraCanvasMessageCenter::ApplyTheme`; a `SetStyle` by hand stops it) and its own texts - the sections, *Search messages*, *Unread*, *Refresh*, the detail pane's buttons and notes, the status line - go through `Tr`, translated in every language of the standard set.

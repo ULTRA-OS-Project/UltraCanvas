@@ -50,6 +50,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.47.0 - a text file's tile: the white page's text is dark ink in either look (it took the
+//                  theme's ink, near-white on the white page under a dark theme)
 // Version: 1.46.0 - a film's media info (the Length line, the info bar) comes from
 //                  ReadVideoFileInfo, as the viewer's Details do, and names its
 //                  picture size: "1:23 · 1920 × 1080 · H.264"; the Filer's own
@@ -13486,7 +13488,13 @@ namespace UltraCanvas {
                                                  const TextPreviewSnippet& snippet) {
         // The sheet the content sits on: a white page with a hairline border,
         // so a text preview reads as a document even where the content itself
-        // is too small to decipher.
+        // is too small to decipher. The page is paper in either look - as the
+        // rasterized page (RenderTextPagePixmap) and a PDF's first page are -
+        // so its text is the light look's ink whatever the theme: the theme's ink is
+        // near-white under a dark one and vanished on the white page.
+        static const ThemeRoles paper = UltraCanvasTheme::Light().roles;
+        const Color& pageInk = paper.ink;
+        const Color& pageInkMuted = paper.inkMuted;
         ctx->SetFillPaint(Color(255, 255, 255, 255));
         ctx->FillRoundedRectangle(Rect2Dd(rect), 2);
         ctx->SetStrokePaint(Color(0, 0, 0, 45));
@@ -13547,8 +13555,7 @@ namespace UltraCanvas {
                             start, tab == std::string::npos ? std::string::npos
                                                             : tab - start);
                     if (!cell.empty()) {
-                        ctx->SetTextPaint(i == 0 ? style.textColor
-                                                 : style.secondaryTextColor);
+                        ctx->SetTextPaint(i == 0 ? pageInk : pageInkMuted);
                         // Cells are cut, not ellipsized: in a tile-sized grid
                         // the "…" would be all that is left of the value.
                         ctx->DrawText(TruncateTextToWidth(
@@ -13565,9 +13572,9 @@ namespace UltraCanvas {
             // The first line stands out like a document title; what follows is
             // body text. Lines are cut at the right margin the way a page cuts
             // them, without an ellipsis.
-            ctx->SetTextPaint(style.textColor);
+            ctx->SetTextPaint(pageInk);
             for (size_t i = 0; i < maxLines; ++i) {
-                if (i == 1) ctx->SetTextPaint(style.secondaryTextColor);
+                if (i == 1) ctx->SetTextPaint(pageInkMuted);
                 ctx->DrawText(TruncateTextToWidth(ctx, snippet.lines[i], inner.width),
                               Point2Dd(inner.x, inner.y + i * lineH));
             }

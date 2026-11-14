@@ -1,10 +1,12 @@
 // Apps/ChatCube/ui/ChatCubeProfileWindow.cpp
 // The Edit profile window - see the header.
+// Version: 0.1.3 - follows a change of the look while open (OnLook, SetInk); the scroll bar and the
+//                  dropdown in the theme's colours
 // Version: 0.1.2 - the e-mail address confirmed by the link e-mailed to it (Check, Send again); recovery
 //                  by an e-mailed link, on once the address is confirmed
 // Version: 0.1.1 - confirming the e-mail and phone with the relay's codes; account recovery on or off
 // Version: 0.1.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeProfileWindow.h"
@@ -73,13 +75,13 @@ std::shared_ptr<UltraCanvasContainer> Field(const std::string& id, const std::st
     auto column = std::make_shared<UltraCanvasContainer>(id);
     column->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     column->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    column->AddChild(MakeLabel(id + "-caption", caption, 9.0f, L().inkMuted));
+    column->AddChild(MakeLabel(id + "-caption", caption, 9.0f, &Look::inkMuted));
     column->AddChild(field);
     return column;
 }
 
 std::shared_ptr<UltraCanvasLabel> MakeNote(const std::string& id, const std::string& text, int width) {
-    auto note = MakeLabel(id, text, 9.0f, L().inkMuted);
+    auto note = MakeLabel(id, text, 9.0f, &Look::inkMuted);
     note->SetWrap(TextWrap::WrapWord);
     note->size.width = CSSLayout::Dimension::Px(static_cast<float>(width));
     return note;
@@ -165,7 +167,10 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
         return;
     }
     closed_ = false;
-    window_->SetBackgroundColor(L().ground);
+    OnLook(window_, [](UltraCanvasWindow& w) {
+        w.SetBackgroundColor(L().ground);
+        w.RequestRedraw();
+    });
     window_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window_->onWindowClosed = [this]() {
         closed_ = true;
@@ -174,10 +179,13 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
 
     // Everything in one column that scrolls when the window is short.
     auto page = std::make_shared<UltraCanvasContainer>("cc-profile-page");
-    ContainerStyle pageStyle = page->GetContainerStyle();
-    pageStyle.autoShowScrollbars = true;
-    pageStyle.autoShowHorizontalScrollbar = false;
-    page->SetContainerStyle(pageStyle);
+    OnLook(page, [](UltraCanvasContainer& c) {
+        // The theme's scroll bar.
+        ContainerStyle pageStyle = ContainerStyle::FromTheme(UltraCanvasTheme::Current(), c.GetContainerStyle());
+        pageStyle.autoShowScrollbars = true;
+        pageStyle.autoShowHorizontalScrollbar = false;
+        c.SetContainerStyle(pageStyle);
+    });
     page->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     page->SetPadding(18, 20, 18, 20);
@@ -188,8 +196,10 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
         c->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Start);
         c->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         c->size.width = CSSLayout::Dimension::Px(static_cast<float>(kFieldWidth + 40));
-        c->SetBackgroundColor(L().panel);
-        c->SetBorders(1.0f, L().line, 14.0f);
+        OnLook(c, [](UltraCanvasContainer& box) {
+            box.SetBackgroundColor(L().panel);
+            box.SetBorders(1.0f, L().line, 14.0f);
+        });
         c->SetPadding(16, 20, 16, 20);
         return c;
     };
@@ -207,7 +217,7 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
         VerifyRow& v = verify_[index];
         const auto channel = static_cast<UltraIMContactChannel>(index);
         v.row = MakeRow(id, 6);
-        v.state = MakeLabel(id + "-state", "", 9.0f, L().inkMuted);
+        v.state = MakeLabel(id + "-state", "", 9.0f, &Look::inkMuted);
         v.state->SetWrap(TextWrap::WrapWord);
         v.state->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         v.row->AddChild(v.state);
@@ -240,7 +250,7 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
     saveProfile_ = MakeButton("cc-profile-save", Tr("Save profile"), 130, true);
     saveProfile_->SetOnClick([this]() { SaveProfile(); });
     profileRow->AddChild(saveProfile_);
-    profileStatus_ = MakeLabel("cc-profile-status", "", kTextFont, L().inkMuted);
+    profileStatus_ = MakeLabel("cc-profile-status", "", kTextFont, &Look::inkMuted);
     profileStatus_->SetWrap(TextWrap::WrapWord);
     profileStatus_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     profileRow->AddChild(profileStatus_);
@@ -258,7 +268,7 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
     recoveryButton_ = MakeButton("cc-recovery-toggle", Tr("Turn recovery on"), 170);
     recoveryButton_->SetOnClick([this]() { ToggleRecovery(); });
     recoveryRow->AddChild(recoveryButton_);
-    recoveryStatus_ = MakeLabel("cc-recovery-status", "", kTextFont, L().inkMuted);
+    recoveryStatus_ = MakeLabel("cc-recovery-status", "", kTextFont, &Look::inkMuted);
     recoveryStatus_->SetWrap(TextWrap::WrapWord);
     recoveryStatus_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     recoveryRow->AddChild(recoveryStatus_);
@@ -272,12 +282,14 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
     security->AddChild(securityHeading);
     protection_ = std::make_shared<UltraCanvasDropdown>("cc-protection", 0, 0, kFieldWidth, kControlHeight);
     protection_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    DropdownStyle dropStyle = protection_->GetStyle();
-    dropStyle.fontSize = kTextFont;
-    dropStyle.cornerRadius = kControlRadius;
-    dropStyle.itemHeight = 28.0f;
-    dropStyle.maxItemWidth = static_cast<float>(kFieldWidth + 60);
-    protection_->SetStyle(dropStyle);
+    OnLook(protection_, [](UltraCanvasDropdown& drop) {
+        DropdownStyle dropStyle = DropdownStyle::FromTheme(UltraCanvasTheme::Current(), drop.GetStyle());
+        dropStyle.fontSize = kTextFont;
+        dropStyle.cornerRadius = kControlRadius;
+        dropStyle.itemHeight = 28.0f;
+        dropStyle.maxItemWidth = static_cast<float>(kFieldWidth + 60);
+        drop.SetStyle(dropStyle);
+    });
     for (int i = 0; i < kProtectionCount; ++i) protection_->AddItem(ProtectionName(i));
     protection_->SetAccessibleName(Tr("How signing in is protected"));
     protection_->onSelectionChanged = [this](int, const DropdownItem&) { UpdateProtectionForm(); };
@@ -323,7 +335,7 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
                              Tr("1. In UltraAuthenticator choose Add account and scan this code - from the screen, "
                              "or with your phone's authenticator app. Without a camera, type the key below."),
                              stepsWidth));
-    authenticatorKey_ = MakeLabel("cc-authenticator-key", "", 9.5f, L().ink);
+    authenticatorKey_ = MakeLabel("cc-authenticator-key", "", 9.5f, &Look::ink);
     authenticatorKey_->SetWrap(TextWrap::WrapWord);
     authenticatorKey_->size.width = CSSLayout::Dimension::Px(static_cast<float>(stepsWidth));
     steps->AddChild(authenticatorKey_);
@@ -338,7 +350,7 @@ void ChatCubeProfileWindow::Build(UltraCanvasWindowBase* host) {
     saveProtection_ = MakeButton("cc-protection-save", Tr("Save sign-in protection"), 200, true);
     saveProtection_->SetOnClick([this]() { SaveProtection(); });
     securityRow->AddChild(saveProtection_);
-    protectionStatus_ = MakeLabel("cc-protection-status", "", kTextFont, L().inkMuted);
+    protectionStatus_ = MakeLabel("cc-protection-status", "", kTextFont, &Look::inkMuted);
     protectionStatus_->SetWrap(TextWrap::WrapWord);
     protectionStatus_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     securityRow->AddChild(protectionStatus_);
@@ -398,11 +410,11 @@ void ChatCubeProfileWindow::UpdateVerification() {
         v.row->SetVisible(!value.empty() && confirms);
         if (confirmed) {
             v.state->SetText(Tr("Confirmed"));
-            v.state->SetTextColor(L().accent);
+            SetInk(v.state, &Look::accent);
         } else {
             v.state->SetText(email ? Tr("Not confirmed yet - open the link we e-mailed you, then:")
                                    : Tr("Not confirmed yet - type the code we sent by SMS:"));
-            v.state->SetTextColor(L().inkMuted);
+            SetInk(v.state, &Look::inkMuted);
         }
         v.code->SetVisible(!confirmed && !email);
         v.confirm->SetText(email ? Tr("Check") : Tr("Confirm"));
@@ -491,10 +503,10 @@ void ChatCubeProfileWindow::ToggleRecovery() {
         recoveryButton_->SetDisabled(false);
         if (!r) {
             recoveryStatus_->SetText(r.message);
-            recoveryStatus_->SetTextColor(L().danger);
+            SetInk(recoveryStatus_, &Look::danger);
             return;
         }
-        recoveryStatus_->SetTextColor(L().inkMuted);
+        SetInk(recoveryStatus_, &Look::inkMuted);
         recoveryStatus_->SetText(on ? Tr("Recovery is on.") : Tr("Recovery is off - the relay deleted its copy of your key."));
         if (onSaved) onSaved(on ? Tr("Account recovery is on.") : Tr("Account recovery is off."));
         Refresh();
@@ -509,13 +521,13 @@ UltraIMSignInProtection ChatCubeProfileWindow::Chosen() const {
 void ChatCubeProfileWindow::SetProfileStatus(const std::string& text, bool error) {
     if (!profileStatus_) return;
     profileStatus_->SetText(text);
-    profileStatus_->SetTextColor(error ? L().danger : L().inkMuted);
+    SetInk(profileStatus_, error ? &Look::danger : &Look::inkMuted);
 }
 
 void ChatCubeProfileWindow::SetProtectionStatus(const std::string& text, bool error) {
     if (!protectionStatus_) return;
     protectionStatus_->SetText(text);
-    protectionStatus_->SetTextColor(error ? L().danger : L().inkMuted);
+    SetInk(protectionStatus_, error ? &Look::danger : &Look::inkMuted);
 }
 
 void ChatCubeProfileWindow::UpdateProtectionForm() {

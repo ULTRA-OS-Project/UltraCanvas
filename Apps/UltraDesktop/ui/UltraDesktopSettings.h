@@ -5,6 +5,12 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.14.0 - theme follows the system look (Appearance.conf); lookMigrated:
+//                  the desktop's earlier choice handed to it once
+// Version: 0.13.0 - hiddenInfoItems, InfoItems: each icon of the info bar on or off
+// Version: 0.12.0 - batteryPercent: the battery's percentage badge, on or off
+// Version: 0.11.0 - ramDiscPath "ultrafiler" (kRamDiscFromFiler, the default
+//                  everywhere): the button asks UltraFiler for its RAM disc
 // Version: 0.10.0 - UltraSnip starts with the desktop by default (startupDefaults 2)
 // Version: 0.9.0 - UltraNotifications starts with the desktop by default
 //                  (startupDefaults: added once to a settings file older
@@ -80,14 +86,23 @@ struct StartupProgram {
     bool builtIn;               // part of the desktop itself (the Sticker board), not a program
 };
 
+// DesktopSettings::ramDiscPath's value for "UltraFiler's own RAM disc".
+inline constexpr const char* kRamDiscFromFiler = "ultrafiler";
+
+// One icon of the right bar's info panel, which can be switched off
+// (DesktopSettings::hiddenInfoItems).
+struct InfoItem {
+    const char* id;             // the button's item id in the info panel: "wifi"; the key in hiddenInfoItems
+    const char* label;          // what the settings show
+};
+
 struct DesktopSettings {
     TaskbarEdge taskbarEdge = TaskbarEdge::Left;
     std::string wallpaper;              // "" = the framework's default picture
-#if defined(_WIN32)
-    std::string ramDiscPath;            // Windows has no RAM disc of its own: no button
-#else
-    std::string ramDiscPath = "/dev/shm";   // "" = no RAM disc button
-#endif
+    // kRamDiscFromFiler (the default): the button has UltraFiler show its RAM
+    // disc, or offer to make one when there is none (`UltraFiler --ram-disc`).
+    // A folder: the button opens that folder. "" = no RAM disc button.
+    std::string ramDiscPath = kRamDiscFromFiler;
     std::string filerProgram = "UltraFiler";
     // The clock at the foot of the right bar: "analog-date" (the face over
     // the date, the default), "analog", "digital-date", "digital" or
@@ -99,11 +114,24 @@ struct DesktopSettings {
     // right-click menu or in UOS-Settings.
     std::string theme = "dark";
     static bool IsTheme(const std::string& theme);
+    // Since 0.14.0 the look of every ULTRA OS application - the bars
+    // included - is the one in Appearance.conf (UOS-Settings > Appearance >
+    // Look); `theme` above only records what the bars show. Set once the
+    // desktop's own earlier choice was written there, so an existing
+    // desktop keeps its look when the system's takes over.
+    bool lookMigrated = false;
     // Files dropped on the wallpaper: "board" (onto the Sticker board, in
     // its "Unsorted" category - the default) or "desktop" (moved into the
     // Desktop folder, whose contents the wallpaper then shows as icons).
     std::string dropFilesOn = "board";
     static bool IsDropTarget(const std::string& target);
+    // The battery's percentage as a badge on its icon (the default), or
+    // the icon alone - the level is in the icon's fill either way, and in
+    // its tooltip. Chosen on the battery's right-click menu or in UOS-Settings.
+    bool batteryPercent = true;
+    // The info panel's icons switched off, by InfoItem::id; the others show.
+    // An id the desktop does not know is kept, for a newer desktop.
+    std::vector<std::string> hiddenInfoItems;
     // Where the desktop icons lie, in work-area coordinates, by the entry's
     // name in the Desktop folder. An entry not listed is placed in the
     // first free cell of the grid.
@@ -169,6 +197,12 @@ struct DesktopSettings {
     static const std::vector<StartupProgram>& StartupPrograms();
     bool StartsWithDesktop(const std::string& program) const;
     void SetStartsWithDesktop(const std::string& program, bool start);
+
+    // The info panel's icons, top to bottom, as the settings list them; the
+    // tray icons of other programs are the last ("tray").
+    static const std::vector<InfoItem>& InfoItems();
+    bool ShowsInfoItem(const std::string& id) const;
+    void SetShowsInfoItem(const std::string& id, bool shown);
 
     // `key` was started: first in recentApps, once, the oldest dropped.
     void NoteAppStarted(const std::string& key);

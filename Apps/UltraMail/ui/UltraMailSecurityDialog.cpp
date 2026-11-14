@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailSecurityDialog.cpp
+// Version: 0.3.0 - the colours follow a change of the look
 // Version: 0.2.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -32,7 +33,7 @@ std::shared_ptr<UltraCanvasContainer> Row(const std::string& id, const std::stri
                .SetFlexGap(Theme::kInnerGap)
                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto label = Theme::MakeLine(id + "Lbl", text, Theme::kControlHeight, Theme::SizeBody(),
-                                 Theme::TextSecondary());
+                                 Theme::TextSecondary);
     label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
     row->AddChild(label);
     column->AddChild(row);
@@ -41,7 +42,7 @@ std::shared_ptr<UltraCanvasContainer> Row(const std::string& id, const std::stri
 }
 
 std::shared_ptr<UltraCanvasLabel> Note(const std::string& id, const std::string& text) {
-    auto note = Theme::MakeLine(id, text, Theme::kControlHeight, Theme::SizeBody(), Theme::TextSecondary());
+    auto note = Theme::MakeLine(id, text, Theme::kControlHeight, Theme::SizeBody(), Theme::TextSecondary);
     note->SetWrap(TextWrap::WrapWord);
     return note;
 }
@@ -72,7 +73,7 @@ void SecurityDialog::Show(UltraCanvasWindowBase* parent, Options options) {
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::CardBackground());
+    Theme::SetFill(dialog, Theme::CardBackground);
 
     auto content = CreateContainer("secForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
@@ -129,7 +130,7 @@ void SecurityDialog::Show(UltraCanvasWindowBase* parent, Options options) {
             auto summary = Theme::MakeLine("secSmimeSummary",
                                            options.smimeSummary.empty() ? Tr("No certificate")
                                                                         : options.smimeSummary,
-                                           Theme::kControlHeight, Theme::SizeBody(), Theme::TextPrimary());
+                                           Theme::kControlHeight, Theme::SizeBody(), Theme::TextPrimary);
             summary->SetTooltip(options.smimeSummary.empty()
                 ? std::string("Import your S/MIME certificate (a .p12 or .pfx file) to sign mail and to read "
                               "mail encrypted to you")

@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
+// Version: 0.10.0 - the colours follow a change of the look
 // Version: 0.9.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.8.4 - an editable password row on the setup and server-re-entry
 //                  pages (AccountFields::askPassword), prefilled with the typed
@@ -189,7 +190,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::CardBackground());
+    Theme::SetFill(dialog, Theme::CardBackground);
 
     auto content = CreateContainer("srvForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
@@ -210,7 +211,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine("srvNameLbl", "Display name", Theme::kControlHeight,
-                                     Theme::SizeBody(), Theme::TextSecondary());
+                                     Theme::SizeBody(), Theme::TextSecondary);
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
         nameInput = CreateTextInput("srvName", 0, 0, 0, Theme::kControlHeight);
@@ -232,7 +233,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                        .SetFlexGap(Theme::kInnerGap)
                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto protocolLabel = Theme::MakeLine("srvProtocolLbl", "Protocol", Theme::kControlHeight,
-                                         Theme::SizeBody(), Theme::TextSecondary());
+                                         Theme::SizeBody(), Theme::TextSecondary);
     protocolLabel->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
     protocolRow->AddChild(protocolLabel);
     auto protocol = CreateDropdown("srvProtocol", 0, 0, 0, Theme::kControlHeight);
@@ -259,7 +260,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         ServerRow r;
         r.label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
-                                  Theme::SizeBody(), Theme::TextSecondary());
+                                  Theme::SizeBody(), Theme::TextSecondary);
         r.label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(r.label);
 
@@ -340,7 +341,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         AuthRow r;
         r.label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
-                                  Theme::SizeBody(), Theme::TextSecondary());
+                                  Theme::SizeBody(), Theme::TextSecondary);
         r.label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(r.label);
         r.method = CreateDropdown(id, 0, 0, 0, Theme::kControlHeight);
@@ -363,7 +364,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     auto userLabel = Theme::MakeLine("srvUserLbl", "Username", Theme::kControlHeight,
-                                     Theme::SizeBody(), Theme::TextSecondary());
+                                     Theme::SizeBody(), Theme::TextSecondary);
     userLabel->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
     userRow->AddChild(userLabel);
     auto user = CreateTextInput("srvUser", 0, 0, 0, Theme::kControlHeight);
@@ -385,7 +386,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
-                                     Theme::SizeBody(), Theme::TextSecondary());
+                                     Theme::SizeBody(), Theme::TextSecondary);
         label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
         content->AddChild(row);
@@ -432,7 +433,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         auto current = std::make_shared<Signature>(account.signature);
         auto summary = Theme::MakeLine("srvSigSummary", DescribeSignature(*current),
                                        Theme::kControlHeight, Theme::SizeBody(),
-                                       Theme::TextPrimary());
+                                       Theme::TextPrimary);
         row->AddChild(summary);
         summary->layoutItem.SetFlexGrow(1);
         auto editBtn = CreateButton("srvSigEdit", 0, 0, 120, Theme::kControlHeight,
@@ -460,7 +461,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     if (account.edit && account.onEditSecurity) {
         auto row = credRow("srvSecRow", "Security");
         auto summary = Theme::MakeLine("srvSecSummary", account.securitySummary, Theme::kControlHeight,
-                                       Theme::SizeBody(), Theme::TextPrimary());
+                                       Theme::SizeBody(), Theme::TextPrimary);
         summary->SetTooltip(account.securitySummary);
         row->AddChild(summary);
         summary->layoutItem.SetFlexGrow(1);
@@ -483,7 +484,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     }
 
     auto note = Theme::MakeLine("srvNote", NoteFor(startProtocol), 0, Theme::SizeBody(),
-                                Theme::TextSecondary());
+                                Theme::TextSecondary);
     note->SetWrap(TextWrap::WrapWord);
     content->AddChild(note);
     note->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -492,7 +493,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // space so a long sign-in error wraps across as many lines as it needs
     // instead of being clipped to one line. (Added below the note; made here
     // for the protocol switch's password warning.)
-    auto status = Theme::MakeText("srvStatus", "", Theme::SizeBody(), Theme::WaitingText());
+    auto status = Theme::MakeText("srvStatus", "", Theme::SizeBody(), Theme::WaitingText);
     status->SetWrap(TextWrap::WrapWord);
     status->SetAlignment(TextAlignment::Left);
 
@@ -521,7 +522,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                 "stored password is not used for the new protocol (a JMAP server often "
                 "wants its own app password or API token), so without it the account "
                 "cannot connect.";
-            status->SetTextColor(Theme::WaitingText());
+            Theme::SetInk(status, Theme::WaitingText);
             status->SetText(*passwordWarning);
         } else if (passInput) {
             passInput->SetPlaceholder(Tr("Leave blank to keep the current password"));
@@ -639,7 +640,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         auto badHost = [status](const char* field, const std::string& host) {
             const std::string problem = ServerNameProblem(host);
             if (problem.empty()) return false;
-            status->SetTextColor(Theme::WaitingText());
+            Theme::SetInk(status, Theme::WaitingText);
             status->SetText(std::string(field) + " \"" + host + "\": " + problem);
             return true;
         };
@@ -739,7 +740,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
             dlg->CloseDialog(DialogResult::OK);
             return;
         }
-        status->SetTextColor(Theme::TextSecondary());
+        Theme::SetInk(status, Theme::TextSecondary);
         status->SetText("Checking the sign-in at " + r.settings.imap.host + "…");
         save->SetDisabled(true);
         anyway->SetVisible(false);
@@ -753,7 +754,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                 return;
             }
             save->SetDisabled(false);
-            status->SetTextColor(Theme::WaitingText());
+            Theme::SetInk(status, Theme::WaitingText);
             const std::string detail = DetailLine(outcome);
             status->SetText("The sign-in at " + r.settings.imap.host + " did not succeed: "
                             + FriendlyMessage(outcome)

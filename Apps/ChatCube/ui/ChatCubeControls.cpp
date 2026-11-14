@@ -1,7 +1,8 @@
 // Apps/ChatCube/ui/ChatCubeControls.cpp
 // The window's controls in ChatCube's look - see the header.
+// Version: 0.2.0 - the look follows a change while ChatCube runs (OnLook): the buttons and fields
 // Version: 0.1.0 - out of ChatCubeWindow.cpp, for the Edit profile window too
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeControls.h"
@@ -19,14 +20,6 @@ using namespace UltraCanvas;
 
 namespace ChatCube {
 
-// The window's colours, from the theme set before it was built (main.cpp:
-// ChatCube::ThemeFor, light or --dark). Read once: the look does not change
-// while the window is up.
-const Look& L() {
-    static const Look look = CurrentLook();
-    return look;
-}
-
 Color Darker(const Color& c, int by) {
     auto d = [by](uint8_t v) { return static_cast<uint8_t>(std::max(0, v - by)); };
     return Color(d(c.r), d(c.g), d(c.b), c.a);
@@ -40,24 +33,22 @@ std::string Trim(const std::string& s) {
 }
 
 std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text,
-                                            float fontSize, const Color& color) {
+                                            float fontSize, LookRole role) {
     auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
     l->SetText(text);
     l->SetFontSize(fontSize);
-    l->SetTextColor(color);
+    SetInk(l, role);
     l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     l->size.width = CSSLayout::Dimension::Auto();
     l->size.height = CSSLayout::Dimension::Auto();
     return l;
 }
 
-// A button in the window's look: rounded, a hairline border at rest, the
-// accent fill when primary, no fill at rest when ghost (the icon buttons).
-void StyleButton(const std::shared_ptr<UltraCanvasButton>& b, bool primary, bool ghost) {
-    ButtonStyle st = b->GetStyle();
-    st.cornerRadius = kControlRadius;
-    st.fontSize = kTextFont;
-    st.borderWidth = ghost || primary ? 0.0f : 1.0f;
+namespace {
+
+// A button's colours, again on every change of the look.
+void ColourButton(UltraCanvasButton& b, bool primary, bool ghost) {
+    ButtonStyle st = b.GetStyle();
     st.borderColor = L().line;
     if (primary) {
         st.normalColor = L().accent;
@@ -74,7 +65,22 @@ void StyleButton(const std::shared_ptr<UltraCanvasButton>& b, bool primary, bool
         st.disabledColor = ghost ? Colors::Transparent : L().well;
         st.disabledTextColor = L().inkFaint;
     }
-    b->SetStyle(st);
+    b.SetStyle(st);
+}
+
+} // namespace
+
+// A button in the window's look: rounded, a hairline border at rest, the
+// accent fill when primary, no fill at rest when ghost (the icon buttons).
+// The shape is set once (an icon button rounds it further); the colours
+// follow the look.
+void StyleButton(const std::shared_ptr<UltraCanvasButton>& button, bool primary, bool ghost) {
+    ButtonStyle st = button->GetStyle();
+    st.cornerRadius = kControlRadius;
+    st.fontSize = kTextFont;
+    st.borderWidth = ghost || primary ? 0.0f : 1.0f;
+    button->SetStyle(st);
+    OnLook(button, [primary, ghost](UltraCanvasButton& b) { ColourButton(b, primary, ghost); });
 }
 
 std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::string& text, int width,
@@ -107,17 +113,21 @@ std::shared_ptr<UltraCanvasTextInput> MakeInput(const std::string& id, const std
     t->SetPlaceholder(placeholder);
     t->SetFontSize(kTextFont);
     t->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    TextInputStyle st = t->GetStyle();
-    st.backgroundColor = L().panel;
-    st.borderColor = L().line;
-    st.focusBorderColor = L().accent;
-    st.textColor = L().ink;
-    st.placeholderColor = L().inkFaint;
-    st.caretColor = L().ink;
-    st.selectionColor = Color(L().accent.r, L().accent.g, L().accent.b, 90);
-    st.borderRadius = pill ? kControlHeight / 2 : static_cast<int>(kControlRadius);
-    st.paddingLeft = st.paddingRight = pill ? 14 : 10;
-    t->SetStyle(st);
+    TextInputStyle shape = t->GetStyle();
+    shape.borderRadius = pill ? kControlHeight / 2 : static_cast<int>(kControlRadius);
+    shape.paddingLeft = shape.paddingRight = pill ? 14 : 10;
+    t->SetStyle(shape);
+    OnLook(t, [](UltraCanvasTextInput& field) {
+        TextInputStyle st = field.GetStyle();
+        st.backgroundColor = L().panel;
+        st.borderColor = L().line;
+        st.focusBorderColor = L().accent;
+        st.textColor = L().ink;
+        st.placeholderColor = L().inkFaint;
+        st.caretColor = L().ink;
+        st.selectionColor = Color(L().accent.r, L().accent.g, L().accent.b, 90);
+        field.SetStyle(st);
+    });
     return t;
 }
 

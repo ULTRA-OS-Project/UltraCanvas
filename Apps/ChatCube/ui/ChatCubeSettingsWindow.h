@@ -20,12 +20,13 @@
 //
 // Every page is the same skeleton: a bold title, a line that says what is
 // chosen, the controls, and the notes in a tinted block at the foot. A
-// change applies at once (the look from the next start) and is saved
+// change applies at once (the look too) and is saved
 // straight away; there is nothing to confirm. In ChatCube's own colours, the
 // light or the dark look.
 //
+// Version: 0.1.1 - the look applies at once too
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

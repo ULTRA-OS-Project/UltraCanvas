@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailContactsView.cpp
+// Version: 0.8.0 - the list, the sidebar's rows and the avatars follow a change of the look
 // Version: 0.7.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.6.0 - Services' menu: "Remove no-reply contacts…" (what the
 //                  collector filed for no-reply senders, one per message for
@@ -13,7 +14,7 @@
 //                  as a virtualised UltraCanvasListView with a delete icon per
 //                  row; section changes restyle the sidebar instead of
 //                  rebuilding it under the click that asked for it.
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailContactsView.h"
 
@@ -213,7 +214,7 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     sidebar_ = CreateContainer("contactsSidebar", 0, 0, kSidebarW, 0);
-    sidebar_->SetBackgroundColor(Theme::Sidebar());
+    Theme::SetFill(sidebar_, Theme::Sidebar);
     sidebar_->SetBorders(0.0f, Colors::Transparent, 0.0f);
     sidebar_->SetPadding(Theme::kPagePadding, 10);
     sidebar_->layout.SetFlexColumn()
@@ -241,7 +242,7 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
     sidebar_->AddChild(addGroup);
 
     auto rule = CreateContainer("contactsRule", 0, 0, 1, 0);
-    rule->SetBackgroundColor(Theme::Divider());
+    Theme::SetFill(rule, Theme::Divider);
     root_->AddChild(rule);
     rule->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -256,7 +257,7 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
                     .SetFlexGap(Theme::kInnerGap)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     titleLabel_ = Theme::MakeLine("contactsTitle", current_.Title(), Theme::kToolbarHeight,
-                                  Theme::SizeTitle(), Theme::TextPrimary(), FontWeight::Bold);
+                                  Theme::SizeTitle(), Theme::TextPrimary, FontWeight::Bold);
     titleRow->AddChild(titleLabel_);
     titleLabel_->layoutItem.SetFlexGrow(1);
     auto addBtn = CreateButton("contactsAdd", 0, 0, 130, Theme::kControlHeight, Tr("Add contact"));
@@ -285,19 +286,27 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
     list_->SetModel(model_);
     list_->SetSelection(std::make_shared<UltraCanvasSingleSelection>());
     ListViewStyle st;
-    st.backgroundColor          = Theme::CardBackground();
     st.showHeader               = false;
     st.rowHeight                = kRowH;
     st.showGridLines            = false;
-    st.selectionBackgroundColor = Theme::RowSelected();
-    st.hoverBackgroundColor     = Theme::RowHover();
     list_->SetStyle(st);
+    // The list's colours, again when the look changes (the rows paint
+    // theirs from the theme as they are drawn).
+    Theme::Follow(list_, "style", [](UltraCanvasListView& l) {
+        ListViewStyle look = ListViewStyle::FromTheme(UltraCanvasTheme::Current(), l.GetStyle());
+        look.backgroundColor          = Theme::CardBackground();
+        look.alternateRowColor        = Theme::CardBackground();
+        look.gridLineColor            = Theme::Divider();
+        look.selectionBackgroundColor = Theme::RowSelected();
+        look.hoverBackgroundColor     = Theme::RowHover();
+        l.SetStyle(look);
+    });
     auto d = std::make_shared<ContactRowDelegate>();
     d->contacts = &shown_;
     d->binIcon  = NormalizePath(GetResourcesDir() + "media/icons/delete.svg");
     delegate_ = d;
     list_->SetDelegate(delegate_);
-    list_->SetBorders(1.0f, Theme::CardBorder(), 8.0f);
+    Theme::SetFrame(list_, 1.0f, Theme::CardBorder, 8.0f);
 
     list_->onItemDoubleClicked = [this](int row) {
         if (row >= 0 && row < static_cast<int>(shown_.size()))
@@ -373,7 +382,7 @@ void ContactsView::RebuildSidebar() {
 
     auto addHeader = [this](const std::string& id, const std::string& text) {
         auto header = Theme::MakeLine(id, text, 22, Theme::SizeSecondary(),
-                                      Theme::TextMuted(), FontWeight::Bold);
+                                      Theme::TextMuted, FontWeight::Bold);
         header->SetPadding(0, 10);
         sidebarList_->AddChild(header);
         header->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -390,11 +399,11 @@ void ContactsView::RebuildSidebar() {
                      .SetFlexGap(Theme::kInnerGap)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto name = Theme::MakeText(id + ".name", place.Title(), Theme::SizeBody(),
-                                    Theme::TextPrimary());
+                                    Theme::TextPrimary);
         entry->AddChild(name);
         name->layoutItem.SetFlexGrow(1);
         auto num = Theme::MakeText(id + ".count", std::to_string(count),
-                                   Theme::SizeSecondary(), Theme::TextMuted());
+                                   Theme::SizeSecondary(), Theme::TextMuted);
         entry->AddChild(num);
         sidebarList_->AddChild(entry);
         entry->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -437,10 +446,12 @@ void ContactsView::RebuildSidebar() {
 void ContactsView::RestyleSidebar() {
     for (auto& e : entries_) {
         const bool selected = e.place == current_;
-        e.surface->SetBackgroundColor(selected ? Theme::AccentSoft() : Colors::Transparent);
-        e.name->SetTextColor(selected ? Theme::Accent() : Theme::TextPrimary());
+        Theme::Follow(e.surface, "fill", [selected](UltraCanvasContainer& s) {
+            s.SetBackgroundColor(selected ? Theme::AccentSoft() : Colors::Transparent);
+        });
+        Theme::SetInk(e.name, selected ? Theme::Accent : Theme::TextPrimary);
         e.name->SetFontWeight(selected ? FontWeight::Bold : FontWeight::Normal);
-        e.count->SetTextColor(selected ? Theme::Accent() : Theme::TextMuted());
+        Theme::SetInk(e.count, selected ? Theme::Accent : Theme::TextMuted);
     }
 }
 
@@ -695,7 +706,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
                   .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::CardBackground());
+    Theme::SetFill(dialog, Theme::CardBackground);
 
     // ===== CONTENT: labelled input rows =====
     auto content = CreateContainer("contactForm", 0, 0, 0, 0);
@@ -711,7 +722,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine(id + "Label", labelText, Theme::kControlHeight,
-                                     Theme::SizeBody(), Theme::TextSecondary());
+                                     Theme::SizeBody(), Theme::TextSecondary);
         label->SetElementSize(Size2Df(kDialogLabelW, Theme::kControlHeight));
         row->AddChild(label);
         Theme::StyleInput(input);
@@ -753,7 +764,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
                                    contact.group.empty()
                                        ? "Section: " + DisplayName(contact.section)
                                        : "Group: " + contact.group,
-                                   22, Theme::SizeSecondary(), Theme::TextMuted());
+                                   22, Theme::SizeSecondary(), Theme::TextMuted);
     content->AddChild(section);
     section->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 

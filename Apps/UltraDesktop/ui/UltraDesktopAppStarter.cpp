@@ -1,5 +1,7 @@
 // Apps/UltraDesktop/ui/UltraDesktopAppStarter.cpp
 // The Apps window. See the header.
+// Version: 0.5.0 - the colours from the theme in force (headings, the status, the
+//                  drag label), again when it changes while the window is open
 // Version: 0.4.0 - drag an application onto another category; Move to; folder categories
 // Version: 0.3.0 - categories, Recent, tiles and tree-and-list, read after the window is open
 // Version: 0.2.0 - pin to the taskbar
@@ -18,6 +20,7 @@
 #include "UltraCanvasListView.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
@@ -46,9 +49,9 @@ constexpr float kTreeWidth = 210;
 constexpr auto kListFresh = std::chrono::minutes(2);   // a kept list older than this is read again
 constexpr int kDragDistance = 6;                       // px the pointer moves before a press is a drag
 
-const Color kHeadingColor(40, 40, 40, 255);
-const Color kSubheadingColor(105, 105, 105, 255);
-const Color kStatusColor(110, 110, 110, 255);
+// The window's colours are the theme's: a heading in ink, a sub-heading
+// and the status in muted ink.
+const ThemeRoles& Roles() { return UltraCanvasTheme::Current().roles; }
 
 std::string Lower(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(),
@@ -113,7 +116,9 @@ UltraDesktopAppStarter::UltraDesktopAppStarter(Hooks hooks) : hooks_(std::move(h
     if (view_ != "tree") view_ = "tiles";
 }
 
-UltraDesktopAppStarter::~UltraDesktopAppStarter() = default;
+UltraDesktopAppStarter::~UltraDesktopAppStarter() {
+    if (themeHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
+}
 
 void UltraDesktopAppStarter::Preload() {
     KeptList& kept = Kept();
@@ -169,7 +174,8 @@ void UltraDesktopAppStarter::Open() {
     filterBox_->layoutItem.SetFlexGrow(1.0f);
     head->AddChild(filterBox_);
     status_ = CreateLabel("appsStatus", "Loading applications…");
-    status_->SetTextColor(kStatusColor);
+    status_->SetThemeVariant(LabelVariant::Muted);   // muted ink, now and after a theme change
+    status_->SetTextColor(Roles().inkMuted);
     status_->layoutItem.SetFlexShrink(0.0f);
     head->AddChild(status_);
     page->AddChild(head);
@@ -202,6 +208,12 @@ void UltraDesktopAppStarter::Open() {
     // read on a thread of its own.
     window_->Show();
     filterBox_->SetFocus(true);
+    // The look changes while the window is open (the desktop's Theme menu,
+    // UOS-Settings, the host): the framework re-styles the elements that
+    // follow the theme, then ApplyLook rebuilds what this window coloured.
+    if (themeHandler_ == 0) {
+        themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
+    }
     window_->InstallEventFilter("appsDrag", [this](const UCEvent& event) { return OnPointerEvent(event); },
                                 {UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::MouseUp});
 
@@ -221,6 +233,15 @@ void UltraDesktopAppStarter::Open() {
             if (!SameApplications(apps, apps_)) ShowApps(std::move(apps));
         });
     }
+}
+
+void UltraDesktopAppStarter::ApplyLook() {
+    if (!open_ || !window_) return;
+    if (status_) status_->SetTextColor(Roles().inkMuted);
+    // The headings, the tiles and the drag label take the theme as they are
+    // made: made again.
+    HideDragLabel();
+    RebuildSoon();
 }
 
 void UltraDesktopAppStarter::Raise() {
@@ -276,7 +297,8 @@ void UltraDesktopAppStarter::Rebuild() {
     if (groups.empty()) {
         auto none = CreateLabel("appsNone", filter_.empty() ? "No applications were found."
                                                             : "No application matches \"" + filter_ + "\".");
-        none->SetTextColor(kStatusColor);
+        none->SetThemeVariant(LabelVariant::Muted);
+        none->SetTextColor(Roles().inkMuted);
         body_->AddChild(none);
     } else if (view_ == "tree") {
         BuildTreeAndList(groups);
@@ -308,7 +330,7 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
         icon->SetElementSize(Size2Df(22, 22));
         icon->layoutItem.SetFlexShrink(0.0f);
         heading->AddChild(icon);
-        heading->AddChild(MakeHeading("appsTitle:" + group.key, group.title, 16, kHeadingColor));
+        heading->AddChild(MakeHeading("appsTitle:" + group.key, group.title, 16, Roles().ink));
         scroll->AddChild(heading);
         const bool dropHere = group.category != AppCategory::Recent;
         if (dropHere) dropZones_.push_back({heading.get(), group.key});
@@ -317,7 +339,7 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
             const AppSection& section = group.sections[s];
             if (!section.title.empty()) {
                 auto sub = MakeHeading("appsSub:" + group.key + ":" + std::to_string(s), section.title, 13,
-                                       kSubheadingColor);
+                                       Roles().inkMuted);
                 sub->SetMargin(6, 0, 0, 34);
                 scroll->AddChild(sub);
                 if (dropHere) dropZones_.push_back({sub.get(), group.key});
@@ -425,6 +447,10 @@ void UltraDesktopAppStarter::BuildTreeAndList(const std::vector<AppGroup>& group
     delegate->SetIconSpacing(10);
     delegate->SetTextPadding(8);
     delegate->SetRowHeight(36);
+    // The list takes the theme as it is made, but this delegate comes after:
+    // its text in the theme's ink (white on the accent when selected).
+    delegate->SetTextColor(Roles().ink);
+    delegate->SetSelectedTextColor(Roles().onAccent);
     list_->SetDelegate(delegate);
     list_->SetRowHeight(36);
     list_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
@@ -602,8 +628,10 @@ void UltraDesktopAppStarter::ShowDragLabel(const Point2Di& at, const std::string
     if (!window_) return;
     if (!dragLabel_) {
         dragLabel_ = CreateLabel("appsDragLabel", text);
-        dragLabel_->SetBackgroundColor(Color(32, 32, 36, 230));
-        dragLabel_->SetTextColor(Colors::White);
+        // The accent, with the text that reads on it: a chip that stands
+        // out from the tiles in either look.
+        dragLabel_->SetBackgroundColor(Roles().accent);
+        dragLabel_->SetTextColor(Roles().onAccent);
         dragLabel_->SetPadding(4, 8);
         dragLabel_->SetFontSize(12);
         window_->AddChild(dragLabel_);

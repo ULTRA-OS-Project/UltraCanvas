@@ -10,6 +10,7 @@
 // area (caret, selection, clipboard, undo, IME all come with it), the
 // buttons are framework buttons, the drag bar is a label that the board
 // moves on a press-and-drag.
+// Version: 0.2.0 - a note's text and buttons dark on its paper in a dark look too
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

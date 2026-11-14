@@ -289,7 +289,6 @@
   "The key that sends what is typed in the message field:": "Phím để gửi nội dung đã nhập trong ô tin nhắn:",
   "The key to your ChatCube ID is encrypted with your password, so without it nobody can read the key - not even from a copy of the files. ChatCube asks for it at every start. Keep it safe: nobody can recover it for you.": "Khóa của ChatCube ID được mã hóa bằng mật khẩu của bạn, nên không có nó thì không ai đọc được khóa - kể cả từ bản sao của các tệp. ChatCube hỏi mật khẩu mỗi lần khởi động. Hãy giữ kỹ: không ai khôi phục được nó cho bạn.",
   "the local network": "mạng cục bộ",
-  "The look is chosen when ChatCube starts, since every part of the window takes its colours as it is built: a change here, or of the computer's look under System, shows the next time ChatCube is started. System is the computer's own light or dark mode, and the Look page of UOS-Settings over it.": "Diện mạo được chọn khi ChatCube khởi động, vì mọi phần của cửa sổ lấy màu khi được dựng: thay đổi ở đây, hoặc thay đổi giao diện máy tính trong Hệ thống, sẽ hiện ra ở lần khởi động ChatCube tiếp theo. Hệ thống là chế độ sáng hoặc tối của chính máy tính, cùng trang Diện mạo của UOS-Settings.",
   "The Matrix module was not found (Plugins/UltraIM).": "Không tìm thấy mô-đun Matrix (Plugins/UltraIM).",
   "The networks ChatCube talks through, and where each stands:": "Các mạng ChatCube dùng để liên lạc, và tình trạng của từng mạng:",
   "The password could not be set: {0} - set it in Edit profile.": "Không thể đặt mật khẩu: {0} - hãy đặt trong Chỉnh sửa hồ sơ.",

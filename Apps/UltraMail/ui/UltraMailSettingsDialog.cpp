@@ -31,6 +31,9 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.21.0 - the window's colours are the look's and follow a change of it (UltraMailTheme.h
+//                   Follow): a dark desktop gives a dark settings window, the light look
+//                   keeps its colours; the gear button too
 // Version: 1.20.0 - Display > Email warnings: which kinds of warning the strip above
 //                   a message shows (phishing, scam, love scam, loan, crypto, other)
 // Version: 1.19.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation)
@@ -63,10 +66,11 @@
 // Version: 1.2.0 - Reading > Layout: the folder tree's width (fit to the names,
 //                  or fixed pixels)
 // Version: 1.1.0 - MakeGearButton: the one gear, for the toolbar and the start page
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraMailSettingsDialog.h"
+#include "UltraMailTheme.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLocalisationEditor.h"
@@ -104,10 +108,34 @@ namespace {
     constexpr float kNoteFontSize  = 9.0f;    // the notes under the controls
     constexpr float kTreeFontSize  = 9.0f;
 
-    const Color kTextColor      = Color(40, 40, 44, 255);
-    const Color kNoteTextColor  = Color(96, 96, 104, 255);
-    const Color kNoteBackground = Color(244, 245, 248, 255);
-    const Color kNoteAccent     = Color(160, 176, 200, 255);
+    // ----- the colours: the light look's own, the theme's roles on a dark
+    // one (Theme::Role functions, read again when the look changes) -----
+    Color TextColor()      { return Theme::Dark() ? Theme::TextPrimary()   : Color(40, 40, 44, 255); }
+    Color NoteTextColor()  { return Theme::Dark() ? Theme::TextSecondary() : Color(96, 96, 104, 255); }
+    Color NoteBackground() { return Theme::Dark() ? Theme::Sidebar()       : Color(244, 245, 248, 255); }
+    Color NoteAccent()     { return Theme::Dark() ? Theme::Roles().lineStrong : Color(160, 176, 200, 255); }
+    Color WindowFace()     { return Theme::Dark() ? Theme::PageBackground() : Color(249, 249, 251, 255); }
+    Color TreeFace()       { return Theme::Dark() ? Theme::Sidebar()       : Color(243, 243, 246, 255); }
+    Color PageFace()       { return Theme::CardBackground(); }
+    Color BarLine()        { return Theme::Dark() ? Theme::CardBorder()    : Color(225, 225, 230, 255); }
+    Color ButtonFace()     { return Theme::CardBackground(); }
+    Color ButtonHover()    { return Theme::Dark() ? Theme::RowHover()      : Color(233, 238, 244, 255); }
+    Color ButtonBorder()   { return Theme::Dark() ? Theme::Roles().lineStrong : Color(0, 0, 0, 60); }
+    Color GearInk()        { return Theme::Dark() ? Theme::TextPrimary()   : Color(55, 55, 60, 255); }
+
+    // A plain button of this window: the face, its hover, the ink, a frame -
+    // and the window's text size, which the theme's pass would set back to
+    // the body size.
+    void StyleQuietButton(const std::shared_ptr<UltraCanvasButton>& b, bool withText) {
+        Theme::Follow(b, "colors", [withText](UltraCanvasButton& x) {
+            x.SetColors(ButtonFace(), ButtonHover());
+            if (withText) {
+                x.SetTextColors(TextColor());
+                x.SetFontSize(kTextFontSize);
+            }
+            x.SetBorder(1.0f, ButtonBorder());
+        });
+    }
 
     // Page geometry: the window is 700 wide, the tree takes 180, so a page has
     // 520; with its padding that leaves ~480 for content. Texts wrap at a
@@ -270,11 +298,11 @@ namespace {
     std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id,
                                                 const std::string& text,
                                                 float fontSize = kTextFontSize,
-                                                const Color& color = kTextColor) {
+                                                Theme::Role color = TextColor) {
         auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
         l->SetText(text);
         l->SetFontSize(fontSize);
-        l->SetTextColor(color);
+        Theme::SetInk(l, color);
         l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         l->size.width  = CSSLayout::Dimension::Auto();
         l->size.height = CSSLayout::Dimension::Auto();
@@ -285,7 +313,7 @@ namespace {
                                                const std::string& text,
                                                int width = kTextWidth,
                                                float fontSize = kTextFontSize,
-                                               const Color& color = kTextColor) {
+                                               Theme::Role color = TextColor) {
         auto l = MakeLabel(id, text, fontSize, color);
         l->SetWrap(TextWrap::WrapWord);
         l->size.width = CSSLayout::Dimension::Px(width);
@@ -349,15 +377,15 @@ namespace {
                            .SetFlexAlignItems(CSSLayout::AlignItems::Start);
         parts.notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        parts.notes->SetBackgroundColor(kNoteBackground);
-        parts.notes->SetBorderLeft(3, kNoteAccent);
+        Theme::SetFill(parts.notes, NoteBackground);
+        Theme::Follow(parts.notes, "frame", [](UltraCanvasContainer& n) { n.SetBorderLeft(3, NoteAccent()); });
         parts.notes->SetPadding(10, 12, 10, 12);
         parts.page->AddChild(parts.notes);
         return parts;
     }
 
     void AddNote(PageParts& parts, const std::string& id, const std::string& text) {
-        parts.notes->AddChild(MakeText(id, text, kNoteWidth, kNoteFontSize, kNoteTextColor));
+        parts.notes->AddChild(MakeText(id, text, kNoteWidth, kNoteFontSize, NoteTextColor));
     }
 
     // A caption inside the body, introducing a further group of controls.
@@ -375,9 +403,7 @@ namespace {
         auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
         b->SetFontSize(kTextFontSize);
         b->SetCornerRadius(4.0f);
-        b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-        b->SetTextColors(kTextColor);
-        b->SetBorder(1.0f, Color(0, 0, 0, 60));
+        StyleQuietButton(b, /*withText=*/true);
         if (onClick) b->SetOnClick(std::move(onClick));
         b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return b;
@@ -387,11 +413,13 @@ namespace {
                                                  const std::string& text, bool checked,
                                                  int width = kTextWidth) {
         auto radio = UltraCanvasRadio::Create(id, -1, -1, text, checked);
-        RadioVisualStyle style = radio->GetVisualStyle();
-        style.base.fontSize       = kTextFontSize;
-        style.base.textColor      = kTextColor;
-        style.base.textHoverColor = kTextColor;
-        radio->SetVisualStyle(style);
+        Theme::Follow(radio, "style", [](UltraCanvasRadio& r) {
+            RadioVisualStyle style = RadioVisualStyle::FromTheme(UltraCanvasTheme::Current(), r.GetVisualStyle());
+            style.base.fontSize       = kTextFontSize;
+            style.base.textColor      = TextColor();
+            style.base.textHoverColor = TextColor();
+            r.SetVisualStyle(style);
+        });
         radio->size.width  = CSSLayout::Dimension::Px(width);
         radio->size.height = CSSLayout::Dimension::Px(kControlHeight);
         radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -404,10 +432,13 @@ namespace {
         auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0,
                 static_cast<float>(kTextWidth), static_cast<float>(kControlHeight), text);
         box->SetFontSize(kTextFontSize);
-        CheckboxVisualStyle style = box->GetVisualStyle();
-        style.base.textColor      = kTextColor;
-        style.base.textHoverColor = kTextColor;
-        box->SetVisualStyle(style);
+        Theme::Follow(box, "style", [](UltraCanvasCheckbox& c) {
+            CheckboxVisualStyle style = CheckboxVisualStyle::FromTheme(UltraCanvasTheme::Current(), c.GetVisualStyle());
+            style.base.fontSize       = kTextFontSize;
+            style.base.textColor      = TextColor();
+            style.base.textHoverColor = TextColor();
+            c.SetVisualStyle(style);
+        });
         box->SetChecked(checked);
         box->size.width  = CSSLayout::Dimension::Px(kTextWidth);
         box->size.height = CSSLayout::Dimension::Px(kControlHeight);
@@ -1520,7 +1551,7 @@ namespace {
         if (!d->window || !d->window->IsCreated()) { d->window.reset(); return; }
 
         d->window->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        d->window->SetBackgroundColor(Color(249, 249, 251, 255));
+        Theme::SetFill(d->window, WindowFace);
 
         // ----- settings-page tree | page area -----
         auto content = std::make_shared<UltraCanvasContainer>("um-set-content");
@@ -1529,11 +1560,13 @@ namespace {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         d->tree = std::make_shared<UltraCanvasTreeView>("um-set-tree");
-        d->tree->SetFontSize(kTreeFontSize);
+        // The tree's own size, again after the theme's pass on a change of the look.
+        Theme::Follow(d->tree, "font", [](UltraCanvasTreeView& t) { t.SetFontSize(kTreeFontSize); });
         d->tree->SetRowHeight(24);
         d->tree->SetSelectionMode(TreeSelectionMode::Single);
         d->tree->SetLineStyle(TreeLineStyle::NoLine);
-        d->tree->SetBackgroundColor(Color(243, 243, 246, 255));
+        Theme::SetFill(d->tree, TreeFace);
+        Theme::StyleTreeRows(d->tree);
         // A section has no page of its own: selecting one moves on to its
         // first page.
         d->tree->SetShowFirstChildOnExpand(true);
@@ -1579,7 +1612,7 @@ namespace {
         d->pageArea->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         d->pageArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        d->pageArea->SetBackgroundColor(Color(255, 255, 255, 255));
+        Theme::SetFill(d->pageArea, PageFace);
         content->AddChild(d->pageArea);
 
         AddPage(d, kPageNewMail, BuildNewMailPage(d));
@@ -1611,7 +1644,7 @@ namespace {
         bottom->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         bottom->SetPadding(8, 12, 8, 12);
-        bottom->SetBorderTop(1, Color(225, 225, 230, 255));
+        Theme::Follow(bottom, "frame", [](UltraCanvasContainer& b) { b.SetBorderTop(1, BarLine()); });
 
         auto bottomLeft = std::make_shared<UltraCanvasContainer>("um-set-bottom-left");
         bottomLeft->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center);
@@ -1678,14 +1711,13 @@ std::shared_ptr<UltraCanvasButton> SettingsDialog::MakeGearButton(
         const std::string& id, float height, std::function<void()> onClick) {
     auto gear = std::make_shared<UltraCanvasButton>(id, 0, 0, 30, height, "");
     gear->SetCornerRadius(4.0f);
-    gear->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-    gear->SetBorder(1.0f, Color(0, 0, 0, 60));
+    StyleQuietButton(gear, /*withText=*/false);
     gear->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.svg"));
     gear->SetIconSize(15, 15);
     gear->SetIconPosition(ButtonIconPosition::Left);
     gear->SetIconSpacing(0);
     gear->SetUseIconAsMask(true);
-    gear->SetIconMaskColor(Color(55, 55, 60, 255));
+    Theme::Follow(gear, "mask", [](UltraCanvasButton& g) { g.SetIconMaskColor(GearInk()); });
     gear->SetTooltip(Tr("Settings"));
     if (onClick) gear->onClick = std::move(onClick);
     gear->layoutItem.SetFlexGrow(0).SetFlexShrink(0);

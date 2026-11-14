@@ -171,7 +171,7 @@ The first ChatCube draft, which this replaces, is kept under
 8. **Settings** - the gear beside the copy button at the top of the sidebar
    - opens a window laid out as UltraFiler's: the sections on the left, the
    chosen page on the right, *Restore defaults* and *Close* at the foot.
-   *Appearance*: the light or the dark look (from the next start) and how
+   *Appearance*: the look - System, Light or Dark, shown at once - and how
    times and dates are written (`14:05` or `2:05 PM`; `31.10.2026`,
    `2026-10-31` or `10/31/2026`). *Messages*: whether Enter or Ctrl+Enter
    sends, and whether typing is shown to the other side and to you.

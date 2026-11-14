@@ -2,8 +2,10 @@
 // The framework's elements in ChatCube's look (ChatCubeTheme): a label, a
 // button and an icon button, a text field, the logo, a row - what the main
 // window and the Edit profile window are built of, so both look the same.
+// Version: 0.2.0 - the look follows a change while ChatCube runs: every element styled here is
+//                  styled again (OnLook, ChatCubeTheme.h); a label's colour is a role
 // Version: 0.1.0 - out of ChatCubeWindow.cpp, for the Edit profile window too
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -28,17 +30,12 @@ inline constexpr float kFormWidth = 340.0f;
 inline constexpr float kControlRadius = 8.0f;
 inline constexpr int   kIconButton = 34;       // a round icon button's side
 
-// The colours, from the theme set before any window was built (main.cpp:
-// ChatCube::ThemeFor, light or --dark). Read once: the look does not change
-// while ChatCube runs.
-const Look& L();
-
 UltraCanvas::Color Darker(const UltraCanvas::Color& c, int by);
 std::string Trim(const std::string& s);
 
 std::shared_ptr<UltraCanvas::UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text,
                                                          float fontSize = kTextFont,
-                                                         const UltraCanvas::Color& color = L().ink);
+                                                         LookRole role = &Look::ink);
 
 // A button in the window's look: rounded, a hairline border at rest, the
 // accent fill when primary, no fill at rest when ghost (the icon buttons).
