@@ -1,3 +1,23 @@
+#### 2026-11-14 *0.9.560*
+- **A pull request builds one row per operating system; `ci:distro` builds
+  all six.** Without a label a pull request now builds Linux x86_64, Windows
+  x86_64 and macOS on Apple silicon. Linux arm64, Windows ARM and macOS Intel
+  build on `main`, where the release is made, and on a pull request labelled
+  `ci:distro` (the distribution build); adding the label starts a run with
+  them. `ci:intel` still adds the Intel row alone. The Windows ARM row alone
+  took an hour on #1236 and #1238.
+  - A left-out row reports under its own name (`build (<os>, Release)`) as
+    not built, from a `build-skipped` job, so a required check never waits
+    on it.
+  - The clean-machine Linux SDK check tests only the Linux rows that were
+    built.
+- **CI: UltraMail's Unicode normalization table is checked.** A new workflow,
+  `ultramail-nfc-table.yml`, runs `scripts/generate_ultramail_nfc_table.py
+  --check` on the Python the table was made with whenever the table, the
+  script or the code that reads it changes, so a hand edit or a stale table
+  fails the pull request. Once a week it also runs on the newest Python and
+  fails when a newer Unicode version is out, saying to regenerate the table.
+
 #### 2026-11-14 *0.9.559*
 - **CI: a release build saves its ccache only when it compiled something,
   and the cache prune is no longer starved.** A fold commit changes a

@@ -1,5 +1,6 @@
 // Apps/UltraStoreAdmin/core/Affiliates.cpp
 // The affiliate scheme (Affiliates.h).
+// Version: 0.3.3 - DecimalCents / DecimalFromCents
 // Version: 0.3.2 - SyncSales records a subscription's renewals under their own reference
 // Version: 0.3.1 - the join and retired pages in the shared frame too
 // Version: 0.3.0 - the landing page in the shared frame with the mark
@@ -78,6 +79,9 @@ void Add(std::vector<std::pair<std::string, std::string>>& totals, const std::st
 }
 
 } // namespace
+
+bool DecimalCents(const std::string& decimal, int64_t& cents) { return Cents(decimal, cents); }
+std::string DecimalFromCents(int64_t cents) { return FromCents(cents); }
 
 std::string AddDecimals(const std::string& a, const std::string& b) {
     int64_t x = 0, y = 0;
