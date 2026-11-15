@@ -2385,6 +2385,20 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^UltraDesktopAppStarterTest$"
 
+      # The vanished-folder test's second half drives the Filer's folder watch,
+      # which only runs inside the application's timers: a subfolder deleted on
+      # disk is reported through onFolderChangedOnDisk (what UltraFiler's folder
+      # tree re-syncs from), and the shown folder deleted moves the display up.
+      # Without a display that half skips; here it has to run.
+      - name: Run the Filer folder-watch test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^FilerVanishedFolderTest$"
+
       # A window that is never closed, only destroyed: the application has to
       # destroy its windows before its own platform half goes, and each window
       # has to release its native half on the way out. Until 2026-11-15 neither
@@ -2400,20 +2414,6 @@ jobs:
         run: >-
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^WindowShutdownTest$"
-
-      # The vanished-folder test's second half drives the Filer's folder watch,
-      # which only runs inside the application's timers: a subfolder deleted on
-      # disk is reported through onFolderChangedOnDisk (what UltraFiler's folder
-      # tree re-syncs from), and the shown folder deleted moves the display up.
-      # Without a display that half skips; here it has to run.
-      - name: Run the Filer folder-watch test on a virtual display (Linux)
-        if: runner.os == 'Linux'
-        working-directory: build
-        env:
-          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
-        run: >-
-          xvfb-run -a -s "-screen 0 1280x800x24"
-          ctest --output-on-failure --no-tests=error --timeout 300 -R "^FilerVanishedFolderTest$"
 
       # The demo's layout audit (Apps/DemoApp/UltraCanvasDemoLayoutAudit.cpp)
       # opens every page and fails on a label or button narrower than its
