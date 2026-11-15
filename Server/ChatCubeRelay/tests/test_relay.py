@@ -112,6 +112,33 @@ def test_contacts_and_presence(client):
         assert a.receive_json() == {"type": "presence", "from": bob.user_id, "status": "offline"}
 
 
+def test_the_person_added_is_told_and_keeps_the_contact(client):
+    alice = Person(client, "Alice").join()
+    bob = Person(client, "Bob").join()
+    carol = Person(client, "Carol").join()
+    # Bob online: told now, with Alice's key to check her id by.
+    with client.websocket_connect("/v1/ws", headers=bob.auth) as b:
+        assert b.receive_json()["type"] == "hello"
+        assert client.put("/v1/contacts/" + bob.user_id, headers=alice.auth).status_code == 200
+        frame = b.receive_json()
+        assert frame["type"] == "contact.added"
+        assert frame["contact"]["user_id"] == alice.user_id
+        assert frame["contact"]["public_key"] == alice.public_b64
+        assert frame["contact"]["display_name"] == "Alice"
+        # Added again: nothing new to tell.
+        assert client.put("/v1/contacts/" + bob.user_id, headers=alice.auth).status_code == 200
+        b.send_json({"type": "ping"})
+        assert b.receive_json() == {"type": "pong"}
+    # Carol away: Alice is in her list at her next sign-in.
+    assert client.put("/v1/contacts/" + carol.user_id, headers=alice.auth).status_code == 200
+    contacts = client.get("/v1/contacts", headers=carol.auth).json()["contacts"]
+    assert [c["user_id"] for c in contacts] == [alice.user_id]
+    # Carol had removed Alice; Alice adding her again is no news.
+    assert client.delete("/v1/contacts/" + alice.user_id, headers=carol.auth).status_code == 200
+    assert client.put("/v1/contacts/" + carol.user_id, headers=alice.auth).status_code == 200
+    assert client.get("/v1/contacts", headers=carol.auth).json()["contacts"] == []
+
+
 def test_recovery_email_and_phone_are_the_owners_alone(client):
     alice = Person(client, "Alice").join()
     bob = Person(client, "Bob").join()

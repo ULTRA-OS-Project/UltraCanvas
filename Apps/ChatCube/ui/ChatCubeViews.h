@@ -4,6 +4,9 @@
 // separators, delivery ticks). Models adapt UltraIM data to
 // UltraCanvasListView; delegates paint one row's content - the list view
 // paints selection, hover and scrolling.
+// Version: 0.2.5 - a reply's quote in its bubble (filled from the rows shown when the provider gave
+//                  none), "edited" beside the time, a voice message's play / pause mark (SetPlaying),
+//                  FindMessage
 // Version: 0.2.4 - MemberCount: a big group's whole number, not only the members listed
 // Version: 0.2.3 - conversations pinned to the top and marked unread (SetMarks), each shown in its row
 // Version: 0.2.2 - times and dates written as the Settings window says (SetDateTimeStyle)
@@ -75,6 +78,8 @@ public:
     bool Remove(const std::string& messageId);
     // Whether a message is shown, by its client id.
     bool Contains(const std::string& clientId) const { return FindRow(clientId) >= 0; }
+    // A message shown, by its id or its client id; nullptr when it is not.
+    const UltraIMMessage* FindMessage(const std::string& id) const;
 
     const std::vector<MessageRow>& Rows() const { return rows_; }
 
@@ -87,6 +92,9 @@ public:
 
 private:
     int FindRow(const std::string& clientId) const;
+    // A reply's quote from the message replied to, when it is shown and the
+    // provider brought no quote of its own.
+    void ResolveReply(UltraIMMessage& message) const;
 
     std::vector<MessageRow> rows_;
     bool isGroup_ = false;
@@ -110,6 +118,9 @@ public:
     int GetRowHeight(const UltraCanvas::IListModel* model, int row) const override;
 
     void SetViewWidth(int width);
+    // The voice message playing now (its client id; "" for none): its bubble
+    // shows a pause mark instead of the play mark.
+    void SetPlaying(const std::string& clientId) { playing_ = clientId; }
 
     // Where a row's attachment was last painted - the picture of a photo,
     // a video or a sticker, the whole bubble of a file or a voice message -
@@ -125,6 +136,7 @@ private:
     UltraCanvas::Size2Di PictureSize(const UltraIMMessage& message, bool showSender) const;
 
     int viewWidth_ = 600;
+    std::string playing_;
     std::map<std::string, int> measured_;               // client id -> height at viewWidth_
     std::map<std::string, UltraCanvas::Rect2Di> media_; // client id -> what MediaRect answers
 };

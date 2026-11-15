@@ -1,3 +1,25 @@
+#### 2026-11-15 *0.9.564*
+- **UltraIM: a recording's length travels with it.**
+  `UltraIMSendOptions::durationSeconds` - a voice note's or a video's length,
+  when the sender recorded it - so the other side shows it before the file is
+  there. Provider ABI 8.
+- **UltraIM Direct: edit, voice notes, reply quotes, contacts told.**
+  `EditMessage` changes our own text or caption here and on the other side
+  (an `edit` body on the message's path; `isEdited`; store schema 5).
+  `SendVoiceNote` sends a recording as kind `audio` with its length (`ms` in
+  the file body). A reply's quote (`replyTo.senderName`, `textSnippet`) is
+  filled in from the store on arrival, fetch and search. Adding a contact
+  tells them - the relay's `contact.added` (ChatCube relay 1.4.0) or a
+  `contact` frame on the local network - so their chat appears before the
+  first message. `DirectProviderTests` cover all of it.
+- **UltraIM Telegram and Matrix: voice notes.** `SendVoiceNote` sends
+  Telegram's own voice message (`inputMessageVoiceNote`, an Ogg Opus
+  recording with its length; anything else goes as a document) and Matrix's
+  (`m.audio` with the MSC3245 voice mark and the MSC1767 audio block, the
+  length in `info.duration` - a video's too). Both gain `VoiceNotes`;
+  `TelegramProviderTests`, `TelegramTdlibTests` (the real TDLib takes the
+  request) and `MatrixProviderTests` (against Synapse) check it.
+
 #### 2026-11-15 *0.9.563*
 - **A toolbar item dragged into another place stays there.** `MoveItem` puts
   the item at its new index in the bar's list of children at once, while every

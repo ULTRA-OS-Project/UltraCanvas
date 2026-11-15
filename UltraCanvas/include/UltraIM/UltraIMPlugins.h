@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.12 - ABI 8: UltraIMSendOptions::durationSeconds
 // Version: 0.1.11 - ABI 7: UltraIMConversation::memberCount
 // Version: 0.1.10 - ABI 6: a group managed after it is made (RenameGroup, AddGroupMembers, RemoveGroupMember)
 //                   and a conversation left (LeaveConversation); UltraIMConversation::ownerId and memberNames
@@ -419,9 +420,10 @@ protected:
 // Version 6 (2026-11): a group renamed, members added and removed, a
 // conversation left; UltraIMConversation::ownerId and memberNames.
 // Version 7 (2026-11): UltraIMConversation::memberCount.
+// Version 8 (2026-11): UltraIMSendOptions::durationSeconds (a recording's length).
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 7;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 8;
 
 struct UltraIMPluginHost {
     int abiVersion;

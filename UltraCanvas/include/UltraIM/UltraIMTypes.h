@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.11 - UltraIMSendOptions::durationSeconds: a voice note's or a video's length, sent along
 // Version: 0.1.10 - UltraIMConversation::memberCount: everyone in a group whose memberIds are a first page
 // Version: 0.1.9 - groups managed after they are made: UltraIMCapabilityFlags ManageGroups and
 //                  LeaveConversation; UltraIMConversation::ownerId and memberNames
@@ -417,6 +418,9 @@ struct UltraIMSendOptions {
     std::string clientMessageId;    // Echoed in MessageDelivered and the server echo
     std::string replyToMessageId;   // "" = not a reply
     bool        silent = false;     // No notification at the recipient, if supported
+    // A voice note's or a video's length, when the sender knows it (it
+    // recorded it): the other side shows it before the file is there.
+    double      durationSeconds = 0;
 };
 
 struct UltraIMStickerPack {

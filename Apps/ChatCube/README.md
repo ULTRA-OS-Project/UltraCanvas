@@ -83,7 +83,8 @@ The first ChatCube draft, which this replaces, is kept under
 3. **Copy** your ID and send it to the people who should reach you; paste
    theirs into *Contact's ChatCube ID* and press **Add**. People on your
    network are listed under *On this network* - **Add** takes them over
-   without typing anything.
+   without typing anything. The person you add is told: your chat appears in
+   their list at once (or at their next sign-in), before you write.
 4. **New group** takes a name and the members' IDs, separated by commas.
    **Matrix account** signs in to a Matrix homeserver (`matrix.org`, or your
    own) with your user name and password; your Matrix rooms then sit in the
@@ -119,11 +120,14 @@ The first ChatCube draft, which this replaces, is kept under
 5. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
    *Settings* below). A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
-   green `✓✓` read (drawn, not typed, so they show on a Windows whose fonts
+   blue `✓✓` read, *Not sent* when it could not go - and, hovering over the
+   message, the same in words (drawn, not typed, so they show on a Windows whose fonts
    have no check mark). The paperclip puts a picture, a video or any file
    in a strip above the message field - so does Ctrl+V with a picture on
    the clipboard (a screenshot, a copy from a browser or a drawing program)
-   or a file copied in a file manager - each with a × to take it out again;
+   or a file copied in a file manager, and so do files dropped on the
+   window (on a chat in the list, that chat opens and takes them; anywhere
+   else, the open chat does) - each with a × to take it out again;
    Enter or the send button sends them to the open chat (ChatCube Direct,
    Telegram and Matrix, encrypted rooms included), with what you typed as
    the caption of the first picture or video. A photo shows as its picture,
@@ -134,8 +138,13 @@ The first ChatCube draft, which this replaces, is kept under
    pictures are their avatars in the sidebar, the header and, in a group,
    beside their bubbles.
 
-   A right click on a message opens its menu. A picture, a video or a file
-   has **Open** and **Save as** (a copy where you say, fetched first when it
+   A right click on a message opens its menu. **Reply** answers it: a bar
+   over the field shows what you answer (× or Escape gives it up), and your
+   message shows it, quoted, at the top of its bubble. **Edit** - or a
+   double click on one of your own messages - puts its words back in the
+   field to change; Enter keeps the change, Escape gives it up, and the
+   bubble says *edited* on both sides. **Copy text** copies its words. A
+   picture, a video or a file has **Open** and **Save as** (a copy where you say, fetched first when it
    is not on this computer yet). **Delete for me** removes a message from
    your side only; **Delete for everyone** removes it from the other side
    too and asks first, since it cannot be taken back. The menu offers what
@@ -146,6 +155,20 @@ The first ChatCube draft, which this replaces, is kept under
    yours. A file deleted for everyone is removed from the other person's
    ChatCube as well; a copy they saved elsewhere is theirs. Matrix deletes
    for everyone only; Telegram has both.
+
+   The field over the messages searches the chat: what you type finds the
+   messages with those words in all of its history, and the list shows only
+   them (with how many) until the × shows the whole chat again.
+
+   The microphone beside the field records a **voice message** - the bar in
+   its place shows how long, × throws it away, the send button sends it -
+   and a voice message plays in its bubble with a click on it (again
+   pauses). The camera button records a **video message**: the camera
+   opens over the field, its red button records and stops, **Send** sends
+   it, **Cancel** throws it away. Both need a microphone (and a camera) the
+   system lets ChatCube use. On Matrix and Telegram a voice message is
+   theirs too (Telegram's needs the recording in Ogg Opus, which ChatCube
+   writes when this build has the Opus encoder; otherwise it goes as a file).
 
 6. **Call** rings the open contact, **Video** makes it a video call (1:1;
    the buttons are off for groups and while not connected). A bar across
@@ -245,7 +268,9 @@ Then add Bob's ID in ChatCube and write to him.
 Xvfb: it starts a relay and Bob on this machine, drives ChatCube through
 XTest (`tools/xinput.c`, built once into the build directory) - sign in as
 Alice, add Bob, two messages each way, open Edit profile - and writes
-`signin.png`, `empty.png`, `chat.png` and `profile.png` to `<build>/chatcube-screenshots/<look>/`
+`signin.png`, `empty.png`, `chat.png`, `message-menu.png`, `reply-bar.png`,
+`reply.png`, `edit.png`, `edited.png`, `search.png` and `profile.png` (and the
+list's menus) to `<build>/chatcube-screenshots/<look>/`
 (`--out` elsewhere). For looking at a change to the window by eye and for
 pictures in the docs. It needs `xvfb-run`, ImageMagick's `import`, a C
 compiler with the libX11 and libXtst headers, and the relay's `.venv`.

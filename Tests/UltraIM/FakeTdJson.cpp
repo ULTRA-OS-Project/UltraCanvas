@@ -6,8 +6,8 @@
 // edited, deleted and read, typing, history, the session kept per database
 // directory - answering with TDLib's JSON objects (td_api.tl names), so that
 // several providers in one process can talk to each other through it.
-// Files: a photo, a video or a document sent (inputMessagePhoto / Video /
-// Document with inputFileLocal) is kept as a file the sender has and the
+// Files: a photo, a video, a document or a voice note sent (inputMessagePhoto /
+// Video / Document / VoiceNote with inputFileLocal) is kept as a file the sender has and the
 // others download (downloadFile: the file object back, and updateFile), as
 // is a profile photo (fakeAddAccount's photo), so avatars and attachments
 // work as with TDLib - paths only, no file is read or written.
@@ -93,6 +93,7 @@ struct Message {
     std::string fileName;
     int32_t     file = 0;       // the media's file
     int32_t     thumbnail = 0;  // a video's preview picture
+    int64_t     duration = 0;   // a voice note's seconds
 };
 
 struct ChatRec {
@@ -419,6 +420,16 @@ JSONValue MessageObject(const ChatRec& chat, const Message& m, int64_t viewer, b
         content.Set("video", video);
         content.Set("caption", Formatted(m.text));
         content.Set("is_secret", JSONValue(false));
+    } else if (m.media == "messageVoiceNote") {
+        content = Obj("messageVoiceNote");
+        JSONValue voice = Obj("voiceNote");
+        voice.Set("duration", JSONValue(m.duration));
+        voice.Set("waveform", JSONValue(""));
+        voice.Set("mime_type", JSONValue("audio/ogg"));
+        voice.Set("voice", FileObject(m.file, viewer));
+        content.Set("voice_note", voice);
+        content.Set("caption", Formatted(m.text));
+        content.Set("is_listened", JSONValue(false));
     } else if (m.media == "messageDocument") {
         content = Obj("messageDocument");
         JSONValue document = Obj("document");
@@ -912,6 +923,14 @@ void Handle(Client& c, const JSONValue& r) {
         m.replyTo = r["reply_to"]["message_id"].GetInteger(0);
         if (kind == "inputMessageText") {
             m.text = content["text"]["text"].GetString();
+        } else if (kind == "inputMessageVoiceNote") {
+            const std::string path = content["voice_note"]["path"].GetString();
+            if (content["voice_note"]["@type"].GetString() != "inputFileLocal" || path.empty())
+                return fail(400, "Unsupported file");
+            m.media = "messageVoiceNote";
+            m.duration = content["duration"].GetInteger(0);
+            m.fileName = BaseName(path);
+            m.file = NewFile(path, 1000 + static_cast<int64_t>(path.size()), c.user);
         } else if (kind == "inputMessagePhoto" || kind == "inputMessageVideo" || kind == "inputMessageDocument") {
             // A file of the sender's (inputFileLocal): kept as a file the
             // sender has and the others download; a video gets a preview

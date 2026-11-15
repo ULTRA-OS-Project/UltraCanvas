@@ -15,7 +15,13 @@
 #                 place afterwards (to drive the app further by hand)
 #
 # Writes signin.png, empty.png (signed in, no conversation open),
-# chat.png (the conversation with Bob), menu.png (Bob's chat right-clicked
+# chat.png (the conversation with Bob), message-menu.png (a message of ours
+# right-clicked: Reply, Edit, Copy text, Delete), reply-bar.png (Bob's
+# message answered: the bar over the field), reply.png (the reply sent, the
+# quote in its bubble), edit.png
+# (our message double-clicked: the Edit message bar), edited.png (the change
+# kept, "edited" beside the time), search.png (the search field over the
+# chat, its matches), menu.png (Bob's chat right-clicked
 # in the list), group-menu.png (a group's menu, its Members and Bob's own
 # items open) and profile.png (Edit profile). Needs: a built ChatCube and
 # chatcube-peer, the relay's virtual environment
@@ -27,6 +33,8 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.6 - message-menu.png, reply.png, edit.png, edited.png and search.png: a message's menu,
+#                  a reply, an edit and the search in a chat
 # Version: 0.1.5 - no extra click after the menus: Escape reaches a menu's own window now (UltraCanvas 1.23.0
 #                  application, 1.9.1 X11 window), so the menus close and the next click lands
 # Version: 0.1.4 - the relay in the settings file (Settings > Networks > Relay; the card has no field for it
@@ -36,7 +44,7 @@
 # Version: 0.1.2 - the card's fields 21 pixels higher ("Recover my ChatCube ID" under the button)
 # Version: 0.1.1 - the e-mail and phone on the sign-in card; profile.png, the Edit profile window
 # Version: 0.1.0
-# Last Modified: 2026-11-13
+# Last Modified: 2026-11-15
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -133,6 +141,25 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     "$XINPUT" click 600 625 type "Hi Bob, is the new look on your side too?" key Return sleep 3500
     "$XINPUT" type "It has avatars and a dark theme now." key Return sleep 3500
     import -window root "$OUT/chat.png"
+    # A message of ours right-clicked: its menu (Escape closes it).
+    "$XINPUT" rclick 800 155 sleep 1200
+    import -window root "$OUT/message-menu.png"
+    "$XINPUT" key Escape sleep 600
+    # The first answer from Bob replied to: Reply in its menu, the bar over the
+    # field, then the reply with its quote.
+    "$XINPUT" rclick 500 210 sleep 1200 click 540 229 sleep 800 type "Yes, it looks great here."
+    import -window root "$OUT/reply-bar.png"
+    "$XINPUT" key Return sleep 3500
+    import -window root "$OUT/reply.png"
+    # Our second message double-clicked: its words back in the field to change.
+    "$XINPUT" click 850 263 click 850 263 sleep 900
+    import -window root "$OUT/edit.png"
+    "$XINPUT" type " Really." key Return sleep 2500
+    import -window root "$OUT/edited.png"
+    # The search field over the chat; the x shows the whole chat again.
+    "$XINPUT" click 630 77 type "avatars" sleep 2000
+    import -window root "$OUT/search.png"
+    "$XINPUT" click 967 77 sleep 1500
     # The chat with Bob right-clicked in the list: its menu (Escape closes it).
     "$XINPUT" rclick 160 170 sleep 1200
     import -window root "$OUT/menu.png"
@@ -150,4 +177,4 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     kill $app
     sleep 1
 '
-echo "screenshot.sh: $out/signin.png, empty.png, chat.png, menu.png, group-menu.png, profile.png (logs in $work)"
+echo "screenshot.sh: $out/signin.png, empty.png, chat.png, message-menu.png, reply-bar.png, reply.png, edit.png, edited.png, search.png, menu.png, group-menu.png, profile.png (logs in $work)"
