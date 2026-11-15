@@ -10,6 +10,6 @@
   the buttons stay. A short prompt leaves the dialog at its configured
   size. A config that carries a `message` as well keeps `inputLabel` as the
   field's caption, and that wraps too. `Tests/InputDialogPromptTest.cpp`
-  pins it on a real window. Every caller gains it: the password prompts of
+  pins it on a real window, and CI runs it on a virtual display. Every caller gains it: the password prompts of
   the file loader and the viewers, the rename dialogs, UltraDBAdmin's and
   UltraPassword's prompts.

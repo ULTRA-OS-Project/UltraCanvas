@@ -2385,6 +2385,19 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^UltraDesktopAppStarterTest$"
 
+      # An input dialog shows its whole prompt: it wraps, and the window
+      # grows to the height the lines and the field need. The suite opens
+      # real dialogs and skips itself without a display, so "Run unit tests"
+      # above would pass it without running it.
+      - name: Run the input dialog prompt test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^InputDialogPromptTest$"
+
       # The vanished-folder test's second half drives the Filer's folder watch,
       # which only runs inside the application's timers: a subfolder deleted on
       # disk is reported through onFolderChangedOnDisk (what UltraFiler's folder

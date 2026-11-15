@@ -5780,7 +5780,8 @@ endif()
 # ===== INPUT DIALOG PROMPT TEST =====
 # An input dialog shows its whole prompt: it wraps and the window grows to
 # fit (it was one line with an ellipsis in a window of fixed height). Opens
-# real dialogs; skips without DISPLAY.
+# real dialogs; skips without DISPLAY. CI runs it on a virtual display with
+# ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (build.yml), where a skip is a failure.
 if(TARGET UltraCanvas)
     message(STATUS "  Building InputDialogPromptTest...")
     add_executable(InputDialogPromptTest

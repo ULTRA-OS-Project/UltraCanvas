@@ -11,7 +11,9 @@
 // area is as tall as its text, the field stays inside the window, the icon
 // keeps its size, and a short prompt leaves the dialog as it was.
 //
-// Runs headless under Xvfb; skips when there is no display.
+// Runs headless under Xvfb; skips when there is no display - or fails, with
+// ULTRACANVAS_TEST_DISPLAY_REQUIRED=1, which is how CI runs it: a suite that
+// skips there would read as a pass.
 // Version: 1.0.0
 // Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
@@ -40,8 +42,14 @@ static int failCount = 0;
         testCount++;                                                          \
     } while (0)
 
+// Without a display the suite skips; where one was promised it fails.
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED"); \
+        if (required && *required && std::string(required) != "0") {         \
+            std::cerr << "FAIL: a display was required (" << reason << ")" << std::endl; \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
         return 0;                                                             \
     } while (0)
