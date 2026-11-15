@@ -1,5 +1,6 @@
 // OS/Android/UltraCanvasAndroidWindow.cpp
 // Android window implementation for UltraCanvas Framework.
+// Version: 1.4.0 - the destructor releases the native half (the drawing surface)
 // Version: 1.3.0 - in-place rotation: re-read the window's own size, log each new frame size,
 //                 and no blank frame on resize
 // Version: 1.2.0 - surface at the window's real pixel size, not logical x scale
@@ -32,6 +33,15 @@
 namespace UltraCanvas {
 
     UltraCanvasAndroidWindow::UltraCanvasAndroidWindow() = default;
+
+    UltraCanvasAndroidWindow::~UltraCanvasAndroidWindow() {
+        // The native half, released however the window dies. Without this,
+        // a window destroyed without Close() first - the application's
+        // DestroyWindows() at shutdown, the last shared_ptr going away -
+        // left its OS window and surfaces behind, because
+        // ~UltraCanvasWindowBase cannot reach a virtual override.
+        if (_created) DestroyNative();
+    }
 
     // ===== CREATION / DESTRUCTION =====
 
