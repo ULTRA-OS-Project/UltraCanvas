@@ -8,6 +8,9 @@
 // its own at all: it is a drawing, and one written larger must be drawn again
 // at that size - sharp - not the picture read at its page size stretched.
 //
+// A recording is saved in another audio type with FileLoader's
+// ConvertAudioFile: the same type copied as it is, another encoded.
+//
 // Runs headless: the surface loads and saves without a window. The save
 // settings go to a scratch settings folder, never the real one.
 // Version: 1.0.0
@@ -18,6 +21,8 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasFileSaveSettings.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasAudio.h"
+#include "UltraCanvasMediaCodecRegistry.h"
 
 #include <cairo/cairo.h>
 
@@ -28,6 +33,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace UltraCanvas;
@@ -217,6 +223,53 @@ int main() {
             std::cout << "         pixels between black and white across the edge: " << between << "\n";
             Check(between <= 3, "... drawn again at that size: its edge is sharp, not stretched");
             Check(out.Grey(100, 100) < 30 && out.Grey(300, 100) > 225, "... black on the left, clear on the right");
+        }
+    }
+
+    // ----- A recording -----
+    // Save as for a sound is FileLoader's ConvertAudioFile: the same type is
+    // the file copied as it is, another is decoded and encoded, and a type
+    // this build does not encode is refused with a reason.
+    {
+        std::cout << "\nA recording\n";
+        AudioBufferInfo info;
+        info.sampleRate = 22050;
+        info.channels = 1;
+        info.sampleType = AudioSampleType::PCM_S16;
+        info.frameCount = 2205;   // 0.1 s
+        info.durationSeconds = 0.1;
+        std::vector<int16_t> samples(info.frameCount);
+        for (size_t i = 0; i < samples.size(); ++i)
+            samples[i] = static_cast<int16_t>(((i / 25) % 2) ? 8000 : -8000);
+        auto tone = UCAudio::FromRawPCM(samples.data(), samples.size() * sizeof(int16_t), info);
+        const fs::path wav = scratch / "tone.wav";
+        std::string audioError;
+        if (!tone || !UltraCanvasFileLoader::SaveAudio(*tone, PathToUtf8(wav), audioError)) {
+            std::cout << "  SKIP: this build writes no audio (" << audioError << ")\n";
+        } else {
+            Check(fs::file_size(wav) > 4000, "SaveAudio wrote the WAV");
+            const fs::path copy = scratch / "copy.wav";
+            Check(UltraCanvasFileLoader::ConvertAudioFile(PathToUtf8(wav), PathToUtf8(copy), audioError),
+                  "Saved as the same type: " + audioError);
+            Check(fs::exists(copy) && fs::file_size(copy) == fs::file_size(wav), "... the file copied as it is");
+            const fs::path bad = scratch / "tone.xyz";
+            Check(!UltraCanvasFileLoader::ConvertAudioFile(PathToUtf8(wav), PathToUtf8(bad), audioError) &&
+                  !audioError.empty() && !fs::exists(bad),
+                  "A type nothing encodes is refused, with a reason (" + audioError + ")");
+            for (const std::string ext : { "flac", "ogg", "mp3", "opus" }) {
+                if (!CanEncodeMediaExtension(MediaCodecKind::Audio, ext)) {
+                    std::cout << "         (no ." << ext << " encoder in this build)\n";
+                    continue;
+                }
+                const fs::path out = scratch / PathFromUtf8("tone." + ext);
+                const bool ok = UltraCanvasFileLoader::ConvertAudioFile(PathToUtf8(wav), PathToUtf8(out), audioError);
+                Check(ok && fs::exists(out) && fs::file_size(out) > 0, "Saved as ." + ext + ": " + audioError);
+                if (ok && CanDecodeMediaFile(MediaCodecKind::Audio, PathToUtf8(out))) {
+                    auto back = UCAudio::LoadFromFile(PathToUtf8(out));
+                    Check(back && back->IsValid() && back->GetDuration() > 0.05,
+                          "... and it reads back as sound");
+                }
+            }
         }
     }
 

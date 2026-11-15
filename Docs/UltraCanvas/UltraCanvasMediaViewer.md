@@ -236,18 +236,21 @@ if (tools.colour) { /* the adjustments panel and Curves apply */ }
 | Shown | Zoom | Rotate / mirror | Adjustments + Curves | Save as |
 |---|:-:|:-:|:-:|:-:|
 | Bitmap image (JPEG, PNG, WebP, HEIC, …) | yes | yes | yes | yes |
-| Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a bitmap) |
-| Drawing in the vector view (DXF, DWG, EMF, …) | yes | — | — | — |
+| Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a drawing; turned or mirrored, as a bitmap) |
+| Drawing in the vector view (DXF, DWG, EMF, an SVG where the pipeline has no SVG loader, …) | yes | — | — | yes (as a drawing) |
 | `*.ucd` layered image or preview thumbnail | yes | — | — | — |
 | PDF, e-book | yes | — | — | — |
-| Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
+| Audio the player opens | — | — | — | yes (any audio type this build encodes) |
+| Text, spreadsheet, font, 3D model, video, nothing loaded | — | — | — | — |
 
 *Unlock* (`tools.unlock`) is there only while the shown file is
 password-protected and not unlocked yet - see *Password-protected files*.
 Separators follow the groups, so none is left standing alone. Text,
 spreadsheet, font, 3D, video and audio views carry their own controls (the
 players' transport bar, the model's orbit and dolly), so the toolbar is down to
-the browse group for them; *Details* stays in the info bar for every kind.
+the browse group for them - and *Save as* for a recording; *Details* stays in
+the info bar for every kind. A video has no *Save as*: the framework core has
+no video encoder (exporting a clip is VideoFX's, on FFmpeg).
 
 A drawing's pixels are only a rendering of it at the size it is shown, so it
 takes no gamma, colour or curve: the adjustments carry from one bitmap to the
@@ -766,6 +769,29 @@ size.height = picture.height * 2;
 std::string error;
 surface->SaveProcessed("twice.png", size, error);   // a drawing drawn again at that size
 ```
+
+### Saving a drawing or a recording
+
+A drawing is saved as a drawing. *Save as* on an SVG, a DXF, an EMF or any
+file the vector view shows offers every vector type this build writes (SVG,
+PDF, EPS, DXF, … - `UltraCanvasFileLoader::AddVectorDocumentSaveTypes`)
+and then every bitmap type, drawn again at the size the Settings give
+(`SaveVectorDocument`). The drawing is the vector view's, or - an SVG the
+image pipeline rasterized onto the image surface - the file read with
+`LoadVectorDocument`. A drawing turned or mirrored here
+(`UltraCanvasMediaSurface::HasGeometryEdits`) is saved as the picture, since
+only the picture carries the turn. The same type as the file on show is the
+file copied as it is, never written again by a writer that might not carry
+everything over. Before 2026-11 an SVG was offered only as a PNG, and not at
+all where the vector view showed it (a build whose libvips has no SVG loader,
+Windows among them).
+
+A recording the audio player opened is offered every audio type this build
+encodes (`AddSaveTypes(opts, MediaFormatCategory::Audio)`: WAV always; MP3,
+FLAC, Ogg Vorbis and Opus with their encoders) and written with
+`UltraCanvasFileLoader::ConvertAudioFile` - the same type copied as it is,
+another decoded and encoded. A video is not offered *Save as*: the framework
+core has no video encoder.
 
 Each slider is **continuous over its whole range** and carries its live value in
 its caption (`Gamma  1.37`), so an edit can be read off and repeated. The

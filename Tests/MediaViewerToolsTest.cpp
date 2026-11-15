@@ -2,8 +2,9 @@
 // The media viewer's toolbar offers only the view / edit tools the shown file
 // takes. A photo gets zoom, rotate / mirror, the colour adjustments, Curves
 // and Save as; a drawing is never offered colour sliders or a histogram; a
-// text file, a spreadsheet, a 3D model, a video or an audio file gets none of
-// them, because its view brings its own controls. And colour set on one photo
+// text file, a spreadsheet, a 3D model or a video gets none of them, because
+// its view brings its own controls; a recording the player opens gets only
+// Save as (another audio type). And colour set on one photo
 // must not tint the drawing browsed to next - with the sliders hidden there
 // would be no way to take it off.
 //
@@ -68,6 +69,9 @@
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasAudio.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasMediaCodecRegistry.h"
 
 #include <chrono>
 #include <deque>
@@ -457,6 +461,29 @@ int main() {
     Expect(*viewer, model, false, false, false, false);
     Expect(*viewer, video, false, false, false, false);
     Expect(*viewer, audio, false, false, false, false);
+    // A recording the player opens is offered Save as - in every audio type
+    // this build encodes. (The empty song.mp3 above opens nowhere: nothing.)
+    {
+        AudioBufferInfo info;
+        info.sampleRate = 22050;
+        info.channels = 1;
+        info.frameCount = 2205;
+        info.durationSeconds = 0.1;
+        std::vector<int16_t> samples(info.frameCount, 0);
+        auto tone = UCAudio::FromRawPCM(samples.data(), samples.size() * sizeof(int16_t), info);
+        const fs::path wav = dir / "tone.wav";
+        std::string error;
+        if (tone && UltraCanvasFileLoader::SaveAudio(*tone, PathToUtf8(wav), error)) {
+            viewer->SetFiles({ PathToUtf8(wav) });
+            const bool opened = viewer->GetAvailableTools().save;
+            std::cout << "\ntone.wav\n";
+            Check(opened == CanDecodeMediaFile(MediaCodecKind::Audio, PathToUtf8(wav)),
+                  "tone.wav: offers Save as where the player opens it");
+            Expect(*viewer, wav, false, false, false, opened);
+        } else {
+            std::cout << "\n(no audio writer in this build: " << error << ")\n";
+        }
+    }
 
     // A PDF zooms in the PDF view; without the PDF plugin a libvips build
     // rasterizes it onto the image surface instead. Either way it is a
