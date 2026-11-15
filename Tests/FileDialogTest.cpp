@@ -970,16 +970,31 @@ int main() {
             UltraCanvasFileLoader::ResetSaveSettings("jpg");
             run.dialog->CloseDialog(DialogResult::Cancel);
 
-            // From a settings window: the window's type size (UltraSnip's
-            // File type page), its rows scaled to it, and no wider than the
-            // captions and controls need - at the dialog's own 12 and a fixed
-            // 420 it towered over the 10-point window it came from.
+            // From a settings window: the window's type size (UltraSnip's File
+            // type page). A settings window's text is the theme's body size
+            // (SettingsPageKit::TextFontSize, since its 1.2.0), so the dialog
+            // opens at whatever that is - here, the default theme's.
             {
                 const size_t count = UltraCanvasDialogManager::GetActiveDialogs().size();
                 SettingsPageKit::ShowSaveSettingsDialog("jpg", nullptr);
                 const auto now = UltraCanvasDialogManager::GetActiveDialogs();
+                auto fromWindow = now.size() > count ? now.back() : nullptr;
+                TEST("A settings window opens a type's settings in its own type size",
+                     fromWindow && fromWindow->GetStyle().messageFontSize == SettingsPageKit::TextFontSize());
+                if (fromWindow) fromWindow->CloseDialog(DialogResult::Cancel);
+            }
+            // At a smaller type size - a 10-point window, or Windows' body
+            // text - its rows scale down with it, and it is no wider than the
+            // captions and controls need: at the dialog's own 12 and a fixed
+            // 420 it towered over the 10-point window it came from.
+            {
+                const size_t count = UltraCanvasDialogManager::GetActiveDialogs().size();
+                UltraCanvasFileLoader::ShowSaveSettingsDialog("jpg", FileSavePicture(), FileSaveImageSize(),
+                                                              nullptr, nullptr, 10.0f);
+                const auto now = UltraCanvasDialogManager::GetActiveDialogs();
                 auto small = now.size() > count ? now.back() : nullptr;
-                TEST("A settings window opens a type's settings in its own type size", small != nullptr);
+                TEST("At a 10-point type size the settings open in it",
+                     small && small->GetStyle().messageFontSize == 10.0f);
                 if (small) {
                     for (int frame = 0; frame < 3; ++frame) small->UpdateAndRender();
                     auto* box = small->FindChildById("SaveSetting_progressive");
