@@ -63,7 +63,7 @@ struct WrappingText : Element {
     }
 };
 
-struct Fixed : Element {
+struct CaptionStub : Element {
     float width = 40.0f, height = 14.0f;
     Size2Df MeasureOwnContent(std::optional<float>, const LayoutContext&) override { return Size2Df(width, height); }
     void ComputeIntrinsicSizes(const LayoutContext&) override {
@@ -89,7 +89,7 @@ static Page Build(float natural, Dimension basis, float grow) {
     p.row->id = "row";
     p.row->layout.SetFlexRow().SetFlexWrap(FlexWrap::NoWrap).SetFlexGap(10).SetFlexAlignItems(AlignItems::Stretch);
     p.row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(AlignSelf::Stretch);
-    auto caption = std::make_shared<Fixed>();
+    auto caption = std::make_shared<CaptionStub>();
     caption->id = "caption";
     caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     p.row->AddChild(caption);
