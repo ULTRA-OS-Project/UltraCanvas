@@ -126,6 +126,38 @@ namespace UltraCanvas {
             sampleLabels.push_back(sizeLabel);
         };
 
+        // Light text on a dark ground, in the dark theme's three inks: what
+        // the light text boost changes. Dark text below is drawn the same
+        // at every strength.
+        auto darkCard = DemoKit::AddCard(mainContainer, "DarkSampleTitle", Tr("Light Text on a Dark Ground"));
+        auto darkGround = DemoKit::CreateColumn("DarkSampleGround", 8);
+        darkGround->SetBackgroundColor(Color(30, 30, 30, 255));
+        darkGround->SetBorderRadius(6);
+        darkGround->SetPadding(14, 16, 14, 16);
+        darkGround->SetFollowTheme(false);
+        DemoKit::Add(darkCard, darkGround);
+
+        struct DarkSampleDef {
+            float fontSize;
+            Color ink;
+            std::string id;
+            std::string text;
+        };
+        const std::vector<DarkSampleDef> darkSamples = {
+            {9,  Color(255, 255, 255), "Ink9",    Tr("9pt ink - The quick brown fox jumps over the lazy dog. 0123456789")},
+            {10, Color(255, 255, 255), "Ink10",   Tr("10pt ink - The quick brown fox jumps over the lazy dog. 0123456789")},
+            {12, Color(255, 255, 255), "Ink12",   Tr("12pt ink - The quick brown fox jumps over the lazy dog. 0123456789")},
+            {10, Color(190, 190, 190), "Muted10", Tr("10pt muted ink - The quick brown fox jumps over the lazy dog.")},
+            {10, Color(150, 150, 150), "Faint10", Tr("10pt faint ink - The quick brown fox jumps over the lazy dog.")},
+        };
+        for (const auto& sample : darkSamples) {
+            auto label = DemoKit::CreateText("DarkSample" + sample.id, sample.text);
+            label->SetFontSize(sample.fontSize);
+            label->SetTextColor(sample.ink);
+            label->SetFollowTheme(false);   // these colours are the sample
+            DemoKit::Add(darkGround, label);
+        }
+
         // ===== SAMPLE TEXT SECTION =====
         auto sampleCard = DemoKit::AddCard(mainContainer, "SampleTitle", Tr("Sample Text Preview"));
         sampleCard->layout.SetFlexGap(10);
@@ -155,38 +187,6 @@ namespace UltraCanvas {
 
         for (const auto& sample : boldSamples) {
             addSample(boldCard, "BoldSizeLabel" + sample.id, "BoldSample" + sample.id, sample, 70, true);
-        }
-
-        // Light text on a dark ground, in the dark theme's three inks: what
-        // the light text boost changes. Dark text above is drawn the same
-        // at every strength.
-        auto darkCard = DemoKit::AddCard(mainContainer, "DarkSampleTitle", Tr("Light Text on a Dark Ground"));
-        auto darkGround = DemoKit::CreateColumn("DarkSampleGround", 8);
-        darkGround->SetBackgroundColor(Color(30, 30, 30, 255));
-        darkGround->SetBorderRadius(6);
-        darkGround->SetPadding(14, 16, 14, 16);
-        darkGround->SetFollowTheme(false);
-        DemoKit::Add(darkCard, darkGround);
-
-        struct DarkSampleDef {
-            float fontSize;
-            Color ink;
-            std::string id;
-            std::string text;
-        };
-        const std::vector<DarkSampleDef> darkSamples = {
-            {9,  Color(255, 255, 255), "Ink9",    Tr("9pt ink - The quick brown fox jumps over the lazy dog. 0123456789")},
-            {10, Color(255, 255, 255), "Ink10",   Tr("10pt ink - The quick brown fox jumps over the lazy dog. 0123456789")},
-            {12, Color(255, 255, 255), "Ink12",   Tr("12pt ink - The quick brown fox jumps over the lazy dog. 0123456789")},
-            {10, Color(190, 190, 190), "Muted10", Tr("10pt muted ink - The quick brown fox jumps over the lazy dog.")},
-            {10, Color(150, 150, 150), "Faint10", Tr("10pt faint ink - The quick brown fox jumps over the lazy dog.")},
-        };
-        for (const auto& sample : darkSamples) {
-            auto label = DemoKit::CreateText("DarkSample" + sample.id, sample.text);
-            label->SetFontSize(sample.fontSize);
-            label->SetTextColor(sample.ink);
-            label->SetFollowTheme(false);   // these colours are the sample
-            DemoKit::Add(darkGround, label);
         }
 
         // ===== EVENT HANDLERS =====
