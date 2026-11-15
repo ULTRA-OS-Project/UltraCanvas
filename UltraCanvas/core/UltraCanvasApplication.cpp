@@ -23,6 +23,7 @@
 //                  size asked for, as fontconfig's 10-scale-bitmap-fonts.conf does: the
 //                  bundled Noto Color Emoji (109 px bitmaps) was drawn eight times too big;
 //                  GenerateBitmapScalingConfig hands the rules to a config made another way
+// Version: 1.14.0 - DestroyWindows(), called by every platform application's destructor
 // Version: 1.13.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS closes every window after that long
 // Version: 1.12.0 - GenerateFontAliasConfig: the generic family aliases alone, for a
 //                  config the generated fonts.conf did not make (Windows' inline one)
@@ -1528,6 +1529,14 @@ namespace UltraCanvas {
         for (const auto& window : open) {
             if (window) window->Close();
         }
+    }
+
+    void UltraCanvasApplicationBase::DestroyWindows() {
+        // Take the list away first: a window's destructor unregisters itself,
+        // and it must not touch a vector that is already being emptied.
+        std::vector<std::shared_ptr<UltraCanvasWindowBase>> open;
+        open.swap(windows);
+        open.clear();
     }
 
     void UltraCanvasApplicationBase::Run() {

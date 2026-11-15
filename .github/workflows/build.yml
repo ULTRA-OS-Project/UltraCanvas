@@ -2352,6 +2352,39 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^TreeViewKeyboardTest$"
 
+      # UltraMail's four window suites - the account bar, the folder tree, the
+      # message pane, the format bar - open a real window, so "Run unit tests"
+      # above, which has no display and selects ^UltraMailEngine$ alone, never
+      # ran them. They were built by every row and run by nobody: five
+      # assertions of UltraMailAccountBar had been failing since the account
+      # tiles learned to be dragged, and nothing said so until a person read
+      # the suite by hand (#1245). ULTRACANVAS_TEST_DISPLAY_REQUIRED makes a
+      # suite that would skip here fail instead.
+      - name: Run the UltraMail window tests on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 600
+          -R "^(UltraMailAccountBar|UltraMailFolderTree|UltraMailMessagePreview|UltraMailFormatBar)$"
+
+      # UltraDesktop's Apps window: the category chosen, the categories
+      # opened and the place scrolled to survive the page being built again,
+      # in the tree view and in the tiles - which happens on every keystroke
+      # in its filter box. It opens a real window and takes its applications
+      # from the test (Hooks::applications), so it depends on nothing the
+      # runner has installed.
+      - name: Run the UltraDesktop Apps window test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^UltraDesktopAppStarterTest$"
+
       # The vanished-folder test's second half drives the Filer's folder watch,
       # which only runs inside the application's timers: a subfolder deleted on
       # disk is reported through onFolderChangedOnDisk (what UltraFiler's folder
