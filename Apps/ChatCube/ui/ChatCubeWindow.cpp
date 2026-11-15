@@ -2086,11 +2086,14 @@ bool ChatCubeWindow::DropFiles(const UCEvent& event) {
     // On a chat in the list: that chat, opened.
     const Point2Df at(static_cast<float>(event.pointerWindow.x), static_cast<float>(event.pointerWindow.y));
     if (conversationList_ && conversationList_->IsVisible() && conversationList_->ContainsInWindow(at)) {
-        const int row = conversationList_->GetRowAtY(static_cast<int>(at.y - conversationList_->GetYInWindow()));
+        // The row whose rectangle, as drawn now (scrolled), holds the point.
+        const Point2Di local(static_cast<int>(at.x - conversationList_->GetXInWindow()),
+                             static_cast<int>(at.y - conversationList_->GetYInWindow()));
         const auto& list = conversations_->Conversations();
-        if (row >= 0 && row < static_cast<int>(list.size())) {
-            const std::string id = list[static_cast<size_t>(row)].conversationId;
-            if (id != activeConversation_) OpenConversation(id);
+        for (size_t row = 0; row < list.size(); ++row) {
+            if (!conversationList_->GetCellRect(static_cast<int>(row), 0).Contains(local)) continue;
+            if (list[row].conversationId != activeConversation_) OpenConversation(list[row].conversationId);
+            break;
         }
     }
     if (activeConversation_.empty()) {
