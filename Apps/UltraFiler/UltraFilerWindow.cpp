@@ -6288,8 +6288,25 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
             EnsureTreeChildren(anchor);
             anchor->Expand();
             --idx;
-            anchor = folderTree->FindNode(chain[idx]);
-            if (!anchor) return;   // e.g. a hidden folder that the tree skips
+            TreeNode* next = folderTree->FindNode(chain[idx]);
+            // A folder the tree's listing leaves out - a hidden one (~/.config,
+            // AppData), or one outside the curated Home list - is still where
+            // the display now is: Extras > Open location and a typed location
+            // go there all the time. Its row is added on demand, so the tree
+            // shows where the display is instead of keeping the old selection.
+            if (!next && !IsRemoteFilerPath(chain[idx])) {
+                std::error_code ec;
+                const fs::path dir = UltraCanvas::PathFromUtf8(chain[idx]);
+                if (fs::is_directory(dir, ec) && !ec) {
+                    std::string label = PathToUtf8(dir.filename());
+                    if (label.empty()) label = chain[idx];
+                    AddTreeFolderNode(anchor->data.nodeId, chain[idx], label,
+                                      "folder-brown.svg");
+                    next = folderTree->FindNode(chain[idx]);
+                }
+            }
+            anchor = next;
+            if (!anchor) return;   // gone, or not a folder on this disk
         }
         node = anchor;
     }
