@@ -226,7 +226,7 @@ struct TreeViewColumn {
     int           minWidth   = 0;            // floor for flexible columns / resize
     float         flexWeight = 1.0f;         // relative share among flexible columns
     TextAlignment alignment  = TextAlignment::Left;
-    Color         textColor  = Color(40, 40, 40);         // default cell text colour
+    Color         textColor  = Colors::Transparent;       // Transparent => the tree's text colour (the theme's ink)
     Color         accentBackground = Colors::Transparent; // optional fill behind the cell
     int           accentPadding    = 0;      // px added around the accent fill
     bool          isTreeColumn = false;      // hosts indent/expander/icon; draws node->data.text
@@ -275,9 +275,10 @@ struct TreeColumnStyle {
 ```cpp
 auto varsTree = std::make_shared<UltraCanvasColumnsTreeView>("VarsTree", 300, 330);
 varsTree->SetColumns({
-    { "name",  "Name",  0,   0,  2.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent,  0, true  },
-    { "type",  "Type",  128, 0,  1.0f, TextAlignment::Left, Color(40, 40, 40), Color(255, 190, 130), 4, false },
-    { "value", "Value", 0,   48, 1.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent,  0, false },
+    { "name",  "Name",  0,   0,  2.0f, TextAlignment::Left, Colors::Transparent, Colors::Transparent,  0, true  },
+    // dark text on the light orange accent, in either look
+    { "type",  "Type",  128, 0,  1.0f, TextAlignment::Left, Color(40, 40, 40),   Color(255, 190, 130), 4, false },
+    { "value", "Value", 0,   48, 1.0f, TextAlignment::Left, Colors::Transparent, Colors::Transparent,  0, false },
 });
 varsTree->SetShowColumnHeader(true);
 
