@@ -108682,18 +108682,6 @@ passwords and tampering, the unlock back-off, CSV in and out (Chrome and
 Bitwarden layouts included) and the generator.
 
 ==============================================================================
-FILE: Docs/UltraPassword/changelog.d/tree-keeps-the-view.md
-==============================================================================
-
-- **The vault tree no longer jumps back to its first row when it is rebuilt.**
-  Every change - a rename, a move, an entry added or deleted, a group opened -
-  lists the tree again from the vault, and the view fell back to the top each
-  time, however far down the user had scrolled. The rebuild now holds the view
-  (the framework's `TreeRebuildScope`): the scroll position comes back as it
-  was and the selected row keeps its place on screen. The rows that were open
-  are restored as before.
-
-==============================================================================
 FILE: Docs/UltraClipboard/README.md
 ==============================================================================
 
@@ -109401,18 +109389,6 @@ asks, one printer after another, and the answer follows its other sections:
 | A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
 | *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
 | A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB, it does not speak IPP, or a firewall blocks port 631. |
-
-==============================================================================
-FILE: Docs/DeviceExplorer/changelog.d/tree-keeps-the-view.md
-==============================================================================
-
-- **The device tree no longer scrolls back to the top while you read it.** The
-  scan timer rebuilds the tree row by row, so the device being read scrolled
-  out from under the pointer every time the inventory came back - the more
-  devices, the worse. The rebuild now holds the view (the framework's
-  `TreeRebuildScope`): the scroll position and the selected row's place on
-  screen survive it, and a device that has gone is still replaced by the
-  computer row, scrolled into view.
 
 ==============================================================================
 FILE: Docs/UltraDesktop/Manual.md
@@ -110779,22 +110755,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/apps-window-keeps-the-tree.md
-==============================================================================
-
-- **The Apps window's category tree keeps its place while you type in the
-  filter box.** Every keystroke - and every new list of applications, and
-  every application moved to another category - built the window's pane again
-  from nothing, tree element and all, so the category you had chosen, the
-  categories you had opened and the place you had scrolled to went with the
-  discarded element each time. The tree and the list beside it are now kept
-  and only the tree's rows are replaced: the view stays where it was (the
-  framework's `TreeRebuildScope`), the categories you opened open again, and
-  the category you were looking in stays selected with its applications still
-  listed. Switching to the tiles and back, or a filter that matches nothing,
-  builds the pane afresh as before.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
@@ -112765,16 +112725,6 @@ folder.
 | The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
 | The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/folder-tree-keeps-collapsed-folders.md
-==============================================================================
-
-- **A folder you collapse in the tree stays collapsed.** Every folder rescan -
-  one follows each mail check - rebuilds the tree and expanded it in full, so a
-  mailbox closed by hand reopened a minute later by itself. What you close
-  stays closed for as long as the program runs, and reopening it is enough to
-  have it open again.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
