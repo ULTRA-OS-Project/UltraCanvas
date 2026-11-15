@@ -1,3 +1,105 @@
+#### 2026-11-15 *0.9.567*
+- **DropdownKeyboardTest runs in CI, and checks the dropdown's focus outline
+  on real pixels.** The suite opens a real window, so in "Run unit tests" -
+  which has no display - it skipped as a whole, its keyboard checks (Return
+  choosing, Tab and the focus, type-ahead) included. It now runs in the
+  virtual-display step next to the tree and list view focus tests, with
+  `ULTRACANVAS_TEST_DISPLAY_REQUIRED=1` turning its skip into a failure. Its
+  new section reads the dropdown button's edges back from the window
+  (`DisplayTest::RingSides`): the outline in `focusBorderColor` on all four
+  sides while the dropdown is focused and closed, none while its list is open
+  or once the focus has gone, and the plain border back on all four sides.
+- **`FileDialogTest` passes on a display again.** Its check that the
+  save-settings dialog opened from a settings window has shorter rows assumed
+  the window's type is smaller than the dialog's own 12 - true while
+  `SettingsPageKit` drew at a constant 10, but since the kit follows the
+  theme (0.9.541) its `TextFontSize()` is the desktop's body size, 12 where
+  no desktop names a font, as under Xvfb, and the dialog then rightly draws
+  its 28-pixel rows. The dialog's scaling was never at fault (21, 23 and 26
+  pixels at 9, 10 and 11 points). The test now checks that a settings window
+  opens the dialog at its own type size, and measures the shorter rows and
+  narrower window at 10 points against the dialog at its own size, so it
+  holds at any desktop's size (run at 10, 12 and 14). The file dialog's
+  documentation and the loader's header no longer name the old
+  `kTextFontSize`.
+- **Indented Markdown code blocks are highlighted.** A code block indented
+  four spaces has no language tag, and the text area drew it plain. Each
+  block's language is now found once per block: a clear guess from its own
+  text (`DetectLanguageFromContent`); else the language the nearest code fence
+  above it names; else a guess on a lower bar, since the text is known to be
+  code - so a one-line `console.log(x);` or `print(x)` is placed too. A block
+  none of them places stays plain, so indented prose is never coloured as
+  code. `DetectLanguageFromContent` gains an overload taking
+  `LanguageDetectOptions` (the minimum score and lead; the one-argument form
+  is unchanged). An application that knows the
+  language sets it for every indented block with
+  `UltraCanvasTextArea::SetIndentedCodeLanguage("C++")`. A blank line between
+  two indented code lines now belongs to the block, as CommonMark has it, so
+  the line state carries through it: a `/* comment */` open across the blank
+  line stays a comment. Fenced and indented blocks share one highlighting
+  routine, which takes a tokenizer name as the detector gives it
+  ("Common Lisp") as well as a fence tag.
+- **The localisation editor's controls fit a narrow page.** In UOS-Settings'
+  Translations page, two things were cut off:
+  - the *Show the whole sets* and *Edit shared sets* switches lost their
+    labels ("Sho", "Ed") to the action buttons beside them;
+  - the *Compare with* list ran off the first row.
+
+  The action buttons (Undo, Draft with UltraAI, Export, Save) now have a row
+  of their own, to the right, and *Compare with* sits beside *Show* on the
+  second row, where the search field gives way. Every control keeps its
+  whole label.
+- **The media viewer saves a drawing as a drawing, and a recording in
+  another audio type.** *Save as* on an SVG, a DXF, an EMF or any file the
+  vector view shows offers every vector type this build writes and every
+  bitmap type, drawn again at the size the Settings give
+  (`AddVectorDocumentSaveTypes` / `SaveVectorDocument`); the vector view
+  offers *Save as* too, so an SVG has one where libvips has no SVG loader
+  (Windows). A drawing turned or mirrored on the image surface is still saved
+  as the picture, and the same type as the file on show is copied as it is.
+  A recording the audio player opened is offered every audio type this build
+  encodes, through the new `UltraCanvasFileLoader::SaveAudio` /
+  `ConvertAudioFile` (the same type copied as it is, another decoded and
+  encoded). Tests: `MediaViewerSaveTest`, `MediaViewerToolsTest`.
+- **The toolbar icons fill their slot.** `zoom-fit`, `rotate-left/right`,
+  `mirror-h/v`, `curves` and `slideshow` drew inside a 3-4 unit margin of
+  their 24-unit box, about 11 px of a 16 px slot; their view box is cropped
+  to the drawing and the mirror triangles are larger.
+- **The Save settings dialog is set in one type size.** Its captions,
+  checkboxes and buttons were drawn at a fixed 12 while the size fields and
+  lists followed the theme's body size, smaller on Windows; it now takes the
+  theme's body size, the Save dialog opens it at its own, and the spinners
+  and dropdowns follow (`FileDialogTest`).
+- **A video shown in the media viewer can be saved in another type.**
+  *Save as* was there for a picture, a drawing and a recording, never for a
+  film: the core has no video encoder, and the one transcoder, VideoFX, is a
+  sibling module on FFmpeg. FileLoader gains the seam:
+  `UltraCanvasFileLoader::ConvertVideoFile(source, target, error, progress)`
+  copies the same type as it is and converts another with the converter
+  its codec registration carries (`MediaCodecRegistration::convertVideo`,
+  new; it makes the entry `canEncode`), written beside the target and moved
+  there when complete - a stopped or failed conversion leaves no half file
+  and keeps the one it was to replace. `CanConvertVideoTo`,
+  `GetVideoSaveExtensions` and `AddVideoSaveTypes(opts)` list what it writes.
+  `VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h` (library
+  `VideoFXUltraCanvasFormats`) registers VideoFX's converter for every
+  container its FFmpeg writes - MP4, MOV, Matroska, WebM, AVI as the
+  encoders allow - with `VideoFX_RegisterWithFileLoader()`. The viewer
+  offers *Save as* for a video its player opened once a converter is
+  registered (`ShowVideoSaveDialog`), and converts on a worker thread
+  behind `UltraCanvasProgressDialog` - the ring follows the encoder, Cancel
+  stops it. A build without a converter offers a video no *Save as*, rather
+  than one that fails: `canEncode` alone is not enough, since on Linux the
+  built-in table marks the GStreamer capture muxers (MP4, MOV, MKV, WebM,
+  AVI) `canEncode` with no way to convert a file. Tests:
+  `MediaViewerSaveTest` (a converter of the test's own: copy, convert,
+  stop, a converter that ignores a stop, failure, the earlier file kept;
+  VideoFX's on a generated clip into every type it writes),
+  `MediaViewerToolsTest` (a film offers *Save as* only with a converter).
+  Docs: *Saving a drawing, a recording or a video* in
+  `UltraCanvasMediaViewer.md`, *A Video Saved in Another Type* in
+  `Docs/Modules/FileLoader/README.md`, the VideoFX README's *Which files*.
+
 #### 2026-11-16 *0.9.566*
 - **UltraIM: progress of a file on its way, and sound as a search kind.**
   `UltraIMEventType::TransferProgress` (`transferredBytes`, `totalBytes`,
