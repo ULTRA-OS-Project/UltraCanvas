@@ -154,8 +154,10 @@ the right-hand monitor the primary.
 - **Clipboard**: the desktop records every copy into the clipboard history
   ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
   on disk and encrypted, leaving out copies a password manager marks as
-  secret. The clipboard button, or `Super+V` from any window, opens the quick
-  panel: a search field, the pinned entries and the ten latest (typing
+  secret. The clipboard button opens [UltraClipboard](../UltraClipboard/README.md),
+  the whole history in a window of its own (a copy running in the background
+  comes forward). `Super+V` from any window opens the quick panel, for
+  picking what to paste: a search field, the pinned entries and the ten latest (typing
   searches the whole history), each with a thumbnail and Copy, Edit and
   Delete. What the program being pasted into takes comes first, under "For
   <program>" and chosen - the newest images for a paint program, files for
@@ -164,8 +166,10 @@ the right-hand monitor the primary.
   focus before it was clicked. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
   edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
   *Recording* switch pauses the history and *Open UltraClipboard* shows all
-  of it. Right-click the button for *Pause recording*, *Open UltraClipboard*
+  of it. Right-click the button for *Pause recording*, *Quick panel (Super+V)*
   and *Clear history*; while recording is paused the button is crossed out.
+  Where UltraClipboard is not installed beside the desktop, the button opens
+  the quick panel instead.
   When a program that made a copy quits, the desktop puts that copy back on
   the clipboard, so it can still be pasted. Without a history (a build
   without SQLite) the button shows a menu of this session's last fifteen

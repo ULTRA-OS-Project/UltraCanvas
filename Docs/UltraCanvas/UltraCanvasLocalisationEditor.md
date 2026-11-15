@@ -44,10 +44,13 @@ with their status, edits the working copies, merges the sets, undoes,
 saves and exports. A test drives it on a folder of its own; a headless tool
 could too.
 
-`UltraCanvasLocalisationEditor` is the element over it: a toolbar (the
-application, the language, the comparison language, the search, the status
-filter, the *Sets...* picker, the two switches, Undo, Draft, Export, Save), a
-columns tree view, the edit row under it and a status line. It derives from
+`UltraCanvasLocalisationEditor` is the element over it: four rows of
+controls - the application and the language; the search, the status filter
+and the comparison language; the *Sets...* picker and the two switches; Undo,
+Draft, Export and Save to the right - then a columns tree view, the edit row
+under it and a status line. The rows are kept short so that each fits a
+narrow page (a settings page leaves the editor about 620 px): no control
+loses its label to another, and the search field is the one that gives way. It derives from
 `UltraCanvasContainer` and lays itself out with the CSS flex layout, so it
 fills whatever it is put in.
 
