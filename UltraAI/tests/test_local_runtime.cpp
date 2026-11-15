@@ -1661,9 +1661,9 @@ void TestHuggingFace() {
     EXPECT_TRUE(!ParseHuggingFaceSearch("{\"error\": \"x\"}", none));
 
     EXPECT_EQ(HuggingFaceSearchUrl("qwen 3 & more", true, 500),
-              std::string("https://huggingface.co/api/models?sort=downloads&direction=-1&limit=100&filter=gguf&search=qwen%203%20%26%20more"));
+              std::string("https://huggingface.co/api/models?sort=downloads&direction=-1&full=true&limit=100&filter=gguf&search=qwen%203%20%26%20more"));
     EXPECT_EQ(HuggingFaceSearchUrl("  ", false, 20),
-              std::string("https://huggingface.co/api/models?sort=downloads&direction=-1&limit=20"));
+              std::string("https://huggingface.co/api/models?sort=downloads&direction=-1&full=true&limit=20"));
     EXPECT_EQ(HuggingFaceTreeUrl("org/repo", ""), std::string("https://huggingface.co/api/models/org/repo/tree/main"));
     EXPECT_EQ(HuggingFaceTreeUrl("org/repo", "v2", "quant"), std::string("https://huggingface.co/api/models/org/repo/tree/v2/quant"));
 
@@ -1728,6 +1728,12 @@ void TestHuggingFace() {
     EXPECT_TRUE(files[0].fit == ModelFit::Recommended || files[0].fit == ModelFit::RunsOnCpu);   // 4 GB on 16 GB
     EXPECT_TRUE(files[3].fit != ModelFit::Recommended);      // a speech model runs on the CPU here
     EXPECT_TRUE(rt.ListHuggingFaceFiles("Qwen/Missing", files).code == ErrorCode::ModelNotFound);
+    // Hugging Face answers 401, not 404, for a repository that is not there (or is private).
+    TransportResponse unauthorised;
+    unauthorised.statusCode = 401;
+    transport->pages["https://huggingface.co/api/models/Qwen/Private"] = unauthorised;
+    transport->pages["https://huggingface.co/api/models/Qwen/Private/tree/main?recursive=true"] = unauthorised;
+    EXPECT_TRUE(rt.ListHuggingFaceFiles("Qwen/Private", files).code == ErrorCode::ModelNotFound);
     EXPECT_TRUE(rt.ListHuggingFaceFiles("not a repository", files).code == ErrorCode::InvalidRequest);
     EXPECT_TRUE(rt.ListHuggingFaceFiles("a/b/c", files).code == ErrorCode::InvalidRequest);
 

@@ -1485,6 +1485,13 @@ Error LocalRuntime::ListHuggingFaceFiles(const std::string& repo, std::vector<Hu
     if (!plain) {
         return MakeError(ErrorCode::InvalidRequest, "a Hugging Face repository is \"organisation/repository\"");
     }
+    // Hugging Face answers 401 for a repository that does not exist, as it
+    // does for a private one (it will not say which); 404 for the rest.
+    auto missing = [](const Error& e) {
+        return e.code == ErrorCode::ModelNotFound || e.providerCode == "401";
+    };
+    const Error noSuch = MakeError(ErrorCode::ModelNotFound,
+                                   "Hugging Face has no public repository \"" + repo + "\"");
     // The repository's own facts first: they say what its files serve. A
     // repository that will not give them still lists its files.
     HuggingFaceRepo facts;
@@ -1493,17 +1500,12 @@ Error LocalRuntime::ListHuggingFaceFiles(const std::string& repo, std::vector<Hu
     Error error = impl_->GetText(HuggingFaceRepoUrl(repo), 20000, body);
     if (error.IsOk()) {
         ParseHuggingFaceRepo(body, facts);
-    } else if (error.code == ErrorCode::ModelNotFound) {
-        return MakeError(ErrorCode::ModelNotFound, "Hugging Face has no repository \"" + repo + "\"");
+    } else if (missing(error)) {
+        return noSuch;
     }
     if (outRepo) *outRepo = facts;
     error = impl_->GetText(HuggingFaceTreeUrl(repo, "") + "?recursive=true", 30000, body);
-    if (!error.IsOk()) {
-        if (error.code == ErrorCode::ModelNotFound) {
-            return MakeError(ErrorCode::ModelNotFound, "Hugging Face has no repository \"" + repo + "\"");
-        }
-        return error;
-    }
+    if (!error.IsOk()) return missing(error) ? noSuch : error;
     if (!ParseHuggingFaceFiles(body, facts, out)) {
         return MakeError(ErrorCode::ProviderError, "Hugging Face's list of the files of " + repo + " is not usable");
     }

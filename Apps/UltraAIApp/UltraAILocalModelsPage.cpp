@@ -927,7 +927,7 @@ void UltraAILocalModelsPage::OnAddHuggingFace() {
             if (install && activeJobId_.empty()) {
                 OnInstall();
             } else {
-                SetStatus(TrF("Added {0}; select it and Install.", name));
+                SetStatus(TrF("Added {0}. Install downloads it.", name));
             }
         });
     dialog->CreateHuggingFaceDialog();

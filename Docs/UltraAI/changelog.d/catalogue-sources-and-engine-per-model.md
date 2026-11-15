@@ -64,6 +64,12 @@
   in the corner beside the buttons - and names what each source returned.
   *Forget* is offered for the models the user added only; the buttons no
   longer end in "...".
+- Checked against the live services on 2026-11-15: a whisper model and a
+  GGUF chat model picked from LocalAI's gallery were installed from the
+  page - engine first, the files' hashes as the gallery states them - and
+  `llama-server` answered with the chat model; Hugging Face's search, file
+  lists and a repository that does not exist (it answers 401, not 404)
+  behave as the runtime expects.
 - An installed model's `model.json` records the sizes the host reported,
   and `AddHuggingFaceModel` records the repository as the model's homepage
   and its licence when the caller knows it.

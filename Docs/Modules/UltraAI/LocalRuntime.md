@@ -356,8 +356,9 @@ rt.AddHuggingFaceModel(request, id);            // "hf:<repo>:<file>", then Inst
 ```
 
 All three block on the network and are for a worker thread. The search is
-`https://huggingface.co/api/models?sort=downloads&direction=-1&limit=<n>`
-with `filter=gguf` and `search=<words>`; the files are the repository's
+`https://huggingface.co/api/models?sort=downloads&direction=-1&full=true&limit=<n>`
+with `filter=gguf` and `search=<words>` (`full=true` adds the date of the
+last change and whether a repository is gated); the files are the repository's
 tree (`/api/models/<repo>/tree/main?recursive=true`) - GGUFs and
 `ggml-*.bin` whisper.cpp models, a split GGUF as one entry with its parts,
 projectors marked and listed last - with the capability guessed from the
@@ -365,8 +366,10 @@ repository's pipeline tag and the name (`.bin`: speech to text; a
 `sentence-similarity` or `feature-extraction` repository, or "embed" in the
 name: embeddings; else chat). A repository reported as `gated` asks for an
 agreement on huggingface.co first, and its files are refused to a download
-that is not signed in. Nothing is sent to Hugging Face but the search
-words and the repository's name.
+that is not signed in. A repository that does not exist answers 401 there,
+as a private one does; both come back as `ModelNotFound`. Nothing is sent
+to Hugging Face but the search words and the repository's name. Checked
+against the live service on 2026-11-15.
 
 ---
 

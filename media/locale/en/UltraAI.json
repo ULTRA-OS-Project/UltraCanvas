@@ -50,7 +50,7 @@
   "Add model file": "Add model file",
   "Add source": "Add source",
   "Added {0} as a {1} model.": "Added {0} as a {1} model.",
-  "Added {0}; select it and Install.": "Added {0}; select it and Install.",
+  "Added {0}. Install downloads it.": "Added {0}. Install downloads it.",
   "Adding {0}…": "Adding {0}…",
   "Agent": "Agent",
   "Agents": "Agents",

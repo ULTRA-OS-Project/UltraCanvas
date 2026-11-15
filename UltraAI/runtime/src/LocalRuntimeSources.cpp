@@ -1204,7 +1204,9 @@ bool ParseCatalogueSourceDocument(const std::string& text, const CatalogueSource
 // ===== Hugging Face =====
 
 std::string HuggingFaceSearchUrl(const std::string& query, bool ggufOnly, int limit) {
-    std::string url = "https://huggingface.co/api/models?sort=downloads&direction=-1&limit=" +
+    // full=true: the list then says when each repository last changed and
+    // whether it is gated, which the short form leaves out.
+    std::string url = "https://huggingface.co/api/models?sort=downloads&direction=-1&full=true&limit=" +
                       std::to_string(std::clamp(limit, 1, 100));
     if (ggufOnly) url += "&filter=gguf";
     const std::string q = Trim(query);
