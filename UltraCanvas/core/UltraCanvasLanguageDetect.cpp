@@ -775,6 +775,10 @@ namespace UltraCanvas {
     } // namespace
 
     std::string DetectLanguageFromContent(const std::string& text) {
+        return DetectLanguageFromContent(text, LanguageDetectOptions{kMinScore, kMinLead});
+    }
+
+    std::string DetectLanguageFromContent(const std::string& text, const LanguageDetectOptions& options) {
         const std::string head = text.substr(0, kScanBytes);
         const std::string trimmed = Trim(head);
         if (trimmed.empty()) return "";
@@ -880,12 +884,12 @@ namespace UltraCanvas {
                 bestScore = score;
             }
         }
-        if (bestScore < kMinScore) return "";
+        if (bestScore < options.minScore) return "";
         int rivalScore = 0;
         for (const auto& [language, score] : votes.All()) {
             if (familyOf(language) != familyOf(best)) rivalScore = std::max(rivalScore, score);
         }
-        return bestScore - rivalScore >= kMinLead ? best : "";
+        return bestScore - rivalScore >= options.minLead ? best : "";
     }
 
 } // namespace UltraCanvas
