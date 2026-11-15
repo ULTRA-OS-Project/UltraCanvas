@@ -11,6 +11,7 @@
 // Version: 1.14.0 - UltraCanvasApplication is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
 // Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules
+// Version: 1.12.0 - DestroyWindows(), so a window is destroyed while its application lives
 // Version: 1.11.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS for a test that must end
 // Version: 1.10.0 - GenerateFontAliasConfig: the generic family aliases as a fontconfig document
 // Version: 1.9.0 - ClosingEndsApplication: whether a window's close ends Run()
@@ -461,6 +462,15 @@ namespace UltraCanvas {
         // opens, runs two seconds, closes through the application's own
         // onWindowClosed and ends. Unset, or 0, it does nothing.
         void CloseAllWindows();
+        // Destroys the application's windows at once, without asking them.
+        // A platform application MUST call this at the top of its own
+        // destructor: `windows` is a member of this base class, so without it
+        // the windows are destroyed by ~UltraCanvasApplicationBase, which runs
+        // *after* the platform part of the application has already gone. A
+        // window's destructor closes its popups and releases OS resources
+        // (X11 unmaps through the display reached from the platform
+        // application), so running it then is a use-after-free.
+        void DestroyWindows();
         UltraCanvasUIElement* GetFocusedElement();
         UltraCanvasUIElement* GetHoveredElement() { return hoveredElement; }
         UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }
