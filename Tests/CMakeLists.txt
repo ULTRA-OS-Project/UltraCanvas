@@ -1202,6 +1202,37 @@ else()
     message(STATUS "  UltraDesktopAppCategoriesTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ULTRADESKTOP APPS WINDOW TEST =====
+# The Apps window keeps the user's place when its page is built again - on
+# every keystroke in the filter box, every new list of applications, every
+# application moved: the category chosen, the categories opened and the place
+# scrolled to, in the tree view and in the tiles. Opens a real window, so it
+# runs under Xvfb and skips itself without a display (CI's virtual-display
+# step sets ULTRACANVAS_TEST_DISPLAY_REQUIRED=1, where a skip fails instead).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraDesktopAppStarterTest...")
+    add_executable(UltraDesktopAppStarterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraDesktopAppStarterTest.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppStarter.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppCatalogue.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppCategories.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopSettings.cpp
+    )
+    target_include_directories(UltraDesktopAppStarterTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui)
+    target_compile_features(UltraDesktopAppStarterTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraDesktopAppStarterTest PRIVATE UltraCanvas)
+    set_target_properties(UltraDesktopAppStarterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraDesktopAppStarterTest COMMAND UltraDesktopAppStarterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraDesktopAppStarterTest")
+else()
+    message(STATUS "  UltraDesktopAppStarterTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== UTF-8 FIND ALL TEST =====
 # utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
 # loop was quadratic and hung UltraTexter's search bar on a large file.

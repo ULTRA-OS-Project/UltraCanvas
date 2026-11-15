@@ -56,8 +56,18 @@ static int failCount = 0;
         testCount++;                                                          \
     } while (0)
 
+// Without a display there is nothing to test, so the suite skips - unless
+// ULTRACANVAS_TEST_DISPLAY_REQUIRED=1, which CI's virtual-display step sets:
+// there a skip would pass for a run, and these suites were built and never
+// run for long enough already.
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED"); \
+        if (required && std::string(required) == "1") {                       \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
         return 0;                                                             \
     } while (0)
