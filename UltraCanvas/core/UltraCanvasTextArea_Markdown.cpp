@@ -1984,8 +1984,7 @@ namespace UltraCanvas {
                         }
                         blockText += t.substr(i) + "\n";
                     }
-                    const std::string guess = DetectLanguageFromContent(blockText);
-                    cl->codeblockLanguage = (guess == "Markdown") ? std::string() : guess;
+                    cl->codeblockLanguage = GuessIndentedCodeLanguage(blockText, lineIndex);
                 }
                 HighlightCodeBlockLine(cl.get(), content, cl->codeblockLanguage, lineIndex);
                 int indentCp = utf8_byte_to_cp(rawLine, indentBytes);
@@ -2315,6 +2314,34 @@ namespace UltraCanvas {
         if (indentedCodeLanguage == language) return;
         indentedCodeLanguage = language;
         InvalidateAllLineLayouts();
+    }
+
+    // An indented block's language, most reliable first: a clear guess from
+    // its text; the language the nearest code fence above names, where the
+    // author said what the document's code is; a guess on a lower bar (the
+    // text is code, so a short snippet need not pile up the points prose
+    // would); else none - plain.
+    std::string UltraCanvasTextArea::GuessIndentedCodeLanguage(const std::string& blockText, int lineIndex) {
+        auto usable = [](const std::string& language) {
+            return !language.empty() && language != "Markdown";
+        };
+        const std::string clear = DetectLanguageFromContent(blockText);
+        if (usable(clear)) return clear;
+
+        // The fences above are laid out already (layouts are built top down).
+        static SyntaxTokenizer probe;   // only to ask whether a tag names a language
+        for (int k = std::min(lineIndex, (int)lineLayouts.size()) - 1; k >= 0; --k) {
+            auto* fence = dynamic_cast<CodeLayout*>(lineLayouts[k].get());
+            if (!fence || fence->layoutType != LineLayoutType::CodeblockStart ||
+                fence->codeblockLanguage.empty()) {
+                continue;
+            }
+            if (probe.SetLanguageByTag(fence->codeblockLanguage)) return fence->codeblockLanguage;
+            break;   // the nearest fence names no language we know: no context
+        }
+
+        const std::string likely = DetectLanguageFromContent(blockText, LanguageDetectOptions{1, 1});
+        return usable(likely) ? likely : std::string();
     }
 
     void UltraCanvasTextArea::HighlightCodeBlockLine(CodeLayout* cl, const std::string& text,

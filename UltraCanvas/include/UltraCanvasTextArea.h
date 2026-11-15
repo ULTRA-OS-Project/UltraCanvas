@@ -643,10 +643,12 @@ namespace UltraCanvas {
         void SetProgrammingLanguage(const std::string& language);
         // Markdown mode: the language an indented (four-space) code block is
         // highlighted in. An indented block has no language tag, so by default
-        // ("") each block's language is guessed from its own content
-        // (DetectLanguageFromContent) and the block stays plain when the guess
-        // is not clear. A name - "C++", "python", "js" - highlights every
-        // indented block in that language instead.
+        // ("") each block's language is found from, in order: a clear guess
+        // from its own content (DetectLanguageFromContent); the language the
+        // nearest code fence above it names; a guess on a lower bar, since the
+        // text is known to be code. A block none of them places stays plain.
+        // A name - "C++", "python", "js" - highlights every indented block in
+        // that language instead.
         void SetIndentedCodeLanguage(const std::string& language);
         const std::string& GetIndentedCodeLanguage() const { return indentedCodeLanguage; }
         bool SetProgrammingLanguageByExtension(const std::string& extension);
@@ -1349,6 +1351,9 @@ namespace UltraCanvas {
         // An empty or unknown language leaves the line plain.
         void HighlightCodeBlockLine(CodeLayout* cl, const std::string& text,
                                     const std::string& language, int lineIndex);
+        // The language of the indented block whose text starts at lineIndex
+        // (SetIndentedCodeLanguage unset): see the definition for the order.
+        std::string GuessIndentedCodeLanguage(const std::string& blockText, int lineIndex);
 
         void InvalidateLineLayout(int logicalLine);
         void InvalidateLineLayoutsFrom(int fromLine);

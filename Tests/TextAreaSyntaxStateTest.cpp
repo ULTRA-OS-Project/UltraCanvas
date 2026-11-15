@@ -11,8 +11,9 @@
 //     cursor is editing (read with the Markdown rules, not the fence's);
 //   - a fence in a language the tokenizer does not know is shown plain;
 //   - an indented (four-space) code block is highlighted in the language
-//     guessed from its content or set with SetIndentedCodeLanguage, through
-//     the blank lines inside it.
+//     guessed from its content (or, for a short snippet, from the fence above
+//     it or on a lower bar) or set with SetIndentedCodeLanguage, through the
+//     blank lines inside it.
 //
 // Every token class is painted one pure colour so a pixel says which class
 // covers it. Runs headless under Xvfb; skips when there is no display.
@@ -189,6 +190,16 @@ int main() {
     Counts indentedProse = CountPixels(window, area);
     TEST("Indented prose the guess cannot place stays plain",
          indentedProse.code < 20 && indentedProse.comment < 20);
+
+    // Too short for a clear guess: the language of the code fence above it.
+    area->SetText("```python\n```\n\nIntro.\n\n    return x\n");
+    Counts fromFence = CountPixels(window, area);
+    TEST("A short indented snippet takes the language of the fence above it", fromFence.code > 100);
+
+    // No fence: a guess on the lower bar a code block allows.
+    area->SetText("Intro.\n\n    console.log(x);\n");
+    Counts shortGuess = CountPixels(window, area);
+    TEST("A short indented snippet is guessed on the lower bar for code", shortGuess.code > 100);
 
     area->SetIndentedCodeLanguage("C++");
     area->SetText("Intro.\n\n    /* a comment\n\n    still inside */\n");
