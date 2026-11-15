@@ -23,7 +23,9 @@ This app versions itself: [`Docs/Texter/CHANGELOG.md`](../../Docs/Texter/CHANGEL
   extension or from the status bar. Line numbers, word wrap, zoom, light and
   dark look - the desktop's, and *View > Theme* picks the other one for
   every UltraCanvas application at once (it writes `Appearance.conf`, the
-  setting UOS-Settings' Look page keeps).
+  setting UOS-Settings' Look page keeps). Under the dark look the text can
+  still sit on a light page: *View > Dark Mode: Document Background* picks
+  dark, light grey or white.
 - **Markdown.** A Markdown toolbar and side bar (headings, emphasis, lists,
   checklist, links, images, tables), with the Markdown rendered live in the
   editor (`UltraCanvasTextArea`).

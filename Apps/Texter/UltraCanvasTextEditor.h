@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
+// Version: 2.7.0 - darkDocumentBackground, SetDarkDocumentBackground, ApplyDocumentLook
 // Version: 2.6.0 - the status bar's spelling indicator: UpdateSpellLanguageIndicator, ShowSpellLanguageMenu
 // Version: 2.5.0 - the look is the framework theme's (the desktop's, Appearance.conf over it): ApplyDarkTheme / ApplyLightTheme,
 //                  TextEditorConfig::darkTheme, onThemeChanged and CreateDarkTextEditor retired; ToggleTheme writes Appearance.conf
@@ -88,6 +89,10 @@ namespace UltraCanvas {
         // Word-processing documents shown on their pages (headers, footers,
         // page breaks) rather than as one column.
         bool documentPageLayout = true;
+        // The text tabs' background while the look is dark (View > Dark Mode:
+        // Document Background): "dark", "white" or "lightgray". Light text on
+        // black is not for everyone, and the window around it can still be dark.
+        std::string darkDocumentBackground = "dark";
         std::string defaultEncoding = "UTF-8";
 
         // Spell checking. Off until the user asks for it, so a launch without
@@ -508,6 +513,12 @@ namespace UltraCanvas {
         void OnViewDecreaseFontSize();
         void OnViewResetFontSize();
         void OnViewToggleTheme();
+        // View > Dark Mode: Document Background - "dark", "white" or "lightgray".
+        void SetDarkDocumentBackground(const std::string& background);
+        std::vector<MenuItemData> BuildDarkDocumentBackgroundMenuItems();
+        // The look a text area takes: the theme's, or under a dark theme the
+        // document background the user picked.
+        void ApplyDocumentLook(UltraCanvasTextArea& textArea);
         void OnViewToggleLineNumbers(bool checked);
         void OnViewToggleWordWrap(bool checked);
         void OnViewToggleHiddenCharacters(bool checked);
