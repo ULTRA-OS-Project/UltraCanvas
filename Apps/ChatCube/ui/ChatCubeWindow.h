@@ -70,6 +70,10 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.3 - a reply (the message menu's Reply: a bar over the field, the quote in the bubble), an
+//                  edit (double click on one's own message, or Edit in its menu), the search field over
+//                  the chat, voice messages (the microphone: recorded, then sent, played in their bubble)
+//                  and video messages (the camera button: recorded over the field, then sent)
 // Version: 0.3.2 - the look follows a change while ChatCube runs: the desktop turning dark or light
 //                  under System, or the Settings window's Look page, re-colours every window at once
 // Version: 0.3.1 - a right-click on a conversation in the list opens its menu: open it, mark it read or
@@ -129,6 +133,9 @@ class UltraCanvasQRCode;
 class UltraCanvasTextArea;
 class UltraCanvasTextInput;
 class UltraCanvasVideoTile;
+class UltraCanvasAudioRecorder;
+class UltraCanvasAudioPlayer;
+class UltraCanvasVideoRecorderElement;
 }
 
 namespace ChatCube {
@@ -227,8 +234,51 @@ private:
     void UpdateAttachmentStrip();
     // The text as a message of its own; a file to the open conversation with
     // `caption` (a picture's or a video's; a file takes none).
-    void SendText(const std::string& text);
-    void SendAttachment(const std::string& path, const std::string& caption);
+    // replyTo: the message the text answers ("" none).
+    void SendText(const std::string& text, const std::string& replyTo = std::string());
+    // `seconds`: a recording's length; `voice`: a recording from the
+    // microphone, sent as a voice message (a file where the network has none).
+    void SendAttachment(const std::string& path, const std::string& caption, const std::string& replyTo = std::string(),
+                        double seconds = 0, bool voice = false);
+
+    // ---- reply and edit --------------------------------------------------------
+    // The composer answers a message (Reply), or changes one of ours (Edit:
+    // its words in the field, Enter keeps them, Escape gives up); a bar over
+    // the field says which, with a x.
+    bool CanReply(const UltraIMMessage& message) const;
+    bool CanEdit(const UltraIMMessage& message) const;
+    void StartReply(const UltraIMMessage& message);
+    void StartEdit(const UltraIMMessage& message);
+    void SaveEdit(const std::string& text);
+    void ClearComposerMode();
+    void UpdateComposerBar();
+
+    // ---- search ------------------------------------------------------------------
+    // The field over the chat: what is typed searches the conversation's
+    // history (the provider's search, else the history fetched and
+    // filtered), the list showing only what matches until it is cleared.
+    void ScheduleSearch();
+    void RunSearch();
+    void ClearSearch(bool reload);
+    void LoadMessages();
+
+    // ---- recordings ------------------------------------------------------------
+    // The microphone: a bar in the composer while it records (its length, x
+    // to throw it away, send); sent as a voice message.
+    void StartVoiceRecording();
+    void FinishVoiceRecording(bool send);
+    void UpdateRecordBar();
+    // The camera button: the camera over the field, recorded with its red
+    // button, then sent as a video, or thrown away.
+    void OpenVideoRecorder();
+    void CloseVideoRecorder(bool keepFile);
+    void SendVideoMessage();
+    // A voice message's bubble: played here, or paused; fetched first.
+    void ToggleVoicePlayback(int row);
+    void PlayVoice(const std::string& clientId, const std::string& path);
+    void StopVoicePlayback();
+    // Where a recording is written: ChatCube's cache, a name by the time.
+    std::string RecordingPath(const std::string& prefix, const std::string& extension) const;
     // Whether the open conversation's network takes pictures and files.
     bool AttachmentsPossible() const;
     // A click on a bubble's picture or file: shown in the media viewer, fetched
@@ -419,6 +469,38 @@ private:
         bool ownFile = false;                                       // deleted when dropped
         std::shared_ptr<UltraCanvas::UltraCanvasContainer> tile;    // its picture or name, and the x
     };
+    // Reply and edit: the bar over the field.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> composerBar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     composerBarTitle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     composerBarText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> composerRow_;
+    UltraIMMessage replyTo_;            // replying when its messageId is set
+    UltraIMMessage editing_;            // editing when its clientMessageId is set
+    // Search.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> searchRow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     searchInfo_;
+    std::string searchText_;            // what the list shows the matches of ("" all)
+    uint64_t    searchTimer_ = 0;
+    int         searchSerial_ = 0;      // the answer of an older search is dropped
+    bool        settingSearch_ = false; // the field set by hand, not typed
+    // Recordings.
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    recordVoice_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    recordVideo_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> recordBar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     recordText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasAudioRecorder> voiceRecorder_;
+    uint64_t    recordTimer_ = 0;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> videoNotePanel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasVideoRecorderElement> videoRecorder_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     videoNoteText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    videoNoteSend_;
+    std::string videoNotePath_;
+    int64_t     videoNoteStartedMs_ = 0;
+    double      videoNoteSeconds_ = 0;
+    bool        videoNoteReady_ = false;
+    std::shared_ptr<UltraCanvas::UltraCanvasAudioPlayer> voicePlayer_;
+    std::string playingVoice_;          // the client id of the voice message playing
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachmentStrip_;
     std::vector<StagedAttachment>                      staged_;
     int                                                stagedCount_ = 0;   // ids for the tiles

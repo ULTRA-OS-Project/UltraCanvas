@@ -1,3 +1,18 @@
+#### 2026-11-15 *0.9.564*
+- **UltraIM: a recording's length travels with it.**
+  `UltraIMSendOptions::durationSeconds` - a voice note's or a video's length,
+  when the sender recorded it - so the other side shows it before the file is
+  there. Provider ABI 8.
+- **UltraIM Direct: edit, voice notes, reply quotes, contacts told.**
+  `EditMessage` changes our own text or caption here and on the other side
+  (an `edit` body on the message's path; `isEdited`; store schema 5).
+  `SendVoiceNote` sends a recording as kind `audio` with its length (`ms` in
+  the file body). A reply's quote (`replyTo.senderName`, `textSnippet`) is
+  filled in from the store on arrival, fetch and search. Adding a contact
+  tells them - the relay's `contact.added` (ChatCube relay 1.4.0) or a
+  `contact` frame on the local network - so their chat appears before the
+  first message. `DirectProviderTests` cover all of it.
+
 #### 2026-11-15 *0.9.563*
 - **A toolbar item dragged into another place stays there.** `MoveItem` puts
   the item at its new index in the bar's list of children at once, while every

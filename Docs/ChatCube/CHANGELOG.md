@@ -1,3 +1,26 @@
+#### 2026-11-15 *0.1.26*
+- **Reply to a message.** A message's right-click menu has **Reply**: a bar
+  over the message field says whom you answer and what, with a × (or
+  Escape) to give it up; the reply shows the message it answers at the top
+  of its bubble - the name in their colour, the first words under it. On
+  ChatCube Direct, Matrix and Telegram.
+- **Edit a message.** A double click on one of your own messages, or
+  **Edit** in its menu, puts its words in the field with an *Edit message*
+  bar over it; Enter keeps the change, Escape gives it up. The bubble says
+  *edited* beside the time, on both sides. ChatCube Direct (new: the
+  change travels to the other side as the message did), Matrix and Telegram.
+- **Search in a chat.** A field over the messages searches the chat's whole
+  history as you type: the list shows only what matches, with how many were
+  found; the × shows the whole chat again.
+- **Voice messages.** The microphone beside the field records; a bar shows
+  how long, with a × to throw it away and send to send it. A voice message
+  shows as a play mark and its length, and plays in its bubble (a click
+  again pauses). Matrix and Telegram get the recording as an audio file.
+- **Video messages.** The camera button opens the camera over the field: its
+  red button records and stops, **Send** sends the video with its length,
+  **Cancel** throws it away.
+- **Copy text** in a message's menu.
+
 #### 2026-11-15 *0.1.25*
 - **The person you add sees your chat at once.** Adding someone by their
   ChatCube ID now tells them: your chat appears in their list straight away

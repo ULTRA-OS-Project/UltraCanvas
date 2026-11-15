@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeTheme.cpp
 // See ChatCubeTheme.h.
+// Version: 0.2.1 - PaintPauseMark
 // Version: 0.2.0 - L(), OnLook, RestyleForLook, SetInk: the look follows a change of the theme;
 //                  SetLookChoice / DarkLook: the theme provider decides light or dark at every change
 // Version: 0.1.4 - InkOn: initials that read on every avatar colour; the light avatars deeper (4.5:1 under white)
@@ -350,6 +351,16 @@ void PaintPlayMark(IRenderContext* ctx, const Point2Dd& centre, double radius) {
     ctx->FillPathPreserve();
     ctx->ClearPath();
     ctx->PopState();
+}
+
+void PaintPauseMark(IRenderContext* ctx, const Point2Dd& centre, double radius) {
+    if (!ctx) return;
+    ctx->DrawFilledCircle(centre, static_cast<float>(radius), Color(0, 0, 0, 150), Color(255, 255, 255, 210), 1.5f);
+    const double h = radius * 0.9;
+    const double w = radius * 0.26;
+    const double gap = radius * 0.18;
+    ctx->DrawFilledRectangle(Rect2Dd(centre.x - gap - w, centre.y - h / 2.0, w, h), kWhite, 0.0f, Colors::Transparent, 1.0f);
+    ctx->DrawFilledRectangle(Rect2Dd(centre.x + gap, centre.y - h / 2.0, w, h), kWhite, 0.0f, Colors::Transparent, 1.0f);
 }
 
 int TicksWidth(int count, double height) {

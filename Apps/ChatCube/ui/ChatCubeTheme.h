@@ -8,6 +8,7 @@
 // presence colours, the avatar palette) and a fallback for each, so a theme
 // that does not name them still looks right.
 //
+// Version: 0.2.1 - PaintPauseMark: a voice message that is playing
 // Version: 0.2.0 - the look follows a change of the theme while ChatCube runs: L() read again by
 //                  RestyleForLook, OnLook for every colour set by hand, SetInk for a label's role;
 //                  SetLookChoice / DarkLook: light or dark decided again at every change
@@ -111,6 +112,8 @@ bool PaintPicture(UltraCanvas::IRenderContext* ctx, const std::string& path, con
                   double radius);
 // A play mark - a white triangle on a dark disc - over a video's preview picture.
 void PaintPlayMark(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& centre, double radius);
+// The same circle with two bars: what is playing, to pause it.
+void PaintPauseMark(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& centre, double radius);
 // A message's ticks - one (sent) or two (delivered, read) check marks - as
 // strokes, right-aligned in `area` and centred on its height. Drawn, not
 // typed: U+2713 is in no font a Windows installation is sure to have, and

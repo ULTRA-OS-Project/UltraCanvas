@@ -420,6 +420,19 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   while the read receipt could not travel still counts. A message or a file
   deleted before all of it arrived is noted (`deleted`), and dropped when
   the rest comes.
+- **Editing** (`EditMessage`): its sender changes a text, or a picture's,
+  video's or file's caption, at any time (a text never to nothing - that
+  is a delete). The record keeps the new words and marks the message
+  edited (`isEdited`; schema 5); the others are told with an `edit` body on
+  the message's path, and take it only from the message's own sender.
+  `MessageUpdate` follows on both sides.
+- **Replies:** `replyToMessageId` rides in the body as `reply_to`; the
+  quote (`replyTo.senderName`, `textSnippet`) is filled in from the record
+  where the message replied to is - on arrival, on `FetchMessages` and in
+  search results.
+- **Contacts:** adding someone puts us in their list too (relay 1.4.0
+  `contact.added`, or a `contact` frame on the local network), so their
+  chat appears before our first message.
 - **Search:** `SearchMessages` is a query on that record - one conversation
   or all of them, narrowed in the database by conversation and kind (an
   index each) and matched by words on the way out, where upper and lower
@@ -499,7 +512,9 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   are here, puts the file together under the cache directory, and says so
   with `MessageUpdate`; `DownloadAttachment` answers from disk, or once the
   last part is here. Files up to 64 MiB; our own row points at the file
-  sent. Only the relay's text queue is involved, so a relay in service
+  sent. A voice note (`SendVoiceNote`) is such a file of kind `audio`; its
+  length (`UltraIMSendOptions::durationSeconds`, for a video too) rides
+  in the body as `ms`. Only the relay's text queue is involved, so a relay in service
   needs no change.
 - **Not yet:** group calls, several devices per identity, groups without a
   relay, a file asked for later rather than pushed.
