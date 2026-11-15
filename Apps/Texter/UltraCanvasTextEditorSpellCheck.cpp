@@ -325,7 +325,7 @@ void UltraCanvasTextEditor::UpdateSpellLanguageIndicator() {
     if (!spellLanguageButton) return;
 
     auto doc = GetActiveDocument();
-    const bool checkable = DocumentWantsSpellCheck(doc.get());
+    const bool checkable = DocumentWantsSpellCheck(doc);
     if (spellLanguageButton->IsVisible() != checkable) spellLanguageButton->SetVisible(checkable);
     if (!checkable) return;
 
