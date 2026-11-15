@@ -38,6 +38,7 @@ const HostAppearance& host = app->GetHostAppearance();
 bool dark = host.dark;                         // the desktop prefers a dark look
 bool contrast = host.highContrast;             // Windows High Contrast, macOS Increase Contrast
 bool calm = host.reduceMotion;                 // the animation preference
+bool firm = host.firmLightText;                // light text drawn firmer on a dark ground: true unless the file or the override says plain
 std::optional<Color> accent = host.accent;     // the desktop's accent, when it has one
 FontStyle ui = host.uiFont;                    // Segoe UI 9, Helvetica Neue 13, Ubuntu 12 ...
 FontStyle mono = host.monoFont;                // Consolas, Menlo, Ubuntu Mono ...
@@ -119,6 +120,7 @@ ULTRACANVAS_HOST_APPEARANCE="dark,font=Noto Sans 14,mono=Fira Code 13,accent=#e9
 | `accent=#rrggbb`, `accent=none` | the accent, or none |
 | `font=<family> <points>`, `mono=<family> <points>` | the fonts, in the GTK form (`Noto Sans Bold 10.5`: style words dropped) |
 | `scale=<factor>` | the text scale, 0.5 to 4 |
+| `lighttext=firm`, `lighttext=plain` | light text drawn firmer on a dark ground, or every text once |
 
 The portal and GSettings are asked only inside a desktop session
 (`XDG_CURRENT_DESKTOP` or `DESKTOP_SESSION` set): with no desktop running -
@@ -133,7 +135,10 @@ the look came from: `linux:portal`, `linux:gsettings`, `linux:xsettings`,
 `Appearance.conf` in the UltraCanvas settings folder is a person's choice
 over the desktop for every UltraCanvas application at once - the look, the
 accent, the font and its size, the text scale, the contrast, each `system`
-when the host decides. `AppearanceSettings::Load().ApplyTo(host)`
+when the host decides, and `lighttext` (`firm` or `plain`), which no host
+has a word for: the application hands it to the render context
+(`RenderContextCairo::SetLightTextBoost`) when it changes and redraws its
+windows, unless `ULTRACANVAS_LIGHT_TEXT_BOOST` set the strength for the run. `AppearanceSettings::Load().ApplyTo(host)`
 (`UltraCanvasAppearanceSettings.h`) is applied over what the platform said
 on every read, before the override above, so the order is the host, then
 the file, then `ULTRACANVAS_HOST_APPEARANCE`; the source gains `+settings`

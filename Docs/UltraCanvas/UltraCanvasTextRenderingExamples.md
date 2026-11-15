@@ -128,14 +128,15 @@ answer within a few levels - and leaves a fully covered pixel as it is.
 | | |
 |---|---|
 | Default | On (`1.0`), in every application; no element or theme asks for it |
-| Which text | An opaque plain text colour that is light: none below a mid grey (luma 0.45), the whole boost from luma 0.70 - the dark theme's ink (235) and muted ink (190) in full, its faint ink (150) about halfway |
+| Which text | An opaque plain text colour that is light: none below a mid grey (luma 0.45), the whole boost from luma 0.70 - the dark theme's ink (white) and muted ink (190) in full, its faint ink (150) about halfway |
 | Left alone | Dark text; translucent text (it is faint on purpose, and a second pass would raise its opacity, not only its edge); text painted with a gradient or pattern; text drawn under a global alpha below one; a PDF, PostScript or SVG page, which keeps its text once, as text |
 | Layout | Unchanged: no advance, extent or line height moves, only the partly covered pixels |
-| Off | `RenderContextCairo::SetLightTextBoost(0)`, or `ULTRACANVAS_LIGHT_TEXT_BOOST=0` in the environment for one run; a value between is a weaker second pass |
+| Off | For every application: `lighttext=plain` in `Appearance.conf` (UOS-Settings > Appearance > Look > Light text), which a running application follows within a moment. For one: `RenderContextCairo::SetLightTextBoost(0)`. For one run: `ULTRACANVAS_LIGHT_TEXT_BOOST=0` in the environment, which the file does not overrule. A value between 0 and 1 is a weaker second pass |
+| In the demo | The Text Rendering page's *Light Text* option (Plain, Half, Firm) over a card of light text on a dark ground |
 
 ```cpp
 RenderContextCairo::SetLightTextBoost(0.0);                                  // every text once
-double pass = RenderContextCairo::LightTextBoostFor(Color(235, 235, 235));   // 1 at full strength: the dark theme's ink
+double pass = RenderContextCairo::LightTextBoostFor(Color(255, 255, 255));   // 1 at full strength: the dark theme's ink
 ```
 
 `Tests/LightTextBoostTest.cpp` draws a line both ways and reads it back.

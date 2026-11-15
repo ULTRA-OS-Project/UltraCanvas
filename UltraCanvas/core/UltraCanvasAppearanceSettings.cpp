@@ -1,7 +1,8 @@
 // core/UltraCanvasAppearanceSettings.cpp
 // Appearance.conf: the text and back, the choices over the host, the file.
+// Version: 1.1.0 - lighttext=firm|plain
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #include "UltraCanvasAppearanceSettings.h"
 #include "UltraCanvasSettingsFolder.h"
@@ -27,7 +28,7 @@ namespace UltraCanvas {
 
     bool AppearanceSettings::IsSystem() const {
         return look == "system" && accent == "system" && font == "system" && fontSize <= 0.0
-            && scale == 1.0 && contrast == "system";
+            && scale == 1.0 && contrast == "system" && lightText == "firm";
     }
 
     AppearanceSettings AppearanceSettings::Parse(const std::string& text) {
@@ -59,6 +60,8 @@ namespace UltraCanvas {
                 if (SystemFontDetail::ParseSize(value, factor) && factor >= 0.5 && factor <= 4.0) s.scale = factor;
             } else if (key == "contrast") {
                 if (lower == "system" || lower == "high" || lower == "normal") s.contrast = lower;
+            } else if (key == "lighttext") {
+                if (lower == "firm" || lower == "plain") s.lightText = lower;
             }
         }
         return s;
@@ -72,6 +75,7 @@ namespace UltraCanvas {
         out += "fontsize=" + (fontSize > 0.0 ? Number(fontSize) : std::string("system")) + "\n";
         out += "scale=" + Number(scale) + "\n";
         out += "contrast=" + contrast + "\n";
+        out += "lighttext=" + lightText + "\n";
         return out;
     }
 
@@ -86,6 +90,7 @@ namespace UltraCanvas {
         if (fontSize > 0.0) { host.uiFont.fontSize = fontSize; applied = true; }
         if (scale != 1.0 && scale >= 0.5 && scale <= 4.0) { host.textScale *= scale; applied = true; }
         if (contrast == "high" || contrast == "normal") { host.highContrast = contrast == "high"; applied = true; }
+        if (lightText == "plain") { host.firmLightText = false; applied = true; }
         if (applied) host.source += "+settings";
         return applied;
     }

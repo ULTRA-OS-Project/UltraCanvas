@@ -5,6 +5,7 @@
 //                  (ContainerStyle::FromTheme), not the light default
 // Version: 0.18.0 - Desktop > Theme is the system look (Appearance.conf), the
 //                  same as Appearance > Look: one look for every application
+// Version: 0.18.0 - Appearance > Look: Light text, Firm or Plain (Appearance.conf's lighttext)
 // Version: 0.17.0 - Desktop > Info bar: a switch for each icon of the desktop's
 //                  info panel; --page opens the window on a page (ShowSettingsPage)
 // Version: 0.16.0 - Desktop: the battery's percentage badge, on or off
@@ -1232,6 +1233,9 @@ void UOSSettingsWindow::BuildLookPage() {
     contrast_ = segmented("uos-look-contrast", {Tr("System"), Tr("High"), Tr("Normal")}, 300);
     row("uos-look-contrast-row", Tr("Contrast:"), 10)->AddChild(contrast_);
 
+    lightText_ = segmented("uos-look-lighttext", {Tr("Firm"), Tr("Plain")}, 200);
+    row("uos-look-lighttext-row", Tr("Light text:"), 10)->AddChild(lightText_);
+
     // The preview: a few elements styled from the theme the choices give,
     // on that theme's panel - the page shows the result by being it.
     lookPreview_ = std::make_shared<UltraCanvasContainer>("uos-look-preview");
@@ -1267,6 +1271,8 @@ void UOSSettingsWindow::BuildLookPage() {
                "the desktop's theme and fonts on Linux. A choice here is for every UltraCanvas "
                "application and comes before the computer's."),
             Tr("The text scale multiplies the computer's own: 125 % makes every text a quarter larger."),
+            Tr("Firm light text is drawn a little stronger on a dark ground, so it reads as "
+               "clearly as dark text on a light one; Plain draws every text once."),
             Tr("Written to Appearance.conf in the UltraCanvas settings folder; a running "
                "application follows it within a moment, as it follows a change of the desktop."),
             Tr("ULTRACANVAS_HOST_APPEARANCE still overrules it for one run.")});
@@ -1307,6 +1313,7 @@ void UOSSettingsWindow::RefreshLookPage() {
     }
     scale_->SetSelectedIndex(scaleIndex);
     contrast_->SetSelectedIndex(s.contrast == "high" ? 1 : s.contrast == "normal" ? 2 : kSegmentSystem);
+    lightText_->SetSelectedIndex(s.lightText == "plain" ? 1 : 0);
     refreshing_ = false;
     RefreshLookPreview();
 }
@@ -1331,6 +1338,7 @@ void UOSSettingsWindow::SaveLook() {
     if (scale >= 0 && scale < static_cast<int>(std::size(kScales))) s.scale = kScales[scale] / 100.0;
     const int contrast = contrast_->GetSelectedIndex();
     s.contrast = contrast == 1 ? "high" : contrast == 2 ? "normal" : "system";
+    s.lightText = lightText_->GetSelectedIndex() == 1 ? "plain" : "firm";
     if (lookStatus_) {
         lookStatus_->SetText(s.Save()
                 ? Tr("Saved. Every application follows it now.")

@@ -87,7 +87,7 @@ bool SameBox(const Ink& a, const Ink& b) {
 int main() {
     const Color dark(30, 30, 30);
     const Color white(255, 255, 255);
-    const Color lightInk(235, 235, 235);
+    const Color lightInk(255, 255, 255);
     const Color darkInk(0, 0, 0);
 
     std::printf("the strength for an ink\n");
