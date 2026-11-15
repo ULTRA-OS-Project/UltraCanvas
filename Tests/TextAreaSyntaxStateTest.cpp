@@ -9,12 +9,16 @@
 //   - in Markdown mode, a block comment inside a ``` code fence colours all of
 //     its lines, ends at the fence, and never leaks into the raw line the
 //     cursor is editing (read with the Markdown rules, not the fence's);
-//   - a fence in a language the tokenizer does not know is shown plain.
+//   - a fence in a language the tokenizer does not know is shown plain;
+//   - an indented (four-space) code block is highlighted in the language
+//     guessed from its content (or, for a short snippet, from the fence above
+//     it or on a lower bar) or set with SetIndentedCodeLanguage, through the
+//     blank lines inside it.
 //
 // Every token class is painted one pure colour so a pixel says which class
 // covers it. Runs headless under Xvfb; skips when there is no display.
-// Version: 1.1.0
-// Last Modified: 2026-11-11
+// Version: 1.2.0
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -171,6 +175,38 @@ int main() {
     Counts unknownLang = CountPixels(window, area);
     TEST("A fence in an unknown language is not highlighted as the one before it",
          std::abs(unknownLang.code - fencedCode.code) < fencedCode.code / 10);
+
+    // ===== INDENTED (FOUR-SPACE) CODE BLOCKS =====
+    // No language tag: the block's language is guessed from its content, or
+    // set with SetIndentedCodeLanguage; prose that is merely indented stays plain.
+    std::cerr << "\n--- Indented code blocks ---" << std::endl;
+    area->SetText("Intro.\n\n    #include <stdio.h>\n    int main(void) {\n        /* entry */\n"
+                  "        return 0;\n    }\n");
+    Counts indentedC = CountPixels(window, area);
+    TEST("An indented C block is highlighted (language guessed)",
+         indentedC.code > 200 && indentedC.comment > 50);
+
+    area->SetText("Intro.\n\n    just some words here\n    and a second line of prose\n");
+    Counts indentedProse = CountPixels(window, area);
+    TEST("Indented prose the guess cannot place stays plain",
+         indentedProse.code < 20 && indentedProse.comment < 20);
+
+    // Too short for a clear guess: the language of the code fence above it.
+    area->SetText("```python\n```\n\nIntro.\n\n    return x\n");
+    Counts fromFence = CountPixels(window, area);
+    TEST("A short indented snippet takes the language of the fence above it", fromFence.code > 100);
+
+    // No fence: a guess on the lower bar a code block allows.
+    area->SetText("Intro.\n\n    console.log(x);\n");
+    Counts shortGuess = CountPixels(window, area);
+    TEST("A short indented snippet is guessed on the lower bar for code", shortGuess.code > 100);
+
+    area->SetIndentedCodeLanguage("C++");
+    area->SetText("Intro.\n\n    /* a comment\n\n    still inside */\n");
+    Counts acrossBlank = CountPixels(window, area);
+    TEST("SetIndentedCodeLanguage: a comment across a blank line in the block stays a comment",
+         acrossBlank.comment > 200 && acrossBlank.code < 20);
+    area->SetIndentedCodeLanguage("");
 
     // Editing: the line under the cursor is shown raw and read with the
     // Markdown rules. It must not take a C++ comment state from the code line

@@ -2,10 +2,12 @@
 // Tree view variant that renders IDE-style Name / Type / Value columns (plus
 // full-width section-header bars) on top of the generic UltraCanvasTreeView.
 // Extracted from the Modern display mode that used to live in the base tree.
+// Version: 1.2.0 - TreeViewColumn::textColor defaults to Transparent: a cell without a colour of its own
+//                  takes the tree's text colour (the theme's ink), not a fixed dark grey
 // Version: 1.1.0 - TreeColumnStyle::FromTheme, ApplyTheme: the view follows the theme; a SetColumnStyle by
 //                  hand stops the following; the constructors are its own
 // Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 #pragma once
 
 #include "UltraCanvasTreeView.h"
@@ -34,7 +36,10 @@ struct TreeViewColumn {
     int           minWidth   = 0;            // floor for flexible columns / resize
     float         flexWeight = 1.0f;         // relative share among flexible columns
     TextAlignment alignment  = TextAlignment::Left;
-    Color         textColor  = Color(40, 40, 40);        // default cell text colour
+    // The cells' text colour; Transparent (the default) => the tree's own text
+    // colour, which follows the theme - a fixed dark grey was unreadable on a
+    // dark ground in every column of a dark look.
+    Color         textColor  = Colors::Transparent;
     Color         accentBackground = Colors::Transparent;// optional fill behind the cell (Transparent => none)
     int           accentPadding    = 0;      // px added around the accent fill
     bool          isTreeColumn = false;      // hosts indent/expander/icon; draws node->data.text

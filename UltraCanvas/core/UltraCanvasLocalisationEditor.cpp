@@ -1,7 +1,12 @@
 // core/UltraCanvasLocalisationEditor.cpp
 // See UltraCanvasLocalisationEditor.h.
+// Version: 1.2.0 - the actions (Undo, Draft, Export, Save, Close) on a row of their
+//                 own: in a narrow page they cut the two switches' labels short;
+//                 "Compare with" on the second row, beside Show
+// Version: 1.1.0 - MarkColors: the grid's marks and the status line in the
+//                 theme's colours in a dark look; ApplyTheme fills the rows again
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #include "UltraCanvasLocalisationEditor.h"
 #include "UltraCanvasConfig.h"           // GetResourcesDir
@@ -9,6 +14,7 @@
 #include "UltraCanvasModalDialog.h"      // DialogResult, FileFilter
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasWindow.h"
 #include "CSSLayout/CSSLayout.h"
 
@@ -24,6 +30,27 @@
 namespace UltraCanvas {
 
 namespace {
+
+// The grid's marks and the status line. The light look keeps the colours it
+// always had; a dark one takes the theme's - the muted ink for a text that
+// comes from another set than the one shown, the danger colour for an
+// untranslated row, a light green for a changed one (the dark green of the
+// light look sinks into a dark ground) - each a named element role first,
+// so a theme can choose its own.
+struct MarkColors {
+    Color muted, untranslated, changed, status;
+};
+
+MarkColors MarkColorsFor(const UltraCanvasTheme& theme) {
+    if (!theme.dark) {
+        return {Color(120, 120, 120, 255), Color(170, 40, 40, 255), Color(0, 100, 0, 255), Color(90, 90, 90, 255)};
+    }
+    const ThemeRoles& r = theme.roles;
+    return {theme.Role("localisation-editor.muted", r.inkMuted),
+            theme.Role("localisation-editor.untranslated", r.danger),
+            theme.Role("localisation-editor.changed", Color(110, 200, 130, 255)),
+            theme.Role("localisation-editor.status", r.inkMuted)};
+}
 
 namespace fs = std::filesystem;
 
@@ -912,12 +939,6 @@ void UltraCanvasLocalisationEditor::BuildUi() {
         if (rebuilding || index < 0 || index >= static_cast<int>(languageTags.size())) return;
         Open(workspace.Application(), languageTags[static_cast<size_t>(index)]);
     };
-    caption(top, "CompareCaption", Tr("Compare with"));
-    compareList = dropdown(top, "Compare", 120);
-    compareList->onSelectionChanged = [this](int index, const DropdownItem&) {
-        if (rebuilding || index < 0 || index >= static_cast<int>(compareTags.size())) return;
-        SetCompareLanguage(compareTags[static_cast<size_t>(index)]);
-    };
     top->AddStretchSpacer(1);
 
     // ----- row 2: what is shown -----
@@ -936,6 +957,15 @@ void UltraCanvasLocalisationEditor::BuildUi() {
     }
     statusList->SetSelectedIndex(0, false);
     statusList->onSelectionChanged = [this](int, const DropdownItem& item) { if (!rebuilding) SetStatusFilter(item.value); };
+    // The compare language here, beside the other choices of what is shown,
+    // where the search field gives way to it: at the end of the first row
+    // it ran off a narrow page.
+    caption(filter, "CompareCaption", Tr("Compare with"));
+    compareList = dropdown(filter, "Compare", 120);
+    compareList->onSelectionChanged = [this](int index, const DropdownItem&) {
+        if (rebuilding || index < 0 || index >= static_cast<int>(compareTags.size())) return;
+        SetCompareLanguage(compareTags[static_cast<size_t>(index)]);
+    };
 
     // ----- row 3: the sets, the switches, the actions -----
     auto tools = row("Tools");
@@ -948,11 +978,20 @@ void UltraCanvasLocalisationEditor::BuildUi() {
     sharedBox->SetTooltip(Tr("A change in a base set or in Standard reaches every application that takes it"));
     sharedBox->onStateChanged = [this](CheckedState, CheckedState now) { if (!rebuilding) SetEditSharedSets(now == CheckedState::Checked); };
     tools->AddChild(sharedBox);
+    // The switches keep their whole label: the row's stretch gives way first.
+    wholeBox->layoutItem.SetFlexShrink(0);
+    sharedBox->layoutItem.SetFlexShrink(0);
     tools->AddStretchSpacer(1);
-    undoButton = button(tools, "Undo", Tr("Undo"), [this]() { Undo(); }, 70.0f);
-    draftButton = button(tools, "Draft", Tr("Draft with UltraAI"), [this]() { Draft(selectedKey.empty()); }, 150.0f);
+
+    // ----- row 4: the actions, on a row of their own and to the right, so
+    // that the switches above never lose their labels to them in a narrow
+    // page (a settings page leaves the editor about 620 px) -----
+    auto actions = row("Actions");
+    actions->AddStretchSpacer(1);
+    undoButton = button(actions, "Undo", Tr("Undo"), [this]() { Undo(); }, 70.0f);
+    draftButton = button(actions, "Draft", Tr("Draft with UltraAI"), [this]() { Draft(selectedKey.empty()); }, 150.0f);
     draftButton->SetTooltip(Tr("Fill the selected row, or every untranslated row, with a machine draft to review"));
-    exportButton = button(tools, "Export", Tr("Export..."), [this]() {
+    exportButton = button(actions, "Export", Tr("Export..."), [this]() {
         FileDialogOptions opts;
         opts.title = Tr("Export the merged catalogue");
         opts.defaultFileName = workspace.Application() + "." + workspace.Language() + ".json";
@@ -966,8 +1005,8 @@ void UltraCanvasLocalisationEditor::BuildUi() {
             if (result == DialogResult::OK && !path.empty()) ExportTo(path);
         });
     }, 90.0f);
-    saveButton = button(tools, "Save", Tr("Save"), [this]() { Save(); }, 80.0f);
-    closeButton = button(tools, "Close", Tr("Close"), [this]() { if (onClose) onClose(); }, 80.0f);
+    saveButton = button(actions, "Save", Tr("Save"), [this]() { Save(); }, 80.0f);
+    closeButton = button(actions, "Close", Tr("Close"), [this]() { if (onClose) onClose(); }, 80.0f);
     closeButton->SetVisible(false);
 
     // ----- the grid -----
@@ -1015,7 +1054,7 @@ void UltraCanvasLocalisationEditor::BuildUi() {
 
     // ----- the status line -----
     statusLabel = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_Status", "");
-    statusLabel->SetTextColor(Color(90, 90, 90, 255));
+    statusLabel->SetTextColor(MarkColorsFor(UltraCanvasTheme::Current()).status);
     statusLabel->layoutItem.SetFlexShrink(0);
     AddChild(statusLabel);
 
@@ -1239,7 +1278,8 @@ void UltraCanvasLocalisationEditor::RebuildRows() {
     for (size_t i = 0; i < rows.size(); ++i) groups[static_cast<size_t>(groupOf(rows[i]))].push_back(i);
 
     grid->SetRootNode(TreeNodeData("root", ""));
-    const Color changedColor(0, 100, 0, 255), untranslatedColor(170, 40, 40, 255), mutedColor(120, 120, 120, 255);
+    const MarkColors marks = MarkColorsFor(UltraCanvasTheme::Current());
+    const Color changedColor = marks.changed, untranslatedColor = marks.untranslated, mutedColor = marks.muted;
     for (size_t g = 0; g < groups.size(); ++g) {
         if (groups[g].empty()) continue;
         TreeNodeData header("g:" + std::to_string(g), groupTitles[g] + "  (" + std::to_string(groups[g].size()) + ")");
@@ -1307,6 +1347,15 @@ void UltraCanvasLocalisationEditor::RefreshEditRow() {
         editSet = workspace.Application();
     editField->SetText(selectedKey.empty() ? std::string() : workspace.Text(editSet, selectedKey, selectedCategory));
     rebuilding = false;
+}
+
+void UltraCanvasLocalisationEditor::ApplyTheme(const UltraCanvasTheme& theme) {
+    UltraCanvasContainer::ApplyTheme(theme);
+    // The marks are in the rows' cells, coloured as the rows were filled:
+    // they are filled again for the new look. The status line's colour is
+    // set by hand, so it is set again too.
+    if (statusLabel) statusLabel->SetTextColor(MarkColorsFor(theme).status);
+    if (grid && !rebuilding) RebuildRows();
 }
 
 void UltraCanvasLocalisationEditor::SetStatus(const std::string& text) {

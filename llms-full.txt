@@ -32803,13 +32803,16 @@ its rows and columns scaled to match. Whatever the size, the window is as
 wide as its captions and controls need, and the Defaults button as wide as
 its label. A settings window built on `SettingsPageKit` opens it through
 `SettingsPageKit::ShowSaveSettingsDialog(extensionOrPath, parent)`, which
-passes the window's `kTextFontSize` - UltraSnip's *File type* page does:
+passes the window's `SettingsPageKit::TextFontSize()` - UltraSnip's *File
+type* page does. That is the theme's body size, the desktop's interface
+font size, so where the desktop names none (12, as under Xvfb) the dialog
+opened from a settings window is drawn at its own size:
 
 <!-- doc-check: std::string pictureType; UltraCanvasWindowBase* settingsWindow = nullptr; -->
 ```cpp
-// The type's settings, in the settings window's 10-point text
+// The type's settings, in the settings window's type size
 SettingsPageKit::ShowSaveSettingsDialog(pictureType, settingsWindow);
-// The same, by hand: no size row (a picture without a size), font size 10
+// By hand, at a size of your own: no size row (a picture without a size), font size 10
 UltraCanvasFileLoader::ShowSaveSettingsDialog(pictureType, FileSavePicture(), FileSaveImageSize(),
                                               settingsWindow, nullptr, 10.0f);
 ```
@@ -48610,6 +48613,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
   - [Icon list with a customized delegate](#icon-list-with-a-customized-delegate)
   - [A custom delegate with clickable cells (the domain dashboard)](#a-custom-delegate-with-clickable-cells-the-domain-dashboard)
 - [Keyboard Navigation](#keyboard-navigation)
+  - [The focus ring](#the-focus-ring)
 - [Best Practices](#best-practices)
 - [See Also](#see-also)
 
@@ -48775,6 +48779,9 @@ struct ListViewStyle {
 
     Color selectionBackgroundColor = Colors::Selection;
     Color hoverBackgroundColor = Colors::SelectionHover;
+    // The focus ring's automatic colour on a selected row (the theme's
+    // text-on-accent); on any other row it is selectionBackgroundColor
+    Color focusRingOnSelectionColor = Colors::White;
 
     ScrollbarStyle scrollbarStyle = ScrollbarStyle::Modern();
 
@@ -49650,6 +49657,27 @@ field, a slider), use a container of elements instead, for a short list.
 | Ctrl + Click       | Toggle row in multi-selection mode  |
 | Shift + Click      | Range-select in multi-selection mode|
 
+### The focus ring
+
+While the list holds the keyboard focus, the row the keys go on from carries
+a dashed one-pixel ring just inside its edges, so a focused row can be told
+from one that is merely selected; once the focus moves elsewhere the ring goes
+and the selection stays. The view draws it over what the delegate drew, once
+across the whole row (one ring for a multi-column row, not one per column), so
+a custom delegate gets it without doing anything - `ListItemStyleOption::isFocused`
+is there for a delegate that wants to mark the row in its own way as well. Its
+colour contrasts with the row: `ListViewStyle::focusRingOnSelectionColor` on a
+selected row (the theme's text-on-accent), the selection colour on any other.
+A list inside another element that keeps the focus (a dropdown's open list,
+`SetAcceptsFocus(false)`) never shows one.
+
+```cpp
+auto list = std::make_shared<UltraCanvasListView>("files", 0, 0, 300, 200);
+list->SetFocusRingColor(Color(255, 140, 0));    // this colour on every row
+list->SetFocusRingColor(Colors::Transparent);   // back to the automatic one
+Color ring = list->GetFocusRingColor();
+```
+
 The keys go on from the selection's current row, whoever selected it: a click,
 a key, or the application through `GetSelection()->Select(row)` - after it
 rebuilt or re-sorted the rows and selected the one the user was on, Down moves
@@ -49729,10 +49757,13 @@ with their status, edits the working copies, merges the sets, undoes,
 saves and exports. A test drives it on a folder of its own; a headless tool
 could too.
 
-`UltraCanvasLocalisationEditor` is the element over it: a toolbar (the
-application, the language, the comparison language, the search, the status
-filter, the *Sets...* picker, the two switches, Undo, Draft, Export, Save), a
-columns tree view, the edit row under it and a status line. It derives from
+`UltraCanvasLocalisationEditor` is the element over it: four rows of
+controls - the application and the language; the search, the status filter
+and the comparison language; the *Sets...* picker and the two switches; Undo,
+Draft, Export and Save to the right - then a columns tree view, the edit row
+under it and a status line. The rows are kept short so that each fits a
+narrow page (a settings page leaves the editor about 620 px): no control
+loses its label to another, and the search field is the one that gives way. It derives from
 `UltraCanvasContainer` and lays itself out with the CSS flex layout, so it
 fills whatever it is put in.
 
@@ -49798,6 +49829,15 @@ shared sets* holds what the bases and Standard carry that the application
 does not use. The search field matches the key, the texts and the compared
 text; the *Show* list filters by status (untranslated, machine drafts,
 overrides, collisions between bases, changed since the shipped file).
+
+The marks follow the look. In a light one a text from a set that does not
+answer is grey, an untranslated row red and a changed one dark green; in a
+dark one they are the theme's muted ink, its danger colour and a light
+green, and the status line is the muted ink. A theme can name its own as
+the element roles `localisation-editor.muted`, `.untranslated`, `.changed`
+and `.status`. When the look changes while the editor is open, the rows are
+filled again in the new colours. Every other cell is the grid's text colour
+(the theme's ink).
 
 ### Editing
 
@@ -78035,8 +78075,27 @@ state the same way, with the fence's language: a `/* comment */` over several
 lines is coloured on all of them. The opening fence starts every block empty,
 so a comment left open in one block ends at its closing fence. The raw line
 under the cursor is read with the Markdown rules and starts empty too - it
-never takes a code block's state. Indented (four-space) code blocks are not
-highlighted.
+never takes a code block's state.
+
+An indented (four-space) code block has no language tag. Each block's
+language is found once, on its first line, from - in order:
+
+1. a clear guess from the block's own text (`DetectLanguageFromContent`);
+2. the language the nearest code fence above it names, where the author said
+   what the document's code is;
+3. a guess on a lower bar (`LanguageDetectOptions{1, 1}`): the text is known to
+   be code, so a short snippet such as `console.log(x);` need not pile up the
+   points a paste of unknown text would.
+
+A block none of them places - indented prose - stays plain. An application
+that knows the language sets it for every indented block:
+
+```cpp
+textArea->SetIndentedCodeLanguage("C++");   // "" (the default): guess per block
+```
+
+A blank line between two indented code lines belongs to the block, as in
+CommonMark, so a comment left open across it stays a comment.
 
 The fence's info string names the language through
 `SyntaxTokenizer::SetLanguageByTag`: its first word, matched against the
@@ -84253,7 +84312,7 @@ struct TreeViewColumn {
     int           minWidth   = 0;            // floor for flexible columns / resize
     float         flexWeight = 1.0f;         // relative share among flexible columns
     TextAlignment alignment  = TextAlignment::Left;
-    Color         textColor  = Color(40, 40, 40);         // default cell text colour
+    Color         textColor  = Colors::Transparent;       // Transparent => the tree's text colour (the theme's ink)
     Color         accentBackground = Colors::Transparent; // optional fill behind the cell
     int           accentPadding    = 0;      // px added around the accent fill
     bool          isTreeColumn = false;      // hosts indent/expander/icon; draws node->data.text
@@ -84302,9 +84361,10 @@ struct TreeColumnStyle {
 ```cpp
 auto varsTree = std::make_shared<UltraCanvasColumnsTreeView>("VarsTree", 300, 330);
 varsTree->SetColumns({
-    { "name",  "Name",  0,   0,  2.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent,  0, true  },
-    { "type",  "Type",  128, 0,  1.0f, TextAlignment::Left, Color(40, 40, 40), Color(255, 190, 130), 4, false },
-    { "value", "Value", 0,   48, 1.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent,  0, false },
+    { "name",  "Name",  0,   0,  2.0f, TextAlignment::Left, Colors::Transparent, Colors::Transparent,  0, true  },
+    // dark text on the light orange accent, in either look
+    { "type",  "Type",  128, 0,  1.0f, TextAlignment::Left, Color(40, 40, 40),   Color(255, 190, 130), 4, false },
+    { "value", "Value", 0,   48, 1.0f, TextAlignment::Left, Colors::Transparent, Colors::Transparent,  0, false },
 });
 varsTree->SetShowColumnHeader(true);
 
@@ -110296,8 +110356,10 @@ the right-hand monitor the primary.
 - **Clipboard**: the desktop records every copy into the clipboard history
   ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
   on disk and encrypted, leaving out copies a password manager marks as
-  secret. The clipboard button, or `Super+V` from any window, opens the quick
-  panel: a search field, the pinned entries and the ten latest (typing
+  secret. The clipboard button opens [UltraClipboard](../UltraClipboard/README.md),
+  the whole history in a window of its own (a copy running in the background
+  comes forward). `Super+V` from any window opens the quick panel, for
+  picking what to paste: a search field, the pinned entries and the ten latest (typing
   searches the whole history), each with a thumbnail and Copy, Edit and
   Delete. What the program being pasted into takes comes first, under "For
   <program>" and chosen - the newest images for a paint program, files for
@@ -110306,8 +110368,10 @@ the right-hand monitor the primary.
   focus before it was clicked. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
   edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
   *Recording* switch pauses the history and *Open UltraClipboard* shows all
-  of it. Right-click the button for *Pause recording*, *Open UltraClipboard*
+  of it. Right-click the button for *Pause recording*, *Quick panel (Super+V)*
   and *Clear history*; while recording is paused the button is crossed out.
+  Where UltraClipboard is not installed beside the desktop, the button opens
+  the quick panel instead.
   When a program that made a copy quits, the desktop puts that copy back on
   the clipboard, so it can still be pasted. Without a history (a build
   without SQLite) the button shows a menu of this session's last fifteen
@@ -110835,24 +110899,17 @@ same.
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/apps-window-keeps-the-tiles-place.md
+FILE: Docs/UltraDesktop/changelog.d/clipboard-button-opens-ultraclipboard.md
 ==============================================================================
 
-- **The Apps window keeps your place in the tiles as well.** The tree view
-  stopped jumping back to the top in 0.4.19; the tiles still did, because the
-  whole scrolling area was built again on every keystroke in the filter box,
-  every new list of applications and every application moved. The area is
-  kept now and only the tiles inside it are made again, so the view stays
-  where you left it. Switching to the tree and back, or a filter that matches
-  nothing, builds the page afresh as before.
-- **The Apps window can be tested.** It read the machine's own `.desktop`
-  files and made its own window, so nothing could drive it: `Hooks`
-  gains `applications`, a list handed to the window in place of the scan
-  (nothing is read from disk or kept between openings), `ShowApps` is public
-  beside it, and `Window()` lets a caller reach the page's elements by their
-  identifiers. `UltraDesktopAppStarterTest` uses all three to hold both views
-  to keeping the chosen category, the opened categories and the scroll
-  position across a rebuild; CI runs it on a virtual display.
+- **The clipboard button opens UltraClipboard.** A click on the right bar's
+  clipboard button shows the whole history in UltraClipboard. A copy already
+  running, also one started in the background, comes forward instead of a
+  second one starting. The small quick panel stays on `Super+V`, for picking
+  what to paste from any window, and on the button's right-click menu as
+  *Quick panel (Super+V)*, which replaces *Open UltraClipboard* there.
+  Without UltraClipboard beside the desktop, the button opens the quick panel
+  as before.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md

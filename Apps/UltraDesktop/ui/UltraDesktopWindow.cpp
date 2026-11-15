@@ -2,6 +2,10 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.1 - the clipboard button opens UltraClipboard (a running one, even
+//                  in the background, comes forward); Super+V and the button's
+//                  right-click menu keep the quick panel; without UltraClipboard
+//                  beside the desktop the button opens the quick panel as before
 // Version: 0.8.0 - one look for everything: the bars follow the system look
 //                  (Appearance.conf, UltraCanvasTheme), the Theme menu sets it
 //                  for every application (Dark, Light, As the system), and the
@@ -1360,10 +1364,17 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
                  IconPath("pinboard.svg"), "", [this](bool on) { ToggleCategoryBoard(on); });
     AddBarToggle(organiser_, "stickerboard", "Notes on the wallpaper", IconPath("notes.svg"), "",
                  [this](bool on) { ToggleStickerboard(on); });
-    auto clipboard = AddBarButton(organiser_, "clipboard", "Clipboard history (Super+V)",
+    auto clipboard = AddBarButton(organiser_, "clipboard", "UltraClipboard: the clipboard history (Super+V: the quick panel)",
                                   IconPath("clipboard.svg"), nullptr);
     clipboardButton_ = clipboard.get();
     clipboard->onClick = [this, button = clipboard.get()]() {
+        // The whole history is UltraClipboard's: the button opens it. The
+        // quick panel stays on Super+V and the right-click menu, and is
+        // what the button opens where UltraClipboard is not installed.
+        if (!UltraCanvasDesktopShell::FindProgram("UltraClipboard").empty()) {
+            OpenClipboardApplication({});
+            return;
+        }
         if (history_) {
             ToggleClipboardPanel(true);
             return;
@@ -3566,8 +3577,9 @@ void UltraDesktopWindow::SetClipboardRecording(bool on) {
 void UltraDesktopWindow::UpdateClipboardButton() {
     if (!clipboardButton_) return;
     clipboardButton_->SetIcon(IconPath(clipboardPaused_ ? "clipboard-paused.svg" : "clipboard.svg"));
-    clipboardButton_->SetTooltip(clipboardPaused_ ? "Clipboard history - recording is paused (Super+V)"
-                                                  : "Clipboard history (Super+V)");
+    clipboardButton_->SetTooltip(clipboardPaused_
+            ? "UltraClipboard: the clipboard history - recording is paused (Super+V: the quick panel)"
+            : "UltraClipboard: the clipboard history (Super+V: the quick panel)");
 }
 
 void UltraDesktopWindow::ShowClipboardButtonMenu(int windowX, int windowY) {
@@ -3577,7 +3589,7 @@ void UltraDesktopWindow::ShowClipboardButtonMenu(int windowX, int windowY) {
     popupMenu_->AddItem(MenuItemData::Header("Clipboard history"));
     popupMenu_->AddItem(MenuItemData::Action(clipboardPaused_ ? "Resume recording" : "Pause recording",
                                              [this]() { SetClipboardRecording(clipboardPaused_); }));
-    popupMenu_->AddItem(MenuItemData::Action("Open UltraClipboard", [this]() { OpenClipboardApplication({}); }));
+    popupMenu_->AddItem(MenuItemData::Action("Quick panel (Super+V)", [this]() { ToggleClipboardPanel(true); }));
     popupMenu_->AddItem(MenuItemData::Separator());
     popupMenu_->AddItem(MenuItemData::Action("Clear history\xE2\x80\xA6", [this]() {
         UltraCanvasAlert::Confirm("Remove every entry from the clipboard history? Pinned entries stay.",

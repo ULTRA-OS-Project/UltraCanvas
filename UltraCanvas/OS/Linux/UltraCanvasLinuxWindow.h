@@ -1,5 +1,6 @@
 // OS/Linux/UltraCanvasX11Window.h
 // Linux platform implementation for UltraCanvas Framework
+// Version: 1.3.0 - a destructor, which releases the native half
 // Version: 1.2.0 - SetNativeWindowShape
 // Version: 1.1.0 - per-monitor HiDPI (deviceScale) support
 // Last Modified: 2026-11-09
@@ -65,6 +66,13 @@ namespace UltraCanvas {
 
     public:
         UltraCanvasLinuxWindow();
+        // A window destroyed without Close() first - the application's
+        // DestroyWindows() at shutdown, or simply the last shared_ptr going
+        // away - used to skip the native teardown entirely:
+        // ~UltraCanvasWindowBase cannot call a virtual override, so nothing
+        // released the OS window, its drawing surface or its input context.
+        // Idempotent; a window already closed has nothing left to free.
+        ~UltraCanvasLinuxWindow() override;
 
         // ===== INHERITED FROM BASE WINDOW =====
         virtual void Show() override;
