@@ -1,5 +1,6 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
+// Version: 2.11.0 - the destructor destroys the windows first, while the native application still stands
 // Version: 2.10.1 - pointerGlobal flipped about the primary screen, as the windows' top-left positions are
 // Version: 2.10.0 - the host appearance observers installed at start and removed at shutdown
 //                   (UltraCanvasMacOSHostAppearance.mm)
@@ -68,6 +69,9 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
     }
 
     UltraCanvasMacOSApplication::~UltraCanvasMacOSApplication() {
+        // Destroy the windows while this application is still whole: their
+        // destructors reach back for the display / the native application.
+        DestroyWindows();
         // Clear the singleton pointer so GetInstance() returns nullptr once the
         // app is gone; widget destructors that run later (e.g. at static exit)
         // then skip CleanupElementReferences instead of locking a dead mutex.

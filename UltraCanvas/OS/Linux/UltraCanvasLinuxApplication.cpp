@@ -1,5 +1,6 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
+// Version: 1.14.0 - the destructor destroys the windows first, while the display still stands
 // Version: 1.13.0 - the desktop's look (DetectHostAppearanceNative): XSETTINGS fetched and
 //                   its manager's PropertyNotify heard, the config folders watched
 // Version: 1.12.0 - the system fonts are the desktop's (UltraCanvasLinuxSystemFont.cpp), not Ubuntu 12
@@ -51,6 +52,9 @@ namespace UltraCanvas {
     }
 
     UltraCanvasLinuxApplication::~UltraCanvasLinuxApplication() {
+        // Destroy the windows while this application is still whole: their
+        // destructors reach back for the display / the native application.
+        DestroyWindows();
         // Clear the singleton pointer so GetInstance() returns nullptr once the
         // app is gone; widget destructors that run later (e.g. at static exit)
         // then skip CleanupElementReferences instead of locking a dead mutex.
