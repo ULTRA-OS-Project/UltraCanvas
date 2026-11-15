@@ -1,5 +1,6 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
+// Version: 1.12.0 - the destructor destroys the windows first, while the native application still stands
 // Version: 1.11.1 - the start's log line counts the fonts read from the Windows font folder
 // Version: 1.11.0 - the Windows font folders by path (GenerateWindowsFontFoldersConfig), added
 //                  to a font set that does not read them, and a log line saying whether it does
@@ -60,6 +61,9 @@ namespace UltraCanvas {
     }
 
     UltraCanvasWindowsApplication::~UltraCanvasWindowsApplication() {
+        // Destroy the windows while this application is still whole: their
+        // destructors reach back for the display / the native application.
+        DestroyWindows();
         // Clear the singleton pointer so GetInstance() returns nullptr once the
         // app is gone; widget destructors that run later (e.g. at static exit)
         // then skip CleanupElementReferences instead of locking a dead mutex.

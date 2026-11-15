@@ -1,5 +1,6 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.9.2 - Hide() with no application left does not reach for the display
 // Version: 1.9.1 - a popup's own window takes the keys pressed over it too (no window manager: the focus
 //                  follows the pointer), which the application hands to the window the popup belongs to
 // Version: 1.9.0 - WindowType::Popup: override-redirect, _NET_WM_WINDOW_TYPE_POPUP_MENU, takes
@@ -1049,6 +1050,13 @@ namespace UltraCanvas {
 
         debugOutput << "UltraCanvas Linux: Hiding window..." << std::endl;
         auto application = UltraCanvasApplication::GetInstance();
+        if (!application || !application->GetDisplay()) {
+            // The application is already gone (a window destroyed too late).
+            // There is no display to unmap through, and X has dropped the
+            // window with the connection; just record the state.
+            _windowVisible = false;
+            return;
+        }
         XUnmapWindow(application->GetDisplay(), xWindow);
         XFlush(application->GetDisplay());
 
