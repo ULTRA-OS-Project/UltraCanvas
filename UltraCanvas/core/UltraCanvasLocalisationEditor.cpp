@@ -1,7 +1,9 @@
 // core/UltraCanvasLocalisationEditor.cpp
 // See UltraCanvasLocalisationEditor.h.
+// Version: 1.1.0 - MarkColors: the grid's marks and the status line in the
+//                 theme's colours in a dark look; ApplyTheme fills the rows again
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #include "UltraCanvasLocalisationEditor.h"
 #include "UltraCanvasConfig.h"           // GetResourcesDir
@@ -9,6 +11,7 @@
 #include "UltraCanvasModalDialog.h"      // DialogResult, FileFilter
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasWindow.h"
 #include "CSSLayout/CSSLayout.h"
 
@@ -24,6 +27,27 @@
 namespace UltraCanvas {
 
 namespace {
+
+// The grid's marks and the status line. The light look keeps the colours it
+// always had; a dark one takes the theme's - the muted ink for a text that
+// comes from another set than the one shown, the danger colour for an
+// untranslated row, a light green for a changed one (the dark green of the
+// light look sinks into a dark ground) - each a named element role first,
+// so a theme can choose its own.
+struct MarkColors {
+    Color muted, untranslated, changed, status;
+};
+
+MarkColors MarkColorsFor(const UltraCanvasTheme& theme) {
+    if (!theme.dark) {
+        return {Color(120, 120, 120, 255), Color(170, 40, 40, 255), Color(0, 100, 0, 255), Color(90, 90, 90, 255)};
+    }
+    const ThemeRoles& r = theme.roles;
+    return {theme.Role("localisation-editor.muted", r.inkMuted),
+            theme.Role("localisation-editor.untranslated", r.danger),
+            theme.Role("localisation-editor.changed", Color(110, 200, 130, 255)),
+            theme.Role("localisation-editor.status", r.inkMuted)};
+}
 
 namespace fs = std::filesystem;
 
@@ -1015,7 +1039,7 @@ void UltraCanvasLocalisationEditor::BuildUi() {
 
     // ----- the status line -----
     statusLabel = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_Status", "");
-    statusLabel->SetTextColor(Color(90, 90, 90, 255));
+    statusLabel->SetTextColor(MarkColorsFor(UltraCanvasTheme::Current()).status);
     statusLabel->layoutItem.SetFlexShrink(0);
     AddChild(statusLabel);
 
@@ -1239,7 +1263,8 @@ void UltraCanvasLocalisationEditor::RebuildRows() {
     for (size_t i = 0; i < rows.size(); ++i) groups[static_cast<size_t>(groupOf(rows[i]))].push_back(i);
 
     grid->SetRootNode(TreeNodeData("root", ""));
-    const Color changedColor(0, 100, 0, 255), untranslatedColor(170, 40, 40, 255), mutedColor(120, 120, 120, 255);
+    const MarkColors marks = MarkColorsFor(UltraCanvasTheme::Current());
+    const Color changedColor = marks.changed, untranslatedColor = marks.untranslated, mutedColor = marks.muted;
     for (size_t g = 0; g < groups.size(); ++g) {
         if (groups[g].empty()) continue;
         TreeNodeData header("g:" + std::to_string(g), groupTitles[g] + "  (" + std::to_string(groups[g].size()) + ")");
@@ -1307,6 +1332,15 @@ void UltraCanvasLocalisationEditor::RefreshEditRow() {
         editSet = workspace.Application();
     editField->SetText(selectedKey.empty() ? std::string() : workspace.Text(editSet, selectedKey, selectedCategory));
     rebuilding = false;
+}
+
+void UltraCanvasLocalisationEditor::ApplyTheme(const UltraCanvasTheme& theme) {
+    UltraCanvasContainer::ApplyTheme(theme);
+    // The marks are in the rows' cells, coloured as the rows were filled:
+    // they are filled again for the new look. The status line's colour is
+    // set by hand, so it is set again too.
+    if (statusLabel) statusLabel->SetTextColor(MarkColorsFor(theme).status);
+    if (grid && !rebuilding) RebuildRows();
 }
 
 void UltraCanvasLocalisationEditor::SetStatus(const std::string& text) {

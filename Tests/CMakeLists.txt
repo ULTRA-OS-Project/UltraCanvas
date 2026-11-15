@@ -1391,6 +1391,30 @@ else()
     message(STATUS "  PopupOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
+# ===== WINDOW SHUTDOWN TEST =====
+# A window that is never closed, only destroyed: the application destroys its
+# windows before its own platform half goes (DestroyWindows), and each platform
+# window releases its native half in its own destructor. Asks the X server
+# whether the windows it was told about are really gone, so X11 only; skips
+# without DISPLAY, and fails there with ULTRACANVAS_TEST_DISPLAY_REQUIRED=1.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building WindowShutdownTest...")
+    add_executable(WindowShutdownTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/WindowShutdownTest.cpp
+    )
+    target_include_directories(WindowShutdownTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(WindowShutdownTest PRIVATE cxx_std_20)
+    target_link_libraries(WindowShutdownTest PRIVATE UltraCanvas)
+    set_target_properties(WindowShutdownTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME WindowShutdownTest COMMAND WindowShutdownTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: WindowShutdownTest")
+else()
+    message(STATUS "  WindowShutdownTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
 # ===== TOOL GROUP BUTTON TEST =====
 # Several tools sharing one toolbar slot: the bar of the whole group folds out
 # while the pointer rests on the slot, a click in it picks a tool, and it folds
@@ -7780,6 +7804,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: TreeViewKeyboardTest")
 else()
     message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== LIST VIEW FOCUS RING =====
+# The list view's focused row carries a dashed ring while the list holds the
+# keyboard focus, and none once it leaves; one ring across a multi-column row;
+# SetFocusRingColor. Reads real pixels: skips without a DISPLAY, and fails
+# instead under ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (CI's virtual display).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ListViewFocusRingTest...")
+    add_executable(ListViewFocusRingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ListViewFocusRingTest.cpp
+    )
+    target_include_directories(ListViewFocusRingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ListViewFocusRingTest PRIVATE cxx_std_20)
+    target_link_libraries(ListViewFocusRingTest PRIVATE UltraCanvas)
+    set_target_properties(ListViewFocusRingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ListViewFocusRingTest COMMAND ListViewFocusRingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ListViewFocusRingTest")
+else()
+    message(STATUS "  ListViewFocusRingTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== TREE VIEW NODE DRAG TEST =====

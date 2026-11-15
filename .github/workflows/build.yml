@@ -2339,18 +2339,19 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^SmartHomeWidgets$"
 
-      # The tree view's focus ring is checked on real pixels: drawn round the
-      # focused row while the tree holds the focus, gone once it leaves, in
-      # the colour SetFocusRingColor gives. "Run unit tests" has no display,
-      # so there that part skips; here it has to run.
-      - name: Run the tree view focus-ring test on a virtual display (Linux)
+      # The tree view's and the list view's focus rings are checked on real
+      # pixels: drawn round the focused row while the widget holds the focus,
+      # gone once it leaves, in the colour SetFocusRingColor gives. "Run unit
+      # tests" has no display, so there those parts skip; here they have to
+      # run.
+      - name: Run the tree and list view focus-ring tests on a virtual display (Linux)
         if: runner.os == 'Linux'
         working-directory: build
         env:
           ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
         run: >-
           xvfb-run -a -s "-screen 0 1280x800x24"
-          ctest --output-on-failure --no-tests=error --timeout 300 -R "^TreeViewKeyboardTest$"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^(TreeViewKeyboardTest|ListViewFocusRingTest)$"
 
       # UltraMail's four window suites - the account bar, the folder tree, the
       # message pane, the format bar - open a real window, so "Run unit tests"
@@ -2398,6 +2399,22 @@ jobs:
         run: >-
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^FilerVanishedFolderTest$"
+
+      # A window that is never closed, only destroyed: the application has to
+      # destroy its windows before its own platform half goes, and each window
+      # has to release its native half on the way out. Until 2026-11-15 neither
+      # happened - every UltraCanvas application died with SIGSEGV on its way
+      # out, which the UltraMail step above is what first caught (60 of 60
+      # assertions passed, exit 139). The suite asks the X server whether the
+      # windows are really gone, so it needs a display of its own.
+      - name: Run the window shutdown test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^WindowShutdownTest$"
 
       # The demo's layout audit (Apps/DemoApp/UltraCanvasDemoLayoutAudit.cpp)
       # opens every page and fails on a label or button narrower than its

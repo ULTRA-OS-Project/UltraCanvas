@@ -48610,6 +48610,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
   - [Icon list with a customized delegate](#icon-list-with-a-customized-delegate)
   - [A custom delegate with clickable cells (the domain dashboard)](#a-custom-delegate-with-clickable-cells-the-domain-dashboard)
 - [Keyboard Navigation](#keyboard-navigation)
+  - [The focus ring](#the-focus-ring)
 - [Best Practices](#best-practices)
 - [See Also](#see-also)
 
@@ -48775,6 +48776,9 @@ struct ListViewStyle {
 
     Color selectionBackgroundColor = Colors::Selection;
     Color hoverBackgroundColor = Colors::SelectionHover;
+    // The focus ring's automatic colour on a selected row (the theme's
+    // text-on-accent); on any other row it is selectionBackgroundColor
+    Color focusRingOnSelectionColor = Colors::White;
 
     ScrollbarStyle scrollbarStyle = ScrollbarStyle::Modern();
 
@@ -49650,6 +49654,27 @@ field, a slider), use a container of elements instead, for a short list.
 | Ctrl + Click       | Toggle row in multi-selection mode  |
 | Shift + Click      | Range-select in multi-selection mode|
 
+### The focus ring
+
+While the list holds the keyboard focus, the row the keys go on from carries
+a dashed one-pixel ring just inside its edges, so a focused row can be told
+from one that is merely selected; once the focus moves elsewhere the ring goes
+and the selection stays. The view draws it over what the delegate drew, once
+across the whole row (one ring for a multi-column row, not one per column), so
+a custom delegate gets it without doing anything - `ListItemStyleOption::isFocused`
+is there for a delegate that wants to mark the row in its own way as well. Its
+colour contrasts with the row: `ListViewStyle::focusRingOnSelectionColor` on a
+selected row (the theme's text-on-accent), the selection colour on any other.
+A list inside another element that keeps the focus (a dropdown's open list,
+`SetAcceptsFocus(false)`) never shows one.
+
+```cpp
+auto list = std::make_shared<UltraCanvasListView>("files", 0, 0, 300, 200);
+list->SetFocusRingColor(Color(255, 140, 0));    // this colour on every row
+list->SetFocusRingColor(Colors::Transparent);   // back to the automatic one
+Color ring = list->GetFocusRingColor();
+```
+
 The keys go on from the selection's current row, whoever selected it: a click,
 a key, or the application through `GetSelection()->Select(row)` - after it
 rebuilt or re-sorted the rows and selected the one the user was on, Down moves
@@ -49798,6 +49823,15 @@ shared sets* holds what the bases and Standard carry that the application
 does not use. The search field matches the key, the texts and the compared
 text; the *Show* list filters by status (untranslated, machine drafts,
 overrides, collisions between bases, changed since the shipped file).
+
+The marks follow the look. In a light one a text from a set that does not
+answer is grey, an untranslated row red and a changed one dark green; in a
+dark one they are the theme's muted ink, its danger colour and a light
+green, and the status line is the muted ink. A theme can name its own as
+the element roles `localisation-editor.muted`, `.untranslated`, `.changed`
+and `.status`. When the look changes while the editor is open, the rows are
+filled again in the new colours. Every other cell is the grid's text colour
+(the theme's ink).
 
 ### Editing
 
@@ -84253,7 +84287,7 @@ struct TreeViewColumn {
     int           minWidth   = 0;            // floor for flexible columns / resize
     float         flexWeight = 1.0f;         // relative share among flexible columns
     TextAlignment alignment  = TextAlignment::Left;
-    Color         textColor  = Color(40, 40, 40);         // default cell text colour
+    Color         textColor  = Colors::Transparent;       // Transparent => the tree's text colour (the theme's ink)
     Color         accentBackground = Colors::Transparent; // optional fill behind the cell
     int           accentPadding    = 0;      // px added around the accent fill
     bool          isTreeColumn = false;      // hosts indent/expander/icon; draws node->data.text
@@ -84302,9 +84336,10 @@ struct TreeColumnStyle {
 ```cpp
 auto varsTree = std::make_shared<UltraCanvasColumnsTreeView>("VarsTree", 300, 330);
 varsTree->SetColumns({
-    { "name",  "Name",  0,   0,  2.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent,  0, true  },
-    { "type",  "Type",  128, 0,  1.0f, TextAlignment::Left, Color(40, 40, 40), Color(255, 190, 130), 4, false },
-    { "value", "Value", 0,   48, 1.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent,  0, false },
+    { "name",  "Name",  0,   0,  2.0f, TextAlignment::Left, Colors::Transparent, Colors::Transparent,  0, true  },
+    // dark text on the light orange accent, in either look
+    { "type",  "Type",  128, 0,  1.0f, TextAlignment::Left, Color(40, 40, 40),   Color(255, 190, 130), 4, false },
+    { "value", "Value", 0,   48, 1.0f, TextAlignment::Left, Colors::Transparent, Colors::Transparent,  0, false },
 });
 varsTree->SetShowColumnHeader(true);
 

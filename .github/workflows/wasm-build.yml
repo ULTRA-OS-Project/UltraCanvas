@@ -303,6 +303,16 @@ jobs:
               f=Apps/UltraStore/web/ultrastore-web.wasm
               echo "| ultrastore-web.wasm (the web store, a side module) | $(mb "$(kb "$f")") | $(gz "$f") | $(br "$f") |"
             fi
+            # The UltraCanvas runtime the store (and every side module) runs
+            # on: what a visitor pays once per site or per browser, the
+            # font subset in the .data (UCR_FONTS).
+            total=0
+            for f in UltraCanvas/OS/WASM/runtime/ultracanvas-runtime.wasm UltraCanvas/OS/WASM/runtime/ultracanvas-runtime.js UltraCanvas/OS/WASM/runtime/ultracanvas-runtime.data; do
+              [ -f "$f" ] || continue
+              k=$(kb "$f"); total=$((total + k))
+              echo "| $(basename "$f") (the runtime) | $(mb "$k") | $(gz "$f") | $(br "$f") |"
+            done
+            [ "$total" = 0 ] || echo "| **the runtime, all files** | **$(mb "$total")** | | |"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       # One folder with the three pages and serve.py, so the artifact works
