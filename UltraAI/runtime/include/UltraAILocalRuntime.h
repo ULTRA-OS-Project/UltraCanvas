@@ -33,8 +33,21 @@
 // ModelForTopic("translation"), or hands the `local` provider
 // providerOptions["topic"].
 //
+// Catalogue sources: where the list of models comes from, beyond the short
+// curated catalogue shipped with the framework. As LocalAI's galleries: each
+// source is an index at a URL - a LocalAI model gallery (its
+// gallery/index.yaml is the default source) or one of our catalogue.json
+// documents - that RefreshCatalogueSources() downloads and keeps. A model
+// of a source is offered, installed and run like any other; it is never
+// picked on its own (Recommend, the topics): the user chooses it. Hugging
+// Face is searched live (SearchHuggingFace, ListHuggingFaceFiles) and a
+// file found there is added with AddHuggingFaceModel.
+//
 // Nothing here draws. The framework's "Get a local model" dialog and the
 // dashboard's Local models and Model topics pages are built on top of it.
+// Version: 0.5.0 - catalogue sources (LocalAI galleries), Hugging Face
+//                  search, the accelerator per engine, no default gallery
+//                  address, installed models a catalogue no longer lists
 // Version: 0.4.0 - speech models (whisper-server); ListModels leaves out
 //                  models whose engine has no build for this platform
 // Version: 0.3.0 - signed galleries: trustedKeys, keys.json pinned on first
@@ -43,7 +56,7 @@
 //                  topic, new models (ListTopics, ModelForTopic,
 //                  TopicPreferences, NewModels, ApplyTopicUpdates)
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-15
 // Author: UltraAI Module
 #pragma once
 
@@ -145,22 +158,30 @@ struct LocalModelFile {
     std::string name;                   // file name inside the model folder
     std::string url;
     std::string sha256;                 // empty = not on record (verified against the host's hash when it reports one)
-    uint64_t    sizeBytes = 0;
+    uint64_t    sizeBytes = 0;          // 0 = not on record (asked of the host: ProbeModel, an install)
+    // A vision projector, handed to the engine beside the model (--mmproj).
+    // A file whose name starts with "mmproj" is one without saying so.
+    bool        projector = false;
 };
 
-// Where a model came from.
-enum class LocalModelSource { Catalogue, File, HuggingFace };
+// Where a model came from: the curated catalogue, a file the user has, a
+// Hugging Face file the user added, or a catalogue source (a gallery).
+enum class LocalModelSource { Catalogue, File, HuggingFace, Gallery };
 
 // One model: a catalogue entry, an installed model, or a file the user
 // brought.
 struct LocalModelInfo {
-    std::string id;                     // catalogue id, "file:<path>" or "hf:<repo>:<file>"
+    // Catalogue id, "file:<path>", "hf:<repo>:<file>" or, for a model of a
+    // catalogue source, "<source id>:<its name there>".
+    std::string id;
     std::string displayName;
     std::string description;
     std::string capability;             // "textllm", "embeddings", "speechtotext", "texttospeech", "imagegen"
     std::string engineId;
     std::string license;
     LocalModelSource source = LocalModelSource::Catalogue;
+    std::string gallery;                // the catalogue source of a Gallery model ("localai"); "" otherwise
+    std::string homepage;               // a page about the model (its repository), when the source names one
     std::vector<LocalModelFile> files;
     uint64_t    sizeBytes = 0;          // sum of the files
     uint64_t    memoryBytes = 0;        // what it needs in system memory; 0 = unknown
@@ -212,12 +233,90 @@ struct RunningEngineInfo {
     bool        ownedByThisProcess = false;
 };
 
+// A place the list of models is downloaded from (RefreshCatalogueSources).
+struct CatalogueSource {
+    // Lower-case letters, digits and '-'; it starts the ids of the source's
+    // models ("localai:qwen3-4b"), so it is not "file" or "hf".
+    std::string id;
+    std::string name;                   // "LocalAI model gallery"
+    // The index: an https:// address, or LocalAI's short form
+    // "github:owner/repository/path@branch". A LocalAI model gallery (YAML)
+    // or a catalogue.json of ours; the document says which.
+    std::string url;
+    bool        enabled = true;         // off: kept in the list, not downloaded, its models not offered
+};
+
+// The sources a new installation starts with: LocalAI's model gallery.
+std::vector<CatalogueSource> DefaultCatalogueSources();
+
+// A catalogue source and the copy of it in use (ListCatalogueSources), or
+// what a refresh did to it (RefreshCatalogueSources).
+struct CatalogueSourceStatus {
+    CatalogueSource source;
+    Error       error;                  // a refresh: IsOk() when the source was read
+    int         models = 0;             // entries the local engines can run: offered
+    int         skipped = 0;            // entries left out: they need an engine this runtime does not have
+    std::string fetched;                // "2026-11-15", when the copy in use was downloaded; "" = never
+};
+
+// One repository found on Hugging Face (SearchHuggingFace).
+struct HuggingFaceRepo {
+    std::string id;                     // "Qwen/Qwen3-4B-GGUF"
+    uint64_t    downloads = 0;
+    uint64_t    likes = 0;
+    std::string pipelineTag;            // "text-generation", "sentence-similarity", "automatic-speech-recognition", ...
+    std::string license;                // from its "license:" tag; "" when it names none
+    std::string lastModified;           // "2026-05-01"; "" when the answer carries no date
+    // The publisher asks for an agreement on huggingface.co first: its files
+    // are refused to a download that is not signed in.
+    bool        gated = false;
+    std::vector<std::string> tags;
+};
+
+// One model file of a repository that a local engine can run
+// (ListHuggingFaceFiles): a GGUF, or a whisper.cpp ggml .bin.
+struct HuggingFaceFile {
+    std::string name;                   // its path inside the repository
+    uint64_t    sizeBytes = 0;          // with its further parts, for a split model
+    std::string sha256;                 // "" when the host reports none
+    std::string quantization;           // "Q4_K_M"; "" when the name does not say
+    std::string capability;             // what it would be added as: "textllm", "embeddings" or "speechtotext"
+    bool        projector = false;      // a vision projector (mmproj): it goes with a model, it is not one
+    std::vector<std::string> parts;     // the further parts of a split GGUF ("...-00002-of-00003.gguf")
+    ModelFit    fit = ModelFit::Unknown;
+};
+
+// What AddHuggingFaceModel registers.
+struct HuggingFaceModelRequest {
+    std::string repo;                   // "organisation/repository"
+    std::string file;                   // the model file inside it (the first part of a split one)
+    std::vector<std::string> extraFiles;    // its further parts
+    std::string projectorFile;          // a vision projector of the same repository; "" = none
+    std::string capability;             // "textllm", "embeddings" or "speechtotext"
+    std::string displayName;            // "" = the file's name
+    std::string revision;               // "" = main
+    std::string license;                // "" = "see the repository"
+};
+
 // The settings. Persisted to <root>/UltraAI/runtime-settings.json by the
 // runtime that owns them.
 struct LocalRuntimeSettings {
     DownloadPolicy policy = DownloadPolicy::Ask;
-    std::string    preferredAccelerator;        // "" = Auto; "cpu", "vulkan", "cuda12", ...
-    std::string    galleryUrl;                  // "" = the built-in default
+    // The accelerator of every engine that has no entry of its own below:
+    // "" = Auto; "cpu", "vulkan", "cuda12", ...
+    std::string    preferredAccelerator;
+    // The accelerator per engine id ("llama-server", "whisper-server"); an
+    // entry wins over preferredAccelerator, and "" in it means Auto for that
+    // engine. One engine's GPU build may suit a computer where another's
+    // does not, so a settings page sets these.
+    std::map<std::string, std::string> engineAccelerators;
+    // The address of an engine gallery (a model server's index.json, with
+    // its catalogue.json and topics.json beside it); "" = none: the engine
+    // index, the curated catalogue and the topics shipped with the
+    // framework stay in use and RefreshGallery has nothing to fetch.
+    std::string    galleryUrl;
+    // Where the wider list of models comes from (RefreshCatalogueSources).
+    std::vector<CatalogueSource> catalogueSources = DefaultCatalogueSources();
     // The Ed25519 public keys (64 hex characters each) the gallery's
     // documents must be signed with. Empty: the first refresh from a server
     // that publishes keys.json pins its keys here (trust on first use, over
@@ -316,10 +415,13 @@ public:
 
     // ----- Inventory (local folders only; no network) -----
 
-    // The catalogue's models and the user-added ones, with their state on
-    // this machine; `capability` filters ("" = all). A catalogue model whose
-    // engine has no build for this platform (whisper-server on macOS) is
-    // left out unless it is installed.
+    // The catalogue's models, those of the catalogue sources and the
+    // user-added ones, with their state on this machine; `capability`
+    // filters ("" = all). A catalogue or source model whose engine has no
+    // build for this platform (whisper-server on macOS) is left out unless
+    // it is installed. An installed model that no catalogue lists any more
+    // (a source dropped it, or was turned off) is still listed, from the
+    // model.json in its folder.
     std::vector<LocalModelInfo> ListModels(const std::string& capability = "") const;
     // One model by id; false when unknown.
     bool FindModel(const std::string& modelId, LocalModelInfo& out) const;
@@ -332,9 +434,12 @@ public:
     LocalModelInfo Recommend(const std::string& capability) const;
     // How a model suits this machine.
     ModelFit Fit(const LocalModelInfo& model) const;
-    // The bundle Auto picks for an engine on this machine; false when the
-    // gallery has none for this platform.
+    // The bundle an engine uses on this machine - its accelerator from the
+    // settings (engineAccelerators, else preferredAccelerator), else Auto's
+    // pick; false when the gallery has none for this platform.
     bool ChooseBundle(const std::string& engineId, EngineBundleInfo& out) const;
+    // The accelerator the settings name for an engine ("" = Auto).
+    std::string PreferredAccelerator(const std::string& engineId) const;
     // This machine, as the runtime sees it.
     const HardwareProfile& Hardware() const;
     // The engines running now (from the shared record, pids checked).
@@ -352,16 +457,34 @@ public:
     // whisper.cpp ggml .bin, served by whisper-server).
     Error AddModelFile(const std::string& pathUtf8, const std::string& capability,
                        const std::string& displayName, std::string& outModelId);
-    // Register a Hugging Face file for download: repo "org/name", file
-    // name inside it, optional revision ("" = main). The id comes back as
-    // "hf:<repo>:<file>". Its hash is taken from the host when it reports
-    // one.
+    // Register a Hugging Face file for download: repo "org/name", the
+    // file's path inside it. The id comes back as "hf:<repo>:<file>". Its
+    // hash and size are taken from the host when it reports them.
     Error AddHuggingFaceModel(const std::string& repo, const std::string& file,
                               const std::string& capability,
                               const std::string& displayName,
                               std::string& outModelId);
+    // The same with the further parts of a split GGUF, a vision projector
+    // and a revision.
+    Error AddHuggingFaceModel(const HuggingFaceModelRequest& request, std::string& outModelId);
     // Forget a user-added model (an installed one is removed first).
     Error ForgetModel(const std::string& modelId);
+
+    // ----- Hugging Face (network; blocking, never on a UI thread) -----
+
+    // Search the repositories of huggingface.co, most downloaded first.
+    // `ggufOnly` keeps those tagged as holding GGUF files, which is what
+    // llama-server runs; an empty query lists the most downloaded. `limit`
+    // is 1..100.
+    Error SearchHuggingFace(const std::string& query, bool ggufOnly, int limit,
+                            std::vector<HuggingFaceRepo>& out);
+    // The files of one repository that a local engine can run, each with
+    // its size, hash, quantisation, how it fits this computer and what it
+    // would be added as; `outRepo` (may be null) takes the repository's own
+    // facts (licence, gated). Empty `out` with no error: the repository
+    // holds no GGUF and no whisper.cpp model.
+    Error ListHuggingFaceFiles(const std::string& repo, std::vector<HuggingFaceFile>& out,
+                               HuggingFaceRepo* outRepo = nullptr);
 
     // ----- Installs (background jobs) -----
 
@@ -412,10 +535,14 @@ public:
     // ----- Settings and gallery -----
 
     LocalRuntimeSettings GetSettings() const;
-    void SetSettings(const LocalRuntimeSettings& settings);   // persisted
+    // Persisted. A catalogue source without a usable id or address is
+    // dropped; a source turned off or removed takes its models out of the
+    // inventory at once (an installed one stays listed).
+    void SetSettings(const LocalRuntimeSettings& settings);
     // Fetch the gallery index, the catalogue and the topics from the gallery
-    // URL and replace the copies in use when they verify. Each document's
-    // signature comes in its X-UltraAI-Signature header or as
+    // URL and replace the copies in use when they verify. Without a gallery
+    // URL in the settings there is nothing to fetch and it returns ok. Each
+    // document's signature comes in its X-UltraAI-Signature header or as
     // <document>.sig beside it (128 hex characters, Ed25519 over the bytes
     // served). With trustedKeys set, an unsigned or wrongly signed document
     // fails the whole refresh with ProviderError / providerCode
@@ -425,6 +552,24 @@ public:
     // When the in-use gallery was published ("" for the built-in one's
     // date when never refreshed).
     std::string GalleryPublished() const;
+
+    // ----- Catalogue sources -----
+
+    // Download every enabled catalogue source and replace its models with
+    // what it lists now. One source failing leaves its earlier copy in use
+    // and does not stop the others; the result is ok when every enabled
+    // source was read, else the first failure. `outStatus` (may be null)
+    // takes one entry per enabled source. Blocking.
+    Error RefreshCatalogueSources(std::vector<CatalogueSourceStatus>* outStatus = nullptr);
+    // The sources of the settings, each with the copy of it in use: how
+    // many models it offers and when it was downloaded. No network.
+    std::vector<CatalogueSourceStatus> ListCatalogueSources() const;
+    // Ask a model's host for what its catalogue entry lacks - the files'
+    // sizes, and their hashes - and remember it, so the model's size and
+    // fit are known before it is installed (a LocalAI gallery lists no
+    // sizes). `out` takes the model as ListModels would give it. Does
+    // nothing when everything is on record. Blocking.
+    Error ProbeModel(const std::string& modelId, LocalModelInfo& out);
 
     // The name of the capability a model id serves, from the catalogue or
     // the user's registration; "" when unknown.
