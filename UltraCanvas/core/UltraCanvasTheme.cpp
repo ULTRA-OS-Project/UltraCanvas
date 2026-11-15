@@ -72,7 +72,10 @@ UltraCanvasTheme UltraCanvasTheme::Dark() {
     r.pressed = Color(70, 70, 70);
     r.line = Color(52, 52, 52);
     r.lineStrong = Color(120, 120, 120);
-    r.ink = Color(235, 235, 235);
+    // White, as the Windows and GNOME dark looks write their text: 235 read
+    // greyer than the native window beside it. The muted and faint inks
+    // keep the steps below it.
+    r.ink = Color(255, 255, 255);
     r.inkMuted = Color(190, 190, 190);
     r.inkFaint = Color(150, 150, 150);
     r.accent = Color(77, 166, 255);
