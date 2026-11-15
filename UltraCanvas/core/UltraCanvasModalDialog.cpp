@@ -1,6 +1,7 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.9.3 - the Save dialog opens a type's Settings at its own type size
 // Version: 3.9.2 - nor by a popup's own window
 // Version: 3.9.1 - a dialog without a parent is not placed by the tooltip's window
 // Version: 3.9.0 - ModalDialogStyle::FromTheme, ApplyTheme
@@ -2792,7 +2793,9 @@ namespace UltraCanvas {
                     if (weak.expired() || result != DialogResult::OK) return;
                     saveImageSize = size;
                     UpdatePictureSizeLabel();
-                });
+                },
+                // At this dialog's type size, so the settings read as part of it.
+                GetStyle().messageFontSize);
     }
 
     namespace {

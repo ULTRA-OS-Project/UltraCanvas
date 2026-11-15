@@ -461,10 +461,14 @@ media viewer offers an SVG this way and draws it again at the size chosen.
 
 #### Opened from a settings window
 
-The dialog is drawn in its own type size (12) unless it is given another:
+The dialog is drawn in the theme's body size unless it is given another:
 the last argument of the `FileSavePicture` overload, `fontSize`, draws its
-captions, controls and buttons at the size of the window it is opened from,
-its rows and columns scaled to match. Whatever the size, the window is as
+captions, controls and buttons - the size fields and lists too - at the size
+of the window it is opened from, its rows and columns scaled to match. The
+Save dialog's Settings button passes its own. (Before 2026-11 the default was
+a fixed 12 for the captions, checkboxes and buttons only, which drew them a
+third larger than the fields beside them where the body text is smaller, as
+on Windows.) Whatever the size, the window is as
 wide as its captions and controls need, and the Defaults button as wide as
 its label. A settings window built on `SettingsPageKit` opens it through
 `SettingsPageKit::ShowSaveSettingsDialog(extensionOrPath, parent)`, which
