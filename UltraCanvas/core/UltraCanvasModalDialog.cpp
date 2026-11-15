@@ -1103,18 +1103,23 @@ namespace UltraCanvas {
         inputConfig = config;
         CreateDialog(config);
 
-        // Input dialogs carry an input field below the prompt and keep the
-        // fixed size from their config; don't auto-fit to the prompt text.
-        autoSizeHeight = false;
-        // The prompt shares the content box with the input field, so it sizes
-        // to its own text instead of growing to fill (which would squeeze the
-        // field). Alerts keep the grow so their long text can scroll.
-        if (messageArea) messageArea->layoutItem.SetFlexGrow(0);
-
-        SetMessage(inputConfig.inputLabel);
+        // The prompt is the message area's: it wraps, and the dialog is as
+        // tall as the prompt and the field under it need (AutoSizeToContent
+        // counts both), never shorter than the configured height, which is
+        // also the window's minimum. Until 2026-11 the height was fixed and
+        // the prompt was shown by a one-line label instead, so a prompt
+        // longer than the window was wide ended in an ellipsis and squeezed
+        // the icon to a sliver beside it.
+        // A config with a message of its own keeps it; the input label is
+        // then the field's caption (SetupInputField).
+        if (!HasOwnMessage()) SetMessage(inputConfig.inputLabel);
         SetDialogButtons(DialogButtons::OKCancel);
 
         SetupInputField();
+    }
+
+    bool UltraCanvasInputDialog::HasOwnMessage() const {
+        return !inputConfig.message.empty() && inputConfig.message != inputConfig.inputLabel;
     }
 
     std::string UltraCanvasInputDialog::GetInputValue() const {
@@ -1147,13 +1152,23 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasInputDialog::SetupInputField() {
-        // Create input label
-        inputLabel = std::make_shared<UltraCanvasLabel>("InputLabel");
-        inputLabel->SetText(inputConfig.inputLabel);
-        inputLabel->SetFontSize(style.messageFontSize);
+        // The field's caption, only where the dialog has a message of its
+        // own above it; otherwise the input label is that message already.
+        // It wraps like the message does.
+        if (HasOwnMessage() && !inputConfig.inputLabel.empty()) {
+            // (identifier, text): the one-argument constructor takes the text.
+            inputLabel = std::make_shared<UltraCanvasLabel>("InputLabel", inputConfig.inputLabel);
+            inputLabel->SetFontSize(style.messageFontSize);
+            inputLabel->SetWrap(TextWrap::WrapWord);
+            inputLabel->size.height = CSSLayout::Dimension::Auto();
+            inputLabel->layoutItem.SetFlexShrink(0);
+        }
 
-        // Create text input
+        // Create text input. It keeps its height whatever the prompt needs:
+        // the message area is the part that gives way, and scrolls.
         textInput = std::make_shared<UltraCanvasTextInput>("InputField", 0, 0, 300, 25);
+        textInput->size.height = CSSLayout::Dimension::Px(25);
+        textInput->layoutItem.SetFlexShrink(0);
         textInput->SetText(inputConfig.defaultValue);
         textInput->SetPlaceholder(inputConfig.inputPlaceholder);
         inputValue = inputConfig.defaultValue;
@@ -1178,7 +1193,7 @@ namespace UltraCanvas {
         };
 
         // Add to content via layout
-        AddDialogElement(inputLabel);
+        if (inputLabel) AddDialogElement(inputLabel);
         AddDialogElement(textInput);
 
         ValidateInput();

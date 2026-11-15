@@ -5746,6 +5746,28 @@ else()
     message(STATUS "  DialogCloseAllTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== INPUT DIALOG PROMPT TEST =====
+# An input dialog shows its whole prompt: it wraps and the window grows to
+# fit (it was one line with an ellipsis in a window of fixed height). Opens
+# real dialogs; skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building InputDialogPromptTest...")
+    add_executable(InputDialogPromptTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/InputDialogPromptTest.cpp
+    )
+    target_include_directories(InputDialogPromptTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(InputDialogPromptTest PRIVATE cxx_std_20)
+    target_link_libraries(InputDialogPromptTest PRIVATE UltraCanvas)
+    set_target_properties(InputDialogPromptTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME InputDialogPromptTest COMMAND InputDialogPromptTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: InputDialogPromptTest")
+else()
+    message(STATUS "  InputDialogPromptTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== DIALOG STACKING TEST =====
 # A dialog is kept above its own window (WM_TRANSIENT_FOR), not above every
 # application's (_NET_WM_STATE_ABOVE, which DialogConfig used to ask for).
