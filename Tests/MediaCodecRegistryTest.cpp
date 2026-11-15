@@ -3,10 +3,12 @@
 // build compiled with are registered, that "recognised" and "decodable" stay
 // separate answers, that the format inventory advertises only the decodable
 // ones, and that a codec registered by an application is reached by
-// classification, by the inventory and by UCAudio's load/save paths.
+// classification, by the inventory and by UCAudio's load/save paths - and
+// that a video converter (convertVideo) joins an entry the way an encoder does.
 // Exits non-zero on any failure.
+// Version: 1.1.0 - a video converter merged onto a decode-only entry
 // Version: 1.0.0
-// Last Modified: 2026-09-06
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaCodecRegistry.h"
@@ -322,6 +324,34 @@ void TestKindsAreIndependent() {
     UnregisterMediaCodec(MediaCodecKind::Video, "ucdual");
 }
 
+// A converter brought to a type the platform backend only plays: the entry
+// keeps its decoder and becomes one that encodes - what VideoFX's
+// registration does to the built-in table.
+void TestVideoConverterJoinsAnEntry() {
+    std::printf("A video converter joins an entry\n");
+    MediaCodecRegistration played;
+    played.extension = "ucvplay";
+    played.kind = MediaCodecKind::Video;
+    played.canDecode = true;
+    played.description = "Played only";
+    RegisterMediaCodec(played);
+    Check(!CanEncodeMediaExtension(MediaCodecKind::Video, "ucvplay"), "decode-only to start with");
+
+    MediaCodecRegistration converter;
+    converter.extension = "ucvplay";
+    converter.kind = MediaCodecKind::Video;
+    converter.convertVideo = [](const std::string&, const std::string&, const MediaProgressFn&,
+                                std::string&) { return true; };
+    RegisterMediaCodec(converter);
+    const auto entry = FindMediaCodecByExtension(MediaCodecKind::Video, "ucvplay");
+    Check(entry && entry->convertVideo, "the converter is on the entry");
+    Check(entry && entry->canDecode, "... which keeps the decoder it had");
+    Check(CanEncodeMediaExtension(MediaCodecKind::Video, "ucvplay"),
+          "... and encodes: bringing a converter is the claim that the type is written");
+    Check(entry && entry->description == "Played only", "... under the name it had");
+    UnregisterMediaCodec(MediaCodecKind::Video, "ucvplay");
+}
+
 void TestExtensionEdgeCases() {
     std::printf("Extension handling\n");
     Check(!IsMediaFileOfKind(MediaCodecKind::Audio, "/tmp/no-extension-here"),
@@ -353,6 +383,7 @@ int main() {
     TestRecognisedButUnsupported();
     TestProbeGating();
     TestKindsAreIndependent();
+    TestVideoConverterJoinsAnEntry();
     TestExtensionEdgeCases();
 
     if (failures == 0) {

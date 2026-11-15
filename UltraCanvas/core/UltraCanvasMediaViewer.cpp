@@ -1,6 +1,9 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.27.0 - Save as for a video the player opened: every type FileLoader's
+//                  ConvertVideoFile writes, converted on a worker thread behind a progress
+//                  ring with Cancel (ShowVideoSaveDialog, VideoSaveJob)
 // Version: 1.26.0 - Save as for a drawing (every vector and bitmap type, the vector view
 //                  too - an SVG had no Save where the image pipeline cannot read SVG)
 //                  and for a recording (every audio type this build encodes)
@@ -102,6 +105,7 @@
 #include "../dialogs/UltraCanvasCurvesDialog.h"  // Curves (tone curve) editing window
 #include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
 #include "UltraCanvasBusyIndicator.h"   // the ring while a file is on its way
+#include "UltraCanvasProgressDialog.h"  // a video being saved: its progress and Cancel
 #include "UltraCanvasGroupBox.h"        // the Details panel's frame, caption and close button
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"     // GetResourcesDir, for the toolbar icons
@@ -161,7 +165,9 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <atomic>
 #include <mutex>
+#include <thread>
 #include <sstream>
 
 namespace fs = std::filesystem;
@@ -1746,6 +1752,9 @@ UltraCanvasMediaViewer::~UltraCanvasMediaViewer() {
         slideshowTimer = 0;
     }
     StopVideoClipTimer();
+    // A video still being saved is stopped - what it wrote goes - and its
+    // thread is waited for: it reports to this viewer.
+    StopVideoSave();
 }
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasMediaViewer::BuildAdjustSlider(
@@ -3128,6 +3137,7 @@ void UltraCanvasMediaViewer::ShowOpenDialog() {
 void UltraCanvasMediaViewer::ShowSaveDialog() {
     if (!tools.save) return;
     if (activeKind == MediaKind::Audio) { ShowAudioSaveDialog(); return; }
+    if (activeKind == MediaKind::Video) { ShowVideoSaveDialog(); return; }
     if (auto drawing = DrawingToSave()) { ShowDrawingSaveDialog(drawing); return; }
     ShowImageSaveDialog();
 }
@@ -3148,6 +3158,28 @@ std::shared_ptr<VectorStorage::VectorDocument> UltraCanvasMediaViewer::DrawingTo
 bool UltraCanvasMediaViewer::CanSaveAudioFile(const std::string& path) {
     return !path.empty() && CanDecodeMediaFile(MediaCodecKind::Audio, path) &&
            !UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCategory::Audio).empty();
+}
+
+bool UltraCanvasMediaViewer::CanSaveVideoFile(const std::string& path) {
+    return !path.empty() && CanDecodeMediaFile(MediaCodecKind::Video, path) &&
+           !UltraCanvasFileLoader::GetVideoSaveExtensions().empty();
+}
+
+// The player taking a file does not make it a film: the backend opens it
+// asynchronously, so an empty or damaged file "loads" and fails later. What
+// the headers say settles it for the containers ReadVideoFileInfo reads; for
+// any other the player's word stands, as long as there is something to save.
+static bool ShownVideoHasTracks(const std::string& path) {
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(PathFromUtf8(path), ec);
+    if (ec || size == 0) return false;
+    VideoFileInfo info;
+    if (ReadVideoFileInfo(path, info)) return info.hasVideo || info.hasAudio;
+    static const char* const readByHeaders[] = { "mp4", "m4v", "mov", "3gp", "3g2", "mkv", "webm", "avi" };
+    const std::string ext = LowerExt(path);
+    for (const char* known : readByHeaders)
+        if (ext == known) return false;   // one of them, and not readable: damaged
+    return true;
 }
 
 // The file Save wrote, or why it did not: a failed save says so in a message,
@@ -3219,6 +3251,134 @@ void UltraCanvasMediaViewer::ShowAudioSaveDialog() {
         const bool ok = source == chosen || UltraCanvasFileLoader::ConvertAudioFile(source, chosen, err);
         ReportSave(infoLabel.get(), GetWindow(), chosen, ok, err, Tr("Save"));
     });
+}
+
+// ----- a video saved in another type -----
+// ConvertVideoFile encodes the whole film again - minutes for a long one - so
+// it runs on a thread of its own: the progress window shows how far it has
+// got and stops it on Cancel, and the poll timer reports the outcome on the
+// UI thread. The same type is the file copied as it is.
+
+struct UltraCanvasMediaViewer::VideoSaveJob {
+    std::string source;
+    std::string target;
+    std::thread worker;
+    std::atomic<double> progress{0.0};
+    std::atomic<bool> cancelRequested{false};
+    std::atomic<bool> finished{false};
+    // Written by the worker before `finished`, read after it.
+    bool ok = false;
+    std::string error;
+    std::shared_ptr<UltraCanvasProgressDialog> dialog;
+    TimerId timer = InvalidTimerId;
+};
+
+void UltraCanvasMediaViewer::ShowVideoSaveDialog() {
+    const std::string source = GetCurrentPath();
+    if (videoSaveJob || !CanSaveVideoFile(source)) return;
+    const std::vector<std::string> types = UltraCanvasFileLoader::GetVideoSaveExtensions();
+    auto writes = [&types](const std::string& ext) {
+        return std::find(types.begin(), types.end(), ext) != types.end();
+    };
+    // Its own name where its type is written, else the name as MP4 - or
+    // whatever is written first, where MP4 is not.
+    const std::string ext = LowerExt(source);
+    const std::string fallback = writes("mp4") ? std::string("mp4") : types.front();
+    const std::string stem = PathToUtf8(PathFromUtf8(BaseName(source)).stem());
+    FileDialogOptions opts;
+    opts.SetTitle(Tr("Save as"))
+        .SetDefaultFileName(writes(ext) ? BaseName(source) : stem + "." + fallback)
+        .SetDefaultExtension(fallback)
+        .SetParentWindow(GetWindow());
+    opts.saveSettingsButton = false;   // the converter takes no save settings
+    UltraCanvasFileLoader::AddVideoSaveTypes(opts);
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, source](DialogResult r, const std::string& chosen) {
+        if (r != DialogResult::OK || chosen.empty()) return;
+        if (chosen == source) {   // saved over itself: it is there as it is
+            ReportSave(infoLabel.get(), GetWindow(), chosen, true, std::string(), Tr("Save"));
+            return;
+        }
+        StartVideoSave(source, chosen);
+    });
+}
+
+void UltraCanvasMediaViewer::StartVideoSave(const std::string& source, const std::string& target) {
+    if (videoSaveJob) return;   // one at a time
+    auto job = std::make_shared<VideoSaveJob>();
+    job->source = source;
+    job->target = target;
+    // Cancel asks the conversion to stop; the poll then reports it. Without
+    // a window (dialogs off, headless) the save still runs, unannounced.
+    std::weak_ptr<VideoSaveJob> weak = job;
+    job->dialog = UltraCanvasProgressDialog::Show(
+            GetWindow(), Tr("Save as"), Tr("Saving\xE2\x80\xA6"),
+            [weak]() { if (auto j = weak.lock()) j->cancelRequested.store(true); });
+    if (job->dialog) job->dialog->SetDetail(BaseName(target));
+    if (infoLabel) infoLabel->SetText(Tr("Saving\xE2\x80\xA6") + " " + BaseName(target));
+
+    // The worker reaches the job by a plain pointer: the viewer keeps the job
+    // and joins the thread before it lets go of it (FinishVideoSave,
+    // StopVideoSave), so the thread never holds the last reference.
+    VideoSaveJob* running = job.get();
+    job->worker = std::thread([running]() {
+        std::string error;
+        bool ok = false;
+        try {
+            ok = UltraCanvasFileLoader::ConvertVideoFile(
+                    running->source, running->target, error, [running](double fraction) {
+                        running->progress.store(fraction);
+                        return !running->cancelRequested.load();
+                    });
+        } catch (const std::exception& e) {
+            ok = false;   // a throwing converter must not take the program down
+            error = e.what();
+        } catch (...) {
+            ok = false;
+            error = "the converter failed";
+        }
+        running->ok = ok;
+        running->error = error;
+        running->finished.store(true);
+    });
+    videoSaveJob = job;
+    if (auto* app = UltraCanvasApplication::GetInstance())
+        job->timer = app->StartTimer(100, true, [this](TimerId) { PollVideoSave(); });
+}
+
+void UltraCanvasMediaViewer::PollVideoSave() {
+    if (!videoSaveJob) return;
+    if (videoSaveJob->dialog) videoSaveJob->dialog->SetProgress(videoSaveJob->progress.load());
+    if (videoSaveJob->finished.load()) FinishVideoSave();
+}
+
+void UltraCanvasMediaViewer::FinishVideoSave() {
+    if (!videoSaveJob) return;
+    std::shared_ptr<VideoSaveJob> job = std::move(videoSaveJob);
+    if (job->timer != InvalidTimerId) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(job->timer);
+        job->timer = InvalidTimerId;
+    }
+    if (job->worker.joinable()) job->worker.join();
+    if (job->dialog) { job->dialog->Close(); job->dialog.reset(); }
+    // Stopped on request is no failure to report: the file is simply not
+    // there, and the one it was to replace still is.
+    if (job->cancelRequested.load() && !job->ok) {
+        if (infoLabel) infoLabel->SetText(TrF("Not saved: {0}", BaseName(job->target)));
+        return;
+    }
+    ReportSave(infoLabel.get(), GetWindow(), job->target, job->ok, job->error, Tr("Save"));
+}
+
+void UltraCanvasMediaViewer::StopVideoSave() {
+    if (!videoSaveJob) return;
+    std::shared_ptr<VideoSaveJob> job = std::move(videoSaveJob);
+    job->cancelRequested.store(true);
+    if (job->timer != InvalidTimerId) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(job->timer);
+        job->timer = InvalidTimerId;
+    }
+    if (job->worker.joinable()) job->worker.join();
+    if (job->dialog) { job->dialog->Close(); job->dialog.reset(); }
 }
 
 void UltraCanvasMediaViewer::ShowImageSaveDialog() {
@@ -3737,7 +3897,8 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         // that) — the whole point of the muted preview clip.
         if (auto p = vp->GetPlayer())
             p->SetMute(videoPreviewMode == VideoPreviewMode::PreviewClip);
-        if (!vp->LoadFromFile(path)) {
+        videoOpened = vp->LoadFromFile(path);
+        if (!videoOpened) {
             if (infoLabel) infoLabel->SetText("Failed to open video: " + BaseName(path));
         } else {
             ApplyVideoPreviewToCurrent();
@@ -3857,9 +4018,16 @@ void UltraCanvasMediaViewer::UpdateToolAvailability() {
             // decodes.
             t.save = audioOpened && CanSaveAudioFile(path);
             break;
+        case MediaKind::Video:
+            // The player brings its transport; Save as writes the film in
+            // another type - one the player opened and whose headers show a
+            // track, and only where a converter is registered (VideoFX's):
+            // without one, nothing.
+            t.save = videoOpened && CanSaveVideoFile(path) && ShownVideoHasTracks(path);
+            break;
         default:
-            // Text, spreadsheet, font, 3D model, video, audio: their views
-            // carry their own controls (or need none from this row).
+            // Text, spreadsheet, font, 3D model: their views carry their own
+            // controls (or need none from this row).
             break;
     }
     t.unlock = IsLocked();
