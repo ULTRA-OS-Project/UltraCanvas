@@ -114,6 +114,15 @@ does not use. The search field matches the key, the texts and the compared
 text; the *Show* list filters by status (untranslated, machine drafts,
 overrides, collisions between bases, changed since the shipped file).
 
+The marks follow the look. In a light one a text from a set that does not
+answer is grey, an untranslated row red and a changed one dark green; in a
+dark one they are the theme's muted ink, its danger colour and a light
+green, and the status line is the muted ink. A theme can name its own as
+the element roles `localisation-editor.muted`, `.untranslated`, `.changed`
+and `.status`. When the look changes while the editor is open, the rows are
+filled again in the new colours. Every other cell is the grid's text colour
+(the theme's ink).
+
 ### Editing
 
 The edit row under the grid writes the selected row: the key, the set the
