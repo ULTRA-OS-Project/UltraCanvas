@@ -514,7 +514,9 @@ int main() {
         Check(!offered || CanDecodeMediaFile(MediaCodecKind::Video, PathToUtf8(film)),
               filmLabel + ": offers Save as only for a film the player opens");
         Expect(*viewer, film, false, false, false, offered);
-        Expect(*viewer, video, false, false, false, false);   // the empty clip.mp4: the player opens nothing
+        // The empty clip.mp4: the player takes it (it opens asynchronously)
+        // but its headers show no track - nothing to save.
+        Expect(*viewer, video, false, false, false, false);
         UnregisterMediaCodec(MediaCodecKind::Video, "ucvtools");
         Expect(*viewer, film, false, false, false, false);    // no converter: no Save as again
     }

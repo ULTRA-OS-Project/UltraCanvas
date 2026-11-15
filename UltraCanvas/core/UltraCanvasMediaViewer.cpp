@@ -3165,6 +3165,23 @@ bool UltraCanvasMediaViewer::CanSaveVideoFile(const std::string& path) {
            !UltraCanvasFileLoader::GetVideoSaveExtensions().empty();
 }
 
+// The player taking a file does not make it a film: the backend opens it
+// asynchronously, so an empty or damaged file "loads" and fails later. What
+// the headers say settles it for the containers ReadVideoFileInfo reads; for
+// any other the player's word stands, as long as there is something to save.
+static bool ShownVideoHasTracks(const std::string& path) {
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(PathFromUtf8(path), ec);
+    if (ec || size == 0) return false;
+    VideoFileInfo info;
+    if (ReadVideoFileInfo(path, info)) return info.hasVideo || info.hasAudio;
+    static const char* const readByHeaders[] = { "mp4", "m4v", "mov", "3gp", "3g2", "mkv", "webm", "avi" };
+    const std::string ext = LowerExt(path);
+    for (const char* known : readByHeaders)
+        if (ext == known) return false;   // one of them, and not readable: damaged
+    return true;
+}
+
 // The file Save wrote, or why it did not: a failed save says so in a message,
 // not only in the info bar - the line at the bottom is easily missed, and
 // then the save looks as if it did nothing at all.
@@ -4003,9 +4020,10 @@ void UltraCanvasMediaViewer::UpdateToolAvailability() {
             break;
         case MediaKind::Video:
             // The player brings its transport; Save as writes the film in
-            // another type - one the player opened, and only where a
-            // converter is registered (VideoFX's): without one, nothing.
-            t.save = videoOpened && CanSaveVideoFile(path);
+            // another type - one the player opened and whose headers show a
+            // track, and only where a converter is registered (VideoFX's):
+            // without one, nothing.
+            t.save = videoOpened && CanSaveVideoFile(path) && ShownVideoHasTracks(path);
             break;
         default:
             // Text, spreadsheet, font, 3D model: their views carry their own
