@@ -141,15 +141,31 @@ commit the result.
 ## Measured sizes
 
 The *Demo sizes* table of the dynamic variant of `wasm-build.yml` is the
-record: the module's raw, gzip and Brotli sizes beside the runtime's. The
-browser test's first run (2026-11-14, emsdk 6.0.11, Release):
+record: every page's raw, gzip and Brotli sizes, the store's module and
+the runtime's files among them. The table of the run that merged the
+store (2026-11-14, emsdk 6.0.11, `-DCMAKE_BUILD_TYPE=Release
+-DULTRACANVAS_WASM_THREADS=OFF -DULTRACANVAS_WASM_DYNAMIC=ON`):
 
-| | Raw | Brotli |
-|---|---:|---:|
-| `ultrastore-web.wasm`, the store | 473 KB | **103 KB** (the brief's rule: 150 KB) |
-| the runtime's `.data` (the two subset fonts) | 377 KB | |
-| the runtime's `.js` | 556 KB | |
-| the runtime's `.wasm` | 24.2 MB | see the *Demo sizes* table |
+| File | Raw | gzip -9 | brotli -q 11 |
+|---|---:|---:|---:|
+| UltraCanvasDemo.wasm | 25.18 MB | 8.24 MB | 5.57 MB |
+| UltraCanvasDemo.js | 0.29 MB | 0.06 MB | 0.05 MB |
+| UltraCanvasDemo.data | 51.92 MB | 26.37 MB | 22.16 MB |
+| **UltraCanvasDemo, all files** | **77.38 MB** | | |
+| wasm-demo.wasm | 4.32 MB | 1.69 MB | 1.30 MB |
+| wasm-demo.js | 0.13 MB | 0.03 MB | 0.03 MB |
+| wasm-demo.data | 5.18 MB | 2.58 MB | 1.80 MB |
+| **wasm-demo, all files** | **9.63 MB** | | |
+| ultraos-frontpage.wasm | 5.20 MB | 2.00 MB | 1.52 MB |
+| ultraos-frontpage.js | 0.13 MB | 0.03 MB | 0.03 MB |
+| ultraos-frontpage.data | 5.57 MB | 2.97 MB | 2.19 MB |
+| **ultraos-frontpage, all files** | **10.91 MB** | | |
+| ultrastore-web.wasm (the web store, a side module) | 0.46 MB | 0.13 MB | **0.10 MB** (the brief's rule: 0.15 MB) |
+
+That run measured the runtime raw only, through the browser test: the
+`.wasm` 24.2 MB, the `.js` 556 KB, the `.data` 377 KB (the two subset
+fonts). From the next run on, the table carries the runtime's three
+files with their compressed sizes as well.
 
 Discover's first screen asked for 27 files besides the runtime and the
 module, 97 KB of pictures (the rule: 300 KB); UltraVideo's page fetched
