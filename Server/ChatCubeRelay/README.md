@@ -226,6 +226,55 @@ curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1
 `/etc/chatcube-relay.env`.) Clients stay signed in across the restart: their
 sessions are in the database, and they reconnect by themselves.
 
+`deploy/update.sh` does all of that in one go and safely: it backs up the
+database and the installed code (into `/var/lib/chatcube-relay/backups`, the
+last five kept), installs the code it is given, restarts the relay and asks
+it for its version - and when the relay does not come back with the new
+version, it puts the previous code and database back and starts that again
+(exit 1). Run on the same version, it does nothing.
+
+```bash
+sudo Server/ChatCubeRelay/deploy/update.sh /path/to/Server/ChatCubeRelay
+```
+
+### Deploying from CI
+
+The `ChatCube relay` workflow tests every change to this directory, and on
+`main` - or started by hand, *Actions > ChatCube relay > Run workflow* - puts
+the tested relay on the live server: it copies this directory to the server
+over SSH, runs `update.sh` there and then asks the public address
+(`vars.CHATCUBE_RELAY_URL`, default `https://relay-chatcube.ultraos.eu`)
+for the version this commit carries. Until the secrets below are set the
+deploy job only says so, and nothing is touched. Its GitHub environment,
+`chatcube-relay`, can be given a required reviewer (*Settings >
+Environments*) so a deploy waits for a click.
+
+Once, on the server:
+
+```bash
+sudo useradd --create-home --shell /bin/bash relay-deploy
+sudo -u relay-deploy mkdir -m 700 /home/relay-deploy/.ssh
+# The public half of a key made for this alone (ssh-keygen -t ed25519 -N "" -f relay_deploy):
+echo 'ssh-ed25519 AAAA... relay-deploy' | sudo -u relay-deploy tee /home/relay-deploy/.ssh/authorized_keys
+# update.sh where the deploy user cannot change it, and the one command it may run as root:
+sudo install -m 755 Server/ChatCubeRelay/deploy/update.sh /usr/local/sbin/chatcube-relay-update
+echo 'relay-deploy ALL=(root) NOPASSWD: /usr/local/sbin/chatcube-relay-update *' | sudo tee /etc/sudoers.d/chatcube-relay-deploy
+sudo chmod 440 /etc/sudoers.d/chatcube-relay-deploy
+```
+
+In the repository's *Settings > Secrets and variables > Actions* (or the
+`chatcube-relay` environment's secrets):
+
+| Secret | |
+|---|---|
+| `CHATCUBE_RELAY_SSH_HOST` | the server's host name |
+| `CHATCUBE_RELAY_SSH_USER` | `relay-deploy` |
+| `CHATCUBE_RELAY_SSH_KEY` | the private half of that key |
+| `CHATCUBE_RELAY_SSH_KNOWN_HOSTS` | `ssh-keyscan <host>` - checked against the server's own key first; the job never trusts a host key it has not been given |
+
+`update.sh` itself is installed by hand, so a change to it reaches the server
+when it is installed again (the command above).
+
 Give ChatCube the relay's `https://` address. A bare host is taken as
 `https://`, and an `http://` address that the server redirects to `https://`
 (the usual port-80 block in nginx) is followed and the new address kept -
