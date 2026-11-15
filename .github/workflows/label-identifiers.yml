@@ -9,8 +9,11 @@ name: Label identifiers
 # constructor takes the identifier now, which made the eleven right, but it
 # cannot refuse the old use: `make_shared<UltraCanvasLabel>(Tr("Hint"))`
 # still compiles, and makes a label that shows nothing. This check refuses
-# it - a one-string label whose string is a Tr call or reads as words. See
-# "Core conventions" in AGENTS.md and
+# it - a one-string label whose string is a Tr call or reads as words - and
+# the same for the checkbox, the radio button and the switch, which were
+# built like the label. It also reads the framework's headers and refuses an
+# element whose one-string constructor takes a text, so that a fifth does
+# not appear. See "Core conventions" in AGENTS.md and
 # Docs/UltraCanvas/UltraCanvasLabelExamples.md.
 #
 # No baseline: the tree is clean. An identifier that really reads as text
@@ -56,7 +59,7 @@ jobs:
     runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     steps:
       - uses: actions/checkout@v5
-      - name: Check for labels built from one string that is their text
+      - name: Check for elements built from one string that is their text
         run: python3 scripts/check_label_identifiers.py --strict
       - name: The check's own tests
         run: python3 -m unittest scripts/tests/test_check_label_identifiers.py -v

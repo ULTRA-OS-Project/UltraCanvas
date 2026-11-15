@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Flag a label built from one string that is its text.
+"""Flag an element built from one string that is its text.
 
 An element built from one string takes it as its IDENTIFIER:
 
@@ -16,8 +16,11 @@ label's text. That read like every other element and meant the opposite, and
 eleven callers in this repository had handed it a name - the dialog's
 severity icon, Texter's status bar, three labels of the HTML builder, the
 framework's own LabelBuilder - against one that handed it text. The
-constructor now takes the identifier, which made those eleven right; what
-it cannot do is refuse the old use, because both are one string. So
+checkbox, the radio button and the switch were built the same way, and
+nobody here used their one string at all. All four constructors now take
+the identifier, like the other 38 elements that have one, which made those
+eleven right; what they cannot do is refuse the old use, because both are
+one string. So
 
     auto hint = std::make_shared<UltraCanvasLabel>(Tr("Select a repository"));
 
@@ -27,12 +30,20 @@ sentence. This check is what refuses it.
 What this reports:
 
   one-string-text
-      A label - `make_shared<UltraCanvasLabel>(...)`, `make_unique`, `new`,
-      a declared `UltraCanvasLabel name(...)`, a temporary, a base-class
-      initialiser, `CreateLabel(...)` - built from exactly one argument
-      that reads as text: a `Tr` / `TrF` / `TrN` / `TrC` call, or a string
-      literal that is not a name (a space in it, a colon after it, a
-      sentence).
+      A label, a checkbox, a radio button or a switch -
+      `make_shared<UltraCanvasLabel>(...)`, `make_unique`, `new`, a declared
+      `UltraCanvasLabel name(...)`, a temporary, a base-class initialiser,
+      `CreateLabel(...)` - built from exactly one argument that reads as
+      text: a `Tr` / `TrF` / `TrN` / `TrC` call, or a string literal that is
+      not a name (a space in it, a colon after it, a sentence).
+
+  text-first-constructor
+      A header under UltraCanvas/include declares an element - a class
+      that derives from UltraCanvasUIElement - with an explicit one-string
+      constructor whose parameter is named as a text (`labelText`, `text`,
+      `caption`, `title`, `message`). That is the shape the four above
+      had, and the next one would be read like the rest and mean the
+      opposite again.
 
 A one-string literal that is a name - "CountLabel", "uai-hf-status",
 "Ready" - is the identifier it says it is and is not reported. Neither is a
@@ -85,7 +96,7 @@ EXEMPT_RE = re.compile(r"//\s*label-identifier-ok\s*:\s*\S")
 
 # The elements that have a text, and whose one string is nevertheless the
 # identifier - the ones a text is handed to by mistake.
-ELEMENTS = ("Label",)
+ELEMENTS = ("Label", "Checkbox", "Radio", "Switch")
 _ELEMENT = r"(?:UltraCanvas::)?UltraCanvas(?:" + "|".join(ELEMENTS) + r")"
 _FACTORY = r"Create(?:" + "|".join(ELEMENTS) + r")"
 
@@ -198,14 +209,86 @@ class Finding:
     path: Path
     line: int
     shown: str
+    kind: str = "one-string-text"
 
     def __str__(self) -> str:
         try:
             where = self.path.relative_to(REPO_ROOT)
         except ValueError:
             where = self.path
-        return (f"{where}:{self.line}: one-string-text  {self.shown} is this label's "
+        if self.kind == "text-first-constructor":
+            return (f"{where}:{self.line}: text-first-constructor  {self.shown} - one string "
+                    "is an element's identifier; take the text second")
+        return (f"{where}:{self.line}: one-string-text  {self.shown} is this element's "
                 f'identifier, not its text - write ("", <text>) or (<identifier>, <text>)')
+
+
+# ----- the headers: no element's one string is its text -----
+
+HEADER_ROOT = "UltraCanvas/include"
+ELEMENT_BASE = "UltraCanvasUIElement"
+# class Name : bases {  - with an export macro before the name, or `final` after it.
+CLASS_RE = re.compile(r"\bclass\s+(?:[A-Z][A-Z0-9_]*\s+)?(?P<name>\w+)\s*(?:final\s*)?:\s*(?P<bases>[^{;]+)\{")
+BASE_NAME_RE = re.compile(r"(?:public|protected|private)?\s*(?:virtual\s+)?(?:\w+::)*(\w+)")
+# explicit Name(const std::string& parameter [= ""])
+ONE_STRING_CTOR_RE = re.compile(
+    r"\bexplicit\s+(?P<name>\w+)\s*\(\s*const\s+std::string\s*&\s*(?P<param>\w+)\s*(?:=\s*[^,)]*)?\)")
+TEXT_PARAMETER_RE = re.compile(r"(?i)(?:text|label|caption|title|message)")
+
+
+def element_classes(headers: dict[Path, str]) -> set[str]:
+    """Every class that derives, however far up, from UltraCanvasUIElement."""
+    bases: dict[str, set[str]] = {}
+    for code in headers.values():
+        for match in CLASS_RE.finditer(code):
+            names = {b.group(1) for part in match.group("bases").split(",")
+                     if (b := BASE_NAME_RE.match(part.strip()))}
+            bases.setdefault(match.group("name"), set()).update(names)
+    elements = {ELEMENT_BASE}
+    grew = True
+    while grew:
+        grew = False
+        for name, parents in bases.items():
+            if name not in elements and parents & elements:
+                elements.add(name)
+                grew = True
+    return elements
+
+
+def check_headers(headers: dict[Path, str], sources: dict[Path, str]) -> list[Finding]:
+    """`headers`: path -> code without comments; `sources`: the same files as written."""
+    elements = element_classes(headers)
+    findings: list[Finding] = []
+    for path in sorted(headers):
+        code = headers[path]
+        lines = sources[path].splitlines()
+        for match in ONE_STRING_CTOR_RE.finditer(code):
+            name, param = match.group("name"), match.group("param")
+            if name not in elements or not TEXT_PARAMETER_RE.search(param):
+                continue
+            line = code.count("\n", 0, match.start()) + 1
+            marked = EXEMPT_RE.search(lines[line - 1]) is not None
+            if not marked and line >= 2 and lines[line - 2].lstrip().startswith("//"):
+                marked = EXEMPT_RE.search(lines[line - 2]) is not None
+            if not marked:
+                findings.append(Finding(path, line, f"{name}(const std::string& {param})",
+                                        "text-first-constructor"))
+    return findings
+
+
+def read_headers(root: Path) -> tuple[dict[Path, str], dict[Path, str]]:
+    headers: dict[Path, str] = {}
+    sources: dict[Path, str] = {}
+    for path in sorted(root.rglob("*.h")):
+        if SKIP_PARTS & set(path.parts):
+            continue
+        try:
+            src = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        sources[path] = src
+        headers[path] = strip_comments(src)
+    return headers, sources
 
 
 def check_source(src: str, path: Path) -> list[Finding]:
@@ -284,15 +367,18 @@ def main() -> int:
     for path in iter_sources(roots):
         scanned += 1
         findings.extend(check_file(path))
+    # The framework's headers, whenever the whole tree is checked.
+    if not args.paths and (REPO_ROOT / HEADER_ROOT).exists():
+        findings.extend(check_headers(*read_headers(REPO_ROOT / HEADER_ROOT)))
 
     for finding in findings:
         print(finding)
 
     if findings:
         print(
-            f"\n{len(findings)} element(s) built from one string that is text, in "
-            f"{scanned} files.\nOne string is an element's IDENTIFIER, so these show "
-            "nothing and are named after their words. Put the text second - "
+            f"\n{len(findings)} finding(s) in {scanned} files.\nOne string is an "
+            "element's IDENTIFIER, so an element built from its text alone shows "
+            "nothing and is named after its words. Put the text second - "
             'make_shared<UltraCanvasLabel>("", Tr("...")), or give the element a name: '
             '("InfoTitle", Tr("...")). If the one string really is an identifier, say '
             "so on its line:\n"

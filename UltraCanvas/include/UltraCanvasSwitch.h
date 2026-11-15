@@ -2,11 +2,12 @@
 // Toggle switch: pill-shaped track with a circular thumb that snaps between sides.
 // Supports horizontal/vertical orientation, optional thumb icons, and optional ON/OFF state labels
 // (inside the track, outside it, or one label on each side of the track).
+// Version: 1.8.0 - one string is the identifier, as on every element (it was the label's text)
 // Version: 1.7.0 - FromTheme sets the label's font at the body size; the SetVisualStyle rule and the constructor tail
 // Version: 1.6.0 - the thumb as element roles (switch.thumb, switch.thumb-border)
 // Version: 1.5.0 - SwitchVisualStyle::FromTheme, ApplyTheme
 // Version: 1.4.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -175,8 +176,13 @@ namespace UltraCanvas {
         UltraCanvasSwitch(const std::string& identifier, const std::string& labelText)
             : UltraCanvasSwitch(identifier, -1, -1, -1, -1, labelText) {}
 
-        explicit UltraCanvasSwitch(const std::string& labelText = "")
-            : UltraCanvasSwitch("", -1, -1, -1, -1, labelText) {}
+        // One string alone is the IDENTIFIER, as on every element; the text
+        // is empty until SetText. (It was the text until 1.8.0.) The text goes
+        // second: ("DarkMode", Tr("Dark mode")), or ("", text).
+        explicit UltraCanvasSwitch(const std::string& identifier = "")
+            : UltraCanvasSwitch(identifier, -1, -1, -1, -1, "") {
+            WarnIfIdentifierReadsAsText("UltraCanvasSwitch", identifier);
+        }
 
         ~UltraCanvasSwitch() override = default;
 

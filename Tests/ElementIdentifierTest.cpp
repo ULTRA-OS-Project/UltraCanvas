@@ -8,19 +8,23 @@
 // Texter's status bar, the HTML builder, LabelBuilder) and one a text. This
 // pins the rule as it is now - UltraCanvasLabel(id), CreateLabel(id) and
 // LabelBuilder(id) name the label and leave its text empty, the text goes
-// second - and the line the framework writes to debugOutput when a one-string
-// element is handed words, which no constructor can refuse and which
-// scripts/check_label_identifiers.py only sees in a literal.
+// second; the checkbox, the radio button and the switch, which were built
+// like the label, the same - and the line the framework writes to debugOutput
+// when a one-string element is handed words, which no constructor can refuse
+// and which scripts/check_label_identifiers.py only sees in a literal.
 //
 // No window and no display: elements are constructed and asked what they are.
 // Version: 1.0.0
 // Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasRadio.h"
+#include "UltraCanvasSwitch.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -105,6 +109,27 @@ int main() {
         TEST("SetText is where its text comes from", said->GetIdentifier() == "greeting" && said->GetText() == "Hello");
     }
 
+    std::cerr << "\n--- The checkbox, the radio button and the switch ---" << std::endl;
+    {
+        UltraCanvasCheckbox box("WrapLines");
+        TEST("A checkbox's one string is its identifier", box.GetIdentifier() == "WrapLines" && box.GetText().empty());
+        UltraCanvasCheckbox labelled("WrapLines", "Wrap long lines");
+        TEST("and its text goes second", labelled.GetIdentifier() == "WrapLines" && labelled.GetText() == "Wrap long lines");
+
+        UltraCanvasRadio radio("SizeLarge");
+        TEST("A radio button's one string is its identifier", radio.GetIdentifier() == "SizeLarge" && radio.GetText().empty());
+        UltraCanvasRadio large("SizeLarge", "Large");
+        TEST("and its text goes second", large.GetIdentifier() == "SizeLarge" && large.GetText() == "Large");
+
+        UltraCanvasSwitch toggle("DarkMode");
+        TEST("A switch's one string is its identifier", toggle.GetIdentifier() == "DarkMode" && toggle.GetText().empty());
+        UltraCanvasSwitch dark("DarkMode", "Dark mode");
+        TEST("and its text goes second", dark.GetIdentifier() == "DarkMode" && dark.GetText() == "Dark mode");
+
+        UltraCanvasCheckbox none;
+        TEST("No argument: neither", none.GetIdentifier().empty() && none.GetText().empty());
+    }
+
     std::cerr << "\n--- Words handed to a one-string element ---" << std::endl;
     {
         const std::filesystem::path log =
@@ -130,6 +155,11 @@ int main() {
         auto made = CreateLabel("Two words");
         debugOutput << std::flush;
         TEST("Through the factory too", Warnings(log) == 2);
+
+        // label-identifier-ok: words on purpose, to a checkbox
+        UltraCanvasCheckbox box("Wrap long lines");
+        debugOutput << std::flush;
+        TEST("And for a checkbox", Warnings(log) == 3);
 
         // A list built in a loop must not write ten thousand lines.
         for (int i = 0; i < 100; ++i) UltraCanvasLabel row("Row " + std::to_string(i));

@@ -266,7 +266,8 @@ public:
 
     // In the layout flow, content-sized
     UltraCanvasCheckbox(const std::string& identifier, const std::string& labelText);
-    explicit UltraCanvasCheckbox(const std::string& labelText = "");
+    // One string alone is the identifier, as on every element; no text yet
+    explicit UltraCanvasCheckbox(const std::string& identifier = "");
 
     static std::shared_ptr<UltraCanvasCheckbox> CreateCheckbox(
             const std::string& identifier,
@@ -423,7 +424,8 @@ public:
                      float w, float h,
                      const std::string& labelText = "");
     UltraCanvasRadio(const std::string& identifier, const std::string& labelText);
-    explicit UltraCanvasRadio(const std::string& labelText = "");
+    // One string alone is the identifier, as on every element; no text yet
+    explicit UltraCanvasRadio(const std::string& identifier = "");
 
     // Content-sized; a positive x, y places it, -1, -1 leaves it in the flow
     static std::shared_ptr<UltraCanvasRadio> Create(

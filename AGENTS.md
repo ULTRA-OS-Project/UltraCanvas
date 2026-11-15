@@ -91,11 +91,14 @@ before adding cross-module code.
   for a label that needs no name. `UltraCanvasLabel` was the exception until
   2026-11 - its one string was the text - and eleven callers here had handed
   it a name (the dialog's icon, Texter's status bar, the HTML builder,
-  `LabelBuilder`) against one that handed it text. The constructor cannot
-  refuse the old use, since both are one string: a label built from
-  `Tr("...")` alone still compiles and shows nothing.
-  `scripts/check_label_identifiers.py` refuses that in CI
-  (`label-identifiers.yml`; no baseline), and for what it cannot read - a
+  `LabelBuilder`) against one that handed it text; `UltraCanvasCheckbox`,
+  `UltraCanvasRadio` and `UltraCanvasSwitch` were built the same way. All
+  four take the identifier now, as the other 38 elements with a one-string
+  constructor always did. The constructors cannot refuse the old use, since
+  both are one string: a label built from `Tr("...")` alone still compiles
+  and shows nothing. `scripts/check_label_identifiers.py` refuses that in CI
+  (`label-identifiers.yml`; no baseline), and refuses a new element whose
+  one-string constructor takes a text; for what it cannot read - a
   variable - the framework says so on `debugOutput`
   (`WarnIfIdentifierReadsAsText`). An identifier that really reads as text
   says so with `// label-identifier-ok: <why>`.
@@ -816,10 +819,11 @@ and never introduce a new literal copy of one:
    Wiring a callback on that element? It must not capture a `shared_ptr` to
    the element or to a container above it — capture it raw. Run
    `python3 scripts/check_callback_cycles.py`; CI runs that too.
-   Building a label? One string alone is its identifier, as on every
-   element; its text goes second, `("InfoTitle", Tr("About"))` or
-   `("", Tr("..."))` - run `python3 scripts/check_label_identifiers.py`; CI
-   runs that too.
+   Building a label, a checkbox, a radio button or a switch? One string
+   alone is its identifier, as on every element; its text goes second,
+   `("InfoTitle", Tr("About"))` or `("", Tr("..."))`. Adding an element? Its
+   one-string constructor takes the identifier too. Run
+   `python3 scripts/check_label_identifiers.py`; CI runs that too.
    Writing a number into a file format or a protocol? Read it with
    `TryParseFloat` / `ParseFloatClassic` and write it with
    `FormatFloatClassic` - or `FormatFixedClassic` where the format counts
