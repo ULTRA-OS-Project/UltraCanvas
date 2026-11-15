@@ -2385,6 +2385,22 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^UltraDesktopAppStarterTest$"
 
+      # A window that is never closed, only destroyed: the application has to
+      # destroy its windows before its own platform half goes, and each window
+      # has to release its native half on the way out. Until 2026-11-15 neither
+      # happened - every UltraCanvas application died with SIGSEGV on its way
+      # out, which the UltraMail step above is what first caught (60 of 60
+      # assertions passed, exit 139). The suite asks the X server whether the
+      # windows are really gone, so it needs a display of its own.
+      - name: Run the window shutdown test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^WindowShutdownTest$"
+
       # The vanished-folder test's second half drives the Filer's folder watch,
       # which only runs inside the application's timers: a subfolder deleted on
       # disk is reported through onFolderChangedOnDisk (what UltraFiler's folder

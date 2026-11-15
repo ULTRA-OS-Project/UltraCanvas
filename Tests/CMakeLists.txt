@@ -1391,6 +1391,30 @@ else()
     message(STATUS "  PopupOwnWindowTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
+# ===== WINDOW SHUTDOWN TEST =====
+# A window that is never closed, only destroyed: the application destroys its
+# windows before its own platform half goes (DestroyWindows), and each platform
+# window releases its native half in its own destructor. Asks the X server
+# whether the windows it was told about are really gone, so X11 only; skips
+# without DISPLAY, and fails there with ULTRACANVAS_TEST_DISPLAY_REQUIRED=1.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building WindowShutdownTest...")
+    add_executable(WindowShutdownTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/WindowShutdownTest.cpp
+    )
+    target_include_directories(WindowShutdownTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(WindowShutdownTest PRIVATE cxx_std_20)
+    target_link_libraries(WindowShutdownTest PRIVATE UltraCanvas)
+    set_target_properties(WindowShutdownTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME WindowShutdownTest COMMAND WindowShutdownTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: WindowShutdownTest")
+else()
+    message(STATUS "  WindowShutdownTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
 # ===== TOOL GROUP BUTTON TEST =====
 # Several tools sharing one toolbar slot: the bar of the whole group folds out
 # while the pointer rests on the slot, a click in it picks a tool, and it folds
