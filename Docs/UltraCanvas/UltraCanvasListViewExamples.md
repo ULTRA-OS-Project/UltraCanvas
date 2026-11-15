@@ -32,6 +32,7 @@
   - [Icon list with a customized delegate](#icon-list-with-a-customized-delegate)
   - [A custom delegate with clickable cells (the domain dashboard)](#a-custom-delegate-with-clickable-cells-the-domain-dashboard)
 - [Keyboard Navigation](#keyboard-navigation)
+  - [The focus ring](#the-focus-ring)
 - [Best Practices](#best-practices)
 - [See Also](#see-also)
 
@@ -197,6 +198,9 @@ struct ListViewStyle {
 
     Color selectionBackgroundColor = Colors::Selection;
     Color hoverBackgroundColor = Colors::SelectionHover;
+    // The focus ring's automatic colour on a selected row (the theme's
+    // text-on-accent); on any other row it is selectionBackgroundColor
+    Color focusRingOnSelectionColor = Colors::White;
 
     ScrollbarStyle scrollbarStyle = ScrollbarStyle::Modern();
 
@@ -1071,6 +1075,27 @@ field, a slider), use a container of elements instead, for a short list.
 | Space              | Toggle selection on the focused row |
 | Ctrl + Click       | Toggle row in multi-selection mode  |
 | Shift + Click      | Range-select in multi-selection mode|
+
+### The focus ring
+
+While the list holds the keyboard focus, the row the keys go on from carries
+a dashed one-pixel ring just inside its edges, so a focused row can be told
+from one that is merely selected; once the focus moves elsewhere the ring goes
+and the selection stays. The view draws it over what the delegate drew, once
+across the whole row (one ring for a multi-column row, not one per column), so
+a custom delegate gets it without doing anything - `ListItemStyleOption::isFocused`
+is there for a delegate that wants to mark the row in its own way as well. Its
+colour contrasts with the row: `ListViewStyle::focusRingOnSelectionColor` on a
+selected row (the theme's text-on-accent), the selection colour on any other.
+A list inside another element that keeps the focus (a dropdown's open list,
+`SetAcceptsFocus(false)`) never shows one.
+
+```cpp
+auto list = std::make_shared<UltraCanvasListView>("files", 0, 0, 300, 200);
+list->SetFocusRingColor(Color(255, 140, 0));    // this colour on every row
+list->SetFocusRingColor(Colors::Transparent);   // back to the automatic one
+Color ring = list->GetFocusRingColor();
+```
 
 The keys go on from the selection's current row, whoever selected it: a click,
 a key, or the application through `GetSelection()->Select(row)` - after it
