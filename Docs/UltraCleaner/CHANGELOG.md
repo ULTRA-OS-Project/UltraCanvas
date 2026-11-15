@@ -1,3 +1,10 @@
+#### 2026-11-15 *0.68*
+- **The registry findings list keeps its place.** Cleaning, restoring or
+  rescanning lists the findings again, and the view fell back to the first row
+  each time - on a list of hundreds, the entry just acted on was gone from the
+  screen. The list now stays where it was (the framework's
+  `TreeRebuildScope`).
+
 #### 2026-10-27 *0.67*
 - **Paths are shown with one kind of separator on Windows.** The rule roots
   are spelled with '/', and Windows joins a folder and a name with a

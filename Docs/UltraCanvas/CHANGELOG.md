@@ -1,3 +1,31 @@
+#### 2026-11-15 *0.9.563*
+- **A toolbar item dragged into another place stays there.** `MoveItem` puts
+  the item at its new index in the bar's list of children at once, while every
+  item keeps the rectangle it was last drawn in until the next layout - and the
+  hit test that picked the drag's next target walked the list while reading
+  those rectangles, so it answered with the index of whichever item used to be
+  under the pointer and moved the dragged item straight back. Two drag steps
+  inside one frame therefore undid each other, and a drag that ended on such a
+  pair put the item down where it had started and reported nothing: UltraMail's
+  account tiles could not be rearranged at all, and any drag whose steps outran
+  the frames jittered. The bar now answers the two questions separately - which
+  item is drawn under a point, and which place that point is over, counted in
+  the order the items are drawn - and a drag asks for the place, which is where
+  the item will be once the layout has caught up. `ToolbarItemReorderTest`
+  covers it headless.
+- **A click on a tree view's bottom border no longer picks the row that would
+  have been drawn there.** `GetNodeAtY` worked from the scroll offset alone and
+  named a row for any y, including the padding and the border below the rows,
+  where `Render` draws nothing - so a click or a hover a pixel or two under the
+  last visible row selected or highlighted a row the user could not see. It
+  now stops at the foot of the rows' viewport, as the rows themselves do.
+- **`ScrollTo` leaves a row that is not on show where it is, instead of
+  jumping to the top.** Asked to reveal a row under a collapsed parent, hidden
+  by the application or filtered out, it took the 0 that the row walk returns
+  for a row it never reaches as that row's position and scrolled to the first
+  row. Revealing such a row is what `ScrollToSelection()` is for: it opens the
+  parents on the way first.
+
 #### 2026-11-14 *0.9.562*
 - **A badge can grow inward instead of past its anchor's edge.**
   `UltraCanvasBadge::SetGrowInward(true)`: an anchored pill wider than it is

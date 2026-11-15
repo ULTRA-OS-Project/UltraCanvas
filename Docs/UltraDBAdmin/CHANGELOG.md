@@ -1,3 +1,9 @@
+#### 2026-11-15 *0.15*
+- **The connection tree keeps its place when it is rebuilt.** Adding, editing
+  or removing a connection lists the tree again, which threw the view back to
+  the first row. It now stays where it was (the framework's
+  `TreeRebuildScope`).
+
 #### 2026-11-11 *0.14*
 - **The theme under the application's `Own` policy.** `AppTheme` is the
   provider: the colours stay UltraDBAdmin's, the fonts are the desktop's,

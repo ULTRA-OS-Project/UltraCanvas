@@ -1,3 +1,10 @@
+#### 2026-11-15 *0.10.97*
+- **A folder you collapse in the tree stays collapsed.** Every folder rescan -
+  one follows each mail check - rebuilds the tree and expanded it in full, so a
+  mailbox closed by hand reopened a minute later by itself. What you close
+  stays closed for as long as the program runs, and reopening it is enough to
+  have it open again.
+
 #### 2026-11-14 *0.10.96*
 - **UltraMail follows a dark desktop everywhere, and a change of the look
   while it is open.** The folder, message-list and reading-pane cards, the
