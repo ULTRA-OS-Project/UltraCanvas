@@ -7443,7 +7443,9 @@ endif()
 # ===== MEDIA VIEWER SAVE TEST =====
 # Save image as at another size and with the type's save settings: a bitmap
 # resized, an SVG drawn again at the size chosen (sharp), the stored JPEG
-# quality applied. Headless; the settings go to a scratch folder.
+# quality applied; a recording in another audio type; a video in another
+# type (ConvertVideoFile: a test converter, and VideoFX's where it is built).
+# Headless; the settings go to a scratch folder.
 # Uses UltraCanvasMediaViewer's classes: only with MediaViewer compiled into
 # the core (ULTRACANVAS_WIDGETS).
 get_property(uc_widgets_in GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
@@ -7455,11 +7457,19 @@ if(TARGET UltraCanvas AND "MediaViewer" IN_LIST uc_widgets_in)
     target_include_directories(MediaViewerSaveTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(MediaViewerSaveTest PRIVATE cxx_std_20)
     target_link_libraries(MediaViewerSaveTest PRIVATE UltraCanvas)
+    # Where VideoFX is built, a video is saved by its converter too, as an
+    # application registers it - and the test goes where VideoFX puts its DLL.
+    set(_mv_save_dir ${CMAKE_BINARY_DIR}/bin)
+    if(TARGET VideoFXUltraCanvasFormats)
+        target_link_libraries(MediaViewerSaveTest PRIVATE VideoFXUltraCanvasFormats)
+        target_compile_definitions(MediaViewerSaveTest PRIVATE MEDIAVIEWER_SAVE_TEST_WITH_VIDEOFX=1)
+        set(_mv_save_dir ${VIDEOFX_RUNTIME_DIR})
+    endif()
     set_target_properties(MediaViewerSaveTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        RUNTIME_OUTPUT_DIRECTORY ${_mv_save_dir}
     )
     add_test(NAME MediaViewerSaveTest COMMAND MediaViewerSaveTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+             WORKING_DIRECTORY ${_mv_save_dir})
     message(STATUS "    Test registered: MediaViewerSaveTest")
 else()
     message(STATUS "  MediaViewerSaveTest skipped (UltraCanvas target not present, or MediaViewer not compiled in)")

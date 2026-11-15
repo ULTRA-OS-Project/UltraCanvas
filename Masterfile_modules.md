@@ -1763,6 +1763,18 @@ MediaFormatCategory::Audio)`. The media viewer's Save as uses it for a
 recording, and `AddVectorDocumentSaveTypes` / `SaveVectorDocument` for a
 drawing (the vector view's, or an SVG read with `LoadVectorDocument`).
 
+A video is written in another type with
+`ConvertVideoFile(source, target, error, progress)` (the same type copied as
+it is; another by the converter its registration carries,
+`MediaCodecRegistration::convertVideo` - written beside the target and moved
+there when complete, `progress` returning false stops it), `CanConvertVideoTo`,
+`GetVideoSaveExtensions` and the Save dialog's `AddVideoSaveTypes(opts)`. The
+core has no video encoder: an application with VideoFX links
+`VideoFXUltraCanvasFormats` and calls `VideoFX_RegisterWithFileLoader()`
+(`VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h`), as UltraViewer does.
+The media viewer's Save as converts a video it plays with it, on a worker
+thread behind a progress ring with Cancel, and offers none without a converter.
+
 The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
 password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads
 documents and decks (`LoadTextDocument`), PDFs (page text; a scan by text
@@ -2772,7 +2784,13 @@ command-line tool. Planned: keyframed parameters.
   `VideoFX_HasTextRenderer` / `VideoFX_DrawTextOverlays` (text overlays with a
   font by name, styled words, alignment and spacing drawn by the host -
   `VideoFX_UseUltraCanvasText` in `VideoFX/ultracanvas/VideoFXUltraCanvasText.h`
-  installs UltraCanvas's, as UltraVideo and the `videofx` tool do)
+  installs UltraCanvas's, as UltraVideo and the `videofx` tool do),
+  `VideoFX_RegisterWithFileLoader` / `VideoFX_ConvertVideoFile` in
+  `VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h` (library
+  `VideoFXUltraCanvasFormats`): VideoFX as FileLoader's video converter -
+  every container it writes registered with `convertVideo`, so
+  `UltraCanvasFileLoader::ConvertVideoFile` and the media viewer's Save as
+  write it
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in

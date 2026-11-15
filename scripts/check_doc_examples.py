@@ -199,6 +199,9 @@ INCLUDE_DIRS = [
     ROOT / "UltraCanvas" / "third_party", ROOT / "VirtualFS" / "include",
     ROOT / "Apps" / "DemoApp",
     ROOT / "UltraAI" / "include",   # the UltraAI module docs (Docs/Modules/UltraAI)
+    # VideoFX and its UltraCanvas bridges (VideoFXUltraCanvasFormats.h: a
+    # video's Save as), which the viewer and FileLoader docs show registered
+    ROOT / "VideoFX" / "include", ROOT / "VideoFX" / "ultracanvas",
 ]
 
 KEYWORDS = {

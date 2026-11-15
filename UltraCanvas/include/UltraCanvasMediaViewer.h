@@ -87,6 +87,10 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.29.0 - Save as for a video the player opened: another type FileLoader's
+//                   ConvertVideoFile writes (VideoFX's converter, where the application
+//                   registered it), on a thread of its own with a progress ring and Cancel
+//                   (ShowVideoSaveDialog)
 // Version: 1.28.0 - Save as for a drawing in the vector view and for a recording
 //                   (ShowDrawingSaveDialog, ShowAudioSaveDialog); UltraCanvasMediaSurface::
 //                   HasGeometryEdits
@@ -251,13 +255,16 @@ struct MediaAdjustments {
 //   *.ucd preview         zoom (it is a picture of a document, not an image)
 //   PDF, e-book           zoom
 //   audio                 save (in any audio type this build encodes)
-//   everything else       nothing: text, spreadsheet, font, 3D model and
-//                         video views bring their own controls
+//   video                 save (in any type FileLoader's ConvertVideoFile
+//                         writes - none unless a converter is registered,
+//                         VideoFX's: VideoFX_RegisterWithFileLoader)
+//   everything else       nothing: text, spreadsheet, font and 3D model
+//                         views bring their own controls
 struct MediaViewerTools {
     bool zoom      = false;   // zoom out / zoom level / zoom in / fit
     bool transform = false;   // rotate left / right, mirror horizontally / vertically
     bool colour    = false;   // adjustments panel and Curves (with its histogram)
-    bool save      = false;   // Save as... (a picture with its edits, a drawing, a recording)
+    bool save      = false;   // Save as... (a picture with its edits, a drawing, a recording, a video)
     bool unlock    = false;   // Unlock... (a password-protected file not unlocked yet)
 };
 
@@ -851,6 +858,7 @@ private:
     void ShowImageSaveDialog();
     void ShowDrawingSaveDialog(std::shared_ptr<VectorStorage::VectorDocument> drawing);
     void ShowAudioSaveDialog();
+    void ShowVideoSaveDialog();
     // The drawing Save writes for the file on show: the vector view's, or -
     // an SVG the image pipeline rasterized, not turned or mirrored - the file
     // read through FileLoader. Null when Save writes the picture instead.
@@ -858,6 +866,17 @@ private:
     // Whether Save as... has something to write for a recording: it decodes
     // and this build encodes some audio type.
     static bool CanSaveAudioFile(const std::string& path);
+    // ... and for a video: it decodes and a converter writes some video type
+    // (UltraCanvasFileLoader::GetVideoSaveExtensions).
+    static bool CanSaveVideoFile(const std::string& path);
+    // A video saved in another type takes as long as encoding it does, so
+    // ConvertVideoFile runs on a thread of its own (VideoSaveJob, in the
+    // .cpp) while a progress window with Cancel follows it from a timer.
+    struct VideoSaveJob;
+    void StartVideoSave(const std::string& source, const std::string& target);
+    void PollVideoSave();
+    void FinishVideoSave();
+    void StopVideoSave();   // cancels and waits: the viewer is going away
     void HandleDroppedFiles(const std::vector<std::string>& files);
     // Zoom toolbar actions route to the PDF view, the e-book view, the vector
     // drawing view or the image surface, depending on which is showing.
@@ -946,6 +965,8 @@ private:
     std::shared_ptr<UltraCanvasContainer>    bottomBar;
     std::shared_ptr<UltraCanvasLabel>        infoLabel;
     bool audioOpened = false;   // the player opened the recording on show (Save as)
+    bool videoOpened = false;   // ... and the video on show
+    std::shared_ptr<VideoSaveJob> videoSaveJob;   // a video being saved (StartVideoSave)
     std::shared_ptr<UltraCanvasButton>       playButton;
     // Alternate views shown instead of the image surface, depending on the
     // current file's kind. Held as the base type so the public header need not
