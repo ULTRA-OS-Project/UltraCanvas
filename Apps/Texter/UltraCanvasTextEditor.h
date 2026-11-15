@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
+// Version: 2.6.0 - the status bar's spelling indicator: UpdateSpellLanguageIndicator, ShowSpellLanguageMenu
 // Version: 2.5.0 - the look is the framework theme's (the desktop's, Appearance.conf over it): ApplyDarkTheme / ApplyLightTheme,
 //                  TextEditorConfig::darkTheme, onThemeChanged and CreateDarkTextEditor retired; ToggleTheme writes Appearance.conf
 // Version: 2.4.0 - HasOpenFile: whether a file is open in one of this window's
@@ -7,7 +8,7 @@
 //                  opened twice across windows
 // Version: 2.3.0 - DialogFileFilters: the Word Processing filter is FileLoader's text document types
 // Version: 2.2.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -19,6 +20,7 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasButton.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasTextEditorHelpers.h"
@@ -300,6 +302,11 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasDropdown> encodingDropdown;
         std::shared_ptr<UltraCanvasDropdown> eolDropdown;
         std::shared_ptr<UltraCanvasDropdown> zoomDropdown;
+        // Which dictionary the active document is spell checked against
+        // ("Spelling: English (United States)", or "off"); a click opens the
+        // Spelling menu. Hidden for a tab that is never checked (hex, PDF).
+        std::shared_ptr<UltraCanvasButton> spellLanguageButton;
+        std::shared_ptr<UltraCanvasMenu> spellLanguageMenu;
 
         // ===== TAB CONTEXT MENU =====
         std::shared_ptr<UltraCanvasMenu> tabContextMenu;
@@ -539,6 +546,11 @@ namespace UltraCanvas {
         void ApplySpellLanguageDetection();
         void OnSpellLanguageSuggested(const DocumentTab* doc, const std::string& languageCode);
         std::vector<MenuItemData> BuildSpellingMenuItems();
+        // The status bar's spelling indicator: its text follows the active
+        // document, the on/off switch and the dictionary in use.
+        void UpdateSpellLanguageIndicator();
+        void ShowSpellLanguageMenu();
+        void ApplySpellLanguageIndicatorTheme();
         // Rows, columns, merge and split for the table the caret is in.
         std::vector<MenuItemData> BuildTableMenuItems();
         std::vector<MenuItemData> BuildStyleMenuItems(int kind);   // RichStyle::Kind
