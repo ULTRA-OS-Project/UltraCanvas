@@ -462,7 +462,7 @@ std::shared_ptr<UltraCanvasContainer> BuildPictureTypePage(DialogState* d) {
     auto row = MakeButtonRow("snip-set-type-buttons");
     d->formatSettingsButton = MakeButton("snip-set-type-settings", Tr("Settings"), 200, [d]() {
         if (!d->settings || !d->window) return;
-        // In this window's type size, not a stand-alone dialog's larger one
+        // In this window's type size (the theme's body size), not a stand-alone dialog's own
         SettingsPageKit::ShowSaveSettingsDialog(d->settings->pictureFormat, d->window.get());
     }, "settings.svg");
     row->AddChild(d->formatSettingsButton);

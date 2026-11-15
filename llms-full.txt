@@ -78069,8 +78069,27 @@ state the same way, with the fence's language: a `/* comment */` over several
 lines is coloured on all of them. The opening fence starts every block empty,
 so a comment left open in one block ends at its closing fence. The raw line
 under the cursor is read with the Markdown rules and starts empty too - it
-never takes a code block's state. Indented (four-space) code blocks are not
-highlighted.
+never takes a code block's state.
+
+An indented (four-space) code block has no language tag. Each block's
+language is found once, on its first line, from - in order:
+
+1. a clear guess from the block's own text (`DetectLanguageFromContent`);
+2. the language the nearest code fence above it names, where the author said
+   what the document's code is;
+3. a guess on a lower bar (`LanguageDetectOptions{1, 1}`): the text is known to
+   be code, so a short snippet such as `console.log(x);` need not pile up the
+   points a paste of unknown text would.
+
+A block none of them places - indented prose - stays plain. An application
+that knows the language sets it for every indented block:
+
+```cpp
+textArea->SetIndentedCodeLanguage("C++");   // "" (the default): guess per block
+```
+
+A blank line between two indented code lines belongs to the block, as in
+CommonMark, so a comment left open across it stays a comment.
 
 The fence's info string names the language through
 `SyntaxTokenizer::SetLanguageByTag`: its first word, matched against the
@@ -110868,26 +110887,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/apps-window-keeps-the-tiles-place.md
-==============================================================================
-
-- **The Apps window keeps your place in the tiles as well.** The tree view
-  stopped jumping back to the top in 0.4.19; the tiles still did, because the
-  whole scrolling area was built again on every keystroke in the filter box,
-  every new list of applications and every application moved. The area is
-  kept now and only the tiles inside it are made again, so the view stays
-  where you left it. Switching to the tree and back, or a filter that matches
-  nothing, builds the page afresh as before.
-- **The Apps window can be tested.** It read the machine's own `.desktop`
-  files and made its own window, so nothing could drive it: `Hooks`
-  gains `applications`, a list handed to the window in place of the scan
-  (nothing is read from disk or kept between openings), `ShowApps` is public
-  beside it, and `Window()` lets a caller reach the page's elements by their
-  identifiers. `UltraDesktopAppStarterTest` uses all three to hold both views
-  to keeping the chosen category, the opened categories and the scroll
-  position across a rebuild; CI runs it on a virtual display.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
