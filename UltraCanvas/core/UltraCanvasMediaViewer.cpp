@@ -1,6 +1,9 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.26.0 - Save as for a drawing (every vector and bitmap type, the vector view
+//                  too - an SVG had no Save where the image pipeline cannot read SVG)
+//                  and for a recording (every audio type this build encodes)
 // Version: 1.25.0 - MakeMediaViewerDescriptor / RegisterMediaViewerElement: "media-viewer" in the element
 //                  registry, compiled in or as the ultracanvas-widget-media-viewer runtime module
 // Version: 1.24.0 - video: ShownVideoInfo reads the clip's headers once per file
@@ -58,7 +61,7 @@
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -3113,7 +3116,112 @@ void UltraCanvasMediaViewer::ShowOpenDialog() {
             });
 }
 
+// ----- Save as -----
+// What Save writes follows what is on show. A drawing stays a drawing: every
+// vector type this build writes, and every bitmap type drawn sharp at the
+// size the Settings give (SaveVectorDocument) - an SVG used to be offered as
+// a PNG only, and not at all where the vector view showed it (a build whose
+// image pipeline has no SVG loader, Windows among them). A recording is
+// offered every audio type this build encodes. A picture - or a drawing
+// turned or mirrored here - is written with the edits baked in.
+
 void UltraCanvasMediaViewer::ShowSaveDialog() {
+    if (!tools.save) return;
+    if (activeKind == MediaKind::Audio) { ShowAudioSaveDialog(); return; }
+    if (auto drawing = DrawingToSave()) { ShowDrawingSaveDialog(drawing); return; }
+    ShowImageSaveDialog();
+}
+
+std::shared_ptr<VectorStorage::VectorDocument> UltraCanvasMediaViewer::DrawingToSave() const {
+    if (auto* vv = ActiveVectorView()) return vv->GetDocument();
+    // An SVG the image pipeline rasterized onto the surface: the drawing is
+    // read from the file - unless it was turned or mirrored here, which only
+    // the picture carries.
+    const std::string path = GetCurrentPath();
+    if (activeKind != MediaKind::Image || !surface || surface->HasGeometryEdits() || path.empty() ||
+        ClassifyFile(path) != MediaKind::Vector || !UltraCanvasFileLoader::CanLoadVectorDocument(path))
+        return nullptr;
+    std::string error;
+    return UltraCanvasFileLoader::LoadVectorDocument(path, error);
+}
+
+bool UltraCanvasMediaViewer::CanSaveAudioFile(const std::string& path) {
+    return !path.empty() && CanDecodeMediaFile(MediaCodecKind::Audio, path) &&
+           !UltraCanvasFileLoader::GetSupportedSaveExtensions(MediaFormatCategory::Audio).empty();
+}
+
+// The file Save wrote, or why it did not: a failed save says so in a message,
+// not only in the info bar - the line at the bottom is easily missed, and
+// then the save looks as if it did nothing at all.
+static void ReportSave(UltraCanvasLabel* infoLabel, UltraCanvasWindowBase* window, const std::string& path,
+                       bool ok, const std::string& error, const std::string& title) {
+    if (ok) {
+        if (infoLabel) infoLabel->SetText("Saved: " + BaseName(path));
+        return;
+    }
+    if (infoLabel) infoLabel->SetText("Save failed: " + error);
+    UltraCanvasDialogManager::ShowError("Could not save \"" + BaseName(path) + "\".\n" + error,
+                                        title, nullptr, window);
+}
+
+// The same type as the file on show is the file itself, copied as it is:
+// written again it could only lose what the writer does not carry over.
+static bool CopyShownFile(const std::string& source, const std::string& target, std::string& error) {
+    if (source == target) return true;
+    FileBytesResult read = UltraCanvasFileLoader::LoadFile(source, false);
+    if (!read.success) { error = read.error.empty() ? "Cannot read " + BaseName(source) : read.error; return false; }
+    return UltraCanvasFileLoader::SaveFile(target, read.bytes, error);
+}
+
+void UltraCanvasMediaViewer::ShowDrawingSaveDialog(std::shared_ptr<VectorStorage::VectorDocument> drawing) {
+    if (!drawing) return;
+    const std::string source = GetCurrentPath();
+    FileDialogOptions opts;
+    opts.SetTitle(Tr("Save as"))
+        .SetDefaultFileName(BaseName(source))
+        .SetParentWindow(GetWindow());
+    // Vector types first, then every bitmap type with the drawing's size, so
+    // a bitmap type's Settings offer any size - drawn again, sharp.
+    UltraCanvasFileLoader::AddVectorDocumentSaveTypes(opts, *drawing);
+    UltraCanvasFileLoader::SaveFileDialog(opts,
+            [this, drawing, source](DialogResult r, const std::string& chosen, const FileSaveImageSize& size) {
+                if (r != DialogResult::OK || chosen.empty()) return;
+                std::string err;
+                const bool ok = LowerExt(chosen) == LowerExt(source)
+                        ? CopyShownFile(source, chosen, err)
+                        : UltraCanvasFileLoader::SaveVectorDocument(*drawing, chosen, size, err);
+                ReportSave(infoLabel.get(), GetWindow(), chosen, ok, err, Tr("Save"));
+                if (ok && infoLabel && !size.IsOriginal() && UltraCanvasFileLoader::CanSaveImage(chosen))
+                    infoLabel->SetText("Saved: " + BaseName(chosen) + " at " + std::to_string(size.width) +
+                                       " x " + std::to_string(size.height) + " px");
+            });
+}
+
+void UltraCanvasMediaViewer::ShowAudioSaveDialog() {
+    const std::string source = GetCurrentPath();
+    if (!CanSaveAudioFile(source)) return;
+    // Its own name where this build writes its type, else the name as WAV,
+    // which is always written.
+    const std::string ext = LowerExt(source);
+    const std::string stem = PathToUtf8(PathFromUtf8(BaseName(source)).stem());
+    FileDialogOptions opts;
+    opts.SetTitle(Tr("Save as"))
+        .SetDefaultFileName(CanEncodeMediaExtension(MediaCodecKind::Audio, ext) ? BaseName(source)
+                                                                                 : stem + ".wav")
+        .SetDefaultExtension("wav")
+        .SetParentWindow(GetWindow());
+    opts.saveSettingsButton = false;   // the audio encoders take no save settings
+    UltraCanvasFileLoader::AddSaveTypes(opts, MediaFormatCategory::Audio);
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, source](DialogResult r, const std::string& chosen) {
+        if (r != DialogResult::OK || chosen.empty()) return;
+        if (infoLabel) infoLabel->SetText("Saving " + BaseName(chosen) + "\xE2\x80\xA6");
+        std::string err;
+        const bool ok = source == chosen || UltraCanvasFileLoader::ConvertAudioFile(source, chosen, err);
+        ReportSave(infoLabel.get(), GetWindow(), chosen, ok, err, Tr("Save"));
+    });
+}
+
+void UltraCanvasMediaViewer::ShowImageSaveDialog() {
     if (!tools.save || !surface || !surface->GetImage() || !surface->GetImage()->IsValid()) return;
 
     FileDialogOptions opts;
@@ -3642,7 +3750,8 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         ShowView(MediaKind::Audio);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* ap = static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get());
-        if (!ap->LoadFromFile(path)) {
+        audioOpened = ap->LoadFromFile(path);
+        if (!audioOpened) {
             // The player's reason names the codec and what would decode it,
             // which is the difference between a silent dead transport and an
             // answer the user can act on.
@@ -3736,9 +3845,17 @@ void UltraCanvasMediaViewer::UpdateToolAvailability() {
             t.zoom = true;
             break;
         case MediaKind::Vector:
-            // The vector view zooms; a graphics plugin's own element is
+            // The vector view zooms, and saves the drawing it shows in any
+            // vector or bitmap type; a graphics plugin's own element is
             // hosted as it is and brings whatever controls it has.
             t.zoom = !pluginView && vectorView != nullptr;
+            t.save = t.zoom && static_cast<UltraCanvasVectorElement*>(vectorView.get())->GetDocument() != nullptr;
+            break;
+        case MediaKind::Audio:
+            // The player brings its transport; Save as writes the recording
+            // in another audio type - one the player opened, so one that
+            // decodes.
+            t.save = audioOpened && CanSaveAudioFile(path);
             break;
         default:
             // Text, spreadsheet, font, 3D model, video, audio: their views

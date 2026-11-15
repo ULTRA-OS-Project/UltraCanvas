@@ -102,6 +102,13 @@ UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_p
     if (r.IsSuccess()) Play(audio);
 });
 
+// Save a recording in another audio type (WAV always; MP3 / FLAC / Ogg Vorbis /
+// Opus with their encoders; a codec plugin's too). The Save dialog's types are
+// AddSaveTypes(opts, MediaFormatCategory::Audio). The same type is copied as it is.
+std::string audioError;
+UltraCanvasFileLoader::ConvertAudioFile("talk.flac", "talk.mp3", audioError);
+// ... or a UCAudio you hold: UltraCanvasFileLoader::SaveAudio(audio, "take.wav", audioError)
+
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT;
 // a PowerPoint deck, .pptx, as an outline of its slides).
 // A password-protected .docx asks for its password before it loads.

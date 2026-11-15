@@ -4,6 +4,8 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.14.0 - SaveAudio, ConvertAudioFile (a recording saved in any audio type this
+//                  build encodes)
 // Version: 1.13.0 - GetSpeechTranscriber
 // Version: 1.12.0 - GetImageTextRecognizer (a recognizer that wraps the one before it)
 // Version: 1.11.0 - ExtractText: the words in a document, PDF, spreadsheet, picture (text
@@ -21,7 +23,7 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -213,6 +215,22 @@ namespace UltraCanvas {
         // on decode failure, loadError is populated and the audio is null/invalid.
         static void OpenAudio(const FileDialogOptions& opts,
                               std::function<void(const FileLoadResult&, std::shared_ptr<UCAudio>)> onResult);
+
+        // ----- audio saved -----
+        // `audio` written to `path` in the format its extension names: every
+        // audio type this build encodes - WAV always, MP3 / FLAC / Ogg Vorbis
+        // / Opus with their encoders, and any a codec plugin registered
+        // (RegisterMediaCodec). A Save dialog offers exactly these with
+        // AddSaveTypes(opts, MediaFormatCategory::Audio). False, with
+        // `outError`, when nothing encodes that extension or the write fails.
+        static bool SaveAudio(const UCAudio& audio, const std::string& path, std::string& outError);
+        // A recording saved in another audio format: `sourcePath` decoded
+        // and written to `targetPath` with SaveAudio. The same extension is
+        // the same format, so that file is copied as it is - never decoded
+        // and encoded again, which would only lose quality. An application's
+        // Save as / Export of a recording is this call.
+        static bool ConvertAudioFile(const std::string& sourcePath, const std::string& targetPath,
+                                     std::string& outError);
 
         // Opens the native file dialog and parses the chosen word-processing
         // document into a UCRichDocument (see Plugins/Documents/Word). Formats:
@@ -506,8 +524,10 @@ namespace UltraCanvas {
         // without a size (FileSavePicture()) gives the settings alone.
         // `fontSize` draws the dialog - captions, controls, buttons - at the
         // type size of the window it is opened from (a settings window's
-        // SettingsPageKit::TextFontSize(), the theme's body size), with its
-        // rows and columns scaled to match; 0 keeps the dialog's own.
+        // SettingsPageKit::TextFontSize(), the theme's body size; the
+        // framework Save dialog passes its own), with its rows and columns
+        // scaled to match; 0 is the theme's body size, which its fields and
+        // lists follow anyway.
         static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
                                            const FileSavePicture& picture,
                                            const FileSaveImageSize& size,

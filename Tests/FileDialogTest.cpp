@@ -1071,6 +1071,18 @@ int main() {
             auto* keep = top ? dynamic_cast<UltraCanvasCheckbox*>(top->FindChildById("SaveSizeKeepProportions"))
                              : nullptr;
             TEST("With the picture's size, a bitmap's settings have a Size row", sizeW && sizeH && keep);
+            // At the Save dialog's type size, fields and lists included: at a
+            // fixed 12 its captions, checkboxes and buttons towered over the
+            // Save dialog (and its own fields) where the theme's body text is
+            // smaller, as on Windows.
+            if (top && sizeW) {
+                const float typeSize = run.dialog->GetStyle().messageFontSize;
+                auto* list = dynamic_cast<UltraCanvasDropdown*>(top->FindChildById("SaveSetting_colours"));
+                TEST("The settings are at the Save dialog's type size",
+                     top->GetStyle().messageFontSize == typeSize &&
+                     sizeW->GetStyle().fontStyle.fontSize == typeSize &&
+                     (!list || list->GetStyle().fontSize == typeSize));
+            }
             if (sizeW && sizeH && keep) {
                 TEST("... opened on the picture's size, proportions kept",
                      sizeW->GetIntValue() == 640 && sizeH->GetIntValue() == 480 && keep->IsChecked());

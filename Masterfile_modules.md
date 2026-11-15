@@ -1743,7 +1743,7 @@ picture's size for one save (`FileSaveImageSize`, offered when the caller
 passes `FileDialogOptions::SetImageSize`, or `SetDrawingSize` for a drawing,
 which has no pixel size and is drawn sharp at any) comes back through the
 `SaveFileDialog` overload that reports it, never stored. The media viewer's
-Save image as (UltraViewer) offers it and draws an SVG again at the size
+Save as (UltraViewer) offers it and draws a drawing again at the size
 chosen.
 
 A dialog's file types come from the format inventory, never an application's
@@ -1754,6 +1754,14 @@ type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 `SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
+
+A recording is written in any audio type the build encodes with
+`UltraCanvasFileLoader::SaveAudio(audio, path, error)` (a `UCAudio`) or
+`ConvertAudioFile(source, target, error)` (decoded and encoded; the same type
+copied as it is) - the Save dialog's types are `AddSaveTypes(opts,
+MediaFormatCategory::Audio)`. The media viewer's Save as uses it for a
+recording, and `AddVectorDocumentSaveTypes` / `SaveVectorDocument` for a
+drawing (the vector view's, or an SVG read with `LoadVectorDocument`).
 
 The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
 password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads

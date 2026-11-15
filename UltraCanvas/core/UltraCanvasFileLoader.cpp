@@ -1,6 +1,7 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.10.0 - SaveAudio, ConvertAudioFile
 // Version: 1.9.0 - SaveFile
 // Version: 1.8.0 - LoadTextDocument / OpenTextDocument read a .pptx as an outline
 // Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
@@ -13,13 +14,14 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasAudio.h"
+#include "UltraCanvasMediaCodecRegistry.h"   // CanEncodeMediaExtension: SaveAudio's types
 #include "UltraCanvasUtils.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasOfficeEncryption.h"   // RequestDocumentPassword
@@ -469,6 +471,50 @@ namespace UltraCanvas {
                 onResult(loadResult, audio);
             }
         });
+    }
+
+    namespace {
+        std::string LowerAudioExtension(const std::string& path) {
+            std::string ext = PathToUtf8(PathFromUtf8(path).extension());
+            if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+            for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return ext;
+        }
+    }
+
+    bool UltraCanvasFileLoader::SaveAudio(const UCAudio& audio, const std::string& path,
+                                          std::string& outError) {
+        outError.clear();
+        if (!audio.IsValid()) { outError = "No sound to save"; return false; }
+        const std::string ext = LowerAudioExtension(path);
+        if (ext.empty() || !CanEncodeMediaExtension(MediaCodecKind::Audio, ext)) {
+            outError = ext.empty() ? std::string("The name has no audio type (.wav, .mp3 ...)")
+                                   : "This build does not write ." + ext + " audio";
+            return false;
+        }
+        if (!audio.SaveToFile(path, AudioFormatFromExtension(ext))) {
+            outError = "The " + ext + " encoder could not write " + path;
+            return false;
+        }
+        return true;
+    }
+
+    bool UltraCanvasFileLoader::ConvertAudioFile(const std::string& sourcePath, const std::string& targetPath,
+                                                 std::string& outError) {
+        outError.clear();
+        // The same type: the file as it is. Decoding and encoding it again
+        // would cost a lossy format quality and gain nothing.
+        if (LowerAudioExtension(sourcePath) == LowerAudioExtension(targetPath)) {
+            FileBytesResult read = LoadFile(sourcePath, false);
+            if (!read.success) { outError = read.error.empty() ? "Cannot read " + sourcePath : read.error; return false; }
+            return SaveFile(targetPath, read.bytes, outError);
+        }
+        std::shared_ptr<UCAudio> audio = UCAudio::LoadFromFile(sourcePath);
+        if (!audio || !audio->IsValid()) {
+            outError = "Cannot decode " + sourcePath;
+            return false;
+        }
+        return SaveAudio(*audio, targetPath, outError);
     }
 
     std::vector<MediaFormatInfo> UltraCanvasFileLoader::GetSupportedFormats() {
