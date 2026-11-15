@@ -506,8 +506,8 @@ namespace UltraCanvas {
         // without a size (FileSavePicture()) gives the settings alone.
         // `fontSize` draws the dialog - captions, controls, buttons - at the
         // type size of the window it is opened from (a settings window's
-        // SettingsPageKit::kTextFontSize), with its rows and columns scaled
-        // to match; 0 keeps the dialog's own.
+        // SettingsPageKit::TextFontSize(), the theme's body size), with its
+        // rows and columns scaled to match; 0 keeps the dialog's own.
         static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
                                            const FileSavePicture& picture,
                                            const FileSaveImageSize& size,

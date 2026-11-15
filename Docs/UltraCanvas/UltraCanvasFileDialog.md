@@ -468,13 +468,16 @@ its rows and columns scaled to match. Whatever the size, the window is as
 wide as its captions and controls need, and the Defaults button as wide as
 its label. A settings window built on `SettingsPageKit` opens it through
 `SettingsPageKit::ShowSaveSettingsDialog(extensionOrPath, parent)`, which
-passes the window's `kTextFontSize` - UltraSnip's *File type* page does:
+passes the window's `SettingsPageKit::TextFontSize()` - UltraSnip's *File
+type* page does. That is the theme's body size, the desktop's interface
+font size, so where the desktop names none (12, as under Xvfb) the dialog
+opened from a settings window is drawn at its own size:
 
 <!-- doc-check: std::string pictureType; UltraCanvasWindowBase* settingsWindow = nullptr; -->
 ```cpp
-// The type's settings, in the settings window's 10-point text
+// The type's settings, in the settings window's type size
 SettingsPageKit::ShowSaveSettingsDialog(pictureType, settingsWindow);
-// The same, by hand: no size row (a picture without a size), font size 10
+// By hand, at a size of your own: no size row (a picture without a size), font size 10
 UltraCanvasFileLoader::ShowSaveSettingsDialog(pictureType, FileSavePicture(), FileSaveImageSize(),
                                               settingsWindow, nullptr, 10.0f);
 ```
