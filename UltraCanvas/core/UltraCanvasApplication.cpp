@@ -1183,11 +1183,26 @@ namespace UltraCanvas {
             ApplyHostAppearanceOverride(host, GetEnvUtf8("ULTRACANVAS_HOST_APPEARANCE"));
             return host;
         }
+
+        // The host's word on light text, handed to the render context when
+        // it changes - so a strength an application set itself holds until
+        // the person changes the setting - and never over
+        // ULTRACANVAS_LIGHT_TEXT_BOOST, which is one run's own choice.
+        // True when the strength changed and the windows need a redraw.
+        bool ApplyLightTextSetting(const HostAppearance& host) {
+            static bool applied = true;   // the render context starts firm
+            if (host.firmLightText == applied) return false;
+            applied = host.firmLightText;
+            if (!GetEnvUtf8("ULTRACANVAS_LIGHT_TEXT_BOOST").empty()) return false;
+            RenderContextCairo::SetLightTextBoost(applied ? 1.0 : 0.0);
+            return true;
+        }
     }
 
     const HostAppearance& UltraCanvasApplicationBase::GetHostAppearance() {
         if (!hostAppearance_.has_value()) {
             hostAppearance_ = ReadHostAppearance(*this, &UltraCanvasApplicationBase::DetectHostAppearanceNative);
+            ApplyLightTextSetting(hostAppearance_.value());
         }
         return hostAppearance_.value();
     }
@@ -1197,6 +1212,10 @@ namespace UltraCanvas {
         if (hostAppearance_.has_value() && fresh == hostAppearance_.value()) return;
         const bool first = !hostAppearance_.has_value();
         hostAppearance_ = std::move(fresh);
+        if (ApplyLightTextSetting(hostAppearance_.value())) {
+            // The theme may be the same one, and then nothing else redraws.
+            for (auto& window : windows) if (window) window->RequestRedraw();
+        }
         if (first) return;   // nothing changed from anyone's point of view: nobody had read it
         debugOutput << "UltraCanvas: host appearance changed: " << HostAppearanceReport(hostAppearance_.value()) << std::endl;
         // The theme first, so a handler sees the look the host asked for.

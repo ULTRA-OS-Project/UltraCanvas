@@ -71,7 +71,7 @@ too, in its upgrade request).
 | `POST /v1/recovery/poll` | `{recovery_id, poll_token}`, no session → 202 `{status: "pending", expires_in}` until approved; then once `{user_id, secret_key, display_name, email, phone}` and the owner is e-mailed a notice; 410 `expired` (or a wrong poll token) |
 | `GET /v1/users/{id}` | `{user_id, public_key, display_name}` — contact discovery by id |
 | `GET /v1/contacts` | `{contacts: [{user_id, public_key, display_name, presence}]}` |
-| `PUT` / `DELETE /v1/contacts/{id}` | add / remove |
+| `PUT` / `DELETE /v1/contacts/{id}` | add / remove; an add puts you in their list too, when you were not, and tells them (`contact.added`, 1.4.0) |
 | `POST /v1/groups` | `{title, members}` → `{group_id, conversation: "group:<id>", title, owner, members}` |
 | `GET /v1/groups`, `GET /v1/groups/{id}` | the caller's groups |
 | `PATCH /v1/groups/{id}` | `{title}` — any member renames (1.3.0) |
@@ -92,6 +92,7 @@ WebSocket `/v1/ws`, JSON frames:
 | server → | `presence {from, status: online\|offline}` — for your contacts and fellow group members |
 | server → | `message.new {message}` — a queued copy for you, as `GET /v1/messages` returns it |
 | server → | `group.update {group}` (`removed: true` when you left or were removed) |
+| server → | `contact.added {contact: {user_id, public_key, display_name, presence}}` — someone added you; their chat appears before their first message (1.4.0) |
 | ↔ | `typing {to, conversation, typing}` (arrives with `from`) |
 | ↔ | `signal {to, kind, session, payload}` — `kind` is `offer`, `answer`, `ice`, `hangup`, `call-invite`, `call-accept`, `call-reject` or `call-update` (a call's camera on or off); `payload` is forwarded untouched (arrives with `from`). Not online: `signal.undeliverable {to, session}` comes back |
 | ↔ | `ping` → `pong` |
@@ -205,13 +206,14 @@ WebSocket upgrade in front of it), `deploy/turnserver.conf` (coturn, sharing
 ### Updating a running relay
 
 A ChatCube newer than its relay works, but what needs the newer relay says
-so instead of happening: renaming a group needs 1.3.0, and an older relay
+so instead of happening: renaming a group needs 1.3.0 (and, with an older
+relay than 1.4.0, the person added sees the chat only once the adder writes), and an older relay
 answers ChatCube with `405 Method Not Allowed`, which ChatCube shows as "This
 relay cannot rename groups yet - it needs ChatCube relay 1.3.0 or later". On
 the server, with the layout of `deploy/chatcube-relay.service`:
 
 ```bash
-curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.2.0"}
+curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.3.0"}
 sudo systemctl stop chatcube-relay
 # The database first: an upgrade migrates it, and the older relay then refuses it.
 sudo cp /var/lib/chatcube-relay/relay.sqlite3 /var/lib/chatcube-relay/relay.sqlite3.bak
@@ -219,7 +221,7 @@ sudo cp /var/lib/chatcube-relay/relay.sqlite3 /var/lib/chatcube-relay/relay.sqli
 # a copy: rsync -a --exclude .venv Server/ChatCubeRelay/ /opt/chatcube-relay/)
 sudo -u chatcube-relay /opt/chatcube-relay/.venv/bin/pip install -e /opt/chatcube-relay
 sudo systemctl start chatcube-relay
-curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.3.0"}
+curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.4.0"}
 ```
 
 (The database's file is whatever `CHATCUBE_RELAY_DB` names in

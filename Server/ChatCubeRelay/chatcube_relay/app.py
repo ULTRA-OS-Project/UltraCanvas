@@ -2,7 +2,8 @@
 
 REST for everything that is a request (accounts, contacts, groups, the
 offline queue, TURN credentials, the Telegram application's keys); one WebSocket per signed-in device for
-what is pushed (presence, typing, P2P signalling, new queued messages).
+what is pushed (presence, typing, P2P signalling, new queued messages, a
+contact added by someone else).
 The relay forwards signalling payloads and stores envelopes without reading
 either: both are end-to-end protected by the clients."""
 
@@ -638,7 +639,16 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
             raise error(404, "unknown_user", "No such user")
         if other == user_id:
             raise error(400, "invalid_request", "You cannot add yourself")
-        store.add_contact(user_id, other)
+        if store.add_contact(user_id, other):
+            # The person added learns who added them: the adder joins their
+            # list too - so a ChatCube that is away finds the chat at its next
+            # sign-in (GET /v1/contacts) - and one that is online is told now.
+            # Only when the adder was new to them: someone who had the adder
+            # already has the chat.
+            adder = store.get_user(user_id)
+            if adder and store.add_contact(other, user_id):
+                await hub.send(other, {"type": "contact.added",
+                                       "contact": user_json(adder, hub.is_online(user_id))})
         return user_json(user, hub.is_online(other))
 
     @app.delete("/v1/contacts/{other}")

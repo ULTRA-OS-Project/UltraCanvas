@@ -43522,6 +43522,7 @@ const HostAppearance& host = app->GetHostAppearance();
 bool dark = host.dark;                         // the desktop prefers a dark look
 bool contrast = host.highContrast;             // Windows High Contrast, macOS Increase Contrast
 bool calm = host.reduceMotion;                 // the animation preference
+bool firm = host.firmLightText;                // light text drawn firmer on a dark ground: true unless the file or the override says plain
 std::optional<Color> accent = host.accent;     // the desktop's accent, when it has one
 FontStyle ui = host.uiFont;                    // Segoe UI 9, Helvetica Neue 13, Ubuntu 12 ...
 FontStyle mono = host.monoFont;                // Consolas, Menlo, Ubuntu Mono ...
@@ -43603,6 +43604,7 @@ ULTRACANVAS_HOST_APPEARANCE="dark,font=Noto Sans 14,mono=Fira Code 13,accent=#e9
 | `accent=#rrggbb`, `accent=none` | the accent, or none |
 | `font=<family> <points>`, `mono=<family> <points>` | the fonts, in the GTK form (`Noto Sans Bold 10.5`: style words dropped) |
 | `scale=<factor>` | the text scale, 0.5 to 4 |
+| `lighttext=firm`, `lighttext=plain` | light text drawn firmer on a dark ground, or every text once |
 
 The portal and GSettings are asked only inside a desktop session
 (`XDG_CURRENT_DESKTOP` or `DESKTOP_SESSION` set): with no desktop running -
@@ -43617,7 +43619,10 @@ the look came from: `linux:portal`, `linux:gsettings`, `linux:xsettings`,
 `Appearance.conf` in the UltraCanvas settings folder is a person's choice
 over the desktop for every UltraCanvas application at once - the look, the
 accent, the font and its size, the text scale, the contrast, each `system`
-when the host decides. `AppearanceSettings::Load().ApplyTo(host)`
+when the host decides, and `lighttext` (`firm` or `plain`), which no host
+has a word for: the application hands it to the render context
+(`RenderContextCairo::SetLightTextBoost`) when it changes and redraws its
+windows, unless `ULTRACANVAS_LIGHT_TEXT_BOOST` set the strength for the run. `AppearanceSettings::Load().ApplyTo(host)`
 (`UltraCanvasAppearanceSettings.h`) is applied over what the platform said
 on every read, before the override above, so the order is the host, then
 the file, then `ULTRACANVAS_HOST_APPEARANCE`; the source gains `+settings`
@@ -79531,6 +79536,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTextRenderingExamples.md
 - [Antialias Modes](#antialias-modes)
 - [Hint Styles](#hint-styles)
 - [Hint Metrics](#hint-metrics)
+- [Light text on a dark ground](#light-text-on-a-dark-ground)
 - [Events / Callbacks](#events--callbacks)
 - [Usage Examples](#usage-examples)
   - [Reading the current value into a dropdown](#reading-the-current-value-into-a-dropdown)
@@ -79548,7 +79554,7 @@ UltraCanvas exposes the Cairo/Pango text rendering pipeline through a small set 
 
 This document is a guide to the three settings and to the demo that exposes them as live drop-downs (`UltraCanvasTextRenderingExamples.cpp`).
 
-**Version:** 1.0.0
+**Version:** 1.1.0 - the light text boost
 **Header:** `libspecific/Cairo/RenderContextCairo.h`
 **Namespace:** `UltraCanvas`
 
@@ -79580,6 +79586,11 @@ public:
     // Hint Metrics — controls whether font metrics are snapped to integer pixels.
     static void                 SetTextHintMetrics(cairo_hint_metrics_t metrics);
     static cairo_hint_metrics_t GetTextHintMetrics();
+
+    // Light text boost — light text drawn a second time (1, the default) or once (0).
+    static void   SetLightTextBoost(double strength);
+    static double GetLightTextBoost();
+    static double LightTextBoostFor(const Color& ink);
 };
 ```
 
@@ -79628,6 +79639,35 @@ beside the text. A host that knows its panel selects `SUBPIXEL` with
 | 0     | `CAIRO_HINT_METRICS_DEFAULT`     | Backend default                                                              |
 | 1     | `CAIRO_HINT_METRICS_OFF`         | Fractional metrics — smoother kerning, better for animated/transformed text  |
 | 2     | `CAIRO_HINT_METRICS_ON`          | Quantize metrics to integer pixels — crispest at 1:1 scale                   |
+
+## Light text on a dark ground
+
+Cairo blends a glyph's edge in sRGB numbers rather than in light: a pixel a
+white glyph covers by half on a black ground comes out 128, where the light
+that should arrive is 188. Dark text on white gains weight from that error;
+light text on a dark window loses it, and at interface sizes a stem is
+mostly edge. A dark UltraCanvas window therefore read thinner and greyer
+than a native one in the same font - DirectWrite, ClearType and Core Text
+correct for it. The render context corrects for it too: text whose colour is
+light is drawn a **second time**, which lifts a coverage `c` to
+`1 - (1 - c)^2` - a half becomes three quarters, 191, the linear-light
+answer within a few levels - and leaves a fully covered pixel as it is.
+
+| | |
+|---|---|
+| Default | On (`1.0`), in every application; no element or theme asks for it |
+| Which text | An opaque plain text colour that is light: none below a mid grey (luma 0.45), the whole boost from luma 0.70 - the dark theme's ink (white) and muted ink (190) in full, its faint ink (150) about halfway |
+| Left alone | Dark text; translucent text (it is faint on purpose, and a second pass would raise its opacity, not only its edge); text painted with a gradient or pattern; text drawn under a global alpha below one; a PDF, PostScript or SVG page, which keeps its text once, as text |
+| Layout | Unchanged: no advance, extent or line height moves, only the partly covered pixels |
+| Off | For every application: `lighttext=plain` in `Appearance.conf` (UOS-Settings > Appearance > Look > Light text), which a running application follows within a moment. For one: `RenderContextCairo::SetLightTextBoost(0)`. For one run: `ULTRACANVAS_LIGHT_TEXT_BOOST=0` in the environment, which the file does not overrule. A value between 0 and 1 is a weaker second pass |
+| In the demo | The Text Rendering page's *Light Text* option (Plain, Half, Firm) over a card of light text on a dark ground |
+
+```cpp
+RenderContextCairo::SetLightTextBoost(0.0);                                  // every text once
+double pass = RenderContextCairo::LightTextBoostFor(Color(255, 255, 255));   // 1 at full strength: the dark theme's ink
+```
+
+`Tests/LightTextBoostTest.cpp` draws a line both ways and reads it back.
 
 ## Events / Callbacks
 
@@ -79801,8 +79841,8 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.15.0 - TakeHostFonts for an Own provider; the four Own applications on the policy (T6)
-**Last Modified:** 2026-11-11
+**Version:** 1.16.0 - Dark's ink is white; Appearance.conf's lighttext; 1.15.0 - TakeHostFonts for an Own provider; the four Own applications on the policy (T6)
+**Last Modified:** 2026-11-15
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -79915,12 +79955,20 @@ Both presets keep these contrast ratios (WCAG 2 relative luminance), and
 
 `Dark`'s greys came from the dark menu, tooltip and text area and hold
 these as they are: the faint ink is 4.7:1 on `raised` and 5.6:1 on
-`panel`. `Light` differs from the elements' defaults in one colour:
+`panel`. Its ink is white, as the Windows and GNOME dark looks write their
+text (235 until 1.16.0, which read greyer than a native window beside it);
+the muted (190) and faint (150) inks keep the steps below it. `Light` differs from the elements' defaults in one colour:
 `lineStrong` is a mid grey (128) rather than `ButtonShadow` (160, 2.6:1 on
 white), so a border an element draws because it follows the theme reaches
 3:1; an element styled by hand keeps its default border. A theme of your
 own should hold the same ratios on the surfaces each ink is meant for -
 muted text is not for `pressed`, faint text not for `hover`.
+
+A ratio is the colours; the weight of the text is the other half of
+reading it. Light text on a dark ground is drawn firmer by the render
+context, in every application and without a theme asking - see *Light text
+on a dark ground* in
+[`UltraCanvasTextRenderingExamples.md`](UltraCanvasTextRenderingExamples.md).
 
 ## Using it
 
@@ -80189,7 +80237,14 @@ font=system          system | <family>
 fontsize=system      system | <points>
 scale=1.0            over the host's text scale, 0.5 to 4
 contrast=system      system | high | normal
+lighttext=firm       firm | plain
 ```
+
+`lighttext` is the one line no host has a word for: `firm`, the default,
+draws light text on a dark ground a second time so it keeps its weight
+(*Light text on a dark ground* in
+[`UltraCanvasTextRenderingExamples.md`](UltraCanvasTextRenderingExamples.md));
+`plain` draws every text once.
 
 `AppearanceSettings` (`UltraCanvasAppearanceSettings.h`) is the file:
 `Parse` and `Serialize` are the text and back, `ApplyTo` puts the choices
@@ -102030,6 +102085,19 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   while the read receipt could not travel still counts. A message or a file
   deleted before all of it arrived is noted (`deleted`), and dropped when
   the rest comes.
+- **Editing** (`EditMessage`): its sender changes a text, or a picture's,
+  video's or file's caption, at any time (a text never to nothing - that
+  is a delete). The record keeps the new words and marks the message
+  edited (`isEdited`; schema 5); the others are told with an `edit` body on
+  the message's path, and take it only from the message's own sender.
+  `MessageUpdate` follows on both sides.
+- **Replies:** `replyToMessageId` rides in the body as `reply_to`; the
+  quote (`replyTo.senderName`, `textSnippet`) is filled in from the record
+  where the message replied to is - on arrival, on `FetchMessages` and in
+  search results.
+- **Contacts:** adding someone puts us in their list too (relay 1.4.0
+  `contact.added`, or a `contact` frame on the local network), so their
+  chat appears before our first message.
 - **Search:** `SearchMessages` is a query on that record - one conversation
   or all of them, narrowed in the database by conversation and kind (an
   index each) and matched by words on the way out, where upper and lower
@@ -102109,7 +102177,9 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   are here, puts the file together under the cache directory, and says so
   with `MessageUpdate`; `DownloadAttachment` answers from disk, or once the
   last part is here. Files up to 64 MiB; our own row points at the file
-  sent. Only the relay's text queue is involved, so a relay in service
+  sent. A voice note (`SendVoiceNote`) is such a file of kind `audio`; its
+  length (`UltraIMSendOptions::durationSeconds`, for a video too) rides
+  in the body as `ms`. Only the relay's text queue is involved, so a relay in service
   needs no change.
 - **Not yet:** group calls, several devices per identity, groups without a
   relay, a file asked for later rather than pushed.
@@ -102151,6 +102221,10 @@ other over mDNS alone, which skips without a responder unless
   `RemoveGroupMember` kicks (the homeserver's power levels decide whether
   we may: `PermissionDenied` when not), and `LeaveConversation` leaves the
   room and forgets it - a direct chat as much as a group.
+- **Voice notes:** `SendVoiceNote` sends `m.audio` marked as a voice
+  message (`org.matrix.msc3245.voice`, with the `org.matrix.msc1767.audio`
+  block) and its length (`info.duration`, milliseconds - set for a video
+  too when `UltraIMSendOptions::durationSeconds` says it).
 - **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
   emotes, pictures, videos, audio and files with their attachments (the
   `filename` and the body as the caption, MSC2530), edits (`m.replace` -
@@ -102310,6 +102384,10 @@ process.
   its creator, with everyone counted in `UltraIMConversation::memberCount`;
   the page is asked for again when someone joins or leaves. A channel lists
   none (its subscribers are not members to manage).
+- **Voice notes:** `SendVoiceNote` sends Telegram's own voice message
+  (`inputMessageVoiceNote`, the length in whole seconds) for an Ogg Opus
+  recording - the only kind its apps play as one; any other recording goes
+  as a document.
 - **Messages:** text with replies, photos, files, audio, voice notes,
   videos (and animations, video notes) and stickers with their captions and
   attachments, the group's service messages as system lines; edits

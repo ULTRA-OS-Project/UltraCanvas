@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TelegramProvider.cpp
 // Telegram as an UltraIM provider, on TDLib's JSON interface
+// Version: 0.1.9 - SendVoiceNote: an Ogg Opus recording as Telegram's own voice message, with its length
 // Version: 0.1.8 - a supergroup's members (the first 200), its creator and its member count
 // Version: 0.1.7 - a group renamed, members added and taken out, a group left and a private chat deleted;
 //                  a basic group's members and creator on its conversation (getBasicGroupFullInfo)
@@ -192,7 +193,7 @@ UltraIMCapabilityFlags TelegramProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
            F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
-           F::CreateGroup | F::Channels | F::ImageMessages | F::FileTransfer | F::Stickers | F::SearchMessages |
+           F::CreateGroup | F::Channels | F::ImageMessages | F::FileTransfer | F::Stickers | F::SearchMessages | F::VoiceNotes |
            F::ManageGroups | F::LeaveConversation;
 }
 
@@ -2169,6 +2170,20 @@ UltraIMResult TelegramProvider::SendVideo(const std::string& conversationId, con
     thumbnail.localPath = UltraIM_MakePreview(localPath, "video/mp4", 320, thumbnail.width, thumbnail.height);
     return SendContent(conversationId,
                        Request::SendVideo(chatId, localPath, caption, ToId(options.replyToMessageId), thumbnail), options);
+}
+
+UltraIMResult TelegramProvider::SendVoiceNote(const std::string& conversationId, const std::string& localPath,
+                                              const UltraIMSendOptions& options) {
+    int64_t chatId = 0;
+    UltraIMResult r = Connected(chatId, conversationId);
+    if (!r) return r;
+    if (!(r = CheckLocalFile(localPath))) return r;
+    std::string ext = UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(localPath).extension());
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (ext != ".ogg" && ext != ".opus" && ext != ".oga") return SendFile(conversationId, localPath, options);
+    const int32_t seconds = static_cast<int32_t>(std::max(1.0, options.durationSeconds + 0.5));
+    return SendContent(conversationId,
+                       Request::SendVoiceNote(chatId, localPath, seconds, ToId(options.replyToMessageId)), options);
 }
 
 UltraIMResult TelegramProvider::SendFile(const std::string& conversationId, const std::string& localPath,

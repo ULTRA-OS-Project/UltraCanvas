@@ -312,10 +312,12 @@ class Store:
 
     # ---- contacts ------------------------------------------------------------
 
-    def add_contact(self, owner: str, contact: str) -> None:
+    def add_contact(self, owner: str, contact: str) -> bool:
+        """True when the contact is new to the owner's list."""
         with self._lock:
-            self._db.execute("INSERT OR IGNORE INTO contacts(owner, contact, created_at) VALUES (?,?,?)",
-                             (owner, contact, int(time.time())))
+            cur = self._db.execute("INSERT OR IGNORE INTO contacts(owner, contact, created_at) VALUES (?,?,?)",
+                                   (owner, contact, int(time.time())))
+            return cur.rowcount > 0
 
     def remove_contact(self, owner: str, contact: str) -> None:
         with self._lock:

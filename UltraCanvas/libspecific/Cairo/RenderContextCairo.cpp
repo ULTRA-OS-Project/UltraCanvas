@@ -24,6 +24,8 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
 #include "UCTextLayout.h"
+#include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasTextUtils.h"
 #include "../libspecific/Cairo/RenderContextCairo.h"
 #include <cstring>
 #include <cmath>
@@ -66,6 +68,27 @@ namespace UltraCanvas {
     static cairo_antialias_t g_TextAntialias = CAIRO_ANTIALIAS_GRAY;
     static cairo_hint_style_t g_TextHintStyle = CAIRO_HINT_STYLE_SLIGHT;
     static cairo_hint_metrics_t g_TextHintMetrics = CAIRO_HINT_METRICS_OFF;
+
+    // Light text is drawn firmer (SetLightTextBoost). Cairo blends a glyph's
+    // edge in sRGB numbers, not in light: a half-covered pixel of white on
+    // black comes out 128, where the light that should arrive is 188. Dark
+    // text on white gains weight from the same error; light text on a dark
+    // window loses it, and every stem of a 9 pt interface font is mostly
+    // edge - which is why a dark UltraCanvas window read thinner and greyer
+    // than the Explorer window beside it, in the same font (DirectWrite,
+    // ClearType and Core Text correct for this). A second pass of the same
+    // glyphs lifts a coverage c to 1 - (1 - c)^2: 0.5 becomes 0.75, which is
+    // 191 - the linear-light answer within a few levels - while a fully
+    // covered pixel stays as it is, so no advance, extent or layout changes.
+    // ULTRACANVAS_LIGHT_TEXT_BOOST (0 to 1) sets the strength for one run,
+    // so the two can be compared on a machine without a rebuild.
+    static double InitialLightTextBoost() {
+        double strength = 1.0;
+        const std::string env = GetEnvUtf8("ULTRACANVAS_LIGHT_TEXT_BOOST");
+        if (!env.empty() && TryParseFloat(env, strength)) return std::clamp(strength, 0.0, 1.0);
+        return 1.0;
+    }
+    static double g_LightTextBoost = InitialLightTextBoost();
 
     // Pin Pango point->pixel conversion to a known DPI on every platform. 96
     // matches the CSS reference and what every modern UI toolkit assumes; fixing
@@ -208,6 +231,29 @@ namespace UltraCanvas {
         return g_TextHintMetrics;
     }
 
+    void RenderContextCairo::SetLightTextBoost(double strength) {
+        // No cache holds a painted glyph, so nothing is invalidated: the
+        // next redraw paints with the new strength.
+        g_LightTextBoost = std::clamp(strength, 0.0, 1.0);
+    }
+
+    double RenderContextCairo::GetLightTextBoost() {
+        return g_LightTextBoost;
+    }
+
+    double RenderContextCairo::LightTextBoostFor(const Color& ink) {
+        // Translucent ink is left alone: a second pass would raise the
+        // opacity of the whole glyph, not only of its edge, and text made
+        // faint through alpha is meant to stay quiet.
+        if (ink.a < 250) return 0.0;
+        // Rec. 709 luma of the sRGB numbers: 0 below a mid grey - dark text
+        // already gains from the blend - rising to the full boost by the
+        // muted ink of the dark theme (190), so a colour that animates
+        // across the middle does not jump.
+        const double luma = (0.2126 * ink.r + 0.7152 * ink.g + 0.0722 * ink.b) / 255.0;
+        return std::clamp((luma - 0.45) / 0.25, 0.0, 1.0) * g_LightTextBoost;
+    }
+
     // ===== TEXT SURFACE CACHING IMPLEMENTATION =====
     // `alpha` scales a colour's own alpha: the context's global alpha
     // (SetAlpha). A pattern is set as it is - its alpha is not one number to
@@ -233,6 +279,22 @@ namespace UltraCanvas {
             // so a fill-opacity="0" shape (CorelDRAW writes stripes of them)
             // came out as a solid black bar.
             cairo_set_source_rgba(cairo, 0.0, 0.0, 0.0, 0.0);
+        }
+    }
+
+    // Whether what is drawn on this context is rasterised by cairo now -
+    // a window, an image - rather than recorded as text for a viewer.
+    static bool IsPixelTarget(cairo_t* cairo) {
+        switch (cairo_surface_get_type(cairo_get_target(cairo))) {
+            case CAIRO_SURFACE_TYPE_PDF:
+            case CAIRO_SURFACE_TYPE_PS:
+            case CAIRO_SURFACE_TYPE_SVG:
+            case CAIRO_SURFACE_TYPE_SCRIPT:
+            case CAIRO_SURFACE_TYPE_RECORDING:
+            case CAIRO_SURFACE_TYPE_XML:
+                return false;
+            default:
+                return true;
         }
     }
 
@@ -976,6 +1038,21 @@ namespace UltraCanvas {
         ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern,
                            currentState.globalAlpha);
         pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
+        // Light text, a second time (see g_LightTextBoost). Only where the
+        // glyphs become pixels here: a PDF, PostScript or SVG page keeps its
+        // text once, as text, and its viewer does the blending.
+        if (currentState.textSourcePattern == nullptr && currentState.globalAlpha >= 0.98) {
+            const double boost = LightTextBoostFor(currentState.textSourceColor);
+            if (boost > 0.0 && IsPixelTarget(cairo)) {
+                cairo_set_source_rgba(cairo,
+                                      currentState.textSourceColor.r / 255.0,
+                                      currentState.textSourceColor.g / 255.0,
+                                      currentState.textSourceColor.b / 255.0,
+                                      boost);
+                cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
+                pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
+            }
+        }
         EndAlphaGroup(group);
         // Drop the current point set by cairo_move_to; otherwise a following
         // cairo_arc-based primitive connects it to the arc with a stray line.

@@ -346,6 +346,7 @@ void TestStoreSearch() {
         CHECK(UltraDb_Exec("store-search-raw", "DROP TABLE links"));
         CHECK(UltraDb_Exec("store-search-raw", "DROP INDEX messages_by_type"));
         CHECK(UltraDb_Exec("store-search-raw", "DROP TABLE deleted"));
+        CHECK(UltraDb_Exec("store-search-raw", "ALTER TABLE messages DROP COLUMN edited"));
         CHECK(UltraDb_Exec("store-search-raw", "DELETE FROM ultradb_schema_version WHERE version >= 3"));
         UltraDb_CloseConnection("store-search-raw");
     }
@@ -1036,6 +1037,11 @@ void TestLocalNetwork() {
 
     UltraIMConversation withDave, withCarol;
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { carol->AddContact(daveId, cb); }, withDave));
+    // Dave is told: Carol's chat is in his list before she writes.
+    CHECK(daveEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == carolId &&
+               e.conversation.title == "Carol";
+    }));
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { dave->AddContact(carolId, cb); }, withCarol));
     CHECK(withDave.title == "Dave" && withCarol.title == "Carol");
     CHECK(withDave.presence == UltraIMPresence::Online);
@@ -1453,6 +1459,12 @@ void TestEndToEnd() {
 
     UltraIMConversation withBob, withAlice;
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->AddContact(bobId, cb); }, withBob));
+    // Bob is told through the relay (contact.added): Alice's chat is in his
+    // list before she writes.
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == aliceId &&
+               e.conversation.title == "Alice";
+    }));
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { bob->AddContact(aliceId, cb); }, withAlice));
     CHECK(withBob.conversationId == bobId && withBob.title == "Bob");
 
@@ -1482,6 +1494,54 @@ void TestEndToEnd() {
     CHECK(PictureArrives(*alice, *bob, bobEvents, bobId, picture, pictureBytes, "look"));
     std::printf("  picture: %d copies over the link, %d over the relay\n", alice->CountSentOverLink(),
                 alice->CountSentOverRelay());
+
+    // A message changed after it was sent, a reply to it and a voice note -
+    // taken out again afterwards, so the history below is as it was.
+    {
+        UltraIMSendOptions first;
+        first.clientMessageId = "msg-edit";
+        CHECK(alice->SendText(bobId, "first words", first));
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "first words"); }));
+        // Alice changes it: Bob's copy follows, marked edited.
+        CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::EditMessage));
+        CHECK(alice->EditMessage(bobId, "msg-edit", "changed words"));
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageUpdate && e.message.clientMessageId == "msg-edit" &&
+                   e.message.isEdited && e.message.text == "changed words";
+        }));
+        CHECK(bob->EditMessage(aliceId, "msg-edit", "not mine").code == UltraIMResultCode::PermissionDenied);
+        CHECK(alice->EditMessage(bobId, "msg-edit", "").code == UltraIMResultCode::InvalidArgument);
+        // Bob replies to it: Alice's copy quotes it, by Alice, in its new words.
+        UltraIMSendOptions reply;
+        reply.clientMessageId = "msg-reply";
+        reply.replyToMessageId = "msg-edit";
+        CHECK(bob->SendText(aliceId, "a reply", reply));
+        UltraIMEvent got;
+        CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "a reply"); }, &got, 30));
+        CHECK(got.message.replyTo.messageId == "msg-edit");
+        CHECK(got.message.replyTo.textSnippet == "changed words");
+        CHECK(got.message.replyTo.senderName == "Alice");
+        // A voice note: kind audio, its length with it.
+        CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::VoiceNotes));
+        WritePattern(base / "voice.wav", 30000, 3);
+        UltraIMSendOptions voice;
+        voice.clientMessageId = "msg-voice";
+        voice.durationSeconds = 4.25;
+        CHECK(alice->SendVoiceNote(bobId, UltraCanvas::PathToUtf8(base / "voice.wav"), voice));
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageReceive && e.message.clientMessageId == "msg-voice";
+        }, &got, 60));
+        CHECK(got.message.type == UltraIMMessageType::Audio);
+        CHECK(got.message.attachment.durationSeconds > 4.2 && got.message.attachment.durationSeconds < 4.3);
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageUpdate && e.message.clientMessageId == "msg-voice" &&
+                   e.message.attachment.isDownloaded;
+        }, nullptr, 120));
+        for (const char* id : {"msg-edit", "msg-reply", "msg-voice"}) {
+            CHECK(alice->DeleteMessage(bobId, id, UltraIMDeleteScope::ForMe));
+            CHECK(bob->DeleteMessage(aliceId, id, UltraIMDeleteScope::ForMe));
+        }
+    }
 
     // Bob reads it: Alice sees the read receipt.
     CHECK(bob->MarkRead(aliceId, ""));

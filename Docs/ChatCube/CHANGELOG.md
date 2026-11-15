@@ -1,3 +1,47 @@
+#### 2026-11-15 *0.1.26*
+- **Reply to a message.** A message's right-click menu has **Reply**: a bar
+  over the message field says whom you answer and what, with a × (or
+  Escape) to give it up; the reply shows the message it answers at the top
+  of its bubble - the name in their colour, the first words under it. On
+  ChatCube Direct, Matrix and Telegram.
+- **Edit a message.** A double click on one of your own messages, or
+  **Edit** in its menu, puts its words in the field with an *Edit message*
+  bar over it; Enter keeps the change, Escape gives it up. The bubble says
+  *edited* beside the time, on both sides. ChatCube Direct (new: the
+  change travels to the other side as the message did), Matrix and Telegram.
+- **Search in a chat.** A field over the messages searches the chat's whole
+  history as you type: the list shows only what matches, with how many were
+  found; the × shows the whole chat again.
+- **Voice messages.** The microphone beside the field records; a bar shows
+  how long, with a × to throw it away and send to send it. A voice message
+  shows as a play mark and its length, and plays in its bubble (a click
+  again pauses). On Matrix and Telegram it is their own voice message too,
+  with a play button in their apps.
+- **Video messages.** The camera button opens the camera over the field: its
+  red button records and stops, **Send** sends the video with its length,
+  **Cancel** throws it away.
+- **Copy text** in a message's menu.
+- **Sent, delivered, read - easier to tell apart.** The ticks beside the
+  time are a little smaller and a read message's ✓✓ are blue instead of the
+  bubble's green, so read stands out from sent (✓) and delivered (✓✓,
+  grey); a message that could not go says *Not sent*. Hovering over one of
+  your messages says it in words: *Sent - not on their device yet*,
+  *Delivered - on their device, not read yet*, *Read*.
+
+#### 2026-11-15 *0.1.25*
+- **The person you add sees your chat at once.** Adding someone by their
+  ChatCube ID now tells them: your chat appears in their list straight away
+  (while they are online; otherwise at their next sign-in), not only when you
+  send the first message. Through a relay this needs ChatCube relay 1.4.0
+  (`contact.added`, and the adder put in the other person's contacts); on the
+  local network without one, the ChatCube nearby is told over the connection.
+- **Drop files on ChatCube.** Files dragged from a file manager onto a chat in
+  the list open that chat and wait in its strip above the message field;
+  dropped on the open chat - its messages, the field - they wait there too,
+  each with its × as with the paperclip. A folder is not sent.
+- **The paperclip shows every file.** Its dialog opens on *All files* instead
+  of pictures and videos only; *Pictures and videos* is still there to pick.
+
 #### 2026-11-14 *0.1.24*
 - **The look changes while ChatCube is open.** Choosing System, Light or
   Dark on the Settings window's Look page shows at once, in every ChatCube

@@ -10,6 +10,7 @@
 // are fetched as the message arrives, the rest when asked for, and a local
 // file is uploaded as a photo, a video or a file - encrypted (AES-256-CTR,
 // the m.file format) in an encrypted room.
+// Version: 0.2.5 - SendVoiceNote (m.audio as a voice message); VoiceNotes
 // Version: 0.2.4 - DeleteMessage's scope (for everyone only), GetDeleteChoices
 // Version: 0.2.3 - SearchMessages: a room's history read page by page and matched on this device
 // Version: 0.2.2 - preview pictures sent along; SetCreateEncrypted (tests)
@@ -101,6 +102,10 @@ public:
                             const std::string& caption, const UltraIMSendOptions& options) override;
     UltraIMResult SendVideo(const std::string& conversationId, const std::string& localPath,
                             const std::string& caption, const UltraIMSendOptions& options) override;
+    // A recording as Matrix's voice message (m.audio with the MSC3245 mark
+    // and its length, which Element shows with a play button).
+    UltraIMResult SendVoiceNote(const std::string& conversationId, const std::string& localPath,
+                                const UltraIMSendOptions& options) override;
     UltraIMResult SendFile(const std::string& conversationId, const std::string& localPath,
                            const UltraIMSendOptions& options) override;
     // A video, a file or a voice note fetched (and decrypted) into the cache

@@ -1,5 +1,7 @@
 // Plugins/UltraIM/matrix/MatrixProvider.cpp
 // Matrix as an UltraIM provider
+// Version: 0.2.4 - SendVoiceNote: m.audio marked as a voice message (MSC3245) with its length; a video's
+//                  length in info.duration
 // Version: 0.2.3 - a room renamed, members invited and kicked, a room left (ManageGroups, LeaveConversation);
 //                  a room renamed by someone else updates its conversation as the sync brings it;
 //                  the members' names on the conversation
@@ -117,7 +119,7 @@ UltraIMCapabilityFlags MatrixProvider::GetCapabilities() const {
     const F flags = F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
                     F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
                     F::CreateGroup | F::ImageMessages | F::FileTransfer | F::SearchMessages | F::ManageGroups |
-                    F::LeaveConversation;
+                    F::LeaveConversation | F::VoiceNotes;
     return OlmAvailable() ? flags | F::E2EEncryption : flags;
 }
 
@@ -1862,6 +1864,11 @@ UltraIMResult MatrixProvider::SendFile(const std::string& conversationId, const 
     return SendMedia(conversationId, localPath, std::string(), UltraIMMessageType::File, options);
 }
 
+UltraIMResult MatrixProvider::SendVoiceNote(const std::string& conversationId, const std::string& localPath,
+                                            const UltraIMSendOptions& options) {
+    return SendMedia(conversationId, localPath, std::string(), UltraIMMessageType::Audio, options);
+}
+
 UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const std::string& localPath,
                                         const std::string& caption, UltraIMMessageType type,
                                         const UltraIMSendOptions& options) {
@@ -1891,6 +1898,9 @@ UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const
                               : type == UltraIMMessageType::Audio ? "m.audio"
                                                                   : "m.file";
     const std::string replyTo = options.replyToMessageId;
+    // A recording's length, in the milliseconds Matrix counts in.
+    const int64_t durationMs = options.durationSeconds > 0 ? static_cast<int64_t>(options.durationSeconds * 1000.0 + 0.5) : 0;
+    const bool voice = type == UltraIMMessageType::Audio;     // only SendVoiceNote sends audio
     // The preview picture, when the application makes one.
     auto preview = std::make_shared<std::vector<uint8_t>>();
     int previewWidth = 0, previewHeight = 0;
@@ -1901,7 +1911,7 @@ UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const
     // The upload waits on the server, and so does the room key in an
     // encrypted room: the send thread, in order.
     Enqueue([this, http, conversationId, clientId, bytes, name, mime, msgtype, caption, replyTo, invited, encrypted,
-             localPath, preview, previewWidth, previewHeight]() {
+             localPath, preview, previewWidth, previewHeight, durationMs, voice]() {
         if (invited) {
             MatrixResponse joined = http->Await("POST", std::string(kClient) + "/join/" + PathSegment(conversationId),
                                                 nullptr, 20000);
@@ -1929,6 +1939,17 @@ UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const
         JSONValue info = JSONValue::MakeObject();
         info.Set("mimetype", JSONValue(mime));
         info.Set("size", JSONValue(size));
+        if (durationMs > 0) info.Set("duration", JSONValue(durationMs));
+        if (voice) {
+            // A voice message, not an audio file: Element and the other
+            // clients show it with a play button and a waveform (MSC3245,
+            // with the extensible-events audio block MSC1767 beside it).
+            body.Set("org.matrix.msc3245.voice", JSONValue::MakeObject());
+            JSONValue audio = JSONValue::MakeObject();
+            audio.Set("duration", JSONValue(durationMs));
+            audio.Set("waveform", JSONValue::MakeArray());
+            body.Set("org.matrix.msc1767.audio", audio);
+        }
         if (!preview->empty()) {
             // The preview picture, uploaded like the file (and encrypted like it).
             const int64_t previewSize = static_cast<int64_t>(preview->size());

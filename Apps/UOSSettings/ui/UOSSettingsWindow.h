@@ -198,6 +198,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> fontSize_;            // System or points
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> scale_;               // 100 % ...
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> contrast_;    // System / High / Normal
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> lightText_;   // Firm / Plain
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> lookStatus_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> lookPreview_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> previewLabel_;

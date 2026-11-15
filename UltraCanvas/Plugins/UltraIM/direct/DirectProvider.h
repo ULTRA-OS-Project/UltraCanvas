@@ -17,6 +17,8 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.10 - EditMessage (an "edit" body), SendVoiceNote, a reply's quote filled in from the store;
+//                   a contact added by someone else (contact.added, the local network's "contact")
 // Version: 0.1.9 - renaming on a relay before 1.3.0 (405) says so, not "the relay refused the request"
 // Version: 0.1.8 - a group renamed (PATCH /v1/groups/{id}), members added and removed, a group left
 //                  and a 1:1 conversation deleted on this device; the group's owner and members' names
@@ -162,6 +164,16 @@ public:
                             const std::string& caption, const UltraIMSendOptions& options) override;
     UltraIMResult SendFile(const std::string& conversationId, const std::string& localPath,
                            const UltraIMSendOptions& options) override;
+    // A recording, sent as a file is, as kind "audio" with its length
+    // (options.durationSeconds).
+    UltraIMResult SendVoiceNote(const std::string& conversationId, const std::string& localPath,
+                                const UltraIMSendOptions& options) override;
+    // Our own message's new text - a text, or a picture's, a video's or a
+    // file's caption - changed here at once and on the other side by an
+    // "edit" body on the message's path; MessageUpdate follows with
+    // isEdited set. Only the sender's own, and only what is not empty for a text.
+    UltraIMResult EditMessage(const std::string& conversationId, const std::string& messageId,
+                              const std::string& newText) override;
     // Everything arrives by itself (the sender pushes the parts): this waits
     // for the file when it is still on its way, and answers from disk when
     // it is here.
@@ -276,6 +288,9 @@ private:
     void OnLanFrame(const std::string& peerId, const UltraCanvas::JSONValue& frame);
     // A contact added from the local network: known once the handshake proves its key.
     UltraIMConversation StoreLanContact(const std::string& userId);
+    // The person just added on the local network is told, so their chat
+    // shows us before our first message (OnLanFrame's "contact").
+    void TellLanContactAdded(const std::string& userId);
     void CompletePendingAdds(int64_t nowMs);
 
     // ---- incoming ---------------------------------------------------------------
@@ -298,6 +313,10 @@ private:
     void HandleChunkBody(const UltraCanvas::JSONValue& body);
     // A "delete" from the sender of the messages it names.
     void HandleDeleteBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    void HandleEditBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    // A reply's quote - who wrote the message replied to, and its first
+    // words - from the store, where the message replied to is.
+    void FillReply(UltraIMMessage& message);
     // A message out of this device's record, with the file it brought into
     // the cache (never a file of the user's own that was sent from where it
     // lies); MessageDelete and ConversationUpdate follow.

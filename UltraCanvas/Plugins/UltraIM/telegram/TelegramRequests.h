@@ -6,6 +6,7 @@
 // Version: 0.1.6 - a group after it is made: SetChatTitle, AddChatMembers, RemoveChatMember, LeaveChat,
 //                  DeleteChatHistory, GetBasicGroupFullInfo
 // Version: 0.1.5 - SearchChatMessages
+// Version: 0.1.5 - SendVoiceNote (inputMessageVoiceNote: an Ogg Opus recording and its length)
 // Version: 0.1.4 - SendVideo and SendDocument take a preview picture (inputThumbnail)
 // Version: 0.1.3 - DownloadFile; SendPhoto, SendVideo, SendDocument (a local file with a caption)
 // Version: 0.1.2 - RequestQrCode
@@ -65,6 +66,9 @@ TdObject SendVideo(int64_t chatId, const std::string& localPath, const std::stri
                    const Thumbnail& thumbnail = Thumbnail());
 TdObject SendDocument(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId,
                       const Thumbnail& thumbnail = Thumbnail());
+// A voice message: an Ogg Opus recording (Telegram plays nothing else as
+// one) and its length in whole seconds.
+TdObject SendVoiceNote(int64_t chatId, const std::string& localPath, int32_t durationSeconds, int64_t replyToMessageId);
 // Fetches a file TDLib knows (a photo's size, a video, a profile picture)
 // to its files directory; priority 1 (lowest) to 32. The answer is the file
 // as it stands, and updateFile follows as it comes in.

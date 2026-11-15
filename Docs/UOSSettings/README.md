@@ -102,6 +102,7 @@ The look every UltraCanvas application takes, over what the computer says:
 | **Font** | *System* or an installed family, each shown in itself; beside it the size, *System* or 8 to 24 pt |
 | **Text scale** | 100 % to 200 %, over the computer's own text scale |
 | **Contrast** | *System*, *High*, *Normal* |
+| **Light text** | *Firm* (light text on a dark ground drawn a little stronger, the default) or *Plain* |
 
 *System* follows the computer - Windows' and macOS' light or dark mode and
 accent, the desktop's theme and fonts on Linux; a choice here comes before
@@ -122,6 +123,7 @@ font=system
 fontsize=system
 scale=1.25
 contrast=system
+lighttext=firm
 ```
 
 ### Appearance > Emoji
