@@ -7782,6 +7782,29 @@ else()
     message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== LIST VIEW FOCUS RING =====
+# The list view's focused row carries a dashed ring while the list holds the
+# keyboard focus, and none once it leaves; one ring across a multi-column row;
+# SetFocusRingColor. Reads real pixels: skips without a DISPLAY, and fails
+# instead under ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (CI's virtual display).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ListViewFocusRingTest...")
+    add_executable(ListViewFocusRingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ListViewFocusRingTest.cpp
+    )
+    target_include_directories(ListViewFocusRingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ListViewFocusRingTest PRIVATE cxx_std_20)
+    target_link_libraries(ListViewFocusRingTest PRIVATE UltraCanvas)
+    set_target_properties(ListViewFocusRingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ListViewFocusRingTest COMMAND ListViewFocusRingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ListViewFocusRingTest")
+else()
+    message(STATUS "  ListViewFocusRingTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TREE VIEW NODE DRAG TEST =====
 # Dragging a tree row onto another: the threshold, the targets accepted,
 # onNodeDragDrop, Escape, scrolling past the edge. Headless.
