@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TelegramProvider.cpp
 // Telegram as an UltraIM provider, on TDLib's JSON interface
+// Version: 0.1.10 - TransferProgress while a photo, video, file or voice note goes out or comes in
 // Version: 0.1.9 - SendVoiceNote: an Ogg Opus recording as Telegram's own voice message, with its length
 // Version: 0.1.8 - a supergroup's members (the first 200), its creator and its member count
 // Version: 0.1.7 - a group renamed, members added and taken out, a group left and a private chat deleted;
@@ -1189,7 +1190,75 @@ void TelegramProvider::OnDownloadFailed(int32_t fileId, const std::string& why) 
                UltraIMAttachment());
 }
 
+// The file a message being sent uploads: its video, document, voice note or
+// photo (0 when it has none).
+static int32_t UploadedFileOf(const TdObject& content) {
+    const std::string type = TdType(content);
+    TdObject file;
+    if (type == "messageVideo") file = content["video"]["video"];
+    else if (type == "messageDocument") file = content["document"]["document"];
+    else if (type == "messageVoiceNote") file = content["voice_note"]["voice"];
+    else if (type == "messageAudio") file = content["audio"]["audio"];
+    else if (type == "messagePhoto") file = BestPhotoSize(content["photo"]["sizes"])["photo"];
+    return static_cast<int32_t>(TdInt(file["id"]));
+}
+
+void TelegramProvider::ReportFileProgress(const TdObject& file) {
+    const int32_t id = static_cast<int32_t>(TdInt(file["id"]));
+    int64_t total = TdInt(file["size"]);
+    if (!total) total = TdInt(file["expected_size"]);
+    if (!id || total <= 0) return;
+    UltraIMEvent progress;
+    progress.type = UltraIMEventType::TransferProgress;
+    progress.providerId = providerId_;
+    progress.totalBytes = total;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto up = uploads_.find(id);
+        if (up != uploads_.end()) {
+            const bool complete = file["remote"]["is_uploading_completed"].GetBoolean(false);
+            const int64_t sent = complete ? total : std::min(total, TdInt(file["remote"]["uploaded_size"]));
+            const int percent = static_cast<int>(sent * 100 / total);
+            if (percent == up->second.lastPercent && !complete) return;
+            up->second.lastPercent = percent;
+            progress.conversationId = up->second.conversationId;
+            progress.message.conversationId = up->second.conversationId;
+            progress.message.clientMessageId = up->second.clientId;
+            progress.message.messageId = up->second.clientId;
+            progress.transferredBytes = sent;
+            progress.isUpload = true;
+            if (complete) uploads_.erase(up);
+        } else {
+            auto uses = fileUses_.find(id);
+            if (uses == fileUses_.end()) return;
+            const FileUse* use = nullptr;
+            for (const FileUse& u : uses->second) {
+                if (u.kind == FileUse::Kind::MessageContent) use = &u;
+            }
+            if (!use) return;
+            const int64_t here = std::min(total, TdInt(file["local"]["downloaded_size"]));
+            const int percent = static_cast<int>(here * 100 / total);
+            int& last = downloadPercent_[id];
+            if (percent <= last && here < total) return;
+            last = percent;
+            if (here >= total) downloadPercent_.erase(id);
+            auto chat = chats_.find(use->id);
+            if (chat == chats_.end()) return;
+            for (const auto& m : chat->second.recent) {
+                if (m.messageId == use->messageId) progress.message = m;
+            }
+            if (progress.message.messageId.empty()) return;
+            progress.conversationId = progress.message.conversationId;
+            progress.contactId = progress.message.senderId;
+            progress.transferredBytes = here;
+            progress.isUpload = false;
+        }
+    }
+    Emit(progress);
+}
+
 void TelegramProvider::OnFile(const TdObject& file) {
+    ReportFileProgress(file);
     const TdFile f = FileFrom(file);
     if (!f.id || !f.done) return;       // on its way: nothing to say yet
     std::vector<UltraIMEvent> events;
@@ -1811,6 +1880,7 @@ void TelegramProvider::SearchMessages(const UltraIMMessageSearch& search, UltraI
         case UltraIMSearchKind::Media:   filter = "searchMessagesFilterPhotoAndVideo"; break;
         case UltraIMSearchKind::Files:   filter = "searchMessagesFilterDocument"; break;
         case UltraIMSearchKind::Links:   filter = "searchMessagesFilterUrl"; break;
+        case UltraIMSearchKind::Audio:   filter = "searchMessagesFilterVoiceNote"; break;
     }
     const int limit = std::min(100, search.limit > 0 ? search.limit : 50);      // TDLib's most
     const int64_t from = ToId(search.cursor);
@@ -2222,9 +2292,15 @@ UltraIMResult TelegramProvider::SendContent(const std::string& conversationId, c
             return;
         }
         // The message as TDLib holds it while it goes out: its temporary
-        // id leads updateMessageSendSucceeded back to our client id.
+        // id leads updateMessageSendSucceeded back to our client id; its
+        // file, when it has one, is followed as it uploads.
         std::lock_guard<std::mutex> lock(mutex_);
         tempToClient_[TdInt(sent["id"])] = clientId;
+        if (const int32_t file = UploadedFileOf(sent["content"])) {
+            Upload& upload = uploads_[file];
+            upload.conversationId = conversationId;
+            upload.clientId = clientId;
+        }
     });
     return UltraIMResult::Ok();
 }

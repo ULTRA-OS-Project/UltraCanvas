@@ -53,6 +53,10 @@ UltraIM_RefreshProviders();                 // load the provider modules
 UltraIM_Subscribe([](const UltraIMEvent& e) {
     if (e.type == UltraIMEventType::MessageReceive) { /* append e.message */ }
     if (e.type == UltraIMEventType::MessageDelivered) { /* match e.message.clientMessageId */ }
+    if (e.type == UltraIMEventType::TransferProgress) {
+        // A file on its way: e.transferredBytes of e.totalBytes, e.isUpload
+        // (ours going out) or not; the row is e.message.clientMessageId.
+    }
 });
 
 UltraIM_SignIn("direct", credentials, [](const UltraIMResult& r) { /* ... */ });
@@ -433,6 +437,9 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
 - **Contacts:** adding someone puts us in their list too (relay 1.4.0
   `contact.added`, or a `contact` frame on the local network), so their
   chat appears before our first message.
+- **Progress:** a file's parts are counted as they leave (the relay took
+  them, or the link acknowledged them) and as they arrive, and reported as
+  `TransferProgress` at each percent.
 - **Search:** `SearchMessages` is a query on that record - one conversation
   or all of them, narrowed in the database by conversation and kind (an
   index each) and matched by words on the way out, where upper and lower

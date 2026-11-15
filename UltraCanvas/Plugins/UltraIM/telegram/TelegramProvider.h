@@ -9,6 +9,7 @@
 // the main list, private chats and groups, text with replies, edits,
 // deletion, read receipts, typing, presence, history, finding people by
 // username or phone number, new groups.
+// Version: 0.1.9 - TransferProgress from updateFile (remote.uploaded_size, local.downloaded_size)
 // Version: 0.1.8 - SendVoiceNote (inputMessageVoiceNote); the VoiceNotes capability
 // Version: 0.1.7 - a supergroup's members too: the first 200 (getSupergroupMembers), its creator, and how many
 //                  there are (memberCount), asked again when updateSupergroupFullInfo says the count changed
@@ -200,6 +201,9 @@ private:
 
     // ---- receive thread -----------------------------------------------------------
     void OnUpdate(const TdObject& update);
+    // A file's bytes so far, from updateFile: TransferProgress for a
+    // message's file going out or coming in, at each percent.
+    void ReportFileProgress(const TdObject& file);
     void OnAuthorizationState(const TdObject& state);
     void OnAuthAnswer(const TdObject& answer);
     // Sets the step, answers the waiting SignIn NeedsInput, raises AuthStepChange.
@@ -307,6 +311,15 @@ private:
     std::map<int64_t, User> users_;
     std::map<int64_t, std::string> tempToClient_;    // a message being sent -> its client id
     std::map<int32_t, std::vector<FileUse>> fileUses_;                       // files on their way in
+    // Our files on their way out (TDLib uploads them): which message, and
+    // the last percent reported (TransferProgress).
+    struct Upload {
+        std::string conversationId;
+        std::string clientId;
+        int         lastPercent = -1;
+    };
+    std::map<int32_t, Upload> uploads_;
+    std::map<int32_t, int>    downloadPercent_;        // a message's file coming in: the last percent
     std::map<int32_t, std::vector<UltraIMAttachmentCallback>> fileWaiters_;  // DownloadAttachment's callbacks
     std::vector<std::pair<int32_t, int32_t>> downloadQueue_;                 // file id, priority - for FlushDownloads
     std::vector<int64_t> supergroupQueue_;                                   // supergroups whose members to ask for, by FlushDownloads

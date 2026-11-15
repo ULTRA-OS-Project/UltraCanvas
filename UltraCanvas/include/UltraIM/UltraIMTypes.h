@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.12 - UltraIMEventType::TransferProgress; UltraIMSearchKind::Audio: a file's bytes on their way, up or down
 // Version: 0.1.11 - UltraIMSendOptions::durationSeconds: a voice note's or a video's length, sent along
 // Version: 0.1.10 - UltraIMConversation::memberCount: everyone in a group whose memberIds are a first page
 // Version: 0.1.9 - groups managed after they are made: UltraIMCapabilityFlags ManageGroups and
@@ -132,7 +133,9 @@ enum class UltraIMSearchKind {
     Videos,
     Media,          // pictures and videos
     Files,          // documents: file attachments
-    Links           // messages whose text holds a link (UltraIM_ExtractLinks)
+    Links,          // messages whose text holds a link (UltraIM_ExtractLinks)
+    Audio           // voice messages and sound files (a song sent as a file too; Files then
+                    // leaves it out)
 };
 
 // One search. The words are found without regard to case, anywhere in a
@@ -462,7 +465,11 @@ enum class UltraIMEventType {
     CallReceive,            // callId, contactId, isVideo
     CallStateChange,        // callId, callState, errorText
     CallMediaChange,        // callId, isVideo: the other side turned its camera on or off
-    NearbyChange            // the people on the local network changed: fetch them again
+    NearbyChange,           // the people on the local network changed: fetch them again
+    TransferProgress        // message (its clientMessageId, conversationId): a file on its way -
+                            // transferredBytes of totalBytes, isUpload (ours going out) or not
+                            // (theirs coming in); it ends with the message's own events
+                            // (MessageDelivered, or MessageUpdate with the attachment here)
 };
 
 struct UltraIMEvent {
@@ -481,6 +488,10 @@ struct UltraIMEvent {
     UltraIMCallState        callState = UltraIMCallState::Ringing;
     UltraIMAuthStep         authStep = UltraIMAuthStep::Idle;
     std::string             errorText;
+    // TransferProgress.
+    int64_t                 transferredBytes = 0;
+    int64_t                 totalBytes = 0;
+    bool                    isUpload = false;
 };
 
 // ============================================================================

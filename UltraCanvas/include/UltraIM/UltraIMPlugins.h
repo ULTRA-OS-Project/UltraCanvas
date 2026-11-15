@@ -1,5 +1,7 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.13 - ABI 9: UltraIMEventType::TransferProgress and its fields on UltraIMEvent;
+//                   UltraIMSearchKind::Audio
 // Version: 0.1.12 - ABI 8: UltraIMSendOptions::durationSeconds
 // Version: 0.1.11 - ABI 7: UltraIMConversation::memberCount
 // Version: 0.1.10 - ABI 6: a group managed after it is made (RenameGroup, AddGroupMembers, RemoveGroupMember)
@@ -421,9 +423,11 @@ protected:
 // conversation left; UltraIMConversation::ownerId and memberNames.
 // Version 7 (2026-11): UltraIMConversation::memberCount.
 // Version 8 (2026-11): UltraIMSendOptions::durationSeconds (a recording's length).
+// Version 9 (2026-11): TransferProgress events (transferredBytes, totalBytes, isUpload);
+// UltraIMSearchKind::Audio.
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 8;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 9;
 
 struct UltraIMPluginHost {
     int abiVersion;

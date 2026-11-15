@@ -156,9 +156,18 @@ The first ChatCube draft, which this replaces, is kept under
    ChatCube as well; a copy they saved elsewhere is theirs. Matrix deletes
    for everyone only; Telegram has both.
 
+   A file on its way shows a bar with how far it is (*Sending 42 %*,
+   *Receiving 42 %*). Sending never holds up the window: the field is free at
+   once and the file goes in the background. A video shows its preview
+   picture and length - one ChatCube makes itself when the sender sent none -
+   and plays in a player over the field when clicked; a song (MP3, OGG, M4A,
+   FLAC, WAV ...) plays in its bubble like a voice message.
+
    The field over the messages searches the chat: what you type finds the
    messages with those words in all of its history, and the list shows only
-   them (with how many) until the × shows the whole chat again.
+   them (with how many) until the × shows the whole chat again. The chips
+   under it - *All*, *Pictures*, *Videos*, *Audio*, *Files*, *Links* - show
+   only that kind of message, with or without words.
 
    The microphone beside the field records a **voice message** - the bar in
    its place shows how long, × throws it away, the send button sends it -

@@ -70,6 +70,11 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.4 - sending in the background (SendQueue: the field is free at once, the window never
+//                  waits on a big file), a file's progress in its bubble, a video's preview picture and
+//                  length shown as it goes, songs played in their bubble, videos played in the chat (a
+//                  player over the field), the filter chips over the chat (pictures, videos, audio,
+//                  files, links)
 // Version: 0.3.3 - a reply (the message menu's Reply: a bar over the field, the quote in the bubble), an
 //                  edit (double click on one's own message, or Edit in its menu), the search field over
 //                  the chat, voice messages (the microphone: recorded, then sent, played in their bubble)
@@ -114,10 +119,15 @@
 #include "UltraCanvasWindow.h"
 #include "UltraIM/UltraIMTypes.h"
 
+#include <condition_variable>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace UltraCanvas {
@@ -136,6 +146,7 @@ class UltraCanvasVideoTile;
 class UltraCanvasAudioRecorder;
 class UltraCanvasAudioPlayer;
 class UltraCanvasVideoRecorderElement;
+class UltraCanvasVideoPlayerElement;
 }
 
 namespace ChatCube {
@@ -273,8 +284,23 @@ private:
     void OpenVideoRecorder();
     void CloseVideoRecorder(bool keepFile);
     void SendVideoMessage();
-    // A voice message's bubble: played here, or paused; fetched first.
+    // A sound's bubble - a voice message or a song: played here, or paused;
+    // fetched first.
     void ToggleVoicePlayback(int row);
+    // A video played in the chat: a player over the field, with its own
+    // controls and a x; fetched first.
+    void PlayVideoInChat(int row);
+    void ShowVideoPlayer(const std::string& path, const std::string& title);
+    void CloseVideoPlayer();
+    // A search's kind (the chips over the chat): everything, or pictures,
+    // videos, audio, files or links only.
+    void SetSearchKind(UltraIMSearchKind kind);
+    // A video here without a preview picture (its sender's ChatCube made
+    // none): one made from the file, in the background, with the clip's
+    // size and length - once per message.
+    void EnsureVideoPreview(const UltraIMMessage& message);
+    // Runs `f` on the UI thread, unless the window has gone meanwhile.
+    void OnUI(std::function<void()> f);
     void PlayVoice(const std::string& clientId, const std::string& path);
     void StopVoicePlayback();
     // Where a recording is written: ChatCube's cache, a name by the time.
@@ -480,7 +506,11 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> searchRow_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     searchInfo_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> filterRow_;
     std::string searchText_;            // what the list shows the matches of ("" all)
+    UltraIMSearchKind searchKind_ = UltraIMSearchKind::AnyKind;
+    UltraIMSearchKind shownKind_ = UltraIMSearchKind::AnyKind;   // what the list shows now
+    std::vector<std::pair<UltraIMSearchKind, std::shared_ptr<UltraCanvas::UltraCanvasButton>>> filterChips_;
     uint64_t    searchTimer_ = 0;
     int         searchSerial_ = 0;      // the answer of an older search is dropped
     bool        settingSearch_ = false; // the field set by hand, not typed
@@ -500,6 +530,31 @@ private:
     double      videoNoteSeconds_ = 0;
     bool        videoNoteReady_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasAudioPlayer> voicePlayer_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> videoPlayerPanel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasVideoPlayerElement> videoPlayer_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     videoPlayerTitle_;
+    // Everything sent goes through one thread of its own, in order: reading
+    // a big file, making a video's preview picture and handing the file to
+    // the network never hold up the window. alive_ turns false when the
+    // window goes, so nothing comes back to it after.
+    class SendQueue {
+    public:
+        SendQueue();
+        ~SendQueue();               // what is queued still goes, then the thread ends
+        void Post(std::function<void()> job);
+    private:
+        void Run();
+        std::mutex mutex_;
+        std::condition_variable wake_;
+        std::deque<std::function<void()>> jobs_;
+        bool stop_ = false;
+        std::thread thread_;
+    };
+    std::shared_ptr<bool>      alive_ = std::make_shared<bool>(true);
+    std::unique_ptr<SendQueue> sendQueue_ = std::make_unique<SendQueue>();
+    std::unique_ptr<SendQueue> previewQueue_ = std::make_unique<SendQueue>();   // previews of videos received
+    std::set<std::string>      previewAsked_;
+    std::map<std::string, UltraIMAttachment> previewsMade_;   // client id -> what was learned of its video
     std::string playingVoice_;          // the client id of the voice message playing
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachmentStrip_;
     std::vector<StagedAttachment>                      staged_;

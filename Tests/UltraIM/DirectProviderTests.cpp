@@ -263,6 +263,7 @@ void TestStoreSearch() {
     CHECK(Ids(find("bob", "", UltraIMSearchKind::Videos)) == "b4");
     CHECK(Ids(find("bob", "", UltraIMSearchKind::Media)) == "b4 b3");
     CHECK(Ids(find("bob", "", UltraIMSearchKind::Files)) == "b5");
+    CHECK(Ids(find("bob", "", UltraIMSearchKind::Audio)).empty());     // no voice message in it
     CHECK(Ids(find("bob", "harbour", UltraIMSearchKind::Media)) == "b3");
     CHECK(Ids(find("", "", UltraIMSearchKind::AnyKind)) == "b7 c2 b5 b4 c1 b3 b2 b1");
     // Links: the messages the links table names - not c2, which only looks like one.
@@ -328,6 +329,26 @@ void TestStoreSearch() {
         store.RemoveOutbox("other", "bob");
         store.NoteDeleted("m/bob/bob/late", 1);
         CHECK(store.IsDeleted("m/bob/bob/late") && !store.IsDeleted("m/bob/bob/other"));
+    }
+
+    // A song sent as a file is sound: Audio finds it, Files does not.
+    {
+        UltraIMMessage song;
+        song.conversationId = "dave";
+        song.clientMessageId = "d1";
+        song.messageId = "d1";
+        song.senderId = "dave";
+        song.timestampMs = 9000;
+        song.type = UltraIMMessageType::File;
+        song.attachment.fileName = "Song.mp3";
+        song.attachment.mimeType = "audio/mpeg";
+        song.attachment.remoteUrl = "file-d1";
+        CHECK(store.AddMessage(song));
+        CHECK(Ids(find("dave", "", UltraIMSearchKind::Audio)) == "d1");
+        CHECK(Ids(find("dave", "", UltraIMSearchKind::Files)).empty());
+        CHECK(UltraIM_MessageMatchesSearch(song, UltraIMMessageSearch{"", "", UltraIMSearchKind::Audio, "", 50}));
+        UltraIMMessage removed;
+        CHECK(store.RemoveMessage("dave", "d1", removed));
     }
 
     // A conversation removed takes its links along.
@@ -1492,6 +1513,19 @@ void TestEndToEnd() {
     CHECK(alice->SendImage(bobId, UltraCanvas::PathToUtf8(base / "missing.png"), "", UltraIMSendOptions()).code ==
           UltraIMResultCode::InvalidArgument);
     CHECK(PictureArrives(*alice, *bob, bobEvents, bobId, picture, pictureBytes, "look"));
+    // Its parts were counted on the way: going out at Alice's, coming in at
+    // Bob's, each ending at the whole file.
+    const auto progressed = [](bool upload) {
+        return [upload](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::TransferProgress && e.isUpload == upload && e.totalBytes == 100000 &&
+                   e.transferredBytes == 100000 && !e.message.clientMessageId.empty();
+        };
+    };
+    CHECK(aliceEvents.WaitFor(progressed(true)));
+    CHECK(bobEvents.WaitFor(progressed(false)));
+    CHECK(bobEvents.Any([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::TransferProgress && !e.isUpload && e.transferredBytes < e.totalBytes;
+    }));
     std::printf("  picture: %d copies over the link, %d over the relay\n", alice->CountSentOverLink(),
                 alice->CountSentOverRelay());
 

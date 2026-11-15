@@ -10,18 +10,21 @@
 //   chatcube-peer --data /tmp/bob --call <ChatCube ID> --video --echo 60 --devices
 //   chatcube-peer --data /tmp/ben --name Ben --create --echo 600     (no relay: the local network)
 //
+// Version: 0.1.1 - --send-file: a video, a picture or a file
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "DirectProvider.h"
 
+#include "UltraCanvasPathUtf8.h"
 #include "UltraIM/UltraIMCore.h"
 #include "UltraNet/UltraNetCore.h"
 #include "UltraRTC/UltraRTCCore.h"
 
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
@@ -51,6 +54,8 @@ void Usage() {
                 "  --print-id           print this identity's ChatCube ID\n"
                 "  --add <id>           add a contact (may repeat)\n"
                 "  --send <id> <text>   send a message to a contact (may repeat)\n"
+                "  --send-file <id> <path>  send a file (a video as a video, a picture as a\n"
+                "                       photo, anything else as a file; may repeat)\n"
                 "  --echo <seconds>     stay online and answer every message for that long\n"
                 "  --answer-calls       answer incoming voice calls\n"
                 "  --call <id>          call a contact (--video: a video call)\n"
@@ -75,6 +80,7 @@ int main(int argc, char** argv) {
     int echoSeconds = 0;
     std::vector<std::string> adds;
     std::vector<std::pair<std::string, std::string>> sends;
+    std::vector<std::pair<std::string, std::string>> fileSends;
     bool answerCalls = false;
     bool useDevices = false;
     std::string callTo;
@@ -99,6 +105,9 @@ int main(int argc, char** argv) {
         else if (arg == "--send") {
             std::string to = next();
             sends.emplace_back(to, next());
+        } else if (arg == "--send-file") {
+            std::string to = next();
+            fileSends.emplace_back(to, next());
         } else if (arg == "--echo") echoSeconds = std::atoi(next().c_str());
         else if (arg == "--answer-calls") answerCalls = true;
         else if (arg == "--call") callTo = next();
@@ -180,6 +189,17 @@ int main(int argc, char** argv) {
         options.clientMessageId = UltraIM_NewClientMessageId();
         UltraIMResult r = provider.SendText(to, text, options);
         if (!r) std::fprintf(stderr, "chatcube-peer: not sent: %s\n", r.message.c_str());
+    }
+    for (const auto& [to, path] : fileSends) {
+        UltraIMSendOptions options;
+        options.clientMessageId = UltraIM_NewClientMessageId();
+        std::string ext = UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(path).extension());
+        for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        UltraIMResult r;
+        if (ext == ".mp4" || ext == ".mov" || ext == ".mkv" || ext == ".webm") r = provider.SendVideo(to, path, "", options);
+        else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") r = provider.SendImage(to, path, "", options);
+        else r = provider.SendFile(to, path, options);
+        if (!r) std::fprintf(stderr, "chatcube-peer: %s not sent: %s\n", path.c_str(), r.message.c_str());
     }
 
     // Without devices an active call carries a quiet 440 Hz tone, so the

@@ -17,6 +17,7 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.11 - TransferProgress: a file's parts counted as they leave and as they arrive
 // Version: 0.1.10 - EditMessage (an "edit" body), SendVoiceNote, a reply's quote filled in from the store;
 //                   a contact added by someone else (contact.added, the local network's "contact")
 // Version: 0.1.9 - renaming on a relay before 1.3.0 (405) says so, not "the relay refused the request"
@@ -314,6 +315,9 @@ private:
     // A "delete" from the sender of the messages it names.
     void HandleDeleteBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
     void HandleEditBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    // A part of one of our files has left (the relay took it, or the other
+    // side's link acknowledged it): TransferProgress, at each percent.
+    void NotePartLeft(const std::string& outboxId);
     // A reply's quote - who wrote the message replied to, and its first
     // words - from the store, where the message replied to is.
     void FillReply(UltraIMMessage& message);
@@ -384,6 +388,18 @@ private:
     };
     std::vector<PendingAdd> pendingAdds_;
     std::map<std::string, std::vector<UltraIMAttachmentCallback>> mediaWaiters_;    // file id -> DownloadAttachment's callbacks
+    // A file of ours on its way out: which message, how big, how many of
+    // its parts (one per recipient) have left - for TransferProgress.
+    struct Upload {
+        std::string conversationId;
+        std::string clientId;
+        int64_t     bytes = 0;
+        int         copies = 0;         // parts x recipients
+        int         left = 0;
+        int         lastPercent = -1;
+    };
+    std::map<std::string, Upload> uploads_;                // file id -> its upload
+    std::map<std::string, int>    downloadPercent_;        // file id -> the last percent reported
 
     std::thread     worker_;
     std::condition_variable wake_;

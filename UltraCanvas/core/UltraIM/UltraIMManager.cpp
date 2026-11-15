@@ -1,5 +1,7 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.8 - UltraIM_MakePreview makes a file's preview once: the window and the provider ask for
+//                  the same video, and a frame is not grabbed twice
 // Version: 0.1.7 - UltraIM_RenameGroup, _AddGroupMembers, _RemoveGroupMember, _LeaveConversation
 // Version: 0.1.6 - UltraIM_DeleteMessage's scope, UltraIM_GetDeleteChoices
 // Version: 0.1.5 - UltraIM_SearchMessages
@@ -11,7 +13,7 @@
 // Version: 0.1.2 - the account's profile and its sign-in protection
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "UltraIM/UltraIMCore.h"
@@ -59,6 +61,7 @@ struct ManagerState {
     std::map<std::string, ProviderPtr> providers;
     UltraIMDispatcher dispatcher;
     UltraIMPreviewMaker previewMaker;
+    std::map<std::string, std::pair<int, int>> previews;   // a preview made: its file -> its size
     std::map<UltraIMSubscriptionId, std::shared_ptr<UltraIMEventCallback>> subscribers;
     UltraIMSubscriptionId nextSubscriptionId = 1;
     std::set<std::string> loadedModules;     // canonical UTF-8 paths
@@ -338,10 +341,23 @@ std::string UltraIM_MakePreview(const std::string& path, const std::string& mime
     const std::string key = path + "|" + std::to_string(size) + "|" + std::to_string(stamp) + "|" + std::to_string(maxSide);
     UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, key.data(), key.size(), digest);
     const std::string out = UltraCanvas::PathToUtf8(dir / UltraCanvas::PathFromUtf8(UltraCrypt_ToHex(digest).substr(0, 32) + ".jpg"));
+    {
+        // Made already (the window shows our video's preview, then the
+        // provider sends the same): a video's frame is not grabbed twice.
+        std::lock_guard<std::mutex> lock(State().mutex);
+        auto it = State().previews.find(out);
+        if (it != State().previews.end() && fs::is_regular_file(UltraCanvas::PathFromUtf8(out), ec)) {
+            outWidth = it->second.first;
+            outHeight = it->second.second;
+            return out;
+        }
+    }
     if (!maker(path, mimeType, maxSide, out, outWidth, outHeight) || outWidth <= 0 || outHeight <= 0) {
         fs::remove(UltraCanvas::PathFromUtf8(out), ec);
         return std::string();
     }
+    std::lock_guard<std::mutex> lock(State().mutex);
+    State().previews[out] = {outWidth, outHeight};
     return out;
 }
 
