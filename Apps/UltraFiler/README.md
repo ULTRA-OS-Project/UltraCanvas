@@ -733,6 +733,17 @@ folder in a new tab of the running window (a tab that already shows it is
 switched to; a file opens its folder) instead of starting a second copy, and a
 start without a folder brings the window forward.
 
+## FAQ
+
+**Can UltraFiler sign in to iCloud?** No. Apple offers no public iCloud Drive
+interface an app could sign in to, upload through or mint share links from, so
+UltraCloud has no iCloud account type. UltraFiler shows the iCloud Drive folder
+that Apple's own software keeps on the machine instead: sign in to iCloud in the
+system settings on macOS, or in iCloud for Windows on Windows, and the folder
+appears under **Cloud Storage** in the folder tree, where it is browsed like any
+other folder and Apple's client syncs the changes. Linux has no iCloud client,
+so there is no iCloud Drive entry there.
+
 ## Building
 
 Built by the top-level CMake project when `BUILD_ULTRAFILER_APP` is `ON`
