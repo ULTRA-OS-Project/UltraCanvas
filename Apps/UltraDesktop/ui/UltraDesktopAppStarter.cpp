@@ -217,6 +217,17 @@ void UltraDesktopAppStarter::Open() {
     window_->InstallEventFilter("appsDrag", [this](const UCEvent& event) { return OnPointerEvent(event); },
                                 {UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::MouseUp});
 
+    // A host that brings its own list (Hooks::applications) is the only
+    // source: nothing is read from disk, and the list kept between openings
+    // is neither read nor written, so a caller - a test among them - sees
+    // exactly what it handed in.
+    if (hooks_.applications) {
+        auto supplied = hooks_.applications;
+        work_.Run<AppList>([supplied]() { return supplied(); },
+                           [this](AppList apps) { ShowApps(std::move(apps)); });
+        return;
+    }
+
     AppList kept;
     bool fresh = false;
     {
@@ -271,13 +282,17 @@ void UltraDesktopAppStarter::Rebuild() {
     // to all went, on every keystroke in the filter box.
     const auto dropThePane = [this]() {
         body_->ClearChildren();
-        tileApps_.clear();
-        dropZones_.clear();
+        tilesScroll_.reset();
         tilesArea_ = nullptr;
         tree_.reset();
         list_.reset();
         listModel_.reset();
     };
+    // The tiles and the places they can be dropped are made again whichever
+    // way the page is built, so they are forgotten here rather than in
+    // dropThePane, which a kept pane does not call.
+    tileApps_.clear();
+    dropZones_.clear();
     nodeGroup_.clear();
     nodeApps_.clear();
     listed_.clear();
@@ -303,10 +318,11 @@ void UltraDesktopAppStarter::Rebuild() {
     }
     status_->SetText(std::to_string(shown) + " of " + std::to_string(apps_->size()) + " applications");
 
-    // The tree pane is kept only while it is the thing on screen and there
-    // is something to show in it.
-    const bool keepTreePane = !groups.empty() && view_ == "tree" && tree_ && list_ && listModel_;
-    if (!keepTreePane) dropThePane();
+    // A pane is kept only while it is the thing on screen and there is
+    // something to show in it.
+    const bool keepTreePane  = !groups.empty() && view_ == "tree"  && tree_ && list_ && listModel_;
+    const bool keepTilesPane = !groups.empty() && view_ == "tiles" && tilesScroll_;
+    if (!keepTreePane && !keepTilesPane) dropThePane();
 
     if (groups.empty()) {
         auto none = CreateLabel("appsNone", filter_.empty() ? "No applications were found."
@@ -327,10 +343,19 @@ void UltraDesktopAppStarter::Rebuild() {
 // ===== TILES =====
 
 void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
-    auto scroll = CreateScrollableContainer("appsTiles", 0, 0, 0, 0, true, false);
-    scroll->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    scroll->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
-    scroll->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The area is made once and filled again after that, so the user keeps
+    // their place in the list while they type in the filter box.
+    const bool fresh = !tilesScroll_;
+    const int wasAt = fresh ? 0 : tilesScroll_->GetVerticalScrollPosition();
+    if (fresh) {
+        tilesScroll_ = CreateScrollableContainer("appsTiles", 0, 0, 0, 0, true, false);
+        tilesScroll_->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        tilesScroll_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
+        tilesScroll_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    } else {
+        tilesScroll_->ClearChildren();
+    }
+    const std::shared_ptr<UltraCanvasContainer>& scroll = tilesScroll_;
 
     int tileNo = 0;
     for (const AppGroup& group : groups) {
@@ -406,7 +431,12 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
         }
     }
     tilesArea_ = scroll.get();
-    body_->AddChild(scroll);
+    if (fresh) body_->AddChild(scroll);
+    scroll->InvalidateLayout();
+    // Back where the user was. A filter that shortens the list clamps this
+    // to the new end at the next layout, which is what scrolling past the
+    // end would do anyway.
+    scroll->ScrollToVertical(wasAt);
 }
 
 // ===== TREE AND LIST =====
