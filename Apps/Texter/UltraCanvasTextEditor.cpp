@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.7.0 - the status bar shows which dictionary the active document is spell checked against; a click opens the Spelling menu
 // Version: 2.6.0 - the look is the framework theme's: taken at construction and on every theme change; ToggleTheme writes
 //                  Appearance.conf's look (or flips the Light / Dark policy of a --dark run); darkTheme no longer saved
 // Version: 2.5.1 - a failed save says why in a whole translated sentence (SaveFailureReason no longer puts an English phrase into "The file {0}.")
@@ -18,7 +19,7 @@
 // Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
 //                  and shortcut colours
 // Version: 2.3.3 - The profile folder and comment author read as UTF-8
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -1332,6 +1333,20 @@ namespace {
         zoomDropdown->SetTooltip(Tr("Zoom Level"));
 
         statusBarContainer->AddChild(zoomDropdown);
+
+        // Spell check language of the active document. A button rather than a
+        // dropdown: the dictionary list needs the spell backend, which is only
+        // loaded once the user asks for it - the menu builds it on opening.
+        spellLanguageButton = std::make_shared<UltraCanvasButton>(
+                "SpellLanguageButton", -1, statusBarHeight - 4, Tr("Spelling: off"));
+        spellLanguageButton->SetFontSize(10);
+        spellLanguageButton->SetPadding(0, 6);
+        spellLanguageButton->SetCornerRadius(2);
+        spellLanguageButton->SetAcceptsFocus(false);
+        spellLanguageButton->SetTooltip(Tr("Spell Check Language"));
+        spellLanguageButton->SetOnClick([this]() { ShowSpellLanguageMenu(); });
+        ApplySpellLanguageIndicatorTheme();
+        statusBarContainer->AddChild(spellLanguageButton);
 
         // Status label fills remaining space to the right (flex-grow in the row)
         statusLabel = std::make_shared<UltraCanvasLabel>(
@@ -4468,6 +4483,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::UpdateLanguageDropdown() {
+        // Every change of tab or of a tab's mode passes here, and the mode
+        // (hex, PDF) decides whether the document is spell checked at all.
+        UpdateSpellLanguageIndicator();
         if (!languageDropdown) return;
 
         auto doc = GetActiveDocument();
@@ -4746,6 +4764,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             applyDarkDropdownStyle(eolDropdown);
             applyDarkDropdownStyle(encodingDropdown);
             applyDarkDropdownStyle(languageDropdown);
+            ApplySpellLanguageIndicatorTheme();
             if (toolbarContainer) {
                 toolbarContainer->SetBackgroundColor(Color(40, 40, 40, 255));
             }
@@ -4810,6 +4829,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             applyLightDropdownStyle(eolDropdown);
             applyLightDropdownStyle(encodingDropdown);
             applyLightDropdownStyle(languageDropdown);
+            ApplySpellLanguageIndicatorTheme();
             if (toolbarContainer) {
                 toolbarContainer->SetBackgroundColor(Color(240, 240, 240, 255));
             }

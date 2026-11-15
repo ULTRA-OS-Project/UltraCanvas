@@ -1,12 +1,14 @@
 // Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp
 // Spell checking and the editor context menu for UltraTexter
+// Version: 1.5.0 - the status bar shows the spell check language of the active
+//                  document; a click on it opens the Spelling menu
 // Version: 1.4.0 - "Picture Original Size" only for a picture, not a selected text frame or drawing
 // Version: 1.3.0 - the spelling, review, section and table menus go through Tr / TrF
 // Version: 1.2.0 - automatic language detection (Spelling > Detect Language
 //                  Automatically): a document mostly flagged in the current
 //                  dictionary switches to the installed language that fits it
 // Version: 1.1.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 //
 // The checking itself lives in the framework (UltraCanvasSpellChecker plus the
@@ -303,12 +305,87 @@ void UltraCanvasTextEditor::OnEditToggleSpellCheck(bool checked) {
     config.spellCheckEnabled = checked;
     ApplySpellCheckToAllDocuments();
     SaveConfig();
+    UpdateSpellLanguageIndicator();
 }
 
 void UltraCanvasTextEditor::OnSpellLanguageChanged(const std::string& languageCode) {
     config.spellCheckLanguage = languageCode;
     SaveConfig();
     RecheckAllDocuments();
+    // Also reached when automatic detection switches the dictionary, which is
+    // the case the indicator exists for: nothing else says it happened.
+    UpdateSpellLanguageIndicator();
+}
+
+// ===================================================================
+// STATUS BAR INDICATOR
+// ===================================================================
+
+void UltraCanvasTextEditor::UpdateSpellLanguageIndicator() {
+    if (!spellLanguageButton) return;
+
+    auto doc = GetActiveDocument();
+    const bool checkable = DocumentWantsSpellCheck(doc);
+    if (spellLanguageButton->IsVisible() != checkable) spellLanguageButton->SetVisible(checkable);
+    if (!checkable) return;
+
+    std::string text;
+    std::string tooltip;
+    UltraCanvasSpellChecker& service = UltraCanvasSpellChecker::Instance();
+    const std::string code = service.IsInitialized() ? service.GetLanguage() : std::string();
+    if (!config.spellCheckEnabled) {
+        text = Tr("Spelling: off");
+        tooltip = Tr("Spell checking is off - click to turn it on or pick a dictionary");
+    } else if (code.empty()) {
+        text = Tr("Spelling: no dictionary");
+        tooltip = Tr("No spell check dictionary is loaded - click to pick one");
+    } else {
+        const SpellLanguageInfo info = service.GetLanguageInfo(code);
+        const std::string name = !info.nativeName.empty() ? info.nativeName
+                               : !info.displayName.empty() ? info.displayName : code;
+        text = TrF("Spelling: {0}", name);
+        tooltip = config.spellCheckAutoLanguage
+            ? TrF("Spell checked against {0} ({1}), detected automatically - click to change", name, code)
+            : TrF("Spell checked against {0} ({1}) - click to change", name, code);
+    }
+
+    // The status bar refreshes on every tab switch and mode change; setting
+    // the same text again would only ask the layout to measure it again.
+    if (spellLanguageButton->GetText() != text) spellLanguageButton->SetText(text);
+    spellLanguageButton->SetTooltip(tooltip);
+}
+
+void UltraCanvasTextEditor::ShowSpellLanguageMenu() {
+    if (!spellLanguageButton || !window) return;
+
+    // Rebuilt on every opening: the check marks and the dictionary list follow
+    // the settings as they are now.
+    spellLanguageMenu = std::make_shared<UltraCanvasMenu>("SpellLanguageMenu", 0, 0, 220, 0);
+    spellLanguageMenu->SetMenuType(MenuType::PopupMenu);
+    for (MenuItemData& item : BuildSpellingMenuItems()) {
+        spellLanguageMenu->AddItem(std::move(item));
+    }
+
+    PopupElementSettings settings;
+    settings.closeByEscapeKey = true;
+    settings.closeByClickOutside = true;
+    spellLanguageMenu->OpenMenuAnchored(spellLanguageButton->GetBoundsInWindow(), *window, settings);
+}
+
+void UltraCanvasTextEditor::ApplySpellLanguageIndicatorTheme() {
+    if (!spellLanguageButton) return;
+    // The same faces as the status bar's dropdowns beside it.
+    if (isDarkTheme) {
+        spellLanguageButton->SetColors(Color(40, 40, 40, 255), Color(55, 55, 55, 255),
+                                       Color(50, 50, 50, 255), Color(40, 40, 40, 255));
+        spellLanguageButton->SetTextColors(Color(200, 200, 200, 255));
+        spellLanguageButton->SetBorder(1.0f, Color(60, 60, 60, 255));
+    } else {
+        spellLanguageButton->SetColors(Color(240, 240, 240, 255), Color(225, 225, 225, 255),
+                                       Color(225, 235, 255, 255), Color(240, 240, 240, 255));
+        spellLanguageButton->SetTextColors(Color(80, 80, 80, 255));
+        spellLanguageButton->SetBorder(1.0f, Color(200, 200, 200, 255));
+    }
 }
 
 // Picking a dictionary is how a user says "check my spelling, in this
@@ -388,6 +465,7 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildSpellingMenuItems() {
                 if (checked) RecheckAllDocuments();
             }
             SaveConfig();
+            UpdateSpellLanguageIndicator();
         }));
 
     // Re-checking with checking switched off would have nothing to draw on, so
