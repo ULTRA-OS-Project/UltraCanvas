@@ -922,8 +922,20 @@ state the same way, with the fence's language: a `/* comment */` over several
 lines is coloured on all of them. The opening fence starts every block empty,
 so a comment left open in one block ends at its closing fence. The raw line
 under the cursor is read with the Markdown rules and starts empty too - it
-never takes a code block's state. Indented (four-space) code blocks are not
-highlighted.
+never takes a code block's state.
+
+An indented (four-space) code block has no language tag. Each block's language
+is guessed from its own text with `DetectLanguageFromContent`, once, on its
+first line; when the guess is not clear - indented prose, a one-line snippet -
+the block stays plain rather than risk the wrong colours. An application that
+knows the language sets it for every indented block:
+
+```cpp
+textArea->SetIndentedCodeLanguage("C++");   // "" (the default): guess per block
+```
+
+A blank line between two indented code lines belongs to the block, as in
+CommonMark, so a comment left open across it stays a comment.
 
 The fence's info string names the language through
 `SyntaxTokenizer::SetLanguageByTag`: its first word, matched against the

@@ -13,6 +13,7 @@
 
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasSyntaxTokenizer.h"
+#include "UltraCanvasLanguageDetect.h"   // the language of an indented code block
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
@@ -1499,47 +1500,11 @@ namespace UltraCanvas {
                 cl->layout->SetWrap(TextWrap::WrapWordChar);
             }
 
-            // Apply per-token syntax highlighting on code-content lines using the shared
-            // codeBlockTokenizer (lazy-created, language switched only when it changes).
             // Each line continues from what the line above left open (a /* comment */
             // over several lines); the opening fence leaves nothing open, so a block
             // never inherits state from the one before it.
-            if (cl->layoutType == LineLayoutType::CodeblockContent &&
-                !cl->codeblockLanguage.empty()) {
-                if (!codeBlockTokenizer) {
-                    codeBlockTokenizer = std::make_unique<SyntaxTokenizer>();
-                }
-                if (codeBlockTokenizerLang != cl->codeblockLanguage) {
-                    // An unknown tag leaves the tokenizer with no language, so the
-                    // block shows plain - not in the previous fence's language.
-                    codeBlockTokenizer->SetLanguageByTag(cl->codeblockLanguage);
-                    codeBlockTokenizerLang = cl->codeblockLanguage;
-                }
-                SyntaxLineState state = SyntaxStateBefore(lineIndex);
-                cl->syntaxEntry = state;
-                cl->syntaxTracked = true;
-                auto tokens = codeBlockTokenizer->TokenizeLine(rawLine, state);
-                cl->syntaxExit = state;
-                int currentByte = 0;
-                for (const auto& token : tokens) {
-                    int startByte = currentByte;
-                    int endByte = currentByte + static_cast<int>(token.text.size());
-                    const TokenStyle& ts = GetStyleForTokenType(token.type);
-                    auto fg = TextAttributeFactory::CreateForeground(ts.color);
-                    fg->SetRange(startByte, endByte);
-                    cl->layout->InsertAttribute(std::move(fg));
-                    if (ts.bold) {
-                        auto a = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
-                        a->SetRange(startByte, endByte);
-                        cl->layout->InsertAttribute(std::move(a));
-                    }
-                    if (ts.italic) {
-                        auto a = TextAttributeFactory::CreateFontStyle(FontSlant::Italic);
-                        a->SetRange(startByte, endByte);
-                        cl->layout->InsertAttribute(std::move(a));
-                    }
-                    currentByte = endByte;
-                }
+            if (cl->layoutType == LineLayoutType::CodeblockContent) {
+                HighlightCodeBlockLine(cl.get(), rawLine, cl->codeblockLanguage, lineIndex);
             }
 
             cl->bounds.width = cl->layout->GetLayoutWidth() + style.textPadding * 2;
@@ -1954,10 +1919,37 @@ namespace UltraCanvas {
                     }
                 }
             }
-            if (atLeast4Cols && hasContent && !prevBlocks) {
+            // An indented code line, as the line above's layout says: the same block.
+            auto* prevIndented = dynamic_cast<CodeLayout*>(prevLayout);
+            const bool continuesBlock = prevIndented && prevIndented->isIndentedCode &&
+                                        prevIndented->layoutType == LineLayoutType::CodeblockContent;
+            // Is line k an indented code line by its text (four columns, content)?
+            auto indentedByText = [&](int k) {
+                const std::string t = GetLineContent(k);
+                int cols = 0;
+                size_t i = 0;
+                while (i < t.size() && cols < 4 && (t[i] == ' ' || t[i] == '\t')) {
+                    cols += (t[i] == '\t') ? 4 : 1;
+                    i++;
+                }
+                return cols >= 4 && i < t.size();
+            };
+            // A blank line between two indented code lines belongs to the block
+            // (CommonMark): laid out as code, it keeps the block - and a comment
+            // open across it - in one piece.
+            bool blankInBlock = false;
+            if (!hasContent && continuesBlock) {
+                for (int k = lineIndex + 1; k < (int)lines.size(); ++k) {
+                    if (TrimWhitespace(GetLineContent(k)).empty()) continue;
+                    blankInBlock = indentedByText(k);
+                    break;
+                }
+            }
+            if ((atLeast4Cols && hasContent && !prevBlocks) || blankInBlock) {
                 auto cl = std::make_unique<CodeLayout>();
                 cl->layoutType = LineLayoutType::CodeblockContent;
                 cl->isIndentedCode = true;
+                if (!hasContent) indentBytes = static_cast<int>(rawLine.size());
                 std::string content = rawLine.substr(indentBytes);
                 cl->layout = ctx->CreateTextLayout(content, false);
                 cl->layout->SetFontStyle(style.fixedFontStyle);
@@ -1967,6 +1959,35 @@ namespace UltraCanvas {
                             std::max(1.0f, visibleTextArea.width - style.textPadding * 2));
                     cl->layout->SetWrap(TextWrap::WrapWordChar);
                 }
+                // The block's language: set by SetIndentedCodeLanguage, or guessed
+                // once, on the block's first line, from the whole block's text - the
+                // lines after it inherit it.
+                if (continuesBlock) {
+                    cl->codeblockLanguage = prevIndented->codeblockLanguage;
+                } else if (!indentedCodeLanguage.empty()) {
+                    cl->codeblockLanguage = indentedCodeLanguage;
+                } else {
+                    std::string blockText;
+                    int taken = 0;
+                    for (int k = lineIndex; k < (int)lines.size() && taken < 300; ++k, ++taken) {
+                        const std::string t = GetLineContent(k);
+                        if (TrimWhitespace(t).empty()) {
+                            blockText += "\n";
+                            continue;
+                        }
+                        if (!indentedByText(k)) break;
+                        int cols = 0;
+                        size_t i = 0;
+                        while (i < t.size() && cols < 4 && (t[i] == ' ' || t[i] == '\t')) {
+                            cols += (t[i] == '\t') ? 4 : 1;
+                            i++;
+                        }
+                        blockText += t.substr(i) + "\n";
+                    }
+                    const std::string guess = DetectLanguageFromContent(blockText);
+                    cl->codeblockLanguage = (guess == "Markdown") ? std::string() : guess;
+                }
+                HighlightCodeBlockLine(cl.get(), content, cl->codeblockLanguage, lineIndex);
                 int indentCp = utf8_byte_to_cp(rawLine, indentBytes);
                 int contentCp = utf8_length(content);
                 cl->cpMap = {{0, indentCp}, {contentCp, indentCp + contentCp}};
@@ -2287,6 +2308,57 @@ namespace UltraCanvas {
 
         RebuildText();
         RequestRedraw();
+    }
+
+
+    void UltraCanvasTextArea::SetIndentedCodeLanguage(const std::string& language) {
+        if (indentedCodeLanguage == language) return;
+        indentedCodeLanguage = language;
+        InvalidateAllLineLayouts();
+    }
+
+    void UltraCanvasTextArea::HighlightCodeBlockLine(CodeLayout* cl, const std::string& text,
+                                                     const std::string& language, int lineIndex) {
+        // Nothing to colour, and no state handed on: the next line of the
+        // block starts as it would after a line with nothing open.
+        if (language.empty() || !cl->layout) return;
+        if (!codeBlockTokenizer) {
+            codeBlockTokenizer = std::make_unique<SyntaxTokenizer>();
+        }
+        if (codeBlockTokenizerLang != language) {
+            // A tokenizer name as DetectLanguageFromContent gives it ("Common
+            // Lisp"), else a fence tag ("cpp", "{.rust}"). Unknown clears the
+            // language, so the block shows plain - not in the previous one's.
+            if (!codeBlockTokenizer->SetLanguage(language)) {
+                codeBlockTokenizer->SetLanguageByTag(language);
+            }
+            codeBlockTokenizerLang = language;
+        }
+        SyntaxLineState state = SyntaxStateBefore(lineIndex);
+        cl->syntaxEntry = state;
+        cl->syntaxTracked = true;
+        auto tokens = codeBlockTokenizer->TokenizeLine(text, state);
+        cl->syntaxExit = state;
+        int currentByte = 0;
+        for (const auto& token : tokens) {
+            int startByte = currentByte;
+            int endByte = currentByte + static_cast<int>(token.text.size());
+            const TokenStyle& ts = GetStyleForTokenType(token.type);
+            auto fg = TextAttributeFactory::CreateForeground(ts.color);
+            fg->SetRange(startByte, endByte);
+            cl->layout->InsertAttribute(std::move(fg));
+            if (ts.bold) {
+                auto a = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
+                a->SetRange(startByte, endByte);
+                cl->layout->InsertAttribute(std::move(a));
+            }
+            if (ts.italic) {
+                auto a = TextAttributeFactory::CreateFontStyle(FontSlant::Italic);
+                a->SetRange(startByte, endByte);
+                cl->layout->InsertAttribute(std::move(a));
+            }
+            currentByte = endByte;
+        }
     }
 
 } // namespace UltraCanvas
