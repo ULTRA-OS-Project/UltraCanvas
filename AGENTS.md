@@ -84,6 +84,19 @@ before adding cross-module code.
   // There is no numeric id argument on any element factory or constructor.
   ```
 
+- **One string for a label is its text, not its name.** `UltraCanvasLabel`
+  and `UltraCanvasCheckbox` each have a single-string constructor, and it
+  takes the TEXT - where `UltraCanvasContainer`'s takes the identifier. So
+  `make_shared<UltraCanvasLabel>("CountLabel")` is an unnamed label that says
+  "CountLabel": nothing can find it by name, and it shows its own variable
+  name the day the `SetText` after it is removed. A label with a name takes
+  both - `make_shared<UltraCanvasLabel>("CountLabel", "")`,
+  `("InfoTitle", Tr("About"))` - and one that needs no name takes its text
+  alone, through `Tr`. Seven places had the first form by 2026-11, the
+  framework's own dialog icon among them. `scripts/check_label_identifiers.py`
+  enforces this in CI (`label-identifiers.yml`); there is no baseline. A
+  one-string label whose text really is shaped like a name (a product's, a
+  file's) says so with `// label-text-ok: <why>`.
 - **Never hand-roll a UI element** — see
   [Build UI out of UltraCanvas elements](#build-ui-out-of-ultracanvas-elements)
   below. If the thing you are drawing takes input, shows a picture or presents
@@ -801,6 +814,9 @@ and never introduce a new literal copy of one:
    Wiring a callback on that element? It must not capture a `shared_ptr` to
    the element or to a container above it — capture it raw. Run
    `python3 scripts/check_callback_cycles.py`; CI runs that too.
+   Building a label or a checkbox? One string alone is its text; a name
+   needs two, `("CountLabel", "")` - run
+   `python3 scripts/check_label_identifiers.py`; CI runs that too.
    Writing a number into a file format or a protocol? Read it with
    `TryParseFloat` / `ParseFloatClassic` and write it with
    `FormatFloatClassic` - or `FormatFixedClassic` where the format counts

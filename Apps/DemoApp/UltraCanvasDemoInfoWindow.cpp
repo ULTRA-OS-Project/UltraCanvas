@@ -132,7 +132,7 @@ namespace UltraCanvas {
         exampleAppIcon->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
         AddChild(exampleAppIcon);
 
-        titleLabel = std::make_shared<UltraCanvasLabel>("InfoTitle");
+        titleLabel = std::make_shared<UltraCanvasLabel>("InfoTitle", "");
         titleLabel->SetText("UltraCanvas Demo");
         titleLabel->SetFontSize(16);
         titleLabel->SetFontWeight(FontWeight::Bold);
@@ -149,7 +149,7 @@ namespace UltraCanvas {
         divider->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         AddChild(divider);
 
-        infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1");
+        infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", "");
         infoLabel1->SetText(Tr("UltraCanvas is a comprehensive, open source, cross-platform,\n"
                                "multi-programming-language GUI for programmers.\n"
                                "UltraCanvas will be the main GUI for ULTRA OS.\n"
@@ -217,7 +217,7 @@ namespace UltraCanvas {
         AddChild(codeContainer);
 
         // Create additional info
-        auto additionalInfo = std::make_shared<UltraCanvasLabel>("AdditionalInfo");
+        auto additionalInfo = std::make_shared<UltraCanvasLabel>("AdditionalInfo", "");
         additionalInfo->SetText(Tr("These icons provide quick access to documentation and source code."));
         additionalInfo->SetFontSize(10);
         additionalInfo->SetAlignment(TextAlignment::Center);

@@ -1362,9 +1362,7 @@ namespace {
         statusBarContainer->AddChild(spellLanguageButton);
 
         // Status label fills remaining space to the right (flex-grow in the row)
-        statusLabel = std::make_shared<UltraCanvasLabel>(
-                "StatusBar"
-        );
+        statusLabel = std::make_shared<UltraCanvasLabel>("StatusBar", "");
         statusLabel->SetText(Tr("Ready"));
         statusLabel->SetFontSize(10);
         statusLabel->SetTextColor(Color(80, 80, 80, 255));

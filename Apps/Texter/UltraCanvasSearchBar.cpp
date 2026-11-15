@@ -133,7 +133,7 @@ namespace UltraCanvas {
         findRow->AddChild(searchInput);
 
         // Match count label — right after input
-        countLabel = std::make_shared<UltraCanvasLabel>("CountLabel");
+        countLabel = std::make_shared<UltraCanvasLabel>("CountLabel", "");
         countLabel->size.width = CSSLayout::Dimension::Px(CountLabelW);
         countLabel->SetText("");
         countLabel->SetFontSize(11);

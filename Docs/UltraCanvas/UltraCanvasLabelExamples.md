@@ -73,6 +73,15 @@ UltraCanvasLabel(const std::string& identifier, const std::string& labelText);
 explicit UltraCanvasLabel(const std::string& labelText = "");
 ```
 
+- **One string alone is the label's text, not its identifier** - the
+  reverse of `UltraCanvasContainer`, whose single string is its identifier.
+  `std::make_shared<UltraCanvasLabel>("CountLabel")` is an unnamed label
+  that says "CountLabel". Give a label that has a name both:
+  `std::make_shared<UltraCanvasLabel>("CountLabel", "")`, or
+  `("InfoTitle", Tr("About"))`. `scripts/check_label_identifiers.py` (CI's
+  `label-identifiers.yml`) refuses a one-string label whose string reads as
+  a name; one whose text really is shaped like that says so with
+  `// label-text-ok: <why>`.
 - A width or height greater than 0 is a **set size**: the label keeps it, and
   a container's stretch does not change it (see `Docs/CSSLayout.md`,
   "Stretching is a design decision").

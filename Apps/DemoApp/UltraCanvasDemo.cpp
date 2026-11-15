@@ -131,7 +131,7 @@ namespace UltraCanvas {
         // description, and many are longer than the header is wide: it takes
         // all the width the two buttons leave and wraps there instead of being
         // cut off with an ellipsis, and the header grows to fit the lines.
-        titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle");
+        titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle", "");
         titleLabel->SetFontSize(14);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetWrap(TextWrap::WrapWord);

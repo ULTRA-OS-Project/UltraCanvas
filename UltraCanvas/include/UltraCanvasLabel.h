@@ -251,6 +251,10 @@ namespace UltraCanvas {
         UltraCanvasLabel(const std::string &identifier, const std::string &labelText)
                 : UltraCanvasLabel(identifier, -1, -1, -1, -1, labelText) {}
 
+        // One string alone is the TEXT, and the label has no identifier -
+        // the reverse of UltraCanvasContainer, whose one string is its
+        // identifier. A label with a name takes both: ("CountLabel", "").
+        // scripts/check_label_identifiers.py refuses a name written here.
         explicit UltraCanvasLabel(const std::string &labelText = "")
                 : UltraCanvasLabel("", -1, -1, -1, -1, labelText) {}
 

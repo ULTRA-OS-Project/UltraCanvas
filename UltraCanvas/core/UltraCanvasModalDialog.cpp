@@ -116,7 +116,8 @@ namespace UltraCanvas {
                 .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                              .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel");
+        // (identifier, text): one string alone would be the label's text.
+        iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel", "");
         SetTypeIconMark(*iconLabel, GetTypeIcon(), style.iconFontSize);
         iconLabel->SetFontSize(style.iconFontSize);
         iconLabel->SetFontWeight(FontWeight::Bold);

@@ -1,0 +1,62 @@
+name: Label identifiers
+
+# Blocks a label built from one string that reads as an identifier.
+# UltraCanvasLabel's single-string constructor takes the label's TEXT, while
+# UltraCanvasContainer's takes the identifier, so
+# `make_shared<UltraCanvasLabel>("CountLabel")` is an unnamed label that says
+# "CountLabel". Seven places had written that by 2026-11 - the framework's
+# own dialog icon, Texter's status bar and search counter, four labels of
+# the demo. None showed, because each set its real text on the next line;
+# but none could be found by name, which is how the first was noticed (a
+# test looked for "InputLabel" in an input dialog and found nothing), and
+# each was one deleted SetText away from showing its variable name to the
+# user. UltraCanvasCheckbox has the same pair of constructors. See "House
+# rules" in AGENTS.md and Docs/UltraCanvas/UltraCanvasLabelExamples.md.
+#
+# No baseline: the tree is clean. A one-string label whose text really is
+# shaped like a name says so with `// label-text-ok: <why>`.
+
+# Trigger policy matches build.yml / callback-cycles.yml: `pull_request`
+# covers feature branches, so listing them under `push` too would run this
+# check twice per commit.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/core/**'
+      - 'UltraCanvas/include/**'
+      - 'UltraCanvas/dialogs/**'
+      - 'UltraCanvas/Plugins/**'
+      - 'UltraCanvas/OS/**'
+      - 'UltraCanvas/libspecific/**'
+      - 'Apps/**'
+      - 'SmartHome/**'
+      - 'UltraAI/**'
+      - 'UltraCloud/**'
+      - 'UltraWeb/**'
+      - 'Tests/**'
+      - 'scripts/check_label_identifiers.py'
+      - 'scripts/tests/test_check_label_identifiers.py'
+      - '.github/workflows/label-identifiers.yml'
+  pull_request:
+    # `branches` filters the BASE branch -- the branch the pull request
+    # TARGETS; see locale-numbers.yml for why `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check for labels built from one string that reads as an identifier
+        run: python3 scripts/check_label_identifiers.py --strict
+      - name: The check's own tests
+        run: python3 -m unittest scripts/tests/test_check_label_identifiers.py -v
