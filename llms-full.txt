@@ -1966,6 +1966,18 @@ MediaFormatCategory::Audio)`. The media viewer's Save as uses it for a
 recording, and `AddVectorDocumentSaveTypes` / `SaveVectorDocument` for a
 drawing (the vector view's, or an SVG read with `LoadVectorDocument`).
 
+A video is written in another type with
+`ConvertVideoFile(source, target, error, progress)` (the same type copied as
+it is; another by the converter its registration carries,
+`MediaCodecRegistration::convertVideo` - written beside the target and moved
+there when complete, `progress` returning false stops it), `CanConvertVideoTo`,
+`GetVideoSaveExtensions` and the Save dialog's `AddVideoSaveTypes(opts)`. The
+core has no video encoder: an application with VideoFX links
+`VideoFXUltraCanvasFormats` and calls `VideoFX_RegisterWithFileLoader()`
+(`VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h`), as UltraViewer does.
+The media viewer's Save as converts a video it plays with it, on a worker
+thread behind a progress ring with Cancel, and offers none without a converter.
+
 The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
 password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads
 documents and decks (`LoadTextDocument`), PDFs (page text; a scan by text
@@ -2975,7 +2987,13 @@ command-line tool. Planned: keyframed parameters.
   `VideoFX_HasTextRenderer` / `VideoFX_DrawTextOverlays` (text overlays with a
   font by name, styled words, alignment and spacing drawn by the host -
   `VideoFX_UseUltraCanvasText` in `VideoFX/ultracanvas/VideoFXUltraCanvasText.h`
-  installs UltraCanvas's, as UltraVideo and the `videofx` tool do)
+  installs UltraCanvas's, as UltraVideo and the `videofx` tool do),
+  `VideoFX_RegisterWithFileLoader` / `VideoFX_ConvertVideoFile` in
+  `VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h` (library
+  `VideoFXUltraCanvasFormats`): VideoFX as FileLoader's video converter -
+  every container it writes registered with `convertVideo`, so
+  `UltraCanvasFileLoader::ConvertVideoFile` and the media viewer's Save as
+  write it
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
@@ -51571,16 +51589,19 @@ if (tools.colour) { /* the adjustments panel and Curves apply */ }
 | `*.ucd` layered image or preview thumbnail | yes | — | — | — |
 | PDF, e-book | yes | — | — | — |
 | Audio the player opens | — | — | — | yes (any audio type this build encodes) |
-| Text, spreadsheet, font, 3D model, video, nothing loaded | — | — | — | — |
+| Video the player opens | — | — | — | yes, where a converter is registered (any type `ConvertVideoFile` writes - VideoFX's) |
+| Text, spreadsheet, font, 3D model, nothing loaded | — | — | — | — |
 
 *Unlock* (`tools.unlock`) is there only while the shown file is
 password-protected and not unlocked yet - see *Password-protected files*.
 Separators follow the groups, so none is left standing alone. Text,
 spreadsheet, font, 3D, video and audio views carry their own controls (the
 players' transport bar, the model's orbit and dolly), so the toolbar is down to
-the browse group for them - and *Save as* for a recording; *Details* stays in
-the info bar for every kind. A video has no *Save as*: the framework core has
-no video encoder (exporting a clip is VideoFX's, on FFmpeg).
+the browse group for them - and *Save as* for a recording or a video;
+*Details* stays in the info bar for every kind. The framework core has no
+video encoder, so a video's *Save as* is there only where the application
+registered a converter - VideoFX's, on FFmpeg (`VideoFX_RegisterWithFileLoader`,
+as UltraViewer does); a build without one offers a video no *Save as* at all.
 
 A drawing's pixels are only a rendering of it at the size it is shown, so it
 takes no gamma, colour or curve: the adjustments carry from one bitmap to the
@@ -52100,7 +52121,7 @@ std::string error;
 surface->SaveProcessed("twice.png", size, error);   // a drawing drawn again at that size
 ```
 
-### Saving a drawing or a recording
+### Saving a drawing, a recording or a video
 
 A drawing is saved as a drawing. *Save as* on an SVG, a DXF, an EMF or any
 file the vector view shows offers every vector type this build writes (SVG,
@@ -52120,8 +52141,40 @@ A recording the audio player opened is offered every audio type this build
 encodes (`AddSaveTypes(opts, MediaFormatCategory::Audio)`: WAV always; MP3,
 FLAC, Ogg Vorbis and Opus with their encoders) and written with
 `UltraCanvasFileLoader::ConvertAudioFile` - the same type copied as it is,
-another decoded and encoded. A video is not offered *Save as*: the framework
-core has no video encoder.
+another decoded and encoded.
+
+A video the player opened is offered every type FileLoader's
+`ConvertVideoFile` writes (`UltraCanvasFileLoader::AddVideoSaveTypes`), its
+own type first, and converted with it - the same type copied as it is, another
+decoded and encoded again, picture and sound, at the film's size and frame
+rate. The framework core has no video encoder: a type is written by the
+converter its registration carries (`MediaCodecRegistration::convertVideo`),
+and an application that has VideoFX registers VideoFX's at start-up - every
+container its FFmpeg writes (MP4, MOV, Matroska, WebM, AVI as the encoders
+allow). Without one a video has no *Save as*, rather than one that fails.
+(`AddSaveTypes(opts, MediaFormatCategory::Video)` is not the list here: it
+holds every container the build writes, a camera recording's too - on Linux
+the GStreamer muxers - which a file need not be convertible to.)
+
+<!-- doc-check: int main(); -->
+```cpp
+#include "VideoFXUltraCanvasFormats.h"   // link VideoFXUltraCanvasFormats
+
+int main() {
+    UltraCanvasApplication app;
+    app.Initialize("MyViewer");
+    VideoFX::VideoFX_RegisterWithFileLoader();   // a video's Save as: every type VideoFX writes
+    // ... a window with an UltraCanvasMediaViewer ...
+    return app.Run(), 0;
+}
+```
+
+Converting a film takes as long as encoding it does, so the viewer runs
+`ConvertVideoFile` on a thread of its own behind a progress window - the ring
+shows how far it has got, and *Cancel* stops it. The file is written beside
+the chosen one and put in its place only when complete, so a stopped or failed
+save leaves no half file and keeps the one it was to replace; the info bar
+then says *Not saved: <name>*, and a failure says why in a message.
 
 Each slider is **continuous over its whole range** and carries its live value in
 its caption (`Gamma  1.37`), so an edit can be read off and repeated. The
@@ -93212,6 +93265,7 @@ FILE: Docs/Modules/FileLoader/README.md
   - [Editable Vector Documents](#editable-vector-documents)
   - [Save Settings](#save-settings)
   - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
+  - [A Video Saved in Another Type](#a-video-saved-in-another-type)
   - [Transparent Decompression](#transparent-decompression)
   - [Runtime Format Inventory](#runtime-format-inventory)
   - [A Dialog's File Types](#a-dialogs-file-types)
@@ -93484,6 +93538,47 @@ it: libvips' HEIF loader takes both file endings wherever libheif is, but
 libheif decodes a HEIC only with its HEVC plug-in (libde265) and an AVIF only
 with an AV1 one (aomdec, dav1d). The build asks libheif when its headers are
 installed; without them, the inventory goes by the loader's file endings.
+
+### A Video Saved in Another Type
+
+`ConvertVideoFile(source, target, error, progress)` writes a film in the type
+its new name ends in: the same type is the file copied as it is, another is
+decoded and encoded again, picture and sound. The core has no video encoder,
+so a type is written by the converter its codec registration carries
+(`MediaCodecRegistration::convertVideo`): an application that has VideoFX
+links `VideoFXUltraCanvasFormats` and calls `VideoFX_RegisterWithFileLoader()`
+once at start-up, which registers every container VideoFX's FFmpeg writes
+(MP4, MOV, Matroska, WebM, AVI as its encoders allow). Without a converter only
+the same type is written, and `GetVideoSaveExtensions()` is empty - offer no
+video *Save as* then. The Save dialog's types are `AddVideoSaveTypes(opts)`,
+not `AddSaveTypes(opts, MediaFormatCategory::Video)`: that one lists every
+container the build writes, a camera recording's muxers too, which need not
+be types a file can be converted to.
+
+A conversion takes as long as encoding the film does, so it runs off the UI
+thread, and `progress` (0..1, on that thread) returning false stops it. It is
+written beside the target and moved there when complete: a stopped or failed
+one leaves no half file, and keeps the file it was to replace.
+
+<!-- doc-check: void ShowProgress(double fraction); bool StopRequested(); void ShowError(const std::string& message); -->
+```cpp
+#include "VideoFXUltraCanvasFormats.h"   // link VideoFXUltraCanvasFormats
+
+VideoFX::VideoFX_RegisterWithFileLoader();   // once, at start-up
+
+FileDialogOptions save;
+save.SetDefaultFileName("holiday.webm");
+UltraCanvasFileLoader::AddVideoSaveTypes(save);   // WebM first, then MP4, MOV, ...
+
+// On a worker thread (the media viewer runs it behind a progress window):
+std::string error;
+if (!UltraCanvasFileLoader::ConvertVideoFile("holiday.mp4", "holiday.webm", error,
+        [](double fraction) { ShowProgress(fraction); return !StopRequested(); }))
+    ShowError(error);   // "Stopped" when it was stopped
+```
+
+The media viewer's *Save as* for a video is this call - see
+[UltraCanvasMediaViewer](../../UltraCanvas/UltraCanvasMediaViewer.md#saving-a-drawing-a-recording-or-a-video).
 
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
@@ -106243,6 +106338,19 @@ that brings VideoFX hands the films and sound to `RegisterMediaCodec`, and
 FileLoader's lists, and the dialogs built from them, then offer exactly what
 the engine handles. UltraVideo does this (`UltraVideoFormats.cpp`). The
 module built without FFmpeg returns an empty list.
+
+**A video's Save as in an UltraCanvas application.** The framework core has
+no video encoder, so FileLoader's `ConvertVideoFile` writes only a type whose
+codec registration carries a converter. `VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h`
+(the `VideoFXUltraCanvasFormats` library, built in the UltraCanvas tree beside
+the text renderer below) is VideoFX's: `VideoFX_RegisterWithFileLoader()`
+registers every film container this build writes (`canWrite`) with a
+converter that runs `VideoFX_Transcode` at the source's size and rate, and
+from then on the media viewer's *Save as* offers those types for a video it
+plays, with a progress ring and Cancel. UltraViewer calls it at start-up.
+Playing is left to the platform backend; only writing is added.
+`VideoFX_ConvertVideoFile(source, target, progress, error)` is the converter
+on its own.
 
 ```cpp
 for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
