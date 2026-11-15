@@ -27,3 +27,14 @@
 - **DemoApp's Text Rendering page shows it.** A *Light Text* option (Plain,
   Half, Firm) and a card of light text on a dark ground in the dark theme's
   three inks.
+- **A row no longer measures text that takes the rest of its line as zero
+  wide.** An item with `flex: 1 1 0` has a base size of zero, and a row a
+  column measures "at most this wide" measured it there: a wrapping label
+  came out a letter a line, the row many times too tall. DemoApp's Text
+  Rendering page showed its first sample and then a blank area the height
+  of the window. Such a row now grows toward the width it is offered by the
+  content of the items that grow from a set basis (their max-content
+  contribution, CSS Flexbox 9.9.1), so they are measured at the width they
+  will be arranged at. Test: `CSSLayoutGrowFromZeroTest`.
+- **The light text setting and the demo's samples are translated** in all
+  thirty languages (machine drafts, as the rest).

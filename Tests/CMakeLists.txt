@@ -3527,6 +3527,39 @@ add_test(
 )
 message(STATUS "    Test registered: CSSLayoutAutoExpandTest")
 
+# ===== CSS LAYOUT GROW FROM ZERO TEST =====
+# A row measured "at most this wide" gives an item that grows from a zero
+# basis the width it will be arranged at, so a wrapping text in it is not
+# measured zero wide and the row many lines too tall (the demo's Text
+# Rendering page). Pure geometry.
+message(STATUS "  Building CSSLayoutGrowFromZeroTest...")
+add_executable(CSSLayoutGrowFromZeroTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutGrowFromZeroTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/TableLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(CSSLayoutGrowFromZeroTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutGrowFromZeroTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutGrowFromZeroTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutGrowFromZeroTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutGrowFromZeroTest
+    COMMAND CSSLayoutGrowFromZeroTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutGrowFromZeroTest")
+
 # ===== CSS LAYOUT SAFE ALIGNMENT TEST =====
 # Content that does not fit its flex line aligns to the START of it rather than
 # to a negative offset, so a scrolling pane can reach all of it - the demo's
