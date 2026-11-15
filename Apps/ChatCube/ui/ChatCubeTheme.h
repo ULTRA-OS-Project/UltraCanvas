@@ -8,6 +8,7 @@
 // presence colours, the avatar palette) and a fallback for each, so a theme
 // that does not name them still looks right.
 //
+// Version: 0.2.2 - Look::readTicks: a message read in a colour of its own (blue), not the bubble's green
 // Version: 0.2.1 - PaintPauseMark: a voice message that is playing
 // Version: 0.2.0 - the look follows a change of the theme while ChatCube runs: L() read again by
 //                  RestyleForLook, OnLook for every colour set by hand, SetInk for a label's role;
@@ -54,6 +55,7 @@ struct Look {
     UltraCanvas::Color bubbleOther, bubbleOtherLine;     // theirs (ink: the theme's)
     UltraCanvas::Color presenceOnline, presenceAway, presenceBusy, presenceOffline;
     UltraCanvas::Color callBar;                          // the bar of a call
+    UltraCanvas::Color readTicks;                        // ✓✓ of a message read: not the bubble's green
     std::array<UltraCanvas::Color, 8> avatars;           // one per person, by their id
 };
 Look LookOf(const UltraCanvas::UltraCanvasTheme& theme);

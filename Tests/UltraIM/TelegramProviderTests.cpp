@@ -524,6 +524,8 @@ void TestTelegram() {
     const std::string picture = WriteFile(base, "pic.jpg");
     const std::string clip = WriteFile(base, "clip.mp4");
     const std::string notes = WriteFile(base, "notes.pdf");
+    const std::string voice = WriteFile(base, "voice.opus");
+    const std::string wave = WriteFile(base, "voice.wav");
     UltraIMSendOptions o3;
     o3.clientMessageId = "alice-photo";
     CHECK(alice->SendImage(dm.conversationId, UltraCanvas::PathToUtf8(base / "missing.jpg"), "", o3).code ==
@@ -605,6 +607,24 @@ void TestTelegram() {
     CHECK(WaitAttachment([&](UltraIMAttachmentCallback cb) { bob->DownloadAttachment(got.conversationId, fileGot.message.messageId, cb); },
                          fetched));
     CHECK(fetched.localPath == notes && fetched.isDownloaded);
+    // A voice note: Telegram's own, with its length; a recording that is not
+    // Ogg Opus goes as a file.
+    CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::VoiceNotes));
+    {
+        UltraIMSendOptions o;
+        o.durationSeconds = 3.4;
+        CHECK(alice->SendVoiceNote(dm.conversationId, voice, o));
+        UltraIMEvent voiceGot;
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageReceive && e.message.type == UltraIMMessageType::Audio;
+        }, &voiceGot));
+        CHECK(voiceGot.message.attachment.durationSeconds == 3.0 && voiceGot.message.attachment.mimeType == "audio/ogg");
+        CHECK(alice->SendVoiceNote(dm.conversationId, wave, o));
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageReceive && e.message.type == UltraIMMessageType::File &&
+                   e.message.attachment.fileName == "voice.wav";
+        }));
+    }
     // History brings the attachments back with their files.
     {
         const auto recent = Fetch(*bob, got.conversationId, "", 10);
@@ -646,7 +666,8 @@ void TestTelegram() {
     CHECK(ordered);
     if (!page.empty()) {
         const auto older = Fetch(*bob, got.conversationId, page.front().messageId, 50);
-        CHECK(older.size() == 11);      // hi bob!, hi alice, the photo, nice, the video, the file, messages 0-4
+        CHECK(older.size() == 13);      // hi bob!, hi alice, the photo, nice, the video, the file, the voice
+                                        // note, the recording sent as a file, messages 0-4
         if (!older.empty()) CHECK(older.front().text == "hi bob!" && older.back().text == "message 4");
     }
 
@@ -686,9 +707,9 @@ void TestTelegram() {
         if (!found.messages.empty()) CHECK(found.messages[0].type == UltraIMMessageType::Video);
         CHECK(Search(*bob, got.conversationId, "", UltraIMSearchKind::Media).messages.size() == 2);
         found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Files);
-        CHECK(found.messages.size() == 1);
-        if (!found.messages.empty())
-            CHECK(found.messages[0].type == UltraIMMessageType::File && found.messages[0].attachment.fileName == "notes.pdf");
+        CHECK(found.messages.size() == 2);      // newest first: the recording sent as a file, then notes.pdf
+        if (found.messages.size() == 2)
+            CHECK(found.messages[1].type == UltraIMMessageType::File && found.messages[1].attachment.fileName == "notes.pdf");
         CHECK(Search(*bob, got.conversationId, "NOTES", UltraIMSearchKind::Files).messages.size() == 1);
         found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Links);
         CHECK(found.messages.size() == 1);

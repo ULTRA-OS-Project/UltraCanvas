@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeTheme.cpp
 // See ChatCubeTheme.h.
+// Version: 0.2.2 - readTicks
 // Version: 0.2.1 - PaintPauseMark
 // Version: 0.2.0 - L(), OnLook, RestyleForLook, SetInk: the look follows a change of the theme;
 //                  SetLookChoice / DarkLook: the theme provider decides light or dark at every change
@@ -170,6 +171,8 @@ Look LookOf(const UltraCanvasTheme& theme) {
     l.presenceBusy = theme.Role("chatcube.presence-busy", r.danger);
     l.presenceOffline = theme.Role("chatcube.presence-offline", r.inkFaint);
     l.callBar = theme.Role("chatcube.call-bar", r.accentSoft);
+    // Read stands out from sent and delivered (grey) on the green bubble.
+    l.readTicks = theme.Role("chatcube.read-ticks", theme.dark ? Color(100, 181, 246, 255) : Color(21, 101, 192, 255));
     const std::array<Color, 8>& fallback = theme.dark ? kAvatarsDark : kAvatarsLight;
     for (size_t i = 0; i < l.avatars.size(); ++i)
         l.avatars[i] = theme.Role("chatcube.avatar." + std::to_string(i), fallback[i]);

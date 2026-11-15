@@ -12,6 +12,13 @@
   tells them - the relay's `contact.added` (ChatCube relay 1.4.0) or a
   `contact` frame on the local network - so their chat appears before the
   first message. `DirectProviderTests` cover all of it.
+- **UltraIM Telegram and Matrix: voice notes.** `SendVoiceNote` sends
+  Telegram's own voice message (`inputMessageVoiceNote`, an Ogg Opus
+  recording with its length; anything else goes as a document) and Matrix's
+  (`m.audio` with the MSC3245 voice mark and the MSC1767 audio block, the
+  length in `info.duration` - a video's too). Both gain `VoiceNotes`;
+  `TelegramProviderTests`, `TelegramTdlibTests` (the real TDLib takes the
+  request) and `MatrixProviderTests` (against Synapse) check it.
 
 #### 2026-11-15 *0.9.563*
 - **A toolbar item dragged into another place stays there.** `MoveItem` puts

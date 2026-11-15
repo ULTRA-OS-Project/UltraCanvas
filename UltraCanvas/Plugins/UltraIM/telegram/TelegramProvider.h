@@ -9,6 +9,7 @@
 // the main list, private chats and groups, text with replies, edits,
 // deletion, read receipts, typing, presence, history, finding people by
 // username or phone number, new groups.
+// Version: 0.1.8 - SendVoiceNote (inputMessageVoiceNote); the VoiceNotes capability
 // Version: 0.1.7 - a supergroup's members too: the first 200 (getSupergroupMembers), its creator, and how many
 //                  there are (memberCount), asked again when updateSupergroupFullInfo says the count changed
 // Version: 0.1.6 - a group after it is made: renamed (setChatTitle), members added (addChatMembers) and taken
@@ -116,6 +117,11 @@ public:
                             const std::string& caption, const UltraIMSendOptions& options) override;
     UltraIMResult SendVideo(const std::string& conversationId, const std::string& localPath,
                             const std::string& caption, const UltraIMSendOptions& options) override;
+    // A recording as Telegram's own voice message when it is Ogg Opus (what
+    // its apps play as one), with its length (options.durationSeconds); any
+    // other recording goes as a file.
+    UltraIMResult SendVoiceNote(const std::string& conversationId, const std::string& localPath,
+                                const UltraIMSendOptions& options) override;
     UltraIMResult SendFile(const std::string& conversationId, const std::string& localPath,
                            const UltraIMSendOptions& options) override;
     // A video, a file, a voice note or a sticker fetched into TDLib's files

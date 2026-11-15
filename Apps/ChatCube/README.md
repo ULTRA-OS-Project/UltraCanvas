@@ -120,7 +120,8 @@ The first ChatCube draft, which this replaces, is kept under
 5. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
    *Settings* below). A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
-   green `✓✓` read (drawn, not typed, so they show on a Windows whose fonts
+   blue `✓✓` read, *Not sent* when it could not go - and, hovering over the
+   message, the same in words (drawn, not typed, so they show on a Windows whose fonts
    have no check mark). The paperclip puts a picture, a video or any file
    in a strip above the message field - so does Ctrl+V with a picture on
    the clipboard (a screenshot, a copy from a browser or a drawing program)
@@ -165,8 +166,9 @@ The first ChatCube draft, which this replaces, is kept under
    pauses). The camera button records a **video message**: the camera
    opens over the field, its red button records and stops, **Send** sends
    it, **Cancel** throws it away. Both need a microphone (and a camera) the
-   system lets ChatCube use; Matrix and Telegram get a voice message as an
-   audio file.
+   system lets ChatCube use. On Matrix and Telegram a voice message is
+   theirs too (Telegram's needs the recording in Ogg Opus, which ChatCube
+   writes when this build has the Opus encoder; otherwise it goes as a file).
 
 6. **Call** rings the open contact, **Video** makes it a video call (1:1;
    the buttons are off for groups and while not connected). A bar across
@@ -266,7 +268,9 @@ Then add Bob's ID in ChatCube and write to him.
 Xvfb: it starts a relay and Bob on this machine, drives ChatCube through
 XTest (`tools/xinput.c`, built once into the build directory) - sign in as
 Alice, add Bob, two messages each way, open Edit profile - and writes
-`signin.png`, `empty.png`, `chat.png` and `profile.png` to `<build>/chatcube-screenshots/<look>/`
+`signin.png`, `empty.png`, `chat.png`, `message-menu.png`, `reply-bar.png`,
+`reply.png`, `edit.png`, `edited.png`, `search.png` and `profile.png` (and the
+list's menus) to `<build>/chatcube-screenshots/<look>/`
 (`--out` elsewhere). For looking at a change to the window by eye and for
 pictures in the docs. It needs `xvfb-run`, ImageMagick's `import`, a C
 compiler with the libX11 and libXtst headers, and the relay's `.venv`.

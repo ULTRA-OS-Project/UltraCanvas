@@ -15,11 +15,18 @@
 - **Voice messages.** The microphone beside the field records; a bar shows
   how long, with a × to throw it away and send to send it. A voice message
   shows as a play mark and its length, and plays in its bubble (a click
-  again pauses). Matrix and Telegram get the recording as an audio file.
+  again pauses). On Matrix and Telegram it is their own voice message too,
+  with a play button in their apps.
 - **Video messages.** The camera button opens the camera over the field: its
   red button records and stops, **Send** sends the video with its length,
   **Cancel** throws it away.
 - **Copy text** in a message's menu.
+- **Sent, delivered, read - easier to tell apart.** The ticks beside the
+  time are a little smaller and a read message's ✓✓ are blue instead of the
+  bubble's green, so read stands out from sent (✓) and delivered (✓✓,
+  grey); a message that could not go says *Not sent*. Hovering over one of
+  your messages says it in words: *Sent - not on their device yet*,
+  *Delivered - on their device, not read yet*, *Read*.
 
 #### 2026-11-15 *0.1.25*
 - **The person you add sees your chat at once.** Adding someone by their

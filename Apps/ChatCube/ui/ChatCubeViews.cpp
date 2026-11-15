@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.8 - the ticks a little smaller, read in a colour of its own, "Not sent" in words, and a message's
+//                  state in words on hover (Sending / Sent / Delivered / Read / Not sent)
 // Version: 0.2.7 - a reply's quote at the top of its bubble, "edited" beside the time, a voice
 //                  message as a play / pause mark and its length
 // Version: 0.2.6 - a group's member count from MemberCount (a big supergroup lists a first page)
@@ -47,6 +49,7 @@ constexpr float kBodyFont = 11.0f;
 constexpr float kMetaFont = 8.5f;
 constexpr float kSenderFont = 9.5f;
 constexpr int   kMetaHeight = 14;
+constexpr int   kTickHeight = 12;       // the ticks a little smaller than the time beside them
 constexpr int   kTicksGap = 4;           // between the time and the ticks
 const Color     kBadgeInk(255, 255, 255, 255);   // the words on a video's dark pill
 constexpr int   kSenderHeight = 16;
@@ -107,7 +110,7 @@ std::tm LocalTime(int64_t timestampMs) {
 const char* TickText(UltraIMDeliveryStatus status) {
     switch (status) {
         case UltraIMDeliveryStatus::Sending:   return "\xE2\x80\xA6";          // …
-        case UltraIMDeliveryStatus::Failed:    return "!";
+        case UltraIMDeliveryStatus::Failed:    return "! ";      // + "Not sent" (MetaLine)
         case UltraIMDeliveryStatus::Sent:
         case UltraIMDeliveryStatus::Delivered:
         case UltraIMDeliveryStatus::Read:      break;
@@ -140,6 +143,18 @@ bool IsPictureFileName(const std::string& path) {
         if (ext == e) return true;
     }
     return false;
+}
+
+// A message's state in words, for its tooltip and a failed one's line.
+std::string StatusWords(UltraIMDeliveryStatus status) {
+    switch (status) {
+        case UltraIMDeliveryStatus::Sending:   return Tr("Sending\xE2\x80\xA6");
+        case UltraIMDeliveryStatus::Sent:      return Tr("Sent - not on their device yet");
+        case UltraIMDeliveryStatus::Delivered: return Tr("Delivered - on their device, not read yet");
+        case UltraIMDeliveryStatus::Read:      return Tr("Read");
+        case UltraIMDeliveryStatus::Failed:    return Tr("Not sent");
+    }
+    return std::string();
 }
 
 // The words of a bubble: the text, a caption under a picture (none when
@@ -411,8 +426,13 @@ ListDataValue MessageListModel::GetData(const ListIndex& index, ListDataRole rol
     const MessageRow& r = rows_[static_cast<size_t>(index.row)];
     if (role == ListDataRole::DisplayRole)
         return r.kind == MessageRow::Kind::DateSeparator ? r.dateLabel : MessageText(r.message);
-    if (role == ListDataRole::ToolTipRole && r.kind == MessageRow::Kind::Message)
-        return FormatDate(r.message.timestampMs) + " " + FormatTime(r.message.timestampMs);
+    if (role == ListDataRole::ToolTipRole && r.kind == MessageRow::Kind::Message) {
+        // When, and for our own message how far it got.
+        std::string tip = FormatDate(r.message.timestampMs) + " " + FormatTime(r.message.timestampMs);
+        if (r.message.isOwn) tip += "\n" + StatusWords(r.message.deliveryStatus);
+        if (r.message.isEdited) tip += "\n" + Tr("edited");
+        return tip;
+    }
     return ListDataValue();
 }
 
@@ -544,10 +564,12 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
     const Size2Di textSize = text.empty() ? Size2Di(0, 0) : ctx->GetTextDimensions(text, Size2Di(maxText, 0));
     // The time, then for our own message its state: a word, or ticks drawn
     // after the time.
+    const bool failed = m.isOwn && m.deliveryStatus == UltraIMDeliveryStatus::Failed;
     const std::string meta = (m.isEdited ? Tr("edited") + "  " : std::string()) + FormatTime(m.timestampMs) +
-                             (m.isOwn ? std::string("  ") + TickText(m.deliveryStatus) : "");
+                             (m.isOwn ? std::string("  ") + TickText(m.deliveryStatus) : "") +
+                             (failed ? StatusWords(m.deliveryStatus) : std::string());
     const int ticks = m.isOwn ? TickCount(m.deliveryStatus) : 0;
-    const int ticksWidth = ticks ? TicksWidth(ticks, kMetaHeight) + kTicksGap : 0;
+    const int ticksWidth = ticks ? TicksWidth(ticks, kTickHeight) + kTicksGap : 0;
     ctx->SetFontSize(kMetaFont);
     const int metaWidth = ctx->GetTextLineWidth(meta) + ticksWidth;
     int senderWidth = 0;
@@ -709,11 +731,15 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
     ctx->SetTextAlignment(TextAlignment::Right);
     ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
     Color metaColor = look.inkMuted;
-    if (m.isOwn && m.deliveryStatus == UltraIMDeliveryStatus::Read) metaColor = look.accent;
+    // Sent and delivered grey, read in a colour of its own.
+    Color tickColor = metaColor;
+    if (m.isOwn && m.deliveryStatus == UltraIMDeliveryStatus::Read) tickColor = look.readTicks;
     if (m.isOwn && m.deliveryStatus == UltraIMDeliveryStatus::Failed) metaColor = look.danger;
     ctx->SetTextPaint(metaColor);
     ctx->DrawTextInRect(meta, Rect2Dd(bubble.x, y, bubble.width - kBubblePadH - ticksWidth, kMetaHeight));
-    if (ticks) PaintTicks(ctx, Rect2Dd(bubble.x, y, bubble.width - kBubblePadH, kMetaHeight), ticks, metaColor);
+    if (ticks)
+        PaintTicks(ctx, Rect2Dd(bubble.x, y + (kMetaHeight - kTickHeight) / 2.0, bubble.width - kBubblePadH, kTickHeight),
+                   ticks, tickColor);
 }
 
 // ============================================================================

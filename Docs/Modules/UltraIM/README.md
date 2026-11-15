@@ -556,6 +556,10 @@ other over mDNS alone, which skips without a responder unless
   `RemoveGroupMember` kicks (the homeserver's power levels decide whether
   we may: `PermissionDenied` when not), and `LeaveConversation` leaves the
   room and forgets it - a direct chat as much as a group.
+- **Voice notes:** `SendVoiceNote` sends `m.audio` marked as a voice
+  message (`org.matrix.msc3245.voice`, with the `org.matrix.msc1767.audio`
+  block) and its length (`info.duration`, milliseconds - set for a video
+  too when `UltraIMSendOptions::durationSeconds` says it).
 - **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
   emotes, pictures, videos, audio and files with their attachments (the
   `filename` and the body as the caption, MSC2530), edits (`m.replace` -
@@ -715,6 +719,10 @@ process.
   its creator, with everyone counted in `UltraIMConversation::memberCount`;
   the page is asked for again when someone joins or leaves. A channel lists
   none (its subscribers are not members to manage).
+- **Voice notes:** `SendVoiceNote` sends Telegram's own voice message
+  (`inputMessageVoiceNote`, the length in whole seconds) for an Ogg Opus
+  recording - the only kind its apps play as one; any other recording goes
+  as a document.
 - **Messages:** text with replies, photos, files, audio, voice notes,
   videos (and animations, video notes) and stickers with their captions and
   attachments, the group's service messages as system lines; edits
