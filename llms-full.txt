@@ -49757,10 +49757,13 @@ with their status, edits the working copies, merges the sets, undoes,
 saves and exports. A test drives it on a folder of its own; a headless tool
 could too.
 
-`UltraCanvasLocalisationEditor` is the element over it: a toolbar (the
-application, the language, the comparison language, the search, the status
-filter, the *Sets...* picker, the two switches, Undo, Draft, Export, Save), a
-columns tree view, the edit row under it and a status line. It derives from
+`UltraCanvasLocalisationEditor` is the element over it: four rows of
+controls - the application and the language; the search, the status filter
+and the comparison language; the *Sets...* picker and the two switches; Undo,
+Draft, Export and Save to the right - then a columns tree view, the edit row
+under it and a status line. The rows are kept short so that each fits a
+narrow page (a settings page leaves the editor about 620 px): no control
+loses its label to another, and the search field is the one that gives way. It derives from
 `UltraCanvasContainer` and lays itself out with the CSS flex layout, so it
 fills whatever it is put in.
 
@@ -110353,8 +110356,10 @@ the right-hand monitor the primary.
 - **Clipboard**: the desktop records every copy into the clipboard history
   ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
   on disk and encrypted, leaving out copies a password manager marks as
-  secret. The clipboard button, or `Super+V` from any window, opens the quick
-  panel: a search field, the pinned entries and the ten latest (typing
+  secret. The clipboard button opens [UltraClipboard](../UltraClipboard/README.md),
+  the whole history in a window of its own (a copy running in the background
+  comes forward). `Super+V` from any window opens the quick panel, for
+  picking what to paste: a search field, the pinned entries and the ten latest (typing
   searches the whole history), each with a thumbnail and Copy, Edit and
   Delete. What the program being pasted into takes comes first, under "For
   <program>" and chosen - the newest images for a paint program, files for
@@ -110363,8 +110368,10 @@ the right-hand monitor the primary.
   focus before it was clicked. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
   edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
   *Recording* switch pauses the history and *Open UltraClipboard* shows all
-  of it. Right-click the button for *Pause recording*, *Open UltraClipboard*
+  of it. Right-click the button for *Pause recording*, *Quick panel (Super+V)*
   and *Clear history*; while recording is paused the button is crossed out.
+  Where UltraClipboard is not installed beside the desktop, the button opens
+  the quick panel instead.
   When a program that made a copy quits, the desktop puts that copy back on
   the clipboard, so it can still be pasted. Without a history (a build
   without SQLite) the button shows a menu of this session's last fifteen
@@ -110890,6 +110897,19 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/clipboard-button-opens-ultraclipboard.md
+==============================================================================
+
+- **The clipboard button opens UltraClipboard.** A click on the right bar's
+  clipboard button shows the whole history in UltraClipboard. A copy already
+  running, also one started in the background, comes forward instead of a
+  second one starting. The small quick panel stays on `Super+V`, for picking
+  what to paste from any window, and on the button's right-click menu as
+  *Quick panel (Super+V)*, which replaces *Open UltraClipboard* there.
+  Without UltraClipboard beside the desktop, the button opens the quick panel
+  as before.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
