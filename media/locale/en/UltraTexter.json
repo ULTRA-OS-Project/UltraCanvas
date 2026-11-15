@@ -236,6 +236,8 @@
   "The file could not be written.": "The file could not be written.",
   "The PDF could not be written.": "The PDF could not be written.",
   "The translation returned nothing.": "The translation returned nothing.",
+  "The {0} dictionary could not be loaded.\n\nSpell checking has no dictionary loaded.": "The {0} dictionary could not be loaded.\n\nSpell checking has no dictionary loaded.",
+  "The {0} dictionary could not be loaded.\n\nSpell checking is still using {1}.": "The {0} dictionary could not be loaded.\n\nSpell checking is still using {1}.",
   "This build of UltraTexter has no UltraAI module to translate with.": "This build of UltraTexter has no UltraAI module to translate with.",
   "Three Columns": "Three Columns",
   "Toggle Theme": "Toggle Theme",

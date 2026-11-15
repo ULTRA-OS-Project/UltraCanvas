@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp
 // Spell checking and the editor context menu for UltraTexter
+// Version: 1.5.1 - the "dictionary could not be loaded" message goes through TrF
 // Version: 1.5.0 - the status bar shows the spell check language of the active
 //                  document; a click on it opens the Spelling menu
 // Version: 1.4.0 - "Picture Original Size" only for a picture, not a selected text frame or drawing
@@ -402,15 +403,20 @@ void UltraCanvasTextEditor::OnSpellDictionarySelected(const std::string& languag
         debugOutput << "UltraTexter: dictionary '" << languageCode
                     << "' could not be loaded" << std::endl;
 
-        const SpellLanguageInfo info = service.GetLanguageInfo(languageCode);
-        const std::string name = info.nativeName.empty() ? languageCode : info.nativeName;
+        // Whole sentences, so a translation can order them its own way; the
+        // dictionary in use is named the way the status bar names it.
+        auto nameOf = [&service](const std::string& code) {
+            const SpellLanguageInfo info = service.GetLanguageInfo(code);
+            return info.nativeName.empty() ? code : info.nativeName;
+        };
+        const std::string current = service.GetLanguage();
+        const std::string message = current.empty()
+            ? TrF("The {0} dictionary could not be loaded.\n\n"
+                  "Spell checking has no dictionary loaded.", nameOf(languageCode))
+            : TrF("The {0} dictionary could not be loaded.\n\n"
+                  "Spell checking is still using {1}.", nameOf(languageCode), nameOf(current));
         UltraCanvasDialogManager::ShowInformation(
-            "The " + name + " dictionary could not be loaded.\n\n"
-            "Spell checking is still using " +
-            (service.GetLanguage().empty() ? std::string("no dictionary")
-                                           : service.GetLanguage()) + ".",
-            Tr("Spell Check Dictionary"),
-            nullptr, this);
+            message, Tr("Spell Check Dictionary"), nullptr, this);
         return;
     }
 
