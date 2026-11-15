@@ -1,5 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
+// Version: 1.11.0 - the destructor releases the native half, so a window never closed
+//                   does not leave its HWND, DC and icons behind
 // Version: 1.10.0 - SetTransientParent makes the parent the window's owner, so a dialog
 //                   stays above its own window without WS_EX_TOPMOST
 // Version: 1.9.0 - WindowType::Popup: a popup's own window - topmost, out of the taskbar, never
@@ -55,6 +57,15 @@ namespace UltraCanvas {
             , savedExStyle(0) {
         std::memset(&savedPlacement, 0, sizeof(savedPlacement));
         savedPlacement.length = sizeof(WINDOWPLACEMENT);
+    }
+
+    UltraCanvasWindowsWindow::~UltraCanvasWindowsWindow() {
+        // The native half, released however the window dies. Without this,
+        // a window destroyed without Close() first - the application's
+        // DestroyWindows() at shutdown, the last shared_ptr going away -
+        // left its OS window and surfaces behind, because
+        // ~UltraCanvasWindowBase cannot reach a virtual override.
+        if (_created) DestroyNative();
     }
 
 // ===== WINDOW CREATION =====

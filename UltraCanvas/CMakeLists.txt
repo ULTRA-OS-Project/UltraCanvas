@@ -1,5 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
+# Version: 1.4.9 - uc-net links UltraCanvasTextUtils, so a program that links UltraNet
+#                  without the core (ultradbadmin-relay) resolves Trim and Base64Encode
 # Version: 1.4.8 - the static link cycle between the core and UltraRTC is declared, so a static build links
 # Version: 1.4.7
 # Last Modified: 2026-11-01
@@ -3680,6 +3682,16 @@ if(ULTRACANVAS_ENABLE_NET)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
     target_link_libraries(uc-net PUBLIC ${UC_CURL_LINK} Threads::Threads)
+    # UltraNetMime calls Trim() and Base64Encode(), which live in the
+    # UltraCanvasTextUtils archive. The shared core links that archive and
+    # absorbs uc-net whole, so a consumer of the core never noticed the gap --
+    # but a program that links uc-net WITHOUT the core (ultradbadmin-relay:
+    # UltraDatabase, UltraVault, UltraNet, UltraCrypt, no window, no core) got
+    # "undefined reference to UltraCanvas::Trim" at its final link. PRIVATE, so
+    # consumers link the archive without inheriting its include directories;
+    # the core's own link line already names it, and a plain archive repeated
+    # there is harmless (unlike a whole-archive one).
+    target_link_libraries(uc-net PRIVATE UltraCanvasTextUtils)
     # iconv converts mail text in any charset (ISO-2022-JP, Shift_JIS, GB18030,
     # KOI8-R, windows-125x, ...) to UTF-8. Part of the C library on glibc and
     # Android; libiconv on macOS and MSYS2 (already installed for Texter).
