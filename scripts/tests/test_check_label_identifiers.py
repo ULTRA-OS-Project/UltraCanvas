@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""What scripts/check_label_identifiers.py reports: a label or checkbox built
-from one string literal that reads as an identifier - whichever way it is
-constructed, and across lines - and nothing for a label with an identifier
-and a text, a label whose one string is words, a text that goes through Tr,
-another element, a comment, or a line that says its one string is the text.
-Run with
+"""What scripts/check_label_identifiers.py reports: a label built from one
+argument that is text - a string literal that is not a name, or a Tr call -
+whichever way it is constructed, and across lines; and nothing for a label
+built from a name, from an identifier and a text, from a variable, for
+another element, a comment, or a line that says its one string is the
+identifier. Run with
 
     python3 -m unittest discover -s scripts/tests -v
 """
@@ -21,96 +21,114 @@ spec.loader.exec_module(check)
 
 
 def found(source):
-    return [(f.line, f.text) for f in check.check_source(source, Path("x.cpp"))]
+    return [(f.line, f.shown) for f in check.check_source(source, Path("x.cpp"))]
 
 
-class ReadsAsIdentifier(unittest.TestCase):
+class ReadsAsText(unittest.TestCase):
+    def test_words(self):
+        for text in ("Add model file", "Name:", "Größe", "100 %", "…", "Don't", "Ready.", "a b",
+                     "Line one\nline two", "-"):
+            self.assertTrue(check.reads_as_text(text), text)
+
     def test_names(self):
         for name in ("IconLabel", "countLabel", "InfoText1", "uai-hf-status", "count_label",
-                     "page.title", "StatusBar", "x1"):
-            self.assertTrue(check.reads_as_identifier(name), name)
-
-    def test_words(self):
-        for text in ("", "Ready", "OK", "PDF", "Name:", "Add model file", "Größe", "100 %", "…",
-                     "Don't", "a/b", "-", "3D"):
-            self.assertFalse(check.reads_as_identifier(text), text)
+                     "page.title", "settings/page:title", "StatusBar", "x1", "Ready", "OK", ""):
+            self.assertFalse(check.reads_as_text(name), name)
 
 
-class Constructions(unittest.TestCase):
-    def test_make_shared(self):
-        self.assertEqual(found('auto l = std::make_shared<UltraCanvasLabel>("CountLabel");'),
-                         [(1, "CountLabel")])
-        self.assertEqual(found('l = std::make_shared<UltraCanvas::UltraCanvasLabel>( "IconLabel" );'),
-                         [(1, "IconLabel")])
-        self.assertEqual(found('auto l = std::make_unique<UltraCanvasLabel>("uai-status");'),
-                         [(1, "uai-status")])
+class Reported(unittest.TestCase):
+    def test_a_sentence(self):
+        self.assertEqual(found('auto l = std::make_shared<UltraCanvasLabel>("Select a repository");'),
+                         [(1, '"Select a repository"')])
+        self.assertEqual(found('l = std::make_shared<UltraCanvas::UltraCanvasLabel>( "Name:" );'),
+                         [(1, '"Name:"')])
+
+    def test_a_translated_text(self):
+        # The form the one caller in the tree had, and the one a text meant
+        # for a person takes.
+        self.assertEqual(found('l = CreateLabel(Tr("On the right side"));'), [(1, 'Tr("On the right side")')])
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>(TrF("{0} files", n));'),
+                         [(1, 'TrF("{0} files", n)')])
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>(UltraCanvas::Tr("Save"));'),
+                         [(1, 'UltraCanvas::Tr("Save")')])
 
     def test_across_lines(self):
-        # Texter's status bar was written this way, and a line-by-line search missed it.
-        source = 'statusLabel = std::make_shared<UltraCanvasLabel>(\n        "StatusBar"\n);\n'
-        self.assertEqual(found(source), [(2, "StatusBar")])
+        source = 'hint = std::make_shared<UltraCanvasLabel>(\n        Tr("Pick a folder")\n);\n'
+        self.assertEqual(found(source), [(2, 'Tr("Pick a folder")')])
 
     def test_other_forms(self):
-        self.assertEqual(found('auto* l = new UltraCanvasLabel("InfoTitle");'), [(1, "InfoTitle")])
-        self.assertEqual(found('UltraCanvasLabel title("HeaderTitle");'), [(1, "HeaderTitle")])
-        self.assertEqual(found('UltraCanvasLabel title{"HeaderTitle"};'), [(1, "HeaderTitle")])
-        self.assertEqual(found('auto l = CreateLabel("InfoText1");'), [(1, "InfoText1")])
+        self.assertEqual(found('auto* l = new UltraCanvasLabel("Two words");'), [(1, '"Two words"')])
+        self.assertEqual(found('UltraCanvasLabel title("Two words");'), [(1, '"Two words"')])
+        self.assertEqual(found('UltraCanvasLabel title{"Two words"};'), [(1, '"Two words"')])
+        self.assertEqual(found('row->AddChild(std::make_unique<UltraCanvasLabel>("Two words"));'),
+                         [(1, '"Two words"')])
+        # A base-class initialiser hands the label its one string too.
+        self.assertEqual(found('Caption() : UltraCanvasLabel(Tr("Caption")) {}'), [(1, 'Tr("Caption")')])
 
-    def test_checkbox(self):
-        # The same pair of constructors: one string is the box's text.
-        self.assertEqual(found('auto c = std::make_shared<UltraCanvasCheckbox>("WrapLines");'),
-                         [(1, "WrapLines")])
-        self.assertEqual(found('auto c = CreateCheckbox("wrap_lines");'), [(1, "wrap_lines")])
+    def test_literals_side_by_side(self):
+        self.assertEqual(found('l = CreateLabel("Two "\n                "words");'), [(1, '"Two words"')])
 
     def test_every_one_in_a_file(self):
-        source = ('a = std::make_shared<UltraCanvasLabel>("FirstLabel");\n'
-                  'b = std::make_shared<UltraCanvasLabel>("First", "");\n'
-                  'c = std::make_shared<UltraCanvasLabel>("SecondLabel");\n')
-        self.assertEqual(found(source), [(1, "FirstLabel"), (3, "SecondLabel")])
+        source = ('a = std::make_shared<UltraCanvasLabel>(Tr("First"));\n'
+                  'b = std::make_shared<UltraCanvasLabel>("First", Tr("First"));\n'
+                  'c = std::make_shared<UltraCanvasLabel>("A second one");\n')
+        self.assertEqual(found(source), [(1, 'Tr("First")'), (3, '"A second one"')])
 
 
 class NotReported(unittest.TestCase):
-    def test_identifier_and_text(self):
-        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("CountLabel", "");'), [])
-        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("InfoTitle", Tr("About"));'), [])
-        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("IconLabel", 0, 0, 48, 48);'), [])
-        self.assertEqual(found('l = CreateLabel("StatusLabel", 120, 20, "Ready");'), [])
-
-    def test_words(self):
+    def test_a_name(self):
+        # One string is the identifier, and these are identifiers.
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("CountLabel");'), [])
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>(\n    "StatusBar"\n);'), [])
+        self.assertEqual(found('l = CreateLabel("uai-hf-status");'), [])
         self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("Ready");'), [])
-        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("Select a repository");'), [])
-        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>(Tr("CountLabel"));'), [])
-        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>(name);'), [])
         self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>();'), [])
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("");'), [])
+
+    def test_identifier_and_text(self):
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("InfoTitle", Tr("About"));'), [])
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("", Tr("Select a repository"));'), [])
+        self.assertEqual(found('l = CreateLabel("StatusLabel", 120, 20, "Ready to go");'), [])
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("Hint", TrF("{0} of {1}", a, b));'), [])
+
+    def test_what_it_cannot_read(self):
+        # A variable or a call may hold either; the framework says so at run time.
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>(name);'), [])
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>(MakeId("text"));'), [])
+        self.assertEqual(found('label = CreateLabel(identifier);'), [])
+
+    def test_declarations(self):
+        # The header's own constructors and factories are not constructions.
+        self.assertEqual(found('explicit UltraCanvasLabel(const std::string &identifier = "")'), [])
+        self.assertEqual(found('inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &identifier) {'), [])
 
     def test_other_elements(self):
-        # A container's one string IS its identifier.
-        self.assertEqual(found('c = std::make_shared<UltraCanvasContainer>("ContentSection");'), [])
-        self.assertEqual(found('b = std::make_shared<UltraCanvasButton>("OkButton", "OK");'), [])
-        self.assertEqual(found('auto t = std::make_shared<UltraCanvasLabelStyle>("BodyText");'), [])
+        self.assertEqual(found('c = std::make_shared<UltraCanvasContainer>("Content Section");'), [])
+        self.assertEqual(found('b = std::make_shared<UltraCanvasButton>("OkButton", Tr("OK"));'), [])
+        self.assertEqual(found('auto t = std::make_shared<UltraCanvasLabelStyle>(Tr("Body"));'), [])
 
     def test_comments(self):
-        self.assertEqual(found('// l = std::make_shared<UltraCanvasLabel>("CountLabel");'), [])
-        self.assertEqual(found('/* old:\n l = std::make_shared<UltraCanvasLabel>("CountLabel");\n*/'), [])
+        self.assertEqual(found('// l = std::make_shared<UltraCanvasLabel>(Tr("Old"));'), [])
+        self.assertEqual(found('/* old:\n l = std::make_shared<UltraCanvasLabel>("Two words");\n*/'), [])
         # A comment marker inside a string is not a comment.
-        self.assertEqual(found('url = "https://x//y"; l = std::make_shared<UltraCanvasLabel>("CountLabel");'),
-                         [(1, "CountLabel")])
+        self.assertEqual(found('url = "https://x//y"; l = std::make_shared<UltraCanvasLabel>("Two words");'),
+                         [(1, '"Two words"')])
 
-    def test_said_to_be_text(self):
-        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("UltraCanvas");   '
-                               '// label-text-ok: the product\'s name'), [])
-        self.assertEqual(found('// label-text-ok: a file name, shown as it is\n'
-                               'l = std::make_shared<UltraCanvasLabel>("config.json");'), [])
+    def test_said_to_be_the_identifier(self):
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("row 12");   '
+                               '// label-identifier-ok: the list names its rows this way'), [])
+        self.assertEqual(found('// label-identifier-ok: an id from the document, as it is\n'
+                               'l = std::make_shared<UltraCanvasLabel>("section 2");'), [])
         # The marker needs a reason, and belongs to its own construction.
-        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("config.json");   // label-text-ok:'),
-                         [(1, "config.json")])
-        self.assertEqual(found('// label-text-ok: this one\n'
-                               'a = std::make_shared<UltraCanvasLabel>("config.json");\n'
-                               'b = std::make_shared<UltraCanvasLabel>("other.json");'),
-                         [(3, "other.json")])
-        self.assertEqual(found('a = std::make_shared<UltraCanvasLabel>("config.json");   // label-text-ok: a file\n'
-                               'b = std::make_shared<UltraCanvasLabel>("other.json");'),
-                         [(2, "other.json")])
+        self.assertEqual(found('l = std::make_shared<UltraCanvasLabel>("row 12");   // label-identifier-ok:'),
+                         [(1, '"row 12"')])
+        self.assertEqual(found('// label-identifier-ok: this one\n'
+                               'a = std::make_shared<UltraCanvasLabel>("row 12");\n'
+                               'b = std::make_shared<UltraCanvasLabel>("row 13");'),
+                         [(3, '"row 13"')])
+        self.assertEqual(found('a = std::make_shared<UltraCanvasLabel>("row 12");   // label-identifier-ok: a row\n'
+                               'b = std::make_shared<UltraCanvasLabel>("row 13");'),
+                         [(2, '"row 13"')])
 
 
 class Repository(unittest.TestCase):

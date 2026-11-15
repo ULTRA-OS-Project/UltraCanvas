@@ -116,8 +116,7 @@ namespace UltraCanvas {
                 .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                              .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        // (identifier, text): one string alone would be the label's text.
-        iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel", "");
+        iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel");
         SetTypeIconMark(*iconLabel, GetTypeIcon(), style.iconFontSize);
         iconLabel->SetFontSize(style.iconFontSize);
         iconLabel->SetFontWeight(FontWeight::Bold);
@@ -1157,7 +1156,6 @@ namespace UltraCanvas {
         // own above it; otherwise the input label is that message already.
         // It wraps like the message does.
         if (HasOwnMessage() && !inputConfig.inputLabel.empty()) {
-            // (identifier, text): the one-argument constructor takes the text.
             inputLabel = std::make_shared<UltraCanvasLabel>("InputLabel", inputConfig.inputLabel);
             inputLabel->SetFontSize(style.messageFontSize);
             inputLabel->SetWrap(TextWrap::WrapWord);

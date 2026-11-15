@@ -1,54 +1,48 @@
 #!/usr/bin/env python3
-"""Flag a label built from one string that reads as an identifier.
+"""Flag a label built from one string that is its text.
 
-`UltraCanvasLabel` has four constructors, and the one that takes a single
-string takes the label's TEXT:
+An element built from one string takes it as its IDENTIFIER:
 
-    UltraCanvasLabel(identifier, x, y, w, h, text = "");
-    UltraCanvasLabel(identifier, w, h, text = "");
-    UltraCanvasLabel(identifier, text);
-    explicit UltraCanvasLabel(text = "");          // one string = the text
+    std::make_shared<UltraCanvasContainer>("ContentSection");
+    std::make_shared<UltraCanvasLabel>("CountLabel");          // named, no text yet
 
-`UltraCanvasContainer`'s single-string constructor is the other way round -
-it takes the identifier - so `make_shared<UltraCanvasContainer>("Row")` names
-a container, and the same line with a label
+and the text, where the element has one, comes second or from SetText:
 
-    countLabel = std::make_shared<UltraCanvasLabel>("CountLabel");
+    std::make_shared<UltraCanvasLabel>("InfoTitle", Tr("About"));
+    std::make_shared<UltraCanvasLabel>("", Tr("Select a repository"));   // no name
 
-makes an unnamed label that says "CountLabel". Seven places had written
-that by 2026-11, the framework's own dialog icon among them. None showed,
-because each set the real text on the next line; but the label had no
-identifier, so nothing could find it by name (`FindChildById`, a test, a
-layout dump), and each was one deleted `SetText` away from showing its own
-variable name to the user. `UltraCanvasCheckbox` has the same pair of
-constructors.
-
-What this reports:
-
-  label-identifier
-      A label or checkbox - `make_shared<UltraCanvasLabel>(...)`,
-      `make_unique`, `new`, a declared `UltraCanvasLabel name(...)`,
-      `CreateLabel(...)`, and the same for `UltraCanvasCheckbox` /
-      `CreateCheckbox` - built from exactly one string literal that reads as
-      a name rather than as words: one token with a capital inside it
-      ("IconLabel", "countLabel"), a digit ("InfoText1"), or parts joined by
-      "-", "_" or "." ("uai-hf-status").
-
-Write the identifier and the text:
-
-    countLabel = std::make_shared<UltraCanvasLabel>("CountLabel", "");
-    title      = std::make_shared<UltraCanvasLabel>("InfoTitle", Tr("About"));
-
-A label that needs no name takes its text alone, and text a person reads
-goes through `Tr`, so it is not a bare literal and is never reported:
+`UltraCanvasLabel` was the exception until 2026-11: its one string was the
+label's text. That read like every other element and meant the opposite, and
+eleven callers in this repository had handed it a name - the dialog's
+severity icon, Texter's status bar, three labels of the HTML builder, the
+framework's own LabelBuilder - against one that handed it text. The
+constructor now takes the identifier, which made those eleven right; what
+it cannot do is refuse the old use, because both are one string. So
 
     auto hint = std::make_shared<UltraCanvasLabel>(Tr("Select a repository"));
 
-A single plain word ("Ready", "OK") is taken for text. A one-string label
-whose text really is shaped like a name - a product's ("UltraCanvas"), a
-file's ("config.json") - says so on its line or the line above:
+still compiles, and makes a label that shows nothing and is named after a
+sentence. This check is what refuses it.
 
-    // label-text-ok: <why this one string is the label's text>
+What this reports:
+
+  one-string-text
+      A label - `make_shared<UltraCanvasLabel>(...)`, `make_unique`, `new`,
+      a declared `UltraCanvasLabel name(...)`, a temporary, a base-class
+      initialiser, `CreateLabel(...)` - built from exactly one argument
+      that reads as text: a `Tr` / `TrF` / `TrN` / `TrC` call, or a string
+      literal that is not a name (a space in it, a colon after it, a
+      sentence).
+
+A one-string literal that is a name - "CountLabel", "uai-hf-status",
+"Ready" - is the identifier it says it is and is not reported. Neither is a
+variable: the check cannot see what it holds. For those the framework says
+so at run time, on debugOutput (`WarnIfIdentifierReadsAsText`).
+
+An identifier that really does read as text says so on its line, or alone
+on the line above:
+
+    // label-identifier-ok: <why this one string is the identifier>
 
 Usage:
     python3 scripts/check_label_identifiers.py [--strict] [paths...]
@@ -87,38 +81,37 @@ SEARCH_ROOTS = [
 SKIP_PARTS = {"third_party", "3rdparty", "build", "cmake-build-debug"}
 SOURCE_SUFFIXES = {".cpp", ".h", ".hpp", ".mm"}
 
-EXEMPT_RE = re.compile(r"//\s*label-text-ok\s*:\s*\S")
+EXEMPT_RE = re.compile(r"//\s*label-identifier-ok\s*:\s*\S")
 
-# The elements whose single-string constructor takes the text.
-ELEMENTS = r"(?:UltraCanvas::)?UltraCanvas(?:Label|Checkbox)"
-# One string literal and nothing else between the parentheses (or braces).
-ONE_LITERAL = r'\s*"(?P<text>(?:[^"\\\n]|\\.)*)"\s*'
-CONSTRUCTION_RES = [
-    # std::make_shared<UltraCanvasLabel>("X") / make_unique
-    re.compile(r"\bmake_(?:shared|unique)\s*<\s*" + ELEMENTS + r"\s*>\s*\(" + ONE_LITERAL + r"\)"),
-    # new UltraCanvasLabel("X")
-    re.compile(r"\bnew\s+" + ELEMENTS + r"\s*[({]" + ONE_LITERAL + r"[)}]"),
-    # UltraCanvasLabel name("X") / name{"X"}
-    re.compile(r"\b" + ELEMENTS + r"\s+\w+\s*[({]" + ONE_LITERAL + r"[)}]"),
-    # CreateLabel("X") / CreateCheckbox("X")
-    re.compile(r"\bCreate(?:Label|Checkbox)\s*\(" + ONE_LITERAL + r"\)"),
-]
+# The elements that have a text, and whose one string is nevertheless the
+# identifier - the ones a text is handed to by mistake.
+ELEMENTS = ("Label",)
+_ELEMENT = r"(?:UltraCanvas::)?UltraCanvas(?:" + "|".join(ELEMENTS) + r")"
+_FACTORY = r"Create(?:" + "|".join(ELEMENTS) + r")"
 
-# One token: letters and digits, in parts joined by "-", "_" or ".".
-TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:[-_.][A-Za-z0-9]+)*")
+# Everything that constructs one, up to and including the opening bracket.
+CONSTRUCTION_RE = re.compile(
+    r"(?:"
+    r"\bmake_(?:shared|unique)\s*<\s*" + _ELEMENT + r"\s*>"     # make_shared<UltraCanvasLabel>(
+    r"|\bnew\s+" + _ELEMENT +                                   # new UltraCanvasLabel(
+    r"|\b" + _ELEMENT + r"\s+\w+"                               # UltraCanvasLabel name(
+    r"|\b" + _ELEMENT +                                         # UltraCanvasLabel( - a temporary, a base initialiser
+    r"|\b" + _FACTORY +                                         # CreateLabel(
+    r")\s*(?P<open>[({])"
+)
+
+# A name: letters and digits, in parts joined by the marks identifiers are
+# written with.
+NAME_RE = re.compile(r"[A-Za-z0-9]+(?:[-_.:/#][A-Za-z0-9]+)*")
+# One string literal, or several written side by side.
+LITERAL_RE = re.compile(r'(?:"(?:[^"\\\n]|\\.)*"\s*)+')
+# A call that returns text for a person: Tr("Save"), UltraCanvas::TrF(...).
+TRANSLATED_RE = re.compile(r"(?:UltraCanvas::)?Tr[FNC]?\s*\(")
 
 
-def reads_as_identifier(text: str) -> bool:
-    """Whether a label's one string looks like a name rather than words."""
-    if not TOKEN_RE.fullmatch(text):
-        return False        # spaces, punctuation, another script: words
-    if re.search(r"[-_.]", text):
-        return True         # uai-hf-status, count_label, page.title
-    if re.search(r"\d", text):
-        return True         # InfoText1
-    # A capital after a lower-case letter: IconLabel, countLabel. "OK",
-    # "Ready" and "PDF" have none.
-    return re.search(r"[a-z][A-Z]", text) is not None
+def reads_as_text(literal: str) -> bool:
+    """Whether a string's content is words rather than a name."""
+    return literal != "" and NAME_RE.fullmatch(literal) is None
 
 
 def strip_comments(src: str) -> str:
@@ -155,41 +148,96 @@ def strip_comments(src: str) -> str:
     return "".join(out)
 
 
+def arguments(code: str, open_at: int) -> list[tuple[int, str]] | None:
+    """The arguments of the call whose bracket opens at `open_at`, each with
+    where it starts; None when the bracket never closes."""
+    depth = 0
+    parts: list[tuple[int, str]] = []
+    start = open_at + 1
+    i, n = open_at, len(code)
+    while i < n:
+        c = code[i]
+        if c == '"' or c == "'":
+            j = i + 1
+            while j < n and code[j] != c:
+                if code[j] == "\\":
+                    j += 1
+                j += 1
+            i = j
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth == 0:
+                parts.append((start, code[start:i]))
+                break
+        elif c == "," and depth == 1:
+            parts.append((start, code[start:i]))
+            start = i + 1
+        i += 1
+    else:
+        return None
+    out = []
+    for at, text in parts:
+        lead = len(text) - len(text.lstrip())
+        if text.strip():
+            out.append((at + lead, text.strip()))
+    return out
+
+
+def literal_content(argument: str) -> str | None:
+    """What a string-literal argument says; None when it is not one."""
+    if not LITERAL_RE.fullmatch(argument):
+        return None
+    pieces = re.findall(r'"((?:[^"\\\n]|\\.)*)"', argument)
+    return "".join(pieces).replace('\\"', '"').replace("\\n", "\n").replace("\\t", "\t")
+
+
 @dataclass(frozen=True)
 class Finding:
     path: Path
     line: int
-    text: str
+    shown: str
 
     def __str__(self) -> str:
         try:
-            shown = self.path.relative_to(REPO_ROOT)
+            where = self.path.relative_to(REPO_ROOT)
         except ValueError:
-            shown = self.path
-        return (f'{shown}:{self.line}: label-identifier  "{self.text}" is this '
-                f'element\'s text, not its identifier - write ("{self.text}", <text>)')
+            where = self.path
+        return (f"{where}:{self.line}: one-string-text  {self.shown} is this label's "
+                f'identifier, not its text - write ("", <text>) or (<identifier>, <text>)')
 
 
 def check_source(src: str, path: Path) -> list[Finding]:
     lines = src.splitlines()
     code = strip_comments(src)
     findings: dict[int, Finding] = {}
-    for construction in CONSTRUCTION_RES:
-        for match in construction.finditer(code):
-            text = match.group("text")
-            if not reads_as_identifier(text):
+    for match in CONSTRUCTION_RE.finditer(code):
+        args = arguments(code, match.start("open"))
+        if args is None or len(args) != 1:
+            continue
+        at, argument = args[0]
+        content = literal_content(argument)
+        if content is not None:
+            if not reads_as_text(content):
                 continue
-            line = code.count("\n", 0, match.start("text")) + 1
-            first = code.count("\n", 0, match.start()) + 1
-            # The marker sits on a line of the construction, or alone on the
-            # line above it (a marker that trails the statement before
-            # belongs to that statement).
-            marked = any(EXEMPT_RE.search(lines[n - 1])
-                         for n in range(first, line + 1) if n <= len(lines))
-            if not marked and first >= 2 and lines[first - 2].lstrip().startswith("//"):
-                marked = EXEMPT_RE.search(lines[first - 2]) is not None
-            if not marked:
-                findings.setdefault(match.start("text"), Finding(path, line, text))
+            shown = '"' + (content if len(content) <= 40 else content[:37] + "...") + '"'
+        elif TRANSLATED_RE.match(argument):
+            shown = argument if len(argument) <= 42 else argument[:39] + "..."
+            shown = " ".join(shown.split())
+        else:
+            continue        # a variable, a call: not something this can read
+        first = code.count("\n", 0, match.start()) + 1
+        line = code.count("\n", 0, at) + 1
+        # The marker sits on a line of the construction, or alone on the
+        # line above it (a marker that trails the statement before belongs
+        # to that statement).
+        marked = any(EXEMPT_RE.search(lines[n - 1])
+                     for n in range(first, line + 1) if n <= len(lines))
+        if not marked and first >= 2 and lines[first - 2].lstrip().startswith("//"):
+            marked = EXEMPT_RE.search(lines[first - 2]) is not None
+        if not marked:
+            findings.setdefault(at, Finding(path, line, shown))
     return [findings[k] for k in sorted(findings)]
 
 
@@ -198,8 +246,7 @@ def check_file(path: Path) -> list[Finding]:
         src = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
-    if "UltraCanvasLabel" not in src and "UltraCanvasCheckbox" not in src and \
-            "CreateLabel" not in src and "CreateCheckbox" not in src:
+    if not any(("UltraCanvas" + e) in src or ("Create" + e) in src for e in ELEMENTS):
         return []
     return check_source(src, path)
 
@@ -243,13 +290,13 @@ def main() -> int:
 
     if findings:
         print(
-            f"\n{len(findings)} label(s) built from one string that reads as an "
-            f"identifier, in {scanned} files.\nA label's single-string constructor "
-            "takes its TEXT (a container's takes the identifier), so these are "
-            "unnamed labels that say their own variable name. Write the identifier "
-            'and the text - make_shared<UltraCanvasLabel>("CountLabel", "") - or, '
-            "where the one string really is the text, say so on its line:\n"
-            "    // label-text-ok: <why this one string is the label's text>"
+            f"\n{len(findings)} element(s) built from one string that is text, in "
+            f"{scanned} files.\nOne string is an element's IDENTIFIER, so these show "
+            "nothing and are named after their words. Put the text second - "
+            'make_shared<UltraCanvasLabel>("", Tr("...")), or give the element a name: '
+            '("InfoTitle", Tr("...")). If the one string really is an identifier, say '
+            "so on its line:\n"
+            "    // label-identifier-ok: <why this one string is the identifier>"
         )
         return 1 if args.strict else 0
 

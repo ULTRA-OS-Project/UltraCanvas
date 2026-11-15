@@ -91,9 +91,6 @@ namespace UltraCanvas {
         UltraCanvasCheckbox(const std::string& identifier, const std::string& labelText)
             : UltraCanvasCheckbox(identifier, -1, -1, -1, -1, labelText) {}
 
-        // One string alone is the box's TEXT, and it has no identifier (as
-        // UltraCanvasLabel; a container's one string is its identifier). A
-        // named box takes both: ("WrapLines", Tr("Wrap long lines")).
         explicit UltraCanvasCheckbox(const std::string& labelText = "")
             : UltraCanvasCheckbox("", -1, -1, -1, -1, labelText) {}
 
