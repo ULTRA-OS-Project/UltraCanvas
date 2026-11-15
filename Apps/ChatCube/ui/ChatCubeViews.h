@@ -4,6 +4,8 @@
 // separators, delivery ticks). Models adapt UltraIM data to
 // UltraCanvasListView; delegates paint one row's content - the list view
 // paints selection, hover and scrolling.
+// Version: 0.2.6 - a file on its way shows its progress (SetTransfer); a sound file is played as audio
+//                  (IsAudioMessage), with a note; the file name measured as drawn (bold)
 // Version: 0.2.5 - a reply's quote in its bubble (filled from the rows shown when the provider gave
 //                  none), "edited" beside the time, a voice message's play / pause mark (SetPlaying),
 //                  FindMessage
@@ -43,6 +45,11 @@ std::string FormatDuration(double seconds);
 std::string FormatSize(int64_t bytes);
 // A photo, a video or a sticker: shown as a picture in its bubble.
 bool HasPicture(const UltraIMMessage& message);
+// A file that is sound, by its name: .mp3, .ogg, .opus, .m4a, .flac, .wav, ...
+bool IsAudioFileName(const std::string& name);
+// A message ChatCube plays as audio in its bubble: a voice message, or a
+// sound file sent as a file.
+bool IsAudioMessage(const UltraIMMessage& message);
 // How many are in a group: memberCount where the network lists only a first
 // page of them (a big Telegram supergroup), else everyone in memberIds.
 long long MemberCount(const UltraIMConversation& conversation);
@@ -81,6 +88,17 @@ public:
     // A message shown, by its id or its client id; nullptr when it is not.
     const UltraIMMessage* FindMessage(const std::string& id) const;
 
+    // A file on its way, out (ours) or in: how far, by the message's client
+    // id. Its bubble shows a bar until ClearTransfer.
+    struct Transfer {
+        int64_t done = 0;
+        int64_t total = 0;
+        bool    upload = true;
+    };
+    void SetTransfer(const std::string& clientId, const Transfer& transfer);
+    void ClearTransfer(const std::string& clientId);
+    const Transfer* TransferOf(const std::string& clientId) const;
+
     const std::vector<MessageRow>& Rows() const { return rows_; }
 
     int GetRowCount() const override { return static_cast<int>(rows_.size()); }
@@ -97,6 +115,7 @@ private:
     void ResolveReply(UltraIMMessage& message) const;
 
     std::vector<MessageRow> rows_;
+    std::map<std::string, Transfer> transfers_;
     bool isGroup_ = false;
 };
 

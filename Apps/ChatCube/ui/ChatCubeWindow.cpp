@@ -1,5 +1,8 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.4 - sending in the background, a file's progress in its bubble, a video's preview picture
+//                  and length at once, songs played in their bubble, videos played in the chat, filter
+//                  chips over the chat (pictures, videos, audio, files, links)
 // Version: 0.3.3 - Reply and Edit in a message's menu (Edit also by a double click), a bar over the
 //                  field for either; the search field over the chat; voice messages recorded with the
 //                  microphone and played in their bubble; video messages recorded over the field
@@ -42,6 +45,8 @@
 #include "UltraCanvasAudioPlayer.h"
 #include "UltraCanvasAudioRecorder.h"
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasVideoFileInfo.h"
+#include "UltraCanvasVideoPlayerElement.h"
 #include "UltraCanvasVideoRecorderElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
@@ -189,6 +194,11 @@ ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId, Sett
 }
 
 ChatCubeWindow::~ChatCubeWindow() {
+    // Nothing comes back to the window from here on; what is still queued
+    // to send goes, then the sending thread ends.
+    *alive_ = false;
+    sendQueue_.reset();
+    previewQueue_.reset();
     if (themeHandler_) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     // The tiles go with the window: no picture may be pushed into them after.
     if (!callId_.empty()) UltraIM_SetCallVideoSinks(providerId_, callId_, nullptr, nullptr);
@@ -735,6 +745,30 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     searchRow_->AddChild(searchClear);
     searchRow_->SetVisible(false);
     pane->AddChild(searchRow_);
+    // Under it, the kinds: the list shows only pictures, videos, sound,
+    // files or messages with a link (with the words, when some are typed).
+    auto filterRow = MakeRow("cc-filter-row", 6);
+    filterRow->SetPadding(0, 14, 6, 14);
+    OnLook(filterRow, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().panel);
+        c.SetBorderBottom(1, L().line);
+    });
+    const std::pair<UltraIMSearchKind, std::string> kinds[] = {
+        {UltraIMSearchKind::AnyKind, Tr("All")},      {UltraIMSearchKind::Images, Tr("Pictures")},
+        {UltraIMSearchKind::Videos, Tr("Videos")},    {UltraIMSearchKind::Audio, Tr("Audio")},
+        {UltraIMSearchKind::Files, Tr("Files")},      {UltraIMSearchKind::Links, Tr("Links")}};
+    for (const auto& [kind, words] : kinds) {
+        auto chip = MakeButton("cc-filter-" + std::to_string(static_cast<int>(kind)), words, 82,
+                               kind == UltraIMSearchKind::AnyKind);
+        chip->size.height = CSSLayout::Dimension::Px(26);
+        chip->SetOnClick([this, k = kind]() { SetSearchKind(k); });
+        filterRow->AddChild(chip);
+        filterChips_.push_back({kind, chip});
+    }
+    // Shown with the search row (OpenConversation / CloseConversationView).
+    filterRow->SetVisible(false);
+    filterRow_ = filterRow;
+    pane->AddChild(filterRow);
 
     // ----- messages -----
     auto empty = std::make_shared<UltraCanvasContainer>("cc-empty-box");
@@ -793,12 +827,12 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         Rect2Di media;
         if (!bubbles_->MediaRect(messages_.get(), row, media) || !media.Contains(posInCell)) return;
         const auto& rows = messages_->Rows();
-        // A voice message plays in its bubble; anything else opens.
-        if (row >= 0 && row < static_cast<int>(rows.size()) &&
-            rows[static_cast<size_t>(row)].message.type == UltraIMMessageType::Audio)
-            ToggleVoicePlayback(row);
-        else
-            OpenAttachment(row);
+        // Sound plays in its bubble, a video in the chat; anything else opens.
+        if (row < 0 || row >= static_cast<int>(rows.size())) return;
+        const UltraIMMessage& clicked = rows[static_cast<size_t>(row)].message;
+        if (IsAudioMessage(clicked)) ToggleVoicePlayback(row);
+        else if (clicked.type == UltraIMMessageType::Video) PlayVideoInChat(row);
+        else OpenAttachment(row);
     };
     // A double click on one of our own messages changes it.
     messageList_->onCellDoubleClicked = [this](int row, int, const Point2Di&) {
@@ -812,6 +846,32 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         ShowMessageMenu(row, event.pointerWindow.x, event.pointerWindow.y);
     };
     pane->AddChild(messageList_);
+
+    // ----- a video played in the chat: a player over the field, and a x -----
+    videoPlayerPanel_ = std::make_shared<UltraCanvasContainer>("cc-video-player-panel");
+    videoPlayerPanel_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    videoPlayerPanel_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    videoPlayerPanel_->SetPadding(8, 14, 10, 14);
+    OnLook(videoPlayerPanel_, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().panel);
+        c.SetBorderTop(1, L().line);
+    });
+    auto playerBar = MakeRow("cc-video-player-bar", 8);
+    videoPlayerTitle_ = MakeLabel("cc-video-player-title", "", 10.5f);
+    videoPlayerTitle_->SetFontWeight(FontWeight::Bold);
+    videoPlayerTitle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    playerBar->AddChild(videoPlayerTitle_);
+    auto playerClose = MakeIconButton("cc-video-player-close", "close", "", kIconButton, false, true);
+    playerClose->SetTooltip(Tr("Close the video"));
+    playerClose->SetOnClick([this]() { CloseVideoPlayer(); });
+    playerBar->AddChild(playerClose);
+    videoPlayerPanel_->AddChild(playerBar);
+    videoPlayer_ = CreateVideoPlayer("cc-video-player", 0, 0, 560, 315);
+    videoPlayer_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    videoPlayer_->size.height = CSSLayout::Dimension::Px(315);
+    videoPlayerPanel_->AddChild(videoPlayer_);
+    videoPlayerPanel_->SetVisible(false);
+    pane->AddChild(videoPlayerPanel_);
 
     // ----- a video message: the camera over the field while it is recorded -----
     videoNotePanel_ = MakeRow("cc-video-note", 12);
@@ -1756,9 +1816,11 @@ void ChatCubeWindow::CloseConversationView() {
     FinishVoiceRecording(false);
     CloseVideoRecorder(false);
     StopVoicePlayback();
+    CloseVideoPlayer();
     ClearComposerMode();
     ClearSearch(false);
     searchRow_->SetVisible(false);
+    filterRow_->SetVisible(false);
     activeConversation_.clear();
     messages_->Clear();
     messageList_->SetVisible(false);
@@ -2099,6 +2161,7 @@ void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
         FinishVoiceRecording(false);
         CloseVideoRecorder(false);
         StopVoicePlayback();
+        CloseVideoPlayer();
         ClearComposerMode();
         ClearSearch(false);
     }
@@ -2113,6 +2176,7 @@ void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
     emptyHint_->SetVisible(false);
     messageList_->SetVisible(true);
     searchRow_->SetVisible(true);
+    filterRow_->SetVisible(true);
     fillingList_ = true;
     const int row = conversations_->FindRow(conversationId);
     if (row >= 0) conversationList_->GetSelection()->Select(row);
@@ -2136,6 +2200,7 @@ void ChatCubeWindow::LoadMessages() {
         if (!r) SetStatus(TrF("Could not load the messages: {0}", r.message));
         messages_->SetMessages(list);
         ScrollToEnd();
+        for (const UltraIMMessage& m : list) EnsureVideoPreview(m);
     });
 }
 
@@ -2212,7 +2277,8 @@ void ChatCubeWindow::SendCurrentMessage() {
         return;
     }
     // What is sent shows in the whole chat, not among a search's matches.
-    if (!searchText_.empty() && (!text.empty() || !staged_.empty())) ClearSearch(true);
+    if ((!searchText_.empty() || shownKind_ != UltraIMSearchKind::AnyKind) && (!text.empty() || !staged_.empty()))
+        ClearSearch(true);
     const std::string replyTo = replyTo_.messageId;
     if (staged_.empty()) {
         if (!text.empty()) {
@@ -2271,11 +2337,17 @@ void ChatCubeWindow::SendText(const std::string& text, const std::string& replyT
     UltraIMSendOptions options;
     options.clientMessageId = message.clientMessageId;
     options.replyToMessageId = replyTo;
-    const UltraIMResult r = UltraIM_SendText(activeProvider_, activeConversation_, text, options);
-    if (!r) {
-        messages_->UpdateStatus(message.clientMessageId, UltraIMDeliveryStatus::Failed);
-        SetStatus(TrF("Not sent: {0}", r.message));
-    }
+    // In the background, behind what was sent before it.
+    const std::string provider = activeProvider_;
+    const std::string conversation = activeConversation_;
+    sendQueue_->Post([this, provider, conversation, text, options]() {
+        const UltraIMResult r = UltraIM_SendText(provider, conversation, text, options);
+        if (r) return;
+        OnUI([this, id = options.clientMessageId, why = r.message]() {
+            messages_->UpdateStatus(id, UltraIMDeliveryStatus::Failed);
+            SetStatus(TrF("Not sent: {0}", why));
+        });
+    });
 }
 
 void ChatCubeWindow::AttachFile() {
@@ -2521,7 +2593,9 @@ void ChatCubeWindow::SendAttachment(const std::string& path, const std::string& 
     }
     const UltraIMMessageType kind = voice ? UltraIMMessageType::Audio : AttachmentKind(path);
 
-    // Optimistic, like a text: the bubble shows the file at once.
+    // Optimistic, like a text: the bubble shows the file at once; what takes
+    // time - a picture's size, a video's preview picture and length - is
+    // found in the background and the bubble follows.
     UltraIMProviderInfo info;
     UltraIM_GetProviderInfo(activeProvider_, info);
     UltraIMMessage message;
@@ -2538,37 +2612,80 @@ void ChatCubeWindow::SendAttachment(const std::string& path, const std::string& 
     message.attachment.fileSizeBytes = static_cast<int64_t>(std::filesystem::file_size(PathFromUtf8(path), ec));
     message.attachment.durationSeconds = seconds;
     message.replyTo.messageId = replyTo;
-    if (IsPictureFile(path)) {
-        // A photo's size, and a drawing's (an SVG goes as a file but shows
-        // as its picture): the bubble lays the picture out from it.
-        UCImagePtr image = UCImage::Get(path);
-        if (image && image->IsValid()) {
-            message.attachment.width = image->GetWidth();
-            message.attachment.height = image->GetHeight();
-        }
-    }
     message.timestampMs = NowMs();
     message.isOwn = true;
     message.deliveryStatus = UltraIMDeliveryStatus::Sending;
     messages_->Upsert(message);
+    // A file of some size shows its bar from the start.
+    if (message.attachment.fileSizeBytes > 256 * 1024)
+        messages_->SetTransfer(message.clientMessageId, {0, message.attachment.fileSizeBytes, true});
     ScrollToEnd();
 
     UltraIMSendOptions options;
     options.clientMessageId = message.clientMessageId;
     options.replyToMessageId = replyTo;
     options.durationSeconds = seconds;
-    UltraIMResult r;
-    UltraIMProviderInfo provider;
-    UltraIM_GetProviderInfo(activeProvider_, provider);
-    if (voice && UltraIM_HasCapability(provider.capabilities, UltraIMCapabilityFlags::VoiceNotes))
-        r = UltraIM_SendVoiceNote(activeProvider_, activeConversation_, path, options);
-    else if (kind == UltraIMMessageType::Image) r = UltraIM_SendImage(activeProvider_, activeConversation_, path, caption, options);
-    else if (kind == UltraIMMessageType::Video) r = UltraIM_SendVideo(activeProvider_, activeConversation_, path, caption, options);
-    else r = UltraIM_SendFile(activeProvider_, activeConversation_, path, options);   // a recording, where no voice messages
-    if (!r) {
-        messages_->UpdateStatus(message.clientMessageId, UltraIMDeliveryStatus::Failed);
-        SetStatus(TrF("Not sent: {0}", r.message));
-    }
+    const std::string provider = activeProvider_;
+    const std::string conversation = activeConversation_;
+    const bool voiceNotes = UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::VoiceNotes);
+    sendQueue_->Post([this, message, provider, conversation, path, caption, kind, voice, voiceNotes, options]() mutable {
+        // What the bubble can show before the file is gone: a picture's size,
+        // a video's preview picture, size and length.
+        UltraIMAttachment found = message.attachment;
+        bool learned = false;
+        if (IsPictureFile(path)) {
+            // GetFresh: not the shared cache, from this thread.
+            UCImagePtr image = UCImage::GetFresh(path);
+            if (image && image->IsValid()) {
+                found.width = image->GetWidth();
+                found.height = image->GetHeight();
+                learned = true;
+            }
+        } else if (kind == UltraIMMessageType::Video) {
+            VideoFileInfo facts;
+            if (ReadVideoFileInfo(path, facts)) {
+                if (facts.duration > 0) found.durationSeconds = facts.duration;
+                found.width = facts.displayWidth > 0 ? facts.displayWidth : facts.width;
+                found.height = facts.displayHeight > 0 ? facts.displayHeight : facts.height;
+                learned = true;
+            }
+            int w = 0, h = 0;
+            // The provider asks for the same preview; it is made once.
+            const std::string preview = UltraIM_MakePreview(path, "video/mp4", 320, w, h);
+            if (!preview.empty()) {
+                found.thumbnailPath = preview;
+                if (found.width <= 0 || found.height <= 0) {
+                    found.width = w;
+                    found.height = h;
+                }
+                learned = true;
+            }
+            if (found.durationSeconds > 0) options.durationSeconds = found.durationSeconds;
+        }
+        if (learned) {
+            OnUI([this, id = message.clientMessageId, found]() {
+                const UltraIMMessage* shown = messages_->FindMessage(id);
+                if (!shown) return;
+                UltraIMMessage updated = *shown;
+                updated.attachment.width = found.width;
+                updated.attachment.height = found.height;
+                updated.attachment.thumbnailPath = found.thumbnailPath;
+                if (found.durationSeconds > 0) updated.attachment.durationSeconds = found.durationSeconds;
+                messages_->Upsert(updated);
+            });
+        }
+        UltraIMResult r;
+        if (voice && voiceNotes) r = UltraIM_SendVoiceNote(provider, conversation, path, options);
+        else if (kind == UltraIMMessageType::Image) r = UltraIM_SendImage(provider, conversation, path, caption, options);
+        else if (kind == UltraIMMessageType::Video) r = UltraIM_SendVideo(provider, conversation, path, caption, options);
+        else r = UltraIM_SendFile(provider, conversation, path, options);   // a recording, where no voice messages
+        if (r) return;
+        OnUI([this, id = message.clientMessageId, why = r.message]() {
+            messages_->ClearTransfer(id);
+            messages_->UpdateStatus(id, UltraIMDeliveryStatus::Failed);
+            SetStatus(TrF("Not sent: {0}", why));
+        });
+    });
 }
 
 void ChatCubeWindow::OpenAttachment(int row) {
@@ -2743,9 +2860,10 @@ void ChatCubeWindow::RunSearch() {
     }
     if (activeConversation_.empty()) return;
     const std::string text = Trim(searchInput_->GetText());
-    if (text == searchText_) return;
+    if (text == searchText_ && searchKind_ == shownKind_) return;
     searchText_ = text;
-    if (text.empty()) {
+    shownKind_ = searchKind_;
+    if (text.empty() && searchKind_ == UltraIMSearchKind::AnyKind) {
         searchInfo_->SetText("");
         LoadMessages();
         return;
@@ -2757,6 +2875,7 @@ void ChatCubeWindow::RunSearch() {
     UltraIMMessageSearch search;
     search.conversationId = conversationId;
     search.text = text;
+    search.kind = searchKind_;
     search.limit = 200;
     // The matches, oldest first like the chat.
     auto show = [this, serial, conversationId](std::vector<UltraIMMessage> found, bool more) {
@@ -2766,6 +2885,7 @@ void ChatCubeWindow::RunSearch() {
         });
         messages_->SetMessages(found);
         ScrollToEnd();
+        for (const UltraIMMessage& m : found) EnsureVideoPreview(m);
         const long long n = static_cast<long long>(found.size());
         searchInfo_->SetText(n == 0 ? Tr("Nothing found")
                              : more ? TrN("the newest {n} found", "the newest {n} found", n)
@@ -2797,8 +2917,10 @@ void ChatCubeWindow::ClearSearch(bool reload) {
         if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(searchTimer_);
         searchTimer_ = 0;
     }
-    const bool searched = !searchText_.empty();
+    const bool searched = !searchText_.empty() || shownKind_ != UltraIMSearchKind::AnyKind;
     searchText_.clear();
+    searchKind_ = shownKind_ = UltraIMSearchKind::AnyKind;
+    for (const auto& [kind, chip] : filterChips_) StyleButton(chip, kind == UltraIMSearchKind::AnyKind);
     if (searchInput_) {
         settingSearch_ = true;
         searchInput_->SetText("");
@@ -2920,7 +3042,7 @@ void ChatCubeWindow::FinishVoiceRecording(bool send) {
         if (!saved) {
             SetStatus(TrF("The recording could not be saved: {0}", recorder->GetLastError()));
         } else {
-            if (!searchText_.empty()) ClearSearch(true);
+            if (!searchText_.empty() || shownKind_ != UltraIMSearchKind::AnyKind) ClearSearch(true);
             SendAttachment(path, std::string(), replyTo_.messageId, seconds, true);
             ClearComposerMode();
         }
@@ -2988,7 +3110,7 @@ void ChatCubeWindow::SendVideoMessage() {
     const std::string path = videoNotePath_;
     const double seconds = videoNoteSeconds_;
     CloseVideoRecorder(true);
-    if (!searchText_.empty()) ClearSearch(true);
+    if (!searchText_.empty() || shownKind_ != UltraIMSearchKind::AnyKind) ClearSearch(true);
     SendAttachment(path, Trim(input_->GetText()), replyTo_.messageId, seconds, false);
     input_->SetText("");
     ClearComposerMode();
@@ -3049,6 +3171,146 @@ void ChatCubeWindow::StopVoicePlayback() {
     playingVoice_.clear();
     if (bubbles_) bubbles_->SetPlaying("");
     if (messageList_) messageList_->RequestRedraw();
+}
+
+void ChatCubeWindow::SetSearchKind(UltraIMSearchKind kind) {
+    searchKind_ = kind;
+    for (const auto& [k, chip] : filterChips_) StyleButton(chip, k == kind);
+    RunSearch();
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::PlayVideoInChat(int row) {
+    const auto& rows = messages_->Rows();
+    if (row < 0 || row >= static_cast<int>(rows.size())) return;
+    const UltraIMMessage m = rows[static_cast<size_t>(row)].message;
+    const std::string title = m.attachment.fileName.empty() ? Tr("Video") : m.attachment.fileName;
+    if (m.attachment.isDownloaded && !m.attachment.localPath.empty()) {
+        ShowVideoPlayer(m.attachment.localPath, title);
+        return;
+    }
+    if (!Settled(m)) return;
+    SetStatus(TrF("Fetching {0}\xE2\x80\xA6", title));
+    const std::string conversation = activeConversation_;
+    UltraIM_DownloadAttachment(activeProvider_, m.conversationId, m.messageId,
+                               [this, title, conversation](const UltraIMResult& r, const UltraIMAttachment& a) {
+        if (!r) {
+            SetStatus(TrF("Could not fetch {0}: {1}", title, r.message));
+            return;
+        }
+        SetStatus("");
+        if (conversation == activeConversation_) ShowVideoPlayer(a.localPath, title);
+    });
+}
+
+void ChatCubeWindow::ShowVideoPlayer(const std::string& path, const std::string& title) {
+    if (path.empty()) return;
+    StopVoicePlayback();
+    CloseVideoRecorder(false);
+    if (!videoPlayer_->LoadFromFile(path)) {
+        // Not a video this build plays itself: the media viewer may.
+        ShowAttachment(path);
+        return;
+    }
+    videoPlayerTitle_->SetText(title);
+    videoPlayerPanel_->SetVisible(true);
+    videoPlayer_->Play();
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::CloseVideoPlayer() {
+    if (!videoPlayerPanel_ || !videoPlayerPanel_->IsVisible()) return;
+    videoPlayer_->Unload();          // lets go of the file
+    videoPlayerPanel_->SetVisible(false);
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::EnsureVideoPreview(const UltraIMMessage& m) {
+    if (m.type != UltraIMMessageType::Video || !m.attachment.thumbnailPath.empty()) return;
+    // Made before (the chat loaded again, a search's results): at once.
+    const auto apply = [this](const std::string& id, const UltraIMAttachment& found) {
+        const UltraIMMessage* shown = messages_->FindMessage(id);
+        if (!shown) return;
+        UltraIMMessage updated = *shown;
+        if (!found.thumbnailPath.empty()) updated.attachment.thumbnailPath = found.thumbnailPath;
+        if (found.width > 0 && found.height > 0) {
+            updated.attachment.width = found.width;
+            updated.attachment.height = found.height;
+        }
+        if (found.durationSeconds > 0 && updated.attachment.durationSeconds <= 0)
+            updated.attachment.durationSeconds = found.durationSeconds;
+        messages_->Upsert(updated);
+    };
+    auto made = previewsMade_.find(m.clientMessageId);
+    if (made != previewsMade_.end()) {
+        apply(m.clientMessageId, made->second);
+        return;
+    }
+    if (!m.attachment.isDownloaded || m.attachment.localPath.empty() || !previewAsked_.insert(m.clientMessageId).second)
+        return;
+    const std::string id = m.clientMessageId;
+    const std::string path = m.attachment.localPath;
+    previewQueue_->Post([this, id, path, apply]() {
+        UltraIMAttachment found;
+        VideoFileInfo facts;
+        if (ReadVideoFileInfo(path, facts)) {
+            found.durationSeconds = facts.duration;
+            found.width = facts.displayWidth > 0 ? facts.displayWidth : facts.width;
+            found.height = facts.displayHeight > 0 ? facts.displayHeight : facts.height;
+        }
+        int w = 0, h = 0;
+        found.thumbnailPath = UltraIM_MakePreview(path, "video/mp4", 320, w, h);
+        if (found.width <= 0 || found.height <= 0) {
+            found.width = w;
+            found.height = h;
+        }
+        if (found.thumbnailPath.empty() && found.width <= 0) return;
+        OnUI([this, id, found, apply]() {
+            previewsMade_[id] = found;
+            apply(id, found);
+        });
+    });
+}
+
+void ChatCubeWindow::OnUI(std::function<void()> f) {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app || !f) return;
+    app->PostToUIThread([alive = alive_, f = std::move(f)]() {
+        if (*alive) f();
+    });
+}
+
+ChatCubeWindow::SendQueue::SendQueue() : thread_([this]() { Run(); }) {}
+
+ChatCubeWindow::SendQueue::~SendQueue() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stop_ = true;
+    }
+    wake_.notify_all();
+    if (thread_.joinable()) thread_.join();
+}
+
+void ChatCubeWindow::SendQueue::Post(std::function<void()> job) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        jobs_.push_back(std::move(job));
+    }
+    wake_.notify_one();
+}
+
+void ChatCubeWindow::SendQueue::Run() {
+    for (;;) {
+        std::function<void()> job;
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            wake_.wait(lock, [this]() { return stop_ || !jobs_.empty(); });
+            if (jobs_.empty()) return;          // stopping, and everything went
+            job = std::move(jobs_.front());
+            jobs_.pop_front();
+        }
+        job();
+    }
 }
 
 void ChatCubeWindow::ShowAttachment(const std::string& path) {
@@ -3511,7 +3773,11 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                 // While a search shows its matches, only what matches joins them.
                 UltraIMMessageSearch shown;
                 shown.text = searchText_;
-                if (searchText_.empty() || UltraIM_MessageMatchesSearch(e.message, shown)) messages_->Upsert(e.message);
+                shown.kind = shownKind_;
+                if ((searchText_.empty() && shownKind_ == UltraIMSearchKind::AnyKind) ||
+                    UltraIM_MessageMatchesSearch(e.message, shown))
+                    messages_->Upsert(e.message);
+                EnsureVideoPreview(e.message);
                 ScrollToEnd();
                 UltraIM_MarkRead(e.providerId, activeConversation_);
                 if (e.contactId == typingContact_) typingContact_.clear();
@@ -3519,8 +3785,14 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             }
             break;
         case UltraIMEventType::MessageDelivered:
-            if (e.conversationId == activeConversation_)
+            if (e.conversationId == activeConversation_) {
                 messages_->UpdateStatus(e.message.clientMessageId, e.deliveryStatus);
+                // A bar that never moved (a network that reports no progress)
+                // goes once the message has gone; one that moves stays until 100 %.
+                const MessageListModel::Transfer* transfer = messages_->TransferOf(e.message.clientMessageId);
+                if (transfer && transfer->done == 0 && e.deliveryStatus != UltraIMDeliveryStatus::Sending)
+                    messages_->ClearTransfer(e.message.clientMessageId);
+            }
             if (e.deliveryStatus == UltraIMDeliveryStatus::Failed) SetStatus(Tr("A message could not be sent."));
             break;
         case UltraIMEventType::ConversationUpdate: {
@@ -3563,8 +3835,28 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             // An edit, or an attachment's picture that has arrived - of a
             // message that is shown (one further back than the history
             // fetched is not appended to the end).
-            if (e.conversationId == activeConversation_ && messages_->Contains(e.message.clientMessageId))
-                messages_->Upsert(e.message);
+            if (e.conversationId == activeConversation_ && messages_->Contains(e.message.clientMessageId)) {
+                // The provider's copy has no picture we made for it: keep ours.
+                UltraIMMessage update = e.message;
+                const UltraIMMessage* shown = messages_->FindMessage(update.clientMessageId);
+                if (shown && update.attachment.thumbnailPath.empty() && !shown->attachment.thumbnailPath.empty()) {
+                    update.attachment.thumbnailPath = shown->attachment.thumbnailPath;
+                    if (update.attachment.width <= 0) update.attachment.width = shown->attachment.width;
+                    if (update.attachment.height <= 0) update.attachment.height = shown->attachment.height;
+                    if (update.attachment.durationSeconds <= 0)
+                        update.attachment.durationSeconds = shown->attachment.durationSeconds;
+                }
+                messages_->Upsert(update);
+                EnsureVideoPreview(update);
+            }
+            break;
+        case UltraIMEventType::TransferProgress:
+            // A file on its way: its bubble's bar, gone once it is all there.
+            if (e.conversationId != activeConversation_) break;
+            if (e.totalBytes <= 0 || e.transferredBytes >= e.totalBytes)
+                messages_->ClearTransfer(e.message.clientMessageId);
+            else
+                messages_->SetTransfer(e.message.clientMessageId, {e.transferredBytes, e.totalBytes, e.isUpload});
             break;
         case UltraIMEventType::MessageDelete:
             if (e.conversationId == activeConversation_) messages_->Remove(e.message.messageId);

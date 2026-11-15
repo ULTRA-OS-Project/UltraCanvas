@@ -1,3 +1,28 @@
+#### 2026-11-16 *0.1.27*
+- **Sending no longer holds up the window.** The message field is free the
+  moment you press send; reading a big file, making a video's preview
+  picture and handing it to the network happen in the background, in the
+  order things were sent.
+- **A file on its way shows how far it is.** A bar under the bubble with
+  *Sending 42 %* or *Receiving 42 %*, on ChatCube Direct, Telegram and
+  Matrix, gone once the file is all there.
+- **Videos show their picture.** Your own video shows its preview picture,
+  size and length as soon as you send it; a video that arrives without one
+  (its sender's ChatCube made none) gets one made here from the file. Where
+  ChatCube is built without VideoFX the picture comes from the video
+  player's own frame grab.
+- **Songs are audio.** An MP3, OGG, M4A, FLAC or WAV file shows a note and a
+  play mark and plays in its bubble (a click again pauses), as a voice
+  message does.
+- **Videos play in the chat.** A click on a video plays it in a player over
+  the message field, with its own controls and a ×; *Open* in its menu
+  still opens it full size.
+- **Filter the chat.** Under the search field: *All*, *Pictures*, *Videos*,
+  *Audio*, *Files*, *Links* - the list shows only that kind (with the words,
+  when some are typed); songs sent as files count as audio, not as files.
+- **A long file name stays inside its bubble.** The name is bold, and the
+  bubble is now measured that way too.
+
 #### 2026-11-15 *0.1.26*
 - **Reply to a message.** A message's right-click menu has **Reply**: a bar
   over the message field says whom you answer and what, with a × (or

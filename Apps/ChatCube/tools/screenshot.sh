@@ -33,6 +33,7 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.7 - the messages a row lower (the filter chips over the chat)
 # Version: 0.1.6 - message-menu.png, reply.png, edit.png, edited.png and search.png: a message's menu,
 #                  a reply, an edit and the search in a chat
 # Version: 0.1.5 - no extra click after the menus: Escape reaches a menu's own window now (UltraCanvas 1.23.0
@@ -142,17 +143,17 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     "$XINPUT" type "It has avatars and a dark theme now." key Return sleep 3500
     import -window root "$OUT/chat.png"
     # A message of ours right-clicked: its menu (Escape closes it).
-    "$XINPUT" rclick 800 155 sleep 1200
+    "$XINPUT" rclick 800 188 sleep 1200
     import -window root "$OUT/message-menu.png"
     "$XINPUT" key Escape sleep 600
     # The first answer from Bob replied to: Reply in its menu, the bar over the
     # field, then the reply with its quote.
-    "$XINPUT" rclick 500 210 sleep 1200 click 540 229 sleep 800 type "Yes, it looks great here."
+    "$XINPUT" rclick 500 243 sleep 1200 click 540 262 sleep 800 type "Yes, it looks great here."
     import -window root "$OUT/reply-bar.png"
     "$XINPUT" key Return sleep 3500
     import -window root "$OUT/reply.png"
     # Our second message double-clicked: its words back in the field to change.
-    "$XINPUT" click 850 263 click 850 263 sleep 900
+    "$XINPUT" click 850 296 click 850 296 sleep 900
     import -window root "$OUT/edit.png"
     "$XINPUT" type " Really." key Return sleep 2500
     import -window root "$OUT/edited.png"

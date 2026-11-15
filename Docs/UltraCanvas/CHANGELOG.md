@@ -1,3 +1,15 @@
+#### 2026-11-16 *0.9.566*
+- **UltraIM: progress of a file on its way, and sound as a search kind.**
+  `UltraIMEventType::TransferProgress` (`transferredBytes`, `totalBytes`,
+  `isUpload`, the message's client id) while a picture, video or file goes
+  out or comes in: ChatCube Direct counts its 32 KiB parts as they leave and
+  arrive, Telegram reads `updateFile`, Matrix UltraNet's per-request
+  progress (`MatrixHttp` Upload / Download take a callback).
+  `UltraIMSearchKind::Audio` finds voice messages and songs sent as files
+  (which `Files` now leaves out) - on the device, in Direct's store and
+  through Telegram's voice-note filter. `UltraIM_MakePreview` makes a file's
+  preview once per run. Provider ABI 9.
+
 #### 2026-11-15 *0.9.565*
 - **A window that is never closed now lets go of its OS window.** Closing a
   window ran the whole native teardown - the OS window, its drawing surface,

@@ -1,5 +1,6 @@
 // Plugins/UltraIM/direct/DirectProvider.cpp
 // ChatCube Direct - the ULTRA OS native messenger as an UltraIM provider
+// Version: 0.1.7 - TransferProgress while a picture, video or file goes out or comes in
 // Version: 0.1.6 - a contact added by someone else (the relay's contact.added, the local network's
 //                  "contact" frame): their chat appears before their first message
 // Version: 0.1.5 - the e-mail and phone confirmed by the relay's codes; account recovery
@@ -1827,6 +1828,7 @@ void DirectProvider::OnLinkMessage(const std::string& peerId, const std::string&
             std::lock_guard<std::mutex> lock(mutex_);
             attempts_.erase(AttemptKey(id, peerId));
         }
+        NotePartLeft(id);
         MarkDelivered(peerId, id, UltraIMDeliveryStatus::Delivered);
     } else if (t == "typing") {
         UltraIMEvent event;
@@ -2168,6 +2170,14 @@ UltraIMResult DirectProvider::SendMedia(const std::string& conversationId, const
         return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "This client message id was already sent");
 
     const std::string wire = conversation.isGroup ? conversationId : kDirectConversation;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        Upload& upload = uploads_[fileId];
+        upload.conversationId = conversationId;
+        upload.clientId = clientId;
+        upload.bytes = static_cast<int64_t>(bytes.size());
+        upload.copies = parts * static_cast<int>(recipients.size());
+    }
     QueueBody(wire, recipients, clientId, UltraCanvas::JSON::Serialize(body), now);
     // The parts, in order, each under an id of its own (their delivery is
     // nobody's business but the outbox's).
@@ -2278,7 +2288,67 @@ void DirectProvider::HandleChunkBody(const JSONValue& body) {
     if (fileId.empty() || seq < 0 || seq >= 1000000 || data.empty()) return;
     if (store_.IsDeleted(Store::DeletedFileKey(fileId))) return;      // deleted while it was arriving
     store_.AddPart(fileId, static_cast<int>(seq), data);
+    // How far the file is: TransferProgress at each percent.
+    UltraIMMessage message;
+    if (store_.FindMessageByFile(fileId, message) && !message.attachment.isDownloaded &&
+        message.attachment.fileSizeBytes > 0) {
+        const int64_t total = message.attachment.fileSizeBytes;
+        const int64_t here = std::min<int64_t>(total, static_cast<int64_t>(store_.CountParts(fileId)) *
+                                                          static_cast<int64_t>(kChunkBytes));
+        const int percent = static_cast<int>(here * 100 / total);
+        bool report = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            int& last = downloadPercent_[fileId];
+            report = percent > last || here == total;
+            if (report) last = percent;
+            if (here == total) downloadPercent_.erase(fileId);
+        }
+        if (report) {
+            UltraIMEvent progress;
+            progress.type = UltraIMEventType::TransferProgress;
+            progress.providerId = providerId_;
+            progress.conversationId = message.conversationId;
+            progress.contactId = message.senderId;
+            progress.message = message;
+            progress.transferredBytes = here;
+            progress.totalBytes = total;
+            progress.isUpload = false;
+            Emit(progress);
+        }
+    }
     TryAssemble(fileId);
+}
+
+void DirectProvider::NotePartLeft(const std::string& outboxId) {
+    // A part's id is "c-<file id>-<seq>".
+    if (outboxId.rfind("c-", 0) != 0) return;
+    const size_t dash = outboxId.rfind('-');
+    if (dash == std::string::npos || dash <= 2) return;
+    const std::string fileId = outboxId.substr(2, dash - 2);
+    UltraIMEvent progress;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = uploads_.find(fileId);
+        if (it == uploads_.end()) return;
+        Upload& upload = it->second;
+        upload.left = std::min(upload.copies, upload.left + 1);
+        const int percent = upload.copies > 0 ? upload.left * 100 / upload.copies : 100;
+        if (percent == upload.lastPercent) return;
+        upload.lastPercent = percent;
+        progress.type = UltraIMEventType::TransferProgress;
+        progress.providerId = providerId_;
+        progress.conversationId = upload.conversationId;
+        progress.message.providerId = providerId_;
+        progress.message.conversationId = upload.conversationId;
+        progress.message.clientMessageId = upload.clientId;
+        progress.message.messageId = upload.clientId;
+        progress.totalBytes = upload.bytes;
+        progress.transferredBytes = upload.copies > 0 ? upload.bytes * upload.left / upload.copies : upload.bytes;
+        progress.isUpload = true;
+        if (upload.left >= upload.copies) uploads_.erase(it);
+    }
+    Emit(progress);
 }
 
 void DirectProvider::TryAssemble(const std::string& fileId) {
@@ -2454,6 +2524,12 @@ bool DirectProvider::IsMediaFile(const std::string& path) const {
 bool DirectProvider::RemoveLocally(const std::string& conversationId, const std::string& clientId) {
     UltraIMMessage removed;
     if (!store_.RemoveMessage(conversationId, clientId, removed)) return false;
+    {
+        // A file still going out or coming in reports no more progress.
+        std::lock_guard<std::mutex> lock(mutex_);
+        uploads_.erase(removed.attachment.remoteUrl);
+        downloadPercent_.erase(removed.attachment.remoteUrl);
+    }
     // The file it brought here goes with it. A file that was sent lies
     // where its owner keeps it and is none of ours to remove.
     std::error_code ec;
@@ -2802,6 +2878,8 @@ void DirectProvider::PostToRelay(const std::vector<OutboxEntry>& copies) {
         if (!r.Ok() && retry) return;      // stays in the outbox for the next pass
         for (const auto& copy : sealed) store_.RemoveOutbox(copy.clientId, copy.recipient);
         if (r.Ok()) sentOverRelay_ += static_cast<int>(sealed.size());
+        if (r.Ok())
+            for (const auto& copy : sealed) NotePartLeft(copy.clientId);
         // One mark per message (a group's copies share the client id; a
         // file's parts have ids of their own, which no message carries).
         std::set<std::string> marked;
