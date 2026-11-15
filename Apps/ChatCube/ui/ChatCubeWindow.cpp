@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.2 - files dropped on the window: on a chat in the list (it opens) or on the open chat,
+//                  into the strip; the paperclip's dialog shows every file, not only pictures
 // Version: 0.3.1 - a group's whole member count (MemberCount) in its menu and under its name: a Telegram
 //                  supergroup lists only its most active members
 // Version: 0.3.0 - the chat list's menu (a right-click): read / unread, pinned, calls, the ID, a group's
@@ -25,7 +27,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -211,6 +213,11 @@ bool ChatCubeWindow::Create() {
     // follow the theme by themselves, ApplyLook brings ChatCube's own.
     themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
     window_->onWindowClosed = [this]() { if (onClosed) onClosed(); };
+    // Files dropped anywhere on the window: the chat list and the open chat
+    // take them (DropFiles), whatever element is under the pointer.
+    window_->InstallEventFilter("chatcube-drop-files",
+                                [this](const UCEvent& event) { return DropFiles(event); },
+                                {UCEventType::Drop});
 
     subscription_ = UltraIM_Subscribe([this](const UltraIMEvent& e) { OnEvent(e); });
 
@@ -2062,13 +2069,48 @@ void ChatCubeWindow::AttachFile() {
     if (activeConversation_.empty()) return;
     FileDialogOptions opts;
     opts.SetTitle(Tr("Send a picture, a video or a file")).SetParentWindow(window_.get());
-    // Every picture and video format this build reads, then anything.
-    UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Pictures and videos"), {MediaFormatCategory::Bitmap, MediaFormatCategory::Video});
+    // Any file goes: every file shows (All files is the first type, the one
+    // the dialog opens with); the pictures and videos this build reads are
+    // a choice after it.
     opts.AddFilter(Tr("All files"), std::vector<std::string>{"*"});
+    UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Pictures and videos"), {MediaFormatCategory::Bitmap, MediaFormatCategory::Video});
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
         if (result != DialogResult::OK || path.empty()) return;
         StageAttachment(path, false);
     });
+}
+
+bool ChatCubeWindow::DropFiles(const UCEvent& event) {
+    if (event.droppedFiles.empty()) return false;
+    if (!chatView_ || !chatView_->IsVisible()) return true;     // signed out: nothing takes them
+    // On a chat in the list: that chat, opened.
+    const Point2Df at(static_cast<float>(event.pointerWindow.x), static_cast<float>(event.pointerWindow.y));
+    if (conversationList_ && conversationList_->IsVisible() && conversationList_->ContainsInWindow(at)) {
+        const int row = conversationList_->GetRowAtY(static_cast<int>(at.y - conversationList_->GetYInWindow()));
+        const auto& list = conversations_->Conversations();
+        if (row >= 0 && row < static_cast<int>(list.size())) {
+            const std::string id = list[static_cast<size_t>(row)].conversationId;
+            if (id != activeConversation_) OpenConversation(id);
+        }
+    }
+    if (activeConversation_.empty()) {
+        SetStatus(Tr("Drop the files on a chat, or open one first."));
+        return true;
+    }
+    int staged = 0, folders = 0;
+    std::error_code ec;
+    for (const std::string& file : event.droppedFiles) {
+        if (std::filesystem::is_regular_file(PathFromUtf8(file), ec)) {
+            StageAttachment(file, false);
+            ++staged;
+        } else if (std::filesystem::is_directory(PathFromUtf8(file), ec)) {
+            ++folders;
+        }
+    }
+    if (folders > 0 && staged == 0) SetStatus(Tr("A folder cannot be sent - drop the files in it."));
+    if (staged > 0) input_->SetFocus(true);
+    if (window_) window_->RequestRedraw();
+    return true;
 }
 
 bool ChatCubeWindow::PasteAttachment() {

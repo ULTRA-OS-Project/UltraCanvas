@@ -1,12 +1,14 @@
 // Plugins/UltraIM/direct/DirectProvider.cpp
 // ChatCube Direct - the ULTRA OS native messenger as an UltraIM provider
+// Version: 0.1.6 - a contact added by someone else (the relay's contact.added, the local network's
+//                  "contact" frame): their chat appears before their first message
 // Version: 0.1.5 - the e-mail and phone confirmed by the relay's codes; account recovery
 // Version: 0.1.4 - the account's profile (name, e-mail, phone); a password and/or an authenticator code to sign in
 // Version: 0.1.3 - a file that is a picture (an SVG drawing) goes with a preview picture, as a photo does
 // Version: 0.1.2 - pictures, videos and files sent and received in parts; DownloadAttachment
 // Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
 // Version: 0.1.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "DirectProvider.h"
@@ -1213,6 +1215,13 @@ void DirectProvider::OnLanPeerUp(const std::string& peerId, const std::vector<ui
 }
 
 void DirectProvider::OnLanFrame(const std::string& peerId, const JSONValue& frame) {
+    // A ChatCube nearby added us (TellLanContactAdded): the connection proved
+    // its key, so it becomes a contact, with its chat.
+    if (frame["t"].GetString() == "contact") {
+        UltraIMConversation existing;
+        if (!store_.GetConversation(peerId, existing)) StoreLanContact(peerId);
+        return;
+    }
     if (frame["t"].GetString() != "signal") return;
     const std::string kind = frame["kind"].GetString();
     const std::string session = frame["session"].GetString();
@@ -1243,6 +1252,12 @@ UltraIMConversation DirectProvider::StoreLanContact(const std::string& userId) {
     return EnsureDirectConversation(userId);
 }
 
+void DirectProvider::TellLanContactAdded(const std::string& userId) {
+    JSONValue frame = JSONValue::MakeObject();
+    frame.Set("t", JSONValue("contact"));
+    lan_.Send(userId, frame);
+}
+
 void DirectProvider::CompletePendingAdds(int64_t nowMs) {
     std::vector<PendingAdd> done, expired;
     {
@@ -1259,7 +1274,10 @@ void DirectProvider::CompletePendingAdds(int64_t nowMs) {
             }
         }
     }
-    for (auto& p : done) p.onResult(UltraIMResult::Ok(), StoreLanContact(p.userId));
+    for (auto& p : done) {
+        p.onResult(UltraIMResult::Ok(), StoreLanContact(p.userId));
+        TellLanContactAdded(p.userId);
+    }
     for (auto& p : expired)
         p.onResult(UltraIMResult::Error(UltraIMResultCode::Timeout, "That ChatCube did not answer on this network"), {});
 }
@@ -1479,6 +1497,7 @@ void DirectProvider::AddContact(const std::string& address, UltraIMConversationC
     if (proven) {
         if (relay) relay->Request("PUT", "/v1/contacts/" + userId, nullptr, [](const RelayResponse&) {});
         onResult(UltraIMResult::Ok(), StoreLanContact(userId));
+        TellLanContactAdded(userId);
         return;
     }
     // Seen nearby but not connected yet: connect, and finish once its
@@ -1759,6 +1778,28 @@ void DirectProvider::OnFrame(const JSONValue& frame) {
         Emit(event);
     } else if (type == "group.update") {
         UpsertGroup(frame["group"]);
+    } else if (type == "contact.added") {
+        // Someone added us: their chat now, not at their first message.
+        const JSONValue& c = frame["contact"];
+        StoredContact contact;
+        contact.userId = c["user_id"].GetString();
+        contact.displayName = c["display_name"].GetString();
+        contact.publicKey = c["public_key"].GetString();
+        contact.presence = PresenceFrom(c["presence"].GetString());
+        if (contact.userId.empty() || contact.userId == identity_.userId ||
+            UserIdFor(FromBase64(contact.publicKey)) != contact.userId)
+            return;                                         // the key must be the id's
+        StoredContact known;
+        if (store_.GetContact(contact.userId, known) && contact.displayName.empty())
+            contact.displayName = known.displayName;
+        store_.UpsertContact(contact);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            presence_[contact.userId] = contact.presence;
+        }
+        if (lanOn_) lan_.AddWanted(contact.userId);
+        EnsureDirectConversation(contact.userId);
+        EmitPresence(contact.userId);
     }
 }
 

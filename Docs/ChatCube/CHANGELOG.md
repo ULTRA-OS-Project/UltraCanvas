@@ -1,3 +1,17 @@
+#### 2026-11-15 *0.1.25*
+- **The person you add sees your chat at once.** Adding someone by their
+  ChatCube ID now tells them: your chat appears in their list straight away
+  (while they are online; otherwise at their next sign-in), not only when you
+  send the first message. Through a relay this needs ChatCube relay 1.4.0
+  (`contact.added`, and the adder put in the other person's contacts); on the
+  local network without one, the ChatCube nearby is told over the connection.
+- **Drop files on ChatCube.** Files dragged from a file manager onto a chat in
+  the list open that chat and wait in its strip above the message field;
+  dropped on the open chat - its messages, the field - they wait there too,
+  each with its × as with the paperclip. A folder is not sent.
+- **The paperclip shows every file.** Its dialog opens on *All files* instead
+  of pictures and videos only; *Pictures and videos* is still there to pick.
+
 #### 2026-11-14 *0.1.24*
 - **The look changes while ChatCube is open.** Choosing System, Light or
   Dark on the Settings window's Look page shows at once, in every ChatCube

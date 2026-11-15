@@ -1036,6 +1036,11 @@ void TestLocalNetwork() {
 
     UltraIMConversation withDave, withCarol;
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { carol->AddContact(daveId, cb); }, withDave));
+    // Dave is told: Carol's chat is in his list before she writes.
+    CHECK(daveEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == carolId &&
+               e.conversation.title == "Carol";
+    }));
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { dave->AddContact(carolId, cb); }, withCarol));
     CHECK(withDave.title == "Dave" && withCarol.title == "Carol");
     CHECK(withDave.presence == UltraIMPresence::Online);
@@ -1453,6 +1458,12 @@ void TestEndToEnd() {
 
     UltraIMConversation withBob, withAlice;
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->AddContact(bobId, cb); }, withBob));
+    // Bob is told through the relay (contact.added): Alice's chat is in his
+    // list before she writes.
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == aliceId &&
+               e.conversation.title == "Alice";
+    }));
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { bob->AddContact(aliceId, cb); }, withAlice));
     CHECK(withBob.conversationId == bobId && withBob.title == "Bob");
 

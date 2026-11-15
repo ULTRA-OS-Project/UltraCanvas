@@ -83,7 +83,8 @@ The first ChatCube draft, which this replaces, is kept under
 3. **Copy** your ID and send it to the people who should reach you; paste
    theirs into *Contact's ChatCube ID* and press **Add**. People on your
    network are listed under *On this network* - **Add** takes them over
-   without typing anything.
+   without typing anything. The person you add is told: your chat appears in
+   their list at once (or at their next sign-in), before you write.
 4. **New group** takes a name and the members' IDs, separated by commas.
    **Matrix account** signs in to a Matrix homeserver (`matrix.org`, or your
    own) with your user name and password; your Matrix rooms then sit in the
@@ -123,7 +124,9 @@ The first ChatCube draft, which this replaces, is kept under
    have no check mark). The paperclip puts a picture, a video or any file
    in a strip above the message field - so does Ctrl+V with a picture on
    the clipboard (a screenshot, a copy from a browser or a drawing program)
-   or a file copied in a file manager - each with a × to take it out again;
+   or a file copied in a file manager, and so do files dropped on the
+   window (on a chat in the list, that chat opens and takes them; anywhere
+   else, the open chat does) - each with a × to take it out again;
    Enter or the send button sends them to the open chat (ChatCube Direct,
    Telegram and Matrix, encrypted rooms included), with what you typed as
    the caption of the first picture or video. A photo shows as its picture,

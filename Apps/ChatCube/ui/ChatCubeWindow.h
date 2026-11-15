@@ -215,6 +215,10 @@ private:
     // the file, or the picture written to a file of ChatCube's own, into the
     // strip. False when the clipboard holds neither (text pastes as text).
     bool PasteAttachment();
+    // Files dropped on the window (an event filter on it): onto a chat in
+    // the list, that chat opens and they wait in its strip; anywhere else,
+    // they wait in the open chat's. False when the drop carries no file.
+    bool DropFiles(const UltraCanvas::UCEvent& event);
     // Into the strip: a tile with the picture, or the file's name and size,
     // and a x that takes it out again. `ownFile`: a file ChatCube made (a
     // pasted picture), deleted when dropped.

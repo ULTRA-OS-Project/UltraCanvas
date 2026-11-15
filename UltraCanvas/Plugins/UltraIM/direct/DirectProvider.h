@@ -276,6 +276,9 @@ private:
     void OnLanFrame(const std::string& peerId, const UltraCanvas::JSONValue& frame);
     // A contact added from the local network: known once the handshake proves its key.
     UltraIMConversation StoreLanContact(const std::string& userId);
+    // The person just added on the local network is told, so their chat
+    // shows us before our first message (OnLanFrame's "contact").
+    void TellLanContactAdded(const std::string& userId);
     void CompletePendingAdds(int64_t nowMs);
 
     // ---- incoming ---------------------------------------------------------------
