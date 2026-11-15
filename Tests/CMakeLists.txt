@@ -4925,6 +4925,25 @@ add_test(NAME TextCentredOnCapsTest COMMAND TextCentredOnCapsTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: TextCentredOnCapsTest")
 
+# ===== LIGHT TEXT BOOST TEST =====
+# Light text on a dark ground is drawn a second time, so it keeps the weight
+# cairo's blend in sRGB numbers takes from it: more light than without, the
+# same pixels covered; dark and translucent ink as before. Offscreen; needs
+# no display.
+message(STATUS "  Building LightTextBoostTest...")
+add_executable(LightTextBoostTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/LightTextBoostTest.cpp
+)
+target_include_directories(LightTextBoostTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(LightTextBoostTest PRIVATE cxx_std_20)
+target_link_libraries(LightTextBoostTest PRIVATE UltraCanvas)
+set_target_properties(LightTextBoostTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME LightTextBoostTest COMMAND LightTextBoostTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: LightTextBoostTest")
+
 # ===== TEXT LAYOUT CACHE TEST =====
 # The text layout an element draws with is built once and kept: ten draws
 # of a label, or of a button shortened in the middle, make one layout on

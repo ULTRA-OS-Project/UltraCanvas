@@ -8,6 +8,7 @@
 - [Antialias Modes](#antialias-modes)
 - [Hint Styles](#hint-styles)
 - [Hint Metrics](#hint-metrics)
+- [Light text on a dark ground](#light-text-on-a-dark-ground)
 - [Events / Callbacks](#events--callbacks)
 - [Usage Examples](#usage-examples)
   - [Reading the current value into a dropdown](#reading-the-current-value-into-a-dropdown)
@@ -25,7 +26,7 @@ UltraCanvas exposes the Cairo/Pango text rendering pipeline through a small set 
 
 This document is a guide to the three settings and to the demo that exposes them as live drop-downs (`UltraCanvasTextRenderingExamples.cpp`).
 
-**Version:** 1.0.0
+**Version:** 1.1.0 - the light text boost
 **Header:** `libspecific/Cairo/RenderContextCairo.h`
 **Namespace:** `UltraCanvas`
 
@@ -57,6 +58,11 @@ public:
     // Hint Metrics — controls whether font metrics are snapped to integer pixels.
     static void                 SetTextHintMetrics(cairo_hint_metrics_t metrics);
     static cairo_hint_metrics_t GetTextHintMetrics();
+
+    // Light text boost — light text drawn a second time (1, the default) or once (0).
+    static void   SetLightTextBoost(double strength);
+    static double GetLightTextBoost();
+    static double LightTextBoostFor(const Color& ink);
 };
 ```
 
@@ -105,6 +111,34 @@ beside the text. A host that knows its panel selects `SUBPIXEL` with
 | 0     | `CAIRO_HINT_METRICS_DEFAULT`     | Backend default                                                              |
 | 1     | `CAIRO_HINT_METRICS_OFF`         | Fractional metrics — smoother kerning, better for animated/transformed text  |
 | 2     | `CAIRO_HINT_METRICS_ON`          | Quantize metrics to integer pixels — crispest at 1:1 scale                   |
+
+## Light text on a dark ground
+
+Cairo blends a glyph's edge in sRGB numbers rather than in light: a pixel a
+white glyph covers by half on a black ground comes out 128, where the light
+that should arrive is 188. Dark text on white gains weight from that error;
+light text on a dark window loses it, and at interface sizes a stem is
+mostly edge. A dark UltraCanvas window therefore read thinner and greyer
+than a native one in the same font - DirectWrite, ClearType and Core Text
+correct for it. The render context corrects for it too: text whose colour is
+light is drawn a **second time**, which lifts a coverage `c` to
+`1 - (1 - c)^2` - a half becomes three quarters, 191, the linear-light
+answer within a few levels - and leaves a fully covered pixel as it is.
+
+| | |
+|---|---|
+| Default | On (`1.0`), in every application; no element or theme asks for it |
+| Which text | An opaque plain text colour that is light: none below a mid grey (luma 0.45), the whole boost from luma 0.70 - the dark theme's ink (235) and muted ink (190) in full, its faint ink (150) about halfway |
+| Left alone | Dark text; translucent text (it is faint on purpose, and a second pass would raise its opacity, not only its edge); text painted with a gradient or pattern; text drawn under a global alpha below one; a PDF, PostScript or SVG page, which keeps its text once, as text |
+| Layout | Unchanged: no advance, extent or line height moves, only the partly covered pixels |
+| Off | `RenderContextCairo::SetLightTextBoost(0)`, or `ULTRACANVAS_LIGHT_TEXT_BOOST=0` in the environment for one run; a value between is a weaker second pass |
+
+```cpp
+RenderContextCairo::SetLightTextBoost(0.0);                                  // every text once
+double pass = RenderContextCairo::LightTextBoostFor(Color(235, 235, 235));   // 1 at full strength: the dark theme's ink
+```
+
+`Tests/LightTextBoostTest.cpp` draws a line both ways and reads it back.
 
 ## Events / Callbacks
 

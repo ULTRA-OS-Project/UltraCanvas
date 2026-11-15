@@ -141,6 +141,12 @@ white), so a border an element draws because it follows the theme reaches
 own should hold the same ratios on the surfaces each ink is meant for -
 muted text is not for `pressed`, faint text not for `hover`.
 
+A ratio is the colours; the weight of the text is the other half of
+reading it. Light text on a dark ground is drawn firmer by the render
+context, in every application and without a theme asking - see *Light text
+on a dark ground* in
+[`UltraCanvasTextRenderingExamples.md`](UltraCanvasTextRenderingExamples.md).
+
 ## Using it
 
 The framework starts with `Light`, built from the colours the elements
