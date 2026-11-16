@@ -462,7 +462,8 @@ none. The helpers that draw the curves are shared, not the class.
 **Q2. Where does the kernel density live?** **Recommendation: in the
 ridgeline model, as free functions** (`RidgelineKernelDensity` and the two
 bandwidth rules). They are UI-free and tested on their own. The jitter
-plot's private copy can move to them later, in a change of its own.
+plot's private copy moves onto them later, in a change of its own (§10,
+Follow-up).
 
 **Q3. Default overlap and scale?** **Recommendation: overlap 1.8 and the
 `Shared` scale for densities; `RowPeak` when curves are given.** That
@@ -494,6 +495,7 @@ other charts.
 | **1** | The model with R1, R2, R4-R6, D1-D4 and the statistics; the chart with A1-A7, N2 and I1; the `WordRatings` and `DailyActivities` samples; the demo page (**Charts → Ridgeline Chart**) with an overlap slider and choices of scale, sort and colouring; the guide; model and render tests | Reference shapes 2 and 3; shape 1 without the wrap and side notes |
 | **2** | Several series per row with a legend (R3); the wrapping axis (R7); tail cut and binned curves (D5, D6); marks and quantile bands (N1, N3); highlight and row callbacks (I2, I3); CSV and JSON (X1, X2) with demo Open / Save through `UltraCanvasFileLoader` | Reference shape 1 in full |
 | **3** | The oblique view and floor grid (O1, O2); row groups (R8); side notes (N4); the pointer rule across rows (I4) | Reference shape 4 |
+| **Follow-up** | A change of its own, after Phase 1: `UltraCanvasJitterPlotElement`'s private `CalculateKernelDensity` (its violin and raincloud modes) moves onto `RidgelineKernelDensity` and the bandwidth rules, so the framework has one 1D density. The violins should look the same; the jitter plot's tests and demo page confirm it | The second copy of the density |
 
 Every phase is filled polygons, lines and text through the engine's
 projection.
