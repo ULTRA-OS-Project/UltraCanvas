@@ -19,6 +19,9 @@ name: WebAssembly build
 # tests it end to end against a relay it builds natively. Every variant
 # builds the UltraWeb runtime too (Apps/UltraWeb/browser); the
 # single-threaded one, the runtime that ships, also runs it in Chromium.
+# The dynamic variant (the UltraCanvas runtime, apps as side modules) also
+# builds the UltraStore web store and uploads it whole, as a static host
+# serves it: the ultrastore-web-dynamic artifact.
 # The single-threaded one is required: it is the build a static host
 # without cross-origin isolation headers must serve, and since run 24 it
 # builds and passes its smoke test like the baseline.
@@ -348,6 +351,29 @@ jobs:
           path: wasm-demo
           if-no-files-found: error
 
+      # The UltraStore web store as a static host serves it, in one folder:
+      # the test's fixture store with this build's module
+      # (ultrastore-web.wasm), loader and runtime laid over it the way the
+      # admin backend's publish lays them (Apps/UltraStore/web/test/stage-store.mjs).
+      # It works as unzipped - its README.txt says how to serve it - and it is
+      # the folder the browser test below opens. Staged and uploaded here,
+      # before any test runs: a store that fails a test is the one somebody
+      # wants to download. Until 2026-11-16 a run kept none of it: the only
+      # artifact with the store's name held the test's screenshots and logs.
+      - name: Collect the UltraStore web store
+        if: matrix.pic == 1
+        run: |
+          node Apps/UltraStore/web/test/stage-store.mjs build-wasm/Apps/UltraStore/web ultrastore-web-store
+          ls -l ultrastore-web-store ultrastore-web-store/runtime/*
+
+      - name: Upload the UltraStore web store
+        if: matrix.pic == 1
+        uses: actions/upload-artifact@v6
+        with:
+          name: ultrastore-web-${{ matrix.variant }}
+          path: ultrastore-web-store
+          if-no-files-found: error
+
       # The pages opened in the runner's Google Chrome, headless, served by
       # serve.py as a visitor's host would serve them: each must present a
       # frame and keep a clean console. A page whose builder threw says
@@ -416,22 +442,24 @@ jobs:
           node UltraCanvas/OS/WASM/runtime/test/runtime-test.mjs build-wasm/UltraCanvas/OS/WASM/runtime
 
       # The UltraStore web store (Apps/UltraStore/web, Docs/UltraStore/WebstoreBrief.md):
-      # the fixture site the admin backend published, with this build's
-      # module, loader and runtime laid over it, in Chromium - the runtime
-      # from the site (Discover paints, the catalog verifies in the browser,
-      # an app page and a category open by address, the budgets hold), a
-      # tampered catalog refused, and the runtime from the extension.
+      # the store staged and uploaded above - the fixture site the admin
+      # backend published, with this build's module, loader and runtime laid
+      # over it - in Chromium: the runtime from the site (Discover paints,
+      # the catalog verifies in the browser, an app page and a category open
+      # by address, the budgets hold), a tampered catalog refused, and the
+      # runtime from the extension.
       - name: UltraStore web store in Chromium
         if: matrix.pic == 1
         env:
           UWS_OUT: uws-${{ matrix.variant }}
+          UWS_STORE: ultrastore-web-store
         run: node Apps/UltraStore/web/test/webstore-test.mjs build-wasm/Apps/UltraStore/web build-wasm/UltraCanvas/OS/WASM/runtime
 
       - name: Upload the UltraStore web store screenshots and logs
         if: always() && matrix.pic == 1
         uses: actions/upload-artifact@v6
         with:
-          name: ultrastore-web-${{ matrix.variant }}
+          name: ultrastore-web-smoke-${{ matrix.variant }}
           path: uws-${{ matrix.variant }}
           if-no-files-found: ignore
 

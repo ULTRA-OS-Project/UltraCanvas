@@ -71,6 +71,8 @@ Apps/UltraStore/web/
   CMakeLists.txt         ultrastore-web.wasm and site/ under emcmake; ultrastore-web natively
   site.json.in           the runtime's version, read by publish for data-runtime-version
   test/webstore-test.mjs the browser test (below)
+  test/stage-store.mjs   lays a build's site/ over test/fixture: a whole store in one folder,
+                         the one the test opens and CI uploads
   test/make-fixture.sh   makes test/fixture with the admin backend
   test/fixture/          a store published by the admin backend: the signed catalog, the
                          pictures with their variants, the HTML pages, the test key's public half
@@ -113,7 +115,37 @@ cmake --build build-wasm --target ultrastore-web-site
 
 leaves `build-wasm/Apps/UltraStore/web/site/`. `wasm-build.yml`'s dynamic
 variant builds it on every change to `Apps/UltraStore/**`, prints the
-module's size in its *Demo sizes* table and runs the browser test.
+module's size in its *Demo sizes* table, uploads the store and runs the
+browser test.
+
+### The store a CI run built
+
+`site/` alone opens nothing: it has no page and no catalog, which are the
+admin backend's to publish. So the dynamic variant stages a whole store
+right after the build, before any test runs:
+
+```
+node Apps/UltraStore/web/test/stage-store.mjs build-wasm/Apps/UltraStore/web <new folder>
+```
+
+That is the fixture (`test/fixture`) with the build's module, loader, mark
+and catalogues laid over it and the runtime under `runtime/<hash>/`, every
+page naming that folder and the build's runtime version, as publish does it
+(`Apps/UltraStoreAdmin/core/WebSite.cpp`). The workflow uploads the folder
+as the run's **`ultrastore-web-dynamic`** artifact. Download it from the
+run's page, unzip it, and in the folder
+
+```
+python3 -m http.server --bind 127.0.0.1 8080
+```
+
+shows the store at `http://127.0.0.1:8080/` (its `README.txt` says the
+same). It holds `ultrastore-web.wasm`, `ultracanvas-loader.js`,
+`runtime/<hash>/ultracanvas-runtime.{js,wasm,data}`, `locale/`, the catalog
+with its signature, the pages and the pictures. A test store, never a
+release: the catalog is the fixture's and the module trusts the fixture's
+key (see *Testing*). The test's screenshots and console logs are a second
+artifact, `ultrastore-web-smoke-dynamic`.
 
 ## Testing
 
@@ -122,8 +154,10 @@ npx playwright install chromium
 node Apps/UltraStore/web/test/webstore-test.mjs build-wasm/Apps/UltraStore/web build-wasm/UltraCanvas/OS/WASM/runtime
 ```
 
-serves the fixture with the build's module, loader and runtime laid over
-it and opens it in Chromium: the runtime from the site (Discover paints,
+stages the store (`stage-store.mjs`, into a temporary folder, or the one
+`UWS_STORE` names - a folder that already holds a staged store is served as
+it is, which is how CI tests the very folder it uploaded), serves it as a
+static host would and opens it in Chromium: the runtime from the site (Discover paints,
 the catalog verifies and is accepted, an app page and a category open by
 address, `?page=` works, the back button returns, the icons come as the
 catalog's WebP variants), a tampered catalog refused, and the runtime from

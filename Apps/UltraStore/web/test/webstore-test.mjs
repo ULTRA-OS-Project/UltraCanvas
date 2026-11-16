@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Apps/UltraStore/web/test/webstore-test.mjs
 // The UltraStore web store end to end in Chromium: the fixture site
-// (test/fixture, published by the admin backend) served with the build's
-// module, loader and runtime laid over it, as a host would serve it.
+// (test/fixture, published by the admin backend) with the build's module,
+// loader and runtime laid over it (stage-store.mjs), served as a host would
+// serve it - one folder, nothing rewritten on the way out.
 //
 //   1. The runtime from the site: Discover paints, the catalog verifies
 //      (WebCrypto, the fixture's key built into the test module), an app's
@@ -18,66 +19,72 @@
 //   node webstore-test.mjs <build dir of Apps/UltraStore/web> <build dir of UltraCanvas/OS/WASM/runtime>
 //
 // Environment:
+//   UWS_STORE       the store to serve, as stage-store.mjs left it: CI stages
+//                   and uploads it first, so a run's artifact is the store
+//                   that was tested. A folder that holds no store yet is
+//                   staged into from the build; with none named, a temporary
+//                   folder is, and removed afterwards
 //   UWS_OUT         screenshots and logs (default: uws-test-out)
 //   UWS_CHROME      a Chrome / Chromium binary (default: Playwright's Chromium)
 //   UWS_PLAYWRIGHT  the playwright package when not resolvable from here
 //   UWS_TIMEOUT     ms to wait for the app to start (default 120000)
 //
-// Version: 0.1.0
+// Version: 0.2.0 - serves one staged store (stage-store.mjs, UWS_STORE), not the fixture with the build's files mapped in by the server
 // Author: UltraCanvas Framework / ULTRA OS
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { fileURLToPath } from 'node:url';
+import { stageStore } from './stage-store.mjs';
 
 const [webBuild, runtimeBuild] = process.argv.slice(2);
 if (!webBuild || !runtimeBuild) {
     console.error('usage: node webstore-test.mjs <web store build dir> <runtime build dir>');
     process.exit(2);
 }
-const here = path.dirname(fileURLToPath(import.meta.url));
-const fixture = path.join(here, 'fixture');
-const site = path.resolve(webBuild, 'site');
 const extension = path.resolve(runtimeBuild, 'ultracanvas-extension');
 const out = process.env.UWS_OUT || 'uws-test-out';
 const startTimeout = Number(process.env.UWS_TIMEOUT || 120000);
 fs.mkdirSync(out, { recursive: true });
 const { chromium } = await import(process.env.UWS_PLAYWRIGHT || 'playwright');
 
-const siteJson = JSON.parse(fs.readFileSync(path.join(site, 'site.json'), 'utf8'));
-const runtimeVersion = siteJson.runtime_version || '';
+// ===== The store: the fixture with the build's files in place of the stand-ins =====
+// Staged as publish lays it: the runtime under runtime/<its hash>/, the
+// pages naming that folder and the built version, so the extension (the same
+// build) is accepted.
+let store = process.env.UWS_STORE ? path.resolve(process.env.UWS_STORE) : '';
+let staged = false;
+if (store && fs.existsSync(path.join(store, 'index.html'))) {
+    console.log(`     serving the staged store ${store}`);
+} else {
+    staged = !store;
+    if (!store) store = fs.mkdtempSync(path.join(os.tmpdir(), 'uws-store-'));
+    const made = stageStore(webBuild, store);
+    console.log(`     staged ${made.files.length} files in ${store}, the runtime under ${made.runtimeFolder}`);
+}
 
-// ===== A static server: the fixture, with the build's files in place of the stand-ins =====
-// The pages name runtime/<hash of the fixture's stand-in>/; any runtime/
-// folder serves the built runtime, and the pages' data-runtime-version is
-// the built version, so the extension (the same build) is accepted.
+// ===== A static server over it =====
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.wasm': 'application/wasm',
                 '.data': 'application/octet-stream', '.json': 'application/json', '.sig': 'text/plain',
                 '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif' };
 let served = [];
 let tamper = false;
 function resolve(urlPath) {
-    const rel = decodeURIComponent(urlPath).replace(/^\/+/, '');
-    const m = rel.match(/^runtime\/[0-9a-f]+\/(.+)$/);
-    if (m) return path.join(site, 'runtime', m[1]);
-    if (rel === 'ultrastore-web.wasm' || rel === 'ultracanvas-loader.js' || rel === 'ultrastore.png' || rel.startsWith('locale/')) return path.join(site, rel);
-    let file = path.join(fixture, rel);
+    let file = path.join(store, decodeURIComponent(urlPath).replace(/^\/+/, ''));
     if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
     return file;
 }
 const server = http.createServer((req, res) => {
     const file = resolve(new URL(req.url, 'http://x').pathname);
-    if (!(file.startsWith(fixture) || file.startsWith(site)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    if (!file.startsWith(store + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
         res.writeHead(404);
         res.end();
         return;
     }
     let body = fs.readFileSync(file);
-    if (file.endsWith('.html')) body = Buffer.from(body.toString('utf8').replace(/data-runtime-version="[^"]*"/, `data-runtime-version="${runtimeVersion}"`));
     if (tamper && file.endsWith('catalog.json')) body = Buffer.from(body.toString('utf8').replace('"sequence"', '"sequence_"').replace(/"price": "29.90"/, '"price": "0.90"'));
-    served.push({ path: path.relative(file.startsWith(site) ? site : fixture, file), bytes: body.length });
+    served.push({ path: path.relative(store, file), bytes: body.length });
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
     res.end(body);
 });
@@ -129,11 +136,11 @@ if (process.env.UWS_CHROME) launch.executablePath = process.env.UWS_CHROME;
 
 // ===== The budgets that need no browser =====
 {
-    const module = fs.readFileSync(path.join(site, 'ultrastore-web.wasm'));
+    const module = fs.readFileSync(path.join(store, 'ultrastore-web.wasm'));
     const brotli = zlib.brotliCompressSync(module, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }).length;
     console.log(`     ultrastore-web.wasm: ${kib(module.length)} raw, ${kib(brotli)} Brotli`);
     check(brotli <= 150 * 1024, `the module is within its budget (${kib(brotli)} Brotli of 150 KiB)`);
-    const shadow = fs.readFileSync(path.join(fixture, 'index.html'), 'utf8');
+    const shadow = fs.readFileSync(path.join(store, 'index.html'), 'utf8');
     check(/<h1|<h2/.test(shadow) && shadow.includes('ultrastore://app/'), 'the HTML shadow carries the store\'s texts and the deep links');
 }
 
@@ -248,5 +255,6 @@ if (fs.existsSync(path.join(extension, 'manifest.json'))) {
 }
 
 server.close();
+if (staged) fs.rmSync(store, { recursive: true, force: true });
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
 process.exit(failures ? 1 : 0);
