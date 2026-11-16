@@ -43,6 +43,9 @@ struct AppCategoryInfo {
 // The ten, in the order the window shows them.
 const std::vector<AppCategoryInfo>& AppCategories();
 const AppCategoryInfo& AppCategoryInfoOf(AppCategory category);
+// AppCategoryInfo::title in the person's language, for showing ("" for
+// Folder, whose name is the folder's own).
+std::string AppCategoryDisplayName(AppCategory category);
 
 // Where `entry` belongs. `subcategory` is a heading for people ("Web
 // browsers"), "" when nothing more specific is known.
@@ -57,6 +60,10 @@ AppPlace PlaceApplication(const UltraCanvas::UCDesktopEntry& entry);
 extern const char* const kOtherSubcategory;   // "Other"
 // The key of a folder's own category: "folder:MAGIX".
 extern const char* const kFolderGroupPrefix;  // "folder:"
+// A sub-category's heading (AppPlace::subcategory, AppSection::title,
+// kOtherSubcategory) in the person's language, for showing; a title that is
+// none of them comes back as it is.
+std::string AppSubcategoryDisplayName(const std::string& title);
 
 // The Start-menu folder `entry`'s shortcut lies in ("MAGIX"), "" for none, for
 // a shortcut at the top of the Start menu, and for Windows' own folders
@@ -80,6 +87,10 @@ struct AppGroup {
     std::vector<AppSection> sections;
     size_t count = 0;               // applications in all sections
 };
+
+// AppGroup::title in the person's language, for showing: the category's
+// name, or the folder's own for a folder's category.
+std::string AppGroupDisplayName(const AppGroup& group);
 
 struct AppGroupingOptions {
     // The application's history key (the desktop's PinKey), for Recent.

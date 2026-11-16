@@ -21,6 +21,7 @@
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 
@@ -63,7 +64,7 @@ void UltraDesktopClipboardPanel::Open(int rightX, int topY, Target target) {
         return;
     }
     WindowConfig config;
-    config.title = "Clipboard";
+    config.title = Tr("Clipboard");
     config.type = WindowType::Borderless;
 #if defined(ULTRACANVAS_DISPLAY_WAYLAND)
     // A child of the desktop window: the one way to be placed on Wayland.
@@ -149,7 +150,7 @@ void UltraDesktopClipboardPanel::Build() {
     auto header = std::make_shared<UltraCanvasContainer>("cbp.header");
     header->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     header->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    auto title = CreateLabel("cbp.title", 0, 0, 200, 22, "Clipboard");
+    auto title = CreateLabel("cbp.title", 0, 0, 200, 22, Tr("Clipboard"));
     title->SetFontSize(11.5f);
     title->SetFontWeight(FontWeight::Bold);
     title->SetTextColor(PanelColors().text);
@@ -163,7 +164,7 @@ void UltraDesktopClipboardPanel::Build() {
     window->AddChild(header);
 
     search_ = CreateTextInput("cbp.search", 0, 0, 0, 32);
-    search_->SetPlaceholder("Type to search");
+    search_->SetPlaceholder(Tr("Type to search"));
     search_->SetShowPlaceholderAlways(true);
     TextInputStyle searchStyle = search_->GetStyle();
     searchStyle.backgroundColor = PanelColors().inset;
@@ -231,7 +232,7 @@ void UltraDesktopClipboardPanel::Build() {
     footer->SetPadding(8, 0, 0, 0);
     footer->SetBorderTop(1, PanelColors().edge);
     const bool paused = history_ ? history_->GetPolicy().recordingPaused : false;
-    recording_ = UltraCanvasSwitch::Create("cbp.recording", 0, 0, "Recording", !paused);
+    recording_ = UltraCanvasSwitch::Create("cbp.recording", 0, 0, Tr("Recording"), !paused);
     recording_->layoutItem.SetFlexShrink(0);
     SwitchVisualStyle switchStyle = recording_->GetVisualStyle();
     switchStyle.base.textColor = PanelColors().text;
@@ -249,7 +250,7 @@ void UltraDesktopClipboardPanel::Build() {
     status_->SetTextColor(PanelColors().muted);
     status_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     footer->AddChild(status_);
-    undo_ = std::make_shared<UltraCanvasButton>("cbp.undo", 0, 0, 56, 28, "Undo");
+    undo_ = std::make_shared<UltraCanvasButton>("cbp.undo", 0, 0, 56, 28, Tr("Undo"));
     ButtonStyle undoStyle = undo_->GetStyle();
     undoStyle.normalColor = PanelColors().raised;
     undoStyle.hoverColor = PanelColors().edge;
@@ -264,7 +265,7 @@ void UltraDesktopClipboardPanel::Build() {
     undo_->SetVisible(false);
     undo_->layoutItem.SetFlexShrink(0);
     footer->AddChild(undo_);
-    auto openApp = std::make_shared<UltraCanvasButton>("cbp.open", 0, 0, 196, 30, "Open UltraClipboard");
+    auto openApp = std::make_shared<UltraCanvasButton>("cbp.open", 0, 0, 196, 30, Tr("Open UltraClipboard"));
     openApp->layoutItem.SetFlexShrink(0);
     ButtonStyle openStyle = openApp->GetStyle();
     openStyle.normalColor = PanelColors().raised;
@@ -320,7 +321,7 @@ void UltraDesktopClipboardPanel::Reload() {
                 shown.push_back(std::move(entry));
             }
             if (!leading.empty()) {
-                lead.title = EditClipboardText("For " + target_.name, ClipboardTextEdit::Upper);
+                lead.title = EditClipboardText(TrF("For {0}", target_.name), ClipboardTextEdit::Upper);
                 lead.count = leading.size();
             }
         }
@@ -348,7 +349,7 @@ void UltraDesktopClipboardPanel::Reload() {
         }
     }
     if (model_->GetEntryCount() == 0) {
-        if (status_ && removedId_ == 0) status_->SetText(text.empty() ? "Nothing copied yet" : "Nothing found");
+        if (status_ && removedId_ == 0) status_->SetText(text.empty() ? Tr("Nothing copied yet") : Tr("Nothing found"));
         list_->ResetSelection();
         return;
     }
@@ -435,7 +436,7 @@ void UltraDesktopClipboardPanel::EditEntry(int64_t id) {
 void UltraDesktopClipboardPanel::DeleteEntry(int64_t id) {
     if (!history_ || !history_->Remove(id)) return;
     removedId_ = id;
-    if (status_) status_->SetText("Deleted");
+    if (status_) status_->SetText(Tr("Deleted"));
     if (undo_) undo_->SetVisible(true);
     auto* app = UltraCanvasApplication::GetInstance();
     if (undoTimer_) app->StopTimer(undoTimer_);

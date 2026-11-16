@@ -5,6 +5,7 @@
 
 #include "UltraDesktopAppCategories.h"
 #include "UltraDesktopAppCatalogue.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <iterator>
@@ -317,6 +318,95 @@ const AppCategoryInfo& AppCategoryInfoOf(AppCategory category) {
         if (info.category == category) return info;
     }
     return AppCategories().front();
+}
+
+std::string AppCategoryDisplayName(AppCategory category) {
+    switch (category) {
+        case AppCategory::Recent: return Tr("Recent");
+        case AppCategory::Office: return Tr("Office");
+        case AppCategory::Internet: return Tr("Internet");
+        case AppCategory::Graphics: return Tr("Graphics");
+        case AppCategory::Video: return Tr("Video");
+        case AppCategory::Audio: return Tr("Audio");
+        case AppCategory::CAD: return Tr("CAD");
+        case AppCategory::Games: return Tr("Games");
+        case AppCategory::Tools: return Tr("Tools");
+        case AppCategory::System: return Tr("System");
+        case AppCategory::Folder: break;
+    }
+    return "";
+}
+
+// The table and the headings stay English (keys, sorting, tests); the
+// translation is looked up here, one Tr literal per name for the extractor.
+std::string AppSubcategoryDisplayName(const std::string& title) {
+    if (title == "Web browsers") return Tr("Web browsers");
+    if (title == "Email") return Tr("Email");
+    if (title == "Chat and calls") return Tr("Chat and calls");
+    if (title == "File transfer") return Tr("File transfer");
+    if (title == "News") return Tr("News");
+    if (title == "Remote access") return Tr("Remote access");
+    if (title == "VPN") return Tr("VPN");
+    if (title == "Web development") return Tr("Web development");
+    if (title == "Painting") return Tr("Painting");
+    if (title == "Drawing") return Tr("Drawing");
+    if (title == "3D") return Tr("3D");
+    if (title == "Photos") return Tr("Photos");
+    if (title == "Scanning") return Tr("Scanning");
+    if (title == "Publishing") return Tr("Publishing");
+    if (title == "Writing") return Tr("Writing");
+    if (title == "Spreadsheets") return Tr("Spreadsheets");
+    if (title == "Presentations") return Tr("Presentations");
+    if (title == "Calendar and contacts") return Tr("Calendar and contacts");
+    if (title == "Databases") return Tr("Databases");
+    if (title == "Finance") return Tr("Finance");
+    if (title == "Dictionaries") return Tr("Dictionaries");
+    if (title == "Planning") return Tr("Planning");
+    if (title == "Editing") return Tr("Editing");
+    if (title == "Recorders") return Tr("Recorders");
+    if (title == "Mixers") return Tr("Mixers");
+    if (title == "Music making") return Tr("Music making");
+    if (title == "TV") return Tr("TV");
+    if (title == "Disc burning") return Tr("Disc burning");
+    if (title == "Players") return Tr("Players");
+    if (title == "Retro") return Tr("Retro");
+    if (title == "Board games") return Tr("Board games");
+    if (title == "Adventure") return Tr("Adventure");
+    if (title == "Strategy") return Tr("Strategy");
+    if (title == "Simulation") return Tr("Simulation");
+    if (title == "Text editors") return Tr("Text editors");
+    if (title == "Archives") return Tr("Archives");
+    if (title == "Calculators") return Tr("Calculators");
+    if (title == "Clocks") return Tr("Clocks");
+    if (title == "Accessibility") return Tr("Accessibility");
+    if (title == "Security") return Tr("Security");
+    if (title == "Development") return Tr("Development");
+    if (title == "Terminals") return Tr("Terminals");
+    if (title == "Files") return Tr("Files");
+    if (title == "Monitors") return Tr("Monitors");
+    if (title == "Settings") return Tr("Settings");
+    if (title == "Software") return Tr("Software");
+    if (title == "Home automation") return Tr("Home automation");
+    if (title == "Notes") return Tr("Notes");
+    if (title == "Screenshots") return Tr("Screenshots");
+    if (title == "Weather") return Tr("Weather");
+    if (title == "Clipboard") return Tr("Clipboard");
+    if (title == "3D printing") return Tr("3D printing");
+    if (title == "Electronics") return Tr("Electronics");
+    if (title == "Virtual machines") return Tr("Virtual machines");
+    if (title == "Viewers") return Tr("Viewers");
+    if (title == "Maps") return Tr("Maps");
+    if (title == "Science") return Tr("Science");
+    if (title == "Education") return Tr("Education");
+    if (title == "Accessories") return Tr("Accessories");
+    if (title == "AI assistants") return Tr("AI assistants");
+    if (title == "Other") return Tr("Other");
+    return title;
+}
+
+std::string AppGroupDisplayName(const AppGroup& group) {
+    if (group.category == AppCategory::Folder) return group.title;
+    return AppCategoryDisplayName(group.category);
 }
 
 AppPlace PlaceApplication(const UCDesktopEntry& entry) {
