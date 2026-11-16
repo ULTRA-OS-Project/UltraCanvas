@@ -1,5 +1,10 @@
 // Apps/Demo/Items/UltraCanvasNodeDiagramExamples.cpp
-// Comprehensive examples for UltraCanvasNodeDiagram v2.4.0
+// Comprehensive examples for UltraCanvasNodeDiagram v2.5.0
+// Version: 2.5.0 - the Concept map tab: ellipse nodes placed by hand, five
+//                  free-placed regions that overlap with their titles outside
+//                  them, a paragraph beside the nodes that need one, one
+//                  highlighted path per region, arrows that stop at the
+//                  outlines, and one link led round the outside by waypoints
 // Version: 2.4.1 - the Friends tab is a personal social network: 24 card
 //                  nodes with interest icons in five circles, two bridges,
 //                  tie-strength link widths, a legend, icon-only cards when
@@ -12,7 +17,7 @@
 //                  card that fills the page area, each diagram filling its tab,
 //                  the Organization sidebar and the edit popup laid out by flex,
 //                  every label and button sized to its text
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-16
 //
 // Demonstrates all features of NodeDiagram 2.x:
 //  - Simple API (graph visualization)
@@ -1806,6 +1811,132 @@ void RegisterNodeDiagramExamples(/* DemoRegistry& registry */) {
 // external widgets, like the Block Diagram demo (image 3) Stefan asked to
 // emulate.
 
+// =============================================================================
+// 4. CONCEPT MAP - REGIONS, ELLIPSES, ANNOTATIONS, HIGHLIGHTED PATHS (2.5.0)
+// =============================================================================
+//
+// A concept map is drawn, not laid out: every concept sits where the author
+// put it, and the map is read through what lies over it. Five washes mark the
+// parts of the story - they overlap where a concept belongs to two - and one
+// thick line per wash runs through its concepts in order. The nodes are
+// ellipses, the links carry the verb that makes two concepts a sentence, and
+// a concept that needs a sentence of its own has it written beside it.
+// =============================================================================
+
+static std::shared_ptr<UltraCanvasNodeDiagram> CreateConceptMapDiagram(int x, int y, int w, int h) {
+    auto diagram = CreateNodeDiagram("nd_concept", x, y, w, h);
+    diagram->SetTheme(NodeDiagramTheme::Minimal);
+    diagram->SetBackgroundColor(Color(244, 244, 242, 255));
+    diagram->SetFontFamily("Arial");
+    diagram->SetLabelFit(NodeLabelFit::GrowNode);
+    diagram->SetLayout(NodeDiagramLayout::Manual);
+
+    const Color red(214, 72, 52, 255), yellow(232, 170, 30, 255), green(72, 160, 78, 255),
+                blue(40, 150, 214, 255), purple(146, 96, 186, 255);
+    auto wash = [](const Color& c) { return Color(c.r, c.g, c.b, 62); };
+
+    // --- The regions: placed, not fitted, and free to overlap ---
+    struct Region { const char* id; std::string label; Rect2Dd box; Color color; GroupLabelPosition title; };
+    const Region regions[] = {
+        {"creating",   Tr("Creating a document"),  Rect2Dd(70, 10, 190, 260),   red,    GroupLabelPosition::OutsideRightTop},
+        {"storing",    Tr("Storing it"),           Rect2Dd(40, 120, 600, 150),  yellow, GroupLabelPosition::OutsideTopRight},
+        {"retrieving", Tr("The retrieval system"), Rect2Dd(650, 150, 310, 350), green,  GroupLabelPosition::OutsideTopRight},
+        {"searching",  Tr("Searching"),            Rect2Dd(150, 410, 810, 140), blue,   GroupLabelPosition::OutsideBottomRight},
+        {"reader",     Tr("The reader"),           Rect2Dd(150, 430, 180, 210), purple, GroupLabelPosition::OutsideRightBottom},
+    };
+    for (const Region& region : regions) {
+        diagram->AddRegion(region.id, region.label, region.box, wash(region.color));
+        if (NodeDiagramGroup* group = diagram->GetGroup(region.id)) {
+            group->labelPosition = region.title;
+            group->labelFontSize = 13.0;
+        }
+    }
+
+    // --- The concepts: ellipses, centred where the map wants them ---
+    auto addConcept = [&diagram](const std::string& id, const std::string& label, double cx, double cy) {
+        NodeDiagramNode node(id, label);
+        node.shape = NodeShape::Ellipse;
+        node.width = 104.0;
+        node.height = 40.0;
+        node.x = cx - node.width * 0.5;
+        node.y = cy - node.height * 0.5;
+        node.fontSize = 10.0;
+        node.fillColor = Color(255, 255, 255, 255);
+        node.borderColor = Color(70, 70, 70, 255);
+        node.borderWidth = 1.0;
+        node.textColor = Color(40, 40, 40, 255);
+        diagram->AddNode(node);
+    };
+    addConcept("author",   Tr("Author"),      165, 70);
+    addConcept("document", Tr("Document"),    165, 195);
+    addConcept("crawler",  Tr("Crawler"),     370, 195);
+    addConcept("index",    Tr("Index"),       560, 195);
+    addConcept("ranking",  Tr("Ranking"),     870, 215);
+    addConcept("matching", Tr("Matching"),    730, 330);
+    addConcept("results",  Tr("Result page"), 870, 455);
+    addConcept("query",    Tr("Query"),       640, 475);
+    addConcept("question", Tr("Question"),    430, 475);
+    addConcept("reader",   Tr("Reader"),      240, 475);
+    addConcept("need",     Tr("Need"),        240, 590);
+
+    // --- What a concept needs said about it ---
+    diagram->SetNodeAnnotation("author", Tr("Anyone who puts a page online. Nobody asks them to describe it."),
+                               NodeAnnotationPosition::Right);
+    diagram->SetNodeAnnotation("index", Tr("Every word, and the pages it appears on."),
+                               NodeAnnotationPosition::Top);
+    diagram->SetNodeAnnotation("ranking", Tr("Decides which page comes first. Most readers never look past it."),
+                               NodeAnnotationPosition::Left);
+    diagram->SetNodeAnnotation("need", Tr("What the reader wants to know - often less clear than the words they type."),
+                               NodeAnnotationPosition::Right);
+
+    // --- The links: a verb each, so two concepts read as a sentence ---
+    int linkNo = 0;
+    auto relate = [&diagram, &linkNo](const std::string& from, const std::string& to, const std::string& verb) {
+        NodeDiagramLink link("rel" + std::to_string(++linkNo), from, to);
+        link.label = verb;
+        link.style = LinkStyle::Straight;
+        link.directed = true;   // the arrow stops at the ellipse's outline
+        link.lineColor = Color(110, 110, 110, 255);
+        link.lineWidth = 1.0;
+        diagram->AddLink(link);
+    };
+    relate("author",   "document", Tr("writes"));
+    relate("document", "crawler",  Tr("is fetched by"));
+    relate("crawler",  "index",    Tr("fills"));
+    relate("index",    "matching", Tr("is searched by"));
+    relate("matching", "ranking",  Tr("hands hits to"));
+    relate("ranking",  "results",  Tr("orders"));
+    relate("need",     "reader",   Tr("moves"));
+    relate("reader",   "question", Tr("asks"));
+    relate("question", "query",    Tr("is typed as"));
+    relate("query",    "results",  Tr("is answered by"));
+    relate("query",    "matching", Tr("is read by"));
+    relate("results",  "document", Tr("points to"));
+
+    // --- One link led round the outside: a reader can become an author ---
+    {
+        NodeDiagramLink loop("loop", "reader", "author");
+        loop.label = Tr("may become an");
+        loop.style = LinkStyle::Bezier;   // a smooth curve through the waypoints
+        loop.lineColor = Color(110, 110, 110, 255);
+        loop.lineWidth = 1.0;
+        loop.waypoints = {Point2Dd(60, 440), Point2Dd(10, 250), Point2Dd(50, 90)};
+        diagram->AddLink(loop);
+    }
+
+    // --- One line through each region, in its colour ---
+    diagram->HighlightPath({"author", "document"}, red, 3.5);
+    diagram->HighlightPath({"document", "crawler", "index"}, yellow, 3.5);
+    diagram->HighlightPath({"index", "matching", "ranking", "results"}, green, 3.5);
+    diagram->HighlightPath({"reader", "question", "query", "results"}, blue, 3.5);
+    diagram->HighlightPath({"need", "reader"}, purple, 3.5);
+
+    diagram->SetMinimapVisible(false);
+    diagram->SetControlsVisible(false);
+    diagram->RunLayout();   // Manual: sizes the nodes for their labels and fits the view
+    return diagram;
+}
+
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiagramExamples() {
     // ---- Page: the tabs fill the display area, each diagram scrolls and
     // zooms inside its tab ----
@@ -1813,7 +1944,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
         Tr("Friends: a personal network of card nodes in five circles. Organization: cluster containers, "
         "degree-based node sizing and a color legend, with controls for every "
         "option. Custom: click 'Add Node' or right-click the canvas to create "
-        "nodes, double-click a node to edit its label and color."));
+        "nodes, double-click a node to edit its label and color. Concept map: "
+        "ellipse nodes under overlapping regions, with notes and highlighted paths."));
     root->SetFillsArea(true);
 
     auto card = DemoKit::CreateCard("ndCard");
@@ -1861,7 +1993,23 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
 
     tabs->AddTab(Tr("Friends"), friendsTab);
     tabs->AddTab(Tr("Organization"), orgTab);
+    // ---- Concept map tab (2.5.0: regions, ellipses, annotations, paths) ----
+    auto conceptDiag = CreateConceptMapDiagram(4, 4, INNER_W, INNER_H);
+    conceptDiag->onNodeClick = [diagram = conceptDiag.get(), statusLabel](const std::string& id) {
+        const NodeDiagramNode* node = diagram->GetNode(id);
+        if (!node || !statusLabel) return;
+        statusLabel->SetText(node->annotation.empty() ? node->label
+                                                      : TrF("{0}: {1}", node->label, node->annotation));
+    };
+    auto conceptTab = std::make_shared<UltraCanvasContainer>(
+        "ndTabConcept", 0, 0, INNER_W, INNER_H);
+    conceptTab->SetBackgroundColor(Color(255, 255, 255, 255));
+    conceptTab->layout.SetFlexColumn();
+    conceptTab->SetPadding(4);
+    AddFillingDiagram(conceptTab, conceptDiag);
+
     tabs->AddTab(Tr("Custom"), customTab);
+    tabs->AddTab(Tr("Concept map"), conceptTab);
     tabs->SetActiveTab(0);
     
     DemoKit::Add(card, tabs, 1);
@@ -1870,16 +2018,18 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     auto activeDiagram = std::make_shared<std::shared_ptr<UltraCanvasNodeDiagram>>(friendsDiag);
     auto isCustomTab   = std::make_shared<bool>(false);
     
-    // Tab indices: 0 = Friends, 1 = Organization, 2 = Custom.
+    // Tab indices: 0 = Friends, 1 = Organization, 2 = Custom, 3 = Concept map.
     const int TAB_ORG = 1;
     const int TAB_CUSTOM = 2;
+    const int TAB_CONCEPT = 3;
 
-    tabs->onTabChange = [activeDiagram, isCustomTab, friendsDiag, orgDiag, customDiag,
-                         statusLabel, TAB_ORG, TAB_CUSTOM]
+    tabs->onTabChange = [activeDiagram, isCustomTab, friendsDiag, orgDiag, customDiag, conceptDiag,
+                         statusLabel, TAB_ORG, TAB_CUSTOM, TAB_CONCEPT]
                         (int /*oldIdx*/, int newIdx) {
         bool custom = (newIdx == TAB_CUSTOM);
         *activeDiagram = custom ? customDiag
                        : (newIdx == TAB_ORG) ? orgDiag
+                       : (newIdx == TAB_CONCEPT) ? conceptDiag
                                              : friendsDiag;
         *isCustomTab = custom;
         if (statusLabel) {
@@ -1891,6 +2041,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
                 statusLabel->SetText(Tr("Organization - Cluster containers, degree-based "
                                       "node sizing and a color legend. Use the controls "
                                       "on the left to switch every option on and off."));
+            } else if (newIdx == TAB_CONCEPT) {
+                statusLabel->SetText(Tr("Concept map - five regions that overlap, one "
+                                      "highlighted path through each. Click a concept to "
+                                      "read its note."));
             } else {
                 statusLabel->SetText(Tr("Friends - your network: 24 people in five circles, "
                                       "two of them bridges. Click a person, zoom out to "
