@@ -495,8 +495,10 @@ void UOSSettingsWindow::BuildDesktopPage() {
         row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         row->size.height = CSSLayout::Dimension::Px(30);
         auto label = MakeLabel(id + "-label", captionText);
-        // The caption column grows with the text size (130 px at 12 pt).
-        label->size.width = CSSLayout::Dimension::Px(static_cast<int>(130 * TextFontSize() / 12.0f));
+        // The caption column grows with the text size (180 px at 12 pt):
+        // wide enough for a translated caption - "Virtuelle Schreibtische",
+        // "Abgelegte Dateien" - which 130 px cut short.
+        label->size.width = CSSLayout::Dimension::Px(static_cast<int>(180 * TextFontSize() / 12.0f));
         row->AddChild(label);
         field->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         field->size.width = CSSLayout::Dimension::Px(0);
@@ -592,7 +594,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
 
     appsSplit_ = std::make_shared<UltraCanvasDropdown>("uos-dt-appssplit", 0, 0, 200, 28);
     for (int above : kAppsSplitChoices) {
-        appsSplit_->AddItem(above == 0 ? "Never" : "Above " + std::to_string(above) + " applications",
+        appsSplit_->AddItem(above == 0 ? Tr("Never") : TrF("Above {0} applications", std::to_string(above)),
                             std::to_string(above));
     }
     appsSplit_->onSelectionChanged = [this](int, const DropdownItem&) {

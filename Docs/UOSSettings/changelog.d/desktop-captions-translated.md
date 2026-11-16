@@ -6,3 +6,7 @@
   language - beside notes that named them in the reader's own. They go
   through `Tr` now and are translated in all thirty languages, in the
   wording the notes quote.
+- **The Sub-categories choices are translated too** ("Never", "Above 8
+  applications"), and the Desktop page's caption column is 180 px wide at
+  12 pt instead of 130, so a translated caption ("Virtuelle
+  Schreibtische", "Abgelegte Dateien") is not cut short.

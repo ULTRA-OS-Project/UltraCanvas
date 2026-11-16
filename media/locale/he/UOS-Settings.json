@@ -8,6 +8,7 @@
   "A hidden icon's service keeps running: a hidden battery still warns when it runs low, and a hidden mail icon still lets UltraMail fetch mail.": "השירות של סמל מוסתר ממשיך לפעול: סוללה מוסתרת עדיין מתריעה כשהיא עומדת להתרוקן, וסמל דואר מוסתר עדיין מאפשר ל-UltraMail להביא דואר.",
   "A label in the look": "תווית במראה הזה",
   "A program that starts with the desktop opens minimized a few seconds after it - unless it is running already - and keeps working in the background: ChatCube receives messages, UltraMail fetches mail and shows the unread count on the desktop's mail icon. The desktop's settings button offers the same choice on its right-click menu.": "תוכנית שמופעלת עם שולחן העבודה נפתחת ממוזערת כמה שניות אחריו – אלא אם היא כבר פועלת – וממשיכה לעבוד ברקע: ChatCube מקבל הודעות, UltraMail מביא דואר ומציג את מספר ההודעות שלא נקראו על סמל הדואר של שולחן העבודה. לחצן ההגדרות של שולחן העבודה מציע את אותה אפשרות בתפריט הלחיצה הימנית שלו.",
+  "Above {0} applications": "מעל {0} יישומים",
   "Accent:": "צבע הדגשה:",
   "An application registers again the next time it starts or shows a notification, so removing does no harm to one you keep.": "יישום נרשם מחדש בפעם הבאה שהוא מופעל או מציג התראה, כך שההסרה אינה מזיקה ליישום שנשאר אצלך.",
   "An application uses a change the next time it starts. The command line (--lang) and the ULTRACANVAS_LANG variable override this setting for one start.": "יישום משתמש בשינוי בפעם הבאה שהוא מופעל. שורת הפקודה (--lang) והמשתנה ULTRACANVAS_LANG עוקפים הגדרה זו להפעלה אחת.",

@@ -8,6 +8,7 @@
   "A hidden icon's service keeps running: a hidden battery still warns when it runs low, and a hidden mail icon still lets UltraMail fetch mail.": "非表示のアイコンのサービスは動作し続けます。非表示のバッテリーは残量が少なくなると警告し、非表示のメールアイコンでも UltraMail はメールを取得します。",
   "A label in the look": "この見た目のラベル",
   "A program that starts with the desktop opens minimized a few seconds after it - unless it is running already - and keeps working in the background: ChatCube receives messages, UltraMail fetches mail and shows the unread count on the desktop's mail icon. The desktop's settings button offers the same choice on its right-click menu.": "デスクトップと一緒に起動するプログラムは、すでに実行中でなければ、デスクトップの数秒後に最小化された状態で開き、バックグラウンドで動作し続けます。ChatCube はメッセージを受信し、UltraMail はメールを取得してデスクトップのメールアイコンに未読数を表示します。デスクトップの設定ボタンの右クリックメニューでも同じ選択ができます。",
+  "Above {0} applications": "{0} 個を超えるアプリケーション",
   "Accent:": "アクセント:",
   "An application registers again the next time it starts or shows a notification, so removing does no harm to one you keep.": "アプリケーションは次回の起動時または通知の表示時に再び登録されるため、使い続けるアプリケーションの登録を削除しても問題はありません。",
   "An application uses a change the next time it starts. The command line (--lang) and the ULTRACANVAS_LANG variable override this setting for one start.": "変更は、アプリケーションの次回起動時に反映されます。コマンドライン (--lang) と ULTRACANVAS_LANG 変数は、1 回の起動に限りこの設定より優先されます。",

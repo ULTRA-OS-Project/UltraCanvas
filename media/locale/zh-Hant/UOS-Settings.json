@@ -8,6 +8,7 @@
   "A hidden icon's service keeps running: a hidden battery still warns when it runs low, and a hidden mail icon still lets UltraMail fetch mail.": "隱藏圖示後，其服務仍會繼續執行：隱藏的電池圖示仍會在電量不足時發出警告，隱藏的郵件圖示也不妨礙 UltraMail 收取郵件。",
   "A label in the look": "此外觀樣式下的標籤",
   "A program that starts with the desktop opens minimized a few seconds after it - unless it is running already - and keeps working in the background: ChatCube receives messages, UltraMail fetches mail and shows the unread count on the desktop's mail icon. The desktop's settings button offers the same choice on its right-click menu.": "隨桌面啟動的程式會在桌面啟動幾秒後以最小化方式開啟（除非它已在執行），並在背景繼續運作：ChatCube 接收訊息，UltraMail 收取郵件並在桌面的郵件圖示上顯示未讀數量。桌面設定按鈕的右鍵選單中也提供同樣的選項。",
+  "Above {0} applications": "超過 {0} 個應用程式",
   "Accent:": "強調色：",
   "An application registers again the next time it starts or shows a notification, so removing does no harm to one you keep.": "應用程式下次啟動或顯示通知時會重新註冊，因此移除不會影響您保留的應用程式。",
   "An application uses a change the next time it starts. The command line (--lang) and the ULTRACANVAS_LANG variable override this setting for one start.": "應用程式會在下次啟動時套用變更。命令列 (--lang) 和 ULTRACANVAS_LANG 變數會在單次啟動中覆寫此設定。",
