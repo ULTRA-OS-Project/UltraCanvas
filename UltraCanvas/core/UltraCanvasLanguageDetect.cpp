@@ -613,7 +613,9 @@ namespace UltraCanvas {
             if (Contains(t, "$this->")) v.Add("PHP", 5);
             if (StartsWith(t, "<?=")) v.Add("PHP", 3);
             if (StartsWith(t, "function ") && Contains(t, "($")) v.Add("PHP", 3);
-            if (StartsWith(t, "echo $")) v.Add("PHP", 2);
+            // echo $x; is a PHP statement; echo $HOME, with no semicolon, is
+            // a shell command (scored with the shell rules below).
+            if (StartsWith(t, "echo $") && EndsWith(t, ";")) v.Add("PHP", 2);
             if (StartsWith(t, "$") && Contains(t, " = ") && EndsWith(t, ";")) v.Add("PHP", 2);
 
             // ----- JavaScript, TypeScript -----
@@ -671,6 +673,7 @@ namespace UltraCanvas {
                 v.Add("Shell Script", 3);
             }
             if (StartsWith(t, "echo ")) v.Add("Shell Script", 1);
+            if (StartsWith(t, "echo $") && !EndsWith(t, ";")) v.Add("Shell Script", 2);
             if (StartsWith(t, "sudo ") || StartsWith(t, "apt ") || StartsWith(t, "apt-get ") ||
                 StartsWith(t, "cd ") || StartsWith(t, "mkdir ") || StartsWith(t, "chmod ") ||
                 StartsWith(t, "rm -") || StartsWith(t, "git ") || StartsWith(t, "cmake ") ||
