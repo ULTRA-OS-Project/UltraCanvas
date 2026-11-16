@@ -34,6 +34,7 @@
 #include "UltraCanvasDesktopShellBackend.h"
 #include "UltraCanvasDiskCache.h"
 #include "UltraCanvasDebug.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #ifdef ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS
 
@@ -225,14 +226,14 @@ bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
     @autoreleasepool {
         NSString* path = ToNS(shortcutPath);
         if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
-            error = shortcutPath + " is not there any more.";
+            error = TrF("{0} is not there any more.", shortcutPath);
             return false;
         }
         NSURL* url = [NSURL fileURLWithPath:path];
         if ([[path pathExtension] caseInsensitiveCompare:@"app"] != NSOrderedSame) {
             // Not a bundle: opened as Finder opens it.
             if ([[NSWorkspace sharedWorkspace] openURL:url]) return true;
-            error = "macOS could not open " + shortcutPath + ".";
+            error = TrF("macOS could not open {0}.", shortcutPath);
             return false;
         }
         // Started as Finder starts it, and brought to the front. The answer

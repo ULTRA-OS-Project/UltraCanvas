@@ -33,6 +33,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWirelessBackend.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
@@ -92,7 +93,7 @@ namespace {
     }
 
     std::string Describe(NSError* error) {
-        return error ? ToUtf8(error.localizedDescription) : std::string("no answer");
+        return error ? ToUtf8(error.localizedDescription) : Tr("no answer");
     }
 
     // Run `work` on the main thread and wait for it - at once when this is
@@ -143,7 +144,7 @@ namespace {
 #ifdef ULTRACANVAS_WIRELESS_HAS_COREWLAN
     CWInterface* WifiInterface(std::string& error) {
         CWInterface* interface = [[CWWiFiClient sharedWiFiClient] interface];
-        if (!interface) error = "There is no Wi-Fi adapter.";
+        if (!interface) error = Tr("There is no Wi-Fi adapter.");
         return interface;
     }
 
@@ -252,7 +253,7 @@ namespace {
         std::transform(dashed.begin(), dashed.end(), dashed.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         IOBluetoothDevice* device = [IOBluetoothDevice deviceWithAddressString:@(dashed.c_str())];
-        if (!device) error = "The device " + address + " is not known to Bluetooth; look for devices first.";
+        if (!device) error = TrF("The device {0} is not known to Bluetooth; look for devices first.", address);
         return device;
     }
 
@@ -302,14 +303,12 @@ WirelessWifiStatus ReadWifi() {
         if (status.networks.empty() && (nameless > 0 || location != LocationState::Allowed)) {
             status.error =
                 location == LocationState::Asking
-                    ? "macOS shows the names of Wi-Fi networks only to applications allowed to use Location "
-                      "Services: allow it when macOS asks, and the networks show."
-                    : "macOS shows the names of Wi-Fi networks only to applications allowed to use Location "
-                      "Services: allow this one in System Settings > Privacy & Security > Location Services.";
+                    ? Tr("macOS shows the names of Wi-Fi networks only to applications allowed to use Location Services: allow it when macOS asks, and the networks show.")
+                    : Tr("macOS shows the names of Wi-Fi networks only to applications allowed to use Location Services: allow this one in System Settings > Privacy & Security > Location Services.");
         }
     }
 #else
-    status.error = "This build has no Wi-Fi support (CoreWLAN was missing).";
+    status.error = Tr("This build has no Wi-Fi support.");
 #endif
     return status;
 }
@@ -321,13 +320,13 @@ bool RequestWifiScan(std::string& error) {
         if (!interface) return false;
         NSError* failure = nil;
         if (![interface scanForNetworksWithName:nil error:&failure]) {
-            error = "The Wi-Fi adapter could not scan: " + Describe(failure);
+            error = TrF("The Wi-Fi adapter could not scan: {0}", Describe(failure));
             return false;
         }
         return true;
     }
 #else
-    error = "This build has no Wi-Fi support.";
+    error = Tr("This build has no Wi-Fi support.");
     return false;
 #endif
 }
@@ -339,14 +338,15 @@ bool SetWifiEnabled(bool enabled, std::string& error) {
         if (!interface) return false;
         NSError* failure = nil;
         if (![interface setPower:enabled error:&failure]) {
-            error = std::string("Wi-Fi could not be switched ") + (enabled ? "on: " : "off: ") + Describe(failure);
+            error = enabled ? TrF("Wi-Fi could not be switched on: {0}", Describe(failure))
+                            : TrF("Wi-Fi could not be switched off: {0}", Describe(failure));
             return false;
         }
         return true;
     }
 #else
     (void)enabled;
-    error = "This build has no Wi-Fi support.";
+    error = Tr("This build has no Wi-Fi support.");
     return false;
 #endif
 }
@@ -359,12 +359,12 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
         CWNetwork* network = FindNetwork(interface, ssid, false);
         if (!network) network = FindNetwork(interface, ssid, true);
         if (!network) {
-            error = ssid + " is not in reach. Scan again, or move closer to it.";
+            error = TrF("{0} is not in reach. Scan again, or move closer to it.", ssid);
             return false;
         }
         const std::string security = SecurityOf(network);
         if (security == "Enterprise") {
-            error = ssid + " asks for a user name and certificate (WPA Enterprise); join it from System Settings.";
+            error = TrF("{0} asks for a user name and certificate (WPA Enterprise); join it from System Settings.", ssid);
             return false;
         }
         NSString* password = passphrase.empty() ? nil : @(passphrase.c_str());
@@ -380,15 +380,15 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
             if (findPassword && findPassword(kCWKeychainDomainSystem, ssidData, &stored) == noErr && stored) {
                 password = stored;
             } else {
-                error = ssid + " needs its password.";
+                error = TrF("{0} needs its password.", ssid);
                 return false;
             }
         }
         NSError* failure = nil;
         if (![interface associateToNetwork:network password:password error:&failure]) {
-            error = security == "Open" ? "Could not join " + ssid + ": " + Describe(failure)
-                                       : "Could not join " + ssid + " - is the password right? (" +
-                                             Describe(failure) + ")";
+            error = security == "Open" ? TrF("Could not join {0}: {1}", ssid, Describe(failure))
+                                       : TrF("Could not join {0} - is the password right? ({1})", ssid,
+                                             Describe(failure));
             return false;
         }
         return true;
@@ -396,7 +396,7 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
 #else
     (void)ssid;
     (void)passphrase;
-    error = "This build has no Wi-Fi support.";
+    error = Tr("This build has no Wi-Fi support.");
     return false;
 #endif
 }
@@ -410,13 +410,13 @@ bool DisconnectWifi(std::string& error) {
         return true;
     }
 #else
-    error = "This build has no Wi-Fi support.";
+    error = Tr("This build has no Wi-Fi support.");
     return false;
 #endif
 }
 
 bool ForgetWifi(const std::string& ssid, std::string& error) {
-    error = "macOS forgets " + ssid + " only with an administrator's permission: use System Settings > Wi-Fi.";
+    error = TrF("macOS forgets {0} only with an administrator's permission: use System Settings > Wi-Fi.", ssid);
     return false;
 }
 
@@ -429,7 +429,7 @@ WirelessBluetoothStatus ReadBluetooth() {
         status.available = true;
         IOBluetoothHostController* controller = [IOBluetoothHostController defaultController];
         if (!controller) {
-            status.error = "There is no Bluetooth adapter.";
+            status.error = Tr("There is no Bluetooth adapter.");
             return status;
         }
         status.adapterPresent = true;
@@ -452,7 +452,7 @@ WirelessBluetoothStatus ReadBluetooth() {
         }
     }
 #else
-    status.error = "This build has no Bluetooth support (IOBluetooth was missing).";
+    status.error = Tr("This build has no Bluetooth support.");
 #endif
     return status;
 }
@@ -469,7 +469,7 @@ bool SetBluetoothPowered(bool powered, std::string& error) {
 #ifdef ULTRACANVAS_WIRELESS_HAS_IOBLUETOOTH
     PowerSetter setter = PowerSetterFunction();
     if (!setter) {
-        error = "This macOS switches Bluetooth only in System Settings.";
+        error = Tr("This macOS switches Bluetooth only in System Settings.");
         return false;
     }
     setter(powered ? 1 : 0);
@@ -481,11 +481,11 @@ bool SetBluetoothPowered(bool powered, std::string& error) {
         }
         [NSThread sleepForTimeInterval:0.1];
     }
-    error = std::string("Bluetooth did not switch ") + (powered ? "on." : "off.");
+    error = powered ? Tr("Bluetooth could not be switched on.") : Tr("Bluetooth could not be switched off.");
     return false;
 #else
     (void)powered;
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -505,12 +505,12 @@ bool StartBluetoothDiscovery(std::string& error) {
     };
     OnMain(start);
     if (result != kIOReturnSuccess) {
-        error = "Could not look for devices - is Bluetooth on?";
+        error = Tr("Could not look for devices - is Bluetooth on?");
         return false;
     }
     return true;
 #else
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -527,7 +527,7 @@ bool StopBluetoothDiscovery(std::string& error) {
     OnMain(stop);
     return true;
 #else
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -539,14 +539,14 @@ bool ConnectBluetoothDevice(const std::string& address, std::string& error) {
         if (!device) return false;
         const IOReturn result = [device openConnection];
         if (result != kIOReturnSuccess) {
-            error = "Could not connect. Is the device switched on and in reach?";
+            error = Tr("Could not connect. Is the device switched on and in reach?");
             return false;
         }
         return true;
     }
 #else
     (void)address;
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -576,7 +576,7 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
                 started = [pair start];
             });
             if (started != kIOReturnSuccess) {
-                error = "Could not pair. Is the device in pairing mode?";
+                error = Tr("Could not pair. Is the device in pairing mode?");
                 return false;
             }
             const long waited = dispatch_semaphore_wait(delegate.done, dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_SEC));
@@ -589,20 +589,20 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
             finished.address = address;
             AskPairing(finished);
             if (waited != 0 || delegate.result != kIOReturnSuccess) {
-                error = waited != 0 ? "The device did not answer. Is it in pairing mode?"
-                                    : "Could not pair. Is the device in pairing mode?";
+                error = waited != 0 ? Tr("The device did not answer. Is it in pairing mode?")
+                                    : Tr("Could not pair. Is the device in pairing mode?");
                 return false;
             }
         }
         if ([device openConnection] != kIOReturnSuccess) {
-            error = "Paired, but could not connect.";
+            error = Tr("Paired, but could not connect.");
             return false;
         }
         return true;
     }
 #else
     (void)address;
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -614,14 +614,14 @@ bool DisconnectBluetoothDevice(const std::string& address, std::string& error) {
         if (!device) return false;
         if (!device.isConnected) return true;
         if ([device closeConnection] != kIOReturnSuccess) {
-            error = "Could not disconnect the device.";
+            error = Tr("The device could not be disconnected.");
             return false;
         }
         return true;
     }
 #else
     (void)address;
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -633,7 +633,7 @@ bool RemoveBluetoothDevice(const std::string& address, std::string& error) {
         if (!device) return false;
         SEL remove = NSSelectorFromString(@"remove");
         if (![device respondsToSelector:remove]) {
-            error = "This macOS removes a device only in System Settings > Bluetooth.";
+            error = Tr("This macOS removes a device only in System Settings > Bluetooth.");
             return false;
         }
         if (device.isConnected) [device closeConnection];
@@ -642,7 +642,7 @@ bool RemoveBluetoothDevice(const std::string& address, std::string& error) {
     }
 #else
     (void)address;
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -662,7 +662,7 @@ bool OpenSystemSettings(WirelessRadio radio, std::string& error) {
     NSString* legacy = radio == WirelessRadio::WiFi ? @"x-apple.systempreferences:com.apple.preference.network"
                                                     : @"x-apple.systempreferences:com.apple.preferences.Bluetooth";
     if (OpenUrl(legacy)) return true;
-    error = "System Settings did not open.";
+    error = Tr("System Settings did not open.");
     return false;
 }
 

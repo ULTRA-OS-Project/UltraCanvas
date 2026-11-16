@@ -60,6 +60,7 @@
 #include "UltraCanvasLinuxDeviceProbes.h"
 #include "UltraCanvasLinuxDesktopShellInternal.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -612,7 +613,7 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error, const int*
     out = DesktopScreenImage();
     Display* d = QueryDisplay();
     if (!d) {
-        error = "No X display: the screen cannot be captured.";
+        error = Tr("No X display: the screen cannot be captured.");
         return false;
     }
     ScopedErrorHandler guard;
@@ -620,7 +621,7 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error, const int*
     const int screenWidth = DisplayWidth(d, screen);
     const int screenHeight = DisplayHeight(d, screen);
     if (screenWidth <= 0 || screenHeight <= 0) {
-        error = "The X server reports an empty screen.";
+        error = Tr("The X server reports an empty screen.");
         return false;
     }
     int originX = 0, originY = 0, width = screenWidth, height = screenHeight;
@@ -630,7 +631,7 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error, const int*
         const int right = std::min(screenWidth, area[0] + area[2]);
         const int bottom = std::min(screenHeight, area[1] + area[3]);
         if (right <= left || bottom <= top) {
-            error = "The area to capture lies off the screen.";
+            error = Tr("The area to capture lies off the screen.");
             return false;
         }
         originX = left;
@@ -641,7 +642,7 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error, const int*
     XImage* image = XGetImage(d, RootOf(d), originX, originY, static_cast<unsigned>(width),
                               static_cast<unsigned>(height), AllPlanes, ZPixmap);
     if (!image) {
-        error = "The X server refused to hand over the screen contents.";
+        error = Tr("The X server refused to hand over the screen contents.");
         return false;
     }
 
@@ -651,7 +652,7 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error, const int*
     } catch (const std::bad_alloc&) {
         XDestroyImage(image);
         out = DesktopScreenImage();
-        error = "Not enough memory for a " + std::to_string(width) + "x" + std::to_string(height) + " image.";
+        error = TrF("Not enough memory for a {0}x{1} image.", std::to_string(width), std::to_string(height));
         return false;
     }
     unsigned char* dst = out.pixels.data();
@@ -711,23 +712,23 @@ bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error
         std::lock_guard<std::mutex> lock(g_queryMutex);
         Display* d = QueryDisplay();
         if (!d || id == 0) {
-            error = "No window to capture.";
+            error = Tr("No window to capture.");
             return false;
         }
         ScopedErrorHandler guard;
         XWindowAttributes attributes;
         if (!XGetWindowAttributes(d, static_cast<Window>(id), &attributes)) {
-            error = "The window is gone.";
+            error = Tr("The window is gone.");
             return false;
         }
         if (attributes.map_state != IsViewable) {
-            error = "The window is minimized or hidden.";
+            error = Tr("The window is minimized or hidden.");
             return false;
         }
     }
     int x = 0, y = 0, width = 0, height = 0;
     if (!GetWindowBounds(id, x, y, width, height) || width <= 0 || height <= 0) {
-        error = "The window is gone.";
+        error = Tr("The window is gone.");
         return false;
     }
     return CaptureScreenArea(x, y, width, height, out, error);
@@ -743,15 +744,15 @@ bool CaptureScreen(const std::string& pngPath, std::string& error) {
     cairo_surface_t* surface = cairo_image_surface_create_for_data(
         shot.pixels.data(), CAIRO_FORMAT_RGB24, shot.width, shot.height, shot.stride);
     if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-        error = std::string("Could not wrap the screen image: ") +
-                cairo_status_to_string(cairo_surface_status(surface));
+        error = TrF("Could not wrap the screen image: {0}",
+                    cairo_status_to_string(cairo_surface_status(surface)));
         cairo_surface_destroy(surface);
         return false;
     }
     const cairo_status_t status = cairo_surface_write_to_png(surface, pngPath.c_str());
     cairo_surface_destroy(surface);
     if (status != CAIRO_STATUS_SUCCESS) {
-        error = std::string("Could not write \"") + pngPath + "\": " + cairo_status_to_string(status);
+        error = TrF("Could not write \"{0}\": {1}", pngPath, cairo_status_to_string(status));
         return false;
     }
     return true;
@@ -764,7 +765,7 @@ bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
     return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
 }
 bool LaunchPackagedApplication(const std::string&, std::string& error) {
-    error = "Microsoft Store applications run on Windows only.";
+    error = Tr("Microsoft Store applications run on Windows only.");
     return false;
 }
 
@@ -774,7 +775,7 @@ bool CanReplaceSystemDesktop(DesktopReplacement) { return false; }
 DesktopReplacement GetSystemDesktopReplacement() { return DesktopReplacement::Off; }
 bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, DesktopReplacement,
                           std::string& error) {
-    error = "On this system the session starts the desktop; choose UltraDesktop's session at sign-in.";
+    error = Tr("On this system the session starts the desktop; choose UltraDesktop's session at sign-in.");
     return false;
 }
 bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
@@ -908,7 +909,7 @@ struct ShortcutState {
 static ShortcutState* OpenSuperTap(const std::string& accelerator, std::string& error) {
     Display* d = XOpenDisplay(nullptr);
     if (!d) {
-        error = "No X display for " + accelerator + ".";
+        error = TrF("No X display for {0}.", accelerator);
         return nullptr;
     }
     int opcode = 0, firstEvent = 0, firstError = 0;
@@ -916,14 +917,14 @@ static ShortcutState* OpenSuperTap(const std::string& accelerator, std::string& 
     if (!XQueryExtension(d, "XInputExtension", &opcode, &firstEvent, &firstError) ||
         XIQueryVersion(d, &major, &minor) != Success) {
         XCloseDisplay(d);
-        error = "This X server has no XInput 2, so a tap of the Super key cannot be watched.";
+        error = Tr("This X server has no XInput 2, so a tap of the Super key cannot be watched.");
         return nullptr;
     }
     const KeyCode left = XKeysymToKeycode(d, XK_Super_L);
     const KeyCode right = XKeysymToKeycode(d, XK_Super_R);
     if (left == 0 && right == 0) {
         XCloseDisplay(d);
-        error = "This keyboard has no Super key.";
+        error = Tr("This keyboard has no Super key.");
         return nullptr;
     }
     unsigned char maskBits[XIMaskLen(XI_LASTEVENT)] = {};
@@ -945,7 +946,7 @@ static ShortcutState* OpenSuperTap(const std::string& accelerator, std::string& 
     if (!OpenWakePipe(state->wakePipe)) {
         XCloseDisplay(d);
         delete state;
-        error = "No pipe for the shortcut's thread.";
+        error = Tr("No pipe for the shortcut's thread.");
         return nullptr;
     }
     return state;
@@ -975,7 +976,7 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, 
     }
     const bool tap = key.empty() && modifiers == Mod4Mask;
     if (key.empty() && !tap) {
-        error = "\"" + accelerator + "\" names no key.";
+        error = TrF("\"{0}\" names no key.", accelerator);
         return nullptr;
     }
     if (tap) return OpenSuperTap(accelerator, error);
@@ -985,19 +986,19 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, 
         keysym = XStringToKeysym(lower.c_str());
     }
     if (keysym == NoSymbol) {
-        error = "\"" + key + "\" is not a key name.";
+        error = TrF("\"{0}\" is not a key name.", key);
         return nullptr;
     }
 
     Display* d = XOpenDisplay(nullptr);
     if (!d) {
-        error = "No X display for " + accelerator + ".";
+        error = TrF("No X display for {0}.", accelerator);
         return nullptr;
     }
     const KeyCode keycode = XKeysymToKeycode(d, keysym);
     if (keycode == 0) {
         XCloseDisplay(d);
-        error = "This keyboard has no \"" + key + "\" key.";
+        error = TrF("This keyboard has no \"{0}\" key.", key);
         return nullptr;
     }
 
@@ -1013,7 +1014,7 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, 
     XSetErrorHandler(previous);
     if (g_grabError.load() != 0) {
         XCloseDisplay(d);
-        error = accelerator + " is taken by another program.";
+        error = TrF("{0} is taken by another program.", accelerator);
         return nullptr;
     }
     XSelectInput(d, DefaultRootWindow(d), KeyPressMask | KeyReleaseMask);
@@ -1030,7 +1031,7 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, 
     if (!OpenWakePipe(state->wakePipe)) {
         XCloseDisplay(d);
         delete state;
-        error = "No pipe for the shortcut's thread.";
+        error = Tr("No pipe for the shortcut's thread.");
         return nullptr;
     }
     return state;

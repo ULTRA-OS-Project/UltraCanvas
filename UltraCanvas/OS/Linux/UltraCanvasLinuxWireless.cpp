@@ -38,6 +38,7 @@
 #if defined(__linux__) && !defined(__ANDROID__)
 
 #include "UltraCanvasLinuxSystemBus.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <gio/gio.h>
 
@@ -108,7 +109,7 @@ namespace {
     bool FindWifiDevice(WifiDevice& device, std::string& error) {
         GVariant* reply = Call(kNM, kNMPath, kNM, "GetDevices", nullptr, G_VARIANT_TYPE("(ao)"), error);
         if (!reply) {
-            error = "NetworkManager does not answer (" + error + ").";
+            error = TrF("NetworkManager does not answer ({0}).", error);
             return false;
         }
         for (const std::string& path : PathList(reply)) {
@@ -117,7 +118,7 @@ namespace {
             device.name = GetString(kNM, path, kNMDevice, "Interface");
             return true;
         }
-        error = "There is no Wi-Fi adapter.";
+        error = Tr("There is no Wi-Fi adapter.");
         return false;
     }
 
@@ -261,7 +262,7 @@ namespace {
         GVariant* reply = Call(kBlueZ, "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects", nullptr,
                                G_VARIANT_TYPE("(a{oa{sa{sv}}})"), error);
         if (!reply) {
-            error = "BlueZ does not answer (" + error + ").";
+            error = TrF("BlueZ does not answer ({0}).", error);
             return false;
         }
         GVariant* objects = g_variant_get_child_value(reply, 0);
@@ -329,7 +330,7 @@ namespace {
             tree.devices.push_back(std::move(entry.device));
         }
         if (tree.adapterPath.empty()) {
-            error = "There is no Bluetooth adapter.";
+            error = Tr("There is no Bluetooth adapter.");
             return false;
         }
         return true;
@@ -341,7 +342,7 @@ namespace {
         for (const auto& [known, path] : tree.devicePaths) {
             if (g_ascii_strcasecmp(known.c_str(), address.c_str()) == 0) return path;
         }
-        error = "The device " + address + " is not known to Bluetooth; look for devices first.";
+        error = TrF("The device {0} is not known to Bluetooth; look for devices first.", address);
         return "";
     }
 
@@ -626,7 +627,7 @@ WirelessWifiStatus ReadWifi() {
     WifiDevice device;
     if (!FindWifiDevice(device, status.error)) {
         // No adapter is an answer; no NetworkManager is not.
-        status.available = status.error == "There is no Wi-Fi adapter.";
+        status.available = status.error == Tr("There is no Wi-Fi adapter.");
         return status;
     }
     status.available = true;
@@ -672,7 +673,8 @@ bool RequestWifiScan(std::string& error) {
 
 bool SetWifiEnabled(bool enabled, std::string& error) {
     if (!SetProperty(kNM, kNMPath, kNM, "WirelessEnabled", g_variant_new_boolean(enabled), error)) {
-        error = std::string("Wi-Fi could not be switched ") + (enabled ? "on" : "off") + ": " + error;
+        error = enabled ? TrF("Wi-Fi could not be switched on: {0}", error)
+                        : TrF("Wi-Fi could not be switched off: {0}", error);
         return false;
     }
     return true;
@@ -690,7 +692,7 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
                                g_variant_new("(ooo)", path.c_str(), device.path.c_str(), "/"),
                                G_VARIANT_TYPE("(o)"), error);
         if (!reply) {
-            error = "Could not join " + ssid + ": " + error;
+            error = TrF("Could not join {0}: {1}", ssid, error);
             return false;
         }
         const gchar* active = nullptr;
@@ -698,7 +700,7 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
         const std::string activePath = active;
         g_variant_unref(reply);
         if (WaitForActivation(activePath)) return true;
-        error = "Could not join " + ssid + ". If its password changed, forget the network and join it again.";
+        error = TrF("Could not join {0}. If its password changed, forget the network and join it again.", ssid);
         return false;
     }
 
@@ -708,16 +710,17 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
         if (ap.ssid == ssid && (best.path.empty() || ap.strength > best.strength)) best = ap;
     }
     if (best.path.empty()) {
-        error = ssid + " is not in reach. Scan again, or move closer to it.";
+        error = TrF("{0} is not in reach. Scan again, or move closer to it.", ssid);
         return false;
     }
     const std::string security = SecurityOf(best);
     if (security == "Enterprise") {
-        error = ssid + " asks for a user name and certificate (WPA Enterprise), which this panel cannot set up yet.";
+        error = TrF("{0} asks for a user name and certificate (WPA Enterprise), which this panel cannot set up yet.",
+                    ssid);
         return false;
     }
     if (security != "Open" && passphrase.empty()) {
-        error = ssid + " needs its password.";
+        error = TrF("{0} needs its password.", ssid);
         return false;
     }
 
@@ -746,7 +749,7 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
                            g_variant_new("(a{sa{sv}}oo)", &settings, device.path.c_str(), best.path.c_str()),
                            G_VARIANT_TYPE("(oo)"), error);
     if (!reply) {
-        error = "Could not join " + ssid + ": " + error;
+        error = TrF("Could not join {0}: {1}", ssid, error);
         return false;
     }
     const gchar* connection = nullptr;
@@ -759,8 +762,8 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
 
     std::string ignored;
     CallVoid(kNM, connectionPath, kNMConnection, "Delete", nullptr, ignored);
-    error = security == "Open" ? "Could not join " + ssid + "."
-                               : "Could not join " + ssid + " - is the password right?";
+    error = security == "Open" ? TrF("Could not join {0}.", ssid)
+                               : TrF("Could not join {0} - is the password right?", ssid);
     return false;
 }
 
@@ -768,7 +771,7 @@ bool DisconnectWifi(std::string& error) {
     WifiDevice device;
     if (!FindWifiDevice(device, error)) return false;
     if (!CallVoid(kNM, device.path, kNMDevice, "Disconnect", nullptr, error)) {
-        error = "Could not leave the network: " + error;
+        error = TrF("Could not leave the network: {0}", error);
         return false;
     }
     return true;
@@ -779,12 +782,12 @@ bool ForgetWifi(const std::string& ssid, std::string& error) {
     for (const auto& [path, saved] : ReadSavedWifi()) {
         if (saved != ssid) continue;
         if (!CallVoid(kNM, path, kNMConnection, "Delete", nullptr, error)) {
-            error = "Could not forget " + ssid + ": " + error;
+            error = TrF("Could not forget {0}: {1}", ssid, error);
             return false;
         }
         any = true;
     }
-    if (!any) error = ssid + " is not saved.";
+    if (!any) error = TrF("{0} is not saved.", ssid);
     return any;
 }
 
@@ -794,7 +797,7 @@ WirelessBluetoothStatus ReadBluetooth() {
     WirelessBluetoothStatus status;
     BlueZTree tree;
     if (!ReadTree(tree, status.error)) {
-        status.available = status.error == "There is no Bluetooth adapter.";
+        status.available = status.error == Tr("There is no Bluetooth adapter.");
         return status;
     }
     status.available = true;
@@ -814,9 +817,10 @@ bool SetBluetoothPowered(bool powered, std::string& error) {
     if (!ReadTree(tree, error)) return false;
     if (!SetProperty(kBlueZ, tree.adapterPath, kAdapter, "Powered", g_variant_new_boolean(powered), error)) {
         if (error.find("Blocked") != std::string::npos || error.find("rfkill") != std::string::npos) {
-            error = "Bluetooth is switched off by the computer's wireless switch or key (rfkill).";
+            error = Tr("Bluetooth is switched off by the computer's wireless switch or key (rfkill).");
         } else {
-            error = std::string("Bluetooth could not be switched ") + (powered ? "on" : "off") + ": " + error;
+            error = powered ? TrF("Bluetooth could not be switched on: {0}", error)
+                            : TrF("Bluetooth could not be switched off: {0}", error);
         }
         return false;
     }
@@ -827,12 +831,12 @@ bool StartBluetoothDiscovery(std::string& error) {
     BlueZTree tree;
     if (!ReadTree(tree, error)) return false;
     if (!tree.powered) {
-        error = "Switch Bluetooth on first.";
+        error = Tr("Switch Bluetooth on first.");
         return false;
     }
     if (!CallVoid(kBlueZ, tree.adapterPath, kAdapter, "StartDiscovery", nullptr, error) &&
         error.find("InProgress") == std::string::npos && error.find("in progress") == std::string::npos) {
-        error = "Could not look for devices: " + error;
+        error = TrF("Could not look for Bluetooth devices: {0}", error);
         return false;
     }
     error.clear();
@@ -869,7 +873,7 @@ bool ConnectBluetoothDevice(const std::string& address, std::string& error) {
     const std::string path = DevicePath(address, tree, error);
     if (path.empty()) return false;
     if (!CallVoid(kBlueZ, path, kDevice, "Connect", nullptr, error, kConnectTimeoutMs)) {
-        error = "Could not connect: " + error + ". Is the device switched on and in reach?";
+        error = TrF("Could not connect: {0}. Is the device switched on and in reach?", error);
         return false;
     }
     return true;
@@ -896,11 +900,10 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
         error.find("Already Exists") == std::string::npos) {
         SetPairingPath("");
         if (error.find("Authentication") != std::string::npos) {
-            error = agent ? "The code was not confirmed, or was typed wrongly. Try again."
-                          : "The device wants a code confirmed or typed, which nothing here can show. "
-                            "Pair it with bluetoothctl, then connect it here.";
+            error = agent ? Tr("The code was not confirmed, or was typed wrongly. Try again.")
+                          : Tr("The device wants a code confirmed or typed, which nothing here can show. Pair it with bluetoothctl, then connect it here.");
         } else {
-            error = "Could not pair: " + error + ". Is the device in pairing mode?";
+            error = TrF("Could not pair: {0}. Is the device in pairing mode?", error);
         }
         return false;
     }
@@ -909,7 +912,7 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
     const bool connected = CallVoid(kBlueZ, path, kDevice, "Connect", nullptr, error, kConnectTimeoutMs);
     SetPairingPath("");
     if (!connected) {
-        error = "Paired, but could not connect: " + error;
+        error = TrF("Paired, but could not connect: {0}", error);
         return false;
     }
     return true;
@@ -920,7 +923,7 @@ bool DisconnectBluetoothDevice(const std::string& address, std::string& error) {
     const std::string path = DevicePath(address, tree, error);
     if (path.empty()) return false;
     if (!CallVoid(kBlueZ, path, kDevice, "Disconnect", nullptr, error, kConnectTimeoutMs)) {
-        error = "Could not disconnect: " + error;
+        error = TrF("Could not disconnect: {0}", error);
         return false;
     }
     return true;
@@ -931,7 +934,7 @@ bool RemoveBluetoothDevice(const std::string& address, std::string& error) {
     const std::string path = DevicePath(address, tree, error);
     if (path.empty()) return false;
     if (!CallVoid(kBlueZ, tree.adapterPath, kAdapter, "RemoveDevice", g_variant_new("(o)", path.c_str()), error)) {
-        error = "Could not remove the device: " + error;
+        error = TrF("Could not remove the device: {0}", error);
         return false;
     }
     return true;
@@ -953,7 +956,7 @@ void PairingHandlerChanged(bool present) {
 bool HasSystemSettings(WirelessRadio) { return false; }
 
 bool OpenSystemSettings(WirelessRadio, std::string& error) {
-    error = "On Linux the desktop's own panels are the settings.";
+    error = Tr("On Linux the desktop's own panels are the settings.");
     return false;
 }
 

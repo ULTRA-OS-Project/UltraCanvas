@@ -1367,6 +1367,13 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasApplicationBase::LoadTranslations(const std::string& application) {
+        const std::filesystem::path settings = UltraCanvasSettingsFolder();
+        UltraLocalisation::SetFolders(NormalizePath(GetResourcesDir() + "media/locale/"),
+                                      settings.empty() ? std::string() : PathToUtf8(settings));
+        UltraLocalisation::Initialize(application, SystemLanguageTags());
+    }
+
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {
         appName = app;
 
@@ -1420,10 +1427,7 @@ namespace UltraCanvas {
         // ULTRACANVAS_LANG / Language.conf / the desktop's languages. Before
         // the native backend, so the first window is built translated.
         {
-            const std::filesystem::path settings = UltraCanvasSettingsFolder();
-            UltraLocalisation::SetFolders(NormalizePath(GetResourcesDir() + "media/locale/"),
-                                          settings.empty() ? std::string() : PathToUtf8(settings));
-            UltraLocalisation::Initialize(appName, SystemLanguageTags());
+            LoadTranslations(appName);
             debugOutput << "UltraCanvas: language " << UltraLocalisation::CurrentLanguage()
                         << " (" << UltraLocalisation::EntryCount(LocalisationOrigin::Application) << " application, "
                         << UltraLocalisation::EntryCount(LocalisationOrigin::Base) << " base, "

@@ -30,6 +30,7 @@
 #endif
 
 #include "UltraCanvasWirelessBackend.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <atomic>
@@ -125,15 +126,15 @@ namespace {
         if (opened != ERROR_SUCCESS) {
             wlan.client = nullptr;
             error = opened == ERROR_SERVICE_NOT_ACTIVE
-                        ? "The WLAN AutoConfig service is not running."
-                        : "The Wi-Fi service does not answer (" + SystemMessage(opened) + ").";
+                        ? Tr("The WLAN AutoConfig service is not running.")
+                        : TrF("The Wi-Fi service does not answer ({0}).", SystemMessage(opened));
             return false;
         }
         PWLAN_INTERFACE_INFO_LIST interfaces = nullptr;
         if (::WlanEnumInterfaces(wlan.client, nullptr, &interfaces) != ERROR_SUCCESS || !interfaces ||
             interfaces->dwNumberOfItems == 0) {
             if (interfaces) ::WlanFreeMemory(interfaces);
-            error = "There is no Wi-Fi adapter.";
+            error = Tr("There is no Wi-Fi adapter.");
             return false;
         }
         DWORD pick = 0;
@@ -337,7 +338,7 @@ namespace {
         HBLUETOOTH_RADIO_FIND find = ::BluetoothFindFirstRadio(&params, &radio.handle);
         if (!find) {
             radio.handle = nullptr;
-            error = "There is no Bluetooth adapter, or Bluetooth is switched off in Windows' settings.";
+            error = Tr("There is no Bluetooth adapter, or Bluetooth is switched off in Windows' settings.");
             return false;
         }
         ::BluetoothFindRadioClose(find);
@@ -455,7 +456,7 @@ namespace {
         info.Address = ParseAddress(address);
         const DWORD result = ::BluetoothGetDeviceInfo(radio.handle, &info);
         if (result != ERROR_SUCCESS) {
-            error = "The device " + address + " is not known to Bluetooth; look for devices first.";
+            error = TrF("The device {0} is not known to Bluetooth; look for devices first.", address);
             return false;
         }
         return true;
@@ -484,7 +485,7 @@ WirelessWifiStatus ReadWifi() {
 #ifdef ULTRACANVAS_WIRELESS_HAS_WLANAPI
     Wlan wlan;
     if (!OpenWlan(wlan, status.error)) {
-        status.available = status.error == "There is no Wi-Fi adapter.";
+        status.available = status.error == Tr("There is no Wi-Fi adapter.");
         return status;
     }
     status.available = true;
@@ -519,7 +520,7 @@ WirelessWifiStatus ReadWifi() {
         status.networks.push_back(network);
     }
 #else
-    status.error = "This build has no Wi-Fi support (wlanapi.h was missing).";
+    status.error = Tr("This build has no Wi-Fi support.");
 #endif
     return status;
 }
@@ -530,12 +531,12 @@ bool RequestWifiScan(std::string& error) {
     if (!OpenWlan(wlan, error)) return false;
     const DWORD result = ::WlanScan(wlan.client, &wlan.interfaceGuid, nullptr, nullptr, nullptr);
     if (result != ERROR_SUCCESS) {
-        error = "The Wi-Fi adapter could not scan: " + SystemMessage(result);
+        error = TrF("The Wi-Fi adapter could not scan: {0}", SystemMessage(result));
         return false;
     }
     return true;
 #else
-    error = "This build has no Wi-Fi support.";
+    error = Tr("This build has no Wi-Fi support.");
     return false;
 #endif
 }
@@ -560,17 +561,17 @@ bool SetWifiEnabled(bool enabled, std::string& error) {
                                                 sizeof(state), &state, nullptr);
         if (result != ERROR_SUCCESS) {
             error = result == ERROR_ACCESS_DENIED
-                        ? std::string("Windows switches Wi-Fi ") + (enabled ? "on" : "off") +
-                              " only from its own settings here."
-                        : std::string("Wi-Fi could not be switched ") + (enabled ? "on: " : "off: ") +
-                              SystemMessage(result);
+                        ? (enabled ? Tr("Windows switches Wi-Fi on only from its own settings here.")
+                                   : Tr("Windows switches Wi-Fi off only from its own settings here."))
+                        : (enabled ? TrF("Wi-Fi could not be switched on: {0}", SystemMessage(result))
+                                   : TrF("Wi-Fi could not be switched off: {0}", SystemMessage(result)));
             return false;
         }
     }
     return true;
 #else
     (void)enabled;
-    error = "This build has no Wi-Fi support.";
+    error = Tr("This build has no Wi-Fi support.");
     return false;
 #endif
 }
@@ -586,11 +587,11 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
         for (const WLAN_AVAILABLE_NETWORK& network : networks) {
             if (SsidOf(network.dot11Ssid) != ssid || !(network.dwFlags & kNetworkHasProfile)) continue;
             if (!ConnectProfile(wlan, network.strProfileName, error)) {
-                error = "Could not join " + ssid + ": " + error;
+                error = TrF("Could not join {0}: {1}", ssid, error);
                 return false;
             }
             if (WaitForJoin(wlan, ssid)) return true;
-            error = "Could not join " + ssid + ". If its password changed, forget the network and join it again.";
+            error = TrF("Could not join {0}. If its password changed, forget the network and join it again.", ssid);
             return false;
         }
     }
@@ -602,21 +603,21 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
         if (!best || network.wlanSignalQuality > best->wlanSignalQuality) best = &network;
     }
     if (!best) {
-        error = ssid + " is not in reach. Scan again, or move closer to it.";
+        error = TrF("{0} is not in reach. Scan again, or move closer to it.", ssid);
         return false;
     }
     const std::string security = SecurityOf(*best);
     if (security == "Enterprise") {
-        error = ssid + " asks for a user name and certificate (WPA Enterprise); join it from Windows' settings.";
+        error = TrF("{0} asks for a user name and certificate (WPA Enterprise); join it from Windows' settings.", ssid);
         return false;
     }
     if (security != "Open" && passphrase.empty()) {
-        error = ssid + " needs its password.";
+        error = TrF("{0} needs its password.", ssid);
         return false;
     }
     const std::wstring xml = ProfileXml(ssid, passphrase, *best);
     if (xml.empty()) {
-        error = "Could not write a profile for " + ssid + ".";
+        error = TrF("Could not write a profile for {0}.", ssid);
         return false;
     }
 
@@ -637,8 +638,8 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
     if (written != ERROR_SUCCESS) {
         wchar_t text[256] = {};
         if (reason != 0) ::WlanReasonCodeToString(reason, 256, text, nullptr);
-        error = "Windows refused the profile for " + ssid + ": " +
-                (text[0] ? WideToUtf8(text) : SystemMessage(written));
+        error = TrF("Windows refused the profile for {0}: {1}", ssid,
+                    (text[0] ? WideToUtf8(text) : SystemMessage(written)));
         return false;
     }
     if (ConnectProfile(wlan, profileName, error) && WaitForJoin(wlan, ssid)) return true;
@@ -649,13 +650,13 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
         ::WlanSetProfile(wlan.client, &wlan.interfaceGuid, flags, previousXml.c_str(), nullptr, TRUE, nullptr,
                          &reason);
     }
-    error = security == "Open" ? "Could not join " + ssid + "."
-                               : "Could not join " + ssid + " - is the password right?";
+    error = security == "Open" ? TrF("Could not join {0}.", ssid)
+                               : TrF("Could not join {0} - is the password right?", ssid);
     return false;
 #else
     (void)ssid;
     (void)passphrase;
-    error = "This build has no Wi-Fi support.";
+    error = Tr("This build has no Wi-Fi support.");
     return false;
 #endif
 }
@@ -666,12 +667,12 @@ bool DisconnectWifi(std::string& error) {
     if (!OpenWlan(wlan, error)) return false;
     const DWORD result = ::WlanDisconnect(wlan.client, &wlan.interfaceGuid, nullptr);
     if (result != ERROR_SUCCESS) {
-        error = "Could not leave the network: " + SystemMessage(result);
+        error = TrF("Could not leave the network: {0}", SystemMessage(result));
         return false;
     }
     return true;
 #else
-    error = "This build has no Wi-Fi support.";
+    error = Tr("This build has no Wi-Fi support.");
     return false;
 #endif
 }
@@ -694,21 +695,21 @@ bool ForgetWifi(const std::string& ssid, std::string& error) {
         ::WlanFreeMemory(list);
     }
     if (profiles.empty()) {
-        error = ssid + " is not saved.";
+        error = TrF("{0} is not saved.", ssid);
         return false;
     }
     if (CurrentSsid(wlan) == ssid) ::WlanDisconnect(wlan.client, &wlan.interfaceGuid, nullptr);
     for (const std::wstring& profile : profiles) {
         const DWORD result = ::WlanDeleteProfile(wlan.client, &wlan.interfaceGuid, profile.c_str(), nullptr);
         if (result != ERROR_SUCCESS && result != ERROR_NOT_FOUND) {
-            error = "Could not forget " + ssid + ": " + SystemMessage(result);
+            error = TrF("Could not forget {0}: {1}", ssid, SystemMessage(result));
             return false;
         }
     }
     return true;
 #else
     (void)ssid;
-    error = "This build has no Wi-Fi support.";
+    error = Tr("This build has no Wi-Fi support.");
     return false;
 #endif
 }
@@ -758,7 +759,7 @@ WirelessBluetoothStatus ReadBluetooth() {
         if (listed.insert(device.address).second) status.devices.push_back(device);
     }
 #else
-    status.error = "This build has no Bluetooth support (bluetoothapis.h was missing).";
+    status.error = Tr("This build has no Bluetooth support.");
 #endif
     return status;
 }
@@ -766,7 +767,7 @@ WirelessBluetoothStatus ReadBluetooth() {
 bool CanSetBluetoothPower() { return false; }
 
 bool SetBluetoothPowered(bool, std::string& error) {
-    error = "Windows switches Bluetooth on and off in its own settings.";
+    error = Tr("Windows switches Bluetooth on and off in its own settings.");
     return false;
 }
 
@@ -784,7 +785,7 @@ bool StartBluetoothDiscovery(std::string& error) {
     std::thread(RunInquiry).detach();
     return true;
 #else
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -796,7 +797,7 @@ bool StopBluetoothDiscovery(std::string& error) {
     TheDiscovery().stop.store(true);
     return true;
 #else
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -807,7 +808,7 @@ bool ConnectBluetoothDevice(const std::string& address, std::string& error) {
     BLUETOOTH_DEVICE_INFO info{};
     if (!OpenRadio(radio, error) || !DeviceInfo(radio, address, info, error)) return false;
     if (!info.fAuthenticated && !info.fRemembered) {
-        error = "Pair the device first.";
+        error = Tr("Pair the device first.");
         return false;
     }
     // Switching the installed services off and on again makes Windows
@@ -829,14 +830,15 @@ bool ConnectBluetoothDevice(const std::string& address, std::string& error) {
         if (::BluetoothSetServiceState(radio.handle, &info, &service, kServiceEnable) == ERROR_SUCCESS) any = true;
     }
     if (!any) {
-        error = "Could not connect: " + (last != ERROR_SUCCESS ? SystemMessage(last) : std::string("the device offers no service Windows can connect")) +
-                ". Is the device switched on and in reach?";
+        error = last != ERROR_SUCCESS
+                    ? TrF("Could not connect: {0}. Is the device switched on and in reach?", SystemMessage(last))
+                    : Tr("Could not connect: the device offers no service Windows can connect. Is the device switched on and in reach?");
         return false;
     }
     return true;
 #else
     (void)address;
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -851,9 +853,9 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
         const DWORD result = ::BluetoothAuthenticateDeviceEx(nullptr, radio.handle, &info, nullptr,
                                                              MITMProtectionNotRequired);
         if (result != ERROR_SUCCESS && result != ERROR_NO_MORE_ITEMS) {
-            error = result == ERROR_CANCELLED ? "Pairing was cancelled."
-                                              : "Could not pair: " + SystemMessage(result) +
-                                                    ". Is the device in pairing mode?";
+            error = result == ERROR_CANCELLED
+                        ? Tr("Pairing was cancelled.")
+                        : TrF("Could not pair: {0}. Is the device in pairing mode?", SystemMessage(result));
             return false;
         }
     }
@@ -870,7 +872,7 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
     return true;
 #else
     (void)address;
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -883,7 +885,7 @@ bool DisconnectBluetoothDevice(const std::string& address, std::string& error) {
     std::vector<GUID> installed = InstalledServices(radio, info);
     if (installed.empty()) {
         if (!info.fConnected) return true;
-        error = "Windows has no service of this device to switch off.";
+        error = Tr("Windows has no service of this device to switch off.");
         return false;
     }
     DWORD last = ERROR_SUCCESS;
@@ -892,13 +894,13 @@ bool DisconnectBluetoothDevice(const std::string& address, std::string& error) {
         if (result != ERROR_SUCCESS) last = result;
     }
     if (last != ERROR_SUCCESS) {
-        error = "Could not disconnect every part of the device: " + SystemMessage(last);
+        error = TrF("Could not disconnect: {0}", SystemMessage(last));
         return false;
     }
     return true;
 #else
     (void)address;
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -908,13 +910,13 @@ bool RemoveBluetoothDevice(const std::string& address, std::string& error) {
     BLUETOOTH_ADDRESS parsed = ParseAddress(address);
     const DWORD result = ::BluetoothRemoveDevice(&parsed);
     if (result != ERROR_SUCCESS && result != ERROR_NOT_FOUND) {
-        error = "Could not remove the device: " + SystemMessage(result);
+        error = TrF("Could not remove the device: {0}", SystemMessage(result));
         return false;
     }
     return true;
 #else
     (void)address;
-    error = "This build has no Bluetooth support.";
+    error = Tr("This build has no Bluetooth support.");
     return false;
 #endif
 }
@@ -930,7 +932,7 @@ bool OpenSystemSettings(WirelessRadio radio, std::string& error) {
     const wchar_t* page = radio == WirelessRadio::WiFi ? L"ms-settings:network-wifi" : L"ms-settings:bluetooth";
     const auto result = reinterpret_cast<INT_PTR>(::ShellExecuteW(nullptr, L"open", page, nullptr, nullptr, SW_SHOWNORMAL));
     if (result <= 32) {
-        error = "Windows' settings did not open.";
+        error = Tr("Windows' settings did not open.");
         return false;
     }
     return true;

@@ -18,6 +18,7 @@
 // UltraCanvasShellGuard, which brings Explorer back should it fail);
 // --restore-desktop undoes either - the way back the installer's
 // uninstaller and a stuck user (Ctrl+Shift+Esc, Run new task) take.
+// Version: 0.3.0 - the command-line output is translated: the language is loaded before the arguments are read
 // Version: 0.2.0 - --use-instead-of-explorer, --shell
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -31,6 +32,7 @@
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <csignal>
 #include <cstdio>
@@ -58,52 +60,56 @@ void SignalHandler(int) {
     UltraCanvasApplicationBase::RequestExitFromSignal();
 }
 
+// One option and what it does. The option's own spelling is not translated;
+// the text is, and the terminal wraps it.
+void Option(const char* option, const std::string& text) {
+    std::printf("  %-26s %s\n", option, text.c_str());
+}
+
 void PrintUsage(const char* programName) {
-    std::printf(
-        "UltraDesktop - the ULTRA OS desktop\n"
-        "Powered by the UltraCanvas framework (UltraCanvasDesktopShell)\n"
-        "\n"
-        "Usage: %s [options]\n"
-        "\n"
-        "  (no options)        Open the desktop\n"
-        "  --edge <where>      Put the taskbar on the left (default), top or bottom for\n"
-        "                      this run, without changing the settings file\n"
-        "  --settings <file>   Use this settings file instead of the default\n"
-        "  --windows           Print the open windows and exit\n"
-        "  --apps              Print the installed applications and exit\n"
-        "  --devices           Print the device activity and exit\n"
-        "  --screenshot [file] Capture the screen to file (default: the Pictures folder)\n"
-        "  --use-as-desktop    Windows: start UltraDesktop at sign-in in place of the\n"
-        "                      Windows desktop (Explorer's taskbar hides), then open it\n"
-        "  --use-instead-of-explorer\n"
-        "                      Windows: from the next sign-in UltraDesktop is the\n"
-        "                      desktop and Explorer does not start (it comes back by\n"
-        "                      itself should UltraDesktop fail), then exit\n"
-        "  --restore-desktop   Windows: back to the Windows desktop - no start at\n"
-        "                      sign-in, the taskbar as it was - and exit\n"
-        "  --session           Started by the sign-in: close when switched back\n"
-        "  --shell             Started as the session's shell: as --session, and host\n"
-        "                      the notification area's icons\n"
-        "  -v, --version       Show version information\n"
-        "  -h, --help          Show this message\n",
-        programName);
+    std::printf("%s\n%s\n\n%s\n\n",
+                Tr("UltraDesktop - the ULTRA OS desktop").c_str(),
+                Tr("Powered by the UltraCanvas framework (UltraCanvasDesktopShell)").c_str(),
+                TrF("Usage: {0} [options]", programName).c_str());
+    Option("", Tr("(no options) Open the desktop"));
+    Option("--edge <where>", Tr("Put the taskbar on the left (default), top or bottom for this run, "
+                                "without changing the settings file"));
+    Option("--settings <file>", Tr("Use this settings file instead of the default"));
+    Option("--windows", Tr("Print the open windows and exit"));
+    Option("--apps", Tr("Print the installed applications and exit"));
+    Option("--devices", Tr("Print the device activity and exit"));
+    Option("--screenshot [file]", Tr("Capture the screen to file (default: the Pictures folder)"));
+    Option("--use-as-desktop", Tr("Windows: start UltraDesktop at sign-in in place of the Windows desktop "
+                                  "(Explorer's taskbar hides), then open it"));
+    Option("--use-instead-of-explorer", Tr("Windows: from the next sign-in UltraDesktop is the desktop and "
+                                           "Explorer does not start (it comes back by itself should "
+                                           "UltraDesktop fail), then exit"));
+    Option("--restore-desktop", Tr("Windows: back to the Windows desktop - no start at sign-in, the "
+                                   "taskbar as it was - and exit"));
+    Option("--session", Tr("Started by the sign-in: close when switched back"));
+    Option("--shell", Tr("Started as the session's shell: as --session, and host the notification "
+                         "area's icons"));
+    Option("-v, --version", Tr("Show version information"));
+    Option("-h, --help", Tr("Show this message"));
 }
 
 int PrintWindows() {
     if (!UltraCanvasDesktopShell::IsAvailable()) {
-        std::printf("The window list is not available here (backend: %s).\n",
-                    UltraCanvasDesktopShell::GetBackendName().c_str());
+        std::printf("%s\n", TrF("The window list is not available here (backend: {0}).",
+                                UltraCanvasDesktopShell::GetBackendName()).c_str());
         return EXIT_FAILURE;
     }
     const int current = UltraCanvasDesktopShell::GetCurrentVirtualDesktop();
-    std::printf("Virtual desktops: %d, current: %d\n", UltraCanvasDesktopShell::GetVirtualDesktopCount(),
-                current + 1);
+    std::printf("%s\n", TrF("Virtual desktops: {0}, current: {1}",
+                            UltraCanvasDesktopShell::GetVirtualDesktopCount(), current + 1).c_str());
+    const std::string minimized = " [" + Tr("minimized") + "]";
+    const std::string everywhere = " [" + Tr("every desktop") + "]";
     for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
         std::printf("%s%s %-24s %s%s%s\n",
                     w.active ? "*" : " ", w.skipTaskbar ? "-" : " ",
                     w.appClass.c_str(), w.title.c_str(),
-                    w.minimized ? " [minimized]" : "",
-                    w.virtualDesktop < 0 ? " [every desktop]" : "");
+                    w.minimized ? minimized.c_str() : "",
+                    w.virtualDesktop < 0 ? everywhere.c_str() : "");
     }
     return EXIT_SUCCESS;
 }
@@ -113,30 +119,36 @@ int PrintApplications() {
     for (const UCDesktopEntry& app : apps) {
         std::printf("%-30s %s\n", app.name.c_str(), app.program.c_str());
     }
-    std::printf("%zu applications\n", apps.size());
+    std::printf("%s\n", TrN("{n} application", "{n} applications", static_cast<long long>(apps.size())).c_str());
     return EXIT_SUCCESS;
 }
 
 int PrintDevices() {
     const DesktopDeviceActivity a = UltraCanvasDesktopShell::ReadDeviceActivity();
-    const auto yesNo = [](bool b) { return b ? "yes" : "no"; };
-    std::printf("Webcam in use:     %s\n", yesNo(a.webcamInUse));
-    std::printf("Microphone in use: %s\n", yesNo(a.microphoneInUse));
-    std::printf("Speaker playing:   %s\n", yesNo(a.speakerPlaying));
-    std::printf("Bluetooth:         %s%s, %d connected\n", a.bluetoothPresent ? "" : "no adapter; ",
-                yesNo(a.bluetoothPowered), a.bluetoothConnectedDevices);
-    std::printf("Wi-Fi:             %s%s %s\n", a.wifiPresent ? "" : "no adapter; ",
-                yesNo(a.wifiConnected), a.wifiSsid.c_str());
-    std::printf("LAN:               %s\n", yesNo(a.lanConnected));
-    std::printf("VPN:               %s\n", yesNo(a.vpnConnected));
-    std::printf("Traffic:           %s received, %s sent\n",
-                FormatFileSize(static_cast<size_t>(a.bytesReceived)).c_str(),
-                FormatFileSize(static_cast<size_t>(a.bytesSent)).c_str());
-    std::printf("USB devices:       %d\n", a.usbDeviceCount);
-    if (a.batteryPresent) std::printf("Battery:           %d%%%s\n", a.batteryPercent, a.batteryCharging ? ", charging" : "");
-    else std::printf("Battery:           none\n");
-    std::printf("Keyboard layout:   %s\n", a.keyboardLayout.empty() ? "unknown" : a.keyboardLayout.c_str());
-    for (const std::string& warning : a.warnings) std::printf("Note: %s\n", warning.c_str());
+    const auto yesNo = [](bool b) { return b ? Tr("yes") : Tr("no"); };
+    // A label and its value: the labels differ in length from language to
+    // language, so they are not padded into a column.
+    const auto line = [](const std::string& label, const std::string& value) {
+        std::printf("%s: %s\n", label.c_str(), value.c_str());
+    };
+    line(Tr("Webcam in use"), yesNo(a.webcamInUse));
+    line(Tr("Microphone in use"), yesNo(a.microphoneInUse));
+    line(Tr("Speaker playing"), yesNo(a.speakerPlaying));
+    line("Bluetooth", !a.bluetoothPresent ? Tr("no adapter")
+                      : TrF("{0}, {1} connected", yesNo(a.bluetoothPowered), a.bluetoothConnectedDevices));
+    line("Wi-Fi", !a.wifiPresent ? Tr("no adapter")
+                  : a.wifiSsid.empty() ? yesNo(a.wifiConnected)
+                                       : yesNo(a.wifiConnected) + " " + a.wifiSsid);
+    line("LAN", yesNo(a.lanConnected));
+    line("VPN", yesNo(a.vpnConnected));
+    line(Tr("Traffic"), TrF("{0} received, {1} sent", FormatFileSize(static_cast<size_t>(a.bytesReceived)),
+                            FormatFileSize(static_cast<size_t>(a.bytesSent))));
+    line(Tr("USB devices"), std::to_string(a.usbDeviceCount));
+    line(Tr("Battery"), !a.batteryPresent ? Tr("none")
+                        : a.batteryCharging ? TrF("{0}%, charging", a.batteryPercent)
+                                            : TrF("{0}%", a.batteryPercent));
+    line(Tr("Keyboard layout"), a.keyboardLayout.empty() ? Tr("unknown") : a.keyboardLayout);
+    for (const std::string& warning : a.warnings) std::printf("%s\n", TrF("Note: {0}", warning).c_str());
     return EXIT_SUCCESS;
 }
 
@@ -145,10 +157,10 @@ int PrintDevices() {
 int RestoreDesktop() {
     std::string error;
     if (!UltraCanvasDesktopShell::RestoreSystemDesktop(&error)) {
-        std::printf("The Windows desktop could not be restored: %s\n", error.c_str());
+        std::printf("%s\n", TrF("The Windows desktop could not be restored: {0}", error).c_str());
         return EXIT_FAILURE;
     }
-    std::printf("The Windows desktop is back: UltraDesktop no longer starts at sign-in.\n");
+    std::printf("%s\n", Tr("The Windows desktop is back: UltraDesktop no longer starts at sign-in.").c_str());
     return EXIT_SUCCESS;
 }
 
@@ -158,11 +170,12 @@ int UseInsteadOfExplorer() {
     std::string error;
     if (!UltraCanvasDesktopShell::ReplaceSystemDesktop(UltraCanvasDesktopShell::FindProgram("UltraDesktop"),
                                                        {"--shell"}, &error, DesktopReplacement::Instead)) {
-        std::printf("UltraDesktop cannot take the place of Explorer: %s\n", error.c_str());
+        std::printf("%s\n", TrF("UltraDesktop cannot take the place of Explorer: {0}", error).c_str());
         return EXIT_FAILURE;
     }
-    std::printf("From the next sign-in UltraDesktop is the desktop, and Explorer does not start.\n"
-                "Should UltraDesktop fail to start, Explorer starts in its place for that session.\n");
+    std::printf("%s\n%s\n",
+                Tr("From the next sign-in UltraDesktop is the desktop, and Explorer does not start.").c_str(),
+                Tr("Should UltraDesktop fail to start, Explorer starts in its place for that session.").c_str());
     return EXIT_SUCCESS;
 }
 
@@ -170,10 +183,10 @@ int Screenshot(const std::string& file) {
     const std::string path = file.empty() ? UltraCanvasDesktopShell::DefaultScreenshotPath() : file;
     std::string error;
     if (!UltraCanvasDesktopShell::CaptureScreen(path, &error)) {
-        std::printf("Screenshot failed: %s\n", error.c_str());
+        std::printf("%s\n", TrF("Screenshot failed: {0}", error).c_str());
         return EXIT_FAILURE;
     }
-    std::printf("Saved %s\n", path.c_str());
+    std::printf("%s\n", TrF("Saved {0}", path).c_str());
     return EXIT_SUCCESS;
 }
 
@@ -185,6 +198,10 @@ int main(int argc, char* argv[]) {
     UltraDesktop::TaskbarEdge edge = UltraDesktop::TaskbarEdge::Left;
     bool sessionDesktop = false;
     bool shellSession = false;
+
+    // The language first: what the arguments below print - the help, a
+    // list, a refusal - is read in a terminal before any window exists.
+    UltraCanvasApplicationBase::LoadTranslations("UltraDesktop");
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -210,7 +227,7 @@ int main(int argc, char* argv[]) {
             std::string error;
             if (!UltraCanvasDesktopShell::ReplaceSystemDesktop(UltraCanvasDesktopShell::FindProgram("UltraDesktop"),
                                                                {"--session"}, &error)) {
-                std::printf("UltraDesktop cannot take the place of the desktop: %s\n", error.c_str());
+                std::printf("%s\n", TrF("UltraDesktop cannot take the place of the desktop: {0}", error).c_str());
                 return EXIT_FAILURE;
             }
             sessionDesktop = true;
@@ -223,19 +240,19 @@ int main(int argc, char* argv[]) {
             shellSession = true;
         } else if (arg == "--edge") {
             if (i + 1 >= argc || !UltraDesktop::ParseTaskbarEdge(argv[i + 1], edge)) {
-                std::printf("--edge needs a value: left, top or bottom\n");
+                std::printf("%s\n", Tr("--edge needs a value: left, top or bottom").c_str());
                 return EXIT_FAILURE;
             }
             ++i;
             haveEdge = true;
         } else if (arg == "--settings") {
             if (i + 1 >= argc) {
-                std::printf("--settings needs a file name\n");
+                std::printf("%s\n", Tr("--settings needs a file name").c_str());
                 return EXIT_FAILURE;
             }
             settingsPath = argv[++i];
         } else {
-            std::printf("Unknown argument: %s\nUse --help for usage.\n", arg.c_str());
+            std::printf("%s\n%s\n", TrF("Unknown argument: {0}", arg).c_str(), Tr("Use --help for usage.").c_str());
             return EXIT_FAILURE;
         }
     }

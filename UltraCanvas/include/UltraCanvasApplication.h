@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.20.0 - LoadTranslations: the catalogues without a display, for what a program prints before Initialize
 // Version: 1.19.0 - Appearance.conf over the host, the settings watcher (a change reaches a running application)
 // Version: 1.18.0 - under FollowHost, Light and Dark the elements follow the theme by default
 // Version: 1.17.0 - the theme policy (SetThemePolicy / SetThemeProvider): the theme built
@@ -612,6 +613,12 @@ namespace UltraCanvas {
         // calling Run(). Assumes Initialize() succeeded and the app is running.
         void RunOnce();
         bool Initialize(const std::string& app);
+        // The translation catalogues alone, without a display or a window:
+        // what Initialize does as its "translation catalogues" step, for a
+        // program that prints to a terminal before it opens anything - its
+        // --help and its command-line answers - or never opens anything.
+        // Call it first; Initialize loads them again, which changes nothing.
+        static void LoadTranslations(const std::string& application);
         // How long each step of Initialize() took, in the order they ran:
         // fontconfig, the image subsystem, the native backend, the bundled
         // fonts, the clipboard and the default icon. For an application that

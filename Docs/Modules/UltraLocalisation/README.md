@@ -3,9 +3,9 @@
 <!-- doc-check: int count = 3; int done = 1; std::vector<std::string> systemLanguages; -->
 
 **Status:** Phases L1 to L3 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2); the drafting tool over UltraAI with its script, the first drafts of the standard and base sets in German, French, Spanish, Italian, Dutch, Portuguese, Japanese and Simplified Chinese, and the UOS-Settings Language page (L3); the localisation editor - every set in one grid, the merge operations, the two save paths, the compare column, the drafting button - as an element, a dialog, the UOS-Settings Translations page and a DemoApp page (L4, [`UltraCanvasLocalisationEditor.md`](../../UltraCanvas/UltraCanvasLocalisationEditor.md)). The applications (L5) and locale formatting (L6) follow.
-**Version:** 1.2.1
+**Version:** 1.3.0 - dates in words
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-11-04
+**Last Modified:** 2026-11-16
 
 `Tr("Save")` gives the translation of the English text written at the
 site, in the language the person's desktop is set to, from three layers of
@@ -32,6 +32,7 @@ std::string progress = TrF("Deleted {0} of {1}", done, count);    // "1 von 3 ge
 ## Contents
 
 - [The three layers](#the-three-layers)
+- [Dates in words](#dates-in-words)
 - [The catalogue file](#the-catalogue-file)
 - [The language](#the-language)
 - [The catalogues and the scripts](#the-catalogues-and-the-scripts)
@@ -70,6 +71,37 @@ UltraLocalisation::AddSet("UltraCanvasCharts");          // a library's own set
 std::vector<std::string> bases = UltraLocalisation::BaseSets();
 LocalisationOrigin origin = UltraLocalisation::OriginOf("Trim");   // Application, Library, Base, Standard or Source
 ```
+
+## Dates in words
+
+A date written out differs from language to language in more than its
+words: the order, the punctuation, and in many languages the month's form
+("16 listopada" in Polish, where the month alone is "listopad"). `TrLongDate`
+and `TrDayMonth` take all three from the catalogue, so a clock or a header
+needs no format of its own.
+
+```cpp
+std::string today = TrLongDate(1, 16, 11, 2026);            // "Monday, 16 November 2026"; "Montag, 16. November 2026"
+std::string small = TrDayMonth(16, 11);                      // "16 Nov"; "16. Nov."; "11月16日"
+std::string inline_ = TrLongDate(1, 16, 11, 2026, false);    // "lundi 16 novembre 2026": no capital put at the start
+std::string day = TrWeekdayName(0);                          // "Sunday": 0 is Sunday, 6 Saturday
+std::string month = TrMonthName(11);                         // "November": 1 to 12
+std::string inDate = TrMonthNameInDate(11);                  // "listopada" in Polish
+std::string shortMonth = TrMonthShortName(11);               // "Nov"
+std::string capital = CapitaliseFirstLetter("środa");        // "Środa"
+```
+
+| Entry | What a translation gives |
+|---|---|
+| `date: weekday day month year\|{0}, {1} {2} {3}` | The order and punctuation: `{0}` the weekday, `{1}` the day's number, `{2}` the month as it stands in a date, `{3}` the year. German `{0}, {1}. {2} {3}`, French `{0} {1} {2} {3}`, Japanese `{3}年{2}{1}日 {0}` |
+| `date: day short-month\|{0} {1}` | `{0}` the day's number, `{1}` the short month |
+| `month-in-date\|January` ... | The month inside a date - the genitive or partitive where the language has one; the same as `month\|January` where it has not |
+| `Sunday` ... `Saturday` | The weekday, written as the language writes it inside a sentence |
+
+A date stands at the start of a line, so `TrLongDate` gives its first
+letter as a capital (`CapitaliseFirstLetter`: Latin with its accents, Greek
+and Cyrillic; a script without capitals is left as it is), unless its last
+argument is false.
 
 ## The catalogue file
 

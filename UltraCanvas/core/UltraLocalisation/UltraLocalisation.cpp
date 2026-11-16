@@ -789,4 +789,118 @@ std::string ArgText(double value) {
 
 }  // namespace LocalisationDetail
 
+// ===== DATES IN WORDS =====
+
+std::string TrWeekdayName(int weekday) {
+    switch (((weekday % 7) + 7) % 7) {
+        case 0: return Tr("Sunday");
+        case 1: return Tr("Monday");
+        case 2: return Tr("Tuesday");
+        case 3: return Tr("Wednesday");
+        case 4: return Tr("Thursday");
+        case 5: return Tr("Friday");
+        default: return Tr("Saturday");
+    }
+}
+
+std::string TrMonthName(int month) {
+    switch (((month - 1) % 12 + 12) % 12) {
+        case 0: return TrC("month", "January");
+        case 1: return TrC("month", "February");
+        case 2: return TrC("month", "March");
+        case 3: return TrC("month", "April");
+        case 4: return TrC("month", "May");
+        case 5: return TrC("month", "June");
+        case 6: return TrC("month", "July");
+        case 7: return TrC("month", "August");
+        case 8: return TrC("month", "September");
+        case 9: return TrC("month", "October");
+        case 10: return TrC("month", "November");
+        default: return TrC("month", "December");
+    }
+}
+
+std::string TrMonthNameInDate(int month) {
+    switch (((month - 1) % 12 + 12) % 12) {
+        case 0: return TrC("month-in-date", "January");
+        case 1: return TrC("month-in-date", "February");
+        case 2: return TrC("month-in-date", "March");
+        case 3: return TrC("month-in-date", "April");
+        case 4: return TrC("month-in-date", "May");
+        case 5: return TrC("month-in-date", "June");
+        case 6: return TrC("month-in-date", "July");
+        case 7: return TrC("month-in-date", "August");
+        case 8: return TrC("month-in-date", "September");
+        case 9: return TrC("month-in-date", "October");
+        case 10: return TrC("month-in-date", "November");
+        default: return TrC("month-in-date", "December");
+    }
+}
+
+std::string TrMonthShortName(int month) {
+    switch (((month - 1) % 12 + 12) % 12) {
+        case 0: return TrC("month-short", "Jan");
+        case 1: return TrC("month-short", "Feb");
+        case 2: return TrC("month-short", "Mar");
+        case 3: return TrC("month-short", "Apr");
+        case 4: return TrC("month-short", "May");
+        case 5: return TrC("month-short", "Jun");
+        case 6: return TrC("month-short", "Jul");
+        case 7: return TrC("month-short", "Aug");
+        case 8: return TrC("month-short", "Sep");
+        case 9: return TrC("month-short", "Oct");
+        case 10: return TrC("month-short", "Nov");
+        default: return TrC("month-short", "Dec");
+    }
+}
+
+std::string CapitaliseFirstLetter(const std::string& text) {
+    if (text.empty()) return text;
+    // The first code point and how many bytes it takes.
+    const unsigned char lead = static_cast<unsigned char>(text[0]);
+    size_t length = 1;
+    char32_t c = lead;
+    if (lead >= 0xC0 && lead < 0xE0 && text.size() >= 2) {
+        length = 2;
+        c = (static_cast<char32_t>(lead & 0x1F) << 6) | (static_cast<unsigned char>(text[1]) & 0x3F);
+    } else if (lead >= 0x80) {
+        return text;   // three bytes and more: scripts without case, or none we map
+    }
+    char32_t upper = c;
+    if (c >= U'a' && c <= U'z') upper = c - 0x20;
+    else if (c >= 0x00E0 && c <= 0x00FE && c != 0x00F7) upper = c - 0x20;          // à .. þ, not ÷
+    else if (c == 0x00FF) upper = 0x0178;                                          // ÿ
+    else if ((c >= 0x0100 && c <= 0x0137) || (c >= 0x014A && c <= 0x0177)) upper = c & ~char32_t{1};   // ā ą ć ě ő ř ś ů ...
+    else if ((c >= 0x0139 && c <= 0x0148) || (c >= 0x0179 && c <= 0x017E)) upper = (c % 2 == 0) ? c - 1 : c;   // ĺ ł ń ň, ź ż ž
+    else if (c >= 0x03B1 && c <= 0x03C9 && c != 0x03C2) upper = c - 0x20;          // α .. ω, not final ς
+    else if (c == 0x03AC) upper = 0x0386;                                          // ά
+    else if (c >= 0x03AD && c <= 0x03AF) upper = c - 0x25;                         // έ ή ί
+    else if (c == 0x03CC) upper = 0x038C;                                          // ό
+    else if (c == 0x03CD || c == 0x03CE) upper = c - 0x3F;                         // ύ ώ
+    else if (c >= 0x0430 && c <= 0x044F) upper = c - 0x20;                         // а .. я
+    else if (c >= 0x0450 && c <= 0x045F) upper = c - 0x50;                         // ѐ .. џ: ё є і ї
+    if (upper == c) return text;
+    std::string out;
+    if (upper < 0x80) {
+        out += static_cast<char>(upper);
+    } else {
+        out += static_cast<char>(0xC0 | (upper >> 6));
+        out += static_cast<char>(0x80 | (upper & 0x3F));
+    }
+    out.append(text, length, std::string::npos);
+    return out;
+}
+
+std::string TrLongDate(int weekday, int day, int month, int year, bool capitalise) {
+    const std::string date = LocalisationDetail::Substitute(
+            TrC("date: weekday day month year", "{0}, {1} {2} {3}"),
+            {TrWeekdayName(weekday), std::to_string(day), TrMonthNameInDate(month), std::to_string(year)});
+    return capitalise ? CapitaliseFirstLetter(date) : date;
+}
+
+std::string TrDayMonth(int day, int month) {
+    return LocalisationDetail::Substitute(TrC("date: day short-month", "{0} {1}"),
+                                          {std::to_string(day), TrMonthShortName(month)});
+}
+
 }  // namespace UltraCanvas

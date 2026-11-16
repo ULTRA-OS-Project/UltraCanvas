@@ -95,8 +95,14 @@ int main() {
     Write(shipped / "de" / "UltraVideo.json", "{ \"@language\": \"de\", \"Fade out the audio\": \"Ton ausblenden\", \"Delete\": \"Clip entfernen\" }");
     Write(shipped / "fr" / "Standard.json", "{ \"@language\": \"fr\", \"@name\": \"Français\", \"Save\": \"Enregistrer\","
           " \"{n} file\": { \"one\": \"{n} fichier\", \"other\": \"{n} fichiers\" } }");
-    Write(shipped / "pl" / "Standard.json", "{ \"{n} file\": { \"one\": \"{n} plik\", \"few\": \"{n} pliki\", \"many\": \"{n} plików\" } }");
-    Write(shipped / "ja" / "Standard.json", "{ \"{n} file\": \"{n} 個のファイル\" }");
+    Write(shipped / "pl" / "Standard.json", "{ \"{n} file\": { \"one\": \"{n} plik\", \"few\": \"{n} pliki\", \"many\": \"{n} plików\" },"
+          " \"date: weekday day month year|{0}, {1} {2} {3}\": \"{0}, {1} {2} {3}\","
+          " \"Monday\": \"poniedziałek\", \"Wednesday\": \"środa\","
+          " \"month|November\": \"listopad\", \"month-in-date|November\": \"listopada\" }");
+    Write(shipped / "ja" / "Standard.json", "{ \"{n} file\": \"{n} 個のファイル\","
+          " \"date: weekday day month year|{0}, {1} {2} {3}\": \"{3}年{2}{1}日 {0}\","
+          " \"date: day short-month|{0} {1}\": \"{1}{0}日\","
+          " \"Monday\": \"月曜日\", \"month-in-date|November\": \"11月\", \"month-short|Nov\": \"11月\" }");
     Write(settings / "locale" / "de" / "UltraVideo.json", "{ \"Fade out the audio\": \"Audio ausblenden\" }");
 
     UltraLocalisation::Reset();
@@ -213,6 +219,31 @@ int main() {
     Check(TrN("{n} file", "{n} files", 3) == "3 個のファイル", "a one-form language keeps a plain entry");
     UltraLocalisation::Load("fr", "");
     Check(TrN("{n} file", "{n} files", 0) == "0 fichier", "French: zero is singular");
+
+    // ===== DATES IN WORDS =====
+    UltraLocalisation::Load("en", "");
+    Check(TrLongDate(1, 16, 11, 2026) == "Monday, 16 November 2026", "English: weekday, day month year");
+    Check(TrDayMonth(16, 11) == "16 Nov" && TrDayMonth(1, 1) == "1 Jan", "English: the day and the short month");
+    Check(TrWeekdayName(0) == "Sunday" && TrWeekdayName(6) == "Saturday" && TrWeekdayName(7) == "Sunday" && TrWeekdayName(-1) == "Saturday",
+          "weekdays from Sunday, wrapping either way");
+    Check(TrMonthName(1) == "January" && TrMonthName(12) == "December" && TrMonthName(13) == "January" &&
+          TrMonthNameInDate(5) == "May" && TrMonthShortName(9) == "Sep", "months 1 to 12");
+    UltraLocalisation::Load("pl", "");
+    Check(TrMonthName(11) == "listopad" && TrMonthNameInDate(11) == "listopada", "Polish: the month alone and inside a date differ");
+    Check(TrLongDate(1, 16, 11, 2026) == "Poniedziałek, 16 listopada 2026", "Polish: the genitive month, the weekday's capital at the start of the line");
+    Check(TrLongDate(1, 16, 11, 2026, false) == "poniedziałek, 16 listopada 2026", "... or as the language writes it");
+    Check(TrLongDate(3, 18, 11, 2026) == "Środa, 18 listopada 2026", "a capital with an accent");
+    UltraLocalisation::Load("ja", "");
+    Check(TrLongDate(1, 16, 11, 2026) == "2026年11月16日 月曜日", "Japanese: the order is the catalogue's");
+    Check(TrDayMonth(16, 11) == "11月16日", "... also of the short form");
+    Check(CapitaliseFirstLetter("lundi") == "Lundi" && CapitaliseFirstLetter("élan") == "Élan" && CapitaliseFirstLetter("ÿ") == "Ÿ" &&
+          CapitaliseFirstLetter("żółw") == "Żółw" && CapitaliseFirstLetter("łódź") == "Łódź" && CapitaliseFirstLetter("čtvrtek") == "Čtvrtek" &&
+          CapitaliseFirstLetter("ősz") == "Ősz", "capitals: Latin with its accents");
+    Check(CapitaliseFirstLetter("понедельник") == "Понедельник" && CapitaliseFirstLetter("ємність") == "Ємність" &&
+          CapitaliseFirstLetter("δευτέρα") == "Δευτέρα" && CapitaliseFirstLetter("ώρα") == "Ώρα", "capitals: Cyrillic and Greek");
+    Check(CapitaliseFirstLetter("月曜日") == "月曜日" && CapitaliseFirstLetter("").empty() && CapitaliseFirstLetter("Montag") == "Montag" &&
+          CapitaliseFirstLetter("÷") == "÷" && CapitaliseFirstLetter("16 Nov") == "16 Nov" && CapitaliseFirstLetter("الاثنين") == "الاثنين",
+          "what has no capital is left alone");
 
     // ===== THE CHOICE OF LANGUAGE =====
     UltraLocalisation::SetLanguageOverride("");

@@ -19,6 +19,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <chrono>
@@ -157,7 +158,7 @@ namespace {
             }
         }
         if (!g_pulse.handle) {
-            error = "No sound server library (libpulse.so.0): neither PulseAudio nor PipeWire is installed.";
+            error = Tr("No sound server library (libpulse.so.0): neither PulseAudio nor PipeWire is installed.");
             return nullptr;
         }
         return &g_pulse;
@@ -181,13 +182,13 @@ namespace {
             loop = pa.mainloop_new();
             context = loop ? pa.context_new(pa.mainloop_get_api(loop), "UltraCanvas desktop") : nullptr;
             if (!context) {
-                error = "The sound server library could not be set up.";
+                error = Tr("The sound server library could not be set up.");
                 return false;
             }
             // No autospawn: a machine without a running server has no
             // loudspeaker to show, and starting one is not the desktop's job.
             if (pa.context_connect(context, nullptr, kContextNoAutoSpawn, nullptr) < 0) {
-                error = "No sound server is running.";
+                error = Tr("No sound server is running.");
                 return false;
             }
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -195,15 +196,15 @@ namespace {
                 const int state = pa.context_get_state(context);
                 if (state == kContextReady) return true;
                 if (state == kContextFailed || state == kContextTerminated) {
-                    error = "No sound server is running.";
+                    error = Tr("No sound server is running.");
                     return false;
                 }
                 if (std::chrono::steady_clock::now() > deadline) {
-                    error = "The sound server did not answer in time.";
+                    error = Tr("The sound server did not answer in time.");
                     return false;
                 }
                 if (pa.mainloop_iterate(loop, 1, nullptr) < 0) {
-                    error = "The sound server's connection broke.";
+                    error = Tr("The sound server's connection broke.");
                     return false;
                 }
             }
@@ -213,19 +214,19 @@ namespace {
         // took too long. Takes the operation's reference either way.
         bool Finish(pa_operation* operation, std::string& error) {
             if (!operation) {
-                error = "The sound server refused the request.";
+                error = Tr("The sound server refused the request.");
                 return false;
             }
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
             bool ok = true;
             while (pa.operation_get_state(operation) == kOperationRunning) {
                 if (std::chrono::steady_clock::now() > deadline) {
-                    error = "The sound server did not answer in time.";
+                    error = Tr("The sound server did not answer in time.");
                     ok = false;
                     break;
                 }
                 if (pa.mainloop_iterate(loop, 1, nullptr) < 0) {
-                    error = "The sound server's connection broke.";
+                    error = Tr("The sound server's connection broke.");
                     ok = false;
                     break;
                 }
@@ -250,7 +251,7 @@ namespace {
             };
             if (!Finish(pa.context_get_server_info(context, onServer, &defaultName), error)) return false;
             if (defaultName.empty()) {
-                error = "The sound server has no default output.";
+                error = Tr("The sound server has no default output.");
                 return false;
             }
             auto onSink = [](pa_context*, const pa_sink_info* info, int eol, void* into) {
@@ -265,7 +266,7 @@ namespace {
             if (!Finish(pa.context_get_sink_info_by_name(context, defaultName.c_str(), onSink, &sink), error))
                 return false;
             if (!sink.found) {
-                error = "The sound server's default output \"" + defaultName + "\" is gone.";
+                error = TrF("The sound server's default output \"{0}\" is gone.", defaultName);
                 return false;
             }
             return true;
@@ -275,7 +276,7 @@ namespace {
             // The callback's `success` lands in the int the request was given.
             if (!Finish(operation, error)) return false;
             if (success == 0) {
-                error = "The sound server refused the change.";
+                error = Tr("The sound server refused the change.");
                 return false;
             }
             return true;

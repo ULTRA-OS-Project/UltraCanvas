@@ -38,8 +38,9 @@
 //   std::string progress = UltraCanvas::TrF("Deleted {0} of {1}", done, count);      // "1 von 3 gelöscht"
 //   std::string language = UltraCanvas::UltraLocalisation::CurrentLanguage();        // "de"
 //
+// Version: 1.1.0 - dates in words: TrLongDate, TrDayMonth, the weekday and month names, CapitaliseFirstLetter
 // Version: 1.0.0 - phase L1: the three layers, the fallback walk, plurals, Language.conf
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -95,6 +96,32 @@ namespace UltraCanvas {
     std::string TrF(std::string_view source, const Args&... args) {
         return LocalisationDetail::Substitute(Tr(source), {LocalisationDetail::ArgTextOf(args)...});
     }
+
+    // ===== DATES IN WORDS =====
+
+    // A date written out, in the order and with the punctuation of the
+    // current language: "Monday, 16 November 2026", "Montag, 16. November
+    // 2026", "lundi 16 novembre 2026", "2026年11月16日 月曜日". The order is a
+    // catalogue entry of its own ("date: weekday day month year|{0}, {1}
+    // {2} {3}"), the month is the form the language uses inside a date
+    // ("month-in-date|November": "listopada" in Polish, where the month
+    // alone is "listopad"), and the weekday is Tr("Monday"). `weekday` is
+    // 0 for Sunday to 6, `month` 1 to 12. A date stands at the start of a
+    // line, so its first letter is a capital unless `capitalise` is false -
+    // French, Spanish, Polish or Russian write the weekday small.
+    std::string TrLongDate(int weekday, int day, int month, int year, bool capitalise = true);
+    // The day and the short month, for a small label: "16 Nov", "16. Nov.",
+    // "11月16日" ("date: day short-month|{0} {1}").
+    std::string TrDayMonth(int day, int month);
+    // The names themselves: weekday 0 = Sunday; month 1 to 12, alone
+    // ("November"), inside a date, or short ("Nov").
+    std::string TrWeekdayName(int weekday);
+    std::string TrMonthName(int month);
+    std::string TrMonthNameInDate(int month);
+    std::string TrMonthShortName(int month);
+    // `text` with its first letter as a capital: Latin with its accents,
+    // Greek and Cyrillic; any other first character is left as it is.
+    std::string CapitaliseFirstLetter(const std::string& text);
 
     // ===== THE CATALOGUE FILE =====
 

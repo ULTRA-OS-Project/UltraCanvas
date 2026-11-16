@@ -29,6 +29,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <gio/gio.h>
 
@@ -65,7 +66,7 @@ namespace {
         GVariant* reply = g_dbus_connection_call_sync(bus, name, path, iface, method, parameters, nullptr,
                                                       G_DBUS_CALL_FLAGS_NONE, kCallTimeoutMs, nullptr, &gerror);
         if (!reply) {
-            error = gerror && gerror->message ? gerror->message : "no answer";
+            error = gerror && gerror->message ? std::string(gerror->message) : Tr("no answer");
             if (gerror) g_error_free(gerror);
             return false;
         }
@@ -77,8 +78,8 @@ namespace {
         GError* gerror = nullptr;
         GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nullptr, &gerror);
         if (!bus) {
-            error = std::string("The system bus is not reachable: ") +
-                    (gerror && gerror->message ? gerror->message : "no answer");
+            error = TrF("The system bus is not reachable: {0}",
+                        (gerror && gerror->message ? std::string(gerror->message) : Tr("no answer")));
             if (gerror) g_error_free(gerror);
         }
         return bus;
@@ -97,8 +98,8 @@ namespace {
                 "GetSessionByPID", g_variant_new("(u)", static_cast<guint32>(getpid())), G_VARIANT_TYPE("(o)"),
                 G_DBUS_CALL_FLAGS_NONE, kCallTimeoutMs, nullptr, &gerror);
             if (!reply) {
-                error = std::string("logind knows no session for this program: ") +
-                        (gerror && gerror->message ? gerror->message : "no answer");
+                error = TrF("logind knows no session for this program: {0}",
+                            (gerror && gerror->message ? std::string(gerror->message) : Tr("no answer")));
                 if (gerror) g_error_free(gerror);
                 return {};
             }
@@ -107,7 +108,7 @@ namespace {
         g_variant_get(reply, "(&o)", &path);
         std::string result = path ? path : "";
         g_variant_unref(reply);
-        if (result.empty()) error = "logind knows no session for this program.";
+        if (result.empty()) error = Tr("logind knows no session for this program.");
         return result;
     }
 
@@ -149,7 +150,7 @@ bool EndSession(SessionEnd how, std::string& error) {
         if (!session.empty()) {
             ok = Call(system, "org.freedesktop.login1", session.c_str(), "org.freedesktop.login1.Session",
                       "Terminate", nullptr, error);
-            if (!ok) error = "logind did not end the session: " + error;
+            if (!ok) error = TrF("logind did not end the session: {0}", error);
         }
     } else {
         // `true`: ask polkit as the desktop's own menu does, so an active
@@ -158,8 +159,8 @@ bool EndSession(SessionEnd how, std::string& error) {
         ok = Call(system, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
                   method, g_variant_new("(b)", TRUE), error);
         if (!ok) {
-            error = std::string(how == SessionEnd::Restart ? "logind did not restart the computer: "
-                                                           : "logind did not shut the computer down: ") + error;
+            error = how == SessionEnd::Restart ? TrF("logind did not restart the computer: {0}", error)
+                                               : TrF("logind did not shut the computer down: {0}", error);
         }
     }
     g_object_unref(system);
@@ -187,14 +188,14 @@ bool LockSession(std::string& error) {
     }
     // No logind, or no session of ours in it: the screensaver's own call.
     if (!HaveSessionBus()) {
-        error = "No screen locker is reachable: " + logindError;
+        error = TrF("No screen locker is reachable: {0}", logindError);
         return false;
     }
     GError* gerror = nullptr;
     GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &gerror);
     if (!bus) {
-        error = std::string("The session bus is not reachable: ") +
-                (gerror && gerror->message ? gerror->message : "no answer");
+        error = TrF("The session bus is not reachable: {0}",
+                    (gerror && gerror->message ? std::string(gerror->message) : Tr("no answer")));
         if (gerror) g_error_free(gerror);
         return false;
     }
@@ -204,7 +205,7 @@ bool LockSession(std::string& error) {
                     Call(bus, "org.freedesktop.ScreenSaver", "/ScreenSaver", "org.freedesktop.ScreenSaver", "Lock",
                          nullptr, saverError);
     g_object_unref(bus);
-    if (!ok) error = "No screen locker answered (logind: " + logindError + "; screensaver: " + saverError + ").";
+    if (!ok) error = TrF("No screen locker answered (logind: {0}; screensaver: {1}).", logindError, saverError);
     return ok;
 }
 
@@ -270,8 +271,7 @@ bool OpenDisplaySettings(std::string& error) {
         if (UltraCanvasDesktopShell::LaunchProgram(tool->program, tool->arguments, &error)) return true;
     }
     if (error.empty()) {
-        error = "No display settings tool is installed (for example gnome-control-center, "
-                "xfce4-display-settings, wdisplays or arandr).";
+        error = Tr("No display settings tool is installed (for example gnome-control-center, xfce4-display-settings, wdisplays or arandr).");
     }
     return false;
 }
@@ -280,17 +280,18 @@ bool OpenDisplaySettings(std::string& error) {
 
 bool KillProcess(int processId, std::string& error) {
     if (processId <= 1) {
-        error = "The window does not say which program it belongs to.";
+        error = Tr("The window does not say which program it belongs to.");
         return false;
     }
     if (processId == static_cast<int>(getpid())) {
-        error = "That is the desktop itself.";
+        error = Tr("That is the desktop itself.");
         return false;
     }
     if (kill(static_cast<pid_t>(processId), SIGTERM) != 0) {
-        error = errno == EPERM ? "The program runs as another user; the desktop may not end it."
-                               : errno == ESRCH ? "The program has already ended."
-                                                : std::string("The program could not be ended: ") + std::strerror(errno);
+        const int code = errno;
+        error = code == EPERM ? Tr("The program runs as another user; the desktop may not end it.")
+                              : code == ESRCH ? Tr("The program has already ended.")
+                                              : TrF("The program could not be ended: {0}", std::strerror(code));
         return false;
     }
     // A program that does not end on SIGTERM within two seconds is killed.

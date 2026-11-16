@@ -31,6 +31,7 @@
 #include "UltraCanvasHardwareInfo.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -285,7 +286,7 @@ bool UltraCanvasDesktopShell::KillWindowProcess(uint64_t id, std::string* error)
         break;
     }
     std::string reason;
-    if (!found) reason = "The window is already gone.";
+    if (!found) reason = Tr("The window is already gone.");
     else if (DesktopShellBackend::KillProcess(processId, reason)) return true;
     if (error) *error = reason;
     return false;
@@ -344,13 +345,13 @@ bool UltraCanvasDesktopShell::ReserveScreenEdges(uint64_t windowId, int left, in
 bool UltraCanvasDesktopShell::CaptureScreen(const std::string& pngPath, std::string* error) {
     std::string reason;
     if (pngPath.empty()) {
-        reason = "No file name for the screenshot.";
+        reason = Tr("No file name for the screenshot.");
     } else {
         std::error_code ec;
         const fs::path target = PathFromUtf8(pngPath);
         if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
         if (ec) {
-            reason = "Could not create \"" + PathToUtf8(target.parent_path()) + "\": " + ec.message();
+            reason = TrF("Could not create \"{0}\": {1}", PathToUtf8(target.parent_path()), ec.message());
         } else if (DesktopShellBackend::CaptureScreen(pngPath, reason)) {
             return true;
         }
@@ -371,7 +372,7 @@ bool UltraCanvasDesktopShell::CaptureScreenArea(int x, int y, int width, int hei
                                                 std::string* error) {
     std::string reason;
     if (width <= 0 || height <= 0) {
-        reason = "The area to capture is empty.";
+        reason = Tr("The area to capture is empty.");
     } else if (DesktopShellBackend::CaptureScreenArea(x, y, width, height, out, reason)) {
         return true;
     }
@@ -426,9 +427,9 @@ bool UltraCanvasDesktopShell::CaptureWindowImage(uint64_t id, int maxWidth, int 
     std::string reason;
     DesktopScreenImage full;
     if (id == 0) {
-        reason = "No window to capture.";
+        reason = Tr("No window to capture.");
     } else if (maxWidth <= 0 || maxHeight <= 0) {
-        reason = "The picture's size is empty.";
+        reason = Tr("The picture's size is empty.");
     } else if (DesktopShellBackend::CaptureWindowImage(id, full, reason) && full.IsValid()) {
         const double scale = std::min({1.0, static_cast<double>(maxWidth) / full.width,
                                        static_cast<double>(maxHeight) / full.height});
@@ -442,10 +443,10 @@ bool UltraCanvasDesktopShell::CaptureWindowImage(uint64_t id, int maxWidth, int 
             out = ShrinkImage(full, width, height);
             return true;
         } catch (const std::bad_alloc&) {
-            reason = "Not enough memory for the window's picture.";
+            reason = Tr("Not enough memory for the window's picture.");
         }
     } else if (reason.empty()) {
-        reason = "The window could not be captured.";
+        reason = Tr("The window could not be captured.");
     }
     out = DesktopScreenImage();
     if (error) *error = reason;
@@ -615,7 +616,7 @@ bool UltraCanvasDesktopShell::LaunchApplication(const UCDesktopEntry& entry,
         // it opens them from its own dialog.
         std::string reason;
         if (!files.empty()) {
-            reason = "\"" + entry.name + "\" is a Microsoft Store application: open the files from inside it.";
+            reason = TrF("\"{0}\" is a Microsoft Store application: open the files from inside it.", entry.name);
         } else if (DesktopShellBackend::LaunchPackagedApplication(entry.appUserModelId, reason)) {
             return true;
         }
@@ -633,14 +634,14 @@ bool UltraCanvasDesktopShell::LaunchApplication(const UCDesktopEntry& entry,
         } else if (!entry.program.empty()) {
             ok = FileAssociations::OpenWithApplicationPath(entry.program, files, reason);
         } else {
-            reason = "\"" + entry.name + "\" names no program to open files with.";
+            reason = TrF("\"{0}\" names no program to open files with.", entry.name);
         }
         if (!ok && error) *error = reason;
         return ok;
     }
     std::vector<std::string> argv = DesktopEntryCommand(entry, files);
     if (argv.empty()) {
-        if (error) *error = "\"" + entry.name + "\" has no command to run.";
+        if (error) *error = TrF("\"{0}\" has no command to run.", entry.name);
         return false;
     }
     if (entry.terminal) {
@@ -725,7 +726,7 @@ bool UltraCanvasDesktopShell::LaunchProgram(const std::string& program,
                                             std::string* error) {
     const std::string path = FindProgram(program);
     if (path.empty()) {
-        if (error) *error = "\"" + program + "\" is not installed next to this application or on the PATH.";
+        if (error) *error = TrF("\"{0}\" is not installed next to this application or on the PATH.", program);
         return false;
     }
     std::vector<std::string> argv{path};
@@ -763,7 +764,7 @@ bool UltraCanvasDesktopShell::ReplaceSystemDesktop(const std::string& desktopPro
     if (how == DesktopReplacement::Off) {
         reason = "Replacing the desktop with nothing is restoring it: call RestoreSystemDesktop.";
     } else if (desktopProgram.empty() || !program.is_absolute() || !fs::is_regular_file(program, ec)) {
-        reason = "\"" + desktopProgram + "\" is not a program this account can start at sign-in.";
+        reason = TrF("\"{0}\" is not a program this account can start at sign-in.", desktopProgram);
     } else if (DesktopShellBackend::ReplaceSystemDesktop(desktopProgram, arguments, how, reason)) {
         return true;
     }
@@ -974,7 +975,7 @@ bool UltraCanvasGlobalShortcut::StartWith(const std::string& accelerator, Presse
                                           std::string* error, bool exclusive) {
     Stop();
     std::string why;
-    if (!onPressed) why = "No action was given for " + accelerator + ".";
+    if (!onPressed) why = TrF("No action was given for {0}.", accelerator);
     if (why.empty()) impl->state = DesktopShellBackend::ShortcutOpen(accelerator, why, exclusive);
     if (!impl->state) {
         if (error) *error = why;
@@ -1018,7 +1019,7 @@ UltraCanvasTrayHost::~UltraCanvasTrayHost() {
 bool UltraCanvasTrayHost::Start(ChangedCallback onChanged, std::string* error) {
     if (running.load()) return true;
     std::string why;
-    if (!onChanged) why = "No action was given for the notification area's changes.";
+    if (!onChanged) why = Tr("No action was given for the notification area's changes.");
     if (why.empty()) impl->state = DesktopShellBackend::TrayHostOpen(why);
     if (!impl->state) {
         if (error) *error = why;
@@ -1035,7 +1036,7 @@ bool UltraCanvasTrayHost::Start(ChangedCallback onChanged, std::string* error) {
     worker = std::thread([this, attached = std::move(attached)]() mutable {
         std::string attachError;
         const bool ok = DesktopShellBackend::TrayHostAttach(impl->state, attachError);
-        attached.set_value(ok ? std::string() : (attachError.empty() ? std::string("failed") : attachError));
+        attached.set_value(ok ? std::string() : (attachError.empty() ? Tr("The notification area could not be hosted.") : attachError));
         if (!ok) return;
         while (running.load()) {
             if (!DesktopShellBackend::TrayHostWait(impl->state)) break;
@@ -1098,7 +1099,7 @@ namespace DesktopShellBackend {
     bool GetWindowBounds(uint64_t, int&, int&, int&, int&) { return false; }
     bool MoveWindowTo(uint64_t, int, int) { return false; }
     bool KillProcess(int, std::string& error) {
-        error = "Programs are not ended from here on this platform yet.";
+        error = Tr("Programs are not ended from here on this platform yet.");
         return false;
     }
     int  GetVirtualDesktopCount() { return 0; }
@@ -1111,22 +1112,22 @@ namespace DesktopShellBackend {
     std::vector<DesktopScreenInfo> ListScreens() { return {}; }
     bool ReserveScreenEdges(uint64_t, int, int, int, int) { return false; }
     bool CaptureScreen(const std::string&, std::string& error) {
-        error = "Screenshots are not available on this platform yet.";
+        error = Tr("Screenshots are not available on this platform yet.");
         return false;
     }
     bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
         out = DesktopScreenImage();
-        error = "Screenshots are not available on this platform yet.";
+        error = Tr("Screenshots are not available on this platform yet.");
         return false;
     }
     bool CaptureScreenArea(int, int, int, int, DesktopScreenImage& out, std::string& error) {
         out = DesktopScreenImage();
-        error = "Screenshots are not available on this platform yet.";
+        error = Tr("Screenshots are not available on this platform yet.");
         return false;
     }
     bool CaptureWindowImage(uint64_t, DesktopScreenImage& out, std::string& error) {
         out = DesktopScreenImage();
-        error = "Window pictures are not available on this platform yet.";
+        error = Tr("Window pictures are not available on this platform yet.");
         return false;
     }
 
@@ -1137,7 +1138,7 @@ namespace DesktopShellBackend {
     }
 #endif
     bool LaunchPackagedApplication(const std::string&, std::string& error) {
-        error = "Microsoft Store applications run on Windows only.";
+        error = Tr("Microsoft Store applications run on Windows only.");
         return false;
     }
 
@@ -1145,7 +1146,7 @@ namespace DesktopShellBackend {
     DesktopReplacement GetSystemDesktopReplacement() { return DesktopReplacement::Off; }
     bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, DesktopReplacement,
                               std::string& error) {
-        error = "This platform has no switch for which desktop a session starts.";
+        error = Tr("This platform has no switch for which desktop a session starts.");
         return false;
     }
     bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
@@ -1154,12 +1155,12 @@ namespace DesktopShellBackend {
 
     bool CanEndSession() { return false; }
     bool EndSession(SessionEnd, std::string& error) {
-        error = "Signing out, restarting and shutting down are not available on this platform yet.";
+        error = Tr("Signing out, restarting and shutting down are not available on this platform yet.");
         return false;
     }
     bool CanLockSession() { return false; }
     bool LockSession(std::string& error) {
-        error = "Locking the screen is not available on this platform yet.";
+        error = Tr("Locking the screen is not available on this platform yet.");
         return false;
     }
 
@@ -1172,34 +1173,34 @@ namespace DesktopShellBackend {
                     "/usr/bin/open", {"x-apple.systempreferences:com.apple.Displays-Settings.extension"}, &error)) {
             return true;
         }
-        if (error.empty()) error = "System Settings did not open.";
+        if (error.empty()) error = Tr("System Settings did not open.");
         return false;
     }
 #else
     bool CanOpenDisplaySettings() { return false; }
     bool OpenDisplaySettings(std::string& error) {
-        error = "Display settings are not available on this platform yet.";
+        error = Tr("Display settings are not available on this platform yet.");
         return false;
     }
 #endif
 
     DesktopAudioOutput ReadAudioOutput() {
         DesktopAudioOutput out;
-        out.error = "The loudspeaker's volume is not read on this platform yet.";
+        out.error = Tr("The loudspeaker's volume is not read on this platform yet.");
         return out;
     }
     bool SetAudioOutputVolume(int, std::string& error) {
-        error = "The loudspeaker's volume is not set on this platform yet.";
+        error = Tr("The loudspeaker's volume is not set on this platform yet.");
         return false;
     }
     bool SetAudioOutputMuted(bool, std::string& error) {
-        error = "The loudspeaker's volume is not set on this platform yet.";
+        error = Tr("The loudspeaker's volume is not set on this platform yet.");
         return false;
     }
 
     void ReadDeviceActivity(DesktopDeviceActivity& activity) {
         activity.warnings.push_back(
-            "Camera, microphone, speaker, battery and keyboard state are not read on this platform yet.");
+            Tr("Camera, microphone, speaker, battery and keyboard state are not read on this platform yet."));
     }
 
     struct MonitorState {};
@@ -1210,7 +1211,7 @@ namespace DesktopShellBackend {
 
     struct ShortcutState {};
     ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, bool /*exclusive*/) {
-        error = "Shortcuts for the whole desktop (" + accelerator + ") are not available on this platform yet.";
+        error = TrF("Shortcuts for the whole desktop ({0}) are not available on this platform yet.", accelerator);
         return nullptr;
     }
     bool ShortcutWait(ShortcutState*) { return false; }
@@ -1219,7 +1220,7 @@ namespace DesktopShellBackend {
 
     struct TrayHostState {};
     TrayHostState* TrayHostOpen(std::string& error) {
-        error = "This platform has no notification area to host.";
+        error = Tr("This platform has no notification area to host.");
         return nullptr;
     }
     bool TrayHostAttach(TrayHostState*, std::string&) { return false; }
