@@ -517,6 +517,8 @@ private:
         // A drawn shape's line ends and dash, and where its words sit.
         std::string strokeDash, markerStart, markerEnd, textAreaVertical, paddingLeft;
         std::string fillGradientName, fillHatchName, fillHatchSolid, fillImageName, repeat;
+        // A shape's drop shadow.
+        std::string shadow, shadowOffsetX, shadowOffsetY, shadowColor, shadowOpacity, shadowBlur;
     };
     std::map<std::string, GraphicPlacement> graphicStyles_;
     OdtTextProps defaultParagraph_;                            // style:default-style family="paragraph"
@@ -833,6 +835,9 @@ private:
                     fallback.stroke = Attr(graphic, "draw:stroke");
                     fallback.strokeColor = Attr(graphic, "svg:stroke-color");
                     fallback.strokeWidth = Attr(graphic, "svg:stroke-width");
+                    fallback.shadowOffsetX = Attr(graphic, "draw:shadow-offset-x");
+                    fallback.shadowOffsetY = Attr(graphic, "draw:shadow-offset-y");
+                    fallback.shadowColor = Attr(graphic, "draw:shadow-color");
                 }
                 continue;
             }
@@ -1037,6 +1042,13 @@ private:
                 placement.padding = Attr(graphic, "fo:padding");
                 placement.minHeight = Attr(graphic, "fo:min-height");
                 placement.strokeDash = Attr(graphic, "draw:stroke-dash");
+                placement.shadow = Attr(graphic, "draw:shadow");
+                placement.shadowOffsetX = Attr(graphic, "draw:shadow-offset-x");
+                placement.shadowOffsetY = Attr(graphic, "draw:shadow-offset-y");
+                placement.shadowColor = Attr(graphic, "draw:shadow-color");
+                placement.shadowOpacity = Attr(graphic, "draw:shadow-opacity");
+                placement.shadowBlur = Attr(graphic, "draw:shadow-blur");
+                if (placement.shadowBlur.empty()) placement.shadowBlur = Attr(graphic, "loext:shadow-blur");
                 placement.markerStart = Attr(graphic, "draw:marker-start");
                 placement.markerEnd = Attr(graphic, "draw:marker-end");
                 placement.textAreaVertical = Attr(graphic, "draw:textarea-vertical-align");
@@ -1784,6 +1796,20 @@ private:
             }
             shape.arrowStart = !look(&GraphicPlacement::markerStart).empty();
             shape.arrowEnd = !look(&GraphicPlacement::markerEnd).empty();
+        }
+        if (look(&GraphicPlacement::shadow) == "visible") {
+            // Its drop shadow: Writer's is grey, 0.3 cm down and right,
+            // where the style says no more.
+            const std::string colour = look(&GraphicPlacement::shadowColor);
+            shape.shadowColor = colour.empty() ? "#808080" : colour;
+            const std::string dx = look(&GraphicPlacement::shadowOffsetX), dy = look(&GraphicPlacement::shadowOffsetY);
+            shape.shadowOffsetXPt = dx.empty() ? 8.5f : ParseLengthPt(dx);
+            shape.shadowOffsetYPt = dy.empty() ? 8.5f : ParseLengthPt(dy);
+            const std::string opacity = look(&GraphicPlacement::shadowOpacity);
+            float percent = 100.0f;
+            if (!opacity.empty() && opacity.back() == '%') TryParseFloat(opacity.substr(0, opacity.size() - 1), percent);
+            shape.shadowOpacity = std::clamp(percent / 100.0f, 0.0f, 1.0f);
+            shape.shadowBlurPt = std::max(0.0f, ParseLengthPt(look(&GraphicPlacement::shadowBlur)));
         }
         if (anchor) {
             const std::string vertical = look(&GraphicPlacement::textAreaVertical);
@@ -3091,6 +3117,13 @@ private:
             const std::string arrow = Pt(std::max(6.0f, shape.lineWidthPt * 3.5f));
             if (shape.arrowStart) look += " draw:marker-start=\"UC_Arrow\" draw:marker-start-width=\"" + arrow + "\"";
             if (shape.arrowEnd) look += " draw:marker-end=\"UC_Arrow\" draw:marker-end-width=\"" + arrow + "\"";
+        }
+        if (shape.HasShadow()) {
+            look += " draw:shadow=\"visible\" draw:shadow-offset-x=\"" + Pt(shape.shadowOffsetXPt)
+                  + "\" draw:shadow-offset-y=\"" + Pt(shape.shadowOffsetYPt) + "\" draw:shadow-color=\""
+                  + EscapeXml(shape.shadowColor) + "\" draw:shadow-opacity=\""
+                  + std::to_string(std::lround(std::clamp(shape.shadowOpacity, 0.0f, 1.0f) * 100.0f)) + "%\"";
+            if (shape.shadowBlurPt > 0.0f) look += " draw:shadow-blur=\"" + Pt(shape.shadowBlurPt) + "\"";
         }
         const char* vertical = anchor == RichShape::TextAnchor::Middle ? "middle"
                              : anchor == RichShape::TextAnchor::Bottom ? "bottom" : "top";

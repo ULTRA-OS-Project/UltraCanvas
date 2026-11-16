@@ -1095,14 +1095,24 @@ void UltraCanvasRichTextEdit::PlaceFurnitureFloats(IRenderContext* ctx, PageFram
 float UltraCanvasRichTextEdit::FlowAroundFloats(IRenderContext* ctx, int index, float top,
                                                 std::vector<PlacedFloat>& pageFloats) {
     BlockLayout& bl = blockLayouts[static_cast<size_t>(index)];
-    const float gap = Px(9.0f);                 // Word's default distance from text
-    // A block starting beside a picture text may not pass goes below it.
+    // Text goes on right below a picture it may not pass: Word and Writer
+    // keep no distance above or below unless the picture states one (the
+    // model has none), only at its sides.
+    const float gap = 0.0f;
+    // A block starting beside a picture text may not pass goes below it -
+    // and so does one whose first line would not fit above the picture (it
+    // started a hair above it and ran through it).
+    float lineAbove = 0.0f;
+    if (bl.layout) {
+        const std::vector<LayoutLineExtent> lines = bl.layout->GetLineExtents();
+        if (!lines.empty()) lineAbove = lines.front().height;
+    }
     for (bool moved = true; moved;) {
         moved = false;
         for (const PlacedFloat& placed : pageFloats) {
             if (placed.beside || placed.wrap == RichTextRun::ImageWrap::BehindText
                 || placed.wrap == RichTextRun::ImageWrap::InFrontOfText) continue;
-            if (top >= placed.rect.y - 0.5f && top < placed.rect.y + placed.rect.height + gap) {
+            if (top + lineAbove > placed.rect.y + 0.5f && top < placed.rect.y + placed.rect.height + gap) {
                 top = placed.rect.y + placed.rect.height + gap;
                 moved = true;
             }
@@ -1365,6 +1375,27 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
             std::shared_ptr<UCImage>& image = shapeImages[{media.data.data(), media.data.size()}];
             if (!image) image = LoadDocumentPicture(media);
             if (image) ctx->DrawImage(*image, Rect2Dd(x, y, w, h), ImageFitMode::Fill);
+        }
+        // Its shadow first, under it: the outline moved and filled, with a
+        // few ever wider, faint outlines round it where its edge is soft.
+        if (shape.HasShadow() && shape.IsClosed() && (!shape.fillColor.empty() || shape.mediaIndex >= 0)
+            && w > 0.0 && h > 0.0) {
+            Color shadow = ParseHexColor(shape.shadowColor, Color(128, 128, 128));
+            const double opacity = std::clamp(static_cast<double>(shape.shadowOpacity), 0.0, 1.0);
+            const double sx = x + Px(shape.shadowOffsetXPt), sy = y + Px(shape.shadowOffsetYPt);
+            const double blur = Px(std::max(0.0f, shape.shadowBlurPt));
+            const int rings = blur > 0.5 ? 4 : 0;
+            for (int ring = rings; ring >= 1; --ring) {
+                shadow.a = static_cast<uint8_t>(std::lround(255.0 * opacity * 0.16));
+                TraceShape(ctx, shape, sx, sy, w, h);
+                ctx->SetStrokePaint(shadow);
+                ctx->SetStrokeWidth(2.0 * blur * ring / rings);
+                ctx->Stroke();
+            }
+            shadow.a = static_cast<uint8_t>(std::lround(255.0 * opacity * (rings > 0 ? 0.6 : 1.0)));
+            TraceShape(ctx, shape, sx, sy, w, h);
+            ctx->SetFillPaint(shadow);
+            ctx->Fill();
         }
         TraceShape(ctx, shape, x, y, w, h);
         if (shape.IsClosed() && shape.HasGradient() && shape.mediaIndex < 0 && w > 0.0 && h > 0.0) {
@@ -2090,6 +2121,10 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                 }
             }
             add(TextAttributeFactory::CreateShape(0.0, 0.0, 0.0));
+            // The placeholder is no character of any font: without this a
+            // fallback font is found for it, and a line holding only the
+            // anchor is as tall as that font's lines, not the paragraph's.
+            add(TextAttributeFactory::CreateFallback(false));
             BlockLayout::InlineImage placed;
             placed.byteOffset = start;
             placed.width = width;
@@ -2114,6 +2149,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         // own layouts put the frame's text in line beforehand.
         if (run.IsTextFrame()) {
             add(TextAttributeFactory::CreateShape(0.0, 0.0, 0.0));
+            add(TextAttributeFactory::CreateFallback(false));
             continue;
         }
 
@@ -2851,9 +2887,16 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
         }
     }
 
-    // An empty block still needs a caret-sized box to click into.
+    // An empty block still needs a caret-sized box to click into: a line of
+    // its own font (a paragraph that only anchors a picture is one line of
+    // its 10 pt, not of the view's font).
     if (bl.bounds.height <= 0.0f) {
-        bl.bounds.height = static_cast<float>(style.baseFont.fontSize) * 1.3f;
+        const UCRichDocument* laidOut = editor.GetDocument().get();
+        auto probe = ctx->CreateDocumentTextLayout("");
+        probe->SetFontStyle(FontForBlock(block));
+        probe->SetLineSpacing((!laidOut || laidOut->fontLineGap) ? 1.0f : 0.0f);
+        bl.bounds.height = static_cast<float>(probe->GetLayoutHeight());
+        if (bl.bounds.height <= 0.0f) bl.bounds.height = static_cast<float>(style.baseFont.fontSize) * 1.3f;
     }
     bl.valid = true;
 }

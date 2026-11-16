@@ -618,6 +618,15 @@ struct RichShape {
     // A radial gradient's centre, from 0 to 1 across and down the box.
     float gradientCenterX = 0.5f, gradientCenterY = 0.5f;
     bool HasGradient() const { return gradientStops.size() >= 2; }
+    // A drop shadow: the shape's outline again, moved by the offsets and
+    // filled with this colour (empty = no shadow), `shadowOpacity` of it
+    // showing (0..1), its edge softened over `shadowBlurPt`. A filled shape
+    // throws one; a line does not.
+    std::string shadowColor;
+    float shadowOffsetXPt = 0.0f, shadowOffsetYPt = 0.0f;
+    float shadowOpacity = 1.0f;
+    float shadowBlurPt = 0.0f;
+    bool HasShadow() const { return !shadowColor.empty(); }
     std::string lineColor;                // "#RRGGBB"; empty = no outline
     float lineWidthPt = 0.75f;
     enum class Dash { Solid, Dashed, Dotted };

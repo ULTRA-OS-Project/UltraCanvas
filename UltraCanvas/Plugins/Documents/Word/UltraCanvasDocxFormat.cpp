@@ -1742,6 +1742,24 @@ private:
         if (!fillStated) shape.fillColor = styleFill;
         shape.lineColor = styleLine;
         if (styleLineWidth > 0.0f) shape.lineWidthPt = styleLineWidth;
+        // An outer shadow: how far (dist) and which way (dir, 60000ths of a
+        // degree clockwise from the right), its blur and its colour's alpha.
+        auto* effects = spPr ? spPr->FirstChildElement("a:effectLst") : nullptr;
+        if (auto* outer = effects ? effects->FirstChildElement("a:outerShdw") : nullptr) {
+            const double distance = static_cast<double>(ParseEmu(Attr(outer, "dist"))) / kEmuPerPoint;
+            const double direction = outer->DoubleAttribute("dir", 0.0) / 60000.0 * 3.14159265358979323846 / 180.0;
+            shape.shadowOffsetXPt = static_cast<float>(distance * std::cos(direction));
+            shape.shadowOffsetYPt = static_cast<float>(distance * std::sin(direction));
+            shape.shadowBlurPt = static_cast<float>(ParseEmu(Attr(outer, "blurRad"))) / kEmuPerPoint;
+            const std::string colour = DrawingColor(outer);
+            shape.shadowColor = colour.empty() ? "#000000" : colour;
+            shape.shadowOpacity = 1.0f;
+            for (auto* kind = outer->FirstChildElement(); kind; kind = kind->NextSiblingElement()) {
+                if (auto* alpha = kind->FirstChildElement("a:alpha")) {
+                    shape.shadowOpacity = std::clamp(static_cast<float>(alpha->IntAttribute("val", 100000)) / 100000.0f, 0.0f, 1.0f);
+                }
+            }
+        }
         if (auto* line = spPr ? spPr->FirstChildElement("a:ln") : nullptr) {
             if (line->Attribute("w")) shape.lineWidthPt = static_cast<float>(ParseEmu(Attr(line, "w"))) / kEmuPerPoint;
             if (line->FirstChildElement("a:noFill")) shape.lineColor.clear();
@@ -3970,8 +3988,21 @@ private:
         } else {
             xml << "<a:solidFill><a:srgbClr val=\"" << EscapeXml(rgb(shape.fillColor)) << "\"/></a:solidFill>";
         }
+        // The shadow, after the line (a:effectLst follows a:ln).
+        auto shadow = [&]() {
+            if (!shape.HasShadow()) return;
+            const double distance = std::hypot(shape.shadowOffsetXPt, shape.shadowOffsetYPt);
+            double degrees = std::atan2(shape.shadowOffsetYPt, shape.shadowOffsetXPt) * 180.0 / 3.14159265358979323846;
+            if (degrees < 0.0) degrees += 360.0;
+            xml << "<a:effectLst><a:outerShdw blurRad=\"" << Emu(shape.shadowBlurPt) << "\" dist=\""
+                << Emu(static_cast<float>(distance)) << "\" dir=\"" << std::lround(degrees * 60000.0)
+                << "\" algn=\"ctr\" rotWithShape=\"0\"><a:srgbClr val=\"" << EscapeXml(rgb(shape.shadowColor))
+                << "\"><a:alpha val=\"" << std::lround(std::clamp(shape.shadowOpacity, 0.0f, 1.0f) * 100000.0f)
+                << "\"/></a:srgbClr></a:outerShdw></a:effectLst>";
+        };
         if (shape.lineColor.empty()) {
             xml << "<a:ln><a:noFill/></a:ln>";
+            shadow();
             return;
         }
         xml << "<a:ln w=\"" << Emu(shape.lineWidthPt) << "\"><a:solidFill><a:srgbClr val=\""
@@ -3981,6 +4012,7 @@ private:
         if (shape.arrowStart) xml << "<a:headEnd type=\"triangle\"/>";
         if (shape.arrowEnd) xml << "<a:tailEnd type=\"triangle\"/>";
         xml << "</a:ln>";
+        shadow();
     }
 
     static const char* BodyAnchor(RichShape::TextAnchor anchor) {
