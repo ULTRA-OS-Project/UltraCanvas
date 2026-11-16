@@ -4,8 +4,9 @@
 # The public keys a store build trusts, as an initializer list of string
 # literals for UltraStoreBuiltin.h: one per *.pub file under
 # Apps/UltraStore/keys/ (the first line of 64 hex digits), lower-case,
-# sorted, plus the EXTRA keys given (a CI build of the web store adds its
-# test fixture's key this way; a release never does). Both the native store
+# sorted, plus the EXTRA keys given (the web store's test module,
+# ultrastore-web-test.wasm, gets its test fixture's key this way; the
+# store's own module and a release never do). Both the native store
 # (Apps/UltraStore) and the web store (Apps/UltraStore/web) read the same
 # folder, so they trust the same catalogs.
 #

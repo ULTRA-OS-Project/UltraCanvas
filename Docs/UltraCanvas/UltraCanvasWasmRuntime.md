@@ -218,6 +218,15 @@ node UltraCanvas/OS/WASM/runtime/test/runtime-test.mjs build-ucr
 Branded Google Chrome no longer loads unpacked extensions from the command
 line (Chrome 137), so the test runs Playwright's Chromium.
 
+The `wasm-build.yml` workflow runs it in its `dynamic` variant, on the
+folder it uploads first as the run's `ultracanvas-runtime-dynamic`
+artifact: `site/` (the loader, the two pages, `hello-app.wasm` and the
+runtime under `runtime/`) and `ultracanvas-extension/`, with a
+`README.txt`. Unzip it, serve `site/` with any static host
+(`python3 -m http.server --bind 127.0.0.1 8080`) and the sample app runs;
+load `ultracanvas-extension/` unpacked for the extension's side. The
+test's screenshots and console logs are `ultracanvas-runtime-smoke-dynamic`.
+
 ## Limits of the prototype
 
 - **An app is bound to its runtime's build.** The side module refers to the

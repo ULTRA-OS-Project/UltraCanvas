@@ -15,20 +15,23 @@
 #                   ultrastore-web <publish folder> [page]
 #
 # The keys the module trusts are the store's (Apps/UltraStore/keys/*.pub,
-# cmake/UltraStoreKeys.cmake); ULTRASTORE_WEB_TEST_KEYS adds hex keys for a
-# test build (the browser test's fixture catalog is signed with one), never
-# for a release.
+# cmake/UltraStoreKeys.cmake), and under emcmake nothing else, whatever the
+# build was configured with: site/ is always a folder a store can be
+# published with. ULTRASTORE_WEB_TEST_KEYS names hex keys for a test (the
+# browser test's fixture catalog is signed with one): under emcmake they go
+# into a second module of the same sources, ultrastore-web-test.wasm, which
+# stays beside site/ and never enters it (test/stage-store.mjs lays it over
+# the fixture); natively, where the program is a tool to look at a publish
+# folder, they are added to the one program.
+# Version: 0.2.0 - the test keys in a module of their own (ultrastore-web-test.wasm): site/'s trusts the store's keys alone
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
 include(${CMAKE_SOURCE_DIR}/cmake/UltraStoreKeys.cmake)
 
 set(ULTRASTORE_WEB_TEST_KEYS "" CACHE STRING
-    "Extra hex public keys the web store trusts (a test build only), semicolon-separated")
-ultrastore_builtin_keys(ULTRASTORE_BUILTIN_KEYS_INIT EXTRA ${ULTRASTORE_WEB_TEST_KEYS})
+    "Extra hex public keys for a test, semicolon-separated: under emcmake in ultrastore-web-test.wasm only, never in site/")
 set(ULTRASTORE_BUILTIN_SERVERS_INIT "")
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../core/UltraStoreBuiltin.h.in
-    "${CMAKE_CURRENT_BINARY_DIR}/generated/UltraStoreBuiltin.h" @ONLY)
 
 set(_web_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
@@ -37,31 +40,54 @@ set(_web_sources
 
 if(EMSCRIPTEN)
     include(${CMAKE_SOURCE_DIR}/cmake/UltraCanvasWasmApp.cmake)
-    # The catalog's reader and its types come along; the verifier does not
-    # (it is UltraCrypt's, which the runtime does not carry): the browser's
-    # own WebCrypto checks the signature (WebPlatform.cpp).
-    ultracanvas_wasm_app(ultrastore-web ${_web_sources}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../core/Catalog.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/../core/UltraStoreTypes.cpp)
     # With UltraCrypt on libsodium in this build (the sysroot's), the module
     # verifies the way the native store does, through the runtime's
     # UltraCrypt (the runtime carries it whole); WebCrypto stays the
     # fallback, and the only way without it.
+    set(_web_ultracrypt OFF)
     if(TARGET uc-crypt)
         get_target_property(_web_crypt_defs uc-crypt INTERFACE_COMPILE_DEFINITIONS)
         if(_web_crypt_defs MATCHES "ULTRACRYPT_HAVE_SODIUM")
-            target_sources(ultrastore-web PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../core/Verifier.cpp)
-            target_compile_definitions(ultrastore-web PRIVATE ULTRASTORE_WEB_ULTRACRYPT=1 ULTRACRYPT_HAVE_SODIUM=1)
+            set(_web_ultracrypt ON)
             message(STATUS "  [✓] UltraStore web store verifies through UltraCrypt (libsodium), WebCrypto as the fallback")
         else()
             message(STATUS "  [−] UltraStore web store verifies through WebCrypto only (no libsodium in the sysroot)")
         endif()
     endif()
-    target_include_directories(ultrastore-web PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../core
-        ${CMAKE_CURRENT_SOURCE_DIR}/../ui
-        ${CMAKE_SOURCE_DIR}/UltraCanvas          # OS/WASM/UltraCanvasWASMSupport.h
-        "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
+    # _ultrastore_web_module(<target> <generated dir> [<extra hex key>...])
+    # The side module <target>.wasm, trusting the store's keys and the extra
+    # ones given: its own UltraStoreBuiltin.h in <generated dir>, which only
+    # this target's sources see.
+    function(_ultrastore_web_module target generated)
+        ultrastore_builtin_keys(ULTRASTORE_BUILTIN_KEYS_INIT EXTRA ${ARGN})
+        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../core/UltraStoreBuiltin.h.in
+            "${generated}/UltraStoreBuiltin.h" @ONLY)
+        # The catalog's reader and its types come along; the verifier does
+        # not without UltraCrypt (it is UltraCrypt's, which the runtime then
+        # does not carry): the browser's own WebCrypto checks the signature
+        # (WebPlatform.cpp).
+        ultracanvas_wasm_app(${target} ${_web_sources}
+            ${CMAKE_CURRENT_SOURCE_DIR}/../core/Catalog.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/../core/UltraStoreTypes.cpp)
+        if(_web_ultracrypt)
+            target_sources(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../core/Verifier.cpp)
+            target_compile_definitions(${target} PRIVATE ULTRASTORE_WEB_ULTRACRYPT=1 ULTRACRYPT_HAVE_SODIUM=1)
+        endif()
+        target_include_directories(${target} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/../core
+            ${CMAKE_CURRENT_SOURCE_DIR}/../ui
+            ${CMAKE_SOURCE_DIR}/UltraCanvas          # OS/WASM/UltraCanvasWASMSupport.h
+            "${generated}")
+    endfunction()
+
+    # The store's module, the one site/ carries: the store's keys alone.
+    _ultrastore_web_module(ultrastore-web "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    # The test's module: the same store, trusting the test keys as well.
+    if(ULTRASTORE_WEB_TEST_KEYS)
+        _ultrastore_web_module(ultrastore-web-test "${CMAKE_CURRENT_BINARY_DIR}/generated-test" ${ULTRASTORE_WEB_TEST_KEYS})
+        message(STATUS "  [✓] UltraStore web store test module (ultrastore-web-test.wasm, the test keys in it alone) - ENABLED")
+    endif()
 
     # site/: what publish copies beside the catalog (CatalogPublisher's
     # web.site_dir). The runtime files are the runtime build's (UltraCanvas/
@@ -102,6 +128,9 @@ else()
         message(STATUS "  [−] UltraStore web store - SKIPPED (UltraStoreCore not built)")
         return()
     endif()
+    ultrastore_builtin_keys(ULTRASTORE_BUILTIN_KEYS_INIT EXTRA ${ULTRASTORE_WEB_TEST_KEYS})
+    configure_file(${CMAKE_CURRENT_SOURCE_DIR}/../core/UltraStoreBuiltin.h.in
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/UltraStoreBuiltin.h" @ONLY)
     add_executable(ultrastore-web ${_web_sources})
     target_include_directories(ultrastore-web PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../core
