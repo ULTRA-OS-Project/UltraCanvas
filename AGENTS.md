@@ -436,6 +436,13 @@ user asks for a "distro build" with a pull request. A left-out row reports
 under its own name, so a required check never waits on it - and it reports
 **success** after a few seconds, with a notice that it was not built: a
 green row is not a build unless it ran for minutes.
+Every night at 02:23 UTC the same workflow builds all six rows on `main`'s
+head (`schedule` in `build.yml`), as a validation run - nothing signed or
+published. It catches a change in a runner image or in the libraries the
+runners install fresh (MSYS2, Homebrew, apt) on a day nothing merged, before
+it turns somebody's unrelated pull request red; a red nightly run on a commit
+whose own build was green is that, not the last merge. Its result becomes that
+commit's "Build result" status (`build-result.yml` follows the newest run).
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. With `-DULTRAAI_ADAPTER_LLAMACPP=ON` the
 llama.cpp adapter is built (the engine is fetched from GitHub, or taken from

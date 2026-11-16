@@ -27,6 +27,22 @@ on:
     # starts a run with those rows (the gate reads the labels), without a
     # push to carry it.
     types: [opened, synchronize, reopened, labeled]
+  # Every night, all six rows on main's head, whether or not anything merged.
+  # A full build otherwise runs only when something lands (the release
+  # dispatch from changelog-fold.yml), so a change in a runner image or in a
+  # library the runners install fresh each time - MSYS2's, Homebrew's, apt's -
+  # showed up first on somebody's unrelated pull request: on 2026-11-16 the
+  # Windows row's OpenSSL stopped naming the signer of a failed CMS signature
+  # and #1280, a Word reader change, went red on it. A scheduled run is a
+  # validation run: not a release (RELEASE_BUILD and the gate's `release` are
+  # push / release-dispatch only), nothing is signed or published, and the
+  # gate's matrix step gives it every row (it is not a pull request).
+  # GitHub runs a schedule on the default branch only and mails a failure
+  # to whoever last changed this cron line. 02:23 UTC: away from the hour,
+  # when scheduled runs pile up, and outside the working day of the people
+  # merging here.
+  schedule:
+    - cron: '23 2 * * *'
   workflow_dispatch:
     inputs:
       # Set only by changelog-fold.yml. Its "Changelog: x.y.z" commit is pushed
@@ -56,9 +72,11 @@ on:
 #
 # A release dispatch is keyed by its commit as well: GitHub keeps only ONE
 # pending run per group, so with a shared key a third release dispatched while
-# one builds and one waits would silently replace the waiting one.
+# one builds and one waits would silently replace the waiting one. The nightly
+# run has a group of its own for the same reason: sharing main's, it would
+# replace a push's release build that was waiting behind another.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}${{ inputs.sha && format('-{0}', inputs.sha) || '' }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}${{ inputs.sha && format('-{0}', inputs.sha) || '' }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:

@@ -462,6 +462,23 @@ int main() {
         }
         TEST("Clicking inside the table puts the caret in a cell", clickReachedCell);
 
+        // A click in the margin left of the table, level with it, goes into
+        // the nearest cell - never onto the table outside its cells, where
+        // the caret would be drawn the whole table high.
+        bool leftClickReachedTable = false;
+        bool leftClickOutsideCells = false;
+        for (int y = 20; y <= 200; y += 4) {
+            editor.SetCaret(editor.DocumentStart());
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 1, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 1, static_cast<float>(y)));
+            window->UpdateAndRender();
+            if (editor.GetCaret().blockIndex != tableBlock) continue;
+            leftClickReachedTable = true;
+            if (!editor.GetCaret().InCell()) leftClickOutsideCells = true;
+        }
+        TEST("A click left of the table reaches it", leftClickReachedTable);
+        TEST("... and puts the caret in a cell, not on the table", !leftClickOutsideCells);
+
         // Clicking the right-hand column reaches a different cell than the left.
         int leftColumn = -1, rightColumn = -1;
         for (int y = 20; y <= 200; y += 4) {
