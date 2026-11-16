@@ -587,7 +587,7 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
         for (const WLAN_AVAILABLE_NETWORK& network : networks) {
             if (SsidOf(network.dot11Ssid) != ssid || !(network.dwFlags & kNetworkHasProfile)) continue;
             if (!ConnectProfile(wlan, network.strProfileName, error)) {
-                error = TrF("Could not join {0}: {1}", ssid, error);
+                error = TrF("Could not join the network {0}: {1}", ssid, error);
                 return false;
             }
             if (WaitForJoin(wlan, ssid)) return true;

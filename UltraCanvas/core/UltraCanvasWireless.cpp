@@ -280,38 +280,38 @@ namespace WirelessBackend {
 
     namespace {
         // A function, not a constant: the language is not loaded at static-init time.
-        std::string None() { return Tr("Wi-Fi and Bluetooth are not operated on this platform yet."); }
+        std::string NotAvailableHere() { return Tr("Wi-Fi and Bluetooth are not operated on this platform yet."); }
     }
 
     std::string BackendName() { return "null"; }
 
     WirelessWifiStatus ReadWifi() {
         WirelessWifiStatus status;
-        status.error = None();
+        status.error = NotAvailableHere();
         return status;
     }
-    bool RequestWifiScan(std::string& error) { error = None(); return false; }
-    bool SetWifiEnabled(bool, std::string& error) { error = None(); return false; }
-    bool ConnectWifi(const std::string&, const std::string&, std::string& error) { error = None(); return false; }
-    bool DisconnectWifi(std::string& error) { error = None(); return false; }
-    bool ForgetWifi(const std::string&, std::string& error) { error = None(); return false; }
+    bool RequestWifiScan(std::string& error) { error = NotAvailableHere(); return false; }
+    bool SetWifiEnabled(bool, std::string& error) { error = NotAvailableHere(); return false; }
+    bool ConnectWifi(const std::string&, const std::string&, std::string& error) { error = NotAvailableHere(); return false; }
+    bool DisconnectWifi(std::string& error) { error = NotAvailableHere(); return false; }
+    bool ForgetWifi(const std::string&, std::string& error) { error = NotAvailableHere(); return false; }
 
     WirelessBluetoothStatus ReadBluetooth() {
         WirelessBluetoothStatus status;
-        status.error = None();
+        status.error = NotAvailableHere();
         return status;
     }
     bool CanSetBluetoothPower() { return false; }
-    bool SetBluetoothPowered(bool, std::string& error) { error = None(); return false; }
-    bool StartBluetoothDiscovery(std::string& error) { error = None(); return false; }
-    bool StopBluetoothDiscovery(std::string& error) { error = None(); return false; }
-    bool PairBluetoothDevice(const std::string&, std::string& error) { error = None(); return false; }
-    bool ConnectBluetoothDevice(const std::string&, std::string& error) { error = None(); return false; }
-    bool DisconnectBluetoothDevice(const std::string&, std::string& error) { error = None(); return false; }
-    bool RemoveBluetoothDevice(const std::string&, std::string& error) { error = None(); return false; }
+    bool SetBluetoothPowered(bool, std::string& error) { error = NotAvailableHere(); return false; }
+    bool StartBluetoothDiscovery(std::string& error) { error = NotAvailableHere(); return false; }
+    bool StopBluetoothDiscovery(std::string& error) { error = NotAvailableHere(); return false; }
+    bool PairBluetoothDevice(const std::string&, std::string& error) { error = NotAvailableHere(); return false; }
+    bool ConnectBluetoothDevice(const std::string&, std::string& error) { error = NotAvailableHere(); return false; }
+    bool DisconnectBluetoothDevice(const std::string&, std::string& error) { error = NotAvailableHere(); return false; }
+    bool RemoveBluetoothDevice(const std::string&, std::string& error) { error = NotAvailableHere(); return false; }
 
     bool HasSystemSettings(WirelessRadio) { return false; }
-    bool OpenSystemSettings(WirelessRadio, std::string& error) { error = None(); return false; }
+    bool OpenSystemSettings(WirelessRadio, std::string& error) { error = NotAvailableHere(); return false; }
     void PairingHandlerChanged(bool) {}
 
 } // namespace WirelessBackend

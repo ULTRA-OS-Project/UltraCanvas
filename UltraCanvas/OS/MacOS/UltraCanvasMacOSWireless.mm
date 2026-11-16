@@ -386,7 +386,7 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
         }
         NSError* failure = nil;
         if (![interface associateToNetwork:network password:password error:&failure]) {
-            error = security == "Open" ? TrF("Could not join {0}: {1}", ssid, Describe(failure))
+            error = security == "Open" ? TrF("Could not join the network {0}: {1}", ssid, Describe(failure))
                                        : TrF("Could not join {0} - is the password right? ({1})", ssid,
                                              Describe(failure));
             return false;

@@ -692,7 +692,7 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
                                g_variant_new("(ooo)", path.c_str(), device.path.c_str(), "/"),
                                G_VARIANT_TYPE("(o)"), error);
         if (!reply) {
-            error = TrF("Could not join {0}: {1}", ssid, error);
+            error = TrF("Could not join the network {0}: {1}", ssid, error);
             return false;
         }
         const gchar* active = nullptr;
@@ -749,7 +749,7 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
                            g_variant_new("(a{sa{sv}}oo)", &settings, device.path.c_str(), best.path.c_str()),
                            G_VARIANT_TYPE("(oo)"), error);
     if (!reply) {
-        error = TrF("Could not join {0}: {1}", ssid, error);
+        error = TrF("Could not join the network {0}: {1}", ssid, error);
         return false;
     }
     const gchar* connection = nullptr;
