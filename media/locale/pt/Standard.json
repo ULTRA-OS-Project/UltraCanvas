@@ -158,6 +158,7 @@
   },
   "Copy files": "Copiar ficheiros",
   "Copy finished": "Cópia concluída",
+  "Copy instead": "Copiar em vez disso",
   "Copy path": "Copiar caminho",
   "Copy skipped items again": "Copiar novamente os itens ignorados",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Mover para baixo",
   "Move files": "Mover ficheiros",
   "Move finished": "Movimentação concluída",
+  "Move instead": "Mover em vez disso",
   "Move skipped items again": "Mover novamente os itens ignorados",
   "Move to Recycle Bin": "Mover para a Reciclagem",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "\"Mover para a Reciclagem\" pode ser anulado a partir da Reciclagem. \"Eliminar permanentemente\" não pode ser anulado.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Parado em:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Guarda estas definições sem as experimentar; serão experimentadas da próxima vez que a conta for utilizada.",
   "Style": "Estilo",
+  "Subfolder of \"{0}\"": "Subpasta de \"{0}\"",
   "Submit": "Submeter",
   "Success": "Sucesso",
   "System": "Sistema",

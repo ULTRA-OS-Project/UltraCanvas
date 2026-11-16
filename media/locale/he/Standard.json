@@ -172,6 +172,7 @@
   },
   "Copy files": "העתקת קבצים",
   "Copy finished": "ההעתקה הסתיימה",
+  "Copy instead": "העתקה במקום",
   "Copy path": "העתקת הנתיב",
   "Copy skipped items again": "העתקה חוזרת של הפריטים שדולגו",
   "Copy {n} item into \"{0}\"?": {
@@ -451,6 +452,7 @@
   "Move down": "הזזה למטה",
   "Move files": "העברת קבצים",
   "Move finished": "ההעברה הסתיימה",
+  "Move instead": "העברה במקום",
   "Move skipped items again": "העברה חוזרת של הפריטים שדולגו",
   "Move to Recycle Bin": "העברה לסל המיחזור",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "את \"העברה לסל המיחזור\" ניתן לבטל מסל המיחזור. את \"מחיקה לצמיתות\" לא ניתן לבטל.",
@@ -666,6 +668,7 @@
   "Stopped at:": "נקודת העצירה:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "שומר את ההגדרות האלה בלי לנסות אותן; הן ייבדקו בפעם הבאה שהחשבון ישמש.",
   "Style": "סגנון",
+  "Subfolder of \"{0}\"": "תיקיית משנה של \"{0}\"",
   "Submit": "הגשה",
   "Success": "הצלחה",
   "System": "מערכת",

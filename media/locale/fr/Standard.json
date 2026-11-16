@@ -158,6 +158,7 @@
   },
   "Copy files": "Copier des fichiers",
   "Copy finished": "Copie terminée",
+  "Copy instead": "Copier à la place",
   "Copy path": "Copier le chemin",
   "Copy skipped items again": "Copier à nouveau les éléments ignorés",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Descendre",
   "Move files": "Déplacer des fichiers",
   "Move finished": "Déplacement terminé",
+  "Move instead": "Déplacer à la place",
   "Move skipped items again": "Déplacer à nouveau les éléments ignorés",
   "Move to Recycle Bin": "Mettre à la Corbeille",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "« Mettre à la Corbeille » peut être annulé depuis la Corbeille. « Supprimer définitivement » ne peut pas être annulé.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Arrêté à :",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Enregistre ces paramètres sans les essayer ; ils seront essayés la prochaine fois que le compte sera utilisé.",
   "Style": "Style",
+  "Subfolder of \"{0}\"": "Sous-dossier de \"{0}\"",
   "Submit": "Envoyer",
   "Success": "Succès",
   "System": "Système",

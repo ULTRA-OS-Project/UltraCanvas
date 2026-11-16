@@ -158,6 +158,7 @@
   },
   "Copy files": "Kopiera filer",
   "Copy finished": "Kopieringen är klar",
+  "Copy instead": "Kopiera i stället",
   "Copy path": "Kopiera sökväg",
   "Copy skipped items again": "Kopiera överhoppade objekt igen",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Flytta ned",
   "Move files": "Flytta filer",
   "Move finished": "Flytten är klar",
+  "Move instead": "Flytta i stället",
   "Move skipped items again": "Flytta överhoppade objekt igen",
   "Move to Recycle Bin": "Flytta till papperskorgen",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "”Flytta till papperskorgen” kan ångras från papperskorgen. ”Ta bort permanent” kan inte ångras.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Stoppade vid:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Sparar inställningarna utan att pröva dem; de prövas nästa gång kontot används.",
   "Style": "Stil",
+  "Subfolder of \"{0}\"": "Undermapp till ”{0}”",
   "Submit": "Skicka in",
   "Success": "Lyckades",
   "System": "System",

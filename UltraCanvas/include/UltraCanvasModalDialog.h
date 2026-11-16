@@ -1,6 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.11.0 - SetMessageVisible: a dialog whose elements say what its message says keeps the
+//          message and details as text it answers with, without showing them a second time
 // Version: 3.10.2 - An input dialog wraps its prompt and grows to fit it (it was one line with an
 //                  ellipsis in a window of fixed height); the prompt is shown once
 // Version: 3.10.1 - DialogConfig is no longer alwaysOnTop: a dialog stayed above every other
@@ -383,6 +385,12 @@ namespace UltraCanvas {
         // (and anything AddDialogElement() put in it) the whole content width.
         void SetIconVisible(bool visible);
         bool IsIconVisible() const;
+        // Show or hide the message area. A dialog whose own elements
+        // (AddDialogElement) present the message - beside a picture, as
+        // cards - hides it: GetMessage() and GetDetails() still answer with
+        // the text, and the area takes no room.
+        void SetMessageVisible(bool visible);
+        bool IsMessageVisible() const;
         void SetDialogButtons(DialogButtons buttons);
         void SetDefaultButton(DialogButton button);
         void SetStyle(const ModalDialogStyle& dialogStyle);
