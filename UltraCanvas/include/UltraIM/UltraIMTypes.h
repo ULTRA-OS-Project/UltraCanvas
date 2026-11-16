@@ -1,5 +1,8 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.15 - UltraIMConversation::description, UltraIMPublicGroup::description
+// Version: 0.1.14 - UltraIMConversation::isPublic, UltraIMPublicGroup: public groups found and joined
+// Version: 0.1.13 - UltraIMAuthStep::Browser: a sign-in page to open in the browser (Mastodon)
 // Version: 0.1.12 - UltraIMEventType::TransferProgress; UltraIMSearchKind::Audio: a file's bytes on their way, up or down
 // Version: 0.1.11 - UltraIMSendOptions::durationSeconds: a voice note's or a video's length, sent along
 // Version: 0.1.10 - UltraIMConversation::memberCount: everyone in a group whose memberIds are a first page
@@ -19,7 +22,7 @@
 // Version: 0.1.2 - UltraIMAccountProfile (name, e-mail, phone), UltraIMSignInProtection, credentials.email
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-11-13
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -210,6 +213,22 @@ struct UltraIMConversation {
     int             unreadCount = 0;
     // End-to-end encrypted: only its members' devices can read what is in it.
     bool            isEncrypted = false;
+    // A public group: listed for everyone on the network, who may join it
+    // (UltraIM_FetchPublicGroups, UltraIM_JoinGroup); its owner sets it
+    // (UltraIM_SetGroupPublic).
+    bool            isPublic = false;
+    // What the group is about, in a few lines ("" = none; UltraIM_SetGroupDescription).
+    std::string     description;
+};
+
+// A public group as the directory lists it (UltraIM_FetchPublicGroups).
+struct UltraIMPublicGroup {
+    std::string conversationId;     // the conversation it is once joined
+    std::string title;
+    std::string description;
+    std::string ownerId;
+    int         memberCount = 0;
+    bool        joined = false;     // the local user is in it
 };
 
 // ============================================================================
@@ -287,7 +306,11 @@ enum class UltraIMAuthStep {
     // when the account has one, else signed in - once it is scanned. Asked
     // for with credentials.loginType QRCode (at the start, or in place of a
     // code that never came); a phone number given here starts over with it.
-    OtherDevice
+    OtherDevice,
+    // Nothing to type: the hint is a web address (Mastodon: the server's
+    // consent page) for the application to open in the browser; the provider
+    // waits for the browser's answer and goes on by itself.
+    Browser
 };
 
 struct UltraIMCredentials {
@@ -558,6 +581,8 @@ using UltraIMConversationsCallback = std::function<void(const UltraIMResult& res
                                                         const std::vector<UltraIMConversation>& conversations)>;
 using UltraIMConversationCallback = std::function<void(const UltraIMResult& result,
                                                        const UltraIMConversation& conversation)>;
+using UltraIMPublicGroupsCallback = std::function<void(const UltraIMResult& result,
+                                                       const std::vector<UltraIMPublicGroup>& groups)>;
 using UltraIMContactsCallback     = std::function<void(const UltraIMResult& result,
                                                        const std::vector<UltraIMContact>& contacts)>;
 using UltraIMMessagesCallback     = std::function<void(const UltraIMResult& result,

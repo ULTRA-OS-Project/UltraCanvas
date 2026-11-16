@@ -18,6 +18,7 @@
 #include "UltraCrypt/OtpAuthUri.h"
 #include "UltraCrypt/UltraOtp.h"
 #include "UltraIM/UltraIMCore.h"
+#include "UltraNet/UltraNetUrl.h"
 #include "UltraRTC/UltraRTCCore.h"
 
 #include <algorithm>
@@ -1364,6 +1365,8 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             groupOwners_.erase(id);
+            publicGroups_.erase(id);
+            groupDescriptions_.erase(id);
         }
         EmitRemoved(id);
         return;
@@ -1371,6 +1374,9 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         groupOwners_[id] = group["owner"].GetString();
+        if (group["public"].GetBoolean(false)) publicGroups_.insert(id);
+        else publicGroups_.erase(id);
+        groupDescriptions_[id] = group["description"].GetString();
     }
     UltraIMConversation conversation;
     store_.GetConversation(id, conversation);
@@ -1575,6 +1581,9 @@ void DirectProvider::FillGroupDetails(UltraIMConversation& conversation) {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto found = groupOwners_.find(conversation.conversationId);
         if (found != groupOwners_.end()) conversation.ownerId = found->second;
+        conversation.isPublic = publicGroups_.count(conversation.conversationId) > 0;
+        const auto described = groupDescriptions_.find(conversation.conversationId);
+        if (described != groupDescriptions_.end()) conversation.description = described->second;
     }
     for (const std::string& member : conversation.memberIds) {
         StoredContact contact;
@@ -1715,9 +1724,187 @@ void DirectProvider::LeaveConversation(const std::string& conversationId, UltraI
         {
             std::lock_guard<std::mutex> lock(mutex_);
             groupOwners_.erase(conversationId);
+            publicGroups_.erase(conversationId);
+            groupDescriptions_.erase(conversationId);
         }
         EmitRemoved(conversationId);
         onResult(UltraIMResult::Ok());
+    });
+}
+
+// ---- public groups -------------------------------------------------------------
+
+namespace {
+// A relay before 1.5 has no public groups: it does not know the address.
+// An address the relay does not have answers 404 with the generic "error"
+// (405 when it has the address for another method); its own refusals name theirs.
+bool RelayLacksIt(const RelayResponse& r) {
+    return r.status == 405 || (r.status == 404 && r.body["error"].GetString() == "error");
+}
+
+UltraIMResult NoPublicGroupsYet() {
+    return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                "This relay has no public groups yet - it needs ChatCube relay 1.5 or later "
+                                "(its operator updates it)");
+}
+} // namespace
+
+void DirectProvider::FetchPublicGroups(const std::string& query, UltraIMPublicGroupsCallback onResult) {
+    if (state_ != UltraIMConnectionState::Connected)
+        return onResult(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in"), {});
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay)
+        return onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                             "Groups need a relay server - this ChatCube uses the local network only"),
+                        {});
+    relay->Request("GET", "/v1/public-groups?q=" + UltraNet_UrlEncode(query), nullptr,
+                   [onResult](const RelayResponse& r) {
+        if (r.status == 404 || r.status == 405) return onResult(NoPublicGroupsYet(), {});
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        std::vector<UltraIMPublicGroup> groups;
+        for (const auto& g : r.body["groups"].GetElements()) {
+            UltraIMPublicGroup group;
+            group.conversationId = g["conversation"].GetString();
+            if (!IsGroupId(group.conversationId)) continue;
+            group.title = g["title"].GetString();
+            group.description = g["description"].GetString();
+            group.ownerId = g["owner"].GetString();
+            group.memberCount = static_cast<int>(g["member_count"].GetInteger(0));
+            group.joined = g["joined"].GetBoolean(false);
+            groups.push_back(group);
+        }
+        onResult(UltraIMResult::Ok(), groups);
+    });
+}
+
+void DirectProvider::JoinGroup(const std::string& conversationId, UltraIMConversationCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target, {});
+    relay->Request("POST", "/v1/groups/" + groupId + "/join", nullptr,
+                   [this, conversationId, onResult](const RelayResponse& r) {
+        if (r.status == 405) return onResult(NoPublicGroupsYet(), {});
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
+                                                 "The group's owner took you out of this group"), {});
+        if (r.status == 404)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::NotFound, "The group is not public any more"), {});
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        // The members' keys come with UpsertGroup (fetched when missing):
+        // what we send there is sealed for each of them.
+        UpsertGroup(r.body);
+        UltraIMConversation conversation;
+        store_.GetConversation(conversationId, conversation);
+        FillGroupDetails(conversation);
+        onResult(UltraIMResult::Ok(), conversation);
+    });
+}
+
+void DirectProvider::SetGroupDescription(const std::string& conversationId, const std::string& description,
+                                         UltraIMConversationCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target, {});
+    if (description.size() > 500)
+        return onResult(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                             "A description holds at most 500 characters"), {});
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("description", JSONValue(description));
+    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, conversationId, onResult](const RelayResponse& r) {
+        if (r.status == 405 || r.status == 422)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                                 "This relay keeps no group descriptions yet - it needs ChatCube "
+                                                 "relay 1.5 or later (its operator updates it)"), {});
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
+                                                 "Only the owner changes a public group's description"), {});
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        UpsertGroup(r.body);
+        UltraIMConversation conversation;
+        store_.GetConversation(conversationId, conversation);
+        FillGroupDetails(conversation);
+        onResult(UltraIMResult::Ok(), conversation);
+    });
+}
+
+void DirectProvider::BlockGroupMember(const std::string& conversationId, const std::string& memberId,
+                                      UltraIMResultCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target);
+    const std::string id = NormalizeUserId(memberId);
+    if (id.empty()) return onResult(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Not a ChatCube ID"));
+    // The relay takes them out and tells every member (group.update).
+    relay->Request("PUT", "/v1/groups/" + groupId + "/blocked/" + id, nullptr, [onResult](const RelayResponse& r) {
+        if (RelayLacksIt(r)) return onResult(NoPublicGroupsYet());
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied, "Only the group's owner blocks"));
+        onResult(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::Unknown));
+    });
+}
+
+void DirectProvider::UnblockGroupMember(const std::string& conversationId, const std::string& memberId,
+                                        UltraIMResultCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target);
+    const std::string id = NormalizeUserId(memberId);
+    if (id.empty()) return onResult(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Not a ChatCube ID"));
+    relay->Request("DELETE", "/v1/groups/" + groupId + "/blocked/" + id, nullptr, [onResult](const RelayResponse& r) {
+        if (RelayLacksIt(r)) return onResult(NoPublicGroupsYet());
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied, "Only the group's owner unblocks"));
+        onResult(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::Unknown));
+    });
+}
+
+void DirectProvider::FetchBlockedMembers(const std::string& conversationId, UltraIMContactsCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target, {});
+    relay->Request("GET", "/v1/groups/" + groupId + "/blocked", nullptr, [this, onResult](const RelayResponse& r) {
+        if (RelayLacksIt(r)) return onResult(NoPublicGroupsYet(), {});
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
+                                                 "Only the group's owner sees whom it blocked"), {});
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        std::vector<UltraIMContact> list;
+        for (const auto& u : r.body["blocked"].GetElements()) {
+            UltraIMContact c;
+            c.contactId = u["user_id"].GetString();
+            c.providerId = providerId_;
+            c.displayName = u["display_name"].GetString();
+            list.push_back(c);
+        }
+        onResult(UltraIMResult::Ok(), list);
+    });
+}
+
+void DirectProvider::SetGroupPublic(const std::string& conversationId, bool isPublic,
+                                    UltraIMConversationCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target, {});
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("public", JSONValue(isPublic));
+    relay->Request("PUT", "/v1/groups/" + groupId + "/public", &body,
+                   [this, conversationId, onResult](const RelayResponse& r) {
+        if (r.status == 405) return onResult(NoPublicGroupsYet(), {});
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
+                                                 "Only the group's owner makes it public or private"), {});
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        UpsertGroup(r.body);
+        UltraIMConversation conversation;
+        store_.GetConversation(conversationId, conversation);
+        FillGroupDetails(conversation);
+        onResult(UltraIMResult::Ok(), conversation);
     });
 }
 

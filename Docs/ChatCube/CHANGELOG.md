@@ -1,3 +1,27 @@
+#### 2026-11-16 *0.1.28*
+- **Mastodon.** A Mastodon button beside Telegram signs in to any Mastodon
+  server (or one that speaks its language: GoToSocial, Akkoma, Pleroma) on
+  the server's own page in the browser - type the server, press *Sign in in
+  the browser*, allow ChatCube there. Your direct messages join the list:
+  one chat per set of people, texts, replies, edits, deletes, pictures,
+  videos and sound, with the upload's progress bar. `@user@server` in *Add*
+  or *New group* starts a chat there. The next start signs in by itself.
+- **Public groups.** A group's owner can make it public (*Make public* in
+  its right-click menu; *Make private* takes it off the list again). Everyone
+  signed in to ChatCube then sees it under **Public groups** in the sidebar,
+  with its number of members and a *Join* button - no invitation needed.
+  Messages stay end-to-end encrypted, each sealed for every member, so a
+  public group holds up to 256 people. Someone its owner takes out cannot
+  join again by themselves. Needs ChatCube relay 1.5.0.
+- **A group editor.** *Group settings…* in a group's menu: its name, a
+  **description** (shown when the group's name is hovered, and in *Public
+  groups*), public or private, and the members - **Message**, and for the
+  owner **Remove** and **Block** - with the blocked ones listed to
+  **Unblock**. *Block* is also in a member's menu. Removing someone no
+  longer keeps them out of a public group; blocking does.
+- **The network buttons in two rows** (Group, Matrix / Telegram, Mastodon),
+  so every name fits.
+
 #### 2026-11-16 *0.1.27*
 - **Sending no longer holds up the window.** The message field is free the
   moment you press send; reading a big file, making a video's preview

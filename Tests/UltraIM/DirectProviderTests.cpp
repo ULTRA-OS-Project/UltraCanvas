@@ -443,7 +443,8 @@ bool WaitResult(const std::function<void(UltraIMResultCallback)>& start, UltraIM
     return cv.wait_for(lock, std::chrono::seconds(seconds), [&]() { return done; });
 }
 
-bool WaitConversation(const std::function<void(UltraIMConversationCallback)>& start, UltraIMConversation& out) {
+bool WaitConversation(const std::function<void(UltraIMConversationCallback)>& start, UltraIMConversation& out,
+                      UltraIMResult* result = nullptr) {
     std::mutex mutex;
     std::condition_variable cv;
     bool done = false, ok = false;
@@ -451,6 +452,7 @@ bool WaitConversation(const std::function<void(UltraIMConversationCallback)>& st
         std::lock_guard<std::mutex> lock(mutex);
         out = c;
         ok = r.success;
+        if (result) *result = r;
         if (!r) std::fprintf(stderr, "  conversation call failed: %s\n", r.message.c_str());
         done = true;
         cv.notify_all();
@@ -807,6 +809,145 @@ void TestGroupManagement(DirectProvider& alice, Events& aliceEvents, DirectProvi
     std::vector<UltraIMConversation> list;
     bob.FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& l) { list = l; });
     for (const auto& c : list) CHECK(c.conversationId != groupId);
+}
+
+// A public group: listed for everyone, joined with no invitation, its
+// messages still sealed for each member; the owner's ban; private again.
+void TestPublicGroups(DirectProvider& alice, Events& aliceEvents, DirectProvider& bob, Events& bobEvents,
+                      const std::string& aliceId, const std::string& bobId) {
+    const auto Directory = [](DirectProvider& p, const std::string& query, UltraIMResult* result = nullptr) {
+        std::vector<UltraIMPublicGroup> out;
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+        p.FetchPublicGroups(query, [&](const UltraIMResult& r, const std::vector<UltraIMPublicGroup>& list) {
+            std::lock_guard<std::mutex> lock(mutex);
+            out = list;
+            if (result) *result = r;
+            done = true;
+            cv.notify_all();
+        });
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait_for(lock, std::chrono::seconds(30), [&]() { return done; });
+        return out;
+    };
+    UltraIMConversation lounge;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice.CreateGroup("Public lounge", {}, cb); }, lounge));
+    CHECK(!lounge.isPublic && lounge.memberIds.size() == 1);
+    const std::string id = lounge.conversationId;
+    // Private: Bob does not see it, and cannot join it.
+    for (const auto& g : Directory(bob, "")) CHECK(g.conversationId != id);
+    UltraIMConversation none;
+    UltraIMResult refused;
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) { bob.JoinGroup(id, cb); }, none, &refused));
+    CHECK(refused.code == UltraIMResultCode::NotFound);
+
+    UltraIMConversation made;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice.SetGroupPublic(id, true, cb); }, made));
+    CHECK(made.isPublic);
+    UltraIMResult listed;
+    auto found = Directory(bob, "lounge", &listed);
+    CHECK(listed.success && found.size() == 1);
+    if (found.size() == 1) {
+        CHECK(found[0].conversationId == id && found[0].title == "Public lounge");
+        CHECK(found[0].memberCount == 1 && !found[0].joined && found[0].ownerId == aliceId);
+    }
+    CHECK(Directory(bob, "nothing like it").empty());
+    // Not the owner: Bob cannot change it.
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) { bob.SetGroupPublic(id, false, cb); }, none));
+
+    // Bob joins: the conversation is his, Alice sees him come in.
+    aliceEvents.Clear();
+    UltraIMConversation joined;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { bob.JoinGroup(id, cb); }, joined));
+    CHECK(joined.conversationId == id && joined.isPublic && joined.isGroup && joined.memberIds.size() == 2);
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == id && e.conversation.memberIds.size() == 2;
+    }));
+    found = Directory(bob, "");
+    for (const auto& g : found) {
+        if (g.conversationId == id) CHECK(g.joined && g.memberCount == 2);
+    }
+    // And writes into it: sealed for Alice, as in any group.
+    UltraIMSendOptions o;
+    o.clientMessageId = "msg-public";
+    CHECK(bob.SendText(id, "hello everyone", o));
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+        return IsReceived(e, "hello everyone") && e.conversationId == id && e.message.senderId == bobId;
+    }));
+
+    // A description: the owner's in a public group; every member hears of it,
+    // and the directory shows it.
+    UltraIMConversation described;
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) { bob.SetGroupDescription(id, "Bob's", cb); }, none,
+                            &refused));
+    CHECK(refused.code == UltraIMResultCode::PermissionDenied);
+    bobEvents.Clear();
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) {
+        alice.SetGroupDescription(id, "Questions and news about ULTRA OS", cb);
+    }, described));
+    CHECK(described.description == "Questions and news about ULTRA OS");
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == id &&
+               e.conversation.description == "Questions and news about ULTRA OS";
+    }));
+    for (const auto& g : Directory(bob, "lounge")) CHECK(g.description == "Questions and news about ULTRA OS");
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) { alice.SetGroupDescription(id, std::string(501, 'x'), cb); },
+                            none));
+
+    // Removed by the owner: may join again.
+    bobEvents.Clear();
+    UltraIMResult removed;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.RemoveGroupMember(id, bobId, cb); }, removed));
+    CHECK(removed.success);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationRemove && e.conversationId == id;
+    }));
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { bob.JoinGroup(id, cb); }, joined));
+
+    // Blocked: out, listed for the owner alone, not back by Join - until unblocked.
+    const auto Blocked = [](DirectProvider& p, const std::string& group, UltraIMResult* result = nullptr) {
+        std::vector<UltraIMContact> out;
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+        p.FetchBlockedMembers(group, [&](const UltraIMResult& r, const std::vector<UltraIMContact>& list) {
+            std::lock_guard<std::mutex> lock(mutex);
+            out = list;
+            if (result) *result = r;
+            done = true;
+            cv.notify_all();
+        });
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait_for(lock, std::chrono::seconds(30), [&]() { return done; });
+        return out;
+    };
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { bob.BlockGroupMember(id, aliceId, cb); }, refused));
+    CHECK(!refused && refused.code == UltraIMResultCode::PermissionDenied);
+    bobEvents.Clear();
+    UltraIMResult blockedResult;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.BlockGroupMember(id, bobId, cb); }, blockedResult));
+    CHECK(blockedResult.success);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationRemove && e.conversationId == id;
+    }));
+    auto blockedList = Blocked(alice, id);
+    CHECK(blockedList.size() == 1 && blockedList[0].contactId == bobId && !blockedList[0].displayName.empty());
+    UltraIMResult notOwner;
+    Blocked(bob, id, &notOwner);
+    CHECK(!notOwner.success);
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) { bob.JoinGroup(id, cb); }, none, &refused));
+    CHECK(refused.code == UltraIMResultCode::PermissionDenied);
+    UltraIMResult unblocked;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.UnblockGroupMember(id, bobId, cb); }, unblocked));
+    CHECK(unblocked.success && Blocked(alice, id).empty());
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { bob.JoinGroup(id, cb); }, joined));
+
+    // Private again: off the list.
+    UltraIMConversation privateAgain;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice.SetGroupPublic(id, false, cb); }, privateAgain));
+    CHECK(!privateAgain.isPublic);
+    for (const auto& g : Directory(bob, "")) CHECK(g.conversationId != id);
 }
 
 void TestCalls(DirectProvider& alice, Events& aliceEvents, DirectProvider& bob, Events& bobEvents,
@@ -1637,6 +1778,7 @@ void TestEndToEnd() {
     UltraIMConversation managed;
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->CreateGroup("Managed", {bobId}, cb); }, managed));
     TestGroupManagement(*alice, aliceEvents, *bob, bobEvents, managed.conversationId, aliceId, bobId);
+    TestPublicGroups(*alice, aliceEvents, *bob, bobEvents, aliceId, bobId);
 
     if (UltraRtc_GetCapabilities().audio && UltraRtc_GetCapabilities().video) {
         TestVideoCall(*alice, aliceEvents, *bob, bobEvents, bobId);

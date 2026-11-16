@@ -4661,6 +4661,30 @@ else()
     message(STATUS "  [−] UltraIM provider Matrix - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
+# ----- UltraIM provider: Mastodon ----------------------------------------------
+# The direct messages of a Mastodon server over its REST API
+# (Plugins/UltraIM/mastodon/): browser sign-in (OAuth), conversations polled,
+# pictures, videos and sound, replies, edits, deletes. An archive the tests
+# link, and the module loaded from <build>/Plugins/UltraIM.
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt)
+    set(_ultraim_mastodon_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/mastodon)
+    add_library(UltraIMMastodonCore STATIC ${_ultraim_mastodon_dir}/MastodonProvider.cpp)
+    set_target_properties(UltraIMMastodonCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMMastodonCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMMastodonCore PUBLIC ${_ultraim_mastodon_dir})
+    target_link_libraries(UltraIMMastodonCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMMastodonPlugin MODULE ${_ultraim_mastodon_dir}/MastodonModule.cpp)
+    set_target_properties(UltraIMMastodonPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_mastodon"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMMastodonPlugin PRIVATE UltraIMMastodonCore)
+    message(STATUS "  [✓] UltraIM provider Mastodon - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider Mastodon - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
 # ----- UltraIM provider: Telegram ----------------------------------------------
 # On TDLib through its JSON interface (Plugins/UltraIM/telegram/), loaded at
 # run time: nothing of TDLib is linked, so the provider builds everywhere and

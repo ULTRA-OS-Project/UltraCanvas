@@ -74,9 +74,14 @@ too, in its upgrade request).
 | `PUT` / `DELETE /v1/contacts/{id}` | add / remove; an add puts you in their list too, when you were not, and tells them (`contact.added`, 1.4.0) |
 | `POST /v1/groups` | `{title, members}` → `{group_id, conversation: "group:<id>", title, owner, members}` |
 | `GET /v1/groups`, `GET /v1/groups/{id}` | the caller's groups |
-| `PATCH /v1/groups/{id}` | `{title}` — any member renames (1.3.0) |
+| `PATCH /v1/groups/{id}` | `{title?, description?}` — what is given changes: any member of a private group (1.3.0; the description 1.5.0, up to 500 characters), the owner alone of a public one |
 | `POST /v1/groups/{id}/members` | `{user_id}` — any member adds |
 | `DELETE /v1/groups/{id}/members/{user}` | the owner removes anyone; anyone leaves |
+| `PUT /v1/groups/{id}/public` | `{public}` — the owner lists the group for everyone, or takes it off the list (1.5.0) |
+| `GET /v1/public-groups?q=` | the public groups whose title holds `q`, the biggest first: `{groups: [{group_id, conversation, title, owner, member_count, joined}], max_members}` (1.5.0) |
+| `POST /v1/groups/{id}/join` | anyone signed in joins a public group, unless its owner blocked them (403 `banned`) or it is full (1.5.0) |
+| `PUT` / `DELETE /v1/groups/{id}/blocked/{user}` | the owner blocks (taken out when in it; cannot join again or be added by another member) and unblocks (1.5.0) |
+| `GET /v1/groups/{id}/blocked` | the owner's: `{blocked: [{user_id, public_key, display_name}]}` (1.5.0) |
 | `POST /v1/messages` | `{messages: [{to, message_id, conversation, envelope}]}` — offline 1:1 copies, or one copy per group member (sender and recipient must both be members of a `group:` conversation). A `message_id` already queued for that recipient is not queued twice. Envelopes up to 64 KiB |
 | `GET /v1/messages?since=<id>` | `{messages: [{id, from, message_id, conversation, envelope, created_at}]}` |
 | `POST /v1/messages/ack` | `{ids}` — deletes them |
@@ -167,6 +172,27 @@ cannot come back without the computer it is on. A failed send is logged with
 the address masked (`e***@example.org`, `+49 ••• 89`), never with a link or
 a code.
 
+## Public groups
+
+A group its owner makes public (`PUT /v1/groups/{id}/public`; in ChatCube,
+*Make public* in the group's menu) is listed for everyone signed in to the
+relay and joined with one request - ChatCube shows the list as *Public
+groups*, each with *Join*. Nothing about the messages changes: the sender's
+ChatCube still seals a copy for each member with that member's key, so the
+relay holds only ciphertext, as for any group. That is also what bounds a
+public group: every message is one copy per member, so it holds at most
+`CHATCUBE_RELAY_MAX_PUBLIC_GROUP_MEMBERS` (256, never more than the 256
+copies one request carries) where a private group holds 64. Someone who
+joins sees what is written from then on, not what came before.
+
+Against misuse: whom the owner blocks cannot join the group again nor be
+added by another member until unblocked (a member only removed may come
+back by *Join*), only the owner changes a public group's name and
+description, and one member may post
+`CHATCUBE_RELAY_PUBLIC_POSTS_PER_MINUTE` messages a minute into it (30; the
+copies of one message and a file's parts count once) - more is refused with
+429 `slow_down`, and ChatCube sends it a little later.
+
 ## The database and its migrations
 
 One SQLite file (`CHATCUBE_RELAY_DB`). Its schema has a version - SQLite's
@@ -181,6 +207,7 @@ relay, or a newer one.
 |---|---|---|
 | 1 | 1.0 | accounts, sessions, contacts, groups, the offline queue |
 | 2 | 1.1 | the owner's e-mail address and phone number |
+| 4 | 1.5 | public groups and descriptions: the `public` mark on a group (every existing group stays private), its `description` (empty), and `group_bans`, whom an owner blocked |
 | 3 | 1.2 | whether each is confirmed (`email_verified`, `phone_verified`, both starting unconfirmed - also what 1.1 kept), the confirmation and recovery links, the phone's codes, the recovery copies, recoveries under way, and the send counts behind the rate limits |
 
 Relays before 1.2 did not record a version: their databases are recognised
@@ -207,7 +234,7 @@ WebSocket upgrade in front of it), `deploy/turnserver.conf` (coturn, sharing
 
 A ChatCube newer than its relay works, but what needs the newer relay says
 so instead of happening: renaming a group needs 1.3.0 (and, with an older
-relay than 1.4.0, the person added sees the chat only once the adder writes), and an older relay
+relay than 1.4.0, the person added sees the chat only once the adder writes; public groups need 1.5.0), and an older relay
 answers ChatCube with `405 Method Not Allowed`, which ChatCube shows as "This
 relay cannot rename groups yet - it needs ChatCube relay 1.3.0 or later". On
 the server, with the layout of `deploy/chatcube-relay.service`:
@@ -221,7 +248,7 @@ sudo cp /var/lib/chatcube-relay/relay.sqlite3 /var/lib/chatcube-relay/relay.sqli
 # a copy: rsync -a --exclude .venv Server/ChatCubeRelay/ /opt/chatcube-relay/)
 sudo -u chatcube-relay /opt/chatcube-relay/.venv/bin/pip install -e /opt/chatcube-relay
 sudo systemctl start chatcube-relay
-curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.4.0"}
+curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.5.0"}
 ```
 
 (The database's file is whatever `CHATCUBE_RELAY_DB` names in

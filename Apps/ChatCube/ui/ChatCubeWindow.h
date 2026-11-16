@@ -51,9 +51,10 @@
 // goes with Enter or the send button - what was typed as the caption of
 // the first picture or video.
 //
-// Next to ChatCube Direct, a Matrix account (the "matrix" provider) can be
-// added from the sidebar; its rooms join the same list, and everything done
-// in a conversation goes to that conversation's provider.
+// Next to ChatCube Direct, a Matrix, a Telegram and a Mastodon account (the
+// "matrix", "telegram" and "mastodon" providers) can be added from the
+// sidebar; their chats join the same list, and everything done in a
+// conversation goes to that conversation's provider.
 //
 // A call shows a bar across the top of the chat view:
 //
@@ -70,6 +71,9 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.7 - the group editor (Group settings): a description, members removed, blocked, messaged
+// Version: 0.3.6 - public groups: the "Public groups" list with Join, Make public / Make private
+// Version: 0.3.5 - a Mastodon account: ToggleMastodonForm, SignInToMastodon, mastodonProviderId_
 // Version: 0.3.4 - sending in the background (SendQueue: the field is free at once, the window never
 //                  waits on a big file), a file's progress in its bubble, a video's preview picture and
 //                  length shown as it goes, songs played in their bubble, videos played in the chat (a
@@ -106,10 +110,11 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "ChatCubeGroupWindow.h"
 #include "ChatCubeProfileWindow.h"
 #include "ChatCubeSettings.h"
 #include "ChatCubeSettingsWindow.h"
@@ -196,8 +201,16 @@ private:
     void AddContact();
     void AddContactById(const std::string& id);
     void RefreshNearby();           // the "On this network" list
+    // The "Public groups" list: the ChatCube groups anyone may join, those
+    // not joined yet, each with Join; and the owner's switch in a group's menu.
+    void RefreshPublicGroups();
+    void JoinPublicGroup(const std::string& conversationId, const std::string& title);
+    void SetGroupPublic(const std::string& conversationId, bool isPublic);
     void ToggleMatrixForm();
     void SignInToMatrix(bool stored);
+    // A Mastodon account: the server, then its sign-in page in the browser.
+    void ToggleMastodonForm();
+    void SignInToMastodon(bool stored);
     // The keys to encrypted Matrix rooms to a passphrase-protected file (the
     // format Element reads), and back from one.
     void ExportMatrixKeys();
@@ -366,6 +379,10 @@ private:
     void AskToAddMembers(const std::string& conversationId);
     void AddToGroup(const std::string& groupId, const std::string& memberId);
     void AskToLeave(const std::string& conversationId);
+    // The group editor (name, description, public, members, blocked).
+    void OpenGroupEditor(const std::string& conversationId);
+    // The owner's: out of the group, and kept out until unblocked (asks first).
+    void BlockMember(const std::string& conversationId, const std::string& memberId);
     // The open conversation gone (left, deleted, its network signed out of).
     void CloseConversationView();
 
@@ -445,6 +462,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupMembers_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> nearbyBox_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> publicBox_;     // "Public groups"
+    bool showAllPublic_ = false;                                       // past the first few
+    uint64_t publicTimer_ = 0;                                         // asks for the list again
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> matrixForm_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixServer_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixUser_;
@@ -469,6 +489,11 @@ private:
     std::string telegramRelayApiHash_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixToggle_;
     std::string matrixProviderId_ = "matrix";
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    mastodonToggle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> mastodonForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> mastodonServer_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    mastodonSignIn_;
+    std::string mastodonProviderId_ = "mastodon";
     std::string activeProvider_;    // the open conversation's provider
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
     std::shared_ptr<ConversationListModel>             conversations_;
@@ -562,6 +587,7 @@ private:
     UltraCanvas::UltraCanvasMediaViewerWindow          viewer_;         // a picture or a video, full size
     std::shared_ptr<UltraCanvas::UltraCanvasMenu>      messageMenu_;    // a message's right-click menu
     std::unique_ptr<ChatCubeProfileWindow>             profileWindow_;  // Edit profile
+    std::unique_ptr<ChatCubeGroupWindow>               groupWindow_;    // a group's editor
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
     std::string actionStatus_;
     std::map<std::string, std::string> providerStatus_;   // provider id -> its state

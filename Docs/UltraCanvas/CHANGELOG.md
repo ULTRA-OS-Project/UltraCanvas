@@ -1,3 +1,36 @@
+#### 2026-11-16 *0.9.568*
+- **UltraIM: a Mastodon provider** (`Plugins/UltraIM/mastodon`, module
+  `ultraim_mastodon`): the direct messages of a Mastodon server over its
+  REST API through UltraNet. A chat is the set of people in it - its id
+  their addresses, so a chat opened before its first message and the
+  threads its messages make are one; statuses as text
+  (`HTML::ExtractPlainText`), their first attachment as picture, video or
+  sound; polled every few seconds, several new statuses arriving in order,
+  edits and deletes noticed; replies, edits (`PUT`), deletes, read marks,
+  leaving, media uploads with `TransferProgress`, search through
+  `UltraIM_SearchByFetching`. Sign-in registers the application with the
+  server once and runs OAuth with PKCE on a loopback address; the token is
+  kept in UltraVault. Tested against `Tests/UltraIM/mastodon_fake_server.py`,
+  a small Mastodon in standard-library python (`MastodonProviderTests`).
+- **Public groups in ChatCube Direct** (plug-in ABI 11; ChatCube relay
+  1.5.0). `UltraIM_FetchPublicGroups`, `UltraIM_JoinGroup` and
+  `UltraIM_SetGroupPublic`, `UltraIMConversation::isPublic` and
+  `UltraIMPublicGroup`: a group's owner lists it for everyone on the relay,
+  anyone joins it, and its messages stay sealed for each member. The relay
+  keeps the mark (schema 4), lists the public groups
+  (`GET /v1/public-groups`), lets anyone join (`POST .../join`), bars whom
+  the owner took out, holds up to 256 in one and limits posting into it.
+- **Group descriptions and blocking** (plug-in ABI 12; ChatCube relay
+  1.5.0): `UltraIM_SetGroupDescription` with `UltraIMConversation::description`
+  and `UltraIMPublicGroup::description`; `UltraIM_BlockGroupMember`,
+  `UltraIM_UnblockGroupMember` and `UltraIM_FetchBlockedMembers` - the owner
+  keeps someone out of a group until unblocked. The relay takes
+  `PATCH /v1/groups/{id}` with a description and blocks with
+  `PUT` / `DELETE /v1/groups/{id}/blocked/{user}`.
+- **`UltraIMAuthStep::Browser`** (plug-in ABI 10): a sign-in step with
+  nothing to type in the application - the hint is a web page to open in
+  the browser, after which the provider goes on by itself.
+
 #### 2026-11-15 *0.9.567*
 - **DropdownKeyboardTest runs in CI, and checks the dropdown's focus outline
   on real pixels.** The suite opens a real window, so in "Run unit tests" -
