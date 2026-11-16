@@ -4628,14 +4628,22 @@ message(STATUS "    Test registered: ControlLimitsTest")
 # ===== RIDGELINE MODEL TEST =====
 # The ridgeline model: quantiles, bandwidth rules, the kernel density (area,
 # bounds, binning), the x range, the scales, statistics, sorting, validation
-# and the samples. UI-free.
+# the samples, several series, the wrapping axis, tail cut, binned curves and
+# the JSON and CSV round trips. UI-free.
 message(STATUS "  Building RidgelineModelTest...")
 add_executable(RidgelineModelTest
     ${CMAKE_CURRENT_SOURCE_DIR}/RidgelineModelTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasRidgelineModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson/yyjson.c
 )
-target_include_directories(RidgelineModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_include_directories(RidgelineModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/yyjson
+)
 target_compile_features(RidgelineModelTest PRIVATE cxx_std_20)
+# The CSV reads and writes numbers through the locale-independent helpers.
+target_link_libraries(RidgelineModelTest PRIVATE UltraCanvasTextUtils)
 set_target_properties(RidgelineModelTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )

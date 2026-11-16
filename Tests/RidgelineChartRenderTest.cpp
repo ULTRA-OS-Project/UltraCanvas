@@ -7,12 +7,14 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, the cases are also written there as
 // PNGs for a person to look at.
 //
+// Version: 1.1.0 - Phase 2: series, legend, marks, bands, highlight, click
 // Version: 1.0.0
 // Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasRidgelineChart.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasEvent.h"
 
 #include <cairo/cairo.h>
 
@@ -230,6 +232,140 @@ void TestSamples() {
     day.Save("ridgeline_day");
 }
 
+Point2Dd InsideSeries(const UltraCanvasRidgelineChart& chart, size_t row, size_t series, double x, double share = 0.5) {
+    const ChartAxis& xAxis = chart.Axes().At(1);
+    const double v = chart.RowBaseline(row) + chart.RowHeightAt(row, x, series) * share;
+    return chart.Frame().projection->ToScreen(ChartNormalizedPoint(xAxis.Normalize(x), v));
+}
+
+int Distance(const Color& a, const Color& b) { return std::abs(a.r - b.r) + std::abs(a.g - b.g) + std::abs(a.b - b.b); }
+
+void TestSeries() {
+    std::cout << "\nSeveral series\n";
+    Canvas canvas;
+    if (!canvas.ctx) return;
+    UltraCanvasRidgelineModel m = UltraCanvasRidgelineModel::Sleep();
+    m.series[0].color = Color(40, 80, 220, 255);
+    m.series[1].color = Color(230, 120, 30, 255);
+    auto chart = CreateRidgelineChart("sleep", 0, 0, W, H);
+    chart->SetEnableTooltips(false);
+    chart->SetAnimateOnDataChange(false);
+    chart->SetModel(m);
+    chart->SetOverlap(1.2);
+    chart->Render(canvas.ctx.get(), Rect2Df(0, 0, W, H));
+    Check(chart->GetLegend().GetEntryCount() == 2, "a legend entry per series");
+    Check(chart->RowColor(3, 1).r == 230 && chart->RowColor(3, 0).b == 220, "each series in its own colour, every row");
+    const double bed = m.Statistics(3, 0).median, wake = m.Statistics(3, 1).median;
+    Check(Bluish(canvas.PixelAt(InsideSeries(*chart, 3, 0, bed, 0.4))), "bedtimes in blue");
+    const Color orange = canvas.PixelAt(InsideSeries(*chart, 3, 1, wake, 0.4));
+    Check(orange.r > orange.b + 80, "wake-up times in orange");
+    std::string tip;
+    chart->HitRegionAt(InsideSeries(*chart, 3, 1, wake, 0.4), &tip);
+    Check(tip.find("Goes to bed: Density") != std::string::npos && tip.find("Wakes up: Density") != std::string::npos,
+          "the tooltip reads every series");
+    canvas.Save("ridgeline_series");
+
+    chart->OnLegendEntryToggled(1, false);
+    Canvas hidden;
+    chart->Render(hidden.ctx.get(), Rect2Df(0, 0, W, H));
+    const Color gone = hidden.PixelAt(InsideSeries(*chart, 3, 1, wake, 0.4));
+    Check(!chart->IsSeriesVisible(1) && !(gone.r > gone.b + 80), "switching a series off in the legend hides it");
+}
+
+void TestMarksAndBands() {
+    std::cout << "\nMarks and quantile bands\n";
+    UltraCanvasRidgelineModel m = ThreeRows();
+    Canvas plain;
+    if (!plain.ctx) return;
+    auto chart = Make(plain, m);
+    const RidgelineRowStatistics s = m.Statistics(1);
+    const Point2Dd atMean = InsideSeries(*chart, 1, 0, s.mean, 0.5);
+    const Point2Dd inBand = InsideSeries(*chart, 1, 0, (s.quartile1 + s.mean) * 0.5, 0.3);
+    const Color before = plain.PixelAt(atMean), bandBefore = plain.PixelAt(inBand);
+
+    chart->SetMarks(RidgelineMarkMean | RidgelineMarkQuartiles);
+    chart->SetQuantileBands(true);
+    Canvas marked;
+    chart->Render(marked.ctx.get(), Rect2Df(0, 0, W, H));
+    const Color after = marked.PixelAt(atMean), bandAfter = marked.PixelAt(inBand);
+    Check(after.r + after.g + after.b + 60 < before.r + before.g + before.b, "a mark darkens the curve at the mean");
+    Check(bandAfter.r + bandAfter.g + bandAfter.b + 20 < bandBefore.r + bandBefore.g + bandBefore.b,
+          "the middle half is shaded darker");
+    const Color outside = marked.PixelAt(InsideSeries(*chart, 1, 0, s.quartile1 - 0.6, 0.2));
+    Check(Greenish(outside), "outside the middle half the fill is unchanged");
+    marked.Save("ridgeline_marks");
+}
+
+void TestHighlightAndClick() {
+    std::cout << "\nHighlight and click\n";
+    Canvas canvas;
+    if (!canvas.ctx) return;
+    auto chart = Make(canvas, ThreeRows());
+    const Color redBefore = canvas.PixelAt(Inside(*chart, 0, 2.0));
+    chart->SetHighlightOnHover(true);
+    chart->OnHitRegionHoverChanged(1 * 64 + 32);
+    Canvas faded;
+    chart->Render(faded.ctx.get(), Rect2Df(0, 0, W, H));
+    const Color redAfter = faded.PixelAt(Inside(*chart, 0, 2.0));
+    const Color background = faded.PixelAt(Point2Dd(W - 3, 3));
+    Check(Distance(redAfter, background) < Distance(redBefore, background) - 60,
+          "hovering green fades the other rows");
+    Check(Greenish(faded.PixelAt(Inside(*chart, 1, 5.0))), "and leaves green as it is");
+
+    int clicked = -1;
+    chart->onRowClick = [&clicked](int row) { clicked = row; };
+    UCEvent down;
+    down.type = UCEventType::MouseDown;
+    down.button = UCMouseButton::Left;
+    UCEvent up = down;
+    up.type = UCEventType::MouseUp;
+    chart->OnEvent(down);
+    chart->OnEvent(up);
+    Check(clicked == 1, "pressing and releasing on a row clicks it");
+    chart->OnEvent(down);
+    chart->OnHitRegionHoverChanged(-1);
+    clicked = -1;
+    chart->OnEvent(up);
+    Check(clicked == -1, "released off the row: no click");
+}
+
+void TestHistogramAndClock() {
+    std::cout << "\nHistogram and a clock axis\n";
+    Canvas canvas;
+    if (!canvas.ctx) return;
+    UltraCanvasRidgelineModel words = UltraCanvasRidgelineModel::WordRatings();
+    words.rows.resize(8);
+    words.density.binned = true;
+    words.density.lowerBound.reset();
+    words.density.upperBound.reset();
+    words.xMin = -0.5;
+    words.xMax = 10.5;
+    words.density.bins = 11;
+    auto chart = Make(canvas, words, 1.6);
+    // A step: the height is flat across a bin.
+    Check(std::abs(chart->RowHeightAt(4, 2.6) - chart->RowHeightAt(4, 3.4)) < 1e-12 &&
+              std::abs(chart->RowHeightAt(4, 3.4) - chart->RowHeightAt(4, 3.6)) > 1e-6,
+          "binned: flat across a bin, a step between bins");
+    canvas.Save("ridgeline_histogram");
+
+    Canvas night;
+    auto sleep = CreateRidgelineChart("sleep", 0, 0, W, H);
+    sleep->SetAnimateOnDataChange(false);
+    sleep->SetModel(UltraCanvasRidgelineModel::Sleep());
+    sleep->SetXTicks({18, 21, 24, 27, 30, 33, 36, 39, 42});
+    sleep->SetXFormatter([](double h) {
+        const int minutes = static_cast<int>(std::lround(h * 60.0)) % (24 * 60);
+        char buffer[16];
+        std::snprintf(buffer, sizeof(buffer), "%02d:%02d", minutes / 60, minutes % 60);   // locale-ok: test text
+        return std::string(buffer);
+    });
+    sleep->SetMarks(RidgelineMarkMedian);
+    sleep->SetValueColumn("Bedtime", RidgelineValue::Median);
+    sleep->Render(night.ctx.get(), Rect2Df(0, 0, W, H));
+    Check(sleep->RowValueText(1) == "00:40", "18-24's median bedtime reads 00:40, after midnight");
+    night.Save("ridgeline_sleep");
+}
+
 } // namespace
 
 int main() {
@@ -239,6 +375,10 @@ int main() {
     TestValueColumnAndColours();
     TestHover();
     TestSamples();
+    TestSeries();
+    TestMarksAndBands();
+    TestHighlightAndClick();
+    TestHistogramAndClock();
     std::cout << "\n" << (g_failures == 0 ? "All checks passed." : "Some checks FAILED.") << "\n";
     return g_failures == 0 ? 0 : 1;
 }

@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.27 - Charts > Ridgeline Chart: the Sleep variant (Phase 2)
 // Version: 1.0.26 - Charts > Ridgeline Chart (UltraCanvasRidgelineChart)
 // Version: 1.0.25 - Modules > Theme (UltraCanvasThemeExamples.cpp)
 // Version: 1.0.24 - Android: the tree filter's place and text are logged for the emulator test
@@ -1500,7 +1501,8 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasRidgelineChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasRidgelineChart.md")
                 .AddVariant("ridgelinechart", Tr("Word ratings (densities of the answers)"))
-                .AddVariant("ridgelinechart", Tr("Times of day (curves, each to its own peak)"));
+                .AddVariant("ridgelinechart", Tr("Times of day (curves, each to its own peak)"))
+                .AddVariant("ridgelinechart", Tr("Sleep (two series, a 24-hour axis that wraps)"));
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
