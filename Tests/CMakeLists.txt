@@ -3607,6 +3607,32 @@ add_test(
 )
 message(STATUS "    Test registered: CSSLayoutGrowFromZeroTest")
 
+# ===== CSS LAYOUT HIDDEN SETTER TEST =====
+# A flex, grid or table setter on a hidden box keeps it hidden and sets the
+# kind it is shown again as - UltraTexter's Markdown bar appeared on a
+# plain-text tab when a theme change restyled it. Struct Layout only.
+message(STATUS "  Building CSSLayoutHiddenSetterTest...")
+add_executable(CSSLayoutHiddenSetterTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutHiddenSetterTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+)
+target_include_directories(CSSLayoutHiddenSetterTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutHiddenSetterTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutHiddenSetterTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutHiddenSetterTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutHiddenSetterTest
+    COMMAND CSSLayoutHiddenSetterTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutHiddenSetterTest")
+
 # ===== CSS LAYOUT SAFE ALIGNMENT TEST =====
 # Content that does not fit its flex line aligns to the START of it rather than
 # to a negative offset, so a scrolling pane can reach all of it - the demo's
