@@ -14,6 +14,7 @@
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <chrono>
 #include <sstream>
@@ -30,10 +31,10 @@ constexpr int kInnerWidth = kPanelWidth - 28;
 constexpr unsigned kRefreshMs = 5000;
 
 std::string Detail(const WirelessNetwork& network) {
-    std::string text = std::to_string(network.signalPercent) + "% signal";
-    text += network.secured ? " · " + network.security : " · open";
-    if (network.connected) text += " · connected";
-    else if (network.known) text += " · saved";
+    std::string text = TrF("{0}% signal", network.signalPercent);
+    text += network.secured ? " · " + network.security : " · " + TrC("Wi-Fi network", "open");
+    if (network.connected) text += " · " + TrC("Wi-Fi network", "connected");
+    else if (network.known) text += " · " + TrC("Wi-Fi network", "saved");
     return text;
 }
 
@@ -68,12 +69,12 @@ void UltraDesktopWifiPanel::Build(UltraCanvasWindow& window) {
     title->SetTextColor(PanelColors().text);
     title->layoutItem.SetFlexGrow(1.0f);
     header->AddChild(title);
-    power_ = std::make_shared<UltraCanvasSwitch>("wifi.power", 0, 0, 70, 26, "On");
+    power_ = std::make_shared<UltraCanvasSwitch>("wifi.power", 0, 0, 70, 26, Tr("On"));
     power_->layoutItem.SetFlexShrink(0.0f);
     power_->onStateChanged = [this](CheckedState, CheckedState now) {
         if (loading_) return;
         const bool on = now == CheckedState::Checked;
-        Act(on ? "Switching Wi-Fi on..." : "Switching Wi-Fi off...", [on]() {
+        Act(on ? Tr("Switching Wi-Fi on...") : Tr("Switching Wi-Fi off..."), [on]() {
             std::string error;
             UltraCanvasWireless::SetWifiEnabled(on, &error);
             if (on && error.empty()) {
@@ -87,7 +88,7 @@ void UltraDesktopWifiPanel::Build(UltraCanvasWindow& window) {
     header->AddChild(power_);
     window.AddChild(header);
 
-    state_ = CreateLabel("wifi.state", 0, 0, kInnerWidth, 18, "Reading...");
+    state_ = CreateLabel("wifi.state", 0, 0, kInnerWidth, 18, Tr("Reading..."));
     state_->SetFontSize(9.5f);
     state_->SetTextColor(PanelColors().muted);
     state_->layoutItem.SetFlexShrink(0.0f);
@@ -108,17 +109,17 @@ void UltraDesktopWifiPanel::Build(UltraCanvasWindow& window) {
     auto entry = std::make_shared<UltraCanvasContainer>("wifi.passwordEntry");
     entry->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     password_ = CreatePasswordInput("wifi.password", 0, 0, 180, 28);
-    password_->SetPlaceholder("Password");
+    password_->SetPlaceholder(Tr("Password"));
     password_->layoutItem.SetFlexGrow(1.0f);
     password_->onEnterPressed = [this](const std::string&) {
         Later([this]() { SubmitPassword(); });
         return true;
     };
     entry->AddChild(password_);
-    auto join = SmallButton("wifi.join", "Join", 56);
+    auto join = SmallButton("wifi.join", Tr("Join"), 56);
     join->onClick = [this]() { Later([this]() { SubmitPassword(); }); };
     entry->AddChild(join);
-    auto cancel = SmallButton("wifi.cancel", "Cancel", 64);
+    auto cancel = SmallButton("wifi.cancel", Tr("Cancel"), 64);
     cancel->onClick = [this]() { Later([this]() { HidePassword(); }); };
     entry->AddChild(cancel);
     passwordRow_->AddChild(entry);
@@ -135,12 +136,12 @@ void UltraDesktopWifiPanel::Build(UltraCanvasWindow& window) {
     auto footer = std::make_shared<UltraCanvasContainer>("wifi.footer");
     footer->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     footer->layoutItem.SetFlexShrink(0.0f);
-    scan_ = SmallButton("wifi.scan", "Scan", 64);
+    scan_ = SmallButton("wifi.scan", Tr("Scan"), 64);
     scan_->onClick = [this]() { Refresh(true); };
     footer->AddChild(scan_);
     if (openMonitor_) {
-        auto monitor = SmallButton("wifi.monitor", "Traffic", 70);
-        monitor->SetTooltip("UltraNetMonitor: what goes over the network");
+        auto monitor = SmallButton("wifi.monitor", Tr("Traffic"), 70);
+        monitor->SetTooltip(Tr("UltraNetMonitor: what goes over the network"));
         monitor->onClick = [this]() {
             Later([this]() {
                 if (openMonitor_) openMonitor_();
@@ -150,7 +151,7 @@ void UltraDesktopWifiPanel::Build(UltraCanvasWindow& window) {
         footer->AddChild(monitor);
     }
     if (UltraCanvasWireless::HasSystemSettings(WirelessRadio::WiFi)) {
-        auto settings = SmallButton("wifi.settings", "System settings", 120);
+        auto settings = SmallButton("wifi.settings", Tr("System settings"), 120);
         settings->onClick = [this]() {
             std::string error;
             if (!UltraCanvasWireless::OpenSystemSettings(WirelessRadio::WiFi, &error)) SetMessage(error, true);
@@ -229,16 +230,16 @@ void UltraDesktopWifiPanel::Apply(const WirelessWifiStatus& status) {
     if (!status.available || !status.adapterPresent) {
         // The reason can be long; the state line stays one line and the
         // message line, which wraps, says why.
-        state = status.available ? "No Wi-Fi adapter." : "Wi-Fi cannot be reached.";
+        state = status.available ? Tr("No Wi-Fi adapter.") : Tr("Wi-Fi cannot be reached.");
         if (!busy_ && !status.error.empty()) SetMessage(status.error, !status.available);
     } else if (status.hardwareBlocked) {
-        state = "Wi-Fi is off: the computer's wireless switch or key has it off.";
+        state = Tr("Wi-Fi is off: the computer's wireless switch or key has it off.");
     } else if (!status.enabled) {
-        state = "Wi-Fi is off.";
+        state = Tr("Wi-Fi is off.");
     } else if (!status.connectedSsid.empty()) {
-        state = "Connected to " + status.connectedSsid;
+        state = TrF("Connected to {0}", status.connectedSsid);
     } else {
-        state = "Not connected";
+        state = Tr("Not connected");
     }
     if (!status.adapterName.empty() && status.adapterPresent) state += "  (" + status.adapterName + ")";
     state_->SetText(state);
@@ -262,7 +263,7 @@ void UltraDesktopWifiPanel::RebuildList() {
     list_->ClearChildren();
     if (!status_.enabled || status_.networks.empty()) {
         auto none = CreateLabel("wifi.none", 0, 0, kInnerWidth - 20, 40,
-                                !status_.enabled ? "" : reading_ ? "Looking for networks..." : "No networks in reach.");
+                                !status_.enabled ? "" : reading_ ? Tr("Looking for networks...") : Tr("No networks in reach."));
         none->SetTextColor(PanelColors().muted);
         none->SetFontSize(9.5f);
         list_->AddChild(none);
@@ -295,10 +296,10 @@ void UltraDesktopWifiPanel::RebuildList() {
 
             const WirelessNetwork copy = network;
             if (network.connected) {
-                auto leave = SmallButton(id + ".leave", "Disconnect", 84);
+                auto leave = SmallButton(id + ".leave", Tr("Disconnect"), 84);
                 leave->onClick = [this]() {
                     Later([this]() {
-                        Act("Leaving the network...", []() {
+                        Act(Tr("Leaving the network..."), []() {
                             std::string error;
                             UltraCanvasWireless::DisconnectWifi(&error);
                             return error;
@@ -308,18 +309,18 @@ void UltraDesktopWifiPanel::RebuildList() {
                 leave->SetDisabled(busy_);
                 row->AddChild(leave);
             } else {
-                auto join = SmallButton(id + ".join", "Connect", 72);
+                auto join = SmallButton(id + ".join", Tr("Connect"), 72);
                 join->onClick = [this, copy]() { Later([this, copy]() { Connect(copy); }); };
                 join->SetDisabled(busy_);
                 row->AddChild(join);
             }
             if (network.known) {
-                auto forget = SmallButton(id + ".forget", "Forget", 60);
-                forget->SetTooltip("Delete the saved password: the next Connect asks for it again");
+                auto forget = SmallButton(id + ".forget", Tr("Forget"), 60);
+                forget->SetTooltip(Tr("Delete the saved password: the next Connect asks for it again"));
                 const std::string ssid = network.ssid;
                 forget->onClick = [this, ssid]() {
                     Later([this, ssid]() {
-                        Act("Forgetting " + ssid + "...", [ssid]() {
+                        Act(TrF("Forgetting {0}...", ssid), [ssid]() {
                             std::string error;
                             UltraCanvasWireless::ForgetWifi(ssid, &error);
                             return error;
@@ -367,7 +368,7 @@ void UltraDesktopWifiPanel::Connect(const WirelessNetwork& network) {
     }
     HidePassword();
     const std::string ssid = network.ssid;
-    Act("Joining " + ssid + "...", [ssid]() {
+    Act(TrF("Joining {0}...", ssid), [ssid]() {
         std::string error;
         UltraCanvasWireless::ConnectWifi(ssid, "", &error);
         return error;
@@ -377,7 +378,7 @@ void UltraDesktopWifiPanel::Connect(const WirelessNetwork& network) {
 void UltraDesktopWifiPanel::AskPassword(const std::string& ssid) {
     if (!passwordRow_ || !password_) return;
     passwordFor_ = ssid;
-    passwordLabel_->SetText("Password for " + ssid);
+    passwordLabel_->SetText(TrF("Password for {0}", ssid));
     password_->SetText("");
     passwordRow_->SetVisible(true);
     if (auto* window = Window()) window->InvalidateLayout();
@@ -397,11 +398,11 @@ void UltraDesktopWifiPanel::SubmitPassword() {
     const std::string ssid = passwordFor_;
     const std::string passphrase = password_->GetText();
     if (passphrase.empty()) {
-        SetMessage(ssid + " needs its password.", true);
+        SetMessage(TrF("{0} needs its password.", ssid), true);
         return;
     }
     HidePassword();
-    Act("Joining " + ssid + "...", [ssid, passphrase]() {
+    Act(TrF("Joining {0}...", ssid), [ssid, passphrase]() {
         std::string error;
         UltraCanvasWireless::ConnectWifi(ssid, passphrase, &error);
         return error;

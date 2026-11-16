@@ -13,6 +13,7 @@
 #include "UltraCanvasDatePicker.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cstdio>
 #include <ctime>
@@ -30,9 +31,52 @@ const Color kDigitsGround(20, 20, 20, 255);
 const Color kDigitsLit(120, 220, 160, 255);
 const Color kDigitsText(220, 220, 220, 255);
 
-const char* const kDays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
-const char* const kMonths[] = {"January", "February", "March", "April", "May", "June", "July",
-                               "August", "September", "October", "November", "December"};
+// Functions, not tables: the texts are looked up in the language of the moment.
+std::string DayName(int day) {
+    switch (day % 7) {
+        case 0: return Tr("Sunday");
+        case 1: return Tr("Monday");
+        case 2: return Tr("Tuesday");
+        case 3: return Tr("Wednesday");
+        case 4: return Tr("Thursday");
+        case 5: return Tr("Friday");
+        default: return Tr("Saturday");
+    }
+}
+
+std::string MonthName(int month) {
+    switch (month % 12) {
+        case 0: return TrC("month", "January");
+        case 1: return TrC("month", "February");
+        case 2: return TrC("month", "March");
+        case 3: return TrC("month", "April");
+        case 4: return TrC("month", "May");
+        case 5: return TrC("month", "June");
+        case 6: return TrC("month", "July");
+        case 7: return TrC("month", "August");
+        case 8: return TrC("month", "September");
+        case 9: return TrC("month", "October");
+        case 10: return TrC("month", "November");
+        default: return TrC("month", "December");
+    }
+}
+
+std::string MonthShortName(int month) {
+    switch (month % 12) {
+        case 0: return TrC("month-short", "Jan");
+        case 1: return TrC("month-short", "Feb");
+        case 2: return TrC("month-short", "Mar");
+        case 3: return TrC("month-short", "Apr");
+        case 4: return TrC("month-short", "May");
+        case 5: return TrC("month-short", "Jun");
+        case 6: return TrC("month-short", "Jul");
+        case 7: return TrC("month-short", "Aug");
+        case 8: return TrC("month-short", "Sep");
+        case 9: return TrC("month-short", "Oct");
+        case 10: return TrC("month-short", "Nov");
+        default: return TrC("month-short", "Dec");
+    }
+}
 
 std::tm Now() {
     const std::time_t now = std::time(nullptr);
@@ -49,7 +93,7 @@ std::tm Now() {
 
 std::string TodayInWords() {
     const std::tm t = Now();
-    return std::string(kDays[t.tm_wday % 7]) + ", " + std::to_string(t.tm_mday) + " " + kMonths[t.tm_mon % 12] +
+    return DayName(t.tm_wday) + ", " + std::to_string(t.tm_mday) + " " + MonthName(t.tm_mon) +
            " " + std::to_string(t.tm_year + 1900);
 }
 
@@ -63,10 +107,10 @@ std::string TimeNow(bool withSeconds) {
 
 std::string TodayShort() {
     const std::tm t = Now();
-    return std::to_string(t.tm_mday) + " " + std::string(kMonths[t.tm_mon % 12]).substr(0, 3);
+    return std::to_string(t.tm_mday) + " " + MonthShortName(t.tm_mon);
 }
 
-UltraDesktopClockPanel::UltraDesktopClockPanel() : UltraDesktopPopupPanel("Clock", kPanelWidth, kPanelHeight) {}
+UltraDesktopClockPanel::UltraDesktopClockPanel() : UltraDesktopPopupPanel(Tr("Clock"), kPanelWidth, kPanelHeight) {}
 
 void UltraDesktopClockPanel::Build(UltraCanvasWindow& window) {
     window.layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -117,7 +161,7 @@ void UltraDesktopClockPanel::Build(UltraCanvasWindow& window) {
     month->SetElementSize(Size2Df(static_cast<float>(kPanelWidth - 24), 220));
     window.AddChild(month);
 
-    auto hint = CreateLabel("clock.hint", 0, 0, kPanelWidth - 24, 18, "Escape closes");
+    auto hint = CreateLabel("clock.hint", 0, 0, kPanelWidth - 24, 18, Tr("Escape closes"));
     hint->SetFontSize(8.5f);
     hint->SetTextColor(PanelColors().muted);
     hint->SetAlignment(TextAlignment::Right);
