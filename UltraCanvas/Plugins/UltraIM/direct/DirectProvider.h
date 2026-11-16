@@ -17,6 +17,8 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.15 - group revisions (relay 1.6): a record older than the newest applied is dropped,
+//                  and a group we were taken out of stays out
 // Version: 0.1.14 - a group request reports the group as the relay's reply has it, not a re-read
 //                  of the store that an older group.update can have overwritten (the flaky rename)
 // Version: 0.1.13 - a group's description; the owner blocks and unblocks members
@@ -55,6 +57,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -290,7 +293,9 @@ private:
     // Stores the relay's record of a group, tells the listeners, and returns
     // the conversation as that record has it (empty when it says removed) -
     // what a request's callback reports, rather than a re-read of the store,
-    // which an older push on the socket can have overwritten in between.
+    // which an older push on the socket can have overwritten in between. A
+    // record older than the newest applied (its revision, relay 1.6) is
+    // dropped, and the conversation as we hold it returned instead.
     UltraIMConversation UpsertGroup(const UltraCanvas::JSONValue& group);
     // What the store does not keep onto a group's conversation: its owner, as
     // the relay last said, and the names of the members it knows.
@@ -404,6 +409,15 @@ private:
     std::map<std::string, std::string> groupOwners_;    // group conversation -> its owner's user id
     std::set<std::string> publicGroups_;                // group conversations that are public
     std::map<std::string, std::string> groupDescriptions_;  // group conversation -> its description
+    // The newest revision of each group applied (relay 1.6), and whether that
+    // record took us out of it: an older record arriving late is dropped.
+    // Kept for a group we left too, so a late record does not put it back.
+    struct GroupRevision {
+        int64_t revision = 0;
+        bool removed = false;
+    };
+    std::mutex groupOrderMutex_;                        // a group record's check and write, as one step
+    std::map<std::string, GroupRevision> groupRevisions_;   // group conversation -> newest applied
     std::set<std::string> fetchingUsers_;
     // Proven by a local connection's handshake: user id -> (key, name).
     std::map<std::string, std::pair<std::vector<uint8_t>, std::string>> lanKeys_;

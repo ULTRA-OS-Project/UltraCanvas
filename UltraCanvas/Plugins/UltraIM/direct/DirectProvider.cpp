@@ -1360,7 +1360,34 @@ UltraIMConversation DirectProvider::EnsureDirectConversation(const std::string& 
 UltraIMConversation DirectProvider::UpsertGroup(const JSONValue& group) {
     const std::string id = group["conversation"].GetString();
     if (!IsGroupId(id)) return {};
-    if (group["removed"].GetBoolean(false)) {
+    const bool removed = group["removed"].GetBoolean(false);
+    // The relay's pushes (the socket's thread) and its replies to our own
+    // requests (UltraNet's request thread) arrive in no set order. From
+    // relay 1.6 each record carries the group's revision, one more with
+    // every change: one older than the newest we applied is dropped, and so
+    // is a record at the revision of our removal from the group, which the
+    // others' record of that same change would otherwise undo. A relay
+    // before 1.6 sends none (0), and every record is applied as it comes.
+    // The check and the write are one step under groupOrderMutex_, or two
+    // records could both pass the check and the older be written last.
+    std::unique_lock<std::mutex> order(groupOrderMutex_);
+    const int64_t revision = group["revision"].GetInteger(0);
+    if (revision > 0) {
+        GroupRevision& newest = groupRevisions_[id];
+        const bool stale = revision < newest.revision ||
+                           (revision == newest.revision && newest.removed && !removed);
+        if (stale) {
+            order.unlock();
+            // What we hold is newer: the caller is told that.
+            UltraIMConversation current;
+            if (!store_.GetConversation(id, current)) return {};
+            FillGroupDetails(current);
+            return current;
+        }
+        newest.revision = revision;
+        newest.removed = removed;
+    }
+    if (removed) {
         store_.RemoveConversation(id);
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1368,6 +1395,7 @@ UltraIMConversation DirectProvider::UpsertGroup(const JSONValue& group) {
             publicGroups_.erase(id);
             groupDescriptions_.erase(id);
         }
+        order.unlock();
         EmitRemoved(id);
         return {};
     }
@@ -1388,12 +1416,12 @@ UltraIMConversation DirectProvider::UpsertGroup(const JSONValue& group) {
     for (const auto& m : group["members"].GetElements()) conversation.memberIds.push_back(m.GetString());
     store_.UpsertConversation(conversation);
     store_.GetConversation(id, conversation);
-    // What this record says wins over the re-read: a push and a request's
-    // reply arrive on two connections, so an older group.update (the group
-    // as it was made) can be applied between our write and the re-read, and
-    // a rename's reply then read the old title back. The store ends right
-    // either way - the relay pushes the new state too, in order on the
-    // socket - but the caller is told what its own request did.
+    order.unlock();
+    // What this record says wins over the re-read: with a relay before 1.6
+    // nothing orders the records, and an older one applied after our write
+    // would otherwise be read back - a rename's caller then told the old
+    // title. (The store ends right either way: the relay pushes the new
+    // state too, in order on the socket.)
     conversation.title = group["title"].GetString();
     conversation.isGroup = true;
     conversation.memberIds.clear();

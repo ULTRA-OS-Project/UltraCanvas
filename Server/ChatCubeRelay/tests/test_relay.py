@@ -251,6 +251,52 @@ def test_group_renamed_by_a_member_and_told_to_everyone(client):
     assert client.patch(path, headers=alice.auth, json={"title": ""}).status_code == 422
 
 
+def test_every_change_to_a_group_raises_its_revision(client):
+    # A client keeps the highest revision it saw and drops an older record:
+    # its requests' replies and the pushes arrive on two connections.
+    alice = Person(client, "Alice").join()
+    bob = Person(client, "Bob").join()
+    eve = Person(client, "Eve").join()
+    g = client.post("/v1/groups", headers=alice.auth, json={"title": "Team", "members": [bob.user_id]}).json()
+    assert g["revision"] == 1
+    path = "/v1/groups/" + g["group_id"]
+    seen = [1]
+
+    def changed(response):
+        assert response.status_code == 200
+        revision = client.get(path, headers=alice.auth).json()["revision"]
+        assert revision == seen[-1] + 1
+        seen.append(revision)
+        return response
+
+    with client.websocket_connect("/v1/ws", headers=bob.auth) as b:
+        b.receive_json()
+        renamed = changed(client.patch(path, headers=alice.auth, json={"title": "Crew"})).json()
+        frame = b.receive_json()
+        # The push and the reply carry the same revision for the same state.
+        assert frame["group"]["title"] == "Crew" and frame["group"]["revision"] == renamed["revision"] == 2
+    changed(client.patch(path, headers=bob.auth, json={"description": "Ours"}))
+    changed(client.post(path + "/members", headers=alice.auth, json={"user_id": eve.user_id}))
+    # Adding someone already in changes nothing, and the revision stays.
+    before = client.get(path, headers=alice.auth).json()["revision"]
+    assert client.post(path + "/members", headers=alice.auth, json={"user_id": eve.user_id}).status_code == 200
+    assert client.get(path, headers=alice.auth).json()["revision"] == before
+    changed(client.put(path + "/public", headers=alice.auth, json={"public": True}))
+    # The member taken out is told at the revision the removal made, so an
+    # older record of the group arriving after it cannot put the group back.
+    with client.websocket_connect("/v1/ws", headers=eve.auth) as e:
+        e.receive_json()
+        changed(client.delete(path + "/members/" + eve.user_id, headers=alice.auth))
+        frame = e.receive_json()
+        assert frame["group"]["removed"] is True and frame["group"]["revision"] == seen[-1]
+    with client.websocket_connect("/v1/ws", headers=bob.auth) as b:
+        b.receive_json()
+        changed(client.put(path + "/blocked/" + bob.user_id, headers=alice.auth))
+        frame = b.receive_json()
+        assert frame["group"]["removed"] is True and frame["group"]["revision"] == seen[-1]
+    assert [g["revision"] for g in client.get("/v1/groups", headers=alice.auth).json()["groups"]] == [seen[-1]]
+
+
 def test_a_public_group_is_listed_and_joined_by_anyone(client):
     alice = Person(client, "Alice").join()
     bob = Person(client, "Bob").join()
