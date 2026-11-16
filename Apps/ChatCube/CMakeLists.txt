@@ -4,6 +4,8 @@
 # Matrix and Telegram: UltraCanvas/Plugins/UltraIM/direct, matrix and
 # telegram, built into <build>/Plugins/UltraIM).
 #
+# Version: 0.1.6 - ChatCubeGroupWindow.cpp (the group editor)
+# Version: 0.1.5 - the Mastodon module built with ChatCube
 # Version: 0.1.4 - ChatCubeControls.cpp, ChatCubeProfileWindow.cpp (Edit profile)
 # Version: 0.1.3 - ChatCubeSettings.cpp and ChatCubeSettingsWindow.cpp: the Settings window
 # Version: 0.1.2 - VideoFX, when it is built, for the preview pictures of videos sent
@@ -26,6 +28,7 @@ add_executable(ChatCube
     ui/ChatCubeSettingsWindow.cpp
     ui/ChatCubeControls.cpp
     ui/ChatCubeProfileWindow.cpp
+    ui/ChatCubeGroupWindow.cpp
     ui/ChatCubeTheme.cpp
     ui/ChatCubeViews.cpp
     ui/ChatCubeWindow.cpp
@@ -56,6 +59,9 @@ if(TARGET UltraIMDirectPlugin)
     endif()
     if(TARGET UltraIMTelegramPlugin)
         add_dependencies(ChatCube UltraIMTelegramPlugin)
+    endif()
+    if(TARGET UltraIMMastodonPlugin)
+        add_dependencies(ChatCube UltraIMMastodonPlugin)
     endif()
     # The local network's discovery (mDNS) is an UltraNet plug-in.
     if(TARGET UltraNetMdnsPlugin)

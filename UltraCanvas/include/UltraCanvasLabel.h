@@ -4,6 +4,10 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.18.0 - one string is the identifier, as on every element: UltraCanvasLabel(identifier),
+//                  CreateLabel(identifier). It was the text; ("", text) is a label with text and no name
+// Version: 2.17.0 - a font size or family set by hand (SetFontSize, SetFont) survives ApplyTheme: the
+//                  colours follow the theme, the label keeps its size
 // Version: 2.16.0 - FromTheme sets the body size, a heading the heading size; the SetStyle rule and
 //                  the constructor tail of an element that follows by default
 // Version: 2.15.0 - GetNaturalTextWidth: the width the text takes, for placing
@@ -28,7 +32,7 @@
 //                 background, rounded corners (LabelInlineImageFrame)
 // Version: 2.1.0 - an inline image has a fit mode and position (object-fit /
 //                 object-position)
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -199,6 +203,9 @@ namespace UltraCanvas {
         std::string text;
         LabelStyle style;
         LabelVariant themeVariant = LabelVariant::Body;
+        // A size / family set by SetFontSize or SetFont: ApplyTheme keeps them
+        bool fontSizeByHand = false;
+        bool fontFamilyByHand = false;
         std::vector<LabelTextLink> textLinks;
         int hoveredLink = -1;
         bool showLinkTooltips = false;
@@ -246,8 +253,15 @@ namespace UltraCanvas {
         UltraCanvasLabel(const std::string &identifier, const std::string &labelText)
                 : UltraCanvasLabel(identifier, -1, -1, -1, -1, labelText) {}
 
-        explicit UltraCanvasLabel(const std::string &labelText = "")
-                : UltraCanvasLabel("", -1, -1, -1, -1, labelText) {}
+        // One string alone is the IDENTIFIER, as on every element; the text
+        // is empty until SetText. (Until 2.18.0 it was the text, and the
+        // label had no identifier.) A label that has text and needs no name
+        // is ("", text). scripts/check_label_identifiers.py refuses words
+        // written here, and debugOutput names the ones it cannot see.
+        explicit UltraCanvasLabel(const std::string &identifier = "")
+                : UltraCanvasLabel(identifier, -1, -1, -1, -1, "") {
+            WarnIfIdentifierReadsAsText("UltraCanvasLabel", identifier);
+        }
 
         virtual ~UltraCanvasLabel();
 
@@ -342,6 +356,12 @@ namespace UltraCanvas {
         }
 
         // ===== CONVENIENCE STYLE SETTERS =====
+        // A font set here is the label's own: ApplyTheme keeps it (the family
+        // and the size with SetFont, the size with SetFontSize) while the
+        // colours follow the theme, so a label with a size of its own does
+        // not jump to the body size when the look changes. SetTextColor does
+        // not stop the following: a theme change gives the variant's colour
+        // again (SetThemeVariant chooses which). SetStyle replaces it all.
         void SetFont(const std::string &fontFamily, float fontSize = 12.0f, FontWeight weight = FontWeight::Normal);
         void SetFontSize(float fontSize);
         void SetFontWeight(const FontWeight w);
@@ -384,7 +404,9 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
-        void ApplyTheme(const UltraCanvasTheme& theme) override { SetStyle(LabelStyle::FromTheme(theme, GetStyle(), themeVariant)); }
+        // LabelStyle::FromTheme for the label's variant; a font size or
+        // family set by hand (SetFontSize, SetFont) is kept
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
         // The label's part in the window for the theme (Body unless set); a
         // following label re-styles at once
         void SetThemeVariant(LabelVariant variant) {
@@ -471,8 +493,9 @@ namespace UltraCanvas {
         return std::make_shared<UltraCanvasLabel>(identifier, 0, 0, w, h, text);
     }
 
-    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &text) {
-        return std::make_shared<UltraCanvasLabel>("", text);
+    // One string is the identifier, as the constructor's.
+    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &identifier) {
+        return std::make_shared<UltraCanvasLabel>(identifier);
     }
 
     inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &identifier,

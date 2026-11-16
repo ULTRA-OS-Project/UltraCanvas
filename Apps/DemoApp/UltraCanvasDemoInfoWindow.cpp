@@ -168,7 +168,7 @@ namespace UltraCanvas {
         AddChild(divider2);
 
 
-        infoLabel1_4 = CreateLabel(Tr("On the right side of the title of each UC element you can find these icons:"));
+        infoLabel1_4 = CreateLabel("InfoIconsIntro", Tr("On the right side of the title of each UC element you can find these icons:"));
         infoLabel1_4->SetFontSize(12);
         infoLabel1_4->SetTextColor(Color(60, 60, 60, 255));
         infoLabel1_4->SetMargin(12,20,5,20);

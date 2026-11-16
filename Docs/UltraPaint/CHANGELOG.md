@@ -1,3 +1,6 @@
+#### 2026-11-14 *0.2.38*
+- **The side panel's page follows the look**: dark under a dark theme, under the framework's section cards that now are dark there too.
+
 #### 2026-11-12 *0.2.37*
 - **File ▸ Close Tab has an icon** (`media/icons/ultrapaint/16/close-tab.svg`, a tab with a cross, in the line style of the rest of the menu).
 

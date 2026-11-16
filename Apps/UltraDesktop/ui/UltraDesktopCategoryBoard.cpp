@@ -1,5 +1,8 @@
 // Apps/UltraDesktop/ui/UltraDesktopCategoryBoard.cpp
 // The Sticker board: files sorted into categories. See the header.
+// Version: 0.5.0 - the board's ground, its bar and its title from the theme in
+//                  force, again when it changes (ApplyLook); a light design on the
+//                  theme's ground in a dark look
 // Version: 0.4.0 - the context menu, three card displays, the hover preview
 // Version: 0.3.0 - thumbnails as UltraFiler makes them (RenderFileThumbnail):
 //                  a PDF's first page, a page of a document's text
@@ -18,6 +21,7 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasFilePreviews.h"
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasLabel.h"
@@ -26,6 +30,7 @@
 #include "UltraCanvasNativeFileIcons.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasTrash.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "Plugins/Charts/UltraCanvasKanbanBoard.h"
@@ -53,8 +58,9 @@ constexpr float kThumbnailHeight = 58.0f;
 constexpr int kThumbnailPixels = 2 * 58;
 // The small square beside the name in the "row" display.
 constexpr float kRowThumbnail = 34.0f;
-// How long the pointer rests on a card before its preview opens.
-constexpr unsigned kHoverPreviewDelayMs = 2000;
+// How long the pointer stays still on a card before its preview opens:
+// long enough that sweeping across the board opens nothing.
+constexpr unsigned kHoverRestMs = 350;
 
 struct DesignChoice {
     const char* key;
@@ -136,7 +142,7 @@ std::string DisplayName(const std::string& path) {
     return name.empty() ? path : name;
 }
 
-// The chip on a file's card: its extension ("pdf"), or "folder".
+// A file's kind for its fallback icon: its extension ("pdf"), or "folder".
 std::string KindTag(const std::string& path) {
     std::error_code ec;
     const fs::path p = PathFromUtf8(path);
@@ -147,6 +153,17 @@ std::string KindTag(const std::string& path) {
                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return ext.empty() ? "file" : ext;
 }
+
+// A PDF in a build that cannot draw its pages (no MuPDF - a Windows build
+// whose MSYS2 had no package, say): the board shows no picture of it, on
+// the card or as the hover preview, rather than the type's icon.
+bool PdfWithoutRenderer(const std::string& path) {
+    return KindTag(path) == "pdf" && !CanRenderFileThumbnail("pdf");
+}
+
+// A file's picture on the board: MakeFilePicture, but none for a PDF that
+// cannot be drawn.
+std::shared_ptr<UCPixmap> BoardPicture(const std::string& path, int pixels, const std::string& icons);
 
 } // namespace
 
@@ -170,6 +187,13 @@ std::shared_ptr<UCPixmap> MakeFilePicture(const std::string& path, int pixels, c
     return nullptr;
 }
 
+namespace {
+std::shared_ptr<UCPixmap> BoardPicture(const std::string& path, int pixels, const std::string& icons) {
+    if (PdfWithoutRenderer(path)) return nullptr;
+    return MakeFilePicture(path, pixels, icons);
+}
+} // namespace
+
 const std::vector<std::string>& UltraDesktopCategoryBoard::DefaultCategories() {
     static const std::vector<std::string> categories = {"Docs", "Work", "Home"};
     return categories;
@@ -178,7 +202,6 @@ const std::vector<std::string>& UltraDesktopCategoryBoard::DefaultCategories() {
 UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifier,
                                                      UltraDesktopWindow* desktop)
     : UltraCanvasContainer(identifier, 0, 0, 0, 0), desktop_(desktop) {
-    SetBackgroundColor(Color(250, 250, 250, 255));
     ContainerStyle plain;
     plain.autoShowScrollbars = false;
     SetContainerStyle(plain);
@@ -186,7 +209,7 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
 
     // The bar: the title, the display style, "Add category", close.
     auto bar = CreateContainer("CategoryBoard.Bar", 0, 0, 0, kBarHeight);
-    bar->SetBackgroundColor(Color(0, 0, 0, 18));
+    bar_ = bar;
     bar->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center).SetFlexGap(8);
     bar->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(kBarHeight));
     bar->SetPadding(0, 8, 0, 12);
@@ -196,7 +219,9 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     title_ = CreateLabel("CategoryBoard.Title", 150, 24, "Sticker board");
     title_->SetFontSize(13);
     title_->SetFontWeight(FontWeight::Bold);
-    title_->SetTextColor(Color(50, 50, 50, 255));
+    // Its size and weight are the board's own: the colour is set from the
+    // theme by ApplyLook, not by the framework's re-style.
+    title_->SetFollowTheme(false);
     title_->SetTooltip("Drop files onto a category to add them; double-click one to open it.");
     title_->layoutItem.SetFlexShrink(0.0f);
     bar->AddChild(title_);
@@ -267,11 +292,30 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
         ShowContextMenu(cardId, columnId, at);
     };
     board_->onCardHoverChanged = [this](int cardId) { OnCardHover(cardId); };
+    board_->onCardPointerMoved = [this](int cardId) { OnCardPointerMoved(cardId); };
     AddChild(board_);
-    SetDesign(kDesigns[0].key);
+    ApplyLook();   // and the first design, Sticky notes
+    // The look changes (the desktop's Theme menu, UOS-Settings, the host):
+    // the bar, its title and the board's ground follow. The display style
+    // is the person's choice (Dark among them) and stays.
+    themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
+}
+
+void UltraDesktopCategoryBoard::ApplyLook() {
+    const ThemeRoles& r = UltraCanvasTheme::Current().roles;
+    SetBackgroundColor(r.ground);
+    if (bar_) {
+        bar_->SetBackgroundColor(r.raised);
+        bar_->SetBorderBottom(1, r.line);
+    }
+    if (title_) title_->SetTextColor(r.ink);
+    // The board's design again, over the new look's ground.
+    if (board_) SetDesign(design_);
+    RequestRedraw();
 }
 
 UltraDesktopCategoryBoard::~UltraDesktopCategoryBoard() {
+    if (themeHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     if (hoverTimer_ != InvalidTimerId) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(hoverTimer_);
     }
@@ -305,9 +349,34 @@ void UltraDesktopCategoryBoard::SetDesign(const std::string& design) {
     // A file's path is its description: the tooltip shows it, the card
     // keeps to the name.
     style.showCardDescription = false;
+    // No file-type chips ("pdf", "jpg"): the name already carries its
+    // extension, and boards saved with a chip on each card hide it too.
+    style.showTags = false;
     style.cardTitleFontSize = kCardTitleFont;
     style.cardTextFontSize = kCardTextFont;
     style.metaFontSize = kCardMetaFont;
+    // In a dark look a light design keeps its cards and column colours but
+    // stands on the theme's ground: the board's ground, the column tracks,
+    // the rules, "+ Add card" and the card editor from the theme, so the
+    // board is not a white sheet in a dark desktop. The Dark design, and
+    // every design in a light look, stay as they are drawn.
+    const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+    if (theme.dark && design_ != "dark") {
+        const ThemeRoles& r = theme.roles;
+        style.background = r.ground;
+        style.columnTrackColor = r.panel;
+        style.separatorColor = r.line;
+        style.laneSeparatorColor = r.line;
+        style.titleColor = r.ink;
+        style.legendTextColor = r.inkMuted;
+        style.addButtonColor = r.inkMuted;
+        style.editorPanelColor = r.raised;
+        style.editorFieldColor = r.well;
+        style.editorTextColor = r.ink;
+        style.editorAccentColor = r.accent;
+        style.selectionColor = r.accent;
+        style.dropIndicatorColor = r.accent;
+    }
     board_->SetToday(Today());
     ApplyDisplayStyle();
 }
@@ -315,7 +384,7 @@ void UltraDesktopCategoryBoard::SetDesign(const std::string& design) {
 void UltraDesktopCategoryBoard::ApplyDisplayStyle() {
     KanbanBoardStyle& style = board_->EditStyle();
     if (display_ == "text") {
-        style.cardImageHeight = 0;   // no pictures: the name and its type
+        style.cardImageHeight = 0;   // no pictures: just the name
         style.centerCardTitle = false;
     } else if (display_ == "row") {
         style.cardImageHeight = kRowThumbnail;
@@ -414,7 +483,6 @@ void UltraDesktopCategoryBoard::AddFiles(const std::vector<std::string>& files, 
         const int cardId = data_->AddCard(columnId, DisplayName(path));
         if (cardId < 0) continue;
         data_->SetCardDescription(cardId, path);
-        data_->AddCardTag(cardId, KindTag(path));
         last = cardId;
     }
     if (last >= 0) board_->ScrollToCard(last);
@@ -574,22 +642,38 @@ void UltraDesktopCategoryBoard::MoveCardTo(int cardId, int columnId) {
 
 // ===== THE HOVER PREVIEW =====
 
+void UltraDesktopCategoryBoard::StopHoverTimer() {
+    if (hoverTimer_ == InvalidTimerId) return;
+    if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(hoverTimer_);
+    hoverTimer_ = InvalidTimerId;
+}
+
 void UltraDesktopCategoryBoard::OnCardHover(int cardId) {
     hoverCardId_ = cardId;
+    restingCardId_ = -1;
+    StopHoverTimer();
+    // Made while the pointer is still on its way, so the preview is there
+    // the moment the pointer stops (a PDF's page takes a moment).
+    if (cardId >= 0 && !CardFile(cardId).empty()) PrepareHoverPreview(cardId, /*show=*/false);
+}
+
+void UltraDesktopCategoryBoard::OnCardPointerMoved(int cardId) {
+    if (cardId != hoverCardId_ || CardFile(cardId).empty()) return;
+    // Open already: moving on the card keeps it.
+    if (board_->GetPreviewCardId() == cardId) return;
+    restingCardId_ = -1;
+    StopHoverTimer();
     auto* app = UltraCanvasApplication::GetInstance();
     if (!app) return;
-    if (hoverTimer_ != InvalidTimerId) {
-        app->StopTimer(hoverTimer_);
+    hoverTimer_ = app->StartTimer(kHoverRestMs, /*periodic=*/false, [this, cardId](TimerId) {
         hoverTimer_ = InvalidTimerId;
-    }
-    if (cardId < 0 || CardFile(cardId).empty()) return;
-    hoverTimer_ = app->StartTimer(kHoverPreviewDelayMs, /*periodic=*/false, [this, cardId](TimerId) {
-        hoverTimer_ = InvalidTimerId;
-        if (hoverCardId_ == cardId) ShowHoverPreview(cardId);
+        if (hoverCardId_ != cardId) return;
+        restingCardId_ = cardId;
+        PrepareHoverPreview(cardId, /*show=*/true);
     });
 }
 
-void UltraDesktopCategoryBoard::ShowHoverPreview(int cardId) {
+void UltraDesktopCategoryBoard::PrepareHoverPreview(int cardId, bool show) {
     const std::string path = CardFile(cardId);
     if (path.empty()) return;
     const float size = PreviewSize();
@@ -597,20 +681,21 @@ void UltraDesktopCategoryBoard::ShowHoverPreview(int cardId) {
     const std::string key = std::to_string(pixels) + "|" + path;
     auto ready = previews_.find(key);
     if (ready != previews_.end()) {
-        board_->ShowCardPreview(cardId, ready->second, size);
+        if (show) board_->ShowCardPreview(cardId, ready->second, size);
         return;
     }
-    if (previewPending_.count(key)) return;
+    if (previewPending_.count(key)) return;   // shown when it arrives
     previewPending_.insert(key);
     const std::string icons = NormalizePath(GetResourcesDir() + "media/icons/");
     work_.Run<std::shared_ptr<UCPixmap>>(
-        [path, pixels, icons]() { return MakeFilePicture(path, pixels, icons); },
+        [path, pixels, icons]() { return BoardPicture(path, pixels, icons); },
         [this, key, cardId, size](std::shared_ptr<UCPixmap> pixmap) {
             previewPending_.erase(key);
             if (!pixmap) return;
             previews_[key] = pixmap;
-            // Shown only while the pointer is still on that card.
-            if (hoverCardId_ == cardId) board_->ShowCardPreview(cardId, pixmap, size);
+            // Shown only once the pointer has come to rest on that card.
+            if (hoverCardId_ == cardId && restingCardId_ == cardId)
+                board_->ShowCardPreview(cardId, pixmap, size);
         });
 }
 
@@ -630,7 +715,7 @@ std::shared_ptr<UCPixmap> UltraDesktopCategoryBoard::Thumbnail(const KanbanCard&
     const std::string icons = NormalizePath(GetResourcesDir() + "media/icons/");
     // Off the UI thread: a photo decodes, the system is asked for an icon.
     work_.Run<std::shared_ptr<UCPixmap>>(
-        [path, icons]() { return MakeFilePicture(path, kThumbnailPixels, icons); },
+        [path, icons]() { return BoardPicture(path, kThumbnailPixels, icons); },
         [this, path](std::shared_ptr<UCPixmap> pixmap) {
             pending_.erase(path);
             if (!pixmap) {

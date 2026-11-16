@@ -4,8 +4,9 @@
 // gates CMake sets — and whatever an application or plugin registers on top of
 // it, and answers the "is this that kind of file" / "can we decode it"
 // questions from that one place.
+// Version: 0.2.0 - convertVideo (merged like the audio callbacks; it makes the entry canEncode)
 // Version: 0.1.0
-// Last Modified: 2026-09-06
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaCodecRegistry.h"
@@ -72,6 +73,7 @@ void MergeInto(MediaCodecRegistration& target, const MediaCodecRegistration& inc
     if (!incoming.notes.empty())       target.notes = incoming.notes;
     if (incoming.decodeAudio)          target.decodeAudio = incoming.decodeAudio;
     if (incoming.encodeAudio)          target.encodeAudio = incoming.encodeAudio;
+    if (incoming.convertVideo)         target.convertVideo = incoming.convertVideo;
     if (incoming.probeFile)            target.probeFile = incoming.probeFile;
     for (const std::string& alias : incoming.aliases) {
         const std::string a = NormalizeExtension(alias);
@@ -314,6 +316,9 @@ void RegisterMediaCodec(const MediaCodecRegistration& codec) {
     MediaCodecRegistration normalized = codec;
     normalized.extension = NormalizeExtension(normalized.extension);
     if (normalized.extension.empty()) return;
+    // Bringing a converter is the claim that the type is written; the two
+    // cannot disagree.
+    if (normalized.convertVideo) normalized.canEncode = true;
     std::vector<std::string> aliases;
     for (const std::string& alias : normalized.aliases) {
         const std::string a = NormalizeExtension(alias);

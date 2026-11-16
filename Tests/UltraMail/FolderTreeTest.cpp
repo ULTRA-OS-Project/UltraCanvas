@@ -21,6 +21,7 @@
 //
 // Builds the mail view on an in-memory store in a real window, so it runs
 // under Xvfb (xvfb-run -a) and skips itself without a DISPLAY.
+// Version: 1.3.0 - a folder closed by hand stays closed across a rescan
 // Version: 1.2.0 - a rebuilt tree keeps the view, and a folder opened from
 //                  outside the tree is scrolled into it
 // Version: 1.1.0 - the account bar's counters as filters (ShowInbox, onFilterChanged)
@@ -55,8 +56,18 @@ static int failCount = 0;
         testCount++;                                                          \
     } while (0)
 
+// Without a display there is nothing to test, so the suite skips - unless
+// ULTRACANVAS_TEST_DISPLAY_REQUIRED=1, which CI's virtual-display step sets:
+// there a skip would pass for a run, and these suites were built and never
+// run for long enough already.
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED"); \
+        if (required && std::string(required) == "1") {                       \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
         return 0;                                                             \
     } while (0)
@@ -349,6 +360,31 @@ int main() {
          ScreenYOf(tree, deepFolder) == whereBefore);
     TEST("the view did not fall back to the first row",
          ScreenYOf(tree, "acct::erika") == -1);
+
+    // ----- a folder closed by hand stays closed -----
+    // Every rescan builds the tree again and expands it in full, so without
+    // the collapsed rows being remembered a mailbox closed by hand reopened
+    // at the next mail check.
+    TreeNode* workRow = tree->FindNode("acct::work");
+    TEST("the other account's row is open to begin with",
+         workRow != nullptr && workRow->IsExpanded());
+    tree->CollapseNode(workRow);
+    frames();
+    TEST("closing it closes it", !tree->FindNode("acct::work")->IsExpanded());
+
+    view.ShowAccount("many");   // the rescan again
+    frames();
+    workRow = tree->FindNode("acct::work");
+    TEST("and it is still closed after the tree is rebuilt",
+         workRow != nullptr && !workRow->IsExpanded());
+    TEST("the folders of the account on screen are open as before",
+         tree->FindNode("acct::many") && tree->FindNode("acct::many")->IsExpanded());
+
+    tree->ExpandNode(tree->FindNode("acct::work"));
+    view.ShowAccount("many");
+    frames();
+    TEST("opening it again is remembered too",
+         tree->FindNode("acct::work") && tree->FindNode("acct::work")->IsExpanded());
 
     std::cerr << std::endl << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;

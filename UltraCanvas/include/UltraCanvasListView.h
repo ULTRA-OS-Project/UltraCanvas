@@ -1,5 +1,9 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Version: 1.12.0 - a focus ring on the focused row while the list holds the focus;
+//                   SetFocusRingColor, ListViewStyle::focusRingOnSelectionColor
+// Version: 1.11.0 - the theme reaches the delegate (IItemDelegate::ApplyTheme): one set with SetDelegate
+//                   after construction takes it too, what the application set on it by hand stays
 // Version: 1.10.0 - SetSelectsOnContextMenu: a right-click menu that leaves the selection alone
 // Version: 1.9.0 - ListViewStyle::FromTheme, ApplyTheme: the list follows the theme, its default
 //                  delegate with it; a SetStyle by hand stops the following
@@ -24,7 +28,7 @@
 //                  subclasses, instead of wrapping those callbacks
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth: what fitting a
 //                  column to its title and its rows' text takes
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -67,6 +71,10 @@ namespace UltraCanvas {
 
         Color selectionBackgroundColor = Colors::Selection;
         Color hoverBackgroundColor = Colors::SelectionHover;
+        // The focus ring's automatic colour on a selected row (on any other
+        // row it is selectionBackgroundColor): the theme's text-on-accent.
+        // UltraCanvasListView::SetFocusRingColor overrides both.
+        Color focusRingOnSelectionColor = Colors::White;
 
         ScrollbarStyle scrollbarStyle = GetDefaultScrollbarStyleOr(ScrollbarStyle::Modern());
 
@@ -151,6 +159,8 @@ namespace UltraCanvas {
         void SetModel(std::shared_ptr<IListModel> model);
         IListModel* GetModel() const;
 
+        // A list that follows the theme hands it to the new delegate at once
+        // (IItemDelegate::ApplyTheme), and again on every theme change.
         void SetDelegate(std::shared_ptr<IItemDelegate> delegate);
         IItemDelegate* GetDelegate() const;
 
@@ -162,8 +172,9 @@ namespace UltraCanvas {
 
         void SetStyle(const ListViewStyle& style);
         const ListViewStyle& GetStyle() const;
-        // The style from the theme, and the default delegate's ink, text on
-        // the selection and body font when the delegate is the default one
+        // The style from the theme, and the theme handed on to the delegate
+        // (IItemDelegate::ApplyTheme: the default delegate's ink, text on the
+        // selection and body font, each unless set on it by hand)
         void ApplyTheme(const UltraCanvasTheme& theme) override;
 
         void SetRowHeight(int height);
@@ -351,6 +362,15 @@ namespace UltraCanvas {
         // does something - a messenger's chat list opens the chat - turns it
         // off: the menu acts on the `row` it is handed and the selection stays.
         void SetSelectsOnContextMenu(bool select) { selectsOnContextMenu = select; }
+
+        // The focused row - the one the arrow keys continue from - carries a
+        // dashed one-pixel ring while the list holds the keyboard focus, and
+        // none once the focus leaves. Its colour by default contrasts with the
+        // row (ListViewStyle::focusRingOnSelectionColor on a selected row,
+        // the selection colour on any other); a colour set here is used on
+        // every row instead. Colors::Transparent goes back to the automatic one.
+        void SetFocusRingColor(const Color& color) { focusRingColor = color; RequestRedraw(); }
+        Color GetFocusRingColor() const { return focusRingColor; }
         bool SelectsOnContextMenu() const { return selectsOnContextMenu; }
 
     protected:
@@ -371,6 +391,7 @@ namespace UltraCanvas {
         ListViewStyle viewStyle;
         bool acceptsFocus = true;
         bool selectsOnContextMenu = true;
+        Color focusRingColor = Colors::Transparent;   // automatic
 
         // Scrollbars. The vertical one takes the right edge of the rows area,
         // the horizontal one its bottom edge; each is shown only while there

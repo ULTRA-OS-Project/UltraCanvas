@@ -232,7 +232,11 @@ changed. A plain click still clicks. Spacers and separators are not dragged
 (they take no events). The toolbar watches the window's pointer events for
 this — an item's button consumes the press before the toolbar would see it —
 so the watch is installed when the toolbar reaches a window and removed with
-it.
+it. The place the item is dropped into is counted in the order the
+items are *drawn*, not the order they are in: a move reorders the bar's
+children at once, while their rectangles follow only at the next layout, and
+reading the pointer against the two mixed together would send the item
+straight back where it came from.
 
 With `ToolbarDragMode::Movable` (or `Both`) the bar is grabbed by its own
 surface — the padding and the gaps between its items — never by an item: a

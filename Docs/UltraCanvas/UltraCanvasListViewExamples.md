@@ -32,6 +32,7 @@
   - [Icon list with a customized delegate](#icon-list-with-a-customized-delegate)
   - [A custom delegate with clickable cells (the domain dashboard)](#a-custom-delegate-with-clickable-cells-the-domain-dashboard)
 - [Keyboard Navigation](#keyboard-navigation)
+  - [The focus ring](#the-focus-ring)
 - [Best Practices](#best-practices)
 - [See Also](#see-also)
 
@@ -43,7 +44,7 @@
 
 Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
 
-**Version:** 1.2.0 - `ListViewStyle::FromTheme`, `ApplyTheme`: the list follows the theme, its default delegate with it
+**Version:** 1.3.0 - the theme reaches the delegate (`IItemDelegate::ApplyTheme`), also one set after the list was made
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -197,6 +198,9 @@ struct ListViewStyle {
 
     Color selectionBackgroundColor = Colors::Selection;
     Color hoverBackgroundColor = Colors::SelectionHover;
+    // The focus ring's automatic colour on a selected row (the theme's
+    // text-on-accent); on any other row it is selectionBackgroundColor
+    Color focusRingOnSelectionColor = Colors::White;
 
     ScrollbarStyle scrollbarStyle = ScrollbarStyle::Modern();
 
@@ -212,10 +216,21 @@ the rows, the panel for the header with ink and hairline grid lines, the
 panel for alternate rows, the accent for the selection, the hover fill, the
 header at the caption size, the scrollbars from `ScrollbarStyle::FromTheme`.
 Under the theme policy a new list follows the theme by itself
-(`ApplyTheme`), and when its delegate is the `UltraCanvasDefaultListDelegate`
-that delegate takes ink, text on the accent for a selected row and the body
-font with it; a `SetStyle` by hand stops the following, `SetFollowTheme(true)`
-after it keeps both.
+(`ApplyTheme`) and hands the theme on to its delegate
+(`IItemDelegate::ApplyTheme`, a no-op unless a delegate overrides it) - at
+`SetDelegate`, so a delegate set after the list was made takes the theme it
+already has, and on every change after. The `UltraCanvasDefaultListDelegate`
+takes ink, text on the accent for a selected row and the body size there,
+each unless the application set it itself (`SetTextColor`,
+`SetSelectedTextColor`, `SetFontSize`), which then stays through every
+change. A `SetStyle` by hand stops the list's following,
+`SetFollowTheme(true)` after it keeps both.
+
+```cpp
+auto cells = std::make_shared<UltraCanvasDefaultListDelegate>();
+cells->SetFontSize(11.0f);              // the application's: kept through theme changes
+list->SetDelegate(cells);               // takes the theme's ink and selected text at once
+```
 
 ```cpp
 auto list = std::make_shared<UltraCanvasListView>("list", 300, 200);
@@ -1060,6 +1075,27 @@ field, a slider), use a container of elements instead, for a short list.
 | Space              | Toggle selection on the focused row |
 | Ctrl + Click       | Toggle row in multi-selection mode  |
 | Shift + Click      | Range-select in multi-selection mode|
+
+### The focus ring
+
+While the list holds the keyboard focus, the row the keys go on from carries
+a dashed one-pixel ring just inside its edges, so a focused row can be told
+from one that is merely selected; once the focus moves elsewhere the ring goes
+and the selection stays. The view draws it over what the delegate drew, once
+across the whole row (one ring for a multi-column row, not one per column), so
+a custom delegate gets it without doing anything - `ListItemStyleOption::isFocused`
+is there for a delegate that wants to mark the row in its own way as well. Its
+colour contrasts with the row: `ListViewStyle::focusRingOnSelectionColor` on a
+selected row (the theme's text-on-accent), the selection colour on any other.
+A list inside another element that keeps the focus (a dropdown's open list,
+`SetAcceptsFocus(false)`) never shows one.
+
+```cpp
+auto list = std::make_shared<UltraCanvasListView>("files", 0, 0, 300, 200);
+list->SetFocusRingColor(Color(255, 140, 0));    // this colour on every row
+list->SetFocusRingColor(Colors::Transparent);   // back to the automatic one
+Color ring = list->GetFocusRingColor();
+```
 
 The keys go on from the selection's current row, whoever selected it: a click,
 a key, or the application through `GetSelection()->Select(row)` - after it

@@ -1,8 +1,9 @@
 // Apps/UltraSocial/ui/UltraSocialComposeView.cpp
+// Version: 0.3.0 - a gear in the toolbar opens Settings, as on the start page
 // Version: 0.2.0 - UltraMail's look: toolbar, cards, network avatars, a
 //                  flex layout that follows the window
 // Version: 0.1.0 (Phase 1)
-// Last Modified: 2026-10-07
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialComposeView.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -163,6 +164,15 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::BuildToolbar() {
     addAccount->SetTooltip("Connect another social account");
     addAccount->onClick = [this]() { if (onAddAccount) onAddAccount(); };
     toolbar->AddChild(addAccount);
+
+    // The same Settings as the start page's gear: once an account exists the
+    // start page is gone, and this is the way back to them.
+    auto settings = Theme::MakeButton("svSettings", "", false, "settings.svg",
+                                      Theme::kToolbarHeight, Theme::kToolbarHeight);
+    settings->SetIconSpacing(0);
+    settings->SetTooltip("Settings - servers and app registrations used to sign in");
+    settings->onClick = [this]() { if (onOpenSettings) onOpenSettings(); };
+    toolbar->AddChild(settings);
     return toolbar;
 }
 

@@ -693,6 +693,21 @@ void TestEndToEnd() {
         bob->DownloadAttachment(dm.conversationId, clipGot.message.messageId, cb);
     }, fetchedAgain) && fetchedAgain.localPath == fetched.localPath);
 
+    // A voice message: m.audio marked as one, with its length.
+    {
+        CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::VoiceNotes));
+        WritePattern(base / "voice.ogg", 20000, 4);
+        UltraIMSendOptions o;
+        o.durationSeconds = 2.5;
+        CHECK(alice->SendVoiceNote(dm.conversationId, UltraCanvas::PathToUtf8(base / "voice.ogg"), o));
+        UltraIMEvent voiceGot;
+        CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageReceive && e.message.type == UltraIMMessageType::Audio;
+        }, &voiceGot));
+        CHECK(voiceGot.message.attachment.durationSeconds > 2.4 && voiceGot.message.attachment.durationSeconds < 2.6);
+        CHECK(voiceGot.message.attachment.fileName == "voice.ogg");
+    }
+
     CHECK(bob->SendFile(dm.conversationId, notes, UltraIMSendOptions()));
     UltraIMEvent notesGot;
     CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {

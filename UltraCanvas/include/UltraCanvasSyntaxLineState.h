@@ -36,6 +36,11 @@ namespace UltraCanvas {
         // Inside that string a doubled end marker ("" in a C# verbatim
         // string) is a quote character, not the end.
         bool rawStringDoubledQuotes = false;
+        // The line was a preprocessor directive (#define ...), and whether it
+        // ended in a backslash: then the next line continues the directive.
+        // A segment of a line split for length always continues it.
+        bool inDirective = false;
+        bool directiveContinues = false;
         // The same for a block comment whose end marker depends on its
         // opening: Lua's --[==[ ... ]==] ("]==]"); empty when none is.
         std::string blockCommentEnd;
@@ -57,6 +62,7 @@ namespace UltraCanvas {
             // drop a template literal; the next line with text recomputes it.
             if (!s.openStringSpansLines) s.openString = 0;
             s.lineComment = false;
+            if (!s.directiveContinues) s.inDirective = false;
             return s;
         }
 
@@ -66,6 +72,7 @@ namespace UltraCanvas {
                    lineComment == o.lineComment && openLongString == o.openLongString &&
                    rawStringEnd == o.rawStringEnd && rawStringDoubledQuotes == o.rawStringDoubledQuotes &&
                    blockCommentEnd == o.blockCommentEnd &&
+                   inDirective == o.inDirective && directiveContinues == o.directiveContinues &&
                    cssContext == o.cssContext &&
                    cssPreludeParent == o.cssPreludeParent && cssDepth == o.cssDepth &&
                    cssStack == o.cssStack && cssExpectProperty == o.cssExpectProperty &&

@@ -1,9 +1,9 @@
 # UltraCanvasMessageCenter — The Desktop Message Centre
 
 **Status:** Phase 2 of UltraMessage (first UI consumer of the feed)
-**Version:** 0.1.1
+**Version:** 0.2.0 - follows the theme (`MessageCenterStyle::FromTheme`, `ApplyTheme`); its texts through `Tr`
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-10-05
+**Last Modified:** 2026-11-14
 
 `UltraCanvasMessageCenter` is the desktop message centre as one composite
 element: every chat message, mail and system notification on the UltraMessage
@@ -120,9 +120,33 @@ a demo or a test is `DefaultConnectOptions()` with `busPath` and
 | `Ingest(message)`, `RemoveEntry(id)`, `Clear()` | rows without a bus (a host feeding its own, tests) |
 | `MarkRead(id, read)`, `Dismiss(id)`, `InvokeAction(id, actionId)`, `Open(id)` | what the buttons do |
 | `onOpen`, `onSelectionChanged`, `onUnreadCountChanged`, `onError` | callbacks |
-| `SetStyle(MessageCenterStyle)` | colours, sizes, and `showSources` / `showDetail` / `showSearch` / `showFilters` for a compact embedding |
+| `SetStyle(MessageCenterStyle)` | colours, sizes, and `showSources` / `showDetail` / `showSearch` / `showFilters` for a compact embedding; a style set here stops the element following the theme |
+| `MessageCenterStyle::FromTheme(theme, base)`, `ApplyTheme(theme)` | the theme's roles over a style's sizes and flags (below) |
 | `GetListView()`, `GetSourcesTree()`, `GetSectionControl()`, `GetSearchInput()`, `GetDetailPane()`, `GetStatusLabel()` | the parts, for a host that restyles them |
 | `BuildEntry(message, out)`, `SectionForTopic(topic)`, `FormatTime(ms, nowMs)` | the translation, static, for tests |
+
+Under the theme policy the element follows the framework theme
+(`UltraCanvasTheme.md`) like any other: `MessageCenterStyle::FromTheme` puts
+the panel behind the feed and the detail, the well behind the sources, the
+soft accent behind the chosen row (with ink on it) and the hover fill, ink
+and muted ink, the accent for the unread mark and danger for an urgent one
+over the style's sizes and flags, and the element re-colours its feed,
+sources and labels from it on every change; the header's and the filter
+row's controls follow on their own. A host that sets its own colours calls
+`SetStyle` (which stops the following) or `SetFollowTheme(true)` after it
+for the roles over its sizes:
+
+```cpp
+auto center = CreateMessageCenter("center");
+MessageCenterStyle compact = center->GetStyle();
+compact.showSources = false;
+center->SetStyle(MessageCenterStyle::FromTheme(UltraCanvasTheme::Current(), compact));
+center->SetFollowTheme(true);   // the theme's colours over the compact shape, on every change
+```
+
+Its own texts - the sections, *Search messages*, *Unread*, *Refresh*, the
+detail pane's buttons and notes, the status line - are in the person's
+language (`Tr`, the standard set).
 
 What the element posts back, so sources and other feeds stay in step:
 

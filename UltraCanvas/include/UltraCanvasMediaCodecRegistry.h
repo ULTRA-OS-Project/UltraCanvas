@@ -21,10 +21,15 @@
 // RegisterMediaCodec and the viewer, the Filer's categories, the format
 // inventory and the open dialogs all follow it with no framework change. An
 // audio registration may carry decode/encode callbacks, and UCAudio uses them
-// once the built-in chain has declined a file.
+// once the built-in chain has declined a file. A video registration may carry
+// a converter (convertVideo), and FileLoader's ConvertVideoFile writes that
+// type with it - the core links no video encoder of its own, so a module that
+// has one (VideoFX, on FFmpeg) registers it at start-up.
 //
+// Version: 0.2.0 - convertVideo: a video type written from another file
+//                  (UltraCanvasFileLoader::ConvertVideoFile)
 // Version: 0.1.0
-// Last Modified: 2026-09-06
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASMEDIACODECREGISTRY_H
@@ -52,6 +57,19 @@ using MediaAudioDecodeFn = std::function<std::shared_ptr<UCAudio>(const std::str
 // Encode `audio` to `filePath` in this codec's format. Return false on failure.
 using MediaAudioEncodeFn = std::function<bool(const std::string& filePath, const UCAudio& audio)>;
 
+// How far a long write has got, 0..1, called on the thread doing it. Return
+// false to stop it: the write then fails and leaves no file behind.
+using MediaProgressFn = std::function<bool(double fraction)>;
+
+// Write the media file at `sourcePath` to `targetPath` as this codec's type
+// (the container `targetPath`'s extension names): decoded and encoded again,
+// picture and sound. Slow - seconds to minutes - and called on the thread
+// that asked (never the UI thread, if the caller is sensible). `progress` may
+// be empty. Return false with `error` set on failure, or when `progress`
+// returned false; a stopped or failed write removes what it wrote.
+using MediaVideoConvertFn = std::function<bool(const std::string& sourcePath, const std::string& targetPath,
+                                               const MediaProgressFn& progress, std::string& error)>;
+
 // Decide whether a file whose extension matched really is this kind. Used only
 // where an extension is shared with something else: ".ts" is TypeScript source
 // far more often than an MPEG transport stream, and no extension table can
@@ -68,6 +86,9 @@ struct MediaCodecRegistration {
     // ---- capability ----
     // A format registered with neither is "recognised but not supported":
     // the viewer still classifies the file, and says why it cannot play it.
+    // For video, canEncode alone says this build writes the container - the
+    // platform backend's capture session muxes it - not that a file can be
+    // converted to it: that is convertVideo below.
     bool canDecode = false;
     bool canEncode = false;
 
@@ -81,6 +102,12 @@ struct MediaCodecRegistration {
     // never has to displace anything to be reachable.
     MediaAudioDecodeFn decodeAudio;
     MediaAudioEncodeFn encodeAudio;
+
+    // Set on a video registration to write files of this type from another
+    // video: UltraCanvasFileLoader::ConvertVideoFile calls it, and a video's
+    // Save as offers exactly the types that carry one (AddVideoSaveTypes).
+    // Registering one makes the entry canEncode.
+    MediaVideoConvertFn convertVideo;
 
     // Set when this extension is shared with another kind of file. An entry
     // carrying a probe is deliberately left out of the extension-keyed format

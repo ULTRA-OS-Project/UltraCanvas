@@ -880,6 +880,26 @@ if(TARGET VideoFX AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
     message(STATUS "  [✓] VideoFX text through UltraCanvas (the videofx tool draws titles as UltraVideo does)")
 endif()
 
+# ===== VIDEOFX AS FILELOADER'S VIDEO CONVERTER =====
+# The framework core links no video encoder, so UltraCanvasFileLoader::
+# ConvertVideoFile writes only what a registered converter writes
+# (MediaCodecRegistration::convertVideo). This library registers VideoFX's
+# (VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h): every video container the
+# FFmpeg VideoFX is built on writes, so a video's Save as - the media viewer's -
+# offers them. Beside VideoFX, which stays free of UltraCanvas, like the text
+# renderer above; an application links it and calls
+# VideoFX_RegisterWithFileLoader() at start-up.
+if(TARGET VideoFX AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_library(VideoFXUltraCanvasFormats STATIC VideoFX/ultracanvas/VideoFXUltraCanvasFormats.cpp)
+    set_target_properties(VideoFXUltraCanvasFormats PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_include_directories(VideoFXUltraCanvasFormats PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/VideoFX/ultracanvas
+        ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(VideoFXUltraCanvasFormats PUBLIC ${ULTRACANVAS_LIBRARY} VideoFX::VideoFX)
+    target_compile_features(VideoFXUltraCanvasFormats PUBLIC cxx_std_20)
+    message(STATUS "  [✓] VideoFX as FileLoader's video converter (a video's Save as)")
+endif()
+
 # ===== ULTRAVIDEO =====
 # The video editor on the VideoFX engine and the UltraCanvasVideoTimeline
 # element: media bin, viewer with scrubbing, inspector, timeline, undo,
@@ -965,6 +985,15 @@ if(BUILD_ULTRASTORE)
     else()
         add_subdirectory(Apps/UltraStore)
     endif()
+endif()
+
+# The UltraStore web store (Apps/UltraStore/web, Docs/UltraStore/WebstoreBrief.md):
+# under emcmake a side module for that runtime and the site folder the admin
+# backend publishes; natively a desktop program over a publish folder, when
+# the store's core is built. With the demos, since it is looked at the same
+# way.
+if(BUILD_WASM_DEMOS AND ((EMSCRIPTEN AND ULTRACANVAS_WASM_DYNAMIC) OR (NOT EMSCRIPTEN AND TARGET UltraStoreCore)))
+    add_subdirectory(Apps/UltraStore/web)
 endif()
 
 # ===== ULTRASTOREADMIN =====
@@ -2137,6 +2166,13 @@ if (BUILD_ULTRAVIEWER_APP)
                 ${ULTRACANVAS_PLUGIN_TARGETS} UltraCanvasAllFormats)
     endif()
 
+    # A video's Save as converts it with VideoFX where VideoFX is built: every
+    # container its FFmpeg writes. Without it a video simply has no Save as.
+    if(TARGET VideoFXUltraCanvasFormats)
+        target_link_libraries(UltraViewer PRIVATE VideoFXUltraCanvasFormats)
+        target_compile_definitions(UltraViewer PRIVATE ULTRAVIEWER_WITH_VIDEOFX=1)
+    endif()
+
     target_compile_features(UltraViewer PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraViewer PRIVATE
@@ -2358,6 +2394,9 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAITopicsPage.cpp
         Apps/UltraAIApp/UltraAISettingsWidgets.cpp
         Apps/UltraAIApp/UltraAILocalModelsPage.cpp
+        Apps/UltraAIApp/UltraAILocalModelText.cpp
+        Apps/UltraAIApp/UltraAIHuggingFaceDialog.cpp
+        Apps/UltraAIApp/UltraAICatalogueSourcesDialog.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
         Apps/UltraAIApp/UltraAITranslatorDialog.cpp
         Apps/UltraAIApp/UltraAIAgentDialog.cpp

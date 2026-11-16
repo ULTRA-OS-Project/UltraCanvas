@@ -12,7 +12,9 @@
 //   opens the parent first.
 // - SetShowScrollToSelectionButton(false) switches the button off.
 // - The rows are shown in the content box, so the last row scrolls fully into
-//   it rather than ending a border's width under its edge.
+//   it rather than ending a border's width under its edge, GetNodeAtY names
+//   no row below that edge, and ScrollTo leaves a row that is not on show
+//   where it is instead of jumping to the top.
 //
 // Runs headless: no application, so the scrollbar jumps instead of gliding.
 // Version: 1.0.0
@@ -108,6 +110,14 @@ struct Fixture {
         TreeNode* node = tree->GetNodeAtY(y);
         return node ? node->data.nodeId : "";
     }
+    // The element-local y `nodeId` is first seen at, or -1 when its row is
+    // nowhere on screen.
+    int SlotOfRow(const std::string& nodeId) const {
+        const Rect2Di content = tree->GetLocalContentRect();
+        for (int y = content.y; y < content.Bottom(); ++y)
+            if (RowAt(y) == nodeId) return y;
+        return -1;
+    }
     bool Press(const Rect2Di& r) {
         UCEvent down;
         down.type = UCEventType::MouseDown;
@@ -179,12 +189,40 @@ void TestRowsFitTheContentBox() {
     TEST("and no floating button offers to go to it",
          !f.tree->IsScrollToSelectionButtonActive());
 
+    // The rows go on below the content box while the view is at the top, but
+    // nothing of them is drawn there, so nothing is hit there either.
+    f.tree->ScrollToTop();
+    TEST("the last pixel row inside the content box is over a row",
+         !f.RowAt(content.Bottom() - 1).empty());
+    TEST("the border below it is over none",
+         f.RowAt(content.Bottom()).empty() && f.RowAt(content.Bottom() + 1).empty());
+
     // The same for a row revealed by ScrollTo rather than by the keyboard.
     f.tree->ScrollToTop();
     f.tree->ScrollTo(f.tree->FindNode("n19"));
     TEST("a row scrolled to from above is whole as well",
          f.RowAt(content.Bottom() - 1) == "n19" &&
          f.RowAt(content.Bottom() - rowHeight) == "n19");
+}
+
+void TestScrollToARowThatIsNotOnShow() {
+    Fixture f;
+    f.tree->OnEvent(Key(UCKeys::End));   // the end of the list, p1 selected
+    f.tree->CollapseNode(f.tree->FindNode("p"));
+    Rect2Di content = f.tree->GetLocalContentRect();
+    const std::string topBefore = f.RowAt(content.y + 1);
+    TEST("the view is scrolled down with p1 hidden under its parent",
+         topBefore != "root" && !topBefore.empty());
+
+    f.tree->ScrollTo(f.tree->FindNode("p1"));
+    TEST("scrolling to a row under a collapsed parent leaves the view alone",
+         f.RowAt(content.y + 1) == topBefore);
+
+    // ScrollToSelection is the call that reveals such a row: it opens the
+    // parents on the way first.
+    f.tree->ScrollToSelection();
+    TEST("ScrollToSelection opens the parent and brings the row into view",
+         f.tree->FindNode("p")->IsExpanded() && f.SlotOfRow("p1") >= 0);
 }
 
 void TestSelectionUnderCollapsedParent() {
@@ -206,6 +244,7 @@ int main() {
     TestTopButtonStaysInCorner();
     TestSelectionButton();
     TestRowsFitTheContentBox();
+    TestScrollToARowThatIsNotOnShow();
     TestSelectionUnderCollapsedParent();
     std::cerr << testCount - failCount << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;

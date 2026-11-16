@@ -13,7 +13,13 @@
 // the topics (the built-in document, the resolution
 // of a topic's model, the preferences, new models and the installs the
 // topic settings call for); signed galleries (keys pinned on first use, a
-// tampered or unsigned document refused, pins dropped with the address).
+// tampered or unsigned document refused, pins dropped with the address);
+// catalogue sources (the YAML a LocalAI gallery is written in, its entries
+// as models of the two engines and the ones left out, what a third party's
+// list may and may not set, a refresh through a transport that answers by
+// URL, the copy kept between runs, a source turned off, an installed model
+// its source dropped); Hugging Face (the search and the file list parsed,
+// a split model and a projector added); and the accelerator per engine.
 //
 // argv[1] is the fake engine's path (CMake passes it). Uses plain asserts.
 
@@ -1211,6 +1217,613 @@ void TestSignedGallery() {
 
 } // namespace
 
+// ----- catalogue sources -----
+
+// What a LocalAI model gallery looks like: the generated index, cut down to
+// one entry of each kind the reader meets.
+const char* kLocalAiGallery = R"yaml(# Model gallery: a GENERATED copy.
+- url: github:mudler/LocalAI/gallery/virtual.yaml@master
+  name: sage-q4
+  description: |
+    A chat model that also reads images.
+    Second line: with a colon.
+  license: apache-2.0
+  urls:
+    - https://huggingface.co/Example/Sage
+  tags:
+    - llm
+    - gguf
+    - function-calling
+  files:
+    - filename: llama-cpp/models/Sage-Q4_K_M.gguf
+      sha256: 4B94AE1F56142EB04DC54F810FECE7BC904A8FF855169B8EC4E57A366C9EABCC
+      uri: huggingface://Example/Sage-GGUF/Sage-Q4_K_M.gguf
+    - filename: Sage-projector.gguf
+      sha256: 51cd4410057e8dc4152ca771a726fbfb34856f047e7049018c757d42ddd481f2
+      uri: https://huggingface.co/Example/Sage-GGUF/resolve/10b179b5/Sage-projector.gguf
+    - filename: Sage-draft.gguf
+      uri: https://huggingface.co/Example/Sage-GGUF/resolve/main/Sage-draft.gguf
+  overrides:
+    backend: llama-cpp
+    context_size: 32768
+    known_usecases:
+      - chat
+      - vision
+    mmproj: Sage-projector.gguf
+    parameters:
+      model: llama-cpp/models/Sage-Q4_K_M.gguf
+      temperature: 1.0
+- url: github:mudler/LocalAI/gallery/virtual.yaml@master
+  name: bge-small
+  size: 449MB
+  tags: [embeddings, gguf]
+  files:
+    - filename: bge-small-q8.gguf
+      sha256: 3379a0e9cea28fc6d7136df8ea7a88ef99ccce5963b9a6f7af9609997be762e3
+      uri: "https://huggingface.co/Example/bge-gguf/resolve/main/bge-small-q8.gguf"
+  overrides:
+    backend: llama-cpp
+    context_size: 512
+    embeddings: true
+    options:
+      - pooling:cls
+    parameters:
+      model: bge-small-q8.gguf
+- url: github:mudler/LocalAI/gallery/whisper-base.yaml@master
+  name: whisper-tiny
+  license: mit
+  files:
+    - filename: ggml-tiny.bin
+      sha256: be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
+      uri: huggingface://ggerganov/whisper.cpp/ggml-tiny.bin
+  overrides:
+    parameters:
+      model: ggml-tiny.bin
+- name: split-model
+  model:
+    url: github:mudler/LocalAI/gallery/qwen3.yaml@master
+    files:
+      - filename: big-00002-of-00002.gguf
+        uri: https://huggingface.co/Example/big/resolve/main/big-00002-of-00002.gguf
+      - filename: big-00001-of-00002.gguf
+        uri: https://huggingface.co/Example/big/resolve/main/big-00001-of-00002.gguf
+    overrides:
+      parameters:
+        model: big-00001-of-00002.gguf
+- url: github:mudler/LocalAI/gallery/virtual.yaml@master
+  name: silero-vad
+  files:
+    - filename: ggml-silero.bin
+      uri: https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero.bin
+  overrides:
+    backend: whisper
+    known_usecases: [vad]
+    options: [vad_only]
+- url: github:mudler/LocalAI/gallery/sd-ggml.yaml@master
+  name: sd-1.5
+  tags: [stable-diffusion, text-to-image, gguf]
+  files:
+    - filename: sd.gguf
+      uri: https://huggingface.co/Example/sd/resolve/main/sd.gguf
+- url: github:mudler/LocalAI/gallery/piper.yaml@master
+  name: voice-en
+  files:
+    - filename: voice.tar.gz
+      uri: https://github.com/example/voice.tar.gz
+- url: github:mudler/LocalAI/gallery/virtual.yaml@master
+  name: plain-http
+  tags: [llm]
+  files:
+    - filename: plain.gguf
+      uri: http://example.com/plain.gguf
+  overrides:
+    backend: llama-cpp
+- url: github:mudler/LocalAI/gallery/virtual.yaml@master
+  name: tts-on-llama
+  files:
+    - filename: tts.gguf
+      uri: https://huggingface.co/Example/tts/resolve/main/tts.gguf
+  overrides:
+    backend: llama-cpp
+    known_usecases:
+      - tts
+)yaml";
+
+const LocalModelInfo* ById(const std::vector<LocalModelInfo>& models, const std::string& id) {
+    for (const auto& m : models) {
+        if (m.id == id) return &m;
+    }
+    return nullptr;
+}
+
+void TestSourceDocuments() {
+    // The YAML a generated index is written in.
+    std::string asJson, error;
+    EXPECT_TRUE(YamlToJson("# c\n---\na: 1\nb: \"two \\\"x\\\"\"\nc: 'it''s'\nd: [1, x, {k: v}]\ne:\n- p\n- q\n"
+                           "f: >-\n  one\n  two\n\n  three\ng: |\n  keep\n  lines\nh: first\n  second\ni: true\nj: ~\n"
+                           "k: https://a/b#c   # note\nl:\n  - m: 1\n    n:\n      - 2\n",
+                           asJson, error));
+    EXPECT_EQ(asJson, std::string("{\"a\":1,\"b\":\"two \\\"x\\\"\",\"c\":\"it's\",\"d\":[1,\"x\",{\"k\":\"v\"}],"
+                                  "\"e\":[\"p\",\"q\"],\"f\":\"one two\\nthree\",\"g\":\"keep\\nlines\\n\","
+                                  "\"h\":\"first second\",\"i\":true,\"j\":null,\"k\":\"https://a/b#c\","
+                                  "\"l\":[{\"m\":1,\"n\":[2]}]}"));
+    // What it does not read, it refuses: a misread gallery would offer wrong files.
+    EXPECT_TRUE(!YamlToJson("- &base\n  name: x\n- <<: *base\n", asJson, error));
+    EXPECT_TRUE(error.find("line 1") != std::string::npos);
+    EXPECT_TRUE(!YamlToJson("a: !!str 5\n", asJson, error));
+    EXPECT_TRUE(!YamlToJson("a: \"never closed\n", asJson, error));
+
+    // Addresses: https as it is, LocalAI's short forms resolved, the rest refused.
+    EXPECT_EQ(ResolveSourceUrl("https://example.com/index.yaml"), std::string("https://example.com/index.yaml"));
+    EXPECT_EQ(ResolveSourceUrl("github:mudler/LocalAI/gallery/index.yaml@master"),
+              std::string("https://raw.githubusercontent.com/mudler/LocalAI/master/gallery/index.yaml"));
+    EXPECT_EQ(ResolveSourceUrl("github:owner/repo/list.json"),
+              std::string("https://raw.githubusercontent.com/owner/repo/main/list.json"));
+    EXPECT_EQ(ResolveSourceUrl("huggingface://Qwen/Qwen3-4B-GGUF/Qwen3-4B-Q4_K_M.gguf"),
+              std::string("https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf"));
+    EXPECT_EQ(ResolveSourceUrl("hf://org/repo/sub/file.gguf@v2"),
+              std::string("https://huggingface.co/org/repo/resolve/v2/sub/file.gguf"));
+    for (const char* refused : {"http://example.com/x.gguf", "file:///etc/passwd", "oci://registry/x", "ollama://gemma",
+                                "huggingface://org/repo/../x", "https://example.com/a b", ""}) {
+        EXPECT_TRUE(ResolveSourceUrl(refused).empty());
+    }
+    EXPECT_EQ(NormalizeSourceId("My-List 2"), std::string("my-list2"));
+    EXPECT_TRUE(NormalizeSourceId("hf").empty());
+    EXPECT_TRUE(NormalizeSourceId("file").empty());
+    EXPECT_TRUE(IsSafeModelFileName("model-Q4_K_M.gguf"));
+    for (const char* unsafe : {"", ".", "..", "a/b.gguf", "..\\b.gguf", "c:evil"}) EXPECT_TRUE(!IsSafeModelFileName(unsafe));
+
+    // A LocalAI gallery: what the two engines run, as models of the source.
+    CatalogueSource source;
+    source.id   = "localai";
+    source.name = "LocalAI";
+    std::vector<LocalModelInfo> models;
+    int skipped = 0;
+    EXPECT_TRUE(ParseCatalogueSourceDocument(kLocalAiGallery, source, models, skipped, error));
+    EXPECT_EQ(models.size(), size_t(4));
+    EXPECT_EQ(skipped, 5);       // the VAD, the picture model, the voice, the http file, the TTS on llama-cpp
+
+    const LocalModelInfo* sage = ById(models, "localai:sage-q4");
+    EXPECT_TRUE(sage != nullptr);
+    EXPECT_TRUE(sage->source == LocalModelSource::Gallery);
+    EXPECT_EQ(sage->gallery, std::string("localai"));
+    EXPECT_EQ(sage->engineId, std::string("llama-server"));
+    EXPECT_EQ(sage->capability, std::string("textllm"));
+    EXPECT_EQ(sage->license, std::string("apache-2.0"));
+    EXPECT_EQ(sage->homepage, std::string("https://huggingface.co/Example/Sage"));
+    EXPECT_EQ(sage->description, std::string("A chat model that also reads images.\nSecond line: with a colon."));
+    EXPECT_TRUE(sage->supportsVision && sage->supportsTools);
+    EXPECT_EQ(sage->contextWindow, 32768);
+    // The model first (its folder dropped), then the projector; the draft model is not downloaded.
+    EXPECT_EQ(sage->files.size(), size_t(2));
+    EXPECT_EQ(sage->files[0].name, std::string("Sage-Q4_K_M.gguf"));
+    EXPECT_EQ(sage->files[0].url, std::string("https://huggingface.co/Example/Sage-GGUF/resolve/main/Sage-Q4_K_M.gguf"));
+    EXPECT_EQ(sage->files[0].sha256, std::string("4b94ae1f56142eb04dc54f810fece7bc904a8ff855169b8ec4e57a366c9eabcc"));
+    EXPECT_TRUE(!sage->files[0].projector);
+    EXPECT_EQ(sage->files[1].name, std::string("Sage-projector.gguf"));
+    EXPECT_TRUE(sage->files[1].projector && IsProjectorFile(sage->files[1]));
+    // The window the engine is started with stays at 8192 whatever the model takes.
+    EXPECT_TRUE(sage->engineArgs == (std::vector<std::string>{"--ctx-size", "8192"}));
+
+    const LocalModelInfo* bge = ById(models, "localai:bge-small");
+    EXPECT_TRUE(bge != nullptr);
+    EXPECT_EQ(bge->capability, std::string("embeddings"));
+    EXPECT_TRUE(bge->engineArgs == (std::vector<std::string>{"--ctx-size", "512", "--pooling", "cls"}));
+    EXPECT_EQ(bge->sizeBytes, uint64_t(449) * 1024 * 1024);
+
+    const LocalModelInfo* whisper = ById(models, "localai:whisper-tiny");
+    EXPECT_TRUE(whisper != nullptr);
+    EXPECT_EQ(whisper->engineId, std::string("whisper-server"));
+    EXPECT_EQ(whisper->capability, std::string("speechtotext"));
+    EXPECT_EQ(whisper->files[0].url, std::string("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin"));
+
+    // The library shape (url / files / overrides under "model"); a split model keeps every part, the first first.
+    const LocalModelInfo* split = ById(models, "localai:split-model");
+    EXPECT_TRUE(split != nullptr);
+    EXPECT_EQ(split->files.size(), size_t(2));
+    EXPECT_EQ(split->files[0].name, std::string("big-00001-of-00002.gguf"));
+
+    // The projector reaches the engine's command line though its name does not start with "mmproj".
+    LocalModelInfo installed = *sage;
+    installed.installedPath = "/models/sage";
+    installed.primaryFile   = "/models/sage/Sage-Q4_K_M.gguf";
+    EngineInfo engine;
+    engine.id = "llama-server";
+    const std::vector<std::string> args = BuildEngineArgs(engine, installed, "cpu", 4242, "/key", *TestHardware());
+    auto mmproj = std::find(args.begin(), args.end(), "--mmproj");
+    EXPECT_TRUE(mmproj != args.end() && *(mmproj + 1) == "/models/sage/Sage-projector.gguf");
+
+    // One of our own catalogues, published by somebody else: the entries are
+    // kept, cut down to what a list may set.
+    const std::string third = R"json({"formatVersion": 1, "published": "2026-11-01", "models": [
+      {"id": "good", "displayName": "Good", "capability": "textllm", "engine": "llama-server",
+       "files": [{"name": "good.gguf", "url": "https://files.example/good.gguf", "size": 1000}],
+       "engineArgs": ["--ctx-size", "4096", "--log-file", "/home/user/.bashrc", "--jinja", "--pooling", "mean; rm"],
+       "homepage": "javascript:alert(1)"},
+      {"id": "escapes", "capability": "textllm", "engine": "llama-server",
+       "files": [{"name": "../../escape.gguf", "url": "https://files.example/x.gguf"}]},
+      {"id": "plain-http", "capability": "textllm", "engine": "llama-server",
+       "files": [{"name": "x.gguf", "url": "http://files.example/x.gguf"}]},
+      {"id": "other-engine", "capability": "textllm", "engine": "sh",
+       "files": [{"name": "x.gguf", "url": "https://files.example/x.gguf"}]},
+      {"id": "no-files", "capability": "textllm", "engine": "llama-server", "files": []}
+    ]})json";
+    source.id = "third";
+    EXPECT_TRUE(ParseCatalogueSourceDocument(third, source, models, skipped, error));
+    EXPECT_EQ(models.size(), size_t(1));
+    EXPECT_EQ(skipped, 4);
+    EXPECT_EQ(models[0].id, std::string("third:good"));
+    EXPECT_TRUE(models[0].source == LocalModelSource::Gallery);
+    EXPECT_TRUE(models[0].engineArgs == (std::vector<std::string>{"--ctx-size", "4096", "--jinja"}));
+    EXPECT_TRUE(models[0].homepage.empty());
+
+    // Neither kind of document.
+    EXPECT_TRUE(!ParseCatalogueSourceDocument("<html>not found</html>", source, models, skipped, error));
+    EXPECT_TRUE(!ParseCatalogueSourceDocument("", source, models, skipped, error));
+    EXPECT_TRUE(!ParseCatalogueSourceDocument("{\"formatVersion\": 7, \"models\": []}", source, models, skipped, error));
+
+    // The copy kept on disk reads back as it was written.
+    EXPECT_TRUE(ParseCatalogueSourceDocument(kLocalAiGallery, CatalogueSource{"localai", "LocalAI", "", true}, models, skipped, error));
+    std::string id, fetched;
+    int skippedBack = 0;
+    std::vector<LocalModelInfo> back;
+    EXPECT_TRUE(ParseSourceCache(SerializeSourceCache(source, "2026-11-15", skipped, models), id, fetched, skippedBack, back));
+    EXPECT_EQ(fetched, std::string("2026-11-15"));
+    EXPECT_EQ(skippedBack, skipped);
+    EXPECT_EQ(back.size(), models.size());
+    const LocalModelInfo* sageBack = ById(back, "localai:sage-q4");
+    EXPECT_TRUE(sageBack && sageBack->source == LocalModelSource::Gallery && sageBack->gallery == "localai");
+    EXPECT_TRUE(sageBack->files.size() == 2 && sageBack->files[1].projector && sageBack->homepage == sage->homepage);
+
+    // The settings carry the sources and the accelerator per engine.
+    LocalRuntimeSettings settings;
+    EXPECT_EQ(settings.catalogueSources.size(), size_t(1));
+    EXPECT_EQ(settings.catalogueSources[0].id, std::string("localai"));
+    EXPECT_EQ(ResolveSourceUrl(settings.catalogueSources[0].url),
+              std::string("https://raw.githubusercontent.com/mudler/LocalAI/master/gallery/index.yaml"));
+    settings.engineAccelerators["whisper-server"] = "cpu";
+    settings.catalogueSources.push_back({"mine", "My list", "https://example.com/catalogue.json", false});
+    LocalRuntimeSettings read;
+    EXPECT_TRUE(ParseSettings(SerializeSettings(settings), read));
+    EXPECT_EQ(read.catalogueSources.size(), size_t(2));
+    EXPECT_TRUE(read.catalogueSources[1].id == "mine" && !read.catalogueSources[1].enabled);
+    EXPECT_EQ(read.engineAccelerators["whisper-server"], std::string("cpu"));
+    // A settings file from before the sources keeps the defaults; an empty list is the user's.
+    EXPECT_TRUE(ParseSettings("{\"policy\": \"ask\"}", read));
+    EXPECT_EQ(read.catalogueSources.size(), size_t(1));
+    EXPECT_TRUE(ParseSettings("{\"catalogueSources\": []}", read));
+    EXPECT_TRUE(read.catalogueSources.empty());
+}
+
+void TestCatalogueSourcesRuntime() {
+    Fixture fx("sources");
+    const std::string listUrl = "https://lists.test/gallery/index.yaml";
+    const std::string fileUrl = "https://files.test/tiny.gguf";
+    fx.fetcher.sources[fileUrl] = fx.modelSource;
+    // Two models: one with a file the fetcher has, one Hugging Face file whose size the host is asked for.
+    const std::string listV1 =
+        "- name: from-list\n  tags: [llm]\n  files:\n    - filename: tiny.gguf\n      sha256: " + fx.modelSha +
+        "\n      uri: " + fileUrl + "\n  overrides:\n    backend: llama-cpp\n"
+        "- name: unsized\n  tags: [llm]\n  files:\n    - filename: sub-Q4_K_M.gguf\n"
+        "      uri: huggingface://org/repo/quant/sub-Q4_K_M.gguf\n  overrides:\n    backend: llama-cpp\n"
+        "- name: needs-another-engine\n  files:\n    - filename: voice.onnx\n      uri: https://files.test/voice.onnx\n";
+    const std::string listV2 =
+        "- name: unsized\n  tags: [llm]\n  files:\n    - filename: sub-Q4_K_M.gguf\n"
+        "      uri: huggingface://org/repo/quant/sub-Q4_K_M.gguf\n  overrides:\n    backend: llama-cpp\n";
+
+    auto transport = std::make_shared<UrlTransport>();
+    LocalRuntimeOptions options = fx.Options(true);
+    options.transport = transport;
+    {
+        LocalRuntime rt(options);
+        // A new installation: LocalAI's gallery, not downloaded; nothing offered from it yet.
+        std::vector<CatalogueSourceStatus> listed = rt.ListCatalogueSources();
+        EXPECT_EQ(listed.size(), size_t(1));
+        EXPECT_TRUE(listed[0].source.id == "localai" && listed[0].fetched.empty());
+        const size_t curated = rt.ListModels().size();
+
+        // No gallery address: nothing to fetch, nothing asked.
+        EXPECT_TRUE(rt.RefreshGallery().IsOk());
+        EXPECT_TRUE(transport->asked.empty());
+
+        LocalRuntimeSettings s = rt.GetSettings();
+        s.catalogueSources = {{"Test-List", "Test list", listUrl, true},
+                              {"bad", "No address", "ftp://example.com/x", true},
+                              {"test-list", "A second one of the same id", "https://lists.test/other.yaml", true}};
+        rt.SetSettings(s);
+        // The id made usable; the source the runtime could not fetch and the repeated id dropped.
+        EXPECT_EQ(rt.GetSettings().catalogueSources.size(), size_t(1));
+        EXPECT_EQ(rt.GetSettings().catalogueSources[0].id, std::string("test-list"));
+
+        // The list is not there yet: the failure is reported, nothing changes.
+        std::vector<CatalogueSourceStatus> status;
+        Error error = rt.RefreshCatalogueSources(&status);
+        EXPECT_TRUE(!error.IsOk());
+        EXPECT_TRUE(status.size() == 1 && !status[0].error.IsOk() && status[0].models == 0);
+        EXPECT_EQ(rt.ListModels().size(), curated);
+
+        transport->pages[listUrl] = Page(listV1);
+        error = rt.RefreshCatalogueSources(&status);
+        EXPECT_TRUE(error.IsOk());
+        EXPECT_TRUE(status.size() == 1 && status[0].error.IsOk());
+        EXPECT_EQ(status[0].models, 2);
+        EXPECT_EQ(status[0].skipped, 1);
+        EXPECT_TRUE(!status[0].fetched.empty());
+        EXPECT_EQ(rt.ListModels().size(), curated + 2);
+
+        LocalModelInfo model;
+        EXPECT_TRUE(rt.FindModel("test-list:from-list", model));
+        EXPECT_TRUE(model.source == LocalModelSource::Gallery && model.gallery == "test-list" && !model.installed);
+        EXPECT_EQ(rt.CapabilityOf("test-list:from-list"), std::string("textllm"));
+        // A source's model is never picked on its own: the curated one is.
+        EXPECT_EQ(rt.Recommend("textllm").id, std::string("tiny"));
+        EXPECT_TRUE(rt.NewModels().empty());
+
+        // The size a LocalAI gallery leaves out is asked of the host - of the
+        // folder the file is in - and remembered.
+        EXPECT_TRUE(rt.FindModel("test-list:unsized", model));
+        EXPECT_TRUE(model.sizeBytes == 0 && model.fit == ModelFit::Unknown);
+        transport->pages["https://huggingface.co/api/models/org/repo/tree/main/quant"] = Page(
+            R"([{"type":"file","path":"quant/sub-Q4_K_M.gguf","size":135,
+                 "lfs":{"oid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","size":3000000000}}])");
+        EXPECT_TRUE(rt.ProbeModel("test-list:unsized", model).IsOk());
+        EXPECT_EQ(model.sizeBytes, uint64_t(3000000000));
+        EXPECT_TRUE(model.fit == ModelFit::Recommended || model.fit == ModelFit::RunsOnCpu);
+        EXPECT_EQ(model.files[0].sha256, std::string(64, 'a'));
+        const size_t askedBefore = transport->asked.size();
+        EXPECT_TRUE(rt.ProbeModel("test-list:unsized", model).IsOk());
+        EXPECT_EQ(transport->asked.size(), askedBefore);       // nothing left to ask
+
+        // Installed like any other model, the engine with it.
+        rt.InstallModel("test-list:from-list", nullptr);
+        rt.WaitForJobs();
+        EXPECT_TRUE(rt.FindModel("test-list:from-list", model));
+        EXPECT_TRUE(model.installed);
+        EXPECT_TRUE(fs::is_regular_file(PathFromUtf8(model.installedPath) / "tiny.gguf"));
+        EXPECT_EQ(rt.Recommend("textllm").id, std::string("test-list:from-list"));   // installed: usable at once
+
+        // A catalogue model is removed, not forgotten - a source's too.
+        EXPECT_TRUE(!rt.ForgetModel("test-list:from-list").IsOk());
+    }
+    {
+        // The copy of the list, and what the host said, are there on the next run.
+        LocalRuntime rt(options);
+        LocalModelInfo model;
+        EXPECT_TRUE(rt.FindModel("test-list:unsized", model));
+        EXPECT_EQ(model.sizeBytes, uint64_t(3000000000));
+        std::vector<CatalogueSourceStatus> listed = rt.ListCatalogueSources();
+        EXPECT_TRUE(listed.size() == 1 && listed[0].models == 2 && listed[0].skipped == 1 && !listed[0].fetched.empty());
+
+        // The source drops the installed model from its list: it stays, from its own folder.
+        transport->pages[listUrl] = Page(listV2);
+        EXPECT_TRUE(rt.RefreshCatalogueSources().IsOk());
+        EXPECT_TRUE(rt.FindModel("test-list:from-list", model));
+        EXPECT_TRUE(model.installed && model.source == LocalModelSource::Gallery);
+        std::vector<LocalModelInfo> all = rt.ListModels();
+        EXPECT_TRUE(ById(all, "test-list:from-list") != nullptr && ById(all, "test-list:unsized") != nullptr);
+
+        // Turned off: its models are not offered; the installed one still is.
+        LocalRuntimeSettings s = rt.GetSettings();
+        s.catalogueSources[0].enabled = false;
+        rt.SetSettings(s);
+        all = rt.ListModels();
+        EXPECT_TRUE(ById(all, "test-list:unsized") == nullptr);
+        EXPECT_TRUE(ById(all, "test-list:from-list") != nullptr);
+        // Nothing is downloaded for a source that is off.
+        const size_t asked = transport->asked.size();
+        std::vector<CatalogueSourceStatus> status;
+        EXPECT_TRUE(rt.RefreshCatalogueSources(&status).IsOk());
+        EXPECT_TRUE(status.empty() && transport->asked.size() == asked);
+        // On again: the copy on disk comes back without a download.
+        s.catalogueSources[0].enabled = true;
+        rt.SetSettings(s);
+        EXPECT_TRUE(ById(rt.ListModels(), "test-list:unsized") != nullptr);
+        EXPECT_EQ(transport->asked.size(), asked);
+
+        // A list that is no list leaves the copy in use.
+        transport->pages[listUrl] = Page("<html>503</html>");
+        EXPECT_TRUE(!rt.RefreshCatalogueSources(&status).IsOk());
+        EXPECT_TRUE(status.size() == 1 && status[0].models == 1);
+        EXPECT_TRUE(ById(rt.ListModels(), "test-list:unsized") != nullptr);
+
+        // Removing the dropped model takes it off the disk and out of the list.
+        EXPECT_TRUE(rt.RemoveModel("test-list:from-list").IsOk());
+        EXPECT_TRUE(!rt.FindModel("test-list:from-list", model));
+
+        // Another address under the same id: the old copy says nothing about it.
+        s = rt.GetSettings();
+        s.catalogueSources[0].url = "https://lists.test/elsewhere.yaml";
+        rt.SetSettings(s);
+        EXPECT_TRUE(ById(rt.ListModels(), "test-list:unsized") == nullptr);
+    }
+}
+
+void TestHuggingFace() {
+    // The search's reply.
+    std::vector<HuggingFaceRepo> repos;
+    EXPECT_TRUE(ParseHuggingFaceSearch(R"([
+        {"_id":"1","id":"Qwen/Qwen3-4B-GGUF","likes":120,"private":false,"downloads":1500000,
+         "tags":["gguf","license:apache-2.0","base_model:Qwen/Qwen3-4B"],"pipeline_tag":"text-generation",
+         "createdAt":"2026-04-28T10:11:12.000Z","modelId":"Qwen/Qwen3-4B-GGUF"},
+        {"id":"Secret/Private","private":true},
+        {"modelId":"nomic-ai/nomic-embed-text-v1.5-GGUF","downloads":90000,"likes":300,"gated":"auto",
+         "lastModified":"2026-02-01T00:00:00.000Z","pipeline_tag":"sentence-similarity","tags":["gguf"]},
+        {"likes": 3}
+    ])", repos));
+    EXPECT_EQ(repos.size(), size_t(2));
+    EXPECT_EQ(repos[0].id, std::string("Qwen/Qwen3-4B-GGUF"));
+    EXPECT_EQ(repos[0].downloads, uint64_t(1500000));
+    EXPECT_EQ(repos[0].license, std::string("apache-2.0"));
+    EXPECT_EQ(repos[0].lastModified, std::string("2026-04-28"));
+    EXPECT_TRUE(!repos[0].gated);
+    EXPECT_TRUE(repos[1].gated && repos[1].lastModified == "2026-02-01");
+    std::vector<HuggingFaceRepo> none;
+    EXPECT_TRUE(!ParseHuggingFaceSearch("{\"error\": \"x\"}", none));
+
+    EXPECT_EQ(HuggingFaceSearchUrl("qwen 3 & more", true, 500),
+              std::string("https://huggingface.co/api/models?sort=downloads&direction=-1&full=true&limit=100&filter=gguf&search=qwen%203%20%26%20more"));
+    EXPECT_EQ(HuggingFaceSearchUrl("  ", false, 20),
+              std::string("https://huggingface.co/api/models?sort=downloads&direction=-1&full=true&limit=20"));
+    EXPECT_EQ(HuggingFaceTreeUrl("org/repo", ""), std::string("https://huggingface.co/api/models/org/repo/tree/main"));
+    EXPECT_EQ(HuggingFaceTreeUrl("org/repo", "v2", "quant"), std::string("https://huggingface.co/api/models/org/repo/tree/v2/quant"));
+
+    EXPECT_EQ(QuantizationOf("Qwen3-4B-Q4_K_M.gguf"), std::string("Q4_K_M"));
+    EXPECT_EQ(QuantizationOf("sub/model.Q8_0.gguf"), std::string("Q8_0"));
+    EXPECT_EQ(QuantizationOf("llama-IQ2_XS-00001-of-00002.gguf"), std::string("IQ2_XS"));
+    EXPECT_EQ(QuantizationOf("mmproj-model-f16.gguf"), std::string("F16"));
+    EXPECT_EQ(QuantizationOf("ggml-small.bin"), std::string(""));
+    EXPECT_EQ(QuantizationOf("Fable-5-chat.gguf"), std::string(""));
+
+    // A repository's files: the GGUFs and the whisper.cpp models, a split
+    // model as one row, the projector marked, everything else left out.
+    const std::string tree = R"([
+        {"type":"directory","path":"quant","size":0},
+        {"type":"file","path":"README.md","size":900},
+        {"type":"file","path":"config.json","size":70},
+        {"type":"file","path":"model-Q8_0.gguf","size":130,"lfs":{"oid":"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB","size":4000000000}},
+        {"type":"file","path":"quant/model-Q4_K_M.gguf","size":130,"lfs":{"oid":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","size":2500000000}},
+        {"type":"file","path":"big-00002-of-00003.gguf","size":1,"lfs":{"oid":"dd","size":1000}},
+        {"type":"file","path":"big-00001-of-00003.gguf","size":1,"lfs":{"oid":"ee","size":1000}},
+        {"type":"file","path":"big-00003-of-00003.gguf","size":1,"lfs":{"oid":"ff","size":500}},
+        {"type":"file","path":"mmproj-model-f16.gguf","size":1,"lfs":{"oid":"11","size":800000000}},
+        {"type":"file","path":"pytorch_model.bin","size":5000},
+        {"type":"file","path":"ggml-tiny.bin","size":77000000}
+    ])";
+    std::vector<HuggingFaceFile> files;
+    HuggingFaceRepo repo = repos[0];
+    EXPECT_TRUE(ParseHuggingFaceFiles(tree, repo, files));
+    EXPECT_EQ(files.size(), size_t(5));
+    EXPECT_EQ(files[0].name, std::string("model-Q8_0.gguf"));
+    EXPECT_TRUE(files[0].sizeBytes == 4000000000ull && files[0].sha256 == std::string(64, 'b') && files[0].quantization == "Q8_0");
+    EXPECT_EQ(files[0].capability, std::string("textllm"));
+    EXPECT_EQ(files[1].name, std::string("quant/model-Q4_K_M.gguf"));
+    EXPECT_EQ(files[2].name, std::string("big-00001-of-00003.gguf"));
+    EXPECT_TRUE(files[2].parts == (std::vector<std::string>{"big-00002-of-00003.gguf", "big-00003-of-00003.gguf"}));
+    EXPECT_EQ(files[2].sizeBytes, uint64_t(2500));
+    EXPECT_TRUE(files[3].name == "ggml-tiny.bin" && files[3].capability == "speechtotext" && !files[3].projector);
+    EXPECT_TRUE(files[4].name == "mmproj-model-f16.gguf" && files[4].projector);       // projectors last
+    EXPECT_EQ(GuessCapability(repos[1], "nomic-embed-text-v1.5.Q8_0.gguf"), std::string("embeddings"));
+    EXPECT_EQ(GuessCapability(HuggingFaceRepo{}, "bge-embed.gguf"), std::string("embeddings"));
+
+    // Through the runtime, on a transport that answers by URL.
+    Fixture fx("huggingface");
+    auto transport = std::make_shared<UrlTransport>();
+    LocalRuntimeOptions options = fx.Options(true);
+    options.transport = transport;
+    LocalRuntime rt(options);
+    transport->pages[HuggingFaceSearchUrl("qwen", true, 50)] = Page(R"([{"id":"Qwen/Qwen3-4B-GGUF","downloads":7}])");
+    std::vector<HuggingFaceRepo> found;
+    EXPECT_TRUE(rt.SearchHuggingFace("qwen", true, 50, found).IsOk());
+    EXPECT_TRUE(found.size() == 1 && found[0].downloads == 7);
+    // Not reachable, or not there: an error, not an empty list.
+    EXPECT_TRUE(!rt.SearchHuggingFace("nothing scripted", true, 50, found).IsOk());
+
+    transport->pages["https://huggingface.co/api/models/Qwen/Qwen3-4B-GGUF"] =
+        Page(R"({"id":"Qwen/Qwen3-4B-GGUF","gated":false,"pipeline_tag":"text-generation","tags":["gguf","license:apache-2.0"]})");
+    transport->pages["https://huggingface.co/api/models/Qwen/Qwen3-4B-GGUF/tree/main?recursive=true"] = Page(tree);
+    HuggingFaceRepo facts;
+    EXPECT_TRUE(rt.ListHuggingFaceFiles("Qwen/Qwen3-4B-GGUF", files, &facts).IsOk());
+    EXPECT_EQ(files.size(), size_t(5));
+    EXPECT_EQ(facts.license, std::string("apache-2.0"));
+    EXPECT_TRUE(files[0].fit == ModelFit::Recommended || files[0].fit == ModelFit::RunsOnCpu);   // 4 GB on 16 GB
+    EXPECT_TRUE(files[3].fit != ModelFit::Recommended);      // a speech model runs on the CPU here
+    EXPECT_TRUE(rt.ListHuggingFaceFiles("Qwen/Missing", files).code == ErrorCode::ModelNotFound);
+    // Hugging Face answers 401, not 404, for a repository that is not there (or is private).
+    TransportResponse unauthorised;
+    unauthorised.statusCode = 401;
+    transport->pages["https://huggingface.co/api/models/Qwen/Private"] = unauthorised;
+    transport->pages["https://huggingface.co/api/models/Qwen/Private/tree/main?recursive=true"] = unauthorised;
+    EXPECT_TRUE(rt.ListHuggingFaceFiles("Qwen/Private", files).code == ErrorCode::ModelNotFound);
+    EXPECT_TRUE(rt.ListHuggingFaceFiles("not a repository", files).code == ErrorCode::InvalidRequest);
+    EXPECT_TRUE(rt.ListHuggingFaceFiles("a/b/c", files).code == ErrorCode::InvalidRequest);
+
+    // A split model with its projector, from a folder of the repository.
+    HuggingFaceModelRequest request;
+    request.repo          = "Qwen/Qwen3-4B-GGUF";
+    request.file          = "big-00001-of-00003.gguf";
+    request.extraFiles    = {"big-00002-of-00003.gguf", "big-00003-of-00003.gguf"};
+    request.projectorFile = "vision/mmproj-model-f16.gguf";
+    request.capability    = "textllm";
+    request.license       = "apache-2.0";
+    std::string id;
+    EXPECT_TRUE(rt.AddHuggingFaceModel(request, id).IsOk());
+    EXPECT_EQ(id, std::string("hf:Qwen/Qwen3-4B-GGUF:big-00001-of-00003.gguf"));
+    LocalModelInfo model;
+    EXPECT_TRUE(rt.FindModel(id, model));
+    EXPECT_TRUE(model.source == LocalModelSource::HuggingFace && model.supportsVision);
+    EXPECT_EQ(model.files.size(), size_t(4));
+    EXPECT_EQ(model.files[3].name, std::string("mmproj-model-f16.gguf"));
+    EXPECT_EQ(model.files[3].url, std::string("https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/vision/mmproj-model-f16.gguf"));
+    EXPECT_TRUE(model.files[3].projector);
+    EXPECT_EQ(model.license, std::string("apache-2.0"));
+    EXPECT_EQ(model.homepage, std::string("https://huggingface.co/Qwen/Qwen3-4B-GGUF"));
+    // A file in a folder is stored under its own name; one that would leave the repository is refused.
+    EXPECT_TRUE(rt.AddHuggingFaceModel("org/repo", "quant/sub-Q4_K_M.gguf", "textllm", "", id).IsOk());
+    EXPECT_TRUE(rt.FindModel(id, model) && model.files[0].name == "sub-Q4_K_M.gguf");
+    EXPECT_TRUE(!rt.AddHuggingFaceModel("org/repo", "../other/x.gguf", "textllm", "", id).IsOk());
+    EXPECT_TRUE(!rt.AddHuggingFaceModel("org", "x.gguf", "textllm", "", id).IsOk());
+    EXPECT_TRUE(!rt.AddHuggingFaceModel("org/repo", "x.gguf", "imagegen", "", id).IsOk());
+    EXPECT_TRUE(rt.ForgetModel("hf:org/repo:quant/sub-Q4_K_M.gguf").IsOk());
+}
+
+// The accelerator is each engine's own: one engine's GPU build may suit a
+// computer where another's does not.
+void TestEngineAccelerators() {
+    Fixture fx("accelerators");
+    const std::string platform = HardwareProfile::CurrentPlatform();
+    if (platform.rfind("macos", 0) == 0) {
+        std::cerr << "engine accelerators: skipped (one build per engine on macOS)\n";
+        return;
+    }
+    auto bundle = [&](const char* accel, bool optional) {
+        return std::string(R"({"platform": ")") + platform + R"(", "accel": ")" + accel +
+               R"(", "url": "https://engines.test/)" + accel + R"(.zip", "size": 10)" +
+               (optional ? R"(, "optional": true)" : "") + "}";
+    };
+    LocalRuntimeOptions options = fx.Options(false);
+    options.engineOverrides.clear();
+    options.galleryJson =
+        R"({"formatVersion": 1, "published": "2026-11-15", "engines": [
+            {"id": "llama-server", "version": "t", "executable": "llama-server", "serves": ["textllm"],
+             "bundles": [)" + bundle("cpu", false) + "," + bundle("vulkan", false) + R"(]},
+            {"id": "whisper-server", "version": "t", "executable": "whisper-server", "serves": ["speechtotext"],
+             "bundles": [)" + bundle("cpu", false) + "," + bundle("vulkan", true) + R"(]}]})";
+    LocalRuntime rt(options);
+    EngineBundleInfo chosen;
+    // Auto on a computer with a GPU: Vulkan where it is not an optional build.
+    EXPECT_TRUE(rt.ChooseBundle("llama-server", chosen) && chosen.accelerator == "vulkan");
+    EXPECT_TRUE(rt.ChooseBundle("whisper-server", chosen) && chosen.accelerator == "cpu");
+    EXPECT_TRUE(rt.PreferredAccelerator("llama-server").empty());
+
+    // One engine's choice leaves the other's alone.
+    LocalRuntimeSettings s = rt.GetSettings();
+    s.engineAccelerators["whisper-server"] = "vulkan";
+    rt.SetSettings(s);
+    EXPECT_TRUE(rt.ChooseBundle("whisper-server", chosen) && chosen.accelerator == "vulkan");
+    EXPECT_TRUE(rt.ChooseBundle("llama-server", chosen) && chosen.accelerator == "vulkan");
+    s.engineAccelerators["llama-server"] = "cpu";
+    rt.SetSettings(s);
+    EXPECT_TRUE(rt.ChooseBundle("llama-server", chosen) && chosen.accelerator == "cpu");
+    EXPECT_TRUE(rt.ChooseBundle("whisper-server", chosen) && chosen.accelerator == "vulkan");
+
+    // The one for every engine applies where an engine has none of its own -
+    // and an engine's own "" is Auto whatever that one says.
+    s.engineAccelerators.clear();
+    s.preferredAccelerator = "cpu";
+    rt.SetSettings(s);
+    EXPECT_TRUE(rt.ChooseBundle("llama-server", chosen) && chosen.accelerator == "cpu");
+    EXPECT_EQ(rt.PreferredAccelerator("whisper-server"), std::string("cpu"));
+    s.engineAccelerators["llama-server"] = "";
+    rt.SetSettings(s);
+    EXPECT_TRUE(rt.ChooseBundle("llama-server", chosen) && chosen.accelerator == "vulkan");
+    EXPECT_TRUE(rt.PreferredAccelerator("llama-server").empty());
+
+    // Kept between runs.
+    LocalRuntime again(options);
+    EXPECT_TRUE(again.ChooseBundle("llama-server", chosen) && chosen.accelerator == "vulkan");
+    EXPECT_EQ(again.GetSettings().preferredAccelerator, std::string("cpu"));
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::cerr << "usage: test_local_runtime <fake engine path>\n";
@@ -1226,6 +1839,10 @@ int main(int argc, char** argv) {
     TestInstall();
     TestTopics();
     TestSignedGallery();
+    TestSourceDocuments();
+    TestCatalogueSourcesRuntime();
+    TestHuggingFace();
+    TestEngineAccelerators();
     TestEnsureAndSupervision();
     TestLocalProvider();
     TestLocalSpeech();

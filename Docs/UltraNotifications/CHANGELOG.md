@@ -1,3 +1,8 @@
+#### 2026-11-14 *0.1.1*
+- **Dark look**: the window, the Quit footer and the message centre (list,
+  sources, detail, the unread and urgent marks) take the system look instead
+  of fixed light colours, and follow a change of look while it runs.
+
 #### 2026-11-06 *0.1.0*
 - **UltraNotifications, the notifications of ULTRA OS after their pop-up
   has gone.** Every notification, chat message and mail that reached the

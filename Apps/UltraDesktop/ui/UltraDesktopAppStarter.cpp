@@ -1,5 +1,7 @@
 // Apps/UltraDesktop/ui/UltraDesktopAppStarter.cpp
 // The Apps window. See the header.
+// Version: 0.5.0 - the colours from the theme in force (headings, the status, the
+//                  drag label), again when it changes while the window is open
 // Version: 0.4.0 - drag an application onto another category; Move to; folder categories
 // Version: 0.3.0 - categories, Recent, tiles and tree-and-list, read after the window is open
 // Version: 0.2.0 - pin to the taskbar
@@ -18,6 +20,7 @@
 #include "UltraCanvasListView.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
@@ -46,9 +49,9 @@ constexpr float kTreeWidth = 210;
 constexpr auto kListFresh = std::chrono::minutes(2);   // a kept list older than this is read again
 constexpr int kDragDistance = 6;                       // px the pointer moves before a press is a drag
 
-const Color kHeadingColor(40, 40, 40, 255);
-const Color kSubheadingColor(105, 105, 105, 255);
-const Color kStatusColor(110, 110, 110, 255);
+// The window's colours are the theme's: a heading in ink, a sub-heading
+// and the status in muted ink.
+const ThemeRoles& Roles() { return UltraCanvasTheme::Current().roles; }
 
 std::string Lower(std::string text) {
     std::transform(text.begin(), text.end(), text.begin(),
@@ -113,7 +116,9 @@ UltraDesktopAppStarter::UltraDesktopAppStarter(Hooks hooks) : hooks_(std::move(h
     if (view_ != "tree") view_ = "tiles";
 }
 
-UltraDesktopAppStarter::~UltraDesktopAppStarter() = default;
+UltraDesktopAppStarter::~UltraDesktopAppStarter() {
+    if (themeHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
+}
 
 void UltraDesktopAppStarter::Preload() {
     KeptList& kept = Kept();
@@ -169,7 +174,8 @@ void UltraDesktopAppStarter::Open() {
     filterBox_->layoutItem.SetFlexGrow(1.0f);
     head->AddChild(filterBox_);
     status_ = CreateLabel("appsStatus", "Loading applications…");
-    status_->SetTextColor(kStatusColor);
+    status_->SetThemeVariant(LabelVariant::Muted);   // muted ink, now and after a theme change
+    status_->SetTextColor(Roles().inkMuted);
     status_->layoutItem.SetFlexShrink(0.0f);
     head->AddChild(status_);
     page->AddChild(head);
@@ -202,8 +208,25 @@ void UltraDesktopAppStarter::Open() {
     // read on a thread of its own.
     window_->Show();
     filterBox_->SetFocus(true);
+    // The look changes while the window is open (the desktop's Theme menu,
+    // UOS-Settings, the host): the framework re-styles the elements that
+    // follow the theme, then ApplyLook rebuilds what this window coloured.
+    if (themeHandler_ == 0) {
+        themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
+    }
     window_->InstallEventFilter("appsDrag", [this](const UCEvent& event) { return OnPointerEvent(event); },
                                 {UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::MouseUp});
+
+    // A host that brings its own list (Hooks::applications) is the only
+    // source: nothing is read from disk, and the list kept between openings
+    // is neither read nor written, so a caller - a test among them - sees
+    // exactly what it handed in.
+    if (hooks_.applications) {
+        auto supplied = hooks_.applications;
+        work_.Run<AppList>([supplied]() { return supplied(); },
+                           [this](AppList apps) { ShowApps(std::move(apps)); });
+        return;
+    }
 
     AppList kept;
     bool fresh = false;
@@ -221,6 +244,15 @@ void UltraDesktopAppStarter::Open() {
             if (!SameApplications(apps, apps_)) ShowApps(std::move(apps));
         });
     }
+}
+
+void UltraDesktopAppStarter::ApplyLook() {
+    if (!open_ || !window_) return;
+    if (status_) status_->SetTextColor(Roles().inkMuted);
+    // The headings, the tiles and the drag label take the theme as they are
+    // made: made again.
+    HideDragLabel();
+    RebuildSoon();
 }
 
 void UltraDesktopAppStarter::Raise() {
@@ -242,17 +274,30 @@ void UltraDesktopAppStarter::SetView(const std::string& view) {
 
 void UltraDesktopAppStarter::Rebuild() {
     if (!body_) return;
-    body_->ClearChildren();
+    // What the pane holds is thrown away and built again - unless the tree
+    // is on screen and stays on screen, in which case the tree and the list
+    // beside it are kept and only the tree's rows are replaced (FillTree).
+    // Replacing the elements threw away the view with them: the category the
+    // user had chosen, the rows they had opened and where they had scrolled
+    // to all went, on every keystroke in the filter box.
+    const auto dropThePane = [this]() {
+        body_->ClearChildren();
+        tilesScroll_.reset();
+        tilesArea_ = nullptr;
+        tree_.reset();
+        list_.reset();
+        listModel_.reset();
+    };
+    // The tiles and the places they can be dropped are made again whichever
+    // way the page is built, so they are forgotten here rather than in
+    // dropThePane, which a kept pane does not call.
     tileApps_.clear();
     dropZones_.clear();
-    tilesArea_ = nullptr;
     nodeGroup_.clear();
-    tree_.reset();
-    list_.reset();
-    listModel_.reset();
     nodeApps_.clear();
     listed_.clear();
     if (!apps_) {
+        dropThePane();
         status_->SetText("Loading applications…");
         return;
     }
@@ -273,13 +318,21 @@ void UltraDesktopAppStarter::Rebuild() {
     }
     status_->SetText(std::to_string(shown) + " of " + std::to_string(apps_->size()) + " applications");
 
+    // A pane is kept only while it is the thing on screen and there is
+    // something to show in it.
+    const bool keepTreePane  = !groups.empty() && view_ == "tree"  && tree_ && list_ && listModel_;
+    const bool keepTilesPane = !groups.empty() && view_ == "tiles" && tilesScroll_;
+    if (!keepTreePane && !keepTilesPane) dropThePane();
+
     if (groups.empty()) {
         auto none = CreateLabel("appsNone", filter_.empty() ? "No applications were found."
                                                             : "No application matches \"" + filter_ + "\".");
-        none->SetTextColor(kStatusColor);
+        none->SetThemeVariant(LabelVariant::Muted);
+        none->SetTextColor(Roles().inkMuted);
         body_->AddChild(none);
     } else if (view_ == "tree") {
-        BuildTreeAndList(groups);
+        if (keepTreePane) FillTree(groups);
+        else BuildTreeAndList(groups);
     } else {
         BuildTiles(groups);
     }
@@ -290,10 +343,19 @@ void UltraDesktopAppStarter::Rebuild() {
 // ===== TILES =====
 
 void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
-    auto scroll = CreateScrollableContainer("appsTiles", 0, 0, 0, 0, true, false);
-    scroll->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    scroll->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
-    scroll->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The area is made once and filled again after that, so the user keeps
+    // their place in the list while they type in the filter box.
+    const bool fresh = !tilesScroll_;
+    const int wasAt = fresh ? 0 : tilesScroll_->GetVerticalScrollPosition();
+    if (fresh) {
+        tilesScroll_ = CreateScrollableContainer("appsTiles", 0, 0, 0, 0, true, false);
+        tilesScroll_->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        tilesScroll_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
+        tilesScroll_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    } else {
+        tilesScroll_->ClearChildren();
+    }
+    const std::shared_ptr<UltraCanvasContainer>& scroll = tilesScroll_;
 
     int tileNo = 0;
     for (const AppGroup& group : groups) {
@@ -308,7 +370,7 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
         icon->SetElementSize(Size2Df(22, 22));
         icon->layoutItem.SetFlexShrink(0.0f);
         heading->AddChild(icon);
-        heading->AddChild(MakeHeading("appsTitle:" + group.key, group.title, 16, kHeadingColor));
+        heading->AddChild(MakeHeading("appsTitle:" + group.key, group.title, 16, Roles().ink));
         scroll->AddChild(heading);
         const bool dropHere = group.category != AppCategory::Recent;
         if (dropHere) dropZones_.push_back({heading.get(), group.key});
@@ -317,7 +379,7 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
             const AppSection& section = group.sections[s];
             if (!section.title.empty()) {
                 auto sub = MakeHeading("appsSub:" + group.key + ":" + std::to_string(s), section.title, 13,
-                                       kSubheadingColor);
+                                       Roles().inkMuted);
                 sub->SetMargin(6, 0, 0, 34);
                 scroll->AddChild(sub);
                 if (dropHere) dropZones_.push_back({sub.get(), group.key});
@@ -369,7 +431,12 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
         }
     }
     tilesArea_ = scroll.get();
-    body_->AddChild(scroll);
+    if (fresh) body_->AddChild(scroll);
+    scroll->InvalidateLayout();
+    // Back where the user was. A filter that shortens the list clamps this
+    // to the new end at the next layout, which is what scrolling past the
+    // end would do anyway.
+    scroll->ScrollToVertical(wasAt);
 }
 
 // ===== TREE AND LIST =====
@@ -387,8 +454,59 @@ void UltraDesktopAppStarter::BuildTreeAndList(const std::vector<AppGroup>& group
     tree_->SetShowFirstChildOnExpand(false);
     tree_->size.width = CSSLayout::Dimension::Px(kTreeWidth);
     tree_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    tree_->SetRootNode(TreeNodeData("apps", "Applications"));
     tree_->SetRootVisible(false);
+    tree_->onNodeSelected = [this](TreeNode* node) {
+        if (node) ShowListOf(node->data.nodeId);
+    };
+    // Which rows the user has open, so a rebuild can open them again.
+    tree_->onNodeExpanded  = [this](TreeNode* node) {
+        if (node) expandedNodes_.insert(node->data.nodeId);
+    };
+    tree_->onNodeCollapsed = [this](TreeNode* node) {
+        if (node) expandedNodes_.erase(node->data.nodeId);
+    };
+    pane->AddChild(tree_);
+
+    list_ = std::make_shared<UltraCanvasListView>("appsList", 0, 0, 400, 300);
+    listModel_ = std::make_shared<UltraCanvasSimpleListModel>();
+    list_->SetModel(listModel_);
+    auto delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
+    delegate->SetFontSize(13.0f);
+    delegate->SetIconSize(kListIcon);
+    delegate->SetIconSpacing(10);
+    delegate->SetTextPadding(8);
+    delegate->SetRowHeight(36);
+    // The list takes the theme as it is made, but this delegate comes after:
+    // its text in the theme's ink (white on the accent when selected).
+    delegate->SetTextColor(Roles().ink);
+    delegate->SetSelectedTextColor(Roles().onAccent);
+    list_->SetDelegate(delegate);
+    list_->SetRowHeight(36);
+    list_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
+    list_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // One click starts, as on the tiles; Return starts the selected row.
+    // One click starts, as on the tiles - on the release, which the drag
+    // filter sees (OnPointerEvent): the list reports a click on the press,
+    // and a press may be the start of a drag. Return starts the selected row.
+    list_->onItemActivated = [this](int row) {
+        if (row >= 0 && static_cast<size_t>(row) < listed_.size()) Launch((*apps_)[listed_[row]]);
+    };
+    list_->onContextMenu = [this](int row, const UCEvent& event) {
+        if (row < 0 || static_cast<size_t>(row) >= listed_.size()) return;
+        ShowAppMenu((*apps_)[listed_[row]], event.pointerWindow.x, event.pointerWindow.y);
+    };
+    pane->AddChild(list_);
+    body_->AddChild(pane);
+
+    FillTree(groups);
+}
+
+void UltraDesktopAppStarter::FillTree(const std::vector<AppGroup>& groups) {
+    if (!tree_) return;
+    // Every row is replaced; the scope keeps the view the user had, and the
+    // rows they had opened are opened again below (a new row is closed).
+    TreeRebuildScope keepTheView(*tree_);
+    tree_->SetRootNode(TreeNodeData("apps", "Applications"));
     for (const AppGroup& group : groups) {
         const std::string id = "cat:" + group.key;
         TreeNodeData data(id, group.title + "  (" + std::to_string(group.count) + ")");
@@ -411,40 +529,17 @@ void UltraDesktopAppStarter::BuildTreeAndList(const std::vector<AppGroup>& group
             std::sort(all.begin(), all.end());
         }
     }
-    tree_->onNodeSelected = [this](TreeNode* node) {
-        if (node) ShowListOf(node->data.nodeId);
-    };
-    pane->AddChild(tree_);
 
-    list_ = std::make_shared<UltraCanvasListView>("appsList", 0, 0, 400, 300);
-    listModel_ = std::make_shared<UltraCanvasSimpleListModel>();
-    list_->SetModel(listModel_);
-    auto delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
-    delegate->SetFontSize(13.0f);
-    delegate->SetIconSize(kListIcon);
-    delegate->SetIconSpacing(10);
-    delegate->SetTextPadding(8);
-    delegate->SetRowHeight(36);
-    list_->SetDelegate(delegate);
-    list_->SetRowHeight(36);
-    list_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
-    list_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    // One click starts, as on the tiles; Return starts the selected row.
-    // One click starts, as on the tiles - on the release, which the drag
-    // filter sees (OnPointerEvent): the list reports a click on the press,
-    // and a press may be the start of a drag. Return starts the selected row.
-    list_->onItemActivated = [this](int row) {
-        if (row >= 0 && static_cast<size_t>(row) < listed_.size()) Launch((*apps_)[listed_[row]]);
-    };
-    list_->onContextMenu = [this](int row, const UCEvent& event) {
-        if (row < 0 || static_cast<size_t>(row) >= listed_.size()) return;
-        ShowAppMenu((*apps_)[listed_[row]], event.pointerWindow.x, event.pointerWindow.y);
-    };
-    pane->AddChild(list_);
-    body_->AddChild(pane);
+    // The rows the user had open. A row the filter left out comes back open
+    // when it returns, which is what someone narrowing a search expects.
+    for (const std::string& nodeId : expandedNodes_) {
+        if (TreeNode* node = tree_->FindNode(nodeId); node && !node->children.empty()) {
+            node->Expand();
+        }
+    }
 
-    // Where the window opens: the node chosen before (the filter rebuilt
-    // the tree), else the first category - Recent when there is a history.
+    // Where the window opens: the node chosen before (the filter filled the
+    // tree again), else the first category - Recent when there is a history.
     std::string start = nodeApps_.count(selectedNode_) ? selectedNode_ : "cat:" + groups.front().key;
     if (TreeNode* node = tree_->FindNode(start)) {
         tree_->SelectNode(node);
@@ -602,8 +697,10 @@ void UltraDesktopAppStarter::ShowDragLabel(const Point2Di& at, const std::string
     if (!window_) return;
     if (!dragLabel_) {
         dragLabel_ = CreateLabel("appsDragLabel", text);
-        dragLabel_->SetBackgroundColor(Color(32, 32, 36, 230));
-        dragLabel_->SetTextColor(Colors::White);
+        // The accent, with the text that reads on it: a chip that stands
+        // out from the tiles in either look.
+        dragLabel_->SetBackgroundColor(Roles().accent);
+        dragLabel_->SetTextColor(Roles().onAccent);
         dragLabel_->SetPadding(4, 8);
         dragLabel_->SetFontSize(12);
         window_->AddChild(dragLabel_);

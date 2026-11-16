@@ -9,10 +9,12 @@
 // variants (Neutral / Primary / Success / Warning / Danger / Info). The badge
 // auto-sizes to its content and, when anchored, follows its anchor.
 //
+// Version: 1.3.0 - SetGrowInward: an anchored pill wider than it is tall grows
+//                 away from its corner, so "100" stays inside a bar's edge
 // Version: 1.2.0 - BadgeStyle::FromTheme, ApplyTheme: the badge follows the theme (BadgeStyle::primaryColor is the
 //                  Primary fill); a SetStyle by hand stops the following
 // Version: 1.1.0 - BadgeStyle::cornerRadius: pill (default) or rounded box.
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -105,6 +107,7 @@ namespace UltraCanvas {
         float anchorOffsetX = 0.0f;
         float anchorOffsetY = 0.0f;
         bool  overlayRing = true;
+        bool  growInward = false;
 
     public:
         UltraCanvasBadge(const std::string& identifier, float x, float y, float w, float h);
@@ -149,6 +152,13 @@ namespace UltraCanvas {
                       BadgeCorner corner = BadgeCorner::TopRight,
                       float offsetX = 0.0f, float offsetY = 0.0f);
         void SetOverlayRing(bool on) { overlayRing = on; RequestRedraw(); }
+        // An anchored badge is centred on its corner. With grow-inward on, a
+        // pill wider than it is tall keeps the place a round badge would have
+        // on the corner's side and grows towards the anchor's middle instead:
+        // its outer edge stays put however long the text ("100", "DEU"), which
+        // keeps it from running off a bar at the edge of the screen.
+        void SetGrowInward(bool on) { growInward = on; InvalidateLayout(); RequestRedraw(); }
+        bool GetGrowInward() const { return growInward; }
 
         // ===== OVERRIDES =====
         bool AcceptsFocus() const override { return false; }

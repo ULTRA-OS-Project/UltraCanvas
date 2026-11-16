@@ -1,3 +1,30 @@
+#### 2026-11-15 *1.84*
+- **A window started dark has a dark menu bar, toolbar and status bar.** The
+  dark colours were laid over the window only when the look changed, so a
+  start under the dark look (`--dark`, or a dark desktop) kept the light menu
+  bar, toolbar and status bar strip it was built with, around a dark document.
+  The status bar strip itself also had no dark colour at all; it now follows
+  the look in both directions.
+- **View > Dark Mode: Document Background.** Under the dark look, text tabs
+  can show their text on a dark page (as before), a light grey one or a white
+  one, while the window around them stays dark. Remembered in the settings
+  (`darkDocumentBackground`); the light look is unaffected.
+- **The "dictionary could not be loaded" message can be translated.** It was
+  put together from English pieces around the dictionary's name; it is now
+  two whole sentences through `TrF`, and names the dictionary still in use by
+  its own name, as the status bar does, instead of by its code.
+
+#### 2026-11-15 *1.83*
+- **The status bar says which language the document is spell checked in.**
+  A new item beside the zoom shows "Spelling: English (United States)" (the
+  dictionary's own name), "Spelling: off" while checking is off, or "Spelling:
+  no dictionary" when none could be loaded; its tooltip adds the code and
+  whether the language was detected automatically. It follows the active tab,
+  the Check Spelling switch, the Dictionary menu and an automatic switch of
+  language - which until now happened without a word. A click on it opens the
+  Spelling menu (Check Spelling, Dictionary, Detect Language Automatically,
+  Recheck Document). A tab that is never checked - hex view, a PDF - hides it.
+
 #### 2026-11-13 *1.82*
 - **Text boxes and drawings in a word-processing document can be picked up,
   moved and resized on the page**, like pictures; the new place is saved.

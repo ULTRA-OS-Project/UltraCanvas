@@ -1,5 +1,7 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Version: 1.9.0 - the focused row carries a dashed focus ring while the list holds the focus
+// Version: 1.8.0 - the theme reaches the delegate (IItemDelegate::ApplyTheme), also one set after construction
 // Version: 1.7.0 - SetSelectsOnContextMenu(false): a right press leaves the selection as it is
 // Version: 1.6.0 - SetColumnFitting
 // Version: 1.5.0 - a horizontal scrollbar when the columns are wider than the view
@@ -7,7 +9,7 @@
 // Version: 1.3.0 - the hover follows the rows when they scroll under a still pointer
 // Version: 1.2.0 - model callbacks inert once the view is destroyed; OnModelChanged
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
@@ -68,11 +70,7 @@ namespace UltraCanvas {
     void UltraCanvasListView::ApplyTheme(const UltraCanvasTheme& theme) {
         SetStyle(ListViewStyle::FromTheme(theme, viewStyle));
         SetBordersColor(theme.roles.lineStrong);
-        if (auto* standard = dynamic_cast<UltraCanvasDefaultListDelegate*>(delegate.get())) {
-            standard->SetTextColor(theme.roles.ink);
-            standard->SetSelectedTextColor(theme.roles.onAccent);
-            standard->SetFontSize(static_cast<float>(theme.FontSize(ThemeTextRole::Body)));
-        }
+        if (delegate) delegate->ApplyTheme(theme);
     }
 
     // ===== MODEL / DELEGATE / SELECTION WIRING =====
@@ -139,6 +137,10 @@ namespace UltraCanvas {
 
     void UltraCanvasListView::SetDelegate(std::shared_ptr<IItemDelegate> newDelegate) {
         delegate = newDelegate ? newDelegate : std::make_shared<UltraCanvasDefaultListDelegate>();
+        // A delegate set after the list was made takes the theme the list
+        // already has (and every change after, through ApplyTheme), unless
+        // the application styled it itself.
+        if (GetFollowTheme()) delegate->ApplyTheme(UltraCanvasTheme::Current());
         InvalidateRowGeometry();
         UpdateScrollbar();
         RequestRedraw();
@@ -997,6 +999,26 @@ namespace UltraCanvas {
                     colX += colW;
                 }
             }
+
+            // The focus ring: a dashed one-pixel outline round the row the keys
+            // continue from, only while the list holds the keyboard focus - so
+            // a focused row is told from one that is merely selected, and a
+            // list that lost the focus shows none. Drawn by the view over what
+            // the delegate drew, once across the whole row, so every delegate
+            // gets it. The automatic colour contrasts with the row it sits on:
+            // the text-on-selection colour on a selected row, the selection
+            // colour on any other.
+            if (isFocused) {
+                const Color ring = focusRingColor.a > 0 ? focusRingColor
+                                 : (isSelected ? viewStyle.focusRingOnSelectionColor
+                                               : viewStyle.selectionBackgroundColor);
+                ctx->PushState();
+                ctx->SetLineDash(UCDashPattern({2.0, 2.0}));
+                ctx->DrawFilledRectangle(Rect2Di(viewport.x + 1, rowY + 1, viewport.width - 2, rowH - 2),
+                                         Colors::Transparent, 1.0f, ring);
+                ctx->SetLineDash(UCDashPattern::EMPTY);
+                ctx->PopState();
+            }
         }
 
         ctx->PopState();
@@ -1530,6 +1552,7 @@ namespace UltraCanvas {
         s.alternateRowColor = r.panel;
         s.selectionBackgroundColor = r.accent;
         s.hoverBackgroundColor = r.hover;
+        s.focusRingOnSelectionColor = r.onAccent;
         s.headerFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Caption));
         s.scrollbarStyle = ScrollbarStyle::FromTheme(theme, base.scrollbarStyle);
         return s;

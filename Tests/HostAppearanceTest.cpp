@@ -311,12 +311,24 @@ int main() {
         const AppearanceSettings bad = AppearanceSettings::Parse("look=blue\naccent=red\nfontsize=-3\nscale=9\ncontrast=loud\n");
         CHECK(bad.IsSystem(), "a value the file cannot mean keeps the default");
         CHECK(AppearanceSettings::Parse(s.Serialize()) == s, "Serialize and Parse round-trip");
-        CHECK(none.Serialize() == "look=system\naccent=system\nfont=system\nfontsize=system\nscale=1\ncontrast=system\n", "the defaults serialise as the documented file");
+        CHECK(none.Serialize() == "look=system\naccent=system\nfont=system\nfontsize=system\nscale=1\ncontrast=system\nlighttext=firm\n", "the defaults serialise as the documented file");
         HostAppearance host = DefaultHostAppearance();
         CHECK(!none.ApplyTo(host) && host == DefaultHostAppearance(), "the defaults change nothing");
         CHECK(s.ApplyTo(host) && host.dark && host.accent && Same(*host.accent, Color(0xe9, 0x54, 0x20)) && host.uiFont.fontFamily == "Noto Sans"
               && Near(host.uiFont.fontSize, 10.5) && Near(host.textScale, 1.25) && host.highContrast && host.source == "default+settings",
               "the choices over the host: the look, the accent, the font, the size, the scale over the host's, high contrast, the source");
+        // light text: firm unless the file says plain
+        const AppearanceSettings plain = AppearanceSettings::Parse("lighttext=Plain\n");
+        HostAppearance plainHost = DefaultHostAppearance();
+        CHECK(plain.lightText == "plain" && !plain.IsSystem() && AppearanceSettings::Parse("lighttext=bold\n").IsSystem(),
+              "lighttext=plain is read, a word it cannot mean keeps firm");
+        CHECK(plainHost.firmLightText && plain.ApplyTo(plainHost) && !plainHost.firmLightText && plainHost != DefaultHostAppearance(),
+              "plain turns the host's firm light text off, and the host compares as changed");
+        CHECK(HostAppearanceReport(plainHost).find(", plain light text") != std::string::npos
+              && HostAppearanceReport(DefaultHostAppearance()).find("light text") == std::string::npos, "the report names plain light text only");
+        CHECK(ApplyHostAppearanceOverride(plainHost, "lighttext=firm") && plainHost.firmLightText
+              && ApplyHostAppearanceOverride(plainHost, "lighttext=plain") && !plainHost.firmLightText
+              && !ApplyHostAppearanceOverride(plainHost, "lighttext=loud"), "the override's lighttext=firm and =plain");
         HostAppearance scaled = DefaultHostAppearance();
         scaled.textScale = 1.5;
         AppearanceSettings onlyScale;

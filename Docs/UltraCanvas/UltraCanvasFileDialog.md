@@ -461,20 +461,27 @@ media viewer offers an SVG this way and draws it again at the size chosen.
 
 #### Opened from a settings window
 
-The dialog is drawn in its own type size (12) unless it is given another:
+The dialog is drawn in the theme's body size unless it is given another:
 the last argument of the `FileSavePicture` overload, `fontSize`, draws its
-captions, controls and buttons at the size of the window it is opened from,
-its rows and columns scaled to match. Whatever the size, the window is as
+captions, controls and buttons - the size fields and lists too - at the size
+of the window it is opened from, its rows and columns scaled to match. The
+Save dialog's Settings button passes its own. (Before 2026-11 the default was
+a fixed 12 for the captions, checkboxes and buttons only, which drew them a
+third larger than the fields beside them where the body text is smaller, as
+on Windows.) Whatever the size, the window is as
 wide as its captions and controls need, and the Defaults button as wide as
 its label. A settings window built on `SettingsPageKit` opens it through
 `SettingsPageKit::ShowSaveSettingsDialog(extensionOrPath, parent)`, which
-passes the window's `kTextFontSize` - UltraSnip's *File type* page does:
+passes the window's `SettingsPageKit::TextFontSize()` - UltraSnip's *File
+type* page does. That is the theme's body size, the desktop's interface
+font size, so where the desktop names none (12, as under Xvfb) the dialog
+opened from a settings window is drawn at its own size:
 
 <!-- doc-check: std::string pictureType; UltraCanvasWindowBase* settingsWindow = nullptr; -->
 ```cpp
-// The type's settings, in the settings window's 10-point text
+// The type's settings, in the settings window's type size
 SettingsPageKit::ShowSaveSettingsDialog(pictureType, settingsWindow);
-// The same, by hand: no size row (a picture without a size), font size 10
+// By hand, at a size of your own: no size row (a picture without a size), font size 10
 UltraCanvasFileLoader::ShowSaveSettingsDialog(pictureType, FileSavePicture(), FileSaveImageSize(),
                                               settingsWindow, nullptr, 10.0f);
 ```

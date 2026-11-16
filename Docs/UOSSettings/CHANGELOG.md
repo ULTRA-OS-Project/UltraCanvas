@@ -1,3 +1,29 @@
+#### 2026-11-15 *0.25.0*
+- **Appearance > Look has a Light text row.** *Firm*, the default, draws
+  light text on a dark ground a little stronger in every application, so a
+  dark window reads as clearly as a light one; *Plain* draws every text
+  once. Written to `Appearance.conf` as `lighttext=`; a running application
+  follows within a moment.
+
+#### 2026-11-14 *0.24.0*
+- **Desktop > Battery**: *Icon and percentage* (the default) or *Icon
+  only* - whether UltraDesktop's battery shows its percentage as a badge.
+- **Dark look**: the scrolled pages (Desktop, Info bar) and the tables
+  (Last used folder, Trusted certificates, Notification registrations) take
+  the theme's scrollbars instead of a light default.
+- **Desktop > Theme is the system look.** It writes Appearance.conf, the
+  same as *Appearance > Look*, and offers *As the system* too: the
+  desktop's bars and every application turn dark or light together.
+- **Desktop > Info bar**: a tick box for each icon of UltraDesktop's info
+  panel, and the tray icons; unticked, the icon leaves the desktop's bar.
+- **`--page <page>`** opens the window on that page (`desktop/info-bar`), and
+  a running UOS-Settings shows it when started so - UltraDesktop's *Info bar
+  icons...* uses it.
+- The note on the RAM disc says what `ultrafiler` means.
+- **Desktop > RAM disc says what it takes**: its tooltip explains
+  `ultrafiler` (UltraFiler shows its RAM disc, or offers to make one), a
+  folder, and empty (no RAM disc button).
+
 #### 2026-11-12 *0.23.0*
 - **The desktop's look, and every text translatable.** The window is light
   or dark as the desktop is - or as its own *Appearance > Look* page says -

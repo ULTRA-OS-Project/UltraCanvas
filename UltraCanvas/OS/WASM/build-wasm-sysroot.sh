@@ -2,7 +2,8 @@
 # Build the wasm sysroot UltraCanvas needs under emcmake: cairo (pixman),
 # pango (glib, fribidi, harfbuzz), fontconfig, freetype, tinyxml2 and libvips
 # with its PNG, JPEG, TIFF and WebP codecs, plus their transitive deps (zlib,
-# libpng, libjpeg-turbo, libtiff, libwebp, expat, libffi, pcre2).
+# libpng, libjpeg-turbo, libtiff, libwebp, expat, libffi, pcre2), and
+# libsodium (UltraCrypt: the store's Ed25519 check, the vault's sealing).
 #
 # Where a dependency is also built by kleisauke/wasm-vips, the recipe below
 # follows that project (including its pre-patched glib/libvips branches).
@@ -156,6 +157,19 @@ apt_source() { (cd "$1" && apt-get source "$2" >/dev/null); }
     -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DZLIB_COMPAT=ON \
     -DWITH_RUNTIME_CPU_DETECTION=OFF -DWITH_OPTIM=OFF
   make -C _build install
+)
+
+# --- libsodium (UltraCrypt) -----------------------------------------------------
+# As libsodium's own dist-build/emscripten.sh configures it: no assembler
+# paths, no stack protector, no pthreads, no PIE. Its SIMD paths are x86's,
+# so -msimd128 stays out of its flags.
+[ -f "$SYSROOT/lib/pkgconfig/libsodium.pc" ] || (
+  stage libsodium
+  mkdir -p $DEPS/libsodium && cd $DEPS/libsodium
+  [ -f configure ] || curl -Ls https://github.com/jedisct1/libsodium/releases/download/1.0.20-RELEASE/libsodium-1.0.20.tar.gz | tar xzC . --strip-components=1
+  CFLAGS="${CFLAGS/-msimd128/}" emconfigure ./configure --host=$CHOST --prefix=$SYSROOT --enable-static --disable-shared \
+    --disable-dependency-tracking --without-pthreads --disable-ssp --disable-asm --disable-pie
+  make install
 )
 
 # --- libffi (gobject) -----------------------------------------------------------

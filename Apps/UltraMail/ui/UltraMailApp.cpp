@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.11.0 - the look follows a change of the theme while UltraMail is open: a theme
+//                   change handler (ApplyLook) styles every open window again
 // Version: 0.10.1 - Settings > Display > Email warnings reach the reading pane's warning strip
 // Version: 0.10.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.9.44 - an earlier version's body directories moved to the case-safe layout at start
@@ -94,7 +96,7 @@
 // Version: 0.9.8 - replies and forwards of HTML mail keep the formatting
 // Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
 //                  style, no master-password prompt); old vaults migrate once
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 #include "UltraMailHeaderText.h"
@@ -212,6 +214,7 @@ std::string UltraMailApp::SlugFromEmail(const std::string& email) {
 }
 
 UltraMailApp::~UltraMailApp() {
+    if (themeHandler_) UltraCanvas::UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     feed_.SetOnNotificationAction(nullptr);   // a late click finds no app
     pushAlive_->store(false);                 // a late push callback finds no app
     bodiesAlive_->store(false);               // the message files' encryption stops
@@ -369,6 +372,7 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     std::optional<Trace::Stage> step;
     step.emplace("Create the window", 0);
     window_ = CreateWindow(config);
+    Theme::SetFill(window_, Theme::PageBackground);
     GuardQuitDuringTransfers(window_);
     // The timing trace hears of every frame; the first few after the start
     // are reported in full, timed from the start of the process.
@@ -395,6 +399,14 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
         ResizeViews(static_cast<float>(cw), static_cast<float>(ch));
     };
 
+    // The look follows the theme from here: the elements that follow it by
+    // themselves re-style as it changes, and ApplyLook brings UltraMail's own
+    // colours after them (the handler runs after the application's, which
+    // was installed first) - in this window and in every other one open.
+    if (!themeHandler_)
+        themeHandler_ = UltraCanvas::UltraCanvasTheme::AddChangeHandler(
+            [this](const UltraCanvas::UltraCanvasTheme&) { ApplyLook(); });
+
     step.emplace("Fill it: the accounts, the address book, the selected inbox (Refresh)");
     Refresh();
     step.reset();
@@ -420,6 +432,13 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     }
 
     return window_;
+}
+
+void UltraMailApp::ApplyLook() {
+    Theme::ReapplyLook();
+    if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent())
+        for (const auto& window : app->GetWindows())
+            if (window) window->RequestRedraw();
 }
 
 void UltraMailApp::FinishStartup() {
@@ -916,14 +935,16 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     busyIndicator_ = CreateBusyIndicator("umBusy", 0, 0, statusHeight * 0.6f);
-    BusyIndicatorStyle busyStyle = busyIndicator_->GetStyle();
-    busyStyle.arcColor = Theme::Accent();
-    busyIndicator_->SetStyle(busyStyle);
+    Theme::Follow(busyIndicator_, "style", [](UltraCanvasBusyIndicator& b) {
+        BusyIndicatorStyle busyStyle = b.GetStyle();
+        busyStyle.arcColor = Theme::Accent();
+        b.SetStyle(busyStyle);
+    });
     busyIndicator_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     statusRow->AddChild(busyIndicator_);
 
     statusLabel_ = Theme::MakeLine("umStatus", "Ready", statusHeight,
-                                   Theme::SizeSecondary(), Theme::TextSecondary());
+                                   Theme::SizeSecondary(), Theme::TextSecondary);
     statusRow->AddChild(statusLabel_);
     statusLabel_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
 
@@ -931,7 +952,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // go before clicking: a summary, every link in its tooltip, and the target
     // of the link under the pointer while it is on one.
     linksLabel_ = Theme::MakeLine("umLinks", "", statusHeight,
-                                  Theme::SizeSecondary(), Theme::TextSecondary());
+                                  Theme::SizeSecondary(), Theme::TextSecondary);
     linksLabel_->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
     statusRow->AddChild(linksLabel_);
     ApplyLinkDisplay();
@@ -1281,6 +1302,7 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     cfg.height = 600;
     cfg.backgroundColor = Theme::CardBackground();
     auto win = CreateWindow(cfg);
+    Theme::SetFill(win, Theme::CardBackground);
     GuardQuitDuringTransfers(win);
 
     // Its own view: the buttons, the toolbar and Send act on this window's
@@ -2354,6 +2376,7 @@ void UltraMailApp::OpenSourceViewer(const std::string& subject, const std::strin
     cfg.height = 640;
     cfg.backgroundColor = Theme::CardBackground();
     auto win = CreateWindow(cfg);
+    Theme::SetFill(win, Theme::CardBackground);
     GuardQuitDuringTransfers(win);
 
     auto root = CreateContainer("mailSourceRoot", 0, 0,
@@ -3708,6 +3731,7 @@ void UltraMailApp::OpenContacts() {
     cfg.height = 520;
     cfg.backgroundColor = Theme::PageBackground();
     auto win = CreateWindow(cfg);
+    Theme::SetFill(win, Theme::PageBackground);
     GuardQuitDuringTransfers(win);
 
     contactsView_.SetStore(&contacts_);
@@ -3753,6 +3777,7 @@ void UltraMailApp::OpenOutbox() {
     cfg.height = 380;
     cfg.backgroundColor = Theme::PageBackground();
     auto win = CreateWindow(cfg);
+    Theme::SetFill(win, Theme::PageBackground);
     GuardQuitDuringTransfers(win);
     UltraCanvasWindow* raw = win.get();
 

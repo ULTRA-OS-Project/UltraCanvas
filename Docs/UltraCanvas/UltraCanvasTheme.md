@@ -20,8 +20,8 @@ those elements, the tabbed container and the text area
 (`include/UltraCanvasUIElement.h`)
 **Tests:** `Tests/UltraCanvasThemeTest.cpp` (without a display)
 **Design:** `Docs/Research/UltraVideoDesignProposal.md` §5.8
-**Version:** 1.15.0 - TakeHostFonts for an Own provider; the four Own applications on the policy (T6)
-**Last Modified:** 2026-11-11
+**Version:** 1.16.0 - Dark's ink is white; Appearance.conf's lighttext; 1.15.0 - TakeHostFonts for an Own provider; the four Own applications on the policy (T6)
+**Last Modified:** 2026-11-15
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -134,12 +134,20 @@ Both presets keep these contrast ratios (WCAG 2 relative luminance), and
 
 `Dark`'s greys came from the dark menu, tooltip and text area and hold
 these as they are: the faint ink is 4.7:1 on `raised` and 5.6:1 on
-`panel`. `Light` differs from the elements' defaults in one colour:
+`panel`. Its ink is white, as the Windows and GNOME dark looks write their
+text (235 until 1.16.0, which read greyer than a native window beside it);
+the muted (190) and faint (150) inks keep the steps below it. `Light` differs from the elements' defaults in one colour:
 `lineStrong` is a mid grey (128) rather than `ButtonShadow` (160, 2.6:1 on
 white), so a border an element draws because it follows the theme reaches
 3:1; an element styled by hand keeps its default border. A theme of your
 own should hold the same ratios on the surfaces each ink is meant for -
 muted text is not for `pressed`, faint text not for `hover`.
+
+A ratio is the colours; the weight of the text is the other half of
+reading it. Light text on a dark ground is drawn firmer by the render
+context, in every application and without a theme asking - see *Light text
+on a dark ground* in
+[`UltraCanvasTextRenderingExamples.md`](UltraCanvasTextRenderingExamples.md).
 
 ## Using it
 
@@ -205,9 +213,17 @@ element, so it keeps its look through every change, as before; an element
 that should keep both calls `SetStyle` and then `SetFollowTheme(true)`,
 which puts the roles over the given style and follows on from there. A
 setter that changes one thing (`SetTextColor`, `SetFont`) does not stop
-the following: the next theme change puts the theme's value back, so a
+the following: the next theme change puts the theme's colour back, so a
 colour an application means to keep goes through `SetStyle`, or is set
-again from its own change handler.
+again from its own change handler. A **font size set by hand** is the
+exception: `SetFontSize` / `SetFont` on a label, a button or a tree view,
+and on the list's default delegate, is remembered, and the next theme
+change keeps that size (and `SetFont`'s family) while the colours follow -
+a caption with a size of its own no longer jumps to the body size when the
+look changes, and needs no `SetFollowTheme(false)` for it. A list hands the
+theme on to its delegate (`IItemDelegate::ApplyTheme`), also to one set
+with `SetDelegate` after the list was made; the default delegate keeps a
+text colour or size the application set on it.
 
 ```cpp
 UltraCanvasUIElement::SetFollowThemeByDefault(true);        // what the policy does; an Own application's own call
@@ -220,7 +236,20 @@ ButtonStyle own = button->GetStyle();
 own.cornerRadius = 10;
 button->SetStyle(own);                                      // styled by hand: follows no more
 button->SetFollowTheme(true);                               // the roles over the hand-set style, following again
+button->SetFontSize(15.0f);                                 // kept through every theme change; the colours follow
 ```
+
+Some defaults are made for one look and change with the theme's `dark`
+flag, so a light window looks as it always did and a dark one is not left
+with light parts: under a dark theme the split pane's handle and the icons
+on its bar take the roles (`SplitPaneStyle::FromTheme`), the scrollbar's
+thumb is the track mixed toward the ink rather than the bright control
+border, a tree's and the clipboard history's selected row is the soft
+accent with ink on it (a coloured icon on it keeps its contrast), the
+section card (`GroupBoxVisualStyle::SectionCard(theme)`) is the panel on the
+ground, and a button's `SetColors` / `SetTextColors` with fewer than four
+colours derive a disabled face and text that sink toward the ground instead
+of turning light grey.
 
 `SetCurrent` calls every **change handler** after the switch. The
 application installs one at start-up (`UltraCanvasApplicationBase::Initialize`)
@@ -387,7 +416,14 @@ font=system          system | <family>
 fontsize=system      system | <points>
 scale=1.0            over the host's text scale, 0.5 to 4
 contrast=system      system | high | normal
+lighttext=firm       firm | plain
 ```
+
+`lighttext` is the one line no host has a word for: `firm`, the default,
+draws light text on a dark ground a second time so it keeps its weight
+(*Light text on a dark ground* in
+[`UltraCanvasTextRenderingExamples.md`](UltraCanvasTextRenderingExamples.md));
+`plain` draws every text once.
 
 `AppearanceSettings` (`UltraCanvasAppearanceSettings.h`) is the file:
 `Parse` and `Serialize` are the text and back, `ApplyTo` puts the choices

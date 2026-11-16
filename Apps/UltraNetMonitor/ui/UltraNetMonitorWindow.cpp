@@ -1,4 +1,8 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.cpp
+// Version: 0.18.1 - the look follows the theme: the split pane's divider is the theme's ground
+//                   (no fixed light grey), the tables, the columns and the bars styled here
+//                   follow the theme again on a change (SetFollowTheme after their SetStyle);
+//                   the divider's handle from the theme's roles, again on a change
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorWindow.h"
 
@@ -8,6 +12,7 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasTheme.h"
 
 #include <algorithm>
 #include <chrono>
@@ -74,6 +79,7 @@ void MakePlainColumn(const std::shared_ptr<UltraCanvasContainer>& container) {
     ContainerStyle plain;
     plain.autoShowScrollbars = false;
     container->SetContainerStyle(plain);
+    container->SetFollowTheme(true);   // the scrollbars from the theme, again on a change
 }
 
 std::shared_ptr<UltraCanvasContainer> MakeToolbar(const std::string& id) {
@@ -85,6 +91,7 @@ std::shared_ptr<UltraCanvasContainer> MakeToolbar(const std::string& id) {
     ContainerStyle plainBar;
     plainBar.autoShowScrollbars = false;
     bar->SetContainerStyle(plainBar);
+    bar->SetFollowTheme(true);
     return bar;
 }
 
@@ -184,10 +191,24 @@ std::string SourceInFull(const std::string& name, bool running, const std::strin
 constexpr float kTableFontSize = 11.0f;
 constexpr int kTableRowHeight = 22;
 
+// The split pane's divider in the theme: SplitPaneStyle::FromTheme gives the
+// bar, the handle's colours are taken from the roles here (FromTheme leaves
+// the handle's fixed light greys, a bright square on a dark ground)
+SplitPaneStyle SplitStyleFor(const UltraCanvasTheme& theme, const SplitPaneStyle& base) {
+    SplitPaneStyle s = SplitPaneStyle::FromTheme(theme, base);
+    const ThemeRoles& r = theme.roles;
+    s.handle.color = r.raised;
+    s.handle.hoverColor = r.hover;
+    s.handle.activeColor = r.accentSoft;
+    s.handle.borderColor = r.lineStrong;
+    return s;
+}
+
 void StyleTable(UltraCanvasListView& view) {
     ListViewStyle style = view.GetStyle();
     style.rowHeight = kTableRowHeight;
     view.SetStyle(style);
+    view.SetFollowTheme(true);   // the row height above, the theme's colours over it
     if (auto* cells = dynamic_cast<UltraCanvasDefaultListDelegate*>(view.GetDelegate())) {
         cells->SetFontSize(kTableFontSize);
         cells->SetRowHeight(kTableRowHeight);
@@ -218,6 +239,7 @@ int PidOfSourceRow(const IListModel& model, int sourceRow, int pidColumn) {
 } // namespace
 
 UltraNetMonitorWindow::~UltraNetMonitorWindow() {
+    if (themeHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     StopWorker();
     // The sources first: their threads are the other writers of the store.
     NetworkMonitor_StopEventSources();
@@ -369,14 +391,20 @@ std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildLivePage() {
     // the divider is real.
     split_ = CreateHorizontalSplitPane("nmSplit", 0, 0, 0, 0);
     split_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    // The divider's colours are the theme's (SplitPaneStyle::FromTheme: the
+    // ground, the strong line under the pointer, the accent while dragged)
     SplitPaneStyle splitStyle;
     splitStyle.splitterThickness = 6;
     splitStyle.splitterHitMargin = 3;
-    splitStyle.splitterColor     = Color(232, 232, 236);
     splitStyle.handle.shape      = SplitterHandleShape::RoundedSquare;
     splitStyle.handle.crossSize  = 9;
     splitStyle.handle.axisLength = 44;
-    split_->SetSplitPaneStyle(splitStyle);
+    split_->SetSplitPaneStyle(SplitStyleFor(UltraCanvasTheme::Current(), splitStyle));
+    if (!themeHandler_) {
+        themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme& theme) {
+            if (split_) split_->SetSplitPaneStyle(SplitStyleFor(theme, split_->GetSplitPaneStyle()));
+        });
+    }
     auto processPane    = split_->AddPane(1.0);
     auto connectionPane = split_->AddPane(2.0);
     split_->SetPaneFixedSize(0, kProcessColumnWidth);

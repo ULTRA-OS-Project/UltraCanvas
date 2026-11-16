@@ -1,3 +1,6 @@
+#### 2026-11-14 *0.8.17*
+- **The side panel's page follows the look**: dark under a dark theme, under the framework's section cards that now are dark there too.
+
 #### 2026-11-12 *0.8.16*
 - **File ▸ Close Tab has an icon**, at 16 px for the menu (`media/icons/artcreator/16/close-tab.svg`) and 24 px for the toolbar (`media/icons/artcreator/close-tab.svg`): a tab with a cross, in the line style of the rest of the set.
 

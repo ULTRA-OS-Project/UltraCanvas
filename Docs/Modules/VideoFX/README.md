@@ -149,6 +149,19 @@ FileLoader's lists, and the dialogs built from them, then offer exactly what
 the engine handles. UltraVideo does this (`UltraVideoFormats.cpp`). The
 module built without FFmpeg returns an empty list.
 
+**A video's Save as in an UltraCanvas application.** The framework core has
+no video encoder, so FileLoader's `ConvertVideoFile` writes only a type whose
+codec registration carries a converter. `VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h`
+(the `VideoFXUltraCanvasFormats` library, built in the UltraCanvas tree beside
+the text renderer below) is VideoFX's: `VideoFX_RegisterWithFileLoader()`
+registers every film container this build writes (`canWrite`) with a
+converter that runs `VideoFX_Transcode` at the source's size and rate, and
+from then on the media viewer's *Save as* offers those types for a video it
+plays, with a progress ring and Cancel. UltraViewer calls it at start-up.
+Playing is left to the platform backend; only writing is added.
+`VideoFX_ConvertVideoFile(source, target, progress, error)` is the converter
+on its own.
+
 ```cpp
 for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
     if (f.kind == VideoFXFileKind::Video && f.canWrite)

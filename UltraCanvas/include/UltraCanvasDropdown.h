@@ -1,5 +1,8 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
+// Version: 1.6.0 - 2026-11-14 - an item's icon drawn as a mask in the item's text colour
+//                  (DropdownItem::iconAsMask, SetIconsAsMask for all): a black line icon shows in
+//                  the theme's ink on a dark dropdown
 // Version: 1.5.0 - 2026-11-11 - SetFitWidthToItems: the button as wide as its widest item
 //                  (a translated item shows whole), its declared width the least
 // Version: 1.4.0 - 2026-11-10 - FromTheme sets the body font; the SetStyle rule and the constructor tail
@@ -21,7 +24,7 @@
 //                  the list in a popup (the numbers from 1.0.1 on were given afterwards,
 //                  from the framework changelog)
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-11-11 - SetFitWidthToItems
+// Last Modified: 2026-11-14 - icons as masks
 #pragma once
 
 #include "UltraCanvasUIElement.h"
@@ -49,6 +52,7 @@ namespace UltraCanvas {
     constexpr auto DropdownSeparatorRole = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 2);
     constexpr auto DropdownSelectedRole  = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 3);
     constexpr auto DropdownFontRole      = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 4);
+    constexpr auto DropdownIconMaskRole  = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 5);
 
 // ===== DROPDOWN ITEM DATA =====
     struct DropdownItem {
@@ -66,6 +70,12 @@ namespace UltraCanvas {
         // opens on first, then the rest - and a row not prepared yet when it
         // scrolls into view is prepared as it is drawn.
         std::string fontFamily;
+        // The icon drawn as a mask - its shape in the item's text colour (the
+        // ink, faint when disabled) - instead of in its own colours: for a
+        // monochrome line icon, which is black in its file and would vanish
+        // on a dark dropdown. UltraCanvasDropdown::SetIconsAsMask sets it for
+        // every item.
+        bool iconAsMask = false;
         bool enabled = true;
         bool separator = false;
         bool selected = false;  // for multi-selection support
@@ -125,6 +135,9 @@ namespace UltraCanvas {
         // Icon dimensions
         float iconSize = 16.0f;
         float iconPadding = 4.0f;
+        // Every item's icon drawn as a mask in the item's text colour (see
+        // DropdownItem::iconAsMask, which does it for one item)
+        bool iconsAsMask = false;
 
         // The button shows the selected item's icon and text. Off, it shows
         // the icon alone, centred beside the arrow - a compact picker whose
@@ -179,7 +192,8 @@ namespace UltraCanvas {
         // The layout key RenderItem draws a row's text with.
         bool RowKey(const IListModel* model, int row, TextLayoutKey& key) const;
         void RenderCheckbox(IRenderContext* ctx, bool checked, const Rect2Di& rect) const;
-        void RenderIcon(IRenderContext* ctx, const std::string& iconPath, const Rect2Di& rect) const;
+        void RenderIcon(IRenderContext* ctx, const std::string& iconPath, const Rect2Di& rect,
+                        bool asMask, const Color& maskColor) const;
 
         const DropdownStyle* style = nullptr;
         bool multiSelectEnabled = false;
@@ -338,6 +352,14 @@ namespace UltraCanvas {
         // declared width.
         void SetFitWidthToItems(bool fit);
         bool GetFitWidthToItems() const { return fitWidthToItems; }
+
+        // Every item's icon - in the open list and on the button - drawn as
+        // a mask in the item's text colour, so black line icons follow the
+        // theme's ink (DropdownStyle::iconsAsMask; a single item can ask
+        // with DropdownItem::iconAsMask). Not a SetStyle: the dropdown keeps
+        // following the theme.
+        void SetIconsAsMask(bool asMask);
+        bool GetIconsAsMask() const { return style.iconsAsMask; }
 
         // ===== ENGINE-DRIVEN LAYOUT =====
         // With SetFitWidthToItems on, the width the items need (at least the

@@ -476,6 +476,8 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     naming it — or the machine restarts, and one left by an earlier run is
     found again at start-up. Its row keeps *Delete* disabled like the other
     roots; tabs inside a disc move to Home when it is ejected.
+    `UltraFiler --ram-disc` (UltraDesktop's RAM disc button) opens the first
+    disc mounted, or the *New RAM disc* dialog when there is none.
 - **Archives:** packing and unpacking run in the background behind a progress
   window: a ring with the percentage, the file being handled and Cancel.
   Cancelling a pack removes the half-written archive; cancelling an unpack keeps
@@ -730,6 +732,23 @@ One UltraFiler runs per user. Starting it again while it is running opens the
 folder in a new tab of the running window (a tab that already shows it is
 switched to; a file opens its folder) instead of starting a second copy, and a
 start without a folder brings the window forward.
+
+## FAQ
+
+**Can UltraFiler access iCloud?** Yes. It shows the iCloud Drive folder once
+Apple's own software has synced it onto the computer:
+
+- On **macOS**, it finds the iCloud Drive folder in your home folder (under
+  `~/Library`) and lists it under **Cloud Storage** in the sidebar.
+- On **Windows**, it lists the `iCloudDrive` folder in your user profile, which
+  is there only if Apple's iCloud for Windows app is installed and signed in.
+- On **Linux**, there is no iCloud entry, because Apple does not make an iCloud
+  app for Linux.
+
+The folder is browsed like any other, and Apple's software syncs the changes.
+UltraFiler does not sign in to iCloud itself: Apple offers no public iCloud
+Drive interface an app could sign in to, so UltraCloud has no iCloud account
+type.
 
 ## Building
 

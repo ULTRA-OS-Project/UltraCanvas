@@ -3,6 +3,7 @@
 // ANativeWindow (lock → row copy → unlockAndPost), following the Windows
 // backend's image-surface + blit model. The "window" always covers the whole
 // surface; desktop window-management calls are accepted no-ops.
+// Version: 1.3.0 - a destructor, which releases the native half
 // Version: 1.2.0 - an in-place rotation resizes: the window's own size is re-read
 // Version: 1.1.0 - the surface is the window's real pixel size at any density
 // Version: 1.0.0
@@ -54,6 +55,13 @@ namespace UltraCanvas {
 
     public:
         UltraCanvasAndroidWindow();
+        // A window destroyed without Close() first - the application's
+        // DestroyWindows() at shutdown, or simply the last shared_ptr going
+        // away - used to skip the native teardown entirely:
+        // ~UltraCanvasWindowBase cannot call a virtual override, so nothing
+        // released the OS window, its drawing surface or its input context.
+        // Idempotent; a window already closed has nothing left to free.
+        ~UltraCanvasAndroidWindow() override;
 
         // ===== INHERITED FROM BASE WINDOW =====
         void Show() override;

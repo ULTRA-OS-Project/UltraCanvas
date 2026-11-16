@@ -1,9 +1,10 @@
 // Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp
 // Text rendering settings demo with configurable antialias, hint style, and hint metrics
+// Version: 1.2.0 - the light text boost: its strength, and samples of light text on a dark ground
 // Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the options and
 //                  each sample group in a card, every text sized to fit and wrapping
 // Version: 1.0.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -82,6 +83,18 @@ namespace UltraCanvas {
         addOption("HMRow", "HMLabel", Tr("Hint Metrics:"), hmDropdown,
                   "HMDesc", Tr("Controls whether font metrics are quantized to integer values"));
 
+        // --- Light text boost ---
+        auto ltDropdown = std::make_shared<UltraCanvasDropdown>("LTDropdown", 0, 0, 200, 30);
+        ltDropdown->AddItem(Tr("Plain"), "0");
+        ltDropdown->AddItem(Tr("Half"), "1");
+        ltDropdown->AddItem(Tr("Firm"), "2");
+        {
+            const double boost = RenderContextCairo::GetLightTextBoost();
+            ltDropdown->SetSelectedIndex(boost <= 0.0 ? 0 : boost < 1.0 ? 1 : 2);
+        }
+        addOption("LTRow", "LTLabel", Tr("Light Text:"), ltDropdown,
+                  "LTDesc", Tr("Draws light text a second time, so it keeps its weight on a dark ground"));
+
         // Sample text at various sizes
         struct SampleDef {
             float fontSize;
@@ -112,6 +125,38 @@ namespace UltraCanvas {
             sampleLabels.push_back(textLabel);
             sampleLabels.push_back(sizeLabel);
         };
+
+        // Light text on a dark ground, in the dark theme's three inks: what
+        // the light text boost changes. Dark text below is drawn the same
+        // at every strength.
+        auto darkCard = DemoKit::AddCard(mainContainer, "DarkSampleTitle", Tr("Light Text on a Dark Ground"));
+        auto darkGround = DemoKit::CreateColumn("DarkSampleGround", 8);
+        darkGround->SetBackgroundColor(Color(30, 30, 30, 255));
+        darkGround->SetBorderRadius(6);
+        darkGround->SetPadding(14, 16, 14, 16);
+        darkGround->SetFollowTheme(false);
+        DemoKit::Add(darkCard, darkGround);
+
+        struct DarkSampleDef {
+            float fontSize;
+            Color ink;
+            std::string id;
+            std::string text;
+        };
+        const std::vector<DarkSampleDef> darkSamples = {
+            {9,  Color(255, 255, 255), "Ink9",    Tr("9pt ink - The quick brown fox jumps over the lazy dog. 0123456789")},
+            {10, Color(255, 255, 255), "Ink10",   Tr("10pt ink - The quick brown fox jumps over the lazy dog. 0123456789")},
+            {12, Color(255, 255, 255), "Ink12",   Tr("12pt ink - The quick brown fox jumps over the lazy dog. 0123456789")},
+            {10, Color(190, 190, 190), "Muted10", Tr("10pt muted ink - The quick brown fox jumps over the lazy dog.")},
+            {10, Color(150, 150, 150), "Faint10", Tr("10pt faint ink - The quick brown fox jumps over the lazy dog.")},
+        };
+        for (const auto& sample : darkSamples) {
+            auto label = DemoKit::CreateText("DarkSample" + sample.id, sample.text);
+            label->SetFontSize(sample.fontSize);
+            label->SetTextColor(sample.ink);
+            label->SetFollowTheme(false);   // these colours are the sample
+            DemoKit::Add(darkGround, label);
+        }
 
         // ===== SAMPLE TEXT SECTION =====
         auto sampleCard = DemoKit::AddCard(mainContainer, "SampleTitle", Tr("Sample Text Preview"));
@@ -171,6 +216,13 @@ namespace UltraCanvas {
                 CAIRO_HINT_METRICS_DEFAULT, CAIRO_HINT_METRICS_OFF, CAIRO_HINT_METRICS_ON
             };
             RenderContextCairo::SetTextHintMetrics(metrics[index]);
+            mainContainer->RequestRedraw();
+        };
+
+        ltDropdown->onSelectionChanged = [mainContainer = mainContainer.get()](int index, const DropdownItem& item) {
+            (void)item;
+            const double strengths[] = {0.0, 0.5, 1.0};
+            RenderContextCairo::SetLightTextBoost(strengths[index]);
             mainContainer->RequestRedraw();
         };
 

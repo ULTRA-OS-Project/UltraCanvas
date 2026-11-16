@@ -1,5 +1,8 @@
 // Plugins/UltraIM/matrix/MatrixProvider.cpp
 // Matrix as an UltraIM provider
+// Version: 0.2.5 - TransferProgress for media going up to and coming down from the content repository
+// Version: 0.2.4 - SendVoiceNote: m.audio marked as a voice message (MSC3245) with its length; a video's
+//                  length in info.duration
 // Version: 0.2.3 - a room renamed, members invited and kicked, a room left (ManageGroups, LeaveConversation);
 //                  a room renamed by someone else updates its conversation as the sync brings it;
 //                  the members' names on the conversation
@@ -117,7 +120,7 @@ UltraIMCapabilityFlags MatrixProvider::GetCapabilities() const {
     const F flags = F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
                     F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
                     F::CreateGroup | F::ImageMessages | F::FileTransfer | F::SearchMessages | F::ManageGroups |
-                    F::LeaveConversation;
+                    F::LeaveConversation | F::VoiceNotes;
     return OlmAvailable() ? flags | F::E2EEncryption : flags;
 }
 
@@ -1697,6 +1700,30 @@ void MatrixProvider::FlushDownloads() {
     for (const auto& job : queue) StartDownload(job, false);
 }
 
+void MatrixProvider::ReportProgress(const std::string& key, const UltraIMMessage& message, int64_t now, int64_t total,
+                                    bool upload) {
+    if (total <= 0) return;
+    now = std::min(now, total);
+    const int percent = static_cast<int>(now * 100 / total);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = progressPercent_.find(key);
+        if (it != progressPercent_.end() && it->second >= percent && now < total) return;
+        if (now >= total) progressPercent_.erase(key);
+        else progressPercent_[key] = percent;
+    }
+    UltraIMEvent progress;
+    progress.type = UltraIMEventType::TransferProgress;
+    progress.providerId = providerId_;
+    progress.conversationId = message.conversationId;
+    progress.contactId = message.senderId;
+    progress.message = message;
+    progress.transferredBytes = now;
+    progress.totalBytes = total;
+    progress.isUpload = upload;
+    Emit(progress);
+}
+
 void MatrixProvider::StartDownload(const DownloadJob& job, bool legacyEndpoint) {
     std::shared_ptr<MatrixHttp> http = Http();
     std::string server, id;
@@ -1709,13 +1736,33 @@ void MatrixProvider::StartDownload(const DownloadJob& job, bool legacyEndpoint) 
     const std::string path = legacyEndpoint
         ? "/_matrix/media/v3/download/" + PathSegment(server) + "/" + PathSegment(id)
         : "/_matrix/client/v1/media/download/" + PathSegment(server) + "/" + PathSegment(id);
+    // How far the file is, for the message it belongs to (not a preview picture).
+    auto progress = [this, url = job.url](int64_t now, int64_t total) {
+        UltraIMMessage message;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto uses = mediaUses_.find(url);
+            if (uses == mediaUses_.end()) return;
+            for (const MediaUse& use : uses->second) {
+                if (use.thumbnail) continue;
+                auto room = rooms_.find(use.roomId);
+                if (room == rooms_.end()) continue;
+                for (const auto& m : room->second.timeline) {
+                    if (m.messageId == use.eventId) message = m;
+                }
+            }
+        }
+        if (message.messageId.empty()) return;
+        if (total <= 0) total = message.attachment.fileSizeBytes;
+        ReportProgress(url, message, now, total, false);
+    };
     http->Download(path, 120000, [this, job, legacyEndpoint](const MatrixBytes& r) {
         if (!r.Ok() && !legacyEndpoint && (r.errcode == "M_UNRECOGNIZED" || r.status == 404 || r.status == 400)) {
             StartDownload(job, true);
             return;
         }
         OnMediaDownloaded(job, r);
-    });
+    }, progress);
 }
 
 void MatrixProvider::MediaFailed(const std::string& url, const std::string& why) {
@@ -1862,6 +1909,11 @@ UltraIMResult MatrixProvider::SendFile(const std::string& conversationId, const 
     return SendMedia(conversationId, localPath, std::string(), UltraIMMessageType::File, options);
 }
 
+UltraIMResult MatrixProvider::SendVoiceNote(const std::string& conversationId, const std::string& localPath,
+                                            const UltraIMSendOptions& options) {
+    return SendMedia(conversationId, localPath, std::string(), UltraIMMessageType::Audio, options);
+}
+
 UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const std::string& localPath,
                                         const std::string& caption, UltraIMMessageType type,
                                         const UltraIMSendOptions& options) {
@@ -1891,6 +1943,9 @@ UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const
                               : type == UltraIMMessageType::Audio ? "m.audio"
                                                                   : "m.file";
     const std::string replyTo = options.replyToMessageId;
+    // A recording's length, in the milliseconds Matrix counts in.
+    const int64_t durationMs = options.durationSeconds > 0 ? static_cast<int64_t>(options.durationSeconds * 1000.0 + 0.5) : 0;
+    const bool voice = type == UltraIMMessageType::Audio;     // only SendVoiceNote sends audio
     // The preview picture, when the application makes one.
     auto preview = std::make_shared<std::vector<uint8_t>>();
     int previewWidth = 0, previewHeight = 0;
@@ -1901,7 +1956,7 @@ UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const
     // The upload waits on the server, and so does the room key in an
     // encrypted room: the send thread, in order.
     Enqueue([this, http, conversationId, clientId, bytes, name, mime, msgtype, caption, replyTo, invited, encrypted,
-             localPath, preview, previewWidth, previewHeight]() {
+             localPath, preview, previewWidth, previewHeight, durationMs, voice]() {
         if (invited) {
             MatrixResponse joined = http->Await("POST", std::string(kClient) + "/join/" + PathSegment(conversationId),
                                                 nullptr, 20000);
@@ -1912,8 +1967,18 @@ UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const
         std::string error;
         if (encrypted && !EncryptMedia(*bytes, fileInfo, error))
             return Delivered(conversationId, clientId, UltraIMDeliveryStatus::Failed, std::string());
+        // How far the upload is, for the bubble of the message it is for.
+        UltraIMMessage going;
+        going.providerId = providerId_;
+        going.conversationId = conversationId;
+        going.clientMessageId = clientId;
+        going.messageId = clientId;
+        const int64_t uploadSize = static_cast<int64_t>(bytes->size());
         MatrixResponse up = http->Upload("/_matrix/media/v3/upload?filename=" + PathSegment(name),
-                                         encrypted ? std::string("application/octet-stream") : mime, *bytes, 300000);
+                                         encrypted ? std::string("application/octet-stream") : mime, *bytes, 300000,
+                                         [this, going, uploadSize](int64_t now, int64_t total) {
+            ReportProgress("up:" + going.clientMessageId, going, now, total > 0 ? total : uploadSize, true);
+        });
         bytes->clear();
         const std::string mxc = up.body["content_uri"].GetString();
         if (!up.Ok() || mxc.empty()) return Delivered(conversationId, clientId, UltraIMDeliveryStatus::Failed, std::string());
@@ -1929,6 +1994,17 @@ UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const
         JSONValue info = JSONValue::MakeObject();
         info.Set("mimetype", JSONValue(mime));
         info.Set("size", JSONValue(size));
+        if (durationMs > 0) info.Set("duration", JSONValue(durationMs));
+        if (voice) {
+            // A voice message, not an audio file: Element and the other
+            // clients show it with a play button and a waveform (MSC3245,
+            // with the extensible-events audio block MSC1767 beside it).
+            body.Set("org.matrix.msc3245.voice", JSONValue::MakeObject());
+            JSONValue audio = JSONValue::MakeObject();
+            audio.Set("duration", JSONValue(durationMs));
+            audio.Set("waveform", JSONValue::MakeArray());
+            body.Set("org.matrix.msc1767.audio", audio);
+        }
         if (!preview->empty()) {
             // The preview picture, uploaded like the file (and encrypted like it).
             const int64_t previewSize = static_cast<int64_t>(preview->size());

@@ -880,18 +880,19 @@ for (const std::string& line : lines) {
 at `\n` (or `\r\n`), carries the state from line to line, and puts one
 `TokenType::Newline` token at each break - the tokens the text area colours.
 
-A string ends at its line unless the language lets it run on. Seven switches
+A string ends at its line unless the language lets it run on. Eight switches
 in `SyntaxTokenizationRules` say which strings do:
 
 | Rule | Languages | Example |
 |---|---|---|
-| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, C#, Elixir (`"""`) | a docstring |
+| `multiLineStrings` (delimiter pairs) | Python, Dart (`"""`, `'''`); Kotlin, Swift, Java, Scala, Elixir (`"""`) | a docstring |
 | `multiLineStringDelimiters` (quotes whose strings span lines) | JavaScript / TypeScript, Go (`` ` ``); Shell, Ruby, PHP, Perl (`"`, `'`); Rust (`"`) | a template literal |
 | `stringLineContinuation` (a `\` ends the line) | C, C++, Python, JavaScript / TypeScript | `"abc\` then `def"` |
 | `delimitedRawStrings` (`R"delim( … )delim"`, optional `u8` / `u` / `U` / `L`) | C++ | a raw string ends only at its own `)delim"` |
 | `levelledLongBrackets` (`[[ … ]]`, `[==[ … ]==]`, and after `--` a comment) | Lua | `[==[` ends only at `]==]` |
 | `hashRawStrings` (`r"…"`, `r#"…"#`, `br`, `cr`) | Rust | `r"C:\"` is complete; `r#"say "hi""#` holds quotes |
 | `verbatimStrings` (`@"…"`, `$@"…"`, `@$"…"`) | C# | `@"C:\"` is complete; `""` inside is a quote; spans lines |
+| `quotedRawStrings` (three or more quotes, optional `$` / `$$`) | C# | `"""…"""` ends only at the same run of quotes; no escapes |
 
 A string the language does not let span lines - an unclosed `"` in Java -
 still ends at the line, so a typo colours one line rather than the rest of the
@@ -904,6 +905,13 @@ string. A prefix never changes where the string ends: in Python a backslash
 keeps a quote from closing even a raw string, so `r"\""` is one string and
 `r"C:\"` is unterminated, as Python reads them.
 
+In C, C++, C# and GLSL a preprocessor directive - a line whose first
+character is `#`, indented or not, and the lines after it while each ends in
+`\` - is tokenized like code and then drawn in the preprocessor colour,
+except its strings, characters and comments: `#include "config.h"` shows its
+path as a string, a trailing `// note` as a comment, and a raw string or
+`/* comment */` that a `#define` opens carries on to the lines below.
+
 Block comments are matched before line comments, so a block opener that
 starts with the line-comment marker - Lua's `--[[ … ]]` (at any level,
 `--[==[ … ]==]`), MATLAB's `%{ … %}` - opens the block rather than being read
@@ -914,8 +922,27 @@ state the same way, with the fence's language: a `/* comment */` over several
 lines is coloured on all of them. The opening fence starts every block empty,
 so a comment left open in one block ends at its closing fence. The raw line
 under the cursor is read with the Markdown rules and starts empty too - it
-never takes a code block's state. Indented (four-space) code blocks are not
-highlighted.
+never takes a code block's state.
+
+An indented (four-space) code block has no language tag. Each block's
+language is found once, on its first line, from - in order:
+
+1. a clear guess from the block's own text (`DetectLanguageFromContent`);
+2. the language the nearest code fence above it names, where the author said
+   what the document's code is;
+3. a guess on a lower bar (`LanguageDetectOptions{1, 1}`): the text is known to
+   be code, so a short snippet such as `console.log(x);` need not pile up the
+   points a paste of unknown text would.
+
+A block none of them places - indented prose - stays plain. An application
+that knows the language sets it for every indented block:
+
+```cpp
+textArea->SetIndentedCodeLanguage("C++");   // "" (the default): guess per block
+```
+
+A blank line between two indented code lines belongs to the block, as in
+CommonMark, so a comment left open across it stays a comment.
 
 The fence's info string names the language through
 `SyntaxTokenizer::SetLanguageByTag`: its first word, matched against the

@@ -4,6 +4,8 @@
 // + media preview (UltraCanvasMediaViewer) in a Windows Explorer style window.
 // One copy per user: a second start hands its folder to the running copy,
 // which opens it in a new tab, and quits (UltraCanvasSingleInstance.h).
+// Version: 0.14.0 - --ram-disc: the RAM disc is shown, or the New RAM disc
+//                  dialog when there is none - also handed to a running copy
 // Version: 0.13.0 - one UltraFiler per user: a second start's folder opens in
 //                  a new tab of the running copy; the elevated helper never
 //                  claims
@@ -73,6 +75,7 @@ static void PrintUsage(const char* programName) {
     std::cout << "Options:" << std::endl;
     std::cout << "  -h, --help        Show this help message" << std::endl;
     std::cout << "  -v, --version     Show version information" << std::endl;
+    std::cout << "  --ram-disc        Show the RAM disc; when there is none, offer to make one" << std::endl;
     std::cout << std::endl;
     std::cout << "Examples:" << std::endl;
     std::cout << "  " << programName << "                  # Open the home folder" << std::endl;
@@ -97,6 +100,7 @@ int main(int argc, char* argv[]) {
         return helperExit;
 
     std::string folderToOpen;
+    bool openRamDisc = false;
 
     for (int i = 1; i < argc; i++) {
         const std::string arg = argv[i];
@@ -107,7 +111,9 @@ int main(int argc, char* argv[]) {
             std::cout << "UltraFiler version " ULTRAFILER_VERSION << std::endl;
             std::cout << "UltraCanvas Framework" << std::endl;
             return EXIT_SUCCESS;
-        } else if (arg[0] != '-') {
+        } else if (arg == "--ram-disc") {
+            openRamDisc = true;
+        } else if (!arg.empty() && arg[0] != '-') {
             folderToOpen = arg;
         } else {
             std::cerr << "Unknown argument: " << arg << std::endl;
@@ -121,8 +127,10 @@ int main(int argc, char* argv[]) {
     // copy, which opens it in a new tab; one without a folder brings the
     // window forward. Outlives app.Run(), so it sits outside the try.
     UltraCanvasSingleInstance instance("org.ultraos.ultrafiler", "UltraFiler");
-    const UltraCanvasSingleInstance::Start start = instance.Claim(
-            UltraCanvasSingleInstance::MakeOpenRequest({folderToOpen}));
+    // --ram-disc travels beside the paths, as "ramDisc": true.
+    JSONValue request = UltraCanvasSingleInstance::MakeOpenRequest({folderToOpen});
+    if (openRamDisc) request.Set("ramDisc", JSONValue(true));
+    const UltraCanvasSingleInstance::Start start = instance.Claim(request);
     if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy shows it
 
     UltraCanvasApplication app;
@@ -159,8 +167,15 @@ int main(int argc, char* argv[]) {
         //
         // A later start's folder opens in a new tab here; a later start
         // without one brings the window forward.
-        instance.ListenOpen([&mainWindow](const std::vector<std::string>& paths) {
-            mainWindow.OpenFolders(paths);
+        // A later start with --ram-disc shows the RAM disc (or offers one).
+        instance.Listen([&mainWindow](const JSONValue& request) {
+            const std::vector<std::string> paths = UltraCanvasSingleInstance::RequestPaths(request);
+            if (!paths.empty()) mainWindow.OpenFolders(paths);
+            if (request.Get("ramDisc").GetBoolean(false)) {
+                mainWindow.OpenRamDisc();
+            } else if (paths.empty()) {
+                UltraCanvasSingleInstance::BringToFront();
+            }
         });
 
         if (!mainWindow.Initialize(folderToOpen)) {
@@ -168,6 +183,7 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         mainWindow.Show();
+        if (openRamDisc) mainWindow.OpenRamDisc();
 
         debugOutput << "=== UltraFiler Ready ===" << std::endl;
         app.Run();

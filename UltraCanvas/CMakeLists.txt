@@ -1,5 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
+# Version: 1.4.9 - uc-net links UltraCanvasTextUtils, so a program that links UltraNet
+#                  without the core (ultradbadmin-relay) resolves Trim and Base64Encode
 # Version: 1.4.8 - the static link cycle between the core and UltraRTC is declared, so a static build links
 # Version: 1.4.7
 # Last Modified: 2026-11-01
@@ -3290,7 +3292,10 @@ target_link_libraries(uc-crypt PUBLIC UltraCanvasBase32)
 if(SODIUM_FOUND)
     target_compile_definitions(uc-crypt PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
     target_include_directories(uc-crypt PRIVATE ${SODIUM_INCLUDE_DIRS})
-    target_link_directories(uc-crypt PUBLIC ${SODIUM_LIBRARY_DIRS})
+    # The build interface only under Emscripten: the wasm sysroot's lib/ is
+    # under the source directory, which an exported link directory may not
+    # be (the same rule as libvips's above).
+    _uc_public_link_directories(uc-crypt ${SODIUM_LIBRARY_DIRS})
     target_link_libraries(uc-crypt PUBLIC ${SODIUM_LIBRARIES})
 endif()
 # X.509 and CMS (include/UltraCrypt/UltraCryptX509.h: certificates, S/MIME's
@@ -3677,6 +3682,16 @@ if(ULTRACANVAS_ENABLE_NET)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
     target_link_libraries(uc-net PUBLIC ${UC_CURL_LINK} Threads::Threads)
+    # UltraNetMime calls Trim() and Base64Encode(), which live in the
+    # UltraCanvasTextUtils archive. The shared core links that archive and
+    # absorbs uc-net whole, so a consumer of the core never noticed the gap --
+    # but a program that links uc-net WITHOUT the core (ultradbadmin-relay:
+    # UltraDatabase, UltraVault, UltraNet, UltraCrypt, no window, no core) got
+    # "undefined reference to UltraCanvas::Trim" at its final link. PRIVATE, so
+    # consumers link the archive without inheriting its include directories;
+    # the core's own link line already names it, and a plain archive repeated
+    # there is harmless (unlike a whole-archive one).
+    target_link_libraries(uc-net PRIVATE UltraCanvasTextUtils)
     # iconv converts mail text in any charset (ISO-2022-JP, Shift_JIS, GB18030,
     # KOI8-R, windows-125x, ...) to UTF-8. Part of the C library on glibc and
     # Android; libiconv on macOS and MSYS2 (already installed for Texter).
@@ -4644,6 +4659,30 @@ if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCryp
     message(STATUS "  [✓] UltraIM provider Matrix - ENABLED (end-to-end encryption: ${_ultraim_matrix_e2ee})")
 else()
     message(STATUS "  [−] UltraIM provider Matrix - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: Mastodon ----------------------------------------------
+# The direct messages of a Mastodon server over its REST API
+# (Plugins/UltraIM/mastodon/): browser sign-in (OAuth), conversations polled,
+# pictures, videos and sound, replies, edits, deletes. An archive the tests
+# link, and the module loaded from <build>/Plugins/UltraIM.
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt)
+    set(_ultraim_mastodon_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/mastodon)
+    add_library(UltraIMMastodonCore STATIC ${_ultraim_mastodon_dir}/MastodonProvider.cpp)
+    set_target_properties(UltraIMMastodonCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMMastodonCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMMastodonCore PUBLIC ${_ultraim_mastodon_dir})
+    target_link_libraries(UltraIMMastodonCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMMastodonPlugin MODULE ${_ultraim_mastodon_dir}/MastodonModule.cpp)
+    set_target_properties(UltraIMMastodonPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_mastodon"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMMastodonPlugin PRIVATE UltraIMMastodonCore)
+    message(STATUS "  [✓] UltraIM provider Mastodon - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider Mastodon - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
 # ----- UltraIM provider: Telegram ----------------------------------------------

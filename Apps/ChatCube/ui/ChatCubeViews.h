@@ -4,6 +4,11 @@
 // separators, delivery ticks). Models adapt UltraIM data to
 // UltraCanvasListView; delegates paint one row's content - the list view
 // paints selection, hover and scrolling.
+// Version: 0.2.6 - a file on its way shows its progress (SetTransfer); a sound file is played as audio
+//                  (IsAudioMessage), with a note; the file name measured as drawn (bold)
+// Version: 0.2.5 - a reply's quote in its bubble (filled from the rows shown when the provider gave
+//                  none), "edited" beside the time, a voice message's play / pause mark (SetPlaying),
+//                  FindMessage
 // Version: 0.2.4 - MemberCount: a big group's whole number, not only the members listed
 // Version: 0.2.3 - conversations pinned to the top and marked unread (SetMarks), each shown in its row
 // Version: 0.2.2 - times and dates written as the Settings window says (SetDateTimeStyle)
@@ -40,6 +45,11 @@ std::string FormatDuration(double seconds);
 std::string FormatSize(int64_t bytes);
 // A photo, a video or a sticker: shown as a picture in its bubble.
 bool HasPicture(const UltraIMMessage& message);
+// A file that is sound, by its name: .mp3, .ogg, .opus, .m4a, .flac, .wav, ...
+bool IsAudioFileName(const std::string& name);
+// A message ChatCube plays as audio in its bubble: a voice message, or a
+// sound file sent as a file.
+bool IsAudioMessage(const UltraIMMessage& message);
 // How many are in a group: memberCount where the network lists only a first
 // page of them (a big Telegram supergroup), else everyone in memberIds.
 long long MemberCount(const UltraIMConversation& conversation);
@@ -75,6 +85,19 @@ public:
     bool Remove(const std::string& messageId);
     // Whether a message is shown, by its client id.
     bool Contains(const std::string& clientId) const { return FindRow(clientId) >= 0; }
+    // A message shown, by its id or its client id; nullptr when it is not.
+    const UltraIMMessage* FindMessage(const std::string& id) const;
+
+    // A file on its way, out (ours) or in: how far, by the message's client
+    // id. Its bubble shows a bar until ClearTransfer.
+    struct Transfer {
+        int64_t done = 0;
+        int64_t total = 0;
+        bool    upload = true;
+    };
+    void SetTransfer(const std::string& clientId, const Transfer& transfer);
+    void ClearTransfer(const std::string& clientId);
+    const Transfer* TransferOf(const std::string& clientId) const;
 
     const std::vector<MessageRow>& Rows() const { return rows_; }
 
@@ -87,8 +110,12 @@ public:
 
 private:
     int FindRow(const std::string& clientId) const;
+    // A reply's quote from the message replied to, when it is shown and the
+    // provider brought no quote of its own.
+    void ResolveReply(UltraIMMessage& message) const;
 
     std::vector<MessageRow> rows_;
+    std::map<std::string, Transfer> transfers_;
     bool isGroup_ = false;
 };
 
@@ -110,6 +137,9 @@ public:
     int GetRowHeight(const UltraCanvas::IListModel* model, int row) const override;
 
     void SetViewWidth(int width);
+    // The voice message playing now (its client id; "" for none): its bubble
+    // shows a pause mark instead of the play mark.
+    void SetPlaying(const std::string& clientId) { playing_ = clientId; }
 
     // Where a row's attachment was last painted - the picture of a photo,
     // a video or a sticker, the whole bubble of a file or a voice message -
@@ -125,6 +155,7 @@ private:
     UltraCanvas::Size2Di PictureSize(const UltraIMMessage& message, bool showSender) const;
 
     int viewWidth_ = 600;
+    std::string playing_;
     std::map<std::string, int> measured_;               // client id -> height at viewWidth_
     std::map<std::string, UltraCanvas::Rect2Di> media_; // client id -> what MediaRect answers
 };

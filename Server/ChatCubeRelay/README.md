@@ -71,12 +71,17 @@ too, in its upgrade request).
 | `POST /v1/recovery/poll` | `{recovery_id, poll_token}`, no session → 202 `{status: "pending", expires_in}` until approved; then once `{user_id, secret_key, display_name, email, phone}` and the owner is e-mailed a notice; 410 `expired` (or a wrong poll token) |
 | `GET /v1/users/{id}` | `{user_id, public_key, display_name}` — contact discovery by id |
 | `GET /v1/contacts` | `{contacts: [{user_id, public_key, display_name, presence}]}` |
-| `PUT` / `DELETE /v1/contacts/{id}` | add / remove |
+| `PUT` / `DELETE /v1/contacts/{id}` | add / remove; an add puts you in their list too, when you were not, and tells them (`contact.added`, 1.4.0) |
 | `POST /v1/groups` | `{title, members}` → `{group_id, conversation: "group:<id>", title, owner, members}` |
 | `GET /v1/groups`, `GET /v1/groups/{id}` | the caller's groups |
-| `PATCH /v1/groups/{id}` | `{title}` — any member renames (1.3.0) |
+| `PATCH /v1/groups/{id}` | `{title?, description?}` — what is given changes: any member of a private group (1.3.0; the description 1.5.0, up to 500 characters), the owner alone of a public one |
 | `POST /v1/groups/{id}/members` | `{user_id}` — any member adds |
 | `DELETE /v1/groups/{id}/members/{user}` | the owner removes anyone; anyone leaves |
+| `PUT /v1/groups/{id}/public` | `{public}` — the owner lists the group for everyone, or takes it off the list (1.5.0) |
+| `GET /v1/public-groups?q=` | the public groups whose title holds `q`, the biggest first: `{groups: [{group_id, conversation, title, owner, member_count, joined}], max_members}` (1.5.0) |
+| `POST /v1/groups/{id}/join` | anyone signed in joins a public group, unless its owner blocked them (403 `banned`) or it is full (1.5.0) |
+| `PUT` / `DELETE /v1/groups/{id}/blocked/{user}` | the owner blocks (taken out when in it; cannot join again or be added by another member) and unblocks (1.5.0) |
+| `GET /v1/groups/{id}/blocked` | the owner's: `{blocked: [{user_id, public_key, display_name}]}` (1.5.0) |
 | `POST /v1/messages` | `{messages: [{to, message_id, conversation, envelope}]}` — offline 1:1 copies, or one copy per group member (sender and recipient must both be members of a `group:` conversation). A `message_id` already queued for that recipient is not queued twice. Envelopes up to 64 KiB |
 | `GET /v1/messages?since=<id>` | `{messages: [{id, from, message_id, conversation, envelope, created_at}]}` |
 | `POST /v1/messages/ack` | `{ids}` — deletes them |
@@ -92,6 +97,7 @@ WebSocket `/v1/ws`, JSON frames:
 | server → | `presence {from, status: online\|offline}` — for your contacts and fellow group members |
 | server → | `message.new {message}` — a queued copy for you, as `GET /v1/messages` returns it |
 | server → | `group.update {group}` (`removed: true` when you left or were removed) |
+| server → | `contact.added {contact: {user_id, public_key, display_name, presence}}` — someone added you; their chat appears before their first message (1.4.0) |
 | ↔ | `typing {to, conversation, typing}` (arrives with `from`) |
 | ↔ | `signal {to, kind, session, payload}` — `kind` is `offer`, `answer`, `ice`, `hangup`, `call-invite`, `call-accept`, `call-reject` or `call-update` (a call's camera on or off); `payload` is forwarded untouched (arrives with `from`). Not online: `signal.undeliverable {to, session}` comes back |
 | ↔ | `ping` → `pong` |
@@ -166,6 +172,27 @@ cannot come back without the computer it is on. A failed send is logged with
 the address masked (`e***@example.org`, `+49 ••• 89`), never with a link or
 a code.
 
+## Public groups
+
+A group its owner makes public (`PUT /v1/groups/{id}/public`; in ChatCube,
+*Make public* in the group's menu) is listed for everyone signed in to the
+relay and joined with one request - ChatCube shows the list as *Public
+groups*, each with *Join*. Nothing about the messages changes: the sender's
+ChatCube still seals a copy for each member with that member's key, so the
+relay holds only ciphertext, as for any group. That is also what bounds a
+public group: every message is one copy per member, so it holds at most
+`CHATCUBE_RELAY_MAX_PUBLIC_GROUP_MEMBERS` (256, never more than the 256
+copies one request carries) where a private group holds 64. Someone who
+joins sees what is written from then on, not what came before.
+
+Against misuse: whom the owner blocks cannot join the group again nor be
+added by another member until unblocked (a member only removed may come
+back by *Join*), only the owner changes a public group's name and
+description, and one member may post
+`CHATCUBE_RELAY_PUBLIC_POSTS_PER_MINUTE` messages a minute into it (30; the
+copies of one message and a file's parts count once) - more is refused with
+429 `slow_down`, and ChatCube sends it a little later.
+
 ## The database and its migrations
 
 One SQLite file (`CHATCUBE_RELAY_DB`). Its schema has a version - SQLite's
@@ -180,6 +207,7 @@ relay, or a newer one.
 |---|---|---|
 | 1 | 1.0 | accounts, sessions, contacts, groups, the offline queue |
 | 2 | 1.1 | the owner's e-mail address and phone number |
+| 4 | 1.5 | public groups and descriptions: the `public` mark on a group (every existing group stays private), its `description` (empty), and `group_bans`, whom an owner blocked |
 | 3 | 1.2 | whether each is confirmed (`email_verified`, `phone_verified`, both starting unconfirmed - also what 1.1 kept), the confirmation and recovery links, the phone's codes, the recovery copies, recoveries under way, and the send counts behind the rate limits |
 
 Relays before 1.2 did not record a version: their databases are recognised
@@ -205,13 +233,14 @@ WebSocket upgrade in front of it), `deploy/turnserver.conf` (coturn, sharing
 ### Updating a running relay
 
 A ChatCube newer than its relay works, but what needs the newer relay says
-so instead of happening: renaming a group needs 1.3.0, and an older relay
+so instead of happening: renaming a group needs 1.3.0 (and, with an older
+relay than 1.4.0, the person added sees the chat only once the adder writes; public groups need 1.5.0), and an older relay
 answers ChatCube with `405 Method Not Allowed`, which ChatCube shows as "This
 relay cannot rename groups yet - it needs ChatCube relay 1.3.0 or later". On
 the server, with the layout of `deploy/chatcube-relay.service`:
 
 ```bash
-curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.2.0"}
+curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.3.0"}
 sudo systemctl stop chatcube-relay
 # The database first: an upgrade migrates it, and the older relay then refuses it.
 sudo cp /var/lib/chatcube-relay/relay.sqlite3 /var/lib/chatcube-relay/relay.sqlite3.bak
@@ -219,12 +248,61 @@ sudo cp /var/lib/chatcube-relay/relay.sqlite3 /var/lib/chatcube-relay/relay.sqli
 # a copy: rsync -a --exclude .venv Server/ChatCubeRelay/ /opt/chatcube-relay/)
 sudo -u chatcube-relay /opt/chatcube-relay/.venv/bin/pip install -e /opt/chatcube-relay
 sudo systemctl start chatcube-relay
-curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.3.0"}
+curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.5.0"}
 ```
 
 (The database's file is whatever `CHATCUBE_RELAY_DB` names in
 `/etc/chatcube-relay.env`.) Clients stay signed in across the restart: their
 sessions are in the database, and they reconnect by themselves.
+
+`deploy/update.sh` does all of that in one go and safely: it backs up the
+database and the installed code (into `/var/lib/chatcube-relay/backups`, the
+last five kept), installs the code it is given, restarts the relay and asks
+it for its version - and when the relay does not come back with the new
+version, it puts the previous code and database back and starts that again
+(exit 1). Run on the same version, it does nothing.
+
+```bash
+sudo Server/ChatCubeRelay/deploy/update.sh /path/to/Server/ChatCubeRelay
+```
+
+### Deploying from CI
+
+The `ChatCube relay` workflow tests every change to this directory, and on
+`main` - or started by hand, *Actions > ChatCube relay > Run workflow* - puts
+the tested relay on the live server: it copies this directory to the server
+over SSH, runs `update.sh` there and then asks the public address
+(`vars.CHATCUBE_RELAY_URL`, default `https://relay-chatcube.ultraos.eu`)
+for the version this commit carries. Until the secrets below are set the
+deploy job only says so, and nothing is touched. Its GitHub environment,
+`chatcube-relay`, can be given a required reviewer (*Settings >
+Environments*) so a deploy waits for a click.
+
+Once, on the server:
+
+```bash
+sudo useradd --create-home --shell /bin/bash relay-deploy
+sudo -u relay-deploy mkdir -m 700 /home/relay-deploy/.ssh
+# The public half of a key made for this alone (ssh-keygen -t ed25519 -N "" -f relay_deploy):
+echo 'ssh-ed25519 AAAA... relay-deploy' | sudo -u relay-deploy tee /home/relay-deploy/.ssh/authorized_keys
+# update.sh where the deploy user cannot change it, and the one command it may run as root:
+sudo install -m 755 Server/ChatCubeRelay/deploy/update.sh /usr/local/sbin/chatcube-relay-update
+echo 'relay-deploy ALL=(root) NOPASSWD: /usr/local/sbin/chatcube-relay-update *' | sudo tee /etc/sudoers.d/chatcube-relay-deploy
+sudo chmod 440 /etc/sudoers.d/chatcube-relay-deploy
+```
+
+In the repository's *Settings > Secrets and variables > Actions* (or the
+`chatcube-relay` environment's secrets):
+
+| Secret | |
+|---|---|
+| `CHATCUBE_RELAY_SSH_HOST` | the server's host name |
+| `CHATCUBE_RELAY_SSH_USER` | `relay-deploy` |
+| `CHATCUBE_RELAY_SSH_KEY` | the private half of that key |
+| `CHATCUBE_RELAY_SSH_KNOWN_HOSTS` | `ssh-keyscan <host>` - checked against the server's own key first; the job never trusts a host key it has not been given |
+
+`update.sh` itself is installed by hand, so a change to it reaches the server
+when it is installed again (the command above).
 
 Give ChatCube the relay's `https://` address. A bare host is taken as
 `https://`, and an `http://` address that the server redirects to `https://`

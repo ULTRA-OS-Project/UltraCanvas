@@ -1,9 +1,10 @@
 // libspecific/Cairo/RenderContextCairo.h
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.4.0 - SetLightTextBoost: light text drawn a second time, so it keeps its weight on a dark ground
 // Version: 1.3.0 - CompositeToSurfaceWithOpacity (an OVER composite at an opacity)
 // Version: 1.2.0 - FlushToSurfaceWithOpacity (a flush mixed with the destination)
 // Version: 1.1.0 - blend modes, groups, masks, hit testing, conic / mesh / pixmap patterns, text outlines
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 //
 
@@ -332,6 +333,20 @@ namespace UltraCanvas {
         static cairo_hint_style_t GetTextHintStyle();
         static void SetTextHintMetrics(cairo_hint_metrics_t metrics);
         static cairo_hint_metrics_t GetTextHintMetrics();
+        // Light text drawn firmer: 1, the default, draws text whose colour
+        // is light a second time, which corrects the weight cairo's
+        // gamma-naive blend takes from light text on a dark ground (a dark
+        // window read thinner than the same font in a native one); 0 draws
+        // every text once. Opaque plain colours on a
+        // pixel surface only - a PDF or SVG page keeps its text once.
+        // No metric changes. The next redraw shows a change. The
+        // environment's ULTRACANVAS_LIGHT_TEXT_BOOST (0 to 1) is the
+        // strength a run starts with.
+        static void SetLightTextBoost(double strength);
+        static double GetLightTextBoost();
+        // The second pass's alpha for a text colour: 0 for dark or
+        // translucent ink, up to the boost for light ink. Pure.
+        static double LightTextBoostFor(const Color& ink);
         void ApplyPangoFontOptions();
         // Also drops the cap heights cached on this context's PangoContext.
         void InvalidateFontMetricsCache() override;

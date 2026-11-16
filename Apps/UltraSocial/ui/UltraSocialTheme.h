@@ -312,6 +312,7 @@ inline std::string NetworkDisplayName(SocialNetwork network) {
         case SocialNetwork::X:        return "X";
         case SocialNetwork::LinkedIn: return "LinkedIn";
         case SocialNetwork::Facebook: return "Facebook Page";
+        case SocialNetwork::Discord:  return "Discord";
     }
     return "Network";
 }
@@ -327,6 +328,7 @@ inline UltraCanvas::Color NetworkColor(SocialNetwork network) {
         case SocialNetwork::X:        return UltraCanvas::Color( 15,  20,  25);
         case SocialNetwork::LinkedIn: return UltraCanvas::Color( 10, 102, 194);
         case SocialNetwork::Facebook: return UltraCanvas::Color( 24, 119, 242);
+        case SocialNetwork::Discord:  return UltraCanvas::Color( 88, 101, 242);
     }
     return kAccent;
 }
@@ -340,6 +342,7 @@ inline std::string NetworkInitial(SocialNetwork network) {
         case SocialNetwork::X:        return "X";
         case SocialNetwork::LinkedIn: return "in";
         case SocialNetwork::Facebook: return "f";
+        case SocialNetwork::Discord:  return "D";
     }
     return "?";
 }

@@ -1,5 +1,8 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.8.0 - a window started dark has dark chrome (the theme was only laid over it on a change);
+//                  View > Dark Mode: Document Background (dark / light grey / white text tabs under a dark look)
+// Version: 2.7.0 - the status bar shows which dictionary the active document is spell checked against; a click opens the Spelling menu
 // Version: 2.6.0 - the look is the framework theme's: taken at construction and on every theme change; ToggleTheme writes
 //                  Appearance.conf's look (or flips the Light / Dark policy of a --dark run); darkTheme no longer saved
 // Version: 2.5.1 - a failed save says why in a whole translated sentence (SaveFailureReason no longer puts an English phrase into "The file {0}.")
@@ -18,7 +21,7 @@
 // Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
 //                  and shortcut colours
 // Version: 2.3.3 - The profile folder and comment author read as UTF-8
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -473,6 +476,12 @@ namespace {
         // Create initial empty document
         CreateNewDocument();
 
+        // The chrome (menu bar, toolbars, tabs, status bar) is built in light
+        // colours; the theme's look is laid over it here. Only a theme change
+        // did this before, so a window that started dark kept a light menu
+        // bar, toolbar and status bar. A light start keeps what it was built with.
+        if (isDarkTheme) ApplyThemeToAllDocuments();
+
         // Handle close request internally (prompt for unsaved changes)
         onWindowClosing = [this]() -> bool {
             if (HasAnyUnsavedChanges()) {
@@ -736,6 +745,11 @@ namespace {
                         MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut(Tr("Toggle Theme"), "Ctrl+T", NormalizePath(GetResourcesDir() + "media/icons/texter/theme_mode.svg"), [this]() {
                             OnViewToggleTheme();
+                        }),
+                        // A provider, so the radio mark follows the setting
+                        // although the menu bar is built once.
+                        MenuItemData::Submenu(Tr("Dark Mode: Document Background"), [this]() {
+                            return BuildDarkDocumentBackgroundMenuItems();
                         }),
                         MenuItemData::Separator(),
                         MenuItemData::Checkbox(Tr("Line Numbers"), config.showLineNumbers, [this](bool checked) {
@@ -1333,6 +1347,20 @@ namespace {
 
         statusBarContainer->AddChild(zoomDropdown);
 
+        // Spell check language of the active document. A button rather than a
+        // dropdown: the dictionary list needs the spell backend, which is only
+        // loaded once the user asks for it - the menu builds it on opening.
+        spellLanguageButton = std::make_shared<UltraCanvasButton>(
+                "SpellLanguageButton", -1, statusBarHeight - 4, Tr("Spelling: off"));
+        spellLanguageButton->SetFontSize(10);
+        spellLanguageButton->SetPadding(0, 6);
+        spellLanguageButton->SetCornerRadius(2);
+        spellLanguageButton->SetAcceptsFocus(false);
+        spellLanguageButton->SetTooltip(Tr("Spell Check Language"));
+        spellLanguageButton->SetOnClick([this]() { ShowSpellLanguageMenu(); });
+        ApplySpellLanguageIndicatorTheme();
+        statusBarContainer->AddChild(spellLanguageButton);
+
         // Status label fills remaining space to the right (flex-grow in the row)
         statusLabel = std::make_shared<UltraCanvasLabel>(
                 "StatusBar"
@@ -1635,7 +1663,7 @@ namespace {
 
         // Apply current theme
         if (isDarkTheme) {
-            doc->textArea->ApplyDarkTheme();
+            ApplyDocumentLook(*doc->textArea);
         }
 
         // Apply current View settings to new document
@@ -4468,6 +4496,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::UpdateLanguageDropdown() {
+        // Every change of tab or of a tab's mode passes here, and the mode
+        // (hex, PDF) decides whether the document is spell checked at all.
+        UpdateSpellLanguageIndicator();
         if (!languageDropdown) return;
 
         auto doc = GetActiveDocument();
@@ -4689,6 +4720,58 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
+    void UltraCanvasTextEditor::ApplyDocumentLook(UltraCanvasTextArea& textArea) {
+        // A text area follows the theme by itself (under a theme policy), so
+        // a light page under a dark look would turn dark again at the next
+        // theme change; it stops following while it shows the user's choice,
+        // and goes back to the default once it shows the theme's look again.
+        const bool ownBackground = isDarkTheme && config.darkDocumentBackground != "dark";
+        const bool follow = !ownBackground && UltraCanvasUIElement::FollowThemeByDefault();
+        if (textArea.GetFollowTheme() != follow) textArea.SetFollowTheme(follow);
+
+        if (!isDarkTheme || config.darkDocumentBackground == "white") {
+            textArea.ApplyLightTheme();
+            return;
+        }
+        if (config.darkDocumentBackground == "lightgray") {
+            // The light look on a grey page: dark text, less glare than white.
+            textArea.ApplyLightTheme();
+            textArea.SetBackgroundColor(Color(224, 224, 224, 255));
+            TextAreaStyle& style = textArea.GetStyle();
+            style.currentLineColor = Color(210, 210, 210, 255);
+            style.lineNumbersBackgroundColor = Color(212, 212, 212, 255);
+            style.scrollbarTrackColor = Color(212, 212, 212, 255);
+            textArea.RequestRedraw();
+            return;
+        }
+        textArea.ApplyDarkTheme();
+    }
+
+    std::vector<MenuItemData> UltraCanvasTextEditor::BuildDarkDocumentBackgroundMenuItems() {
+        const int group = 7301;   // this submenu's radio group
+        const std::string& current = config.darkDocumentBackground;
+        return {
+            MenuItemData::Radio(Tr("Dark"), group, current == "dark",
+                                [this]() { SetDarkDocumentBackground("dark"); }),
+            MenuItemData::Radio(Tr("Light Grey"), group, current == "lightgray",
+                                [this]() { SetDarkDocumentBackground("lightgray"); }),
+            MenuItemData::Radio(Tr("White"), group, current == "white",
+                                [this]() { SetDarkDocumentBackground("white"); }),
+        };
+    }
+
+    void UltraCanvasTextEditor::SetDarkDocumentBackground(const std::string& background) {
+        if (background != "dark" && background != "lightgray" && background != "white") return;
+        if (config.darkDocumentBackground == background) return;
+        config.darkDocumentBackground = background;
+        SaveConfig();
+        // Under a light look the setting waits for the next dark one.
+        for (size_t i = 0; i < documents.size(); i++) {
+            ApplyThemeToDocument(static_cast<int>(i));
+        }
+        RequestRedraw();
+    }
+
     void UltraCanvasTextEditor::ApplyThemeToDocument(int docIndex) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
             return;
@@ -4697,12 +4780,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         auto doc = documents[docIndex];
         if (!doc->textArea) return;
 
-        if (isDarkTheme) {
-            doc->textArea->ApplyDarkTheme();
-        } else {
-            // Apply light theme
-            doc->textArea->ApplyLightTheme();
-        }
+        ApplyDocumentLook(*doc->textArea);
 
         // Reapply syntax highlighting if needed
         if (doc->textArea->GetHighlightSyntax()) {
@@ -4724,6 +4802,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // Update UI component colors
         if (isDarkTheme) {
             SetBackgroundColor(Color(30, 30, 30, 255));
+            if (statusBarContainer) statusBarContainer->SetBackgroundColor(Color(40, 40, 40, 255));
             if (statusLabel) {
                 statusLabel->SetBackgroundColor(Color(40, 40, 40, 255));
                 statusLabel->SetTextColor(Color(200, 200, 200, 255));
@@ -4746,6 +4825,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             applyDarkDropdownStyle(eolDropdown);
             applyDarkDropdownStyle(encodingDropdown);
             applyDarkDropdownStyle(languageDropdown);
+            ApplySpellLanguageIndicatorTheme();
             if (toolbarContainer) {
                 toolbarContainer->SetBackgroundColor(Color(40, 40, 40, 255));
             }
@@ -4788,6 +4868,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             }
         } else {
             SetBackgroundColor(Color(240, 240, 240, 255));
+            if (statusBarContainer) statusBarContainer->SetBackgroundColor(Color(240, 240, 240, 255));
             if (statusLabel) {
                 statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
                 statusLabel->SetTextColor(Color(80, 80, 80, 255));
@@ -4810,6 +4891,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             applyLightDropdownStyle(eolDropdown);
             applyLightDropdownStyle(encodingDropdown);
             applyLightDropdownStyle(languageDropdown);
+            ApplySpellLanguageIndicatorTheme();
             if (toolbarContainer) {
                 toolbarContainer->SetBackgroundColor(Color(240, 240, 240, 255));
             }
@@ -6157,6 +6239,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.spellCheckEnabled = configFile.GetBool("spellCheck", config.spellCheckEnabled);
         config.spellCheckLanguage = configFile.GetString("spellCheckLanguage", config.spellCheckLanguage);
         config.spellCheckAutoLanguage = configFile.GetBool("spellCheckAutoLanguage", config.spellCheckAutoLanguage);
+        config.darkDocumentBackground = configFile.GetString("darkDocumentBackground", config.darkDocumentBackground);
     }
 
     void UltraCanvasTextEditor::SaveConfig() {
@@ -6176,6 +6259,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetBool("spellCheck", config.spellCheckEnabled);
         configFile.SetString("spellCheckLanguage", config.spellCheckLanguage);
         configFile.SetBool("spellCheckAutoLanguage", config.spellCheckAutoLanguage);
+        configFile.SetString("darkDocumentBackground", config.darkDocumentBackground);
         configFile.Save();
     }
 

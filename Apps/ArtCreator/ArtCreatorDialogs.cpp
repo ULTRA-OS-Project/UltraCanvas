@@ -24,8 +24,8 @@ namespace {
 }
 
 void StyleDialog(UltraCanvasWindow& win, WindowConfig& config) {
-    config.backgroundColor = Colors::SectionPage;
-    win.SetBackgroundColor(Colors::SectionPage);
+    config.backgroundColor = GroupBoxVisualStyle::SectionPageColor();
+    win.SetBackgroundColor(GroupBoxVisualStyle::SectionPageColor());
     win.SetPadding(10);
     win.layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 }

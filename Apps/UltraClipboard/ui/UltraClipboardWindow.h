@@ -41,6 +41,7 @@
 // stays while the pointer is on that row or on the preview itself, where
 // the wheel zooms; it follows the wheel scrolling the list; Escape or
 // moving elsewhere closes it.
+// Version: 0.2.3 - ApplyLook: the colours it sets by hand follow the theme
 // Version: 0.2.2 - Extract text says which UltraAI provider read a picture
 // Version: 0.2.1 - Extract text
 // Version: 0.2.0 - in the background (SetKeepRunning): closing the window
@@ -107,6 +108,11 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildStatusBar();
     void Reload();
     void UpdateStatus();
+    // The look (UltraCanvasTheme): the list and its row delegate, the Undo
+    // button, and all the colours set by hand again on a change of theme.
+    void StyleList(bool actionsLeftOfText);
+    void StyleUndo();
+    void ApplyLook();
     void Tick();
     bool OnKey(const UltraCanvas::UCEvent& event);
 
@@ -163,7 +169,12 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> search_;
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> kinds_;
     std::shared_ptr<UltraCanvas::UltraCanvasSwitch> recording_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> settingsButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> moreButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> toolbar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> statusBar_;
+    int themeHandler_ = 0;           // UltraCanvasTheme::AddChangeHandler, removed in the destructor
+    bool statusIsError_ = false;     // the status line says the history could not be opened
     std::shared_ptr<UltraCanvas::UltraCanvasListView> list_;
     std::shared_ptr<UltraCanvas::ClipboardHistoryListModel> model_;
     std::shared_ptr<UltraCanvas::ClipboardHistoryRowDelegate> rows_;

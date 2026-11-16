@@ -104,6 +104,7 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.49.1 - a text file's preview page is paper in either look: its text dark ink, not the theme's
 // Version: 1.49.0 - FilerStyle::FromTheme, ApplyTheme: the widget follows the theme; a SetStyle by hand
 //                   stops the following
 // Version: 1.48.0 - the context menu's Refresh, and onRefreshRequested for a

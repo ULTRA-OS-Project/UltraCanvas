@@ -28,7 +28,11 @@
 // UltraMsg_ProcessPending itself. Journal calls are short blocking round trips
 // to the local broker.
 //
+// Version: 0.2.0 - MessageCenterStyle::FromTheme and ApplyTheme: the message centre follows the theme (a
+//                  dark one under a dark desktop); a SetStyle by hand stops the following. Its own
+//                  texts (the sections, Search messages, Unread, Refresh, the detail pane's) through Tr
 // Version: 0.1.0
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -76,6 +80,14 @@ struct MessageCenterStyle {
     bool  showDetail  = true;   // the pane with the full text and the action buttons
     bool  showSearch  = true;
     bool  showFilters = true;   // the chip row
+
+    // The theme's roles over a base's own shape (sizes, what it shows): the
+    // panel behind the feed and the detail, the well for the sources, the
+    // soft accent behind the chosen row and the hover fill, ink and muted
+    // ink, the accent for the unread mark and danger for an urgent one.
+    static MessageCenterStyle FromTheme(const UltraCanvasTheme& theme, const MessageCenterStyle& base);
+    static MessageCenterStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, MessageCenterStyle()); }
+    static MessageCenterStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
 };
 
 // One row of the feed, as the element understands it.
@@ -161,8 +173,16 @@ public:
 
     // ---- looks and parts --------------------------------------------------
 
+    // A style set here is the application's: the element stops following
+    // the theme (SetFollowTheme(true) after it takes the theme's colours
+    // over its shape again).
     void SetStyle(const MessageCenterStyle& style);
     const MessageCenterStyle& GetStyle() const { return style_; }
+    // MessageCenterStyle::FromTheme over the current style. The parts it
+    // colours itself (the feed, the sources, the detail labels, the status
+    // line) take it from here; the controls in the header and the filter
+    // row follow the theme on their own.
+    void ApplyTheme(const UltraCanvasTheme& theme) override;
 
     std::shared_ptr<UltraCanvasListView>         GetListView() const { return list_; }
     std::shared_ptr<UltraCanvasTreeView>         GetSourcesTree() const { return sources_; }

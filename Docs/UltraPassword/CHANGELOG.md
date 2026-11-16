@@ -1,3 +1,12 @@
+#### 2026-11-15 *0.1.6*
+- **The vault tree no longer jumps back to its first row when it is rebuilt.**
+  Every change - a rename, a move, an entry added or deleted, a group opened -
+  lists the tree again from the vault, and the view fell back to the top each
+  time, however far down the user had scrolled. The rebuild now holds the view
+  (the framework's `TreeRebuildScope`): the scroll position comes back as it
+  was and the selected row keeps its place on screen. The rows that were open
+  are restored as before.
+
 #### 2026-11-12 *0.1.5*
 - **The desktop's look, and every text translatable.** UltraPassword is
   light or dark as the desktop is - or as *Look* on UOS-Settings' Appearance

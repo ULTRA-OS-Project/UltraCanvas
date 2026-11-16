@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/AdminDatabase.cpp
+// Version: 0.5.1 - ComponentUpdates
 // Version: 0.5.0 - the reversals and the payouts (schema 5), SaleByReference
 // Version: 0.3.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.3.0 - sales.reference
@@ -216,6 +217,15 @@ Result<std::vector<Component>> AdminDatabase::Components() const {
         out.push_back(parsed.Value());
     }
     return Result<std::vector<Component>>::Succeed(std::move(out));
+}
+
+Result<std::vector<std::pair<std::string, std::string>>> AdminDatabase::ComponentUpdates() const {
+    using R = Result<std::vector<std::pair<std::string, std::string>>>;
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_, "SELECT id, updated_at FROM components ORDER BY id", rs); !r) return DbFailure<std::vector<std::pair<std::string, std::string>>>(r, "read its components");
+    std::vector<std::pair<std::string, std::string>> out;
+    for (size_t i = 0; i < rs.Size(); ++i) out.emplace_back(Str(rs.Row(i), "id"), Str(rs.Row(i), "updated_at"));
+    return R::Succeed(std::move(out));
 }
 
 Result<void> AdminDatabase::RemoveComponent(const std::string& id) {

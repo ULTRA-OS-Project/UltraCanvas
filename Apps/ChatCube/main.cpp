@@ -15,15 +15,19 @@
 //                                (what UltraDesktop's "start with the desktop" asks)
 //   ChatCube --version / --help
 //
+// Version: 0.2.1 - the look decided again at every change (the desktop's, the Settings window's): the
+//                  provider asks ChatCube::DarkLook; the elements follow the theme by default
 // Version: 0.2.0 - the theme under the Own policy: ThemeFor over the settings' look (System follows the desktop) and --dark, the host's fonts
 // Version: 0.1.5 - the settings (ChatCubeSettings): the look from them unless --dark says, handed to the window
 // Version: 0.1.4 - --minimized (UltraDesktop's "start with the desktop")
+// Version: 0.1.4 - a video's preview picture from the video backend (UltraCanvasVideoThumbnail) when
+//                  VideoFX is not built in or cannot read the clip
 // Version: 0.1.3 - the preview pictures of files sent (UltraIM_SetPreviewMaker): pictures through the
 //                  image pipeline, videos through VideoFX when it is built in
 // Version: 0.1.2 - --dark
 // Version: 0.1.1 - --debug and --log
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-14
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ui/ChatCubeSettings.h"
@@ -37,6 +41,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasVideoThumbnail.h"
 #include "UltraIM/UltraIMCore.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraNet/UltraNetCore.h"
@@ -116,40 +121,58 @@ bool WriteJpegPreview(const std::string& from, const std::string& out, int maxSi
     return true;
 }
 
+// A video's frame through the video backend (UltraCanvasVideoThumbnail: a
+// GStreamer / Media Foundation / AVFoundation grab, a short way into the clip
+// past a black start), written as PNG, then as the JPEG.
+bool VideoBackendPreview(const std::string& path, const std::string& out, int maxSide, int& w, int& h) {
+    UltraCanvas::VideoThumbnailRequest request;
+    request.maxWidth = maxSide;
+    request.maxHeight = maxSide;
+    const std::string png = out + ".png";
+    if (!UltraCanvas::SaveVideoThumbnail(path, png, request)) return false;
+    const bool ok = WriteJpegPreview(png, out, maxSide, w, h);
+    std::error_code ec;
+    fs::remove(UltraCanvas::PathFromUtf8(png), ec);
+    return ok;
+}
+
 bool MakePreview(const std::string& path, const std::string& mimeType, int maxSide, const std::string& out,
                  int& w, int& h) {
     if (mimeType.rfind("video/", 0) != 0) return WriteJpegPreview(path, out, maxSide, w, h);
 #if defined(CHATCUBE_HAS_VIDEOFX)
     // The frame a second in (the first is often black), already scaled.
     VideoFX::VideoFXFrame frame;
-    if (VideoFX::VideoFX_ExtractFrame(path, 1.0, frame, maxSide, maxSide) != VideoFX::VideoFXResult::Ok || !frame.IsValid()) {
-        if (VideoFX::VideoFX_ExtractFrame(path, 0.0, frame, maxSide, maxSide) != VideoFX::VideoFXResult::Ok || !frame.IsValid())
-            return false;
-    }
-    // Into a pixmap (premultiplied ARGB; a frame is opaque), then out as a
-    // QOI file the image pipeline reads, then as the JPEG.
-    UltraCanvas::UCPixmap pixmap;
-    if (!pixmap.Init(frame.width, frame.height)) return false;
-    uint32_t* pixels = pixmap.GetPixelData();
-    if (!pixels) return false;
-    for (int y = 0; y < frame.height; ++y) {
-        for (int x = 0; x < frame.width; ++x) {
-            const uint8_t* p = &frame.pixels[(static_cast<size_t>(y) * frame.width + x) * 4];
-            pixels[static_cast<size_t>(y) * frame.width + x] =
-                (0xFFu << 24) | (static_cast<uint32_t>(p[0]) << 16) | (static_cast<uint32_t>(p[1]) << 8) | p[2];
+    bool grabbed = VideoFX::VideoFX_ExtractFrame(path, 1.0, frame, maxSide, maxSide) == VideoFX::VideoFXResult::Ok &&
+                   frame.IsValid();
+    if (!grabbed)
+        grabbed = VideoFX::VideoFX_ExtractFrame(path, 0.0, frame, maxSide, maxSide) == VideoFX::VideoFXResult::Ok &&
+                  frame.IsValid();
+    if (grabbed) {
+        // Into a pixmap (premultiplied ARGB; a frame is opaque), then out as
+        // a QOI file the image pipeline reads, then as the JPEG.
+        UltraCanvas::UCPixmap pixmap;
+        if (pixmap.Init(frame.width, frame.height) && pixmap.GetPixelData()) {
+            uint32_t* pixels = pixmap.GetPixelData();
+            for (int y = 0; y < frame.height; ++y) {
+                for (int x = 0; x < frame.width; ++x) {
+                    const uint8_t* p = &frame.pixels[(static_cast<size_t>(y) * frame.width + x) * 4];
+                    pixels[static_cast<size_t>(y) * frame.width + x] =
+                        (0xFFu << 24) | (static_cast<uint32_t>(p[0]) << 16) | (static_cast<uint32_t>(p[1]) << 8) | p[2];
+                }
+            }
+            pixmap.MarkDirty();
+            const std::string qoi = out + ".qoi";
+            if (UltraCanvas::SavePixmapAsQoiFile(pixmap, qoi).empty()) {
+                const bool ok = WriteJpegPreview(qoi, out, maxSide, w, h);
+                std::error_code ec;
+                fs::remove(UltraCanvas::PathFromUtf8(qoi), ec);
+                if (ok) return true;
+            }
         }
     }
-    pixmap.MarkDirty();
-    const std::string qoi = out + ".qoi";
-    if (!UltraCanvas::SavePixmapAsQoiFile(pixmap, qoi).empty()) return false;
-    const bool ok = WriteJpegPreview(qoi, out, maxSide, w, h);
-    std::error_code ec;
-    fs::remove(UltraCanvas::PathFromUtf8(qoi), ec);
-    return ok;
-#else
-    (void)path; (void)out; (void)maxSide; (void)w; (void)h;
-    return false;
 #endif
+    // Without VideoFX, or a clip it cannot read: the video backend's own grab.
+    return VideoBackendPreview(path, out, maxSide, w, h);
 }
 
 void PrintUsage(const char* program) {
@@ -225,16 +248,21 @@ int main(int argc, char** argv) {
     // System - and --dark over it.
     ChatCube::Settings settings;
     settings.Load();
-    dark = dark || settings.DarkFor(app.GetHostAppearance().dark);
+    ChatCube::SetLookChoice(settings.look);
+    if (dark) ChatCube::ForceDarkLook();
     app.SetDefaultWindowIcon(UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/ChatCube.png"));
     // The look, before any element is built: every element and the lists'
     // own painting take their colours from it (ui/ChatCubeTheme.h). The
-    // app's own theme under the policy: the look decided at this start
-    // (the window's own painting reads it once), the host's fonts again on
-    // every change of the desktop.
+    // app's own theme under the policy, built again on every change of the
+    // desktop (light or dark under System, its fonts) and when the Settings
+    // window changes the look; the window styles itself again then
+    // (ChatCubeWindow::ApplyLook). The framework's elements ChatCube does not
+    // colour itself - menus, dialogs, the tree's and lists' scroll bars -
+    // follow the theme as they would under the host's.
     app.SetThemePolicy(UltraCanvas::ThemePolicy::Own);
-    app.SetThemeProvider([dark](const UltraCanvas::HostAppearance& host) {
-        UltraCanvas::UltraCanvasTheme theme = ChatCube::ThemeFor(dark);
+    UltraCanvas::UltraCanvasUIElement::SetFollowThemeByDefault(true);
+    app.SetThemeProvider([](const UltraCanvas::HostAppearance& host) {
+        UltraCanvas::UltraCanvasTheme theme = ChatCube::ThemeFor(ChatCube::DarkLook(host.dark));
         theme.TakeHostFonts(host);
         return theme;
     });
