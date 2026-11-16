@@ -1,3 +1,267 @@
+#### 2026-11-16 *0.9.568*
+- **UltraIM: a Mastodon provider** (`Plugins/UltraIM/mastodon`, module
+  `ultraim_mastodon`): the direct messages of a Mastodon server over its
+  REST API through UltraNet. A chat is the set of people in it - its id
+  their addresses, so a chat opened before its first message and the
+  threads its messages make are one; statuses as text
+  (`HTML::ExtractPlainText`), their first attachment as picture, video or
+  sound; polled every few seconds, several new statuses arriving in order,
+  edits and deletes noticed; replies, edits (`PUT`), deletes, read marks,
+  leaving, media uploads with `TransferProgress`, search through
+  `UltraIM_SearchByFetching`. Sign-in registers the application with the
+  server once and runs OAuth with PKCE on a loopback address; the token is
+  kept in UltraVault. Tested against `Tests/UltraIM/mastodon_fake_server.py`,
+  a small Mastodon in standard-library python (`MastodonProviderTests`).
+- **Public groups in ChatCube Direct** (plug-in ABI 11; ChatCube relay
+  1.5.0). `UltraIM_FetchPublicGroups`, `UltraIM_JoinGroup` and
+  `UltraIM_SetGroupPublic`, `UltraIMConversation::isPublic` and
+  `UltraIMPublicGroup`: a group's owner lists it for everyone on the relay,
+  anyone joins it, and its messages stay sealed for each member. The relay
+  keeps the mark (schema 4), lists the public groups
+  (`GET /v1/public-groups`), lets anyone join (`POST .../join`), bars whom
+  the owner took out, holds up to 256 in one and limits posting into it.
+- **Group descriptions and blocking** (plug-in ABI 12; ChatCube relay
+  1.5.0): `UltraIM_SetGroupDescription` with `UltraIMConversation::description`
+  and `UltraIMPublicGroup::description`; `UltraIM_BlockGroupMember`,
+  `UltraIM_UnblockGroupMember` and `UltraIM_FetchBlockedMembers` - the owner
+  keeps someone out of a group until unblocked. The relay takes
+  `PATCH /v1/groups/{id}` with a description and blocks with
+  `PUT` / `DELETE /v1/groups/{id}/blocked/{user}`.
+- **`UltraIMAuthStep::Browser`** (plug-in ABI 10): a sign-in step with
+  nothing to type in the application - the hint is a web page to open in
+  the browser, after which the provider goes on by itself.
+
+#### 2026-11-15 *0.9.567*
+- **DropdownKeyboardTest runs in CI, and checks the dropdown's focus outline
+  on real pixels.** The suite opens a real window, so in "Run unit tests" -
+  which has no display - it skipped as a whole, its keyboard checks (Return
+  choosing, Tab and the focus, type-ahead) included. It now runs in the
+  virtual-display step next to the tree and list view focus tests, with
+  `ULTRACANVAS_TEST_DISPLAY_REQUIRED=1` turning its skip into a failure. Its
+  new section reads the dropdown button's edges back from the window
+  (`DisplayTest::RingSides`): the outline in `focusBorderColor` on all four
+  sides while the dropdown is focused and closed, none while its list is open
+  or once the focus has gone, and the plain border back on all four sides.
+- **`FileDialogTest` passes on a display again.** Its check that the
+  save-settings dialog opened from a settings window has shorter rows assumed
+  the window's type is smaller than the dialog's own 12 - true while
+  `SettingsPageKit` drew at a constant 10, but since the kit follows the
+  theme (0.9.541) its `TextFontSize()` is the desktop's body size, 12 where
+  no desktop names a font, as under Xvfb, and the dialog then rightly draws
+  its 28-pixel rows. The dialog's scaling was never at fault (21, 23 and 26
+  pixels at 9, 10 and 11 points). The test now checks that a settings window
+  opens the dialog at its own type size, and measures the shorter rows and
+  narrower window at 10 points against the dialog at its own size, so it
+  holds at any desktop's size (run at 10, 12 and 14). The file dialog's
+  documentation and the loader's header no longer name the old
+  `kTextFontSize`.
+- **Indented Markdown code blocks are highlighted.** A code block indented
+  four spaces has no language tag, and the text area drew it plain. Each
+  block's language is now found once per block: a clear guess from its own
+  text (`DetectLanguageFromContent`); else the language the nearest code fence
+  above it names; else a guess on a lower bar, since the text is known to be
+  code - so a one-line `console.log(x);` or `print(x)` is placed too. A block
+  none of them places stays plain, so indented prose is never coloured as
+  code. `DetectLanguageFromContent` gains an overload taking
+  `LanguageDetectOptions` (the minimum score and lead; the one-argument form
+  is unchanged). An application that knows the
+  language sets it for every indented block with
+  `UltraCanvasTextArea::SetIndentedCodeLanguage("C++")`. A blank line between
+  two indented code lines now belongs to the block, as CommonMark has it, so
+  the line state carries through it: a `/* comment */` open across the blank
+  line stays a comment. Fenced and indented blocks share one highlighting
+  routine, which takes a tokenizer name as the detector gives it
+  ("Common Lisp") as well as a fence tag.
+- **The localisation editor's controls fit a narrow page.** In UOS-Settings'
+  Translations page, two things were cut off:
+  - the *Show the whole sets* and *Edit shared sets* switches lost their
+    labels ("Sho", "Ed") to the action buttons beside them;
+  - the *Compare with* list ran off the first row.
+
+  The action buttons (Undo, Draft with UltraAI, Export, Save) now have a row
+  of their own, to the right, and *Compare with* sits beside *Show* on the
+  second row, where the search field gives way. Every control keeps its
+  whole label.
+- **The media viewer saves a drawing as a drawing, and a recording in
+  another audio type.** *Save as* on an SVG, a DXF, an EMF or any file the
+  vector view shows offers every vector type this build writes and every
+  bitmap type, drawn again at the size the Settings give
+  (`AddVectorDocumentSaveTypes` / `SaveVectorDocument`); the vector view
+  offers *Save as* too, so an SVG has one where libvips has no SVG loader
+  (Windows). A drawing turned or mirrored on the image surface is still saved
+  as the picture, and the same type as the file on show is copied as it is.
+  A recording the audio player opened is offered every audio type this build
+  encodes, through the new `UltraCanvasFileLoader::SaveAudio` /
+  `ConvertAudioFile` (the same type copied as it is, another decoded and
+  encoded). Tests: `MediaViewerSaveTest`, `MediaViewerToolsTest`.
+- **The toolbar icons fill their slot.** `zoom-fit`, `rotate-left/right`,
+  `mirror-h/v`, `curves` and `slideshow` drew inside a 3-4 unit margin of
+  their 24-unit box, about 11 px of a 16 px slot; their view box is cropped
+  to the drawing and the mirror triangles are larger.
+- **The Save settings dialog is set in one type size.** Its captions,
+  checkboxes and buttons were drawn at a fixed 12 while the size fields and
+  lists followed the theme's body size, smaller on Windows; it now takes the
+  theme's body size, the Save dialog opens it at its own, and the spinners
+  and dropdowns follow (`FileDialogTest`).
+- **A video shown in the media viewer can be saved in another type.**
+  *Save as* was there for a picture, a drawing and a recording, never for a
+  film: the core has no video encoder, and the one transcoder, VideoFX, is a
+  sibling module on FFmpeg. FileLoader gains the seam:
+  `UltraCanvasFileLoader::ConvertVideoFile(source, target, error, progress)`
+  copies the same type as it is and converts another with the converter
+  its codec registration carries (`MediaCodecRegistration::convertVideo`,
+  new; it makes the entry `canEncode`), written beside the target and moved
+  there when complete - a stopped or failed conversion leaves no half file
+  and keeps the one it was to replace. `CanConvertVideoTo`,
+  `GetVideoSaveExtensions` and `AddVideoSaveTypes(opts)` list what it writes.
+  `VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h` (library
+  `VideoFXUltraCanvasFormats`) registers VideoFX's converter for every
+  container its FFmpeg writes - MP4, MOV, Matroska, WebM, AVI as the
+  encoders allow - with `VideoFX_RegisterWithFileLoader()`. The viewer
+  offers *Save as* for a video its player opened once a converter is
+  registered (`ShowVideoSaveDialog`), and converts on a worker thread
+  behind `UltraCanvasProgressDialog` - the ring follows the encoder, Cancel
+  stops it. A build without a converter offers a video no *Save as*, rather
+  than one that fails: `canEncode` alone is not enough, since on Linux the
+  built-in table marks the GStreamer capture muxers (MP4, MOV, MKV, WebM,
+  AVI) `canEncode` with no way to convert a file. Tests:
+  `MediaViewerSaveTest` (a converter of the test's own: copy, convert,
+  stop, a converter that ignores a stop, failure, the earlier file kept;
+  VideoFX's on a generated clip into every type it writes),
+  `MediaViewerToolsTest` (a film offers *Save as* only with a converter).
+  Docs: *Saving a drawing, a recording or a video* in
+  `UltraCanvasMediaViewer.md`, *A Video Saved in Another Type* in
+  `Docs/Modules/FileLoader/README.md`, the VideoFX README's *Which files*.
+
+#### 2026-11-16 *0.9.566*
+- **UltraIM: progress of a file on its way, and sound as a search kind.**
+  `UltraIMEventType::TransferProgress` (`transferredBytes`, `totalBytes`,
+  `isUpload`, the message's client id) while a picture, video or file goes
+  out or comes in: ChatCube Direct counts its 32 KiB parts as they leave and
+  arrive, Telegram reads `updateFile`, Matrix UltraNet's per-request
+  progress (`MatrixHttp` Upload / Download take a callback).
+  `UltraIMSearchKind::Audio` finds voice messages and songs sent as files
+  (which `Files` now leaves out) - on the device, in Direct's store and
+  through Telegram's voice-note filter. `UltraIM_MakePreview` makes a file's
+  preview once per run. Provider ABI 9.
+
+#### 2026-11-15 *0.9.565*
+- **A window that is never closed now lets go of its OS window.** Closing a
+  window ran the whole native teardown - the OS window, its drawing surface,
+  its input context, its drag-drop registration. *Destroying* one ran none of
+  it: `~UltraCanvasWindowBase` cannot call a virtual override, so a window
+  that went without `Close()` first - the application's own windows at
+  shutdown, or simply the last `shared_ptr` going away - left all of it
+  behind. The X server kept the window until the connection closed, which is
+  why nobody noticed. Each platform window class releases its native half in
+  its own destructor now, as the Wayland and WASM ones already did. New
+  `WindowShutdownTest` asks the X server whether the windows really went, and
+  destroys an application with a window and an open popup still on it - the
+  shape of the SIGSEGV that the first display-backed CI run turned up.
+- **The window tests that nobody ran now run in CI.** UltraMail's four
+  display-backed suites - the account bar, the folder tree, the message pane,
+  the format bar - were built by every row and run by none: the Linux row's
+  `ctest` has no display and selected `^UltraMailEngine$` alone, and the
+  suites skip themselves without one. Five assertions of the account bar's
+  suite had been failing since the tiles learned to be dragged, and nothing
+  said so until someone read it by hand. They now run on a virtual display,
+  as `FilerVanishedFolderTest` and the tree view's focus-ring test do, and so
+  does UltraDesktop's new Apps window test. A suite that would skip in that
+  step fails instead (`ULTRACANVAS_TEST_DISPLAY_REQUIRED=1`), so a missing
+  display can never again read as a pass.
+- **Column tree views are readable in the dark look.** A column's cells
+  were drawn in a fixed dark grey (`TreeViewColumn::textColor`, 40,40,40),
+  near-invisible on a dark ground. The default is now `Colors::Transparent`,
+  which means the tree's own text colour, the theme's ink. A column given a
+  colour of its own keeps it. UOS-Settings' Translations grid showed it
+  most, in its set columns and the Shown column.
+- **The localisation editor's marks follow the look.** Its marks are a text
+  from another set, an untranslated row and a changed row, plus the status
+  line. They keep their colours in a light look. In a dark one they take the
+  theme's muted ink, its danger colour and a light green, and a theme can
+  name its own (`localisation-editor.muted`, `.untranslated`, `.changed`,
+  `.status`). A change of look while the editor is open fills the rows
+  again (`UltraCanvasLocalisationEditor::ApplyTheme`).
+- **Text in a dark window is as firm as the desktop's own.** A dark
+  UltraFiler beside a dark Explorer read thinner and greyer in the same
+  font. Cairo blends a glyph's edge in sRGB numbers, not in light - a pixel
+  white covers by half on black comes out 128 where 188 should arrive - so
+  dark text on white gains weight and light text on a dark ground loses it;
+  DirectWrite, ClearType and Core Text correct for that, and now the render
+  context does: text whose colour is light is drawn a second time, which
+  lifts a half-covered pixel to three quarters (191) and leaves a covered
+  one as it is. On by default in every application, under any theme
+  (`RenderContextCairo::SetLightTextBoost`, 1 by default, 0 for every text
+  once; `ULTRACANVAS_LIGHT_TEXT_BOOST=0` for one run). No advance, extent
+  or layout changes. Dark text, translucent text, text painted with a
+  pattern and a PDF, PostScript or SVG page are drawn as before. Test:
+  `LightTextBoostTest`. Docs: *Light text on a dark ground* in
+  `UltraCanvasTextRenderingExamples.md`.
+- **The dark theme's text is white.** `UltraCanvasTheme::Dark()`'s `ink`
+  was 235 grey, which read greyer than a native dark window beside it; it
+  is white now, as the Windows and GNOME dark looks write their text. The
+  muted (190) and faint (150) inks are unchanged.
+- **Light text, firm or plain, is a setting.** `Appearance.conf` gains
+  `lighttext=firm | plain` (`AppearanceSettings::lightText`,
+  `HostAppearance::firmLightText`, `lighttext=` in
+  `ULTRACANVAS_HOST_APPEARANCE`); the application hands it to the render
+  context when it changes and redraws, so a running application follows
+  UOS-Settings within a moment. `ULTRACANVAS_LIGHT_TEXT_BOOST` still decides
+  for its run.
+- **DemoApp's Text Rendering page shows it.** A *Light Text* option (Plain,
+  Half, Firm) and a card of light text on a dark ground in the dark theme's
+  three inks.
+- **A row no longer measures text that takes the rest of its line as zero
+  wide.** An item with `flex: 1 1 0` has a base size of zero, and a row a
+  column measures "at most this wide" measured it there: a wrapping label
+  came out a letter a line, the row many times too tall. DemoApp's Text
+  Rendering page showed its first sample and then a blank area the height
+  of the window. Such a row now grows toward the width it is offered by the
+  content of the items that grow from a set basis (their max-content
+  contribution, CSS Flexbox 9.9.1), so they are measured at the width they
+  will be arranged at. Test: `CSSLayoutGrowFromZeroTest`.
+- **The light text setting and the demo's samples are translated** in all
+  thirty languages (machine drafts, as the rest).
+- **The list view shows which row has the keyboard focus.** It worked out the
+  focused row and handed it to the delegate as `ListItemStyleOption::isFocused`,
+  but nothing drew it, so a keyboard user could not tell the row the arrow
+  keys go on from apart from one that is merely selected. While the list holds
+  the focus, that row now carries a dashed one-pixel ring just inside its
+  edges, the way the tree view's does; it goes when the focus leaves and the
+  selection stays. The view draws it over the delegate, once across the row,
+  so custom delegates and multi-column rows get one ring. Its colour is
+  `ListViewStyle::focusRingOnSelectionColor` on a selected row (the theme's
+  text-on-accent) and the selection colour on any other;
+  `UltraCanvasListView::SetFocusRingColor` sets one for every row. A list that
+  never takes the focus (a dropdown's open list) shows none.
+- **ListViewFocusRingTest** checks it on real pixels under Xvfb - the ring on
+  all four sides of the focused row while focused and on none after, one ring
+  across a two-column row, the automatic and the set colour - and CI's
+  virtual-display step runs it next to TreeViewKeyboardTest, whose pixel
+  helpers (`RowShows`, `RingSides`) moved to `Tests/DisplayTestSupport.h` for
+  both.
+- **UltraNet links without the core again.** `UltraNetMime` calls `Trim()` and
+  `Base64Encode()`, which live in the `UltraCanvasTextUtils` archive, but
+  `uc-net` never named that archive: the shared core links it and absorbs
+  `uc-net` whole, so anything built against the core saw no gap. A program
+  that links UltraNet *without* the core did - `ultradbadmin-relay`, the
+  headless server half of UltraDBAdmin's browser build, failed to link with
+  *"undefined reference to `UltraCanvas::Trim`"* as soon as its OpenID Connect
+  sign-in was enabled. `uc-net` now links the archive itself.
+- **An application no longer crashes on its way out.** A window's destructor
+  closes its popups, and closing a popup hides its window - which on X11 asks
+  the application for the display. But `windows` is a member of
+  `UltraCanvasApplicationBase`, so the windows were destroyed by the *base*
+  destructor, which runs after the platform half of the application has
+  already gone and cleared its instance pointer: `Hide()` then read the
+  display through a null application and the process died with SIGSEGV. Every
+  platform application now calls the new `DestroyWindows()` at the top of its
+  own destructor, so a window is always destroyed while the application it
+  reaches back for is still whole, and `UltraCanvasLinuxWindow::Hide()`
+  survives having no application left. The first display-backed CI run of
+  UltraMail's message-pane suite caught this: 60 of 60 assertions passed and
+  the binary still exited 139.
+
 #### 2026-11-15 *0.9.564*
 - **UltraIM: a recording's length travels with it.**
   `UltraIMSendOptions::durationSeconds` - a voice note's or a video's length,

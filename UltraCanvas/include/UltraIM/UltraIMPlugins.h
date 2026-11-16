@@ -1,5 +1,10 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.16 - ABI 12: a group's description; blocking members
+// Version: 0.1.15 - ABI 11: public groups (FetchPublicGroups, JoinGroup, SetGroupPublic)
+// Version: 0.1.14 - ABI 10: UltraIMAuthStep::Browser
+// Version: 0.1.13 - ABI 9: UltraIMEventType::TransferProgress and its fields on UltraIMEvent;
+//                   UltraIMSearchKind::Audio
 // Version: 0.1.12 - ABI 8: UltraIMSendOptions::durationSeconds
 // Version: 0.1.11 - ABI 7: UltraIMConversation::memberCount
 // Version: 0.1.10 - ABI 6: a group managed after it is made (RenameGroup, AddGroupMembers, RemoveGroupMember)
@@ -16,7 +21,7 @@
 // Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
 // Version: 0.1.1 - FetchSharedCredentials: what a provider's service keeps for another provider
 // Version: 0.1.0
-// Last Modified: 2026-11-13
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -380,6 +385,55 @@ public:
         if (onResult) onResult(Unsupported("leaving conversations"));
     }
 
+    // ---- Public groups ------------------------------------------------------------
+    // A group its owner made public is listed for everyone on the network
+    // (FetchPublicGroups: those whose name holds `query`, "" = all, the
+    // biggest first) and joined by anyone (JoinGroup: the conversation it is,
+    // also as a ConversationUpdate). SetGroupPublic is the owner's (else
+    // PermissionDenied); the change reaches every member as a ConversationUpdate
+    // with UltraIMConversation::isPublic. A provider without them answers
+    // CapabilityMissing.
+    virtual void FetchPublicGroups(const std::string& query, UltraIMPublicGroupsCallback onResult) {
+        (void)query;
+        if (onResult) onResult(Unsupported("public groups"), {});
+    }
+    virtual void JoinGroup(const std::string& conversationId, UltraIMConversationCallback onResult) {
+        (void)conversationId;
+        if (onResult) onResult(Unsupported("public groups"), {});
+    }
+    virtual void SetGroupPublic(const std::string& conversationId, bool isPublic,
+                                UltraIMConversationCallback onResult) {
+        (void)conversationId; (void)isPublic;
+        if (onResult) onResult(Unsupported("public groups"), {});
+    }
+
+    // ---- A group's description; members blocked ---------------------------------
+    // SetGroupDescription answers the group as it is now (and a
+    // ConversationUpdate reaches every member); who may change it is the
+    // network's rule (ChatCube: any member of a private group, the owner of a
+    // public one). Blocking is the owner's: the member is taken out when in
+    // it, and cannot join again or be added by someone else until unblocked;
+    // FetchBlockedMembers lists them (contactId, displayName).
+    virtual void SetGroupDescription(const std::string& conversationId, const std::string& description,
+                                     UltraIMConversationCallback onResult) {
+        (void)conversationId; (void)description;
+        if (onResult) onResult(Unsupported("group descriptions"), {});
+    }
+    virtual void BlockGroupMember(const std::string& conversationId, const std::string& memberId,
+                                  UltraIMResultCallback onResult) {
+        (void)conversationId; (void)memberId;
+        if (onResult) onResult(Unsupported("blocking group members"));
+    }
+    virtual void UnblockGroupMember(const std::string& conversationId, const std::string& memberId,
+                                    UltraIMResultCallback onResult) {
+        (void)conversationId; (void)memberId;
+        if (onResult) onResult(Unsupported("blocking group members"));
+    }
+    virtual void FetchBlockedMembers(const std::string& conversationId, UltraIMContactsCallback onResult) {
+        (void)conversationId;
+        if (onResult) onResult(Unsupported("blocking group members"), {});
+    }
+
 protected:
     static UltraIMResult Unsupported(const std::string& what) {
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
@@ -421,9 +475,17 @@ protected:
 // conversation left; UltraIMConversation::ownerId and memberNames.
 // Version 7 (2026-11): UltraIMConversation::memberCount.
 // Version 8 (2026-11): UltraIMSendOptions::durationSeconds (a recording's length).
+// Version 9 (2026-11): TransferProgress events (transferredBytes, totalBytes, isUpload);
+// UltraIMSearchKind::Audio.
+// Version 10 (2026-11): UltraIMAuthStep::Browser (a sign-in page to open).
+// Version 11 (2026-11): public groups (FetchPublicGroups, JoinGroup,
+// SetGroupPublic, UltraIMConversation::isPublic, UltraIMPublicGroup).
+// Version 12 (2026-11): a group's description (SetGroupDescription,
+// UltraIMConversation::description, UltraIMPublicGroup::description);
+// blocking members (BlockGroupMember, UnblockGroupMember, FetchBlockedMembers).
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 8;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 12;
 
 struct UltraIMPluginHost {
     int abiVersion;

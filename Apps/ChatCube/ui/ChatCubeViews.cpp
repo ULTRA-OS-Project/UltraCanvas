@@ -1,5 +1,8 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.9 - a bar under a file on its way (going out or coming in) with its percent; a sound file
+//                  with a note and a play mark, played in its bubble; a file's name measured bold, as
+//                  it is drawn, so it stays inside its bubble; no "Video" word under the play mark
 // Version: 0.2.8 - the ticks a little smaller, read in a colour of its own, "Not sent" in words, and a message's
 //                  state in words on hover (Sending / Sent / Delivered / Read / Not sent)
 // Version: 0.2.7 - a reply's quote at the top of its bubble, "edited" beside the time, a voice
@@ -61,6 +64,9 @@ constexpr float kQuoteFont = 9.0f;
 // A voice message: the play mark left of its name and length.
 constexpr double kVoiceMarkRadius = 15.0;
 constexpr int   kVoiceInset = 38;
+// A file on its way: the bar and its percent, over the time.
+constexpr int   kTransferHeight = 16;
+constexpr int   kTransferBar = 4;
 constexpr int   kSeparatorHeight = 34;
 constexpr int   kLineHeightEstimate = 17;
 // Pictures in bubbles: a photo or a video's preview at most this tall, a
@@ -169,12 +175,15 @@ std::string MessageText(const UltraIMMessage& m) {
         case UltraIMMessageType::File: {
             std::string line = a.fileName.empty() ? Tr("File") : a.fileName;
             if (a.fileSizeBytes > 0) line += "  " + FormatSize(a.fileSizeBytes);
+            if (a.durationSeconds > 0) line += "  " + FormatDuration(a.durationSeconds);
             if (!m.text.empty()) line += "\n" + m.text;
             return line;
         }
         case UltraIMMessageType::Audio: {
-            // A recording is a voice message whatever its file is called.
-            std::string line = Tr("Voice message");
+            // A recording (ChatCube's own are "Voice-...", Telegram's have no
+            // name) is a voice message; a song keeps its name.
+            const bool recording = a.fileName.empty() || a.fileName.rfind("Voice-", 0) == 0;
+            std::string line = recording ? Tr("Voice message") : a.fileName;
             if (a.durationSeconds > 0) line += "  " + FormatDuration(a.durationSeconds);
             return line;
         }
@@ -271,6 +280,25 @@ long long MemberCount(const UltraIMConversation& conversation) {
     return std::max<long long>(conversation.memberCount, static_cast<long long>(conversation.memberIds.size()));
 }
 
+bool IsAudioFileName(const std::string& name) {
+    const size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos || name.find_first_of("/\\", dot) != std::string::npos) return false;
+    std::string ext = name.substr(dot + 1);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    static const char* const kSounds[] = {"mp3", "ogg", "oga", "opus", "m4a", "aac", "flac", "wav", "wma", "aiff", "aif"};
+    for (const char* e : kSounds) {
+        if (ext == e) return true;
+    }
+    return false;
+}
+
+bool IsAudioMessage(const UltraIMMessage& message) {
+    if (message.type == UltraIMMessageType::Audio) return true;
+    if (message.type != UltraIMMessageType::File) return false;
+    return message.attachment.mimeType.rfind("audio/", 0) == 0 || IsAudioFileName(message.attachment.fileName) ||
+           IsAudioFileName(message.attachment.localPath);
+}
+
 bool HasPicture(const UltraIMMessage& message) {
     return message.type == UltraIMMessageType::Image || message.type == UltraIMMessageType::Video ||
            (message.type == UltraIMMessageType::Sticker && !message.attachment.localPath.empty()) ||
@@ -292,7 +320,26 @@ std::string GroupUserId(const std::string& userId) {
 
 void MessageListModel::Clear() {
     rows_.clear();
+    transfers_.clear();
     NotifyDataChanged();
+}
+
+void MessageListModel::SetTransfer(const std::string& clientId, const Transfer& transfer) {
+    if (clientId.empty()) return;
+    transfers_[clientId] = transfer;
+    const int row = FindRow(clientId);
+    if (row >= 0) NotifyRowChanged(row);
+}
+
+void MessageListModel::ClearTransfer(const std::string& clientId) {
+    if (transfers_.erase(clientId) == 0) return;
+    const int row = FindRow(clientId);
+    if (row >= 0) NotifyRowChanged(row);
+}
+
+const MessageListModel::Transfer* MessageListModel::TransferOf(const std::string& clientId) const {
+    auto it = transfers_.find(clientId);
+    return it == transfers_.end() ? nullptr : &it->second;
 }
 
 const UltraIMMessage* MessageListModel::FindMessage(const std::string& id) const {
@@ -494,7 +541,7 @@ int MessageBubbleDelegate::EstimateHeight(const MessageRow& row, bool showSender
     int picture = 0;
     if (HasPicture(row.message)) picture = PictureSize(row.message, showSender).height + (lines ? kPictureGap : 0);
     const int quote = row.message.replyTo.messageId.empty() ? 0 : kQuoteHeight + kQuoteGap;
-    const int voice = row.message.type == UltraIMMessageType::Audio ? 2 * static_cast<int>(kVoiceMarkRadius) : 0;
+    const int voice = IsAudioMessage(row.message) ? 2 * static_cast<int>(kVoiceMarkRadius) : 0;
     return 2 * kRowPadV + 2 * kBubblePadV + picture + quote + std::max(lines * kLineHeightEstimate, voice) +
            kMetaHeight + (showSender ? kSenderHeight : 0);
 }
@@ -552,14 +599,22 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
     const Size2Di pictureSize = picture ? PictureSize(m, showSender) : Size2Di(0, 0);
     // In a group, the sender's avatar sits left of their bubble.
     const int inset = showSender ? kSenderAvatarInset : 0;
-    const bool voice = m.type == UltraIMMessageType::Audio;
-    const int textInset = voice ? kVoiceInset : 0;      // the play mark left of the words
+    // Sound - a voice message or a song sent as a file - has a play mark
+    // left of its words, and a song a note before its name.
+    const bool voice = IsAudioMessage(m);
+    const bool song = voice && m.type == UltraIMMessageType::File;
+    const int noteWidth = song ? 16 : 0;
+    const int textInset = voice ? kVoiceInset + noteWidth : 0;
+    const auto* listModel = dynamic_cast<const MessageListModel*>(model);
+    const MessageListModel::Transfer* transfer = listModel ? listModel->TransferOf(m.clientMessageId) : nullptr;
+    const int transferHeight = transfer && transfer->total > 0 ? kTransferHeight : 0;
     const int maxText = BubbleMaxWidth() - 2 * kBubblePadH - inset - textInset;
     const bool quoted = !m.replyTo.messageId.empty();
 
-    // Measure the text as it will be drawn.
+    // Measure the text as it will be drawn: a file's name is bold, and
+    // measured so, or it runs out of its bubble.
     ctx->SetFontSize(kBodyFont);
-    ctx->SetFontWeight(FontWeight::Normal);
+    ctx->SetFontWeight(m.type == UltraIMMessageType::File ? FontWeight::Bold : FontWeight::Normal);
     ctx->SetTextWrap(TextWrap::WrapWordChar);
     const Size2Di textSize = text.empty() ? Size2Di(0, 0) : ctx->GetTextDimensions(text, Size2Di(maxText, 0));
     // The time, then for our own message its state: a word, or ticks drawn
@@ -594,12 +649,13 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
     const int contentWidth = std::min(maxText + textInset,
                                       std::max({textSize.width + textInset, metaWidth, senderWidth, pictureSize.width,
                                                 std::min(quoteWidth, maxText + textInset)}));
-    const int bubbleWidth = std::max(kBubbleMinWidth, contentWidth + 2 * kBubblePadH);
+    // A file on its way gets room for its bar and its words.
+    const int bubbleWidth = std::max(transferHeight ? 220 : kBubbleMinWidth, contentWidth + 2 * kBubblePadH);
     const int pictureHeight = picture ? pictureSize.height + (text.empty() ? 0 : kPictureGap) : 0;
     const int quoteHeight = quoted ? kQuoteHeight + kQuoteGap : 0;
     const int bodyHeight = std::max(textSize.height, voiceHeight);
-    const int bubbleHeight = 2 * kBubblePadV + quoteHeight + pictureHeight + bodyHeight + kMetaHeight +
-                             (showSender ? kSenderHeight : 0);
+    const int bubbleHeight = 2 * kBubblePadV + quoteHeight + pictureHeight + bodyHeight + transferHeight +
+                             kMetaHeight + (showSender ? kSenderHeight : 0);
     const int rowHeight = bubbleHeight + 2 * kRowPadV;
 
     // A height that differs from what the list laid out: lay out again.
@@ -666,8 +722,8 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
             std::string waiting;
             if (m.deliveryStatus == UltraIMDeliveryStatus::Sending) waiting = Tr("Sending\xE2\x80\xA6");
             else if (m.deliveryStatus == UltraIMDeliveryStatus::Failed) waiting = Tr("Not sent");
-            else if (m.type == UltraIMMessageType::Video) waiting = Tr("Video");
-            else waiting = Tr("Fetching the picture\xE2\x80\xA6");
+            else if (m.type != UltraIMMessageType::Video) waiting = Tr("Fetching the picture\xE2\x80\xA6");
+            // (a video without its preview picture: the play mark says enough)
             ctx->SetFontSize(kMetaFont + 0.5f);
             ctx->SetFontWeight(FontWeight::Normal);
             ctx->SetTextWrap(TextWrap::WrapNone);
@@ -704,7 +760,7 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
                                             pictureSize.width, pictureSize.height);
         y += pictureHeight;
     }
-    if (m.type == UltraIMMessageType::File || m.type == UltraIMMessageType::Audio) {
+    if (m.type == UltraIMMessageType::File || voice) {
         // The whole bubble opens the file, its picture included.
         media_[m.clientMessageId] = Rect2Di(static_cast<int>(bubble.x - cell.x), static_cast<int>(bubble.y - cell.y),
                                             bubbleWidth, bubbleHeight);
@@ -713,6 +769,9 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
         const Point2Dd centre(x + kVoiceMarkRadius, y + bodyHeight / 2.0);
         if (playing_ == m.clientMessageId) PaintPauseMark(ctx, centre, kVoiceMarkRadius);
         else PaintPlayMark(ctx, centre, kVoiceMarkRadius);
+        if (song)
+            PaintNote(ctx, Rect2Dd(x + kVoiceInset - 2, y + (bodyHeight - 16) / 2.0, 14, 16),
+                      m.isOwn ? look.bubbleOwnInk : look.ink);
     }
     if (!text.empty()) {
         ctx->SetFontSize(kBodyFont);
@@ -725,6 +784,29 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
                                           textSize.height));
     }
     y += bodyHeight;
+
+    if (transferHeight) {
+        // The bar, and how far in words: "Sending 42 %" / "Receiving 42 %".
+        const double fraction = std::clamp(static_cast<double>(transfer->done) / static_cast<double>(transfer->total), 0.0, 1.0);
+        const int percent = static_cast<int>(fraction * 100.0);
+        ctx->SetFontSize(kMetaFont);
+        ctx->SetFontWeight(FontWeight::Normal);
+        ctx->SetTextWrap(TextWrap::WrapNone);
+        const std::string words = transfer->upload ? TrF("Sending {0} %", std::to_string(percent))
+                                                   : TrF("Receiving {0} %", std::to_string(percent));
+        const int wordsWidth = ctx->GetTextLineWidth(words) + 8;
+        const double barWidth = std::max(20.0, bubble.width - 2 * kBubblePadH - wordsWidth);
+        const Rect2Dd track(x, y + (kTransferHeight - kTransferBar) / 2.0, barWidth, kTransferBar);
+        ctx->DrawFilledRectangle(track, m.isOwn ? Color(0, 0, 0, 30) : look.well, 0.0f, Colors::Transparent, 2.0f);
+        if (fraction > 0)
+            ctx->DrawFilledRectangle(Rect2Dd(track.x, track.y, std::max(4.0, track.width * fraction), track.height),
+                                     look.accent, 0.0f, Colors::Transparent, 2.0f);
+        ctx->SetTextAlignment(TextAlignment::Right);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->SetTextPaint(look.inkMuted);
+        ctx->DrawTextInRect(words, Rect2Dd(x, y, bubble.width - 2 * kBubblePadH, kTransferHeight));
+        y += kTransferHeight;
+    }
 
     ctx->SetFontSize(kMetaFont);
     ctx->SetTextWrap(TextWrap::WrapNone);

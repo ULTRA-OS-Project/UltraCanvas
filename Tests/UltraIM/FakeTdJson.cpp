@@ -1122,6 +1122,7 @@ void Handle(Client& c, const JSONValue& r) {
             if (filter == "searchMessagesFilterPhotoAndVideo" && m.media != "messagePhoto" && m.media != "messageVideo")
                 return false;
             if (filter == "searchMessagesFilterDocument" && m.media != "messageDocument") return false;
+            if (filter == "searchMessagesFilterVoiceNote" && m.media != "messageVoiceNote") return false;
             const std::string text = lower(m.text);
             if (filter == "searchMessagesFilterUrl" && text.find("http://") == std::string::npos &&
                 text.find("https://") == std::string::npos && text.find("www.") == std::string::npos)

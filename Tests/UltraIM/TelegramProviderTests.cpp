@@ -711,6 +711,9 @@ void TestTelegram() {
         if (found.messages.size() == 2)
             CHECK(found.messages[1].type == UltraIMMessageType::File && found.messages[1].attachment.fileName == "notes.pdf");
         CHECK(Search(*bob, got.conversationId, "NOTES", UltraIMSearchKind::Files).messages.size() == 1);
+        found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Audio);     // the voice note
+        CHECK(found.messages.size() == 1);
+        if (!found.messages.empty()) CHECK(found.messages[0].type == UltraIMMessageType::Audio);
         found = Search(*bob, got.conversationId, "", UltraIMSearchKind::Links);
         CHECK(found.messages.size() == 1);
         if (!found.messages.empty())

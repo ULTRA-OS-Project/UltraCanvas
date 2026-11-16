@@ -537,7 +537,14 @@ UltraIMSearchPage Store::Search(const UltraIMMessageSearch& search) {
         case UltraIMSearchKind::Images:  where = "m.type = " + type(T::Image); break;
         case UltraIMSearchKind::Videos:  where = "m.type = " + type(T::Video); break;
         case UltraIMSearchKind::Media:   where = "m.type IN (" + type(T::Image) + "," + type(T::Video) + ")"; break;
-        case UltraIMSearchKind::Files:   where = "m.type = " + type(T::File); break;
+        // A song sent as a file (its type audio/...) is sound, not a document.
+        case UltraIMSearchKind::Files:
+            where = "m.type = " + type(T::File) + " AND instr(m.attachment, '\"mime\":\"audio/') = 0";
+            break;
+        case UltraIMSearchKind::Audio:
+            where = "(m.type = " + type(T::Audio) + " OR (m.type = " + type(T::File) +
+                    " AND instr(m.attachment, '\"mime\":\"audio/') > 0))";
+            break;
         case UltraIMSearchKind::Links:
             from = "links l JOIN messages m ON m.seq = l.msg_seq";
             where = "m.type <> " + type(T::SystemEvent);

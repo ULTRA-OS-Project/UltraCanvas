@@ -1,5 +1,6 @@
 // Plugins/UltraIM/matrix/MatrixProvider.cpp
 // Matrix as an UltraIM provider
+// Version: 0.2.5 - TransferProgress for media going up to and coming down from the content repository
 // Version: 0.2.4 - SendVoiceNote: m.audio marked as a voice message (MSC3245) with its length; a video's
 //                  length in info.duration
 // Version: 0.2.3 - a room renamed, members invited and kicked, a room left (ManageGroups, LeaveConversation);
@@ -1699,6 +1700,30 @@ void MatrixProvider::FlushDownloads() {
     for (const auto& job : queue) StartDownload(job, false);
 }
 
+void MatrixProvider::ReportProgress(const std::string& key, const UltraIMMessage& message, int64_t now, int64_t total,
+                                    bool upload) {
+    if (total <= 0) return;
+    now = std::min(now, total);
+    const int percent = static_cast<int>(now * 100 / total);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = progressPercent_.find(key);
+        if (it != progressPercent_.end() && it->second >= percent && now < total) return;
+        if (now >= total) progressPercent_.erase(key);
+        else progressPercent_[key] = percent;
+    }
+    UltraIMEvent progress;
+    progress.type = UltraIMEventType::TransferProgress;
+    progress.providerId = providerId_;
+    progress.conversationId = message.conversationId;
+    progress.contactId = message.senderId;
+    progress.message = message;
+    progress.transferredBytes = now;
+    progress.totalBytes = total;
+    progress.isUpload = upload;
+    Emit(progress);
+}
+
 void MatrixProvider::StartDownload(const DownloadJob& job, bool legacyEndpoint) {
     std::shared_ptr<MatrixHttp> http = Http();
     std::string server, id;
@@ -1711,13 +1736,33 @@ void MatrixProvider::StartDownload(const DownloadJob& job, bool legacyEndpoint) 
     const std::string path = legacyEndpoint
         ? "/_matrix/media/v3/download/" + PathSegment(server) + "/" + PathSegment(id)
         : "/_matrix/client/v1/media/download/" + PathSegment(server) + "/" + PathSegment(id);
+    // How far the file is, for the message it belongs to (not a preview picture).
+    auto progress = [this, url = job.url](int64_t now, int64_t total) {
+        UltraIMMessage message;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto uses = mediaUses_.find(url);
+            if (uses == mediaUses_.end()) return;
+            for (const MediaUse& use : uses->second) {
+                if (use.thumbnail) continue;
+                auto room = rooms_.find(use.roomId);
+                if (room == rooms_.end()) continue;
+                for (const auto& m : room->second.timeline) {
+                    if (m.messageId == use.eventId) message = m;
+                }
+            }
+        }
+        if (message.messageId.empty()) return;
+        if (total <= 0) total = message.attachment.fileSizeBytes;
+        ReportProgress(url, message, now, total, false);
+    };
     http->Download(path, 120000, [this, job, legacyEndpoint](const MatrixBytes& r) {
         if (!r.Ok() && !legacyEndpoint && (r.errcode == "M_UNRECOGNIZED" || r.status == 404 || r.status == 400)) {
             StartDownload(job, true);
             return;
         }
         OnMediaDownloaded(job, r);
-    });
+    }, progress);
 }
 
 void MatrixProvider::MediaFailed(const std::string& url, const std::string& why) {
@@ -1922,8 +1967,18 @@ UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const
         std::string error;
         if (encrypted && !EncryptMedia(*bytes, fileInfo, error))
             return Delivered(conversationId, clientId, UltraIMDeliveryStatus::Failed, std::string());
+        // How far the upload is, for the bubble of the message it is for.
+        UltraIMMessage going;
+        going.providerId = providerId_;
+        going.conversationId = conversationId;
+        going.clientMessageId = clientId;
+        going.messageId = clientId;
+        const int64_t uploadSize = static_cast<int64_t>(bytes->size());
         MatrixResponse up = http->Upload("/_matrix/media/v3/upload?filename=" + PathSegment(name),
-                                         encrypted ? std::string("application/octet-stream") : mime, *bytes, 300000);
+                                         encrypted ? std::string("application/octet-stream") : mime, *bytes, 300000,
+                                         [this, going, uploadSize](int64_t now, int64_t total) {
+            ReportProgress("up:" + going.clientMessageId, going, now, total > 0 ? total : uploadSize, true);
+        });
         bytes->clear();
         const std::string mxc = up.body["content_uri"].GetString();
         if (!up.Ok() || mxc.empty()) return Delivered(conversationId, clientId, UltraIMDeliveryStatus::Failed, std::string());

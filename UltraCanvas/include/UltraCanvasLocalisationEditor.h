@@ -28,6 +28,9 @@
 //   editor->Open("UltraVideo", "de");
 //   editor->SetDrafter(...);                // UltraAI, where the host links it
 //
+// Version: 1.2.0 - the action buttons on a row of their own, under the
+//                 Sets button and the two switches, which keep their labels;
+//                 "Compare with" beside "Show"
 // Version: 1.1.0 - the grid's marks (a text taken from another set, an
 //                 untranslated row, a changed one) and the status line take
 //                 their colours from the theme in a dark look, and follow a

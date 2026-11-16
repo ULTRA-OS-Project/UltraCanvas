@@ -29,4 +29,16 @@ namespace UltraCanvas {
     // code fence vote for Markdown, not for the code they show.
     std::string DetectLanguageFromContent(const std::string& text);
 
+    // How sure the content vote must be. The defaults are what
+    // DetectLanguageFromContent(text) uses for text that may be anything:
+    // a language needs minScore points and a lead of minLead over every
+    // language outside its family. Text already known to be code - a Markdown
+    // code block - can take a lower bar: a short snippet rarely piles up four
+    // points, and there is no prose to mistake for code.
+    struct LanguageDetectOptions {
+        int minScore = 4;
+        int minLead = 2;
+    };
+    std::string DetectLanguageFromContent(const std::string& text, const LanguageDetectOptions& options);
+
 } // namespace UltraCanvas

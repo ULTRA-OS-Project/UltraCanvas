@@ -2,12 +2,15 @@
 // UltraIM - what searching messages needs on the device: the matcher the
 // providers share, the links in a text, case folding, and a search answered
 // by reading a conversation's history page by page
+// Version: 0.1.1 - UltraIMSearchKind::Audio: voice messages and sound files (a song sent as a file too,
+//                  which Files then leaves out)
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "UltraIM/UltraIMCore.h"
 
+#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -127,6 +130,21 @@ std::vector<std::string> Words(const std::string& folded) {
     return words;
 }
 
+// A file that is sound: its type says audio, or its name ends like one.
+bool IsSoundFile(const UltraIMAttachment& a) {
+    if (a.mimeType.rfind("audio/", 0) == 0) return true;
+    const std::string& name = a.fileName.empty() ? a.localPath : a.fileName;
+    const size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = name.substr(dot + 1);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    static const char* const kSounds[] = {"mp3", "ogg", "oga", "opus", "m4a", "aac", "flac", "wav", "wma", "aiff", "aif"};
+    for (const char* e : kSounds) {
+        if (ext == e) return true;
+    }
+    return false;
+}
+
 bool KindMatches(const UltraIMMessage& message, UltraIMSearchKind kind) {
     const UltraIMMessageType type = message.type;
     switch (kind) {
@@ -134,9 +152,12 @@ bool KindMatches(const UltraIMMessage& message, UltraIMSearchKind kind) {
         case UltraIMSearchKind::Images:  return type == UltraIMMessageType::Image;
         case UltraIMSearchKind::Videos:  return type == UltraIMMessageType::Video;
         case UltraIMSearchKind::Media:   return type == UltraIMMessageType::Image || type == UltraIMMessageType::Video;
-        case UltraIMSearchKind::Files:   return type == UltraIMMessageType::File;
+        // A song sent as a file is sound, not a document.
+        case UltraIMSearchKind::Files:   return type == UltraIMMessageType::File && !IsSoundFile(message.attachment);
         case UltraIMSearchKind::Links:
             return type != UltraIMMessageType::SystemEvent && !UltraIM_ExtractLinks(message.text).empty();
+        case UltraIMSearchKind::Audio:
+            return type == UltraIMMessageType::Audio || (type == UltraIMMessageType::File && IsSoundFile(message.attachment));
     }
     return false;
 }

@@ -1,3 +1,52 @@
+#### 2026-11-16 *0.1.28*
+- **Mastodon.** A Mastodon button beside Telegram signs in to any Mastodon
+  server (or one that speaks its language: GoToSocial, Akkoma, Pleroma) on
+  the server's own page in the browser - type the server, press *Sign in in
+  the browser*, allow ChatCube there. Your direct messages join the list:
+  one chat per set of people, texts, replies, edits, deletes, pictures,
+  videos and sound, with the upload's progress bar. `@user@server` in *Add*
+  or *New group* starts a chat there. The next start signs in by itself.
+- **Public groups.** A group's owner can make it public (*Make public* in
+  its right-click menu; *Make private* takes it off the list again). Everyone
+  signed in to ChatCube then sees it under **Public groups** in the sidebar,
+  with its number of members and a *Join* button - no invitation needed.
+  Messages stay end-to-end encrypted, each sealed for every member, so a
+  public group holds up to 256 people. Someone its owner takes out cannot
+  join again by themselves. Needs ChatCube relay 1.5.0.
+- **A group editor.** *Group settings…* in a group's menu: its name, a
+  **description** (shown when the group's name is hovered, and in *Public
+  groups*), public or private, and the members - **Message**, and for the
+  owner **Remove** and **Block** - with the blocked ones listed to
+  **Unblock**. *Block* is also in a member's menu. Removing someone no
+  longer keeps them out of a public group; blocking does.
+- **The network buttons in two rows** (Group, Matrix / Telegram, Mastodon),
+  so every name fits.
+
+#### 2026-11-16 *0.1.27*
+- **Sending no longer holds up the window.** The message field is free the
+  moment you press send; reading a big file, making a video's preview
+  picture and handing it to the network happen in the background, in the
+  order things were sent.
+- **A file on its way shows how far it is.** A bar under the bubble with
+  *Sending 42 %* or *Receiving 42 %*, on ChatCube Direct, Telegram and
+  Matrix, gone once the file is all there.
+- **Videos show their picture.** Your own video shows its preview picture,
+  size and length as soon as you send it; a video that arrives without one
+  (its sender's ChatCube made none) gets one made here from the file. Where
+  ChatCube is built without VideoFX the picture comes from the video
+  player's own frame grab.
+- **Songs are audio.** An MP3, OGG, M4A, FLAC or WAV file shows a note and a
+  play mark and plays in its bubble (a click again pauses), as a voice
+  message does.
+- **Videos play in the chat.** A click on a video plays it in a player over
+  the message field, with its own controls and a ×; *Open* in its menu
+  still opens it full size.
+- **Filter the chat.** Under the search field: *All*, *Pictures*, *Videos*,
+  *Audio*, *Files*, *Links* - the list shows only that kind (with the words,
+  when some are typed); songs sent as files count as audio, not as files.
+- **A long file name stays inside its bubble.** The name is bold, and the
+  bubble is now measured that way too.
+
 #### 2026-11-15 *0.1.26*
 - **Reply to a message.** A message's right-click menu has **Reply**: a bar
   over the message field says whom you answer and what, with a × (or

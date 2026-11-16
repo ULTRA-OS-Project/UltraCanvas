@@ -22,6 +22,13 @@ class Settings:
     max_envelope_bytes: int = 64 * 1024
     max_batch: int = 256                 # copies in one POST /v1/messages
     max_group_members: int = 64
+    # A public group, found and joined by anyone: bigger, but each message is
+    # still sealed for every member (one copy each), so not without bound -
+    # never more than max_batch, the copies one request carries.
+    max_public_group_members: int = 256
+    # Messages one member may post into one public group in a minute (a
+    # file's parts not counted): spam stays small.
+    public_posts_per_minute: int = 30
     queue_ttl_seconds: int = 30 * 24 * 3600
     stun_urls: list[str] = field(default_factory=list)
     turn_urls: list[str] = field(default_factory=list)
@@ -81,6 +88,10 @@ class Settings:
         s.stun_urls = _list("CHATCUBE_RELAY_STUN_URLS")
         s.turn_urls = _list("CHATCUBE_RELAY_TURN_URLS")
         s.turn_secret = os.environ.get("CHATCUBE_RELAY_TURN_SECRET", "")
+        s.max_public_group_members = min(
+            int(os.environ.get("CHATCUBE_RELAY_MAX_PUBLIC_GROUP_MEMBERS", s.max_public_group_members)), s.max_batch)
+        s.public_posts_per_minute = int(os.environ.get("CHATCUBE_RELAY_PUBLIC_POSTS_PER_MINUTE",
+                                                       s.public_posts_per_minute))
         s.telegram_api_id = int(os.environ.get("CHATCUBE_RELAY_TELEGRAM_API_ID", "0") or 0)
         s.telegram_api_hash = os.environ.get("CHATCUBE_RELAY_TELEGRAM_API_HASH", "").strip()
         env = lambda name, default="": os.environ.get("CHATCUBE_RELAY_" + name, default).strip()

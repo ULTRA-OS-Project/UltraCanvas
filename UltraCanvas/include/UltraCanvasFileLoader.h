@@ -4,6 +4,11 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.15.0 - ConvertVideoFile, CanConvertVideoTo, GetVideoSaveExtensions,
+//                  AddVideoSaveTypes (a video saved in
+//                  another type, by the converter a module registers - VideoFX's)
+// Version: 1.14.0 - SaveAudio, ConvertAudioFile (a recording saved in any audio type this
+//                  build encodes)
 // Version: 1.13.0 - GetSpeechTranscriber
 // Version: 1.12.0 - GetImageTextRecognizer (a recognizer that wraps the one before it)
 // Version: 1.11.0 - ExtractText: the words in a document, PDF, spreadsheet, picture (text
@@ -21,7 +26,7 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -213,6 +218,59 @@ namespace UltraCanvas {
         // on decode failure, loadError is populated and the audio is null/invalid.
         static void OpenAudio(const FileDialogOptions& opts,
                               std::function<void(const FileLoadResult&, std::shared_ptr<UCAudio>)> onResult);
+
+        // ----- audio saved -----
+        // `audio` written to `path` in the format its extension names: every
+        // audio type this build encodes - WAV always, MP3 / FLAC / Ogg Vorbis
+        // / Opus with their encoders, and any a codec plugin registered
+        // (RegisterMediaCodec). A Save dialog offers exactly these with
+        // AddSaveTypes(opts, MediaFormatCategory::Audio). False, with
+        // `outError`, when nothing encodes that extension or the write fails.
+        static bool SaveAudio(const UCAudio& audio, const std::string& path, std::string& outError);
+        // A recording saved in another audio format: `sourcePath` decoded
+        // and written to `targetPath` with SaveAudio. The same extension is
+        // the same format, so that file is copied as it is - never decoded
+        // and encoded again, which would only lose quality. An application's
+        // Save as / Export of a recording is this call.
+        static bool ConvertAudioFile(const std::string& sourcePath, const std::string& targetPath,
+                                     std::string& outError);
+
+        // ----- video saved -----
+        // A video saved in another type: `sourcePath` decoded and written to
+        // `targetPath` in the container its extension names, picture and
+        // sound encoded again, by the converter that type's video
+        // registration carries (MediaCodecRegistration::convertVideo). The
+        // core has no video encoder of its own: a module that has one
+        // registers it at start-up - VideoFX's is
+        // VideoFX_RegisterWithFileLoader() (VideoFXUltraCanvasFormats.h).
+        // Without one only the same type is written. The same extension is
+        // the same type, so that file is copied as it is - never decoded and
+        // encoded again, which would only lose quality.
+        //
+        // Slow - seconds to minutes for a film - so call it off the UI thread
+        // and show `progress`: it is called on the calling thread with 0..1,
+        // and returning false stops the conversion. The file is written beside
+        // `targetPath` and moved there when complete, so a failed or stopped
+        // conversion leaves no half a file, and keeps the one it was to
+        // replace. False, with `outError`, when no converter writes the type,
+        // the conversion fails or it was stopped (`outError` "Stopped").
+        static bool ConvertVideoFile(const std::string& sourcePath, const std::string& targetPath,
+                                     std::string& outError,
+                                     const std::function<bool(double fraction)>& progress = nullptr);
+        // Whether ConvertVideoFile writes this type from another video
+        // (`extensionOrPath`: "webm", ".MKV" or a whole path): a video
+        // registration carries a converter for it.
+        static bool CanConvertVideoTo(const std::string& extensionOrPath);
+        // Every type it writes so (lowercase, undotted, aliases too); empty
+        // when no converter is registered - a video then has no Save as.
+        static std::vector<std::string> GetVideoSaveExtensions();
+        // The Save dialog's file types for a video: every type
+        // ConvertVideoFile writes, each under its name, the one the proposed
+        // name ends in first. Nothing when no converter is registered. (Not
+        // AddSaveTypes(opts, Video): that lists every container this build
+        // writes, a camera recording's too, which need not be one a file can
+        // be converted to.)
+        static void AddVideoSaveTypes(FileDialogOptions& opts);
 
         // Opens the native file dialog and parses the chosen word-processing
         // document into a UCRichDocument (see Plugins/Documents/Word). Formats:
@@ -506,8 +564,10 @@ namespace UltraCanvas {
         // without a size (FileSavePicture()) gives the settings alone.
         // `fontSize` draws the dialog - captions, controls, buttons - at the
         // type size of the window it is opened from (a settings window's
-        // SettingsPageKit::kTextFontSize), with its rows and columns scaled
-        // to match; 0 keeps the dialog's own.
+        // SettingsPageKit::TextFontSize(), the theme's body size; the
+        // framework Save dialog passes its own), with its rows and columns
+        // scaled to match; 0 is the theme's body size, which its fields and
+        // lists follow anyway.
         static void ShowSaveSettingsDialog(const std::string& extensionOrPath,
                                            const FileSavePicture& picture,
                                            const FileSaveImageSize& size,

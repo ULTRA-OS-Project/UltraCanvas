@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeTheme.cpp
 // See ChatCubeTheme.h.
+// Version: 0.2.3 - PaintNote
 // Version: 0.2.2 - readTicks
 // Version: 0.2.1 - PaintPauseMark
 // Version: 0.2.0 - L(), OnLook, RestyleForLook, SetInk: the look follows a change of the theme;
@@ -352,6 +353,27 @@ void PaintPlayMark(IRenderContext* ctx, const Point2Dd& centre, double radius) {
     ctx->ClosePath();
     ctx->SetFillPaint(kWhite);
     ctx->FillPathPreserve();
+    ctx->ClearPath();
+    ctx->PopState();
+}
+
+void PaintNote(IRenderContext* ctx, const Rect2Dd& area, const Color& color) {
+    if (!ctx || area.width <= 0 || area.height <= 0) return;
+    // An eighth note: the head low left, the stem up its right side, the
+    // flag down from the top.
+    const double headR = std::min(area.width, area.height) * 0.24;
+    const Point2Dd head(area.x + headR + 1.0, area.y + area.height - headR - 1.0);
+    ctx->DrawFilledCircle(head, static_cast<float>(headR), color, color, 0.0f);
+    const double stemX = head.x + headR * 0.85;
+    ctx->PushState();
+    ctx->SetStrokePaint(color);
+    ctx->SetStrokeWidth(std::max(1.4, area.width * 0.12));
+    ctx->SetLineCap(LineCap::Round);
+    ctx->ClearPath();
+    ctx->MoveTo(stemX, head.y);
+    ctx->LineTo(stemX, area.y + 1.0);
+    ctx->LineTo(area.x + area.width - 1.0, area.y + area.height * 0.35);
+    ctx->StrokePathPreserve();
     ctx->ClearPath();
     ctx->PopState();
 }

@@ -1,3 +1,17 @@
+#### 2026-11-15 *1.0.13*
+- **An SVG or another drawing can be saved** - as SVG, PDF, EPS, DXF and
+  the other vector types, or as any bitmap type at any size; on Windows an
+  SVG had no Save at all. **A sound can be saved** as WAV, MP3, FLAC, Ogg
+  Vorbis or Opus. The toolbar's zoom, rotate, mirror, curves and slideshow
+  icons are as large as the others, and the Save dialog's *Settings* text
+  is no longer larger than its fields (see the framework changelog).
+- **A video can be saved in another type.** UltraViewer registers VideoFX's
+  converter at start-up (`VideoFX_RegisterWithFileLoader`, where VideoFX is
+  built), so the toolbar's *Save as* is there for a film the player opened
+  and offers every container this build's FFmpeg writes - MP4, MOV,
+  Matroska, WebM, AVI. The conversion runs behind a progress ring with
+  Cancel; see the framework changelog.
+
 #### 2026-11-03 *1.0.12*
 - **Started with a file, the window appears at once**, showing a turning ring
   and the file's name instead of waiting for the folder to be read - and

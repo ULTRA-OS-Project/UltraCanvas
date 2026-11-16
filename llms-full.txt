@@ -1946,7 +1946,7 @@ picture's size for one save (`FileSaveImageSize`, offered when the caller
 passes `FileDialogOptions::SetImageSize`, or `SetDrawingSize` for a drawing,
 which has no pixel size and is drawn sharp at any) comes back through the
 `SaveFileDialog` overload that reports it, never stored. The media viewer's
-Save image as (UltraViewer) offers it and draws an SVG again at the size
+Save as (UltraViewer) offers it and draws a drawing again at the size
 chosen.
 
 A dialog's file types come from the format inventory, never an application's
@@ -1957,6 +1957,26 @@ type the build reads), `AddSaveTypes(opts, category)` / `AddImageSaveTypes`
 `SaveTextDocument` (what `LoadTextDocument` reads, ODT and DOCX written). A
 codec an application brings joins them through `RegisterMediaCodec`, as
 UltraVideo's FFmpeg engine does (`VideoFX_GetFileFormats`).
+
+A recording is written in any audio type the build encodes with
+`UltraCanvasFileLoader::SaveAudio(audio, path, error)` (a `UCAudio`) or
+`ConvertAudioFile(source, target, error)` (decoded and encoded; the same type
+copied as it is) - the Save dialog's types are `AddSaveTypes(opts,
+MediaFormatCategory::Audio)`. The media viewer's Save as uses it for a
+recording, and `AddVectorDocumentSaveTypes` / `SaveVectorDocument` for a
+drawing (the vector view's, or an SVG read with `LoadVectorDocument`).
+
+A video is written in another type with
+`ConvertVideoFile(source, target, error, progress)` (the same type copied as
+it is; another by the converter its registration carries,
+`MediaCodecRegistration::convertVideo` - written beside the target and moved
+there when complete, `progress` returning false stops it), `CanConvertVideoTo`,
+`GetVideoSaveExtensions` and the Save dialog's `AddVideoSaveTypes(opts)`. The
+core has no video encoder: an application with VideoFX links
+`VideoFXUltraCanvasFormats` and calls `VideoFX_RegisterWithFileLoader()`
+(`VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h`), as UltraViewer does.
+The media viewer's Save as converts a video it plays with it, on a worker
+thread behind a progress ring with Cancel, and offers none without a converter.
 
 The words in a file, as plain text: `UltraCanvasFileLoader::ExtractText(path,
 password)` (`TextExtractionResult`: text, `TextExtractionMethod`, error) reads
@@ -2967,7 +2987,13 @@ command-line tool. Planned: keyframed parameters.
   `VideoFX_HasTextRenderer` / `VideoFX_DrawTextOverlays` (text overlays with a
   font by name, styled words, alignment and spacing drawn by the host -
   `VideoFX_UseUltraCanvasText` in `VideoFX/ultracanvas/VideoFXUltraCanvasText.h`
-  installs UltraCanvas's, as UltraVideo and the `videofx` tool do)
+  installs UltraCanvas's, as UltraVideo and the `videofx` tool do),
+  `VideoFX_RegisterWithFileLoader` / `VideoFX_ConvertVideoFile` in
+  `VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h` (library
+  `VideoFXUltraCanvasFormats`): VideoFX as FileLoader's video converter -
+  every container it writes registered with `convertVideo`, so
+  `UltraCanvasFileLoader::ConvertVideoFile` and the media viewer's Save as
+  write it
 - Inspection: `VideoFX_Probe`, `VideoFX_ExtractFrame`,
   `VideoFX_ExtractThumbnails`, `VideoFX_SaveFrameImage`,
   `VideoFX_ExtractWaveform` (the loudness envelope a timeline draws, in
@@ -3188,7 +3214,12 @@ Telegram (`UltraCanvas/Plugins/UltraIM/telegram/`, module `ultraim_telegram`)
 on TDLib's JSON interface, loaded at run time (not linked): sign-in in steps
 (`UltraIMAuthStep`, result `NeedsInput`), the main chat list, private chats
 and groups, replies, edits, deletion, read marks, typing, presence, history,
-people by username or phone number. Tests in `Tests/UltraIM`. See
+people by username or phone number. Provider: Mastodon
+(`UltraCanvas/Plugins/UltraIM/mastodon/`, module `ultraim_mastodon`): the
+direct messages of a Mastodon server over its REST API - browser sign-in
+(OAuth with PKCE, `UltraIMAuthStep::Browser`), a chat per set of people
+over all their threads, polled; replies, edits, deletes, read marks,
+pictures, videos and sound. Tests in `Tests/UltraIM`. See
 `Docs/Modules/UltraIM/README.md`.
 
 ---
@@ -19233,7 +19264,8 @@ public:
 
     // In the layout flow, content-sized
     UltraCanvasCheckbox(const std::string& identifier, const std::string& labelText);
-    explicit UltraCanvasCheckbox(const std::string& labelText = "");
+    // One string alone is the identifier, as on every element; no text yet
+    explicit UltraCanvasCheckbox(const std::string& identifier = "");
 
     static std::shared_ptr<UltraCanvasCheckbox> CreateCheckbox(
             const std::string& identifier,
@@ -19390,7 +19422,8 @@ public:
                      float w, float h,
                      const std::string& labelText = "");
     UltraCanvasRadio(const std::string& identifier, const std::string& labelText);
-    explicit UltraCanvasRadio(const std::string& labelText = "");
+    // One string alone is the identifier, as on every element; no text yet
+    explicit UltraCanvasRadio(const std::string& identifier = "");
 
     // Content-sized; a positive x, y places it, -1, -1 leaves it in the flow
     static std::shared_ptr<UltraCanvasRadio> Create(
@@ -32796,20 +32829,27 @@ media viewer offers an SVG this way and draws it again at the size chosen.
 
 #### Opened from a settings window
 
-The dialog is drawn in its own type size (12) unless it is given another:
+The dialog is drawn in the theme's body size unless it is given another:
 the last argument of the `FileSavePicture` overload, `fontSize`, draws its
-captions, controls and buttons at the size of the window it is opened from,
-its rows and columns scaled to match. Whatever the size, the window is as
+captions, controls and buttons - the size fields and lists too - at the size
+of the window it is opened from, its rows and columns scaled to match. The
+Save dialog's Settings button passes its own. (Before 2026-11 the default was
+a fixed 12 for the captions, checkboxes and buttons only, which drew them a
+third larger than the fields beside them where the body text is smaller, as
+on Windows.) Whatever the size, the window is as
 wide as its captions and controls need, and the Defaults button as wide as
 its label. A settings window built on `SettingsPageKit` opens it through
 `SettingsPageKit::ShowSaveSettingsDialog(extensionOrPath, parent)`, which
-passes the window's `kTextFontSize` - UltraSnip's *File type* page does:
+passes the window's `SettingsPageKit::TextFontSize()` - UltraSnip's *File
+type* page does. That is the theme's body size, the desktop's interface
+font size, so where the desktop names none (12, as under Xvfb) the dialog
+opened from a settings window is drawn at its own size:
 
 <!-- doc-check: std::string pictureType; UltraCanvasWindowBase* settingsWindow = nullptr; -->
 ```cpp
-// The type's settings, in the settings window's 10-point text
+// The type's settings, in the settings window's type size
 SettingsPageKit::ShowSaveSettingsDialog(pictureType, settingsWindow);
-// The same, by hand: no size row (a picture without a size), font size 10
+// By hand, at a size of your own: no size row (a picture without a size), font size 10
 UltraCanvasFileLoader::ShowSaveSettingsDialog(pictureType, FileSavePicture(), FileSaveImageSize(),
                                               settingsWindow, nullptr, 10.0f);
 ```
@@ -46557,9 +46597,18 @@ UltraCanvasLabel(const std::string& identifier, float x, float y, float w, float
 UltraCanvasLabel(const std::string& identifier, float w, float h,
                  const std::string& labelText = "");
 UltraCanvasLabel(const std::string& identifier, const std::string& labelText);
-explicit UltraCanvasLabel(const std::string& labelText = "");
+explicit UltraCanvasLabel(const std::string& identifier = "");
 ```
 
+- **One string alone is the label's identifier**, as on every element
+  (`UltraCanvasContainer("Row")`); the label has no text until `SetText`.
+  The text goes second: `std::make_shared<UltraCanvasLabel>("InfoTitle",
+  Tr("About"))`, or `("", Tr("Select a repository"))` for a label that needs
+  no name. Until 2.18.0 the one string was the text. A label built from
+  text alone still compiles - and shows nothing:
+  `scripts/check_label_identifiers.py` (CI's `label-identifiers.yml`)
+  refuses a one-string label whose string is a `Tr` call or reads as words,
+  and `debugOutput` names the ones it cannot read.
 - A width or height greater than 0 is a **set size**: the label keeps it, and
   a container's stretch does not change it (see `Docs/CSSLayout.md`,
   "Stretching is a design decision").
@@ -46966,7 +47015,7 @@ std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& identifier,
                                               float w, float h, const std::string& text = "");
 std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& identifier,
                                               const std::string& text);   // sized by its text
-std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& text);
+std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& identifier);   // no text yet
 ```
 
 A label that sizes itself to its text is simply one created without a size:
@@ -49754,10 +49803,13 @@ with their status, edits the working copies, merges the sets, undoes,
 saves and exports. A test drives it on a folder of its own; a headless tool
 could too.
 
-`UltraCanvasLocalisationEditor` is the element over it: a toolbar (the
-application, the language, the comparison language, the search, the status
-filter, the *Sets...* picker, the two switches, Undo, Draft, Export, Save), a
-columns tree view, the edit row under it and a status line. It derives from
+`UltraCanvasLocalisationEditor` is the element over it: four rows of
+controls - the application and the language; the search, the status filter
+and the comparison language; the *Sets...* picker and the two switches; Undo,
+Draft, Export and Save to the right - then a columns tree view, the edit row
+under it and a status line. The rows are kept short so that each fits a
+narrow page (a settings page leaves the editor about 620 px): no control
+loses its label to another, and the search field is the one that gives way. It derives from
 `UltraCanvasContainer` and lays itself out with the CSS flex layout, so it
 fills whatever it is put in.
 
@@ -51548,18 +51600,24 @@ if (tools.colour) { /* the adjustments panel and Curves apply */ }
 | Shown | Zoom | Rotate / mirror | Adjustments + Curves | Save as |
 |---|:-:|:-:|:-:|:-:|
 | Bitmap image (JPEG, PNG, WebP, HEIC, …) | yes | yes | yes | yes |
-| Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a bitmap) |
-| Drawing in the vector view (DXF, DWG, EMF, …) | yes | — | — | — |
+| Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a drawing; turned or mirrored, as a bitmap) |
+| Drawing in the vector view (DXF, DWG, EMF, an SVG where the pipeline has no SVG loader, …) | yes | — | — | yes (as a drawing) |
 | `*.ucd` layered image or preview thumbnail | yes | — | — | — |
 | PDF, e-book | yes | — | — | — |
-| Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
+| Audio the player opens | — | — | — | yes (any audio type this build encodes) |
+| Video the player opens | — | — | — | yes, where a converter is registered (any type `ConvertVideoFile` writes - VideoFX's) |
+| Text, spreadsheet, font, 3D model, nothing loaded | — | — | — | — |
 
 *Unlock* (`tools.unlock`) is there only while the shown file is
 password-protected and not unlocked yet - see *Password-protected files*.
 Separators follow the groups, so none is left standing alone. Text,
 spreadsheet, font, 3D, video and audio views carry their own controls (the
 players' transport bar, the model's orbit and dolly), so the toolbar is down to
-the browse group for them; *Details* stays in the info bar for every kind.
+the browse group for them - and *Save as* for a recording or a video;
+*Details* stays in the info bar for every kind. The framework core has no
+video encoder, so a video's *Save as* is there only where the application
+registered a converter - VideoFX's, on FFmpeg (`VideoFX_RegisterWithFileLoader`,
+as UltraViewer does); a build without one offers a video no *Save as* at all.
 
 A drawing's pixels are only a rendering of it at the size it is shown, so it
 takes no gamma, colour or curve: the adjustments carry from one bitmap to the
@@ -52078,6 +52136,61 @@ size.height = picture.height * 2;
 std::string error;
 surface->SaveProcessed("twice.png", size, error);   // a drawing drawn again at that size
 ```
+
+### Saving a drawing, a recording or a video
+
+A drawing is saved as a drawing. *Save as* on an SVG, a DXF, an EMF or any
+file the vector view shows offers every vector type this build writes (SVG,
+PDF, EPS, DXF, … - `UltraCanvasFileLoader::AddVectorDocumentSaveTypes`)
+and then every bitmap type, drawn again at the size the Settings give
+(`SaveVectorDocument`). The drawing is the vector view's, or - an SVG the
+image pipeline rasterized onto the image surface - the file read with
+`LoadVectorDocument`. A drawing turned or mirrored here
+(`UltraCanvasMediaSurface::HasGeometryEdits`) is saved as the picture, since
+only the picture carries the turn. The same type as the file on show is the
+file copied as it is, never written again by a writer that might not carry
+everything over. Before 2026-11 an SVG was offered only as a PNG, and not at
+all where the vector view showed it (a build whose libvips has no SVG loader,
+Windows among them).
+
+A recording the audio player opened is offered every audio type this build
+encodes (`AddSaveTypes(opts, MediaFormatCategory::Audio)`: WAV always; MP3,
+FLAC, Ogg Vorbis and Opus with their encoders) and written with
+`UltraCanvasFileLoader::ConvertAudioFile` - the same type copied as it is,
+another decoded and encoded.
+
+A video the player opened is offered every type FileLoader's
+`ConvertVideoFile` writes (`UltraCanvasFileLoader::AddVideoSaveTypes`), its
+own type first, and converted with it - the same type copied as it is, another
+decoded and encoded again, picture and sound, at the film's size and frame
+rate. The framework core has no video encoder: a type is written by the
+converter its registration carries (`MediaCodecRegistration::convertVideo`),
+and an application that has VideoFX registers VideoFX's at start-up - every
+container its FFmpeg writes (MP4, MOV, Matroska, WebM, AVI as the encoders
+allow). Without one a video has no *Save as*, rather than one that fails.
+(`AddSaveTypes(opts, MediaFormatCategory::Video)` is not the list here: it
+holds every container the build writes, a camera recording's too - on Linux
+the GStreamer muxers - which a file need not be convertible to.)
+
+<!-- doc-check: int main(); -->
+```cpp
+#include "VideoFXUltraCanvasFormats.h"   // link VideoFXUltraCanvasFormats
+
+int main() {
+    UltraCanvasApplication app;
+    app.Initialize("MyViewer");
+    VideoFX::VideoFX_RegisterWithFileLoader();   // a video's Save as: every type VideoFX writes
+    // ... a window with an UltraCanvasMediaViewer ...
+    return app.Run(), 0;
+}
+```
+
+Converting a film takes as long as encoding it does, so the viewer runs
+`ConvertVideoFile` on a thread of its own behind a progress window - the ring
+shows how far it has got, and *Cancel* stops it. The file is written beside
+the chosen one and put in its place only when complete, so a stopped or failed
+save leaves no half file and keeps the one it was to replace; the info bar
+then says *Not saved: <name>*, and a failure says why in a message.
 
 Each slider is **continuous over its whole range** and carries its live value in
 its caption (`Gamma  1.37`), so an edit can be read off and repeated. The
@@ -78069,8 +78182,27 @@ state the same way, with the fence's language: a `/* comment */` over several
 lines is coloured on all of them. The opening fence starts every block empty,
 so a comment left open in one block ends at its closing fence. The raw line
 under the cursor is read with the Markdown rules and starts empty too - it
-never takes a code block's state. Indented (four-space) code blocks are not
-highlighted.
+never takes a code block's state.
+
+An indented (four-space) code block has no language tag. Each block's
+language is found once, on its first line, from - in order:
+
+1. a clear guess from the block's own text (`DetectLanguageFromContent`);
+2. the language the nearest code fence above it names, where the author said
+   what the document's code is;
+3. a guess on a lower bar (`LanguageDetectOptions{1, 1}`): the text is known to
+   be code, so a short snippet such as `console.log(x);` need not pile up the
+   points a paste of unknown text would.
+
+A block none of them places - indented prose - stays plain. An application
+that knows the language sets it for every indented block:
+
+```cpp
+textArea->SetIndentedCodeLanguage("C++");   // "" (the default): guess per block
+```
+
+A blank line between two indented code lines belongs to the block, as in
+CommonMark, so a comment left open across it stays a comment.
 
 The fence's info string names the language through
 `SyntaxTokenizer::SetLanguageByTag`: its first word, matched against the
@@ -93149,6 +93281,7 @@ FILE: Docs/Modules/FileLoader/README.md
   - [Editable Vector Documents](#editable-vector-documents)
   - [Save Settings](#save-settings)
   - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
+  - [A Video Saved in Another Type](#a-video-saved-in-another-type)
   - [Transparent Decompression](#transparent-decompression)
   - [Runtime Format Inventory](#runtime-format-inventory)
   - [A Dialog's File Types](#a-dialogs-file-types)
@@ -93239,6 +93372,13 @@ UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_p
 UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) {
     if (r.IsSuccess()) Play(audio);
 });
+
+// Save a recording in another audio type (WAV always; MP3 / FLAC / Ogg Vorbis /
+// Opus with their encoders; a codec plugin's too). The Save dialog's types are
+// AddSaveTypes(opts, MediaFormatCategory::Audio). The same type is copied as it is.
+std::string audioError;
+UltraCanvasFileLoader::ConvertAudioFile("talk.flac", "talk.mp3", audioError);
+// ... or a UCAudio you hold: UltraCanvasFileLoader::SaveAudio(audio, "take.wav", audioError)
 
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT;
 // a PowerPoint deck, .pptx, as an outline of its slides).
@@ -93414,6 +93554,47 @@ it: libvips' HEIF loader takes both file endings wherever libheif is, but
 libheif decodes a HEIC only with its HEVC plug-in (libde265) and an AVIF only
 with an AV1 one (aomdec, dav1d). The build asks libheif when its headers are
 installed; without them, the inventory goes by the loader's file endings.
+
+### A Video Saved in Another Type
+
+`ConvertVideoFile(source, target, error, progress)` writes a film in the type
+its new name ends in: the same type is the file copied as it is, another is
+decoded and encoded again, picture and sound. The core has no video encoder,
+so a type is written by the converter its codec registration carries
+(`MediaCodecRegistration::convertVideo`): an application that has VideoFX
+links `VideoFXUltraCanvasFormats` and calls `VideoFX_RegisterWithFileLoader()`
+once at start-up, which registers every container VideoFX's FFmpeg writes
+(MP4, MOV, Matroska, WebM, AVI as its encoders allow). Without a converter only
+the same type is written, and `GetVideoSaveExtensions()` is empty - offer no
+video *Save as* then. The Save dialog's types are `AddVideoSaveTypes(opts)`,
+not `AddSaveTypes(opts, MediaFormatCategory::Video)`: that one lists every
+container the build writes, a camera recording's muxers too, which need not
+be types a file can be converted to.
+
+A conversion takes as long as encoding the film does, so it runs off the UI
+thread, and `progress` (0..1, on that thread) returning false stops it. It is
+written beside the target and moved there when complete: a stopped or failed
+one leaves no half file, and keeps the file it was to replace.
+
+<!-- doc-check: void ShowProgress(double fraction); bool StopRequested(); void ShowError(const std::string& message); -->
+```cpp
+#include "VideoFXUltraCanvasFormats.h"   // link VideoFXUltraCanvasFormats
+
+VideoFX::VideoFX_RegisterWithFileLoader();   // once, at start-up
+
+FileDialogOptions save;
+save.SetDefaultFileName("holiday.webm");
+UltraCanvasFileLoader::AddVideoSaveTypes(save);   // WebM first, then MP4, MOV, ...
+
+// On a worker thread (the media viewer runs it behind a progress window):
+std::string error;
+if (!UltraCanvasFileLoader::ConvertVideoFile("holiday.mp4", "holiday.webm", error,
+        [](double fraction) { ShowProgress(fraction); return !StopRequested(); }))
+    ShowError(error);   // "Stopped" when it was stopped
+```
+
+The media viewer's *Save as* for a video is this call - see
+[UltraCanvasMediaViewer](../../UltraCanvas/UltraCanvasMediaViewer.md#saving-a-drawing-a-recording-or-a-video).
 
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing
@@ -98243,8 +98424,8 @@ FILE: Docs/Modules/UltraAI/LocalRuntime.md
 
 # UltraAI Local Runtime — models on this computer, nothing to install
 
-**Version:** 0.3.1
-**Last Modified:** 2026-11-13
+**Version:** 0.4.0
+**Last Modified:** 2026-11-15
 
 ## Overview
 
@@ -98298,9 +98479,11 @@ recommends and ask.
 
 | Part | What it is | Where |
 |---|---|---|
-| **Engine gallery** | An index of prebuilt engine bundles: one per (engine, platform, accelerator), with URL, SHA-256 and size. The copy shipped with the framework is llama.cpp's release b11669 for Linux, macOS and Windows on x64 and arm64, CPU and Vulkan (Metal on macOS), hashed on 2026-10-20, and whisper.cpp's server v1.9.0 for Linux, macOS and Windows on x64 and arm64 - upstream's CPU builds for Linux and Windows x64, and the rest (Metal on Apple silicon, CPU on Intel Macs, Windows on ARM, Vulkan) built here (*Engines built here*), hashed on 2026-11-13; `RefreshGallery()` fetches the published one. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/index.json` |
-| **Model catalogue** | Curated models with capability, engine, licence, files, memory needs and features. Shipped with the framework; refreshed beside the gallery. A model whose engine has no build for this platform (and is not installed or overridden) is left out of `ListModels`. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/catalogue.json` |
-| **User models** | A GGUF the user has (`AddModelFile`, used in place) or a Hugging Face file (`AddHuggingFaceModel`, downloaded); for `"speechtotext"`, a whisper.cpp ggml `.bin`, served by `whisper-server`. | `<root>/user-models.json` |
+| **Engine gallery** | An index of prebuilt engine bundles: one per (engine, platform, accelerator), with URL, SHA-256 and size. The copy shipped with the framework is llama.cpp's release b11669 for Linux, macOS and Windows on x64 and arm64, CPU and Vulkan (Metal on macOS), hashed on 2026-10-20, and whisper.cpp's server v1.9.0 for Linux, macOS and Windows on x64 and arm64 - upstream's CPU builds for Linux and Windows x64, and the rest (Metal on Apple silicon, CPU on Intel Macs, Windows on ARM, Vulkan) built here (*Engines built here*), hashed on 2026-11-13. There is no default gallery address: `RefreshGallery()` fetches a model server's when the settings name one (`galleryUrl`), and does nothing otherwise. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/index.json` |
+| **Model catalogue** | The short curated list: models with capability, engine, licence, files, memory needs and features. Shipped with the framework; a model server's replaces it. It is what `Recommend()` and the topics choose from. A model whose engine has no build for this platform (and is not installed or overridden) is left out of `ListModels`. | `LocalRuntimeBuiltinData.cpp`, `<root>/gallery/catalogue.json` |
+| **Catalogue sources** | The wider list, downloaded as LocalAI downloads its galleries: each source is an index at an address - a LocalAI model gallery, or a `catalogue.json` of ours - whose models the two engines can run are offered beside the curated ones. LocalAI's own gallery is the source a new installation starts with. See *Catalogue sources*. | `RefreshCatalogueSources`, `ListCatalogueSources`, `<root>/catalogues/<source id>.json` |
+| **Hugging Face** | A live search of huggingface.co's repositories and the list of one repository's runnable files (GGUFs, whisper.cpp models) with size, hash, quantisation and fit. See *Hugging Face*. | `SearchHuggingFace`, `ListHuggingFaceFiles` |
+| **User models** | A GGUF the user has (`AddModelFile`, used in place) or a Hugging Face file (`AddHuggingFaceModel`, downloaded; with the further parts of a split GGUF and a vision projector when asked); for `"speechtotext"`, a whisper.cpp ggml `.bin`, served by `whisper-server`. | `<root>/user-models.json` |
 | **Installs** | Background jobs on the runtime's worker: download to a `.part` file (resumed when one exists), verify the SHA-256 through UltraCrypt, move into place; an engine bundle is unpacked through VirtualFS and gets a `bundle.json`; a model gets its `model.json` last, so a half-installed model never counts as installed. | `InstallModel`, `InstallEngine`, `Cancel`, `ListJobs` |
 | **Supervision** | `Ensure(modelId)` starts the model's engine on a free loopback port (`llama-server` with `--api-key-file`), waits for `/health`, and records it in `runtime.json` — shared between processes under a lock file — so a second application finds the running engine instead of starting its own. Idle engines are stopped by `StopIdle()` (run by every `Ensure`). A model whose engine died twice in a row is marked and not retried until it is stopped or reinstalled. | `Ensure`, `Touch`, `StopIdle`, `StopModel`, `StopAll`, `ListRunning` |
 | **Hardware fit** | From `UltraCanvasHardwareInfo` (GPUs with dedicated memory, total memory, CPU cores): the accelerator Auto picks (Metal on macOS; Vulkan where a GPU is present on Linux and Windows; CPU otherwise; CUDA and ROCm only when chosen), and each model's fit — *recommended* (fits 70 % of the GPU's memory), *runs on CPU* (fits 70 % of system memory) or *too large*; a model whose engine has CPU builds only for this platform (llama-server and whisper-server on an Intel Mac) is at most *runs on CPU*, unless the engine is an override. | `Hardware()`, `Fit()`, `ChooseBundle()`, `Recommend()` |
@@ -98316,7 +98499,9 @@ on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
 ├── engines/<engine>/<version>-<platform>-<accelerator>/   an unpacked bundle, with bundle.json
 ├── models/<model id>/                                      the files, with model.json
 ├── downloads/*.part                                        in flight; resumed next time
-├── gallery/index.json, catalogue.json, topics.json         the refreshed copies
+├── gallery/index.json, catalogue.json, topics.json         the copies refreshed from a model server
+├── catalogues/<source id>.json                             the models of each catalogue source, as downloaded
+├── file-facts.json                                         sizes and hashes asked of the hosts (ProbeModel, installs)
 ├── logs/<engine>-<model>.log                               the engine's output (rotated at 4 MB)
 ├── runtime.json                                            running engines: pid, port, model, started, last used
 ├── runtime.key                                             the loopback API key (owner-only on POSIX)
@@ -98335,8 +98520,10 @@ on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
 | Setting | Default | Meaning |
 |---|---|---|
 | `policy` | `Ask` | `Never`: installs only from a settings page; `Ask`: `Ensure` installs when the caller passes `allowDownload` (the dialog's answer); `Automatic`: `Ensure` installs silently |
-| `preferredAccelerator` | `""` (Auto) | `"cpu"`, `"vulkan"`, `"metal"`, `"cuda12"`, `"rocm"` — the bundle to use when the gallery has one for this platform |
-| `galleryUrl` | the built-in default | a mirror's `index.json`; `catalogue.json` and `topics.json` are read from beside it |
+| `preferredAccelerator` | `""` (Auto) | `"cpu"`, `"vulkan"`, `"metal"`, `"cuda12"`, `"rocm"` — the bundle to use when the gallery has one for this platform; for every engine without an entry of its own below |
+| `engineAccelerators` | `{}` | the accelerator per engine id (`"llama-server"`, `"whisper-server"`). An entry wins over `preferredAccelerator`, and `""` in it is Auto for that engine: one engine's GPU build may suit a computer where another's does not (whisper-server's Linux Vulkan build needs glibc 2.39). `PreferredAccelerator(engineId)` reads what applies; a settings page sets these |
+| `galleryUrl` | `""` (none) | a model server's `index.json`; `catalogue.json` and `topics.json` are read from beside it. Empty: the copies shipped with the framework stay in use |
+| `catalogueSources` | LocalAI's model gallery | where the wider list of models is downloaded from: `{id, name, url, enabled}` each (see *Catalogue sources*). A settings file written before the sources existed keeps the default; one that lists them, even none, is taken at its word |
 | `trustedKeys` | `[]` | Ed25519 public keys (hex) the gallery's documents must be signed with; pinned from `keys.json` on the first refresh (see *Signed galleries*) |
 | `idleMinutes` | 15 | stop an engine nobody used for this long (0 stops at the next sweep) |
 | `diskCapBytes` | 20 GB | an install that would exceed it fails with `QuotaExceeded` |
@@ -98346,7 +98533,8 @@ on Windows, `~/Library/Application Support` on macOS, `$XDG_DATA_HOME` or
 
 For `llama-server`: `--host 127.0.0.1 --port <free> --api-key-file
 <root>/runtime.key --model <file> --alias <model id>`, `--mmproj <file>`
-when the model carries an `mmproj*.gguf`, `--embeddings` for an embedding
+when the model carries a vision projector (a file marked `"projector"`, or
+named `mmproj*.gguf`), `--embeddings` for an embedding
 model, `--n-gpu-layers 999` when the model fits the GPU (0 on a CPU bundle;
 otherwise the engine's own fitting decides), `--threads` from the physical
 cores (two left for the desktop), then the gallery's `defaultArgs`
@@ -98455,7 +98643,9 @@ finds it by name, breadth first.
     "capability": "textllm",
     "engine": "llama-server",
     "license": "Apache-2.0",
-    "files": [{"name": "Qwen3-4B-Q4_K_M.gguf", "url": "https://huggingface.co/.../resolve/main/...", "sha256": "", "size": 2497000000}],
+    "files": [{"name": "Qwen3-4B-Q4_K_M.gguf", "url": "https://huggingface.co/.../resolve/main/...", "sha256": "", "size": 2497000000},
+              {"name": "vision.gguf", "url": "https://...", "projector": true}],
+    "homepage": "https://huggingface.co/Qwen/Qwen3-4B-GGUF",
     "requires": {"memoryBytes": 4000000000, "gpuMemoryBytes": 3500000000},
     "features": {"contextWindow": 32768, "tools": true, "vision": false, "embeddingDimensions": 0},
     "engineArgs": ["--ctx-size", "8192"],
@@ -98471,13 +98661,139 @@ them in the model's `model.json`. The built-in catalogue ships that way
 until its hashes are pinned; a catalogue entry with a hash is verified
 against that hash only. `requires` drives the fit; without it, 1.2 x the
 files' size stands in. `tags` holding `recommended` puts a model first in
-`Recommend()` for its capability.
+`Recommend()` for its capability. A file marked `"projector": true` is the
+model's vision projector (`--mmproj`); one named `mmproj*.gguf` is that
+without saying so. A file's `name` is a plain file name: an install refuses
+one with a separator in it, whatever catalogue it came from.
 
 The built-in catalogue (2026-10-21): Qwen3 4B, 1.7B and 8B for chat,
 Gemma 3 4B with vision, Qwen3 Embedding 0.6B and Nomic Embed Text v1.5 for
 embeddings. Its file names and sizes were checked against the Hugging Face
 repositories on that date; the hashes are still read from the tree API at
 install time.
+
+---
+
+## Catalogue sources
+
+The curated catalogue is nine models. Everything else comes from where
+LocalAI gets it: a **gallery index** downloaded from an address, and the
+files themselves from Hugging Face. `LocalRuntimeSettings::catalogueSources`
+lists the indexes; a new installation has one, LocalAI's own
+(`github:mudler/LocalAI/gallery/index.yaml@master`, about 2300 entries).
+
+```cpp
+LocalRuntime& rt = LocalRuntime::Instance();
+
+std::vector<CatalogueSourceStatus> status;
+rt.RefreshCatalogueSources(&status);           // blocking: downloads every enabled source
+for (const CatalogueSourceStatus& s : status) {
+    // s.source.name, s.error, s.models (offered), s.skipped (need another engine), s.fetched
+}
+for (const LocalModelInfo& m : rt.ListModels()) {
+    if (m.source == LocalModelSource::Gallery) { /* m.gallery == "localai", m.id == "localai:<name>" */ }
+}
+
+LocalRuntimeSettings settings = rt.GetSettings();
+settings.catalogueSources.push_back({"mine", "My list", "https://example.com/catalogue.json", true});
+rt.SetSettings(settings);                      // persisted; Refresh downloads it
+```
+
+- **An address** is `https://...`, or LocalAI's short form
+  `github:owner/repository/path@branch` (raw.githubusercontent.com; branch
+  `main` without one). Anything else - `http://`, `file://`, `oci://` - is
+  not fetched, and `SetSettings` drops a source with such an address, with
+  no usable id, or with an id another source has.
+- **The document says what it is.** A JSON object is one of our
+  `catalogue.json` documents; a list is a LocalAI model gallery, in YAML or
+  JSON, with each entry's `url` / `files` / `overrides` at the top
+  (`gallery/index.yaml`) or under `model` (`gallery/models/index.yaml`).
+- **A LocalAI entry becomes a model when one of the two engines can run
+  it**: every file a GGUF and the backend `llama-cpp` (or none, with a
+  language-model template) makes a `llama-server` model - embeddings when
+  the entry says so (`embeddings: true`, the use case, the tag), with its
+  `pooling:` option and a context of at most 8192; a `whisper` entry with
+  one ggml `.bin` a `whisper-server` model. The model file named by
+  `overrides.parameters.model` comes first, with every part of a split
+  GGUF; the file named by `overrides.mmproj` is marked as the projector; a
+  draft model or another extra is not downloaded. Everything else - piper,
+  diffusers, vLLM, the picture and sound models that are GGUF files too, a
+  voice-activity model, a reranker - is counted in `skipped`: it needs an
+  engine this runtime does not have.
+- **A source is somebody else's list**, and may set only what a model
+  entry needs. Its files must resolve to `https://` (`huggingface://` and
+  `hf://` become Hugging Face resolve URLs) and carry plain names inside
+  the model's own folder; the SHA-256 it gives is verified as any other;
+  and the engine arguments of a third party's `catalogue.json` are cut down
+  to `--ctx-size`, `--pooling`, `--embeddings`, `--jinja`, `--parallel`,
+  `--batch-size`, `--ubatch-size` and `--reasoning-format` - an engine also
+  takes arguments that name files to read and write.
+- **Its models are never picked on their own.** `Recommend()`, the topics
+  and `NewModels()` look at the curated catalogue; a source's model is
+  used once the user has installed it. An installed one is `Remove`d like a
+  catalogue model, not forgotten.
+- **The copy is kept**, as our model JSON, in `<root>/catalogues/<id>.json`
+  and read at start. A refresh that fails - the address unreachable, the
+  document unusable - leaves the copy in use and is reported for that
+  source alone. Turning a source off takes its models out of `ListModels`
+  at once and keeps the copy; a new address under the same id discards it.
+- **An installed model outlives its listing.** `ListModels` and
+  `FindModel` read the `model.json` of an installed model no catalogue
+  lists any more - its source dropped it, or was turned off or removed -
+  so it can still be used and removed.
+- **Sizes.** A LocalAI gallery states hashes but no sizes. `ProbeModel(id,
+  model)` asks the file's host (Hugging Face's tree API, for the folder the
+  file is in) for size and hash and remembers the answer in
+  `file-facts.json`, so the size and the fit are known before anything is
+  downloaded; an install asks the same way. Until then the model's fit is
+  `Unknown`.
+
+The gallery's YAML is read by the runtime itself
+(`local_detail::YamlToJson`): the part of the language a generated index
+uses - block mappings and sequences, plain, quoted and block scalars, flow
+`[ ]` and `{ }`, comments. An anchor, an alias, a tag or a merge key is
+refused, so a gallery that starts using them fails its refresh rather than
+being misread. It agrees with PyYAML on LocalAI's gallery, model library
+and backend indexes as of 2026-11-15 (apart from YAML 1.1's `yes` and
+octal numbers, which stay text here).
+
+## Hugging Face
+
+```cpp
+std::vector<HuggingFaceRepo> repos;
+rt.SearchHuggingFace("qwen3 4b", /*ggufOnly*/ true, 50, repos);    // most downloaded first; "" lists the top
+// repos[i].id, .downloads, .likes, .license, .pipelineTag, .gated
+
+std::vector<HuggingFaceFile> files;
+HuggingFaceRepo repo;
+rt.ListHuggingFaceFiles("Qwen/Qwen3-4B-GGUF", files, &repo);
+// files[i].name, .sizeBytes, .sha256, .quantization ("Q4_K_M"), .fit, .capability,
+// .projector (an mmproj), .parts (the further parts of a split GGUF)
+
+HuggingFaceModelRequest request;
+request.repo       = repo.id;
+request.file       = files[0].name;
+request.extraFiles = files[0].parts;
+request.capability = files[0].capability;
+std::string id;
+rt.AddHuggingFaceModel(request, id);            // "hf:<repo>:<file>", then InstallModel(id, ...)
+```
+
+All three block on the network and are for a worker thread. The search is
+`https://huggingface.co/api/models?sort=downloads&direction=-1&full=true&limit=<n>`
+with `filter=gguf` and `search=<words>` (`full=true` adds the date of the
+last change and whether a repository is gated); the files are the repository's
+tree (`/api/models/<repo>/tree/main?recursive=true`) - GGUFs and
+`ggml-*.bin` whisper.cpp models, a split GGUF as one entry with its parts,
+projectors marked and listed last - with the capability guessed from the
+repository's pipeline tag and the name (`.bin`: speech to text; a
+`sentence-similarity` or `feature-extraction` repository, or "embed" in the
+name: embeddings; else chat). A repository reported as `gated` asks for an
+agreement on huggingface.co first, and its files are refused to a download
+that is not signed in. A repository that does not exist answers 401 there,
+as a private one does; both come back as `ModelNotFound`. Nothing is sent
+to Hugging Face but the search words and the repository's name. Checked
+against the live service on 2026-11-15.
 
 ---
 
@@ -98498,8 +98814,8 @@ document's `X-UltraAI-Signature` header and as `<document>.sig` beside it.
 
 - with `trustedKeys` empty, reads `keys.json`; when there is one, the index
   must verify against it and its keys are pinned into the settings (trust on
-  first use, over TLS). A gallery without `keys.json` - the built-in default,
-  a plain mirror - stays unsigned and works as before;
+  first use, over TLS). A gallery without `keys.json` - a plain mirror -
+  stays unsigned and works as before;
 - with `trustedKeys` set, the index, and the catalogue and the topics when
   they are there, must each carry a signature by one of those keys: an
   unsigned or wrongly signed one fails the refresh with `ProviderError` /
@@ -98648,7 +98964,20 @@ rt.RemoveModel("qwen3-4b-q4");
 rt.RemoveEngine("llama-server", "vulkan");
 for (const RunningEngineInfo& r : rt.ListRunning()) { /* r.modelId, r.baseUrl, r.processId */ }
 rt.StopAll();
+
+// The engine of the model the user selected, and its accelerator.
+EngineBundleInfo bundle;
+if (rt.ChooseBundle(model.engineId, bundle)) { /* bundle.accelerator, bundle.installed, bundle.sizeBytes */ }
+LocalRuntimeSettings s = rt.GetSettings();
+s.engineAccelerators[model.engineId] = "cpu";   // "" = Auto for this engine
+rt.SetSettings(s);
 ```
+
+The dashboard's page shows the engine of the selected model in its engine
+line and its *Acceleration* choice - a speech model's is `whisper-server`,
+a chat model's `llama-server` - and disables the choice for an engine with
+one build for this computer: there is nothing to choose, and the engine is
+downloaded with the first of its models as every engine is.
 
 Progress callbacks fire on the runtime's worker thread: hand them to the
 UI thread before touching an element.
@@ -98667,7 +98996,12 @@ the shared record found by a second runtime, the idle stop, the restart
 marker; and the `local` provider's chat, embeddings and speech to text end
 to end (the fake engine started as `whisper-server` answers on its
 inference path; a speech model whose engine has no build here is not
-offered). Nothing
+offered); the catalogue sources (the YAML reader, a LocalAI gallery's
+entries as models and the ones left out, what a third party's list may
+set, a refresh through a transport that answers by address, the copy kept
+between runs, a source turned off, an installed model its source dropped,
+`ProbeModel`); Hugging Face's search and file lists; and the accelerator
+per engine. Nothing
 in it touches the network. `ULTRACANVAS_BUILD_ULTRAAI_TESTS=ON` builds the
 module's suite in-tree and CI runs it with the rest.
 
@@ -98694,16 +99028,27 @@ LocalRuntime::Instance().SetSettings(s);
   every GGUF) and the `UltraAIHost` supervisor are phase 2. An engine
   started by an application that exits stays until an idle sweep from any
   application stops it.
-- The engine bundles are llama.cpp's own release archives, pinned by hash;
-  the UltraCanvas-built, signed gallery is phase 0 of the proposal and
-  replaces the built-in index without a format change. On macOS the
+- The engine bundles are llama.cpp's own release archives, pinned by hash.
+  There is no published gallery of UltraCanvas's own - the repository the
+  default address once named was never made - so the engine index changes
+  with a release of the framework, or with a model server the settings
+  name. On macOS the
   upstream archives are built for 13.3 and later, and a downloaded
   executable runs as it is (UltraNet sets no quarantine attribute).
 - The catalogue's hashes are taken from Hugging Face at install time until
   they are pinned; the file names and sizes were checked against the
   repositories on 2026-10-21.
 - The built-in gallery (llama.cpp's release archives) is not signed; a
-  model server's gallery is (see *Signed galleries*).
+  model server's gallery is (see *Signed galleries*). A catalogue source is
+  not signed either: its files are verified against the hashes it gives,
+  so it is as trustworthy as its publisher and the address it is fetched
+  from over TLS.
+- A catalogue source's models have no memory figures: the fit is 1.2 x the
+  files' size once that is known (`ProbeModel`). A LocalAI entry's prompt
+  template and sampling parameters are not carried over - `llama-server`
+  uses the chat template inside the GGUF (`--jinja`).
+- A gated Hugging Face repository cannot be downloaded: the runtime holds
+  no Hugging Face token.
 - The *Get a local model* dialog is the module's (`UltraAI/ui/`,
   `UltraAILocalModelDialog.h`, library `UltraAI_UI`): an application links
   `UltraAI_UI` beside `UltraAI_Core`, tests an error with
@@ -101753,6 +102098,10 @@ UltraIM_RefreshProviders();                 // load the provider modules
 UltraIM_Subscribe([](const UltraIMEvent& e) {
     if (e.type == UltraIMEventType::MessageReceive) { /* append e.message */ }
     if (e.type == UltraIMEventType::MessageDelivered) { /* match e.message.clientMessageId */ }
+    if (e.type == UltraIMEventType::TransferProgress) {
+        // A file on its way: e.transferredBytes of e.totalBytes, e.isUpload
+        // (ours going out) or not; the row is e.message.clientMessageId.
+    }
 });
 
 UltraIM_SignIn("direct", credentials, [](const UltraIMResult& r) { /* ... */ });
@@ -101838,6 +102187,14 @@ account has one, else signed in - so those steps arrive as events with no
 (`SignIn` with `QRCode` while the step is `Code`); a phone number given
 while the QR code waits starts the sign-in over with the number.
 
+A sign-in on the service's own web page (Mastodon: OAuth) has the step
+`Browser`: nothing to type in the application, the hint
+(`AuthStepChange`'s `errorText`) is the page's address for the application
+to open in the browser (`UltraCanvas::OpenURL`). The person signs in there,
+the page answers a loopback address the provider listens on, and the
+sign-in goes on by itself; `SignIn`'s callback fires once it is done or
+the wait ended.
+
 What one provider's service keeps for another provider's sign-in comes
 through `UltraIM_FetchSharedCredentials(provider, forProvider, cb)`: ChatCube
 Direct's relay keeps the Telegram application's API ID and hash
@@ -101868,11 +102225,12 @@ UltraIMResult r = UltraIM_DeleteMessage("direct", message.conversationId, messag
 | ChatCube Direct | any message, any time | the sender: a text until the other person has read it; a picture, video or file at any time; anything in a group at any time |
 | Matrix | not available | the sender, any time (a redaction) |
 | Telegram | any message | the sender (Telegram has the last word and may refuse) |
+| Mastodon | not available | the sender, any time |
 
 **Searching the history.** `UltraIM_SearchMessages(provider, search, cb)`
 finds messages by their words, or everything of one kind - the
 *Media / Files / Links* tabs of a conversation - for a provider with the
-`SearchMessages` capability (all three have it):
+`SearchMessages` capability (all four have it):
 
 ```cpp
 UltraIMMessageSearch search;
@@ -101903,6 +102261,7 @@ every network, and what differs is said here rather than discovered:
 | ChatCube Direct | its database on this device | anywhere in the text, any case | yes (`conversationId` "") |
 | Matrix | the room's history, read back page by page and matched on this device - so an encrypted room is searched like any other | anywhere in the text, any case | no: `CapabilityMissing` |
 | Telegram | Telegram's own search (`searchChatMessages`) | whole words, as in Telegram's apps | no: `CapabilityMissing` |
+| Mastodon | the chat's threads, read from the server and matched on this device | anywhere in the text, any case | no: `CapabilityMissing` |
 
 The words are looked for in the message's text (a caption too) and its
 attachment's file name; a `SystemEvent` line ("Bob joined") is never a
@@ -102102,6 +102461,24 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   owner (`ownerId`); `LeaveConversation` leaves a group, and deletes a 1:1
   conversation and its messages on this device while keeping the contact,
   so a new message from them starts it again.
+- **Public groups** (relay 1.5.0): a group's owner makes it public
+  (`SetGroupPublic`, `UltraIMConversation::isPublic`), and it is listed for
+  everyone on the relay (`FetchPublicGroups`: `UltraIMPublicGroup` - its
+  conversation id, title, owner, member count, whether one is in it) and
+  joined by anyone (`JoinGroup`). It stays end-to-end encrypted: a message
+  is sealed for each member as in any group (the members' keys are fetched
+  and checked against their ids as they join), so a public group holds at
+  most 256 (the relay's setting). The relay limits how much one member posts
+  into one.
+- **A group's description and blocks** (relay 1.5.0): `SetGroupDescription`
+  (`UltraIMConversation::description`, up to 500 characters; any member of a
+  private group, the owner of a public one - else `PermissionDenied`), shown
+  in the directory too (`UltraIMPublicGroup::description`). The owner blocks
+  (`BlockGroupMember`: out of the group, and kept out - no *Join*, no one
+  else adding them) and unblocks (`UnblockGroupMember`); `FetchBlockedMembers`
+  lists them. `RemoveGroupMember` alone only takes someone out. A newcomer sees what
+  is written after they join. On an older relay the three answer
+  `CapabilityMissing` ("needs ChatCube relay 1.5 or later").
 - **Local record:** contacts and their keys, conversations, history and the
   outbox in `<dataDirectory>/direct/direct.sqlite3` (UltraDatabase).
   `FetchMessages` answers from it; nothing waits for the network.
@@ -102133,6 +102510,9 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
 - **Contacts:** adding someone puts us in their list too (relay 1.4.0
   `contact.added`, or a `contact` frame on the local network), so their
   chat appears before our first message.
+- **Progress:** a file's parts are counted as they leave (the relay took
+  them, or the link acknowledged them) and as they arrive, and reported as
+  `TransferProgress` at each percent.
 - **Search:** `SearchMessages` is a query on that record - one conversation
   or all of them, narrowed in the database by conversation and kind (an
   index each) and matched by words on the way out, where upper and lower
@@ -102467,11 +102847,77 @@ names and fields are right. The library is the one the configure step
 fetched, or the one `ULTRAIM_TDJSON_PATH` names; CI sets
 `ULTRAIM_TEST_TDLIB_REQUIRED`, so no library there is a failure.
 
+## Provider: Mastodon
+
+`UltraCanvas/Plugins/UltraIM/mastodon/` (module `ultraim_mastodon`, provider
+id `mastodon`) brings the **direct messages** of a Mastodon server - or one
+that speaks its REST API (GoToSocial, Akkoma, Pleroma) - over UltraNet. It
+links nothing beyond UltraNet, UltraVault and UltraCrypt, so it builds
+everywhere the others do.
+
+Mastodon has no messenger of its own: a "chat" is a thread of statuses whose
+visibility is `direct`, seen only by the accounts they mention, and the
+server lists each thread as a conversation (`GET /api/v1/conversations`).
+The provider turns that into chats:
+
+- **A chat is a set of people.** Its id is the other accounts' full
+  addresses (`user@server`, lower case, sorted, space-joined), so a chat
+  opened before its first message (`AddContact`, `CreateGroup`) and the one
+  its first message makes are the same, and every thread with the same
+  people is one chat - a status that answers nothing starts a thread, and
+  the history shows the threads together (the newest eight).
+- **A message is a status:** its HTML content as text
+  (`HTML::ExtractPlainText`, the layout `Lines`), the mentions it starts
+  with left out (everyone in a direct chat is mentioned in each), a content
+  warning above the text; its first attachment as the picture, video or
+  sound (more than one: "+n" after the text). Sending posts a direct status
+  that mentions everyone in the chat and answers the chat's last status, so
+  the thread stays one; a reply answers the message quoted, and shows as a
+  reply only when that is not simply the message before it. The client
+  message id goes as the `Idempotency-Key`, so a retry never posts twice.
+- **News comes by polling** the conversations every few seconds
+  (`MastodonTimings::pollMs`, 4 s): a thread whose last status changed
+  brings what it holds that was not seen yet, in order; a last status
+  changed in place is an edit (`MessageUpdate`), one that went back to an
+  older one a delete (`MessageDelete`). There is no push here (the
+  streaming API is not used yet).
+- **Sign-in** is the server's own page in the browser (`UltraIMLoginType::SsoOidc`,
+  the auth step `Browser`): the provider registers the application with the
+  server once (`POST /api/v1/apps`, kept per server), then runs OAuth with
+  PKCE on a loopback address (`http://127.0.0.1:47819/callback`,
+  `SetRedirectUri`). The access token is kept in UltraVault, so the next
+  start signs in by itself (`SignIn` with no server); `credentials.accessToken`
+  signs in with a token made in the server's settings instead.
+- **People:** `AddContact` takes `@user@server`, `user@server`, `@user`
+  (this server) or a profile's page (`https://server/@user`): the server
+  looks them up (`/api/v1/accounts/lookup`), or asks theirs
+  (`/api/v2/search` with `resolve`) for someone it has not met.
+- **Media:** pictures, videos and sound, uploaded (`POST /api/v2/media`,
+  `TransferProgress` as it goes), waited for while the server processes
+  them, then sent; a picture received comes by itself, the rest when asked
+  (`DownloadAttachment`). Mastodon takes no other file: `SendFile` with one
+  answers `CapabilityMissing`.
+- **Edit** (`PUT /api/v1/statuses/:id`, Mastodon 4.0+), **delete** (one's
+  own, for everyone), **read** (`POST /api/v1/conversations/:id/read`),
+  **leave** (the conversations taken off the list - the statuses stay).
+- **Not here:** typing, read receipts, presence and calls (Mastodon has
+  none); history beyond the eight newest threads of a chat.
+
+Tests: `Tests/UltraIM/MastodonProviderTests.cpp` against
+`mastodon_fake_server.py`, a small Mastodon in memory in standard-library
+python (the part of the API the provider uses; threads as conversations,
+OAuth that approves at once, media processed after one look): a token
+sign-in and a refused one, the browser sign-in with PKCE and the session
+kept, a chat opened before its first message, texts both ways, several
+statuses between two looks in order, a reply, an edit, a delete seen by both
+sides, a picture and a video byte for byte, a file refused, search, read, a
+group, a second thread in the same chat, leaving. Skips without python3.
+
 ## Status
 
 Implemented: the registry, the module loader, the event bus and dispatcher,
 the merged conversation fetch and every forwarding call; the ChatCube
-Direct, Matrix and Telegram providers (above). Next: XMPP and others.
+Direct, Matrix, Telegram and Mastodon providers (above). Next: XMPP and others.
 
 ==============================================================================
 FILE: Docs/Modules/UltraLocalisation/README.md
@@ -106173,6 +106619,19 @@ that brings VideoFX hands the films and sound to `RegisterMediaCodec`, and
 FileLoader's lists, and the dialogs built from them, then offer exactly what
 the engine handles. UltraVideo does this (`UltraVideoFormats.cpp`). The
 module built without FFmpeg returns an empty list.
+
+**A video's Save as in an UltraCanvas application.** The framework core has
+no video encoder, so FileLoader's `ConvertVideoFile` writes only a type whose
+codec registration carries a converter. `VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h`
+(the `VideoFXUltraCanvasFormats` library, built in the UltraCanvas tree beside
+the text renderer below) is VideoFX's: `VideoFX_RegisterWithFileLoader()`
+registers every film container this build writes (`canWrite`) with a
+converter that runs `VideoFX_Transcode` at the source's size and rate, and
+from then on the media viewer's *Save as* offers those types for a video it
+plays, with a progress ring and Cancel. UltraViewer calls it at start-up.
+Playing is left to the platform backend; only writing is added.
+`VideoFX_ConvertVideoFile(source, target, progress, error)` is the converter
+on its own.
 
 ```cpp
 for (const VideoFXFileFormat& f : VideoFX_GetFileFormats())
@@ -110331,8 +110790,10 @@ the right-hand monitor the primary.
 - **Clipboard**: the desktop records every copy into the clipboard history
   ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
   on disk and encrypted, leaving out copies a password manager marks as
-  secret. The clipboard button, or `Super+V` from any window, opens the quick
-  panel: a search field, the pinned entries and the ten latest (typing
+  secret. The clipboard button opens [UltraClipboard](../UltraClipboard/README.md),
+  the whole history in a window of its own (a copy running in the background
+  comes forward). `Super+V` from any window opens the quick panel, for
+  picking what to paste: a search field, the pinned entries and the ten latest (typing
   searches the whole history), each with a thumbnail and Copy, Edit and
   Delete. What the program being pasted into takes comes first, under "For
   <program>" and chosen - the newest images for a paint program, files for
@@ -110341,8 +110802,10 @@ the right-hand monitor the primary.
   focus before it was clicked. Up / Down choose, Enter copies, Delete deletes (with Undo), F2
   edits in [UltraClipboard](../UltraClipboard/README.md), Escape closes; the
   *Recording* switch pauses the history and *Open UltraClipboard* shows all
-  of it. Right-click the button for *Pause recording*, *Open UltraClipboard*
+  of it. Right-click the button for *Pause recording*, *Quick panel (Super+V)*
   and *Clear history*; while recording is paused the button is crossed out.
+  Where UltraClipboard is not installed beside the desktop, the button opens
+  the quick panel instead.
   When a program that made a copy quits, the desktop puts that copy back on
   the clipboard, so it can still be pasted. Without a history (a build
   without SQLite) the button shows a menu of this session's last fifteen
@@ -110868,26 +111331,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/apps-window-keeps-the-tiles-place.md
-==============================================================================
-
-- **The Apps window keeps your place in the tiles as well.** The tree view
-  stopped jumping back to the top in 0.4.19; the tiles still did, because the
-  whole scrolling area was built again on every keystroke in the filter box,
-  every new list of applications and every application moved. The area is
-  kept now and only the tiles inside it are made again, so the view stays
-  where you left it. Switching to the tree and back, or a filter that matches
-  nothing, builds the page afresh as before.
-- **The Apps window can be tested.** It read the machine's own `.desktop`
-  files and made its own window, so nothing could drive it: `Hooks`
-  gains `applications`, a list handed to the window in place of the scan
-  (nothing is read from disk or kept between openings), `ShowApps` is public
-  beside it, and `Window()` lets a caller reach the page's elements by their
-  identifiers. `UltraDesktopAppStarterTest` uses all three to hold both views
-  to keeping the chosen category, the opened categories and the scroll
-  position across a rebuild; CI runs it on a virtual display.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md

@@ -733,6 +733,23 @@ folder in a new tab of the running window (a tab that already shows it is
 switched to; a file opens its folder) instead of starting a second copy, and a
 start without a folder brings the window forward.
 
+## FAQ
+
+**Can UltraFiler access iCloud?** Yes. It shows the iCloud Drive folder once
+Apple's own software has synced it onto the computer:
+
+- On **macOS**, it finds the iCloud Drive folder in your home folder (under
+  `~/Library`) and lists it under **Cloud Storage** in the sidebar.
+- On **Windows**, it lists the `iCloudDrive` folder in your user profile, which
+  is there only if Apple's iCloud for Windows app is installed and signed in.
+- On **Linux**, there is no iCloud entry, because Apple does not make an iCloud
+  app for Linux.
+
+The folder is browsed like any other, and Apple's software syncs the changes.
+UltraFiler does not sign in to iCloud itself: Apple offers no public iCloud
+Drive interface an app could sign in to, so UltraCloud has no iCloud account
+type.
+
 ## Building
 
 Built by the top-level CMake project when `BUILD_ULTRAFILER_APP` is `ON`

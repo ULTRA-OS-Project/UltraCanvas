@@ -1,5 +1,6 @@
 // Plugins/UltraIM/matrix/MatrixHttp.h
 // Matrix provider - the homeserver's client-server API over UltraNet HTTP
+// Version: 0.1.2 - Download and Upload take a progress callback (UltraNet's per-request progress)
 // Version: 0.1.1 - Download (a media file's bytes) and Upload (to the content repository)
 // Version: 0.1.0
 // Last Modified: 2026-10-29
@@ -63,12 +64,16 @@ public:
     MatrixResponse Await(const std::string& method, const std::string& path, const UltraCanvas::JSONValue* body,
                          int timeoutMs);
     // A file from the content repository (GET path), as bytes; up to 1 GiB.
-    void Download(const std::string& path, int timeoutMs, MatrixBytesCallback onDone);
+    // onProgress (optional): the bytes so far and the whole (-1 unknown), on
+    // UltraNet's thread.
+    using ProgressCallback = std::function<void(int64_t bytesNow, int64_t bytesTotal)>;
+    void Download(const std::string& path, int timeoutMs, MatrixBytesCallback onDone,
+                  ProgressCallback onProgress = nullptr);
     // A file into the content repository (POST path with the bytes as the
     // body, under contentType), waiting on the calling thread; the answer's
     // JSON holds content_uri.
     MatrixResponse Upload(const std::string& path, const std::string& contentType, const std::vector<uint8_t>& bytes,
-                          int timeoutMs);
+                          int timeoutMs, ProgressCallback onProgress = nullptr);
 
     void Stop();
     bool IsStopping() const;
@@ -79,7 +84,7 @@ private:
     // Every request: the URL, the token, the body as given, the answer raw.
     void Transfer(const std::string& method, const std::string& path, const std::string& contentType,
                   const std::vector<uint8_t>& body, bool jsonAnswer, int64_t maxBytes, int timeoutMs,
-                  std::function<void(const ::UltraNetResponse&)> onDone);
+                  std::function<void(const ::UltraNetResponse&)> onDone, ProgressCallback onProgress = nullptr);
 
     std::shared_ptr<Shared> shared_;
 };
