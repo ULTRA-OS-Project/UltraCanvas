@@ -101,6 +101,7 @@
 #include "UltraCanvasWindowsDesktopShellInternal.h"
 #include "UltraCanvasWindowsPackage.h"
 #include "UltraCanvasWindowsIcons.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <windows.h>
 #include <audiopolicy.h>
@@ -992,16 +993,16 @@ namespace {
         if (!ShellIsOurGuard()) return true;
         const LSTATUS removed = RegDeleteKeyValueW(HKEY_CURRENT_USER, kWinlogonKey, kShellValue);
         if (removed == ERROR_SUCCESS || removed == ERROR_FILE_NOT_FOUND) return true;
-        error = "The account's shell setting could not be put back to Explorer (Windows error " +
-                std::to_string(removed) + ").";
+        error = TrF("The account's shell setting could not be put back to Explorer (Windows error {0}).",
+                    std::to_string(removed));
         return false;
     }
 
     bool RemoveRunValue(std::string& error) {
         const LSTATUS removed = RegDeleteKeyValueW(HKEY_CURRENT_USER, kRunKey, kRunValue);
         if (removed == ERROR_SUCCESS || removed == ERROR_FILE_NOT_FOUND) return true;
-        error = "The desktop's start at sign-in could not be removed (Windows error " + std::to_string(removed) +
-                ").";
+        error = TrF("The desktop's start at sign-in could not be removed (Windows error {0}).",
+                    std::to_string(removed));
         return false;
     }
 
@@ -1481,28 +1482,29 @@ bool MoveWindowTo(uint64_t id, int x, int y) {
 
 bool KillProcess(int processId, std::string& error) {
     if (processId <= 4) {
-        error = processId <= 0 ? "The window does not say which program it belongs to."
-                               : "That is a part of Windows itself.";
+        error = processId <= 0 ? Tr("The window does not say which program it belongs to.")
+                               : Tr("That is a part of Windows itself.");
         return false;
     }
     if (static_cast<DWORD>(processId) == GetCurrentProcessId()) {
-        error = "That is the desktop itself.";
+        error = Tr("That is the desktop itself.");
         return false;
     }
     HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, static_cast<DWORD>(processId));
     if (!process) {
         const DWORD code = GetLastError();
         error = code == ERROR_ACCESS_DENIED
-                    ? "The program runs as administrator (or as another user); the desktop may not end it."
-                    : code == ERROR_INVALID_PARAMETER ? "The program has already ended."
-                                                      : "The program could not be ended (error " + std::to_string(code) + ").";
+                    ? Tr("The program runs as administrator (or as another user); the desktop may not end it.")
+                    : code == ERROR_INVALID_PARAMETER
+                          ? Tr("The program has already ended.")
+                          : TrF("The program could not be ended (error {0}).", std::to_string(code));
         return false;
     }
     const BOOL ended = ::TerminateProcess(process, 1);
     const DWORD code = ended ? 0 : GetLastError();
     CloseHandle(process);
     if (!ended) {
-        error = "The program could not be ended (error " + std::to_string(code) + ").";
+        error = TrF("The program could not be ended (error {0}).", std::to_string(code));
         return false;
     }
     return true;
@@ -1649,7 +1651,7 @@ bool CaptureScreenPixels(DesktopScreenImage& out, std::string& error, const int*
     const int screenWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
     const int screenHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
     if (screenWidth <= 0 || screenHeight <= 0) {
-        error = "Windows reports an empty screen.";
+        error = Tr("Windows reports an empty screen.");
         return false;
     }
     int left = screenLeft, top = screenTop, width = screenWidth, height = screenHeight;
@@ -1659,7 +1661,7 @@ bool CaptureScreenPixels(DesktopScreenImage& out, std::string& error, const int*
         const int r = std::min(screenLeft + screenWidth, area[0] + area[2]);
         const int b = std::min(screenTop + screenHeight, area[1] + area[3]);
         if (r <= l || b <= t) {
-            error = "The area to capture lies off the screen.";
+            error = Tr("The area to capture lies off the screen.");
             return false;
         }
         left = l;
@@ -1669,7 +1671,7 @@ bool CaptureScreenPixels(DesktopScreenImage& out, std::string& error, const int*
     }
     HDC screen = GetDC(nullptr);
     if (!screen) {
-        error = "No screen to capture: this program runs without a desktop.";
+        error = Tr("No screen to capture: this program runs without a desktop.");
         return false;
     }
     BITMAPINFO bitmap = {};
@@ -1684,15 +1686,15 @@ bool CaptureScreenPixels(DesktopScreenImage& out, std::string& error, const int*
     HDC memory = dib ? CreateCompatibleDC(screen) : nullptr;
     bool ok = false;
     if (!dib || !memory || !bits) {
-        error = "Not enough memory for a " + std::to_string(width) + "x" + std::to_string(height) + " image.";
+        error = TrF("Not enough memory for a {0}x{1} image.", std::to_string(width), std::to_string(height));
     } else {
         HGDIOBJ previous = SelectObject(memory, dib);
         // No CAPTUREBLT: with the compositor (Windows 8 and later, always)
         // layered windows are in the copy anyway, and the flag makes the
         // mouse pointer flicker while it runs.
         if (!BitBlt(memory, 0, 0, width, height, screen, left, top, SRCCOPY)) {
-            error = "Windows refused to hand over the screen contents (the screen is locked, or a secure "
-                    "desktop is showing).";
+            error = Tr("Windows refused to hand over the screen contents (the screen is locked, or a secure "
+                       "desktop is showing).");
         } else {
             GdiFlush();
             const int stride = width * 4;   // 32-bit DIB rows have no padding
@@ -1707,8 +1709,8 @@ bool CaptureScreenPixels(DesktopScreenImage& out, std::string& error, const int*
                 ok = true;
             } catch (const std::bad_alloc&) {
                 out = DesktopScreenImage();
-                error = "Not enough memory for a " + std::to_string(width) + "x" + std::to_string(height) +
-                        " image.";
+                error = TrF("Not enough memory for a {0}x{1} image.", std::to_string(width),
+                            std::to_string(height));
             }
         }
         SelectObject(memory, previous);
@@ -1731,23 +1733,23 @@ bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& 
 bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error) {
     const HWND hwnd = ToHwnd(id);
     if (id == 0 || !IsWindow(hwnd)) {
-        error = "The window is gone.";
+        error = Tr("The window is gone.");
         return false;
     }
     if (IsIconic(hwnd)) {
-        error = "The window is minimized.";
+        error = Tr("The window is minimized or hidden.");
         return false;
     }
     RECT rect = {};
     if (!GetWindowRect(hwnd, &rect) || rect.right <= rect.left || rect.bottom <= rect.top) {
-        error = "The window has no size.";
+        error = Tr("The window has no size.");
         return false;
     }
     const int width = rect.right - rect.left;
     const int height = rect.bottom - rect.top;
     HDC screen = GetDC(nullptr);
     if (!screen) {
-        error = "No screen: this program runs without a desktop.";
+        error = Tr("No screen to capture: this program runs without a desktop.");
         return false;
     }
     BITMAPINFO bitmap = {};
@@ -1762,7 +1764,7 @@ bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error
     HDC memory = dib ? CreateCompatibleDC(screen) : nullptr;
     bool ok = false;
     if (!dib || !memory || !bits) {
-        error = "Not enough memory for a " + std::to_string(width) + "x" + std::to_string(height) + " image.";
+        error = TrF("Not enough memory for a {0}x{1} image.", std::to_string(width), std::to_string(height));
     } else {
         HGDIOBJ previous = SelectObject(memory, dib);
         // PW_RENDERFULLCONTENT (Windows 8.1): the window draws itself into
@@ -1770,7 +1772,7 @@ bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error
         // other windows cover it on the screen.
         constexpr UINT kRenderFullContent = 0x00000002;
         if (!PrintWindow(hwnd, memory, kRenderFullContent)) {
-            error = "The window did not draw itself.";
+            error = Tr("The window did not draw itself.");
         } else {
             GdiFlush();
             const int stride = width * 4;
@@ -1785,8 +1787,8 @@ bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error
                 ok = true;
             } catch (const std::bad_alloc&) {
                 out = DesktopScreenImage();
-                error = "Not enough memory for a " + std::to_string(width) + "x" + std::to_string(height) +
-                        " image.";
+                error = TrF("Not enough memory for a {0}x{1} image.", std::to_string(width),
+                            std::to_string(height));
             }
         }
         SelectObject(memory, previous);
@@ -1804,15 +1806,15 @@ bool CaptureScreen(const std::string& pngPath, std::string& error) {
     cairo_surface_t* surface = cairo_image_surface_create_for_data(shot.pixels.data(), CAIRO_FORMAT_RGB24,
                                                                    shot.width, shot.height, shot.stride);
     if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-        error = std::string("Could not wrap the screen image: ") +
-                cairo_status_to_string(cairo_surface_status(surface));
+        error = TrF("Could not wrap the screen image: {0}",
+                    std::string(cairo_status_to_string(cairo_surface_status(surface))));
         cairo_surface_destroy(surface);
         return false;
     }
     const bool written = WindowsIcons::WriteSurfacePng(surface, pngPath);
     cairo_surface_destroy(surface);
     if (!written) {
-        error = "Could not write \"" + pngPath + "\".";
+        error = TrF("Could not write \"{0}\".", pngPath);
         return false;
     }
     return true;
@@ -1882,7 +1884,7 @@ bool LaunchPackagedApplication(const std::string& appUserModelId, std::string& e
     if (ShellExecuteExW(&info)) return true;
     char code[16] = {};
     std::snprintf(code, sizeof code, "0x%08lX", static_cast<unsigned long>(hr));
-    error = "\"" + appUserModelId + "\" could not be started (error " + code + ").";
+    error = TrF("\"{0}\" could not be started (error {1}).", appUserModelId, std::string(code));
     return false;
 }
 
@@ -1913,10 +1915,10 @@ bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
 // nothing (UltraCanvasWindowsPackage.h).
 std::string SystemDesktopSwitchUnavailableReason() {
     if (!WindowsPackage::IsRunningFromPackage()) return {};
-    return "This UltraDesktop runs from an MSIX package (the Microsoft Store version), and Windows keeps a "
-           "packaged program's settings inside the package, where sign-in never sees them - so it cannot "
-           "become the Windows desktop. To use UltraDesktop as your desktop, install it with the UltraCanvas "
-           "installer.";
+    return Tr("This UltraDesktop runs from an MSIX package (the Microsoft Store version), and Windows keeps a "
+              "packaged program's settings inside the package, where sign-in never sees them - so it cannot "
+              "become the Windows desktop. To use UltraDesktop as your desktop, install it with the UltraCanvas "
+              "installer.");
 }
 
 bool CanReplaceSystemDesktop(DesktopReplacement how) {
@@ -1951,14 +1953,15 @@ bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::str
             (slash == std::wstring::npos ? std::wstring() : wideProgram.substr(0, slash + 1)) + kShellGuardProgram;
         const DWORD attributes = GetFileAttributesW(guard.c_str());
         if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            error = Narrow(kShellGuardProgram) + std::string(" is not installed beside ") + program +
-                    ". It is what brings Explorer back if the desktop fails, so without it the switch is not made.";
+            error = TrF("{0} is not installed beside {1}. It is what brings Explorer back if the desktop fails, "
+                        "so without it the switch is not made.",
+                        Narrow(kShellGuardProgram), program);
             return false;
         }
         const std::wstring shell = L"\"" + guard + L"\" " + command;
         const DWORD bytes = static_cast<DWORD>((shell.size() + 1) * sizeof(wchar_t));
         if (!WriteValue(kWinlogonKey, kShellValue, REG_SZ, shell.c_str(), bytes)) {
-            error = "Windows did not let this account change its shell: the Winlogon key could not be written.";
+            error = Tr("Windows did not let this account change its shell: the Winlogon key could not be written.");
             return false;
         }
         // Not also beside: one desktop at sign-in. Explorer's taskbar goes
@@ -1980,7 +1983,7 @@ bool ReplaceSystemDesktop(const std::string& program, const std::vector<std::str
     }
     const DWORD bytes = static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t));
     if (!WriteValue(kRunKey, kRunValue, REG_SZ, command.c_str(), bytes)) {
-        error = "Windows did not let this account start a program at sign-in: the Run key could not be written.";
+        error = Tr("Windows did not let this account start a program at sign-in: the Run key could not be written.");
         return false;
     }
     // Beside Explorer from now on, not instead of it.
@@ -1995,10 +1998,10 @@ bool RestoreSystemDesktop(std::string& error) {
     // that made the switch is the one that can take it back.
     if (WindowsPackage::IsRunningFromPackage()) {
         if (GetSystemDesktopReplacement() == DesktopReplacement::Off) return true;
-        error = "UltraDesktop was made the Windows desktop by the copy the UltraCanvas installer installed. "
-                "Switch back from that copy (UltraDesktop or UOS-Settings from the installer's Start menu "
-                "folder): this one runs from an MSIX package (the Microsoft Store version), whose registry "
-                "changes sign-in never sees.";
+        error = Tr("UltraDesktop was made the Windows desktop by the copy the UltraCanvas installer installed. "
+                   "Switch back from that copy (UltraDesktop or UOS-Settings from the installer's Start menu "
+                   "folder): this one runs from an MSIX package (the Microsoft Store version), whose registry "
+                   "changes sign-in never sees.");
         return false;
     }
     if (!RemoveRunValue(error)) return false;
@@ -2025,13 +2028,13 @@ bool EndSession(SessionEnd how, std::string& error) {
         // Every account that may shut the computer down holds the privilege
         // switched off; a program switches it on for itself first.
         if (!EnablePrivilege(SE_SHUTDOWN_NAME)) {
-            error = "This account is not allowed to shut the computer down.";
+            error = Tr("This account is not allowed to shut the computer down.");
             return false;
         }
         flags = how == SessionEnd::Restart ? EWX_REBOOT : EWX_POWEROFF;
     }
     if (!ExitWindowsEx(flags, reason)) {
-        error = "Windows refused (error " + std::to_string(GetLastError()) + ").";
+        error = TrF("Windows refused (error {0}).", std::to_string(GetLastError()));
         return false;
     }
     return true;
@@ -2043,7 +2046,7 @@ bool LockSession(std::string& error) {
     // What Win+L does: the secure desktop shows, and the session reports
     // WTS_SESSION_LOCK to UltraCanvasSessionLock's listeners.
     if (!LockWorkStation()) {
-        error = "Windows did not lock the screen (error " + std::to_string(GetLastError()) + ").";
+        error = TrF("Windows did not lock the screen (error {0}).", std::to_string(GetLastError()));
         return false;
     }
     return true;
@@ -2059,7 +2062,7 @@ bool OpenDisplaySettings(std::string& error) {
     const auto result = reinterpret_cast<INT_PTR>(
             ::ShellExecuteW(nullptr, L"open", L"ms-settings:display", nullptr, nullptr, SW_SHOWNORMAL));
     if (result <= 32) {
-        error = "Windows' display settings did not open.";
+        error = Tr("Windows' display settings did not open.");
         return false;
     }
     return true;
@@ -2074,14 +2077,14 @@ namespace {
         IMMDeviceEnumerator* enumerator = nullptr;
         if (FAILED(CoCreateInstance(kClsidMMDeviceEnumerator, nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
                                     reinterpret_cast<void**>(&enumerator)))) {
-            error = "Windows audio is not available.";
+            error = Tr("Windows audio is not available.");
             return nullptr;
         }
         IMMDevice* device = nullptr;
         const HRESULT found = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
         Release(enumerator);
         if (FAILED(found) || !device) {
-            error = "No loudspeaker is set as the default output.";
+            error = Tr("No loudspeaker is set as the default output.");
             return nullptr;
         }
         IPropertyStore* properties = nullptr;
@@ -2099,7 +2102,7 @@ namespace {
                                                 reinterpret_cast<void**>(&volume));
         Release(device);
         if (FAILED(opened) || !volume) {
-            error = "The output's volume control could not be opened.";
+            error = Tr("The output's volume control could not be opened.");
             return nullptr;
         }
         return volume;
@@ -2118,7 +2121,7 @@ DesktopAudioOutput ReadAudioOutput() {
         out.volumePercent = static_cast<int>(level * 100.0f + 0.5f);
         out.muted = muted != FALSE;
     } else {
-        out.error = "The output's volume could not be read.";
+        out.error = Tr("The output's volume could not be read.");
     }
     Release(volume);
     return out;
@@ -2131,7 +2134,7 @@ bool SetAudioOutputVolume(int percent, std::string& error) {
     if (!volume) return false;
     const float level = static_cast<float>(std::clamp(percent, 0, 100)) / 100.0f;
     const bool ok = SUCCEEDED(volume->SetMasterVolumeLevelScalar(level, nullptr));
-    if (!ok) error = "The output's volume could not be set.";
+    if (!ok) error = Tr("The output's volume could not be set.");
     Release(volume);
     return ok;
 }
@@ -2142,7 +2145,7 @@ bool SetAudioOutputMuted(bool muted, std::string& error) {
     IAudioEndpointVolume* volume = DefaultOutputVolume(name, error);
     if (!volume) return false;
     const bool ok = SUCCEEDED(volume->SetMute(muted ? TRUE : FALSE, nullptr));
-    if (!ok) error = "The output could not be muted.";
+    if (!ok) error = Tr("The output could not be muted.");
     Release(volume);
     return ok;
 }
@@ -2266,7 +2269,7 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, 
         // The Win key alone is a tap of it; any other modifier alone is not
         // a shortcut.
         if (modifiers != MOD_WIN) {
-            error = "\"" + accelerator + "\" names no key.";
+            error = TrF("\"{0}\" names no key.", accelerator);
             return nullptr;
         }
         auto* state = new ShortcutState();
@@ -2274,14 +2277,14 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, 
         state->wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
         if (!state->wake) {
             delete state;
-            error = "No event for the shortcut's thread.";
+            error = Tr("No event for the shortcut's thread.");
             return nullptr;
         }
         return state;
     }
     const UINT vk = VirtualKeyFor(key);
     if (vk == 0) {
-        error = "\"" + key + "\" is not a key name.";
+        error = TrF("\"{0}\" is not a key name.", key);
         return nullptr;
     }
 
@@ -2296,7 +2299,7 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, 
         state->wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
         if (!state->wake) {
             delete state;
-            error = "No event for the shortcut's thread.";
+            error = Tr("No event for the shortcut's thread.");
             return nullptr;
         }
         return state;
@@ -2309,9 +2312,11 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, 
     if (!RegisterHotKey(nullptr, id, modifiers | MOD_NOREPEAT, vk)) {
         const DWORD reason = GetLastError();
         error = reason == ERROR_HOTKEY_ALREADY_REGISTERED
-                    ? accelerator + " is taken by another program" +
-                          ((modifiers & MOD_WIN) ? " (Windows keeps most Win-key shortcuts for itself)." : ".")
-                    : accelerator + " cannot be registered (error " + std::to_string(reason) + ").";
+                    ? ((modifiers & MOD_WIN)
+                           ? TrF("{0} is taken by another program (Windows keeps most Win-key shortcuts for itself).",
+                                 accelerator)
+                           : TrF("{0} is taken by another program.", accelerator))
+                    : TrF("{0} cannot be registered (error {1}).", accelerator, std::to_string(reason));
         return nullptr;
     }
     UnregisterHotKey(nullptr, id);
@@ -2323,7 +2328,7 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, 
     state->wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     if (!state->wake) {
         delete state;
-        error = "No event for the shortcut's thread.";
+        error = Tr("No event for the shortcut's thread.");
         return nullptr;
     }
     return state;

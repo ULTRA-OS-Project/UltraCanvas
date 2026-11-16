@@ -71,7 +71,7 @@ void PrintUsage(const char* programName) {
                 Tr("UltraDesktop - the ULTRA OS desktop").c_str(),
                 Tr("Powered by the UltraCanvas framework (UltraCanvasDesktopShell)").c_str(),
                 TrF("Usage: {0} [options]", programName).c_str());
-    Option("", Tr("(no options) Open the desktop"));
+    Option(Tr("(no options)").c_str(), Tr("Open the desktop"));
     Option("--edge <where>", Tr("Put the taskbar on the left (default), top or bottom for this run, "
                                 "without changing the settings file"));
     Option("--settings <file>", Tr("Use this settings file instead of the default"));
