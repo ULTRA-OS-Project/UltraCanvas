@@ -13,6 +13,12 @@
   Messages stay end-to-end encrypted, each sealed for every member, so a
   public group holds up to 256 people. Someone its owner takes out cannot
   join again by themselves. Needs ChatCube relay 1.5.0.
+- **A group editor.** *Group settings…* in a group's menu: its name, a
+  **description** (shown when the group's name is hovered, and in *Public
+  groups*), public or private, and the members - **Message**, and for the
+  owner **Remove** and **Block** - with the blocked ones listed to
+  **Unblock**. *Block* is also in a member's menu. Removing someone no
+  longer keeps them out of a public group; blocking does.
 - **The network buttons in two rows** (Group, Matrix / Telegram, Mastodon),
   so every name fits.
 

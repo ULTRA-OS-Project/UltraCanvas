@@ -214,8 +214,16 @@ The first ChatCube draft, which this replaces, is kept under
    group* and *Delete chat* - the chat and its messages go from this
    computer; they keep theirs. A group: *Members*, each with *Send a
    message*, *Copy ID* and, for the group's owner, *Remove from group*;
-   *Add members*, *Rename group*, *Make public* / *Make private* (the
-   owner's, ChatCube groups) and *Leave group*. What the chat's network
+   *Group settings…*, *Add members*, *Rename group*, *Make public* /
+   *Make private* (the owner's, ChatCube groups) and *Leave group*.
+   **Group settings…** opens the group's editor: its name and, for a
+   ChatCube group, a description (what it is about, up to 500 characters -
+   shown when its name is hovered, and under *Public groups*), *Make public*
+   / *Make private*, and every member with **Message** and, for the owner,
+   **Remove** and **Block**. Someone removed may come back (*Join*, or a
+   member adds them); someone blocked is taken out and kept out until the
+   owner unblocks them in the editor's *Blocked* list. In a private group
+   any member changes the name and description; in a public one, the owner. What the chat's network
    cannot do is not offered, and what it refuses the account (in most
    Telegram groups only administrators rename or take people out) says so
    on the status line. Pins and unread marks are kept in the settings file.

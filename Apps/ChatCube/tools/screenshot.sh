@@ -33,6 +33,7 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.9 - Members a row lower in the group's menu (Group settings... above it)
 # Version: 0.1.8 - the chat list a row lower (a second row of network buttons: Telegram, Mastodon)
 # Version: 0.1.7 - the messages a row lower (the filter chips over the chat)
 # Version: 0.1.6 - message-menu.png, reply.png, edit.png, edited.png and search.png: a message's menu,
@@ -170,7 +171,7 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     # its menu with Members and the items for Bob open by hovering.
     "$XINPUT" click 57 111 sleep 800 click 158 190 type "ULTRA OS questions" \
         click 158 228 type "$BOB" key Return sleep 3000
-    "$XINPUT" rclick 160 276 sleep 1200 move 230 359 sleep 1200 move 420 359 move 470 387 sleep 1200
+    "$XINPUT" rclick 160 276 sleep 1200 move 230 387 sleep 1200 move 420 387 move 470 415 sleep 1200
     import -window root "$OUT/group-menu.png"
     "$XINPUT" key Escape sleep 300 key Escape sleep 300 key Escape sleep 600
     # The person button beside the ID: the Edit profile window.

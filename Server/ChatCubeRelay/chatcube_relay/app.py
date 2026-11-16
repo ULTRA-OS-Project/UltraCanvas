@@ -194,6 +194,12 @@ class TitleBody(BaseModel):
     title: str = Field(min_length=1, max_length=64)
 
 
+class GroupEditBody(BaseModel):
+    """PATCH /v1/groups/{id}: what is given changes, what is left out stays."""
+    title: str | None = Field(default=None, min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=500)
+
+
 class PublicBody(BaseModel):
     public: bool
 
@@ -209,7 +215,8 @@ def user_json(user, online: bool | None = None) -> dict[str, Any]:
 
 def group_json(group) -> dict[str, Any]:
     return {"group_id": group.group_id, "conversation": GROUP_PREFIX + group.group_id,
-            "title": group.title, "owner": group.owner, "members": group.members, "public": group.public}
+            "title": group.title, "owner": group.owner, "members": group.members, "public": group.public,
+            "description": group.description}
 
 
 # ============================================================================
@@ -729,9 +736,16 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         return group_json(member_group(group_id, user_id))
 
     @app.patch("/v1/groups/{group_id}")
-    async def rename_group(group_id: str, body: TitleBody, user_id: str = Depends(current_user)):
-        member_group(group_id, user_id)         # any member renames, as any member adds
-        store.rename_group(group_id, body.title)
+    async def rename_group(group_id: str, body: GroupEditBody, user_id: str = Depends(current_user)):
+        group = member_group(group_id, user_id)
+        # A private group: any member renames it, as any member adds. A public
+        # one, which strangers join: its owner alone.
+        if group.public and group.owner != user_id:
+            raise error(403, "forbidden", "Only the owner changes a public group's name and description")
+        if body.title is not None:
+            store.rename_group(group_id, body.title)
+        if body.description is not None:
+            store.describe_group(group_id, body.description.strip())
         group = store.get_group(group_id)
         await push_group(group)
         return group_json(group)
@@ -757,13 +771,46 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         if member != user_id and group.owner != user_id:
             raise error(403, "forbidden", "Only the owner removes other members")
         store.remove_member(group_id, member)
-        if member != user_id and group.public:
-            store.ban(group_id, member)         # taken out of a public group: not back by Join
         await hub.send(member, {"type": "group.update",
                                 "group": {**group_json(group), "removed": True}})
         updated = store.get_group(group_id)
         if updated:
             await push_group(updated)
+        return {"status": "ok"}
+
+    # Blocking: the owner takes someone out (when they are in) and keeps them
+    # out - they cannot join a public group again, and no other member can
+    # add them back - until unblocked.
+
+    def owned_group(group_id: str, user_id: str):
+        group = member_group(group_id, user_id)
+        if group.owner != user_id:
+            raise error(403, "forbidden", "Only the owner blocks and unblocks")
+        return group
+
+    @app.get("/v1/groups/{group_id}/blocked")
+    async def list_blocked(group_id: str, user_id: str = Depends(current_user)):
+        owned_group(group_id, user_id)
+        return {"blocked": [user_json(u) for u in store.bans(group_id)]}
+
+    @app.put("/v1/groups/{group_id}/blocked/{member}")
+    async def block_member(group_id: str, member: str, user_id: str = Depends(current_user)):
+        group = owned_group(group_id, user_id)
+        if member == user_id:
+            raise error(400, "invalid_request", "You cannot block yourself")
+        if not store.get_user(member):
+            raise error(404, "unknown_user", "No such user")
+        store.ban(group_id, member)
+        if member in group.members:
+            store.remove_member(group_id, member)
+            await hub.send(member, {"type": "group.update", "group": {**group_json(group), "removed": True}})
+            await push_group(store.get_group(group_id))
+        return {"status": "ok"}
+
+    @app.delete("/v1/groups/{group_id}/blocked/{member}")
+    async def unblock_member(group_id: str, member: str, user_id: str = Depends(current_user)):
+        owned_group(group_id, user_id)
+        store.unban(group_id, member)
         return {"status": "ok"}
 
     # ---- offline queue -------------------------------------------------------

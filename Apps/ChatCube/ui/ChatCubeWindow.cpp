@@ -40,6 +40,7 @@
 
 #include "ChatCubeWindow.h"
 #include "ChatCubeControls.h"
+#include "ChatCubeGroupWindow.h"
 #include "ChatCubeProfileWindow.h"
 #include "ChatCubeTheme.h"
 
@@ -191,9 +192,26 @@ std::string RelayHost(const std::string& url) {
 ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId, Settings settings)
     : version_(std::move(version)), providerId_(std::move(providerId)), settings_(settings),
       dataFolder_(PathToUtf8(UltraCanvasDataFolder("ChatCube"))),
-      profileWindow_(std::make_unique<ChatCubeProfileWindow>(providerId_)) {
+      profileWindow_(std::make_unique<ChatCubeProfileWindow>(providerId_)),
+      groupWindow_(std::make_unique<ChatCubeGroupWindow>()) {
     SetDateTimeStyle(settings_.clock24, settings_.dateStyle);
     profileWindow_->onSaved = [this](const std::string& text) { SetStatus(text); };
+    // The editor's actions that ask first are this window's.
+    groupWindow_->onStatus = [this](const std::string& text) { SetStatus(text); };
+    groupWindow_->nameOf = [this](const UltraIMConversation& g, const std::string& member) { return MemberName(g, member); };
+    groupWindow_->onMessage = [this](const std::string& provider, const std::string& member) {
+        MessageMember(provider, member);
+        if (window_) window_->RaiseAndFocus();
+    };
+    groupWindow_->onRemove = [this](const std::string& id, const std::string& member) { RemoveMember(id, member); };
+    groupWindow_->onBlock = [this](const std::string& id, const std::string& member) { BlockMember(id, member); };
+    groupWindow_->onAddMembers = [this](const std::string& id) { AskToAddMembers(id); };
+    groupWindow_->onSetPublic = [this](const std::string& id, bool isPublic) { SetGroupPublic(id, isPublic); };
+    groupWindow_->onLeave = [this](const std::string& id) { AskToLeave(id); };
+    groupWindow_->onChanged = [this](const UltraIMConversation& c) {
+        UpsertConversation(c);
+        if (c.conversationId == activeConversation_) UpdateHeader();
+    };
 }
 
 ChatCubeWindow::~ChatCubeWindow() {
@@ -1562,6 +1580,7 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
 
     // ---- the person, or the group
     std::vector<MenuItemData>& who = sections[1];
+    if (c.isGroup) who.push_back(MenuItemData::Action(Tr("Group settings\xE2\x80\xA6"), [this, id]() { OpenGroupEditor(id); }));
     if (!c.isGroup) {
         const auto addCall = [&](bool video) {
             const UltraIMCapabilityFlags needed = video ? UltraIMCapabilityFlags::VideoCalls
@@ -1610,6 +1629,10 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
             if (manage && !self && (c.ownerId.empty() || c.ownerId == me)) {
                 actions.push_back(MenuItemData::Action(Tr("Remove from group"),
                                                        [this, id, member]() { RemoveMember(id, member); }));
+            }
+            // Blocking is ChatCube's, and the owner's.
+            if (!self && provider == providerId_ && !c.ownerId.empty() && c.ownerId == me) {
+                actions.push_back(MenuItemData::Action(Tr("Block"), [this, id, member]() { BlockMember(id, member); }));
             }
             std::string name = self ? Tr("You") : MemberName(c, member);
             if (!c.ownerId.empty() && member == c.ownerId) name = TrF("{0} (owner)", name);
@@ -1757,6 +1780,33 @@ void ChatCubeWindow::RemoveMember(const std::string& conversationId, const std::
         UltraIM_RemoveGroupMember(provider, conversationId, memberId, [this, name](const UltraIMResult& r) {
             SetStatus(r ? TrF("{0} is no longer in the group.", name)
                         : TrF("Could not remove {0}: {1}", name, r.message));
+        });
+    }, window_.get());
+}
+
+void ChatCubeWindow::OpenGroupEditor(const std::string& conversationId) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (!c || !c->isGroup || !window_) return;
+    UltraIMConversation group = *c;
+    if (group.providerId.empty()) group.providerId = providerId_;
+    UltraIMProviderInfo info;
+    UltraIM_GetProviderInfo(group.providerId, info);
+    groupWindow_->Show(window_.get(), group, info.localUserId, group.providerId == providerId_);
+}
+
+void ChatCubeWindow::BlockMember(const std::string& conversationId, const std::string& memberId) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (!c) return;
+    const std::string provider = c->providerId.empty() ? providerId_ : c->providerId;
+    const std::string name = MemberName(*c, memberId);
+    const std::string question = TrF("Block {0}? They are taken out of {1} and cannot join it again until you "
+                                     "unblock them.", name, c->title);
+    UltraCanvasDialogManager::ShowConfirmation(question, Tr("Block"),
+                                               [this, provider, conversationId, memberId, name](bool yes) {
+        if (!yes) return;
+        UltraIM_BlockGroupMember(provider, conversationId, memberId, [this, name](const UltraIMResult& r) {
+            SetStatus(r ? TrF("{0} is blocked.", name) : TrF("Could not block {0}: {1}", name, r.message));
+            groupWindow_->RefreshBlocked();
         });
     }, window_.get());
 }
@@ -2207,7 +2257,8 @@ void ChatCubeWindow::RefreshPublicGroups() {
             const UltraIMPublicGroup& g = open[i];
             auto row = MakeRow("cc-public-row", 6);
             auto name = MakeLabel("cc-public-name", g.title, kTextFont);
-            name->SetTooltip(TrN("{n} member", "{n} members", g.memberCount));
+            // What it is about, when hovered.
+            name->SetTooltip(g.description.empty() ? TrN("{n} member", "{n} members", g.memberCount) : g.description);
             name->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
             row->AddChild(name);
             auto count = MakeLabel("cc-public-count", std::to_string(g.memberCount), 9.0f, &Look::inkMuted);
@@ -2380,6 +2431,8 @@ void ChatCubeWindow::UpdateHeader() {
         return;
     }
     title_->SetText(c->title);
+    // What a group is about, when its name is hovered.
+    title_->SetTooltip(c->isGroup ? c->description : std::string());
     // Their picture when there is one and it reads; else the initials.
     bool photo = false;
     if (!c->avatarPath.empty()) {
@@ -3976,10 +4029,16 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (row >= 0) conversationList_->GetSelection()->Select(row);
             fillingList_ = false;
             if (c.conversationId == activeConversation_) UpdateHeader();
+            if (c.isGroup) {
+                UltraIMConversation shown = c;
+                if (shown.providerId.empty()) shown.providerId = e.providerId;
+                groupWindow_->Update(shown);
+            }
             break;
         }
         case UltraIMEventType::ConversationRemove: {
             conversations_->Remove(e.conversationId);
+            groupWindow_->Removed(e.conversationId);
             // A public group left is one to join again.
             if (e.providerId == providerId_ && e.conversationId.rfind("group:", 0) == 0) RefreshPublicGroups();
             // Its marks go with it.

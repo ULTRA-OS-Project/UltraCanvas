@@ -20,6 +20,13 @@
   keeps the mark (schema 4), lists the public groups
   (`GET /v1/public-groups`), lets anyone join (`POST .../join`), bars whom
   the owner took out, holds up to 256 in one and limits posting into it.
+- **Group descriptions and blocking** (plug-in ABI 12; ChatCube relay
+  1.5.0): `UltraIM_SetGroupDescription` with `UltraIMConversation::description`
+  and `UltraIMPublicGroup::description`; `UltraIM_BlockGroupMember`,
+  `UltraIM_UnblockGroupMember` and `UltraIM_FetchBlockedMembers` - the owner
+  keeps someone out of a group until unblocked. The relay takes
+  `PATCH /v1/groups/{id}` with a description and blocks with
+  `PUT` / `DELETE /v1/groups/{id}/blocked/{user}`.
 - **`UltraIMAuthStep::Browser`** (plug-in ABI 10): a sign-in step with
   nothing to type in the application - the hint is a web page to open in
   the browser, after which the provider goes on by itself.

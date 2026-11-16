@@ -122,6 +122,7 @@ INSERT INTO group_members VALUES ('g1', 'u1');
     store = Store(str(path))
     group = store.get_group("g1")
     assert group.title == "Team" and group.members == ["u1"] and group.public is False
+    assert group.description == ""
     assert store.public_groups() == []
     assert "group_bans" in {r[0] for r in store._db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     store.close()

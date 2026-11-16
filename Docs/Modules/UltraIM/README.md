@@ -423,8 +423,15 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   joined by anyone (`JoinGroup`). It stays end-to-end encrypted: a message
   is sealed for each member as in any group (the members' keys are fetched
   and checked against their ids as they join), so a public group holds at
-  most 256 (the relay's setting). Whom the owner takes out cannot join again;
-  the relay limits how much one member posts into one. A newcomer sees what
+  most 256 (the relay's setting). The relay limits how much one member posts
+  into one.
+- **A group's description and blocks** (relay 1.5.0): `SetGroupDescription`
+  (`UltraIMConversation::description`, up to 500 characters; any member of a
+  private group, the owner of a public one - else `PermissionDenied`), shown
+  in the directory too (`UltraIMPublicGroup::description`). The owner blocks
+  (`BlockGroupMember`: out of the group, and kept out - no *Join*, no one
+  else adding them) and unblocks (`UnblockGroupMember`); `FetchBlockedMembers`
+  lists them. `RemoveGroupMember` alone only takes someone out. A newcomer sees what
   is written after they join. On an older relay the three answer
   `CapabilityMissing` ("needs ChatCube relay 1.5 or later").
 - **Local record:** contacts and their keys, conversations, history and the

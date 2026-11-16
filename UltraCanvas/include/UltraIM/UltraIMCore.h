@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.13 - UltraIM_SetGroupDescription, _BlockGroupMember, _UnblockGroupMember, _FetchBlockedMembers
 // Version: 0.1.12 - UltraIM_FetchPublicGroups, _JoinGroup, _SetGroupPublic: public groups
 // Version: 0.1.11 - UltraIM_RenameGroup, _AddGroupMembers, _RemoveGroupMember, _LeaveConversation
 // Version: 0.1.10 - UltraIM_DeleteMessage takes a scope; UltraIM_GetDeleteChoices
@@ -149,6 +150,16 @@ void UltraIM_JoinGroup(const std::string& providerId, const std::string& convers
                        UltraIMConversationCallback onResult);
 void UltraIM_SetGroupPublic(const std::string& providerId, const std::string& conversationId, bool isPublic,
                             UltraIMConversationCallback onResult);
+// A group's description (UltraIMConversation::description), and its
+// owner's blocks: a member blocked is taken out and kept out until unblocked.
+void UltraIM_SetGroupDescription(const std::string& providerId, const std::string& conversationId,
+                                 const std::string& description, UltraIMConversationCallback onResult);
+void UltraIM_BlockGroupMember(const std::string& providerId, const std::string& conversationId,
+                              const std::string& memberId, UltraIMResultCallback onResult);
+void UltraIM_UnblockGroupMember(const std::string& providerId, const std::string& conversationId,
+                                const std::string& memberId, UltraIMResultCallback onResult);
+void UltraIM_FetchBlockedMembers(const std::string& providerId, const std::string& conversationId,
+                                 UltraIMContactsCallback onResult);
 
 // ---- Sending -----------------------------------------------------------------
 // Return at once; the outcome arrives as a MessageDelivered event carrying

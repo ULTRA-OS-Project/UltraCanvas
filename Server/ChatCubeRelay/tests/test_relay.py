@@ -290,10 +290,13 @@ def test_a_public_group_is_listed_and_joined_by_anyone(client):
     copy = {"to": alice.user_id, "message_id": "p-1", "conversation": g["conversation"], "envelope": "E"}
     assert client.post("/v1/messages", headers=bob.auth, json={"messages": [copy]}).status_code == 200
 
-    # Taken out by the owner: not back by Join; leaving by oneself is no ban.
-    eve_joined = client.post(path + "/join", headers=eve.auth)
-    assert eve_joined.status_code == 200
+    # Removed by the owner: may join again. Blocked: not back by Join, nor
+    # added by another member - until unblocked.
+    assert client.post(path + "/join", headers=eve.auth).status_code == 200
     assert client.delete("%s/members/%s" % (path, eve.user_id), headers=alice.auth).status_code == 200
+    assert client.post(path + "/join", headers=eve.auth).status_code == 200
+    assert client.put("%s/blocked/%s" % (path, eve.user_id), headers=alice.auth).status_code == 200
+    assert eve.user_id not in client.get(path, headers=alice.auth).json()["members"]
     refused = client.post(path + "/join", headers=eve.auth)
     assert refused.status_code == 403 and refused.json()["error"] == "banned"
     assert client.post(path + "/members", headers=bob.auth, json={"user_id": eve.user_id}).status_code == 403
@@ -305,6 +308,50 @@ def test_a_public_group_is_listed_and_joined_by_anyone(client):
     assert client.get("/v1/public-groups", headers=eve.auth).json()["groups"] == []
     assert bob.user_id in client.get(path, headers=alice.auth).json()["members"]
     assert other["group_id"] not in [x["group_id"] for x in client.get("/v1/public-groups", headers=eve.auth).json()["groups"]]
+
+
+def test_a_group_has_a_description_and_its_owner_blocks(client):
+    alice = Person(client, "Alice").join()
+    bob = Person(client, "Bob").join()
+    eve = Person(client, "Eve").join()
+    g = client.post("/v1/groups", headers=alice.auth, json={"title": "Team", "members": [bob.user_id]}).json()
+    path = "/v1/groups/" + g["group_id"]
+    assert g["description"] == ""
+    # A private group: any member changes the description; the name stays.
+    with client.websocket_connect("/v1/ws", headers=alice.auth) as a:
+        a.receive_json()
+        r = client.patch(path, headers=bob.auth, json={"description": "  Our weekly planning  "})
+        assert r.status_code == 200 and r.json()["description"] == "Our weekly planning"
+        assert r.json()["title"] == "Team"
+        frame = a.receive_json()
+        assert frame["type"] == "group.update" and frame["group"]["description"] == "Our weekly planning"
+    assert client.patch(path, headers=bob.auth, json={"description": "x" * 501}).status_code == 422
+    # A public one: the owner's alone; the directory shows the description.
+    client.put(path + "/public", headers=alice.auth, json={"public": True})
+    assert client.patch(path, headers=bob.auth, json={"description": "Mine"}).status_code == 403
+    assert client.patch(path, headers=alice.auth, json={"title": "Open team", "description": "All welcome"}).status_code == 200
+    listed = client.get("/v1/public-groups", headers=eve.auth).json()["groups"][0]
+    assert listed["title"] == "Open team" and listed["description"] == "All welcome"
+
+    # Blocking: the owner's; listed for the owner; a member blocked is out.
+    blocked = "%s/blocked/%s" % (path, bob.user_id)
+    assert client.put("%s/blocked/%s" % (path, alice.user_id), headers=bob.auth).status_code == 403
+    assert client.put("%s/blocked/%s" % (path, alice.user_id), headers=alice.auth).status_code == 400
+    with client.websocket_connect("/v1/ws", headers=bob.auth) as b:
+        b.receive_json()
+        assert client.put(blocked, headers=alice.auth).status_code == 200
+        frame = b.receive_json()
+        assert frame["type"] == "group.update" and frame["group"].get("removed") is True
+    assert [u["user_id"] for u in client.get(path + "/blocked", headers=alice.auth).json()["blocked"]] == [bob.user_id]
+    assert client.get(path + "/blocked", headers=eve.auth).status_code == 404       # not a member
+    assert client.post(path + "/join", headers=bob.auth).status_code == 403
+    # Someone not in it can be blocked ahead.
+    assert client.put("%s/blocked/%s" % (path, eve.user_id), headers=alice.auth).status_code == 200
+    assert client.post(path + "/join", headers=eve.auth).status_code == 403
+    # Unblocked: may join again.
+    assert client.delete(blocked, headers=alice.auth).status_code == 200
+    assert client.post(path + "/join", headers=bob.auth).status_code == 200
+    assert [u["user_id"] for u in client.get(path + "/blocked", headers=alice.auth).json()["blocked"]] == [eve.user_id]
 
 
 def test_a_public_group_holds_more_and_limits_posting(tmp_path):

@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.15 - UltraIMConversation::description, UltraIMPublicGroup::description
 // Version: 0.1.14 - UltraIMConversation::isPublic, UltraIMPublicGroup: public groups found and joined
 // Version: 0.1.13 - UltraIMAuthStep::Browser: a sign-in page to open in the browser (Mastodon)
 // Version: 0.1.12 - UltraIMEventType::TransferProgress; UltraIMSearchKind::Audio: a file's bytes on their way, up or down
@@ -216,12 +217,15 @@ struct UltraIMConversation {
     // (UltraIM_FetchPublicGroups, UltraIM_JoinGroup); its owner sets it
     // (UltraIM_SetGroupPublic).
     bool            isPublic = false;
+    // What the group is about, in a few lines ("" = none; UltraIM_SetGroupDescription).
+    std::string     description;
 };
 
 // A public group as the directory lists it (UltraIM_FetchPublicGroups).
 struct UltraIMPublicGroup {
     std::string conversationId;     // the conversation it is once joined
     std::string title;
+    std::string description;
     std::string ownerId;
     int         memberCount = 0;
     bool        joined = false;     // the local user is in it

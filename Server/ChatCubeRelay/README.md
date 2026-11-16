@@ -74,12 +74,14 @@ too, in its upgrade request).
 | `PUT` / `DELETE /v1/contacts/{id}` | add / remove; an add puts you in their list too, when you were not, and tells them (`contact.added`, 1.4.0) |
 | `POST /v1/groups` | `{title, members}` → `{group_id, conversation: "group:<id>", title, owner, members}` |
 | `GET /v1/groups`, `GET /v1/groups/{id}` | the caller's groups |
-| `PATCH /v1/groups/{id}` | `{title}` — any member renames (1.3.0) |
+| `PATCH /v1/groups/{id}` | `{title?, description?}` — what is given changes: any member of a private group (1.3.0; the description 1.5.0, up to 500 characters), the owner alone of a public one |
 | `POST /v1/groups/{id}/members` | `{user_id}` — any member adds |
 | `DELETE /v1/groups/{id}/members/{user}` | the owner removes anyone; anyone leaves |
 | `PUT /v1/groups/{id}/public` | `{public}` — the owner lists the group for everyone, or takes it off the list (1.5.0) |
 | `GET /v1/public-groups?q=` | the public groups whose title holds `q`, the biggest first: `{groups: [{group_id, conversation, title, owner, member_count, joined}], max_members}` (1.5.0) |
-| `POST /v1/groups/{id}/join` | anyone signed in joins a public group, unless its owner took them out of it (403 `banned`) or it is full (1.5.0) |
+| `POST /v1/groups/{id}/join` | anyone signed in joins a public group, unless its owner blocked them (403 `banned`) or it is full (1.5.0) |
+| `PUT` / `DELETE /v1/groups/{id}/blocked/{user}` | the owner blocks (taken out when in it; cannot join again or be added by another member) and unblocks (1.5.0) |
+| `GET /v1/groups/{id}/blocked` | the owner's: `{blocked: [{user_id, public_key, display_name}]}` (1.5.0) |
 | `POST /v1/messages` | `{messages: [{to, message_id, conversation, envelope}]}` — offline 1:1 copies, or one copy per group member (sender and recipient must both be members of a `group:` conversation). A `message_id` already queued for that recipient is not queued twice. Envelopes up to 64 KiB |
 | `GET /v1/messages?since=<id>` | `{messages: [{id, from, message_id, conversation, envelope, created_at}]}` |
 | `POST /v1/messages/ack` | `{ids}` — deletes them |
@@ -183,8 +185,10 @@ public group: every message is one copy per member, so it holds at most
 copies one request carries) where a private group holds 64. Someone who
 joins sees what is written from then on, not what came before.
 
-Against misuse: whom the owner takes out of a public group cannot join it
-again (only the owner can add them back), and one member may post
+Against misuse: whom the owner blocks cannot join the group again nor be
+added by another member until unblocked (a member only removed may come
+back by *Join*), only the owner changes a public group's name and
+description, and one member may post
 `CHATCUBE_RELAY_PUBLIC_POSTS_PER_MINUTE` messages a minute into it (30; the
 copies of one message and a file's parts count once) - more is refused with
 429 `slow_down`, and ChatCube sends it a little later.
@@ -203,7 +207,7 @@ relay, or a newer one.
 |---|---|---|
 | 1 | 1.0 | accounts, sessions, contacts, groups, the offline queue |
 | 2 | 1.1 | the owner's e-mail address and phone number |
-| 4 | 1.5 | public groups: the `public` mark on a group (every existing group stays private) and `group_bans`, whom an owner took out of a public group |
+| 4 | 1.5 | public groups and descriptions: the `public` mark on a group (every existing group stays private), its `description` (empty), and `group_bans`, whom an owner blocked |
 | 3 | 1.2 | whether each is confirmed (`email_verified`, `phone_verified`, both starting unconfirmed - also what 1.1 kept), the confirmation and recovery links, the phone's codes, the recovery copies, recoveries under way, and the send counts behind the rate limits |
 
 Relays before 1.2 did not record a version: their databases are recognised

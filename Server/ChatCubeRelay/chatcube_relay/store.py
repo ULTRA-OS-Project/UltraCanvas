@@ -59,6 +59,7 @@ class Group:
     owner: str
     members: list[str]
     public: bool = False
+    description: str = ""
 
 
 class Store:
@@ -364,13 +365,13 @@ class Store:
 
     def get_group(self, group_id: str) -> Group | None:
         with self._lock:
-            row = self._db.execute("SELECT group_id, title, owner, public FROM groups WHERE group_id=?",
+            row = self._db.execute("SELECT group_id, title, owner, public, description FROM groups WHERE group_id=?",
                                    (group_id,)).fetchone()
             if not row:
                 return None
             members = [r["user_id"] for r in self._db.execute(
                 "SELECT user_id FROM group_members WHERE group_id=? ORDER BY rowid", (group_id,))]
-        return Group(row["group_id"], row["title"], row["owner"], members, bool(row["public"]))
+        return Group(row["group_id"], row["title"], row["owner"], members, bool(row["public"]), row["description"])
 
     def groups_of(self, user_id: str) -> list[Group]:
         with self._lock:
@@ -381,6 +382,10 @@ class Store:
     def rename_group(self, group_id: str, title: str) -> None:
         with self._lock:
             self._db.execute("UPDATE groups SET title=? WHERE group_id=?", (title, group_id))
+
+    def describe_group(self, group_id: str, description: str) -> None:
+        with self._lock:
+            self._db.execute("UPDATE groups SET description=? WHERE group_id=?", (description, group_id))
 
     def add_member(self, group_id: str, user_id: str) -> None:
         with self._lock:
@@ -401,18 +406,30 @@ class Store:
         like = "%" + query.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"
         with self._lock:
             rows = self._db.execute(
-                "SELECT g.group_id, g.title, g.owner, COUNT(m.user_id) AS members FROM groups g "
+                "SELECT g.group_id, g.title, g.owner, g.description, COUNT(m.user_id) AS members FROM groups g "
                 "LEFT JOIN group_members m ON m.group_id = g.group_id "
                 "WHERE g.public=1 AND g.title LIKE ? ESCAPE '!' "
                 "GROUP BY g.group_id ORDER BY members DESC, g.title COLLATE NOCASE LIMIT ?",
                 (like, limit)).fetchall()
         return [{"group_id": r["group_id"], "title": r["title"], "owner": r["owner"],
-                 "member_count": r["members"]} for r in rows]
+                 "description": r["description"], "member_count": r["members"]} for r in rows]
 
     def ban(self, group_id: str, user_id: str) -> None:
         with self._lock:
             self._db.execute("INSERT OR IGNORE INTO group_bans(group_id, user_id) VALUES (?,?)",
                              (group_id, user_id))
+
+    def unban(self, group_id: str, user_id: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM group_bans WHERE group_id=? AND user_id=?", (group_id, user_id))
+
+    def bans(self, group_id: str) -> list[User]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT u.user_id, u.public_key, u.display_name FROM group_bans b "
+                "JOIN users u ON u.user_id = b.user_id WHERE b.group_id=? ORDER BY u.display_name",
+                (group_id,)).fetchall()
+        return [User(r["user_id"], bytes(r["public_key"]), r["display_name"]) for r in rows]
 
     def is_banned(self, group_id: str, user_id: str) -> bool:
         with self._lock:

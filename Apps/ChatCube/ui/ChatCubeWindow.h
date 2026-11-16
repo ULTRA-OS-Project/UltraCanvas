@@ -71,6 +71,7 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.7 - the group editor (Group settings): a description, members removed, blocked, messaged
 // Version: 0.3.6 - public groups: the "Public groups" list with Join, Make public / Make private
 // Version: 0.3.5 - a Mastodon account: ToggleMastodonForm, SignInToMastodon, mastodonProviderId_
 // Version: 0.3.4 - sending in the background (SendQueue: the field is free at once, the window never
@@ -113,6 +114,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "ChatCubeGroupWindow.h"
 #include "ChatCubeProfileWindow.h"
 #include "ChatCubeSettings.h"
 #include "ChatCubeSettingsWindow.h"
@@ -377,6 +379,10 @@ private:
     void AskToAddMembers(const std::string& conversationId);
     void AddToGroup(const std::string& groupId, const std::string& memberId);
     void AskToLeave(const std::string& conversationId);
+    // The group editor (name, description, public, members, blocked).
+    void OpenGroupEditor(const std::string& conversationId);
+    // The owner's: out of the group, and kept out until unblocked (asks first).
+    void BlockMember(const std::string& conversationId, const std::string& memberId);
     // The open conversation gone (left, deleted, its network signed out of).
     void CloseConversationView();
 
@@ -581,6 +587,7 @@ private:
     UltraCanvas::UltraCanvasMediaViewerWindow          viewer_;         // a picture or a video, full size
     std::shared_ptr<UltraCanvas::UltraCanvasMenu>      messageMenu_;    // a message's right-click menu
     std::unique_ptr<ChatCubeProfileWindow>             profileWindow_;  // Edit profile
+    std::unique_ptr<ChatCubeGroupWindow>               groupWindow_;    // a group's editor
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
     std::string actionStatus_;
     std::map<std::string, std::string> providerStatus_;   // provider id -> its state

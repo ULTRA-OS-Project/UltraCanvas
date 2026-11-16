@@ -1,5 +1,6 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.10 - UltraIM_SetGroupDescription, _BlockGroupMember, _UnblockGroupMember, _FetchBlockedMembers
 // Version: 0.1.9 - UltraIM_FetchPublicGroups, _JoinGroup, _SetGroupPublic
 // Version: 0.1.8 - UltraIM_MakePreview makes a file's preview once: the window and the provider ask for
 //                  the same video, and a frame is not grabbed twice
@@ -768,6 +769,64 @@ void UltraIM_SetGroupPublic(const std::string& providerId, const std::string& co
     }
     provider->SetGroupPublic(conversationId, isPublic,
                              callback ? callback : [](const UltraIMResult&, const UltraIMConversation&) {});
+}
+
+void UltraIM_SetGroupDescription(const std::string& providerId, const std::string& conversationId,
+                                 const std::string& description, UltraIMConversationCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMConversation>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), {});
+        return;
+    }
+    if (conversationId.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Empty conversation"), {});
+        return;
+    }
+    provider->SetGroupDescription(conversationId, description,
+                                  callback ? callback : [](const UltraIMResult&, const UltraIMConversation&) {});
+}
+
+namespace {
+// Block and unblock: the same checks, one call apart.
+void ForwardMemberCall(const std::string& providerId, const std::string& conversationId, const std::string& memberId,
+                       UltraIMResultCallback onResult,
+                       void (IUltraIMProviderPlugin::*call)(const std::string&, const std::string&, UltraIMResultCallback)) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    if (conversationId.empty() || memberId.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Empty conversation or member"));
+        return;
+    }
+    ((*provider).*call)(conversationId, memberId, callback ? callback : [](const UltraIMResult&) {});
+}
+} // namespace
+
+void UltraIM_BlockGroupMember(const std::string& providerId, const std::string& conversationId,
+                              const std::string& memberId, UltraIMResultCallback onResult) {
+    ForwardMemberCall(providerId, conversationId, memberId, std::move(onResult), &IUltraIMProviderPlugin::BlockGroupMember);
+}
+
+void UltraIM_UnblockGroupMember(const std::string& providerId, const std::string& conversationId,
+                                const std::string& memberId, UltraIMResultCallback onResult) {
+    ForwardMemberCall(providerId, conversationId, memberId, std::move(onResult),
+                      &IUltraIMProviderPlugin::UnblockGroupMember);
+}
+
+void UltraIM_FetchBlockedMembers(const std::string& providerId, const std::string& conversationId,
+                                 UltraIMContactsCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, std::vector<UltraIMContact>>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), {});
+        return;
+    }
+    provider->FetchBlockedMembers(conversationId,
+                                  callback ? callback : [](const UltraIMResult&, const std::vector<UltraIMContact>&) {});
 }
 
 // ============================================================================

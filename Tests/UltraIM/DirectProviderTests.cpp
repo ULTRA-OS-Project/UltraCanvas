@@ -876,7 +876,26 @@ void TestPublicGroups(DirectProvider& alice, Events& aliceEvents, DirectProvider
         return IsReceived(e, "hello everyone") && e.conversationId == id && e.message.senderId == bobId;
     }));
 
-    // Taken out by the owner: not back by Join.
+    // A description: the owner's in a public group; every member hears of it,
+    // and the directory shows it.
+    UltraIMConversation described;
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) { bob.SetGroupDescription(id, "Bob's", cb); }, none,
+                            &refused));
+    CHECK(refused.code == UltraIMResultCode::PermissionDenied);
+    bobEvents.Clear();
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) {
+        alice.SetGroupDescription(id, "Questions and news about ULTRA OS", cb);
+    }, described));
+    CHECK(described.description == "Questions and news about ULTRA OS");
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == id &&
+               e.conversation.description == "Questions and news about ULTRA OS";
+    }));
+    for (const auto& g : Directory(bob, "lounge")) CHECK(g.description == "Questions and news about ULTRA OS");
+    CHECK(!WaitConversation([&](UltraIMConversationCallback cb) { alice.SetGroupDescription(id, std::string(501, 'x'), cb); },
+                            none));
+
+    // Removed by the owner: may join again.
     bobEvents.Clear();
     UltraIMResult removed;
     CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.RemoveGroupMember(id, bobId, cb); }, removed));
@@ -884,8 +903,45 @@ void TestPublicGroups(DirectProvider& alice, Events& aliceEvents, DirectProvider
     CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
         return e.type == UltraIMEventType::ConversationRemove && e.conversationId == id;
     }));
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { bob.JoinGroup(id, cb); }, joined));
+
+    // Blocked: out, listed for the owner alone, not back by Join - until unblocked.
+    const auto Blocked = [](DirectProvider& p, const std::string& group, UltraIMResult* result = nullptr) {
+        std::vector<UltraIMContact> out;
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+        p.FetchBlockedMembers(group, [&](const UltraIMResult& r, const std::vector<UltraIMContact>& list) {
+            std::lock_guard<std::mutex> lock(mutex);
+            out = list;
+            if (result) *result = r;
+            done = true;
+            cv.notify_all();
+        });
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait_for(lock, std::chrono::seconds(30), [&]() { return done; });
+        return out;
+    };
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { bob.BlockGroupMember(id, aliceId, cb); }, refused));
+    CHECK(!refused && refused.code == UltraIMResultCode::PermissionDenied);
+    bobEvents.Clear();
+    UltraIMResult blockedResult;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.BlockGroupMember(id, bobId, cb); }, blockedResult));
+    CHECK(blockedResult.success);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationRemove && e.conversationId == id;
+    }));
+    auto blockedList = Blocked(alice, id);
+    CHECK(blockedList.size() == 1 && blockedList[0].contactId == bobId && !blockedList[0].displayName.empty());
+    UltraIMResult notOwner;
+    Blocked(bob, id, &notOwner);
+    CHECK(!notOwner.success);
     CHECK(!WaitConversation([&](UltraIMConversationCallback cb) { bob.JoinGroup(id, cb); }, none, &refused));
     CHECK(refused.code == UltraIMResultCode::PermissionDenied);
+    UltraIMResult unblocked;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice.UnblockGroupMember(id, bobId, cb); }, unblocked));
+    CHECK(unblocked.success && Blocked(alice, id).empty());
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { bob.JoinGroup(id, cb); }, joined));
 
     // Private again: off the list.
     UltraIMConversation privateAgain;
