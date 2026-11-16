@@ -29,6 +29,7 @@
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSettingsFolder.h"   // UltraCanvasDesktopSettingsFolder
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -76,7 +77,7 @@ bool DesktopSettings::Load(const std::string& path, std::string* error) {
     if (!fs::is_regular_file(PathFromUtf8(path), ec)) return true;   // first run: defaults
     std::ifstream in(PathFromUtf8(path), std::ios::binary);
     if (!in) {
-        if (error) *error = "Could not read \"" + path + "\".";
+        if (error) *error = TrF("Could not read \"{0}\".", path);
         return false;
     }
     std::stringstream buffer;
@@ -86,14 +87,14 @@ bool DesktopSettings::Load(const std::string& path, std::string* error) {
 
 bool DesktopSettings::Save(const std::string& path, std::string* error) const {
     if (path.empty()) {
-        if (error) *error = "There is no home directory to keep the settings in.";
+        if (error) *error = Tr("There is no home directory to keep the settings in.");
         return false;
     }
     std::error_code ec;
     const fs::path target = PathFromUtf8(path);
     if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
     if (ec) {
-        if (error) *error = "Could not create \"" + PathToUtf8(target.parent_path()) + "\": " + ec.message();
+        if (error) *error = TrF("Could not create \"{0}\": {1}", PathToUtf8(target.parent_path()), ec.message());
         return false;
     }
     // Written beside the target and renamed over it, so a crash mid-write
@@ -102,7 +103,7 @@ bool DesktopSettings::Save(const std::string& path, std::string* error) const {
     {
         std::ofstream out(temp, std::ios::binary | std::ios::trunc);
         if (!out) {
-            if (error) *error = "Could not write \"" + PathToUtf8(temp) + "\".";
+            if (error) *error = TrF("Could not write \"{0}\".", PathToUtf8(temp));
             return false;
         }
         out << ToJson();
@@ -110,7 +111,7 @@ bool DesktopSettings::Save(const std::string& path, std::string* error) const {
     fs::rename(temp, target, ec);
     if (ec) {
         fs::remove(temp, ec);
-        if (error) *error = "Could not replace \"" + path + "\": " + ec.message();
+        if (error) *error = TrF("Could not replace \"{0}\": {1}", path, ec.message());
         return false;
     }
     return true;
@@ -194,7 +195,7 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
     JSONParseResult result;
     JSONValue root = JSON::Parse(json, &result);
     if (!result.success || !root.IsObject()) {
-        if (error) *error = result.errorMessage.empty() ? "The settings file is not a JSON object."
+        if (error) *error = result.errorMessage.empty() ? Tr("The settings file is not a JSON object.")
                                                         : result.errorMessage;
         return false;
     }
@@ -354,6 +355,46 @@ const std::vector<StartupProgram>& DesktopSettings::StartupPrograms() {
          "Sticker board", "", true},
     };
     return programs;
+}
+
+// The tables above stay English (keys, defaults); the translation is looked
+// up here, one Tr literal per text for the extractor.
+std::string StartupProgramLabel(const StartupProgram& program) {
+    const std::string key = program.program;
+    if (key == "ChatCube") return Tr("ChatCube - messages arrive while its window is closed");
+    if (key == "UltraMail") return Tr("UltraMail - new mail is fetched and counted on the mail icon");
+    if (key == "UltraClipboard") return Tr("UltraClipboard - no window: opens at once from the clipboard panel");
+    if (key == "UltraNotifications") {
+        return Tr("UltraNotifications - no window: counts the unread on the bell, opens at once");
+    }
+    if (key == "UltraSnip") {
+        return Tr("UltraSnip - no window: the Print Screen key snips, the screenshot button opens at once");
+    }
+    if (key == "StickerBoard") return Tr("Sticker board - made ready unseen: shows at once, the thumbnails made");
+    return program.label;
+}
+
+std::string StartupProgramName(const StartupProgram& program) {
+    if (std::string(program.program) == "StickerBoard") return Tr("Sticker board");
+    return program.name;
+}
+
+std::string InfoItemLabel(const InfoItem& item) {
+    const std::string id = item.id;
+    if (id == "mail") return Tr("Email - the unread count from UltraMail");
+    if (id == "notifications") return Tr("Notifications - the unread count from UltraNotifications");
+    if (id == "upload") return Tr("Upload - the traffic going out");
+    if (id == "download") return Tr("Download - the traffic coming in");
+    if (id == "lan") return Tr("Internet / LAN - the link");
+    if (id == "usb") return Tr("USB - the devices attached");
+    if (id == "keyboard") return Tr("Keyboard - the layout");
+    if (id == "webcam") return Tr("Webcam - lit while it is in use");
+    if (id == "mic") return Tr("Microphone - lit while it is in use");
+    if (id == "speaker") return Tr("Loudspeaker - the volume");
+    if (id == "battery") return Tr("Battery");
+    if (id == "tasks") return Tr("Task Manager");
+    if (id == "tray") return Tr("Other programs' tray icons");
+    return item.label;
 }
 
 bool DesktopSettings::StartsWithDesktop(const std::string& program) const {

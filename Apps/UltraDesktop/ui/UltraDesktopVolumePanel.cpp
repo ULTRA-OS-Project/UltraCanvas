@@ -14,6 +14,7 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 
@@ -27,7 +28,7 @@ constexpr int kPanelHeight = 150;
 } // namespace
 
 UltraDesktopVolumePanel::UltraDesktopVolumePanel(std::function<void()> onChanged)
-    : UltraDesktopPopupPanel("Loudspeaker", kPanelWidth, kPanelHeight), onChanged_(std::move(onChanged)) {}
+    : UltraDesktopPopupPanel(Tr("Loudspeaker"), kPanelWidth, kPanelHeight), onChanged_(std::move(onChanged)) {}
 
 UltraDesktopVolumePanel::~UltraDesktopVolumePanel() {
     if (writeTimer_) {
@@ -39,7 +40,7 @@ void UltraDesktopVolumePanel::Build(UltraCanvasWindow& window) {
     window.layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     window.SetPadding(12, 14, 12, 14);
 
-    auto title = CreateLabel("vol.title", 0, 0, kPanelWidth - 28, 22, "Loudspeaker");
+    auto title = CreateLabel("vol.title", 0, 0, kPanelWidth - 28, 22, Tr("Loudspeaker"));
     title->SetFontSize(11.5f);
     title->SetFontWeight(FontWeight::Bold);
     title->SetTextColor(PanelColors().text);
@@ -66,7 +67,7 @@ void UltraDesktopVolumePanel::Build(UltraCanvasWindow& window) {
         ScheduleVolume(static_cast<int>(value + 0.5f));
     };
     row->AddChild(slider_);
-    mute_ = std::make_shared<UltraCanvasSwitch>("vol.mute", 0, 0, 80, 28, "Mute");
+    mute_ = std::make_shared<UltraCanvasSwitch>("vol.mute", 0, 0, 80, 28, Tr("Mute"));
     mute_->layoutItem.SetFlexShrink(0.0f);
     mute_->onStateChanged = [this](CheckedState, CheckedState now) {
         if (loading_) return;
@@ -77,7 +78,7 @@ void UltraDesktopVolumePanel::Build(UltraCanvasWindow& window) {
         }
         if (status_) {
             status_->SetText(now == CheckedState::Checked
-                                 ? "Muted"
+                                 ? Tr("Muted")
                                  : std::to_string(static_cast<int>(slider_->GetValue() + 0.5f)) + "%");
         }
         if (onChanged_) onChanged_();
@@ -105,16 +106,16 @@ void UltraDesktopVolumePanel::Reload() {
     const DesktopAudioOutput output = UltraCanvasDesktopShell::ReadAudioOutput();
     loading_ = true;
     if (output.available) {
-        device_->SetText(output.device.empty() ? "Default output" : output.device);
+        device_->SetText(output.device.empty() ? Tr("Default output") : output.device);
         slider_->SetValue(static_cast<float>(std::clamp(output.volumePercent, 0, 100)));
         slider_->SetDisabled(false);
         mute_->SetChecked(output.muted);
         mute_->SetDisabled(false);
-        status_->SetText(output.muted ? "Muted" : output.volumePercent > 100
-                                                     ? std::to_string(output.volumePercent) + "% - above the normal range"
+        status_->SetText(output.muted ? Tr("Muted") : output.volumePercent > 100
+                                                     ? TrF("{0}% - above the normal range", output.volumePercent)
                                                      : std::to_string(output.volumePercent) + "%");
     } else {
-        device_->SetText("No sound server");
+        device_->SetText(Tr("No sound server"));
         slider_->SetValue(0.0f);
         slider_->SetDisabled(true);
         mute_->SetChecked(false);

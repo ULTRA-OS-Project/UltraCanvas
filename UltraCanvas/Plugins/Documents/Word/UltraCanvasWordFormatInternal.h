@@ -1,11 +1,13 @@
 // Plugins/Documents/Word/UltraCanvasWordFormatInternal.h
 // Small helpers shared by the ODT and DOCX readers/writers. Internal to the
 // Word document module — not installed, not part of the public API.
+// Version: 1.3.0 - FindDocxMainPart: the main document part named by the package's
+//                  relationships, not only word/document.xml
 // Version: 1.2.0 - ApplyOfficeArtShapeType: Word 97 / VML shape types as RichShape geometry;
 //                  ReadNumberAt / ReadNumbers: dot-decimal shape geometry; ApplyOfficeShade
 // Version: 1.1.1 - <cstdlib> for std::strtof, which libc++ no longer brings in
 //                  through <string> (MSYS2 CLANG64, 2026-10-09)
-// Last Modified: 2026-10-09
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -21,7 +23,16 @@
 #include "UltraCanvasTextUtils.h"
 
 namespace UltraCanvas {
+class UCZipPackageReader;
 namespace WordFormatInternal {
+
+// The package path of a WordprocessingML package's main document part: the
+// officeDocument relationship in _rels/.rels when it names a Word document
+// part ([Content_Types].xml), else word/document.xml when the package has
+// one, else empty - not a Word document. The name is the producer's choice:
+// files that went through Word for the web can have word/document2.xml.
+// UltraCanvasDocxFormat.cpp.
+std::string FindDocxMainPart(const UCZipPackageReader& zip);
 
 inline std::string EscapeXml(const std::string& text) {
     std::string out;

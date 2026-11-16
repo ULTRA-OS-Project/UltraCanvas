@@ -64,17 +64,23 @@ constexpr unsigned kHoverRestMs = 350;
 
 struct DesignChoice {
     const char* key;
-    const char* label;
     KanbanDesign design;
 };
 
 // The display styles the picker offers, in its order.
 const DesignChoice kDesigns[] = {
-    {"stickynotes", "Sticky notes", KanbanDesign::StickyNotes},
-    {"poster", "Poster", KanbanDesign::Poster},
-    {"schematic", "Schematic", KanbanDesign::Schematic},
-    {"dark", "Dark", KanbanDesign::Dark},
+    {"stickynotes", KanbanDesign::StickyNotes},
+    {"poster", KanbanDesign::Poster},
+    {"schematic", KanbanDesign::Schematic},
+    {"dark", KanbanDesign::Dark},
 };
+// The labels are not in the table: Tr needs the language, loaded after static initialisation.
+std::string DesignLabel(const std::string& key) {
+    if (key == "poster") return Tr("Poster");
+    if (key == "schematic") return Tr("Schematic");
+    if (key == "dark") return Tr("Dark");
+    return Tr("Sticky notes");
+}
 
 // The card displays, in the menu's order.
 struct DisplayChoice {
@@ -194,9 +200,8 @@ std::shared_ptr<UCPixmap> BoardPicture(const std::string& path, int pixels, cons
 }
 } // namespace
 
-const std::vector<std::string>& UltraDesktopCategoryBoard::DefaultCategories() {
-    static const std::vector<std::string> categories = {"Docs", "Work", "Home"};
-    return categories;
+std::vector<std::string> UltraDesktopCategoryBoard::DefaultCategories() {
+    return {Tr("Docs"), Tr("Work"), Tr("Home")};
 }
 
 UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifier,
@@ -216,13 +221,13 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     bar->layoutItem.SetFlexShrink(0.0f);
     bar->SetContainerStyle(plain);
 
-    title_ = CreateLabel("CategoryBoard.Title", 150, 24, "Sticker board");
+    title_ = CreateLabel("CategoryBoard.Title", 150, 24, Tr("Sticker board"));
     title_->SetFontSize(13);
     title_->SetFontWeight(FontWeight::Bold);
     // Its size and weight are the board's own: the colour is set from the
     // theme by ApplyLook, not by the framework's re-style.
     title_->SetFollowTheme(false);
-    title_->SetTooltip("Drop files onto a category to add them; double-click one to open it.");
+    title_->SetTooltip(Tr("Drop files onto a category to add them; double-click one to open it."));
     title_->layoutItem.SetFlexShrink(0.0f);
     bar->AddChild(title_);
 
@@ -232,9 +237,9 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     bar->AddChild(spacer);
 
     designPicker_ = CreateDropdown("CategoryBoard.Design", 0, 0, 140, 24);
-    for (const DesignChoice& choice : kDesigns) designPicker_->AddItem(choice.label, choice.key);
+    for (const DesignChoice& choice : kDesigns) designPicker_->AddItem(DesignLabel(choice.key), choice.key);
     designPicker_->SetSelectedIndex(0, /*runNotifications=*/false);
-    designPicker_->SetTooltip("Display style");
+    designPicker_->SetTooltip(Tr("Display style"));
     designPicker_->layoutItem.SetFlexShrink(0.0f);
     designPicker_->onSelectionChanged = [this](int, const DropdownItem& item) {
         SetDesign(item.value);
@@ -245,14 +250,14 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     };
     bar->AddChild(designPicker_);
 
-    auto add = CreateButton("CategoryBoard.AddCategory", 0, 0, 140, 24, "+ Add category");
-    add->SetTooltip("Add a category");
+    auto add = CreateButton("CategoryBoard.AddCategory", 0, 0, 140, 24, Tr("+ Add category"));
+    add->SetTooltip(Tr("Add a category"));
     add->layoutItem.SetFlexShrink(0.0f);
     add->onClick = [this]() { AddCategory(); };
     bar->AddChild(add);
 
     auto close = CreateButton("CategoryBoard.Close", 0, 0, 30, 26, "\u2715");
-    close->SetTooltip("Hide the Sticker board (the pinboard icon shows it again)");
+    close->SetTooltip(Tr("Hide the Sticker board (the pinboard icon shows it again)"));
     close->layoutItem.SetFlexShrink(0.0f);
     close->onClick = [this]() {
         // After this click: hiding takes the window this button is in.
@@ -436,7 +441,7 @@ float UltraDesktopCategoryBoard::PreviewSize() const {
 }
 
 void UltraDesktopCategoryBoard::AddCategory() {
-    const int columnId = data_->AddColumn("New category");
+    const int columnId = data_->AddColumn(Tr("New category"));
     // Renaming scrolls the board to the new category when it is too wide to
     // show them all.
     board_->BeginColumnRename(columnId, /*startEmpty=*/true);
