@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.26 - Charts > Ridgeline Chart (UltraCanvasRidgelineChart)
 // Version: 1.0.25 - Modules > Theme (UltraCanvasThemeExamples.cpp)
 // Version: 1.0.24 - Android: the tree filter's place and text are logged for the emulator test
 // Version: 1.0.23 - Charts > Histogram Chart (UltraCanvasHistogramChart)
@@ -1490,6 +1491,16 @@ namespace UltraCanvas {
                 .AddVariant("histogramchart", Tr("Combined (red, green, blue)"))
                 .AddVariant("histogramchart", Tr("Red, green or blue channel"))
                 .AddVariant("histogramchart", Tr("Luminosity"));
+
+        chartBuilder.AddItem("ridgelinechart", Tr("Ridgeline Chart"),
+                             Tr("One curve per row on its own baseline, rising over the rows above: how a value "
+                                "is spread in each of many groups (a joyplot)"),
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateRidgelineChartExamples(); },
+                             "DemoApp/UltraCanvasRidgelineChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasRidgelineChart.md")
+                .AddVariant("ridgelinechart", Tr("Word ratings (densities of the answers)"))
+                .AddVariant("ridgelinechart", Tr("Times of day (curves, each to its own peak)"));
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
