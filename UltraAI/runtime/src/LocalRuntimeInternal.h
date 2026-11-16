@@ -3,11 +3,13 @@
 // tested on their own: the gallery and catalogue formats, the hardware fit,
 // the storage layout, files, hashing, archives and processes. The facade in
 // LocalRuntime.cpp composes them.
+// Version: 0.5.0 - catalogue sources: the LocalAI gallery reader, the YAML
+//                  subset it needs, the Hugging Face search and file lists
 // Version: 0.4.0 - whisper-server's command line
 // Version: 0.3.0 - gallery signatures
 // Version: 0.2.0 - topics
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-15
 // Author: UltraAI Module
 #pragma once
 
@@ -68,13 +70,86 @@ bool ParseModels(const std::string& json, std::vector<LocalModelInfo>& out, std:
 const char* BuiltinGalleryJson();
 const char* BuiltinCatalogueJson();
 const char* BuiltinTopicsJson();
-// The default gallery URL (its index.json).
-const char* DefaultGalleryUrl();
 // A Hugging Face "resolve" URL for a file.
 std::string HuggingFaceFileUrl(const std::string& repo, const std::string& revision,
                                const std::string& file);
-// The tree API URL that reports sizes and LFS hashes.
-std::string HuggingFaceTreeUrl(const std::string& repo, const std::string& revision);
+// The tree API URL that reports sizes and LFS hashes: of the repository's
+// top folder, or of `folder` inside it ("" = the top).
+std::string HuggingFaceTreeUrl(const std::string& repo, const std::string& revision,
+                               const std::string& folder = {});
+// Whether a file is a vision projector: marked as one, or named "mmproj...".
+bool IsProjectorFile(const LocalModelFile& file);
+
+// ===== Catalogue sources =====
+
+// What a source's address means as an https:// URL: "https://..." as it
+// is; LocalAI's "github:owner/repository/path@branch" (branch "main"
+// without one) as raw.githubusercontent.com; "huggingface://owner/
+// repository/path@revision" (and "hf://") as a Hugging Face resolve URL.
+// "" for anything else (http://, oci://, ollama://, file://): not fetched.
+std::string ResolveSourceUrl(const std::string& url);
+// A source id made usable: lower-cased, anything but letters, digits and
+// '-' dropped; "" when nothing is left or it is "file" / "hf".
+std::string NormalizeSourceId(const std::string& id);
+// The subset of YAML a generated gallery index uses, as JSON text: block
+// mappings and sequences, plain / quoted / block (| and >) scalars, flow
+// [ ] and { }, comments. Plain true / false, null and whole numbers come
+// out typed, everything else as strings. An anchor, an alias, a tag or a
+// merge key is refused rather than misread. False with the line in the
+// message when the text is not such a document.
+bool YamlToJson(const std::string& yaml, std::string& outJson, std::string& outError);
+// The models of a catalogue source's document that the local engines can
+// run, as Gallery models of `source` (ids "<source id>:<name>"):
+//  - a LocalAI model gallery (YAML or JSON list; the entries' url / files /
+//    overrides at the top or under "model"): GGUF files for llama-cpp
+//    become llama-server models (chat, or embeddings when the entry says
+//    so; a projector marked), a whisper ggml .bin a whisper-server model;
+//    every other backend is counted in `outSkipped`. File addresses must
+//    resolve to https://.
+//  - one of our catalogue.json documents: each model as it is, with its
+//    engine arguments cut down to SafeEngineArgs and the same demands on
+//    its files; one that does not meet them is skipped.
+// False with a message when the document is neither.
+bool ParseCatalogueSourceDocument(const std::string& text, const CatalogueSource& source,
+                                  std::vector<LocalModelInfo>& out, int& outSkipped,
+                                  std::string& outError);
+// The engine arguments a third party's catalogue may set: --ctx-size N,
+// --pooling <word>, --embeddings, --jinja, --parallel N, --batch-size N,
+// --ubatch-size N and --reasoning-format <word>. Everything else is
+// dropped: an engine also takes arguments that name files to read and
+// write.
+std::vector<std::string> SafeEngineArgs(const std::vector<std::string>& args);
+// A file name safe to create inside a model folder: no separator, not "."
+// or "..", no control character, not empty.
+bool IsSafeModelFileName(const std::string& name);
+// The copy of a source's models kept on disk: what was downloaded when,
+// and the models. `outSource` takes the id the copy was made for.
+std::string SerializeSourceCache(const CatalogueSource& source, const std::string& fetched,
+                                 int skipped, const std::vector<LocalModelInfo>& models);
+bool ParseSourceCache(const std::string& json, std::string& outSourceId, std::string& outFetched,
+                      int& outSkipped, std::vector<LocalModelInfo>& outModels);
+
+// ===== Hugging Face =====
+
+// The search URL: repositories matching `query`, most downloaded first.
+std::string HuggingFaceSearchUrl(const std::string& query, bool ggufOnly, int limit);
+// The repository's own facts: https://huggingface.co/api/models/<repo>.
+std::string HuggingFaceRepoUrl(const std::string& repo);
+// Parse the search's reply (a list) and one repository's facts.
+bool ParseHuggingFaceSearch(const std::string& json, std::vector<HuggingFaceRepo>& out);
+bool ParseHuggingFaceRepo(const std::string& json, HuggingFaceRepo& out);
+// The runnable files of a tree listing (recursive): GGUFs and whisper.cpp
+// ggml .bin files, the parts of a split GGUF folded into its first part,
+// projectors marked, the capability guessed from the repository and the
+// name. `fit` is left Unknown.
+bool ParseHuggingFaceFiles(const std::string& treeJson, const HuggingFaceRepo& repo,
+                           std::vector<HuggingFaceFile>& out);
+// "Q4_K_M" from "Qwen3-4B-Q4_K_M.gguf"; "" when the name carries none.
+std::string QuantizationOf(const std::string& fileName);
+// What a model file would serve, from its repository's pipeline tag and
+// tags and its own name: "speechtotext" for a ggml .bin, "embeddings" for
+// an embedding repository or name, else "textllm".
+std::string GuessCapability(const HuggingFaceRepo& repo, const std::string& fileName);
 // Parse the tree API's reply for one file: its size and sha256 (the LFS
 // oid). False when the file is not listed.
 bool ParseHuggingFaceTree(const std::string& json, const std::string& file,
@@ -147,6 +222,8 @@ struct Paths {
     std::filesystem::path userModelsJson;
     std::filesystem::path topicsJson;
     std::filesystem::path topicPreferencesJson;
+    std::filesystem::path catalogues;       // <root>/catalogues/<source id>.json
+    std::filesystem::path fileFactsJson;    // sizes and hashes asked of the hosts
 
     static Paths For(const std::filesystem::path& root);
     // The default root: <LocalDataFolderRoot>/UltraAI.

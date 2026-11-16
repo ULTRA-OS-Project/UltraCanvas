@@ -1,22 +1,36 @@
 // Apps/UltraAIApp/UltraAILocalModelsPage.h
 // The settings window's "Local models" page: what the local runtime
-// (UltraAILocalRuntime.h) has on this computer and what it offers. The
-// engine and its accelerator; a table of the catalogue's models and the
-// user's own with their size, fit and state (installed, running,
-// downloading, failed); Install / Remove / Stop / Forget on the selected
-// row; the progress of the install in flight with Cancel; "Add model
-// file..." (a GGUF the user has, used in place), "Add from Hugging
-// Face...", "Refresh catalogue" and "Open folder"; the download policy and
-// the idle time; disk use. Every change applies and is saved at once, as
-// on the other pages.
+// (UltraAILocalRuntime.h) has on this computer and what it offers. A table
+// of the models - the recommended ones, those of the catalogue sources
+// (LocalAI's model gallery) and the user's own - with their size, fit and
+// state (installed, running, downloading, failed), narrowed by a search
+// field, a service and a source; the engine of the selected model and its
+// accelerator; Install / Remove / Stop / Forget on the selected row; the
+// progress of the install in flight with Cancel; "Add model file" (a GGUF
+// the user has, used in place), "Search Hugging Face" (the dialog of
+// UltraAIHuggingFaceDialog.h), "Refresh catalogue" (downloads the
+// catalogue sources) and "Sources" (which ones there are); "Open folder";
+// the download policy and the idle time; disk use. Every change applies
+// and is saved at once, as on the other pages.
+//
+// The engine line and the Acceleration choice follow the selected model:
+// a speech model shows whisper-server, a chat model llama-server, each
+// with its own accelerator (LocalRuntimeSettings::engineAccelerators). An
+// engine with one build for this computer has nothing to choose - the
+// choice is shown and disabled - and it is downloaded with the first of
+// its models as every engine is.
 //
 // The page talks to LocalRuntime::Instance() directly. Installs run on the
 // runtime's worker and report through callbacks that are marshalled onto
 // the UI thread; removals, stops and the gallery refresh, which can block
 // for seconds, run on a thread of their own and refresh the page when they
 // return.
+// Version: 0.2.0 - the engine of the selected model, an accelerator per
+//                  engine; catalogue sources, the search field and the
+//                  filters; Hugging Face search in place of the typed
+//                  "repository:file"
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-15
 // Author: UltraAI Module
 #pragma once
 
@@ -28,10 +42,12 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListModel.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasTextInput.h"
 #include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
 
 #include <atomic>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -58,11 +74,13 @@ public:
     // shown and after every action.
     void Refresh();
 
-    // The page's "Restore defaults": Ask policy, Auto accelerator, 15 min idle.
+    // The page's "Restore defaults": Ask policy, Auto accelerator for every
+    // engine, 15 min idle, the catalogue sources a new installation has.
     void RestoreDefaults();
 
 private:
     void BuildHardwareLine(UltraCanvas::UltraCanvasContainer& body);
+    void BuildFilterRow(UltraCanvas::UltraCanvasContainer& body);
     void BuildEngineRow(UltraCanvas::UltraCanvasContainer& body);
     void BuildModelTable(UltraCanvas::UltraCanvasContainer& body);
     void BuildActionRow(UltraCanvas::UltraCanvasContainer& body);
@@ -71,9 +89,19 @@ private:
     void BuildSettingsRows(UltraCanvas::UltraCanvasContainer& body);
 
     void RefreshEngine();
-    void RefreshTable();
+    void RefreshFilters();
+    void RefreshTable();        // re-reads the runtime's models
+    void ApplyFilter();         // the rows of the table from the models read
     void RefreshButtons();
     void RefreshDisk();
+    void RefreshSourcesLine();
+    void OnSelectionChanged();
+    // Ask the selected model's host for the size its catalogue leaves out.
+    void ProbeSelected();
+    // Put the selection on a model (the filters are cleared when they hide it).
+    void SelectModel(const std::string& modelId);
+    // The engine the engine line is about: the selected model's.
+    std::string ShownEngineId() const;
     void ShowProgress(const UltraAI::InstallProgress& p);
     void HideProgress();
 
@@ -86,6 +114,7 @@ private:
     void OnAddFile();
     void OnAddHuggingFace();
     void OnRefreshCatalogue();
+    void OnSources();
     void OnOpenFolder();
     void SetStatus(const std::string& text);
 
@@ -103,9 +132,15 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> accelDropdown_;
     std::vector<std::string>                          accelIds_;      // aligned with the dropdown
     std::shared_ptr<UltraCanvas::UltraCanvasButton>   engineButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> serviceDropdown_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> sourceDropdown_;
+    std::vector<std::string>                          sourceFilterIds_;   // aligned with sourceDropdown_
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>    sourcesLabel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> table_;
     std::shared_ptr<UltraCanvas::UltraCanvasMultiColumnListModel> tableModel_;
-    std::vector<UltraAI::LocalModelInfo>              rows_;          // aligned with the table
+    std::vector<UltraAI::LocalModelInfo>              models_;        // every model the runtime lists
+    std::vector<UltraAI::LocalModelInfo>              rows_;          // those shown; aligned with the table
     std::shared_ptr<UltraCanvas::UltraCanvasButton>   installButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>   removeButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>   stopButton_;
@@ -121,6 +156,12 @@ private:
 
     std::string activeJobId_;     // the install in flight, "" when none
     bool busy_ = false;           // a remove / stop / refresh on its thread
+    std::string engineId_;        // the engine the engine line shows
+    std::string filterText_;      // lower-cased
+    std::string filterService_;   // a capability, "" = all
+    std::string filterSource_;    // "" = all; a source id; "@recommended", "@yours", "@installed"
+    bool probing_ = false;        // a size lookup on its thread
+    std::set<std::string> probed_;    // models already asked about (once each)
 };
 
 } // namespace UltraAIApp

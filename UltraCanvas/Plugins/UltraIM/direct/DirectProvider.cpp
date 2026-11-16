@@ -1,12 +1,15 @@
 // Plugins/UltraIM/direct/DirectProvider.cpp
 // ChatCube Direct - the ULTRA OS native messenger as an UltraIM provider
+// Version: 0.1.7 - TransferProgress while a picture, video or file goes out or comes in
+// Version: 0.1.6 - a contact added by someone else (the relay's contact.added, the local network's
+//                  "contact" frame): their chat appears before their first message
 // Version: 0.1.5 - the e-mail and phone confirmed by the relay's codes; account recovery
 // Version: 0.1.4 - the account's profile (name, e-mail, phone); a password and/or an authenticator code to sign in
 // Version: 0.1.3 - a file that is a picture (an SVG drawing) goes with a preview picture, as a photo does
 // Version: 0.1.2 - pictures, videos and files sent and received in parts; DownloadAttachment
 // Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
 // Version: 0.1.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "DirectProvider.h"
@@ -15,6 +18,7 @@
 #include "UltraCrypt/OtpAuthUri.h"
 #include "UltraCrypt/UltraOtp.h"
 #include "UltraIM/UltraIMCore.h"
+#include "UltraNet/UltraNetUrl.h"
 #include "UltraRTC/UltraRTCCore.h"
 
 #include <algorithm>
@@ -163,7 +167,7 @@ UltraIMCapabilityFlags DirectProvider::GetCapabilities() const {
            F::OfflineMessages | F::PeerToPeer | F::ReplyToMessage | F::AnonymousLogin | F::AddContact |
            F::CreateGroup | F::VoiceCalls | F::VideoCalls | F::ImageMessages | F::FileTransfer |
            F::AccountProfile | F::SignInProtection | F::AccountRecovery | F::SearchMessages | F::DeleteMessage |
-           F::ManageGroups | F::LeaveConversation;
+           F::ManageGroups | F::LeaveConversation | F::EditMessage | F::VoiceNotes;
 }
 
 UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -1213,6 +1217,13 @@ void DirectProvider::OnLanPeerUp(const std::string& peerId, const std::vector<ui
 }
 
 void DirectProvider::OnLanFrame(const std::string& peerId, const JSONValue& frame) {
+    // A ChatCube nearby added us (TellLanContactAdded): the connection proved
+    // its key, so it becomes a contact, with its chat.
+    if (frame["t"].GetString() == "contact") {
+        UltraIMConversation existing;
+        if (!store_.GetConversation(peerId, existing)) StoreLanContact(peerId);
+        return;
+    }
     if (frame["t"].GetString() != "signal") return;
     const std::string kind = frame["kind"].GetString();
     const std::string session = frame["session"].GetString();
@@ -1243,6 +1254,12 @@ UltraIMConversation DirectProvider::StoreLanContact(const std::string& userId) {
     return EnsureDirectConversation(userId);
 }
 
+void DirectProvider::TellLanContactAdded(const std::string& userId) {
+    JSONValue frame = JSONValue::MakeObject();
+    frame.Set("t", JSONValue("contact"));
+    lan_.Send(userId, frame);
+}
+
 void DirectProvider::CompletePendingAdds(int64_t nowMs) {
     std::vector<PendingAdd> done, expired;
     {
@@ -1259,7 +1276,10 @@ void DirectProvider::CompletePendingAdds(int64_t nowMs) {
             }
         }
     }
-    for (auto& p : done) p.onResult(UltraIMResult::Ok(), StoreLanContact(p.userId));
+    for (auto& p : done) {
+        p.onResult(UltraIMResult::Ok(), StoreLanContact(p.userId));
+        TellLanContactAdded(p.userId);
+    }
     for (auto& p : expired)
         p.onResult(UltraIMResult::Error(UltraIMResultCode::Timeout, "That ChatCube did not answer on this network"), {});
 }
@@ -1345,6 +1365,8 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             groupOwners_.erase(id);
+            publicGroups_.erase(id);
+            groupDescriptions_.erase(id);
         }
         EmitRemoved(id);
         return;
@@ -1352,6 +1374,9 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         groupOwners_[id] = group["owner"].GetString();
+        if (group["public"].GetBoolean(false)) publicGroups_.insert(id);
+        else publicGroups_.erase(id);
+        groupDescriptions_[id] = group["description"].GetString();
     }
     UltraIMConversation conversation;
     store_.GetConversation(id, conversation);
@@ -1401,7 +1426,9 @@ void DirectProvider::FetchConversations(UltraIMConversationsCallback onResult) {
 
 void DirectProvider::FetchMessages(const std::string& conversationId, const std::string& beforeMessageId, int limit,
                                    UltraIMMessagesCallback onResult) {
-    onResult(UltraIMResult::Ok(), store_.Messages(conversationId, beforeMessageId, limit));
+    std::vector<UltraIMMessage> messages = store_.Messages(conversationId, beforeMessageId, limit);
+    for (UltraIMMessage& m : messages) FillReply(m);
+    onResult(UltraIMResult::Ok(), messages);
 }
 
 // The history is all on this device, in the store: one conversation or all.
@@ -1411,7 +1438,9 @@ void DirectProvider::SearchMessages(const UltraIMMessageSearch& search, UltraIMS
         onResult(UltraIMResult::Error(UltraIMResultCode::NotFound, "No such conversation"), UltraIMSearchPage());
         return;
     }
-    onResult(UltraIMResult::Ok(), store_.Search(search));
+    UltraIMSearchPage page = store_.Search(search);
+    for (UltraIMMessage& m : page.messages) FillReply(m);
+    onResult(UltraIMResult::Ok(), page);
 }
 
 void DirectProvider::FetchContacts(UltraIMContactsCallback onResult) {
@@ -1479,6 +1508,7 @@ void DirectProvider::AddContact(const std::string& address, UltraIMConversationC
     if (proven) {
         if (relay) relay->Request("PUT", "/v1/contacts/" + userId, nullptr, [](const RelayResponse&) {});
         onResult(UltraIMResult::Ok(), StoreLanContact(userId));
+        TellLanContactAdded(userId);
         return;
     }
     // Seen nearby but not connected yet: connect, and finish once its
@@ -1551,6 +1581,9 @@ void DirectProvider::FillGroupDetails(UltraIMConversation& conversation) {
         std::lock_guard<std::mutex> lock(mutex_);
         const auto found = groupOwners_.find(conversation.conversationId);
         if (found != groupOwners_.end()) conversation.ownerId = found->second;
+        conversation.isPublic = publicGroups_.count(conversation.conversationId) > 0;
+        const auto described = groupDescriptions_.find(conversation.conversationId);
+        if (described != groupDescriptions_.end()) conversation.description = described->second;
     }
     for (const std::string& member : conversation.memberIds) {
         StoredContact contact;
@@ -1691,9 +1724,187 @@ void DirectProvider::LeaveConversation(const std::string& conversationId, UltraI
         {
             std::lock_guard<std::mutex> lock(mutex_);
             groupOwners_.erase(conversationId);
+            publicGroups_.erase(conversationId);
+            groupDescriptions_.erase(conversationId);
         }
         EmitRemoved(conversationId);
         onResult(UltraIMResult::Ok());
+    });
+}
+
+// ---- public groups -------------------------------------------------------------
+
+namespace {
+// A relay before 1.5 has no public groups: it does not know the address.
+// An address the relay does not have answers 404 with the generic "error"
+// (405 when it has the address for another method); its own refusals name theirs.
+bool RelayLacksIt(const RelayResponse& r) {
+    return r.status == 405 || (r.status == 404 && r.body["error"].GetString() == "error");
+}
+
+UltraIMResult NoPublicGroupsYet() {
+    return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                "This relay has no public groups yet - it needs ChatCube relay 1.5 or later "
+                                "(its operator updates it)");
+}
+} // namespace
+
+void DirectProvider::FetchPublicGroups(const std::string& query, UltraIMPublicGroupsCallback onResult) {
+    if (state_ != UltraIMConnectionState::Connected)
+        return onResult(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in"), {});
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay)
+        return onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                             "Groups need a relay server - this ChatCube uses the local network only"),
+                        {});
+    relay->Request("GET", "/v1/public-groups?q=" + UltraNet_UrlEncode(query), nullptr,
+                   [onResult](const RelayResponse& r) {
+        if (r.status == 404 || r.status == 405) return onResult(NoPublicGroupsYet(), {});
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        std::vector<UltraIMPublicGroup> groups;
+        for (const auto& g : r.body["groups"].GetElements()) {
+            UltraIMPublicGroup group;
+            group.conversationId = g["conversation"].GetString();
+            if (!IsGroupId(group.conversationId)) continue;
+            group.title = g["title"].GetString();
+            group.description = g["description"].GetString();
+            group.ownerId = g["owner"].GetString();
+            group.memberCount = static_cast<int>(g["member_count"].GetInteger(0));
+            group.joined = g["joined"].GetBoolean(false);
+            groups.push_back(group);
+        }
+        onResult(UltraIMResult::Ok(), groups);
+    });
+}
+
+void DirectProvider::JoinGroup(const std::string& conversationId, UltraIMConversationCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target, {});
+    relay->Request("POST", "/v1/groups/" + groupId + "/join", nullptr,
+                   [this, conversationId, onResult](const RelayResponse& r) {
+        if (r.status == 405) return onResult(NoPublicGroupsYet(), {});
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
+                                                 "The group's owner took you out of this group"), {});
+        if (r.status == 404)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::NotFound, "The group is not public any more"), {});
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        // The members' keys come with UpsertGroup (fetched when missing):
+        // what we send there is sealed for each of them.
+        UpsertGroup(r.body);
+        UltraIMConversation conversation;
+        store_.GetConversation(conversationId, conversation);
+        FillGroupDetails(conversation);
+        onResult(UltraIMResult::Ok(), conversation);
+    });
+}
+
+void DirectProvider::SetGroupDescription(const std::string& conversationId, const std::string& description,
+                                         UltraIMConversationCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target, {});
+    if (description.size() > 500)
+        return onResult(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
+                                             "A description holds at most 500 characters"), {});
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("description", JSONValue(description));
+    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, conversationId, onResult](const RelayResponse& r) {
+        if (r.status == 405 || r.status == 422)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                                 "This relay keeps no group descriptions yet - it needs ChatCube "
+                                                 "relay 1.5 or later (its operator updates it)"), {});
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
+                                                 "Only the owner changes a public group's description"), {});
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        UpsertGroup(r.body);
+        UltraIMConversation conversation;
+        store_.GetConversation(conversationId, conversation);
+        FillGroupDetails(conversation);
+        onResult(UltraIMResult::Ok(), conversation);
+    });
+}
+
+void DirectProvider::BlockGroupMember(const std::string& conversationId, const std::string& memberId,
+                                      UltraIMResultCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target);
+    const std::string id = NormalizeUserId(memberId);
+    if (id.empty()) return onResult(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Not a ChatCube ID"));
+    // The relay takes them out and tells every member (group.update).
+    relay->Request("PUT", "/v1/groups/" + groupId + "/blocked/" + id, nullptr, [onResult](const RelayResponse& r) {
+        if (RelayLacksIt(r)) return onResult(NoPublicGroupsYet());
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied, "Only the group's owner blocks"));
+        onResult(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::Unknown));
+    });
+}
+
+void DirectProvider::UnblockGroupMember(const std::string& conversationId, const std::string& memberId,
+                                        UltraIMResultCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target);
+    const std::string id = NormalizeUserId(memberId);
+    if (id.empty()) return onResult(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Not a ChatCube ID"));
+    relay->Request("DELETE", "/v1/groups/" + groupId + "/blocked/" + id, nullptr, [onResult](const RelayResponse& r) {
+        if (RelayLacksIt(r)) return onResult(NoPublicGroupsYet());
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied, "Only the group's owner unblocks"));
+        onResult(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::Unknown));
+    });
+}
+
+void DirectProvider::FetchBlockedMembers(const std::string& conversationId, UltraIMContactsCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target, {});
+    relay->Request("GET", "/v1/groups/" + groupId + "/blocked", nullptr, [this, onResult](const RelayResponse& r) {
+        if (RelayLacksIt(r)) return onResult(NoPublicGroupsYet(), {});
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
+                                                 "Only the group's owner sees whom it blocked"), {});
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        std::vector<UltraIMContact> list;
+        for (const auto& u : r.body["blocked"].GetElements()) {
+            UltraIMContact c;
+            c.contactId = u["user_id"].GetString();
+            c.providerId = providerId_;
+            c.displayName = u["display_name"].GetString();
+            list.push_back(c);
+        }
+        onResult(UltraIMResult::Ok(), list);
+    });
+}
+
+void DirectProvider::SetGroupPublic(const std::string& conversationId, bool isPublic,
+                                    UltraIMConversationCallback onResult) {
+    std::shared_ptr<RelayClient> relay;
+    std::string groupId;
+    const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
+    if (!target) return onResult(target, {});
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("public", JSONValue(isPublic));
+    relay->Request("PUT", "/v1/groups/" + groupId + "/public", &body,
+                   [this, conversationId, onResult](const RelayResponse& r) {
+        if (r.status == 405) return onResult(NoPublicGroupsYet(), {});
+        if (r.status == 403)
+            return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
+                                                 "Only the group's owner makes it public or private"), {});
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
+        UpsertGroup(r.body);
+        UltraIMConversation conversation;
+        store_.GetConversation(conversationId, conversation);
+        FillGroupDetails(conversation);
+        onResult(UltraIMResult::Ok(), conversation);
     });
 }
 
@@ -1759,6 +1970,28 @@ void DirectProvider::OnFrame(const JSONValue& frame) {
         Emit(event);
     } else if (type == "group.update") {
         UpsertGroup(frame["group"]);
+    } else if (type == "contact.added") {
+        // Someone added us: their chat now, not at their first message.
+        const JSONValue& c = frame["contact"];
+        StoredContact contact;
+        contact.userId = c["user_id"].GetString();
+        contact.displayName = c["display_name"].GetString();
+        contact.publicKey = c["public_key"].GetString();
+        contact.presence = PresenceFrom(c["presence"].GetString());
+        if (contact.userId.empty() || contact.userId == identity_.userId ||
+            UserIdFor(FromBase64(contact.publicKey)) != contact.userId)
+            return;                                         // the key must be the id's
+        StoredContact known;
+        if (store_.GetContact(contact.userId, known) && contact.displayName.empty())
+            contact.displayName = known.displayName;
+        store_.UpsertContact(contact);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            presence_[contact.userId] = contact.presence;
+        }
+        if (lanOn_) lan_.AddWanted(contact.userId);
+        EnsureDirectConversation(contact.userId);
+        EmitPresence(contact.userId);
     }
 }
 
@@ -1782,6 +2015,7 @@ void DirectProvider::OnLinkMessage(const std::string& peerId, const std::string&
             std::lock_guard<std::mutex> lock(mutex_);
             attempts_.erase(AttemptKey(id, peerId));
         }
+        NotePartLeft(id);
         MarkDelivered(peerId, id, UltraIMDeliveryStatus::Delivered);
     } else if (t == "typing") {
         UltraIMEvent event;
@@ -1850,6 +2084,10 @@ void DirectProvider::HandleBody(const Envelope& envelope, const JSONValue& body)
         HandleDeleteBody(envelope, body);
         return;
     }
+    if (type == "edit") {
+        HandleEditBody(envelope, body);
+        return;
+    }
     if (type != "text") return;
 
     const bool group = IsGroupId(envelope.conversation);
@@ -1890,6 +2128,7 @@ void DirectProvider::HandleBody(const Envelope& envelope, const JSONValue& body)
     message.isOwn = false;
     if (IsDeletedBeforeArrival(message)) return;
     if (!store_.AddMessage(message)) return;    // seen already (it came by two paths)
+    FillReply(message);
 
     UltraIMEvent received;
     received.type = UltraIMEventType::MessageReceive;
@@ -2020,6 +2259,11 @@ UltraIMResult DirectProvider::SendFile(const std::string& conversationId, const 
     return SendMedia(conversationId, localPath, std::string(), UltraIMMessageType::File, options);
 }
 
+UltraIMResult DirectProvider::SendVoiceNote(const std::string& conversationId, const std::string& localPath,
+                                            const UltraIMSendOptions& options) {
+    return SendMedia(conversationId, localPath, std::string(), UltraIMMessageType::Audio, options);
+}
+
 UltraIMResult DirectProvider::SendMedia(const std::string& conversationId, const std::string& localPath,
                                         const std::string& caption, UltraIMMessageType type,
                                         const UltraIMSendOptions& options) {
@@ -2060,6 +2304,7 @@ UltraIMResult DirectProvider::SendMedia(const std::string& conversationId, const
     message.attachment.fileName = name;
     message.attachment.mimeType = mime;
     message.attachment.fileSizeBytes = static_cast<int64_t>(bytes.size());
+    message.attachment.durationSeconds = options.durationSeconds > 0 ? options.durationSeconds : 0.0;
     // A file that is a picture (an SVG drawing goes as a file) gets one too,
     // so the other side sees the drawing before the file is here.
     std::string previewBase64;
@@ -2090,6 +2335,8 @@ UltraIMResult DirectProvider::SendMedia(const std::string& conversationId, const
     body.Set("w", JSONValue(static_cast<int64_t>(message.attachment.width)));
     body.Set("h", JSONValue(static_cast<int64_t>(message.attachment.height)));
     if (!previewBase64.empty()) body.Set("preview", JSONValue(previewBase64));
+    if (message.attachment.durationSeconds > 0)
+        body.Set("ms", JSONValue(static_cast<int64_t>(message.attachment.durationSeconds * 1000.0 + 0.5)));
     body.Set("sender_name", JSONValue(displayName_));
     if (!options.replyToMessageId.empty()) body.Set("reply_to", JSONValue(options.replyToMessageId));
     if (conversation.isGroup) body.Set("group_title", JSONValue(conversation.title));
@@ -2110,6 +2357,14 @@ UltraIMResult DirectProvider::SendMedia(const std::string& conversationId, const
         return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "This client message id was already sent");
 
     const std::string wire = conversation.isGroup ? conversationId : kDirectConversation;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        Upload& upload = uploads_[fileId];
+        upload.conversationId = conversationId;
+        upload.clientId = clientId;
+        upload.bytes = static_cast<int64_t>(bytes.size());
+        upload.copies = parts * static_cast<int>(recipients.size());
+    }
     QueueBody(wire, recipients, clientId, UltraCanvas::JSON::Serialize(body), now);
     // The parts, in order, each under an id of its own (their delivery is
     // nobody's business but the outbox's).
@@ -2180,6 +2435,7 @@ void DirectProvider::HandleFileBody(const Envelope& envelope, const JSONValue& b
     message.attachment.fileSizeBytes = body["size"].GetInteger(0);
     message.attachment.width = static_cast<int>(body["w"].GetInteger(0));
     message.attachment.height = static_cast<int>(body["h"].GetInteger(0));
+    message.attachment.durationSeconds = static_cast<double>(body["ms"].GetInteger(0)) / 1000.0;
     if (IsDeletedBeforeArrival(message)) {
         // Its parts, here already or still to come, are not wanted either.
         store_.NoteDeleted(Store::DeletedFileKey(fileId), NowMs());
@@ -2192,6 +2448,7 @@ void DirectProvider::HandleFileBody(const Envelope& envelope, const JSONValue& b
         if (WriteWholeFile(path, FromBase64(preview))) message.attachment.thumbnailPath = path;
     }
     if (!store_.AddMessage(message)) return;    // seen already
+    FillReply(message);
 
     UltraIMEvent received;
     received.type = UltraIMEventType::MessageReceive;
@@ -2218,7 +2475,67 @@ void DirectProvider::HandleChunkBody(const JSONValue& body) {
     if (fileId.empty() || seq < 0 || seq >= 1000000 || data.empty()) return;
     if (store_.IsDeleted(Store::DeletedFileKey(fileId))) return;      // deleted while it was arriving
     store_.AddPart(fileId, static_cast<int>(seq), data);
+    // How far the file is: TransferProgress at each percent.
+    UltraIMMessage message;
+    if (store_.FindMessageByFile(fileId, message) && !message.attachment.isDownloaded &&
+        message.attachment.fileSizeBytes > 0) {
+        const int64_t total = message.attachment.fileSizeBytes;
+        const int64_t here = std::min<int64_t>(total, static_cast<int64_t>(store_.CountParts(fileId)) *
+                                                          static_cast<int64_t>(kChunkBytes));
+        const int percent = static_cast<int>(here * 100 / total);
+        bool report = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            int& last = downloadPercent_[fileId];
+            report = percent > last || here == total;
+            if (report) last = percent;
+            if (here == total) downloadPercent_.erase(fileId);
+        }
+        if (report) {
+            UltraIMEvent progress;
+            progress.type = UltraIMEventType::TransferProgress;
+            progress.providerId = providerId_;
+            progress.conversationId = message.conversationId;
+            progress.contactId = message.senderId;
+            progress.message = message;
+            progress.transferredBytes = here;
+            progress.totalBytes = total;
+            progress.isUpload = false;
+            Emit(progress);
+        }
+    }
     TryAssemble(fileId);
+}
+
+void DirectProvider::NotePartLeft(const std::string& outboxId) {
+    // A part's id is "c-<file id>-<seq>".
+    if (outboxId.rfind("c-", 0) != 0) return;
+    const size_t dash = outboxId.rfind('-');
+    if (dash == std::string::npos || dash <= 2) return;
+    const std::string fileId = outboxId.substr(2, dash - 2);
+    UltraIMEvent progress;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = uploads_.find(fileId);
+        if (it == uploads_.end()) return;
+        Upload& upload = it->second;
+        upload.left = std::min(upload.copies, upload.left + 1);
+        const int percent = upload.copies > 0 ? upload.left * 100 / upload.copies : 100;
+        if (percent == upload.lastPercent) return;
+        upload.lastPercent = percent;
+        progress.type = UltraIMEventType::TransferProgress;
+        progress.providerId = providerId_;
+        progress.conversationId = upload.conversationId;
+        progress.message.providerId = providerId_;
+        progress.message.conversationId = upload.conversationId;
+        progress.message.clientMessageId = upload.clientId;
+        progress.message.messageId = upload.clientId;
+        progress.totalBytes = upload.bytes;
+        progress.transferredBytes = upload.copies > 0 ? upload.bytes * upload.left / upload.copies : upload.bytes;
+        progress.isUpload = true;
+        if (upload.left >= upload.copies) uploads_.erase(it);
+    }
+    Emit(progress);
 }
 
 void DirectProvider::TryAssemble(const std::string& fileId) {
@@ -2394,6 +2711,12 @@ bool DirectProvider::IsMediaFile(const std::string& path) const {
 bool DirectProvider::RemoveLocally(const std::string& conversationId, const std::string& clientId) {
     UltraIMMessage removed;
     if (!store_.RemoveMessage(conversationId, clientId, removed)) return false;
+    {
+        // A file still going out or coming in reports no more progress.
+        std::lock_guard<std::mutex> lock(mutex_);
+        uploads_.erase(removed.attachment.remoteUrl);
+        downloadPercent_.erase(removed.attachment.remoteUrl);
+    }
     // The file it brought here goes with it. A file that was sent lies
     // where its owner keeps it and is none of ours to remove.
     std::error_code ec;
@@ -2476,6 +2799,98 @@ void DirectProvider::HandleDeleteBody(const Envelope& envelope, const JSONValue&
         if (!group && !HasFile(message) && store_.IsReadReported(conversationId, message.clientMessageId)) continue;
         RemoveLocally(conversationId, message.clientMessageId);
     }
+}
+
+// ============================================================================
+// EDITING
+// ============================================================================
+
+UltraIMResult DirectProvider::EditMessage(const std::string& conversationId, const std::string& messageId,
+                                          const std::string& newText) {
+    UltraIMConversation conversation;
+    UltraIMMessage message;
+    if (!store_.GetConversation(conversationId, conversation) || !store_.FindMessage(conversationId, messageId, message))
+        return UltraIMResult::Error(UltraIMResultCode::NotFound, "No such message");
+    if (!message.isOwn || message.type == UltraIMMessageType::SystemEvent)
+        return UltraIMResult::Error(UltraIMResultCode::PermissionDenied, "Only its sender can change a message");
+    if (message.type == UltraIMMessageType::Text && newText.empty())
+        return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "A text cannot be empty - delete it instead");
+    if (!identity_.IsValid() || state_ == UltraIMConnectionState::Disconnected)
+        return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in");
+    if (message.text == newText) return UltraIMResult::Ok();
+    store_.EditText(conversationId, message.clientMessageId, newText);
+    store_.FindMessage(conversationId, message.clientMessageId, message);
+    FillReply(message);
+    UltraIMEvent updated;
+    updated.type = UltraIMEventType::MessageUpdate;
+    updated.providerId = providerId_;
+    updated.conversationId = conversationId;
+    updated.message = message;
+    Emit(updated);
+
+    std::vector<std::string> recipients;
+    if (conversation.isGroup) {
+        for (const auto& m : conversation.memberIds) {
+            if (m != identity_.userId) recipients.push_back(m);
+        }
+    } else {
+        recipients.push_back(conversationId);
+    }
+    // On the message's own path: the link, else the relay's queue.
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("type", JSONValue("edit"));
+    body.Set("id", JSONValue(message.clientMessageId));
+    body.Set("text", JSONValue(newText));
+    if (!recipients.empty())
+        QueueBody(conversation.isGroup ? conversationId : kDirectConversation, recipients,
+                  "e-" + UltraIM_NewClientMessageId(), UltraCanvas::JSON::Serialize(body), NowMs());
+    return UltraIMResult::Ok();
+}
+
+void DirectProvider::HandleEditBody(const Envelope& envelope, const JSONValue& body) {
+    const bool group = IsGroupId(envelope.conversation);
+    const std::string conversationId = group ? envelope.conversation : envelope.from;
+    UltraIMMessage message;
+    if (!store_.FindMessage(conversationId, body["id"].GetString(), message)) return;
+    // Only what the asker sent themselves.
+    if (message.isOwn || message.senderId != envelope.from || message.type == UltraIMMessageType::SystemEvent) return;
+    const std::string text = body["text"].GetString();
+    if (message.type == UltraIMMessageType::Text && text.empty()) return;
+    if (!store_.EditText(conversationId, message.clientMessageId, text)) return;
+    store_.FindMessage(conversationId, message.clientMessageId, message);
+    FillReply(message);
+    UltraIMEvent updated;
+    updated.type = UltraIMEventType::MessageUpdate;
+    updated.providerId = providerId_;
+    updated.conversationId = conversationId;
+    updated.contactId = envelope.from;
+    updated.message = message;
+    Emit(updated);
+    UltraIMEvent conversationChanged;
+    conversationChanged.type = UltraIMEventType::ConversationUpdate;
+    conversationChanged.providerId = providerId_;
+    conversationChanged.conversationId = conversationId;
+    if (store_.GetConversation(conversationId, conversationChanged.conversation)) {
+        FillGroupDetails(conversationChanged.conversation);
+        Emit(conversationChanged);
+    }
+}
+
+void DirectProvider::FillReply(UltraIMMessage& message) {
+    if (message.replyTo.messageId.empty() || !message.replyTo.textSnippet.empty()) return;
+    UltraIMMessage original;
+    if (!store_.FindMessage(message.conversationId, message.replyTo.messageId, original)) return;
+    message.replyTo.senderId = original.senderId;
+    message.replyTo.senderName = original.isOwn ? displayName_ : original.senderName;
+    std::string snippet = original.text;
+    if (snippet.empty()) snippet = original.attachment.fileName;
+    if (snippet.size() > 80) {
+        size_t cut = 80;
+        while (cut > 0 && (static_cast<unsigned char>(snippet[cut]) & 0xC0) == 0x80) --cut;   // not inside a letter
+        snippet = snippet.substr(0, cut) + "\xE2\x80\xA6";
+    }
+    std::replace(snippet.begin(), snippet.end(), '\n', ' ');
+    message.replyTo.textSnippet = snippet;
 }
 
 UltraIMResult DirectProvider::MarkRead(const std::string& conversationId, const std::string& upToMessageId) {
@@ -2650,6 +3065,8 @@ void DirectProvider::PostToRelay(const std::vector<OutboxEntry>& copies) {
         if (!r.Ok() && retry) return;      // stays in the outbox for the next pass
         for (const auto& copy : sealed) store_.RemoveOutbox(copy.clientId, copy.recipient);
         if (r.Ok()) sentOverRelay_ += static_cast<int>(sealed.size());
+        if (r.Ok())
+            for (const auto& copy : sealed) NotePartLeft(copy.clientId);
         // One mark per message (a group's copies share the client id; a
         // file's parts have ids of their own, which no message carries).
         std::set<std::string> marked;

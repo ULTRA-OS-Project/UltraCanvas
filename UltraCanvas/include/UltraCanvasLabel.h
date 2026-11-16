@@ -4,6 +4,8 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.18.0 - one string is the identifier, as on every element: UltraCanvasLabel(identifier),
+//                  CreateLabel(identifier). It was the text; ("", text) is a label with text and no name
 // Version: 2.17.0 - a font size or family set by hand (SetFontSize, SetFont) survives ApplyTheme: the
 //                  colours follow the theme, the label keeps its size
 // Version: 2.16.0 - FromTheme sets the body size, a heading the heading size; the SetStyle rule and
@@ -30,7 +32,7 @@
 //                 background, rounded corners (LabelInlineImageFrame)
 // Version: 2.1.0 - an inline image has a fit mode and position (object-fit /
 //                 object-position)
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -251,8 +253,15 @@ namespace UltraCanvas {
         UltraCanvasLabel(const std::string &identifier, const std::string &labelText)
                 : UltraCanvasLabel(identifier, -1, -1, -1, -1, labelText) {}
 
-        explicit UltraCanvasLabel(const std::string &labelText = "")
-                : UltraCanvasLabel("", -1, -1, -1, -1, labelText) {}
+        // One string alone is the IDENTIFIER, as on every element; the text
+        // is empty until SetText. (Until 2.18.0 it was the text, and the
+        // label had no identifier.) A label that has text and needs no name
+        // is ("", text). scripts/check_label_identifiers.py refuses words
+        // written here, and debugOutput names the ones it cannot see.
+        explicit UltraCanvasLabel(const std::string &identifier = "")
+                : UltraCanvasLabel(identifier, -1, -1, -1, -1, "") {
+            WarnIfIdentifierReadsAsText("UltraCanvasLabel", identifier);
+        }
 
         virtual ~UltraCanvasLabel();
 
@@ -484,8 +493,9 @@ namespace UltraCanvas {
         return std::make_shared<UltraCanvasLabel>(identifier, 0, 0, w, h, text);
     }
 
-    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &text) {
-        return std::make_shared<UltraCanvasLabel>("", text);
+    // One string is the identifier, as the constructor's.
+    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &identifier) {
+        return std::make_shared<UltraCanvasLabel>(identifier);
     }
 
     inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &identifier,

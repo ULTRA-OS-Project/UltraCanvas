@@ -8,6 +8,9 @@
 // presence colours, the avatar palette) and a fallback for each, so a theme
 // that does not name them still looks right.
 //
+// Version: 0.2.3 - PaintNote: a sound file's mark
+// Version: 0.2.2 - Look::readTicks: a message read in a colour of its own (blue), not the bubble's green
+// Version: 0.2.1 - PaintPauseMark: a voice message that is playing
 // Version: 0.2.0 - the look follows a change of the theme while ChatCube runs: L() read again by
 //                  RestyleForLook, OnLook for every colour set by hand, SetInk for a label's role;
 //                  SetLookChoice / DarkLook: light or dark decided again at every change
@@ -53,6 +56,7 @@ struct Look {
     UltraCanvas::Color bubbleOther, bubbleOtherLine;     // theirs (ink: the theme's)
     UltraCanvas::Color presenceOnline, presenceAway, presenceBusy, presenceOffline;
     UltraCanvas::Color callBar;                          // the bar of a call
+    UltraCanvas::Color readTicks;                        // ✓✓ of a message read: not the bubble's green
     std::array<UltraCanvas::Color, 8> avatars;           // one per person, by their id
 };
 Look LookOf(const UltraCanvas::UltraCanvasTheme& theme);
@@ -111,6 +115,10 @@ bool PaintPicture(UltraCanvas::IRenderContext* ctx, const std::string& path, con
                   double radius);
 // A play mark - a white triangle on a dark disc - over a video's preview picture.
 void PaintPlayMark(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& centre, double radius);
+// A note (♪) in `area`, drawn: a sound file's mark (no font needed).
+void PaintNote(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Rect2Dd& area, const UltraCanvas::Color& color);
+// The same circle with two bars: what is playing, to pause it.
+void PaintPauseMark(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& centre, double radius);
 // A message's ticks - one (sent) or two (delivered, read) check marks - as
 // strokes, right-aligned in `area` and centred on its height. Drawn, not
 // typed: U+2713 is in no font a Windows installation is sure to have, and

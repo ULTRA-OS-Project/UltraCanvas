@@ -1,6 +1,7 @@
 // Plugins/UltraIM/direct/DirectStore.h
 // ChatCube Direct - the device's own record: contacts and their keys,
 // conversations, message history and the outbox (SQLite via UltraDatabase)
+// Version: 0.1.4 - EditText: a message changed by its sender, marked edited (schema 5)
 // Version: 0.1.3 - RemoveMessage, IsReadReported; what was deleted while still on its way (NoteDeleted, IsDeleted)
 // Version: 0.1.2 - Search; the messages with a link in them noted by id (the links table)
 // Version: 0.1.1 - a message's attachment kept with it; the parts of a file on its way in
@@ -66,6 +67,9 @@ public:
     bool UpdateStatus(const std::string& conversationId, const std::string& clientId,
                       UltraIMDeliveryStatus status);
     bool FindMessage(const std::string& conversationId, const std::string& clientId, UltraIMMessage& out);
+    // A message's new text, changed by its sender (marked edited); its
+    // links and, when it is the last, the conversation's line follow.
+    bool EditText(const std::string& conversationId, const std::string& clientId, const std::string& text);
     // A message's attachment as it stands (the file arrived, say); the
     // message is found by the attachment's remoteUrl (the file's id).
     bool UpdateAttachment(const std::string& conversationId, const std::string& clientId,

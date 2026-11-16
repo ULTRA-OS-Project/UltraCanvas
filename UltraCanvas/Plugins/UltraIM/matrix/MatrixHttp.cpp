@@ -1,5 +1,6 @@
 // Plugins/UltraIM/matrix/MatrixHttp.cpp
 // Matrix provider - the homeserver's client-server API over UltraNet HTTP
+// Version: 0.1.2 - progress callbacks for Download and Upload
 // Version: 0.1.1 - Download and Upload
 // Version: 0.1.0
 // Last Modified: 2026-10-29
@@ -147,13 +148,14 @@ void MatrixHttp::Request(const std::string& method, const std::string& path, con
              [onDone](const UltraNetResponse& raw) { if (onDone) onDone(ToResponse(raw)); });
 }
 
-void MatrixHttp::Download(const std::string& path, int timeoutMs, MatrixBytesCallback onDone) {
+void MatrixHttp::Download(const std::string& path, int timeoutMs, MatrixBytesCallback onDone,
+                          ProgressCallback onProgress) {
     Transfer("GET", path, std::string(), {}, false, int64_t(1) << 30, timeoutMs,
-             [onDone](const UltraNetResponse& raw) { if (onDone) onDone(ToBytes(raw)); });
+             [onDone](const UltraNetResponse& raw) { if (onDone) onDone(ToBytes(raw)); }, std::move(onProgress));
 }
 
 MatrixResponse MatrixHttp::Upload(const std::string& path, const std::string& contentType,
-                                  const std::vector<uint8_t>& bytes, int timeoutMs) {
+                                  const std::vector<uint8_t>& bytes, int timeoutMs, ProgressCallback onProgress) {
     struct Wait {
         std::mutex mutex;
         std::condition_variable cv;
@@ -166,7 +168,7 @@ MatrixResponse MatrixHttp::Upload(const std::string& path, const std::string& co
         wait->response = ToResponse(raw);
         wait->done = true;
         wait->cv.notify_all();
-    });
+    }, std::move(onProgress));
     std::unique_lock<std::mutex> lock(wait->mutex);
     while (!wait->done) {
         wait->cv.wait_for(lock, std::chrono::milliseconds(200));
@@ -182,7 +184,7 @@ MatrixResponse MatrixHttp::Upload(const std::string& path, const std::string& co
 
 void MatrixHttp::Transfer(const std::string& method, const std::string& path, const std::string& contentType,
                           const std::vector<uint8_t>& body, bool jsonAnswer, int64_t maxBytes, int timeoutMs,
-                          std::function<void(const UltraNetResponse&)> onDone) {
+                          std::function<void(const UltraNetResponse&)> onDone, ProgressCallback onProgress) {
     UltraNetHttpRequest request;
     {
         std::lock_guard<std::mutex> lock(shared_->mutex);
@@ -197,6 +199,10 @@ void MatrixHttp::Transfer(const std::string& method, const std::string& path, co
     if (!body.empty()) {
         request.body = body;
         if (!contentType.empty()) request.headers.Set("Content-Type", contentType);
+    }
+    if (onProgress) {
+        if (method == "GET") request.onDownloadProgress = onProgress;
+        else request.onUploadProgress = onProgress;
     }
 
     std::weak_ptr<Shared> weak = shared_;

@@ -2,10 +2,11 @@
 // Interactive checkbox component with multiple states and customizable appearance.
 // Visual variants only (Standard/Rounded/Material). Radio and Switch are now
 // separate classes — see UltraCanvasRadio.h and UltraCanvasSwitch.h.
+// Version: 2.4.0 - one string is the identifier, as on every element (it was the label's text)
 // Version: 2.3.0 - CheckboxVisualStyle::FromTheme, ApplyTheme: the checkbox follows the theme;
 //                  a SetVisualStyle by hand stops the following
 // Version: 2.2.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -91,8 +92,13 @@ namespace UltraCanvas {
         UltraCanvasCheckbox(const std::string& identifier, const std::string& labelText)
             : UltraCanvasCheckbox(identifier, -1, -1, -1, -1, labelText) {}
 
-        explicit UltraCanvasCheckbox(const std::string& labelText = "")
-            : UltraCanvasCheckbox("", -1, -1, -1, -1, labelText) {}
+        // One string alone is the IDENTIFIER, as on every element; the text
+        // is empty until SetText. (It was the text until 2.4.0.) The text goes
+        // second: ("WrapLines", Tr("Wrap long lines")), or ("", text).
+        explicit UltraCanvasCheckbox(const std::string& identifier = "")
+            : UltraCanvasCheckbox(identifier, -1, -1, -1, -1, "") {
+            WarnIfIdentifierReadsAsText("UltraCanvasCheckbox", identifier);
+        }
 
         ~UltraCanvasCheckbox() override = default;
 

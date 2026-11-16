@@ -1,5 +1,9 @@
 # The ChatCube relay (Server/ChatCubeRelay): its tests, on every change
-# to it. Pure Python, no system packages.
+# to it. Pure Python, no system packages. On main - and when started by hand
+# (Run workflow) - the tested relay is then put on the live server
+# (deploy/update.sh: database backed up, code installed, restarted, rolled
+# back when it does not answer with its new version). The deploy job does
+# nothing until the server's secrets are set (README: Deploying from CI).
 name: ChatCube relay
 
 on:
@@ -8,6 +12,7 @@ on:
     paths: ['Server/ChatCubeRelay/**', '.github/workflows/chatcube-relay.yml']
   pull_request:
     paths: ['Server/ChatCubeRelay/**', '.github/workflows/chatcube-relay.yml']
+  workflow_dispatch:
 
 jobs:
   test:
@@ -22,3 +27,52 @@ jobs:
           python-version: '3.12'
       - run: pip install -e '.[test]'
       - run: python -m pytest -q
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-22.04
+    # An environment of its own: a required reviewer can be set on it in
+    # Settings > Environments, so a deploy waits for a click.
+    environment: chatcube-relay
+    concurrency:
+      group: chatcube-relay-deploy
+      cancel-in-progress: false
+    env:
+      SSH_KEY: ${{ secrets.CHATCUBE_RELAY_SSH_KEY }}
+      SSH_HOST: ${{ secrets.CHATCUBE_RELAY_SSH_HOST }}
+      SSH_USER: ${{ secrets.CHATCUBE_RELAY_SSH_USER }}
+      SSH_KNOWN_HOSTS: ${{ secrets.CHATCUBE_RELAY_SSH_KNOWN_HOSTS }}
+      RELAY_URL: ${{ vars.CHATCUBE_RELAY_URL || 'https://relay-chatcube.ultraos.eu' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Is the server set up?
+        id: ready
+        run: |
+          if [ -n "$SSH_KEY" ] && [ -n "$SSH_HOST" ] && [ -n "$SSH_USER" ] && [ -n "$SSH_KNOWN_HOSTS" ]; then
+            echo "ok=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::The ChatCube relay was not deployed: set CHATCUBE_RELAY_SSH_KEY, _HOST, _USER and _KNOWN_HOSTS (Server/ChatCubeRelay/README.md, Deploying from CI)."
+          fi
+      - name: Copy the relay to the server
+        if: steps.ready.outputs.ok == '1'
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/relay_deploy && chmod 600 ~/.ssh/relay_deploy
+          # The server's key pinned: never trust on first use.
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          tar -C Server/ChatCubeRelay --exclude=__pycache__ -czf - . |
+            ssh -i ~/.ssh/relay_deploy -o BatchMode=yes "$SSH_USER@$SSH_HOST" \
+              'rm -rf ~/chatcube-relay-src && mkdir -p ~/chatcube-relay-src && tar -C ~/chatcube-relay-src -xzf -'
+      - name: Update the running relay
+        if: steps.ready.outputs.ok == '1'
+        run: |
+          ssh -i ~/.ssh/relay_deploy -o BatchMode=yes "$SSH_USER@$SSH_HOST" \
+            'sudo -n /usr/local/sbin/chatcube-relay-update "$HOME/chatcube-relay-src"'
+      - name: Ask the public address
+        if: steps.ready.outputs.ok == '1'
+        run: |
+          want=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Server/ChatCubeRelay/pyproject.toml | head -1)
+          got=$(curl -fsS --retry 5 --retry-delay 3 "$RELAY_URL/healthz" | sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p')
+          echo "$RELAY_URL answers $got (this commit: $want)"
+          [ "$got" = "$want" ]

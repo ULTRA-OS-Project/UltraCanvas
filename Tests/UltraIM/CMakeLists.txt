@@ -69,6 +69,17 @@ if(TARGET UltraIMMatrixCore)
     set_tests_properties(MatrixProviderTests PROPERTIES TIMEOUT 300)
 endif()
 
+# Mastodon: against mastodon_fake_server.py, a small Mastodon in memory
+# (standard-library python3); skips without python3.
+if(TARGET UltraIMMastodonCore)
+    add_executable(MastodonProviderTests MastodonProviderTests.cpp)
+    target_compile_features(MastodonProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(MastodonProviderTests PRIVATE UltraIMMastodonCore)
+    target_compile_definitions(MastodonProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME MastodonProviderTests COMMAND MastodonProviderTests)
+    set_tests_properties(MastodonProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
 # Telegram: the provider against FakeTdJson (a libtdjson stand-in holding a
 # small Telegram in memory, built here), and its requests against the real
 # TDLib - the one the configure step fetched into Plugins/UltraIM/tdlib, or

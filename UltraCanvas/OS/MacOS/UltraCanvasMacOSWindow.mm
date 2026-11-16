@@ -1,5 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
+// Version: 2.10.0 - the destructor releases the native half, so a window never closed
+//                   does not leave its NSWindow and delegate behind
 // Version: 2.9.0 - a dialog is a child window of its parent's NSWindow while both are shown
 //                  (SetTransientParent, Show, Hide, DestroyNative): kept above its own
 //                  window, and no longer above every application's at the floating level
@@ -373,6 +375,15 @@ namespace UltraCanvas {
             , contentView(nullptr)
             , windowDelegate(nullptr) {
         debugOutput << "UltraCanvas macOS: Window constructor started" << std::endl;
+    }
+
+    UltraCanvasMacOSWindow::~UltraCanvasMacOSWindow() {
+        // The native half, released however the window dies. Without this,
+        // a window destroyed without Close() first - the application's
+        // DestroyWindows() at shutdown, the last shared_ptr going away -
+        // left its OS window and surfaces behind, because
+        // ~UltraCanvasWindowBase cannot reach a virtual override.
+        if (_created) DestroyNative();
     }
 
 

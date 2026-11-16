@@ -1,5 +1,6 @@
 // OS/MacOS/UltraCanvasMacOSWindow.h
 // macOS window implementation with Cocoa/Cairo support
+// Version: 2.7.0 - a destructor, which releases the native half
 // Version: 2.6.0 - SetTransientParent: a dialog is a child window of its parent's NSWindow
 //   while both are shown (AttachToParentWindow / DetachFromParentWindow)
 // Version: 2.5.0 - GetWindowPosition and GetContentScreenOrigin: top-left screen coordinates
@@ -106,6 +107,13 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasMacOSWindow();
+        // A window destroyed without Close() first - the application's
+        // DestroyWindows() at shutdown, or simply the last shared_ptr going
+        // away - used to skip the native teardown entirely:
+        // ~UltraCanvasWindowBase cannot call a virtual override, so nothing
+        // released the OS window, its drawing surface or its input context.
+        // Idempotent; a window already closed has nothing left to free.
+        ~UltraCanvasMacOSWindow() override;
 
         // ===== INHERITED FROM BASE WINDOW =====
         void Show() override;

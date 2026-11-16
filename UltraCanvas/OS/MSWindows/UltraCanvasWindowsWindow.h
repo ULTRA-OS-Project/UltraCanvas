@@ -1,5 +1,6 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.h
 // Windows platform window implementation for UltraCanvas Framework
+// Version: 1.4.0 - a destructor, which releases the native half
 // Version: 1.3.0 - SetTransientParent: the parent becomes the owner window
 // Version: 1.2.0 - SetNativeWindowShape
 // Version: 1.1.0 - Per-Monitor HiDPI (deviceScale) support
@@ -73,6 +74,13 @@ namespace UltraCanvas {
 
     public:
         UltraCanvasWindowsWindow();
+        // A window destroyed without Close() first - the application's
+        // DestroyWindows() at shutdown, or simply the last shared_ptr going
+        // away - used to skip the native teardown entirely:
+        // ~UltraCanvasWindowBase cannot call a virtual override, so nothing
+        // released the OS window, its drawing surface or its input context.
+        // Idempotent; a window already closed has nothing left to free.
+        ~UltraCanvasWindowsWindow() override;
 
         // ===== INHERITED FROM BASE WINDOW =====
         void Show() override;
