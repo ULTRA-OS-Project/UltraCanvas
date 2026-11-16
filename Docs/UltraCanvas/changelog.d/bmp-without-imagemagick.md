@@ -19,5 +19,5 @@
   picture through `magickload` on a thread of its own; a load meanwhile
   waits only for what is left, and `ShutdownImageSubsysterm` joins the
   thread. `UltraCanvasApplication` calls it after the image subsystem
-  starts; command-line tools and tests, which call it not, pay nothing.
+  starts; command-line tools and tests do not call it and pay nothing.
   `UC_NO_MAGICK_WARMUP=1` turns it off.
