@@ -13,6 +13,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasFontCoverage.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasClipboard.h"
@@ -2313,6 +2314,22 @@ int main() {
         TEST("A family that is not installed is reported",
              report.missingFamilies.size() == 1 && report.missingFamilies[0] == "No Such Family 12345");
         TEST("...and no script, the text has fonts", report.missingScripts.empty());
+
+        // A family an installed font stands in for by name is not missing: a
+        // letter written on Windows names Helvetica, which is Arial there.
+        if (!FontFamilySubstitute("Helvetica").empty()) {
+            auto aliased = std::make_shared<UCRichDocument>(*document);
+            aliased->blocks[0].runs[0].fontFamily = "helvetica";
+            fontEdit->SetDocument(aliased);
+            window->UpdateAndRender();
+            const UltraCanvasRichTextEdit::FontReport& both = fontEdit->GetFontReport();
+            TEST("A family with an installed stand-in is not reported",
+                 both.missingFamilies.size() == 1 && both.missingFamilies[0] == "No Such Family 12345");
+            fontEdit->SetDocument(document);
+            window->UpdateAndRender();
+        } else {
+            std::cerr << "SKIP: Helvetica is installed, or nothing stands in for it here" << std::endl;
+        }
         TEST("The notice is shown", fontEdit->IsFontNoticeVisible());
 
         int reported = 0;

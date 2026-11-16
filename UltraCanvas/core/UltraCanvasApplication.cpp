@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.25.0 - the font aliases carry the families with stand-ins (GetFontFamilySubstitutes):
+//                  Helvetica is drawn in Arial on Windows, as Windows maps it itself
 // Version: 1.24.0 - the font aliases append "sans-serif" to a request without a generic family
 //                  (fontconfig's 49-sansserif.conf), so an unknown family falls to the sans font
 // Version: 1.23.0 - a key pressed with the focus on a popup's own window goes to the window the popup belongs
@@ -74,6 +76,7 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasEmojiSettings.h"
+#include "UltraCanvasFontCoverage.h"     // GetFontFamilySubstitutes
 #include "UltraCanvasSettingsFolder.h"
 #include "UltraCanvasSystemLanguage.h"
 #include "UltraLocalisation/UltraLocalisation.h"
@@ -477,6 +480,23 @@ namespace UltraCanvas {
                     conf << "      <family>" << alias.preferred[i] << "</family>\n";
                 }
                 conf << "    </prefer>\n"
+                     << "  </alias>\n";
+            }
+            // A family with stand-ins of other names (GetFontFamilySubstitutes:
+            // Helvetica in Arial, as Windows maps it for every program): a
+            // document made on this very computer names them, and without
+            // these they fell to the interface font. binding "same" keeps the
+            // stand-in as strong as the name asked for, as fontconfig's own
+            // 30-metric-aliases.conf does; a family that is installed still
+            // wins, being first in the pattern.
+            for (const FontFamilySubstitutes& known : GetFontFamilySubstitutes()) {
+                conf << "  <alias binding=\"same\">\n"
+                     << "    <family>" << known.family << "</family>\n"
+                     << "    <accept>\n";
+                for (const char* substitute : known.substitutes) {
+                    conf << "      <family>" << substitute << "</family>\n";
+                }
+                conf << "    </accept>\n"
                      << "  </alias>\n";
             }
         }

@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.9.2 - the font report leaves out a family an installed font stands in for by name
+//                  (FontFamilySubstitute: Helvetica drawn in Arial)
 // Version: 1.9.1 - a picture anchored in a text frame stays in the line while the frame's words
 //                  are edited (it vanished: no pass places a float there), and a frame anchored
 //                  in it keeps its words before their paragraph (they were hidden) - those in its
@@ -6382,7 +6384,10 @@ void UltraCanvasRichTextEdit::RefreshFontReport() {
             std::vector<std::string> installed = GetInstalledFontFamilies();
             for (std::string& family : installed) family = LowerAscii(family);
             for (const std::string& family : named) {
-                if (std::find(installed.begin(), installed.end(), LowerAscii(family)) == installed.end())
+                // Not installed, and nothing installed stands in for it by
+                // name (Helvetica is Arial on Windows, as in every program).
+                if (std::find(installed.begin(), installed.end(), LowerAscii(family)) == installed.end()
+                    && FontFamilySubstitute(family).empty())
                     report.missingFamilies.push_back(family);
             }
         }
