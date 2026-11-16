@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.29 - Charts > Ternary Chart: status Fully Implemented (Phases 1-3 done)
 // Version: 1.0.28 - Charts > Spiral Chart (UltraCanvasSpiralChart)
 // Version: 1.0.27 - Charts > Ridgeline Chart: the Sleep variant (Phase 2)
 // Version: 1.0.26 - Charts > Ridgeline Chart (UltraCanvasRidgelineChart)
@@ -1473,7 +1474,7 @@ namespace UltraCanvas {
         chartBuilder.AddItem("ternarychart", Tr("Ternary Chart"),
                              Tr("Three-part compositions in a triangle: vote shares, soil texture, "
                              "alloys - every point's three shares add up to 100%"),
-                             ImplementationStatus::PartiallyImplemented,
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateTernaryChartExamples(); },
                              "DemoApp/UltraCanvasTernaryChartExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasTernaryChart.md")
