@@ -259,7 +259,13 @@ private:
                                           uint16_t vendorId,
                                           uint16_t productId);
     
-    void OnCommissioningComplete(uint64_t nodeId, bool success, const std::string& error);
+    // Device type ids per endpoint, from each endpoint's Descriptor cluster.
+    using EndpointDeviceTypes = std::map<uint16_t, std::vector<uint32_t>>;
+
+    // A commissioning ended. On success `deviceTypes` is what the node said
+    // it is (empty when it could not be asked: the node is then Unknown).
+    void OnCommissioningComplete(uint64_t nodeId, bool success, const std::string& error,
+                                 const EndpointDeviceTypes& deviceTypes = {});
     void OnDeviceConnected(uint64_t nodeId);
     void OnDeviceDisconnected(uint64_t nodeId);
     void OnAttributeChanged(uint64_t nodeId, uint16_t endpoint,

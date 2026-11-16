@@ -407,32 +407,45 @@ configure time naming what is missing.
 > **Building connectedhomeip for the Matter backend.** The SDK's own
 > `bootstrap.sh` fetches its toolchain from CIPD (chrome-infra-packages),
 > and pigweed from googlesource; neither is reachable from every network,
-> so this is the route that worked without them (checkout of 2026-09-09,
-> Ubuntu 24.04):
+> so this is the route that worked without them (checkouts of 2026-09-09
+> and 2026-11-16, Ubuntu 24.04):
 >
 > ```
 > sudo apt install generate-ninja ninja-build              # gn, ninja
 > git clone --depth 1 https://github.com/project-chip/connectedhomeip.git chip
 > cd chip
-> # pigweed lives on googlesource; the GitHub mirror carries the same commits
-> git config submodule.third_party/pigweed/repo.url https://github.com/google/pigweed.git
-> git submodule update --init --depth 1 \
->     third_party/pigweed/repo third_party/nlassert/repo third_party/nlio/repo \
->     third_party/mbedtls/repo third_party/jsoncpp/repo third_party/perfetto/repo \
->     third_party/inipp/repo examples/common/QRCode/repo third_party/uriparser/repo \
->     third_party/editline/repo third_party/libwebsockets/repo
+> SUBS="third_party/pigweed/repo third_party/nlassert/repo third_party/nlio/repo \
+>       third_party/mbedtls/repo third_party/jsoncpp/repo third_party/perfetto/repo \
+>       third_party/inipp/repo examples/common/QRCode/repo third_party/uriparser/repo \
+>       third_party/editline/repo third_party/libwebsockets/repo"
+> git submodule init $SUBS
+> # pigweed lives on googlesource; the GitHub mirror carries the same commits.
+> # The key is the submodule's NAME ("pigweed", from .gitmodules), not its
+> # path, and it must be set after init and before the first update.
+> git config submodule.pigweed.url https://github.com/google/pigweed.git
+> git submodule update --depth 1 $SUBS
 > python3 -m venv ../chipvenv && . ../chipvenv/bin/activate
-> pip install -r scripts/setup/requirements.build.txt -c scripts/setup/constraints.txt requests
+> pip install -r scripts/setup/requirements.build.txt requests
 > # bootstrap would have written this; for a gcc host build it only has to exist
 > touch build_overrides/pigweed_environment.gni
-> # the ZAP code generator, from its GitHub release (the tag without a suffix)
-> python3 scripts/tools/zap/zap_download.py --zap RELEASE --zap-version v2026.08.24 --extract-root ../zap
-> export ZAP_INSTALL_PATH=../zap/zap-v2026.08.24 PW_ENVSETUP_NO_CIPD=1
+> # the ZAP code generator, from its GitHub release: the version the
+> # checkout pins, without the CIPD tag's ".N" suffix
+> ZAP=$(cat scripts/setup/zap.version)                      # e.g. v2026.09.09
+> python3 scripts/tools/zap/zap_download.py --zap RELEASE --zap-version $ZAP --extract-root ../zap
+> export ZAP_INSTALL_PATH=$PWD/../zap/zap-$ZAP PW_ENVSETUP_NO_CIPD=1
 > gn gen --root=examples/chip-tool out/host --args='chip_crypto="mbedtls" is_debug=false chip_build_tests=false'
 > ninja -C out/host chip-tool
 > # collect what chip-tool links into one archive + a link list
 > /path/to/UltraCanvas/SmartHome/scripts/package-chip.sh . out/host ../chip-package
 > ```
+>
+> Where this differs from the bootstrap: `scripts/setup/constraints.txt` is
+> gone from recent checkouts (install the requirements without it), and
+> Ubuntu 24.04's `gn` predates the `path_exists()` builtin that pigweed's
+> `pw_build/ignore_group.gni` calls in one sanity assert ("Unknown
+> function"). Deleting that one `assert(path_exists(source), ...)` line in
+> the local checkout is enough; `src/crypto/BUILD.gn` calls it too, but
+> only on the OpenSSL path, which an mbedTLS build never evaluates.
 >
 > If `ninja` stops on a missing `third_party/.../repo/...` source, that
 > submodule is one this list does not name for your checkout; add it to the
@@ -452,7 +465,9 @@ configure time naming what is missing.
 > objects were, and that configuration shapes the SDK's structures.
 > `SmartHome/tests/MatterLinkTest.cpp` checks the link is real. At run time
 > the controller needs a writable storage directory (its fabric and
-> credentials persist there), mDNS on the network, and — for Thread devices —
+> credentials persist there), IPv6 in the kernel (the transport and mDNS
+> open IPv6 sockets; without it start-up fails with "Address family not
+> supported by protocol"), mDNS on the network, and — for Thread devices —
 > a Thread border router on the same LAN; Bluetooth commissioning goes
 > through BlueZ over D-Bus, which is why `gio`/`glib` appear on the link line.
 

@@ -247,17 +247,45 @@ this way and leave the slots to whoever else hosts them.
 `tests/ListenerTest.cpp` covers it, with removal raced against a
 notifying thread.
 
-### Known gaps
+### What a Matter node is (2026-11-16)
 
-A commissioned Matter node's **category is Unknown**. What a node is lives
-in the Descriptor cluster's DeviceTypeList (a list of structures, which the
-wrapper's `TlvToString` names but does not expand), and nothing reads it
-after commissioning. `OnCommissioningComplete` used to fill the gap by
-calling every node an `OnOffLight`, so a lock, a vacuum or a washer showed
-up with a light's controls; it now leaves `DeviceTypes` empty and
-`DetermineDeviceCategory` answers Unknown. Reading DeviceTypeList on each
-endpoint in `PartsList` is the fix, and has to run off the SDK thread that
-reports commissioning, since the wrapper's reads wait on that thread.
+A commissioned node is asked what it is before anyone hears it joined.
+`OnCommissioningComplete` in the SDK wrapper starts one wildcard read of
+every endpoint's Descriptor DeviceTypeList on the session commissioning
+left open, and the node joins with the device types it reported, endpoint
+by endpoint. Until then it was called an `OnOffLight` whatever it was, so a
+lock or a vacuum showed up with a light's controls. If the read fails the
+node joins as Unknown, never as a guess.
+
+- `protocols/Matter/MatterDeviceTypes.h` (no SDK) holds the device type
+  ids, checked against the SDK's copy of the specification
+  (`data_model/1.6/device_types/*.xml`), and turns a node's types into a
+  category. It knows the appliances of Matter 1.2 and 1.3 - robotic vacuum,
+  laundry washer and dryer, dishwasher, refrigerator, oven, cooktop and the
+  rest are `Appliance`; a room air conditioner too, since the Thermostat
+  controls would set the heating setpoint - besides cameras, air purifiers,
+  leak and air-quality sensors and bridges (`Gateway`). A node that is
+  several things takes the type that says most: a bridge, then an
+  appliance, then the other actuators, a sensor last.
+  `tests/MatterDeviceTypeTest.cpp` (31 checks, every build).
+- `protocols/Matter/MatterDescriptorDecode.h` (SDK) decodes one report of
+  the list, whole or in the chunked form a long list arrives in.
+  `tests/MatterDescriptorDecodeTest.cpp` feeds it TLV written by the SDK's
+  own encoder (11 checks, with the Matter backend).
+- `SmartHomeMatterCommission <storage dir> <setup code>`
+  (`examples/MatterCommission.cpp`, built with the Matter backend)
+  commissions one device and prints the category, endpoints and device
+  types it joined with. connectedhomeip's Linux example devices make a
+  bench with no hardware: `chip-rvc-app` is a robot vacuum (setup code
+  34970112332).
+
+**The read itself has not run against a device.** It compiles and links
+against connectedhomeip (checkout of 2026-11-16), and the decoding is
+tested; the over-the-air part was to be run against `chip-rvc-app`, but the
+machine it was built on has no IPv6 in its kernel and the Matter stack
+cannot open its transport there ("Address family not supported by
+protocol"). The next machine with IPv6 runs the commission tool against
+`chip-rvc-app` and expects `category: Appliance` with device type 0x0074.
 
 ### Known latent bug
 
@@ -604,8 +632,9 @@ answering from inside the library.
 **None of it has met a Matter device.** Commissioning, commands, reads and
 subscriptions are written against the SDK's API as chip-tool uses it, and
 compile; whether the first `PairDevice` with a real setup code succeeds is
-the next thing to find out, on a machine with mDNS and a device in pairing
-mode.
+the next thing to find out, on a machine with IPv6, mDNS and a device in
+pairing mode - `SmartHomeMatterCommission` is the tool for it (see *What a
+Matter node is*).
 
 **Crypto backend: mbedTLS** (decided 2026-09-09). Matter's device attestation
 and OpenThread's commissioner both need X.509 and ECDSA on P-256. Neither asks

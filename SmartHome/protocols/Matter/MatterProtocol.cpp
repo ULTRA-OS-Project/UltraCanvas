@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "MatterProtocol.h"
+#include "MatterDeviceTypes.h"
 #include "UltraCanvasTextUtils.h"   // ParseFloatClassic - locale-independent, non-throwing
 #include <charconv>
 #include <chrono>
@@ -53,34 +54,11 @@
 #include <lib/support/CHIPMem.h>
 #include <lib/core/ErrorStr.h>
 #include <lib/support/TestGroupData.h>
+#include "MatterDescriptorDecode.h"
 #endif // ULTRACANVAS_WITH_MATTER
 
 namespace UltraCanvas {
 namespace SmartHome {
-
-// ===== MATTER DEVICE TYPE IDS =====
-namespace MatterDeviceTypes {
-    constexpr uint32_t OnOffLight = 0x0100;
-    constexpr uint32_t DimmableLight = 0x0101;
-    constexpr uint32_t ColorTemperatureLight = 0x010C;
-    constexpr uint32_t ExtendedColorLight = 0x010D;
-    constexpr uint32_t OnOffPlug = 0x010A;
-    constexpr uint32_t DimmablePlug = 0x010B;
-    constexpr uint32_t OnOffSwitch = 0x0103;
-    constexpr uint32_t DimmerSwitch = 0x0104;
-    constexpr uint32_t ColorDimmerSwitch = 0x0105;
-    constexpr uint32_t Thermostat = 0x0301;
-    constexpr uint32_t DoorLock = 0x000A;
-    constexpr uint32_t WindowCovering = 0x0202;
-    constexpr uint32_t Fan = 0x002B;
-    constexpr uint32_t TemperatureSensor = 0x0302;
-    constexpr uint32_t HumiditySensor = 0x0307;
-    constexpr uint32_t OccupancySensor = 0x0107;
-    constexpr uint32_t ContactSensor = 0x0015;
-    constexpr uint32_t LightSensor = 0x0106;
-    constexpr uint32_t SmokeDetector = 0x0076;
-    constexpr uint32_t Speaker = 0x0022;
-}
 
 // ===== MATTER CLUSTER IDS =====
 namespace MatterClusters {
@@ -392,6 +370,59 @@ public:
         }
     }
 
+    // ----- what a node is -----
+    //
+    // One wildcard read - every endpoint's Descriptor DeviceTypeList - gives
+    // the device types of the whole node, whole lists and chunked ones alike
+    // (MatterDescriptorDecode.h). An endpoint that answers with an error is
+    // left out rather than failing the read.
+
+    class DeviceTypeReader : public chip::app::ReadClient::Callback {
+    public:
+        std::function<void(bool, MatterProtocol::EndpointDeviceTypes, std::string)> done;
+        std::unique_ptr<chip::app::ReadClient> client;
+        MatterProtocol::EndpointDeviceTypes types;
+        CHIP_ERROR error = CHIP_NO_ERROR;
+
+        void OnAttributeData(const chip::app::ConcreteDataAttributePath& path, chip::TLV::TLVReader* data,
+                             const chip::app::StatusIB& status) override {
+            if (!status.IsSuccess() || !data) return;
+            ApplyDeviceTypeListReport(path, *data, types);   // MatterDescriptorDecode.h
+        }
+        void OnError(CHIP_ERROR e) override { error = e; }
+        void OnDone(chip::app::ReadClient*) override {
+            const bool ok = error == CHIP_NO_ERROR && !types.empty();
+            done(ok, std::move(types), error == CHIP_NO_ERROR ? std::string() : ErrorText(error));
+            delete this;
+        }
+    };
+
+    // Must be called on the SDK thread; `done` runs there, exactly once.
+    void StartReadDeviceTypes(chip::NodeId nodeId,
+                              std::function<void(bool, MatterProtocol::EndpointDeviceTypes, std::string)> done) {
+        auto shared = std::make_shared<decltype(done)>(std::move(done));
+        WithSession(nodeId,
+            [shared](chip::Messaging::ExchangeManager& em, const chip::SessionHandle& session) {
+                auto* reader = new DeviceTypeReader();
+                reader->done = *shared;
+                reader->client = std::make_unique<chip::app::ReadClient>(
+                    chip::app::InteractionModelEngine::GetInstance(), &em, *reader,
+                    chip::app::ReadClient::InteractionType::Read);
+                chip::app::AttributePathParams path(
+                    chip::app::Clusters::Descriptor::Id,
+                    chip::app::Clusters::Descriptor::Attributes::DeviceTypeList::Id);   // every endpoint
+                chip::app::ReadPrepareParams params(session);
+                params.mpAttributePathParamsList = &path;
+                params.mAttributePathParamsListSize = 1;
+                const CHIP_ERROR err = reader->client->SendRequest(params);   // copies the path
+                if (err != CHIP_NO_ERROR) {
+                    (*shared)(false, {}, ErrorText(err));
+                    delete reader;
+                }
+            },
+            [shared](CHIP_ERROR error) { (*shared)(false, {}, ErrorText(error)); });
+    }
+
     // ----- write -----
 
     class AttributeWriter : public chip::app::WriteClient::Callback {
@@ -674,10 +705,23 @@ public:
 
     void OnCommissioningComplete(chip::NodeId nodeId, CHIP_ERROR error) override {
         commissioningNodeId = 0;
-        if (protocol) {
-            protocol->OnCommissioningComplete(nodeId, error == CHIP_NO_ERROR,
-                                              error == CHIP_NO_ERROR ? "" : ErrorText(error));
+        if (!protocol) return;
+        if (error != CHIP_NO_ERROR) {
+            protocol->OnCommissioningComplete(nodeId, false, ErrorText(error));
+            return;
         }
+        // Ask the node what it is before anyone hears it joined, so it joins
+        // as a light, a lock or a vacuum, not as an unknown device that
+        // changes shape a moment later.
+        StartReadDeviceTypes(nodeId, [this, nodeId](bool ok, MatterProtocol::EndpointDeviceTypes types,
+                                                    std::string readError) {
+            if (!ok && protocol) {
+                protocol->Log(1, "Matter: could not read what node " + std::to_string(nodeId) +
+                                 " is (" + (readError.empty() ? "no device types" : readError) +
+                                 "); it joins as an unknown device");
+            }
+            if (protocol) protocol->OnCommissioningComplete(nodeId, true, "", types);
+        });
     }
 
     // ----- DeviceDiscoveryDelegate -----
@@ -1348,7 +1392,8 @@ bool MatterProtocol::CommissionWithParams(const MatterCommissioningParams& param
     return false;
 }
 
-void MatterProtocol::OnCommissioningComplete(uint64_t nodeId, bool success, const std::string& error) {
+void MatterProtocol::OnCommissioningComplete(uint64_t nodeId, bool success, const std::string& error,
+                                             const EndpointDeviceTypes& deviceTypes) {
     commissioningInProgress = false;
     
     if (success) {
@@ -1358,10 +1403,14 @@ void MatterProtocol::OnCommissioningComplete(uint64_t nodeId, bool success, cons
         node.NodeId = nodeId;
         node.DeviceId = "matter_" + std::to_string(nodeId);
         node.IsOnline = true;
-        // DeviceTypes stays empty, so the node's category is Unknown: what
-        // it is lives in its Descriptor cluster's DeviceTypeList, which is
-        // not read yet (STATUS.md, "Known gaps"). Guessing a light here made
-        // every Matter node - a lock, a vacuum, a washer - show up as one.
+        // What the node is, endpoint by endpoint, as its Descriptor clusters
+        // reported it (the map keeps endpoint order). When that read failed
+        // the list stays empty and the node is an Unknown device - never a
+        // guess: a guessed light made every lock and vacuum show up as one.
+        for (const auto& [endpoint, types] : deviceTypes) {
+            node.Endpoints.push_back(endpoint);
+            node.DeviceTypes.insert(node.DeviceTypes.end(), types.begin(), types.end());
+        }
         
         {
             std::lock_guard<std::mutex> lock(matterMutex);
@@ -1920,41 +1969,7 @@ SmartHomeDeviceInfo MatterProtocol::NodeToDeviceInfo(const MatterNode& node) con
 
 SmartHomeDeviceCategory MatterProtocol::DetermineDeviceCategory(
     const std::vector<uint32_t>& deviceTypes) const {
-    
-    for (uint32_t type : deviceTypes) {
-        switch (type) {
-            case MatterDeviceTypes::OnOffLight:
-            case MatterDeviceTypes::DimmableLight:
-            case MatterDeviceTypes::ColorTemperatureLight:
-            case MatterDeviceTypes::ExtendedColorLight:
-                return SmartHomeDeviceCategory::Light;
-            case MatterDeviceTypes::OnOffPlug:
-            case MatterDeviceTypes::DimmablePlug:
-                return SmartHomeDeviceCategory::Plug;
-            case MatterDeviceTypes::OnOffSwitch:
-            case MatterDeviceTypes::DimmerSwitch:
-            case MatterDeviceTypes::ColorDimmerSwitch:
-                return SmartHomeDeviceCategory::Switch;
-            case MatterDeviceTypes::Thermostat:
-                return SmartHomeDeviceCategory::Thermostat;
-            case MatterDeviceTypes::DoorLock:
-                return SmartHomeDeviceCategory::Lock;
-            case MatterDeviceTypes::WindowCovering:
-                return SmartHomeDeviceCategory::Blind;
-            case MatterDeviceTypes::Fan:
-                return SmartHomeDeviceCategory::Fan;
-            case MatterDeviceTypes::TemperatureSensor:
-            case MatterDeviceTypes::HumiditySensor:
-            case MatterDeviceTypes::OccupancySensor:
-            case MatterDeviceTypes::ContactSensor:
-            case MatterDeviceTypes::LightSensor:
-            case MatterDeviceTypes::SmokeDetector:
-                return SmartHomeDeviceCategory::Sensor;
-            case MatterDeviceTypes::Speaker:
-                return SmartHomeDeviceCategory::Speaker;
-        }
-    }
-    return SmartHomeDeviceCategory::Unknown;
+    return MatterCategoryForDeviceTypes(deviceTypes);   // MatterDeviceTypes.h
 }
 
 // ===== FACTORY FUNCTION =====

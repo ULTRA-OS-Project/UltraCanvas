@@ -219,8 +219,9 @@ foreach(_sh_proto ${_sh_backends})
         target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_WITH_MATTER=1 CHIP_HAVE_CONFIG_H=1)
         # The include set and project config are chip-tool's, because the
         # packaged objects were compiled with them and the config headers
-        # shape the SDK's structures.
-        target_include_directories(SmartHome PRIVATE
+        # shape the SDK's structures. Kept in a variable: a test that
+        # includes SDK headers must see exactly the same set.
+        set(_sh_chip_include_dirs
             ${CHIP_SOURCE_DIR}/examples/chip-tool/include
             ${CHIP_SOURCE_DIR}/config/standalone
             ${CHIP_SOURCE_DIR}/src
@@ -234,6 +235,7 @@ foreach(_sh_proto ${_sh_backends})
             ${CHIP_SOURCE_DIR}/third_party/inipp/repo/inipp
             ${CHIP_SOURCE_DIR}/third_party/perfetto/repo/sdk
             ${CHIP_BUILD_DIR}/gen/include)
+        target_include_directories(SmartHome PRIVATE ${_sh_chip_include_dirs})
         # The SDK's Linux platform layer speaks D-Bus (BlueZ for Bluetooth
         # commissioning, wpa_supplicant) through GLib, and its headers pull
         # gio in; the same libraries end chip-tool's own link line.
@@ -319,6 +321,16 @@ endforeach()
 
 find_package(Threads REQUIRED)
 target_link_libraries(SmartHome PUBLIC Threads::Threads)
+
+# A command-line tool: commission one Matter device and say what it joined
+# as (examples/MatterCommission.cpp). The test bench for the Matter backend
+# against a real device or one of connectedhomeip's example apps.
+if("Matter" IN_LIST _sh_backends)
+    add_executable(SmartHomeMatterCommission examples/MatterCommission.cpp)
+    target_link_libraries(SmartHomeMatterCommission PRIVATE SmartHome)
+    target_include_directories(SmartHomeMatterCommission PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Matter)
+endif()
 
 if(_sh_backends)
     string(REPLACE ";" ", " _sh_list "${_sh_backends}")
@@ -409,6 +421,14 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
                                ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Zigbee/ezsp)
     add_test(NAME SmartHomeEzspFrame COMMAND SmartHomeEzspFrameTest)
 
+    # What a Matter node is, from its device types: a table, no SDK needed,
+    # so it builds whether or not the Matter backend is on.
+    add_executable(SmartHomeMatterDeviceTypeTest tests/MatterDeviceTypeTest.cpp)
+    target_link_libraries(SmartHomeMatterDeviceTypeTest PRIVATE SmartHome)
+    target_include_directories(SmartHomeMatterDeviceTypeTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Matter)
+    add_test(NAME SmartHomeMatterDeviceType COMMAND SmartHomeMatterDeviceTypeTest)
+
     add_executable(SmartHomeWidgetTest tests/WidgetTest.cpp)
     target_link_libraries(SmartHomeWidgetTest PRIVATE SmartHomeUI)
 
@@ -439,6 +459,16 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
         target_include_directories(SmartHomeMatterLinkTest PRIVATE
                                    ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Matter)
         add_test(NAME SmartHomeMatterLink COMMAND SmartHomeMatterLinkTest)
+
+        # The DeviceTypeList decoder against the SDK's own TLV encoder.
+        add_executable(SmartHomeMatterDescriptorDecodeTest tests/MatterDescriptorDecodeTest.cpp)
+        target_link_libraries(SmartHomeMatterDescriptorDecodeTest PRIVATE SmartHome)
+        target_compile_definitions(SmartHomeMatterDescriptorDecodeTest PRIVATE CHIP_HAVE_CONFIG_H=1)
+        target_include_directories(SmartHomeMatterDescriptorDecodeTest PRIVATE
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Matter
+                                   ${_sh_chip_include_dirs}
+                                   ${CHIP_GLIB_INCLUDE_DIRS})
+        add_test(NAME SmartHomeMatterDescriptorDecode COMMAND SmartHomeMatterDescriptorDecodeTest)
     endif()
 
     add_test(NAME SmartHomeFacade COMMAND SmartHomeFacadeTest)
