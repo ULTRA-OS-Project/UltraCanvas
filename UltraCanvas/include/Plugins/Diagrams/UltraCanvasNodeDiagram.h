@@ -1,8 +1,58 @@
 // include/Plugins/Diagrams/UltraCanvasNodeDiagram.h
 // Interactive Node Diagram component for graph/network visualization & flow editing
-// Version: 2.4.0
-// Last Modified: 2026-11-03
+// Version: 2.5.0
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 2.5.0 (minor - concept maps):
+//  - NEW: Free-placed regions. A NodeDiagramGroup with `freeBounds` set draws
+//         at its own `bounds` rectangle instead of around its members: a
+//         coloured wash the application places itself, which may overlap
+//         other regions and other groups and lie over nodes that are not its
+//         members. AddRegion(id, label, bounds, fill) makes one in a call;
+//         SetGroupBounds() / ClearGroupBounds() switch a group between the
+//         two. The layouts leave a region where it is: it is not moved apart
+//         from other boxes, and no node is pushed out of it.
+//  - NEW: NodeShape::Ellipse - an ellipse filling the node's width and
+//         height (Circle stays a circle of the smaller side). Hit testing,
+//         the shadow, the label fit and the growth for a label follow the
+//         ellipse; like Rectangle it grows in width and height separately.
+//  - NEW: Node annotations. `annotation` is a paragraph drawn beside the
+//         node (annotationPosition: Right, Bottom, Left, Top), wrapped at
+//         annotationMaxWidth, line breaks kept. SetNodeAnnotation(),
+//         GetNodeAnnotationBounds(). FitView and the minimap count it; the
+//         overlap passes do not, so leave room for it when placing nodes.
+//  - NEW: Path highlighting. HighlightPath(nodeIds, color, width) marks the
+//         link between each consecutive pair of nodes (in either direction);
+//         HighlightLink() marks one; ClearHighlights() takes them all back.
+//         A highlighted link draws in its highlight colour and width, above
+//         the other links, and keeps its own lineColor / lineWidth for when
+//         the highlight is cleared.
+//  - NEW: Titles outside the box. GroupLabelPosition gains BottomRight and
+//         ten Outside... values: above or below the box (left, centre,
+//         right), and beside it on the left or right (at its top or bottom).
+//         An outside title takes no room from the box; FitView counts it.
+//  - NEW: Link waypoints. NodeDiagramLink::waypoints are world points the
+//         link passes through in order - a smooth curve through them for
+//         LinkStyle::Bezier, straight runs for the other styles - so an edge
+//         can loop round the outside of the map. SetLinkWaypoints(),
+//         AddLinkWaypoint(), ClearLinkWaypoints().
+//  - CHANGED: A link that ends on a node (not on a handle) stops at the
+//         node's outline, for every shape, instead of running on to its
+//         centre under the node. The arrowhead of a directed link is
+//         therefore visible - it sat under the target node before - and a
+//         link no longer shows through a translucent node. Link labels sit at
+//         the middle of the drawn line, and a click is tested against the
+//         line as drawn (curves and steps included), not against the
+//         straight line between the centres.
+//  - FIXED: NodeShape::Cloud drew three small separate ellipses, offset to
+//         the lower right of the node. It is one cloud filling the node now,
+//         with one outline; clicks and link ends follow its lobes.
+//  - CHANGED: Star and Hexagon are hit by their outline, not by a circle or
+//         an ellipse around them.
+//  - FIXED: FromJson() returned a string as it stood in the file, escapes
+//         and all, so a label with a quote, a backslash or a line break came
+//         back changed. Strings are unescaped now.
 //
 // CHANGELOG 2.4.0 (minor - labels fit their nodes):
 //  - NEW: NodeLabelFit / NodeDiagramLabelFit, SetLabelFit(),
@@ -206,7 +256,8 @@ enum class NodeShape {
     Hexagon,
     Triangle,
     Star,
-    Cloud
+    Cloud,
+    Ellipse      // NEW in 2.5.0: fills the node's width and height
 };
 
 enum class NodeDiagramLayout {
@@ -273,6 +324,14 @@ enum class NodeLabelFit {
     ShrinkThenGrow   // the font shrinks to minFontSize first; what still does not fit grows the node
 };
 
+// NEW in 2.5.0: the side of a node its annotation is drawn on.
+enum class NodeAnnotationPosition {
+    Right,
+    Bottom,
+    Left,
+    Top
+};
+
 // NEW in 2.2.0: where a cluster container draws its title.
 // NOTE: no enumerator may be named "None" - X11's Xlib.h defines None as a
 // macro and this header is reachable from app code that includes X11.
@@ -282,7 +341,21 @@ enum class GroupLabelPosition {
     TopRight,
     BottomLeft,
     BottomCenter,
-    NoLabel
+    NoLabel,
+    // NEW in 2.5.0 (appended, so the earlier values keep their numbers)
+    BottomRight,
+    // Outside the box: above or below it ...
+    OutsideTopLeft,
+    OutsideTopCenter,
+    OutsideTopRight,
+    OutsideBottomLeft,
+    OutsideBottomCenter,
+    OutsideBottomRight,
+    // ... or beside it, level with its top or its bottom edge.
+    OutsideLeftTop,
+    OutsideLeftBottom,
+    OutsideRightTop,
+    OutsideRightBottom
 };
 
 // =============================================================================
@@ -373,6 +446,17 @@ struct NodeDiagramNode {
     double cornerRadius = -1.0;                  // Rectangle / RoundedSquare; < 0 = 15% of the smaller side
     bool shadow = false;
 
+    // NEW in 2.5.0: a paragraph beside the node - what a concept map says
+    // about a concept. Wrapped at annotationMaxWidth; a "\n" starts a new
+    // line. It is not part of the node: it is not hit, and the overlap
+    // passes do not make room for it.
+    std::string annotation;
+    NodeAnnotationPosition annotationPosition = NodeAnnotationPosition::Right;
+    Color annotationColor = Color(80, 80, 80, 255);
+    double annotationFontSize = 0.0;             // 0 = 85% of the diagram's base font size
+    double annotationMaxWidth = 160.0;           // world units; the text wraps here
+    double annotationGap = 6.0;                  // between the node and the text
+
     NodeDiagramNode() = default;
     NodeDiagramNode(const std::string& nodeId, const std::string& nodeLabel)
         : id(nodeId), label(nodeLabel) {}
@@ -401,6 +485,19 @@ struct NodeDiagramLink {
     // NEW in 2.0.0: Behaviour
     bool selectable = true;
     bool deletable = true;
+
+    // NEW in 2.5.0: a highlight over the link's own look. While set the link
+    // draws in highlightColor at highlightWidth, above the plain links;
+    // lineColor / lineWidth are kept for when it is cleared.
+    bool highlighted = false;
+    Color highlightColor = Color(230, 60, 50, 255);
+    double highlightWidth = 4.0;
+
+    // NEW in 2.5.0: world points the link passes through, in order, between
+    // its two ends. LinkStyle::Bezier draws a smooth curve through them, the
+    // other styles straight runs. They are fixed points: moving a node or
+    // running a layout does not move them.
+    std::vector<Point2Dd> waypoints;
     
     NodeDiagramLink() = default;
     NodeDiagramLink(const std::string& linkId, const std::string& source, const std::string& target)
@@ -465,6 +562,14 @@ struct NodeDiagramGroup {
     double labelMargin = 6.0;
 
     bool visible = true;
+
+    // NEW in 2.5.0: a free-placed region. When set the box is `bounds`
+    // (world units) as given - no padding, no room added for the title - and
+    // nodeIds no longer shape it: they still name the group's members for
+    // GetNodeGroupId(), the cohesion force and the legend. A region stays
+    // where it is put: the layouts neither move it nor keep nodes out of it.
+    bool freeBounds = false;
+    Rect2Dd bounds = Rect2Dd(0.0, 0.0, 0.0, 0.0);
 
     NodeDiagramGroup() = default;
     NodeDiagramGroup(const std::string& groupId, const std::string& groupLabel)
@@ -573,6 +678,13 @@ public:
     void SetNodeColor(const std::string& id, const Color& fillColor, const Color& borderColor);
     void SetNodeShape(const std::string& id, NodeShape shape);
     void PinNode(const std::string& id, bool pinned);
+
+    // NEW in 2.5.0: the paragraph beside a node ("" removes it), and the
+    // world-space box it is drawn in - empty for an unknown id or a node
+    // without one. Before the element has a window the box is an estimate.
+    void SetNodeAnnotation(const std::string& id, const std::string& text,
+                           NodeAnnotationPosition position = NodeAnnotationPosition::Right);
+    Rect2Dd GetNodeAnnotationBounds(const std::string& id) const;
     
     NodeDiagramNode* GetNode(const std::string& id);
     const NodeDiagramNode* GetNode(const std::string& id) const;
@@ -601,6 +713,23 @@ public:
     void SetLinkWidth(const std::string& id, double width);
     void SetLinkLabel(const std::string& id, const std::string& label);
     void SetLinkStyle(const std::string& id, LinkStyle style);  // NEW in 2.0.0
+
+    // NEW in 2.5.0: path highlighting. HighlightPath marks the link between
+    // each consecutive pair of `nodeIds` - whichever way it points, every
+    // link when there are several - and returns how many links it marked; a
+    // pair with no link between them is skipped. Paths add up: call it once
+    // per path, each with its colour. ClearHighlights() unmarks every link.
+    int HighlightPath(const std::vector<std::string>& nodeIds, const Color& color, double width = 4.0);
+    void HighlightLink(const std::string& id, const Color& color, double width = 4.0);
+    void ClearLinkHighlight(const std::string& id);
+    void ClearHighlights();
+    std::vector<std::string> GetHighlightedLinkIds() const;
+
+    // NEW in 2.5.0: the world points a link passes through (see
+    // NodeDiagramLink::waypoints).
+    void SetLinkWaypoints(const std::string& id, const std::vector<Point2Dd>& waypoints);
+    void AddLinkWaypoint(const std::string& id, const Point2Dd& waypoint);
+    void ClearLinkWaypoints(const std::string& id);
     
     NodeDiagramLink* GetLink(const std::string& id);
     std::vector<std::string> GetAllLinkIds() const;
@@ -661,6 +790,18 @@ public:
     void RemoveGroup(const std::string& id);
     void ClearGroups();
 
+    // NEW in 2.5.0: a free-placed region - a group that draws at `bounds`
+    // (world units) and has no members. Regions may overlap each other,
+    // cluster boxes and nodes. The title takes the border colour, or the fill
+    // colour made opaque when there is no border.
+    void AddRegion(const std::string& id, const std::string& label,
+                   const Rect2Dd& bounds, const Color& fillColor,
+                   const Color& borderColor = Color(0, 0, 0, 0));
+    // Places a group at `bounds` (it becomes a region), or hands its box back
+    // to its members.
+    void SetGroupBounds(const std::string& id, const Rect2Dd& bounds);
+    void ClearGroupBounds(const std::string& id);
+
     void AddNodeToGroup(const std::string& groupId, const std::string& nodeId);
     void RemoveNodeFromGroup(const std::string& groupId, const std::string& nodeId);
 
@@ -671,8 +812,9 @@ public:
     // Id of the first group containing the node, or "" when it belongs to none.
     std::string GetNodeGroupId(const std::string& nodeId) const;
 
-    // Current world-space box of a group, including its padding. Returns an
-    // empty rect for unknown ids or groups with no (visible) members.
+    // Current world-space box of a group, including its padding (a region's
+    // own bounds). Returns an empty rect for unknown ids or groups with no
+    // (visible) members.
     Rect2Dd GetGroupBounds(const std::string& id) const;
 
     void SetGroupsVisible(bool visible);
@@ -696,7 +838,8 @@ public:
     void ClearLegendEntries();
 
     // Replaces the legend entries with one row per group, using each group's
-    // border color as the swatch. Groups with an empty label are skipped.
+    // border color as the swatch (its title's color when it has no border, as
+    // a region made by AddRegion). Groups with an empty label are skipped.
     void BuildLegendFromGroups();
 
     // =============================================================================
@@ -933,6 +1076,12 @@ private:
     void RenderNodeLabel(IRenderContext* ctx, const NodeDiagramNode& node);
     void RenderNodeIconOnly(IRenderContext* ctx, const NodeDiagramNode& node, bool withLabel);   // 2.3.0
     void RenderNodeHandles(IRenderContext* ctx, const NodeDiagramNode& node);  // NEW
+    void RenderNodeAnnotation(IRenderContext* ctx, const NodeDiagramNode& node);   // 2.5.0
+    // The font size an annotation is drawn at, and the box it occupies:
+    // measured in `ctx` when given, else in the window's context, else
+    // estimated. An empty rect when the node has no annotation.
+    double AnnotationFontSize(const NodeDiagramNode& node) const;
+    Rect2Dd ComputeAnnotationBounds(const NodeDiagramNode& node, IRenderContext* ctx) const;
     void RenderLink(IRenderContext* ctx, const NodeDiagramLink& link);          // NEW
     void RenderLinkLabel(IRenderContext* ctx, const NodeDiagramLink& link);
     void RenderArrowHead(IRenderContext* ctx, double tipX, double tipY,
@@ -981,6 +1130,13 @@ private:
                         bool smooth, std::vector<Point2Dd>& outPath) const;
     HandlePosition InferHandleSide(const NodeDiagramNode& fromNode,
                                     const NodeDiagramNode& toNode) const;
+    // NEW in 2.5.0: the line a link is drawn along, as a polyline in world
+    // units - through its waypoints, in its style, and cut at the outline of
+    // each node it ends on (an end on a handle is left at the handle).
+    // False when a node is missing. `outSourceCut` / `outTargetCut` say
+    // whether that end was cut at an outline.
+    bool BuildLinkPath(const NodeDiagramLink& link, std::vector<Point2Dd>& outPath,
+                       bool* outSourceCut = nullptr, bool* outTargetCut = nullptr) const;
 
     // NEW in 2.4.0: label fit. The band of a node's shape a label of height
     // `textHeight` can occupy (world units, paddings taken off), the node size
