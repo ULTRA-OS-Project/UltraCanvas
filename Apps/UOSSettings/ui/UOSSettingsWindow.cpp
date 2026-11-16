@@ -414,7 +414,7 @@ void UOSSettingsWindow::BuildInfoBarPage() {
     infoItems_.clear();
     for (const UltraDesktop::InfoItem& item : UltraDesktop::DesktopSettings::InfoItems()) {
         const std::string id = std::string("uos-ib-") + item.id;
-        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 520, 26, Tr(item.label));
+        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 520, 26, UltraDesktop::InfoItemLabel(item));
         box->layoutItem.SetFlexShrink(0);
         box->onStateChanged = [this](CheckedState, CheckedState) {
             if (!refreshing_) SaveInfoBarPage();
@@ -679,7 +679,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     startup_.clear();
     for (const UltraDesktop::StartupProgram& program : UltraDesktop::DesktopSettings::StartupPrograms()) {
         const std::string id = std::string("uos-dt-startup-") + program.program;
-        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 520, 26, program.label);
+        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 520, 26, UltraDesktop::StartupProgramLabel(program));
         box->layoutItem.SetFlexShrink(0);
         box->onStateChanged = [this](CheckedState, CheckedState) {
             if (!refreshing_) SaveDesktopPage();

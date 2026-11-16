@@ -25,6 +25,7 @@
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <atomic>
@@ -131,7 +132,7 @@ void UltraDesktopAppStarter::Preload() {
 
 void UltraDesktopAppStarter::Open() {
     WindowConfig config;
-    config.title = "Applications";
+    config.title = Tr("Applications");
     config.width = kWindowWidth;
     config.height = kWindowHeight;
     config.minWidth = 460;
@@ -161,19 +162,19 @@ void UltraDesktopAppStarter::Open() {
     viewSwitch_->AddSegment("", IconsDir() + "view-tiles.svg");
     viewSwitch_->AddSegment("", IconsDir() + "view-tree.svg");
     viewSwitch_->SetSelectedIndex(view_ == "tree" ? 1 : 0);
-    viewSwitch_->SetTooltip("Tiles, or the categories as a tree beside a list");
+    viewSwitch_->SetTooltip(Tr("Tiles, or the categories as a tree beside a list"));
     viewSwitch_->onSegmentSelected = [this](int index) { SetView(index == 1 ? "tree" : "tiles"); };
     viewSwitch_->layoutItem.SetFlexShrink(0.0f);
     head->AddChild(viewSwitch_);
     filterBox_ = CreateTextInput("appsFilter", 0, 0, 260, 28);
-    filterBox_->SetPlaceholder("Find an application…");
+    filterBox_->SetPlaceholder(Tr("Find an application…"));
     filterBox_->onTextChanged = [this](const std::string& text) {
         filter_ = Lower(text);
         Rebuild();
     };
     filterBox_->layoutItem.SetFlexGrow(1.0f);
     head->AddChild(filterBox_);
-    status_ = CreateLabel("appsStatus", "Loading applications…");
+    status_ = CreateLabel("appsStatus", Tr("Loading applications…"));
     status_->SetThemeVariant(LabelVariant::Muted);   // muted ink, now and after a theme change
     status_->SetTextColor(Roles().inkMuted);
     status_->layoutItem.SetFlexShrink(0.0f);
@@ -298,7 +299,7 @@ void UltraDesktopAppStarter::Rebuild() {
     listed_.clear();
     if (!apps_) {
         dropThePane();
-        status_->SetText("Loading applications…");
+        status_->SetText(Tr("Loading applications…"));
         return;
     }
 
@@ -316,7 +317,7 @@ void UltraDesktopAppStarter::Rebuild() {
     for (const AppGroup& group : groups) {
         if (group.category != AppCategory::Recent) shown += group.count;
     }
-    status_->SetText(std::to_string(shown) + " of " + std::to_string(apps_->size()) + " applications");
+    status_->SetText(TrF("{0} of {1} applications", std::to_string(shown), std::to_string(apps_->size())));
 
     // A pane is kept only while it is the thing on screen and there is
     // something to show in it.
@@ -325,8 +326,8 @@ void UltraDesktopAppStarter::Rebuild() {
     if (!keepTreePane && !keepTilesPane) dropThePane();
 
     if (groups.empty()) {
-        auto none = CreateLabel("appsNone", filter_.empty() ? "No applications were found."
-                                                            : "No application matches \"" + filter_ + "\".");
+        auto none = CreateLabel("appsNone", filter_.empty() ? Tr("No applications were found.")
+                                                            : TrF("No application matches \"{0}\".", filter_));
         none->SetThemeVariant(LabelVariant::Muted);
         none->SetTextColor(Roles().inkMuted);
         body_->AddChild(none);
@@ -370,7 +371,7 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
         icon->SetElementSize(Size2Df(22, 22));
         icon->layoutItem.SetFlexShrink(0.0f);
         heading->AddChild(icon);
-        heading->AddChild(MakeHeading("appsTitle:" + group.key, group.title, 16, Roles().ink));
+        heading->AddChild(MakeHeading("appsTitle:" + group.key, AppGroupDisplayName(group), 16, Roles().ink));
         scroll->AddChild(heading);
         const bool dropHere = group.category != AppCategory::Recent;
         if (dropHere) dropZones_.push_back({heading.get(), group.key});
@@ -378,7 +379,7 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
         for (size_t s = 0; s < group.sections.size(); ++s) {
             const AppSection& section = group.sections[s];
             if (!section.title.empty()) {
-                auto sub = MakeHeading("appsSub:" + group.key + ":" + std::to_string(s), section.title, 13,
+                auto sub = MakeHeading("appsSub:" + group.key + ":" + std::to_string(s), AppSubcategoryDisplayName(section.title), 13,
                                        Roles().inkMuted);
                 sub->SetMargin(6, 0, 0, 34);
                 scroll->AddChild(sub);
@@ -506,10 +507,10 @@ void UltraDesktopAppStarter::FillTree(const std::vector<AppGroup>& groups) {
     // Every row is replaced; the scope keeps the view the user had, and the
     // rows they had opened are opened again below (a new row is closed).
     TreeRebuildScope keepTheView(*tree_);
-    tree_->SetRootNode(TreeNodeData("apps", "Applications"));
+    tree_->SetRootNode(TreeNodeData("apps", Tr("Applications")));
     for (const AppGroup& group : groups) {
         const std::string id = "cat:" + group.key;
-        TreeNodeData data(id, group.title + "  (" + std::to_string(group.count) + ")");
+        TreeNodeData data(id, AppGroupDisplayName(group) + "  (" + std::to_string(group.count) + ")");
         data.leftIcon = TreeNodeIcon(IconsDir() + group.icon, 18, 18);
         data.showFirstChildOnExpand = false;
         tree_->AddNode("apps", data);
@@ -520,7 +521,7 @@ void UltraDesktopAppStarter::FillTree(const std::vector<AppGroup>& groups) {
             all.insert(all.end(), section.apps.begin(), section.apps.end());
             if (section.title.empty()) continue;
             const std::string subId = id + ":" + std::to_string(s);
-            tree_->AddNode(id, TreeNodeData(subId, section.title + "  (" + std::to_string(section.apps.size()) + ")"));
+            tree_->AddNode(id, TreeNodeData(subId, AppSubcategoryDisplayName(section.title) + "  (" + std::to_string(section.apps.size()) + ")"));
             nodeApps_[subId] = section.apps;
             if (group.category != AppCategory::Recent) nodeGroup_[subId] = group.key;
         }
@@ -575,10 +576,10 @@ void UltraDesktopAppStarter::ShowAppMenu(const UCDesktopEntry& entry, int window
     menu_ = std::make_shared<UltraCanvasMenu>("appsTileMenu", 0, 0, 220, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
     menu_->AddItem(MenuItemData::Header(entry.name));
-    menu_->AddItem(MenuItemData::Action("Open", [this, entry]() { Launch(entry); }));
+    menu_->AddItem(MenuItemData::Action(Tr("Open"), [this, entry]() { Launch(entry); }));
     if (hooks_.isPinned && hooks_.setPinned) {
         const bool pinned = hooks_.isPinned(entry);
-        menu_->AddItem(MenuItemData::Action(pinned ? "Unpin from taskbar" : "Pin to taskbar",
+        menu_->AddItem(MenuItemData::Action(pinned ? Tr("Unpin from taskbar") : Tr("Pin to taskbar"),
                                             [this, entry, pinned]() { hooks_.setPinned(entry, !pinned); }));
     }
     if (hooks_.setMoved && hooks_.keyOf) {
@@ -596,7 +597,7 @@ void UltraDesktopAppStarter::ShowAppMenu(const UCDesktopEntry& entry, int window
         for (const AppGroup& group : groups_) {
             if (group.category == AppCategory::Recent || group.key == current) continue;
             const std::string key = group.key;
-            targets.push_back(MenuItemData::Action(group.title, IconsDir() + group.icon,
+            targets.push_back(MenuItemData::Action(AppGroupDisplayName(group), IconsDir() + group.icon,
                                                    [this, entry, key]() { MoveApp(entry, key); }));
         }
         // Categories with nothing in them yet are targets too.
@@ -606,19 +607,19 @@ void UltraDesktopAppStarter::ShowAppMenu(const UCDesktopEntry& entry, int window
             for (const AppGroup& group : groups_) listed = listed || group.key == info.key;
             if (listed) continue;
             const std::string key = info.key;
-            targets.push_back(MenuItemData::Action(info.title, IconsDir() + info.icon,
+            targets.push_back(MenuItemData::Action(AppCategoryDisplayName(info.category), IconsDir() + info.icon,
                                                    [this, entry, key]() { MoveApp(entry, key); }));
         }
-        menu_->AddItem(MenuItemData::Submenu("Move to", targets));
+        menu_->AddItem(MenuItemData::Submenu(Tr("Move to"), targets));
         const std::string natural = NaturalGroupOf(entry);
         const auto moved = hooks_.moved ? hooks_.moved() : std::map<std::string, std::string>();
         if (moved.count(hooks_.keyOf(entry)) && natural != current) {
             std::string title = natural;
             for (const AppCategoryInfo& info : AppCategories()) {
-                if (info.key == natural) title = info.title;
+                if (info.key == natural) title = AppCategoryDisplayName(info.category);
             }
             if (natural.rfind(kFolderGroupPrefix, 0) == 0) title = natural.substr(std::string(kFolderGroupPrefix).size());
-            menu_->AddItem(MenuItemData::Action("Back to " + title, [this, entry]() { MoveApp(entry, ""); }));
+            menu_->AddItem(MenuItemData::Action(TrF("Back to {0}", title), [this, entry]() { MoveApp(entry, ""); }));
         }
     }
     PopupElementSettings settings;
@@ -742,9 +743,9 @@ bool UltraDesktopAppStarter::OnPointerEvent(const UCEvent& event) {
             if (!drag_.dragging && dx * dx + dy * dy < kDragDistance * kDragDistance) return false;
             drag_.dragging = true;
             drag_.target = GroupAt(point);
-            std::string target = "drop it on a category";
+            std::string target = Tr("drop it on a category");
             for (const AppGroup& group : groups_) {
-                if (group.key == drag_.target) target = group.title;
+                if (group.key == drag_.target) target = AppGroupDisplayName(group);
             }
             ShowDragLabel(event.pointerWindow, (*apps_)[drag_.app].name + "  \u2192  " + target);
             return false;
@@ -777,7 +778,7 @@ void UltraDesktopAppStarter::Launch(const UCDesktopEntry& entry) {
     std::string error;
     if (!UltraCanvasDesktopShell::LaunchApplication(entry, {}, &error)) {
         debugOutput << "UltraDesktop: could not start " << entry.name << ": " << error << std::endl;
-        if (status_) status_->SetText("Could not start " + entry.name + ": " + error);
+        if (status_) status_->SetText(TrF("Could not start {0}: {1}", entry.name, error));
         return;
     }
     if (hooks_.started) hooks_.started(entry);
