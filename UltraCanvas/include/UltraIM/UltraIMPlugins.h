@@ -1,6 +1,7 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
-// Version: 0.1.14 - ABI 10: UltraIMAuthStep::Browser; public groups (FetchPublicGroups, JoinGroup, SetGroupPublic)
+// Version: 0.1.15 - ABI 11: public groups (FetchPublicGroups, JoinGroup, SetGroupPublic)
+// Version: 0.1.14 - ABI 10: UltraIMAuthStep::Browser
 // Version: 0.1.13 - ABI 9: UltraIMEventType::TransferProgress and its fields on UltraIMEvent;
 //                   UltraIMSearchKind::Audio
 // Version: 0.1.12 - ABI 8: UltraIMSendOptions::durationSeconds
@@ -448,12 +449,12 @@ protected:
 // Version 8 (2026-11): UltraIMSendOptions::durationSeconds (a recording's length).
 // Version 9 (2026-11): TransferProgress events (transferredBytes, totalBytes, isUpload);
 // UltraIMSearchKind::Audio.
-// Version 10 (2026-11): UltraIMAuthStep::Browser (a sign-in page to open);
-// public groups (FetchPublicGroups, JoinGroup, SetGroupPublic,
-// UltraIMConversation::isPublic).
+// Version 10 (2026-11): UltraIMAuthStep::Browser (a sign-in page to open).
+// Version 11 (2026-11): public groups (FetchPublicGroups, JoinGroup,
+// SetGroupPublic, UltraIMConversation::isPublic, UltraIMPublicGroup).
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 10;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 11;
 
 struct UltraIMPluginHost {
     int abiVersion;

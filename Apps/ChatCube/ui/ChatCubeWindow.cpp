@@ -2221,8 +2221,7 @@ void ChatCubeWindow::RefreshPublicGroups() {
             publicBox_->AddChild(row);
         }
         if (open.size() > shown) {
-            auto more = MakeButton("cc-public-more", TrN("{n} more public group", "{n} more public groups",
-                                                         static_cast<long long>(open.size() - shown)),
+            auto more = MakeButton("cc-public-more", TrF("Show all public groups ({0})", open.size()),
                                    kSidebarWidth - 16);
             more->SetOnClick([this]() {
                 showAllPublic_ = true;

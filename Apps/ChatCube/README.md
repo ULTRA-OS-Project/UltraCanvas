@@ -87,6 +87,14 @@ The first ChatCube draft, which this replaces, is kept under
    without typing anything. The person you add is told: your chat appears in
    their list at once (or at their next sign-in), before you write.
 4. **New group** takes a name and the members' IDs, separated by commas.
+   **Public groups** under it lists the ChatCube groups anyone may join -
+   the biggest first, with how many are in each - and **Join** puts you in
+   one at once, no invitation needed (what was written before you joined is
+   not shown). A group of your own becomes one with *Make public* in its
+   menu, and *Make private* takes it off the list; its messages stay
+   end-to-end encrypted either way. A public group holds up to 256 people,
+   and someone you take out of it cannot join again by themselves. Needs a
+   relay of version 1.5.0 or later.
    **Matrix account** signs in to a Matrix homeserver (`matrix.org`, or your
    own) with your user name and password; your Matrix rooms then sit in the
    same list, and a Matrix ID (`@name:server`) in *Add* or *New group* goes
@@ -206,7 +214,8 @@ The first ChatCube draft, which this replaces, is kept under
    group* and *Delete chat* - the chat and its messages go from this
    computer; they keep theirs. A group: *Members*, each with *Send a
    message*, *Copy ID* and, for the group's owner, *Remove from group*;
-   *Add members*, *Rename group* and *Leave group*. What the chat's network
+   *Add members*, *Rename group*, *Make public* / *Make private* (the
+   owner's, ChatCube groups) and *Leave group*. What the chat's network
    cannot do is not offered, and what it refuses the account (in most
    Telegram groups only administrators rename or take people out) says so
    on the status line. Pins and unread marks are kept in the settings file.

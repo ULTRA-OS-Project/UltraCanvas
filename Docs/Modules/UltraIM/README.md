@@ -416,6 +416,17 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   owner (`ownerId`); `LeaveConversation` leaves a group, and deletes a 1:1
   conversation and its messages on this device while keeping the contact,
   so a new message from them starts it again.
+- **Public groups** (relay 1.5.0): a group's owner makes it public
+  (`SetGroupPublic`, `UltraIMConversation::isPublic`), and it is listed for
+  everyone on the relay (`FetchPublicGroups`: `UltraIMPublicGroup` - its
+  conversation id, title, owner, member count, whether one is in it) and
+  joined by anyone (`JoinGroup`). It stays end-to-end encrypted: a message
+  is sealed for each member as in any group (the members' keys are fetched
+  and checked against their ids as they join), so a public group holds at
+  most 256 (the relay's setting). Whom the owner takes out cannot join again;
+  the relay limits how much one member posts into one. A newcomer sees what
+  is written after they join. On an older relay the three answer
+  `CapabilityMissing` ("needs ChatCube relay 1.5 or later").
 - **Local record:** contacts and their keys, conversations, history and the
   outbox in `<dataDirectory>/direct/direct.sqlite3` (UltraDatabase).
   `FetchMessages` answers from it; nothing waits for the network.

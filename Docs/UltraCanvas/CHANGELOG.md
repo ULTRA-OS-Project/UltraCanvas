@@ -12,6 +12,14 @@
   server once and runs OAuth with PKCE on a loopback address; the token is
   kept in UltraVault. Tested against `Tests/UltraIM/mastodon_fake_server.py`,
   a small Mastodon in standard-library python (`MastodonProviderTests`).
+- **Public groups in ChatCube Direct** (plug-in ABI 11; ChatCube relay
+  1.5.0). `UltraIM_FetchPublicGroups`, `UltraIM_JoinGroup` and
+  `UltraIM_SetGroupPublic`, `UltraIMConversation::isPublic` and
+  `UltraIMPublicGroup`: a group's owner lists it for everyone on the relay,
+  anyone joins it, and its messages stay sealed for each member. The relay
+  keeps the mark (schema 4), lists the public groups
+  (`GET /v1/public-groups`), lets anyone join (`POST .../join`), bars whom
+  the owner took out, holds up to 256 in one and limits posting into it.
 - **`UltraIMAuthStep::Browser`** (plug-in ABI 10): a sign-in step with
   nothing to type in the application - the hint is a web page to open in
   the browser, after which the provider goes on by itself.

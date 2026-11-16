@@ -6,6 +6,13 @@
   one chat per set of people, texts, replies, edits, deletes, pictures,
   videos and sound, with the upload's progress bar. `@user@server` in *Add*
   or *New group* starts a chat there. The next start signs in by itself.
+- **Public groups.** A group's owner can make it public (*Make public* in
+  its right-click menu; *Make private* takes it off the list again). Everyone
+  signed in to ChatCube then sees it under **Public groups** in the sidebar,
+  with its number of members and a *Join* button - no invitation needed.
+  Messages stay end-to-end encrypted, each sealed for every member, so a
+  public group holds up to 256 people. Someone its owner takes out cannot
+  join again by themselves. Needs ChatCube relay 1.5.0.
 - **The network buttons in two rows** (Group, Matrix / Telegram, Mastodon),
   so every name fits.
 
