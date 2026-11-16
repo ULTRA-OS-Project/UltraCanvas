@@ -2865,6 +2865,59 @@ int main(int argc, char** argv) {
                   "odt: the line-gap and cell-spacing options are kept (settings.xml)");
     }
 
+    // ===== A SHAPE'S DROP SHADOW =====
+    // A page frame drawn as a rectangle throws a shadow: its colour, where it
+    // falls and how much of it shows, through both formats.
+    {
+        UCRichDocument shadowed;
+        RichShape box;
+        box.widthPt = 200.0f;
+        box.heightPt = 100.0f;
+        box.fillColor = "#FFFFFF";
+        box.lineColor = "#395398";
+        box.shadowColor = "#5E5E5E";
+        box.shadowOffsetXPt = 0.0f;
+        box.shadowOffsetYPt = 4.0f;
+        box.shadowOpacity = 0.65f;
+        RichTextFrame drawing;
+        drawing.shapes = {box};
+        drawing.drawingWidthPt = 200.0f;
+        drawing.drawingHeightPt = 100.0f;
+        shadowed.frames = {drawing};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 200.0f;
+        anchor.imageHeightPt = 100.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::BehindText;
+        RichDocBlock paragraph;
+        paragraph.runs = {anchor};
+        shadowed.blocks = {paragraph};
+        for (const char* format : {"odt", "docx"}) {
+            const std::string label = std::string("shape shadow (") + format + ")";
+            const std::string path = TmpPath(std::string("shadow.") + format);
+            std::string err;
+            const bool saved = std::string(format) == "odt" ? UCWordDocumentIO::SaveOdt(path, shadowed, err)
+                                                            : UCWordDocumentIO::SaveDocx(path, shadowed, err);
+            CHECK_MSG(saved, label + ": " + err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), label + ": " + err);
+            const RichShape* read = nullptr;
+            for (const RichTextFrame& frame : back.frames) {
+                if (!frame.shapes.empty()) read = &frame.shapes.front();
+            }
+            CHECK_MSG(read != nullptr, label + ": the shape");
+            if (!read) continue;
+            CHECK_MSG(read->HasShadow() && Lower(read->shadowColor) == "#5e5e5e", label + ": its shadow's colour, got \""
+                      + read->shadowColor + "\"");
+            CHECK_MSG(Near(read->shadowOffsetXPt, 0.0f) && Near(read->shadowOffsetYPt, 4.0f),
+                      label + ": where it falls: " + std::to_string(read->shadowOffsetXPt) + ", "
+                      + std::to_string(read->shadowOffsetYPt));
+            CHECK_MSG(std::abs(read->shadowOpacity - 0.65f) < 0.02f, label + ": how much of it shows: "
+                      + std::to_string(read->shadowOpacity));
+        }
+    }
+
     // ===== SECTIONS WITH THEIR OWN HEADER AND FOOTER =====
     // A cover without a header, pages with one, an appendix back to the
     // document's: each a section, written and read back by both formats.

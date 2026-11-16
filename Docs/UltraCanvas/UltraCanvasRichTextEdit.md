@@ -585,6 +585,10 @@ says:
 | `TopAndBottom` (or a centred `Square`) | stops above it and resumes below |
 | `BehindText` / `InFrontOfText` | ignores it; it is drawn under / over the text |
 
+Text that stops above a picture goes on right below it, with no distance of
+its own, and a paragraph whose first line does not fit above the picture
+starts below it.
+
 DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
 offset from the paragraph) and ODT frames anchored to a paragraph or character
 (`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
