@@ -17,6 +17,8 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.14 - a group request reports the group as the relay's reply has it, not a re-read
+//                  of the store that an older group.update can have overwritten (the flaky rename)
 // Version: 0.1.13 - a group's description; the owner blocks and unblocks members
 // Version: 0.1.12 - public groups (relay 1.5): the directory, joining one, the owner's public / private
 // Version: 0.1.11 - TransferProgress: a file's parts counted as they leave and as they arrive
@@ -285,7 +287,11 @@ private:
     std::vector<uint8_t> KeyOf(const std::string& userId);
     UltraIMConversation EnsureDirectConversation(const std::string& userId);
     void RefreshGroups();
-    void UpsertGroup(const UltraCanvas::JSONValue& group);
+    // Stores the relay's record of a group, tells the listeners, and returns
+    // the conversation as that record has it (empty when it says removed) -
+    // what a request's callback reports, rather than a re-read of the store,
+    // which an older push on the socket can have overwritten in between.
+    UltraIMConversation UpsertGroup(const UltraCanvas::JSONValue& group);
     // What the store does not keep onto a group's conversation: its owner, as
     // the relay last said, and the names of the members it knows.
     void FillGroupDetails(UltraIMConversation& conversation);
