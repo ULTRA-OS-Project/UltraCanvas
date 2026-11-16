@@ -25,6 +25,7 @@
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 #include "UltraDesktopAppStarter.h"
+#include "DisplayTestSupport.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -48,8 +49,7 @@ static int failCount = 0;
 
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
-        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED"); \
-        if (required && std::string(required) == "1") {                       \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
             std::cerr << "FAIL: a display was required, and " << reason       \
                       << std::endl;                                           \
             return 1;                                                         \

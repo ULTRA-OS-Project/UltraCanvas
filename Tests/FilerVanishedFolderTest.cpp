@@ -32,6 +32,7 @@
 #include "UltraCanvasFileRemoval.h"
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasPathUtf8.h"
+#include "DisplayTestSupport.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -90,8 +91,7 @@ namespace {
 
     void TestFolderWatchNews(const fs::path& root) {
         std::cout << "\n-- Through the folder watch --\n";
-        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
-        const bool displayRequired = required && *required && std::string(required) != "0";
+        const bool displayRequired = UltraCanvas::DisplayTest::DisplayRequired();
 #if !defined(_WIN32) && !defined(_WIN64) && !defined(__APPLE__)
         if (!std::getenv("DISPLAY") && !std::getenv("WAYLAND_DISPLAY")) {
             if (displayRequired) Check(false, "a display was required, and there is none");

@@ -112,6 +112,7 @@
 #include <utility>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
+#include "DisplayTestSupport.h"
 
 #if defined(_WIN32)
 // Shell_NotifyIconGetRect and NOTIFYICONDATAW's newest fields are declared
@@ -1954,8 +1955,7 @@ int main(int argc, char** argv) {
 #if defined(DESKTOPSHELLTEST_X11)
     // ===== X11: THE BACKEND ON A REAL DISPLAY =====
     {
-        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
-        const bool displayRequired = required && std::strcmp(required, "1") == 0;
+        const bool displayRequired = UltraCanvas::DisplayTest::DisplayRequired();
         Display* display = UltraCanvasDesktopShell::IsAvailable() ? XOpenDisplay(nullptr) : nullptr;
         if (!display) {
             Check(!displayRequired, "a display was required (ULTRACANVAS_TEST_DISPLAY_REQUIRED=1), and there is none");
@@ -2404,8 +2404,7 @@ int main(int argc, char** argv) {
     // ===== WAYLAND: THE BACKEND ON A COMPOSITOR =====
     {
         if (!sessionRuntime.empty()) SetEnv("XDG_RUNTIME_DIR", sessionRuntime);
-        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
-        const bool displayRequired = required && std::strcmp(required, "1") == 0;
+        const bool displayRequired = UltraCanvas::DisplayTest::DisplayRequired();
         const bool available = std::getenv("WAYLAND_DISPLAY") && UltraCanvasDesktopShell::IsAvailable();
         if (!available) {
             Check(!displayRequired, "a display was required (ULTRACANVAS_TEST_DISPLAY_REQUIRED=1), and there is none");

@@ -16,6 +16,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasPathUtf8.h"
+#include "DisplayTestSupport.h"
 
 #include <chrono>
 #include <cmath>
@@ -66,28 +67,30 @@ bool RingShown(UltraCanvasMediaViewer& viewer) {
     return ring && ring->IsVisible();
 }
 
+// Where a display was asked for (DisplayTest::DisplayRequired) a skip would
+// read as a pass, so it fails instead.
+int Skip(const std::string& why) {
+    if (DisplayTest::DisplayRequired()) {
+        std::cout << "FAIL: a display was required, and " << why << "\n";
+        return 1;
+    }
+    std::cout << "SKIP: " << why << "\n";
+    return 0;
+}
+
 } // namespace
 
 int main() {
     std::cout << "MediaViewerLoadingTest\n";
-    if (!std::getenv("DISPLAY")) {
-        std::cout << "SKIP: no DISPLAY\n";
-        return 0;
-    }
+    if (!std::getenv("DISPLAY")) return Skip("there is no DISPLAY");
     TestApplication app;
-    if (!app.Initialize("MediaViewerLoadingTest")) {
-        std::cout << "SKIP: application would not initialise\n";
-        return 0;
-    }
+    if (!app.Initialize("MediaViewerLoadingTest")) return Skip("the application would not initialise");
     WindowConfig cfg;
     cfg.title = "MediaViewerLoadingTest";
     cfg.width = 800;
     cfg.height = 600;
     auto window = CreateWindow(cfg);
-    if (!window) {
-        std::cout << "SKIP: window could not be created\n";
-        return 0;
-    }
+    if (!window) return Skip("the window could not be created");
     auto viewer = CreateMediaViewer("Viewer", 0, 0, 800, 600);
     window->AddChild(viewer);
     std::vector<std::string> reported;

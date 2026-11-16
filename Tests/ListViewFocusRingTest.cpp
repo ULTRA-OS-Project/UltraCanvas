@@ -31,6 +31,7 @@
 #include <vector>
 
 using namespace UltraCanvas;
+using DisplayTest::DisplayRequired;
 using DisplayTest::Look;
 using DisplayTest::RingSides;
 using DisplayTest::RowShows;
@@ -51,12 +52,8 @@ namespace {
 const Color kSelection(0, 120, 215);
 const Color kMagenta(255, 0, 255);
 
-// A skip would pass for a run where a display was asked for.
-bool DisplayRequired() {
-    const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
-    return required && std::string(required) == "1";
-}
-
+// A skip would pass for a run where a display was asked for
+// (DisplayRequired), so there it fails instead.
 void Skip(const std::string& why) {
     if (DisplayRequired()) {
         TEST("a display was required, and " + why, false);
