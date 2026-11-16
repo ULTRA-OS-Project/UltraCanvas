@@ -2,7 +2,8 @@
 // The chart engine's three-phase render driver
 // Version: 1.4.0 - axis distributions (slot 550): Outside bands reserve their depth
 //                  beyond the plot's opposite edge and push that edge's axes out;
-//                  Near / Far / Both draw inside the plot or along an in-plot rule
+//                  Near / Far / Both draw inside the plot or along an in-plot rule,
+//                  each side kept inside the plot (an outermost rule's band turns inward)
 // Version: 1.3.6 - SetExtraGridAxes (a grid in every pane), HitRegionAt; a limiter
 //                  outside its axis's band is not drawn (nor captioned); a limiter's
 //                  caption is anchored half its width in from the line's end, so it
@@ -1539,8 +1540,9 @@ void UltraCanvasChartEngineElement::RenderDistribution(IRenderContext* ctx,
     if (ts.empty()) return;
     const std::vector<double> filtered = normalised(d.filteredValues);
 
-    // One band is a baseline along the axis plus the direction its bars grow.
-    struct Band { Point2Dd from, to, normal; };
+    // One band is a baseline along the axis, the direction its bars grow and
+    // how deep they may grow there.
+    struct Band { Point2Dd from, to, normal; double depth = 0.0; };
     Point2Dd lowEnd, highEnd;
     AxisScreenLine(axis, lowEnd, highEnd);
     const Rect2Dd& plot = frame.plotArea;
@@ -1556,10 +1558,6 @@ void UltraCanvasChartEngineElement::RenderDistribution(IRenderContext* ctx,
         const Point2Dd nearDir = len > 0.0 ? Point2Dd(tickDx / len, tickDy / len)
                                            : Point2Dd(-1.0, 0.0);
         const Point2Dd farDir(-nearDir.x, -nearDir.y);
-        if (d.side == AxisDistributionSide::Near || d.side == AxisDistributionSide::Both) {
-            bands.push_back({lowEnd, highEnd, nearDir});
-        }
-        if (d.side != AxisDistributionSide::Near) bands.push_back({lowEnd, highEnd, farDir});
         // Keep clear of the neighbouring rules: at most 45% of the gap.
         const Point2Dd self = engineProjection->ToScreen(ChartNormalizedPoint(axis.plotPosition, 0.0));
         double nearest = std::numeric_limits<double>::infinity();
@@ -1570,6 +1568,32 @@ void UltraCanvasChartEngineElement::RenderDistribution(IRenderContext* ctx,
             if (gap > 0.5) nearest = std::min(nearest, gap);
         }
         if (std::isfinite(nearest)) thickness = std::min(thickness, nearest * 0.45);
+        // And keep inside the plot: a side gets no more than the room between
+        // the rule and the plot's edge. The first and last rules stand on the
+        // plot's edges, where the outward side has none, so a one-sided band
+        // there turns inward - the outermost axes keep their distribution
+        // instead of spilling over the margin's tick labels or the legend.
+        const Point2Dd rule((lowEnd.x + highEnd.x) * 0.5, (lowEnd.y + highEnd.y) * 0.5);
+        auto room = [&](const Point2Dd& dir) {
+            if (dir.x > 0.5) return plot.Right() - rule.x;
+            if (dir.x < -0.5) return rule.x - plot.x;
+            if (dir.y > 0.5) return plot.Bottom() - rule.y;
+            return rule.y - plot.y;
+        };
+        auto add = [&](const Point2Dd& dir) {
+            const double depth = std::min(thickness, std::max(0.0, room(dir)));
+            if (depth >= 1.0) bands.push_back({lowEnd, highEnd, dir, depth});
+        };
+        if (d.side == AxisDistributionSide::Both) {
+            add(nearDir);
+            add(farDir);
+        } else {
+            Point2Dd dir = (d.side == AxisDistributionSide::Near) ? nearDir : farDir;
+            const Point2Dd other(-dir.x, -dir.y);
+            if (room(dir) < thickness * 0.5 && room(other) > room(dir)) dir = other;
+            add(dir);
+        }
+        ctx->ClipRect(plot);
     } else {
         // The baseline runs along the axis; only its offset across differs.
         auto at = [&](double across) {
@@ -1612,12 +1636,14 @@ void UltraCanvasChartEngineElement::RenderDistribution(IRenderContext* ctx,
             thickness = std::min(thickness, alongY ? plot.width : plot.height);
             ctx->ClipRect(plot);
         }
+        for (Band& band : bands) band.depth = thickness;
     }
 
     // Shapes common to every kind, written once in band coordinates: t along
     // the axis (normalised), h across it (px from the baseline).
     const bool strokes = d.strokeWidth > 0.0f && d.stroke.a > 0;
     for (const Band& band : bands) {
+        const double depth = band.depth;
         auto P = [&](double t, double h) {
             return Point2Dd(band.from.x + (band.to.x - band.from.x) * t + band.normal.x * h,
                             band.from.y + (band.to.y - band.from.y) * t + band.normal.y * h);
@@ -1633,7 +1659,7 @@ void UltraCanvasChartEngineElement::RenderDistribution(IRenderContext* ctx,
                         ? std::log1p(static_cast<double>(count)) /
                           std::log1p(static_cast<double>(total.maxCount))
                         : static_cast<double>(count) / static_cast<double>(total.maxCount);
-                    return share * thickness;
+                    return share * depth;
                 };
                 auto bars = [&](const ChartHistogram& h, const Color& fill, bool outline) {
                     const double w = h.BinWidth();
@@ -1678,10 +1704,10 @@ void UltraCanvasChartEngineElement::RenderDistribution(IRenderContext* ctx,
                     for (size_t i = 0; i < samples; ++i) {
                         const double t = tLo + (tHi - tLo) * static_cast<double>(i) /
                                                    static_cast<double>(samples - 1);
-                        const double len = values[i] * weight / peak * thickness;
+                        const double len = values[i] * weight / peak * depth;
                         if (violin) {
-                            upper.push_back(P(t, thickness * 0.5 + len * 0.5));
-                            lower.push_back(P(t, thickness * 0.5 - len * 0.5));
+                            upper.push_back(P(t, depth * 0.5 + len * 0.5));
+                            lower.push_back(P(t, depth * 0.5 - len * 0.5));
                         } else {
                             upper.push_back(P(t, len));
                         }
@@ -1720,8 +1746,8 @@ void UltraCanvasChartEngineElement::RenderDistribution(IRenderContext* ctx,
                                    const Color& fill, bool full) {
                     const ChartBoxSummary s = ComputeBoxSummary(raw);
                     if (!s.valid) return;
-                    const double h0 = thickness * inset, h1 = thickness * (1.0 - inset);
-                    const double mid = thickness * 0.5;
+                    const double h0 = depth * inset, h1 = depth * (1.0 - inset);
+                    const double mid = depth * 0.5;
                     const double q1 = at(s.q1), q3 = at(s.q3);
                     const std::vector<Point2Dd> box{P(q1, h0), P(q3, h0), P(q3, h1), P(q1, h1)};
                     ctx->SetFillPaint(fill);
@@ -1752,9 +1778,9 @@ void UltraCanvasChartEngineElement::RenderDistribution(IRenderContext* ctx,
             case AxisDistributionKind::Strip: {
                 ctx->SetStrokeWidth(std::max(1.0f, d.strokeWidth));
                 ctx->SetStrokePaint(d.stroke);
-                for (double t : ts) ctx->DrawLine(P(t, thickness * 0.15), P(t, thickness * 0.85));
+                for (double t : ts) ctx->DrawLine(P(t, depth * 0.15), P(t, depth * 0.85));
                 ctx->SetStrokePaint(d.filteredFill);
-                for (double t : filtered) ctx->DrawLine(P(t, thickness * 0.15), P(t, thickness * 0.85));
+                for (double t : filtered) ctx->DrawLine(P(t, depth * 0.15), P(t, depth * 0.85));
                 break;
             }
         }

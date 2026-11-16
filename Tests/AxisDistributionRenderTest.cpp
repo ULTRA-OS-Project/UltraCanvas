@@ -7,13 +7,15 @@
 // distribution to its right - and the legend on that edge must move out by as
 // much rather than be drawn over. The bars must line up with the axis, tallest
 // where the values are. Near draws inside the plot without moving it; a band
-// along an in-plot rule must stay clear of the neighbouring rule; and under
+// along an in-plot rule must stay clear of the neighbouring rule, and the
+// outermost rules' bands must turn inward rather than run over the margin; under
 // the polar projection there is no band at all. Every kind - histogram,
 // density, box, strip, violin - paints its band where the values are.
 //
 // With ULTRACANVAS_SCREENSHOT_DIR set, each case is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.1.0 - the outermost in-plot rules: bands turn inward, never over the margin
 // Version: 1.0.0
 // Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
@@ -88,8 +90,10 @@ bool Close(const Color& a, const Color& b, int tolerance = 12) {
 // bars are there and every other bar is short.
 class FieldChart : public UltraCanvasChartEngineElement {
 public:
-    FieldChart(bool inPlot) : UltraCanvasChartEngineElement("field", 0, 0, kWidth, kHeight),
-                              inPlotAxes(inPlot) {
+    // inPlot: the y rule at firstRule, the x rule at lastRule (normalised).
+    FieldChart(bool inPlot, double firstRule = 0.25, double lastRule = 0.75)
+        : UltraCanvasChartEngineElement("field", 0, 0, kWidth, kHeight),
+          inPlotAxes(inPlot), firstRulePosition(firstRule), lastRulePosition(lastRule) {
         SetEnableTooltips(false);           // no window to show one in
         SetAnimateOnDataChange(false);      // one frame: everything at full size
         for (int i = 0; i < 200; ++i) {
@@ -101,6 +105,7 @@ public:
 
     std::vector<double> xs, ys;
     bool inPlotAxes = false;
+    double firstRulePosition = 0.25, lastRulePosition = 0.75;
 
     void DescribeAxes(ChartAxisSet& axes) override {
         ChartAxis y("y");
@@ -113,9 +118,9 @@ public:
         x.Observe(xs);
         if (inPlotAxes) {
             y.inPlot = true;
-            y.plotPosition = 0.25;
+            y.plotPosition = firstRulePosition;
             x.inPlot = true;
-            x.plotPosition = 0.75;
+            x.plotPosition = lastRulePosition;
             x.SetRange(0.0, 10.0);
         }
         axes.Add(y);
@@ -264,6 +269,66 @@ void CheckInPlotRules() {
     (void)plot;
 }
 
+// The first and last rules of a parallel coordinate chart stand on the plot's
+// edges. A band on their outward side has no room there: it must turn inward
+// rather than run over the margin, where the tick labels and the legend are.
+void CheckOutermostRulesStayInside() {
+    std::cout << "\nThe outermost in-plot rules: bands stay inside the plot\n";
+    struct Case { const char* name; size_t axis; AxisDistributionSide side; };
+    const Case cases[] = {
+        {"far_last", 1, AxisDistributionSide::Far},      // the last rule's right side
+        {"near_first", 0, AxisDistributionSide::Near},   // the first rule's tick side
+        {"both_last", 1, AxisDistributionSide::Both},
+    };
+    for (const Case& c : cases) {
+        Canvas canvas(kWidth, kHeight);
+        if (!canvas.ctx) { Check(false, "an offscreen context is available"); return; }
+        FieldChart chart(true, 0.0, 1.0);
+        chart.SetShowLegend(true);
+        chart.SetLegendEntries({ChartLegendEntry("field", Color(90, 90, 90, 255))});
+        AxisDistribution d;
+        d.axisIndex = c.axis;
+        d.kind = AxisDistributionKind::Histogram;
+        d.side = c.side;
+        d.binCount = 10;
+        d.thickness = 60.0;
+        d.fill = kBandFill;
+        d.strokeWidth = 0.0f;
+        chart.AddAxisDistribution(d);
+        chart.Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+        canvas.Save(std::string("axis_distribution_outermost_") + c.name);
+
+        const ChartEngineFrame& frame = chart.Frame();
+        const Rect2Dd plot = frame.plotArea;
+        const ChartAxis& axis = frame.axes->At(c.axis);
+        const double peak = (c.axis == 0) ? 7.5 : 2.5;     // where the values cluster
+        const Point2Dd at = frame.projection->ToScreen(
+            ChartNormalizedPoint(axis.plotPosition, axis.Normalize(peak)));
+        const double inward = (axis.plotPosition < 0.5) ? 1.0 : -1.0;
+        int outside = 0;                                   // band pixels past the plot's side
+        for (int px = 1; px <= 60; ++px) {
+            if (Close(canvas.PixelAt(at.x - inward * px, at.y), kBandFill)) ++outside;
+        }
+        Check(outside == 0, std::string(c.name) + ": nothing of the band is drawn past the plot's edge");
+        Check(Close(canvas.PixelAt(at.x + inward * 6.0, at.y), kBandFill),
+              std::string(c.name) + ": the band is drawn inward, inside the plot");
+        Check(Close(canvas.PixelAt(at.x + inward * 55.0, at.y), kBandFill),
+              std::string(c.name) + ": at its full depth");
+        if (axis.plotPosition > 0.5) {
+            const Rect2Dd legend = chart.LegendBox();
+            bool overLegend = false;
+            for (double ly = legend.y + 2.0; ly < legend.Bottom() - 2.0; ly += 3.0) {
+                for (double lx = legend.x + 2.0; lx < legend.Right() - 2.0; lx += 3.0) {
+                    overLegend = overLegend || Close(canvas.PixelAt(lx, ly), kBandFill);
+                }
+            }
+            Check(legend.width > 0.0 && !overLegend,
+                  std::string(c.name) + ": and the legend beside the last rule is not drawn over");
+        }
+        (void)plot;
+    }
+}
+
 void CheckPolarDrawsNothing() {
     std::cout << "\nPolar: no band\n";
     Canvas bare(kWidth, kHeight), canvas(kWidth, kHeight);
@@ -341,6 +406,7 @@ int main() {
     CheckJointPlot();
     CheckNearInside();
     CheckInPlotRules();
+    CheckOutermostRulesStayInside();
     CheckPolarDrawsNothing();
     CheckEveryKind();
     std::cout << "\n" << (g_failures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED")

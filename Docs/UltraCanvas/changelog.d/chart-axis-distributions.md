@@ -8,7 +8,10 @@
   depth beyond the plot's opposite edge in the layout, and the axes and the
   legend on that edge move out by as much, so nothing is drawn over it;
   `Near`, `Far` and `Both` draw inside the plot or on either side of an
-  in-plot rule, stopping short of the next rule. A subset - a brushed
+  in-plot rule, stopping short of the next rule and never leaving the plot:
+  the first and last rules of a parallel coordinate chart, which stand on
+  the plot's edges, draw theirs inward rather than over the margin's tick
+  labels or the legend. A subset - a brushed
   selection, one series - can be drawn over the whole on the same bins. The
   statistics (`ComputeHistogram` with Freedman-Diaconis bins,
   `ComputeKernelDensity` with Silverman's bandwidth, `ComputeBoxSummary`)

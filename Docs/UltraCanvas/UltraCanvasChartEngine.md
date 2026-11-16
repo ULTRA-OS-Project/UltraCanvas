@@ -281,7 +281,12 @@ nothing is drawn over it. Several bands on one edge stack outward in the
 order added. The inside sides reserve nothing and draw under the content
 (phase 1), clipped to the plot. Along an in-plot rule a band stops at 45%
 of the gap to the nearest other rule, whatever `thickness` asks for, so
-neighbouring axes' bands never meet.
+neighbouring axes' bands never meet, and it never leaves the plot: each
+side gets at most the room between the rule and the plot's edge. The first
+and last rules of a parallel coordinate chart stand on the plot's edges,
+with no room outward, so a one-sided band there (one with less than half
+its depth of room on its side) turns inward instead of spilling over the
+margin's tick labels or the legend; `Both` keeps only the side with room.
 
 Everything is binned and smoothed in the axis's normalised space, so the
 bars line up with the ticks under every scale (a `Log` axis gets bins of

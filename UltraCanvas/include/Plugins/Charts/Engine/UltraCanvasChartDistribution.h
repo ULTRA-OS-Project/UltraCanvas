@@ -40,7 +40,10 @@ enum class AxisDistributionKind {
 // (Far). For an in-plot axis (parallel coordinates) Near is the side its
 // ticks point to and Far the other; Outside draws as Far there, since an
 // in-plot axis has no outside. Both is Near and Far together - mirrored about
-// an in-plot rule.
+// an in-plot rule. An in-plot band never leaves the plot: each side is held
+// to the room between the rule and the plot's edge, and a one-sided band with
+// less than half its depth of room turns to the other side - the first and
+// last rules stand on the plot's edges, so their bands draw inward.
 enum class AxisDistributionSide { Near, Far, Both, Outside };
 
 struct AxisDistribution {
