@@ -374,6 +374,8 @@ Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::use of undeclared ide
 Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'RidgelineRow::entries' does not exist (no member named 'entries' in 'RidgelineRow')
 Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::prose names `SetObliqueView(`, which no header declares
 # signature Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md: c94605c0bb5f8d99235d552ef7d2c2f2976015a6f65a3e247aecce037faed4a0
+Docs/UltraCanvas/UltraCanvasSpiralChartProposal.md::prose names `SuggestPeriods(`, which no header declares
+# signature Docs/UltraCanvas/UltraCanvasSpiralChartProposal.md: d34b15f56d941735e534dab7f4fd56524ba74c33f7e01da860cc0bc18ec9ac84
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernaryPoint::group' does not exist (no member named 'group' in 'TernaryPoint')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernarySeriesKind::Bubble' does not exist (no member named 'Bubble' in 'TernarySeriesKind')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::signature differs: `std::vector<TernaryPoint> SoilSamples()` - the header has: TernaryModel SoilSamples();

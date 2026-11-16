@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.14 - CreateSpiralChartExamples
 // Version: 1.0.13 - CreateRidgelineChartExamples
 // Version: 1.0.12 - CreateThemeExamples (Modules > Theme)
 // Version: 1.0.11 - CreateHistogramChartExamples
@@ -390,6 +391,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTernaryChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateHistogramChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRidgelineChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSpiralChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGanttChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateKanbanBoardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRaincloudPlotExample();

@@ -4625,6 +4625,23 @@ add_test(NAME ControlLimitsTest COMMAND ControlLimitsTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ControlLimitsTest")
 
+# ===== SPIRAL MODEL TEST =====
+# The spiral plot model: where a time lands on the spiral, the value range,
+# what each sample covers, validation and the samples. UI-free.
+message(STATUS "  Building SpiralModelTest...")
+add_executable(SpiralModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpiralModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasSpiralModel.cpp
+)
+target_include_directories(SpiralModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpiralModelTest PRIVATE cxx_std_20)
+set_target_properties(SpiralModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpiralModelTest COMMAND SpiralModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpiralModelTest")
+
 # ===== RIDGELINE MODEL TEST =====
 # The ridgeline model: quantiles, bandwidth rules, the kernel density (area,
 # bounds, binning), the x range, the scales, statistics, sorting, validation
@@ -6608,6 +6625,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: CurveHistogramTest")
 else()
     message(STATUS "  CurveHistogramTest skipped (UltraCanvas not present)")
+endif()
+
+# ===== SPIRAL CHART RENDER TEST =====
+# UltraCanvasSpiralChart drawn offscreen: the ribbon's colours on the right
+# rays, the band and the line, hit regions, the colour bar's room, a new
+# period and hover. With ULTRACANVAS_SCREENSHOT_DIR set, each case is
+# written there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building SpiralChartRenderTest...")
+    add_executable(SpiralChartRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SpiralChartRenderTest.cpp
+    )
+    target_include_directories(SpiralChartRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SpiralChartRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(SpiralChartRenderTest PRIVATE UltraCanvas)
+    set_target_properties(SpiralChartRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SpiralChartRenderTest COMMAND SpiralChartRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SpiralChartRenderTest")
+else()
+    message(STATUS "  SpiralChartRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== RIDGELINE CHART RENDER TEST =====

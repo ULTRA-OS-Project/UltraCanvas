@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.28 - Charts > Spiral Chart (UltraCanvasSpiralChart)
 // Version: 1.0.27 - Charts > Ridgeline Chart: the Sleep variant (Phase 2)
 // Version: 1.0.26 - Charts > Ridgeline Chart (UltraCanvasRidgelineChart)
 // Version: 1.0.25 - Modules > Theme (UltraCanvasThemeExamples.cpp)
@@ -1503,6 +1504,16 @@ namespace UltraCanvas {
                 .AddVariant("ridgelinechart", Tr("Word ratings (densities of the answers)"))
                 .AddVariant("ridgelinechart", Tr("Times of day (curves, each to its own peak)"))
                 .AddVariant("ridgelinechart", Tr("Sleep (two series, a 24-hour axis that wraps)"));
+
+        chartBuilder.AddItem("spiralchart", Tr("Spiral Chart"),
+                             Tr("A time series wound along a spiral, one turn per period, so a daily, weekly "
+                                "or yearly rhythm lines up from the centre outward"),
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateSpiralChartExamples(); },
+                             "DemoApp/UltraCanvasSpiralChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSpiralChart.md")
+                .AddVariant("spiralchart", Tr("Temperatures (a year a turn, ribbon)"))
+                .AddVariant("spiralchart", Tr("Website visits (a week a turn, band)"));
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
