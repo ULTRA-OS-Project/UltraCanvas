@@ -2,20 +2,24 @@
 // Apps/UltraStore/web/test/stage-store.mjs
 // Stages a whole web store in one folder: the fixture (test/fixture, a store
 // published by the admin backend without the module, the loader and the
-// runtime) with a build's site/ laid over it the way the admin backend's
-// publish lays it (Apps/UltraStoreAdmin/core/WebSite.cpp) - the module, the
+// runtime) with a build laid over it the way the admin backend's publish
+// lays a site/ (Apps/UltraStoreAdmin/core/WebSite.cpp) - the module, the
 // loader, the mark and the catalogues beside catalog.json, the runtime under
 // runtime/<first 12 hex digits of its .wasm's SHA-256>/, and every page
 // naming that folder and the build's runtime version. What it leaves is what
 // a static host serves: the browser test (webstore-test.mjs) opens it, and
-// wasm-build.yml uploads it as the ultrastore-web-<variant> artifact, so the
-// compiled store of a run can be downloaded and looked at.
+// wasm-build.yml uploads it as preview/ in the ultrastore-web-<variant>
+// artifact, so the compiled store of a run can be downloaded and looked at.
 //
 //   node stage-store.mjs <build dir of Apps/UltraStore/web> <folder to make>
 //
-// The folder must not exist yet, or be empty. A test store, never a release:
-// its catalog is the fixture's, and the module CI builds for it also trusts
-// the fixture's key (ULTRASTORE_WEB_TEST_KEYS).
+// The module is not site/'s. The fixture's catalog is signed with the
+// fixture's key, which the store's module does not trust and must not: the
+// one laid here is the build's test module, ultrastore-web-test.wasm
+// (-DULTRASTORE_WEB_TEST_KEYS, Apps/UltraStore/web/CMakeLists.txt), under
+// the name the pages ask for. Everything else is site/'s. So this is a test
+// store, never a release; the folder to publish a store with is site/.
+// The folder to make must not exist yet, or be empty.
 //
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -26,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const moduleFile = 'ultrastore-web.wasm';
+const testModuleFile = 'ultrastore-web-test.wasm';
 const loaderFile = 'ultracanvas-loader.js';
 const markFile = 'ultrastore.png';
 const runtimeFiles = ['ultracanvas-runtime.js', 'ultracanvas-runtime.wasm', 'ultracanvas-runtime.data'];
@@ -52,15 +57,22 @@ function copyTree(from, to, skip = []) {
     }
 }
 
-// Lays <webBuild>/site over the fixture into storeDir and returns what it
-// made: { runtimeFolder, runtimeVersion, pages, files }. Throws, naming the
-// file, when the build's site/ lacks one a store cannot run without, so a
-// store that would not start is never staged - or uploaded.
+// Lays the build (<webBuild>/site, with <webBuild>/ultrastore-web-test.wasm
+// as its module) over the fixture into storeDir and returns what it made:
+// { runtimeFolder, runtimeVersion, pages, files }. Throws, naming the file,
+// when the build lacks one a store cannot run without, so a store that would
+// not start is never staged - or uploaded.
 export function stageStore(webBuild, storeDir, fixture = path.join(here, 'fixture')) {
     const site = path.resolve(webBuild, 'site');
+    const testModule = path.resolve(webBuild, testModuleFile);
+    const filled = (file) => fs.existsSync(file) && fs.statSync(file).size > 0;
     const need = [moduleFile, loaderFile, 'site.json', ...runtimeFiles.map((name) => path.join('runtime', name))];
-    const missing = need.filter((name) => !fs.existsSync(path.join(site, name)) || fs.statSync(path.join(site, name)).size === 0);
+    const missing = need.filter((name) => !filled(path.join(site, name)));
     if (missing.length) throw new Error(`${site} lacks ${missing.join(', ')}: build the target ultrastore-web-site first`);
+    if (!filled(testModule)) {
+        throw new Error(`${testModule} is not built: the fixture's catalog is signed with the fixture's key, which only the test module trusts - `
+            + `configure with -DULTRASTORE_WEB_TEST_KEYS=$(cat Apps/UltraStore/web/test/fixture/trusted-key.hex) and build ultrastore-web-test`);
+    }
     if (fs.existsSync(storeDir) && fs.readdirSync(storeDir).length) throw new Error(`${storeDir} is not empty: name a new folder, or remove it first`);
     const runtimeVersion = JSON.parse(fs.readFileSync(path.join(site, 'site.json'), 'utf8')).runtime_version || '';
     if (!runtimeVersion) throw new Error(`${path.join(site, 'site.json')} names no runtime_version`);
@@ -69,8 +81,10 @@ export function stageStore(webBuild, storeDir, fixture = path.join(here, 'fixtur
     fs.mkdirSync(storeDir, { recursive: true });
     copyTree(fixture, storeDir, notPublished);
 
-    // The build: the module, the loader, the mark, the catalogues.
-    for (const name of [moduleFile, loaderFile, markFile]) {
+    // The build: the test module under the module's name, then the loader,
+    // the mark and the catalogues of site/.
+    fs.copyFileSync(testModule, path.join(storeDir, moduleFile));
+    for (const name of [loaderFile, markFile]) {
         if (fs.existsSync(path.join(site, name))) fs.copyFileSync(path.join(site, name), path.join(storeDir, name));
     }
     if (fs.existsSync(path.join(site, 'locale'))) copyTree(path.join(site, 'locale'), path.join(storeDir, 'locale'));
@@ -101,7 +115,7 @@ export function stageStore(webBuild, storeDir, fixture = path.join(here, 'fixtur
     if (!pages) throw new Error(`${fixture} has no page with the loader (${loaderFile})`);
 
     const holds = [
-        [moduleFile, 'the web store itself, a WebAssembly side module'],
+        [moduleFile, 'the web store itself, a WebAssembly side module (the test build)'],
         [loaderFile, 'the pages\' loader'],
         [runtimeFolder, 'the UltraCanvas runtime the module runs on (.js, .wasm, .data)'],
         ['locale/<language>/', 'the translation catalogues'],
@@ -129,15 +143,18 @@ http://127.0.0.1:8080/app/org.ultraos.ultravideo/. Opened from the disk
 (file://) a page stays its HTML shadow: a browser fetches no module from
 there.
 
-Not a release. The catalog is the fixture's, and the module of a CI build
-trusts the fixture's signing key beside the store's own
-(-DULTRASTORE_WEB_TEST_KEYS). A real store is published by the admin backend
-with web.site_dir naming a build's site/ folder (Apps/UltraStore/web/README.md).
+Not a release. The catalog is the fixture's, and ${moduleFile} here is the
+build's test module (${testModuleFile}), which trusts the fixture's signing
+key beside the store's own. A real store is published by the admin backend
+with web.site_dir naming a build's site/ folder, whose module trusts the
+store's keys alone (Apps/UltraStore/web/README.md).
 `);
     return { runtimeFolder, runtimeVersion, pages, files: filesUnder(storeDir) };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Run as a program (not imported by the test). Both sides as real paths: Node
+// names this file by its real path, the command line may reach it through a link.
+if (process.argv[1] && fs.existsSync(process.argv[1]) && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {
     const [webBuild, storeDir] = process.argv.slice(2);
     if (!webBuild || !storeDir) {
         console.error('usage: node stage-store.mjs <web store build dir> <folder to make>');

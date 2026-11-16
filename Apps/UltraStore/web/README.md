@@ -68,7 +68,8 @@ Apps/UltraStore/web/
   WebPlatform.h/.cpp     the browser (fetch, WebCrypto, localStorage, the address bar, the
                          browser-decoded pictures) and the desktop (a publish folder, UltraCrypt)
   main.cpp               the entry: the runtime calls it in the browser; a program natively
-  CMakeLists.txt         ultrastore-web.wasm and site/ under emcmake; ultrastore-web natively
+  CMakeLists.txt         ultrastore-web.wasm and site/ under emcmake (and the test module,
+                         ultrastore-web-test.wasm, when test keys are named); ultrastore-web natively
   site.json.in           the runtime's version, read by publish for data-runtime-version
   test/webstore-test.mjs the browser test (below)
   test/stage-store.mjs   lays a build's site/ over test/fixture: a whole store in one folder,
@@ -82,7 +83,8 @@ What the build leaves under emcmake, `site/`, is what the admin backend's
 `publish` lays beside `catalog.json` when the setting `web.site_dir` names
 it: `ultrastore-web.wasm`, `ultracanvas-loader.js`, `ultrastore.png`,
 `site.json`, `locale/<lang>/{UltraStore,Standard}.json`,
-`runtime/ultracanvas-runtime.{js,wasm,data}`. Publish copies
+`runtime/ultracanvas-runtime.{js,wasm,data}`. Its module trusts the
+store's keys alone (*The keys, and the test module* below). Publish copies
 the runtime to `runtime/<first 12 hex digits of the .wasm's SHA-256>/`, so
 the host serves it with `Cache-Control: public, max-age=31536000,
 immutable` and a new runtime is a new folder; Brotli is the host's
@@ -118,36 +120,63 @@ variant builds it on every change to `Apps/UltraStore/**`, prints the
 module's size in its *Demo sizes* table, uploads the store and runs the
 browser test.
 
+### The keys, and the test module
+
+The module trusts the keys of `Apps/UltraStore/keys/*.pub` - the store's
+production key, the same the native store trusts - and under emcmake
+nothing else, however the build was configured: `site/` is always a folder
+a store can be published with. No second set of keys exists or is needed
+for a release.
+
+A test needs one more. The browser test's fixture catalog is signed with a
+key made for it, so `-DULTRASTORE_WEB_TEST_KEYS=<hex>` builds a second
+module from the same sources, **`ultrastore-web-test.wasm`**, that trusts
+the store's keys and the test keys. It stays in the build directory beside
+`site/` and never enters it; `test/stage-store.mjs` lays it over the
+fixture under the module's name. (Natively the option adds the keys to the
+one program, which is a tool to look at a publish folder.)
+
 ### The store a CI run built
 
+The dynamic variant uploads what it built as the run's
+**`ultrastore-web-dynamic`** artifact, before any test runs. Download it
+from the run's page and unzip it:
+
+```
+ultrastore-web-dynamic/
+  README.txt
+  site/      the build's site/: set the admin backend's web.site_dir to it and publish.
+             Its module trusts the store's keys alone
+  preview/   a whole store to look at, with its own README.txt
+```
+
 `site/` alone opens nothing: it has no page and no catalog, which are the
-admin backend's to publish. So the dynamic variant stages a whole store
-right after the build, before any test runs:
+admin backend's to publish. `preview/` is a store a static host serves -
+
+```
+cd preview && python3 -m http.server --bind 127.0.0.1 8080
+```
+
+shows it at `http://127.0.0.1:8080/` - staged by
 
 ```
 node Apps/UltraStore/web/test/stage-store.mjs build-wasm/Apps/UltraStore/web <new folder>
 ```
 
-That is the fixture (`test/fixture`) with the build's module, loader, mark
-and catalogues laid over it and the runtime under `runtime/<hash>/`, every
-page naming that folder and the build's runtime version, as publish does it
-(`Apps/UltraStoreAdmin/core/WebSite.cpp`). The workflow uploads the folder
-as the run's **`ultrastore-web-dynamic`** artifact. Download it from the
-run's page, unzip it, and in the folder
-
-```
-python3 -m http.server --bind 127.0.0.1 8080
-```
-
-shows the store at `http://127.0.0.1:8080/` (its `README.txt` says the
-same). It holds `ultrastore-web.wasm`, `ultracanvas-loader.js`,
-`runtime/<hash>/ultracanvas-runtime.{js,wasm,data}`, `locale/`, the catalog
-with its signature, the pages and the pictures. A test store, never a
-release: the catalog is the fixture's and the module trusts the fixture's
-key (see *Testing*). The test's screenshots and console logs are a second
-artifact, `ultrastore-web-smoke-dynamic`.
+which is the fixture (`test/fixture`) with the build laid over it as
+publish lays a `site/` (`Apps/UltraStoreAdmin/core/WebSite.cpp`): the
+loader, the mark and the catalogues beside the catalog, the runtime under
+`runtime/<hash>/`, every page naming that folder and the build's runtime
+version - and, as its module, the test module, since the fixture's catalog
+is signed with the fixture's key. So `preview/` is a test store, never a
+release. The test's screenshots and console logs are a second artifact,
+`ultrastore-web-smoke-dynamic`.
 
 ## Testing
+
+With the build configured with
+`-DULTRASTORE_WEB_TEST_KEYS=$(cat Apps/UltraStore/web/test/fixture/trusted-key.hex)`,
+which adds the test module (*The keys, and the test module* above),
 
 ```
 npx playwright install chromium
@@ -162,15 +191,22 @@ the catalog verifies and is accepted, an app page and a category open by
 address, `?page=` works, the back button returns, the icons come as the
 catalog's WebP variants), a tampered catalog refused, and the runtime from
 the extension (the site sends no runtime). It checks the budgets of the
-brief: the module at most 150 KB Brotli, Discover's pictures at most
-300 KB, an app page's screenshots at most 500 KB, one `catalog.json`.
+brief: the store's module at most 150 KB Brotli, Discover's pictures at
+most 300 KB, an app page's screenshots at most 500 KB, one `catalog.json`.
 Screenshots and the console logs land in `uws-test-out/` (`UWS_OUT`).
+
+The store's module, `site/`'s, is tested apart from the test module the
+staged store runs on: its bytes hold the store's keys and not the
+fixture's (the test module, which holds both, is the control), and served
+in the test module's place it runs and refuses the fixture's catalog. A
+build that let a test key into `site/` fails there.
 
 The fixture is signed with a key made for it; its public half is
 `test/fixture/trusted-key.hex`, which the CI build compiles into the test
-module with `-DULTRASTORE_WEB_TEST_KEYS`, never into a release. Run
+module with `-DULTRASTORE_WEB_TEST_KEYS`, never into `site/`'s. Run
 `make-fixture.sh` again to change the fixture (a new key each time) and
-commit the result.
+commit the result. The build needs the option for the test to run:
+without the test module `stage-store.mjs` says so.
 
 ## Measured sizes
 

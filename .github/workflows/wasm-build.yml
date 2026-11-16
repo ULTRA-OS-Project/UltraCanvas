@@ -19,9 +19,13 @@ name: WebAssembly build
 # tests it end to end against a relay it builds natively. Every variant
 # builds the UltraWeb runtime too (Apps/UltraWeb/browser); the
 # single-threaded one, the runtime that ships, also runs it in Chromium.
-# The dynamic variant (the UltraCanvas runtime, apps as side modules) also
-# builds the UltraStore web store and uploads it whole, as a static host
-# serves it: the ultrastore-web-dynamic artifact.
+# What a run leaves to download is what it built, each folder with a
+# README.txt and usable as unzipped: wasm-demo-<variant> (the pages),
+# ultraweb-runtime-<variant> and ultracanvas-runtime-<variant> (each runtime
+# as a site serves it, and its browser extension), ultrastore-web-<variant>
+# (the UltraStore web store of the dynamic variant: site/ to publish a store
+# with, preview/ to look at one). The browser tests' screenshots and console
+# logs are the artifacts named *-smoke-<variant>.
 # The single-threaded one is required: it is the build a static host
 # without cross-origin isolation headers must serve, and since run 24 it
 # builds and passes its smoke test like the baseline.
@@ -246,9 +250,11 @@ jobs:
           PKG_CONFIG_LIBDIR: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
         run: |
           # The dynamic variant also builds the UltraStore web store
-          # (Apps/UltraStore/web) as a side module, with the browser test's
-          # fixture key compiled in beside the store's keys: the fixture
-          # catalog (test/fixture) is signed with it. A test build only.
+          # (Apps/UltraStore/web) as a side module, twice: the store's
+          # module, which trusts the store's keys alone and goes into
+          # site/, and - for the browser test's fixture key named here - a
+          # test module that trusts that key too (ultrastore-web-test.wasm):
+          # the fixture catalog (test/fixture) is signed with it.
           extra=""
           if [ "${{ matrix.pic }}" = "1" ]; then
             extra="-DULTRASTORE_WEB_TEST_KEYS=$(cat Apps/UltraStore/web/test/fixture/trusted-key.hex)"
@@ -351,27 +357,154 @@ jobs:
           path: wasm-demo
           if-no-files-found: error
 
-      # The UltraStore web store as a static host serves it, in one folder:
-      # the test's fixture store with this build's module
-      # (ultrastore-web.wasm), loader and runtime laid over it the way the
-      # admin backend's publish lays them (Apps/UltraStore/web/test/stage-store.mjs).
-      # It works as unzipped - its README.txt says how to serve it - and it is
-      # the folder the browser test below opens. Staged and uploaded here,
-      # before any test runs: a store that fails a test is the one somebody
-      # wants to download. Until 2026-11-16 a run kept none of it: the only
-      # artifact with the store's name held the test's screenshots and logs.
+      # What the later steps test, collected first and uploaded before any of
+      # them runs: a build that fails a test is the one somebody wants to
+      # download. Until 2026-11-16 a run kept none of the three: the
+      # artifacts with their names held the tests' screenshots and logs only
+      # (those are *-smoke-<variant> now), so a green run's archives had no
+      # WebAssembly in them.
+      #
+      # The UltraWeb runtime (Apps/UltraWeb/browser) as its build leaves it:
+      # the sample site with the runtime under runtime/, and the extension.
+      # The single-threaded variants only, as the test below: that is the
+      # runtime that ships.
+      - name: Collect the UltraWeb runtime
+        if: matrix.threads == 0
+        run: |
+          from=build-wasm/Apps/UltraWeb/browser
+          mkdir ultraweb-runtime
+          cp -r "$from/site" "$from/ultraweb-extension" ultraweb-runtime/
+          test -s ultraweb-runtime/site/runtime/ultraweb-runtime.wasm
+          test -s ultraweb-runtime/site/hello.wasm
+          test -s ultraweb-runtime/ultraweb-extension/runtime/ultraweb-runtime.wasm
+          cat > ultraweb-runtime/README.txt <<EOF
+          The UltraWeb runtime for ordinary browsers
+          ==========================================
+
+          UltraCanvas compiled to WebAssembly, running UltraWeb apps on the
+          browser's own engine (Docs/UltraWeb/UltraWebInTheBrowser.md).
+          Variant ${{ matrix.variant }}, commit $GITHUB_SHA.
+
+            site/                 what a site serves: ultraweb-loader.js, two pages, the
+                                  sample app hello.wasm, and the runtime under runtime/
+                                  (ultraweb-runtime.js, .wasm, .data)
+            ultraweb-extension/   the browser extension that installs the runtime once,
+                                  with its own copy under runtime/
+
+          To look at it, serve site/ - any static host does, no special headers:
+
+            cd site && python3 -m http.server --bind 127.0.0.1 8080
+
+          and open http://127.0.0.1:8080/. extension-only.html has no runtime on
+          the site: it runs once the extension is loaded (Chromium:
+          chrome://extensions, Developer mode, Load unpacked, this folder's
+          ultraweb-extension/), and says so until then.
+          EOF
+          ls -l ultraweb-runtime ultraweb-runtime/*
+
+      - name: Upload the UltraWeb runtime
+        if: matrix.threads == 0
+        uses: actions/upload-artifact@v6
+        with:
+          name: ultraweb-runtime-${{ matrix.variant }}
+          path: ultraweb-runtime
+          if-no-files-found: error
+
+      # The UltraCanvas runtime (UltraCanvas/OS/WASM/runtime) the same way:
+      # the sample site with hello-app.wasm, a side module, and the runtime
+      # under runtime/, and the extension.
+      - name: Collect the UltraCanvas runtime
+        if: matrix.pic == 1
+        run: |
+          from=build-wasm/UltraCanvas/OS/WASM/runtime
+          mkdir ultracanvas-runtime
+          cp -r "$from/site" "$from/ultracanvas-extension" ultracanvas-runtime/
+          test -s ultracanvas-runtime/site/runtime/ultracanvas-runtime.wasm
+          test -s ultracanvas-runtime/site/hello-app.wasm
+          test -s ultracanvas-runtime/ultracanvas-extension/runtime/ultracanvas-runtime.wasm
+          cat > ultracanvas-runtime/README.txt <<EOF
+          The UltraCanvas runtime for browsers
+          ====================================
+
+          UltraCanvas linked once into a WebAssembly main module that apps -
+          side modules of their own code only - are loaded into
+          (Docs/UltraCanvas/UltraCanvasWasmRuntime.md).
+          Variant ${{ matrix.variant }}, commit $GITHUB_SHA.
+
+            site/                     what a site serves: ultracanvas-loader.js, two pages,
+                                      the sample app hello-app.wasm, and the runtime under
+                                      runtime/ (ultracanvas-runtime.js, .wasm, .data)
+            ultracanvas-extension/    the browser extension that installs the runtime
+                                      once, with its own copy under runtime/
+
+          To look at it, serve site/ - any static host does, no special headers:
+
+            cd site && python3 -m http.server --bind 127.0.0.1 8080
+
+          and open http://127.0.0.1:8080/. extension-only.html has no runtime on
+          the site: it runs once the extension is loaded (Chromium:
+          chrome://extensions, Developer mode, Load unpacked, this folder's
+          ultracanvas-extension/), and says so until then. An app runs on the
+          runtime version it was built against, so the two go together.
+          EOF
+          ls -l ultracanvas-runtime ultracanvas-runtime/*
+
+      - name: Upload the UltraCanvas runtime
+        if: matrix.pic == 1
+        uses: actions/upload-artifact@v6
+        with:
+          name: ultracanvas-runtime-${{ matrix.variant }}
+          path: ultracanvas-runtime
+          if-no-files-found: error
+
+      # The UltraStore web store (Apps/UltraStore/web), two folders:
+      #   site/     what the build leaves for the admin backend's publish
+      #             (the setting web.site_dir): the store's module, which
+      #             trusts the store's keys alone (Apps/UltraStore/keys), the
+      #             loader, the catalogues and the runtime. The folder a
+      #             store is published with; it has no page and no catalog
+      #             of its own.
+      #   preview/  a whole store to look at, as a static host serves it: the
+      #             test's fixture store with the build laid over it the way
+      #             publish lays it (test/stage-store.mjs), its module the
+      #             test module, which also trusts the fixture's key. The
+      #             folder the browser test below opens. Never a release.
       - name: Collect the UltraStore web store
         if: matrix.pic == 1
         run: |
-          node Apps/UltraStore/web/test/stage-store.mjs build-wasm/Apps/UltraStore/web ultrastore-web-store
-          ls -l ultrastore-web-store ultrastore-web-store/runtime/*
+          from=build-wasm/Apps/UltraStore/web
+          mkdir ultrastore-web
+          cp -r "$from/site" ultrastore-web/site
+          node Apps/UltraStore/web/test/stage-store.mjs "$from" ultrastore-web/preview
+          test -s ultrastore-web/site/ultrastore-web.wasm
+          test -s ultrastore-web/site/runtime/ultracanvas-runtime.wasm
+          test -s ultrastore-web/preview/ultrastore-web.wasm
+          test -s ultrastore-web/preview/index.html
+          cat > ultrastore-web/README.txt <<EOF
+          The UltraStore web store
+          ========================
+
+          The shop's pages as an UltraCanvas application a browser runs
+          (Apps/UltraStore/web/README.md). Variant ${{ matrix.variant }}, commit $GITHUB_SHA.
+
+            site/      for publishing a store: the admin backend's publish lays it
+                       beside the catalog when the setting web.site_dir names this
+                       folder. ultrastore-web.wasm here trusts the store's keys alone
+                       (Apps/UltraStore/keys/*.pub). It has no page and no catalog:
+                       those are the publish's, so it opens nothing by itself.
+            preview/   for looking at one: a small test store, whole, that any static
+                       host serves - see its README.txt. Its ultrastore-web.wasm is
+                       the test module, which also trusts the test catalog's key:
+                       never publish a store with it.
+          EOF
+          ls -l ultrastore-web ultrastore-web/site ultrastore-web/site/runtime ultrastore-web/preview ultrastore-web/preview/runtime/*
 
       - name: Upload the UltraStore web store
         if: matrix.pic == 1
         uses: actions/upload-artifact@v6
         with:
           name: ultrastore-web-${{ matrix.variant }}
-          path: ultrastore-web-store
+          path: ultrastore-web
           if-no-files-found: error
 
       # The pages opened in the runner's Google Chrome, headless, served by
@@ -427,7 +560,9 @@ jobs:
         run: |
           node build-wasm/Apps/UltraWeb/browser/wasmhost-browser-test.js
           npx playwright install chromium
-          node Apps/UltraWeb/browser/test/runtime-test.mjs build-wasm/Apps/UltraWeb/browser
+          # The folder uploaded above: it holds site/ and the extension as the
+          # build directory does.
+          node Apps/UltraWeb/browser/test/runtime-test.mjs ultraweb-runtime
 
       # The UltraCanvas runtime: the sample C++ app, a side module, in
       # Chromium without the extension (the runtime from the site) and with it
@@ -439,21 +574,23 @@ jobs:
           UCR_OUT: ucr-${{ matrix.variant }}
         run: |
           npx playwright install chromium
-          node UltraCanvas/OS/WASM/runtime/test/runtime-test.mjs build-wasm/UltraCanvas/OS/WASM/runtime
+          node UltraCanvas/OS/WASM/runtime/test/runtime-test.mjs ultracanvas-runtime
 
       # The UltraStore web store (Apps/UltraStore/web, Docs/UltraStore/WebstoreBrief.md):
-      # the store staged and uploaded above - the fixture site the admin
-      # backend published, with this build's module, loader and runtime laid
-      # over it - in Chromium: the runtime from the site (Discover paints,
-      # the catalog verifies in the browser, an app page and a category open
-      # by address, the budgets hold), a tampered catalog refused, and the
-      # runtime from the extension.
+      # the preview/ staged and uploaded above - the fixture site the admin
+      # backend published, with this build's test module, loader and runtime
+      # laid over it - in Chromium: the runtime from the site (Discover
+      # paints, the catalog verifies in the browser, an app page and a
+      # category open by address, the budgets hold), a tampered catalog
+      # refused, and the runtime from the extension. And the store's module,
+      # site/'s: it holds the store's keys and not the fixture's, and put in
+      # the test module's place it refuses the fixture's catalog.
       - name: UltraStore web store in Chromium
         if: matrix.pic == 1
         env:
           UWS_OUT: uws-${{ matrix.variant }}
-          UWS_STORE: ultrastore-web-store
-        run: node Apps/UltraStore/web/test/webstore-test.mjs build-wasm/Apps/UltraStore/web build-wasm/UltraCanvas/OS/WASM/runtime
+          UWS_STORE: ultrastore-web/preview
+        run: node Apps/UltraStore/web/test/webstore-test.mjs build-wasm/Apps/UltraStore/web ultracanvas-runtime
 
       - name: Upload the UltraStore web store screenshots and logs
         if: always() && matrix.pic == 1
@@ -467,7 +604,7 @@ jobs:
         if: always() && matrix.pic == 1
         uses: actions/upload-artifact@v6
         with:
-          name: ultracanvas-runtime-${{ matrix.variant }}
+          name: ultracanvas-runtime-smoke-${{ matrix.variant }}
           path: ucr-${{ matrix.variant }}
           if-no-files-found: ignore
 
@@ -475,7 +612,7 @@ jobs:
         if: always() && matrix.threads == 0
         uses: actions/upload-artifact@v6
         with:
-          name: ultraweb-runtime-${{ matrix.variant }}
+          name: ultraweb-runtime-smoke-${{ matrix.variant }}
           path: uwr-${{ matrix.variant }}
           if-no-files-found: ignore
 
