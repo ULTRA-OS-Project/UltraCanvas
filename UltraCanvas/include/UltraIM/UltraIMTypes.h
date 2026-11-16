@@ -287,7 +287,11 @@ enum class UltraIMAuthStep {
     // when the account has one, else signed in - once it is scanned. Asked
     // for with credentials.loginType QRCode (at the start, or in place of a
     // code that never came); a phone number given here starts over with it.
-    OtherDevice
+    OtherDevice,
+    // Nothing to type: the hint is a web address (Mastodon: the server's
+    // consent page) for the application to open in the browser; the provider
+    // waits for the browser's answer and goes on by itself.
+    Browser
 };
 
 struct UltraIMCredentials {

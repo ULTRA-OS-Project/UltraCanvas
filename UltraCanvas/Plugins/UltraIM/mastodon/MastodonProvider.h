@@ -6,8 +6,9 @@
 // whose visibility is "direct", seen only by the accounts they mention; the
 // server groups them into conversations (GET /api/v1/conversations). Here:
 //
-//   - a conversation's id is the set of the other accounts in it (their ids,
-//     sorted, joined with '-'), so a chat opened before its first message
+//   - a conversation's id is the set of the other accounts in it (their full
+//     addresses, "user@server" in lower case, sorted, space-joined), so a
+//     chat opened before its first message
 //     (AddContact, CreateGroup) and the conversation that message makes are
 //     the same; the server's conversations of the same people are one chat;
 //   - a message is a status: its HTML content as plain text, the mentions it
@@ -152,10 +153,11 @@ private:
         std::string avatarUrl;
     };
     struct Chat {
-        std::string key;                            // the others' ids, sorted, '-'-joined
+        std::string key;                            // the others' addresses, sorted, space-joined
         std::vector<Account> accounts;              // the others
         std::set<std::string> serverIds;            // the server's conversations of these people
         std::string lastStatusId;
+        std::string rootId;                         // the thread's first status, once read
         std::string lastEditedAt;
         UltraIMMessage last;                        // for the list's line
         bool unread = false;
@@ -186,7 +188,8 @@ private:
     Account AccountFrom(const UltraCanvas::JSONValue& account) const;
     bool MessageFrom(const UltraCanvas::JSONValue& status, const std::string& key, UltraIMMessage& out);
     UltraIMConversation ConversationOf(const Chat& chat) const;
-    std::vector<UltraIMMessage> ThreadOf(Chat& chat);
+    // The chat's thread, oldest first; unseen gets the ids not told about before.
+    std::vector<UltraIMMessage> ThreadOf(Chat& chat, std::set<std::string>* unseen = nullptr);
     UltraIMResult ResolveAccount(const std::string& address, Account& out);
     std::string MentionsOf(const Chat& chat) const;
     void QueueMedia(const UltraIMMessage& message);

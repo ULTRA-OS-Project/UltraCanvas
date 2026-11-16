@@ -425,9 +425,10 @@ protected:
 // Version 8 (2026-11): UltraIMSendOptions::durationSeconds (a recording's length).
 // Version 9 (2026-11): TransferProgress events (transferredBytes, totalBytes, isUpload);
 // UltraIMSearchKind::Audio.
+// Version 10 (2026-11): UltraIMAuthStep::Browser (a sign-in page to open).
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 9;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 10;
 
 struct UltraIMPluginHost {
     int abiVersion;
