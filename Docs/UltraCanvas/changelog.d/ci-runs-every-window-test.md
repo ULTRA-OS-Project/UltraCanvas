@@ -19,6 +19,16 @@
     `DisplayTest::DisplayRequired()` (`Tests/DisplayTestSupport.h`) now.
     `FileDialogTest`'s skip also no longer hides a failed check of the half
     that did run.
+  - It stays that way: `scripts/check_window_tests.py`, run by the new
+    `window-tests.yml` on every pull request that touches a test, a CMake
+    file or a workflow, fails a window test that no virtual-display step
+    runs, a step that runs one without the variable, a skip that never asks
+    `DisplayRequired()`, and a name a step lists that nothing registers. A
+    window test is a test source that reads `DISPLAY` or opens the X display
+    itself. A source that is not one says so with
+    `// window-test-exempt: <why>`, and one ctest entry of several with
+    `// window-test-exempt(<name>): <why>`, as `DesktopShellTest`'s
+    D-Bus-only `DesktopShellTrayTest` and `DesktopShellPortalTest` do.
   - CI installs `xclip` with `xvfb`, so `ClipboardIncrTest` also checks a
     large picture copied to and from another program. The comment on that
     install no longer says it is for DesktopShellTest alone.

@@ -1579,6 +1579,7 @@ int main(int argc, char** argv) {
 #if defined(DESKTOPSHELLTEST_X11) && defined(DESKTOPSHELLTEST_HAVE_GIO)
     // The notification area, under a session bus of its own (CTest's
     // DesktopShellTrayTest runs it through dbus-run-session).
+    // window-test-exempt(DesktopShellTrayTest): D-Bus only, it returns before the X display is opened
     if (argc == 2 && std::strcmp(argv[1], "--tray") == 0) return TrayTest();
 #endif
 #if defined(DESKTOPSHELLTEST_WAYLAND)
@@ -1597,6 +1598,7 @@ int main(int argc, char** argv) {
     // The portals, under a session bus of their own (CTest's
     // DesktopShellPortalTest runs it through dbus-run-session), and the
     // fake portal that section starts.
+    // window-test-exempt(DesktopShellPortalTest): D-Bus only, run by wayland-build.yml under a bus of its own
     if (argc == 2 && std::strcmp(argv[1], "--portals") == 0) return PortalTest();
     if (argc == 3 && std::strcmp(argv[1], "--fake-portal") == 0) return FakePortalMain(PathFromUtf8(argv[2]));
 #endif
