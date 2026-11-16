@@ -1446,6 +1446,94 @@ int main() {
             window->UpdateAndRender();
             window->UpdateAndRender();
             TEST("Pattern and picture fills draw", edit->GetFloatRectForTest(1).height > 0.0f);
+        }
+
+        // In a table cell: a drawing stands in the cell's line and takes its
+        // room (the row grows by it); a picture behind the text floats from
+        // the cell - turned or not - and takes none.
+        {
+            auto card = std::make_shared<UCRichDocument>(*document);
+            const std::vector<uint8_t> png(kDotPng.begin(), kDotPng.end());
+            const int media = card->AddMedia("back.png", "image/png", png);
+            RichTextRun label;
+            label.text = "3";
+            RichTextRun photo = drawing(1, 120.0f, 90.0f);
+            photo.lineBreakBefore = true;
+            RichTextRun back;
+            back.text = RichTextRun::kObjectReplacement;
+            back.mediaIndex = media;
+            back.imageWidthPt = 60.0f;
+            back.imageHeightPt = 300.0f;
+            back.imageWrap = RichTextRun::ImageWrap::BehindText;
+            back.imageFloatAlign = RichTextAlign::Default;
+            back.imageOffsetXPt = 100.0f;
+            back.imageOffsetYPt = -100.0f;
+            back.imageRotationDeg = 270.0f;
+            auto tableOf = [&](std::vector<RichTextRun> runs) {
+                RichDocBlock table;
+                table.type = RichBlockType::Table;
+                RichTableCell left, right;
+                left.runs = std::move(runs);
+                RichTextRun name;
+                name.text = "Name";
+                right.runs = {name};
+                RichTableRow row;
+                row.cells = {left, right};
+                table.tableRows = {row};
+                return table;
+            };
+            RichDocBlock after;
+            after.runs = {words};
+            auto afterTop = [&](std::vector<RichTextRun> runs) {
+                card->blocks = {tableOf(std::move(runs)), after};
+                edit->SetDocument(card);
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                return edit->GetCaretRectForTest().y;
+            };
+            const float plain = afterTop({label});
+            const float withPhoto = afterTop({label, photo});
+            TEST("A drawing in a table cell takes its room in the cell: the text after the table moves down by "
+                 + std::to_string(withPhoto - plain), withPhoto - plain > 85.0f && withPhoto - plain < 140.0f);
+            TEST("...standing in the line, not floating", edit->GetFloatRectForTest(0).width == 0.0f);
+            const float withBack = afterTop({back, label});
+            const Rect2Df backRect = edit->GetFloatRectForTest(0);
+            TEST("A picture behind the text floats from its cell and takes no room: " + std::to_string(withBack - plain),
+                 std::abs(withBack - plain) < 1.0f && backRect.width > 0.0f);
+            // 60 x 300 pt, its box as before the turn: 100 pt right of the
+            // cell's text, 100 pt above its line.
+            TEST("...its box where the offsets put it: " + std::to_string(backRect.x) + ", " + std::to_string(backRect.y)
+                 + " " + std::to_string(backRect.width) + " x " + std::to_string(backRect.height),
+                 backRect.height > backRect.width * 4.5f && backRect.x > backRect.width
+                 && backRect.y < plain - backRect.width);
+
+            // A picture in a line makes its line as tall as it is, where
+            // the document's lines keep their fonts' gap too.
+            RichTextRun tall;
+            tall.text = RichTextRun::kObjectReplacement;
+            tall.mediaIndex = media;
+            tall.imageWidthPt = 40.0f;
+            tall.imageHeightPt = 120.0f;
+            RichDocBlock pictured;
+            pictured.runs = {words, tall};
+            RichDocBlock wordsOnly;
+            wordsOnly.runs = {words};
+            auto secondTop = [&](const RichDocBlock& first) {
+                card->blocks = {first, after};
+                card->fontLineGap = true;
+                edit->SetDocument(card);
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                return edit->GetCaretRectForTest().y;
+            };
+            const float lineOnly = secondTop(wordsOnly);
+            const float lineWithPicture = secondTop(pictured);
+            TEST("A picture in a line makes the line as tall as it is: the next paragraph " + std::to_string(lineWithPicture - lineOnly)
+                 + " lower", lineWithPicture - lineOnly > 100.0f);
             edit->SetDocument(document);
             window->UpdateAndRender();
         }

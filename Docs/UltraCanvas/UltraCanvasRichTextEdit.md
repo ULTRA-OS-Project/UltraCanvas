@@ -624,6 +624,39 @@ two parts joined into one layout, so the caret, clicks and selection treat
 it as one.) A paragraph that would be left too narrow beside a picture
 starts below it instead.
 
+**In a table cell.** A picture, frame or drawing the text ignores (`BehindText`,
+`InFrontOfText`) floats from its cell: across from the left edge of the
+cell's text, down from the line it is anchored in, and over the rest of the
+table if it is bigger than the cell - a card's background picture, anchored in
+the first cell, lies under the whole card. It takes no room, and it is drawn
+but not picked up, moved or resized from the page. Any other frame or drawing
+in a cell stands in the cell's line, as wide and tall as it says (a frame at
+least as tall as its words; a drawing with room for its outline), with the
+line's descent under it - a photo drawn as the fill of a shape. (Square and
+top-and-bottom *pictures* in a cell stay in the line as before.)
+
+**Turned.** `RichTextRun::imageRotationDeg` turns a floating picture clockwise
+about its centre; its size and offsets are those of the box before the turn
+(Word's `a:xfrm rot`, ODF's `draw:transform`), so a 150 x 389 pt picture
+turned three quarters covers 389 x 150 pt round the same centre.
+
+```cpp
+RichTextRun banner;
+banner.text = RichTextRun::kObjectReplacement;
+banner.mediaIndex = document->AddMedia("banner.jpg", "image/jpeg", bytes);
+banner.imageWidthPt = 150.0f;                       // before the turn
+banner.imageHeightPt = 389.0f;
+banner.imageWrap = RichTextRun::ImageWrap::BehindText;
+banner.imageFloatAlign = RichTextAlign::Default;    // at imageOffsetXPt
+banner.imageOffsetXPt = 113.0f;
+banner.imageOffsetYPt = -118.0f;
+banner.imageRotationDeg = 270.0f;                   // lies on its side
+```
+
+A picture or drawn shape standing in a line makes that line as tall as it is
+and keeps the line's descent under it, with words beside it or alone in its
+paragraph.
+
 **Placed from the page.** By default a float counts across from the text
 column and down from its paragraph. `floatHorizontalFrom` and
 `floatVerticalFrom` (`RichTextRun::FloatOrigin`: `Paragraph`, `Margin`,

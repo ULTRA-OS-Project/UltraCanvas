@@ -5,6 +5,8 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.10.0 - a turned picture (draw:transform) read and written; drawn shapes in table cells
+//                   read, and written in the line (as-char) where text stops above and below them
 // Version: 1.9.0 - paragraph spacing in cells, the kerning, line-gap and cell-spacing settings read and written
 // Version: 1.8.0 - a section's own header, footer and margins (master pages) read and written; a table's
 //                  room above and below; an empty cell's font; page-anchored shapes placed from the sheet
@@ -1264,6 +1266,9 @@ private:
         // a paragraph can carry one; elsewhere (a table cell) their text is
         // flattened as before.
         bool framesAsRuns = false;
+        // A table cell's: its drawn shapes become runs (a frame's words stay
+        // in the cell's own lines).
+        bool shapesAsRuns = false;
         bool pendingLineBreak = false;
         // A table cell's paragraphs so far, and the style of the last one
         // (CollectCellRuns: an empty paragraph is an empty line).
@@ -1471,7 +1476,23 @@ private:
             run.imageWidthPt = widthPt;
             run.imageHeightPt = heightPt;
             run.imageAltText = altText;
-            if (anchorType != "as-char") ApplyFloatPlacement(frame, run);
+            if (anchorType != "as-char") {
+                ApplyFloatPlacement(frame, run);
+                // Turned (draw:transform): the box before the turn gives its
+                // place, as for a shape.
+                if (frame->Attribute("draw:transform")) {
+                    RichShape box;
+                    ReadShapeBox(frame, box);
+                    run.imageRotationDeg = box.rotationDeg;
+                    if (box.rotationDeg != 0.0f) {
+                        if (run.imageFloatAlign == RichTextAlign::Default || !frame->Attribute("svg:x")) {
+                            run.imageFloatAlign = RichTextAlign::Default;
+                            run.imageOffsetXPt = box.xPt;
+                        }
+                        if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) run.imageOffsetYPt = box.yPt;
+                    }
+                }
+            }
             run.lineBreakBefore = ctx.pendingLineBreak;
             ctx.pendingLineBreak = false;
             ctx.runs.push_back(std::move(run));
@@ -2130,7 +2151,7 @@ private:
             } else if (tag == "draw:frame") {
                 ParseFrame(elem, props, linkTarget, ctx);
             } else if (IsShapeTag(tag)) {
-                if (ctx.framesAsRuns && frameDepth_ == 0) ParseDrawingShape(elem, ctx);
+                if ((ctx.framesAsRuns || ctx.shapesAsRuns) && frameDepth_ == 0) ParseDrawingShape(elem, ctx);
             } else if (tag == "text:note") {
                 // A footnote or endnote: its body's paragraphs become the
                 // note, the citation a reference run numbered once all are
@@ -2531,6 +2552,7 @@ private:
                     }
                 }
                 InlineContext ctx;
+                ctx.shapesAsRuns = frameDepth_ == 0;
                 // A cell holds block content (paragraphs, headings, lists,
                 // even nested tables). The flat cell model keeps only runs, so
                 // every block's text is flattened into the cell separated by
@@ -3081,16 +3103,28 @@ private:
         }
         xml << "<draw:frame draw:name=\""
             << EscapeXml(run.imageAltText.empty() ? std::string("Image") : run.imageAltText) << "\"";
+        bool turned = false;
         if (run.IsFloatingImage()) {
             xml << " draw:style-name=\"" << FloatingFrameStyle(run) << "\" text:anchor-type=\"paragraph\"";
-            if (run.imageFloatAlign == RichTextAlign::Default) xml << " svg:x=\"" << Pt(run.imageOffsetXPt) << "\"";
-            if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) {
-                xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+            if (std::fmod(static_cast<double>(run.imageRotationDeg), 360.0) != 0.0) {
+                // Turned: its size and a draw:transform, as a turned shape.
+                RichShape box;
+                box.widthPt = widthPt;
+                box.heightPt = heightPt;
+                box.rotationDeg = run.imageRotationDeg;
+                xml << ShapeBoxAttributes(box, run.imageOffsetXPt, run.imageOffsetYPt) << ">";
+                turned = true;
+            } else {
+                if (run.imageFloatAlign == RichTextAlign::Default) xml << " svg:x=\"" << Pt(run.imageOffsetXPt) << "\"";
+                if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) {
+                    xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+                }
             }
         } else {
             xml << " text:anchor-type=\"as-char\"";
         }
-        xml << " svg:width=\"" << Pt(widthPt) << "\" svg:height=\"" << Pt(heightPt) << "\">"
+        if (!turned) xml << " svg:width=\"" << Pt(widthPt) << "\" svg:height=\"" << Pt(heightPt) << "\">";
+        xml
             << "<draw:image xlink:href=\"" << PictureHref(run.mediaIndex)
             << "\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>"
             << "</draw:frame>";
@@ -3448,9 +3482,14 @@ private:
     // A drawing, anchored to its paragraph and placed as its run says: a lone
     // shape (with the frame's words), else a group of its shapes.
     void WriteDrawing(std::ostringstream& xml, const RichTextRun& run, const RichTextFrame& frame) {
-        const float x = run.imageFloatAlign == RichTextAlign::Default ? run.imageOffsetXPt : 0.0f;
-        const float y = run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top ? run.imageOffsetYPt : 0.0f;
-        const std::string anchor = " text:anchor-type=\"paragraph\"";
+        // In a table cell a drawing text stops above and goes on below
+        // stands in the line (so every view sets it): anchored as a
+        // character, on the baseline.
+        const bool inLine = writingCell_ && run.imageWrap == RichTextRun::ImageWrap::TopAndBottom;
+        const float x = inLine ? 0.0f : run.imageFloatAlign == RichTextAlign::Default ? run.imageOffsetXPt : 0.0f;
+        const float y = inLine ? 0.0f
+                      : run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top ? run.imageOffsetYPt : 0.0f;
+        const std::string anchor = inLine ? " text:anchor-type=\"as-char\"" : " text:anchor-type=\"paragraph\"";
         if (frame.shapes.size() == 1 && frame.shapes.front().kind != RichShape::Kind::Group) {
             RichShape shape = frame.shapes.front();
             shape.xPt = shape.yPt = 0.0f;
@@ -3458,7 +3497,8 @@ private:
             shape.heightPt = run.imageHeightPt;
             if (shape.name.empty()) shape.name = frame.name;
             const std::string style = FloatingFrameStyle(run, nullptr,
-                                                         ShapeLookAttributes(shape, frame.paddingPt, frame.textAnchor));
+                                                         ShapeLookAttributes(shape, frame.paddingPt, frame.textAnchor),
+                                                         inLine);
             WriteShapeElement(xml, shape, x, y, style, anchor, &frame.blocks, frame.paddingPt, frame.textAnchor, 0);
             return;
         }
@@ -3479,7 +3519,7 @@ private:
         const float scaleY = group.heightPt > 0.0f && run.imageHeightPt > 0.0f ? run.imageHeightPt / group.heightPt : 1.0f;
         if (scaleX != 1.0f || scaleY != 1.0f) ScaleShape(group, scaleX, scaleY, 0);
         if (group.name.empty()) group.name = frame.name;
-        WriteShapeElement(xml, group, x, y, FloatingFrameStyle(run), anchor, nullptr, 0.0f,
+        WriteShapeElement(xml, group, x, y, FloatingFrameStyle(run, nullptr, "", inLine), anchor, nullptr, 0.0f,
                           RichShape::TextAnchor::Top, 0);
     }
 
@@ -3508,8 +3548,9 @@ private:
     // An automatic graphic style saying how a floating picture or text frame
     // wraps, where it sits and what that counts from, and a frame's fill,
     // border and padding; one per distinct combination.
+    bool writingCell_ = false;                    // a table cell's runs are being written
     std::string FloatingFrameStyle(const RichTextRun& run, const RichTextFrame* frame = nullptr,
-                                   const std::string& shapeLook = "") {
+                                   const std::string& shapeLook = "", bool inLine = false) {
         using Wrap = RichTextRun::ImageWrap;
         using Origin = RichTextRun::FloatOrigin;
         using VAlign = RichTextRun::FloatVerticalAlign;
@@ -3520,7 +3561,9 @@ private:
         const std::string position = run.imageFloatAlign == RichTextAlign::Right ? "right"
                                    : run.imageFloatAlign == RichTextAlign::Center ? "center"
                                    : run.imageFloatAlign == RichTextAlign::Default ? "from-left" : "left";
-        const std::string verticalPosition = run.floatVerticalAlign == VAlign::Middle ? "middle"
+        // In the line (anchored as a character): on the baseline.
+        const std::string verticalPosition = inLine ? "top"
+                                           : run.floatVerticalAlign == VAlign::Middle ? "middle"
                                            : run.floatVerticalAlign == VAlign::Bottom ? "bottom" : "from-top";
         auto relation = [](Origin origin, bool across, Origin other) -> std::string {
             if (origin == Origin::Page) return "page";
@@ -3528,7 +3571,8 @@ private:
             return "paragraph";
         };
         const std::string horizontalRel = relation(run.floatHorizontalFrom, true, run.floatVerticalFrom);
-        const std::string verticalRel = relation(run.floatVerticalFrom, false, run.floatHorizontalFrom);
+        const std::string verticalRel = inLine ? "baseline"
+                                      : relation(run.floatVerticalFrom, false, run.floatHorizontalFrom);
         std::string look;
         if (frame) {
             look += frame->backgroundColor.empty()
@@ -3991,6 +4035,7 @@ private:
                 // (RichTextRun::emptyLineHeightPt) is the space above the
                 // paragraph that follows it.
                 xml << ">";
+                writingCell_ = true;
                 std::vector<RichTextRun> piece;
                 float above = 0.0f;
                 auto flush = [&]() {
@@ -4010,6 +4055,7 @@ private:
                     if (piece.size() == 1 && above > 0.0f) piece.front().lineBreakBefore = false;
                 }
                 flush();
+                writingCell_ = false;
                 xml << "</table:table-cell>";
                 for (int s = 1; s < columnSpan; ++s) {
                     xml << "<table:covered-table-cell/>";

@@ -2,6 +2,8 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.10.0 - theme fonts (asciiTheme / hAnsiTheme), capitals (w:caps) from a run or its paragraph's
+//                   style, a turned picture (a:xfrm rot) read and written, round2SameRect's outline
 // Version: 1.9.0 - paragraph spacing in cells read and written; w:kern as the document's kerning
 // Version: 1.8.0 - a section's own header, footer and page margins; row heights (w:trHeight) read and written, a cell's empty paragraphs kept as empty
 //                  lines, negative float offsets
@@ -351,6 +353,7 @@ private:
         // The style's character size and font (w:rPr beside its w:pPr).
         float fontSize = kUnset;
         std::string fontFamily;
+        int caps = -1;                      // w:caps in the style: 1 on, 0 off, -1 not stated
     };
     struct StyleGeometry {
         std::string basedOn;
@@ -845,15 +848,61 @@ private:
         base.tabs.insert(base.tabs.end(), over.tabs.begin(), over.tabs.end());
         take(base.fontSize, over.fontSize);
         if (!over.fontFamily.empty()) base.fontFamily = over.fontFamily;
+        if (over.caps >= 0) base.caps = over.caps;
     }
 
-    static void ReadStyleFont(tinyxml2::XMLElement* rPr, Geometry& g) {
+    void ReadStyleFont(tinyxml2::XMLElement* rPr, Geometry& g) const {
         if (!rPr) return;
         if (auto* sz = rPr->FirstChildElement("w:sz")) g.fontSize = sz->FloatAttribute("w:val", 0.0f) / 2.0f;
         if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
-            const std::string family = Attr(fonts, "w:ascii");
+            const std::string family = FontFamilyOf(fonts);
             if (!family.empty()) g.fontFamily = family;
         }
+        if (rPr->FirstChildElement("w:caps")) g.caps = ToggleOn(rPr, "w:caps") ? 1 : 0;
+    }
+
+    // The family a w:rFonts names for Latin text: by name, or the theme's
+    // heading ("major") or body ("minor") font - Word's own templates name
+    // no family at all, only "minorHAnsi".
+    std::string themeMajorFont_, themeMinorFont_;
+    std::string FontFamilyOf(tinyxml2::XMLElement* fonts) const {
+        if (!fonts) return "";
+        std::string family = Attr(fonts, "w:ascii");
+        if (!family.empty()) return family;
+        std::string theme = Attr(fonts, "w:asciiTheme");
+        if (theme.empty()) theme = Attr(fonts, "w:hAnsiTheme");
+        if (theme.empty()) return Attr(fonts, "w:hAnsi");
+        return theme.rfind("major", 0) == 0 ? themeMajorFont_ : themeMinorFont_;
+    }
+
+    // Capitals for every letter of a text shown in capitals (w:caps): the
+    // model has no such display, so the text itself is capitals. Latin,
+    // Greek and Cyrillic letters; others are left as they are.
+    static std::string ToCapitals(const std::string& text) {
+        std::string out;
+        out.reserve(text.size());
+        for (size_t i = 0; i < text.size();) {
+            const unsigned char lead = static_cast<unsigned char>(text[i]);
+            size_t length = lead < 0x80 ? 1 : (lead >> 5) == 0x6 ? 2 : (lead >> 4) == 0xE ? 3 : (lead >> 3) == 0x1E ? 4 : 1;
+            if (i + length > text.size()) length = 1;
+            if (length == 1) {
+                out.push_back(lead >= 'a' && lead <= 'z' ? static_cast<char>(lead - 32) : static_cast<char>(lead));
+            } else if (length == 2) {
+                unsigned code = ((lead & 0x1Fu) << 6) | (static_cast<unsigned char>(text[i + 1]) & 0x3Fu);
+                if ((code >= 0xE0 && code <= 0xFE && code != 0xF7) || (code >= 0x3B1 && code <= 0x3C9 && code != 0x3C2)
+                    || (code >= 0x430 && code <= 0x44F)) code -= 0x20;
+                else if (code >= 0x450 && code <= 0x45F) code -= 0x50;
+                else if (code == 0xFF) code = 0x178;
+                else if (((code >= 0x100 && code <= 0x137) || (code >= 0x14A && code <= 0x177)) && (code & 1)) code -= 1;
+                else if (((code >= 0x139 && code <= 0x148) || (code >= 0x179 && code <= 0x17E)) && !(code & 1)) code -= 1;
+                out.push_back(static_cast<char>(0xC0 | (code >> 6)));
+                out.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+            } else {
+                out.append(text, i, length);
+            }
+            i += length;
+        }
+        return out;
     }
 
     Geometry StyleChainGeometry(const std::string& styleId, int depth = 0) const {
@@ -923,7 +972,7 @@ private:
 
     // An empty paragraph's line is as tall as its paragraph mark's font
     // (w:pPr/w:rPr), which is what Word measures it with.
-    static void ApplyParagraphMark(RichDocBlock& block, tinyxml2::XMLElement* pPr) {
+    void ApplyParagraphMark(RichDocBlock& block, tinyxml2::XMLElement* pPr) const {
         if (!pPr) return;
         // A paragraph that only anchors pictures or frames has no words
         // either: its line is the mark's too.
@@ -1011,6 +1060,12 @@ private:
     }
 
     // What a paragraph's style (and the default style under it) gives its text.
+    bool ParagraphStyleCaps(tinyxml2::XMLElement* p) const {
+        auto* pPr = p ? p->FirstChildElement("w:pPr") : nullptr;
+        auto* pStyle = pPr ? pPr->FirstChildElement("w:pStyle") : nullptr;
+        return StyleChainGeometry(pStyle ? Attr(pStyle, "w:val") : defaultParagraphStyle_).caps == 1;
+    }
+
     RichStyleCharacter ParagraphStyleCharacter(tinyxml2::XMLElement* p) const {
         auto* pPr = p ? p->FirstChildElement("w:pPr") : nullptr;
         auto* pStyle = pPr ? pPr->FirstChildElement("w:pStyle") : nullptr;
@@ -1024,7 +1079,7 @@ private:
     }
 
     // A w:style's character properties.
-    static RichStyleCharacter ReadStyleCharacter(tinyxml2::XMLElement* rPr) {
+    RichStyleCharacter ReadStyleCharacter(tinyxml2::XMLElement* rPr) const {
         RichStyleCharacter character;
         if (!rPr) return character;
         if (rPr->FirstChildElement("w:b")) character.bold = ToggleOn(rPr, "w:b");
@@ -1033,7 +1088,7 @@ private:
         if (rPr->FirstChildElement("w:strike")) character.strikethrough = ToggleOn(rPr, "w:strike");
         if (auto* sz = rPr->FirstChildElement("w:sz")) character.fontSizePt = sz->FloatAttribute("w:val", 0.0f) / 2.0f;
         if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
-            const std::string family = Attr(fonts, "w:ascii");
+            const std::string family = FontFamilyOf(fonts);
             if (!family.empty()) character.fontFamily = family;
         }
         if (auto* color = rPr->FirstChildElement("w:color")) {
@@ -1126,6 +1181,7 @@ private:
         std::vector<RichDocBlock> trailingImages;
         bool pendingLineBreak = false;
         RichTextRun pendingBreakFormat;        // the format of the run whose break is pending
+        bool paragraphCaps = false;            // the paragraph's style sets its text in capitals (w:caps)
         // Complex field (w:fldChar begin / w:instrText / separate / end): the
         // result runs of a PAGE or NUMPAGES field are marked as that field.
         std::string fieldInstruction;
@@ -1219,7 +1275,7 @@ private:
             if (fill.size() == 6 && fill != "auto") run.highlightColor = "#" + fill;
         }
         if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
-            run.fontFamily = Attr(fonts, "w:ascii");
+            run.fontFamily = FontFamilyOf(fonts);
             std::string lower = ToLower(run.fontFamily);
             if (lower.find("courier") != std::string::npos
                 || lower.find("consolas") != std::string::npos
@@ -1439,6 +1495,12 @@ private:
         tinyxml2::XMLDocument theme;
         if (theme.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !theme.RootElement()) return;
         NormalizeOoxmlPrefixes(theme);
+        // The heading and body fonts styles name as "majorHAnsi" / "minorHAnsi".
+        for (auto [tag, target] : {std::pair{"a:majorFont", &themeMajorFont_}, std::pair{"a:minorFont", &themeMinorFont_}}) {
+            auto* font = FindDescendant(theme.RootElement(), tag);
+            auto* latin = font ? font->FirstChildElement("a:latin") : nullptr;
+            if (latin) *target = Attr(latin, "typeface");
+        }
         auto* scheme = FindDescendant(theme.RootElement(), "a:clrScheme");
         for (auto* entry = scheme ? scheme->FirstChildElement() : nullptr; entry; entry = entry->NextSiblingElement()) {
             std::string name = entry->Name() ? entry->Name() : "";
@@ -1693,6 +1755,59 @@ private:
         return filled;
     }
 
+    // Word's "rectangle: top corners rounded" (round2SameRect): its two top
+    // corners rounded by adj1, its two bottom ones by adj2 - each a share of
+    // the shorter side, so the outline depends on the box (an arch when adj1
+    // is a half and the box is upright).
+    static void ApplyRound2SameRect(tinyxml2::XMLElement* preset, RichShape& shape) {
+        double adjust1 = 16667.0, adjust2 = 0.0;
+        if (auto* list = preset->FirstChildElement("a:avLst")) {
+            for (auto* gd = list->FirstChildElement("a:gd"); gd; gd = gd->NextSiblingElement("a:gd")) {
+                const std::string name = Attr(gd, "name");
+                const std::string formula = Attr(gd, "fmla");
+                if (formula.rfind("val ", 0) != 0) continue;
+                if (name == "adj1") WordFormatInternal::ReadNumberAt(formula, 4, adjust1);
+                else if (name == "adj2") WordFormatInternal::ReadNumberAt(formula, 4, adjust2);
+            }
+        }
+        const float w = shape.widthPt, h = shape.heightPt;
+        if (w <= 0.0f || h <= 0.0f) return;
+        const float shorter = std::min(w, h);
+        const float top = shorter * std::clamp(static_cast<float>(adjust1 / 100000.0), 0.0f, 0.5f);
+        const float bottom = shorter * std::clamp(static_cast<float>(adjust2 / 100000.0), 0.0f, 0.5f);
+        const float k = 0.5523f;                    // a quarter circle as one curve
+        using Op = RichShape::PathPoint::Op;
+        shape.kind = RichShape::Kind::Path;
+        shape.path.clear();
+        auto point = [&](Op op, float x, float y) {
+            RichShape::PathPoint p;
+            p.op = op;
+            p.x = x / w;
+            p.y = y / h;
+            shape.path.push_back(p);
+        };
+        auto curve = [&](float c1x, float c1y, float c2x, float c2y, float x, float y) {
+            RichShape::PathPoint p;
+            p.op = Op::Curve;
+            p.c1x = c1x / w; p.c1y = c1y / h;
+            p.c2x = c2x / w; p.c2y = c2y / h;
+            p.x = x / w;     p.y = y / h;
+            shape.path.push_back(p);
+        };
+        point(Op::Move, top, 0.0f);
+        point(Op::Line, w - top, 0.0f);
+        if (top > 0.0f) curve(w - top + top * k, 0.0f, w, top - top * k, w, top);
+        point(Op::Line, w, h - bottom);
+        if (bottom > 0.0f) curve(w, h - bottom + bottom * k, w - bottom + bottom * k, h, w - bottom, h);
+        point(Op::Line, bottom, h);
+        if (bottom > 0.0f) curve(bottom - bottom * k, h, 0.0f, h - bottom + bottom * k, 0.0f, h - bottom);
+        point(Op::Line, 0.0f, top);
+        if (top > 0.0f) curve(0.0f, top - top * k, top - top * k, 0.0f, top, 0.0f);
+        RichShape::PathPoint close;
+        close.op = Op::Close;
+        shape.path.push_back(close);
+    }
+
     // A shape's geometry, fill and outline (wps:spPr, pic:spPr), falling back
     // to its theme style's (wps:style) where it states none.
     void ReadShapeLook(tinyxml2::XMLElement* spPr, tinyxml2::XMLElement* styleRefs, RichShape& shape) {
@@ -1711,6 +1826,7 @@ private:
         if (auto* preset = spPr ? spPr->FirstChildElement("a:prstGeom") : nullptr) {
             const std::string name = Attr(preset, "prst");
             shape.ApplyPreset(name);
+            if (name == "round2SameRect") ApplyRound2SameRect(preset, shape);
             if (shape.kind == RichShape::Kind::RoundRectangle) {
                 if (auto* list = preset->FirstChildElement("a:avLst")) {
                     for (auto* gd = list->FirstChildElement("a:gd"); gd; gd = gd->NextSiblingElement("a:gd")) {
@@ -2473,6 +2589,12 @@ private:
         run.imageHeightPt = heightPt;
         run.imageAltText = altText;
         ApplyAnchorPlacement(anchor, run);
+        // Turned (a:xfrm rot, 60000ths of a degree): a banner on its side.
+        if (auto* spPr = FindDescendant(drawing, "pic:spPr")) {
+            if (auto* xfrm = spPr->FirstChildElement("a:xfrm")) {
+                run.imageRotationDeg = static_cast<float>(xfrm->IntAttribute("rot", 0)) / 60000.0f;
+            }
+        }
         run.lineBreakBefore = ctx.pendingLineBreak;
         ctx.pendingLineBreak = false;
         ctx.runs.push_back(std::move(run));
@@ -2484,6 +2606,10 @@ private:
         props.linkTarget = linkTarget;
         ctx.paragraphCharacter.ApplyTo(props);
         ParseRunProperties(runElem->FirstChildElement("w:rPr"), props);
+        // In capitals: by the run itself, else by its paragraph's style.
+        auto* ownProps = runElem->FirstChildElement("w:rPr");
+        const bool capitals = ownProps && ownProps->FirstChildElement("w:caps") ? ToggleOn(ownProps, "w:caps")
+                                                                                : ctx.paragraphCaps;
 
         for (auto* child = runElem->FirstChildElement(); child;
              child = child->NextSiblingElement()) {
@@ -2513,6 +2639,7 @@ private:
                 for (size_t at; (at = run.text.find(kKeptSpaceMarker)) != std::string::npos;) {
                     run.text.replace(at, 3, " ");
                 }
+                if (capitals) run.text = ToCapitals(run.text);
                 run.lineBreakBefore = ctx.pendingLineBreak;
                 ctx.pendingLineBreak = false;
                 if (!run.text.empty()) ctx.runs.push_back(std::move(run));
@@ -2758,6 +2885,7 @@ private:
         if (block.type != RichBlockType::Heading && block.type != RichBlockType::BlockQuote
             && block.type != RichBlockType::CodeBlock) {
             ctx.paragraphCharacter = ParagraphStyleCharacter(p);
+            ctx.paragraphCaps = ParagraphStyleCaps(p);
         }
         block.styleId = ParagraphStyleId(p);
         if (auto* pPr = p->FirstChildElement("w:pPr"); pPr && pPr->FirstChildElement("w:bidi")) {
@@ -3022,6 +3150,7 @@ private:
                     spaceAfterLast = std::max(0.0f, spacing.spaceAfterPt);
                     paragraphCount++;
                     ctx.paragraphCharacter = ParagraphStyleCharacter(p);
+            ctx.paragraphCaps = ParagraphStyleCaps(p);
                     // Alignment is a paragraph property; the cell takes its
                     // first paragraph's, and its frame where the cell has none.
                     if (firstParagraph) {
@@ -4220,7 +4349,11 @@ private:
             << EscapeXml(name) << "\"/><pic:cNvPicPr/></pic:nvPicPr>"
             << "<pic:blipFill><a:blip r:embed=\"rIdImg" << (block.mediaIndex + 1)
             << "\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>"
-            << "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" << cx
+            << "<pic:spPr><a:xfrm";
+        if (floating && floating->imageRotationDeg != 0.0f) {
+            xml << " rot=\"" << std::lround(static_cast<double>(floating->imageRotationDeg) * 60000.0) << "\"";
+        }
+        xml << "><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" << cx
             << "\" cy=\"" << cy << "\"/></a:xfrm>"
             << "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>"
             << "</pic:pic></a:graphicData></a:graphic>"

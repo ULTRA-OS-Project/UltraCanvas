@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.15.0 - a table cell floats what its text ignores (PlacedFloat::inCell, a turned picture's
+//                   rotationDeg) and keeps a frame or drawing in its line (InlineImage::frameContent)
 // Version: 1.14.0 - a section's own header, footer and page margins are laid out and edited
 //                   (PageFrame::furnitureSet)
 // Version: 1.13.1 - PlacedFloat::wordsOnly: a frame anchored in the frame being edited shows its words
@@ -671,6 +673,7 @@ private:
     // One entry per document block. Entries are built lazily and only for
     // blocks the viewport needs, so a long document does not pay for layouts
     // nobody sees; `bounds` is in content coordinates (before scrolling).
+    struct FurnitureLayout;                       // a frame's paragraphs laid out; defined with the pages
     struct BlockLayout {
         std::unique_ptr<ITextLayout> layout;      // null for image/rule/break/table
         Rect2Df bounds{0, 0, 0, 0};
@@ -702,11 +705,13 @@ private:
         // leaves the drawing to the caller, which is what these record.
         struct InlineImage {
             int byteOffset = 0;                   // the placeholder, in layout text
+            float rotationDeg = 0.0f;             // turned about its centre, clockwise
             float width = 0.0f;
             float height = 0.0f;
             // A picture on a line of its own, centred or at the right: how
             // far from the placeholder's left it is drawn.
             float lineOffsetX = 0.0f;
+            float lineOffsetY = 0.0f;             // and how far under its top (a drawing's outline)
             std::shared_ptr<UCImage> image;
             std::string altText;
             // A typeset formula (a math run) instead of a picture: drawn with
@@ -727,6 +732,9 @@ private:
             // A text frame (UCRichDocument::frames) instead of a picture:
             // `height` is its least height until its text is laid out.
             int frameIndex = -1;
+            // A frame or drawing standing in the line (a table cell's): its
+            // paragraphs, laid out with the cell.
+            std::shared_ptr<FurnitureLayout> frameContent;
         };
         std::vector<InlineImage> inlineImages;
         // A display formula (MathBlock) typeset whole, centred in the column;
@@ -828,6 +836,10 @@ private:
         // A frame anchored in the frame being edited: only its paragraphs are
         // drawn, in the text of the frame around it (no box, no padding).
         bool wordsOnly = false;
+        float rotationDeg = 0.0f;                 // a picture turned about its centre, clockwise
+        // Anchored in a table cell (blockIndex is the table's): drawn, but
+        // not picked up, moved or edited as a body float is.
+        bool inCell = false;
         // The corner its offsets count from (its paragraph, the page or the
         // page's text area), in the same coordinates as `rect`: a float
         // dragged elsewhere gets its offsets from it.
@@ -971,6 +983,12 @@ private:
     // (RichTextRun::emptyLineHeightPt) is scaled from.
     mutable std::map<std::string, float> lineUnitCache;
     mutable float emptyLineUnitPx = 0.0f;
+    mutable float lineDescentPx = 0.0f;           // of that line, what lies under its baseline
+    mutable std::map<std::string, float> lineDescentCache;
+    mutable bool layoutHasBox = false;            // the layout being made has a box standing in a line
+    // The paragraphs of the frames standing in a table cell's lines, by
+    // frame: laid out by the table's layout just before the cell's.
+    std::map<int, std::shared_ptr<FurnitureLayout>> cellFrameContent;
     mutable bool layoutLineGap = true;            // the layout being made has the font's line gap
     bool placingParkedBody = false;           // PlaceFurnitureBeingEdited placing the body
     // Input method composition: the text being composed and its caret (a
@@ -1022,7 +1040,7 @@ private:
     void RenderBlock(IRenderContext* ctx, const std::vector<RichDocBlock>& blocks, int index,
                      const BlockLayout& bl, float originX, float originY, int blockIndex);
     void DrawInlineImages(IRenderContext* ctx, const BlockLayout& bl,
-                          float originX, float originY) const;
+                          float originX, float originY);
     void DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl, float originY);
     void DrawScrollbar(IRenderContext* ctx);
     void DrawHorizontalScrollbar(IRenderContext* ctx);

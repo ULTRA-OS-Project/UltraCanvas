@@ -3223,6 +3223,168 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== A name badge the way Word writes it =====
+    // One table row: a picture on its side behind the whole card, anchored
+    // in the first cell; a photo as the fill of a shape with rounded top
+    // corners, standing in the line; a name in the theme's heading font, in
+    // capitals by its style.
+    {
+        std::cout << "\n--- A card: theme fonts, capitals, a turned picture, a shape in a cell ---\n";
+        const std::string wml = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"";
+        const std::string documentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<w:document " + wml + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+            "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" "
+            "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+            "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" "
+            "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">"
+            "<w:body><w:tbl><w:tblPr><w:tblW w:w=\"7776\" w:type=\"dxa\"/></w:tblPr>"
+            "<w:tblGrid><w:gridCol w:w=\"3060\"/><w:gridCol w:w=\"4716\"/></w:tblGrid>"
+            "<w:tr><w:trPr><w:trHeight w:val=\"3024\"/></w:trPr>"
+            "<w:tc><w:tcPr><w:tcW w:w=\"3060\" w:type=\"dxa\"/></w:tcPr>"
+            "<w:p><w:r><w:drawing><wp:anchor behindDoc=\"1\" layoutInCell=\"1\" simplePos=\"0\" relativeHeight=\"1\" "
+            "locked=\"0\" allowOverlap=\"1\" distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:simplePos x=\"0\" y=\"0\"/>"
+            "<wp:positionH relativeFrom=\"column\"><wp:posOffset>1438275</wp:posOffset></wp:positionH>"
+            "<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>-1501140</wp:posOffset></wp:positionV>"
+            "<wp:extent cx=\"1910715\" cy=\"4937760\"/><wp:wrapNone/><wp:docPr id=\"1\" name=\"Back\"/>"
+            "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
+            "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"1\" name=\"Back\"/><pic:cNvPicPr/></pic:nvPicPr>"
+            "<pic:blipFill><a:blip r:embed=\"rId1\"/><a:stretch/></pic:blipFill>"
+            "<pic:spPr><a:xfrm rot=\"16200000\"><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1910715\" cy=\"4937760\"/></a:xfrm>"
+            "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>"
+            "</a:graphicData></a:graphic></wp:anchor></w:drawing></w:r><w:r><w:t>3</w:t></w:r></w:p>"
+            "<w:p><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
+            "<wp:extent cx=\"1270000\" cy=\"1905000\"/><wp:docPr id=\"2\" name=\"Photo\"/>"
+            "<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">"
+            "<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1270000\" cy=\"1905000\"/></a:xfrm>"
+            "<a:prstGeom prst=\"round2SameRect\"><a:avLst><a:gd name=\"adj1\" fmla=\"val 50000\"/>"
+            "<a:gd name=\"adj2\" fmla=\"val 0\"/></a:avLst></a:prstGeom>"
+            "<a:blipFill><a:blip r:embed=\"rId1\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>"
+            "<a:ln w=\"28575\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill></a:ln></wps:spPr>"
+            "<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p></w:tc>"
+            "<w:tc><w:tcPr><w:tcW w:w=\"4716\" w:type=\"dxa\"/></w:tcPr>"
+            "<w:p><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr><w:r><w:t>Ana Bowman</w:t></w:r></w:p>"
+            "<w:p><w:r><w:t>(she/her)</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+            "<w:sectPr><w:pgSz w:w=\"8640\" w:h=\"5760\"/>"
+            "<w:pgMar w:top=\"360\" w:right=\"360\" w:bottom=\"360\" w:left=\"360\"/></w:sectPr></w:body></w:document>";
+        const std::string stylesXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:styles " + wml + ">"
+            "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:asciiTheme=\"minorHAnsi\" w:hAnsiTheme=\"minorHAnsi\"/>"
+            "<w:sz w:val=\"22\"/></w:rPr></w:rPrDefault></w:docDefaults>"
+            "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/></w:style>"
+            "<w:style w:type=\"paragraph\" w:styleId=\"Heading1\"><w:name w:val=\"heading 1\"/><w:basedOn w:val=\"Normal\"/>"
+            "<w:rPr><w:rFonts w:asciiTheme=\"majorHAnsi\" w:hAnsiTheme=\"majorHAnsi\"/><w:caps/><w:sz w:val=\"60\"/></w:rPr>"
+            "</w:style></w:styles>";
+        const std::string themeXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"Card\"><a:themeElements>"
+            "<a:fontScheme name=\"Card\"><a:majorFont><a:latin typeface=\"Heading Face\"/></a:majorFont>"
+            "<a:minorFont><a:latin typeface=\"Body Face\"/></a:minorFont></a:fontScheme>"
+            "</a:themeElements></a:theme>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("card.docx")));
+            zip.AddEntry("[Content_Types].xml", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                "<Default Extension=\"png\" ContentType=\"image/png\"/>"
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document.main+xml\"/></Types>"));
+            zip.AddEntry("_rels/.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "officeDocument\" Target=\"word/document.xml\"/></Relationships>"));
+            zip.AddEntry("word/_rels/document.xml.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "image\" Target=\"media/image1.png\"/></Relationships>"));
+            zip.AddEntry("word/document.xml", documentXml);
+            zip.AddEntry("word/styles.xml", stylesXml);
+            zip.AddEntry("word/theme/theme1.xml", themeXml);
+            zip.AddEntry("word/media/image1.png", kTinyPng, sizeof(kTinyPng));
+            CHECK(zip.Finalize());
+        }
+        // The card's facts, as read from `path`.
+        auto checkCard = [&](const std::string& path, const std::string& label, bool original) {
+            UCRichDocument card;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(path, card, err), label + ": " + err);
+            const RichDocBlock* table = nullptr;
+            for (const RichDocBlock& block : card.blocks) {
+                if (block.type == RichBlockType::Table && !table) table = &block;
+            }
+            CHECK_MSG(table && table->tableRows.size() == 1 && table->tableRows[0].cells.size() == 2,
+                      label + ": one row of two cells");
+            if (!table || table->tableRows.empty() || table->tableRows[0].cells.size() < 2) return;
+            const RichTableCell& left = table->tableRows[0].cells[0];
+            const RichTableCell& right = table->tableRows[0].cells[1];
+            const RichTextRun* back = nullptr;
+            const RichTextRun* photo = nullptr;
+            for (const RichTextRun& run : left.runs) {
+                if (run.IsInlineImage()) back = &run;
+                if (run.IsTextFrame()) photo = &run;
+            }
+            CHECK_MSG(back != nullptr, label + ": the picture behind the card is in the first cell");
+            if (back) {
+                CHECK_MSG(back->imageWrap == RichTextRun::ImageWrap::BehindText, label + ": ...behind the text");
+                CHECK_MSG(Near(std::fmod(back->imageRotationDeg + 360.0f, 360.0f), 270.0f),
+                          label + ": ...turned three quarters, got " + std::to_string(back->imageRotationDeg));
+                CHECK_MSG(Near(back->imageWidthPt, 150.45f) && Near(back->imageHeightPt, 388.8f),
+                          label + ": ...its size as before the turn: " + std::to_string(back->imageWidthPt) + " x "
+                          + std::to_string(back->imageHeightPt));
+                CHECK_MSG(Near(back->imageOffsetXPt, 113.25f) && Near(back->imageOffsetYPt, -118.2f),
+                          label + ": ...and its place: " + std::to_string(back->imageOffsetXPt) + ", "
+                          + std::to_string(back->imageOffsetYPt));
+            }
+            CHECK_MSG(photo != nullptr, label + ": the shape stays in the first cell");
+            if (photo && photo->frameIndex < static_cast<int>(card.frames.size())) {
+                const RichTextFrame& frame = card.frames[static_cast<size_t>(photo->frameIndex)];
+                CHECK_MSG(frame.shapes.size() == 1 && frame.shapes[0].kind == RichShape::Kind::Path
+                          && frame.shapes[0].HasPictureFill(), label + ": an outline filled with the photo");
+                CHECK_MSG(Near(photo->imageWidthPt, 100.0f) && Near(photo->imageHeightPt, 150.0f),
+                          label + ": ...100 x 150 pt, got " + std::to_string(photo->imageWidthPt) + " x "
+                          + std::to_string(photo->imageHeightPt));
+                if (frame.shapes.size() == 1 && frame.shapes[0].kind == RichShape::Kind::Path) {
+                    // Both top corners rounded by half the width: the outline
+                    // reaches the top only at its middle, and the sides
+                    // start a third of the way down (50 of 150 pt).
+                    float topLeft = 1.0f, topRight = 0.0f, sideTop = 1.0f;
+                    for (const RichShape::PathPoint& point : frame.shapes[0].path) {
+                        if (point.op == RichShape::PathPoint::Op::Close) continue;
+                        if (point.y < 0.01f) { topLeft = std::min(topLeft, point.x); topRight = std::max(topRight, point.x); }
+                        if (point.x < 0.01f) sideTop = std::min(sideTop, point.y);
+                    }
+                    CHECK_MSG(std::abs(topLeft - 0.5f) < 0.02f && std::abs(topRight - 0.5f) < 0.02f
+                              && std::abs(sideTop - 1.0f / 3.0f) < 0.02f,
+                              label + ": ...an arch: top from " + std::to_string(topLeft) + " to " + std::to_string(topRight)
+                              + ", sides from " + std::to_string(sideTop));
+                }
+            }
+            const std::string name = UCRichDocument::ConcatenateRunText(right.runs);
+            CHECK_MSG(name.rfind("ANA BOWMAN", 0) == 0 && name.find("(she/her)") != std::string::npos,
+                      label + ": capitals by the heading's style only, got \"" + name + "\"");
+            if (original && right.runs.size() >= 2) {
+                CHECK_MSG(right.runs.front().fontFamily == "Heading Face",
+                          label + ": the theme's heading font, got \"" + right.runs.front().fontFamily + "\"");
+                CHECK_MSG(right.runs.back().fontFamily == "Body Face",
+                          label + ": the theme's body font, got \"" + right.runs.back().fontFamily + "\"");
+            }
+        };
+        checkCard(TmpPath("card.docx"), "docx", true);
+        UCRichDocument card;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("card.docx"), card, err), err);
+        for (const char* ext : {"docx", "odt"}) {
+            const std::string path = TmpPath(std::string("card-saved.") + ext);
+            CHECK_MSG(UCWordDocumentIO::Save(path, card, err), err);
+            checkCard(path, std::string("saved as ") + ext, false);
+        }
+    }
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;

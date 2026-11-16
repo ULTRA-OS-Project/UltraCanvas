@@ -6,6 +6,7 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.10.0 - RichTextRun::imageRotationDeg: a floating picture turned about its centre
 // Version: 1.9.0 - RichTextRun::emptyLineHeightPt; UCRichDocument::letterKerning, fontLineGap, paragraphSpacingInCells
 // Version: 1.8.0 - Pattern fills (RichShape::fillPattern, patternBackColor, PatternBit)
 // Version: 1.7.0 - Gradient fills (RichShape::gradientStops), a drawing's own size
@@ -102,6 +103,9 @@ struct RichTextRun {
     RichTextAlign imageFloatAlign = RichTextAlign::Left;
     float imageOffsetXPt = 0.0f;
     float imageOffsetYPt = 0.0f;        // from the top of its paragraph
+    // A picture turned about its centre, clockwise: its size and offsets are
+    // those of the box before it is turned (Word's a:xfrm rot).
+    float imageRotationDeg = 0.0f;
     // What the offsets and the alignment count from. By default a float is
     // placed across the text column and down from its paragraph; a
     // letterhead's frames are placed from the page's edges (Page) or from
