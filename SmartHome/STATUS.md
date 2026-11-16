@@ -287,6 +287,52 @@ cannot open its transport there ("Address family not supported by
 protocol"). The next machine with IPv6 runs the commission tool against
 `chip-rvc-app` and expects `category: Appliance` with device type 0x0074.
 
+### Matter between runs, and whose thread a notification runs on (2026-11-16)
+
+- **Commissioned devices are remembered.** connectedhomeip keeps the
+  controller's fabric in its own ini but not which nodes it commissioned.
+  `protocols/Matter/MatterNodeStore.*` keeps that list next to the ini
+  (`ultracanvas-matter-nodes.txt` in the storage directory, or `$TMPDIR` /
+  `/tmp` as the SDK does without one): each node's id and its endpoints'
+  device types, and the next node id. Start-up registers the stored nodes
+  as paired - not joined - and unreachable, then opens a session to each and
+  marks it reachable when that succeeds. Node ids come from the list and are
+  recorded before they are used, so a restart no longer hands out 0x100
+  again while a device still holds it. A damaged list is moved aside
+  (`.damaged`) and new ids start at a random point. Removing a device
+  removes it from the list; it does not yet tell the device to leave the
+  fabric. `tests/MatterNodeStoreTest.cpp`, on every build.
+- **Nothing the SDK reports runs on the SDK's thread.** Commissioning
+  results and reachability came in on connectedhomeip's event loop thread,
+  and every synchronous call into the SDK waits for that thread, so a
+  listener that heard "device joined" and asked the device anything waited
+  for itself forever. The wrapper now hands each report to the backend's
+  delivery thread, which updates the backend and then calls the listeners.
+  A synchronous call that is still made on the SDK thread is refused with
+  an error in the log instead of hanging the stack.
+- `NodeToDeviceInfo` never set `Reachable`, so SmartHome Center would have
+  shown every Matter device offline. It follows the node now.
+- The manager read a changed device back only from its device object; a
+  backend that keeps none (Matter, Zigbee) had its update passed on with
+  the registry's old copy. `RefreshDeviceInfo` now reads the backend's
+  paired devices instead (`tests/FacadeTest.cpp`). Backends notify with
+  their own locks released, which that read relies on; Matter's
+  `UpdateNodeAttribute` and `RemoveDevice` did not, and now do.
+
+None of the start-up or delivery path has run against a device: the stack
+cannot start on this machine (no IPv6), so it is verified by building
+against the SDK and by the start-up failing cleanly with its cause logged.
+
+### Logging
+
+`SmartHomeProtocolBase::Log` and `ReportError` wrote nothing; they write
+to the framework's `debugOutput` now (`UltraCanvasDebug.h`), as
+`SmartHome[<backend>] <level>: <message>` - errors always, the rest up to
+the backend's level (`SetLogLevel`, default info). `debugOutput` is off
+unless a debug build or `ULTRACANVAS_DEBUG_LOG` turns it on
+(`ULTRACANVAS_DEBUG_LOG=1` for stderr, or a file path). The KNX and Z-Wave
+backends still write some lines straight to stdout / stderr.
+
 ### Known latent bug
 
 `MatterProtocol::SubscribeAttribute` stores its callback in

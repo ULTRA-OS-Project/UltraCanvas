@@ -1,12 +1,13 @@
 // SmartHomeProtocolBase.h
 // Base class for Smart Home protocol implementations
-// Version: 1.0.0
-// Last Modified: 2025-12-08
+// Version: 1.1.0 - Log and ReportError write to debugOutput
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #pragma once
 
 #include "ISmartHomeProtocol.h"
+#include "UltraCanvasDebug.h"   // debugOutput, the framework's diagnostic stream
 #include <mutex>
 #include <atomic>
 #include <thread>
@@ -260,20 +261,25 @@ protected:
     
     // ===== ERROR REPORTING =====
     
+    // Reported to whoever listens (onError) and written to the log as an
+    // error, whether or not anyone listens.
     void ReportError(int code, const std::string& message) {
         if (onError) {
             onError(code, message);
         }
-        
-        if (logLevel >= 1) {
-            // Log error (integrate with UltraCanvas logging)
-        }
+        Log(0, message + " (code " + std::to_string(code) + ")");
     }
     
+    // Levels: 0 error, 1 warning, 2 info, 3 debug; written when the
+    // protocol's level (SetLogLevel, default 2) reaches it. The lines go to
+    // debugOutput, which is off unless a debug build or
+    // ULTRACANVAS_DEBUG_LOG turns it on (UltraCanvasDebug.h), as
+    //   SmartHome[Matter] warning: could not read what node 256 is ...
     void Log(int level, const std::string& message) {
-        if (logLevel >= level) {
-            // Log message (integrate with UltraCanvas logging)
-        }
+        if (logLevel < level || !UltraCanvas::IsDebugOutputEnabled()) return;
+        static const char* const kLevels[] = {"error", "warning", "info", "debug"};
+        const char* name = kLevels[level < 0 ? 0 : (level > 3 ? 3 : level)];
+        debugOutput << "SmartHome[" << protocolName << "] " << name << ": " << message << std::endl;
     }
     
     // ===== UTILITY =====

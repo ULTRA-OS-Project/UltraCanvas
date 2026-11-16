@@ -15,8 +15,12 @@
 #include "UltraCanvasSmartHome.h"
 #include "ISmartHomeProtocol.h"
 #include "SmartHomeProtocolBase.h"
+#include "UltraCanvasDebug.h"
 #include <cassert>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 using namespace UltraCanvas::SmartHome;
 
@@ -45,7 +49,18 @@ public:
     std::shared_ptr<ISmartHomeDevice> GetDevice(const std::string&) const override { return nullptr; }
     bool RemoveDevice(const std::string&) override { return true; }
     bool InterviewDevice(const std::string&) override { return true; }
-    std::vector<SmartHomeDeviceInfo> GetPairedDevices() override { return {}; }
+    std::vector<SmartHomeDeviceInfo> GetPairedDevices() override {
+        std::lock_guard<std::mutex> lock(deviceMutex);
+        std::vector<SmartHomeDeviceInfo> devices;
+        for (const auto& [id, info] : pairedDevices) devices.push_back(info);
+        return devices;
+    }
+    // What a backend does when a device joins and when what it knows of one
+    // changes - with no device object behind it, as Matter and Zigbee keep.
+    void Join(const SmartHomeDeviceInfo& info) { AddPairedDevice(info); }
+    void Update(const SmartHomeDeviceInfo& info) { UpdatePairedDevice(info); }
+    void Fail(int code, const std::string& message) { ReportError(code, message); }
+    void Say(int level, const std::string& message) { Log(level, message); }
     bool PairDevice(const std::string&, const std::map<std::string,std::string>&) override { return true; }
     bool UnpairDevice(const std::string&) override { return true; }
     bool GetDeviceState(const std::string&, std::map<std::string,std::string>&) override { return true; }
@@ -77,8 +92,8 @@ int main() {
 
     // 4. Supply our own backend through the public API. This is the call that
     //    was impossible before, and commented out in DevicePairing.cpp.
-    if (!SMARTHOME_API.RegisterProtocol(SmartHomeProtocolType::Zigbee,
-                                        std::make_shared<FakeProtocol>())) {
+    auto fake = std::make_shared<FakeProtocol>();
+    if (!SMARTHOME_API.RegisterProtocol(SmartHomeProtocolType::Zigbee, fake)) {
         std::puts("FAIL: RegisterProtocol"); return 1;
     }
     std::puts("ok  RegisterProtocol()");
@@ -93,6 +108,59 @@ int main() {
         std::puts("FAIL: EnableProtocol"); return 1;
     }
     std::puts("ok  EnableProtocol()");
+
+    // 5b. A backend with no device objects reports a change: the registry
+    //     must take the backend's new info, not keep what it had at the join
+    //     (a Matter device that answers after a restart, say).
+    {
+        SmartHomeDeviceInfo lamp;
+        lamp.DeviceId = "fake_lamp";
+        lamp.Name = "Fake lamp";
+        lamp.Protocol = SmartHomeProtocolType::Zigbee;
+        lamp.Category = SmartHomeDeviceCategory::Light;
+        lamp.State = SmartHomeDeviceState::Offline;
+        lamp.Reachable = false;
+        fake->Join(lamp);
+        if (SMARTHOME_API.GetDevice("fake_lamp").DeviceId != "fake_lamp" ||
+            SMARTHOME_API.GetDevice("fake_lamp").Reachable) {
+            std::puts("FAIL: the joined device is not registered as it joined"); return 1;
+        }
+        lamp.State = SmartHomeDeviceState::Online;
+        lamp.Reachable = true;
+        fake->Update(lamp);
+        const SmartHomeDeviceInfo now = SMARTHOME_API.GetDevice("fake_lamp");
+        if (!now.Reachable || now.State != SmartHomeDeviceState::Online) {
+            std::puts("FAIL: an update from a backend without device objects was not read back"); return 1;
+        }
+        std::puts("ok  a backend without device objects updates the registry");
+    }
+
+    // 5c. What a backend logs reaches the framework's diagnostic stream:
+    //     errors always, the rest up to the protocol's level (default info).
+    {
+        const std::filesystem::path log =
+            std::filesystem::temp_directory_path() / "uc-smarthome-facade-test.log";
+        std::filesystem::remove(log);
+        UltraCanvas::SetDebugOutputFile(UltraCanvas::PathToUtf8(log));
+        fake->Fail(-7, "the stick was unplugged");
+        fake->Say(1, "a device stopped answering");
+        fake->Say(3, "a debug detail");   // above the default level
+        UltraCanvas::SetDebugOutputFile("");
+        UltraCanvas::SetDebugOutputEnabled(false);
+        std::ifstream in(log);
+        std::stringstream text;
+        text << in.rdbuf();
+        const std::string written = text.str();
+        if (written.find("SmartHome[Fake] error: the stick was unplugged (code -7)") == std::string::npos ||
+            written.find("SmartHome[Fake] warning: a device stopped answering") == std::string::npos) {
+            std::printf("FAIL: the backend's log did not reach debugOutput:\n%s", written.c_str()); return 1;
+        }
+        if (written.find("a debug detail") != std::string::npos) {
+            std::puts("FAIL: a debug line was written above the protocol's log level"); return 1;
+        }
+        std::filesystem::remove(log);
+        std::puts("ok  a backend's errors and warnings reach debugOutput");
+    }
 
     // 6. The factory path: enable a type with no backend, via a factory.
     RegisterProtocolFactory(SmartHomeProtocolType::Thread,

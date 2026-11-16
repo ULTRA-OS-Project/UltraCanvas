@@ -82,7 +82,9 @@ public:
     bool UpdateDeviceInfo(const std::string& deviceId, const SmartHomeDeviceInfo& info);
     bool UpdateDeviceState(const std::string& deviceId, SmartHomeDeviceState state);
     // Re-reads a device's info from its object and dispatches the update.
-    void RefreshDeviceInfo(const std::string& deviceId);
+    // Reads a changed device back - from its object, or for a backend that
+    // keeps none, from `protocol`'s paired devices - into the registry.
+    void RefreshDeviceInfo(const std::string& deviceId, ISmartHomeProtocol* protocol = nullptr);
     
     // ===== DISCOVERY =====
     bool StartDiscovery(SmartHomeProtocolType protocol = SmartHomeProtocolType::Unknown);

@@ -229,8 +229,8 @@ bool SmartHomeManager::EnableProtocol(SmartHomeProtocolType type) {
     // A backend reports that something about a device changed; the info the
     // registry holds (state, reachability, last seen) is re-read from the
     // device so GetDevices() does not go stale.
-    proto->SetOnDeviceUpdate([this](const std::string& deviceId) {
-        RefreshDeviceInfo(deviceId);
+    proto->SetOnDeviceUpdate([this, proto](const std::string& deviceId) {
+        RefreshDeviceInfo(deviceId, proto);
     });
 
     proto->SetOnError([this](int code, const std::string& message) {
@@ -456,16 +456,25 @@ bool SmartHomeManager::UpdateDeviceState(const std::string& deviceId, SmartHomeD
     return true;
 }
 
-void SmartHomeManager::RefreshDeviceInfo(const std::string& deviceId) {
-    std::shared_ptr<ISmartHomeDevice> device = GetDevice(deviceId);
-    if (!device) {
-        // A backend that keeps no device objects has nothing fresher to say
-        // than what it already reported; pass the update on as it stands.
+void SmartHomeManager::RefreshDeviceInfo(const std::string& deviceId, ISmartHomeProtocol* protocol) {
+    SmartHomeDeviceInfo info;
+    if (std::shared_ptr<ISmartHomeDevice> device = GetDevice(deviceId)) {
+        info = device->GetDeviceInfo();
+    } else if (protocol) {
+        // A backend that keeps no device objects (Matter, Zigbee) keeps the
+        // info itself: its paired-device view is what changed. Read with no
+        // registry lock held; the backend notified with none of its own.
+        for (const SmartHomeDeviceInfo& candidate : protocol->GetPairedDevices()) {
+            if (candidate.DeviceId == deviceId) { info = candidate; break; }
+        }
+    }
+    if (info.DeviceId.empty()) {
+        // Nothing fresher to say than what was already reported; pass the
+        // update on as it stands.
         DispatchDeviceUpdate(deviceId);
         WakeAutomations();
         return;
     }
-    SmartHomeDeviceInfo info = device->GetDeviceInfo();
     ApplyOverrides(info);
     const SmartHomeDeviceInfo before = GetDeviceInfo(deviceId);
     UpdateDeviceInfo(deviceId, info);

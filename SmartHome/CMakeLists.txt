@@ -171,6 +171,9 @@ foreach(_sh_proto Matter Thread Zigbee ZWave KNX)
              protocols/Zigbee/ezsp/EzspFrame.cpp
              protocols/Zigbee/ezsp/AshTransport.cpp)
     endif()
+    if(_sh_proto STREQUAL "Matter")
+        list(APPEND SMARTHOME_SOURCES protocols/Matter/MatterNodeStore.cpp)
+    endif()
     list(APPEND _sh_backends ${_sh_proto})
 endforeach()
 
@@ -428,6 +431,14 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     target_include_directories(SmartHomeMatterDeviceTypeTest PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Matter)
     add_test(NAME SmartHomeMatterDeviceType COMMAND SmartHomeMatterDeviceTypeTest)
+
+    # The list of commissioned Matter nodes kept between runs; no SDK either.
+    add_executable(SmartHomeMatterNodeStoreTest tests/MatterNodeStoreTest.cpp
+                   protocols/Matter/MatterNodeStore.cpp)
+    target_link_libraries(SmartHomeMatterNodeStoreTest PRIVATE SmartHome)
+    target_include_directories(SmartHomeMatterNodeStoreTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Matter)
+    add_test(NAME SmartHomeMatterNodeStore COMMAND SmartHomeMatterNodeStoreTest)
 
     add_executable(SmartHomeWidgetTest tests/WidgetTest.cpp)
     target_link_libraries(SmartHomeWidgetTest PRIVATE SmartHomeUI)

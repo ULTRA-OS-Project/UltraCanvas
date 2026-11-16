@@ -7,7 +7,10 @@
 #include "MatterProtocol.h"
 #include "MatterDeviceTypes.h"
 #include "UltraCanvasTextUtils.h"   // ParseFloatClassic - locale-independent, non-throwing
+#include "UltraCanvasPathUtf8.h"
 #include <charconv>
+#include <filesystem>
+#include <system_error>
 #include <chrono>
 #include <sstream>
 #include <iomanip>
@@ -159,9 +162,10 @@ public:
 
     chip::FabricId fabricId = 1;
     chip::NodeId localNodeId = 112233;
-    std::atomic<uint64_t> nextNodeId{0x100};
     bool stackUp = false;
     bool eventLoopRunning = false;
+    // The SDK's event loop thread, once it runs; see RunOnChipThreadToWait.
+    std::atomic<std::thread::id> chipThreadId{};
 
     // Commissioning in flight: node id handed to PairDevice, awaiting
     // OnCommissioningComplete.
@@ -202,12 +206,27 @@ public:
         return true;
     }
 
+    bool OnChipThread() const { return std::this_thread::get_id() == chipThreadId.load(); }
+
+    // RunOnChipThread for a caller that will then wait for the work. On the
+    // SDK thread itself that wait could never end - the work runs only once
+    // the caller returns - so the call is refused there, said in the log,
+    // rather than hanging the whole Matter stack.
+    bool RunOnChipThreadToWait(std::function<void()> fn) {
+        if (OnChipThread()) {
+            if (protocol) protocol->Log(0, "Matter: a synchronous call was made on the connectedhomeip thread, "
+                                           "which it would wait on forever; refused");
+            return false;
+        }
+        return RunOnChipThread(std::move(fn));
+    }
+
     // Runs `fn` on the SDK thread and waits for it to return. Only for work
     // that completes synchronously there; anything that ends in a callback
     // uses an Outcome of its own.
     bool RunOnChipThreadAndWait(std::function<void()> fn) {
         auto outcome = std::make_shared<Outcome>();
-        if (!RunOnChipThread([fn = std::move(fn), outcome]() {
+        if (!RunOnChipThreadToWait([fn = std::move(fn), outcome]() {
                 fn();
                 outcome->Finish(true);
             })) {
@@ -527,7 +546,7 @@ public:
     template <typename RequestT>
     bool Invoke(chip::NodeId nodeId, chip::EndpointId endpoint, const RequestT& request) {
         auto outcome = std::make_shared<Outcome>();
-        const bool scheduled = RunOnChipThread([this, nodeId, endpoint, request, outcome]() {
+        const bool scheduled = RunOnChipThreadToWait([this, nodeId, endpoint, request, outcome]() {
             WithSession(nodeId,
                 [this, endpoint, request, outcome](chip::Messaging::ExchangeManager& em,
                                                    const chip::SessionHandle& s) {
@@ -652,6 +671,7 @@ public:
         err = chip::DeviceLayer::PlatformMgr().StartEventLoopTask();
         if (err != CHIP_NO_ERROR) return Fail("StartEventLoopTask", err);
         eventLoopRunning = true;
+        RunOnChipThreadAndWait([this]() { chipThreadId = std::this_thread::get_id(); });
         return true;
 #else
         return true;
@@ -698,29 +718,35 @@ public:
     void OnPairingComplete(CHIP_ERROR error) override {
         if (error != CHIP_NO_ERROR && protocol) {
             // Commissioning never started; OnCommissioningComplete will not fire.
-            protocol->OnCommissioningComplete(commissioningNodeId.exchange(0), false,
-                                              "pairing failed: " + ErrorText(error));
+            const uint64_t nodeId = commissioningNodeId.exchange(0);
+            const std::string message = "pairing failed: " + ErrorText(error);
+            MatterProtocol* p = protocol;
+            p->Deliver([p, nodeId, message]() { p->OnCommissioningComplete(nodeId, false, message); });
         }
     }
 
     void OnCommissioningComplete(chip::NodeId nodeId, CHIP_ERROR error) override {
         commissioningNodeId = 0;
         if (!protocol) return;
+        MatterProtocol* p = protocol;
         if (error != CHIP_NO_ERROR) {
-            protocol->OnCommissioningComplete(nodeId, false, ErrorText(error));
+            const std::string message = ErrorText(error);
+            p->Deliver([p, nodeId, message]() { p->OnCommissioningComplete(nodeId, false, message); });
             return;
         }
         // Ask the node what it is before anyone hears it joined, so it joins
         // as a light, a lock or a vacuum, not as an unknown device that
         // changes shape a moment later.
-        StartReadDeviceTypes(nodeId, [this, nodeId](bool ok, MatterProtocol::EndpointDeviceTypes types,
-                                                    std::string readError) {
-            if (!ok && protocol) {
-                protocol->Log(1, "Matter: could not read what node " + std::to_string(nodeId) +
-                                 " is (" + (readError.empty() ? "no device types" : readError) +
-                                 "); it joins as an unknown device");
+        StartReadDeviceTypes(nodeId, [p, nodeId](bool ok, MatterProtocol::EndpointDeviceTypes types,
+                                                 std::string readError) {
+            if (!ok) {
+                p->Log(1, "Matter: could not read what node " + std::to_string(nodeId) +
+                          " is (" + (readError.empty() ? "no device types" : readError) +
+                          "); it joins as an unknown device");
             }
-            if (protocol) protocol->OnCommissioningComplete(nodeId, true, "", types);
+            p->Deliver([p, nodeId, types = std::move(types)]() {
+                p->OnCommissioningComplete(nodeId, true, "", types);
+            });
         });
     }
 
@@ -788,7 +814,8 @@ public:
             if (protocol) protocol->Log(1, "Matter: a commissioning is already in progress");
             return false;
         }
-        const chip::NodeId nodeId = nextNodeId++;
+        if (!protocol) return false;
+        const chip::NodeId nodeId = protocol->AllocateNodeId();
         commissioningNodeId = nodeId;
         bool ok = false;
         RunOnChipThreadAndWait([this, nodeId, setupCode, &ok]() {
@@ -804,9 +831,10 @@ public:
 #else
         // Stub: simulate commissioning
         if (protocol) {
-            std::thread([this]() {
+            MatterProtocol* p = protocol;
+            std::thread([p]() {
                 std::this_thread::sleep_for(std::chrono::seconds(3));
-                protocol->OnCommissioningComplete(0x1234567890ABCDEF, true, "");
+                p->Deliver([p]() { p->OnCommissioningComplete(0x1234567890ABCDEF, true, ""); });
             }).detach();
         }
         return true;
@@ -914,6 +942,25 @@ public:
                               std::to_string(static_cast<int>(temp) * 100));
     }
 
+    // ===== REACHABILITY =====
+
+    // Opens (or reuses) a CASE session to the node; `done(true)` once it is
+    // up, `done(false)` when it cannot be reached. Runs on the SDK thread.
+    void ProbeNode(uint64_t nodeId, std::function<void(bool)> done) {
+#ifdef ULTRACANVAS_WITH_MATTER
+        auto shared = std::make_shared<std::function<void(bool)>>(std::move(done));
+        const bool scheduled = RunOnChipThread([this, nodeId, shared]() {
+            WithSession(nodeId,
+                [shared](chip::Messaging::ExchangeManager&, const chip::SessionHandle&) { (*shared)(true); },
+                [shared](CHIP_ERROR) { (*shared)(false); });
+        });
+        if (!scheduled) (*shared)(false);
+#else
+        (void)nodeId;
+        done(false);
+#endif
+    }
+
     // ===== ATTRIBUTE ACCESS =====
 
     // Reads one attribute and reports its value as text. Blocks the caller
@@ -923,7 +970,7 @@ public:
                        std::function<void(bool, const std::string&)> callback) {
 #ifdef ULTRACANVAS_WITH_MATTER
         auto outcome = std::make_shared<Outcome>();
-        const bool scheduled = RunOnChipThread([this, nodeId, endpoint, clusterId, attributeId, outcome]() {
+        const bool scheduled = RunOnChipThreadToWait([this, nodeId, endpoint, clusterId, attributeId, outcome]() {
             WithSession(nodeId,
                 [this, endpoint, clusterId, attributeId, outcome](chip::Messaging::ExchangeManager& em,
                                                                   const chip::SessionHandle& s) {
@@ -944,7 +991,7 @@ public:
                         uint32_t attributeId, const std::string& value) {
 #ifdef ULTRACANVAS_WITH_MATTER
         auto outcome = std::make_shared<Outcome>();
-        const bool scheduled = RunOnChipThread([this, nodeId, endpoint, clusterId, attributeId, value, outcome]() {
+        const bool scheduled = RunOnChipThreadToWait([this, nodeId, endpoint, clusterId, attributeId, value, outcome]() {
             WithSession(nodeId,
                 [this, endpoint, clusterId, attributeId, value, outcome](chip::Messaging::ExchangeManager& em,
                                                                          const chip::SessionHandle& s) {
@@ -1024,7 +1071,7 @@ public:
                        uint32_t clusterId) {
 #ifdef ULTRACANVAS_WITH_MATTER
         auto outcome = std::make_shared<Outcome>();
-        const bool scheduled = RunOnChipThread(
+        const bool scheduled = RunOnChipThreadToWait(
             [this, sourceNode, sourceEndpoint, targetNode, targetEndpoint, clusterId, outcome]() {
                 WithSession(sourceNode,
                     [this, sourceEndpoint, targetNode, targetEndpoint, clusterId, outcome](
@@ -1101,14 +1148,18 @@ bool MatterProtocol::Initialize() {
     Log(2, "Initializing Matter protocol...");
     
     sdkWrapper->protocol = this;
+    StartDelivery();
     
     if (!sdkWrapper->Initialize(storagePath)) {
+        StopDelivery();
         ReportError(-100, "Failed to initialize Matter stack");
         SetState(ProtocolState::Error);
         return false;
     }
     
     if (!sdkWrapper->InitializeController()) {
+        sdkWrapper->Shutdown();
+        StopDelivery();
         ReportError(-101, "Failed to initialize Matter controller");
         SetState(ProtocolState::Error);
         return false;
@@ -1116,6 +1167,10 @@ bool MatterProtocol::Initialize() {
     
     running = true;
     eventLoopThread = std::thread(&MatterProtocol::EventLoopThread, this);
+
+    // The devices this controller commissioned in earlier runs.
+    RestoreNodes();
+    ProbeRestoredNodes();
     
     SetState(ProtocolState::Ready);
     Log(2, "Matter protocol initialized successfully");
@@ -1135,6 +1190,11 @@ void MatterProtocol::Shutdown() {
     if (discoveryThread.joinable()) discoveryThread.join();
     if (commissioningThread.joinable()) commissioningThread.join();
     if (eventLoopThread.joinable()) eventLoopThread.join();
+
+    // The SDK first, so nothing more is reported; then whatever it reported
+    // is delivered (a commissioning that finished is recorded, not lost).
+    sdkWrapper->Shutdown();
+    StopDelivery();
     
     {
         std::lock_guard<std::mutex> lock(matterMutex);
@@ -1146,8 +1206,11 @@ void MatterProtocol::Shutdown() {
         bindings.clear();
         attributeSubscriptions.clear();
     }
+    {
+        std::lock_guard<std::mutex> lock(deviceMutex);
+        pairedDevices.clear();
+    }
     
-    sdkWrapper->Shutdown();
     SetState(ProtocolState::Uninitialized);
     Log(2, "Matter protocol shutdown complete");
 }
@@ -1417,6 +1480,16 @@ void MatterProtocol::OnCommissioningComplete(uint64_t nodeId, bool success, cons
             matterNodes[node.DeviceId] = node;
             nodeIdToDeviceId[nodeId] = node.DeviceId;
         }
+        {
+            // Kept for the next run (MatterNodeStore.h).
+            std::lock_guard<std::mutex> lock(nodeStoreMutex);
+            auto& nodes = nodeStore.Nodes;
+            nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+                                       [&](const MatterStoredNode& n) { return n.NodeId == nodeId; }),
+                        nodes.end());
+            nodes.push_back({nodeId, deviceTypes});
+            SaveNodeStoreLocked();
+        }
         
         SmartHomeDeviceInfo info = NodeToDeviceInfo(node);
         AddPairedDevice(info);
@@ -1429,7 +1502,7 @@ void MatterProtocol::OnCommissioningComplete(uint64_t nodeId, bool success, cons
 
 void MatterProtocol::UpdateNodeAttribute(uint64_t nodeId, const std::string& attrName, 
                                           const std::string& value) {
-    std::lock_guard<std::mutex> lock(matterMutex);
+    std::unique_lock<std::mutex> lock(matterMutex);
     
     auto it = nodeIdToDeviceId.find(nodeId);
     if (it == nodeIdToDeviceId.end()) return;
@@ -1440,20 +1513,34 @@ void MatterProtocol::UpdateNodeAttribute(uint64_t nodeId, const std::string& att
     if (attrName == "vendorName") nodeIt->second.VendorName = value;
     else if (attrName == "productName") nodeIt->second.ProductName = value;
     
-    SmartHomeDeviceInfo info = NodeToDeviceInfo(nodeIt->second);
+    const SmartHomeDeviceInfo info = NodeToDeviceInfo(nodeIt->second);
+    lock.unlock();
+    // With no lock held: the manager reads GetPairedDevices back, which
+    // takes matterMutex.
     UpdatePairedDevice(info);
 }
 
 // ===== DEVICE OPERATIONS =====
 
 bool MatterProtocol::RemoveDevice(const std::string& deviceId) {
-    std::lock_guard<std::mutex> lock(matterMutex);
-    
-    auto it = matterNodes.find(deviceId);
-    if (it == matterNodes.end()) return false;
-    
-    nodeIdToDeviceId.erase(it->second.NodeId);
-    matterNodes.erase(it);
+    uint64_t nodeId = 0;
+    {
+        std::lock_guard<std::mutex> lock(matterMutex);
+        auto it = matterNodes.find(deviceId);
+        if (it == matterNodes.end()) return false;
+        nodeId = it->second.NodeId;
+        nodeIdToDeviceId.erase(nodeId);
+        matterNodes.erase(it);
+    }
+    {
+        std::lock_guard<std::mutex> lock(nodeStoreMutex);
+        auto& nodes = nodeStore.Nodes;
+        nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+                                   [&](const MatterStoredNode& n) { return n.NodeId == nodeId; }),
+                    nodes.end());
+        SaveNodeStoreLocked();
+    }
+    // With no lock held: the listeners may call back into the module.
     RemovePairedDevice(deviceId);
     
     Log(2, "Removed Matter device: " + deviceId);
@@ -1942,6 +2029,152 @@ bool MatterProtocol::SetThreadDataset(const std::vector<uint8_t>& dataset) {
 std::vector<uint8_t> MatterProtocol::GetThreadDataset() const { return threadDataset; }
 bool MatterProtocol::IsThreadBorderRouter() const { return HasCapability(ProtocolCapability::BorderRouter); }
 
+// ===== COMMISSIONED NODES, BETWEEN RUNS =====
+
+void MatterProtocol::RestoreNodes() {
+    nodeStorePath = MatterNodeStorePath(storagePath);
+    MatterNodeStoreData loaded;
+    std::string error;
+    if (!LoadMatterNodeStore(nodeStorePath, loaded, error)) {
+        // Kept aside, not overwritten: it names devices still on the fabric.
+        // Their ids are lost to this run, so new ids start at a random point
+        // far from the ones a damaged list most likely held.
+        std::error_code ec;
+        std::filesystem::rename(UltraCanvas::PathFromUtf8(nodeStorePath),
+                                UltraCanvas::PathFromUtf8(nodeStorePath + ".damaged"), ec);
+        std::random_device random;
+        loaded = MatterNodeStoreData{};
+        loaded.NextNodeId = 0x10000 + (static_cast<uint64_t>(random()) % 0x7FFF0000u);
+        Log(0, "Matter: the list of commissioned devices could not be read (" + error +
+               "); it was moved to " + nodeStorePath + ".damaged and this run starts with none");
+    }
+
+    std::vector<SmartHomeDeviceInfo> restored;
+    {
+        std::lock_guard<std::mutex> lock(matterMutex);
+        for (const MatterStoredNode& stored : loaded.Nodes) {
+            MatterNode node;
+            node.NodeId = stored.NodeId;
+            node.DeviceId = "matter_" + std::to_string(stored.NodeId);
+            node.IsOnline = false;   // until a session to it succeeds
+            for (const auto& [endpoint, types] : stored.DeviceTypes) {
+                node.Endpoints.push_back(endpoint);
+                node.DeviceTypes.insert(node.DeviceTypes.end(), types.begin(), types.end());
+            }
+            matterNodes[node.DeviceId] = node;
+            nodeIdToDeviceId[node.NodeId] = node.DeviceId;
+            restored.push_back(NodeToDeviceInfo(node));
+        }
+    }
+    {
+        // Paired, not joined: no join is reported for a device that was in
+        // the home before this start. The manager adopts them through
+        // GetPairedDevices once the protocol is enabled.
+        std::lock_guard<std::mutex> lock(deviceMutex);
+        for (const SmartHomeDeviceInfo& info : restored) pairedDevices[info.DeviceId] = info;
+    }
+    {
+        std::lock_guard<std::mutex> lock(nodeStoreMutex);
+        nodeStore = std::move(loaded);
+    }
+    if (!restored.empty()) {
+        Log(2, "Matter: " + std::to_string(restored.size()) + " device(s) from earlier runs");
+    }
+}
+
+void MatterProtocol::ProbeRestoredNodes() {
+    std::vector<uint64_t> nodeIds;
+    {
+        std::lock_guard<std::mutex> lock(matterMutex);
+        for (const auto& [id, deviceId] : nodeIdToDeviceId) nodeIds.push_back(id);
+    }
+    for (uint64_t nodeId : nodeIds) {
+        sdkWrapper->ProbeNode(nodeId, [this, nodeId](bool reachable) {
+            Deliver([this, nodeId, reachable]() { SetNodeReachable(nodeId, reachable); });
+        });
+    }
+}
+
+void MatterProtocol::SetNodeReachable(uint64_t nodeId, bool reachable) {
+    SmartHomeDeviceInfo info;
+    {
+        std::lock_guard<std::mutex> lock(matterMutex);
+        auto id = nodeIdToDeviceId.find(nodeId);
+        if (id == nodeIdToDeviceId.end()) return;   // removed meanwhile
+        auto node = matterNodes.find(id->second);
+        if (node == matterNodes.end() || node->second.IsOnline == reachable) return;
+        node->second.IsOnline = reachable;
+        info = NodeToDeviceInfo(node->second);
+    }
+    if (!reachable) Log(1, "Matter: " + info.DeviceId + " did not answer");
+    UpdatePairedDevice(info);
+}
+
+uint64_t MatterProtocol::AllocateNodeId() {
+    std::lock_guard<std::mutex> lock(nodeStoreMutex);
+    const uint64_t nodeId = NextFreeMatterNodeId(nodeStore);
+    // Recorded before it is used and never given back: a commissioning that
+    // failed half-way may still have put the device on the fabric under it.
+    nodeStore.NextNodeId = nodeId + 1;
+    SaveNodeStoreLocked();
+    return nodeId;
+}
+
+void MatterProtocol::SaveNodeStoreLocked() {
+    if (nodeStorePath.empty()) nodeStorePath = MatterNodeStorePath(storagePath);
+    std::string error;
+    if (!SaveMatterNodeStore(nodeStorePath, nodeStore, error)) {
+        Log(0, "Matter: the list of commissioned devices could not be saved (" + error +
+               "); they will be missing after a restart");
+    }
+}
+
+// ===== DELIVERY =====
+
+void MatterProtocol::Deliver(std::function<void()> work) {
+    {
+        std::lock_guard<std::mutex> lock(deliveryMutex);
+        deliveryQueue.push_back(std::move(work));
+    }
+    deliveryWake.notify_one();
+}
+
+void MatterProtocol::DeliveryThread() {
+    std::unique_lock<std::mutex> lock(deliveryMutex);
+    for (;;) {
+        deliveryWake.wait(lock, [this] { return deliveryStopping || !deliveryQueue.empty(); });
+        if (deliveryQueue.empty()) return;   // stopping, and nothing left
+        std::function<void()> work = std::move(deliveryQueue.front());
+        deliveryQueue.pop_front();
+        lock.unlock();
+        work();
+        lock.lock();
+    }
+}
+
+void MatterProtocol::StartDelivery() {
+    std::lock_guard<std::mutex> lock(deliveryMutex);
+    if (deliveryThread.joinable()) return;
+    deliveryStopping = false;
+    deliveryThread = std::thread(&MatterProtocol::DeliveryThread, this);
+}
+
+void MatterProtocol::StopDelivery() {
+    {
+        std::lock_guard<std::mutex> lock(deliveryMutex);
+        if (!deliveryThread.joinable()) return;
+        deliveryStopping = true;
+    }
+    deliveryWake.notify_one();
+    if (deliveryThread.get_id() == std::this_thread::get_id()) {
+        // Shut down by a listener the delivery thread is running: it cannot
+        // wait for itself. It ends on its own once the queue is empty.
+        deliveryThread.detach();
+        return;
+    }
+    deliveryThread.join();
+}
+
 // ===== EVENT LOOP =====
 
 void MatterProtocol::EventLoopThread() {
@@ -1964,6 +2197,7 @@ SmartHomeDeviceInfo MatterProtocol::NodeToDeviceInfo(const MatterNode& node) con
     info.Protocol = SmartHomeProtocolType::Matter;
     info.Category = DetermineDeviceCategory(node.DeviceTypes);
     info.State = node.IsOnline ? SmartHomeDeviceState::Online : SmartHomeDeviceState::Offline;
+    info.Reachable = node.IsOnline;   // what SmartHome Center shows as online
     return info;
 }
 

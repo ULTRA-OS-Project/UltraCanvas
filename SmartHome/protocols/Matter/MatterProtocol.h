@@ -1,18 +1,24 @@
 // MatterProtocol.h
 // Matter (CHIP) Protocol Implementation
-// Version: 1.0.0
-// Last Modified: 2025-12-08
+// Version: 1.1.0 - commissioned nodes kept between runs; SDK notifications
+//                  delivered from a thread of the backend's own
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #pragma once
 
 #include "SmartHomeProtocolBase.h"
 #include "ISmartHomeProtocol.h"
+#include "MatterNodeStore.h"
 #include <memory>
 #include <vector>
 #include <map>
 #include <thread>
 #include <atomic>
+#include <condition_variable>
+#include <deque>
+#include <functional>
+#include <mutex>
 
 namespace UltraCanvas {
 namespace SmartHome {
@@ -288,6 +294,32 @@ private:
     // ===== INTERNAL CALLBACKS =====
     
     void UpdateNodeAttribute(uint64_t nodeId, const std::string& attrName, const std::string& value);
+
+    // ===== COMMISSIONED NODES, BETWEEN RUNS (MatterNodeStore.h) =====
+
+    // Loads the list next to the SDK's storage and registers its nodes as
+    // paired - not joined: they were in the home before this start - each
+    // unreachable until a session to it succeeds (ProbeRestoredNodes).
+    void RestoreNodes();
+    void ProbeRestoredNodes();
+    void SetNodeReachable(uint64_t nodeId, bool reachable);
+    // The operational node id for the next commissioning; recorded before
+    // it is used, so no later run hands it out again.
+    uint64_t AllocateNodeId();
+    void SaveNodeStoreLocked();   // nodeStoreMutex held
+
+    // ===== DELIVERY =====
+    //
+    // connectedhomeip reports commissioning and sessions on its own event
+    // loop thread, and every synchronous call into the SDK waits for that
+    // thread. A listener that heard "device joined" there and asked the
+    // device anything would wait for itself forever. So nothing the SDK
+    // reports runs there: the wrapper hands it to Deliver, and the delivery
+    // thread runs it - the protocol's bookkeeping, then the listeners.
+    void Deliver(std::function<void()> work);
+    void DeliveryThread();
+    void StartDelivery();
+    void StopDelivery();   // runs what is queued, then ends the thread
     
     // ===== STATE =====
     
@@ -322,6 +354,18 @@ private:
     // OTA state
     std::map<std::string, int> otaProgress;  // deviceId -> progress %
     
+    // Commissioned nodes kept between runs
+    std::string nodeStorePath;
+    MatterNodeStoreData nodeStore;
+    std::mutex nodeStoreMutex;
+
+    // Delivery (see DELIVERY above)
+    std::thread deliveryThread;
+    std::mutex deliveryMutex;
+    std::condition_variable deliveryWake;
+    std::deque<std::function<void()>> deliveryQueue;
+    bool deliveryStopping = false;
+
     // Configuration
     std::string storagePath;
     std::string selectedAdapter;
