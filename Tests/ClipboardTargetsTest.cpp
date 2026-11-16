@@ -17,7 +17,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>

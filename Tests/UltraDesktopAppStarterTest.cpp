@@ -25,7 +25,7 @@
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 #include "UltraDesktopAppStarter.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <cstdlib>
 #include <iostream>

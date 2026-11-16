@@ -20,7 +20,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasWindow.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>

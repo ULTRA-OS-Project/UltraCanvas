@@ -16,7 +16,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasWindow.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <cmath>
 #include <cstdlib>

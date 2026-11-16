@@ -19,7 +19,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasWindow.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <cstdlib>
 #include <iostream>

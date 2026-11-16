@@ -112,7 +112,7 @@
 #include <utility>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #if defined(_WIN32)
 // Shell_NotifyIconGetRect and NOTIFYICONDATAW's newest fields are declared

@@ -512,12 +512,13 @@ things. It joins one of the *Run ... on a virtual display (Linux)* steps in
 window tests*, whose list is checked against what ctest registers. And it
 fails rather than skips when `ULTRACANVAS_TEST_DISPLAY_REQUIRED` is set,
 which those steps do: its skip asks `DisplayTest::DisplayRequired()`
-(`Tests/DisplayTestSupport.h`) first. `scripts/check_window_tests.py`
-enforces both in CI (`window-tests.yml`) for every test source that reads
-`DISPLAY` or calls `XOpenDisplay`. A source that is no window test says so
-with `// window-test-exempt: <why>`, and one ctest entry of several built
-from a source - a mode of the binary that opens no window - with
-`// window-test-exempt(<ctest name>): <why>`.
+(`Tests/DisplayRequired.h`, which includes nothing of the framework's and
+which `DisplayTestSupport.h` brings along) first.
+`scripts/check_window_tests.py` enforces both in CI (`window-tests.yml`) for
+every test source that reads `DISPLAY` or calls `XOpenDisplay`. A source
+that is no window test says so with `// window-test-exempt: <why>`, and one
+ctest entry of several built from a source - a mode of the binary that opens
+no window - with `// window-test-exempt(<ctest name>): <why>`.
 
 A program's start-up and shut-down under Xvfb need no X client to send the
 close: `ULTRACANVAS_CLOSE_AFTER_MS=2000 xvfb-run -a ./build/bin/ultrapress`

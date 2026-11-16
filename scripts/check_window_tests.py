@@ -19,7 +19,7 @@ DesktopShellTest does). For each, three things must hold:
 2. That step sets `ULTRACANVAS_TEST_DISPLAY_REQUIRED` (in the step's, the
    job's or the workflow's `env`, or on the command line), to anything but
    empty or `0`: there a skip fails, so a broken display cannot pass.
-3. The source asks `DisplayTest::DisplayRequired()` (Tests/DisplayTestSupport.h)
+3. The source asks `DisplayTest::DisplayRequired()` (Tests/DisplayRequired.h)
    - its skip honours that variable.
 
 And a name listed in a step's array is one that `add_test` registers, so a
@@ -208,7 +208,7 @@ def check(windows, steps, registered, read):
                                                f"{VARIABLE}: a skip there passes"))
         if not _ASKS_REQUIRED.search(text):
             findings.append((source, f"{test} needs a display, and its skip never asks "
-                                     f"DisplayTest::DisplayRequired() (Tests/DisplayTestSupport.h): under "
+                                     f"DisplayTest::DisplayRequired() (Tests/DisplayRequired.h): under "
                                      f"{VARIABLE} it has to fail, not skip"))
     for step in steps:
         for name in step["names"]:

@@ -20,7 +20,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasWindow.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <chrono>
 #include <cstdlib>

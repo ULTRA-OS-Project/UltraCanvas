@@ -31,7 +31,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasWindow.h"
 #include "UltraMailAccountBar.h"
-#include "../DisplayTestSupport.h"
+#include "../DisplayRequired.h"
 
 #include <cmath>
 #include <cstdlib>

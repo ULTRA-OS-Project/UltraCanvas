@@ -12,7 +12,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasSessionLock.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <chrono>
 #include <cstdlib>

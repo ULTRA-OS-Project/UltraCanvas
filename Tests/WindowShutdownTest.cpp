@@ -33,7 +33,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasWindow.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <cstdlib>
 #include <iostream>

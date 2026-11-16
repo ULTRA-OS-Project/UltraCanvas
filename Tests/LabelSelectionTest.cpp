@@ -16,7 +16,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextSelection.h"
 #include "UltraCanvasWindow.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <cstdlib>
 #include <iostream>

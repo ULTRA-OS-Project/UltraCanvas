@@ -19,7 +19,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextInput.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <cstdlib>
 #include <iostream>

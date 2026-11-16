@@ -32,7 +32,7 @@
 #include "UltraCanvasFileRemoval.h"
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasPathUtf8.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <chrono>
 #include <cstdlib>

@@ -23,7 +23,7 @@
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasWindow.h"
 #include "UltraMailFormatBar.h"
-#include "../DisplayTestSupport.h"
+#include "../DisplayRequired.h"
 
 #include <cmath>
 #include <cstdlib>

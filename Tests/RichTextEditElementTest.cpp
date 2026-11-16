@@ -17,7 +17,7 @@
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasAccessibilityBridge.h"
-#include "DisplayTestSupport.h"
+#include "DisplayRequired.h"
 
 #include <algorithm>
 #include <cmath>

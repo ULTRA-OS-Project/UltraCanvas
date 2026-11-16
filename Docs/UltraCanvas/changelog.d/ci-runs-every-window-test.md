@@ -16,7 +16,8 @@
     `ULTRACANVAS_TEST_DISPLAY_REQUIRED=1`, which the virtual-display steps
     set. The thirteen suites that already did read the variable two ways,
     some only `1` and others anything but empty or `0`; they all ask
-    `DisplayTest::DisplayRequired()` (`Tests/DisplayTestSupport.h`) now.
+    `DisplayTest::DisplayRequired()` (`Tests/DisplayRequired.h`, which
+    includes nothing of the framework's) now.
     `FileDialogTest`'s skip also no longer hides a failed check of the half
     that did run.
   - It stays that way: `scripts/check_window_tests.py`, run by the new

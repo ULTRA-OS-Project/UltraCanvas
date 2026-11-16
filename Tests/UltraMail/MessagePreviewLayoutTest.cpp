@@ -39,7 +39,7 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasWindow.h"
 #include "UltraMailMessagePreview.h"
-#include "../DisplayTestSupport.h"
+#include "../DisplayRequired.h"
 
 #include <chrono>
 #include <cstdlib>
