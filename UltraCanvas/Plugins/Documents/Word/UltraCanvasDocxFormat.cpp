@@ -180,7 +180,6 @@ public:
         pendingBookmarks_.clear();
         parsingBody_ = false;
         ApplySections(body->FirstChildElement("w:sectPr"));
-        LoadSection(body->FirstChildElement("w:sectPr"));
         LoadNotes(RichNote::Kind::Footnote);
         LoadNotes(RichNote::Kind::Endnote);
         LoadComments();
@@ -301,7 +300,7 @@ private:
     // Bookmarks started between paragraphs, for the next one.
     std::vector<std::string> pendingBookmarks_;
     // Sections: each paragraph w:sectPr ends one, after the block index given.
-    struct SectionEnd { int lastBlock; RichSectionSetup setup; };
+    struct SectionEnd { int lastBlock; RichSectionSetup setup; tinyxml2::XMLElement* sectPr = nullptr; };
     std::vector<SectionEnd> sectionEnds_;
     bool parsingBody_ = false;
 
@@ -322,14 +321,46 @@ private:
     // ended.
     void ApplySections(tinyxml2::XMLElement* bodySectPr) {
         std::vector<SectionEnd> sections = sectionEnds_;
-        sections.push_back({static_cast<int>(doc_->blocks.size()) - 1, ReadSectionSetup(bodySectPr)});
+        sections.push_back({static_cast<int>(doc_->blocks.size()) - 1, ReadSectionSetup(bodySectPr), bodySectPr});
         doc_->firstSection = sections.front().setup;
+        // The page, and the header and footer every page has unless its
+        // section says otherwise, are the first section's.
+        RichPageFurniture pagesNow, firstNow;      // what a section inherits: the one before it
+        LoadSection(sections.front().sectPr, &pagesNow, &firstNow);
+        bool ownFurniture = false;                // some section so far named a header or footer of its own
         for (size_t k = 1; k < sections.size(); k++) {
+            // A section without a reference of a kind keeps the header or
+            // footer of the section before it.
+            tinyxml2::XMLElement* sectPr = sections[k].sectPr;
+            RichSectionSetup& setup = sections[k].setup;
+            bool titlePage = false;
+            if (sectPr) {
+                titlePage = sectPr->FirstChildElement("w:titlePg") != nullptr;
+                ownFurniture = ReadFurnitureReferences(sectPr, pagesNow, firstNow) || ownFurniture;
+                if (auto* margins = sectPr->FirstChildElement("w:pgMar")) {
+                    auto side = [&](const char* name, float documents, float& out) {
+                        const float value = std::abs(static_cast<float>(margins->IntAttribute(name, 0)) / 20.0f);
+                        if (margins->Attribute(name) && std::abs(value - documents) > 0.05f) out = value;
+                    };
+                    side("w:top", doc_->page.marginTopPt, setup.marginTopPt);
+                    side("w:bottom", doc_->page.marginBottomPt, setup.marginBottomPt);
+                    side("w:header", doc_->page.headerTopPt, setup.headerTopPt);
+                    side("w:footer", doc_->page.footerBottomPt, setup.footerBottomPt);
+                }
+            }
+            if (ownFurniture || titlePage) {
+                RichSectionFurniture own;
+                own.pages = pagesNow;
+                own.firstPageDiffers = titlePage;
+                if (titlePage) own.firstPage = firstNow;
+                setup.furniture = static_cast<int>(doc_->sectionFurniture.size());
+                doc_->sectionFurniture.push_back(std::move(own));
+            }
             const int start = sections[k - 1].lastBlock + 1;
             if (start <= 0 || start >= static_cast<int>(doc_->blocks.size())) continue;
             RichDocBlock& block = doc_->blocks[static_cast<size_t>(start)];
             block.sectionStart = true;
-            block.section = sections[k].setup;
+            block.section = setup;
         }
     }
     // Comments: w:id -> index into doc_->comments, and those whose range the
@@ -2522,7 +2553,7 @@ private:
             ~SectionEndGuard() {
                 if (sectPr && reader->parsingBody_) {
                     reader->sectionEnds_.push_back({static_cast<int>(reader->doc_->blocks.size()) - 1,
-                                                    ReadSectionSetup(sectPr)});
+                                                    ReadSectionSetup(sectPr), sectPr});
                 }
             }
         } sectionEndGuard{this, endsSection};
@@ -2865,7 +2896,31 @@ private:
 
     // The body's section: page size and margins, and the header and footer
     // parts it references (w:titlePg gives the first page its own).
-    void LoadSection(tinyxml2::XMLElement* sectPr) {
+    // A sectPr's header and footer references, read into the default pages'
+    // and the first page's furniture. True when it names any.
+    bool ReadFurnitureReferences(tinyxml2::XMLElement* sectPr, RichPageFurniture& pagesOut, RichPageFurniture& firstOut) {
+        bool any = false;
+        for (const char* kind : {"w:headerReference", "w:footerReference"}) {
+            const bool header = std::string(kind) == "w:headerReference";
+            for (auto* ref = sectPr->FirstChildElement(kind); ref; ref = ref->NextSiblingElement(kind)) {
+                const std::string type = Attr(ref, "w:type");
+                RichPageFurniture* target = type == "first" ? &firstOut
+                                          : (type == "default" || type.empty()) ? &pagesOut : nullptr;
+                if (!target) continue;   // even pages: not modelled
+                auto rel = relationships_.find(Attr(ref, "r:id"));
+                if (rel == relationships_.end()) continue;
+                LoadHeaderFooterPart("word/" + rel->second.target, header ? target->header : target->footer);
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    // The document's page and its header and footer, from its first section.
+    // `pagesOut` / `firstOut` get what that section's references name, for
+    // the sections after it to inherit.
+    void LoadSection(tinyxml2::XMLElement* sectPr, RichPageFurniture* pagesOut = nullptr,
+                     RichPageFurniture* firstOut = nullptr) {
         if (!sectPr) return;
         auto twips = [](tinyxml2::XMLElement* e, const char* name) {
             return e ? static_cast<float>(e->IntAttribute(name, 0)) / 20.0f : 0.0f;
@@ -2886,18 +2941,9 @@ private:
         page.marginBottomPt = std::abs(page.marginBottomPt);
 
         doc_->firstPageDiffers = sectPr->FirstChildElement("w:titlePg") != nullptr;
-        for (const char* kind : {"w:headerReference", "w:footerReference"}) {
-            const bool header = std::string(kind) == "w:headerReference";
-            for (auto* ref = sectPr->FirstChildElement(kind); ref; ref = ref->NextSiblingElement(kind)) {
-                const std::string type = Attr(ref, "w:type");
-                RichPageFurniture* target = type == "first" ? &doc_->firstPageFurniture
-                                          : (type == "default" || type.empty()) ? &doc_->pageFurniture : nullptr;
-                if (!target) continue;   // even pages: not modelled
-                auto rel = relationships_.find(Attr(ref, "r:id"));
-                if (rel == relationships_.end()) continue;
-                LoadHeaderFooterPart("word/" + rel->second.target, header ? target->header : target->footer);
-            }
-        }
+        ReadFurnitureReferences(sectPr, doc_->pageFurniture, doc_->firstPageFurniture);
+        if (pagesOut) *pagesOut = doc_->pageFurniture;
+        if (firstOut) *firstOut = doc_->firstPageFurniture;
         if (!doc_->firstPageDiffers) doc_->firstPageFurniture = RichPageFurniture{};
     }
 
@@ -4080,14 +4126,76 @@ private:
         return std::string("<w:type w:val=\"") + (section.newPage ? "nextPage" : "continuous") + "\"/>";
     }
 
-    std::string SectionBreakXml(const RichSectionSetup& section) const {
-        return "<w:sectPr>" + SectionTypeXml(section) + PageGeometryXml() + SectionColumnsXml(section) + "</w:sectPr>";
+    std::string SectionBreakXml(const RichSectionSetup& section) {
+        bool titlePage = false;
+        const std::string references = FurnitureReferencesXml(section, titlePage);
+        return "<w:sectPr>" + references + SectionTypeXml(section) + PageGeometryXml(&section)
+             + SectionColumnsXml(section) + (titlePage ? "<w:titlePg/>" : "") + "</w:sectPr>";
+    }
+
+    // The header and footer references of a section's w:sectPr, their parts
+    // written once each. A section says all of its own (Word hands a section
+    // without one the header of the section before): an empty part where it
+    // has none but another section does. `titlePage`: its first page differs.
+    std::map<std::pair<const void*, std::string>, size_t> furniturePartOf_;   // (blocks, kind + type) -> part number
+    std::string FurnitureReferencesXml(const RichSectionSetup& section, bool& titlePage) {
+        const UCRichDocument& doc = *doc_;
+        const bool ownSet = section.furniture >= 0 && section.furniture < static_cast<int>(doc.sectionFurniture.size());
+        const RichSectionFurniture* own = ownSet ? &doc.sectionFurniture[static_cast<size_t>(section.furniture)] : nullptr;
+        // The document's first-page header is its first page's alone: only
+        // the first section's pages begin with it.
+        const bool documentFirst = !own && doc.firstPageDiffers && &section == &doc.SectionFor(0);
+        titlePage = own ? own->firstPageDiffers : documentFirst;
+        const RichPageFurniture& pages = own ? own->pages : doc.pageFurniture;
+        const RichPageFurniture& first = own ? own->firstPage : doc.firstPageFurniture;
+        bool anyHeader = false, anyFooter = false;
+        for (const RichPageFurniture* furniture : doc.AllFurniture()) {
+            anyHeader = anyHeader || !furniture->header.empty();
+            anyFooter = anyFooter || !furniture->footer.empty();
+        }
+        std::ostringstream refs;
+        auto part = [&](const std::vector<RichDocBlock>& blocks, const char* kind, const char* type, bool wanted) {
+            if (!wanted) return;
+            const auto key = std::make_pair(static_cast<const void*>(blocks.empty() ? nullptr : &blocks),
+                                            std::string(kind) + type);
+            auto known = furniturePartOf_.find(key);
+            if (known == furniturePartOf_.end()) {
+                FurniturePart p;
+                p.kind = kind;
+                p.type = type;
+                p.name = std::string(kind) + std::to_string(furnitureParts_.size() + 1) + ".xml";
+                const char* root = std::string(kind) == "header" ? "w:hdr" : "w:ftr";
+                // Written apart from the body: its lists are its own.
+                const auto savedList = currentListNumId_;
+                const std::string savedSectPr = pendingSectPr_;
+                p.xml = std::string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<")
+                      + root + " " + kPartNamespaces + ">" + (blocks.empty() ? std::string("<w:p/>") : WriteBlocks(blocks))
+                      + "</" + root + ">\n";
+                currentListNumId_ = savedList;
+                pendingSectPr_ = savedSectPr;
+                known = furniturePartOf_.emplace(key, furnitureParts_.size() + 1).first;
+                furnitureParts_.push_back(std::move(p));
+            }
+            refs << "<w:" << kind << "Reference w:type=\"" << type << "\" r:id=\"rIdPart" << known->second << "\"/>";
+        };
+        part(pages.header, "header", "default", anyHeader);
+        if (titlePage) part(first.header, "header", "first", anyHeader);
+        part(pages.footer, "footer", "default", anyFooter);
+        if (titlePage) part(first.footer, "footer", "first", anyFooter);
+        return refs.str();
     }
 
     // The page size and margins, Word's defaults (A4, 2 cm margins) where
     // the document states no page.
-    std::string PageGeometryXml() const {
-        const RichPageSetup& page = doc_->page;
+    std::string PageGeometryXml(const RichSectionSetup* section = nullptr) const {
+        RichPageSetup page = doc_->page;
+        if (section) {
+            // A section's own room for its header and footer.
+            if (section->marginTopPt >= 0.0f) page.marginTopPt = section->marginTopPt;
+            if (section->marginBottomPt >= 0.0f) page.marginBottomPt = section->marginBottomPt;
+            if (section->headerTopPt >= 0.0f) page.headerTopPt = section->headerTopPt;
+            if (section->footerBottomPt >= 0.0f) page.footerBottomPt = section->footerBottomPt;
+        }
         auto twips = [](float pt) { return std::lround(pt * 20.0f); };
         const bool hasPage = page.HasPage();
         std::ostringstream xml;
@@ -4174,34 +4282,17 @@ private:
 
     std::string SectionPropertiesXml() {
         const UCRichDocument& doc = *doc_;
-        std::ostringstream refs;
-        auto part = [&](const std::vector<RichDocBlock>& blocks, const char* kind, const char* type) {
-            if (blocks.empty()) return;
-            FurniturePart p;
-            p.kind = kind;
-            p.type = type;
-            p.name = std::string(kind) + std::to_string(furnitureParts_.size() + 1) + ".xml";
-            const char* root = std::string(kind) == "header" ? "w:hdr" : "w:ftr";
-            p.xml = std::string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<")
-                  + root + " " + kPartNamespaces + ">" + WriteBlocks(blocks) + "</" + root + ">\n";
-            refs << "<w:" << kind << "Reference w:type=\"" << type << "\" r:id=\"rIdPart"
-                 << (furnitureParts_.size() + 1) << "\"/>";
-            furnitureParts_.push_back(std::move(p));
-        };
-        part(doc.pageFurniture.header, "header", "default");
-        if (doc.firstPageDiffers) part(doc.firstPageFurniture.header, "header", "first");
-        part(doc.pageFurniture.footer, "footer", "default");
-        if (doc.firstPageDiffers) part(doc.firstPageFurniture.footer, "footer", "first");
-
         // The last section's: the one the body's own w:sectPr ends.
         const RichSectionSetup& last = doc.SectionFor(static_cast<int>(doc.blocks.size()) - 1);
         const bool sectioned = doc.HasColumns() || std::any_of(doc.blocks.begin(), doc.blocks.end(),
                                                                [](const RichDocBlock& b) { return b.sectionStart; });
+        bool titlePage = false;
+        const std::string references = FurnitureReferencesXml(last, titlePage);
         std::ostringstream xml;
-        xml << "<w:sectPr>" << refs.str();
+        xml << "<w:sectPr>" << references;
         if (sectioned) xml << SectionTypeXml(last);
-        xml << PageGeometryXml() << SectionColumnsXml(last);
-        if (doc.firstPageDiffers) xml << "<w:titlePg/>";
+        xml << PageGeometryXml(&last) << SectionColumnsXml(last);
+        if (titlePage) xml << "<w:titlePg/>";
         xml << "</w:sectPr>";
         return xml.str();
     }

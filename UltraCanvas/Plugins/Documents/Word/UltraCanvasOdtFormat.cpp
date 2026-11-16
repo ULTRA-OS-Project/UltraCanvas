@@ -287,7 +287,10 @@ public:
         // letter) would inject chrome the reader never displays.
         LoadSettings();
         tinyxml2::XMLElement* masterPage = ResolveMasterPage(stylesRoot, text);
-        LoadPageSetup(stylesRoot, masterPage);
+        stylesRoot_ = stylesRoot;
+        firstMasterName_ = masterPage ? Attr(masterPage, "style:name") : "";
+        currentMasterName_ = firstMasterName_;
+        LoadPageSetup(stylesRoot, masterPage, doc_->page);
         // The first page draws its header and footer from its master; the
         // pages after it from that master's next-style-name, when it names
         // another one (a letterhead's first page and its continuation pages).
@@ -321,6 +324,7 @@ public:
             doc_->blocks.push_back(std::move(carrier));
         }
         ApplySections();
+        ApplyMasterPages();
         if (!doc_->notes.empty()) doc_->UpdateNoteMarks();
         LoadMetadata();
         return true;
@@ -346,6 +350,80 @@ private:
 
     // Sections in columns become the model's sections: one starting at the
     // section's first block, and a single-column one after it.
+    // A paragraph that names another master page starts pages of that page
+    // style: its own header and footer, and its own room for them. Each is a
+    // section of the model with furniture of its own (the first master
+    // page's is the document's).
+    void ApplyMasterPages() {
+        if (masterStarts_.empty() || !stylesRoot_) return;
+        auto* masters = stylesRoot_->FirstChildElement("office:master-styles");
+        if (!masters) return;
+        struct PageStyle { int furniture = -1; float top = -1.0f, bottom = -1.0f, headerTop = -1.0f, footerBottom = -1.0f; };
+        std::map<std::string, PageStyle> known;
+        known[firstMasterName_] = PageStyle{};
+        auto styleFor = [&](const std::string& name) -> const PageStyle* {
+            auto found = known.find(name);
+            if (found != known.end()) return &found->second;
+            tinyxml2::XMLElement* master = nullptr;
+            for (auto* page = masters->FirstChildElement("style:master-page"); page;
+                 page = page->NextSiblingElement("style:master-page")) {
+                if (name == Attr(page, "style:name")) { master = page; break; }
+            }
+            if (!master) return nullptr;
+            PageStyle style;
+            RichSectionFurniture own;
+            ParseMasterPage(master, own.pages);
+            auto* headerFirst = master->FirstChildElement("style:header-first");
+            auto* footerFirst = master->FirstChildElement("style:footer-first");
+            if (headerFirst || footerFirst) {
+                ParseMasterPageRegion(headerFirst, own.firstPage.header);
+                ParseMasterPageRegion(footerFirst, own.firstPage.footer);
+                own.firstPageDiffers = true;
+            }
+            // A set of its own even when it is empty, where the document's
+            // is not: these pages have no header then.
+            const bool documentHasSome = !doc_->pageFurniture.IsEmpty() || !doc_->firstPageFurniture.IsEmpty();
+            if (!own.pages.IsEmpty() || !own.firstPage.IsEmpty() || documentHasSome) {
+                style.furniture = static_cast<int>(doc_->sectionFurniture.size());
+                doc_->sectionFurniture.push_back(std::move(own));
+            }
+            RichPageSetup page = doc_->page;
+            LoadPageSetup(stylesRoot_, master, page);
+            auto differs = [](float a, float b) { return std::abs(a - b) > 0.05f; };
+            if (differs(page.marginTopPt, doc_->page.marginTopPt)) style.top = page.marginTopPt;
+            if (differs(page.marginBottomPt, doc_->page.marginBottomPt)) style.bottom = page.marginBottomPt;
+            if (differs(page.headerTopPt, doc_->page.headerTopPt)) style.headerTop = page.headerTopPt;
+            if (differs(page.footerBottomPt, doc_->page.footerBottomPt)) style.footerBottom = page.footerBottomPt;
+            return &(known[name] = style);
+        };
+        std::map<size_t, const PageStyle*> starts;
+        for (const auto& [index, name] : masterStarts_) {
+            if (index >= doc_->blocks.size()) continue;
+            if (const PageStyle* style = styleFor(name)) starts[index] = style;
+        }
+        PageStyle current;
+        for (size_t i = 0; i < doc_->blocks.size(); ++i) {
+            RichDocBlock& block = doc_->blocks[i];
+            auto start = starts.find(i);
+            if (start != starts.end()) {
+                current = *start->second;
+                if (i == 0) continue;
+                if (!block.sectionStart) {
+                    block.section = doc_->SectionFor(static_cast<int>(i) - 1);
+                    block.sectionStart = true;
+                }
+                block.section.newPage = true;
+            }
+            if (!block.sectionStart) continue;
+            // Every section from here on is on pages of this style.
+            block.section.furniture = current.furniture;
+            block.section.marginTopPt = current.top;
+            block.section.marginBottomPt = current.bottom;
+            block.section.headerTopPt = current.headerTop;
+            block.section.footerBottomPt = current.footerBottom;
+        }
+    }
+
     void ApplySections() {
         for (const SectionRange& range : sectionRanges_) {
             RichSectionSetup setup = range.setup;
@@ -417,6 +495,11 @@ private:
     // list style name -> (level -> text:start-value of a numbered level)
     std::map<std::string, std::map<int, int>> listStartValues_;
     // table-column style name -> column width in points
+    // Page styles: the styles part's root, the master page the document
+    // starts on and the one in force, and the blocks at which another starts.
+    tinyxml2::XMLElement* stylesRoot_ = nullptr;
+    std::string firstMasterName_, currentMasterName_;
+    std::vector<std::pair<size_t, std::string>> masterStarts_;
     std::map<std::string, float> columnWidths_;
     struct RowHeight { float heightPt = 0.0f; bool exact = false; };
     std::map<std::string, RowHeight> rowHeights_;              // table-row style -> its height
@@ -2111,10 +2194,26 @@ private:
         if (inTableOfContents_ && block.type == RichBlockType::Paragraph) MakeContentsEntry(block, styleName);
 
         bool pageBreak = inMainFlow_ && paraProps.pageBreakBefore;
-        if (pageBreak) {
+        // One break, not two, where a page break is followed by the empty
+        // paragraph that starts another page style (as the writer spells a
+        // section of its own header and footer after a page break).
+        const bool afterBreak = !doc_->blocks.empty() && doc_->blocks.back().type == RichBlockType::PageBreak;
+        const auto ownStyle = styles_.find(styleName);
+        const bool namesMaster = ownStyle != styles_.end() && !ownStyle->second.masterPageName.empty();
+        if (pageBreak && !(afterBreak && namesMaster && block.runs.empty())) {
             RichDocBlock pageBreakBlock;
             pageBreakBlock.type = RichBlockType::PageBreak;
             doc_->blocks.push_back(std::move(pageBreakBlock));
+        }
+        // A paragraph whose own style names a master page starts pages of
+        // that page style (ApplyMasterPages), at the block it becomes.
+        if (inMainFlow_ && frameDepth_ == 0) {
+            auto own = styles_.find(styleName);
+            if (own != styles_.end() && !own->second.masterPageName.empty()
+                && own->second.masterPageName != currentMasterName_) {
+                currentMasterName_ = own->second.masterPageName;
+                masterStarts_.emplace_back(doc_->blocks.size(), currentMasterName_);
+            }
         }
 
         // An empty bordered paragraph is the horizontal-rule idiom.
@@ -2674,7 +2773,7 @@ private:
     // The page the first master page lays the document on: size, margins, and
     // where the body starts once a header / footer takes its room (ODF puts
     // them inside the page margins and moves the body away from them).
-    void LoadPageSetup(tinyxml2::XMLElement* stylesRoot, tinyxml2::XMLElement* master) {
+    void LoadPageSetup(tinyxml2::XMLElement* stylesRoot, tinyxml2::XMLElement* master, RichPageSetup& page) {
         if (!stylesRoot || !master) return;
         const std::string layoutName = Attr(master, "style:page-layout-name");
         auto* automatic = stylesRoot->FirstChildElement("office:automatic-styles");
@@ -2685,7 +2784,6 @@ private:
         }
         auto* props = layout ? layout->FirstChildElement("style:page-layout-properties") : nullptr;
         if (!props) return;
-        RichPageSetup& page = doc_->page;
         page.widthPt = ParseLengthPt(Attr(props, "fo:page-width"));
         page.heightPt = ParseLengthPt(Attr(props, "fo:page-height"));
         const float margin = ParseLengthPt(Attr(props, "fo:margin"));
@@ -2701,14 +2799,34 @@ private:
         // height, which (as Writer reads it) includes the spacing to the
         // body. A header taller than that pushes the body down further;
         // the view measures it.
-        auto room = [&](const char* styleTag, const char* spacingAttr) {
+        // A header or footer of empty paragraphs is not kept as one (there
+        // is nothing to show), but its lines take their room all the same:
+        // Word's export gives every page style one, and the text starts a
+        // line lower for it.
+        auto emptyLines = [&](tinyxml2::XMLElement* region) {
+            float height = 0.0f;
+            if (!region || std::string(Attr(region, "style:display")) == "false") return height;
+            for (auto* p = region->FirstChildElement("text:p"); p; p = p->NextSiblingElement("text:p")) {
+                if (p->FirstChild()) return 0.0f;      // it has content: the view measures it
+                const float size = ResolveStyle(Attr(p, "text:style-name")).fontSizePt;
+                height += (size > 0.0f ? size : 12.0f) * 1.3f;
+            }
+            return height;
+        };
+        auto room = [&](const char* styleTag, const char* spacingAttr, tinyxml2::XMLElement* region) {
             auto* hfStyle = layout->FirstChildElement(styleTag);
             auto* hf = hfStyle ? hfStyle->FirstChildElement("style:header-footer-properties") : nullptr;
-            if (!hf) return 0.0f;
-            return std::max(ParseLengthPt(Attr(hf, "fo:min-height")), ParseLengthPt(Attr(hf, spacingAttr)));
+            const float spacing = hf ? ParseLengthPt(Attr(hf, spacingAttr)) : 0.0f;
+            const float least = hf ? ParseLengthPt(Attr(hf, "fo:min-height")) : 0.0f;
+            const float lines = emptyLines(region);
+            return std::max({least, spacing, lines > 0.0f ? lines + spacing : 0.0f});
         };
-        if (master->FirstChildElement("style:header")) page.marginTopPt += room("style:header-style", "fo:margin-bottom");
-        if (master->FirstChildElement("style:footer")) page.marginBottomPt += room("style:footer-style", "fo:margin-top");
+        if (auto* header = master->FirstChildElement("style:header")) {
+            page.marginTopPt += room("style:header-style", "fo:margin-bottom", header);
+        }
+        if (auto* footer = master->FirstChildElement("style:footer")) {
+            page.marginBottomPt += room("style:footer-style", "fo:margin-top", footer);
+        }
     }
 
     void LoadMetadata() {
@@ -3903,6 +4021,18 @@ private:
     // A section in columns, as a text:section with a section style. Only
     // the body has sections.
     std::string sectionStylesXml_;
+    // The page styles the body's sections use: what a section says of its
+    // header, footer and margins. The first is the document's own.
+    struct PageStyleKey {
+        int furniture = -1;
+        float top = -1.0f, bottom = -1.0f, headerTop = -1.0f, footerBottom = -1.0f;
+        bool operator==(const PageStyleKey& other) const {
+            return furniture == other.furniture && top == other.top && bottom == other.bottom
+                && headerTop == other.headerTop && footerBottom == other.footerBottom;
+        }
+    };
+    std::vector<PageStyleKey> pageStyles_{PageStyleKey{}};
+    PageStyleKey currentPageStyle_;
     int sectionCount_ = 0;
     bool sectionOpen_ = false;
 
@@ -3915,7 +4045,28 @@ private:
         }
         const RichSectionSetup& setup = i == 0 ? (blocks[0].sectionStart ? blocks[0].section : doc_->firstSection)
                                                : blocks[i].section;
-        if (i > 0 && setup.newPage) body << "<text:p text:style-name=\"PPageBreak\"/>\n";
+        // Pages of another header, footer or margins are another master
+        // page: an empty paragraph whose style names it starts them (and
+        // breaks the page, as naming a master page does).
+        const PageStyleKey pageStyle{setup.furniture, setup.marginTopPt, setup.marginBottomPt,
+                                     setup.headerTopPt, setup.footerBottomPt};
+        if (i > 0 && !(pageStyle == currentPageStyle_)) {
+            currentPageStyle_ = pageStyle;
+            size_t index = 0;
+            while (index < pageStyles_.size() && !(pageStyles_[index] == pageStyle)) ++index;
+            if (index == pageStyles_.size()) pageStyles_.push_back(pageStyle);
+            // Index 0 is the document's own page style, "Standard".
+            const std::string master = index == 0 ? std::string("Standard") : "MP" + std::to_string(index);
+            const std::string name = "PMaster" + std::to_string(index);
+            if (sectionStylesXml_.find("\"" + name + "\"") == std::string::npos) {
+                sectionStylesXml_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\""
+                                     " style:parent-style-name=\"Standard\" style:master-page-name=\"" + master + "\">"
+                                     "<style:paragraph-properties fo:break-before=\"page\"/></style:style>\n";
+            }
+            body << "<text:p text:style-name=\"" << name << "\"/>\n";
+        } else if (i > 0 && setup.newPage) {
+            body << "<text:p text:style-name=\"PPageBreak\"/>\n";
+        }
         if (setup.columns <= 1) return;
         const std::string name = "Sect" + std::to_string(++sectionCount_);
         sectionStylesXml_ += "<style:style style:name=\"" + name + "\" style:family=\"section\">"
@@ -4135,49 +4286,69 @@ private:
     // header starts, the header's height and spacing following it.
     std::string BuildMasterStyles() {
         const UCRichDocument& doc = *doc_;
-        const RichPageFurniture& later = doc.pageFurniture;
-        const RichPageFurniture& first = doc.firstPageDiffers ? doc.firstPageFurniture : doc.pageFurniture;
-        const bool hasHeader = !later.header.empty() || !first.header.empty();
-        const bool hasFooter = !later.footer.empty() || !first.footer.empty();
-        const RichPageSetup& page = doc.page;
-        if (!page.HasPage() && !hasHeader && !hasFooter) return "";
-
-        std::ostringstream props;
-        std::ostringstream headerStyle;
-        std::ostringstream footerStyle;
-        if (page.HasPage()) {
-            props << " fo:page-width=\"" << Pt(page.widthPt) << "\" fo:page-height=\"" << Pt(page.heightPt) << "\""
-                  << " style:print-orientation=\"" << (page.widthPt > page.heightPt ? "landscape" : "portrait") << "\""
-                  << " fo:margin-left=\"" << Pt(page.marginLeftPt) << "\" fo:margin-right=\"" << Pt(page.marginRightPt) << "\"";
-        }
-        // A header's room is the space between where it starts and where the
-        // body does: its minimum height, spacing to the body included.
-        auto room = [](float margin, float edge, std::ostringstream& out, const char* tag, const char* spacingAttr) {
-            const float start = (edge > 0.0f && edge < margin) ? edge : margin * 0.5f;
-            const float total = std::max(0.0f, margin - start);
-            const float spacing = std::min(7.0f, total * 0.5f);
-            out << "<style:" << tag << "><style:header-footer-properties fo:min-height=\"" << Pt(total)
-                << "\" " << spacingAttr << "=\"" << Pt(spacing) << "\" style:dynamic-spacing=\"false\"/></style:" << tag << ">";
-            return start;
-        };
-        float top = page.marginTopPt, bottom = page.marginBottomPt;
-        if (hasHeader) top = room(page.marginTopPt, page.headerTopPt, headerStyle, "header-style", "fo:margin-bottom");
-        if (hasFooter) bottom = room(page.marginBottomPt, page.footerBottomPt, footerStyle, "footer-style", "fo:margin-top");
-        if (page.HasPage()) props << " fo:margin-top=\"" << Pt(top) << "\" fo:margin-bottom=\"" << Pt(bottom) << "\"";
-        pageLayout_ = "<style:page-layout style:name=\"PL1\"><style:page-layout-properties" + props.str() + "/>"
-                    + headerStyle.str() + footerStyle.str() + "</style:page-layout>\n";
+        bool any = doc.page.HasPage() || pageStyles_.size() > 1;
+        for (const RichPageFurniture* furniture : doc.AllFurniture()) any = any || !furniture->IsEmpty();
+        if (!any) return "";
 
         std::ostringstream xml;
-        xml << "<office:master-styles>\n<style:master-page style:name=\"Standard\" style:page-layout-name=\"PL1\">";
-        if (hasHeader) {
-            xml << "<style:header>" << WriteBlocks(later.header) << "</style:header>";
-            if (doc.firstPageDiffers) xml << "<style:header-first>" << WriteBlocks(first.header) << "</style:header-first>";
+        xml << "<office:master-styles>\n";
+        pageLayout_.clear();
+        // One master page and page layout per page style: the document's
+        // own ("Standard"), then each a section brought.
+        for (size_t index = 0; index < pageStyles_.size(); ++index) {
+            const PageStyleKey& key = pageStyles_[index];
+            const bool ownSet = key.furniture >= 0 && key.furniture < static_cast<int>(doc.sectionFurniture.size());
+            const RichSectionFurniture* own = ownSet ? &doc.sectionFurniture[static_cast<size_t>(key.furniture)] : nullptr;
+            const bool firstDiffers = own ? own->firstPageDiffers : doc.firstPageDiffers;
+            const RichPageFurniture& later = own ? own->pages : doc.pageFurniture;
+            const RichPageFurniture& first = firstDiffers ? (own ? own->firstPage : doc.firstPageFurniture) : later;
+            const bool hasHeader = !later.header.empty() || !first.header.empty();
+            const bool hasFooter = !later.footer.empty() || !first.footer.empty();
+            RichPageSetup page = doc.page;
+            if (key.top >= 0.0f) page.marginTopPt = key.top;
+            if (key.bottom >= 0.0f) page.marginBottomPt = key.bottom;
+            if (key.headerTop >= 0.0f) page.headerTopPt = key.headerTop;
+            if (key.footerBottom >= 0.0f) page.footerBottomPt = key.footerBottom;
+
+            std::ostringstream props;
+            std::ostringstream headerStyle;
+            std::ostringstream footerStyle;
+            if (page.HasPage()) {
+                props << " fo:page-width=\"" << Pt(page.widthPt) << "\" fo:page-height=\"" << Pt(page.heightPt) << "\""
+                      << " style:print-orientation=\"" << (page.widthPt > page.heightPt ? "landscape" : "portrait") << "\""
+                      << " fo:margin-left=\"" << Pt(page.marginLeftPt) << "\" fo:margin-right=\"" << Pt(page.marginRightPt) << "\"";
+            }
+            // A header's room is the space between where it starts and where the
+            // body does: its minimum height, spacing to the body included.
+            auto room = [](float margin, float edge, std::ostringstream& out, const char* tag, const char* spacingAttr) {
+                const float start = (edge > 0.0f && edge < margin) ? edge : margin * 0.5f;
+                const float total = std::max(0.0f, margin - start);
+                const float spacing = std::min(7.0f, total * 0.5f);
+                out << "<style:" << tag << "><style:header-footer-properties fo:min-height=\"" << Pt(total)
+                    << "\" " << spacingAttr << "=\"" << Pt(spacing) << "\" style:dynamic-spacing=\"false\"/></style:" << tag << ">";
+                return start;
+            };
+            float top = page.marginTopPt, bottom = page.marginBottomPt;
+            if (hasHeader) top = room(page.marginTopPt, page.headerTopPt, headerStyle, "header-style", "fo:margin-bottom");
+            if (hasFooter) bottom = room(page.marginBottomPt, page.footerBottomPt, footerStyle, "footer-style", "fo:margin-top");
+            if (page.HasPage()) props << " fo:margin-top=\"" << Pt(top) << "\" fo:margin-bottom=\"" << Pt(bottom) << "\"";
+            const std::string layout = "PL" + std::to_string(index + 1);
+            pageLayout_ += "<style:page-layout style:name=\"" + layout + "\"><style:page-layout-properties" + props.str() + "/>"
+                         + headerStyle.str() + footerStyle.str() + "</style:page-layout>\n";
+
+            xml << "<style:master-page style:name=\"" << (index == 0 ? std::string("Standard") : "MP" + std::to_string(index))
+                << "\" style:page-layout-name=\"" << layout << "\">";
+            if (hasHeader) {
+                xml << "<style:header>" << WriteBlocks(later.header) << "</style:header>";
+                if (firstDiffers) xml << "<style:header-first>" << WriteBlocks(first.header) << "</style:header-first>";
+            }
+            if (hasFooter) {
+                xml << "<style:footer>" << WriteBlocks(later.footer) << "</style:footer>";
+                if (firstDiffers) xml << "<style:footer-first>" << WriteBlocks(first.footer) << "</style:footer-first>";
+            }
+            xml << "</style:master-page>\n";
         }
-        if (hasFooter) {
-            xml << "<style:footer>" << WriteBlocks(later.footer) << "</style:footer>";
-            if (doc.firstPageDiffers) xml << "<style:footer-first>" << WriteBlocks(first.footer) << "</style:footer-first>";
-        }
-        xml << "</style:master-page>\n</office:master-styles>\n";
+        xml << "</office:master-styles>\n";
         return xml.str();
     }
 

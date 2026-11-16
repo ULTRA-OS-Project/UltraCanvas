@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.10.0 - a section's own header, footer and page margins (RichSectionSetup::furniture):
+//                   laid out page by page, and edited where they are shown
 // Version: 1.9.4 - a table row is as tall as its document says (RichTableRow::heightPt); a picture placed
 //                  from the page keeps its width; floats are cut at the edges of their page; an offset
 //                  may put a float in a margin
@@ -734,10 +736,24 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
     // The frame of page `index`, header and footer included. The page count
     // is not known until the last block is placed, so furniture is laid for
     // `count` and the pages are re-framed once it is known.
-    auto frameFor = [&](int index, int count) {
+    // `inSection` is the section the page begins in, `firstOfSection` whether
+    // it is that section's first page: a section may have a header and footer
+    // of its own, and its own room for them.
+    auto frameFor = [&](int index, int count, const RichSectionSetup& inSection, bool firstOfSection) {
         PageFrame frame;
         frame.top = gap + static_cast<float>(index) * (pageHeightPx + gap);
-        const RichPageFurniture& furniture = document.FurnitureForPage(index);
+        RichPageSetup page = EffectivePageSetup();
+        if (inSection.marginTopPt >= 0.0f) page.marginTopPt = inSection.marginTopPt;
+        if (inSection.marginBottomPt >= 0.0f) page.marginBottomPt = inSection.marginBottomPt;
+        if (inSection.headerTopPt >= 0.0f) page.headerTopPt = inSection.headerTopPt;
+        if (inSection.footerBottomPt >= 0.0f) page.footerBottomPt = inSection.footerBottomPt;
+        const RichPageFurniture& furniture = document.FurnitureFor(inSection, firstOfSection, index);
+        const bool ownSet = inSection.furniture >= 0
+                            && inSection.furniture < static_cast<int>(document.sectionFurniture.size());
+        frame.furnitureSet = ownSet ? inSection.furniture : -1;
+        frame.firstPageFurniture = ownSet
+            ? (firstOfSection && document.sectionFurniture[static_cast<size_t>(inSection.furniture)].firstPageDiffers)
+            : (document.firstPageDiffers && index == 0);
         frame.header = LayoutFurniture(ctx, furniture.header, index + 1, count);
         frame.footer = LayoutFurniture(ctx, furniture.footer, index + 1, count);
         const float spacing = Px(7.0f);           // 0.25 cm, Writer's header spacing
@@ -768,7 +784,7 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
     int count = std::max(1, static_cast<int>(pages.size()));
     for (int pass = 0; pass < 2; pass++) {
         pages.clear();
-        pages.push_back(frameFor(0, count));
+        pages.push_back(frameFor(0, count, document.firstSection, true));
         float y = pages.back().bodyTop;
         bool pageEmpty = true;
         bool breakPending = false;
@@ -792,6 +808,7 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
         // Sections of columns: blocks fill a column to the foot of the page,
         // then the next column from the section's top, then the next page.
         RichSectionSetup section = document.firstSection;
+        bool sectionHasPage = true;               // the section has begun a page of its own already
         int columns = hasColumns ? std::max(1, section.columns) : 1;
         int column = 0;
         float columnTop = y;                      // where this page's columns of the section start
@@ -806,7 +823,8 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
         auto newPage = [&]() {
             keepBodyFloats();
             pageFloats.clear();
-            pages.push_back(frameFor(static_cast<int>(pages.size()), count));
+            pages.push_back(frameFor(static_cast<int>(pages.size()), count, section, !sectionHasPage));
+            sectionHasPage = true;
             seedFurnitureFloats();
             y = pages.back().bodyTop;
             pageEmpty = true;
@@ -829,8 +847,19 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
             if (i > 0 && sourceBlock.sectionStart) {
                 // A new section: on a new page, or below all of the last one.
                 section = sourceBlock.section;
+                sectionHasPage = false;
                 columns = hasColumns ? std::max(1, section.columns) : 1;
                 column = 0;
+                if (section.newPage && pageEmpty && !breakPending && column == 0) {
+                    // It starts on a page nothing is on yet: that page is its
+                    // first, with its header, footer and margins.
+                    pageFloats.clear();
+                    pages.back() = frameFor(static_cast<int>(pages.size()) - 1, count, section, true);
+                    sectionHasPage = true;
+                    seedFurnitureFloats();
+                    y = pages.back().bodyTop;
+                    columnTop = sectionBottom = y;
+                }
                 if (section.newPage && !pageEmpty) {
                     breakPending = true;
                 } else {
@@ -1677,6 +1706,7 @@ float UltraCanvasRichTextEdit::PlaceBlocksInColumn(IRenderContext* ctx) {
     const RichPageFurniture& furniture = document.FurnitureForPage(0);
     pages.clear();
     PageFrame frame;
+    frame.firstPageFurniture = document.firstPageDiffers;
     frame.header = LayoutFurniture(ctx, furniture.header, 1, 1);
     frame.footer = LayoutFurniture(ctx, furniture.footer, 1, 1);
     const float separation = style.blockSpacing * 3.0f;
@@ -5575,8 +5605,16 @@ bool UltraCanvasRichTextEdit::BeginFurnitureEditing(int pageIndex, bool footer) 
     if (pages.empty()) return false;
     pageIndex = std::clamp(pageIndex, 0, static_cast<int>(pages.size()) - 1);
     const std::shared_ptr<UCRichDocument> body = editor.GetDocument();
-    const bool firstPage = body->firstPageDiffers && pageIndex == 0;
-    const RichPageFurniture& furniture = firstPage ? body->firstPageFurniture : body->pageFurniture;
+    // The page's own header and footer: its section's, or the document's.
+    const PageFrame& editedPage = pages[static_cast<size_t>(pageIndex)];
+    const int furnitureSet = editedPage.furnitureSet >= 0
+                             && editedPage.furnitureSet < static_cast<int>(body->sectionFurniture.size())
+        ? editedPage.furnitureSet : -1;
+    const bool firstPage = editedPage.firstPageFurniture;
+    const RichPageFurniture& furniture = furnitureSet >= 0
+        ? (firstPage ? body->sectionFurniture[static_cast<size_t>(furnitureSet)].firstPage
+                     : body->sectionFurniture[static_cast<size_t>(furnitureSet)].pages)
+        : (firstPage ? body->firstPageFurniture : body->pageFurniture);
 
     auto furnitureDoc = std::make_shared<UCRichDocument>();
     furnitureDoc->blocks = footer ? furniture.footer : furniture.header;
@@ -5588,6 +5626,7 @@ bool UltraCanvasRichTextEdit::BeginFurnitureEditing(int pageIndex, bool footer) 
     auto state = std::make_unique<FurnitureEditState>();
     state->footer = footer;
     state->firstPage = firstPage;
+    state->furnitureSet = furnitureSet;
     state->pageIndex = pageIndex;
     StartEditingPart(std::move(furnitureDoc), std::move(state));
     return true;
@@ -5641,7 +5680,12 @@ void UltraCanvasRichTextEdit::SyncFurnitureToDocument() {
         furnitureCache.clear();
         return;
     }
-    RichPageFurniture& furniture = furnitureEdit->firstPage ? body->firstPageFurniture : body->pageFurniture;
+    const bool ownSet = furnitureEdit->furnitureSet >= 0
+                        && furnitureEdit->furnitureSet < static_cast<int>(body->sectionFurniture.size());
+    RichPageFurniture& furniture = ownSet
+        ? (furnitureEdit->firstPage ? body->sectionFurniture[static_cast<size_t>(furnitureEdit->furnitureSet)].firstPage
+                                    : body->sectionFurniture[static_cast<size_t>(furnitureEdit->furnitureSet)].pages)
+        : (furnitureEdit->firstPage ? body->firstPageFurniture : body->pageFurniture);
     std::vector<RichDocBlock>& target = furnitureEdit->footer ? furniture.footer : furniture.header;
     // A header emptied of everything is no header at all.
     const bool empty = edited->blocks.size() == 1 && edited->blocks[0].type == RichBlockType::Paragraph
@@ -6419,7 +6463,7 @@ void UltraCanvasRichTextEdit::RefreshFontReport() {
         // A letterhead's sender block is a text frame: its words, and those
         // in a drawing's shapes, are frames of the document too.
         for (const RichTextFrame& frame : document->frames) addBlocks(frame.blocks);
-        for (const RichPageFurniture* furniture : {&document->pageFurniture, &document->firstPageFurniture}) {
+        for (const RichPageFurniture* furniture : std::as_const(*document).AllFurniture()) {
             addBlocks(furniture->header);
             addBlocks(furniture->footer);
         }

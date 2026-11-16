@@ -68,8 +68,16 @@ int main(int argc, char** argv) {
                       << ", offset " << run.imageOffsetXPt << " " << run.imageOffsetYPt << std::endl;
         }
     };
+    std::cerr << "header " << document->pageFurniture.header.size() << " block(s), footer "
+              << document->pageFurniture.footer.size() << "; " << document->sectionFurniture.size()
+              << " section(s) with their own" << std::endl;
     for (size_t i = 0; i < document->blocks.size(); ++i) {
         const RichDocBlock& block = document->blocks[i];
+        if (block.sectionStart) {
+            std::cerr << "  section at block " << i << (block.section.newPage ? " (new page)" : "") << ": furniture "
+                      << block.section.furniture << ", margins top " << block.section.marginTopPt << " bottom "
+                      << block.section.marginBottomPt << std::endl;
+        }
         dumpRuns(block.runs, "block " + std::to_string(i));
         if (block.type != RichBlockType::Table) continue;
         std::cerr << "  table at block " << i << ": width " << block.tableWidthPt << " pt, columns";

@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.14.0 - a section's own header, footer and page margins are laid out and edited
+//                   (PageFrame::furnitureSet)
 // Version: 1.13.1 - PlacedFloat::wordsOnly: a frame anchored in the frame being edited shows its words
 //                   (LayoutAnchoredFrameWords: its paragraphs and those in its drawing's shapes)
 // Version: 1.13.0 - EditFrame / IsEditingFrame: a text frame's words edited in place
@@ -864,6 +866,7 @@ private:
     struct FurnitureEditState {
         bool footer = false;
         bool firstPage = false;               // the first page's own furniture
+        int furnitureSet = -1;                // a section's own (sectionFurniture), or the document's
         int pageIndex = 0;
         int noteIndex = -1;                   // >= 0: a note is edited, not a header
         int frameIndex = -1;                  // >= 0: a text frame's words are edited
@@ -902,6 +905,11 @@ private:
         float footerTop = 0.0f;
         std::shared_ptr<FurnitureLayout> header;
         std::shared_ptr<FurnitureLayout> footer;
+        // Whose header and footer they are: a section's own
+        // (UCRichDocument::sectionFurniture[furnitureSet]) or, -1, the
+        // document's; and whether its first page's.
+        int furnitureSet = -1;
+        bool firstPageFurniture = false;
         // The header's and footer's floating pictures and text frames on
         // this page (blockIndex -1), which the page's body wraps round.
         std::vector<PlacedFloat> furnitureFloats;

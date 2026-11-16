@@ -9,6 +9,8 @@
 // Version: 1.8.0 - Pattern fills (RichShape::fillPattern, patternBackColor, PatternBit)
 // Version: 1.7.0 - Gradient fills (RichShape::gradientStops), a drawing's own size
 //                  (RichTextFrame::drawingWidthPt / drawingHeightPt)
+// Version: 1.8.0 - a section's own header and footer (RichSectionSetup::furniture,
+//                  UCRichDocument::sectionFurniture, FurnitureFor, AllFurniture) and its pages' margins
 // Version: 1.7.0 - RichTableRow::heightPt / heightExact: a table row's height as the document sets it
 // Version: 1.6.0 - Drawn shapes (RichShape, RichTextFrame::shapes)
 // Version: 1.5.0 - Text frames (RichTextRun::frameIndex, UCRichDocument::frames)
@@ -236,8 +238,21 @@ struct RichSectionSetup {
     int columns = 1;
     float columnGapPt = 36.0f;
     bool newPage = false;
+    // The section's own header and footer: an index into
+    // UCRichDocument::sectionFurniture, or -1 for the document's
+    // (pageFurniture / firstPageFurniture). A letter of several page styles -
+    // a cover without a header, pages with one - has a section each.
+    int furniture = -1;
+    // Where the section's pages put their body and furniture, when that
+    // differs from the document's page (RichPageSetup's fields of the same
+    // names, points); < 0 = the document's.
+    float marginTopPt = -1.0f, marginBottomPt = -1.0f;
+    float headerTopPt = -1.0f, footerBottomPt = -1.0f;
     bool operator==(const RichSectionSetup& other) const {
-        return columns == other.columns && columnGapPt == other.columnGapPt && newPage == other.newPage;
+        return columns == other.columns && columnGapPt == other.columnGapPt && newPage == other.newPage
+            && furniture == other.furniture && marginTopPt == other.marginTopPt
+            && marginBottomPt == other.marginBottomPt && headerTopPt == other.headerTopPt
+            && footerBottomPt == other.footerBottomPt;
     }
 };
 
@@ -761,6 +776,14 @@ struct RichPageFurniture {
     bool IsEmpty() const { return header.empty() && footer.empty(); }
 };
 
+// A section's own header and footer (RichSectionSetup::furniture): those of
+// its pages, and of its first page when that differs.
+struct RichSectionFurniture {
+    RichPageFurniture pages;
+    RichPageFurniture firstPage;
+    bool firstPageDiffers = false;
+};
+
 // Options for UCRichDocument::ToHTML.
 struct RichDocumentHTMLOptions {
     // The src a picture gets, given its index into UCRichDocument::media.
@@ -801,6 +824,38 @@ public:
     bool firstPageDiffers = false;
     const RichPageFurniture& FurnitureForPage(int pageIndex) const {
         return (firstPageDiffers && pageIndex == 0) ? firstPageFurniture : pageFurniture;
+    }
+    // The headers and footers of sections that have their own
+    // (RichSectionSetup::furniture indexes this).
+    std::vector<RichSectionFurniture> sectionFurniture;
+    // The header and footer of a page of `section`: the section's own where
+    // it has some - its first page's on `firstPageOfSection` - else the
+    // document's, as FurnitureForPage(pageIndex) gives them.
+    const RichPageFurniture& FurnitureFor(const RichSectionSetup& section, bool firstPageOfSection,
+                                          int pageIndex) const {
+        if (section.furniture < 0 || section.furniture >= static_cast<int>(sectionFurniture.size())) {
+            return FurnitureForPage(pageIndex);
+        }
+        const RichSectionFurniture& own = sectionFurniture[static_cast<size_t>(section.furniture)];
+        return (own.firstPageDiffers && firstPageOfSection) ? own.firstPage : own.pages;
+    }
+    // Every header and footer the document has: its own two and each
+    // section's (for whatever walks all of a document's text).
+    std::vector<RichPageFurniture*> AllFurniture() {
+        std::vector<RichPageFurniture*> all{&pageFurniture, &firstPageFurniture};
+        for (RichSectionFurniture& own : sectionFurniture) {
+            all.push_back(&own.pages);
+            all.push_back(&own.firstPage);
+        }
+        return all;
+    }
+    std::vector<const RichPageFurniture*> AllFurniture() const {
+        std::vector<const RichPageFurniture*> all{&pageFurniture, &firstPageFurniture};
+        for (const RichSectionFurniture& own : sectionFurniture) {
+            all.push_back(&own.pages);
+            all.push_back(&own.firstPage);
+        }
+        return all;
     }
 
     bool IsEmpty() const { return blocks.empty(); }
