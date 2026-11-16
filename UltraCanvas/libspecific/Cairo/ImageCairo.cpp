@@ -428,8 +428,19 @@ namespace UltraCanvas {
     namespace {
         // The warm-up thread, joined before libvips shuts down: ImageMagick
         // torn down under a load still running would take the process with it.
+        // A program that never calls ShutdownImageSubsysterm leaves it to the
+        // static destructors, where a joinable std::thread would call
+        // std::terminate and a join could deadlock under the Windows loader
+        // lock (this is a DLL there): detached, it ends with the process.
+        struct WarmUpThread {
+            std::thread thread;
+            ~WarmUpThread() {
+                if (thread.joinable()) thread.detach();
+            }
+        };
         std::mutex g_magickWarmUpMutex;
-        std::thread g_magickWarmUp;
+        WarmUpThread g_magickWarmUp;
+        bool g_magickWarmUpStarted = false;
 
         // A 2 x 2, 24-bit BMP: a picture ImageMagick knows by its signature.
         const uint8_t kWarmUpBmp[] = {
@@ -446,8 +457,9 @@ namespace UltraCanvas {
         const char* off = std::getenv("UC_NO_MAGICK_WARMUP");
         if (off && *off && std::string(off) != "0") return;
         std::lock_guard<std::mutex> lock(g_magickWarmUpMutex);
-        if (g_magickWarmUp.joinable()) return;   // once
-        g_magickWarmUp = std::thread([]() {
+        if (g_magickWarmUpStarted) return;   // once
+        g_magickWarmUpStarted = true;
+        g_magickWarmUp.thread = std::thread([]() {
             const auto start = std::chrono::steady_clock::now();
             try {
                 // magickload by name: the framework's own BMP loader would
@@ -470,7 +482,7 @@ namespace UltraCanvas {
     void UCImageRaster::ShutdownImageSubsysterm() {
         {
             std::lock_guard<std::mutex> lock(g_magickWarmUpMutex);
-            if (g_magickWarmUp.joinable()) g_magickWarmUp.join();
+            if (g_magickWarmUp.thread.joinable()) g_magickWarmUp.thread.join();
         }
         vips_shutdown();
     }
