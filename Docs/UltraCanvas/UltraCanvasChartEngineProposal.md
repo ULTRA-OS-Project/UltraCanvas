@@ -21,12 +21,27 @@ actually contains, what is duplicated or broken, and specifies one layered chart
 engine to replace the duplication — with the parallel coordinate chart as its
 first native client.
 
+**Shipped names.** The contract of §5.3–§5.6 shipped with the shape designed
+here but under different names, so read the code blocks there as the design
+record and [`UltraCanvasChartEngine.md`](UltraCanvasChartEngine.md) as the API:
+
+| This document | What shipped |
+|---|---|
+| `IChartContent` (§5.5), a separate interface | Virtual methods on `UltraCanvasChartEngineElement` itself: a chart type derives from it |
+| `RenderChart` taking a `ChartFrame` | `RenderChartContent` taking a `ChartEngineFrame` |
+| `Measure` | `MeasureContent` (same `ChartLayoutRequest`) |
+| `CollectLabels` | `CollectChartLabels`, which adds `ChartLabelRequest`s to a `ChartLabelBroker` |
+| `HitTest` with a `ChartHit` | Not built: content registers its geometry with `AddHitRegion` (rectangle or polygon) while it draws, and the engine tracks `HoveredRegionId` |
+| `ChartFrame` (§5.6) | `ChartEngineFrame`: plot area, axes, projection, label plan, theme (the palette is `theme->palette`), animation progress, generation. No element or chart-area bounds, and no `ChartInteractionState` |
+| `EnsureLayout` (§5.4) | `EnsureEngineLayout` |
+| `ValueToScreen` / `ScreenToValue` on a `ChartValuePoint` (§5.3) | `ToScreen` / `ToNormalized` on a `ChartNormalizedPoint`: the axes map values onto [0,1] first, and the projection maps that `(u, v)` onto the screen |
+
 Companion document:
 [`UltraCanvasParallelCoordinateChartProposal.md`](UltraCanvasParallelCoordinateChartProposal.md)
 (the chart-specific feature list; this document is the engine underneath it).
 
 Author: UltraCanvas Framework
-Last Modified: 2026-08-01
+Last Modified: 2026-11-16
 
 ---
 

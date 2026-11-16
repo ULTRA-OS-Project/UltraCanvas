@@ -57,8 +57,8 @@ shown next to the legacy charts on **Charts → Chart Engine Comparison**.
 - Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`)
 - Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
 
-**Version:** 1.4.0
-**Last Modified:** 2026-10-20
+**Version:** 1.4.1
+**Last Modified:** 2026-11-16
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -444,9 +444,10 @@ and unit-tested; the content maps the results through its axes.
     marks the chart actually draws**: a limiter-line key belongs with a
     chart that draws limiters, and a 50%/95% confidence-ellipse key belongs
     with a scatter/jitter chart that draws group-highlight ellipses — that
-    highlighting style is the engine's reserved `Highlight` layer (slot
-    200, group rectangles / ellipses / hull blobs / value bands), not yet
-    implemented; when it lands, its key pairs with this custom area.
+    highlighting style is the engine's `Highlight` layer
+    (`AddHighlight` with `ChartHighlightShape::ConfidenceEllipse`, see
+    [Highlights](#highlights-slot-200-wash--slot-700-overlay)), and its key
+    pairs with this custom area.
   - `ChartLegendEntry.swatch` picks the swatch: `Square | Circle | Ring |
     Line | DashedLine | Marker | Glyph | Gradient | Outline | Hatched |
     Image` (`imagePath` for `Image`) — line series get a line, scatter gets
