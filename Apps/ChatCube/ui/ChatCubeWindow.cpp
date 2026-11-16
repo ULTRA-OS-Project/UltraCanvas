@@ -2119,7 +2119,7 @@ void ChatCubeWindow::ToggleMastodonForm() {
     }
     if (info.connectionState == UltraIMConnectionState::Connected) {
         mastodonForm_->SetVisible(false);
-        SetStatus(TrF("Mastodon: signed in as {0} - sign out in Settings > Networks.", info.localUserId));
+        SetStatus(TrF("Mastodon: signed in as {0}", info.localUserId));
     } else {
         mastodonForm_->SetVisible(!mastodonForm_->IsVisible());
     }

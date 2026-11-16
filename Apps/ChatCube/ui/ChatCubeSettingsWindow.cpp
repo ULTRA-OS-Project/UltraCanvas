@@ -545,8 +545,8 @@ std::shared_ptr<UltraCanvasContainer> BuildAccountsPage(State* d) {
     FillAccounts(d);
 
     AddNote(parts, "cc-set-accounts-note1",
-            Tr("Signing in to Matrix or Telegram is done from the sidebar, with the Matrix and Telegram buttons "
-            "under your ChatCube ID."));
+            Tr("Signing in to Matrix, Telegram or Mastodon is done from the sidebar, with the Matrix, Telegram "
+            "and Mastodon buttons under your ChatCube ID."));
     AddNote(parts, "cc-set-accounts-note2",
             Tr("Your ChatCube ID is a key made on this computer and has no password; there is nothing to sign "
             "out of. Send the ID to the people who should reach you."));
@@ -645,7 +645,7 @@ std::shared_ptr<UltraCanvasContainer> BuildDataFolderPage(State* d) {
 
     AddNote(parts, "cc-set-data-note1",
             Tr("The data folder holds your ChatCube ID's key vault, your contacts and the history of your "
-            "conversations, the Matrix and Telegram sessions, and in cache/ the pictures and files of the "
+            "conversations, the Matrix, Telegram and Mastodon sessions, and in cache/ the pictures and files of the "
             "messages."));
     AddNote(parts, "cc-set-data-note2",
             Tr("Keep it safe: the key vault is your ChatCube ID. Copied to another computer with the folder, "
@@ -682,8 +682,8 @@ std::shared_ptr<UltraCanvasContainer> BuildAboutPage(State* d) {
             "are online, through a relay when the other person is not. There is no account and no "
             "password: your ChatCube ID is a key made on this computer."));
     AddNote(parts, "cc-set-about-note2",
-            Tr("Matrix and Telegram join the same list. Each network is an UltraIM module beside the program "
-            "(Plugins/UltraIM)."));
+            Tr("Matrix, Telegram and Mastodon join the same list. Each network is an UltraIM module beside the "
+            "program (Plugins/UltraIM)."));
     return parts.page;
 }
 
@@ -696,7 +696,7 @@ std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
     AddNote(parts, "cc-set-start-note2",
             Tr("Messages - the key that sends, and whether typing is shown, to the other side and to you."));
     AddNote(parts, "cc-set-start-note3",
-            Tr("Networks - your ChatCube ID, the Matrix and Telegram accounts and signing out of them, the "
+            Tr("Networks - your ChatCube ID, the Matrix, Telegram and Mastodon accounts and signing out of them, the "
             "people on this network, the proxy and the relay server."));
     AddNote(parts, "cc-set-start-note4",
             Tr("Extras - the folder ChatCube keeps your identity, contacts and history in, and the version."));
