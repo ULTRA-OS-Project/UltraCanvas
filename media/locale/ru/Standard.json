@@ -165,6 +165,7 @@
   },
   "Copy files": "Копирование файлов",
   "Copy finished": "Копирование завершено",
+  "Copy instead": "Скопировать вместо этого",
   "Copy path": "Копировать путь",
   "Copy skipped items again": "Повторить копирование пропущенных элементов",
   "Copy {n} item into \"{0}\"?": {
@@ -438,6 +439,7 @@
   "Move down": "Переместить вниз",
   "Move files": "Перемещение файлов",
   "Move finished": "Перемещение завершено",
+  "Move instead": "Переместить вместо этого",
   "Move skipped items again": "Повторить перемещение пропущенных элементов",
   "Move to Recycle Bin": "Переместить в корзину",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Действие «Переместить в корзину» можно отменить из корзины. Действие «Удалить безвозвратно» отменить нельзя.",
@@ -648,6 +650,7 @@
   "Stopped at:": "Остановлено на:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Сохраняет эти настройки, не проверяя их; они будут проверены при следующем использовании учётной записи.",
   "Style": "Стиль",
+  "Subfolder of \"{0}\"": "Подпапка в «{0}»",
   "Submit": "Отправить",
   "Success": "Успешно",
   "System": "Система",

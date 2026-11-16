@@ -247,6 +247,16 @@ is a measurement that may fail to build; it never fails the run. (There is
 no variant without libvips any more but `single-thread`: libvips is part of
 UltraCanvas.) `baseline`, `min-size` and `single-thread` are required: the last is
 the build a static host without cross-origin isolation headers must serve.
+A fifth variant, `dynamic`, is the `-fPIC` build of the UltraCanvas runtime
+(`runtime/`, `Docs/UltraCanvas/UltraCanvasWasmRuntime.md`), required too.
+What else a run built is uploaded the same way, each folder with a
+`README.txt` and usable as unzipped: `ultraweb-runtime-<variant>` (the
+single-threaded variants) and `ultracanvas-runtime-dynamic` - each runtime
+as a site serves it, with its browser extension - and
+`ultrastore-web-dynamic`, the UltraStore web store (`site/` to publish a
+store with, `preview/` to look at one; `Apps/UltraStore/web/README.md`).
+The artifacts named `*-smoke-<variant>` are the browser tests' screenshots
+and console logs.
 
 After the upload, each variant's job opens its pages in the runner's Google
 Chrome, headless, with `demo/smoke.mjs`: every page must present a frame

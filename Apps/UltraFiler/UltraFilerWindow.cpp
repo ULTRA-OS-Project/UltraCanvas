@@ -2049,12 +2049,14 @@ void UltraFilerWindow::ApplySettings() {
         if (!state->filer) continue;
         state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         state->filer->SetDropConfirmation(settings.dropConfirmation);
+        state->filer->SetTransferDialogStyle(settings.transferDialogStyle);
         state->filer->SetShowLockState(settings.showLockState);
         ApplyFileOperationSettings(*state->filer);
     }
     if (folderPreview) {
         folderPreview->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         folderPreview->SetDropConfirmation(settings.dropConfirmation);
+        folderPreview->SetTransferDialogStyle(settings.transferDialogStyle);
         folderPreview->SetShowLockState(settings.showLockState);
         ApplyFileOperationSettings(*folderPreview);
     }
@@ -6753,6 +6755,8 @@ UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
     // and whether the drop asks before it is carried out.
     state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
     state->filer->SetDropConfirmation(settings.dropConfirmation);
+    // Display > Copy dialog style: how that question is laid out.
+    state->filer->SetTransferDialogStyle(settings.transferDialogStyle);
     // Handling > File operations: the standing answers to a copy, move or
     // delete's questions.
     ApplyFileOperationSettings(*state->filer);

@@ -1407,6 +1407,9 @@ namespace UltraCanvas {
         endStep("fontconfig setup");
 
         UCImage::InitializeImageSubsysterm(appName.c_str());
+        // ImageMagick's start-up (seconds on Windows) on a thread of its own,
+        // not on the first TGA / PCX / PSD the user opens.
+        UCImage::WarmUpImageMagickInBackground();
         endStep("image subsystem");
 
         // Every connection follows the proxy settings shared by all

@@ -114,7 +114,7 @@ The settings in `admin.sqlite`:
 | `catalog.base_url` | where `catalog.json` will be served: `https://store.example/v1` |
 | `packages.base_url` | where `packages/` and `restricted/` are served; the catalog's URL when unset |
 | `store.contact` | how a future partner reaches the store's team to sign up (an address, a page); printed on the partners' join pages and the web store's |
-| `web.site_dir` | the web store build's `site/` folder (`Apps/UltraStore/web`, built under emcmake): set, `publish` lays the web store beside the catalog - the HTML shadow pages, the module, the loader, the runtime under `runtime/<hash>/`; unset, nothing of the site is written |
+| `web.site_dir` | the web store build's `site/` folder (`Apps/UltraStore/web`, built under emcmake - or `site/` of a `wasm-build.yml` run's `ultrastore-web-dynamic` artifact): set, `publish` lays the web store beside the catalog - the HTML shadow pages, the module, the loader, the runtime under `runtime/<hash>/`; unset, nothing of the site is written |
 | `web.store_download_url` | where the native store is downloaded; the web store's *Get UltraStore* |
 | `texts.languages` | the languages `translate` fills, codes separated by spaces; set by `init` to the official list |
 | `ai.provider`, `ai.base_url`, `ai.model` | the UltraAI translator's provider, server and model |

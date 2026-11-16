@@ -151,6 +151,7 @@
   },
   "Copy files": "複製檔案",
   "Copy finished": "複製完成",
+  "Copy instead": "改為複製",
   "Copy path": "複製路徑",
   "Copy skipped items again": "再次複製已略過的項目",
   "Copy {n} item into \"{0}\"?": {
@@ -412,6 +413,7 @@
   "Move down": "下移",
   "Move files": "移動檔案",
   "Move finished": "移動完成",
+  "Move instead": "改為移動",
   "Move skipped items again": "再次移動已略過的項目",
   "Move to Recycle Bin": "移到資源回收筒",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "「移到資源回收筒」可從資源回收筒復原。「永久刪除」無法復原。",
@@ -612,6 +614,7 @@
   "Stopped at:": "停止於：",
   "Stores these settings without trying them; they are tried the next time the account is used.": "儲存這些設定而不進行嘗試；下次使用該帳號時會嘗試它們。",
   "Style": "樣式",
+  "Subfolder of \"{0}\"": "「{0}」的子資料夾",
   "Submit": "提交",
   "Success": "成功",
   "System": "系統",

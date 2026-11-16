@@ -2770,6 +2770,23 @@ question when the mode covers moves: it changes where the files live just the
 same. A Ctrl+V copy is deliberate and never asks. With dialogs disabled the drop
 is carried out rather than lost.
 
+The question comes in two styles, chosen with
+`SetTransferDialogStyle(FilerTransferDialogStyle)`; both say the same thing
+and offer the same answers:
+
+| Style | The question shows |
+|---|---|
+| `Summary` (the default) | the entry's icon beside the question with its type and size under it, then *From* and *Into* as two breadcrumb rows — the folders both paths share are quiet, the folder each ends in is bold, and a long path gives up its middle folders, never the name at its end. Move, Copy and Cancel are buttons. |
+| `Cards` | what is going and the folder it goes into as two cards with an arrow between them, and the folder they are in on one line under them (*From* and *Into* when the destination is not a subfolder of the source). The verb that was asked for and Cancel are buttons; the other verb — *Copy instead* — sits apart at the left of the bar. |
+
+```cpp
+filer->SetTransferDialogStyle(FilerTransferDialogStyle::Cards);
+```
+
+Several entries show the first one's icon, their count and their total, with
+the list of them under it as before. A folder's size fills in while the
+dialog is open, as its walk lands.
+
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
 [drag overlay](#drag-overlay) for that, because an element cannot paint outside

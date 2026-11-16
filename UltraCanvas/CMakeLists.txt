@@ -971,6 +971,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasHistogramChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasRidgelineModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasRidgelineChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -1937,10 +1939,12 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
 if(ULTRACANVAS_HAS_VIPS)
     # vips foreign loader and saver for QOI — consumes the codec symbols
     # above — the framework's own Windows icon (.ico) loader and saver, and
-    # its GIF saver for a libvips without one.
+    # its GIF saver for a libvips without one, and its BMP loader (stb_image;
+    # libvips has none, and ImageMagick's start-up made the first BMP slow).
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsIcoPlugin.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsBmpPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsGifPlugin.cpp
     )
     if(ULTRACANVAS_HAS_LIBJXL)

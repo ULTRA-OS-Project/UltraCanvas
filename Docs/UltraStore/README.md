@@ -749,9 +749,15 @@ published (`Apps/UltraStore/web/test/make-fixture.sh` makes one); under
 emcmake with `-DULTRACANVAS_WASM_DYNAMIC=ON` it is the side module
 `ultrastore-web.wasm` and the `site/` folder, which `wasm-build.yml`'s
 dynamic variant builds, measures and opens in Chromium
-(`Apps/UltraStore/web/test/webstore-test.mjs`). Both trust the keys of
-`keys/*.pub` (`cmake/UltraStoreKeys.cmake`); `-DULTRASTORE_WEB_TEST_KEYS=
-<hex>` adds a test key, as CI does for the fixture.
+(`Apps/UltraStore/web/test/webstore-test.mjs`) - and uploads as the run's
+`ultrastore-web-dynamic` artifact: `site/`, to publish a store with, and
+`preview/`, the test's fixture store with the build laid over it, a folder
+any static host serves (`Apps/UltraStore/web/README.md`, *The store a CI
+run built*). Both trust the keys of `keys/*.pub`
+(`cmake/UltraStoreKeys.cmake`) and need no others for a release;
+`-DULTRASTORE_WEB_TEST_KEYS=<hex>` names a test key, as CI does for the
+fixture - natively added to the program, under emcmake built into a second
+module, `ultrastore-web-test.wasm`, so that `site/`'s never carries one.
 
 ## The operator tier (later)
 

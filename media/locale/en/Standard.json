@@ -157,6 +157,7 @@
   },
   "Copy files": "Copy files",
   "Copy finished": "Copy finished",
+  "Copy instead": "Copy instead",
   "Copy path": "Copy path",
   "Copy skipped items again": "Copy skipped items again",
   "Copy {n} item into \"{0}\"?": {
@@ -424,6 +425,7 @@
   "Move down": "Move down",
   "Move files": "Move files",
   "Move finished": "Move finished",
+  "Move instead": "Move instead",
   "Move skipped items again": "Move skipped items again",
   "Move to Recycle Bin": "Move to Recycle Bin",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.",
@@ -629,6 +631,7 @@
   "Stopped at:": "Stopped at:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Stores these settings without trying them; they are tried the next time the account is used.",
   "Style": "Style",
+  "Subfolder of \"{0}\"": "Subfolder of \"{0}\"",
   "Submit": "Submit",
   "Success": "Success",
   "System": "System",
