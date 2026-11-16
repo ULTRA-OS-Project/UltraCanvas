@@ -9,9 +9,10 @@
 // Linux and Windows x64, hashed on 2026-11-10, and the rest built by this
 // repository's .github/workflows/whisper-server.yml (release
 // whisper-server-v1.9.0-r1, 2026-11-13). Its Linux Vulkan builds need glibc
-// 2.39, so they are optional: offered, never chosen by Auto. The
-// UltraCanvas-built gallery of the design proposal (§5: our names, signed)
-// replaces this list when it exists; the format does not change.
+// 2.39, so they are optional: offered, never chosen by Auto. There is no
+// default gallery address: a model server (Server/UltraAIModelServer) the
+// settings name replaces these copies, in the same format, and the wider
+// list of models comes from the catalogue sources (LocalRuntimeSources.cpp).
 //
 // The catalogue's files are Hugging Face "resolve" URLs. A file whose
 // sha256 is empty here is verified against the hash Hugging Face reports
@@ -19,20 +20,17 @@
 // hash is recorded in the model's model.json. Pinning the hashes here is
 // the curation step the proposal describes (§6.3); sizes are approximate
 // until then and are corrected from the host at install time.
+// Version: 0.4.0 - no default gallery address (the repository it named was never made)
 // Version: 0.3.0 - whisper-server: our builds for macOS, Windows on ARM and Vulkan
 // Version: 0.2.0 - the built-in topics
 // Version: 0.1.0
-// Last Modified: 2026-11-13
+// Last Modified: 2026-11-15
 // Author: UltraAI Module
 
 #include "LocalRuntimeInternal.h"
 
 namespace UltraAI {
 namespace local_detail {
-
-const char* DefaultGalleryUrl() {
-    return "https://github.com/ULTRA-OS-Project/UltraCanvas-AI-Engines/releases/latest/download/index.json";
-}
 
 const char* BuiltinGalleryJson() {
     return R"json({

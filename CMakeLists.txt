@@ -2394,6 +2394,9 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAITopicsPage.cpp
         Apps/UltraAIApp/UltraAISettingsWidgets.cpp
         Apps/UltraAIApp/UltraAILocalModelsPage.cpp
+        Apps/UltraAIApp/UltraAILocalModelText.cpp
+        Apps/UltraAIApp/UltraAIHuggingFaceDialog.cpp
+        Apps/UltraAIApp/UltraAICatalogueSourcesDialog.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
         Apps/UltraAIApp/UltraAITranslatorDialog.cpp
         Apps/UltraAIApp/UltraAIAgentDialog.cpp

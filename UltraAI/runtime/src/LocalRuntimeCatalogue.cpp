@@ -1,9 +1,12 @@
 // UltraAI/runtime/src/LocalRuntimeCatalogue.cpp
 // The gallery index and the model catalogue: JSON in, structs out, and the
 // Hugging Face helpers. Formats: Docs/Modules/UltraAI/LocalRuntime.md.
+// Version: 0.3.0 - catalogue sources and the accelerator per engine in the
+//                  settings; a model's gallery, homepage and projector file;
+//                  the copy of a source's models
 // Version: 0.2.0 - trustedKeys, keys.json
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 // Author: UltraAI Module
 
 #include "LocalRuntimeInternal.h"
@@ -74,7 +77,10 @@ bool ParseModel(const json& m, LocalModelInfo& out, std::string& outError) {
     const std::string source = Str(m, "source", "catalogue");
     out.source = source == "file"        ? LocalModelSource::File
                : source == "huggingface" ? LocalModelSource::HuggingFace
+               : source == "gallery"     ? LocalModelSource::Gallery
                                          : LocalModelSource::Catalogue;
+    out.gallery  = Str(m, "gallery");
+    out.homepage = Str(m, "homepage");
     auto files = m.find("files");
     if (files != m.end() && files->is_array()) {
         for (const auto& f : *files) {
@@ -83,6 +89,7 @@ bool ParseModel(const json& m, LocalModelInfo& out, std::string& outError) {
             file.url       = Str(f, "url");
             file.sha256    = Str(f, "sha256");
             file.sizeBytes = U64(f, "size");
+            file.projector = BoolOf(f, "projector");
             if (file.name.empty()) {
                 outError = "model \"" + out.id + "\" has a file without a \"name\"";
                 return false;
@@ -122,7 +129,10 @@ json ModelToJson(const LocalModelInfo& m) {
     if (!m.license.empty()) j["license"] = m.license;
     j["source"] = m.source == LocalModelSource::File        ? "file"
                 : m.source == LocalModelSource::HuggingFace ? "huggingface"
+                : m.source == LocalModelSource::Gallery     ? "gallery"
                                                             : "catalogue";
+    if (!m.gallery.empty()) j["gallery"] = m.gallery;
+    if (!m.homepage.empty()) j["homepage"] = m.homepage;
     json files = json::array();
     for (const auto& f : m.files) {
         json fj;
@@ -130,6 +140,7 @@ json ModelToJson(const LocalModelInfo& m) {
         if (!f.url.empty()) fj["url"] = f.url;
         if (!f.sha256.empty()) fj["sha256"] = f.sha256;
         if (f.sizeBytes) fj["size"] = f.sizeBytes;
+        if (f.projector) fj["projector"] = true;
         files.push_back(std::move(fj));
     }
     j["files"] = std::move(files);
@@ -258,7 +269,7 @@ std::string SerializeModels(const std::vector<LocalModelInfo>& models) {
     json list = json::array();
     for (const auto& m : models) list.push_back(ModelToJson(m));
     doc["models"] = std::move(list);
-    return doc.dump(2);
+    return doc.dump(2, ' ', false, json::error_handler_t::replace);
 }
 
 bool ParseModels(const std::string& text, std::vector<LocalModelInfo>& out, std::string& outError) {
@@ -297,9 +308,44 @@ std::string HuggingFaceFileUrl(const std::string& repo, const std::string& revis
            (revision.empty() ? std::string("main") : revision) + "/" + file;
 }
 
-std::string HuggingFaceTreeUrl(const std::string& repo, const std::string& revision) {
+std::string HuggingFaceTreeUrl(const std::string& repo, const std::string& revision,
+                               const std::string& folder) {
     return "https://huggingface.co/api/models/" + repo + "/tree/" +
-           (revision.empty() ? std::string("main") : revision);
+           (revision.empty() ? std::string("main") : revision) +
+           (folder.empty() ? std::string() : "/" + folder);
+}
+
+std::string SerializeSourceCache(const CatalogueSource& source, const std::string& fetched,
+                                 int skipped, const std::vector<LocalModelInfo>& models) {
+    json doc;
+    doc["formatVersion"] = 1;
+    doc["source"]        = source.id;
+    doc["url"]           = source.url;
+    doc["fetched"]       = fetched;
+    doc["skipped"]       = skipped;
+    json list = json::array();
+    for (const auto& m : models) list.push_back(ModelToJson(m));
+    doc["models"] = std::move(list);
+    // A description may hold bytes that are not UTF-8: replaced, not thrown.
+    return doc.dump(-1, ' ', false, json::error_handler_t::replace);
+}
+
+bool ParseSourceCache(const std::string& text, std::string& outSourceId, std::string& outFetched,
+                      int& outSkipped, std::vector<LocalModelInfo>& outModels) {
+    outModels.clear();
+    json doc = json::parse(text, nullptr, false);
+    if (!doc.is_object() || I32(doc, "formatVersion") != 1) return false;
+    auto models = doc.find("models");
+    if (models == doc.end() || !models->is_array()) return false;
+    outSourceId = Str(doc, "source");
+    outFetched  = Str(doc, "fetched");
+    outSkipped  = I32(doc, "skipped");
+    std::string error;
+    for (const auto& m : *models) {
+        LocalModelInfo model;
+        if (ParseModel(m, model, error)) outModels.push_back(std::move(model));
+    }
+    return true;
 }
 
 bool ParseHuggingFaceTree(const std::string& text, const std::string& file,
@@ -326,7 +372,18 @@ std::string SerializeSettings(const LocalRuntimeSettings& s) {
     json j;
     j["policy"]               = ToString(s.policy);
     j["preferredAccelerator"] = s.preferredAccelerator;
+    j["engineAccelerators"]   = s.engineAccelerators;
     j["galleryUrl"]           = s.galleryUrl;
+    json sources = json::array();
+    for (const CatalogueSource& source : s.catalogueSources) {
+        json e;
+        e["id"]      = source.id;
+        e["name"]    = source.name;
+        e["url"]     = source.url;
+        e["enabled"] = source.enabled;
+        sources.push_back(std::move(e));
+    }
+    j["catalogueSources"]     = std::move(sources);
     j["trustedKeys"]          = s.trustedKeys;
     j["idleMinutes"]          = s.idleMinutes;
     j["diskCapBytes"]         = s.diskCapBytes;
@@ -341,7 +398,29 @@ bool ParseSettings(const std::string& text, LocalRuntimeSettings& out) {
     DownloadPolicy policy;
     if (ParseDownloadPolicy(Str(j, "policy"), policy)) s.policy = policy;
     s.preferredAccelerator = Str(j, "preferredAccelerator");
+    auto accelerators = j.find("engineAccelerators");
+    if (accelerators != j.end() && accelerators->is_object()) {
+        for (auto it = accelerators->begin(); it != accelerators->end(); ++it) {
+            if (it.value().is_string()) s.engineAccelerators[it.key()] = it.value().get<std::string>();
+        }
+    }
     s.galleryUrl           = Str(j, "galleryUrl");
+    // A settings file from before the sources keeps the defaults; one that
+    // lists them, even none, is taken at its word.
+    auto sources = j.find("catalogueSources");
+    if (sources != j.end() && sources->is_array()) {
+        s.catalogueSources.clear();
+        for (const auto& e : *sources) {
+            if (!e.is_object()) continue;
+            CatalogueSource source;
+            source.id      = Str(e, "id");
+            source.name    = Str(e, "name");
+            source.url     = Str(e, "url");
+            auto enabled = e.find("enabled");
+            source.enabled = enabled == e.end() || !enabled->is_boolean() || enabled->get<bool>();
+            s.catalogueSources.push_back(std::move(source));
+        }
+    }
     s.trustedKeys          = Strings(j, "trustedKeys");
     if (j.contains("idleMinutes")) s.idleMinutes = I32(j, "idleMinutes");
     if (j.contains("diskCapBytes")) s.diskCapBytes = U64(j, "diskCapBytes");

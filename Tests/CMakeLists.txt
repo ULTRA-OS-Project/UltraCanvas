@@ -1277,6 +1277,29 @@ else()
     message(STATUS "  LabelSelectionTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ELEMENT IDENTIFIER TEST =====
+# One string is an element's identifier: UltraCanvasLabel(id), CreateLabel(id)
+# and LabelBuilder(id) name the label and leave its text empty (the label's
+# one string was its text until 2026-11), and words handed to a one-string
+# element are reported on debugOutput. Constructs elements only: no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ElementIdentifierTest...")
+    add_executable(ElementIdentifierTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ElementIdentifierTest.cpp
+    )
+    target_include_directories(ElementIdentifierTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ElementIdentifierTest PRIVATE cxx_std_20)
+    target_link_libraries(ElementIdentifierTest PRIVATE UltraCanvas)
+    set_target_properties(ElementIdentifierTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ElementIdentifierTest COMMAND ElementIdentifierTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ElementIdentifierTest")
+else()
+    message(STATUS "  ElementIdentifierTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== LABEL NATURAL TEXT WIDTH TEST =====
 # UltraCanvasLabel::GetNaturalTextWidth: the text measured rather than its box,
 # in step with the label's own hit test, unchanged by padding, 0 when empty or
@@ -5851,6 +5874,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: DialogCloseAllTest")
 else()
     message(STATUS "  DialogCloseAllTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== INPUT DIALOG PROMPT TEST =====
+# An input dialog shows its whole prompt: it wraps and the window grows to
+# fit (it was one line with an ellipsis in a window of fixed height). Opens
+# real dialogs; skips without DISPLAY. CI runs it on a virtual display with
+# ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (build.yml), where a skip is a failure.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building InputDialogPromptTest...")
+    add_executable(InputDialogPromptTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/InputDialogPromptTest.cpp
+    )
+    target_include_directories(InputDialogPromptTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(InputDialogPromptTest PRIVATE cxx_std_20)
+    target_link_libraries(InputDialogPromptTest PRIVATE UltraCanvas)
+    set_target_properties(InputDialogPromptTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME InputDialogPromptTest COMMAND InputDialogPromptTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: InputDialogPromptTest")
+else()
+    message(STATUS "  InputDialogPromptTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== DIALOG STACKING TEST =====

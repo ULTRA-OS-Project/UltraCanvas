@@ -1,7 +1,9 @@
 // Apps/UltraAIApp/UltraAITopicsPage.cpp
 // The settings window's "Model topics" page (UltraAITopicsPage.h).
+// Version: 0.1.1 - no default gallery address: Refresh needs a model server; a catalogue
+//                  source's models are offered for a topic once installed
 // Version: 0.1.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-15
 // Author: UltraAI Module
 
 #include "UltraAITopicsPage.h"
@@ -359,7 +361,12 @@ void UltraAITopicsPage::RefreshTopicControls() {
                 if (m.id == ref.modelId) add(m, true);
             }
         }
-        for (const auto& m : models) add(m, false);
+        // A catalogue source lists models by the thousand: of those, the
+        // installed ones only. The Local models page is where one is found.
+        for (const auto& m : models) {
+            if (m.source == LocalModelSource::Gallery && !m.installed) continue;
+            add(m, false);
+        }
         if (!choice.modelId.empty() &&
             std::find(modelIds_.begin(), modelIds_.end(), choice.modelId) == modelIds_.end()) {
             modelDropdown_->AddItem(TrF("{0} - not available", choice.modelId), choice.modelId);
@@ -432,11 +439,19 @@ void UltraAITopicsPage::OnServerChanged() {
     s.galleryUrl = url;
     rt.SetSettings(s);
     serverInput_->SetText(url);
-    SetStatus(url.empty() ? Tr("The built-in gallery is used. Refresh to load it.") : Tr("Saved. Refresh to load the server's models."));
+    SetStatus(url.empty() ? Tr("No model server: the topics and models shipped with UltraAI are used.")
+                          : Tr("Saved. Refresh to load the server's models."));
 }
 
 void UltraAITopicsPage::OnRefreshFromServer() {
     OnServerChanged();
+    // Without a model server there is nothing to fetch (there is no default
+    // address any more), and nothing the topics could ask to be downloaded.
+    if (LocalRuntime::Instance().GetSettings().galleryUrl.empty()) {
+        SetStatus(Tr("No model server is set: the topics and models shipped with UltraAI are used. "
+                     "The Local models page downloads the wider catalogue."));
+        return;
+    }
     if (refreshing_->exchange(true)) return;
     if (refreshButton_) refreshButton_->SetDisabled(true);
     SetStatus(Tr("Fetching the models and topics from the server…"));

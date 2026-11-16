@@ -1,6 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.10.2 - An input dialog wraps its prompt and grows to fit it (it was one line with an
+//                  ellipsis in a window of fixed height); the prompt is shown once
 // Version: 3.10.1 - DialogConfig is no longer alwaysOnTop: a dialog stayed above every other
 //                  application's windows on X11, macOS and Windows; it is kept above its parent
 //                  (WM_TRANSIENT_FOR, the owner window, a child window on macOS)
@@ -11,7 +13,7 @@
 // Version: 3.9.0 - ModalDialogStyle::FromTheme; ApplyTheme colours the dialog's surface, message
 //                  and footer buttons (by role) from the theme, so a dialog can follow it
 // Version: 3.8.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -189,9 +191,14 @@ namespace UltraCanvas {
     };
 
 // ===== INPUT DIALOG CONFIGURATION =====
+    // The dialog is `height` tall at least and grows with its prompt: a long
+    // one wraps at the dialog's width and the window is made as tall as the
+    // lines and the field need (up to most of the monitor, then it scrolls).
     struct InputDialogConfig : public DialogConfig {
         // Input properties
         InputType inputType = InputType::Text;
+        // The prompt. With `message` set as well, `message` is the prompt and
+        // this is the caption directly above the field.
         std::string inputLabel = "Input:";
         std::string inputPlaceholder;
         std::string defaultValue;
@@ -673,6 +680,8 @@ namespace UltraCanvas {
 
     protected:
         void SetupInputField();
+        // Whether the config carries a message besides the input label.
+        bool HasOwnMessage() const;
         void OnInputChanged(const std::string& text);
         void OnInputValidation();
         // The field is what the user came to type into, so it takes the focus

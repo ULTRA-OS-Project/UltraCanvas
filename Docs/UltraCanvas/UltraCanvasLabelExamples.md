@@ -70,9 +70,18 @@ UltraCanvasLabel(const std::string& identifier, float x, float y, float w, float
 UltraCanvasLabel(const std::string& identifier, float w, float h,
                  const std::string& labelText = "");
 UltraCanvasLabel(const std::string& identifier, const std::string& labelText);
-explicit UltraCanvasLabel(const std::string& labelText = "");
+explicit UltraCanvasLabel(const std::string& identifier = "");
 ```
 
+- **One string alone is the label's identifier**, as on every element
+  (`UltraCanvasContainer("Row")`); the label has no text until `SetText`.
+  The text goes second: `std::make_shared<UltraCanvasLabel>("InfoTitle",
+  Tr("About"))`, or `("", Tr("Select a repository"))` for a label that needs
+  no name. Until 2.18.0 the one string was the text. A label built from
+  text alone still compiles - and shows nothing:
+  `scripts/check_label_identifiers.py` (CI's `label-identifiers.yml`)
+  refuses a one-string label whose string is a `Tr` call or reads as words,
+  and `debugOutput` names the ones it cannot read.
 - A width or height greater than 0 is a **set size**: the label keeps it, and
   a container's stretch does not change it (see `Docs/CSSLayout.md`,
   "Stretching is a design decision").
@@ -479,7 +488,7 @@ std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& identifier,
                                               float w, float h, const std::string& text = "");
 std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& identifier,
                                               const std::string& text);   // sized by its text
-std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& text);
+std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& identifier);   // no text yet
 ```
 
 A label that sizes itself to its text is simply one created without a size:

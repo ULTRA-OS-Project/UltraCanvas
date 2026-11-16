@@ -714,6 +714,9 @@ namespace {
             d->epModels.clear();
             for (const LocalModelInfo& m : LocalRuntime::Instance().ListModels()) {
                 if (m.fit == ModelFit::TooLarge) continue;
+                // A catalogue source's models by the thousand are found on
+                // the Local models page; here, the installed ones of them.
+                if (m.source == LocalModelSource::Gallery && !m.installed) continue;
                 Endpoint::DiscoveredModel dm;
                 dm.name = m.id;
                 // The task is stored with the endpoint and compared ("translation"):
