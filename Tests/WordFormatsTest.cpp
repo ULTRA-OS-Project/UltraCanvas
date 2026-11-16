@@ -2800,6 +2800,88 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== SECTIONS WITH THEIR OWN HEADER AND FOOTER =====
+    // A cover without a header, pages with one, an appendix back to the
+    // document's: each a section, written and read back by both formats.
+    {
+        auto paragraphOf = [](const std::string& text) {
+            RichDocBlock block;
+            RichTextRun run;
+            run.text = text;
+            block.runs = {run};
+            return block;
+        };
+        auto headerText = [](const RichPageFurniture& furniture) {
+            std::string text;
+            for (const RichDocBlock& block : furniture.header) text += UCRichDocument::ConcatenateRunText(block.runs);
+            return text;
+        };
+        UCRichDocument sectioned;
+        sectioned.page.widthPt = 595.0f;
+        sectioned.page.heightPt = 842.0f;
+        sectioned.page.marginTopPt = sectioned.page.marginBottomPt = 72.0f;
+        sectioned.page.marginLeftPt = sectioned.page.marginRightPt = 72.0f;
+        sectioned.page.headerTopPt = sectioned.page.footerBottomPt = 36.0f;
+        sectioned.pageFurniture.header = {paragraphOf("Document header")};
+        RichSectionFurniture own;
+        own.pages.header = {paragraphOf("Chapter header")};
+        own.pages.footer = {paragraphOf("Chapter footer")};
+        own.firstPage.header = {paragraphOf("Chapter opening")};
+        own.firstPageDiffers = true;
+        sectioned.sectionFurniture = {own};
+        RichDocBlock cover = paragraphOf("Cover words");
+        RichDocBlock chapter = paragraphOf("Chapter words");
+        chapter.sectionStart = true;
+        chapter.section.newPage = true;
+        chapter.section.furniture = 0;
+        chapter.section.marginTopPt = 108.0f;
+        RichDocBlock appendix = paragraphOf("Appendix words");
+        appendix.sectionStart = true;
+        appendix.section.newPage = true;
+        sectioned.blocks = {cover, chapter, appendix};
+
+        for (const char* format : {"odt", "docx"}) {
+            const std::string label = std::string("section furniture (") + format + ")";
+            const std::string path = TmpPath(std::string("sections.") + format);
+            std::string err;
+            const bool saved = std::string(format) == "odt" ? UCWordDocumentIO::SaveOdt(path, sectioned, err)
+                                                            : UCWordDocumentIO::SaveDocx(path, sectioned, err);
+            CHECK_MSG(saved, label + ": " + err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), label + ": " + err);
+            int coverAt = -1, chapterAt = -1, appendixAt = -1;
+            for (size_t i = 0; i < back.blocks.size(); ++i) {
+                const std::string text = UCRichDocument::ConcatenateRunText(back.blocks[i].runs);
+                if (text == "Cover words") coverAt = static_cast<int>(i);
+                if (text == "Chapter words") chapterAt = static_cast<int>(i);
+                if (text == "Appendix words") appendixAt = static_cast<int>(i);
+            }
+            CHECK_MSG(coverAt >= 0 && chapterAt > coverAt && appendixAt > chapterAt, label + ": the three sections' words");
+            if (coverAt < 0 || chapterAt < 0 || appendixAt < 0) continue;
+            const RichSectionSetup& first = back.SectionFor(coverAt);
+            const RichSectionSetup& second = back.SectionFor(chapterAt);
+            const RichSectionSetup& third = back.SectionFor(appendixAt);
+            CHECK_MSG(headerText(back.FurnitureFor(first, true, 0)) == "Document header",
+                      label + ": the first section has the document's header");
+            CHECK_MSG(second.furniture >= 0, label + ": the second has a header and footer of its own");
+            CHECK_MSG(headerText(back.FurnitureFor(second, false, 2)) == "Chapter header",
+                      label + ": ...its pages' header, got \"" + headerText(back.FurnitureFor(second, false, 2)) + "\"");
+            CHECK_MSG(headerText(back.FurnitureFor(second, true, 1)) == "Chapter opening",
+                      label + ": ...and its first page's, got \"" + headerText(back.FurnitureFor(second, true, 1)) + "\"");
+            const RichPageFurniture& secondPages = back.FurnitureFor(second, false, 2);
+            CHECK_MSG(!secondPages.footer.empty()
+                      && UCRichDocument::ConcatenateRunText(secondPages.footer[0].runs) == "Chapter footer",
+                      label + ": ...and its footer");
+            CHECK_MSG(Near(second.marginTopPt, 108.0f), label + ": ...and its own room above the text: "
+                      + std::to_string(second.marginTopPt));
+            CHECK_MSG(headerText(back.FurnitureFor(third, false, 3)) == "Document header",
+                      label + ": the third is back to the document's header, got \""
+                      + headerText(back.FurnitureFor(third, false, 3)) + "\"");
+            CHECK_MSG(back.FurnitureFor(third, false, 3).footer.empty(), label + ": ...and has no footer");
+            CHECK_MSG(third.marginTopPt < 0.0f || Near(third.marginTopPt, 72.0f), label + ": ...and the document's margin");
+        }
+    }
+
     // ===== AN ODT AS WORD WRITES ONE =====
     // Word's ODT export: the font and size in the default paragraph style
     // only, a cell's spacing done with empty paragraphs, and a picture turned

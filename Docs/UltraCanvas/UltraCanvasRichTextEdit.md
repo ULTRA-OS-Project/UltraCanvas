@@ -1171,7 +1171,15 @@ sized for the page's column fills it. Blocks go onto pages in order, and a
 page break starts a new one. A paragraph that does not fit in what is left of
 a page continues on the next, broken between lines with widow and orphan
 control (at least two lines stay together at the foot of one page and the
-top of the next; a paragraph of three lines or fewer moves whole). A row
+top of the next; a paragraph of three lines or fewer moves whole). A section may have a header and footer of its own
+(`RichSectionSetup::furniture`, an index into
+`UCRichDocument::sectionFurniture`; -1 = the document's) and its own room
+above and below the text (`marginTopPt`, `marginBottomPt`, `headerTopPt`,
+`footerBottomPt`; < 0 = the document's page): each page is framed by the
+section it begins in, the section's first page with its first-page header
+where it has one, and a double-click on a header edits the one that page
+shows. ODF master pages and Word sections with their own header references
+read into this and write back out. A row
 is as tall as its text, or as the document says (`RichTableRow::heightPt`: at
 least that, or exactly that with `heightExact` - Word's `w:trHeight`, ODF's
 `style:min-row-height` / `style:row-height`, a .doc's `sprmTDyaRowHeight`), so

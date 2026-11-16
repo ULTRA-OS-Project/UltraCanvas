@@ -5,6 +5,8 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.8.0 - a section's own header, footer and margins (master pages) read and written; a table's
+//                  room above and below; an empty cell's font; page-anchored shapes placed from the sheet
 // Version: 1.7.0 - a letter laid out in a table: row heights, a cell's empty paragraphs, the default
 //                  paragraph style's font and spacing, negative float offsets, draw:transform in order
 // Version: 1.6.0 - Pattern fills: draw:hatch read and written, other patterns as their tile
@@ -540,6 +542,7 @@ private:
         float widthPercent = 0.0f;
         RichTextAlign align = RichTextAlign::Left;
         float indentPt = 0.0f;
+        float spaceBeforePt = -1.0f, spaceAfterPt = -1.0f;     // fo:margin-top / -bottom; < 0 = not stated
     };
     std::map<std::string, TablePlacement> tablePlacements_;    // table style -> width, position
     std::vector<std::string> columnDefaultCellStyles_;         // of the table being read
@@ -986,6 +989,14 @@ private:
                 placement.align = align == "center" ? RichTextAlign::Center
                                 : align == "right" ? RichTextAlign::Right : RichTextAlign::Left;
                 placement.indentPt = ParseLengthPt(Attr(tableProps, "fo:margin-left"));
+                // The room above and below the table (a letter's address
+                // window keeps its distance from the reference line).
+                if (tableProps->Attribute("fo:margin-top")) {
+                    placement.spaceBeforePt = std::max(0.0f, ParseLengthPt(Attr(tableProps, "fo:margin-top")));
+                }
+                if (tableProps->Attribute("fo:margin-bottom")) {
+                    placement.spaceAfterPt = std::max(0.0f, ParseLengthPt(Attr(tableProps, "fo:margin-bottom")));
+                }
                 if (!name.empty()) tablePlacements_[name] = placement;
             }
             if (auto* cellProps = style->FirstChildElement("style:table-cell-properties")) {
@@ -1481,7 +1492,10 @@ private:
         auto origin = [&](const std::string& relation) {
             if (relation == "page" || relation == "page-start-margin" || relation == "page-end-margin") return Origin::Page;
             if (relation == "page-content") return Origin::Margin;
-            if (relation.empty() && pageAnchored) return Origin::Page;
+            // Anchored to the page there is no paragraph to count from: a
+            // fold mark "0.9 cm from the paragraph" is 0.9 cm from the
+            // sheet's edge, as Writer places it.
+            if (pageAnchored) return Origin::Page;
             return Origin::Paragraph;
         };
         const Origin across = origin(GraphicAttribute(style, &GraphicPlacement::horizontalRel));
@@ -2461,6 +2475,15 @@ private:
                 CollectCellRuns(cellElem, ctx);
                 // The cell's last paragraphs, when they are empty.
                 if (ctx.pendingLineBreak) AppendEmptyLine(ctx, ctx.lastCellParagraph);
+                // An empty cell is as tall as a line of its paragraph's font
+                // (a heading row's 8 pt, not the view's): an empty run says
+                // which.
+                if (ctx.runs.empty() && ctx.cellParagraphs > 0
+                    && (ctx.lastCellParagraph.fontSizePt > 0.0f || !ctx.lastCellParagraph.fontFamily.empty())) {
+                    RichTextRun font;
+                    ApplyPropsToRun(font, ctx.lastCellParagraph);
+                    ctx.runs.push_back(std::move(font));
+                }
                 // A cell has no room for block structure: text boxes anchored
                 // in it flatten into line-broken cell text so nothing is lost.
                 // Index loop: nested frames may append more text boxes.
@@ -2486,6 +2509,8 @@ private:
             block.tableWidthPercent = placement->second.widthPercent;
             block.tableAlign = placement->second.align;
             block.tableIndentPt = placement->second.indentPt;
+            block.spaceBeforePt = placement->second.spaceBeforePt;
+            block.spaceAfterPt = placement->second.spaceAfterPt;
         }
         const std::vector<std::string> savedDefaults = std::move(columnDefaultCellStyles_);
         columnDefaultCellStyles_.clear();
@@ -3805,6 +3830,8 @@ private:
             if (block.tableIndentPt > 0.0f && std::string(align) == "left") {
                 props << " fo:margin-left=\"" << Pt(block.tableIndentPt) << "\"";
             }
+            if (block.spaceBeforePt >= 0.0f) props << " fo:margin-top=\"" << Pt(block.spaceBeforePt) << "\"";
+            if (block.spaceAfterPt >= 0.0f) props << " fo:margin-bottom=\"" << Pt(block.spaceAfterPt) << "\"";
             columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"table\">"
                              "<style:table-properties" + props.str() + "/></style:style>\n";
             xml << " table:style-name=\"" << name << "\"";

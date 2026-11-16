@@ -2645,6 +2645,13 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                     RichDocBlock cellBlock;
                     cellBlock.type = RichBlockType::Paragraph;
                     cellBlock.align = modelCell.align;
+                    // A cell without words is a line of the font its (empty)
+                    // first run names: a heading row's small type keeps the
+                    // row low.
+                    if (!modelCell.runs.empty() && UCRichDocument::ConcatenateRunText(modelCell.runs).empty()) {
+                        cellBlock.paragraphFontSizePt = modelCell.runs.front().fontSizePt;
+                        cellBlock.paragraphFontFamily = modelCell.runs.front().fontFamily;
+                    }
                     auto cell = std::make_unique<BlockLayout>();
                     cell->layout = MakeRunsLayout(ctx, cellBlock, modelCell.runs,
                                                   std::max(1.0f, cellWidth - padLeft - padRight), nullptr,

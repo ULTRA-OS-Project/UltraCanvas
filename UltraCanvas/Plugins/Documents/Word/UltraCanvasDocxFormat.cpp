@@ -451,6 +451,9 @@ private:
     // Sections: each paragraph w:sectPr ends one, after the block index given.
     struct SectionEnd { int lastBlock; RichSectionSetup setup; tinyxml2::XMLElement* sectPr = nullptr; };
     std::vector<SectionEnd> sectionEnds_;
+    // The room the header and footer in force take when they are only empty
+    // lines (a section without references keeps the one before it).
+    float emptyHeaderNow_ = 0.0f, emptyFooterNow_ = 0.0f;
     bool parsingBody_ = false;
 
     static RichSectionSetup ReadSectionSetup(tinyxml2::XMLElement* sectPr) {
@@ -485,16 +488,25 @@ private:
             bool titlePage = false;
             if (sectPr) {
                 titlePage = sectPr->FirstChildElement("w:titlePg") != nullptr;
-                ownFurniture = ReadFurnitureReferences(sectPr, pagesNow, firstNow) || ownFurniture;
+                ownFurniture = ReadFurnitureReferences(sectPr, pagesNow, firstNow, &emptyHeaderNow_, &emptyFooterNow_)
+                               || ownFurniture;
                 if (auto* margins = sectPr->FirstChildElement("w:pgMar")) {
-                    auto side = [&](const char* name, float documents, float& out) {
-                        const float value = std::abs(static_cast<float>(margins->IntAttribute(name, 0)) / 20.0f);
-                        if (margins->Attribute(name) && std::abs(value - documents) > 0.05f) out = value;
+                    auto value = [&](const char* name, float fallback) {
+                        return margins->Attribute(name) ? std::abs(static_cast<float>(margins->IntAttribute(name, 0)) / 20.0f)
+                                                        : fallback;
                     };
-                    side("w:top", doc_->page.marginTopPt, setup.marginTopPt);
-                    side("w:bottom", doc_->page.marginBottomPt, setup.marginBottomPt);
-                    side("w:header", doc_->page.headerTopPt, setup.headerTopPt);
-                    side("w:footer", doc_->page.footerBottomPt, setup.footerBottomPt);
+                    const float headerTop = value("w:header", doc_->page.headerTopPt);
+                    const float footerBottom = value("w:footer", doc_->page.footerBottomPt);
+                    float top = value("w:top", doc_->page.marginTopPt);
+                    float bottom = value("w:bottom", doc_->page.marginBottomPt);
+                    // A header of empty lines takes its room here too.
+                    if (emptyHeaderNow_ > 0.0f) top = std::max(top, headerTop + emptyHeaderNow_);
+                    if (emptyFooterNow_ > 0.0f) bottom = std::max(bottom, footerBottom + emptyFooterNow_);
+                    auto differs = [](float a, float b) { return std::abs(a - b) > 0.05f; };
+                    if (differs(top, doc_->page.marginTopPt)) setup.marginTopPt = top;
+                    if (differs(bottom, doc_->page.marginBottomPt)) setup.marginBottomPt = bottom;
+                    if (differs(headerTop, doc_->page.headerTopPt)) setup.headerTopPt = headerTop;
+                    if (differs(footerBottom, doc_->page.footerBottomPt)) setup.footerBottomPt = footerBottom;
                 }
             }
             if (ownFurniture || titlePage) {
@@ -3067,7 +3079,12 @@ private:
     // parts it references (w:titlePg gives the first page its own).
     // A sectPr's header and footer references, read into the default pages'
     // and the first page's furniture. True when it names any.
-    bool ReadFurnitureReferences(tinyxml2::XMLElement* sectPr, RichPageFurniture& pagesOut, RichPageFurniture& firstOut) {
+    // `emptyHeader` / `emptyFooter`: the height of a default header or footer
+    // that is only empty paragraphs (kept as no header at all), which Word
+    // still makes room for.
+    float emptyFurnitureHeightPt_ = 0.0f;         // set by LoadHeaderFooterPart
+    bool ReadFurnitureReferences(tinyxml2::XMLElement* sectPr, RichPageFurniture& pagesOut, RichPageFurniture& firstOut,
+                                 float* emptyHeader = nullptr, float* emptyFooter = nullptr) {
         bool any = false;
         for (const char* kind : {"w:headerReference", "w:footerReference"}) {
             const bool header = std::string(kind) == "w:headerReference";
@@ -3079,6 +3096,10 @@ private:
                 auto rel = relationships_.find(Attr(ref, "r:id"));
                 if (rel == relationships_.end()) continue;
                 LoadHeaderFooterPart(ResolvePartPath(rel->second.target), header ? target->header : target->footer);
+                if (target == &pagesOut) {
+                    if (header && emptyHeader) *emptyHeader = emptyFurnitureHeightPt_;
+                    if (!header && emptyFooter) *emptyFooter = emptyFurnitureHeightPt_;
+                }
                 any = true;
             }
         }
@@ -3110,7 +3131,11 @@ private:
         page.marginBottomPt = std::abs(page.marginBottomPt);
 
         doc_->firstPageDiffers = sectPr->FirstChildElement("w:titlePg") != nullptr;
-        ReadFurnitureReferences(sectPr, doc_->pageFurniture, doc_->firstPageFurniture);
+        ReadFurnitureReferences(sectPr, doc_->pageFurniture, doc_->firstPageFurniture,
+                                &emptyHeaderNow_, &emptyFooterNow_);
+        // The text starts below a header of empty lines, and ends above such a footer.
+        if (emptyHeaderNow_ > 0.0f) page.marginTopPt = std::max(page.marginTopPt, page.headerTopPt + emptyHeaderNow_);
+        if (emptyFooterNow_ > 0.0f) page.marginBottomPt = std::max(page.marginBottomPt, page.footerBottomPt + emptyFooterNow_);
         if (pagesOut) *pagesOut = doc_->pageFurniture;
         if (firstOut) *firstOut = doc_->firstPageFurniture;
         if (!doc_->firstPageDiffers) doc_->firstPageFurniture = RichPageFurniture{};
@@ -3145,8 +3170,14 @@ private:
         out.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
                    std::make_move_iterator(doc_->blocks.end()));
         doc_->blocks.resize(start);
-        // An empty paragraph Word keeps in every header is not content.
-        while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
+        // An empty paragraph Word keeps in every header is not content - but
+        // a header of nothing else still takes its lines' room on the page.
+        float emptyLines = 0.0f;
+        while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) {
+            emptyLines += (out.back().paragraphFontSizePt > 0.0f ? out.back().paragraphFontSizePt : 11.0f) * 1.3f;
+            out.pop_back();
+        }
+        emptyFurnitureHeightPt_ = out.empty() ? emptyLines : 0.0f;
     }
 
     int NoteFor(RichNote::Kind kind, const std::string& id) {

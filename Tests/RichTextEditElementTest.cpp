@@ -1589,6 +1589,69 @@ int main() {
              UCRichDocument::ConcatenateRunText(edit->GetDocument()->frames[0].blocks[0].runs) == "Sender Company");
     }
 
+    // ===== A SECTION'S OWN HEADER =====
+    // Pages of a section with a header of its own show that one, start their
+    // text below it, and a double-click edits it - not the document's.
+    std::cerr << "\n--- A section's own header ---" << std::endl;
+    {
+        auto paragraphOf = [](const std::string& text) {
+            RichDocBlock block;
+            RichTextRun run;
+            run.text = text;
+            block.runs = {run};
+            return block;
+        };
+        auto document = std::make_shared<UCRichDocument>();
+        document->page.widthPt = 595.0f;
+        document->page.heightPt = 842.0f;
+        document->page.marginTopPt = document->page.marginBottomPt = 72.0f;
+        document->page.marginLeftPt = document->page.marginRightPt = 72.0f;
+        document->page.headerTopPt = document->page.footerBottomPt = 36.0f;
+        document->pageFurniture.header = {paragraphOf("Document header")};
+        RichSectionFurniture own;
+        own.pages.header = {paragraphOf("Chapter header")};
+        document->sectionFurniture = {own};
+        RichDocBlock chapter = paragraphOf("Chapter words");
+        chapter.sectionStart = true;
+        chapter.section.newPage = true;
+        chapter.section.furniture = 0;
+        chapter.section.marginTopPt = 144.0f;
+        document->blocks = {paragraphOf("Cover words"), chapter};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("The section starts a page of its own: " + std::to_string(edit->GetPageCount()) + " pages",
+             edit->GetPageCount() == 2);
+        editor.SetCaret({0, 0});
+        window->UpdateAndRender();
+        const float coverY = edit->GetCaretRectForTest().y + edit->GetScrollOffset();
+        editor.SetCaret({1, 0});
+        window->UpdateAndRender();
+        const float chapterY = edit->GetCaretRectForTest().y + edit->GetScrollOffset();
+        // A page lower, and a further inch for the section's own top margin
+        // (144 pt against the document's 72 pt: 96 px).
+        const float pageStep = 842.0f * 96.0f / 72.0f;
+        TEST("Its text starts below its own top margin: " + std::to_string(chapterY - coverY - pageStep)
+             + " px lower on its page than the cover's on its",
+             chapterY - coverY - pageStep > 80.0f && chapterY - coverY - pageStep < 140.0f);
+        TEST("Its header opens for editing", edit->EditHeader(1) && edit->IsEditingHeaderOrFooter());
+        window->UpdateAndRender();
+        edit->InsertText(" edited");
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        const UCRichDocument& saved = *edit->GetDocument();
+        TEST("The section's header took the edit",
+             !saved.sectionFurniture.empty() && !saved.sectionFurniture[0].pages.header.empty()
+             && UCRichDocument::ConcatenateRunText(saved.sectionFurniture[0].pages.header[0].runs) == "Chapter header edited");
+        TEST("...and the document's is as it was",
+             !saved.pageFurniture.header.empty()
+             && UCRichDocument::ConcatenateRunText(saved.pageFurniture.header[0].runs) == "Document header");
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+    }
+
     // ===== A PICTURE IN A FRAME, WHILE ITS WORDS ARE EDITED =====
     // A letterhead's logo is a picture anchored in the sender frame. Nothing
     // floats inside a frame: the picture is in the line when the frame is

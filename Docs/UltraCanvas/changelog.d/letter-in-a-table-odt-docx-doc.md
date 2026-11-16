@@ -36,9 +36,33 @@
   - `Tests/DocumentRenderProbe.cpp`: loads a document and writes what the
     rich text edit draws of it as a PDF, with the reader's page, floats and
     table grids listed - to put beside the document's own PDF export.
-  - Not done: a header or footer per section (the model has the document's
-    and the first page's). A section whose header is one empty line starts
-    its text that line lower in Word.
 - **A borderless text frame's guide line was printed.** The thin outline an
   editable view draws round a frame without a border went into the PDF export
   and onto paper; it is the screen's only.
+- **A section's own header, footer and page margins.** A document of several
+  page styles - a cover without a header, pages with one - kept one header and
+  footer for all of its pages, and one top margin.
+  - `RichSectionSetup::furniture` names a section's own set in
+    `UCRichDocument::sectionFurniture` (`RichSectionFurniture`: its pages' and
+    its first page's), and `marginTopPt` / `marginBottomPt` / `headerTopPt` /
+    `footerBottomPt` its room for them; `UCRichDocument::FurnitureFor` and
+    `AllFurniture` find them.
+  - `UltraCanvasRichTextEdit` frames each page by the section it begins in,
+    and a double-click on a header edits the one that page shows.
+  - ODT: a paragraph whose style names another master page starts such a
+    section; the writer writes a master page and page layout per page style.
+  - DOCX: each section's `w:headerReference` / `w:footerReference`, `w:titlePg`
+    and `w:pgMar` (a section without a reference keeps the header of the one
+    before it, as in Word); the document's own are its first section's, where
+    they were its last's. The writer says every section's own.
+  - A header or footer of empty paragraphs is still not kept as one, but takes
+    its lines' room (ODT and DOCX): Word gives every page style one, and the
+    text starts a line lower for it.
+  - Not done: a .doc's later sections (its first section's header and footer
+    serve the whole document), and a section's own page size or side margins.
+- **ODT: the room above and below a table** (`fo:margin-top` / `-bottom`, kept
+  as the table block's `spaceBeforePt` / `spaceAfterPt` and written back), an
+  empty cell as tall as a line of its paragraph's font (a heading row's 8 pt,
+  not the view's), and a shape anchored to the page placed from the sheet's
+  edge whatever its style says it counts from (a letter's fold marks stood a
+  margin too far right).
