@@ -1,5 +1,8 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.15.0 - 2026-11-16 - TreeNodeData::dimmed: a row drawn in the tree's muted text colour
+//                   (dimmedTextColor, the theme's inkMuted) - for an entry the tree normally
+//                   leaves out, such as a hidden folder shown on demand
 // Version: 1.14.1 - 2026-11-14 - GetNodeAtY stops at the foot of the rows' viewport (the padding
 //                   and the border are over no row); ScrollTo does nothing for a row that is not
 //                   on show, instead of jumping to the top
@@ -201,6 +204,11 @@ struct TreeNodeData {
     // placeholder child whose text says "loading"; the host keeps such a child
     // only for the expand button, hidden (visible = false).
     bool loading = false;
+    // The row reads as secondary - an entry the host normally leaves out (a
+    // hidden folder shown because the user went there): its label is drawn in
+    // the tree's dimmedTextColor, which follows the theme, instead of the
+    // text colour. A textColor of its own and the selection text still win.
+    bool dimmed = false;
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText) 
@@ -326,6 +334,7 @@ private:
     Color hoverColor;           // Hovered row background
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
+    Color dimmedTextColor = Color(0x80, 0x80, 0x88); // a dimmed row's label (TreeNodeData::dimmed)
     Color expandButtonColor = Color(0xE0, 0xE0, 0xE0); // +/- node icon background
     Color expandButtonBorderColor = Colors::Gray;       // its 1 px border
     Color expandButtonSymbolColor = Colors::Black;      // the + / - itself
@@ -686,6 +695,8 @@ public:
     Color GetHoverColor() const { return hoverColor; }
     Color GetLineColor() const { return lineColor; }
     Color GetTextColor() const { return textColor; }
+    void SetDimmedTextColor(const Color &color) { dimmedTextColor = color; RequestRedraw(); }
+    Color GetDimmedTextColor() const { return dimmedTextColor; }
     void SetExpandButtonColor(const Color &color) { expandButtonColor = color; }
     // The +/- box whole: its fill, its border and the + / - (TreeExpanderStyle::Box).
     void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol) {
@@ -869,10 +880,12 @@ protected:
     // Read-only access for subclass renderers.
     int   GetTextPadding() const { return textPadding; }
     // The colour a node's label takes: the node's own, else the selection
-    // text colour on a selected row, else the tree's text colour
+    // text colour on a selected row, else the muted colour on a dimmed row,
+    // else the tree's text colour
     Color NodeTextColor(const TreeNode* node) const {
         if (node->data.textColor != Colors::Black) return node->data.textColor;
         if (node->selected && selectionTextColor.a > 0) return selectionTextColor;
+        if (node->data.dimmed) return dimmedTextColor;
         return textColor;
     }
     Color GetExpandButtonColor() const { return expandButtonColor; }
