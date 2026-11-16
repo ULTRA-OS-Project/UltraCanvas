@@ -1,8 +1,9 @@
 // core/CSSLayout/Layout.cpp
 // Chainable setters on struct Layout and struct LayoutItem.
+// Version: 1.4.0 - a flex or grid setter on a hidden box keeps it hidden (it sets the kind Show() restores)
 // Version: 1.3.0 - SetGridJustifyItems
 // Version: 1.2.0 - SetTable / SetTableSpacing (display: table)
-// Last Modified: 2026-10-06
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -14,8 +15,20 @@ namespace UltraCanvas {
         // -------------------- Layout (container side) --------------------
 
         namespace {
+            // A flex or grid setter makes the box that kind of box. On a hidden
+            // one (display: none - Hide(), SetVisible(false)) it changes the
+            // kind it comes back as, not whether it is shown: as in CSS, where
+            // setting gap or flex-direction never undoes display: none. Making
+            // it visible here un-hid elements behind their owner's back - a
+            // toolbar restyled on a theme change (SetAppearance sets its gap)
+            // appeared although its application had hidden it.
+            void SetDisplayKind(Layout& L, DisplayType kind) {
+                if (L.display == DisplayType::NoDisplay) L.prevDisplay = kind;
+                else L.display = kind;
+            }
+
             FlexLayout& asFlex(Layout& L) {
-                L.display = DisplayType::Flex;
+                SetDisplayKind(L, DisplayType::Flex);
                 if (!std::holds_alternative<FlexLayout>(L.data)) {
                     L.data = FlexLayout{};
                 }
@@ -23,7 +36,7 @@ namespace UltraCanvas {
             }
 
             GridLayout& asGrid(Layout& L) {
-                L.display = DisplayType::Grid;
+                SetDisplayKind(L, DisplayType::Grid);
                 if (!std::holds_alternative<GridLayout>(L.data)) {
                     L.data = GridLayout{};
                 }
@@ -143,7 +156,7 @@ namespace UltraCanvas {
 
         Layout& Layout::SetTable() {
             (void)asGrid(*this);
-            display = DisplayType::Table;
+            SetDisplayKind(*this, DisplayType::Table);
             return *this;
         }
 
@@ -151,7 +164,7 @@ namespace UltraCanvas {
             auto& gl = asGrid(*this);
             gl.columnGap = Dimension::Px(horizontal);
             gl.rowGap    = Dimension::Px(vertical);
-            display = DisplayType::Table;
+            SetDisplayKind(*this, DisplayType::Table);
             return *this;
         }
 
