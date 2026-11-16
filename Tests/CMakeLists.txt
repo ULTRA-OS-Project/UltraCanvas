@@ -4539,6 +4539,7 @@ add_executable(ChartEngineTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartAnalysis.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartDistribution.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasParallelAxisModel.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasColormap.cpp
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasLabelPlacement.cpp
@@ -6531,6 +6532,30 @@ if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
     message(STATUS "    Test registered: ImportancePerformanceChartRenderTest")
 else()
     message(STATUS "  ImportancePerformanceChartRenderTest skipped (UltraCanvas or charts not present)")
+endif()
+
+# ===== AXIS DISTRIBUTION RENDER TEST =====
+# The chart engine's axis distribution layer drawn offscreen: Outside bands
+# beyond the plot's opposite edge with the legend kept clear, Near inside the
+# plot, both sides of an in-plot rule clear of its neighbour, nothing under
+# Polar. With ULTRACANVAS_SCREENSHOT_DIR set, each case is written there as a
+# PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building AxisDistributionRenderTest...")
+    add_executable(AxisDistributionRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/AxisDistributionRenderTest.cpp
+    )
+    target_include_directories(AxisDistributionRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(AxisDistributionRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(AxisDistributionRenderTest PRIVATE UltraCanvas)
+    set_target_properties(AxisDistributionRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME AxisDistributionRenderTest COMMAND AxisDistributionRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: AxisDistributionRenderTest")
+else()
+    message(STATUS "  AxisDistributionRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== TERNARY CHART RENDER TEST =====

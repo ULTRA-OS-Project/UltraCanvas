@@ -6,8 +6,12 @@
 // grid source, limiters, legend swatches, the label plan, hit regions and
 // tooltips, the animation driver, the dirty model, named properties) is a
 // service of UltraCanvasChartEngineElement, not of this chart.
-// Version: 2.2.0
-// Last Modified: 2026-10-23
+// Version: 2.3.0
+// Last Modified: 2026-11-16
+// V2.3.0: The Annotations tab shows the axis distribution layer (slot 550):
+//   the value axis's histogram, density, box, strip or violin, in a band
+//   outside the plot or inside it, with the first series drawn over the whole
+//   as the subset.
 // V2.2.0: The shared page look (UltraCanvasDemoPageKit): the chart and its
 //   status line in a card that fills the page, the options in a card below.
 //   The tab strip shows its pages in a host beneath it that is as tall as the
@@ -151,6 +155,7 @@ public:
         ApplyTitle();                           // the title names the data
         RebuildLimiters();
         RebuildHighlights();
+        RebuildDistributions();
         RebuildLegend();
         MarkEngineDirty(ChartDirty::Data);      // rebuilds axes, layout and plan
     }
@@ -170,12 +175,18 @@ public:
         }
         RebuildLimiters();
         RebuildHighlights();
+        RebuildDistributions();
         MarkEngineDirty(ChartDirty::Data);
     }
 
     // ---- engine-facing options ---------------------------------------------
     void SetValueScale(ChartScale scale) { valueScale = scale; Restyle(); }
-    void SetArrangement(ChartBarArrangement a) { arrangement = a; RebuildLimiters(); Restyle(); }
+    void SetArrangement(ChartBarArrangement a) {
+        arrangement = a;
+        RebuildLimiters();
+        RebuildDistributions();              // the bar tips move
+        Restyle();
+    }
     void SetBarCornerRadius(double px) { barCornerRadius = px; RequestRedraw(); }
     void SetInvertValueAxis(bool on) { invertValueAxis = on; Restyle(); }
     void SetAxesAtFarSide(bool on) { axesAtFarSide = on; Restyle(); }
@@ -198,6 +209,18 @@ public:
     void SetHighlightMode(HighlightMode mode) {
         highlightMode = mode;
         RebuildHighlights();
+    }
+
+    // The value axis's distribution (slot 550). Off keeps the plot as it was.
+    void SetDistributionKind(bool on, AxisDistributionKind kind) {
+        distributionOn = on;
+        distributionKind = kind;
+        RebuildDistributions();
+    }
+
+    void SetDistributionSide(AxisDistributionSide side) {
+        distributionSide = side;
+        RebuildDistributions();
     }
 
     void SetSeriesPaint(SeriesPaint paint) {
@@ -254,7 +277,10 @@ public:
 
     // The engine repaints on a theme change; the legend swatch colours are
     // cached in the legend entries, so they are re-derived here.
-    void OnChartThemeChanged() override { RebuildLegend(); }
+    void OnChartThemeChanged() override {
+        RebuildLegend();
+        RebuildDistributions();              // the subset takes a series colour
+    }
 
     // Clicking a legend entry toggles its series: the entry renders dimmed
     // (the legend's own state) and the series drops out of the bars, the
@@ -263,6 +289,7 @@ public:
     void OnLegendEntryToggled(size_t entryIndex, bool enabled) override {
         if (entryIndex >= seriesDisabled.size()) return;
         seriesDisabled[entryIndex] = !enabled;
+        RebuildDistributions();              // the subset is the first shown series
         MarkEngineDirty(ChartDirty::Data);
     }
 
@@ -516,6 +543,9 @@ private:
     GridSource gridSource = GridSource::ValueAxis;
     LimiterMode limiterMode = LimiterMode::AverageAndTarget;
     HighlightMode highlightMode = HighlightMode::NoHighlight;
+    bool distributionOn = false;
+    AxisDistributionKind distributionKind = AxisDistributionKind::Histogram;
+    AxisDistributionSide distributionSide = AxisDistributionSide::Outside;
     bool customKeyRequested = false;
     ValueLabelMode valueLabelMode = ValueLabelMode::Declutter;
     SeriesPaint seriesPaint = SeriesPaint::Solid;
@@ -933,6 +963,34 @@ private:
                 AddHighlight(group);
             }
         }
+    }
+
+    // The distribution of the bar tips along the value axis - every bar in a
+    // grouped chart, the stack tops otherwise - with the first shown series
+    // drawn over the whole as the subset (grouped only: a stacked series has
+    // no tips of its own on the axis).
+    void RebuildDistributions() {
+        ClearAxisDistributions();
+        if (!distributionOn) return;
+        AxisDistribution d;
+        d.axisIndex = 0;                          // the value axis
+        d.kind = distributionKind;
+        d.side = distributionSide;
+        d.values = PlottedValues();
+        d.thickness = (distributionSide == AxisDistributionSide::Outside) ? 56.0 : 70.0;
+        d.fill = Color(120, 130, 150, 90);
+        d.stroke = Color(90, 100, 120, 200);
+        if (arrangement == ChartBarArrangement::Grouped) {
+            for (size_t s = 0; s < seriesValues.size(); ++s) {
+                if (SeriesDisabled(s)) continue;
+                for (double v : seriesValues[s]) {
+                    if (std::isfinite(v)) d.filteredValues.push_back(v);
+                }
+                d.filteredFill = Palette().ColorAt(s, seriesValues.size()).WithAlpha(170);
+                break;
+            }
+        }
+        AddAxisDistribution(d);
     }
 
     void RebuildLegend() {
@@ -1472,6 +1530,49 @@ UltraCanvasDemoApplication::CreateChartEngineExamples() {
                       say(what[i]);
                   }, 0);
     annotationPage->AddChild(rowOverlays);
+
+    auto rowDistribution = MakeRow("engine_row_distribution");
+    AppendLabeledButtons(rowDistribution, "engine_dist_", Tr("Distribution"),
+                  {Tr("Off"), Tr("Histogram"), Tr("Density"), Tr("Box"), Tr("Strip"), Tr("Violin")},
+                  [chartPtr, say](int i) {
+                      const AxisDistributionKind kinds[] = {
+                          AxisDistributionKind::Histogram, AxisDistributionKind::Histogram,
+                          AxisDistributionKind::Density, AxisDistributionKind::Box,
+                          AxisDistributionKind::Strip, AxisDistributionKind::Violin};
+                      chartPtr->SetDistributionKind(i != 0, kinds[i]);
+                      const std::string what[] = {
+                          Tr("Axis distribution off (AddAxisDistribution/ClearAxisDistributions)"),
+                          Tr("Histogram of the bar values along the value axis (slot 550) — "
+                          "Freedman-Diaconis bins at the axis's own scale, the first series "
+                          "drawn over the whole"),
+                          Tr("Kernel density of the bar values — one bandwidth for the whole "
+                          "and the subset, so the series' curve sits under the total"),
+                          Tr("Box summary — quartiles, the median, Tukey whiskers at 1.5 IQR "
+                          "and the outliers past them"),
+                          Tr("Strip — one tick per value, a rug along the axis"),
+                          Tr("Violin — the density mirrored about the band's centre line")};
+                      say(what[i]);
+                  }, 0);
+    annotationPage->AddChild(rowDistribution);
+
+    auto rowDistributionSide = MakeRow("engine_row_distribution_side");
+    AppendLabeledButtons(rowDistributionSide, "engine_dist_side_", Tr("Band"),
+                  {Tr("Outside"), Tr("Near"), Tr("Far"), Tr("Both")},
+                  [chartPtr, say](int i) {
+                      const AxisDistributionSide sides[] = {
+                          AxisDistributionSide::Outside, AxisDistributionSide::Near,
+                          AxisDistributionSide::Far, AxisDistributionSide::Both};
+                      chartPtr->SetDistributionSide(sides[i]);
+                      const std::string what[] = {
+                          Tr("Outside — a band reserved beyond the plot's opposite edge, between "
+                          "the plot and the legend (the joint plot's marginal)"),
+                          Tr("Near — inside the plot, growing in from the axis's own edge, under "
+                          "the bars"),
+                          Tr("Far — inside the plot, growing in from the opposite edge"),
+                          Tr("Both — Near and Far together")};
+                      say(what[i]);
+                  }, 0);
+    annotationPage->AddChild(rowDistributionSide);
     optionTabs->AddTab(Tr("Annotations"), annotationPage);
 
     // -------------------------------------------------------------------------

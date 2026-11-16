@@ -1,5 +1,9 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
+// Version: 1.4.0 - axis distributions (slot 550): Outside bands reserve their depth
+//                  beyond the plot's opposite edge and push that edge's axes out;
+//                  Near / Far / Both draw inside the plot or along an in-plot rule,
+//                  each side kept inside the plot (an outermost rule's band turns inward)
 // Version: 1.3.6 - SetExtraGridAxes (a grid in every pane), HitRegionAt; a limiter
 //                  outside its axis's band is not drawn (nor captioned); a limiter's
 //                  caption is anchored half its width in from the line's end, so it
@@ -10,7 +14,7 @@
 // Version: 1.3.5 - the ternary projection's plot area is its triangle
 // Version: 1.3.4 - ChartHighlightShape::Polygon
 // Version: 1.3.3
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-16
 // V1.3.3: Tick labels drawn inside the plot (an in-plot axis, the radial
 //   value rule under Polar) are obstacles in the label plan, so a solved
 //   label no longer overprints them - the polar chart's "0 ppm" under its
@@ -86,8 +90,34 @@
 #include "UltraCanvasApplication.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace UltraCanvas {
+
+namespace {
+
+// The plot edge an edge axis stands on, and the one facing it.
+ChartAxisEdge EdgeOfSide(ChartAxisSide side) {
+    switch (side) {
+        case ChartAxisSide::Left:   return ChartAxisEdge::Left;
+        case ChartAxisSide::Right:  return ChartAxisEdge::Right;
+        case ChartAxisSide::Top:    return ChartAxisEdge::Top;
+        case ChartAxisSide::Bottom: break;
+    }
+    return ChartAxisEdge::Bottom;
+}
+
+ChartAxisEdge OppositeEdgeOfSide(ChartAxisSide side) {
+    switch (side) {
+        case ChartAxisSide::Left:   return ChartAxisEdge::Right;
+        case ChartAxisSide::Right:  return ChartAxisEdge::Left;
+        case ChartAxisSide::Top:    return ChartAxisEdge::Bottom;
+        case ChartAxisSide::Bottom: break;
+    }
+    return ChartAxisEdge::Top;
+}
+
+} // namespace
 
 UltraCanvasChartEngineElement::UltraCanvasChartEngineElement(
         const std::string& id, int x, int y, int w, int h)
@@ -279,6 +309,17 @@ void UltraCanvasChartEngineElement::ClearSpanAnnotations() {
 void UltraCanvasChartEngineElement::ClearHighlights() {
     highlights.clear();
     MarkEngineDirty(ChartDirty::Style);
+}
+
+size_t UltraCanvasChartEngineElement::AddAxisDistribution(const AxisDistribution& distribution) {
+    distributions.push_back(distribution);
+    MarkEngineDirty(ChartDirty::Geometry);    // an Outside band reserves margin
+    return distributions.size() - 1;
+}
+
+void UltraCanvasChartEngineElement::ClearAxisDistributions() {
+    distributions.clear();
+    MarkEngineDirty(ChartDirty::Geometry);
 }
 
 void UltraCanvasChartEngineElement::SetShowLegend(bool show) {
@@ -682,6 +723,21 @@ void UltraCanvasChartEngineElement::RunLayout(IRenderContext* ctx) {
     }
     contentMargins = contentRequest.margins;
     request.margins.Merge(contentMargins);
+
+    // Outside distribution bands sit against the plot, inside everything
+    // else on their edge: the edge's margin grows by their depth and its edge
+    // axes move out by as much, so the axis keeps its labels clear of the
+    // band and a legend on that edge is not drawn over.
+    LayoutDistributionBands();
+    request.margins.left   += distributionBand[static_cast<int>(ChartAxisEdge::Left)];
+    request.margins.right  += distributionBand[static_cast<int>(ChartAxisEdge::Right)];
+    request.margins.top    += distributionBand[static_cast<int>(ChartAxisEdge::Top)];
+    request.margins.bottom += distributionBand[static_cast<int>(ChartAxisEdge::Bottom)];
+    for (size_t i = 0; i < engineAxes.Count() && i < axisEdgeOffsets.size(); ++i) {
+        const ChartAxis& axis = engineAxes.At(i);
+        if (axis.inPlot || polar) continue;
+        axisEdgeOffsets[i] += distributionBand[static_cast<int>(EdgeOfSide(axis.side))];
+    }
     request.margins.top += titleBand;
 
     // ---- solve --------------------------------------------------------------
@@ -1070,6 +1126,7 @@ void UltraCanvasChartEngineElement::RenderPhaseUnder(IRenderContext* ctx) {
     RenderEngineGrid(ctx);              // slot 300
     RenderEngineLimiters(ctx);          // slot 400
     RenderEngineAxes(ctx);              // slot 500 - edge axes only
+    RenderEngineDistributions(ctx);     // slot 550
     RenderEngineTitle(ctx);
 }
 
@@ -1418,6 +1475,315 @@ void UltraCanvasChartEngineElement::RenderEngineLimiters(IRenderContext* ctx) {
                       engineProjection->ToScreen(domainLimiter ? ChartNormalizedPoint(v, e1)
                                                                : ChartNormalizedPoint(e1, v)));
         if (limiter.dashed) ctx->SetLineDash(UCDashPattern());
+    }
+}
+
+// =============================================================================
+// AXIS DISTRIBUTIONS (slot 550)
+// =============================================================================
+
+void UltraCanvasChartEngineElement::LayoutDistributionBands() {
+    for (double& band : distributionBand) band = 0.0;
+    distributionOffsets.assign(distributions.size(), 0.0);
+    const bool cartesian = projectionKind == ChartProjectionKind::Vertical ||
+                           projectionKind == ChartProjectionKind::Horizontal;
+    if (!cartesian) return;
+    // Several Outside bands on one edge stack outward in the order added.
+    for (size_t k = 0; k < distributions.size(); ++k) {
+        const AxisDistribution& d = distributions[k];
+        if (d.side != AxisDistributionSide::Outside || d.axisIndex >= engineAxes.Count()) continue;
+        const ChartAxis& axis = engineAxes.At(d.axisIndex);
+        if (axis.inPlot) continue;
+        const int edge = static_cast<int>(OppositeEdgeOfSide(axis.side));
+        distributionOffsets[k] = distributionBand[edge];
+        distributionBand[edge] += std::max(0.0, d.gap) + std::max(0.0, d.thickness);
+    }
+}
+
+void UltraCanvasChartEngineElement::RenderEngineDistributions(IRenderContext* ctx) {
+    if (distributions.empty() || !engineProjection) return;
+    if (projectionKind != ChartProjectionKind::Vertical &&
+        projectionKind != ChartProjectionKind::Horizontal) return;
+    for (size_t k = 0; k < distributions.size(); ++k) {
+        const double offset = k < distributionOffsets.size() ? distributionOffsets[k] : 0.0;
+        ctx->PushState();
+        RenderDistribution(ctx, distributions[k], offset);
+        ctx->PopState();
+    }
+}
+
+void UltraCanvasChartEngineElement::RenderDistribution(IRenderContext* ctx,
+                                                       const AxisDistribution& d,
+                                                       double outsideOffset) {
+    if (d.axisIndex >= engineAxes.Count() || d.thickness <= 0.0) return;
+    const ChartAxis& axis = engineAxes.At(d.axisIndex);
+    const std::vector<double>& values = d.values.empty() ? axis.Samples() : d.values;
+    if (values.empty()) return;
+
+    // Everything is binned and smoothed in the axis's normalised space, so
+    // the bars line up with the ticks under every scale (a log axis gets
+    // equal-width bins on screen) and the band shares the axis exactly.
+    const double tLo = std::min(axis.bandStart, axis.bandEnd);
+    const double tHi = std::max(axis.bandStart, axis.bandEnd);
+    auto normalised = [&](const std::vector<double>& in) {
+        std::vector<double> out;
+        out.reserve(in.size());
+        for (double v : in) {
+            const double t = axis.Normalize(v);
+            if (std::isfinite(t) && t >= tLo - 1e-9 && t <= tHi + 1e-9) {
+                out.push_back(std::clamp(t, tLo, tHi));
+            }
+        }
+        return out;
+    };
+    const std::vector<double> ts = normalised(values);
+    if (ts.empty()) return;
+    const std::vector<double> filtered = normalised(d.filteredValues);
+
+    // One band is a baseline along the axis, the direction its bars grow and
+    // how deep they may grow there.
+    struct Band { Point2Dd from, to, normal; double depth = 0.0; };
+    Point2Dd lowEnd, highEnd;
+    AxisScreenLine(axis, lowEnd, highEnd);
+    const Rect2Dd& plot = frame.plotArea;
+    const bool alongY = std::abs(highEnd.y - lowEnd.y) > std::abs(highEnd.x - lowEnd.x);
+    double thickness = d.thickness;
+    std::vector<Band> bands;
+
+    if (axis.inPlot) {
+        // Near is the side the ticks point to, Far the other.
+        double tickDx = 0.0, tickDy = 0.0;
+        TickDirection(axis, lowEnd, highEnd, tickDx, tickDy);
+        const double len = std::hypot(tickDx, tickDy);
+        const Point2Dd nearDir = len > 0.0 ? Point2Dd(tickDx / len, tickDy / len)
+                                           : Point2Dd(-1.0, 0.0);
+        const Point2Dd farDir(-nearDir.x, -nearDir.y);
+        // Keep clear of the neighbouring rules: at most 45% of the gap.
+        const Point2Dd self = engineProjection->ToScreen(ChartNormalizedPoint(axis.plotPosition, 0.0));
+        double nearest = std::numeric_limits<double>::infinity();
+        for (const ChartAxis& other : engineAxes) {
+            if (&other == &axis || !other.inPlot || !other.visible) continue;
+            const Point2Dd p = engineProjection->ToScreen(ChartNormalizedPoint(other.plotPosition, 0.0));
+            const double gap = alongY ? std::abs(p.x - self.x) : std::abs(p.y - self.y);
+            if (gap > 0.5) nearest = std::min(nearest, gap);
+        }
+        if (std::isfinite(nearest)) thickness = std::min(thickness, nearest * 0.45);
+        // And keep inside the plot: a side gets no more than the room between
+        // the rule and the plot's edge. The first and last rules stand on the
+        // plot's edges, where the outward side has none, so a one-sided band
+        // there turns inward - the outermost axes keep their distribution
+        // instead of spilling over the margin's tick labels or the legend.
+        const Point2Dd rule((lowEnd.x + highEnd.x) * 0.5, (lowEnd.y + highEnd.y) * 0.5);
+        auto room = [&](const Point2Dd& dir) {
+            if (dir.x > 0.5) return plot.Right() - rule.x;
+            if (dir.x < -0.5) return rule.x - plot.x;
+            if (dir.y > 0.5) return plot.Bottom() - rule.y;
+            return rule.y - plot.y;
+        };
+        auto add = [&](const Point2Dd& dir) {
+            const double depth = std::min(thickness, std::max(0.0, room(dir)));
+            if (depth >= 1.0) bands.push_back({lowEnd, highEnd, dir, depth});
+        };
+        if (d.side == AxisDistributionSide::Both) {
+            add(nearDir);
+            add(farDir);
+        } else {
+            Point2Dd dir = (d.side == AxisDistributionSide::Near) ? nearDir : farDir;
+            const Point2Dd other(-dir.x, -dir.y);
+            if (room(dir) < thickness * 0.5 && room(other) > room(dir)) dir = other;
+            add(dir);
+        }
+        ctx->ClipRect(plot);
+    } else {
+        // The baseline runs along the axis; only its offset across differs.
+        auto at = [&](double across) {
+            return alongY ? Band{Point2Dd(across, lowEnd.y), Point2Dd(across, highEnd.y), Point2Dd()}
+                          : Band{Point2Dd(lowEnd.x, across), Point2Dd(highEnd.x, across), Point2Dd()};
+        };
+        auto edgeBand = [&](ChartAxisEdge edge, bool outward, double shift) {
+            Band b;
+            switch (edge) {
+                case ChartAxisEdge::Left:
+                    b = at(plot.x - shift);
+                    b.normal = Point2Dd(outward ? -1.0 : 1.0, 0.0);
+                    break;
+                case ChartAxisEdge::Right:
+                    b = at(plot.Right() + shift);
+                    b.normal = Point2Dd(outward ? 1.0 : -1.0, 0.0);
+                    break;
+                case ChartAxisEdge::Top:
+                    b = at(plot.y - shift);
+                    b.normal = Point2Dd(0.0, outward ? -1.0 : 1.0);
+                    break;
+                case ChartAxisEdge::Bottom:
+                    b = at(plot.Bottom() + shift);
+                    b.normal = Point2Dd(0.0, outward ? 1.0 : -1.0);
+                    break;
+            }
+            return b;
+        };
+        if (d.side == AxisDistributionSide::Outside) {
+            bands.push_back(edgeBand(OppositeEdgeOfSide(axis.side), true,
+                                     outsideOffset + std::max(0.0, d.gap)));
+        } else {
+            if (d.side != AxisDistributionSide::Far) {
+                bands.push_back(edgeBand(EdgeOfSide(axis.side), false, 0.0));
+            }
+            if (d.side != AxisDistributionSide::Near) {
+                bands.push_back(edgeBand(OppositeEdgeOfSide(axis.side), false, 0.0));
+            }
+            // Inside the plot a band never reaches past the far edge.
+            thickness = std::min(thickness, alongY ? plot.width : plot.height);
+            ctx->ClipRect(plot);
+        }
+        for (Band& band : bands) band.depth = thickness;
+    }
+
+    // Shapes common to every kind, written once in band coordinates: t along
+    // the axis (normalised), h across it (px from the baseline).
+    const bool strokes = d.strokeWidth > 0.0f && d.stroke.a > 0;
+    for (const Band& band : bands) {
+        const double depth = band.depth;
+        auto P = [&](double t, double h) {
+            return Point2Dd(band.from.x + (band.to.x - band.from.x) * t + band.normal.x * h,
+                            band.from.y + (band.to.y - band.from.y) * t + band.normal.y * h);
+        };
+
+        switch (d.kind) {
+            case AxisDistributionKind::Histogram: {
+                const ChartHistogram total = ComputeHistogram(ts, tLo, tHi, d.binCount);
+                if (total.maxCount == 0) break;
+                auto length = [&](size_t count) {
+                    if (count == 0) return 0.0;
+                    const double share = d.logCount
+                        ? std::log1p(static_cast<double>(count)) /
+                          std::log1p(static_cast<double>(total.maxCount))
+                        : static_cast<double>(count) / static_cast<double>(total.maxCount);
+                    return share * depth;
+                };
+                auto bars = [&](const ChartHistogram& h, const Color& fill, bool outline) {
+                    const double w = h.BinWidth();
+                    for (size_t b = 0; b < h.counts.size(); ++b) {
+                        const double len = length(h.counts[b]);
+                        if (len <= 0.0) continue;
+                        const double t0 = h.low + w * static_cast<double>(b);
+                        const std::vector<Point2Dd> bar{P(t0, 0.0), P(t0 + w, 0.0),
+                                                        P(t0 + w, len), P(t0, len)};
+                        ctx->SetFillPaint(fill);
+                        ctx->FillLinePath(bar);
+                        if (outline) ctx->DrawLinePath(bar, true);
+                    }
+                };
+                ctx->SetStrokePaint(d.stroke);
+                ctx->SetStrokeWidth(d.strokeWidth);
+                bars(total, d.fill, strokes);
+                if (!filtered.empty()) {
+                    // The subset on the total's bins and scale: a share of each bar.
+                    bars(ComputeHistogram(filtered, tLo, tHi,
+                                          static_cast<int>(total.counts.size())),
+                         d.filteredFill, false);
+                }
+                break;
+            }
+            case AxisDistributionKind::Density:
+            case AxisDistributionKind::Violin: {
+                constexpr size_t samples = 96;
+                // One bandwidth for the total and the subset, so the subset's
+                // curve is the same estimate restricted to fewer values.
+                const double bandwidth = d.bandwidth > 0.0 ? d.bandwidth : SilvermanBandwidth(ts);
+                const std::vector<double> dens =
+                    ComputeKernelDensity(ts, tLo, tHi, samples, bandwidth);
+                double peak = 0.0;
+                for (double v : dens) peak = std::max(peak, v);
+                if (peak <= 0.0) break;
+                const bool violin = d.kind == AxisDistributionKind::Violin;
+                auto curve = [&](const std::vector<double>& values, double weight,
+                                 const Color& fill, bool outline) {
+                    std::vector<Point2Dd> upper, lower;
+                    upper.reserve(samples);
+                    for (size_t i = 0; i < samples; ++i) {
+                        const double t = tLo + (tHi - tLo) * static_cast<double>(i) /
+                                                   static_cast<double>(samples - 1);
+                        const double len = values[i] * weight / peak * depth;
+                        if (violin) {
+                            upper.push_back(P(t, depth * 0.5 + len * 0.5));
+                            lower.push_back(P(t, depth * 0.5 - len * 0.5));
+                        } else {
+                            upper.push_back(P(t, len));
+                        }
+                    }
+                    std::vector<Point2Dd> shape = upper;
+                    if (violin) {
+                        shape.insert(shape.end(), lower.rbegin(), lower.rend());
+                    } else {
+                        shape.push_back(P(tHi, 0.0));
+                        shape.push_back(P(tLo, 0.0));
+                    }
+                    ctx->SetFillPaint(fill);
+                    ctx->FillLinePath(shape);
+                    if (outline) {
+                        ctx->DrawLinePath(violin ? shape : upper, violin);
+                    }
+                };
+                ctx->SetStrokePaint(d.stroke);
+                ctx->SetStrokeWidth(d.strokeWidth);
+                curve(dens, 1.0, d.fill, strokes);
+                if (!filtered.empty()) {
+                    // A density integrates to one, so the subset's curve is
+                    // weighted by its share of the values to sit under the total.
+                    curve(ComputeKernelDensity(filtered, tLo, tHi, samples, bandwidth),
+                          static_cast<double>(filtered.size()) / static_cast<double>(ts.size()),
+                          d.filteredFill, false);
+                }
+                break;
+            }
+            case AxisDistributionKind::Box: {
+                // Order statistics are taken on the values themselves (Tukey's
+                // fences are a data-space rule), then mapped through the axis.
+                // Statistics past the axis range are pinned to its end.
+                auto at = [&](double v) { return std::clamp(axis.Normalize(v), tLo, tHi); };
+                auto drawBox = [&](const std::vector<double>& raw, double inset,
+                                   const Color& fill, bool full) {
+                    const ChartBoxSummary s = ComputeBoxSummary(raw);
+                    if (!s.valid) return;
+                    const double h0 = depth * inset, h1 = depth * (1.0 - inset);
+                    const double mid = depth * 0.5;
+                    const double q1 = at(s.q1), q3 = at(s.q3);
+                    const std::vector<Point2Dd> box{P(q1, h0), P(q3, h0), P(q3, h1), P(q1, h1)};
+                    ctx->SetFillPaint(fill);
+                    ctx->FillLinePath(box);
+                    if (!full) return;
+                    ctx->SetStrokePaint(d.stroke);
+                    ctx->SetStrokeWidth(d.strokeWidth);
+                    ctx->DrawLinePath(box, true);
+                    const double lo = at(s.whiskerLow), hi = at(s.whiskerHigh);
+                    const double cap = (h1 - h0) * 0.25;
+                    ctx->DrawLine(P(lo, mid), P(q1, mid));
+                    ctx->DrawLine(P(q3, mid), P(hi, mid));
+                    ctx->DrawLine(P(lo, mid - cap), P(lo, mid + cap));
+                    ctx->DrawLine(P(hi, mid - cap), P(hi, mid + cap));
+                    ctx->SetStrokeWidth(std::max(2.0f, d.strokeWidth * 2.0f));
+                    const double median = at(s.median);
+                    ctx->DrawLine(P(median, h0), P(median, h1));
+                    ctx->SetFillPaint(d.stroke);
+                    for (double v : s.outliers) {
+                        const double ot = axis.Normalize(v);
+                        if (ot >= tLo && ot <= tHi) ctx->FillCircle(P(ot, mid), 2.0);
+                    }
+                };
+                drawBox(values, 0.2, d.fill, true);
+                if (!d.filteredValues.empty()) drawBox(d.filteredValues, 0.35, d.filteredFill, false);
+                break;
+            }
+            case AxisDistributionKind::Strip: {
+                ctx->SetStrokeWidth(std::max(1.0f, d.strokeWidth));
+                ctx->SetStrokePaint(d.stroke);
+                for (double t : ts) ctx->DrawLine(P(t, depth * 0.15), P(t, depth * 0.85));
+                ctx->SetStrokePaint(d.filteredFill);
+                for (double t : filtered) ctx->DrawLine(P(t, depth * 0.15), P(t, depth * 0.85));
+                break;
+            }
+        }
     }
 }
 
