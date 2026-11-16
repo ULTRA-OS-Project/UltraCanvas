@@ -1,6 +1,11 @@
 # Radial Cluster Map — Research & Feature Proposal
 
-**Status:** Proposal. Nothing in this document is implemented yet.
+**Status:** Phase 1 implemented (2026-11-16): the `Balloon` structure with
+fans and full rings (L1-L4, L6), the `Ring` connector (R1), widths and sizes
+by depth (R3, S1), the `Triangle` shape (S2), JSON (X2), the demo's
+**Radial cluster** tab and the tests. Phases 2 and 3 are proposals; the
+sketch fields marked Phase 2 in §5 do not exist yet. Guide:
+[UltraCanvasMindMapExamples.md](UltraCanvasMindMapExamples.md#radial-cluster-map-balloon).
 
 A radial cluster map (a "balloon tree") draws a large topic tree around one
 centre: a handful of coloured main branches leave the hub as thick trunks,
@@ -162,7 +167,8 @@ infographic and the dendrogram, with its own test.
 
 ## 5. Data model sketch
 
-Everything in this section is a sketch of an API that does not exist yet.
+Phase 1 built this sketch as written, except the fields marked *Phase 2*,
+which do not exist yet.
 
 ```cpp
 // UltraCanvasMindMapLayout.h
@@ -180,13 +186,13 @@ struct MindMapLayoutOptions {
     double balloonFanSweep = 300.0;           // degrees, Fan only
     double balloonGap = 8.0;                  // between neighbouring child discs
     double balloonTrunkLength = 60.0;         // extra distance from the centre to each main hub
-    bool   balloonMetroTrunks = false;        // octilinear main trunks (R2)
-    bool   balloonRepairOverlaps = true;      // §7.2
+    bool   balloonMetroTrunks = false;        // octilinear main trunks (R2) - Phase 2
+    bool   balloonRepairOverlaps = true;      // §7.2 - retired, not built
 };
 
 struct MindMapTopicStyle {
     // ... the existing fields ...
-    std::string arcNote;                      // T2: drawn around the node, outside it
+    std::string arcNote;                      // T2: drawn around the node, outside it - Phase 2
 };
 
 // UltraCanvasMindMap.h
@@ -197,7 +203,7 @@ struct MindMapStyle {
     // ... the existing fields ...
     std::vector<double> sizeByDepth;          // S1: circle diameters for depth 0, 1, 2, ...; empty = off
     std::vector<double> connectorWidthByDepth;// R3: trunk widths from depth 0 -> 1, 1 -> 2, ...
-    bool branchLabelAlongTrunk = false;       // T1: depth-1 topic's text along its trunk
+    bool branchLabelAlongTrunk = false;       // T1: depth-1 topic's text along its trunk - Phase 2
 };
 
 enum class MindMapNodeShape { /* ... */ Triangle };   // S2
@@ -213,7 +219,7 @@ enum class MindMapNodeShape { /* ... */ Triangle };   // S2
 | L2 | Balloon layout, fan: children on an arc facing away from the parent | 1 |
 | L3 | Ring radii from the children's discs, so siblings never overlap (§7.1) | 1 |
 | L4 | Per-topic structure override works with Balloon (a balloon branch beside a list branch) | 1 |
-| L5 | Overlap repair between non-sibling clusters (§7.2) | 2 |
+| L5 | Overlap repair between non-sibling clusters (§7.2) - retired: the Phase 1 wedge packing cannot overlap | — |
 | L6 | Main hubs pushed out along their trunks (`balloonTrunkLength`) | 1 |
 | R1 | Ring connector: a thin circle around a hub through its children, with short spokes | 1 |
 | R2 | Metro trunks: octilinear main trunks from the centre, parallel lanes, rounded corners | 2 |
@@ -249,6 +255,18 @@ Bottom-up, each topic gets the radius of the disc its subtree needs:
    centred on the direction away from the parent (a fan opens away from the
    parent; a full ring leaves the parent's direction free).
 
+**As built (Phase 1).** Enclosing discs double in radius at every level of a
+chain of hubs (a hub's disc is its ring plus its largest child's disc, and
+the ring itself must clear that disc), which made a 150-topic map several
+times larger than it needs to be. The implementation keeps each subtree as
+the circles of its nodes in its topic's own frame instead: the ring radius
+is the smallest at which no child's circles come near the topic and the
+wedges the children's subtrees cover, seen from the topic, fit in the sweep.
+Disjoint wedges still mean disjoint subtrees, so siblings never overlap. A
+subtree laid out in another structure (L4) stays one enclosing disc, because
+it does not rotate with its topic; a one-sided one is mirrored to grow away
+from the centre.
+
 The root is a full ring of the main branches, pushed out by
 `balloonTrunkLength` so the trunks have room. Children keep their order
 (clockwise from the parent's direction), so a reader's order survives. The
@@ -258,13 +276,19 @@ al., *Bubble Tree Drawing Algorithm*, 2006).
 
 ### 7.2 Overlaps between clusters
 
-Sibling discs never overlap by construction (§7.1); clusters from
-different branches can, where a deep fan swings round towards its
-neighbour. A repair pass checks disc pairs between different main branches
-(a sweep over discs sorted by angle keeps it near-linear) and pushes the
-smaller subtree outward along its own trunk until it clears, then re-checks
-that branch. It moves whole subtrees only, so the shape inside a cluster
-never changes.
+*Phase 1 note:* with the wedge packing of §7.1 (as built) this pass is not
+needed. Every topic's children - the centre's main branches included - cover
+disjoint wedges seen from it, and each subtree stays inside its wedge, so no
+two clusters of the whole map can overlap; `MindMapLayoutTest` checks every
+node against every other. L5 is retired.
+
+*The original plan, for enclosing discs:* sibling discs never overlap by
+construction; clusters from different branches can, where a deep fan swings
+round towards its neighbour. A repair pass checks disc pairs between
+different main branches (a sweep over discs sorted by angle keeps it
+near-linear) and pushes the smaller subtree outward along its own trunk
+until it clears, then re-checks that branch. It moves whole subtrees only,
+so the shape inside a cluster never changes.
 
 ### 7.3 Trunks like metro lines
 
@@ -351,5 +375,5 @@ infographic and the dendrogram live in different plugins.
 | Phase | Delivers | Retires |
 |---|---|---|
 | **1** | The Balloon structure with full ring and fan (L1-L4, L6); the ring connector (R1); width by depth (R3); size by depth (S1); the triangle shape (S2); JSON (X2); the demo variant with the invented emergency-plan map; layout and render tests | Reference shapes 1, 2, 3, 6, 7 |
-| **2** | Overlap repair (L5); metro trunks (R2); the shared text-on-path helper (T3) with trunk labels (T1) and arc notes (T2); SVG export of the new marks (X1) | Reference shapes 4 and 5 |
+| **2** | Metro trunks (R2); the shared text-on-path helper (T3) with trunk labels (T1) and arc notes (T2); SVG export of the new marks (X1) | Reference shapes 4 and 5 |
 | **3** | Large-map performance and culling (P1); animated re-layout (P2); dragging a cluster (P3) | — |

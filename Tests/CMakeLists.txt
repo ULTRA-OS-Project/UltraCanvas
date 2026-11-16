@@ -6650,6 +6650,30 @@ else()
     message(STATUS "  SpiralChartRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
+# ===== MIND MAP RENDER TEST =====
+# The mind map's radial cluster marks drawn offscreen: the Ring connector
+# (an arc for a fan, a closed ring for a full ring), connector widths and
+# node sizes by depth, the triangle shape, and the JSON round trip and SVG
+# export of the new options. With ULTRACANVAS_SCREENSHOT_DIR set, each case
+# is written there as a PNG.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MindMapRenderTest...")
+    add_executable(MindMapRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MindMapRenderTest.cpp
+    )
+    target_include_directories(MindMapRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MindMapRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(MindMapRenderTest PRIVATE UltraCanvas)
+    set_target_properties(MindMapRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MindMapRenderTest COMMAND MindMapRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MindMapRenderTest")
+else()
+    message(STATUS "  MindMapRenderTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== RIDGELINE CHART RENDER TEST =====
 # UltraCanvasRidgelineChart drawn offscreen: rows on their baselines, the
 # lower row in front where they overlap, hit strips, the value column, the
