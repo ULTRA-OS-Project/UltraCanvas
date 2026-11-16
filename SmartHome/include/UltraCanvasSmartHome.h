@@ -29,8 +29,10 @@ enum class SmartHomeProtocolType {
     Zigbee,
     ZWave,
     KNX,
-    WiFi,
-    Bluetooth,
+    // A type is listed here only once a backend under protocols/ implements
+    // it. Plain Wi-Fi and Bluetooth devices have none: a Wi-Fi device that
+    // speaks Matter is Matter, and a vendor's own Wi-Fi protocol (Xiaomi's
+    // miIO, LG ThinQ) would be a type of its own, added with its backend.
     // No radio: the demo home in protocols/Simulated, for development,
     // tests and a showcase without hardware. Never mixed with a real home.
     Simulated,

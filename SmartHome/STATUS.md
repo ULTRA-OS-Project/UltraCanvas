@@ -247,6 +247,18 @@ this way and leave the slots to whoever else hosts them.
 `tests/ListenerTest.cpp` covers it, with removal raced against a
 notifying thread.
 
+### Known gaps
+
+A commissioned Matter node's **category is Unknown**. What a node is lives
+in the Descriptor cluster's DeviceTypeList (a list of structures, which the
+wrapper's `TlvToString` names but does not expand), and nothing reads it
+after commissioning. `OnCommissioningComplete` used to fill the gap by
+calling every node an `OnOffLight`, so a lock, a vacuum or a washer showed
+up with a light's controls; it now leaves `DeviceTypes` empty and
+`DetermineDeviceCategory` answers Unknown. Reading DeviceTypeList on each
+endpoint in `PartsList` is the fix, and has to run off the SDK thread that
+reports commissioning, since the wrapper's reads wait on that thread.
+
 ### Known latent bug
 
 `MatterProtocol::SubscribeAttribute` stores its callback in

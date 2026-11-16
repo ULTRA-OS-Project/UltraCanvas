@@ -1949,8 +1949,6 @@ std::string ProtocolTypeToString(SmartHomeProtocolType type) {
         case SmartHomeProtocolType::Zigbee: return "Zigbee";
         case SmartHomeProtocolType::ZWave: return "Z-Wave";
         case SmartHomeProtocolType::KNX: return "KNX";
-        case SmartHomeProtocolType::WiFi: return "WiFi";
-        case SmartHomeProtocolType::Bluetooth: return "Bluetooth";
         case SmartHomeProtocolType::Simulated: return "Simulated";
         default: return "Unknown";
     }
@@ -1962,8 +1960,6 @@ SmartHomeProtocolType StringToProtocolType(const std::string& str) {
     if (str == "Zigbee") return SmartHomeProtocolType::Zigbee;
     if (str == "Z-Wave") return SmartHomeProtocolType::ZWave;
     if (str == "KNX") return SmartHomeProtocolType::KNX;
-    if (str == "WiFi") return SmartHomeProtocolType::WiFi;
-    if (str == "Bluetooth") return SmartHomeProtocolType::Bluetooth;
     if (str == "Simulated") return SmartHomeProtocolType::Simulated;
     return SmartHomeProtocolType::Unknown;
 }

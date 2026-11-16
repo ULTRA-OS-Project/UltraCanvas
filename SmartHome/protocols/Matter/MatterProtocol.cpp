@@ -1358,7 +1358,10 @@ void MatterProtocol::OnCommissioningComplete(uint64_t nodeId, bool success, cons
         node.NodeId = nodeId;
         node.DeviceId = "matter_" + std::to_string(nodeId);
         node.IsOnline = true;
-        node.DeviceTypes.push_back(MatterDeviceTypes::OnOffLight);  // Default
+        // DeviceTypes stays empty, so the node's category is Unknown: what
+        // it is lives in its Descriptor cluster's DeviceTypeList, which is
+        // not read yet (STATUS.md, "Known gaps"). Guessing a light here made
+        // every Matter node - a lock, a vacuum, a washer - show up as one.
         
         {
             std::lock_guard<std::mutex> lock(matterMutex);

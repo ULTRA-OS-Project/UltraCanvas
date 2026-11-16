@@ -158,8 +158,6 @@ Color SmartHomeNetworkTopology::GetProtocolColor(SmartHomeProtocolType protocol)
         case SmartHomeProtocolType::Zigbee:    return Color(255, 152, 0);
         case SmartHomeProtocolType::ZWave:     return Color(0, 188, 212);
         case SmartHomeProtocolType::KNX:       return Color(121, 85, 72);
-        case SmartHomeProtocolType::WiFi:      return kAccent;
-        case SmartHomeProtocolType::Bluetooth: return Color(63, 81, 181);
         default:                               return Color(0x78, 0x90, 0x9C);
     }
 }

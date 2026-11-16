@@ -175,7 +175,7 @@ The following features are planned for future releases:
 -   **Vulkan backend** - Additional GPU rendering backend
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
-    Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
+    Matter, Thread, Zigbee, Z-Wave and KNX (see `Docs/Modules/Smarthome/README.md`)
 -   **Wayland desktop shell** - the windowing backend is in (`-DULTRACANVAS_WAYLAND=ON`);
     the layer-shell, foreign-toplevel and portal pieces the desktop shell needs
     come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)

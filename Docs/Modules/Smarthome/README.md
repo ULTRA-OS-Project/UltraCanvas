@@ -71,7 +71,11 @@ plugged in.
 
 ### Protocol Support
 
-Ready for integration with: **Matter**, **Thread**, **Zigbee**, **Z-Wave**, **WiFi**, **Bluetooth**
+Backends: **Matter**, **Thread**, **Zigbee**, **Z-Wave** and **KNX**, each behind its own
+build option and none yet tested against a real device (see
+[`SmartHome/STATUS.md`](../../../SmartHome/STATUS.md)). There is no backend
+for plain Wi-Fi or Bluetooth devices or for vendor clouds (Xiaomi, LG
+ThinQ); a Wi-Fi device that speaks Matter is reached through Matter.
 
 The **simulated demo home** (`SmartHome/protocols/Simulated`) needs no
 radio: 30 devices in 8 rooms answering commands and changing over time, for
