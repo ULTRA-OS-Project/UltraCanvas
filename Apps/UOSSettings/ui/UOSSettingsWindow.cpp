@@ -5,7 +5,8 @@
 //                  (ContainerStyle::FromTheme), not the light default
 // Version: 0.18.0 - Desktop > Theme is the system look (Appearance.conf), the
 //                  same as Appearance > Look: one look for every application
-// Version: 0.19.0 - the Desktop page's captions and the Global / Individual, folder and emoji switches go through Tr
+// Version: 0.19.0 - the Desktop page's captions and the Global / Individual, folder and emoji switches go through Tr;
+//                  the caption column is as wide as its widest caption
 // Version: 0.18.0 - Appearance > Look: Light text, Firm or Plain (Appearance.conf's lighttext)
 // Version: 0.17.0 - Desktop > Info bar: a switch for each icon of the desktop's
 //                  info panel; --page opens the window on a page (ShowSettingsPage)
@@ -158,6 +159,27 @@ namespace {
     constexpr int kSegmentEmojiColour     = 0;
     constexpr int kSegmentEmojiMonochrome = 1;
     constexpr int kSegmentEmojiSystem     = 2;
+
+    // One width for a column of captions: the widest caption's, measured in
+    // the font it is drawn in, so a translated caption is never cut short
+    // ("Anzahl zuletzt verwendeter" was, at the 130 px the English ones
+    // need) - between 130 px and 320 px at 12 pt, past which a caption is
+    // shortened rather than the fields squeezed away.
+    void FitCaptionColumn(const std::vector<std::shared_ptr<UltraCanvasLabel>>& captions) {
+        const float scale = TextFontSize() / 12.0f;
+        float widest = 130.0f * scale;
+        if (auto ctx = CreateRenderContext(Size2Di(4, 4), nullptr)) {
+            for (const auto& caption : captions) {
+                ctx->SetFontStyle(caption->GetStyle().fontStyle);
+                const float width = static_cast<float>(ctx->GetTextDimensions(caption->GetText(), Size2Di(0, 0)).width) + 8.0f;
+                widest = std::max(widest, width);
+            }
+        } else {
+            widest = 180.0f * scale;   // no measuring: room for most captions
+        }
+        widest = std::min(widest, 320.0f * scale);
+        for (const auto& caption : captions) caption->size.width = CSSLayout::Dimension::Px(static_cast<int>(std::ceil(widest)));
+    }
 
     // Segment order of every Global | Individual switch.
     constexpr int kSegmentGlobal = 0;
@@ -486,6 +508,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     body->SetMargin(14, 0, 0, 0);
 
     // caption | field [| extra], the captions in one column.
+    std::vector<std::shared_ptr<UltraCanvasLabel>> captions;
     auto addRow = [&](const std::string& id, const std::string& captionText,
                       const std::shared_ptr<UltraCanvasUIElement>& field,
                       const std::shared_ptr<UltraCanvasUIElement>& extra = nullptr) {
@@ -495,10 +518,8 @@ void UOSSettingsWindow::BuildDesktopPage() {
         row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         row->size.height = CSSLayout::Dimension::Px(30);
         auto label = MakeLabel(id + "-label", captionText);
-        // The caption column grows with the text size (180 px at 12 pt):
-        // wide enough for a translated caption - "Virtuelle Schreibtische",
-        // "Abgelegte Dateien" - which 130 px cut short.
-        label->size.width = CSSLayout::Dimension::Px(static_cast<int>(180 * TextFontSize() / 12.0f));
+        // The column's width is set once every row is in (FitCaptionColumn).
+        captions.push_back(label);
         row->AddChild(label);
         field->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         field->size.width = CSSLayout::Dimension::Px(0);
@@ -645,6 +666,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
         };
         addRow("uos-dt-replace-row", Tr("At sign-in"), systemDesktop_);
     }
+    FitCaptionColumn(captions);
     page->AddChild(body);
 
     // What starts with the desktop, unseen (UltraDesktop's own list):

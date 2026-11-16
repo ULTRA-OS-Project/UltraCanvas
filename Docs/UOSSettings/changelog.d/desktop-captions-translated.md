@@ -7,6 +7,7 @@
   through `Tr` now and are translated in all thirty languages, in the
   wording the notes quote.
 - **The Sub-categories choices are translated too** ("Never", "Above 8
-  applications"), and the Desktop page's caption column is 180 px wide at
-  12 pt instead of 130, so a translated caption ("Virtuelle
-  Schreibtische", "Abgelegte Dateien") is not cut short.
+  applications"), and the Desktop page's caption column is as wide as its
+  widest caption, measured in the font it is drawn in (between 130 and
+  320 px at 12 pt), so a translated caption ("Virtuelle Schreibtische",
+  "Abgelegte Dateien") is not cut short as it was in a column 130 px wide.
