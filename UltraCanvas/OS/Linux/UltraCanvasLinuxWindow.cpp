@@ -1,5 +1,8 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.10.0 - the destructor releases the native half, so a window never closed
+//                   does not leave its X window and surfaces behind
+// Version: 1.9.2 - Hide() with no application left does not reach for the display
 // Version: 1.9.1 - a popup's own window takes the keys pressed over it too (no window manager: the focus
 //                  follows the pointer), which the application hands to the window the popup belongs to
 // Version: 1.9.0 - WindowType::Popup: override-redirect, _NET_WM_WINDOW_TYPE_POPUP_MENU, takes
@@ -54,6 +57,22 @@ namespace UltraCanvas {
             : xWindow(0) {
 
         debugOutput << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
+    }
+
+    UltraCanvasLinuxWindow::~UltraCanvasLinuxWindow() {
+        // The native half, released however the window dies. Without this,
+        // a window destroyed without Close() first - the application's
+        // DestroyWindows() at shutdown, the last shared_ptr going away -
+        // left its X window, its xlib surface, its input context and its
+        // drag-drop cursors behind, because ~UltraCanvasWindowBase cannot
+        // reach a virtual override.
+        if (!_created) return;
+        // Every one of those resources is freed through the display, so they
+        // can only go while the application still holds it open - which is
+        // why the application destroys its windows before itself
+        // (UltraCanvasApplicationBase::DestroyWindows).
+        auto application = UltraCanvasApplication::GetInstance();
+        if (application && application->GetDisplay()) DestroyNative();
     }
 
 // ===== WINDOW CREATION =====
@@ -1049,6 +1068,13 @@ namespace UltraCanvas {
 
         debugOutput << "UltraCanvas Linux: Hiding window..." << std::endl;
         auto application = UltraCanvasApplication::GetInstance();
+        if (!application || !application->GetDisplay()) {
+            // The application is already gone (a window destroyed too late).
+            // There is no display to unmap through, and X has dropped the
+            // window with the connection; just record the state.
+            _windowVisible = false;
+            return;
+        }
         XUnmapWindow(application->GetDisplay(), xWindow);
         XFlush(application->GetDisplay());
 

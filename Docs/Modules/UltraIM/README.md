@@ -53,6 +53,10 @@ UltraIM_RefreshProviders();                 // load the provider modules
 UltraIM_Subscribe([](const UltraIMEvent& e) {
     if (e.type == UltraIMEventType::MessageReceive) { /* append e.message */ }
     if (e.type == UltraIMEventType::MessageDelivered) { /* match e.message.clientMessageId */ }
+    if (e.type == UltraIMEventType::TransferProgress) {
+        // A file on its way: e.transferredBytes of e.totalBytes, e.isUpload
+        // (ours going out) or not; the row is e.message.clientMessageId.
+    }
 });
 
 UltraIM_SignIn("direct", credentials, [](const UltraIMResult& r) { /* ... */ });
@@ -138,6 +142,14 @@ account has one, else signed in - so those steps arrive as events with no
 (`SignIn` with `QRCode` while the step is `Code`); a phone number given
 while the QR code waits starts the sign-in over with the number.
 
+A sign-in on the service's own web page (Mastodon: OAuth) has the step
+`Browser`: nothing to type in the application, the hint
+(`AuthStepChange`'s `errorText`) is the page's address for the application
+to open in the browser (`UltraCanvas::OpenURL`). The person signs in there,
+the page answers a loopback address the provider listens on, and the
+sign-in goes on by itself; `SignIn`'s callback fires once it is done or
+the wait ended.
+
 What one provider's service keeps for another provider's sign-in comes
 through `UltraIM_FetchSharedCredentials(provider, forProvider, cb)`: ChatCube
 Direct's relay keeps the Telegram application's API ID and hash
@@ -168,11 +180,12 @@ UltraIMResult r = UltraIM_DeleteMessage("direct", message.conversationId, messag
 | ChatCube Direct | any message, any time | the sender: a text until the other person has read it; a picture, video or file at any time; anything in a group at any time |
 | Matrix | not available | the sender, any time (a redaction) |
 | Telegram | any message | the sender (Telegram has the last word and may refuse) |
+| Mastodon | not available | the sender, any time |
 
 **Searching the history.** `UltraIM_SearchMessages(provider, search, cb)`
 finds messages by their words, or everything of one kind - the
 *Media / Files / Links* tabs of a conversation - for a provider with the
-`SearchMessages` capability (all three have it):
+`SearchMessages` capability (all four have it):
 
 ```cpp
 UltraIMMessageSearch search;
@@ -203,6 +216,7 @@ every network, and what differs is said here rather than discovered:
 | ChatCube Direct | its database on this device | anywhere in the text, any case | yes (`conversationId` "") |
 | Matrix | the room's history, read back page by page and matched on this device - so an encrypted room is searched like any other | anywhere in the text, any case | no: `CapabilityMissing` |
 | Telegram | Telegram's own search (`searchChatMessages`) | whole words, as in Telegram's apps | no: `CapabilityMissing` |
+| Mastodon | the chat's threads, read from the server and matched on this device | anywhere in the text, any case | no: `CapabilityMissing` |
 
 The words are looked for in the message's text (a caption too) and its
 attachment's file name; a `SystemEvent` line ("Bob joined") is never a
@@ -402,6 +416,24 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   owner (`ownerId`); `LeaveConversation` leaves a group, and deletes a 1:1
   conversation and its messages on this device while keeping the contact,
   so a new message from them starts it again.
+- **Public groups** (relay 1.5.0): a group's owner makes it public
+  (`SetGroupPublic`, `UltraIMConversation::isPublic`), and it is listed for
+  everyone on the relay (`FetchPublicGroups`: `UltraIMPublicGroup` - its
+  conversation id, title, owner, member count, whether one is in it) and
+  joined by anyone (`JoinGroup`). It stays end-to-end encrypted: a message
+  is sealed for each member as in any group (the members' keys are fetched
+  and checked against their ids as they join), so a public group holds at
+  most 256 (the relay's setting). The relay limits how much one member posts
+  into one.
+- **A group's description and blocks** (relay 1.5.0): `SetGroupDescription`
+  (`UltraIMConversation::description`, up to 500 characters; any member of a
+  private group, the owner of a public one - else `PermissionDenied`), shown
+  in the directory too (`UltraIMPublicGroup::description`). The owner blocks
+  (`BlockGroupMember`: out of the group, and kept out - no *Join*, no one
+  else adding them) and unblocks (`UnblockGroupMember`); `FetchBlockedMembers`
+  lists them. `RemoveGroupMember` alone only takes someone out. A newcomer sees what
+  is written after they join. On an older relay the three answer
+  `CapabilityMissing` ("needs ChatCube relay 1.5 or later").
 - **Local record:** contacts and their keys, conversations, history and the
   outbox in `<dataDirectory>/direct/direct.sqlite3` (UltraDatabase).
   `FetchMessages` answers from it; nothing waits for the network.
@@ -420,6 +452,22 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   while the read receipt could not travel still counts. A message or a file
   deleted before all of it arrived is noted (`deleted`), and dropped when
   the rest comes.
+- **Editing** (`EditMessage`): its sender changes a text, or a picture's,
+  video's or file's caption, at any time (a text never to nothing - that
+  is a delete). The record keeps the new words and marks the message
+  edited (`isEdited`; schema 5); the others are told with an `edit` body on
+  the message's path, and take it only from the message's own sender.
+  `MessageUpdate` follows on both sides.
+- **Replies:** `replyToMessageId` rides in the body as `reply_to`; the
+  quote (`replyTo.senderName`, `textSnippet`) is filled in from the record
+  where the message replied to is - on arrival, on `FetchMessages` and in
+  search results.
+- **Contacts:** adding someone puts us in their list too (relay 1.4.0
+  `contact.added`, or a `contact` frame on the local network), so their
+  chat appears before our first message.
+- **Progress:** a file's parts are counted as they leave (the relay took
+  them, or the link acknowledged them) and as they arrive, and reported as
+  `TransferProgress` at each percent.
 - **Search:** `SearchMessages` is a query on that record - one conversation
   or all of them, narrowed in the database by conversation and kind (an
   index each) and matched by words on the way out, where upper and lower
@@ -499,7 +547,9 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   are here, puts the file together under the cache directory, and says so
   with `MessageUpdate`; `DownloadAttachment` answers from disk, or once the
   last part is here. Files up to 64 MiB; our own row points at the file
-  sent. Only the relay's text queue is involved, so a relay in service
+  sent. A voice note (`SendVoiceNote`) is such a file of kind `audio`; its
+  length (`UltraIMSendOptions::durationSeconds`, for a video too) rides
+  in the body as `ms`. Only the relay's text queue is involved, so a relay in service
   needs no change.
 - **Not yet:** group calls, several devices per identity, groups without a
   relay, a file asked for later rather than pushed.
@@ -541,6 +591,10 @@ other over mDNS alone, which skips without a responder unless
   `RemoveGroupMember` kicks (the homeserver's power levels decide whether
   we may: `PermissionDenied` when not), and `LeaveConversation` leaves the
   room and forgets it - a direct chat as much as a group.
+- **Voice notes:** `SendVoiceNote` sends `m.audio` marked as a voice
+  message (`org.matrix.msc3245.voice`, with the `org.matrix.msc1767.audio`
+  block) and its length (`info.duration`, milliseconds - set for a video
+  too when `UltraIMSendOptions::durationSeconds` says it).
 - **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
   emotes, pictures, videos, audio and files with their attachments (the
   `filename` and the body as the caption, MSC2530), edits (`m.replace` -
@@ -700,6 +754,10 @@ process.
   its creator, with everyone counted in `UltraIMConversation::memberCount`;
   the page is asked for again when someone joins or leaves. A channel lists
   none (its subscribers are not members to manage).
+- **Voice notes:** `SendVoiceNote` sends Telegram's own voice message
+  (`inputMessageVoiceNote`, the length in whole seconds) for an Ogg Opus
+  recording - the only kind its apps play as one; any other recording goes
+  as a document.
 - **Messages:** text with replies, photos, files, audio, voice notes,
   videos (and animations, video notes) and stickers with their captions and
   attachments, the group's service messages as system lines; edits
@@ -744,8 +802,74 @@ names and fields are right. The library is the one the configure step
 fetched, or the one `ULTRAIM_TDJSON_PATH` names; CI sets
 `ULTRAIM_TEST_TDLIB_REQUIRED`, so no library there is a failure.
 
+## Provider: Mastodon
+
+`UltraCanvas/Plugins/UltraIM/mastodon/` (module `ultraim_mastodon`, provider
+id `mastodon`) brings the **direct messages** of a Mastodon server - or one
+that speaks its REST API (GoToSocial, Akkoma, Pleroma) - over UltraNet. It
+links nothing beyond UltraNet, UltraVault and UltraCrypt, so it builds
+everywhere the others do.
+
+Mastodon has no messenger of its own: a "chat" is a thread of statuses whose
+visibility is `direct`, seen only by the accounts they mention, and the
+server lists each thread as a conversation (`GET /api/v1/conversations`).
+The provider turns that into chats:
+
+- **A chat is a set of people.** Its id is the other accounts' full
+  addresses (`user@server`, lower case, sorted, space-joined), so a chat
+  opened before its first message (`AddContact`, `CreateGroup`) and the one
+  its first message makes are the same, and every thread with the same
+  people is one chat - a status that answers nothing starts a thread, and
+  the history shows the threads together (the newest eight).
+- **A message is a status:** its HTML content as text
+  (`HTML::ExtractPlainText`, the layout `Lines`), the mentions it starts
+  with left out (everyone in a direct chat is mentioned in each), a content
+  warning above the text; its first attachment as the picture, video or
+  sound (more than one: "+n" after the text). Sending posts a direct status
+  that mentions everyone in the chat and answers the chat's last status, so
+  the thread stays one; a reply answers the message quoted, and shows as a
+  reply only when that is not simply the message before it. The client
+  message id goes as the `Idempotency-Key`, so a retry never posts twice.
+- **News comes by polling** the conversations every few seconds
+  (`MastodonTimings::pollMs`, 4 s): a thread whose last status changed
+  brings what it holds that was not seen yet, in order; a last status
+  changed in place is an edit (`MessageUpdate`), one that went back to an
+  older one a delete (`MessageDelete`). There is no push here (the
+  streaming API is not used yet).
+- **Sign-in** is the server's own page in the browser (`UltraIMLoginType::SsoOidc`,
+  the auth step `Browser`): the provider registers the application with the
+  server once (`POST /api/v1/apps`, kept per server), then runs OAuth with
+  PKCE on a loopback address (`http://127.0.0.1:47819/callback`,
+  `SetRedirectUri`). The access token is kept in UltraVault, so the next
+  start signs in by itself (`SignIn` with no server); `credentials.accessToken`
+  signs in with a token made in the server's settings instead.
+- **People:** `AddContact` takes `@user@server`, `user@server`, `@user`
+  (this server) or a profile's page (`https://server/@user`): the server
+  looks them up (`/api/v1/accounts/lookup`), or asks theirs
+  (`/api/v2/search` with `resolve`) for someone it has not met.
+- **Media:** pictures, videos and sound, uploaded (`POST /api/v2/media`,
+  `TransferProgress` as it goes), waited for while the server processes
+  them, then sent; a picture received comes by itself, the rest when asked
+  (`DownloadAttachment`). Mastodon takes no other file: `SendFile` with one
+  answers `CapabilityMissing`.
+- **Edit** (`PUT /api/v1/statuses/:id`, Mastodon 4.0+), **delete** (one's
+  own, for everyone), **read** (`POST /api/v1/conversations/:id/read`),
+  **leave** (the conversations taken off the list - the statuses stay).
+- **Not here:** typing, read receipts, presence and calls (Mastodon has
+  none); history beyond the eight newest threads of a chat.
+
+Tests: `Tests/UltraIM/MastodonProviderTests.cpp` against
+`mastodon_fake_server.py`, a small Mastodon in memory in standard-library
+python (the part of the API the provider uses; threads as conversations,
+OAuth that approves at once, media processed after one look): a token
+sign-in and a refused one, the browser sign-in with PKCE and the session
+kept, a chat opened before its first message, texts both ways, several
+statuses between two looks in order, a reply, an edit, a delete seen by both
+sides, a picture and a video byte for byte, a file refused, search, read, a
+group, a second thread in the same chat, leaving. Skips without python3.
+
 ## Status
 
 Implemented: the registry, the module loader, the event bus and dispatcher,
 the merged conversation fetch and every forwarding call; the ChatCube
-Direct, Matrix and Telegram providers (above). Next: XMPP and others.
+Direct, Matrix, Telegram and Mastodon providers (above). Next: XMPP and others.

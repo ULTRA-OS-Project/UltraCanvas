@@ -1,6 +1,8 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.11.0 - ConvertVideoFile, CanConvertVideoTo, GetVideoSaveExtensions, AddVideoSaveTypes
+// Version: 1.10.0 - SaveAudio, ConvertAudioFile
 // Version: 1.9.0 - SaveFile
 // Version: 1.8.0 - LoadTextDocument / OpenTextDocument read a .pptx as an outline
 // Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
@@ -13,13 +15,14 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasAudio.h"
+#include "UltraCanvasMediaCodecRegistry.h"   // SaveAudio's encoders, ConvertVideoFile's converters
 #include "UltraCanvasUtils.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasOfficeEncryption.h"   // RequestDocumentPassword
@@ -29,8 +32,10 @@
 #include "UltraCanvasRasterDocument.h"  // ... written through the image writer
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
+#include <exception>
 #include <filesystem>
 #include <map>
 #include <fstream>
@@ -471,6 +476,50 @@ namespace UltraCanvas {
         });
     }
 
+    namespace {
+        std::string LowerAudioExtension(const std::string& path) {
+            std::string ext = PathToUtf8(PathFromUtf8(path).extension());
+            if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+            for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            return ext;
+        }
+    }
+
+    bool UltraCanvasFileLoader::SaveAudio(const UCAudio& audio, const std::string& path,
+                                          std::string& outError) {
+        outError.clear();
+        if (!audio.IsValid()) { outError = "No sound to save"; return false; }
+        const std::string ext = LowerAudioExtension(path);
+        if (ext.empty() || !CanEncodeMediaExtension(MediaCodecKind::Audio, ext)) {
+            outError = ext.empty() ? std::string("The name has no audio type (.wav, .mp3 ...)")
+                                   : "This build does not write ." + ext + " audio";
+            return false;
+        }
+        if (!audio.SaveToFile(path, AudioFormatFromExtension(ext))) {
+            outError = "The " + ext + " encoder could not write " + path;
+            return false;
+        }
+        return true;
+    }
+
+    bool UltraCanvasFileLoader::ConvertAudioFile(const std::string& sourcePath, const std::string& targetPath,
+                                                 std::string& outError) {
+        outError.clear();
+        // The same type: the file as it is. Decoding and encoding it again
+        // would cost a lossy format quality and gain nothing.
+        if (LowerAudioExtension(sourcePath) == LowerAudioExtension(targetPath)) {
+            FileBytesResult read = LoadFile(sourcePath, false);
+            if (!read.success) { outError = read.error.empty() ? "Cannot read " + sourcePath : read.error; return false; }
+            return SaveFile(targetPath, read.bytes, outError);
+        }
+        std::shared_ptr<UCAudio> audio = UCAudio::LoadFromFile(sourcePath);
+        if (!audio || !audio->IsValid()) {
+            outError = "Cannot decode " + sourcePath;
+            return false;
+        }
+        return SaveAudio(*audio, targetPath, outError);
+    }
+
     std::vector<MediaFormatInfo> UltraCanvasFileLoader::GetSupportedFormats() {
         return UltraCanvasSupportedFormats::GetAll();
     }
@@ -676,6 +725,148 @@ namespace UltraCanvas {
 
     bool UltraCanvasFileLoader::CanLoadVectorDocument(const std::string& extensionOrPath) {
         return CanPreviewVectorExtension(extensionOrPath);
+    }
+
+    // ===== VIDEO SAVED =====
+    // The core writes no video itself: a type is written from another file
+    // by the converter its registration carries (convertVideo), which a
+    // module with an encoder registers - VideoFX's, on FFmpeg.
+
+    namespace {
+        // The video registration whose converter writes `ext`, or null.
+        std::shared_ptr<const MediaCodecRegistration> VideoConverterFor(const std::string& ext) {
+            if (ext.empty()) return nullptr;
+            auto codec = FindMediaCodecByExtension(MediaCodecKind::Video, ext);
+            return codec && codec->convertVideo ? codec : nullptr;
+        }
+
+        // Where a conversion writes before the file is put in place: beside
+        // the target, so the move is a rename on the same disk, with the
+        // target's extension last - a converter picks the container by it -
+        // and a name no other save is using.
+        std::filesystem::path PartialVideoPath(const std::filesystem::path& target) {
+            static std::atomic<unsigned> serial{0};
+            for (;;) {
+                std::filesystem::path partial = target.parent_path() / target.stem();
+                partial += PathFromUtf8(".part" + std::to_string(++serial));
+                partial += target.extension();
+                std::error_code ec;
+                if (!std::filesystem::exists(partial, ec)) return partial;
+            }
+        }
+
+        bool PutVideoInPlace(const std::filesystem::path& partial, const std::filesystem::path& target,
+                             std::string& error) {
+            std::error_code ec;
+            std::filesystem::rename(partial, target, ec);
+            if (!ec) return true;
+            std::error_code ignored;
+            std::filesystem::remove(partial, ignored);
+            error = "cannot put the file in place: " + ec.message();
+            return false;
+        }
+    } // namespace
+
+    bool UltraCanvasFileLoader::ConvertVideoFile(const std::string& sourcePath, const std::string& targetPath,
+                                                 std::string& outError,
+                                                 const std::function<bool(double fraction)>& progress) {
+        namespace fs = std::filesystem;
+        outError.clear();
+        if (sourcePath.empty() || targetPath.empty()) { outError = "No file to save"; return false; }
+        if (IsUrl(targetPath)) { outError = "a URL cannot be saved to"; return false; }
+        const fs::path source = PathFromUtf8(sourcePath);
+        const fs::path target = PathFromUtf8(targetPath);
+        std::error_code ec;
+        if (!fs::is_regular_file(source, ec)) { outError = "Cannot read " + sourcePath; return false; }
+        // Saved over itself: the file is already there as it is.
+        if (fs::equivalent(source, target, ec)) return true;
+        const std::string ext = LowerExtensionOf(targetPath);
+        if (ext.empty()) { outError = "The name has no video type (.mp4, .webm ...)"; return false; }
+
+        const fs::path partial = PartialVideoPath(target);
+        auto discard = [&partial]() {
+            std::error_code ignored;
+            fs::remove(partial, ignored);
+        };
+        // The same type: the file as it is. Decoding and encoding it again
+        // would only lose quality, and take minutes doing it.
+        if (LowerExtensionOf(sourcePath) == ext) {
+            if (progress && !progress(0.0)) { outError = "Stopped"; return false; }
+            fs::copy_file(source, partial, fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                discard();
+                outError = "cannot copy the file: " + ec.message();
+                return false;
+            }
+            if (progress) progress(1.0);
+            return PutVideoInPlace(partial, target, outError);
+        }
+
+        const auto codec = VideoConverterFor(ext);
+        if (!codec) {
+            outError = "This build does not write ." + ext + " video";
+            return false;
+        }
+        // A converter that does not honour a "stop" is stopped all the same:
+        // what it wrote is thrown away.
+        bool stopped = false;
+        MediaProgressFn report;
+        if (progress) {
+            report = [&progress, &stopped](double fraction) {
+                if (stopped) return false;
+                if (!progress(fraction)) stopped = true;
+                return !stopped;
+            };
+        }
+        std::string error;
+        bool ok = false;
+        try {
+            ok = codec->convertVideo(sourcePath, PathToUtf8(partial), report, error);
+        } catch (const std::exception& e) {
+            ok = false;
+            error = e.what();
+        } catch (...) {
+            ok = false;                  // a throwing converter must not take the program down
+            error = "the converter failed";
+        }
+        if (ok && !stopped && !fs::is_regular_file(partial, ec)) {
+            ok = false;
+            error = "the converter wrote no file";
+        }
+        if (!ok || stopped) {
+            discard();
+            outError = stopped ? std::string("Stopped")
+                     : error.empty() ? "The ." + ext + " converter could not write " + targetPath
+                                     : error;
+            return false;
+        }
+        return PutVideoInPlace(partial, target, outError);
+    }
+
+    bool UltraCanvasFileLoader::CanConvertVideoTo(const std::string& extensionOrPath) {
+        return VideoConverterFor(LowerExtensionOf(extensionOrPath)) != nullptr;
+    }
+
+    std::vector<std::string> UltraCanvasFileLoader::GetVideoSaveExtensions() {
+        std::vector<std::string> out;
+        for (const MediaCodecRegistration& codec : GetRegisteredMediaCodecs(MediaCodecKind::Video)) {
+            if (!codec.convertVideo || codec.probeFile) continue;
+            out.push_back(codec.extension);
+            out.insert(out.end(), codec.aliases.begin(), codec.aliases.end());
+        }
+        return out;
+    }
+
+    void UltraCanvasFileLoader::AddVideoSaveTypes(FileDialogOptions& opts) {
+        // Straight from the registry, as the inventory's video rows are: a
+        // type a content probe decides (".ts") is not one a name can pick.
+        for (const MediaCodecRegistration& codec : GetRegisteredMediaCodecs(MediaCodecKind::Video)) {
+            if (!codec.convertVideo || codec.probeFile) continue;
+            std::vector<std::string> extensions = {codec.extension};
+            extensions.insert(extensions.end(), codec.aliases.begin(), codec.aliases.end());
+            opts.AddFilter(codec.description.empty() ? codec.extension : codec.description, extensions);
+        }
+        PutDefaultTypeFirst(opts);
     }
 
     std::shared_ptr<UCRichDocument> UltraCanvasFileLoader::LoadTextDocument(

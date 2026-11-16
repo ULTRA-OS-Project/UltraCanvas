@@ -1,3 +1,30 @@
+#### 2026-11-15 *0.4.21*
+- **The clipboard button opens UltraClipboard.** A click on the right bar's
+  clipboard button shows the whole history in UltraClipboard. A copy already
+  running, also one started in the background, comes forward instead of a
+  second one starting. The small quick panel stays on `Super+V`, for picking
+  what to paste from any window, and on the button's right-click menu as
+  *Quick panel (Super+V)*, which replaces *Open UltraClipboard* there.
+  Without UltraClipboard beside the desktop, the button opens the quick panel
+  as before.
+
+#### 2026-11-15 *0.4.20*
+- **The Apps window keeps your place in the tiles as well.** The tree view
+  stopped jumping back to the top in 0.4.19; the tiles still did, because the
+  whole scrolling area was built again on every keystroke in the filter box,
+  every new list of applications and every application moved. The area is
+  kept now and only the tiles inside it are made again, so the view stays
+  where you left it. Switching to the tree and back, or a filter that matches
+  nothing, builds the page afresh as before.
+- **The Apps window can be tested.** It read the machine's own `.desktop`
+  files and made its own window, so nothing could drive it: `Hooks`
+  gains `applications`, a list handed to the window in place of the scan
+  (nothing is read from disk or kept between openings), `ShowApps` is public
+  beside it, and `Window()` lets a caller reach the page's elements by their
+  identifiers. `UltraDesktopAppStarterTest` uses all three to hold both views
+  to keeping the chosen category, the opened categories and the scroll
+  position across a rebuild; CI runs it on a virtual display.
+
 #### 2026-11-15 *0.4.19*
 - **The Apps window's category tree keeps its place while you type in the
   filter box.** Every keystroke - and every new list of applications, and

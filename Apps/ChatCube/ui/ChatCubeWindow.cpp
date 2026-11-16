@@ -1,5 +1,15 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.5 - a Mastodon account (the server, then its sign-in page in the browser); the network
+//                  buttons in two rows; @user@server and https://server/@user go to Mastodon
+// Version: 0.3.4 - sending in the background, a file's progress in its bubble, a video's preview picture
+//                  and length at once, songs played in their bubble, videos played in the chat, filter
+//                  chips over the chat (pictures, videos, audio, files, links)
+// Version: 0.3.3 - Reply and Edit in a message's menu (Edit also by a double click), a bar over the
+//                  field for either; the search field over the chat; voice messages recorded with the
+//                  microphone and played in their bubble; video messages recorded over the field
+// Version: 0.3.2 - files dropped on the window: on a chat in the list (it opens) or on the open chat,
+//                  into the strip; the paperclip's dialog shows every file, not only pictures
 // Version: 0.3.1 - a group's whole member count (MemberCount) in its menu and under its name: a Telegram
 //                  supergroup lists only its most active members
 // Version: 0.3.0 - the chat list's menu (a right-click): read / unread, pinned, calls, the ID, a group's
@@ -25,15 +35,22 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
 #include "ChatCubeControls.h"
+#include "ChatCubeGroupWindow.h"
 #include "ChatCubeProfileWindow.h"
 #include "ChatCubeTheme.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasAudioPlayer.h"
+#include "UltraCanvasAudioRecorder.h"
+#include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasVideoFileInfo.h"
+#include "UltraCanvasVideoPlayerElement.h"
+#include "UltraCanvasVideoRecorderElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasClipboard.h"
@@ -49,6 +66,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasUtils.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasVideoTile.h"
@@ -174,18 +192,51 @@ std::string RelayHost(const std::string& url) {
 ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId, Settings settings)
     : version_(std::move(version)), providerId_(std::move(providerId)), settings_(settings),
       dataFolder_(PathToUtf8(UltraCanvasDataFolder("ChatCube"))),
-      profileWindow_(std::make_unique<ChatCubeProfileWindow>(providerId_)) {
+      profileWindow_(std::make_unique<ChatCubeProfileWindow>(providerId_)),
+      groupWindow_(std::make_unique<ChatCubeGroupWindow>()) {
     SetDateTimeStyle(settings_.clock24, settings_.dateStyle);
     profileWindow_->onSaved = [this](const std::string& text) { SetStatus(text); };
+    // The editor's actions that ask first are this window's.
+    groupWindow_->onStatus = [this](const std::string& text) { SetStatus(text); };
+    groupWindow_->nameOf = [this](const UltraIMConversation& g, const std::string& member) { return MemberName(g, member); };
+    groupWindow_->onMessage = [this](const std::string& provider, const std::string& member) {
+        MessageMember(provider, member);
+        if (window_) window_->RaiseAndFocus();
+    };
+    groupWindow_->onRemove = [this](const std::string& id, const std::string& member) { RemoveMember(id, member); };
+    groupWindow_->onBlock = [this](const std::string& id, const std::string& member) { BlockMember(id, member); };
+    groupWindow_->onAddMembers = [this](const std::string& id) { AskToAddMembers(id); };
+    groupWindow_->onSetPublic = [this](const std::string& id, bool isPublic) { SetGroupPublic(id, isPublic); };
+    groupWindow_->onLeave = [this](const std::string& id) { AskToLeave(id); };
+    groupWindow_->onChanged = [this](const UltraIMConversation& c) {
+        UpsertConversation(c);
+        if (c.conversationId == activeConversation_) UpdateHeader();
+    };
 }
 
 ChatCubeWindow::~ChatCubeWindow() {
+    // Nothing comes back to the window from here on; what is still queued
+    // to send goes, then the sending thread ends.
+    *alive_ = false;
+    sendQueue_.reset();
+    previewQueue_.reset();
     if (themeHandler_) UltraCanvasTheme::RemoveChangeHandler(themeHandler_);
     // The tiles go with the window: no picture may be pushed into them after.
     if (!callId_.empty()) UltraIM_SetCallVideoSinks(providerId_, callId_, nullptr, nullptr);
     if (subscription_) UltraIM_Unsubscribe(subscription_);
-    if (callTimer_)
-        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(callTimer_);
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+        if (callTimer_) app->StopTimer(callTimer_);
+        if (recordTimer_) app->StopTimer(recordTimer_);
+        if (searchTimer_) app->StopTimer(searchTimer_);
+        if (publicTimer_) app->StopTimer(publicTimer_);
+    }
+    // A recording under way goes with the window, nothing sent.
+    if (voiceRecorder_) {
+        voiceRecorder_->Stop();
+        voiceRecorder_->Close();
+    }
+    if (voicePlayer_) voicePlayer_->Stop();
+    if (videoRecorder_) videoRecorder_->CloseCamera();
     StopRecoveryPolling();
 }
 
@@ -211,6 +262,11 @@ bool ChatCubeWindow::Create() {
     // follow the theme by themselves, ApplyLook brings ChatCube's own.
     themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
     window_->onWindowClosed = [this]() { if (onClosed) onClosed(); };
+    // Files dropped anywhere on the window: the chat list and the open chat
+    // take them (DropFiles), whatever element is under the pointer.
+    window_->InstallEventFilter("chatcube-drop-files",
+                                [this](const UCEvent& event) { return DropFiles(event); },
+                                {UCEventType::Drop});
 
     subscription_ = UltraIM_Subscribe([this](const UltraIMEvent& e) { OnEvent(e); });
 
@@ -454,7 +510,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
 
     // Adding someone: a pill, and a round plus.
     auto addRow = MakeRow("cc-add-row", 6);
-    contactId_ = MakeInput("cc-add-id", Tr("Add: a ChatCube ID, @name:server or @telegram"),
+    contactId_ = MakeInput("cc-add-id", Tr("Add: a ChatCube ID, @name:server, @telegram or @user@server"),
                            kSidebarWidth - 16 - kIconButton - 6, true);
     contactId_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     contactId_->onEnterPressed = [this](const std::string&) { AddContact(); return true; };
@@ -465,9 +521,11 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     addRow->AddChild(add);
     sidebar->AddChild(addRow);
 
-    // The three doors: a new group, a Matrix account, a Telegram account.
+    // The doors, two rows of two: a new group and a Matrix account, a
+    // Telegram and a Mastodon account (each name whole at half the sidebar).
     auto doors = MakeRow("cc-doors", 6);
-    const int doorWidth = (kSidebarWidth - 16 - 12) / 3;
+    auto moreDoors = MakeRow("cc-doors-2", 6);
+    const int doorWidth = (kSidebarWidth - 16 - 6) / 2;
     auto newGroup = MakeIconButton("cc-new-group", "group", Tr("Group"), doorWidth, false, false);
     newGroup->SetTooltip(Tr("New group"));
     newGroup->SetOnClick([this]() { ToggleGroupForm(); });
@@ -482,8 +540,14 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     telegramToggle_->SetTooltip(Tr("Telegram account"));
     telegramToggle_->SetOnClick([this]() { ToggleTelegramForm(); });
     telegramToggle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    doors->AddChild(telegramToggle_);
+    moreDoors->AddChild(telegramToggle_);
+    mastodonToggle_ = MakeIconButton("cc-mastodon", "mastodon", "Mastodon", doorWidth, false, false);
+    mastodonToggle_->SetTooltip(Tr("Mastodon account"));
+    mastodonToggle_->SetOnClick([this]() { ToggleMastodonForm(); });
+    mastodonToggle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    moreDoors->AddChild(mastodonToggle_);
     sidebar->AddChild(doors);
+    sidebar->AddChild(moreDoors);
 
     // A Matrix account next to ChatCube Direct.
     matrixForm_ = std::make_shared<UltraCanvasContainer>("cc-matrix-form");
@@ -512,6 +576,20 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     matrixKeysForm_->AddChild(importKeys);
     matrixKeysForm_->SetVisible(false);
     sidebar->AddChild(matrixKeysForm_);
+
+    // A Mastodon account: the server; the sign-in itself is its own page,
+    // opened in the browser.
+    mastodonForm_ = std::make_shared<UltraCanvasContainer>("cc-mastodon-form");
+    mastodonForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    mastodonForm_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    mastodonServer_ = MakeInput("cc-mastodon-server", Tr("Server, e.g. mastodon.social"), kSidebarWidth - 16);
+    mastodonServer_->onEnterPressed = [this](const std::string&) { SignInToMastodon(false); return true; };
+    mastodonForm_->AddChild(mastodonServer_);
+    mastodonSignIn_ = MakeButton("cc-mastodon-go", Tr("Sign in in the browser"), kSidebarWidth - 16, true);
+    mastodonSignIn_->SetOnClick([this]() { SignInToMastodon(false); });
+    mastodonForm_->AddChild(mastodonSignIn_);
+    mastodonForm_->SetVisible(false);
+    sidebar->AddChild(mastodonForm_);
 
     // A Telegram account: the phone number, then the code, then the
     // two-step password if there is one - one field at a time; or a QR code
@@ -597,6 +675,13 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     nearbyBox_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     nearbyBox_->SetVisible(false);
     sidebar->AddChild(nearbyBox_);
+
+    // Public groups anyone may join, not joined yet (filled by RefreshPublicGroups).
+    publicBox_ = std::make_shared<UltraCanvasContainer>("cc-public-groups");
+    publicBox_->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    publicBox_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    publicBox_->SetVisible(false);
+    sidebar->AddChild(publicBox_);
 
     conversations_ = std::make_shared<ConversationListModel>();
     conversationList_ = std::make_shared<UltraCanvasListView>("cc-conversations", 0, 0, kSidebarWidth - 16, 300);
@@ -685,6 +770,57 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     header->AddChild(videoCall_);
     pane->AddChild(header);
 
+    // ----- search: a field over the chat, the list showing what matches -----
+    searchRow_ = MakeRow("cc-search-row", 8);
+    searchRow_->SetPadding(6, 14, 6, 14);
+    OnLook(searchRow_, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().panel);
+        c.SetBorderBottom(1, L().line);
+    });
+    searchInput_ = MakeInput("cc-search", Tr("Search in this chat"), 260, true);
+    searchInput_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    searchInput_->onTextChanged = [this](const std::string&) {
+        if (!settingSearch_) ScheduleSearch();
+    };
+    searchInput_->onEnterPressed = [this](const std::string&) {
+        RunSearch();
+        return true;
+    };
+    searchRow_->AddChild(searchInput_);
+    searchInfo_ = MakeLabel("cc-search-info", "", 9.0f, &Look::inkMuted);
+    searchInfo_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    searchRow_->AddChild(searchInfo_);
+    auto searchClear = MakeIconButton("cc-search-clear", "close", "", kIconButton, false, true);
+    searchClear->SetTooltip(Tr("Show the whole chat again"));
+    searchClear->SetOnClick([this]() { ClearSearch(true); });
+    searchRow_->AddChild(searchClear);
+    searchRow_->SetVisible(false);
+    pane->AddChild(searchRow_);
+    // Under it, the kinds: the list shows only pictures, videos, sound,
+    // files or messages with a link (with the words, when some are typed).
+    auto filterRow = MakeRow("cc-filter-row", 6);
+    filterRow->SetPadding(0, 14, 6, 14);
+    OnLook(filterRow, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().panel);
+        c.SetBorderBottom(1, L().line);
+    });
+    const std::pair<UltraIMSearchKind, std::string> kinds[] = {
+        {UltraIMSearchKind::AnyKind, Tr("All")},      {UltraIMSearchKind::Images, Tr("Pictures")},
+        {UltraIMSearchKind::Videos, Tr("Videos")},    {UltraIMSearchKind::Audio, Tr("Audio")},
+        {UltraIMSearchKind::Files, Tr("Files")},      {UltraIMSearchKind::Links, Tr("Links")}};
+    for (const auto& [kind, words] : kinds) {
+        auto chip = MakeButton("cc-filter-" + std::to_string(static_cast<int>(kind)), words, 82,
+                               kind == UltraIMSearchKind::AnyKind);
+        chip->size.height = CSSLayout::Dimension::Px(26);
+        chip->SetOnClick([this, k = kind]() { SetSearchKind(k); });
+        filterRow->AddChild(chip);
+        filterChips_.push_back({kind, chip});
+    }
+    // Shown with the search row (OpenConversation / CloseConversationView).
+    filterRow->SetVisible(false);
+    filterRow_ = filterRow;
+    pane->AddChild(filterRow);
+
     // ----- messages -----
     auto empty = std::make_shared<UltraCanvasContainer>("cc-empty-box");
     empty->layout.SetFlexColumn().SetFlexGap(10)
@@ -740,12 +876,113 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     // A click on a picture, or on a file's bubble, opens it.
     messageList_->onCellClicked = [this](int row, int, const Point2Di& posInCell) {
         Rect2Di media;
-        if (bubbles_->MediaRect(messages_.get(), row, media) && media.Contains(posInCell)) OpenAttachment(row);
+        if (!bubbles_->MediaRect(messages_.get(), row, media) || !media.Contains(posInCell)) return;
+        const auto& rows = messages_->Rows();
+        // Sound plays in its bubble, a video in the chat; anything else opens.
+        if (row < 0 || row >= static_cast<int>(rows.size())) return;
+        const UltraIMMessage& clicked = rows[static_cast<size_t>(row)].message;
+        if (IsAudioMessage(clicked)) ToggleVoicePlayback(row);
+        else if (clicked.type == UltraIMMessageType::Video) PlayVideoInChat(row);
+        else OpenAttachment(row);
+    };
+    // A double click on one of our own messages changes it.
+    messageList_->onCellDoubleClicked = [this](int row, int, const Point2Di&) {
+        const auto& rows = messages_->Rows();
+        if (row < 0 || row >= static_cast<int>(rows.size()) || rows[static_cast<size_t>(row)].kind != MessageRow::Kind::Message)
+            return;
+        const UltraIMMessage& m = rows[static_cast<size_t>(row)].message;
+        if (CanEdit(m)) StartEdit(m);
     };
     messageList_->onContextMenu = [this](int row, const UCEvent& event) {
         ShowMessageMenu(row, event.pointerWindow.x, event.pointerWindow.y);
     };
     pane->AddChild(messageList_);
+
+    // ----- a video played in the chat: a player over the field, and a x -----
+    videoPlayerPanel_ = std::make_shared<UltraCanvasContainer>("cc-video-player-panel");
+    videoPlayerPanel_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    videoPlayerPanel_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    videoPlayerPanel_->SetPadding(8, 14, 10, 14);
+    OnLook(videoPlayerPanel_, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().panel);
+        c.SetBorderTop(1, L().line);
+    });
+    auto playerBar = MakeRow("cc-video-player-bar", 8);
+    videoPlayerTitle_ = MakeLabel("cc-video-player-title", "", 10.5f);
+    videoPlayerTitle_->SetFontWeight(FontWeight::Bold);
+    videoPlayerTitle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    playerBar->AddChild(videoPlayerTitle_);
+    auto playerClose = MakeIconButton("cc-video-player-close", "close", "", kIconButton, false, true);
+    playerClose->SetTooltip(Tr("Close the video"));
+    playerClose->SetOnClick([this]() { CloseVideoPlayer(); });
+    playerBar->AddChild(playerClose);
+    videoPlayerPanel_->AddChild(playerBar);
+    videoPlayer_ = CreateVideoPlayer("cc-video-player", 0, 0, 560, 315);
+    videoPlayer_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    videoPlayer_->size.height = CSSLayout::Dimension::Px(315);
+    videoPlayerPanel_->AddChild(videoPlayer_);
+    videoPlayerPanel_->SetVisible(false);
+    pane->AddChild(videoPlayerPanel_);
+
+    // ----- a video message: the camera over the field while it is recorded -----
+    videoNotePanel_ = MakeRow("cc-video-note", 12);
+    videoNotePanel_->SetPadding(10, 14, 10, 14);
+    videoNotePanel_->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    OnLook(videoNotePanel_, [](UltraCanvasContainer& c) {
+        c.SetBackgroundColor(L().panel);
+        c.SetBorderTop(1, L().line);
+    });
+    videoRecorder_ = CreateVideoRecorder("cc-video-recorder", 0, 0, 360, 270);
+    videoRecorder_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    videoRecorder_->size.width = CSSLayout::Dimension::Px(360);
+    videoRecorder_->size.height = CSSLayout::Dimension::Px(270);
+    // Its callbacks come from the camera's threads.
+    videoRecorder_->onRecordStarted = [this]() {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+            app->PostToUIThread([this]() {
+                videoNoteStartedMs_ = NowMs();
+                videoNoteReady_ = false;
+                videoNoteSend_->SetDisabled(true);
+                videoNoteText_->SetText(Tr("Recording - press the red button again to stop."));
+            });
+    };
+    videoRecorder_->onSaved = [this](const std::string& path) {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+            app->PostToUIThread([this, path]() {
+                videoNotePath_ = path;
+                videoNoteSeconds_ = videoNoteStartedMs_ > 0 ? (NowMs() - videoNoteStartedMs_) / 1000.0 : 0.0;
+                std::error_code ec;
+                videoNoteReady_ = std::filesystem::is_regular_file(PathFromUtf8(path), ec);
+                videoNoteSend_->SetDisabled(!videoNoteReady_);
+                videoNoteText_->SetText(videoNoteReady_ ? TrF("Recorded {0} - send it, or record again.",
+                                                              FormatDuration(videoNoteSeconds_))
+                                                        : Tr("The recording could not be saved."));
+                if (window_) window_->RequestRedraw();
+            });
+    };
+    videoRecorder_->onError = [this](const std::string& message) {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+            app->PostToUIThread([this, message]() { videoNoteText_->SetText(TrF("Camera: {0}", message)); });
+    };
+    videoNotePanel_->AddChild(videoRecorder_);
+    auto videoNoteSide = std::make_shared<UltraCanvasContainer>("cc-video-note-side");
+    videoNoteSide->layout.SetFlexColumn().SetFlexGap(10);
+    videoNoteSide->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    videoNoteSide->AddChild(MakeLabel("cc-video-note-title", Tr("Video message"), 12.0f));
+    videoNoteText_ = MakeLabel("cc-video-note-text", "", 10.0f, &Look::inkMuted);
+    videoNoteText_->SetWrap(TextWrap::WrapWord);
+    videoNoteSide->AddChild(videoNoteText_);
+    auto videoNoteButtons = MakeRow("cc-video-note-buttons", 8);
+    videoNoteSend_ = MakeIconButton("cc-video-note-send", "send", Tr("Send"), 96, true);
+    videoNoteSend_->SetOnClick([this]() { SendVideoMessage(); });
+    videoNoteButtons->AddChild(videoNoteSend_);
+    auto videoNoteCancel = MakeIconButton("cc-video-note-cancel", "close", Tr("Cancel"), 104);
+    videoNoteCancel->SetOnClick([this]() { CloseVideoRecorder(false); });
+    videoNoteButtons->AddChild(videoNoteCancel);
+    videoNoteSide->AddChild(videoNoteButtons);
+    videoNotePanel_->AddChild(videoNoteSide);
+    videoNotePanel_->SetVisible(false);
+    pane->AddChild(videoNotePanel_);
 
     // ----- the composer: a rounded field with the send button inside -----
     auto inputRow = std::make_shared<UltraCanvasContainer>("cc-input-row");
@@ -767,6 +1004,24 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         c.SetBorders(1.0f, L().line, 22.0f);
     });
     composer->SetPadding(5, 6, 5, 6);
+    // Replying to a message, or changing one of ours: which, and a x.
+    composerBar_ = MakeRow("cc-composer-bar", 8);
+    composerBar_->SetPadding(4, 8, 0, 10);
+    auto barWords = std::make_shared<UltraCanvasContainer>("cc-composer-bar-words");
+    barWords->layout.SetFlexColumn().SetFlexGap(1);
+    barWords->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    composerBarTitle_ = MakeLabel("cc-composer-bar-title", "", 9.5f, &Look::accent);
+    composerBarTitle_->SetFontWeight(FontWeight::Bold);
+    barWords->AddChild(composerBarTitle_);
+    composerBarText_ = MakeLabel("cc-composer-bar-text", "", 9.5f, &Look::inkMuted);
+    barWords->AddChild(composerBarText_);
+    composerBar_->AddChild(barWords);
+    auto barClose = MakeIconButton("cc-composer-bar-close", "close", "", kTileClose + 8, false, true);
+    barClose->SetTooltip(Tr("Cancel (Escape)"));
+    barClose->SetOnClick([this]() { ClearComposerMode(); });
+    composerBar_->AddChild(barClose);
+    composerBar_->SetVisible(false);
+    composer->AddChild(composerBar_);
     attachmentStrip_ = std::make_shared<UltraCanvasContainer>("cc-attachments");
     attachmentStrip_->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap).SetFlexGap(6)
         .SetFlexAlignItems(CSSLayout::AlignItems::Start);
@@ -774,7 +1029,25 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     attachmentStrip_->SetPadding(4, 8, 0, 8);
     attachmentStrip_->SetVisible(false);
     composer->AddChild(attachmentStrip_);
+    // A voice message being recorded: in place of the field.
+    recordBar_ = MakeRow("cc-record-bar", 8);
+    recordBar_->SetPadding(2, 4, 2, 8);
+    recordBar_->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    auto recordCancel = MakeIconButton("cc-record-cancel", "close", "", kIconButton, false, true);
+    recordCancel->SetTooltip(Tr("Throw the recording away"));
+    recordCancel->SetOnClick([this]() { FinishVoiceRecording(false); });
+    recordBar_->AddChild(recordCancel);
+    recordText_ = MakeLabel("cc-record-text", "", 11.0f, &Look::danger);
+    recordText_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    recordBar_->AddChild(recordText_);
+    auto recordSend = MakeIconButton("cc-record-send", "send", "", kIconButton, true);
+    recordSend->SetTooltip(Tr("Send the voice message"));
+    recordSend->SetOnClick([this]() { FinishVoiceRecording(true); });
+    recordBar_->AddChild(recordSend);
+    recordBar_->SetVisible(false);
+    composer->AddChild(recordBar_);
     auto composerRow = std::make_shared<UltraCanvasContainer>("cc-composer-row");
+    composerRow_ = composerRow;
     composerRow->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::End);
     composerRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     attach_ = MakeIconButton("cc-attach", "attach", "", kIconButton);
@@ -807,6 +1080,11 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     // is the text area's. Ctrl+V (Shift+Insert) with a picture or a file on
     // the clipboard puts it in the strip; with text, the area pastes it as usual.
     input_->onBeforeKeyDown = [this](const UCEvent& e) {
+        // Escape gives up a reply or an edit.
+        if (e.virtualKey == UCKeys::Escape && (!replyTo_.messageId.empty() || !editing_.clientMessageId.empty())) {
+            ClearComposerMode();
+            return true;
+        }
         const bool enter = e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter;
         const bool sends = settings_.ctrlEnterSends ? (e.ctrl && !e.shift && !e.alt) : !e.shift;
         if (enter && sends) {
@@ -825,6 +1103,16 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         UltraIM_SetTyping(activeProvider_, activeConversation_, true);
     });
     composerRow->AddChild(input_);
+    recordVideo_ = MakeIconButton("cc-record-video", "video-message", "", kIconButton);
+    recordVideo_->SetTooltip(Tr("Record a video message"));
+    recordVideo_->SetDisabled(true);
+    recordVideo_->SetOnClick([this]() { OpenVideoRecorder(); });
+    composerRow->AddChild(recordVideo_);
+    recordVoice_ = MakeIconButton("cc-record-voice", "mic", "", kIconButton);
+    recordVoice_->SetTooltip(Tr("Record a voice message"));
+    recordVoice_->SetDisabled(true);
+    recordVoice_->SetOnClick([this]() { StartVoiceRecording(); });
+    composerRow->AddChild(recordVoice_);
     send_ = MakeIconButton("cc-send", "send", "", kIconButton, true);
     send_->SetOnClick([this]() { SendCurrentMessage(); });
     composerRow->AddChild(send_);
@@ -955,7 +1243,8 @@ void ChatCubeWindow::RenderStatus() {
     std::string line = actionStatus_;
     // The networks in a fixed order, each under the name the sidebar uses.
     const std::pair<std::string, const char*> networks[] = {
-        {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"}};
+        {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
+        {mastodonProviderId_, "Mastodon"}};
     for (const auto& network : networks) {
         auto it = providerStatus_.find(network.first);
         if (it == providerStatus_.end()) continue;
@@ -1168,10 +1457,18 @@ void ChatCubeWindow::SignIn() {
         if (created) FinishCreatedProtection(chosen, password);
         RefreshConversations();
         RefreshNearby();
+        // The public groups now, and again every few minutes: new ones appear.
+        RefreshPublicGroups();
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent(); app && !publicTimer_)
+            publicTimer_ = app->StartTimer(5 * 60 * 1000, true, [this](TimerId) { RefreshPublicGroups(); });
         UltraIMProviderInfo matrixInfo;
         if (UltraIM_GetProviderInfo(matrixProviderId_, matrixInfo) && matrixInfo.hasStoredSession &&
             matrixInfo.connectionState == UltraIMConnectionState::Disconnected)
             SignInToMatrix(true);
+        UltraIMProviderInfo mastodonInfo;
+        if (UltraIM_GetProviderInfo(mastodonProviderId_, mastodonInfo) && mastodonInfo.hasStoredSession &&
+            mastodonInfo.connectionState == UltraIMConnectionState::Disconnected)
+            SignInToMastodon(true);
         // The relay's Telegram keys first: a stored Telegram session resumes
         // with them, so a change of keys on the relay reaches it.
         FetchTelegramCredentials([this]() {
@@ -1283,6 +1580,7 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
 
     // ---- the person, or the group
     std::vector<MenuItemData>& who = sections[1];
+    if (c.isGroup) who.push_back(MenuItemData::Action(Tr("Group settings\xE2\x80\xA6"), [this, id]() { OpenGroupEditor(id); }));
     if (!c.isGroup) {
         const auto addCall = [&](bool video) {
             const UltraIMCapabilityFlags needed = video ? UltraIMCapabilityFlags::VideoCalls
@@ -1332,6 +1630,10 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
                 actions.push_back(MenuItemData::Action(Tr("Remove from group"),
                                                        [this, id, member]() { RemoveMember(id, member); }));
             }
+            // Blocking is ChatCube's, and the owner's.
+            if (!self && provider == providerId_ && !c.ownerId.empty() && c.ownerId == me) {
+                actions.push_back(MenuItemData::Action(Tr("Block"), [this, id, member]() { BlockMember(id, member); }));
+            }
             std::string name = self ? Tr("You") : MemberName(c, member);
             if (!c.ownerId.empty() && member == c.ownerId) name = TrF("{0} (owner)", name);
             members.push_back(MenuItemData::Submenu(name, actions));
@@ -1347,6 +1649,12 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
         if (manage) {
             who.push_back(MenuItemData::Action(Tr("Add members"), [this, id]() { AskToAddMembers(id); }));
             who.push_back(MenuItemData::Action(Tr("Rename group"), [this, id]() { AskToRenameGroup(id); }));
+        }
+        // A ChatCube group's owner: listed for everyone, or for its members alone.
+        if (provider == providerId_ && !c.ownerId.empty() && c.ownerId == me) {
+            const bool makePublic = !c.isPublic;
+            who.push_back(MenuItemData::Action(makePublic ? Tr("Make public") : Tr("Make private"),
+                                               [this, id, makePublic]() { SetGroupPublic(id, makePublic); }));
         }
     }
 
@@ -1476,6 +1784,33 @@ void ChatCubeWindow::RemoveMember(const std::string& conversationId, const std::
     }, window_.get());
 }
 
+void ChatCubeWindow::OpenGroupEditor(const std::string& conversationId) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (!c || !c->isGroup || !window_) return;
+    UltraIMConversation group = *c;
+    if (group.providerId.empty()) group.providerId = providerId_;
+    UltraIMProviderInfo info;
+    UltraIM_GetProviderInfo(group.providerId, info);
+    groupWindow_->Show(window_.get(), group, info.localUserId, group.providerId == providerId_);
+}
+
+void ChatCubeWindow::BlockMember(const std::string& conversationId, const std::string& memberId) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    if (!c) return;
+    const std::string provider = c->providerId.empty() ? providerId_ : c->providerId;
+    const std::string name = MemberName(*c, memberId);
+    const std::string question = TrF("Block {0}? They are taken out of {1} and cannot join it again until you "
+                                     "unblock them.", name, c->title);
+    UltraCanvasDialogManager::ShowConfirmation(question, Tr("Block"),
+                                               [this, provider, conversationId, memberId, name](bool yes) {
+        if (!yes) return;
+        UltraIM_BlockGroupMember(provider, conversationId, memberId, [this, name](const UltraIMResult& r) {
+            SetStatus(r ? TrF("{0} is blocked.", name) : TrF("Could not block {0}: {1}", name, r.message));
+            groupWindow_->RefreshBlocked();
+        });
+    }, window_.get());
+}
+
 void ChatCubeWindow::AskToRenameGroup(const std::string& conversationId) {
     const UltraIMConversation* c = conversations_->Find(conversationId);
     if (!c) return;
@@ -1576,6 +1911,14 @@ void ChatCubeWindow::AskToLeave(const std::string& conversationId) {
 }
 
 void ChatCubeWindow::CloseConversationView() {
+    FinishVoiceRecording(false);
+    CloseVideoRecorder(false);
+    StopVoicePlayback();
+    CloseVideoPlayer();
+    ClearComposerMode();
+    ClearSearch(false);
+    searchRow_->SetVisible(false);
+    filterRow_->SetVisible(false);
     activeConversation_.clear();
     messages_->Clear();
     messageList_->SetVisible(false);
@@ -1838,6 +2181,44 @@ void ChatCubeWindow::SignInToMatrix(bool stored) {
     });
 }
 
+void ChatCubeWindow::ToggleMastodonForm() {
+    UltraIMProviderInfo info;
+    if (!UltraIM_GetProviderInfo(mastodonProviderId_, info)) {
+        SetStatus(Tr("The Mastodon module was not found (Plugins/UltraIM)."));
+        return;
+    }
+    if (info.connectionState == UltraIMConnectionState::Connected) {
+        mastodonForm_->SetVisible(false);
+        SetStatus(TrF("Mastodon: signed in as {0}", info.localUserId));
+    } else {
+        mastodonForm_->SetVisible(!mastodonForm_->IsVisible());
+    }
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::SignInToMastodon(bool stored) {
+    UltraIMCredentials credentials;
+    credentials.loginType = UltraIMLoginType::SsoOidc;
+    if (!stored) {
+        credentials.server = Trim(mastodonServer_->GetText());
+        if (credentials.server.empty()) {
+            SetStatus(Tr("Mastodon: enter your server, e.g. mastodon.social."));
+            return;
+        }
+        mastodonSignIn_->SetDisabled(true);
+    }
+    SetProviderStatus(mastodonProviderId_, Tr("signing in\xE2\x80\xA6"));
+    UltraIM_SignIn(mastodonProviderId_, credentials, [this, stored](const UltraIMResult& r) {
+        if (!stored) mastodonSignIn_->SetDisabled(false);
+        if (!r) {
+            SetProviderStatus(mastodonProviderId_, r.message);
+            return;
+        }
+        mastodonForm_->SetVisible(false);
+        RefreshConversations();
+    });
+}
+
 void ChatCubeWindow::RefreshNearby() {
     UltraIM_FetchNearbyContacts(providerId_, [this](const UltraIMResult&, const std::vector<UltraIMContact>& list) {
         nearbyBox_->ClearChildren();
@@ -1855,6 +2236,81 @@ void ChatCubeWindow::RefreshNearby() {
         }
         nearbyBox_->SetVisible(!list.empty() && settings_.showNearby);
         if (window_) window_->RequestRedraw();
+    });
+}
+
+void ChatCubeWindow::RefreshPublicGroups() {
+    UltraIM_FetchPublicGroups(providerId_, std::string(),
+                              [this](const UltraIMResult& r, const std::vector<UltraIMPublicGroup>& list) {
+        publicBox_->ClearChildren();
+        std::vector<UltraIMPublicGroup> open;
+        if (r) {
+            for (const UltraIMPublicGroup& g : list) {
+                if (!g.joined) open.push_back(g);
+            }
+        }
+        if (!open.empty()) publicBox_->AddChild(MakeLabel("cc-public-title", Tr("Public groups"), 9.0f, &Look::inkMuted));
+        // The biggest few; the rest on asking.
+        constexpr size_t kShown = 4;
+        const size_t shown = showAllPublic_ ? open.size() : std::min(open.size(), kShown);
+        for (size_t i = 0; i < shown; ++i) {
+            const UltraIMPublicGroup& g = open[i];
+            auto row = MakeRow("cc-public-row", 6);
+            auto name = MakeLabel("cc-public-name", g.title, kTextFont);
+            // What it is about, when hovered.
+            name->SetTooltip(g.description.empty() ? TrN("{n} member", "{n} members", g.memberCount) : g.description);
+            name->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(name);
+            auto count = MakeLabel("cc-public-count", std::to_string(g.memberCount), 9.0f, &Look::inkMuted);
+            count->SetTooltip(TrN("{n} member", "{n} members", g.memberCount));
+            row->AddChild(count);
+            auto join = MakeButton("cc-public-join", Tr("Join"), 52, true);
+            const std::string id = g.conversationId;
+            const std::string title = g.title;
+            join->SetOnClick([this, id, title]() { JoinPublicGroup(id, title); });
+            row->AddChild(join);
+            publicBox_->AddChild(row);
+        }
+        if (open.size() > shown) {
+            auto more = MakeButton("cc-public-more", TrF("Show all public groups ({0})", open.size()),
+                                   kSidebarWidth - 16);
+            more->SetOnClick([this]() {
+                showAllPublic_ = true;
+                RefreshPublicGroups();
+            });
+            publicBox_->AddChild(more);
+        }
+        publicBox_->SetVisible(!open.empty());
+        if (window_) window_->RequestRedraw();
+    });
+}
+
+void ChatCubeWindow::JoinPublicGroup(const std::string& conversationId, const std::string& title) {
+    SetStatus(TrF("Joining {0}\xE2\x80\xA6", title));
+    UltraIM_JoinGroup(providerId_, conversationId, [this, title](const UltraIMResult& r, const UltraIMConversation& c) {
+        if (!r) {
+            SetStatus(TrF("Could not join {0}: {1}", title, r.message));
+            RefreshPublicGroups();
+            return;
+        }
+        UpsertConversation(c);
+        SetStatus(TrF("You joined {0}.", title));
+        RefreshPublicGroups();
+        OpenConversation(c.conversationId);
+    });
+}
+
+void ChatCubeWindow::SetGroupPublic(const std::string& conversationId, bool isPublic) {
+    UltraIM_SetGroupPublic(providerId_, conversationId, isPublic,
+                           [this, isPublic](const UltraIMResult& r, const UltraIMConversation& c) {
+        if (!r) {
+            SetStatus(TrF("Could not change the group: {0}", r.message));
+            return;
+        }
+        UpsertConversation(c);
+        SetStatus(isPublic ? TrF("{0} is public: everyone on ChatCube finds it under Public groups and can join.", c.title)
+                           : TrF("{0} is private again: only those in it see it.", c.title));
+        RefreshPublicGroups();
     });
 }
 
@@ -1898,6 +2354,9 @@ void ChatCubeWindow::CreateGroup() {
 
 std::string ChatCubeWindow::ProviderOfAddress(const std::string& address) const {
     if (address.empty()) return providerId_;
+    // Mastodon: @user@server, or a profile's page (https://server/@user).
+    if (address[0] == '@' && address.find('@', 1) != std::string::npos) return mastodonProviderId_;
+    if (address.rfind("https://", 0) == 0 && address.find("/@") != std::string::npos) return mastodonProviderId_;
     if (address[0] == '@') return address.find(':') != std::string::npos ? matrixProviderId_ : telegramProviderId_;
     if (address[0] == '+' || address.rfind("t.me/", 0) == 0 || address.rfind("https://t.me/", 0) == 0)
         return telegramProviderId_;
@@ -1910,6 +2369,16 @@ std::string ChatCubeWindow::ProviderOf(const std::string& conversationId) const 
 }
 
 void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
+    // What belonged to the chat before stays with it: a reply or an edit
+    // under way, a recording, a voice message playing, a search.
+    if (conversationId != activeConversation_) {
+        FinishVoiceRecording(false);
+        CloseVideoRecorder(false);
+        StopVoicePlayback();
+        CloseVideoPlayer();
+        ClearComposerMode();
+        ClearSearch(false);
+    }
     activeConversation_ = conversationId;
     activeProvider_ = ProviderOf(conversationId);
     typingContact_.clear();
@@ -1920,22 +2389,33 @@ void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
     messages_->Clear();
     emptyHint_->SetVisible(false);
     messageList_->SetVisible(true);
+    searchRow_->SetVisible(true);
+    filterRow_->SetVisible(true);
     fillingList_ = true;
     const int row = conversations_->FindRow(conversationId);
     if (row >= 0) conversationList_->GetSelection()->Select(row);
     fillingList_ = false;
     UpdateHeader();
 
-    UltraIM_FetchMessages(activeProvider_, conversationId, "", 200,
-                          [this, conversationId](const UltraIMResult& r, const std::vector<UltraIMMessage>& list) {
-        if (conversationId != activeConversation_) return;      // the user moved on
-        if (!r) SetStatus(TrF("Could not load the messages: {0}", r.message));
-        messages_->SetMessages(list);
-        ScrollToEnd();
-    });
+    LoadMessages();
     UltraIM_MarkRead(activeProvider_, conversationId);
     input_->SetFocus(true);
     if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::LoadMessages() {
+    const std::string conversationId = activeConversation_;
+    if (conversationId.empty()) return;
+    const int serial = ++searchSerial_;
+    UltraIM_FetchMessages(activeProvider_, conversationId, "", 200,
+                          [this, conversationId, serial](const UltraIMResult& r, const std::vector<UltraIMMessage>& list) {
+        // The user moved on, or searched meanwhile.
+        if (conversationId != activeConversation_ || serial != searchSerial_) return;
+        if (!r) SetStatus(TrF("Could not load the messages: {0}", r.message));
+        messages_->SetMessages(list);
+        ScrollToEnd();
+        for (const UltraIMMessage& m : list) EnsureVideoPreview(m);
+    });
 }
 
 void ChatCubeWindow::UpdateHeader() {
@@ -1946,9 +2426,13 @@ void ChatCubeWindow::UpdateHeader() {
         headerAvatar_->SetVisible(false);
         headerPhoto_->SetVisible(false);
         attach_->SetDisabled(true);
+        recordVoice_->SetDisabled(true);
+        recordVideo_->SetDisabled(true);
         return;
     }
     title_->SetText(c->title);
+    // What a group is about, when its name is hovered.
+    title_->SetTooltip(c->isGroup ? c->description : std::string());
     // Their picture when there is one and it reads; else the initials.
     bool photo = false;
     if (!c->avatarPath.empty()) {
@@ -1970,10 +2454,13 @@ void ChatCubeWindow::UpdateHeader() {
     attach_->SetDisabled(!attachments);
     attach_->SetTooltip(attachments ? Tr("Send a picture, a video or a file")
                                     : Tr("This network does not take pictures or files yet"));
+    recordVoice_->SetDisabled(!attachments);
+    recordVideo_->SetDisabled(!attachments);
     if (!typingContact_.empty() && NowMs() < typingUntilMs_) {
         subtitle_->SetText(Tr("typing\xE2\x80\xA6"));
     } else if (c->isGroup) {
         subtitle_->SetText(TrN("{n} member", "{n} members", MemberCount(*c)) +
+                           (c->isPublic ? " \xC2\xB7 " + Tr("public group") : std::string()) +
                            (c->isEncrypted ? " \xC2\xB7 " + Tr("end-to-end encrypted") : std::string()));
     } else if (c->providerId == providerId_) {
         subtitle_->SetText(PresenceText(c->presence));
@@ -2002,8 +2489,19 @@ bool ChatCubeWindow::AttachmentsPossible() const {
 void ChatCubeWindow::SendCurrentMessage() {
     if (activeConversation_.empty()) return;
     const std::string text = Trim(input_->GetText());
+    if (!editing_.clientMessageId.empty()) {
+        SaveEdit(text);
+        return;
+    }
+    // What is sent shows in the whole chat, not among a search's matches.
+    if ((!searchText_.empty() || shownKind_ != UltraIMSearchKind::AnyKind) && (!text.empty() || !staged_.empty()))
+        ClearSearch(true);
+    const std::string replyTo = replyTo_.messageId;
     if (staged_.empty()) {
-        if (!text.empty()) SendText(text);
+        if (!text.empty()) {
+            SendText(text, replyTo);
+            ClearComposerMode();
+        }
         return;
     }
     // What waits in the strip, each as a message of its own, the text as the
@@ -2016,18 +2514,21 @@ void ChatCubeWindow::SendCurrentMessage() {
     }
     UpdateAttachmentStrip();
     bool captionSent = text.empty();
+    bool replied = replyTo.empty();         // the first message answers
     for (const StagedAttachment& item : items) {
         const bool takesCaption = !captionSent && AttachmentKind(item.path) != UltraIMMessageType::File;
-        SendAttachment(item.path, takesCaption ? text : std::string());
+        SendAttachment(item.path, takesCaption ? text : std::string(), replied ? std::string() : replyTo);
+        replied = true;
         if (takesCaption) captionSent = true;
     }
     if (!captionSent) SendText(text);
+    ClearComposerMode();
     input_->SetText("");
     lastTypingSentMs_ = 0;
     UltraIM_SetTyping(activeProvider_, activeConversation_, false);
 }
 
-void ChatCubeWindow::SendText(const std::string& text) {
+void ChatCubeWindow::SendText(const std::string& text, const std::string& replyTo) {
     if (activeConversation_.empty() || text.empty()) return;
 
     // Optimistic: the bubble is shown now, its ticks follow the events.
@@ -2040,6 +2541,7 @@ void ChatCubeWindow::SendText(const std::string& text) {
     message.messageId = message.clientMessageId;
     message.senderId = info.localUserId;
     message.text = text;
+    message.replyTo.messageId = replyTo;    // the list fills in the quote from the message shown
     message.timestampMs = NowMs();
     message.isOwn = true;
     message.deliveryStatus = UltraIMDeliveryStatus::Sending;
@@ -2051,24 +2553,69 @@ void ChatCubeWindow::SendText(const std::string& text) {
 
     UltraIMSendOptions options;
     options.clientMessageId = message.clientMessageId;
-    const UltraIMResult r = UltraIM_SendText(activeProvider_, activeConversation_, text, options);
-    if (!r) {
-        messages_->UpdateStatus(message.clientMessageId, UltraIMDeliveryStatus::Failed);
-        SetStatus(TrF("Not sent: {0}", r.message));
-    }
+    options.replyToMessageId = replyTo;
+    // In the background, behind what was sent before it.
+    const std::string provider = activeProvider_;
+    const std::string conversation = activeConversation_;
+    sendQueue_->Post([this, provider, conversation, text, options]() {
+        const UltraIMResult r = UltraIM_SendText(provider, conversation, text, options);
+        if (r) return;
+        OnUI([this, id = options.clientMessageId, why = r.message]() {
+            messages_->UpdateStatus(id, UltraIMDeliveryStatus::Failed);
+            SetStatus(TrF("Not sent: {0}", why));
+        });
+    });
 }
 
 void ChatCubeWindow::AttachFile() {
     if (activeConversation_.empty()) return;
     FileDialogOptions opts;
     opts.SetTitle(Tr("Send a picture, a video or a file")).SetParentWindow(window_.get());
-    // Every picture and video format this build reads, then anything.
-    UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Pictures and videos"), {MediaFormatCategory::Bitmap, MediaFormatCategory::Video});
+    // Any file goes: every file shows (All files is the first type, the one
+    // the dialog opens with); the pictures and videos this build reads are
+    // a choice after it.
     opts.AddFilter(Tr("All files"), std::vector<std::string>{"*"});
+    UltraCanvasFileLoader::AddLoadTypes(opts, Tr("Pictures and videos"), {MediaFormatCategory::Bitmap, MediaFormatCategory::Video});
     UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
         if (result != DialogResult::OK || path.empty()) return;
         StageAttachment(path, false);
     });
+}
+
+bool ChatCubeWindow::DropFiles(const UCEvent& event) {
+    if (event.droppedFiles.empty()) return false;
+    if (!chatView_ || !chatView_->IsVisible()) return true;     // signed out: nothing takes them
+    // On a chat in the list: that chat, opened.
+    const Point2Df at(static_cast<float>(event.pointerWindow.x), static_cast<float>(event.pointerWindow.y));
+    if (conversationList_ && conversationList_->IsVisible() && conversationList_->ContainsInWindow(at)) {
+        // The row whose rectangle, as drawn now (scrolled), holds the point.
+        const Point2Di local(static_cast<int>(at.x - conversationList_->GetXInWindow()),
+                             static_cast<int>(at.y - conversationList_->GetYInWindow()));
+        const auto& list = conversations_->Conversations();
+        for (size_t row = 0; row < list.size(); ++row) {
+            if (!conversationList_->GetCellRect(static_cast<int>(row), 0).Contains(local)) continue;
+            if (list[row].conversationId != activeConversation_) OpenConversation(list[row].conversationId);
+            break;
+        }
+    }
+    if (activeConversation_.empty()) {
+        SetStatus(Tr("Drop the files on a chat, or open one first."));
+        return true;
+    }
+    int staged = 0, folders = 0;
+    std::error_code ec;
+    for (const std::string& file : event.droppedFiles) {
+        if (std::filesystem::is_regular_file(PathFromUtf8(file), ec)) {
+            StageAttachment(file, false);
+            ++staged;
+        } else if (std::filesystem::is_directory(PathFromUtf8(file), ec)) {
+            ++folders;
+        }
+    }
+    if (folders > 0 && staged == 0) SetStatus(Tr("A folder cannot be sent - drop the files in it."));
+    if (staged > 0) input_->SetFocus(true);
+    if (window_) window_->RequestRedraw();
+    return true;
 }
 
 bool ChatCubeWindow::PasteAttachment() {
@@ -2253,16 +2800,19 @@ void ChatCubeWindow::UpdateAttachmentStrip() {
     if (window_) window_->RequestRedraw();
 }
 
-void ChatCubeWindow::SendAttachment(const std::string& path, const std::string& caption) {
+void ChatCubeWindow::SendAttachment(const std::string& path, const std::string& caption, const std::string& replyTo,
+                                    double seconds, bool voice) {
     if (activeConversation_.empty() || path.empty()) return;
     std::error_code ec;
     if (!std::filesystem::is_regular_file(PathFromUtf8(path), ec)) {
         SetStatus(TrF("There is no file {0}", path));
         return;
     }
-    const UltraIMMessageType kind = AttachmentKind(path);
+    const UltraIMMessageType kind = voice ? UltraIMMessageType::Audio : AttachmentKind(path);
 
-    // Optimistic, like a text: the bubble shows the file at once.
+    // Optimistic, like a text: the bubble shows the file at once; what takes
+    // time - a picture's size, a video's preview picture and length - is
+    // found in the background and the bubble follows.
     UltraIMProviderInfo info;
     UltraIM_GetProviderInfo(activeProvider_, info);
     UltraIMMessage message;
@@ -2277,31 +2827,82 @@ void ChatCubeWindow::SendAttachment(const std::string& path, const std::string& 
     message.attachment.isDownloaded = true;
     message.attachment.fileName = PathToUtf8(PathFromUtf8(path).filename());
     message.attachment.fileSizeBytes = static_cast<int64_t>(std::filesystem::file_size(PathFromUtf8(path), ec));
-    if (IsPictureFile(path)) {
-        // A photo's size, and a drawing's (an SVG goes as a file but shows
-        // as its picture): the bubble lays the picture out from it.
-        UCImagePtr image = UCImage::Get(path);
-        if (image && image->IsValid()) {
-            message.attachment.width = image->GetWidth();
-            message.attachment.height = image->GetHeight();
-        }
-    }
+    message.attachment.durationSeconds = seconds;
+    message.replyTo.messageId = replyTo;
     message.timestampMs = NowMs();
     message.isOwn = true;
     message.deliveryStatus = UltraIMDeliveryStatus::Sending;
     messages_->Upsert(message);
+    // A file of some size shows its bar from the start.
+    if (message.attachment.fileSizeBytes > 256 * 1024)
+        messages_->SetTransfer(message.clientMessageId, {0, message.attachment.fileSizeBytes, true});
     ScrollToEnd();
 
     UltraIMSendOptions options;
     options.clientMessageId = message.clientMessageId;
-    UltraIMResult r;
-    if (kind == UltraIMMessageType::Image) r = UltraIM_SendImage(activeProvider_, activeConversation_, path, caption, options);
-    else if (kind == UltraIMMessageType::Video) r = UltraIM_SendVideo(activeProvider_, activeConversation_, path, caption, options);
-    else r = UltraIM_SendFile(activeProvider_, activeConversation_, path, options);
-    if (!r) {
-        messages_->UpdateStatus(message.clientMessageId, UltraIMDeliveryStatus::Failed);
-        SetStatus(TrF("Not sent: {0}", r.message));
-    }
+    options.replyToMessageId = replyTo;
+    options.durationSeconds = seconds;
+    const std::string provider = activeProvider_;
+    const std::string conversation = activeConversation_;
+    const bool voiceNotes = UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::VoiceNotes);
+    sendQueue_->Post([this, message, provider, conversation, path, caption, kind, voice, voiceNotes, options]() mutable {
+        // What the bubble can show before the file is gone: a picture's size,
+        // a video's preview picture, size and length.
+        UltraIMAttachment found = message.attachment;
+        bool learned = false;
+        if (IsPictureFile(path)) {
+            // GetFresh: not the shared cache, from this thread.
+            UCImagePtr image = UCImage::GetFresh(path);
+            if (image && image->IsValid()) {
+                found.width = image->GetWidth();
+                found.height = image->GetHeight();
+                learned = true;
+            }
+        } else if (kind == UltraIMMessageType::Video) {
+            VideoFileInfo facts;
+            if (ReadVideoFileInfo(path, facts)) {
+                if (facts.duration > 0) found.durationSeconds = facts.duration;
+                found.width = facts.displayWidth > 0 ? facts.displayWidth : facts.width;
+                found.height = facts.displayHeight > 0 ? facts.displayHeight : facts.height;
+                learned = true;
+            }
+            int w = 0, h = 0;
+            // The provider asks for the same preview; it is made once.
+            const std::string preview = UltraIM_MakePreview(path, "video/mp4", 320, w, h);
+            if (!preview.empty()) {
+                found.thumbnailPath = preview;
+                if (found.width <= 0 || found.height <= 0) {
+                    found.width = w;
+                    found.height = h;
+                }
+                learned = true;
+            }
+            if (found.durationSeconds > 0) options.durationSeconds = found.durationSeconds;
+        }
+        if (learned) {
+            OnUI([this, id = message.clientMessageId, found]() {
+                const UltraIMMessage* shown = messages_->FindMessage(id);
+                if (!shown) return;
+                UltraIMMessage updated = *shown;
+                updated.attachment.width = found.width;
+                updated.attachment.height = found.height;
+                updated.attachment.thumbnailPath = found.thumbnailPath;
+                if (found.durationSeconds > 0) updated.attachment.durationSeconds = found.durationSeconds;
+                messages_->Upsert(updated);
+            });
+        }
+        UltraIMResult r;
+        if (voice && voiceNotes) r = UltraIM_SendVoiceNote(provider, conversation, path, options);
+        else if (kind == UltraIMMessageType::Image) r = UltraIM_SendImage(provider, conversation, path, caption, options);
+        else if (kind == UltraIMMessageType::Video) r = UltraIM_SendVideo(provider, conversation, path, caption, options);
+        else r = UltraIM_SendFile(provider, conversation, path, options);   // a recording, where no voice messages
+        if (r) return;
+        OnUI([this, id = message.clientMessageId, why = r.message]() {
+            messages_->ClearTransfer(id);
+            messages_->UpdateStatus(id, UltraIMDeliveryStatus::Failed);
+            SetStatus(TrF("Not sent: {0}", why));
+        });
+    });
 }
 
 void ChatCubeWindow::OpenAttachment(int row) {
@@ -2332,6 +2933,603 @@ void ChatCubeWindow::OpenAttachment(int row) {
     });
 }
 
+// ============================================================================
+// REPLY AND EDIT
+// ============================================================================
+
+namespace {
+
+// A message's words on one line, at most `max` bytes (never in a letter).
+std::string OneLine(std::string text, size_t max) {
+    std::replace(text.begin(), text.end(), '\n', ' ');
+    if (text.size() <= max) return text;
+    size_t cut = max;
+    while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) --cut;
+    return text.substr(0, cut) + "\xE2\x80\xA6";
+}
+
+// What stands for a message in the bar over the field: its words, else
+// what it is.
+std::string MessageGist(const UltraIMMessage& m) {
+    if (!m.text.empty()) return m.text;
+    switch (m.type) {
+        case UltraIMMessageType::Image:   return Tr("Photo");
+        case UltraIMMessageType::Video:   return Tr("Video");
+        case UltraIMMessageType::Audio:   return Tr("Voice message");
+        case UltraIMMessageType::Sticker: return Tr("Sticker");
+        default: break;
+    }
+    return m.attachment.fileName.empty() ? Tr("File") : m.attachment.fileName;
+}
+
+bool Settled(const UltraIMMessage& m) {
+    return m.deliveryStatus != UltraIMDeliveryStatus::Sending && m.deliveryStatus != UltraIMDeliveryStatus::Failed;
+}
+
+} // namespace
+
+bool ChatCubeWindow::CanReply(const UltraIMMessage& message) const {
+    if (message.type == UltraIMMessageType::SystemEvent || message.messageId.empty() || !Settled(message)) return false;
+    UltraIMProviderInfo info;
+    return UltraIM_GetProviderInfo(activeProvider_, info) &&
+           UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::ReplyToMessage);
+}
+
+bool ChatCubeWindow::CanEdit(const UltraIMMessage& message) const {
+    // Our own texts, once they have gone.
+    if (!message.isOwn || message.type != UltraIMMessageType::Text || !Settled(message)) return false;
+    UltraIMProviderInfo info;
+    return UltraIM_GetProviderInfo(activeProvider_, info) &&
+           UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::EditMessage);
+}
+
+void ChatCubeWindow::StartReply(const UltraIMMessage& message) {
+    if (!editing_.clientMessageId.empty()) {
+        editing_ = UltraIMMessage();
+        input_->SetText("");
+    }
+    replyTo_ = message;
+    UpdateComposerBar();
+    input_->SetFocus(true);
+}
+
+void ChatCubeWindow::StartEdit(const UltraIMMessage& message) {
+    if (voiceRecorder_) return;
+    replyTo_ = UltraIMMessage();
+    editing_ = message;
+    input_->SetText(message.text);
+    input_->MoveCursorToEnd();          // typing goes on where the words end
+    UpdateComposerBar();
+    input_->SetFocus(true);
+}
+
+void ChatCubeWindow::SaveEdit(const std::string& text) {
+    UltraIMMessage message = editing_;
+    if (text == message.text) {
+        ClearComposerMode();
+        return;
+    }
+    if (text.empty()) {
+        SetStatus(Tr("A message cannot be empty - delete it instead."));
+        return;
+    }
+    const UltraIMResult r = UltraIM_EditMessage(activeProvider_, message.conversationId, message.messageId, text);
+    if (!r) {
+        SetStatus(TrF("Could not change the message: {0}", r.message));
+        return;
+    }
+    // At once here; the provider's MessageUpdate follows.
+    message.text = text;
+    message.isEdited = true;
+    if (message.conversationId == activeConversation_) messages_->Upsert(message);
+    ClearComposerMode();
+}
+
+void ChatCubeWindow::ClearComposerMode() {
+    const bool wasEditing = !editing_.clientMessageId.empty();
+    replyTo_ = UltraIMMessage();
+    editing_ = UltraIMMessage();
+    if (wasEditing && input_) input_->SetText("");
+    UpdateComposerBar();
+}
+
+void ChatCubeWindow::UpdateComposerBar() {
+    if (!composerBar_) return;
+    const bool editing = !editing_.clientMessageId.empty();
+    const bool replying = !replyTo_.messageId.empty();
+    if (editing) {
+        composerBarTitle_->SetText(Tr("Edit message"));
+        composerBarText_->SetText(OneLine(editing_.text, 90));
+    } else if (replying) {
+        const std::string who = replyTo_.isOwn ? Tr("yourself")
+                                : !replyTo_.senderName.empty() ? replyTo_.senderName
+                                : (conversations_->Find(activeConversation_) ? conversations_->Find(activeConversation_)->title
+                                                                             : std::string());
+        composerBarTitle_->SetText(TrF("Reply to {0}", who));
+        composerBarText_->SetText(OneLine(MessageGist(replyTo_), 90));
+    }
+    composerBar_->SetVisible(editing || replying);
+    const std::string key = settings_.ctrlEnterSends ? Tr("Ctrl+Enter") : Tr("Enter");
+    if (editing) send_->SetTooltip(TrF("Save the change ({0})", key));
+    else UpdateAttachmentStrip();
+    if (window_) window_->RequestRedraw();
+}
+
+// ============================================================================
+// SEARCH
+// ============================================================================
+
+void ChatCubeWindow::ScheduleSearch() {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    if (searchTimer_) app->StopTimer(searchTimer_);
+    // A moment after the last key, not at every key.
+    searchTimer_ = app->StartTimer(350, false, [this](TimerId) {
+        searchTimer_ = 0;
+        RunSearch();
+    });
+}
+
+void ChatCubeWindow::RunSearch() {
+    if (searchTimer_) {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(searchTimer_);
+        searchTimer_ = 0;
+    }
+    if (activeConversation_.empty()) return;
+    const std::string text = Trim(searchInput_->GetText());
+    if (text == searchText_ && searchKind_ == shownKind_) return;
+    searchText_ = text;
+    shownKind_ = searchKind_;
+    if (text.empty() && searchKind_ == UltraIMSearchKind::AnyKind) {
+        searchInfo_->SetText("");
+        LoadMessages();
+        return;
+    }
+    searchInfo_->SetText(Tr("Searching\xE2\x80\xA6"));
+    const int serial = ++searchSerial_;
+    const std::string conversationId = activeConversation_;
+    const std::string provider = activeProvider_;
+    UltraIMMessageSearch search;
+    search.conversationId = conversationId;
+    search.text = text;
+    search.kind = searchKind_;
+    search.limit = 200;
+    // The matches, oldest first like the chat.
+    auto show = [this, serial, conversationId](std::vector<UltraIMMessage> found, bool more) {
+        if (serial != searchSerial_ || conversationId != activeConversation_) return;
+        std::stable_sort(found.begin(), found.end(), [](const UltraIMMessage& a, const UltraIMMessage& b) {
+            return a.timestampMs < b.timestampMs;
+        });
+        messages_->SetMessages(found);
+        ScrollToEnd();
+        for (const UltraIMMessage& m : found) EnsureVideoPreview(m);
+        const long long n = static_cast<long long>(found.size());
+        searchInfo_->SetText(n == 0 ? Tr("Nothing found")
+                             : more ? TrN("the newest {n} found", "the newest {n} found", n)
+                                    : TrN("{n} found", "{n} found", n));
+        if (window_) window_->RequestRedraw();
+    };
+    UltraIMProviderInfo info;
+    if (UltraIM_GetProviderInfo(provider, info) &&
+        UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::SearchMessages)) {
+        UltraIM_SearchMessages(provider, search, [this, show, serial](const UltraIMResult& r, const UltraIMSearchPage& page) {
+            if (!r && serial == searchSerial_) SetStatus(TrF("Could not search: {0}", r.message));
+            show(page.messages, !page.nextCursor.empty());
+        });
+        return;
+    }
+    // A network that cannot search: its history as far as it gives it, filtered here.
+    UltraIM_FetchMessages(provider, conversationId, "", 1000,
+                          [show, search](const UltraIMResult&, const std::vector<UltraIMMessage>& list) {
+        std::vector<UltraIMMessage> found;
+        for (const UltraIMMessage& m : list) {
+            if (UltraIM_MessageMatchesSearch(m, search)) found.push_back(m);
+        }
+        show(found, false);
+    });
+}
+
+void ChatCubeWindow::ClearSearch(bool reload) {
+    if (searchTimer_) {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(searchTimer_);
+        searchTimer_ = 0;
+    }
+    const bool searched = !searchText_.empty() || shownKind_ != UltraIMSearchKind::AnyKind;
+    searchText_.clear();
+    searchKind_ = shownKind_ = UltraIMSearchKind::AnyKind;
+    for (const auto& [kind, chip] : filterChips_) StyleButton(chip, kind == UltraIMSearchKind::AnyKind);
+    if (searchInput_) {
+        settingSearch_ = true;
+        searchInput_->SetText("");
+        settingSearch_ = false;
+    }
+    if (searchInfo_) searchInfo_->SetText("");
+    if (reload && searched) LoadMessages();
+}
+
+// ============================================================================
+// RECORDINGS
+// ============================================================================
+
+namespace {
+
+// The format a voice message is written in: the smallest this build can
+// write (FileLoader's inventory says which), else WAV.
+std::pair<AudioFormat, std::string> VoiceFormat() {
+    const auto formats = UltraCanvasSupportedFormats::GetByCategory(MediaFormatCategory::Audio);
+    for (const char* wanted : {"opus", "ogg", "m4a", "mp3"}) {
+        for (const auto& f : formats) {
+            if (!f.canSave) continue;
+            const bool named = f.extension == wanted ||
+                               std::find(f.aliases.begin(), f.aliases.end(), wanted) != f.aliases.end();
+            const AudioFormat format = AudioFormatFromExtension(wanted);
+            if (named && format != AudioFormat::Unknown) return {format, wanted};
+        }
+    }
+    return {AudioFormat::WAV, "wav"};
+}
+
+} // namespace
+
+std::string ChatCubeWindow::RecordingPath(const std::string& prefix, const std::string& extension) const {
+    std::error_code ec;
+    const std::filesystem::path folder = UltraCanvasDataFolder("ChatCube") / "cache" / "recorded";
+    std::filesystem::create_directories(folder, ec);
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#if defined(_WIN32) || defined(_WIN64)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
+    std::string name = prefix + "-" + stamp;
+    for (int n = 1; std::filesystem::exists(folder / PathFromUtf8(name + "." + extension), ec); ++n)
+        name = prefix + "-" + stamp + "-" + std::to_string(n);
+    return PathToUtf8(folder / PathFromUtf8(name + "." + extension));
+}
+
+void ChatCubeWindow::StartVoiceRecording() {
+    if (voiceRecorder_ || activeConversation_.empty()) return;
+    if (!AttachmentsPossible()) {
+        SetStatus(Tr("This network does not take pictures or files yet."));
+        return;
+    }
+    if (!editing_.clientMessageId.empty()) ClearComposerMode();
+    StopVoicePlayback();
+    CloseVideoRecorder(false);
+    AudioCaptureConfig config;
+    config.sampleRate = 48000;
+    config.channels = 1;
+    config.maxDurationMs = 15 * 60 * 1000;
+    auto recorder = std::make_shared<UltraCanvasAudioRecorder>(config);
+    // From the audio thread: onto the UI's.
+    recorder->onMaxDurationReached = [this]() {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+            app->PostToUIThread([this]() { FinishVoiceRecording(true); });
+    };
+    recorder->onError = [this](const std::string& message) {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+            app->PostToUIThread([this, message]() { SetStatus(TrF("Microphone: {0}", message)); });
+    };
+    if (!recorder->Open() || !recorder->Start()) {
+        const std::string why = recorder->GetLastError();
+        recorder->Close();
+        SetStatus(why.empty() ? Tr("The microphone could not be opened.")
+                              : TrF("The microphone could not be opened: {0}", why));
+        return;
+    }
+    voiceRecorder_ = recorder;
+    composerRow_->SetVisible(false);
+    recordBar_->SetVisible(true);
+    UpdateRecordBar();
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+        recordTimer_ = app->StartTimer(250, true, [this](TimerId) { UpdateRecordBar(); });
+}
+
+void ChatCubeWindow::UpdateRecordBar() {
+    if (!voiceRecorder_) return;
+    recordText_->SetText("\xE2\x97\x8F  " + TrF("Recording {0}", FormatDuration(voiceRecorder_->GetElapsed())));
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::FinishVoiceRecording(bool send) {
+    if (!voiceRecorder_) return;
+    std::shared_ptr<UltraCanvasAudioRecorder> recorder = voiceRecorder_;
+    voiceRecorder_.reset();
+    if (recordTimer_) {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(recordTimer_);
+        recordTimer_ = 0;
+    }
+    const double seconds = recorder->GetElapsed();
+    recorder->Stop();
+    recordBar_->SetVisible(false);
+    composerRow_->SetVisible(true);
+    if (send && seconds < 0.5) {
+        SetStatus(Tr("Too short to send - record a little longer."));
+    } else if (send) {
+        auto [format, extension] = VoiceFormat();
+        std::string path = RecordingPath("Voice", extension);
+        bool saved = recorder->SaveToFile(path, format);
+        if (!saved && format != AudioFormat::WAV) {
+            path = RecordingPath("Voice", "wav");
+            saved = recorder->SaveToFile(path, AudioFormat::WAV);
+        }
+        if (!saved) {
+            SetStatus(TrF("The recording could not be saved: {0}", recorder->GetLastError()));
+        } else {
+            if (!searchText_.empty() || shownKind_ != UltraIMSearchKind::AnyKind) ClearSearch(true);
+            SendAttachment(path, std::string(), replyTo_.messageId, seconds, true);
+            ClearComposerMode();
+        }
+    }
+    recorder->Discard();
+    recorder->Close();
+    if (input_) input_->SetFocus(true);
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::OpenVideoRecorder() {
+    if (activeConversation_.empty() || videoNotePanel_->IsVisible()) return;
+    if (!AttachmentsPossible()) {
+        SetStatus(Tr("This network does not take pictures or files yet."));
+        return;
+    }
+    FinishVoiceRecording(false);
+    StopVoicePlayback();
+    // The camera opens as a preview; the red button records into ChatCube's
+    // cache, and again stops.
+    VideoCaptureConfig config = videoRecorder_->GetConfig();
+    config.width = 640;
+    config.height = 480;
+    config.captureAudio = true;
+    config.maxDurationMs = 5 * 60 * 1000;
+    config.outputPath.clear();
+    videoRecorder_->SetConfig(config);
+    videoNotePath_.clear();
+    videoNoteReady_ = false;
+    videoNoteStartedMs_ = 0;
+    videoNoteSeconds_ = 0;
+    videoNoteSend_->SetDisabled(true);
+    videoNoteText_->SetText(Tr("Press the red button to record, and again to stop."));
+    videoNotePanel_->SetVisible(true);
+    if (!videoRecorder_->OpenCamera(true)) {
+        auto engine = videoRecorder_->GetRecorder();
+        const std::string why = engine ? engine->GetLastError() : std::string();
+        videoNoteText_->SetText(why.empty() ? Tr("The camera could not be opened.")
+                                            : TrF("The camera could not be opened: {0}", why));
+    }
+    videoRecorder_->SetOutputPath(RecordingPath("Video", "mp4"));
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::CloseVideoRecorder(bool keepFile) {
+    if (!videoNotePanel_ || !videoNotePanel_->IsVisible()) return;
+    auto engine = videoRecorder_->GetRecorder();
+    if (engine && (engine->GetState() == VideoRecordingState::Recording ||
+                   engine->GetState() == VideoRecordingState::Paused))
+        videoRecorder_->StopRecording();
+    videoRecorder_->CloseCamera();
+    videoNotePanel_->SetVisible(false);
+    // A recording not sent is not kept.
+    std::error_code ec;
+    if (!keepFile) {
+        const std::string path = engine ? engine->GetConfig().outputPath : std::string();
+        if (!path.empty()) std::filesystem::remove(PathFromUtf8(path), ec);
+    }
+    videoNoteReady_ = false;
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::SendVideoMessage() {
+    if (!videoNoteReady_ || videoNotePath_.empty() || activeConversation_.empty()) return;
+    const std::string path = videoNotePath_;
+    const double seconds = videoNoteSeconds_;
+    CloseVideoRecorder(true);
+    if (!searchText_.empty() || shownKind_ != UltraIMSearchKind::AnyKind) ClearSearch(true);
+    SendAttachment(path, Trim(input_->GetText()), replyTo_.messageId, seconds, false);
+    input_->SetText("");
+    ClearComposerMode();
+}
+
+void ChatCubeWindow::ToggleVoicePlayback(int row) {
+    const auto& rows = messages_->Rows();
+    if (row < 0 || row >= static_cast<int>(rows.size())) return;
+    const UltraIMMessage m = rows[static_cast<size_t>(row)].message;
+    if (playingVoice_ == m.clientMessageId) {
+        StopVoicePlayback();
+        return;
+    }
+    StopVoicePlayback();
+    if (m.attachment.isDownloaded && !m.attachment.localPath.empty()) {
+        PlayVoice(m.clientMessageId, m.attachment.localPath);
+        return;
+    }
+    if (!Settled(m)) return;
+    SetStatus(Tr("Fetching the voice message\xE2\x80\xA6"));
+    const std::string id = m.clientMessageId;
+    UltraIM_DownloadAttachment(activeProvider_, m.conversationId, m.messageId,
+                               [this, id](const UltraIMResult& r, const UltraIMAttachment& a) {
+        if (!r) {
+            SetStatus(TrF("Could not fetch the voice message: {0}", r.message));
+            return;
+        }
+        SetStatus("");
+        PlayVoice(id, a.localPath);
+    });
+}
+
+void ChatCubeWindow::PlayVoice(const std::string& clientId, const std::string& path) {
+    auto player = std::make_shared<UltraCanvasAudioPlayer>();
+    if (path.empty() || !player->LoadFromFile(path) || !player->Play()) {
+        // Not a sound this build plays itself: the media viewer may.
+        ShowAttachment(path);
+        return;
+    }
+    player->onEnded = [this, clientId]() {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+            app->PostToUIThread([this, clientId]() {
+                if (playingVoice_ == clientId) StopVoicePlayback();
+            });
+    };
+    voicePlayer_ = player;
+    playingVoice_ = clientId;
+    bubbles_->SetPlaying(clientId);
+    if (messageList_) messageList_->RequestRedraw();
+}
+
+void ChatCubeWindow::StopVoicePlayback() {
+    if (voicePlayer_) {
+        voicePlayer_->onEnded = nullptr;
+        voicePlayer_->Stop();
+        voicePlayer_.reset();
+    }
+    playingVoice_.clear();
+    if (bubbles_) bubbles_->SetPlaying("");
+    if (messageList_) messageList_->RequestRedraw();
+}
+
+void ChatCubeWindow::SetSearchKind(UltraIMSearchKind kind) {
+    searchKind_ = kind;
+    for (const auto& [k, chip] : filterChips_) StyleButton(chip, k == kind);
+    RunSearch();
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::PlayVideoInChat(int row) {
+    const auto& rows = messages_->Rows();
+    if (row < 0 || row >= static_cast<int>(rows.size())) return;
+    const UltraIMMessage m = rows[static_cast<size_t>(row)].message;
+    const std::string title = m.attachment.fileName.empty() ? Tr("Video") : m.attachment.fileName;
+    if (m.attachment.isDownloaded && !m.attachment.localPath.empty()) {
+        ShowVideoPlayer(m.attachment.localPath, title);
+        return;
+    }
+    if (!Settled(m)) return;
+    SetStatus(TrF("Fetching {0}\xE2\x80\xA6", title));
+    const std::string conversation = activeConversation_;
+    UltraIM_DownloadAttachment(activeProvider_, m.conversationId, m.messageId,
+                               [this, title, conversation](const UltraIMResult& r, const UltraIMAttachment& a) {
+        if (!r) {
+            SetStatus(TrF("Could not fetch {0}: {1}", title, r.message));
+            return;
+        }
+        SetStatus("");
+        if (conversation == activeConversation_) ShowVideoPlayer(a.localPath, title);
+    });
+}
+
+void ChatCubeWindow::ShowVideoPlayer(const std::string& path, const std::string& title) {
+    if (path.empty()) return;
+    StopVoicePlayback();
+    CloseVideoRecorder(false);
+    if (!videoPlayer_->LoadFromFile(path)) {
+        // Not a video this build plays itself: the media viewer may.
+        ShowAttachment(path);
+        return;
+    }
+    videoPlayerTitle_->SetText(title);
+    videoPlayerPanel_->SetVisible(true);
+    videoPlayer_->Play();
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::CloseVideoPlayer() {
+    if (!videoPlayerPanel_ || !videoPlayerPanel_->IsVisible()) return;
+    videoPlayer_->Unload();          // lets go of the file
+    videoPlayerPanel_->SetVisible(false);
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::EnsureVideoPreview(const UltraIMMessage& m) {
+    if (m.type != UltraIMMessageType::Video || !m.attachment.thumbnailPath.empty()) return;
+    // Made before (the chat loaded again, a search's results): at once.
+    const auto apply = [this](const std::string& id, const UltraIMAttachment& found) {
+        const UltraIMMessage* shown = messages_->FindMessage(id);
+        if (!shown) return;
+        UltraIMMessage updated = *shown;
+        if (!found.thumbnailPath.empty()) updated.attachment.thumbnailPath = found.thumbnailPath;
+        if (found.width > 0 && found.height > 0) {
+            updated.attachment.width = found.width;
+            updated.attachment.height = found.height;
+        }
+        if (found.durationSeconds > 0 && updated.attachment.durationSeconds <= 0)
+            updated.attachment.durationSeconds = found.durationSeconds;
+        messages_->Upsert(updated);
+    };
+    auto made = previewsMade_.find(m.clientMessageId);
+    if (made != previewsMade_.end()) {
+        apply(m.clientMessageId, made->second);
+        return;
+    }
+    if (!m.attachment.isDownloaded || m.attachment.localPath.empty() || !previewAsked_.insert(m.clientMessageId).second)
+        return;
+    const std::string id = m.clientMessageId;
+    const std::string path = m.attachment.localPath;
+    previewQueue_->Post([this, id, path, apply]() {
+        UltraIMAttachment found;
+        VideoFileInfo facts;
+        if (ReadVideoFileInfo(path, facts)) {
+            found.durationSeconds = facts.duration;
+            found.width = facts.displayWidth > 0 ? facts.displayWidth : facts.width;
+            found.height = facts.displayHeight > 0 ? facts.displayHeight : facts.height;
+        }
+        int w = 0, h = 0;
+        found.thumbnailPath = UltraIM_MakePreview(path, "video/mp4", 320, w, h);
+        if (found.width <= 0 || found.height <= 0) {
+            found.width = w;
+            found.height = h;
+        }
+        if (found.thumbnailPath.empty() && found.width <= 0) return;
+        OnUI([this, id, found, apply]() {
+            previewsMade_[id] = found;
+            apply(id, found);
+        });
+    });
+}
+
+void ChatCubeWindow::OnUI(std::function<void()> f) {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app || !f) return;
+    app->PostToUIThread([alive = alive_, f = std::move(f)]() {
+        if (*alive) f();
+    });
+}
+
+ChatCubeWindow::SendQueue::SendQueue() : thread_([this]() { Run(); }) {}
+
+ChatCubeWindow::SendQueue::~SendQueue() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stop_ = true;
+    }
+    wake_.notify_all();
+    if (thread_.joinable()) thread_.join();
+}
+
+void ChatCubeWindow::SendQueue::Post(std::function<void()> job) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        jobs_.push_back(std::move(job));
+    }
+    wake_.notify_one();
+}
+
+void ChatCubeWindow::SendQueue::Run() {
+    for (;;) {
+        std::function<void()> job;
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            wake_.wait(lock, [this]() { return stop_ || !jobs_.empty(); });
+            if (jobs_.empty()) return;          // stopping, and everything went
+            job = std::move(jobs_.front());
+            jobs_.pop_front();
+        }
+        job();
+    }
+}
+
 void ChatCubeWindow::ShowAttachment(const std::string& path) {
     if (path.empty()) return;
     MediaViewerWindowOptions options;
@@ -2357,7 +3555,22 @@ void ChatCubeWindow::ShowMessageMenu(int row, int windowX, int windowY) {
     messageMenu_ = std::make_shared<UltraCanvasMenu>("cc-message-menu", 0, 0, 220, 0);
     messageMenu_->SetMenuType(MenuType::PopupMenu);
     int entries = 0;
+    if (CanReply(message)) {
+        messageMenu_->AddItem(MenuItemData::Action(Tr("Reply"), [this, message]() { StartReply(message); }));
+        ++entries;
+    }
+    if (CanEdit(message)) {
+        messageMenu_->AddItem(MenuItemData::Action(Tr("Edit"), [this, message]() { StartEdit(message); }));
+        ++entries;
+    }
+    if (!message.text.empty()) {
+        messageMenu_->AddItem(MenuItemData::Action(Tr("Copy text"), [this, message]() {
+            if (SetClipboardText(message.text)) SetStatus(Tr("The text is on the clipboard."));
+        }));
+        ++entries;
+    }
     if (hasFile && (sent || message.attachment.isDownloaded)) {
+        if (entries) messageMenu_->AddItem(MenuItemData::Separator());
         messageMenu_->AddItem(MenuItemData::Action(Tr("Open"), [this, row]() { OpenAttachment(row); }));
         messageMenu_->AddItem(MenuItemData::Action(Tr("Save as"), [this, message]() { SaveAttachment(message); }));
         entries += 2;
@@ -2703,7 +3916,8 @@ void ChatCubeWindow::ApplySettings() {
 std::vector<ChatCubeSettingsWindow::Account> ChatCubeWindow::Accounts() const {
     std::vector<ChatCubeSettingsWindow::Account> accounts;
     const std::pair<std::string, const char*> networks[] = {
-        {providerId_, "ChatCube Direct"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"}};
+        {providerId_, "ChatCube Direct"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
+        {mastodonProviderId_, "Mastodon"}};
     for (const auto& [id, name] : networks) {
         ChatCubeSettingsWindow::Account account;
         account.providerId = id;
@@ -2760,6 +3974,10 @@ void ChatCubeWindow::SignOutOf(const std::string& providerId) {
         SetNetworkButton(telegramToggle_, "Telegram", Tr("Telegram account"));
         telegramForm_->SetVisible(false);
         SetProviderStatus(telegramProviderId_, Tr("signed out"));
+    } else if (providerId == mastodonProviderId_) {
+        SetNetworkButton(mastodonToggle_, "Mastodon", Tr("Mastodon account"));
+        mastodonForm_->SetVisible(false);
+        SetProviderStatus(mastodonProviderId_, Tr("signed out"));
     }
     if (conversationList_) conversationList_->RequestRedraw();
     if (window_) window_->RequestRedraw();
@@ -2768,13 +3986,23 @@ void ChatCubeWindow::SignOutOf(const std::string& providerId) {
 // =================================================================== UltraIM
 
 void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
-    if (e.providerId != providerId_ && e.providerId != matrixProviderId_ && e.providerId != telegramProviderId_) return;
+    if (e.providerId != providerId_ && e.providerId != matrixProviderId_ && e.providerId != telegramProviderId_ &&
+        e.providerId != mastodonProviderId_)
+        return;
     const bool matrix = e.providerId == matrixProviderId_;
+    const bool mastodon = e.providerId == mastodonProviderId_;
     const bool telegram = e.providerId == telegramProviderId_;
     switch (e.type) {
         case UltraIMEventType::MessageReceive:
             if (e.conversationId == activeConversation_) {
-                messages_->Upsert(e.message);
+                // While a search shows its matches, only what matches joins them.
+                UltraIMMessageSearch shown;
+                shown.text = searchText_;
+                shown.kind = shownKind_;
+                if ((searchText_.empty() && shownKind_ == UltraIMSearchKind::AnyKind) ||
+                    UltraIM_MessageMatchesSearch(e.message, shown))
+                    messages_->Upsert(e.message);
+                EnsureVideoPreview(e.message);
                 ScrollToEnd();
                 UltraIM_MarkRead(e.providerId, activeConversation_);
                 if (e.contactId == typingContact_) typingContact_.clear();
@@ -2782,8 +4010,14 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             }
             break;
         case UltraIMEventType::MessageDelivered:
-            if (e.conversationId == activeConversation_)
+            if (e.conversationId == activeConversation_) {
                 messages_->UpdateStatus(e.message.clientMessageId, e.deliveryStatus);
+                // A bar that never moved (a network that reports no progress)
+                // goes once the message has gone; one that moves stays until 100 %.
+                const MessageListModel::Transfer* transfer = messages_->TransferOf(e.message.clientMessageId);
+                if (transfer && transfer->done == 0 && e.deliveryStatus != UltraIMDeliveryStatus::Sending)
+                    messages_->ClearTransfer(e.message.clientMessageId);
+            }
             if (e.deliveryStatus == UltraIMDeliveryStatus::Failed) SetStatus(Tr("A message could not be sent."));
             break;
         case UltraIMEventType::ConversationUpdate: {
@@ -2795,10 +4029,18 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (row >= 0) conversationList_->GetSelection()->Select(row);
             fillingList_ = false;
             if (c.conversationId == activeConversation_) UpdateHeader();
+            if (c.isGroup) {
+                UltraIMConversation shown = c;
+                if (shown.providerId.empty()) shown.providerId = e.providerId;
+                groupWindow_->Update(shown);
+            }
             break;
         }
         case UltraIMEventType::ConversationRemove: {
             conversations_->Remove(e.conversationId);
+            groupWindow_->Removed(e.conversationId);
+            // A public group left is one to join again.
+            if (e.providerId == providerId_ && e.conversationId.rfind("group:", 0) == 0) RefreshPublicGroups();
             // Its marks go with it.
             const std::string key = e.providerId + "/" + e.conversationId;
             if (marks_.pinned.erase(key) + marks_.unread.erase(key) > 0) {
@@ -2826,8 +4068,28 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             // An edit, or an attachment's picture that has arrived - of a
             // message that is shown (one further back than the history
             // fetched is not appended to the end).
-            if (e.conversationId == activeConversation_ && messages_->Contains(e.message.clientMessageId))
-                messages_->Upsert(e.message);
+            if (e.conversationId == activeConversation_ && messages_->Contains(e.message.clientMessageId)) {
+                // The provider's copy has no picture we made for it: keep ours.
+                UltraIMMessage update = e.message;
+                const UltraIMMessage* shown = messages_->FindMessage(update.clientMessageId);
+                if (shown && update.attachment.thumbnailPath.empty() && !shown->attachment.thumbnailPath.empty()) {
+                    update.attachment.thumbnailPath = shown->attachment.thumbnailPath;
+                    if (update.attachment.width <= 0) update.attachment.width = shown->attachment.width;
+                    if (update.attachment.height <= 0) update.attachment.height = shown->attachment.height;
+                    if (update.attachment.durationSeconds <= 0)
+                        update.attachment.durationSeconds = shown->attachment.durationSeconds;
+                }
+                messages_->Upsert(update);
+                EnsureVideoPreview(update);
+            }
+            break;
+        case UltraIMEventType::TransferProgress:
+            // A file on its way: its bubble's bar, gone once it is all there.
+            if (e.conversationId != activeConversation_) break;
+            if (e.totalBytes <= 0 || e.transferredBytes >= e.totalBytes)
+                messages_->ClearTransfer(e.message.clientMessageId);
+            else
+                messages_->SetTransfer(e.message.clientMessageId, {e.transferredBytes, e.totalBytes, e.isUpload});
             break;
         case UltraIMEventType::MessageDelete:
             if (e.conversationId == activeConversation_) messages_->Remove(e.message.messageId);
@@ -2851,6 +4113,24 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                 } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
                     SetProviderStatus(telegramProviderId_, Tr("signed out"));
                     SetNetworkButton(telegramToggle_, "Telegram", Tr("Telegram account"));
+                }
+                break;
+            }
+            if (mastodon) {
+                if (e.connectionState == UltraIMConnectionState::Connected) {
+                    UltraIMProviderInfo info;
+                    UltraIM_GetProviderInfo(mastodonProviderId_, info);
+                    SetProviderStatus(mastodonProviderId_, TrF("signed in as {0}", info.localUserId));
+                    SetNetworkButton(mastodonToggle_, "Mastodon", TrF("Mastodon: signed in as {0}", info.localUserId));
+                    RefreshConversations();
+                } else if (e.connectionState == UltraIMConnectionState::Error) {
+                    SetProviderStatus(mastodonProviderId_, e.errorText);
+                    mastodonSignIn_->SetDisabled(false);
+                } else if (e.connectionState == UltraIMConnectionState::Connecting) {
+                    SetProviderStatus(mastodonProviderId_, Tr("signing in\xE2\x80\xA6"));
+                } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
+                    SetProviderStatus(mastodonProviderId_, Tr("signed out"));
+                    SetNetworkButton(mastodonToggle_, "Mastodon", Tr("Mastodon account"));
                 }
                 break;
             }
@@ -2895,6 +4175,11 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             break;
         case UltraIMEventType::AuthStepChange:
             if (telegram) UpdateTelegramForm();
+            if (mastodon && e.authStep == UltraIMAuthStep::Browser && !e.errorText.empty()) {
+                // The server's own page: the password is typed there, not here.
+                OpenURL(e.errorText);
+                SetProviderStatus(mastodonProviderId_, Tr("continue in the browser\xE2\x80\xA6"));
+            }
             break;
         case UltraIMEventType::AuthRequire:
             if (telegram) {
@@ -2902,6 +4187,12 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                 telegramForm_->SetVisible(true);
                 SetNetworkButton(telegramToggle_, "Telegram", Tr("Telegram account"));
                 UpdateTelegramForm();
+                break;
+            }
+            if (mastodon) {
+                SetProviderStatus(mastodonProviderId_, Tr("the session ended - sign in again"));
+                mastodonForm_->SetVisible(true);
+                SetNetworkButton(mastodonToggle_, "Mastodon", Tr("Mastodon account"));
                 break;
             }
             if (matrix) {

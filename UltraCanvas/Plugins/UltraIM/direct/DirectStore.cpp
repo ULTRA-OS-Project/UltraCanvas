@@ -65,6 +65,9 @@ const std::vector<UltraDbMigration>& Migrations() {
         // does arrive instead of appearing after all, or waiting for ever.
         {4, "what was deleted while it was arriving",
          "CREATE TABLE deleted(key TEXT PRIMARY KEY, ts INTEGER NOT NULL);"},
+        // A message changed by its sender after it was sent (EditText).
+        {5, "edited messages",
+         "ALTER TABLE messages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;"},
     };
     return steps;
 }
@@ -152,6 +155,7 @@ UltraIMMessage MessageFromRow(const UltraDbRow& r, const std::string& providerId
     m.replyTo.messageId = r["reply_to"].AsString();
     m.deliveryStatus = static_cast<UltraIMDeliveryStatus>(r["status"].AsInt());
     m.isOwn = r["own"].AsInt() != 0;
+    m.isEdited = r["edited"].AsInt() != 0;
     m.attachment = AttachmentFromJson(r["attachment"].AsString());
     return m;
 }
@@ -355,6 +359,30 @@ bool Store::UpdateStatus(const std::string& conversationId, const std::string& c
     return r && r.affectedRows > 0;
 }
 
+bool Store::EditText(const std::string& conversationId, const std::string& clientId, const std::string& text) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    UltraDbResultSet rows;
+    if (!UltraDb_Query(connection_, "SELECT seq FROM messages WHERE conv=? AND client_id=?", {conversationId, clientId},
+                       rows) ||
+        rows.Empty())
+        return false;
+    const int64_t seq = (*rows.begin())["seq"].AsInt64();
+    UltraDbResult r = UltraDb_Exec(connection_, "UPDATE messages SET text=?, edited=1 WHERE seq=?", {text, seq});
+    if (!r || r.affectedRows == 0) return false;
+    // The links it holds now, for a search by links.
+    UltraDb_Exec(connection_, "DELETE FROM links WHERE msg_seq=?", {seq});
+    if (!UltraIM_ExtractLinks(text).empty())
+        UltraDb_Exec(connection_, "INSERT OR IGNORE INTO links(msg_seq) VALUES(?)", {seq});
+    // The conversation's last line, when it is the last message.
+    UltraDbResultSet last;
+    if (UltraDb_Query(connection_, "SELECT * FROM messages WHERE conv=? ORDER BY seq DESC LIMIT 1", {conversationId},
+                      last) &&
+        !last.Empty() && (*last.begin())["seq"].AsInt64() == seq)
+        UltraDb_Exec(connection_, "UPDATE conversations SET snippet=? WHERE id=?",
+                     {Snippet(MessageFromRow(*last.begin(), providerId_)), conversationId});
+    return true;
+}
+
 bool Store::UpdateAttachment(const std::string& conversationId, const std::string& clientId,
                              const UltraIMAttachment& attachment) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -509,7 +537,14 @@ UltraIMSearchPage Store::Search(const UltraIMMessageSearch& search) {
         case UltraIMSearchKind::Images:  where = "m.type = " + type(T::Image); break;
         case UltraIMSearchKind::Videos:  where = "m.type = " + type(T::Video); break;
         case UltraIMSearchKind::Media:   where = "m.type IN (" + type(T::Image) + "," + type(T::Video) + ")"; break;
-        case UltraIMSearchKind::Files:   where = "m.type = " + type(T::File); break;
+        // A song sent as a file (its type audio/...) is sound, not a document.
+        case UltraIMSearchKind::Files:
+            where = "m.type = " + type(T::File) + " AND instr(m.attachment, '\"mime\":\"audio/') = 0";
+            break;
+        case UltraIMSearchKind::Audio:
+            where = "(m.type = " + type(T::Audio) + " OR (m.type = " + type(T::File) +
+                    " AND instr(m.attachment, '\"mime\":\"audio/') > 0))";
+            break;
         case UltraIMSearchKind::Links:
             from = "links l JOIN messages m ON m.seq = l.msg_seq";
             where = "m.type <> " + type(T::SystemEvent);

@@ -2,7 +2,8 @@
 
 REST for everything that is a request (accounts, contacts, groups, the
 offline queue, TURN credentials, the Telegram application's keys); one WebSocket per signed-in device for
-what is pushed (presence, typing, P2P signalling, new queued messages).
+what is pushed (presence, typing, P2P signalling, new queued messages, a
+contact added by someone else).
 The relay forwards signalling payloads and stores envelopes without reading
 either: both are end-to-end protected by the clients."""
 
@@ -193,6 +194,16 @@ class TitleBody(BaseModel):
     title: str = Field(min_length=1, max_length=64)
 
 
+class GroupEditBody(BaseModel):
+    """PATCH /v1/groups/{id}: what is given changes, what is left out stays."""
+    title: str | None = Field(default=None, min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=500)
+
+
+class PublicBody(BaseModel):
+    public: bool
+
+
 def user_json(user, online: bool | None = None) -> dict[str, Any]:
     out = {"user_id": user.user_id,
            "public_key": base64.b64encode(user.public_key).decode(),
@@ -204,7 +215,8 @@ def user_json(user, online: bool | None = None) -> dict[str, Any]:
 
 def group_json(group) -> dict[str, Any]:
     return {"group_id": group.group_id, "conversation": GROUP_PREFIX + group.group_id,
-            "title": group.title, "owner": group.owner, "members": group.members}
+            "title": group.title, "owner": group.owner, "members": group.members, "public": group.public,
+            "description": group.description}
 
 
 # ============================================================================
@@ -220,6 +232,9 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         raise ValueError("CHATCUBE_RELAY_RECOVERY_KEY must be 32 bytes, base64 (openssl rand -base64 32)")
     hub = Hub()
     challenges: dict[str, tuple[str, float]] = {}     # nonce -> (user_id, expiry)
+    # (user, public group) -> the messages posted there in the last minute, as
+    # (time, message id): what public_posts_per_minute counts.
+    public_posts: dict[tuple[str, str], list[tuple[float, str]]] = {}
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -638,7 +653,16 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
             raise error(404, "unknown_user", "No such user")
         if other == user_id:
             raise error(400, "invalid_request", "You cannot add yourself")
-        store.add_contact(user_id, other)
+        if store.add_contact(user_id, other):
+            # The person added learns who added them: the adder joins their
+            # list too - so a ChatCube that is away finds the chat at its next
+            # sign-in (GET /v1/contacts) - and one that is online is told now.
+            # Only when the adder was new to them: someone who had the adder
+            # already has the chat.
+            adder = store.get_user(user_id)
+            if adder and store.add_contact(other, user_id):
+                await hub.send(other, {"type": "contact.added",
+                                       "contact": user_json(adder, hub.is_online(user_id))})
         return user_json(user, hub.is_online(other))
 
     @app.delete("/v1/contacts/{other}")
@@ -664,6 +688,43 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
     async def list_groups(user_id: str = Depends(current_user)):
         return {"groups": [group_json(g) for g in store.groups_of(user_id)]}
 
+    # ---- public groups -------------------------------------------------------
+    # A group its owner made public is listed for everyone signed in and
+    # joined by anyone who wants to - its messages stay sealed for each
+    # member, so the relay still reads none of them.
+
+    @app.get("/v1/public-groups")
+    async def list_public_groups(q: str = "", user_id: str = Depends(current_user)):
+        mine = {g.group_id for g in store.groups_of(user_id)}
+        return {"groups": [{**g, "conversation": GROUP_PREFIX + g["group_id"], "joined": g["group_id"] in mine}
+                           for g in store.public_groups(q.strip()[:64])],
+                "max_members": settings.max_public_group_members}
+
+    @app.put("/v1/groups/{group_id}/public")
+    async def set_group_public(group_id: str, body: PublicBody, user_id: str = Depends(current_user)):
+        group = member_group(group_id, user_id)
+        if group.owner != user_id:
+            raise error(403, "forbidden", "Only the owner makes a group public or private")
+        store.set_group_public(group_id, body.public)
+        group = store.get_group(group_id)
+        await push_group(group)
+        return group_json(group)
+
+    @app.post("/v1/groups/{group_id}/join")
+    async def join_group(group_id: str, user_id: str = Depends(current_user)):
+        group = store.get_group(group_id)
+        if not group or not group.public:
+            raise error(404, "unknown_group", "No such public group")
+        if store.is_banned(group_id, user_id):
+            raise error(403, "banned", "The group's owner took you out of this group")
+        if user_id not in group.members:
+            if len(group.members) >= settings.max_public_group_members:
+                raise error(400, "too_many_members", "The group is full")
+            store.add_member(group_id, user_id)
+            group = store.get_group(group_id)
+            await push_group(group)
+        return group_json(group)
+
     def member_group(group_id: str, user_id: str):
         group = store.get_group(group_id)
         if not group or user_id not in group.members:
@@ -675,9 +736,16 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         return group_json(member_group(group_id, user_id))
 
     @app.patch("/v1/groups/{group_id}")
-    async def rename_group(group_id: str, body: TitleBody, user_id: str = Depends(current_user)):
-        member_group(group_id, user_id)         # any member renames, as any member adds
-        store.rename_group(group_id, body.title)
+    async def rename_group(group_id: str, body: GroupEditBody, user_id: str = Depends(current_user)):
+        group = member_group(group_id, user_id)
+        # A private group: any member renames it, as any member adds. A public
+        # one, which strangers join: its owner alone.
+        if group.public and group.owner != user_id:
+            raise error(403, "forbidden", "Only the owner changes a public group's name and description")
+        if body.title is not None:
+            store.rename_group(group_id, body.title)
+        if body.description is not None:
+            store.describe_group(group_id, body.description.strip())
         group = store.get_group(group_id)
         await push_group(group)
         return group_json(group)
@@ -687,8 +755,11 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         group = member_group(group_id, user_id)
         if not store.get_user(body.user_id):
             raise error(404, "unknown_user", "No such user")
-        if len(group.members) >= settings.max_group_members:
+        limit = settings.max_public_group_members if group.public else settings.max_group_members
+        if len(group.members) >= limit:
             raise error(400, "too_many_members", "The group is full")
+        if group.owner != user_id and store.is_banned(group_id, body.user_id):
+            raise error(403, "banned", "The group's owner took this person out of the group")
         store.add_member(group_id, body.user_id)
         group = store.get_group(group_id)
         await push_group(group)
@@ -705,6 +776,41 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         updated = store.get_group(group_id)
         if updated:
             await push_group(updated)
+        return {"status": "ok"}
+
+    # Blocking: the owner takes someone out (when they are in) and keeps them
+    # out - they cannot join a public group again, and no other member can
+    # add them back - until unblocked.
+
+    def owned_group(group_id: str, user_id: str):
+        group = member_group(group_id, user_id)
+        if group.owner != user_id:
+            raise error(403, "forbidden", "Only the owner blocks and unblocks")
+        return group
+
+    @app.get("/v1/groups/{group_id}/blocked")
+    async def list_blocked(group_id: str, user_id: str = Depends(current_user)):
+        owned_group(group_id, user_id)
+        return {"blocked": [user_json(u) for u in store.bans(group_id)]}
+
+    @app.put("/v1/groups/{group_id}/blocked/{member}")
+    async def block_member(group_id: str, member: str, user_id: str = Depends(current_user)):
+        group = owned_group(group_id, user_id)
+        if member == user_id:
+            raise error(400, "invalid_request", "You cannot block yourself")
+        if not store.get_user(member):
+            raise error(404, "unknown_user", "No such user")
+        store.ban(group_id, member)
+        if member in group.members:
+            store.remove_member(group_id, member)
+            await hub.send(member, {"type": "group.update", "group": {**group_json(group), "removed": True}})
+            await push_group(store.get_group(group_id))
+        return {"status": "ok"}
+
+    @app.delete("/v1/groups/{group_id}/blocked/{member}")
+    async def unblock_member(group_id: str, member: str, user_id: str = Depends(current_user)):
+        owned_group(group_id, user_id)
+        store.unban(group_id, member)
         return {"status": "ok"}
 
     # ---- offline queue -------------------------------------------------------
@@ -727,6 +833,21 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
                     raise error(403, "forbidden", "Sender and recipient must both be in the group")
             elif not store.get_user(m.to):
                 raise error(404, "unknown_user", "No such user: " + m.to)
+        # A public group: so many messages a minute from one member (the
+        # copies of one message, and a file's parts, count as one).
+        now = time.time()
+        for gid, group in groups.items():
+            if not group.public:
+                continue
+            ids = {m.message_id for m in body.messages
+                   if m.conversation == GROUP_PREFIX + gid and not m.message_id.startswith("c-")}
+            recent = [(t, i) for t, i in public_posts.get((user_id, gid), []) if now - t < 60]
+            known = {i for _, i in recent}
+            fresh = ids - known
+            if fresh and len(known) + len(fresh) > settings.public_posts_per_minute:
+                raise error(429, "slow_down", "At most %d messages a minute in a public group"
+                            % settings.public_posts_per_minute)
+            public_posts[(user_id, gid)] = recent + [(now, i) for i in fresh]
         for m in body.messages:
             queued_id = store.enqueue(m.to, user_id, m.message_id, m.conversation, m.envelope)
             accepted.append({"to": m.to, "message_id": m.message_id, "id": queued_id})

@@ -84,6 +84,24 @@ before adding cross-module code.
   // There is no numeric id argument on any element factory or constructor.
   ```
 
+- **One string is an element's identifier.** An element built from one
+  string takes it as its identifier - `UltraCanvasContainer("Row")`,
+  `UltraCanvasLabel("CountLabel")` - and its text, where it has one, comes
+  second or from `SetText`: `("InfoTitle", Tr("About"))`, and `("", Tr("..."))`
+  for a label that needs no name. `UltraCanvasLabel` was the exception until
+  2026-11 - its one string was the text - and eleven callers here had handed
+  it a name (the dialog's icon, Texter's status bar, the HTML builder,
+  `LabelBuilder`) against one that handed it text; `UltraCanvasCheckbox`,
+  `UltraCanvasRadio` and `UltraCanvasSwitch` were built the same way. All
+  four take the identifier now, as the other 38 elements with a one-string
+  constructor always did. The constructors cannot refuse the old use, since
+  both are one string: a label built from `Tr("...")` alone still compiles
+  and shows nothing. `scripts/check_label_identifiers.py` refuses that in CI
+  (`label-identifiers.yml`; no baseline), and refuses a new element whose
+  one-string constructor takes a text; for what it cannot read - a
+  variable - the framework says so on `debugOutput`
+  (`WarnIfIdentifierReadsAsText`). An identifier that really reads as text
+  says so with `// label-identifier-ok: <why>`.
 - **Never hand-roll a UI element** — see
   [Build UI out of UltraCanvas elements](#build-ui-out-of-ultracanvas-elements)
   below. If the thing you are drawing takes input, shows a picture or presents
@@ -412,9 +430,12 @@ Intel) on main, where the release is made. The `ci:distro` label asks for
 all six on a pull request (the distribution build) and `ci:intel` for the
 Intel row alone; adding either starts a run with them. Ask for `ci:distro`
 when a change touches what only those rows would catch - a platform layer,
-the packaging, a bundled library - and add it when the user asks for a
-"distro build" with a pull request. A left-out row reports under its own
-name as skipped (`build-skipped`), so a required check never waits on it.
+the packaging, a bundled library, or code that behaves differently by
+platform (rule 8 of *Branch and pull-request rules*) - and add it when the
+user asks for a "distro build" with a pull request. A left-out row reports
+under its own name, so a required check never waits on it - and it reports
+**success** after a few seconds, with a notice that it was not built: a
+green row is not a build unless it ran for minutes.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. With `-DULTRAAI_ADAPTER_LLAMACPP=ON` the
 llama.cpp adapter is built (the engine is fetched from GitHub, or taken from
@@ -801,6 +822,11 @@ and never introduce a new literal copy of one:
    Wiring a callback on that element? It must not capture a `shared_ptr` to
    the element or to a container above it — capture it raw. Run
    `python3 scripts/check_callback_cycles.py`; CI runs that too.
+   Building a label, a checkbox, a radio button or a switch? One string
+   alone is its identifier, as on every element; its text goes second,
+   `("InfoTitle", Tr("About"))` or `("", Tr("..."))`. Adding an element? Its
+   one-string constructor takes the identifier too. Run
+   `python3 scripts/check_label_identifiers.py`; CI runs that too.
    Writing a number into a file format or a protocol? Read it with
    `TryParseFloat` / `ParseFloatClassic` and write it with
    `FormatFloatClassic` - or `FormatFixedClassic` where the format counts
@@ -1174,9 +1200,34 @@ For assistants:
    closing line names with ` — open as PR #<n>`, which covers a PR opened
    from the Claude UI — is not the number the title was given.
 
+8. **Label a platform-specific change `ci:distro` - and read the rows before
+   "green".** A pull request builds Linux x86_64, Windows x86_64 and macOS
+   on Apple silicon; Windows ARM, Linux arm64 and macOS Intel are built only
+   on `main` or with the `ci:distro` label (*Building and testing*). Add the
+   label when you open the PR (or right after - adding it starts a run with
+   all six rows) whenever the change:
+
+   - touches a platform layer (`UltraCanvas/OS/<Platform>/`), the
+     packaging, CI's build, or a bundled library; or
+   - is code whose behaviour differs by platform even outside those
+     directories - file names and paths (what Windows refuses, what macOS
+     takes as one name), line endings, locale, byte order, `#ifdef _WIN32` /
+     `__APPLE__` branches, ARM-specific intrinsics; or
+   - the user asks for a "distro build".
+
+   And when you report CI or merge "on green", count only the rows that
+   built: a row the PR leaves out reports **success** in a few seconds with
+   the notice *"... is built on main and on a pull request labelled
+   ci:distro"*. Say which rows built and which were left out, and treat
+   "Build result" (the commit status `build-result.yml` keeps) as the
+   verdict of the Build run - it is green only when that run succeeded with
+   jobs. (#1243 changed Windows and macOS file naming without the label: its
+   Windows ARM and macOS Intel rows read green after three seconds and were
+   first built on `main`.)
+
 For maintainers:
 
-8. **Merge with the PR title, not the branch name.** GitHub's default merge
+9. **Merge with the PR title, not the branch name.** GitHub's default merge
    commit is `Merge pull request #N from <owner>/<branch>`, which puts the
    branch's random words into `main`'s history. In the repository's
    *Settings → General → Pull Requests*, set the merge-commit default message
@@ -1184,6 +1235,6 @@ For maintainers:
    squash merges to **Pull request title** as well. Until that is set, edit
    the commit message in the merge dialog before confirming.
 
-9. **Do not merge a session's PR while the session may still push to it.**
-   Merge after the session says it is done — or, if merging early, tell the
-   session so it restarts from `main` and opens a fresh PR for the rest.
+10. **Do not merge a session's PR while the session may still push to it.**
+    Merge after the session says it is done — or, if merging early, tell the
+    session so it restarts from `main` and opens a fresh PR for the rest.

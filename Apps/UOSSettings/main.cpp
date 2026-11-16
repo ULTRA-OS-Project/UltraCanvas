@@ -17,6 +17,7 @@
 #include "UltraCanvasNotificationActivation.h"
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -56,6 +57,11 @@ int main(int argc, char** argv) {
     const UltraCanvasSingleInstance::Start start = instance.Claim(request);
     if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;   // the running copy came forward
 
+    // The desktop's own texts - the info bar's icons, the programs that
+    // start with it, its settings file's messages - come from the desktop's
+    // source (Apps/UltraDesktop/ui/UltraDesktopSettings.cpp) and so from its
+    // catalogue, looked up after this application's.
+    UltraCanvas::UltraLocalisation::AddSet("UltraDesktop");
     UltraCanvas::UltraCanvasApplication app;
     if (!app.Initialize("UOS-Settings")) {
         std::fprintf(stderr, "UOS-Settings: the UltraCanvas application could not "

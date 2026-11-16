@@ -24,11 +24,12 @@
 //   UltraCanvas::ApplyHostAppearanceOverride(host, "dark,font=Noto Sans 14");   // host.dark, host.uiFont Noto Sans 14
 //   const std::string line = UltraCanvas::HostAppearanceReport(host);           // for a start-up report
 //
+// Version: 1.2.0 - firmLightText: light text drawn firmer on a dark ground, "lighttext=firm|plain"
 // Version: 1.1.0 - the Linux readers (HostAppearanceLinux): the XSETTINGS decoder, the
 //                  theme-name, colour-scheme, kdeglobals and GNOME accent rules, and the
 //                  composer with the sources' precedence; T2 of the proposal
 // Version: 1.0.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -57,6 +58,10 @@ namespace UltraCanvas {
         FontStyle uiFont;               // family and size in points: Segoe UI 9, SF 13, Cantarell 11, Noto Sans 10
         FontStyle monoFont;             // Consolas, SF Mono / Menlo, the GNOME monospace font
         double textScale = 1.0;         // Windows "Text size", GNOME text-scaling-factor, Android fontScale
+        // Light text drawn firmer on a dark ground (RenderContextCairo's
+        // light text boost). No desktop has a word for it: true unless
+        // Appearance.conf or the override says "lighttext=plain".
+        bool firmLightText = true;
         // Where it came from, for a start-up report: "windows-registry",
         // "macos-appkit", "default" (the fonts only, from the platform's font
         // detectors), with "+override" when ULTRACANVAS_HOST_APPEARANCE
@@ -70,7 +75,7 @@ namespace UltraCanvas {
             };
             return dark == o.dark && highContrast == o.highContrast && reduceMotion == o.reduceMotion
                 && sameColor(accent, o.accent) && uiFont == o.uiFont && monoFont == o.monoFont
-                && textScale == o.textScale && source == o.source;
+                && textScale == o.textScale && firmLightText == o.firmLightText && source == o.source;
         }
         bool operator!=(const HostAppearance& o) const { return !(*this == o); }
     };
@@ -440,6 +445,7 @@ namespace UltraCanvas {
             else if (key == "look" && (lower == "dark" || lower == "light")) { host.dark = lower == "dark"; applied = true; }
             else if (key == "contrast" && (lower == "high" || lower == "normal")) { host.highContrast = lower == "high"; applied = true; }
             else if (key == "motion" && (lower == "reduce" || lower == "full")) { host.reduceMotion = lower == "reduce"; applied = true; }
+            else if (key == "lighttext" && (lower == "firm" || lower == "plain")) { host.firmLightText = lower == "firm"; applied = true; }
             else if (key == "accent") {
                 Color color;
                 if (lower == "none") { host.accent.reset(); applied = true; }
@@ -487,6 +493,7 @@ namespace UltraCanvas {
         line += ", font " + host.uiFont.fontFamily + " " + number(host.uiFont.fontSize);
         line += ", mono " + host.monoFont.fontFamily + " " + number(host.monoFont.fontSize);
         if (host.textScale != 1.0) line += ", scale " + number(host.textScale);
+        if (!host.firmLightText) line += ", plain light text";
         line += ", from " + host.source;
         return line;
     }

@@ -2,6 +2,9 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.6.3 - a row narrower than an AtMost main extent grows toward it by
+//                 the content of the items that grow from a set basis (flex: 1 1 0),
+//                 so a wrapping text among them is not measured zero wide
 // Version: 1.6.2 - a line wider than an AtMost main extent is shrunk to it when
 //                 measured, as it is when arranged (a row of a column came out
 //                 a wrapped line too short) - no item below its min-content
@@ -43,7 +46,7 @@
 //                 its content extent from the constraint rather than its own
 //                 explicit size, so a grown/stretched flex container lays out
 //                 its children against its USED size, not its flex-basis.
-// Last Modified: 2026-10-09
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -616,6 +619,39 @@ namespace UltraCanvas {
                                 }
                                 resolveFlexibleLengths(line.items, s.availableMain, s.mainGap);
                                 for (size_t i = 0; i < line.items.size(); ++i) line.items[i]->minMain = ownMin[i];
+                            } else if (s.axis.isRow) {
+                                // And a line narrower than it grows toward it,
+                                // as far as its content asks. An item that
+                                // grows from a set basis below its content -
+                                // flex: 1 1 0, "take the rest of the line" -
+                                // has a base size of that basis, but its
+                                // max-content contribution is its content's
+                                // (CSS Flexbox 9.9.1). Measured at the basis,
+                                // a wrapping text was zero wide - a letter a
+                                // line - and the row many times too tall
+                                // (the demo's Text Rendering page).
+                                float wanted = lineMain;
+                                bool any = false;
+                                for (auto* it : line.items) {
+                                    if (it->fi.grow <= 0.f) continue;
+                                    if (!resolveDimension(it->fi.basis, std::nullopt, ctx).has_value()) continue;
+                                    float content = 0.f;
+                                    if (it->el->intrinsic.valid && it->el->intrinsic.maxContentWidth > 0) {
+                                        content = it->el->intrinsic.maxContentWidth;
+                                    } else {
+                                        it->el->Measure(s.axis.constraints(
+                                            ConstraintMode::Unbounded, INFINITY,
+                                            std::isfinite(s.availableCross) ? ConstraintMode::AtMost
+                                                                            : ConstraintMode::Unbounded,
+                                            s.availableCross), ctx);
+                                        content = it->el->measured.measuredWidth;
+                                    }
+                                    content = std::clamp(content, it->minMain, it->maxMain);
+                                    if (content > it->hypoMain) { wanted += content - it->hypoMain; any = true; }
+                                }
+                                if (any) {
+                                    resolveFlexibleLengths(line.items, std::min(wanted, s.availableMain), s.mainGap);
+                                }
                             }
                         }
                     }

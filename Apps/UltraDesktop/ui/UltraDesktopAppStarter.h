@@ -88,6 +88,12 @@ public:
         // the application back where its own categories put it).
         std::function<std::map<std::string, std::string>()> moved;
         std::function<void(const std::string& key, const std::string& groupKey)> setMoved;
+        // The applications themselves. The desktop leaves this unset and the
+        // window reads the machine's desktop entries on a thread of its own,
+        // keeping the list between openings. A host with a list of its own -
+        // and a test, which must not depend on what is installed - hands one
+        // in here instead, and nothing is read from disk or kept.
+        std::function<AppList()> applications;
     };
 
     explicit UltraDesktopAppStarter(Hooks hooks);
@@ -97,13 +103,25 @@ public:
     void Raise();
     bool IsOpen() const { return open_; }
 
+    // Show these applications in place of the ones the window read for
+    // itself: the window's own loader calls this, and so does a host - or a
+    // test - that hands it a list (Hooks::applications). The page is built
+    // again, keeping the tree, the rows the user opened and the category
+    // they chose.
+    void ShowApps(AppList apps);
+
+    // The window the page lives in, once Open() has made one: for a host
+    // that places or raises it, and for a test that looks the page's
+    // elements up by their identifiers ("appsTree", "appsList",
+    // "appsFilter", "appsTiles").
+    const std::shared_ptr<UltraCanvas::UltraCanvasWindow>& Window() const { return window_; }
+
     // Read the application list on a thread of its own and keep it, so the
     // next Open shows it at once. The desktop calls it a little after it
     // starts; a second call while one runs does nothing.
     static void Preload();
 
 private:
-    void ShowApps(AppList apps);
     // The theme changed: the status, and the headings, tiles and drag label
     // made again in the new colours.
     void ApplyLook();
@@ -150,7 +168,12 @@ private:
     bool suppressClick_ = false;       // a drag just ended on a tile: no click
     std::vector<std::pair<UltraCanvas::UltraCanvasUIElement*, size_t>> tileApps_;      // tile -> application
     std::vector<std::pair<UltraCanvas::UltraCanvasUIElement*, std::string>> dropZones_; // heading/grid -> category
-    UltraCanvas::UltraCanvasUIElement* tilesArea_ = nullptr;
+    // The scrolling area the tiles sit in. Kept across rebuilds, like the
+    // tree pane: a keystroke in the filter box rebuilds the page, and an
+    // area built afresh each time took the user's place in the list with it.
+    // The tiles inside it are made again; its scroll position is put back.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> tilesScroll_;
+    UltraCanvas::UltraCanvasUIElement* tilesArea_ = nullptr;   // tilesScroll_.get(), for the drop hit-tests
     std::map<std::string, std::string> nodeGroup_;   // tree node id -> category key
     std::vector<AppGroup> groups_;                    // what the view shows now
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> dragLabel_;

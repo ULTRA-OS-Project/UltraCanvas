@@ -2,6 +2,7 @@
 // Telegram provider - the TDLib requests it sends
 // Version: 0.1.6 - GetSupergroupMembers
 // Version: 0.1.5 - SetChatTitle, AddChatMembers, RemoveChatMember, LeaveChat, DeleteChatHistory, GetBasicGroupFullInfo
+// Version: 0.1.5 - SendVoiceNote
 // Version: 0.1.4 - SendVideo and SendDocument take a preview picture (inputThumbnail)
 // Version: 0.1.3 - DownloadFile; SendPhoto, SendVideo, SendDocument
 // Version: 0.1.2 - RequestQrCode
@@ -198,6 +199,15 @@ TdObject SendDocument(int64_t chatId, const std::string& localPath, const std::s
     SetThumbnail(content, thumbnail);
     content.Set("disable_content_type_detection", TdObject(false));
     content.Set("caption", Formatted(caption));
+    return SendContent(chatId, content, replyToMessageId);
+}
+
+TdObject SendVoiceNote(int64_t chatId, const std::string& localPath, int32_t durationSeconds, int64_t replyToMessageId) {
+    TdObject content = Make("inputMessageVoiceNote");
+    content.Set("voice_note", LocalFile(localPath));
+    content.Set("duration", TdObject(static_cast<int64_t>(durationSeconds)));
+    content.Set("waveform", TdObject(std::string()));      // none: Telegram's apps draw a flat line
+    content.Set("caption", Formatted(std::string()));
     return SendContent(chatId, content, replyToMessageId);
 }
 

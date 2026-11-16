@@ -236,18 +236,24 @@ if (tools.colour) { /* the adjustments panel and Curves apply */ }
 | Shown | Zoom | Rotate / mirror | Adjustments + Curves | Save as |
 |---|:-:|:-:|:-:|:-:|
 | Bitmap image (JPEG, PNG, WebP, HEIC, …) | yes | yes | yes | yes |
-| Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a bitmap) |
-| Drawing in the vector view (DXF, DWG, EMF, …) | yes | — | — | — |
+| Drawing on the image surface (SVG, an EPS the pipeline rasterizes, a vector file's embedded preview) | yes | yes | — | yes (as a drawing; turned or mirrored, as a bitmap) |
+| Drawing in the vector view (DXF, DWG, EMF, an SVG where the pipeline has no SVG loader, …) | yes | — | — | yes (as a drawing) |
 | `*.ucd` layered image or preview thumbnail | yes | — | — | — |
 | PDF, e-book | yes | — | — | — |
-| Text, spreadsheet, font, 3D model, video, audio, nothing loaded | — | — | — | — |
+| Audio the player opens | — | — | — | yes (any audio type this build encodes) |
+| Video the player opens | — | — | — | yes, where a converter is registered (any type `ConvertVideoFile` writes - VideoFX's) |
+| Text, spreadsheet, font, 3D model, nothing loaded | — | — | — | — |
 
 *Unlock* (`tools.unlock`) is there only while the shown file is
 password-protected and not unlocked yet - see *Password-protected files*.
 Separators follow the groups, so none is left standing alone. Text,
 spreadsheet, font, 3D, video and audio views carry their own controls (the
 players' transport bar, the model's orbit and dolly), so the toolbar is down to
-the browse group for them; *Details* stays in the info bar for every kind.
+the browse group for them - and *Save as* for a recording or a video;
+*Details* stays in the info bar for every kind. The framework core has no
+video encoder, so a video's *Save as* is there only where the application
+registered a converter - VideoFX's, on FFmpeg (`VideoFX_RegisterWithFileLoader`,
+as UltraViewer does); a build without one offers a video no *Save as* at all.
 
 A drawing's pixels are only a rendering of it at the size it is shown, so it
 takes no gamma, colour or curve: the adjustments carry from one bitmap to the
@@ -766,6 +772,61 @@ size.height = picture.height * 2;
 std::string error;
 surface->SaveProcessed("twice.png", size, error);   // a drawing drawn again at that size
 ```
+
+### Saving a drawing, a recording or a video
+
+A drawing is saved as a drawing. *Save as* on an SVG, a DXF, an EMF or any
+file the vector view shows offers every vector type this build writes (SVG,
+PDF, EPS, DXF, … - `UltraCanvasFileLoader::AddVectorDocumentSaveTypes`)
+and then every bitmap type, drawn again at the size the Settings give
+(`SaveVectorDocument`). The drawing is the vector view's, or - an SVG the
+image pipeline rasterized onto the image surface - the file read with
+`LoadVectorDocument`. A drawing turned or mirrored here
+(`UltraCanvasMediaSurface::HasGeometryEdits`) is saved as the picture, since
+only the picture carries the turn. The same type as the file on show is the
+file copied as it is, never written again by a writer that might not carry
+everything over. Before 2026-11 an SVG was offered only as a PNG, and not at
+all where the vector view showed it (a build whose libvips has no SVG loader,
+Windows among them).
+
+A recording the audio player opened is offered every audio type this build
+encodes (`AddSaveTypes(opts, MediaFormatCategory::Audio)`: WAV always; MP3,
+FLAC, Ogg Vorbis and Opus with their encoders) and written with
+`UltraCanvasFileLoader::ConvertAudioFile` - the same type copied as it is,
+another decoded and encoded.
+
+A video the player opened is offered every type FileLoader's
+`ConvertVideoFile` writes (`UltraCanvasFileLoader::AddVideoSaveTypes`), its
+own type first, and converted with it - the same type copied as it is, another
+decoded and encoded again, picture and sound, at the film's size and frame
+rate. The framework core has no video encoder: a type is written by the
+converter its registration carries (`MediaCodecRegistration::convertVideo`),
+and an application that has VideoFX registers VideoFX's at start-up - every
+container its FFmpeg writes (MP4, MOV, Matroska, WebM, AVI as the encoders
+allow). Without one a video has no *Save as*, rather than one that fails.
+(`AddSaveTypes(opts, MediaFormatCategory::Video)` is not the list here: it
+holds every container the build writes, a camera recording's too - on Linux
+the GStreamer muxers - which a file need not be convertible to.)
+
+<!-- doc-check: int main(); -->
+```cpp
+#include "VideoFXUltraCanvasFormats.h"   // link VideoFXUltraCanvasFormats
+
+int main() {
+    UltraCanvasApplication app;
+    app.Initialize("MyViewer");
+    VideoFX::VideoFX_RegisterWithFileLoader();   // a video's Save as: every type VideoFX writes
+    // ... a window with an UltraCanvasMediaViewer ...
+    return app.Run(), 0;
+}
+```
+
+Converting a film takes as long as encoding it does, so the viewer runs
+`ConvertVideoFile` on a thread of its own behind a progress window - the ring
+shows how far it has got, and *Cancel* stops it. The file is written beside
+the chosen one and put in its place only when complete, so a stopped or failed
+save leaves no half file and keeps the one it was to replace; the info bar
+then says *Not saved: <name>*, and a failure says why in a message.
 
 Each slider is **continuous over its whole range** and carries its live value in
 its caption (`Gamma  1.37`), so an edit can be read off and repeated. The

@@ -1,5 +1,6 @@
 // UltraCanvasRadio.h
 // Radio button: circular indicator with center dot, exclusive selection via UltraCanvasRadioGroup.
+// Version: 1.7.0 - one string is the identifier, as on every element (it was the label's text)
 // Version: 1.6.0 - RadioVisualStyle::FromTheme, ApplyTheme: the radio follows the theme;
 //                  a SetVisualStyle by hand stops the following
 // Version: 1.5.0 - AddRadioButton adopts a radio that is already checked
@@ -7,7 +8,7 @@
 // Version: 1.3.0 - the group's onChecked handler holds its radio raw (it kept the radio
 //                 alive forever) and is taken back when the group goes or the radio leaves it
 // Version: 1.2.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -83,8 +84,13 @@ namespace UltraCanvas {
         UltraCanvasRadio(const std::string& identifier, const std::string& labelText)
             : UltraCanvasRadio(identifier, -1, -1, -1, -1, labelText) {}
 
-        explicit UltraCanvasRadio(const std::string& labelText = "")
-            : UltraCanvasRadio("", -1, -1, -1, -1, labelText) {}
+        // One string alone is the IDENTIFIER, as on every element; the text
+        // is empty until SetText. (It was the text until 1.7.0.) The text goes
+        // second: ("SizeLarge", Tr("Large")), or ("", text).
+        explicit UltraCanvasRadio(const std::string& identifier = "")
+            : UltraCanvasRadio(identifier, -1, -1, -1, -1, "") {
+            WarnIfIdentifierReadsAsText("UltraCanvasRadio", identifier);
+        }
 
         ~UltraCanvasRadio() override = default;
 

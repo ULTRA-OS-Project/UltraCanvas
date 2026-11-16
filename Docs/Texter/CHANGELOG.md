@@ -1,3 +1,19 @@
+#### 2026-11-15 *1.84*
+- **A window started dark has a dark menu bar, toolbar and status bar.** The
+  dark colours were laid over the window only when the look changed, so a
+  start under the dark look (`--dark`, or a dark desktop) kept the light menu
+  bar, toolbar and status bar strip it was built with, around a dark document.
+  The status bar strip itself also had no dark colour at all; it now follows
+  the look in both directions.
+- **View > Dark Mode: Document Background.** Under the dark look, text tabs
+  can show their text on a dark page (as before), a light grey one or a white
+  one, while the window around them stays dark. Remembered in the settings
+  (`darkDocumentBackground`); the light look is unaffected.
+- **The "dictionary could not be loaded" message can be translated.** It was
+  put together from English pieces around the dictionary's name; it is now
+  two whole sentences through `TrF`, and names the dictionary still in use by
+  its own name, as the status bar does, instead of by its code.
+
 #### 2026-11-15 *1.83*
 - **The status bar says which language the document is spell checked in.**
   A new item beside the zoom shows "Spelling: English (United States)" (the

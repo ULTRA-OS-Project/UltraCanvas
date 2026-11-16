@@ -5,6 +5,8 @@
 // border *visual* properties, render context, window, tooltip) stay on
 // this class; geometry, box model, identifier, parent link, z-index live
 // on the engine base.
+// Version: 4.8.0 - WarnIfIdentifierReadsAsText, for the one-string constructors: one string is an
+//                  element's identifier, on every element
 // Version: 4.7.0 - SetFollowThemeByDefault: whether a new element follows the theme (the policy sets it);
 //                  ApplyThemeIfFollowing for a constructor's tail; StyleSetByHand: a style set by hand stops the following
 // Version: 4.6.0 - SetFollowTheme / ApplyTheme / OnThemeChanged: an element that follows the current UltraCanvasTheme
@@ -14,7 +16,7 @@
 // Version: 4.3.0 - accessible name/description overrides, toggle state, range value, value text and default action
 // Version: 4.2.0 - ArrangeOwnBox: take a box without laying the children out
 // Version: 4.1.0 - SetBorderRadius: rounded corners without a border
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -736,6 +738,18 @@ namespace UltraCanvas {
         bool followTheme = FollowThemeByDefault();
         bool applyingTheme = false;
     };
+
+// ===== ONE STRING IS THE IDENTIFIER =====
+    // An element built from one string takes it as its identifier:
+    // UltraCanvasContainer("Row"), UltraCanvasLabel("CountLabel"). The text,
+    // where the element has one, comes second - ("CountLabel", "0 of 12") -
+    // or from SetText. Until 0.9.x the label, the checkbox, the radio button
+    // and the switch took their TEXT there, alone among the elements, and
+    // eleven callers in this repository handed them a name. A call that still
+    // hands one of them words - anything with a space or a line break in it -
+    // makes an element that shows nothing; this says so on debugOutput, for
+    // the first twenty. Their one-string constructors call it.
+    void WarnIfIdentifierReadsAsText(const char* elementClass, const std::string& identifier);
 
 // ===== FACTORY SYSTEM =====
     class UltraCanvasUIElementFactory {

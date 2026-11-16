@@ -11,12 +11,14 @@
 // Every format plugin this build produced registers itself before main(),
 // because the executable links UltraCanvasAllFormats (as UltraFiler does) -
 // see UltraCanvas/Plugins/UltraCanvasAllFormats.h.
+// Version: 1.2.0 - a video's Save as: VideoFX's converter is registered with FileLoader
+//                  (VideoFX_RegisterWithFileLoader) where VideoFX is built
 // Version: 1.1.1 - the drawing and 3D format plugins are linked and registered:
 //                  a CDR, XAR, DXF or DWG shows the drawing, not its stored preview
 // Version: 1.1.0 - one UltraViewer per user: a second start's files are shown
 //                  in the running viewer, a start without files brings it forward
 // Version: 1.0.1
-// Last Modified: 2026-10-27
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -32,6 +34,9 @@
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraViewerWindow.h"
+#ifdef ULTRAVIEWER_WITH_VIDEOFX
+#include "VideoFXUltraCanvasFormats.h"   // a video saved in another type
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -136,6 +141,11 @@ int main(int argc, char* argv[]) {
         // listing, view buttons), the same on every platform. Its message
         // boxes - a failed save, the replace prompt - follow the same setting.
         UltraCanvasDialogManager::SetUseNativeDialogs(false);
+#ifdef ULTRAVIEWER_WITH_VIDEOFX
+        // A video's Save as writes every container VideoFX's FFmpeg writes,
+        // converted by VideoFX; without it a video has no Save as.
+        VideoFX::VideoFX_RegisterWithFileLoader();
+#endif
         if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
             return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "UltraViewer");
 
