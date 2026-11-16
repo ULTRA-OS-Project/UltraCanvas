@@ -14,4 +14,6 @@
   that anchors it (`WithFramesInlineIn`); edited, its placeholder took no room
   and nothing drew them. They are now shown in the same place for as long as
   the outer frame is open (`PlacedFloat::wordsOnly`) - shown, not edited: they
-  are the inner frame's, and stay as they were when the editing ends.
+  are the inner frame's, and stay as they were when the editing ends. The
+  words in an inner drawing's shapes (a group member's box of text) are shown
+  with them (`LayoutAnchoredFrameWords`).

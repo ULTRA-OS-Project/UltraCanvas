@@ -19,6 +19,7 @@
 // them from GetFormatState() plus the formatting methods below.
 //
 // Version: 1.13.1 - PlacedFloat::wordsOnly: a frame anchored in the frame being edited shows its words
+//                   (LayoutAnchoredFrameWords: its paragraphs and those in its drawing's shapes)
 // Version: 1.13.0 - EditFrame / IsEditingFrame: a text frame's words edited in place
 // Version: 1.12.0 - PlacedFloat::inFooter: a header's or footer's floats picked up while it is edited
 // Version: 1.11.0 - floating frames and drawings selected, moved and resized like pictures;
@@ -835,6 +836,12 @@ private:
     // With a page number, page fields in it show that page's.
     std::shared_ptr<FurnitureLayout> LayoutTextFrame(IRenderContext* ctx, int frameIndex, float width,
                                                      int pageNumber = 0, int pageCount = 0);
+    // Lays `layout.blocks` out `width` pixels wide, one under the other.
+    void LayoutFrameBlocks(IRenderContext* ctx, FurnitureLayout& layout, float width);
+    // The words a frame anchored in another frame adds to that frame's text
+    // (its paragraphs, then those in its drawing's shapes), laid out `width`
+    // wide: shown while the frame around it is edited. Null when it has none.
+    std::shared_ptr<FurnitureLayout> LayoutAnchoredFrameWords(IRenderContext* ctx, int frameIndex, float width);
     // The room a text frame's border and padding take on each side (pixels).
     float TextFrameInset(int frameIndex) const;
     void DrawTextFrame(IRenderContext* ctx, const PlacedFloat& placed, const Rect2Dd& target);

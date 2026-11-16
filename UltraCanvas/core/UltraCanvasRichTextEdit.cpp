@@ -9,7 +9,8 @@
 //
 // Version: 1.9.1 - a picture anchored in a text frame stays in the line while the frame's words
 //                  are edited (it vanished: no pass places a float there), and a frame anchored
-//                  in it keeps its words before their paragraph (they were hidden)
+//                  in it keeps its words before their paragraph (they were hidden) - those in its
+//                  drawing's shapes too (LayoutAnchoredFrameWords)
 // Version: 1.9.0 - a text frame's words edited in place (EditFrame); EMF and WMF pictures and
 //                  fills drawn through the vector readers (LoadDocumentPicture)
 // Version: 1.8.0 - pattern and picture fills; a header's or footer's floats are placed, picked up,
@@ -1487,19 +1488,48 @@ std::shared_ptr<UltraCanvasRichTextEdit::FurnitureLayout> UltraCanvasRichTextEdi
         bool hasFields = false;
         layout->blocks = FillPageFields(layout->blocks, pageNumber, pageCount, hasFields);
     }
-    layout->layouts.resize(layout->blocks.size());
+    LayoutFrameBlocks(ctx, *layout, width);
+    furnitureCache[key] = layout;
+    return layout;
+}
+
+void UltraCanvasRichTextEdit::LayoutFrameBlocks(IRenderContext* ctx, FurnitureLayout& layout, float width) {
+    layout.layouts.resize(layout.blocks.size());
     const float savedOverride = columnWidthOverride;
     columnWidthOverride = width;
     float y = 0.0f;
-    for (size_t i = 0; i < layout->blocks.size(); i++) {
-        BlockLayout& bl = layout->layouts[i];
-        BuildBlockLayout(ctx, layout->blocks, static_cast<int>(i), bl, -1);
+    for (size_t i = 0; i < layout.blocks.size(); i++) {
+        BlockLayout& bl = layout.layouts[i];
+        BuildBlockLayout(ctx, layout.blocks, static_cast<int>(i), bl, -1);
         bl.bounds.x = bl.textLeft;
         bl.bounds.y = y;
-        y += bl.bounds.height + GapAfterBlock(layout->blocks, static_cast<int>(i));
+        y += bl.bounds.height + GapAfterBlock(layout.blocks, static_cast<int>(i));
     }
     columnWidthOverride = savedOverride;
-    layout->height = y;
+    layout.height = y;
+}
+
+std::shared_ptr<UltraCanvasRichTextEdit::FurnitureLayout> UltraCanvasRichTextEdit::LayoutAnchoredFrameWords(
+        IRenderContext* ctx, int frameIndex, float width) {
+    const UCRichDocument& document = *editor.GetDocument();
+    if (frameIndex < 0 || frameIndex >= static_cast<int>(document.frames.size())) return nullptr;
+    const RichTextFrame& frame = document.frames[static_cast<size_t>(frameIndex)];
+    const std::string key = "anchored|" + std::to_string(frameIndex) + "|" + std::to_string(std::lround(width * 10.0f))
+                          + "|" + std::to_string(reinterpret_cast<uintptr_t>(&frame.blocks));
+    auto found = furnitureCache.find(key);
+    if (found != furnitureCache.end()) return found->second;
+    // What a paragraph anchoring only this frame becomes when the frame
+    // around it is drawn: the frame's paragraphs, then the words in its
+    // drawing's shapes (a group member's box of text).
+    RichTextRun anchor;
+    anchor.text = RichTextRun::kObjectReplacement;
+    anchor.frameIndex = frameIndex;
+    RichDocBlock paragraph;
+    paragraph.runs = {anchor};
+    auto layout = std::make_shared<FurnitureLayout>();
+    layout->blocks = document.WithFramesInlineIn({paragraph});
+    if (layout->blocks.empty()) layout = nullptr;
+    else LayoutFrameBlocks(ctx, *layout, width);
     furnitureCache[key] = layout;
     return layout;
 }
@@ -5646,7 +5676,7 @@ float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
                 for (const RichTextRun& run : editor.GetBlock(i).runs) {
                     if (!run.IsTextFrame() || run.frameIndex == furnitureEdit->frameIndex) continue;
                     std::shared_ptr<FurnitureLayout> words =
-                        LayoutTextFrame(ctx, run.frameIndex, furnitureEdit->frameInnerWidth);
+                        LayoutAnchoredFrameWords(ctx, run.frameIndex, furnitureEdit->frameInnerWidth);
                     if (!words || words->height <= 0.0f) continue;
                     PlacedFloat inner;
                     inner.blockIndex = -1;

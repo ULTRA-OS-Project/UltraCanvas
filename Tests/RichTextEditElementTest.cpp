@@ -1666,6 +1666,15 @@ int main() {
         };
         RichTextFrame inner;
         inner.blocks = {paragraphOf("Inner one"), paragraphOf("Inner two")};
+        // ...and it is a drawing, one of whose shapes holds words of its own.
+        RichTextFrame memberWords;
+        memberWords.shapeText = true;
+        memberWords.blocks = {paragraphOf("Member words")};
+        RichShape member;
+        member.widthPt = 80.0f;
+        member.heightPt = 20.0f;
+        member.textFrame = 2;
+        inner.shapes = {member};
         RichTextRun innerAnchor;
         innerAnchor.text = RichTextRun::kObjectReplacement;
         innerAnchor.frameIndex = 1;
@@ -1675,7 +1684,7 @@ int main() {
         sender.runs.insert(sender.runs.begin(), innerAnchor);
         RichTextFrame outer;
         outer.blocks = {paragraphOf("Above"), sender};
-        document->frames = {outer, inner};
+        document->frames = {outer, inner, memberWords};
         RichTextRun anchor;
         anchor.text = RichTextRun::kObjectReplacement;
         anchor.frameIndex = 0;
@@ -1699,10 +1708,10 @@ int main() {
         editor.SetCaret(editor.DocumentEnd());
         window->UpdateAndRender();
         const Rect2Df last = edit->GetCaretRectForTest();
-        // "Above", then the inner frame's two lines, then "Sender".
-        TEST("The inner frame's words keep their room before the paragraph anchoring it: "
+        // "Above", the inner frame's two lines, its shape's line, then "Sender".
+        TEST("The inner frame's words and its shape's keep their room before the paragraph anchoring it: "
              + std::to_string(last.y - first.y) + " down, a line is " + std::to_string(first.height),
-             first.height > 0.0f && last.y - first.y > 2.5f * first.height && last.y < on.y + on.height);
+             first.height > 0.0f && last.y - first.y > 3.5f * first.height && last.y < on.y + on.height);
         editor.InsertText(" Company");
         edit->FinishHeaderFooterEditing();
         window->UpdateAndRender();
