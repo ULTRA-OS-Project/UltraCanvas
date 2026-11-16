@@ -7605,6 +7605,30 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: NodeDiagramOverlapTest")
 endif()
 
+# ===== NODE DIAGRAM: CONCEPT MAPS =====
+# Free-placed regions keep their bounds and overlap through a layout, an
+# ellipse grows for its label on both axes, an annotation has a wrapped box
+# on the side asked for, HighlightPath marks the links of a path, a title
+# outside its box takes no room from it, a link keeps its waypoints; all of it
+# and strings with escapes round-trip through JSON; then drawn offscreen and
+# the pixels read back - the link cut at its target's outline with its
+# arrowhead, the cloud as one shape. Headless.
+# ULTRACANVAS_SCREENSHOT_DIR=<dir> writes the picture as a PNG.
+if(TARGET UltraCanvas)
+    add_executable(NodeDiagramConceptMapTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/NodeDiagramConceptMapTest.cpp
+    )
+    target_include_directories(NodeDiagramConceptMapTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(NodeDiagramConceptMapTest PRIVATE cxx_std_20)
+    target_link_libraries(NodeDiagramConceptMapTest PRIVATE UltraCanvas)
+    set_target_properties(NodeDiagramConceptMapTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME NodeDiagramConceptMapTest COMMAND NodeDiagramConceptMapTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: NodeDiagramConceptMapTest")
+endif()
+
 # ===== DIAGRAM JSON UNDER A COMMA-DECIMAL LOCALE =====
 # The node and compositor diagrams' JSON is the same text under a
 # comma-decimal C++ global locale as under "C" (their streams are pinned to

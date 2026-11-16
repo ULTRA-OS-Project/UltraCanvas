@@ -273,7 +273,6 @@ Docs/UltraCanvas/UltraCanvasMindMapProposal.md::prose names `CollapseToLevel(`, 
 Docs/UltraCanvas/UltraCanvasMindMapProposal.md::prose names `FitSubtree(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMindMapProposal.md::prose names `MindMapIconPath(`, which no header declares
 # signature Docs/UltraCanvas/UltraCanvasMindMapProposal.md: 64a2ba7679f679896f60903b4a6ad08abd8551862b63daf7d8399721764862f4
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::'BuildLinkPath' is not a member of UltraCanvasNodeDiagram, UltraCanvasPacketDiagram, UltraCanvasSequenceDiagram, UltraCanvasFlowChart, nor a free function
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::'GetLinkPointAt' is not a member of UltraCanvasNodeDiagram, UltraCanvasPacketDiagram, UltraCanvasSequenceDiagram, UltraCanvasFlowChart, nor a free function
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::'GetLinkTangentAt' is not a member of UltraCanvasNodeDiagram, UltraCanvasPacketDiagram, UltraCanvasSequenceDiagram, UltraCanvasFlowChart, nor a free function
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::constructor for 'UltraCanvasPacketSwitchingDiagram' must explicitly initialize the base class 'UltraCanvasNodeDiagram' which does not have a default constructor
@@ -304,7 +303,6 @@ Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'SetHandle
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'bytesTransferred' in 'UltraNetResult'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no type named 'TracePacketRef' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no type named 'TracePacketRef' in namespace 'UltraCanvas'
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::prose names `BuildLinkPath(`, which no header declares
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::prose names `CANFrame(`, which no header declares
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::prose names `DHCP(`, which no header declares
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::prose names `GetLinkPointAt(`, which no header declares
@@ -332,7 +330,7 @@ Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::unknown type name 'PacketN
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::unknown type name 'PacketNodeRole'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::use of undeclared identifier 'SetInteractionLocked'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::use of undeclared identifier 'SetShowControls'
-# signature Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md: 891b133f9760577b3ce5c75c3a51a3d8da3b5004861e84f67bbf79cdd7c4bcab
+# signature Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md: 4146b70123f60c5aafd4dc0b9e972b466d2d6a69983b975f373ed5f672671646
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPBrush::dimensionIndex' does not exist (no member named 'dimensionIndex' in 'PCPBrush')
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPBrush::inverted' does not exist (no member named 'inverted' in 'PCPBrush')
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'FormatNumber' in namespace 'UltraCanvas'

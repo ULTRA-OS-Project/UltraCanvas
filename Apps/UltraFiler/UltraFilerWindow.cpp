@@ -712,6 +712,27 @@ namespace {
         return children;
     }
 
+    // Moves `row`, a child of `parent` just appended at the end, to where
+    // TreeChildrenOf's order puts it: before the first sibling whose label
+    // sorts after its own, case-insensitively. Only that one row moves, so a
+    // hidden folder the tree adds on demand (SyncTreeSelection) lands among
+    // its siblings rather than below them.
+    void PlaceTreeRowByName(TreeNode* parent, TreeNode* row) {
+        if (!parent || !row) return;
+        auto& rows = parent->children;
+        const auto self = std::find_if(rows.begin(), rows.end(),
+                [row](const std::unique_ptr<TreeNode>& c) { return c.get() == row; });
+        if (self == rows.end()) return;
+        const auto lower = [](std::string s) {
+            std::transform(s.begin(), s.end(), s.begin(), ToLowerChar);
+            return s;
+        };
+        const std::string key = lower(row->data.text);
+        auto before = std::find_if(rows.begin(), self,
+                [&](const std::unique_ptr<TreeNode>& c) { return key < lower(c->data.text); });
+        if (before != self) std::rotate(before, self, self + 1);
+    }
+
     // What a volume is called in the tree. The framework labels the system
     // root "/" because it has no business choosing an application's wording;
     // in a file manager that row is the whole filesystem, and "File System" is
@@ -6303,6 +6324,7 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
                     AddTreeFolderNode(anchor->data.nodeId, chain[idx], label,
                                       "folder-brown.svg");
                     next = folderTree->FindNode(chain[idx]);
+                    if (next) PlaceTreeRowByName(anchor, next);
                 }
             }
             anchor = next;
