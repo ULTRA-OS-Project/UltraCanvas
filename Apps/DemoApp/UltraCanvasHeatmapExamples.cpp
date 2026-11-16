@@ -293,11 +293,14 @@ namespace UltraCanvas {
         // Cell shape dropdown
         addLabel("HmShapeLbl", Tr("Cell shape:"));
         auto shapeDd = std::make_shared<UltraCanvasDropdown>("HmShape", 0, 0, pw, ctrlH);
-        for (const std::string& n : {Tr("Rectangle"), Tr("Rounded rectangle"), Tr("Circle")}) shapeDd->AddItem(n);
+        for (const std::string& n : {Tr("Rectangle"), Tr("Rounded rectangle"), Tr("Circle"), Tr("Hexagon")}) {
+            shapeDd->AddItem(n);
+        }
         shapeDd->SetSelectedIndex(0);
         shapeDd->onSelectionChanged = [hm](int index, const DropdownItem&) {
             hm->SetCellShape(index == 1 ? HeatmapCellShape::RoundedRectangle
                              : index == 2 ? HeatmapCellShape::Circle
+                             : index == 3 ? HeatmapCellShape::Hexagon
                                           : HeatmapCellShape::Rectangle);
         };
         DemoKit::AddStretched(panel, shapeDd);

@@ -6674,6 +6674,29 @@ else()
     message(STATUS "  MindMapRenderTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== HEATMAP HEXAGON RENDER TEST =====
+# The Hexagon cell shape of both heatmaps drawn offscreen: regular hexagons
+# whatever the plot's shape, odd rows shifted half a cell, empty corners, and
+# the engine heatmap's hit regions. With ULTRACANVAS_SCREENSHOT_DIR set, each
+# case is written there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building HeatmapHexagonRenderTest...")
+    add_executable(HeatmapHexagonRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/HeatmapHexagonRenderTest.cpp
+    )
+    target_include_directories(HeatmapHexagonRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(HeatmapHexagonRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(HeatmapHexagonRenderTest PRIVATE UltraCanvas)
+    set_target_properties(HeatmapHexagonRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HeatmapHexagonRenderTest COMMAND HeatmapHexagonRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: HeatmapHexagonRenderTest")
+else()
+    message(STATUS "  HeatmapHexagonRenderTest skipped (UltraCanvas or charts not present)")
+endif()
+
 # ===== RIDGELINE CHART RENDER TEST =====
 # UltraCanvasRidgelineChart drawn offscreen: rows on their baselines, the
 # lower row in front where they overlap, hit strips, the value column, the

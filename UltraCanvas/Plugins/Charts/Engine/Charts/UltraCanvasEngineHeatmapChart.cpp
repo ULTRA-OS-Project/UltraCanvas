@@ -1,10 +1,11 @@
 // Plugins/Charts/Engine/Charts/UltraCanvasEngineHeatmapChart.cpp
 // Heatmap / matrix chart on the chart engine.
-// Version: 1.0.0
-// Last Modified: 2026-10-20
+// Version: 1.1.0
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEngineHeatmapChart.h"
+#include "Plugins/Charts/UltraCanvasHexLayout.h"
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
@@ -271,7 +272,10 @@ void UltraCanvasEngineHeatmapChart::SetAxisTitles(const std::string& x, const st
 }
 
 void UltraCanvasEngineHeatmapChart::SetCellShape(ChartHeatmapCellShape shape) {
+    const bool axesChange = (shape == ChartHeatmapCellShape::Hexagon) !=
+                            (cellShape == ChartHeatmapCellShape::Hexagon);
     cellShape = shape;
+    if (axesChange) MarkEngineDirty(ChartDirty::Style);   // labels shown or hidden
     RequestRedraw();
 }
 
@@ -368,9 +372,13 @@ void UltraCanvasEngineHeatmapChart::DescribeAxes(ChartAxisSet& axes) {
     columns.side = columnLabelsOnTop ? ChartAxisSide::Top : ChartAxisSide::Bottom;
     columns.categoryPadding = 0.5;
     for (int c = 0; c < cols; ++c) columns.categories.push_back(ColumnLabel(c));
-    columns.visible = showColumnLabels || !xTitle.empty();
+    // Hexagons do not line up with the axis slots: their labels go, titles stay.
+    const bool hex = cellShape == ChartHeatmapCellShape::Hexagon;
+    const bool columnLabelsShown = showColumnLabels && !hex;
+    const bool rowLabelsShown = showRowLabels && !hex;
+    columns.visible = columnLabelsShown || !xTitle.empty();
     columns.title = xTitle;
-    if (!showColumnLabels) columns.formatter = [](double) { return std::string(); };
+    if (!columnLabelsShown) columns.formatter = [](double) { return std::string(); };
     axes.Add(columns);                        // kColumnAxis
 
     ChartAxis rowAxis("rows");
@@ -380,14 +388,19 @@ void UltraCanvasEngineHeatmapChart::DescribeAxes(ChartAxisSet& axes) {
     // Matrix order puts row 0 at the top, where the value direction ends.
     rowAxis.inverted = (rowOrder == ChartHeatmapRowOrder::TopDown);
     for (int r = 0; r < rows; ++r) rowAxis.categories.push_back(RowLabel(r));
-    rowAxis.visible = showRowLabels || !yTitle.empty();
+    rowAxis.visible = rowLabelsShown || !yTitle.empty();
     rowAxis.title = yTitle;
+    if (!rowLabelsShown) rowAxis.formatter = [](double) { return std::string(); };
     axes.Add(rowAxis);                        // kRowAxis
 }
 
 void UltraCanvasEngineHeatmapChart::RenderChartContent(IRenderContext* ctx,
                                                        const ChartEngineFrame& frame) {
     if (cols <= 0 || rows <= 0 || !frame.axes || frame.axes->Count() < 2) return;
+    if (cellShape == ChartHeatmapCellShape::Hexagon) {
+        RenderHexCells(ctx, frame);
+        return;
+    }
     const ChartAxis& columns = frame.axes->At(kColumnAxis);
     const ChartAxis& rowAxis = frame.axes->At(kRowAxis);
     const IChartProjection& projection = *frame.projection;
@@ -488,6 +501,68 @@ void UltraCanvasEngineHeatmapChart::RenderChartContent(IRenderContext* ctx,
 
             AddHitRegion(outline, id,
                          RowLabel(r) + " / " + ColumnLabel(c) + ": " + FormatCell(value));
+        }
+    }
+}
+
+// A grid of regular pointy-top hexagons fitted into the plot, centred: data
+// row 0 at the top (TopDown) or the bottom (BottomUp), odd display rows
+// shifted right by half a cell.
+void UltraCanvasEngineHeatmapChart::RenderHexCells(IRenderContext* ctx, const ChartEngineFrame& frame) {
+    const Rect2Dd& plot = frame.plotArea;
+    const HexLayout layout = MakeHexLayout(plot.x, plot.y, plot.width, plot.height, cols, rows);
+    if (layout.size <= 0.0) return;
+    const double size = layout.size * (1.0 - cellGap);
+    const int64_t hovered = HoveredRegionId();
+    const double progress = frame.animationProgress;
+    const double cellW = std::sqrt(3.0) * size;
+
+    if (showCellValues) ctx->SetFontSize(cellValueFontSize);
+    const bool drawValues = showCellValues && cellW >= 14.0 && size >= cellValueFontSize;
+
+    for (int r = 0; r < rows; ++r) {
+        const int displayRow = (rowOrder == ChartHeatmapRowOrder::TopDown) ? r : rows - 1 - r;
+        for (int c = 0; c < cols; ++c) {
+            if (!IsCellVisible(c, r)) continue;
+            const double value = values[static_cast<size_t>(r) * cols + c];
+            Color color = MapValueToColor(value);
+            if (color.a == 0) continue;
+            if (progress < 1.0) color = color.WithAlpha(static_cast<uint8_t>(color.a * progress));
+
+            double cx = 0.0, cy = 0.0;
+            HexCenter(layout, c, displayRow, cx, cy);
+            std::vector<Point2Dd> outline;
+            outline.reserve(6);
+            for (int k = 0; k < 6; ++k) {
+                const double angle = (60.0 * k - 90.0) * 3.14159265358979323846 / 180.0;
+                outline.emplace_back(cx + size * std::cos(angle), cy + size * std::sin(angle));
+            }
+            ctx->SetFillPaint(color);
+            ctx->FillLinePath(outline);
+            if (showCellBorders) {
+                ctx->SetStrokePaint(cellBorderColor);
+                ctx->SetStrokeWidth(cellBorderWidth);
+                ctx->DrawLinePath(outline, true);
+            } else if (cellGap <= 0.0) {
+                ctx->SetStrokePaint(color);       // hide hairline seams
+                ctx->SetStrokeWidth(1.0f);
+                ctx->DrawLinePath(outline, true);
+            }
+            const int64_t id = static_cast<int64_t>(r) * cols + c;
+            if (hovered == id) {
+                ctx->SetStrokePaint(GetTheme().axisLineColor);
+                ctx->SetStrokeWidth(2.0f);
+                ctx->DrawLinePath(outline, true);
+            }
+            if (drawValues && std::isfinite(value)) {
+                const std::string text = FormatCell(value);
+                const Size2Di textSize = ctx->GetTextLineDimensions(text);
+                if (textSize.width <= cellW - 2.0) {
+                    ctx->SetTextPaint(cellValueColor.a > 0 ? cellValueColor : ContrastText(color));
+                    ctx->DrawText(text, Point2Dd(cx - textSize.width * 0.5, cy - textSize.height * 0.5));
+                }
+            }
+            AddHitRegion(outline, id, RowLabel(r) + " / " + ColumnLabel(c) + ": " + FormatCell(value));
         }
     }
 }
