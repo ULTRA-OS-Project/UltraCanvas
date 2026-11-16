@@ -187,6 +187,32 @@ jobs:
             test ! -e build/Plugins/Elements/ultracanvas-widget-media-viewer.so
           fi
 
+      # A module archive with a static core has to carry its own dependencies:
+      # the module's public name resolves to that archive alone, so a symbol it
+      # forgot to ask for has to come from somewhere. In an ordinary build it
+      # does - every application links several archives at once and they cover
+      # for each other - and the gap shows only in a program whose link line is
+      # short enough to miss it. uc-net had never named the UltraCanvasTextUtils
+      # archive whose Trim() and Base64Encode() its UltraNetMime objects call,
+      # and ultradbadmin-relay (UltraDatabase, UltraVault, UltraNet, UltraCrypt,
+      # no core) failed to link months later, on a clean build (#1265). Each
+      # probe is an empty main with one archive forced in whole and nothing else
+      # of UltraCanvas on the line, so every object's undefined symbols must
+      # resolve from that archive's own declared dependencies. Linking is the
+      # whole test; the programs are never run. Static row only - a shared core
+      # is deliberately the single home of its absorbed archives' symbols, so
+      # there the question does not apply (see the CMakeLists comment).
+      - name: Every module archive links on its own
+        if: matrix.core == 'static'
+        run: |
+          set -euo pipefail
+          cmake --build build --target ultracanvas-module-link-probes -j"$(nproc)"
+          ls build/link-probes
+          # A guard that probed nothing would pass in silence, so insist on
+          # the archive this started with and on a plausible number of them.
+          test -x build/link-probes/uc-link-probe-uc-net
+          test "$(ls build/link-probes | wc -l)" -ge 8
+
       - name: Save ccache (main)
         if: always() && github.ref == 'refs/heads/main' && steps.ccache.outcome == 'success'
         uses: actions/cache/save@v5
