@@ -17,6 +17,7 @@
 #include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <chrono>
 #include <future>
@@ -35,10 +36,10 @@ constexpr unsigned kRefreshMs = 5000;
 constexpr unsigned kDiscoveringRefreshMs = 2000;
 
 std::string Detail(const WirelessBluetoothDevice& device) {
-    std::string text = device.kind.empty() ? "Device" : device.kind;
+    std::string text = device.kind.empty() ? Tr("Device") : device.kind;
     // Connected or not is the row's colour and its button; the line keeps
     // its room for the battery.
-    if (device.batteryPercent) text += " · battery " + std::to_string(*device.batteryPercent) + "%";
+    if (device.batteryPercent) text += " · " + TrF("battery {0}%", *device.batteryPercent);
     if (!device.paired && device.rssiDbm) text += " · " + std::to_string(*device.rssiDbm) + " dBm";
     return text;
 }
@@ -149,35 +150,35 @@ void UltraDesktopBluetoothPanel::ShowPrompt(const WirelessPairingRequest& reques
     }
     promptStep_ = request.step;
     const std::string name = !request.name.empty() ? request.name : !request.address.empty() ? request.address
-                                                                                                : "the device";
+                                                                                                : Tr("the device");
     std::string text;
     bool input = false;
-    std::string yes = "OK", no = "Cancel";
+    std::string yes = Tr("OK"), no = Tr("Cancel");
     switch (request.step) {
         case WirelessPairingStep::ShowCode:
-            text = "Type this code on " + name + ", then press Enter:";
+            text = TrF("Type this code on {0}, then press Enter:", name);
             break;
         case WirelessPairingStep::ConfirmCode:
-            text = "Does " + name + " show this code?";
-            yes = "Yes, pair";
-            no = "No";
+            text = TrF("Does {0} show this code?", name);
+            yes = Tr("Yes, pair");
+            no = Tr("No");
             break;
         case WirelessPairingStep::Authorize:
-            text = name + " asks to pair with this computer. Pair?";
-            yes = "Pair";
-            no = "Refuse";
+            text = TrF("{0} asks to pair with this computer. Pair?", name);
+            yes = Tr("Pair");
+            no = Tr("Refuse");
             break;
         case WirelessPairingStep::AllowConnection:
-            text = name + " asks to connect, and is not one of your trusted devices. Let it?";
-            yes = "Allow";
-            no = "Refuse";
+            text = TrF("{0} asks to connect, and is not one of your trusted devices. Let it?", name);
+            yes = Tr("Allow");
+            no = Tr("Refuse");
             break;
         case WirelessPairingStep::EnterCode:
-            text = "Type the six-digit code " + name + " shows:";
+            text = TrF("Type the six-digit code {0} shows:", name);
             input = true;
             break;
         case WirelessPairingStep::EnterPin:
-            text = "The PIN of " + name + " (often 0000 or 1234 - see its manual):";
+            text = TrF("The PIN of {0} (often 0000 or 1234 - see its manual):", name);
             input = true;
             break;
         case WirelessPairingStep::Finished:
@@ -222,7 +223,7 @@ void UltraDesktopBluetoothPanel::AnswerPrompt(bool accept) {
     if (accept && promptInput_ && promptInput_->IsVisible()) {
         answer.code = promptInput_->GetText();
         if (answer.code.empty()) {
-            SetMessage("Type the code first.", true);
+            SetMessage(Tr("Type the code first."), true);
             return;
         }
     }
@@ -244,24 +245,24 @@ void UltraDesktopBluetoothPanel::Build(UltraCanvasWindow& window) {
     title->SetTextColor(PanelColors().text);
     title->layoutItem.SetFlexGrow(1.0f);
     header->AddChild(title);
-    power_ = std::make_shared<UltraCanvasSwitch>("bt.power", 0, 0, 70, 26, "On");
+    power_ = std::make_shared<UltraCanvasSwitch>("bt.power", 0, 0, 70, 26, Tr("On"));
     power_->layoutItem.SetFlexShrink(0.0f);
     power_->onStateChanged = [this](CheckedState, CheckedState now) {
         if (loading_) return;
         const bool on = now == CheckedState::Checked;
-        Act(on ? "Switching Bluetooth on..." : "Switching Bluetooth off...", [on]() {
+        Act(on ? Tr("Switching Bluetooth on...") : Tr("Switching Bluetooth off..."), [on]() {
             std::string error;
             UltraCanvasWireless::SetBluetoothPowered(on, &error);
             return error;
         });
     };
     if (!UltraCanvasWireless::CanSetBluetoothPower()) {
-        power_->SetTooltip("This system switches Bluetooth in its own settings");
+        power_->SetTooltip(Tr("This system switches Bluetooth in its own settings"));
     }
     header->AddChild(power_);
     window.AddChild(header);
 
-    state_ = CreateLabel("bt.state", 0, 0, kInnerWidth, 18, "Reading...");
+    state_ = CreateLabel("bt.state", 0, 0, kInnerWidth, 18, Tr("Reading..."));
     state_->SetFontSize(9.5f);
     state_->SetTextColor(PanelColors().muted);
     state_->layoutItem.SetFlexShrink(0.0f);
@@ -292,17 +293,17 @@ void UltraDesktopBluetoothPanel::Build(UltraCanvasWindow& window) {
     auto answers = std::make_shared<UltraCanvasContainer>("bt.promptAnswers");
     answers->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     promptInput_ = CreateTextInput("bt.promptInput", 0, 0, 120, 28);
-    promptInput_->SetPlaceholder("Code");
+    promptInput_->SetPlaceholder(Tr("Code"));
     promptInput_->layoutItem.SetFlexGrow(1.0f);
     promptInput_->onEnterPressed = [this](const std::string&) {
         Later([this]() { AnswerPrompt(true); });
         return true;
     };
     answers->AddChild(promptInput_);
-    promptYes_ = SmallButton("bt.promptYes", "OK", 76);
+    promptYes_ = SmallButton("bt.promptYes", Tr("OK"), 76);
     promptYes_->onClick = [this]() { Later([this]() { AnswerPrompt(true); }); };
     answers->AddChild(promptYes_);
-    promptNo_ = SmallButton("bt.promptNo", "Cancel", 64);
+    promptNo_ = SmallButton("bt.promptNo", Tr("Cancel"), 64);
     promptNo_->onClick = [this]() { Later([this]() { AnswerPrompt(false); }); };
     answers->AddChild(promptNo_);
     promptRow_->AddChild(answers);
@@ -319,12 +320,12 @@ void UltraDesktopBluetoothPanel::Build(UltraCanvasWindow& window) {
     auto footer = std::make_shared<UltraCanvasContainer>("bt.footer");
     footer->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     footer->layoutItem.SetFlexShrink(0.0f);
-    discover_ = SmallButton("bt.discover", "Add device", 96);
-    discover_->SetTooltip("Look for devices in pairing mode");
+    discover_ = SmallButton("bt.discover", Tr("Add device"), 96);
+    discover_->SetTooltip(Tr("Look for devices in pairing mode"));
     discover_->onClick = [this]() {
         const bool stop = status_.discovering;
         Later([this, stop]() {
-            Act(stop ? "Stopping the search..." : "Looking for devices in pairing mode...", [stop]() {
+            Act(stop ? Tr("Stopping the search...") : Tr("Looking for devices in pairing mode..."), [stop]() {
                 std::string error;
                 if (stop) UltraCanvasWireless::StopBluetoothDiscovery(&error);
                 else UltraCanvasWireless::StartBluetoothDiscovery(&error);
@@ -334,7 +335,7 @@ void UltraDesktopBluetoothPanel::Build(UltraCanvasWindow& window) {
     };
     footer->AddChild(discover_);
     if (UltraCanvasWireless::HasSystemSettings(WirelessRadio::Bluetooth)) {
-        auto settings = SmallButton("bt.settings", "System settings", 120);
+        auto settings = SmallButton("bt.settings", Tr("System settings"), 120);
         settings->onClick = [this]() {
             std::string error;
             if (!UltraCanvasWireless::OpenSystemSettings(WirelessRadio::Bluetooth, &error)) SetMessage(error, true);
@@ -420,23 +421,22 @@ void UltraDesktopBluetoothPanel::Apply(const WirelessBluetoothStatus& status) {
     if (!status.available || !status.adapterPresent) {
         // The reason can be long; the state line stays one line and the
         // message line, which wraps, says why.
-        state = status.available ? "No Bluetooth adapter." : "Bluetooth cannot be reached.";
+        state = status.available ? Tr("No Bluetooth adapter.") : Tr("Bluetooth cannot be reached.");
         if (!busy_ && !status.error.empty()) SetMessage(status.error, !status.available);
     } else if (!status.powered) {
-        state = "Bluetooth is off.";
+        state = Tr("Bluetooth is off.");
     } else if (status.discovering) {
-        state = "Looking for devices in pairing mode...";
+        state = Tr("Looking for devices in pairing mode...");
     } else {
         int connected = 0;
         for (const WirelessBluetoothDevice& d : status.devices) connected += d.connected ? 1 : 0;
-        state = connected == 0 ? "On, nothing connected"
-                               : "On, " + std::to_string(connected) + (connected == 1 ? " device" : " devices") +
-                                     " connected";
+        state = connected == 0 ? Tr("On, nothing connected")
+                               : TrN("On, {n} device connected", "On, {n} devices connected", connected);
     }
     if (!status.adapterName.empty() && status.adapterPresent) state += "  (" + status.adapterName + ")";
     state_->SetText(state);
     if (discover_) {
-        discover_->SetText(status.discovering ? "Stop search" : "Add device");
+        discover_->SetText(status.discovering ? Tr("Stop search") : Tr("Add device"));
         discover_->SetDisabled(busy_ || !status.powered);
     }
     RestartTimer(status.discovering ? kDiscoveringRefreshMs : kRefreshMs);
@@ -480,10 +480,10 @@ void UltraDesktopBluetoothPanel::AddDeviceRow(const WirelessBluetoothDevice& dev
     const std::string address = device.address;
     const std::string label = device.name;
     if (!device.paired) {
-        auto pair = SmallButton(id + ".pair", "Pair", 56);
+        auto pair = SmallButton(id + ".pair", Tr("Pair"), 56);
         pair->onClick = [this, address, label]() {
             Later([this, address, label]() {
-                Act("Pairing with " + label + "... Keep the device in pairing mode.", [address]() {
+                Act(TrF("Pairing with {0}... Keep the device in pairing mode.", label), [address]() {
                     std::string error;
                     UltraCanvasWireless::PairBluetoothDevice(address, &error);
                     return error;
@@ -494,10 +494,10 @@ void UltraDesktopBluetoothPanel::AddDeviceRow(const WirelessBluetoothDevice& dev
         row->AddChild(pair);
     } else {
         const bool connected = device.connected;
-        auto toggle = SmallButton(id + ".link", connected ? "Disconnect" : "Connect", connected ? 84 : 72);
+        auto toggle = SmallButton(id + ".link", connected ? Tr("Disconnect") : Tr("Connect"), connected ? 84 : 72);
         toggle->onClick = [this, address, label, connected]() {
             Later([this, address, label, connected]() {
-                Act((connected ? "Disconnecting " : "Connecting ") + label + "...", [address, connected]() {
+                Act(connected ? TrF("Disconnecting {0}...", label) : TrF("Connecting {0}...", label), [address, connected]() {
                     std::string error;
                     if (connected) UltraCanvasWireless::DisconnectBluetoothDevice(address, &error);
                     else UltraCanvasWireless::ConnectBluetoothDevice(address, &error);
@@ -507,11 +507,11 @@ void UltraDesktopBluetoothPanel::AddDeviceRow(const WirelessBluetoothDevice& dev
         };
         toggle->SetDisabled(busy_ || !status_.powered);
         row->AddChild(toggle);
-        auto remove = SmallButton(id + ".remove", "Remove", 64);
-        remove->SetTooltip("Unpair: the device has to be paired again to be used");
+        auto remove = SmallButton(id + ".remove", Tr("Remove"), 64);
+        remove->SetTooltip(Tr("Unpair: the device has to be paired again to be used"));
         remove->onClick = [this, address, label]() {
             Later([this, address, label]() {
-                Act("Removing " + label + "...", [address]() {
+                Act(TrF("Removing {0}...", label), [address]() {
                     std::string error;
                     UltraCanvasWireless::RemoveBluetoothDevice(address, &error);
                     return error;
@@ -540,25 +540,25 @@ void UltraDesktopBluetoothPanel::RebuildList() {
     bool anyPaired = false, anyFound = false;
     for (const WirelessBluetoothDevice& device : status_.devices) {
         if (!device.paired) continue;
-        if (!anyPaired) AddSectionLabel("bt.paired", "My devices");
+        if (!anyPaired) AddSectionLabel("bt.paired", Tr("My devices"));
         anyPaired = true;
         AddDeviceRow(device, index++);
     }
     for (const WirelessBluetoothDevice& device : status_.devices) {
         if (device.paired) continue;
-        if (!anyFound) AddSectionLabel("bt.found", "Found nearby - put a device in pairing mode, then Pair");
+        if (!anyFound) AddSectionLabel("bt.found", Tr("Found nearby - put a device in pairing mode, then Pair"));
         anyFound = true;
         AddDeviceRow(device, index++);
     }
     if (!anyPaired && !anyFound && status_.adapterPresent) {
         auto none = CreateLabel("bt.none", 0, 0, kInnerWidth - 20, 40,
-                                !status_.powered ? "" : "No devices paired yet. Add device looks for new ones.");
+                                !status_.powered ? "" : Tr("No devices paired yet. Add device looks for new ones."));
         none->SetTextColor(PanelColors().muted);
         none->SetFontSize(9.5f);
         none->SetWrap(TextWrap::WrapWord);
         list_->AddChild(none);
     } else if (status_.discovering && !anyFound) {
-        AddSectionLabel("bt.searching", "Looking for devices in pairing mode...");
+        AddSectionLabel("bt.searching", Tr("Looking for devices in pairing mode..."));
     }
     list_->InvalidateLayout();
     list_->RequestRedraw();

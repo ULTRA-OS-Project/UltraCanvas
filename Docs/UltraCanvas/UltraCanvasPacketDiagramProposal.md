@@ -483,18 +483,17 @@ That one function is what lets a packet token sit at 40% along a Bezier link
 with its arrow aligned to the local tangent, for every `LinkStyle`. Everything
 else — layout, zoom, pan, hit testing, JSON — is inherited.
 
-**The refactor this implies** (approved, §12.3). Today each `LinkStyle` builds
-its geometry inline inside the render path. The change extracts that into a
-pure function and leaves rendering as a consumer:
+**The refactor this implies** (approved, §12.3). Each `LinkStyle` built its
+geometry inline inside the render path. That is extracted into a pure
+function, with rendering as a consumer - **done in `UltraCanvasNodeDiagram`
+2.5.0**: the private `BuildLinkPath(link, outPath, ...)` is the one place that
+knows link geometry. It returns the line as a polyline in world units (a
+Bezier already sampled), through the link's waypoints, cut at the outline of
+each node the link ends on.
 
-```cpp
-// Private, in UltraCanvasNodeDiagram — one place that knows link geometry.
-struct LinkPath { std::vector<Point2Dd> points; bool isBezier; /* control pts */ };
-LinkPath BuildLinkPath(const NodeDiagramLink& link) const;   // per LinkStyle
-```
-
-`RenderLink` then draws `BuildLinkPath(...)`, and `GetLinkPointAt` walks the
-same path by arc length. Properties of the change worth stating up front:
+`RenderLink`, the link label and the click test draw on `BuildLinkPath(...)`
+already; `GetLinkPointAt`, still to be written, walks the same path by arc
+length. Properties of the change worth stating up front:
 
 * **Purely additive in public API** — two new `const` methods; no existing
   signature changes, so it is a **minor** version bump (2.1.0), not a breaking

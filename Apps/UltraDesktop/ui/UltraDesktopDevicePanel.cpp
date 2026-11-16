@@ -7,6 +7,7 @@
 
 #include "UltraDesktopDevicePanel.h"
 #include "UltraDesktopPanelTheme.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -97,7 +98,7 @@ void UltraDesktopDevicePanel::Build(UltraCanvasWindow& window) {
     title->layoutItem.SetFlexShrink(0.0f);
     window.AddChild(title);
 
-    summary_ = CreateLabel("dev.summary", 0, 0, kInnerWidth, 34, "Reading...");
+    summary_ = CreateLabel("dev.summary", 0, 0, kInnerWidth, 34, Tr("Reading..."));
     summary_->SetFontSize(9.5f);
     summary_->SetTextColor(PanelColors().muted);
     summary_->SetWrap(TextWrap::WrapWord);
