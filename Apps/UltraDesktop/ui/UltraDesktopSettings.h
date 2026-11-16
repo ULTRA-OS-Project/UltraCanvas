@@ -85,6 +85,9 @@ struct StartupProgram {
     const char* arguments;      // how it starts unseen: "--minimized", "--background"
     bool builtIn;               // part of the desktop itself (the Sticker board), not a program
 };
+// StartupProgram::label and ::name in the person's language, for showing.
+std::string StartupProgramLabel(const StartupProgram& program);
+std::string StartupProgramName(const StartupProgram& program);
 
 // DesktopSettings::ramDiscPath's value for "UltraFiler's own RAM disc".
 inline constexpr const char* kRamDiscFromFiler = "ultrafiler";
@@ -95,6 +98,8 @@ struct InfoItem {
     const char* id;             // the button's item id in the info panel: "wifi"; the key in hiddenInfoItems
     const char* label;          // what the settings show
 };
+// InfoItem::label in the person's language, for showing.
+std::string InfoItemLabel(const InfoItem& item);
 
 struct DesktopSettings {
     TaskbarEdge taskbarEdge = TaskbarEdge::Left;

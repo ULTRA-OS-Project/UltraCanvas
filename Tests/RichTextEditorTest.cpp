@@ -685,6 +685,42 @@ static std::shared_ptr<UCRichDocument> BuildTableDocument() {
     return doc;
 }
 
+// A document that opens with a table (an ODT letter's address table): the
+// caret starts in its first cell, as Ctrl+Home takes it there. On the table
+// outside its cells it was drawn the whole table high.
+static void TestTableOpensDocument() {
+    std::cout << "\n--- Table opens the document ---\n";
+    auto doc = BuildTableDocument();
+    doc->blocks.erase(doc->blocks.begin());     // the table is block 0 now
+    UCRichDocumentEditor ed(doc);
+    const RichDocPosition firstCell(0, 0, 0, 0);
+    CHECK(ed.DocumentStart() == firstCell);
+    CHECK(ed.GetCaret() == firstCell);
+    CHECK(ed.GetCaret().InCell());
+
+    // Typing there goes into the cell.
+    ed.InsertText("x");
+    CHECK_EQ(ed.TextAt(firstCell), std::string("xalpha"));
+
+    // Ctrl+Home from the paragraph after it comes back to the cell.
+    ed.SetCaret(RichDocPosition(1, 3));
+    ed.SetCaret(ed.DocumentStart());
+    CHECK(ed.GetCaret() == firstCell);
+
+    // Select All still takes the whole table and the text after it, not
+    // only the table's cells.
+    ed.SelectAll();
+    const std::string all = ed.RangeToPlainText(ed.GetSelectionRange());
+    CHECK(all.find("xalpha") != std::string::npos);
+    CHECK(all.find("after the table") != std::string::npos);
+    CHECK(!ed.GetSelectionRange().start.InCell());
+
+    // A document opening with a paragraph is unchanged.
+    UCRichDocumentEditor plain(BuildTableDocument());
+    CHECK(plain.DocumentStart() == RichDocPosition(0, 0));
+    CHECK(plain.GetCaret() == RichDocPosition(0, 0));
+}
+
 static void TestTableCellEditing() {
     std::cout << "\n--- Table cells ---\n";
 
@@ -1949,6 +1985,7 @@ int main() {
     TestDocumentIntegration();
     TestSearch();
     TestTableCellEditing();
+    TestTableOpensDocument();
     TestTableGrid();
     TestTableInsertion();
     TestTableRowsAndColumns();

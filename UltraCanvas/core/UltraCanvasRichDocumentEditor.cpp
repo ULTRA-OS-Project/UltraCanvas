@@ -333,7 +333,7 @@ UCRichDocumentEditor::UCRichDocumentEditor(std::shared_ptr<UCRichDocument> docum
 void UCRichDocumentEditor::SetDocument(std::shared_ptr<UCRichDocument> document) {
     doc = document ? std::move(document) : std::make_shared<UCRichDocument>();
     EnsureNotEmpty();
-    caret = RichDocPosition(0, 0);
+    caret = DocumentStart();
     anchor = caret;
     undoStack.clear();
     redoStack.clear();
@@ -759,7 +759,9 @@ void UCRichDocumentEditor::SetSelection(const RichDocPosition& from, const RichD
 }
 
 void UCRichDocumentEditor::SelectAll() {
-    SetSelection(DocumentStart(), DocumentEnd());
+    // From before everything, not from DocumentStart: from the first cell of
+    // an opening table the selection would be held inside that table.
+    SetSelection(RichDocPosition(0, 0), DocumentEnd());
 }
 
 void UCRichDocumentEditor::SelectBlock(int blockIndex) {
@@ -851,6 +853,11 @@ RichDocPosition UCRichDocumentEditor::BlockEnd(const RichDocPosition& pos) const
 }
 
 RichDocPosition UCRichDocumentEditor::DocumentStart() const {
+    RichDocPosition start;
+    if (GetBlockCount() > 0 && GetBlock(0).type == RichBlockType::Table
+        && FirstContainerOfBlock(*this, 0, start)) {
+        return start;
+    }
     return {0, 0};
 }
 

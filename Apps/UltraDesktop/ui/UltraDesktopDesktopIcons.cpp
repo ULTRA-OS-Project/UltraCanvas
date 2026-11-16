@@ -397,13 +397,12 @@ void UltraDesktopDesktopIcons::DeleteSelected() {
     const std::vector<std::string> files = SelectedPaths();
     if (files.empty()) return;
     const bool trash = TrashAvailable();
-    const std::string what = files.size() == 1 ? *selected_.begin()
-                                               : TrF("these {0} items", std::to_string(files.size()));
+    const std::string what = files.size() == 1 ? *selected_.begin() : std::to_string(files.size());
     const std::string question =
             trash ? (files.size() == 1 ? TrF("Move \"{0}\" to the {1}?", what, TrashDisplayName())
-                                       : TrF("Move {0} to the {1}?", what, TrashDisplayName()))
+                                       : TrF("Move these {0} items to the {1}?", what, TrashDisplayName()))
                   : (files.size() == 1 ? TrF("Delete \"{0}\" for good? It cannot be brought back.", what)
-                                       : TrF("Delete {0} for good? They cannot be brought back.", what));
+                                       : TrF("Delete these {0} items for good? They cannot be brought back.", what));
     UltraCanvasDialogManager::ShowConfirmation(question, Tr("Desktop"), [this, files, trash](bool yes) {
         if (!yes) return;
         std::string failures;

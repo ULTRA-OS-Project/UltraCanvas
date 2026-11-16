@@ -29,6 +29,7 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTheme.h"
 #include "UltraCanvasWindow.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cctype>
@@ -105,7 +106,7 @@ UltraDesktopTasksWindow::~UltraDesktopTasksWindow() {
 
 void UltraDesktopTasksWindow::Open() {
     WindowConfig config;
-    config.title = "Task Manager";
+    config.title = Tr("Task Manager");
     config.width = kWindowWidth;
     config.height = kWindowHeight;
     config.minWidth = 520;
@@ -152,14 +153,14 @@ void UltraDesktopTasksWindow::Open() {
         return label;
     };
     column("tmHeadIcon", "", kIconColumn, false);
-    column("tmHeadName", "Window", 100, true);
-    column("tmHeadState", "State", kStateColumn, false);
-    column("tmHeadDisplay", "Display", kDisplayColumn, false)->SetAlignment(TextAlignment::Center);
+    column("tmHeadName", Tr("Window"), 100, true);
+    column("tmHeadState", Tr("State"), kStateColumn, false);
+    column("tmHeadDisplay", Tr("Display"), kDisplayColumn, false)->SetAlignment(TextAlignment::Center);
     // The virtual desktop only where there is more than one: with one, it
     // is the same for every window and says nothing.
     showDesktops_ = UltraCanvasDesktopShell::GetVirtualDesktopCount() > 1;
     if (showDesktops_) {
-        column("tmHeadDesktop", "Desktop", kDesktopColumn, false)->SetAlignment(TextAlignment::Center);
+        column("tmHeadDesktop", Tr("Desktop"), kDesktopColumn, false)->SetAlignment(TextAlignment::Center);
     }
     column("tmHeadActions", "", kActionsColumn, false);
     windowsPage->AddChild(header);
@@ -169,10 +170,10 @@ void UltraDesktopTasksWindow::Open() {
     windowRows_->SetPadding(8);
     windowRows_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
     windowsPage->AddChild(windowRows_);
-    tabs->AddTab("Windows", windowsPage);
+    tabs->AddTab(Tr("Windows"), windowsPage);
 
     hardware_ = CreateHardwareInfoPanel("tmHardware", 0, 0, 0, 0, HardwareQuery::All);
-    tabs->AddTab("Hardware", hardware_);
+    tabs->AddTab(Tr("Hardware"), hardware_);
 
     window_->AddChild(tabs);
     {
@@ -269,14 +270,14 @@ void UltraDesktopTasksWindow::ShowAndBringOnScreen(uint64_t id) {
 
 void UltraDesktopTasksWindow::KillTask(uint64_t id, const std::string& title) {
     UltraCanvasAlert::Confirm(
-        "End \"" + title + "\" at once?\n\nThe program is not asked to close: anything unsaved in it is lost. "
-        "Use Close to let it save first.",
-        "Kill task",
+        TrF("End \"{0}\" at once?\n\nThe program is not asked to close: anything unsaved in it is lost. "
+            "Use Close to let it save first.", title),
+        Tr("Kill task"),
         [this, id](bool confirmed) {
             if (!confirmed) return;
             std::string error;
             if (!UltraCanvasDesktopShell::KillWindowProcess(id, &error)) {
-                UltraCanvasAlert::Error("The program was not ended: " + error, "Kill task", nullptr, window_.get());
+                UltraCanvasAlert::Error(TrF("The program was not ended: {0}", error), Tr("Kill task"), nullptr, window_.get());
                 return;
             }
             lastListing_.clear();   // read the list again at the next tick
@@ -374,7 +375,7 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
         const std::string stateIcon = w.minimized ? "window-minimized.svg"
                                       : w.maximized ? (w.active ? "window-maximized-active.svg" : "window-maximized.svg")
                                                     : (w.active ? "window-normal-active.svg" : "window-normal.svg");
-        const std::string stateWord = w.minimized ? "minimized" : w.maximized ? "maximized" : "open";
+        const std::string stateWord = w.minimized ? Tr("minimized") : w.maximized ? Tr("maximized") : TrC("window state", "open");
         auto stateCell = CreateContainer("tmStateCell" + key, 0, 0, kStateColumn, 24);
         stateCell->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
         stateCell->layoutItem.SetFlexShrink(0.0f);
@@ -387,36 +388,38 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
         auto state = CreateLabel("tmState" + key, 0, 0, kStateColumn - 24, 22, stateWord);
         state->SetTextColor(w.active ? Roles().accent : Roles().inkMuted);
         stateCell->AddChild(state);
-        stateCell->SetTooltip(std::string(w.minimized ? "Minimized" : w.maximized ? "Maximized" : "Open") +
-                              (w.active ? ", in front" : ""));
+        stateCell->SetTooltip(w.active ? (w.minimized ? Tr("Minimized, in front")
+                                          : w.maximized ? Tr("Maximized, in front") : Tr("Open, in front"))
+                                       : (w.minimized ? Tr("Minimized")
+                                          : w.maximized ? Tr("Maximized") : TrC("window state", "Open")));
         row->AddChild(stateCell);
 
         // The display (monitor) the window is on, and - where there are
         // several - its virtual desktop, each as a number in a bordered box.
         const int display = displays[w.id];
         row->AddChild(BadgeCell("tmDisplay" + key, kDisplayColumn, display > 0 ? std::to_string(display) : "?",
-                                display > 0 ? "On display " + std::to_string(display) + " of " +
-                                                  std::to_string(screenCount)
-                                            : "Not on any display - Show brings it back"));
+                                display > 0 ? TrF("On display {0} of {1}", std::to_string(display),
+                                                  std::to_string(screenCount))
+                                            : Tr("Not on any display - Show brings it back")));
         if (showDesktops_) {
             const bool everywhere = w.virtualDesktop < 0;
             row->AddChild(BadgeCell("tmDesktop" + key, kDesktopColumn,
-                                    everywhere ? "all" : std::to_string(w.virtualDesktop + 1),
-                                    everywhere ? "On every virtual desktop"
-                                               : "On virtual desktop " + std::to_string(w.virtualDesktop + 1)));
+                                    everywhere ? Tr("all") : std::to_string(w.virtualDesktop + 1),
+                                    everywhere ? Tr("On every virtual desktop")
+                                               : TrF("On virtual desktop {0}", std::to_string(w.virtualDesktop + 1))));
         }
 
         const uint64_t id = w.id;
-        auto show = CreateButton("tmShow" + key, 0, 0, kButtonWidth, 26, "Show");
-        show->SetTooltip("Bring the window to the front - onto a display if it is off every one");
+        auto show = CreateButton("tmShow" + key, 0, 0, kButtonWidth, 26, Tr("Show"));
+        show->SetTooltip(Tr("Bring the window to the front - onto a display if it is off every one"));
         show->onClick = [id]() { ShowAndBringOnScreen(id); };
         row->AddChild(show);
-        auto close = CreateButton("tmClose" + key, 0, 0, kButtonWidth, 26, "Close");
-        close->SetTooltip("Bring the window to the front and ask the program to close it - it may ask to save first");
+        auto close = CreateButton("tmClose" + key, 0, 0, kButtonWidth, 26, Tr("Close"));
+        close->SetTooltip(Tr("Bring the window to the front and ask the program to close it - it may ask to save first"));
         close->onClick = [id]() { UltraCanvasDesktopShell::CloseWindow(id); };
         row->AddChild(close);
-        auto kill = CreateButton("tmKill" + key, 0, 0, kKillWidth, 26, "Kill task");
-        kill->SetTooltip("End the program at once, without asking it - unsaved work is lost");
+        auto kill = CreateButton("tmKill" + key, 0, 0, kKillWidth, 26, Tr("Kill task"));
+        kill->SetTooltip(Tr("End the program at once, without asking it - unsaved work is lost"));
         const std::string title = w.title.empty() ? w.appClass : w.title;
         kill->onClick = [this, id, title]() { KillTask(id, title); };
         row->AddChild(kill);
@@ -426,7 +429,7 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
     }
     if (shown == 0) {
         auto none = CreateLabel("tmNone", UltraCanvasDesktopShell::IsAvailable()
-                ? "No application windows are open." : "The window list is not available on this platform.");
+                ? Tr("No application windows are open.") : Tr("The window list is not available on this platform."));
         none->SetThemeVariant(LabelVariant::Muted);
         none->SetTextColor(Roles().inkMuted);
         windowRows_->AddChild(none);
