@@ -63,6 +63,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasUtils.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasVideoTile.h"
@@ -488,7 +489,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
 
     // Adding someone: a pill, and a round plus.
     auto addRow = MakeRow("cc-add-row", 6);
-    contactId_ = MakeInput("cc-add-id", Tr("Add: a ChatCube ID, @name:server or @telegram"),
+    contactId_ = MakeInput("cc-add-id", Tr("Add: a ChatCube ID, @name:server, @telegram or @user@server"),
                            kSidebarWidth - 16 - kIconButton - 6, true);
     contactId_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     contactId_->onEnterPressed = [this](const std::string&) { AddContact(); return true; };
@@ -499,9 +500,11 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     addRow->AddChild(add);
     sidebar->AddChild(addRow);
 
-    // The three doors: a new group, a Matrix account, a Telegram account.
+    // The doors, two rows of two: a new group and a Matrix account, a
+    // Telegram and a Mastodon account (each name whole at half the sidebar).
     auto doors = MakeRow("cc-doors", 6);
-    const int doorWidth = (kSidebarWidth - 16 - 12) / 3;
+    auto moreDoors = MakeRow("cc-doors-2", 6);
+    const int doorWidth = (kSidebarWidth - 16 - 6) / 2;
     auto newGroup = MakeIconButton("cc-new-group", "group", Tr("Group"), doorWidth, false, false);
     newGroup->SetTooltip(Tr("New group"));
     newGroup->SetOnClick([this]() { ToggleGroupForm(); });
@@ -516,8 +519,14 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     telegramToggle_->SetTooltip(Tr("Telegram account"));
     telegramToggle_->SetOnClick([this]() { ToggleTelegramForm(); });
     telegramToggle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    doors->AddChild(telegramToggle_);
+    moreDoors->AddChild(telegramToggle_);
+    mastodonToggle_ = MakeIconButton("cc-mastodon", "mastodon", "Mastodon", doorWidth, false, false);
+    mastodonToggle_->SetTooltip(Tr("Mastodon account"));
+    mastodonToggle_->SetOnClick([this]() { ToggleMastodonForm(); });
+    mastodonToggle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    moreDoors->AddChild(mastodonToggle_);
     sidebar->AddChild(doors);
+    sidebar->AddChild(moreDoors);
 
     // A Matrix account next to ChatCube Direct.
     matrixForm_ = std::make_shared<UltraCanvasContainer>("cc-matrix-form");
@@ -546,6 +555,20 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     matrixKeysForm_->AddChild(importKeys);
     matrixKeysForm_->SetVisible(false);
     sidebar->AddChild(matrixKeysForm_);
+
+    // A Mastodon account: the server; the sign-in itself is its own page,
+    // opened in the browser.
+    mastodonForm_ = std::make_shared<UltraCanvasContainer>("cc-mastodon-form");
+    mastodonForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    mastodonForm_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    mastodonServer_ = MakeInput("cc-mastodon-server", Tr("Server, e.g. mastodon.social"), kSidebarWidth - 16);
+    mastodonServer_->onEnterPressed = [this](const std::string&) { SignInToMastodon(false); return true; };
+    mastodonForm_->AddChild(mastodonServer_);
+    mastodonSignIn_ = MakeButton("cc-mastodon-go", Tr("Sign in in the browser"), kSidebarWidth - 16, true);
+    mastodonSignIn_->SetOnClick([this]() { SignInToMastodon(false); });
+    mastodonForm_->AddChild(mastodonSignIn_);
+    mastodonForm_->SetVisible(false);
+    sidebar->AddChild(mastodonForm_);
 
     // A Telegram account: the phone number, then the code, then the
     // two-step password if there is one - one field at a time; or a QR code
@@ -1192,7 +1215,8 @@ void ChatCubeWindow::RenderStatus() {
     std::string line = actionStatus_;
     // The networks in a fixed order, each under the name the sidebar uses.
     const std::pair<std::string, const char*> networks[] = {
-        {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"}};
+        {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
+        {mastodonProviderId_, "Mastodon"}};
     for (const auto& network : networks) {
         auto it = providerStatus_.find(network.first);
         if (it == providerStatus_.end()) continue;
@@ -1409,6 +1433,10 @@ void ChatCubeWindow::SignIn() {
         if (UltraIM_GetProviderInfo(matrixProviderId_, matrixInfo) && matrixInfo.hasStoredSession &&
             matrixInfo.connectionState == UltraIMConnectionState::Disconnected)
             SignInToMatrix(true);
+        UltraIMProviderInfo mastodonInfo;
+        if (UltraIM_GetProviderInfo(mastodonProviderId_, mastodonInfo) && mastodonInfo.hasStoredSession &&
+            mastodonInfo.connectionState == UltraIMConnectionState::Disconnected)
+            SignInToMastodon(true);
         // The relay's Telegram keys first: a stored Telegram session resumes
         // with them, so a change of keys on the relay reaches it.
         FetchTelegramCredentials([this]() {
@@ -2083,6 +2111,44 @@ void ChatCubeWindow::SignInToMatrix(bool stored) {
     });
 }
 
+void ChatCubeWindow::ToggleMastodonForm() {
+    UltraIMProviderInfo info;
+    if (!UltraIM_GetProviderInfo(mastodonProviderId_, info)) {
+        SetStatus(Tr("The Mastodon module was not found (Plugins/UltraIM)."));
+        return;
+    }
+    if (info.connectionState == UltraIMConnectionState::Connected) {
+        mastodonForm_->SetVisible(false);
+        SetStatus(TrF("Mastodon: signed in as {0} - sign out in Settings > Networks.", info.localUserId));
+    } else {
+        mastodonForm_->SetVisible(!mastodonForm_->IsVisible());
+    }
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::SignInToMastodon(bool stored) {
+    UltraIMCredentials credentials;
+    credentials.loginType = UltraIMLoginType::SsoOidc;
+    if (!stored) {
+        credentials.server = Trim(mastodonServer_->GetText());
+        if (credentials.server.empty()) {
+            SetStatus(Tr("Mastodon: enter your server, e.g. mastodon.social."));
+            return;
+        }
+        mastodonSignIn_->SetDisabled(true);
+    }
+    SetProviderStatus(mastodonProviderId_, Tr("signing in\xE2\x80\xA6"));
+    UltraIM_SignIn(mastodonProviderId_, credentials, [this, stored](const UltraIMResult& r) {
+        if (!stored) mastodonSignIn_->SetDisabled(false);
+        if (!r) {
+            SetProviderStatus(mastodonProviderId_, r.message);
+            return;
+        }
+        mastodonForm_->SetVisible(false);
+        RefreshConversations();
+    });
+}
+
 void ChatCubeWindow::RefreshNearby() {
     UltraIM_FetchNearbyContacts(providerId_, [this](const UltraIMResult&, const std::vector<UltraIMContact>& list) {
         nearbyBox_->ClearChildren();
@@ -2143,6 +2209,9 @@ void ChatCubeWindow::CreateGroup() {
 
 std::string ChatCubeWindow::ProviderOfAddress(const std::string& address) const {
     if (address.empty()) return providerId_;
+    // Mastodon: @user@server, or a profile's page (https://server/@user).
+    if (address[0] == '@' && address.find('@', 1) != std::string::npos) return mastodonProviderId_;
+    if (address.rfind("https://", 0) == 0 && address.find("/@") != std::string::npos) return mastodonProviderId_;
     if (address[0] == '@') return address.find(':') != std::string::npos ? matrixProviderId_ : telegramProviderId_;
     if (address[0] == '+' || address.rfind("t.me/", 0) == 0 || address.rfind("https://t.me/", 0) == 0)
         return telegramProviderId_;
@@ -3699,7 +3768,8 @@ void ChatCubeWindow::ApplySettings() {
 std::vector<ChatCubeSettingsWindow::Account> ChatCubeWindow::Accounts() const {
     std::vector<ChatCubeSettingsWindow::Account> accounts;
     const std::pair<std::string, const char*> networks[] = {
-        {providerId_, "ChatCube Direct"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"}};
+        {providerId_, "ChatCube Direct"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
+        {mastodonProviderId_, "Mastodon"}};
     for (const auto& [id, name] : networks) {
         ChatCubeSettingsWindow::Account account;
         account.providerId = id;
@@ -3756,6 +3826,10 @@ void ChatCubeWindow::SignOutOf(const std::string& providerId) {
         SetNetworkButton(telegramToggle_, "Telegram", Tr("Telegram account"));
         telegramForm_->SetVisible(false);
         SetProviderStatus(telegramProviderId_, Tr("signed out"));
+    } else if (providerId == mastodonProviderId_) {
+        SetNetworkButton(mastodonToggle_, "Mastodon", Tr("Mastodon account"));
+        mastodonForm_->SetVisible(false);
+        SetProviderStatus(mastodonProviderId_, Tr("signed out"));
     }
     if (conversationList_) conversationList_->RequestRedraw();
     if (window_) window_->RequestRedraw();
@@ -3764,8 +3838,11 @@ void ChatCubeWindow::SignOutOf(const std::string& providerId) {
 // =================================================================== UltraIM
 
 void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
-    if (e.providerId != providerId_ && e.providerId != matrixProviderId_ && e.providerId != telegramProviderId_) return;
+    if (e.providerId != providerId_ && e.providerId != matrixProviderId_ && e.providerId != telegramProviderId_ &&
+        e.providerId != mastodonProviderId_)
+        return;
     const bool matrix = e.providerId == matrixProviderId_;
+    const bool mastodon = e.providerId == mastodonProviderId_;
     const bool telegram = e.providerId == telegramProviderId_;
     switch (e.type) {
         case UltraIMEventType::MessageReceive:
@@ -3883,6 +3960,24 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                 }
                 break;
             }
+            if (mastodon) {
+                if (e.connectionState == UltraIMConnectionState::Connected) {
+                    UltraIMProviderInfo info;
+                    UltraIM_GetProviderInfo(mastodonProviderId_, info);
+                    SetProviderStatus(mastodonProviderId_, TrF("signed in as {0}", info.localUserId));
+                    SetNetworkButton(mastodonToggle_, "Mastodon", TrF("Mastodon: signed in as {0}", info.localUserId));
+                    RefreshConversations();
+                } else if (e.connectionState == UltraIMConnectionState::Error) {
+                    SetProviderStatus(mastodonProviderId_, e.errorText);
+                    mastodonSignIn_->SetDisabled(false);
+                } else if (e.connectionState == UltraIMConnectionState::Connecting) {
+                    SetProviderStatus(mastodonProviderId_, Tr("signing in\xE2\x80\xA6"));
+                } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
+                    SetProviderStatus(mastodonProviderId_, Tr("signed out"));
+                    SetNetworkButton(mastodonToggle_, "Mastodon", Tr("Mastodon account"));
+                }
+                break;
+            }
             if (matrix) {
                 // Matrix speaks for itself on the status line, Direct below.
                 if (e.connectionState == UltraIMConnectionState::Connected) {
@@ -3924,6 +4019,11 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             break;
         case UltraIMEventType::AuthStepChange:
             if (telegram) UpdateTelegramForm();
+            if (mastodon && e.authStep == UltraIMAuthStep::Browser && !e.errorText.empty()) {
+                // The server's own page: the password is typed there, not here.
+                OpenURL(e.errorText);
+                SetProviderStatus(mastodonProviderId_, Tr("continue in the browser\xE2\x80\xA6"));
+            }
             break;
         case UltraIMEventType::AuthRequire:
             if (telegram) {
@@ -3931,6 +4031,12 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                 telegramForm_->SetVisible(true);
                 SetNetworkButton(telegramToggle_, "Telegram", Tr("Telegram account"));
                 UpdateTelegramForm();
+                break;
+            }
+            if (mastodon) {
+                SetProviderStatus(mastodonProviderId_, Tr("the session ended - sign in again"));
+                mastodonForm_->SetVisible(true);
+                SetNetworkButton(mastodonToggle_, "Mastodon", Tr("Mastodon account"));
                 break;
             }
             if (matrix) {

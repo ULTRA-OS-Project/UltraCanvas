@@ -19,7 +19,8 @@
 //     message answered: then it shows as a reply);
 //   - news comes by polling the conversations (MastodonTimings::pollMs); a
 //     conversation whose last status changed brings every status of its
-//     thread not seen yet;
+//     threads not seen yet (a status that answers nothing starts a thread;
+//     a chat is its threads together, the newest eight read);
 //   - edit (PUT /api/v1/statuses/:id, Mastodon 4.0+), delete for everyone,
 //     read (POST /api/v1/conversations/:id/read), leave (the conversation
 //     taken off the list); no typing, read receipts, presence or calls - the
@@ -157,8 +158,10 @@ private:
         std::vector<Account> accounts;              // the others
         std::set<std::string> serverIds;            // the server's conversations of these people
         std::string lastStatusId;
-        std::string rootId;                         // the thread's first status, once read
-        std::string lastEditedAt;
+        std::vector<std::string> roots;             // the first statuses of its threads, once read
+        std::map<std::string, std::string> heads;   // server conversation -> its last status
+        std::map<std::string, std::string> headEdited;  // server conversation -> its last status's edited_at
+        std::map<std::string, std::string> rootOf;  // a head -> its thread's first status
         UltraIMMessage last;                        // for the list's line
         bool unread = false;
         bool hasLast = false;

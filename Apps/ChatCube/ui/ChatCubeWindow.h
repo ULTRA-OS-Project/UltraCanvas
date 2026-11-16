@@ -198,6 +198,9 @@ private:
     void RefreshNearby();           // the "On this network" list
     void ToggleMatrixForm();
     void SignInToMatrix(bool stored);
+    // A Mastodon account: the server, then its sign-in page in the browser.
+    void ToggleMastodonForm();
+    void SignInToMastodon(bool stored);
     // The keys to encrypted Matrix rooms to a passphrase-protected file (the
     // format Element reads), and back from one.
     void ExportMatrixKeys();
@@ -469,6 +472,11 @@ private:
     std::string telegramRelayApiHash_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixToggle_;
     std::string matrixProviderId_ = "matrix";
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    mastodonToggle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> mastodonForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> mastodonServer_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    mastodonSignIn_;
+    std::string mastodonProviderId_ = "mastodon";
     std::string activeProvider_;    // the open conversation's provider
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
     std::shared_ptr<ConversationListModel>             conversations_;

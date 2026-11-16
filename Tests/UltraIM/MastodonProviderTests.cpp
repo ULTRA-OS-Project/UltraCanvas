@@ -496,6 +496,8 @@ void TestEndToEnd(const std::string& url, const fs::path& base) {
 
     bobEvents.Clear();
     CHECK(bob->MarkRead(withAlice, std::string()));
+    // (The read goes to the server on Bob's worker: once it is there.)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     CHECK(alice->SendText(withBob, "Read this", UltraIMSendOptions()));
     CHECK(bobEvents.WaitFor([&](const UltraIMEvent& x) {
         return x.type == UltraIMEventType::ConversationUpdate && x.conversationId == withAlice && x.conversation.unreadCount == 1;
@@ -521,6 +523,35 @@ void TestEndToEnd(const std::string& url, const fs::path& base) {
     // The one-to-one chat is not touched by it.
     CHECK(Fetch(*bob, withAlice).size() == 7);
 
+    // ---- a status that answers nothing: a second thread, the same chat -------
+    {
+        UltraNetHttpRequest post;
+        post.url = url + "/api/v1/statuses";
+        post.method = UltraNetHttpMethod::Post;
+        post.headers.Set("Authorization", "Bearer bob-token");
+        post.headers.Set("Content-Type", "application/json");
+        const std::string body = "{\"status\": \"@alice A new thread\", \"visibility\": \"direct\"}";
+        post.body.assign(body.begin(), body.end());
+        UltraNetResponse answer;
+        UltraNet_HttpRequest(post, answer);
+        CHECK(answer.statusCode == 200);
+    }
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& x) { return IsReceived(x, "A new thread"); }, &e));
+    CHECK(e.conversationId == withBob);
+    CHECK(e.message.replyTo.messageId.empty());
+    {
+        const auto both = Fetch(*alice, withBob);
+        CHECK(both.size() == 8);
+        if (both.size() == 8) {
+            CHECK(both.front().text == "Hello Bob");
+            CHECK(both.back().text == "A new thread");
+        }
+    }
+    // Answering it goes on in both: the history keeps all of it.
+    CHECK(alice->SendText(withBob, "In the new thread", UltraIMSendOptions()));
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& x) { return IsReceived(x, "In the new thread"); }));
+    CHECK(Fetch(*bob, withAlice).size() == 9);
+
     // ---- leave ----------------------------------------------------------------
     CHECK(WaitResult([&](UltraIMResultCallback cb) { carol->LeaveConversation("alice@" + host + " bob@" + host, cb); }, r));
     CHECK(r.success);
@@ -536,7 +567,7 @@ void TestEndToEnd(const std::string& url, const fs::path& base) {
     CHECK(WaitResult([&](UltraIMResultCallback cb) { alice->SignIn(UltraIMCredentials(), cb); }, r));
     CHECK(r.success);
     CHECK(alice->GetLocalUserId() == withAlice);
-    CHECK(Fetch(*alice, withBob).size() == 7);
+    CHECK(Fetch(*alice, withBob).size() == 9);
 
     alice->Shutdown();
     bob->Shutdown();

@@ -35,9 +35,11 @@ STATUSES = {}          # id -> status (with "_recipients", "_media")
 MEDIA = {}             # id -> {"type", "name", "bytes", "looks"}
 APPS = {}              # client_id -> app
 CODES = {}             # code -> {"user", "challenge", "client_id", "redirect_uri"}
-UNREAD = {}            # (user, frozenset of people) -> bool
-HIDDEN = set()         # (user, frozenset of people): removed from the list
-CONV_IDS = {}          # (user, frozenset of people) -> conversation id
+# A conversation is a thread, as on Mastodon: a status that answers another
+# is in its thread, one that answers nothing starts one ("_thread").
+UNREAD = {}            # (user, thread) -> bool
+HIDDEN = set()         # (user, thread): removed from the list
+CONV_IDS = {}          # (user, thread) -> conversation id
 IDEMPOTENT = {}        # (user, key) -> status id
 OAUTH_USER = "carol"
 BASE = ""
@@ -98,9 +100,9 @@ def conversations_of(user):
     for s in STATUSES.values():
         if not visible(s, user) or s["visibility"] != "direct":
             continue
-        key = people_of(s, user)
-        if not key:
+        if not people_of(s, user):
             continue
+        key = s["_thread"]
         if key not in latest or int(s["id"]) > int(latest[key]["id"]):
             latest[key] = s
     out = []
@@ -109,7 +111,7 @@ def conversations_of(user):
             continue
         cid = CONV_IDS.setdefault((user, key), next_id())
         out.append({"id": cid, "unread": UNREAD.get((user, key), False),
-                    "accounts": [account_json(n) for n in sorted(key)], "last_status": status_json(s)})
+                    "accounts": [account_json(n) for n in sorted(people_of(s, user))], "last_status": status_json(s)})
     out.sort(key=lambda c: -int(c["last_status"]["id"]))
     return out
 
@@ -281,7 +283,9 @@ class Handler(BaseHTTPRequestHandler):
             mentioned = {n.split("@")[0] for n in re.findall(r"@([A-Za-z0-9_]+(?:@[A-Za-z0-9_.:-]+)?)", text)}
             mentioned = {n for n in mentioned if n in ACCOUNTS}
             sid = next_id()
-            s = {"id": sid, "created_at": now_iso(), "in_reply_to_id": fields.get("in_reply_to_id"),
+            parent = STATUSES.get(fields.get("in_reply_to_id") or "")
+            s = {"_thread": parent["_thread"] if parent else sid,
+                 "id": sid, "created_at": now_iso(), "in_reply_to_id": fields.get("in_reply_to_id"),
                  "visibility": fields.get("visibility", "public"), "content": content_html(text),
                  "spoiler_text": fields.get("spoiler_text", ""), "edited_at": None,
                  "_author": user, "_recipients": mentioned | {user}, "_media": list(fields.get("media_ids", []))}
@@ -289,9 +293,8 @@ class Handler(BaseHTTPRequestHandler):
             if key:
                 IDEMPOTENT[(user, key)] = sid
             for r in s["_recipients"]:
-                people = people_of(s, r)
-                HIDDEN.discard((r, people))
-                UNREAD[(r, people)] = r != user
+                HIDDEN.discard((r, s["_thread"]))
+                UNREAD[(r, s["_thread"])] = r != user
             return self.reply(200, status_json(s))
         m = re.match(r"^/api/v1/statuses/(\d+)(/context)?$", path)
         if m:

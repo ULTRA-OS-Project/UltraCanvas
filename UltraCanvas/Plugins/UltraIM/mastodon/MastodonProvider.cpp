@@ -673,11 +673,12 @@ void MastodonProvider::Poll(bool first) {
         return;
     }
     std::vector<UltraIMEvent> events;
-    std::vector<std::pair<std::string, std::string>> threadsToRead;   // key, previous last status
+    std::vector<std::pair<std::string, std::string>> threadsToRead;   // key, the chat's last status before
     std::vector<UltraIMMessage> media;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        // The newest of each set of people first, so that one is "the" chat.
+        // One server conversation per thread; the threads of the same people
+        // are one chat, each thread's last status a head of it.
         std::vector<JSONValue> list = r.body.GetElements();
         for (const JSONValue& conv : list) {
             std::vector<Account> others;
@@ -691,65 +692,91 @@ void MastodonProvider::Poll(bool first) {
             const bool known = !chat.key.empty();
             chat.key = key;
             chat.accounts = others;
-            chat.serverIds.insert(conv["id"].GetString());
+            const std::string convId = conv["id"].GetString();
+            chat.serverIds.insert(convId);
             const JSONValue& status = conv["last_status"];
             const std::string statusId = status["id"].GetString();
+            const std::string edited = status["edited_at"].GetString();
             bool changed = !known || chat.unread != conv["unread"].GetBoolean(false);
-            if (!statusId.empty() && !chat.lastStatusId.empty() && IdLess(statusId, chat.lastStatusId) && !first) {
-                // The last one went: it was deleted.
+            auto head = chat.heads.find(convId);
+            const std::string oldHead = head != chat.heads.end() ? head->second : std::string();
+            const std::string oldEdited = head != chat.heads.end() ? chat.headEdited[convId] : std::string();
+            if (!first && !oldHead.empty() && !statusId.empty() && IdLess(statusId, oldHead)) {
+                // The thread's last one went: it was deleted.
                 UltraIMEvent e;
                 e.type = UltraIMEventType::MessageDelete;
                 e.providerId = providerId_;
                 e.conversationId = key;
                 e.message.providerId = providerId_;
                 e.message.conversationId = key;
-                e.message.messageId = chat.lastStatusId;
-                auto client = clientOfStatus_.find(chat.lastStatusId);
-                e.message.clientMessageId = client != clientOfStatus_.end() ? client->second : chat.lastStatusId;
+                e.message.messageId = oldHead;
+                auto client = clientOfStatus_.find(oldHead);
+                e.message.clientMessageId = client != clientOfStatus_.end() ? client->second : oldHead;
                 events.push_back(e);
-                byId_.erase(chat.lastStatusId);
-                chat.lastStatusId.clear();
-            }
-            if (!statusId.empty() && (chat.lastStatusId.empty() || !IdLess(statusId, chat.lastStatusId))) {
-                UltraIMMessage m;
-                if (MessageFrom(status, key, m)) {
-                    const std::string previous = chat.lastStatusId;
-                    const std::string edited = status["edited_at"].GetString();
-                    if (statusId != chat.lastStatusId || edited != chat.lastEditedAt) changed = true;
-                    bool viaThread = false;
-                    if (!first && !seen_.count(statusId)) {
-                        if (!previous.empty() && previous != m.replyTo.messageId) {
-                            // Others came before it since the last look: the
-                            // thread brings them all, in order, this one last.
-                            threadsToRead.push_back({key, previous});
-                            viaThread = true;
-                        } else {
-                            if (m.replyTo.messageId == previous) m.replyTo = UltraIMReplyContext();
-                            UltraIMEvent e;
-                            e.type = UltraIMEventType::MessageReceive;
-                            e.providerId = providerId_;
-                            e.conversationId = key;
-                            e.contactId = m.senderId;
-                            e.message = m;
-                            events.push_back(e);
-                            media.push_back(m);
-                        }
-                    } else if (!first && edited != chat.lastEditedAt && statusId == chat.lastStatusId) {
-                        UltraIMEvent e;
-                        e.type = UltraIMEventType::MessageUpdate;
-                        e.providerId = providerId_;
-                        e.conversationId = key;
-                        e.message = m;
-                        events.push_back(e);
-                    }
-                    if (!viaThread) seen_.insert(statusId);
-                    keyOfStatus_[statusId] = key;
-                    byId_[statusId] = m;
-                    chat.lastStatusId = statusId;
-                    chat.lastEditedAt = edited;
-                    chat.last = m;
-                    chat.hasLast = true;
+                byId_.erase(oldHead);
+                if (chat.lastStatusId == oldHead) {
+                    chat.lastStatusId.clear();
+                    chat.hasLast = false;
+                    changed = true;
                 }
+            }
+            UltraIMMessage m;
+            if (statusId.empty() || !MessageFrom(status, key, m)) {
+                chat.unread = conv["unread"].GetBoolean(false);
+                continue;
+            }
+            chat.heads[convId] = statusId;
+            chat.headEdited[convId] = edited;
+            const std::string previous = chat.lastStatusId;          // the chat's, before this one
+            bool viaThread = false;
+            if (!first && !seen_.count(statusId)) {
+                const bool startsThread = oldHead.empty() && m.replyTo.messageId.empty();
+                const bool follows = !oldHead.empty() && m.replyTo.messageId == oldHead;
+                if (startsThread || follows) {
+                    // Nothing missed in between: this one alone.
+                    if (m.replyTo.messageId == previous) {
+                        m.replyTo = UltraIMReplyContext();
+                    } else if (!m.replyTo.messageId.empty()) {
+                        auto quoted = byId_.find(m.replyTo.messageId);
+                        if (quoted != byId_.end()) {
+                            m.replyTo.senderId = quoted->second.senderId;
+                            m.replyTo.senderName = quoted->second.senderName;
+                            m.replyTo.textSnippet = quoted->second.text.substr(0, 80);
+                        }
+                    }
+                    UltraIMEvent e;
+                    e.type = UltraIMEventType::MessageReceive;
+                    e.providerId = providerId_;
+                    e.conversationId = key;
+                    e.contactId = m.senderId;
+                    e.message = m;
+                    events.push_back(e);
+                    media.push_back(m);
+                } else {
+                    // Others came before it since the last look: the threads
+                    // bring them all, in order, this one last.
+                    threadsToRead.push_back({key, previous});
+                    viaThread = true;
+                }
+            } else if (!first && statusId == oldHead && edited != oldEdited) {
+                UltraIMEvent e;
+                e.type = UltraIMEventType::MessageUpdate;
+                e.providerId = providerId_;
+                e.conversationId = key;
+                e.message = m;
+                auto client = clientOfStatus_.find(statusId);
+                if (client != clientOfStatus_.end()) e.message.clientMessageId = client->second;
+                events.push_back(e);
+                changed = true;
+            }
+            if (!viaThread) seen_.insert(statusId);
+            keyOfStatus_[statusId] = key;
+            if (!byId_.count(statusId) || byId_[statusId].isEdited != m.isEdited || edited != oldEdited) byId_[statusId] = m;
+            if (chat.lastStatusId.empty() || !IdLess(statusId, chat.lastStatusId)) {
+                if (statusId != chat.lastStatusId) changed = true;
+                chat.lastStatusId = statusId;
+                chat.last = m;
+                chat.hasLast = true;
             }
             chat.unread = conv["unread"].GetBoolean(false);
             if (changed) {
@@ -793,29 +820,42 @@ std::vector<UltraIMMessage> MastodonProvider::ThreadOf(Chat& chat, std::set<std:
     std::vector<UltraIMMessage> thread;
     if (chat.lastStatusId.empty()) return thread;
     // The context of a status is the line up to it and what answers it; a
-    // reply to an earlier message branches. The root's context is all of it.
-    std::string rootId;
-    MastodonResponse context;
-    for (const std::string& start : {chat.rootId, chat.lastStatusId}) {
-        if (start.empty()) continue;
-        context = Request("GET", "/api/v1/statuses/" + start + "/context", nullptr, 20000);
-        if (context.Ok()) {
-            rootId = start;
-            break;
+    // reply to an earlier message branches, so a thread is read from its
+    // root, whose context is all of it. A chat can be several threads (a
+    // message that answers nothing starts one): the roots met so far, the
+    // newest few, with the one the last status belongs to.
+    std::vector<std::string> roots = chat.roots;
+    std::set<std::string> heads;
+    for (const auto& [convId, headId] : chat.heads) heads.insert(headId);
+    heads.insert(chat.lastStatusId);
+    for (const std::string& headId : heads) {
+        if (headId.empty() || chat.rootOf.count(headId)) {
+            if (!headId.empty() && std::find(roots.begin(), roots.end(), chat.rootOf[headId]) == roots.end())
+                roots.push_back(chat.rootOf[headId]);
+            continue;
         }
+        const MastodonResponse up = Request("GET", "/api/v1/statuses/" + headId + "/context", nullptr, 20000);
+        if (!up.Ok()) continue;
+        const auto ancestors = up.body["ancestors"].GetElements();
+        const std::string root = ancestors.empty() ? headId : ancestors.front()["id"].GetString();
+        chat.rootOf[headId] = root;
+        if (std::find(roots.begin(), roots.end(), root) == roots.end()) roots.push_back(root);
     }
-    if (rootId.empty()) return thread;
-    const auto ancestors = context.body["ancestors"].GetElements();
-    if (context.Ok() && !ancestors.empty()) {
-        rootId = ancestors.front()["id"].GetString();
-        context = Request("GET", "/api/v1/statuses/" + rootId + "/context", nullptr, 20000);
-    }
-    const MastodonResponse root = Request("GET", "/api/v1/statuses/" + rootId, nullptr, 20000);
+    std::sort(roots.begin(), roots.end(), IdLess);
+    constexpr size_t kThreadsRead = 8;
+    if (roots.size() > kThreadsRead) roots.erase(roots.begin(), roots.end() - kThreadsRead);
     std::vector<JSONValue> statuses;
-    if (root.Ok()) statuses.push_back(root.body);
-    if (context.Ok()) {
-        for (const JSONValue& s : context.body["ancestors"].GetElements()) statuses.push_back(s);
-        for (const JSONValue& s : context.body["descendants"].GetElements()) statuses.push_back(s);
+    std::vector<std::string> found;
+    for (const std::string& rootId : roots) {
+        const MastodonResponse root = Request("GET", "/api/v1/statuses/" + rootId, nullptr, 20000);
+        const MastodonResponse context = Request("GET", "/api/v1/statuses/" + rootId + "/context", nullptr, 20000);
+        if (!root.Ok() && !context.Ok()) continue;          // deleted
+        found.push_back(rootId);
+        if (root.Ok()) statuses.push_back(root.body);
+        if (context.Ok()) {
+            for (const JSONValue& s : context.body["ancestors"].GetElements()) statuses.push_back(s);
+            for (const JSONValue& s : context.body["descendants"].GetElements()) statuses.push_back(s);
+        }
     }
     std::lock_guard<std::mutex> lock(mutex_);
     std::map<std::string, UltraIMMessage, bool (*)(const std::string&, const std::string&)> ordered(IdLess);
@@ -849,7 +889,8 @@ std::vector<UltraIMMessage> MastodonProvider::ThreadOf(Chat& chat, std::set<std:
     auto live = chats_.find(chat.key);
     if (live != chats_.end()) {
         live->second.messages = thread;
-        if (!thread.empty()) live->second.rootId = thread.front().messageId;
+        live->second.roots = found;
+        for (const auto& [headId, root] : chat.rootOf) live->second.rootOf[headId] = root;
     }
     return thread;
 }
@@ -1198,7 +1239,6 @@ UltraIMResult MastodonProvider::SendStatus(const std::string& conversationId, co
             byId_[statusId] = sent;
             Chat& chat = chats_[conversationId];
             chat.lastStatusId = statusId;
-            chat.lastEditedAt.clear();
             chat.last = sent;
             chat.hasLast = true;
             conversation = ConversationOf(chat);
@@ -1319,9 +1359,11 @@ UltraIMResult MastodonProvider::EditMessage(const std::string& conversationId, c
             m.isEdited = true;
             byId_[statusId] = m;
             auto chat = chats_.find(conversationId);
-            if (chat != chats_.end() && chat->second.lastStatusId == statusId) {
-                chat->second.last = m;
-                chat->second.lastEditedAt = r.body["edited_at"].GetString();
+            if (chat != chats_.end()) {
+                if (chat->second.lastStatusId == statusId) chat->second.last = m;
+                for (const auto& [convId, headId] : chat->second.heads) {
+                    if (headId == statusId) chat->second.headEdited[convId] = r.body["edited_at"].GetString();
+                }
             }
         }
         UltraIMEvent e;
