@@ -142,6 +142,14 @@ account has one, else signed in - so those steps arrive as events with no
 (`SignIn` with `QRCode` while the step is `Code`); a phone number given
 while the QR code waits starts the sign-in over with the number.
 
+A sign-in on the service's own web page (Mastodon: OAuth) has the step
+`Browser`: nothing to type in the application, the hint
+(`AuthStepChange`'s `errorText`) is the page's address for the application
+to open in the browser (`UltraCanvas::OpenURL`). The person signs in there,
+the page answers a loopback address the provider listens on, and the
+sign-in goes on by itself; `SignIn`'s callback fires once it is done or
+the wait ended.
+
 What one provider's service keeps for another provider's sign-in comes
 through `UltraIM_FetchSharedCredentials(provider, forProvider, cb)`: ChatCube
 Direct's relay keeps the Telegram application's API ID and hash
@@ -172,11 +180,12 @@ UltraIMResult r = UltraIM_DeleteMessage("direct", message.conversationId, messag
 | ChatCube Direct | any message, any time | the sender: a text until the other person has read it; a picture, video or file at any time; anything in a group at any time |
 | Matrix | not available | the sender, any time (a redaction) |
 | Telegram | any message | the sender (Telegram has the last word and may refuse) |
+| Mastodon | not available | the sender, any time |
 
 **Searching the history.** `UltraIM_SearchMessages(provider, search, cb)`
 finds messages by their words, or everything of one kind - the
 *Media / Files / Links* tabs of a conversation - for a provider with the
-`SearchMessages` capability (all three have it):
+`SearchMessages` capability (all four have it):
 
 ```cpp
 UltraIMMessageSearch search;
@@ -207,6 +216,7 @@ every network, and what differs is said here rather than discovered:
 | ChatCube Direct | its database on this device | anywhere in the text, any case | yes (`conversationId` "") |
 | Matrix | the room's history, read back page by page and matched on this device - so an encrypted room is searched like any other | anywhere in the text, any case | no: `CapabilityMissing` |
 | Telegram | Telegram's own search (`searchChatMessages`) | whole words, as in Telegram's apps | no: `CapabilityMissing` |
+| Mastodon | the chat's threads, read from the server and matched on this device | anywhere in the text, any case | no: `CapabilityMissing` |
 
 The words are looked for in the message's text (a caption too) and its
 attachment's file name; a `SystemEvent` line ("Bob joined") is never a
@@ -774,8 +784,74 @@ names and fields are right. The library is the one the configure step
 fetched, or the one `ULTRAIM_TDJSON_PATH` names; CI sets
 `ULTRAIM_TEST_TDLIB_REQUIRED`, so no library there is a failure.
 
+## Provider: Mastodon
+
+`UltraCanvas/Plugins/UltraIM/mastodon/` (module `ultraim_mastodon`, provider
+id `mastodon`) brings the **direct messages** of a Mastodon server - or one
+that speaks its REST API (GoToSocial, Akkoma, Pleroma) - over UltraNet. It
+links nothing beyond UltraNet, UltraVault and UltraCrypt, so it builds
+everywhere the others do.
+
+Mastodon has no messenger of its own: a "chat" is a thread of statuses whose
+visibility is `direct`, seen only by the accounts they mention, and the
+server lists each thread as a conversation (`GET /api/v1/conversations`).
+The provider turns that into chats:
+
+- **A chat is a set of people.** Its id is the other accounts' full
+  addresses (`user@server`, lower case, sorted, space-joined), so a chat
+  opened before its first message (`AddContact`, `CreateGroup`) and the one
+  its first message makes are the same, and every thread with the same
+  people is one chat - a status that answers nothing starts a thread, and
+  the history shows the threads together (the newest eight).
+- **A message is a status:** its HTML content as text
+  (`HTML::ExtractPlainText`, the layout `Lines`), the mentions it starts
+  with left out (everyone in a direct chat is mentioned in each), a content
+  warning above the text; its first attachment as the picture, video or
+  sound (more than one: "+n" after the text). Sending posts a direct status
+  that mentions everyone in the chat and answers the chat's last status, so
+  the thread stays one; a reply answers the message quoted, and shows as a
+  reply only when that is not simply the message before it. The client
+  message id goes as the `Idempotency-Key`, so a retry never posts twice.
+- **News comes by polling** the conversations every few seconds
+  (`MastodonTimings::pollMs`, 4 s): a thread whose last status changed
+  brings what it holds that was not seen yet, in order; a last status
+  changed in place is an edit (`MessageUpdate`), one that went back to an
+  older one a delete (`MessageDelete`). There is no push here (the
+  streaming API is not used yet).
+- **Sign-in** is the server's own page in the browser (`UltraIMLoginType::SsoOidc`,
+  the auth step `Browser`): the provider registers the application with the
+  server once (`POST /api/v1/apps`, kept per server), then runs OAuth with
+  PKCE on a loopback address (`http://127.0.0.1:47819/callback`,
+  `SetRedirectUri`). The access token is kept in UltraVault, so the next
+  start signs in by itself (`SignIn` with no server); `credentials.accessToken`
+  signs in with a token made in the server's settings instead.
+- **People:** `AddContact` takes `@user@server`, `user@server`, `@user`
+  (this server) or a profile's page (`https://server/@user`): the server
+  looks them up (`/api/v1/accounts/lookup`), or asks theirs
+  (`/api/v2/search` with `resolve`) for someone it has not met.
+- **Media:** pictures, videos and sound, uploaded (`POST /api/v2/media`,
+  `TransferProgress` as it goes), waited for while the server processes
+  them, then sent; a picture received comes by itself, the rest when asked
+  (`DownloadAttachment`). Mastodon takes no other file: `SendFile` with one
+  answers `CapabilityMissing`.
+- **Edit** (`PUT /api/v1/statuses/:id`, Mastodon 4.0+), **delete** (one's
+  own, for everyone), **read** (`POST /api/v1/conversations/:id/read`),
+  **leave** (the conversations taken off the list - the statuses stay).
+- **Not here:** typing, read receipts, presence and calls (Mastodon has
+  none); history beyond the eight newest threads of a chat.
+
+Tests: `Tests/UltraIM/MastodonProviderTests.cpp` against
+`mastodon_fake_server.py`, a small Mastodon in memory in standard-library
+python (the part of the API the provider uses; threads as conversations,
+OAuth that approves at once, media processed after one look): a token
+sign-in and a refused one, the browser sign-in with PKCE and the session
+kept, a chat opened before its first message, texts both ways, several
+statuses between two looks in order, a reply, an edit, a delete seen by both
+sides, a picture and a video byte for byte, a file refused, search, read, a
+group, a second thread in the same chat, leaving. Skips without python3.
+
 ## Status
 
 Implemented: the registry, the module loader, the event bus and dispatcher,
 the merged conversation fetch and every forwarding call; the ChatCube
-Direct, Matrix and Telegram providers (above). Next: XMPP and others.
+Direct, Matrix, Telegram and Mastodon providers (above). Next: XMPP and others.

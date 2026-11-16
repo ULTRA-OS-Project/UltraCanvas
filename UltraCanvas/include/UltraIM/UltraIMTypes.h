@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.13 - UltraIMAuthStep::Browser: a sign-in page to open in the browser (Mastodon)
 // Version: 0.1.12 - UltraIMEventType::TransferProgress; UltraIMSearchKind::Audio: a file's bytes on their way, up or down
 // Version: 0.1.11 - UltraIMSendOptions::durationSeconds: a voice note's or a video's length, sent along
 // Version: 0.1.10 - UltraIMConversation::memberCount: everyone in a group whose memberIds are a first page
@@ -19,7 +20,7 @@
 // Version: 0.1.2 - UltraIMAccountProfile (name, e-mail, phone), UltraIMSignInProtection, credentials.email
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-11-13
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 #pragma once
 

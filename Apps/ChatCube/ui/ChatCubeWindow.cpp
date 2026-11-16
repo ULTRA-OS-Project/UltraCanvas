@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.5 - a Mastodon account (the server, then its sign-in page in the browser); the network
+//                  buttons in two rows; @user@server and https://server/@user go to Mastodon
 // Version: 0.3.4 - sending in the background, a file's progress in its bubble, a video's preview picture
 //                  and length at once, songs played in their bubble, videos played in the chat, filter
 //                  chips over the chat (pictures, videos, audio, files, links)
@@ -33,7 +35,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"

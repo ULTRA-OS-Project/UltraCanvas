@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.14 - ABI 10: UltraIMAuthStep::Browser
 // Version: 0.1.13 - ABI 9: UltraIMEventType::TransferProgress and its fields on UltraIMEvent;
 //                   UltraIMSearchKind::Audio
 // Version: 0.1.12 - ABI 8: UltraIMSendOptions::durationSeconds
@@ -18,7 +19,7 @@
 // Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
 // Version: 0.1.1 - FetchSharedCredentials: what a provider's service keeps for another provider
 // Version: 0.1.0
-// Last Modified: 2026-11-13
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 #pragma once
 

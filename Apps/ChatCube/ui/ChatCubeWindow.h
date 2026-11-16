@@ -51,9 +51,10 @@
 // goes with Enter or the send button - what was typed as the caption of
 // the first picture or video.
 //
-// Next to ChatCube Direct, a Matrix account (the "matrix" provider) can be
-// added from the sidebar; its rooms join the same list, and everything done
-// in a conversation goes to that conversation's provider.
+// Next to ChatCube Direct, a Matrix, a Telegram and a Mastodon account (the
+// "matrix", "telegram" and "mastodon" providers) can be added from the
+// sidebar; their chats join the same list, and everything done in a
+// conversation goes to that conversation's provider.
 //
 // A call shows a bar across the top of the chat view:
 //
@@ -70,6 +71,7 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.5 - a Mastodon account: ToggleMastodonForm, SignInToMastodon, mastodonProviderId_
 // Version: 0.3.4 - sending in the background (SendQueue: the field is free at once, the window never
 //                  waits on a big file), a file's progress in its bubble, a video's preview picture and
 //                  length shown as it goes, songs played in their bubble, videos played in the chat (a
@@ -106,7 +108,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

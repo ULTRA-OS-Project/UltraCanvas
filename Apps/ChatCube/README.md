@@ -9,8 +9,9 @@ protect it when you want them to.
 ChatCube is the window; the networks are UltraIM providers
 ([`Docs/Modules/UltraIM`](../../Docs/Modules/UltraIM/README.md)). This release
 uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`), Matrix
-(`.../matrix`) and Telegram (`.../telegram`); XMPP and other messengers with
-an open API come later as further providers.
+(`.../matrix`), Telegram (`.../telegram`) and the direct messages of
+Mastodon (`.../mastodon`); XMPP and other messengers with an open API come
+later as further providers.
 Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/ChatCubeDirectPlan.md).
 The first ChatCube draft, which this replaces, is kept under
 [`Docs/ChatCube/v1-draft`](../../Docs/ChatCube/v1-draft/README.md).
@@ -117,6 +118,16 @@ The first ChatCube draft, which this replaces, is kept under
    have one. Your
    Telegram chats join the list; `@username`, `t.me/name` or `+phone` in
    *Add* or *New group* goes to Telegram.
+   **Mastodon** (beside Telegram) asks for your server (`mastodon.social`,
+   or any other) and opens its own sign-in page in your browser: you sign
+   in there and allow ChatCube, and ChatCube is signed in - your password
+   never passes through it. Your direct messages (statuses "only for the
+   people mentioned") join the list, one chat per set of people however
+   many threads they are; `@user@server` or a profile's address
+   (`https://server/@user`) in *Add* or *New group* goes to Mastodon.
+   Messages are text, pictures, videos and sound - Mastodon takes no other
+   file - and come every few seconds (ChatCube asks the server; Mastodon
+   has no typing, read ticks or calls).
 5. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
    *Settings* below). A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,

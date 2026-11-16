@@ -1,3 +1,14 @@
+#### 2026-11-16 *0.1.28*
+- **Mastodon.** A Mastodon button beside Telegram signs in to any Mastodon
+  server (or one that speaks its language: GoToSocial, Akkoma, Pleroma) on
+  the server's own page in the browser - type the server, press *Sign in in
+  the browser*, allow ChatCube there. Your direct messages join the list:
+  one chat per set of people, texts, replies, edits, deletes, pictures,
+  videos and sound, with the upload's progress bar. `@user@server` in *Add*
+  or *New group* starts a chat there. The next start signs in by itself.
+- **The network buttons in two rows** (Group, Matrix / Telegram, Mastodon),
+  so every name fits.
+
 #### 2026-11-16 *0.1.27*
 - **Sending no longer holds up the window.** The message field is free the
   moment you press send; reading a big file, making a video's preview

@@ -4,6 +4,7 @@
 # Matrix and Telegram: UltraCanvas/Plugins/UltraIM/direct, matrix and
 # telegram, built into <build>/Plugins/UltraIM).
 #
+# Version: 0.1.5 - the Mastodon module built with ChatCube
 # Version: 0.1.4 - ChatCubeControls.cpp, ChatCubeProfileWindow.cpp (Edit profile)
 # Version: 0.1.3 - ChatCubeSettings.cpp and ChatCubeSettingsWindow.cpp: the Settings window
 # Version: 0.1.2 - VideoFX, when it is built, for the preview pictures of videos sent

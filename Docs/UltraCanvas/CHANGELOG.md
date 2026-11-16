@@ -1,3 +1,21 @@
+#### 2026-11-16 *0.9.568*
+- **UltraIM: a Mastodon provider** (`Plugins/UltraIM/mastodon`, module
+  `ultraim_mastodon`): the direct messages of a Mastodon server over its
+  REST API through UltraNet. A chat is the set of people in it - its id
+  their addresses, so a chat opened before its first message and the
+  threads its messages make are one; statuses as text
+  (`HTML::ExtractPlainText`), their first attachment as picture, video or
+  sound; polled every few seconds, several new statuses arriving in order,
+  edits and deletes noticed; replies, edits (`PUT`), deletes, read marks,
+  leaving, media uploads with `TransferProgress`, search through
+  `UltraIM_SearchByFetching`. Sign-in registers the application with the
+  server once and runs OAuth with PKCE on a loopback address; the token is
+  kept in UltraVault. Tested against `Tests/UltraIM/mastodon_fake_server.py`,
+  a small Mastodon in standard-library python (`MastodonProviderTests`).
+- **`UltraIMAuthStep::Browser`** (plug-in ABI 10): a sign-in step with
+  nothing to type in the application - the hint is a web page to open in
+  the browser, after which the provider goes on by itself.
+
 #### 2026-11-15 *0.9.567*
 - **DropdownKeyboardTest runs in CI, and checks the dropdown's focus outline
   on real pixels.** The suite opens a real window, so in "Run unit tests" -
