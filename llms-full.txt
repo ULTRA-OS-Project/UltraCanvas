@@ -11492,6 +11492,12 @@ the accent colour used elsewhere. The same switch exists one level down as
 `DialogConfig::showIcon`, and on a live dialog as
 `UltraCanvasModalDialog::SetIconVisible(bool)` / `IsIconVisible()`.
 
+The message has the same switch on a live dialog:
+`UltraCanvasModalDialog::SetMessageVisible(bool)` / `IsMessageVisible()`. A
+dialog whose own elements (`AddDialogElement`) present the message — beside a
+picture, as cards — hides the message area, which then takes no room, while
+`GetMessage()` and `GetDetails()` go on answering with the text.
+
 This is what [`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md) uses:
 its ring is the dialog's graphic, so it opens without a badge and the ring is
 horizontally centred.
@@ -36049,6 +36055,23 @@ and Paste** — Ctrl+X, Ctrl+V, or `PasteFilesInto()` with `cut` — asks the sa
 question when the mode covers moves: it changes where the files live just the
 same. A Ctrl+V copy is deliberate and never asks. With dialogs disabled the drop
 is carried out rather than lost.
+
+The question comes in two styles, chosen with
+`SetTransferDialogStyle(FilerTransferDialogStyle)`; both say the same thing
+and offer the same answers:
+
+| Style | The question shows |
+|---|---|
+| `Summary` (the default) | the entry's icon beside the question with its type and size under it, then *From* and *Into* as two breadcrumb rows — the folders both paths share are quiet, the folder each ends in is bold, and a long path gives up its middle folders, never the name at its end. Move, Copy and Cancel are buttons. |
+| `Cards` | what is going and the folder it goes into as two cards with an arrow between them, and the folder they are in on one line under them (*From* and *Into* when the destination is not a subfolder of the source). The verb that was asked for and Cancel are buttons; the other verb — *Copy instead* — sits apart at the left of the bar. |
+
+```cpp
+filer->SetTransferDialogStyle(FilerTransferDialogStyle::Cards);
+```
+
+Several entries show the first one's icon, their count and their total, with
+the list of them under it as before. A folder's size fills in while the
+dialog is open, as its walk lands.
 
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
@@ -89041,6 +89064,15 @@ node UltraCanvas/OS/WASM/runtime/test/runtime-test.mjs build-ucr
 
 Branded Google Chrome no longer loads unpacked extensions from the command
 line (Chrome 137), so the test runs Playwright's Chromium.
+
+The `wasm-build.yml` workflow runs it in its `dynamic` variant, on the
+folder it uploads first as the run's `ultracanvas-runtime-dynamic`
+artifact: `site/` (the loader, the two pages, `hello-app.wasm` and the
+runtime under `runtime/`) and `ultracanvas-extension/`, with a
+`README.txt`. Unzip it, serve `site/` with any static host
+(`python3 -m http.server --bind 127.0.0.1 8080`) and the sample app runs;
+load `ultracanvas-extension/` unpacked for the extension's side. The
+test's screenshots and console logs are `ultracanvas-runtime-smoke-dynamic`.
 
 ## Limits of the prototype
 
