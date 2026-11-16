@@ -864,8 +864,8 @@ namespace UltraCanvas {
 
         auto image = std::make_shared<UltraCanvasImageElement>("Image", 4, 4, 222, 162);
         // A build whose libvips lacks this format's codec (the WebAssembly
-        // sysroot reads PNG, JPEG, TIFF, WebP and GIF; BMP needs ImageMagick,
-        // HEIC and AVIF libheif) cannot show the sample. The page still
+        // sysroot reads PNG, JPEG, TIFF, WebP and GIF; HEIC and AVIF need
+        // libheif) cannot show the sample. The page still
         // builds - the About and Format Specification cards do not depend
         // on it - and says so where the picture and its properties would be.
         const bool readable = image->LoadFromFile(sampleImagePath);
