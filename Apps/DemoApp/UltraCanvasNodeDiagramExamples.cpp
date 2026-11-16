@@ -1,8 +1,10 @@
 // Apps/Demo/Items/UltraCanvasNodeDiagramExamples.cpp
 // Comprehensive examples for UltraCanvasNodeDiagram v2.5.0
 // Version: 2.5.0 - the Concept map tab: ellipse nodes placed by hand, five
-//                  free-placed regions that overlap, a paragraph beside the
-//                  nodes that need one, and one highlighted path per region
+//                  free-placed regions that overlap with their titles outside
+//                  them, a paragraph beside the nodes that need one, one
+//                  highlighted path per region, arrows that stop at the
+//                  outlines, and one link led round the outside by waypoints
 // Version: 2.4.1 - the Friends tab is a personal social network: 24 card
 //                  nodes with interest icons in five circles, two bridges,
 //                  tie-strength link widths, a legend, icon-only cards when
@@ -1836,11 +1838,11 @@ static std::shared_ptr<UltraCanvasNodeDiagram> CreateConceptMapDiagram(int x, in
     // --- The regions: placed, not fitted, and free to overlap ---
     struct Region { const char* id; std::string label; Rect2Dd box; Color color; GroupLabelPosition title; };
     const Region regions[] = {
-        {"creating",   Tr("Creating a document"),  Rect2Dd(70, 10, 190, 260),   red,    GroupLabelPosition::TopLeft},
-        {"storing",    Tr("Storing it"),           Rect2Dd(40, 120, 600, 150),  yellow, GroupLabelPosition::BottomCenter},
-        {"retrieving", Tr("The retrieval system"), Rect2Dd(650, 150, 310, 350), green,  GroupLabelPosition::TopLeft},
-        {"searching",  Tr("Searching"),            Rect2Dd(150, 410, 810, 140), blue,   GroupLabelPosition::BottomCenter},
-        {"reader",     Tr("The reader"),           Rect2Dd(150, 430, 180, 210), purple, GroupLabelPosition::BottomLeft},
+        {"creating",   Tr("Creating a document"),  Rect2Dd(70, 10, 190, 260),   red,    GroupLabelPosition::OutsideRightTop},
+        {"storing",    Tr("Storing it"),           Rect2Dd(40, 120, 600, 150),  yellow, GroupLabelPosition::OutsideTopRight},
+        {"retrieving", Tr("The retrieval system"), Rect2Dd(650, 150, 310, 350), green,  GroupLabelPosition::OutsideTopRight},
+        {"searching",  Tr("Searching"),            Rect2Dd(150, 410, 810, 140), blue,   GroupLabelPosition::OutsideBottomRight},
+        {"reader",     Tr("The reader"),           Rect2Dd(150, 430, 180, 210), purple, GroupLabelPosition::OutsideRightBottom},
     };
     for (const Region& region : regions) {
         diagram->AddRegion(region.id, region.label, region.box, wash(region.color));
@@ -1893,7 +1895,7 @@ static std::shared_ptr<UltraCanvasNodeDiagram> CreateConceptMapDiagram(int x, in
         NodeDiagramLink link("rel" + std::to_string(++linkNo), from, to);
         link.label = verb;
         link.style = LinkStyle::Straight;
-        link.directed = false;
+        link.directed = true;   // the arrow stops at the ellipse's outline
         link.lineColor = Color(110, 110, 110, 255);
         link.lineWidth = 1.0;
         diagram->AddLink(link);
@@ -1910,6 +1912,17 @@ static std::shared_ptr<UltraCanvasNodeDiagram> CreateConceptMapDiagram(int x, in
     relate("query",    "results",  Tr("is answered by"));
     relate("query",    "matching", Tr("is read by"));
     relate("results",  "document", Tr("points to"));
+
+    // --- One link led round the outside: a reader can become an author ---
+    {
+        NodeDiagramLink loop("loop", "reader", "author");
+        loop.label = Tr("may become an");
+        loop.style = LinkStyle::Bezier;   // a smooth curve through the waypoints
+        loop.lineColor = Color(110, 110, 110, 255);
+        loop.lineWidth = 1.0;
+        loop.waypoints = {Point2Dd(60, 440), Point2Dd(10, 250), Point2Dd(50, 90)};
+        diagram->AddLink(loop);
+    }
 
     // --- One line through each region, in its colour ---
     diagram->HighlightPath({"author", "document"}, red, 3.5);

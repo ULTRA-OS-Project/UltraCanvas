@@ -6,9 +6,12 @@
 // for, wrapped at its width; HighlightPath marks the links between
 // consecutive nodes in either direction and leaves their own look alone; all
 // of it, and a string with escapes, survives ToJson / FromJson. Headless: no
-// window, so texts are measured by the estimate. The last part draws all four
-// into an offscreen Cairo surface and reads the pixels back; with
-// ULTRACANVAS_SCREENSHOT_DIR set it also writes the picture there as a PNG.
+// window, so texts are measured by the estimate. A cluster title outside its
+// box takes no room from it; a link's waypoints are kept. The last parts draw
+// it all into an offscreen Cairo surface and read the pixels back - the
+// title outside the box, the link through its waypoint, the link cut at its
+// target's outline with the arrowhead before it, the cloud as one shape; with
+// ULTRACANVAS_SCREENSHOT_DIR set they also write the pictures there as PNGs.
 //
 // Version: 1.0.0
 // Last Modified: 2026-11-16
@@ -375,13 +378,165 @@ static void TestRender() {
           "cleared, it is the thin grey link again");
 }
 
+static void TestOutsideTitlesAndWaypoints() {
+    std::printf("\n[outside titles, waypoints]\n");
+    UltraCanvasNodeDiagram d("d", 0, 0, 800, 600);
+    d.SetZoomLevel(0.25);   // a title is four times its size in world units here
+    d.AddNode(Box("a", 100, 100));
+    d.AddNode(Box("b", 300, 100));
+    NodeDiagramGroup g("g", "A title");
+    g.nodeIds = {"a", "b"};
+    g.padding = 10.0;
+    d.AddGroup(g);
+    const Rect2Dd inside = d.GetGroupBounds("g");
+    CHECK(inside.height > 30.0 + 20.0 + 1.0, "a title inside the box makes the box taller at a low zoom");
+    const GroupLabelPosition outside[] = {
+        GroupLabelPosition::OutsideTopLeft, GroupLabelPosition::OutsideTopCenter, GroupLabelPosition::OutsideTopRight,
+        GroupLabelPosition::OutsideBottomLeft, GroupLabelPosition::OutsideBottomCenter,
+        GroupLabelPosition::OutsideBottomRight, GroupLabelPosition::OutsideLeftTop,
+        GroupLabelPosition::OutsideLeftBottom, GroupLabelPosition::OutsideRightTop,
+        GroupLabelPosition::OutsideRightBottom};
+    bool allTight = true, allRoundTrip = true;
+    for (GroupLabelPosition position : outside) {
+        d.GetGroup("g")->labelPosition = position;
+        const Rect2Dd box = d.GetGroupBounds("g");
+        if (std::abs(box.height - 50.0) > 0.01 || std::abs(box.y - 90.0) > 0.01) allTight = false;
+        UltraCanvasNodeDiagram e("e", 0, 0, 800, 600);
+        if (!e.FromJson(d.ToJson()) || !e.GetGroup("g") || e.GetGroup("g")->labelPosition != position) allRoundTrip = false;
+    }
+    CHECK(allTight, "a title outside it does not: the box is its members and the padding, in all ten places");
+    CHECK(allRoundTrip, "each outside position round-trips through JSON");
+    d.GetGroup("g")->labelPosition = GroupLabelPosition::BottomRight;
+    UltraCanvasNodeDiagram f("f", 0, 0, 800, 600);
+    CHECK(f.FromJson(d.ToJson()) && f.GetGroup("g")->labelPosition == GroupLabelPosition::BottomRight,
+          "and so does BottomRight");
+
+    d.AddLink("ab", "a", "b");
+    d.SetLinkWaypoints("ab", {Point2Dd(150.5, -40.0), Point2Dd(250.0, -60.25)});
+    d.AddLinkWaypoint("ab", Point2Dd(300.0, 0.0));
+    CHECK(d.GetLink("ab")->waypoints.size() == 3, "SetLinkWaypoints and AddLinkWaypoint lead a link through points");
+    const double ax = d.GetNode("a")->x;
+    d.RunLayout();
+    CHECK(d.GetNode("a")->x == ax && d.GetLink("ab")->waypoints[0].y == -40.0, "a layout leaves them where they are");
+    UltraCanvasNodeDiagram h("h", 0, 0, 800, 600);
+    CHECK(h.FromJson(d.ToJson()) && h.GetLink("ab"), "FromJson reads it");
+    const std::vector<Point2Dd>& back = h.GetLink("ab")->waypoints;
+    CHECK(back.size() == 3 && back[0].x == 150.5 && back[0].y == -40.0 && back[1].y == -60.25 && back[2].x == 300.0,
+          "the waypoints round-trip, in order");
+    d.ClearLinkWaypoints("ab");
+    CHECK(d.GetLink("ab")->waypoints.empty(), "ClearLinkWaypoints takes them back");
+}
+
+// Pixels that are not the white background, in a rectangle.
+static int InkPixels(const Canvas& canvas, int x0, int y0, int x1, int y1) {
+    int count = 0;
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            if (!Near(canvas.PixelAt(x, y), 255, 255, 255, 6)) ++count;
+        }
+    }
+    return count;
+}
+
+static void TestRenderLinksTitlesCloud() {
+    std::printf("\n[links, titles and the cloud, drawn offscreen]\n");
+    const int W = 600, H = 400;
+    Canvas canvas(W, H);
+    if (!canvas.ctx) return;
+
+    UltraCanvasNodeDiagram d("d", 0, 0, W, H);
+    d.SetTheme(NodeDiagramTheme::Minimal);
+    d.SetBackgroundColor(Color(255, 255, 255, 255));
+    d.SetLayout(NodeDiagramLayout::Manual);
+    d.SetLabelFit(NodeLabelFit::Overflow);
+
+    // A region with nothing in it but its fill, titled above and then beside.
+    d.AddRegion("r", "Outside", Rect2Dd(60, 60, 160, 60), Color(0, 0, 255, 40));
+    d.GetGroup("r")->labelColor = Color(0, 0, 0, 255);
+    d.GetGroup("r")->labelPosition = GroupLabelPosition::OutsideTopLeft;
+
+    // A cloud.
+    NodeDiagramNode cloud("cloud", "");
+    cloud.shape = NodeShape::Cloud;
+    cloud.x = 340; cloud.y = 40; cloud.width = 200; cloud.height = 120;
+    cloud.fillColor = cloud.borderColor = Color(0, 160, 0, 255);
+    cloud.borderWidth = 1.0;
+    d.AddNode(cloud);
+
+    // A directed link from a square to an ellipse that is all outline: no
+    // fill, so whatever is drawn under it shows.
+    NodeDiagramNode from("from", "");
+    from.shape = NodeShape::Square;
+    from.x = 40; from.y = 285; from.width = 30; from.height = 30;
+    from.fillColor = from.borderColor = Color(200, 200, 200, 255);
+    d.AddNode(from);
+    NodeDiagramNode to("to", "");
+    to.shape = NodeShape::Ellipse;
+    to.x = 400; to.y = 270; to.width = 120; to.height = 60;
+    to.fillColor = Color(0, 0, 0, 0);
+    to.borderColor = Color(0, 0, 0, 0);
+    to.borderWidth = 0.0;
+    d.AddNode(to);
+    NodeDiagramLink link("l", "from", "to");
+    link.style = LinkStyle::Straight;
+    link.lineColor = Color(128, 128, 128, 255);
+    link.lineWidth = 2.0;
+    d.AddLink(link);   // directed by default; along y = 300
+
+    const Rect2Df all(0, 0, W, H);
+    d.Render(canvas.ctx.get(), all);
+    canvas.Save("node-diagram-links-titles-cloud");
+
+    // Title
+    CHECK(canvas.DarkPixels(60, 30, 220, 58) > 30, "OutsideTopLeft: the title is written above the box");
+    CHECK(canvas.DarkPixels(60, 60, 220, 120) == 0, "and not in it");
+    CHECK(canvas.DarkPixels(0, 30, 58, 130) == 0, "starting at the box's left edge");
+
+    // Cloud: one shape, edge to edge, its corners empty.
+    CHECK(Near(canvas.PixelAt(440, 100), 0, 160, 0), "the cloud is filled at its centre");
+    CHECK(Near(canvas.PixelAt(350, 115), 0, 160, 0) && Near(canvas.PixelAt(530, 100), 0, 160, 0),
+          "out to its left and right edges");
+    CHECK(Near(canvas.PixelAt(440, 150), 0, 160, 0) && Near(canvas.PixelAt(440, 45), 0, 160, 0),
+          "and from its base to its top");
+    CHECK(Near(canvas.PixelAt(343, 43), 255, 255, 255) && Near(canvas.PixelAt(537, 43), 255, 255, 255) &&
+          Near(canvas.PixelAt(343, 157), 255, 255, 255), "with the corners of its box left empty");
+    CHECK(InkPixels(canvas, 541, 40, 600, 220) == 0 && InkPixels(canvas, 340, 162, 540, 220) == 0,
+          "nothing of it is drawn outside its box");
+
+    // The link stops at the ellipse's outline (x = 400 on its axis).
+    CHECK(Near(canvas.PixelAt(200, 300), 128, 128, 128, 40), "the link is drawn up to its target");
+    CHECK(InkPixels(canvas, 402, 290, 520, 310) == 0, "and stops at the target's outline, not at its centre");
+    CHECK(InkPixels(canvas, 386, 302, 399, 308) > 0 && InkPixels(canvas, 386, 292, 399, 298) > 0,
+          "with its arrowhead before the outline, on both sides of the line");
+    CHECK(InkPixels(canvas, 200, 302, 300, 308) == 0, "the line itself has no such width");
+
+    // Title beside the box; the link led through a waypoint.
+    d.GetGroup("r")->labelPosition = GroupLabelPosition::OutsideRightBottom;
+    d.SetLinkWaypoints("l", {Point2Dd(230, 220)});
+    d.Render(canvas.ctx.get(), all);
+    CHECK(canvas.DarkPixels(60, 30, 220, 58) == 0 && canvas.DarkPixels(222, 100, 320, 122) > 30,
+          "OutsideRightBottom: the title is beside the box, at its foot");
+    CHECK(Near(canvas.PixelAt(230, 220), 128, 128, 128, 40), "a link with a waypoint passes through it");
+    CHECK(InkPixels(canvas, 200, 296, 260, 304) == 0, "and no longer runs straight between its nodes");
+    CHECK(InkPixels(canvas, 420, 285, 500, 315) == 0, "it still stops at the outline");
+    link.id = "curve";
+    link.style = LinkStyle::Bezier;
+    link.waypoints = {Point2Dd(230, 360)};
+    d.AddLink(link);
+    d.Render(canvas.ctx.get(), all);
+    canvas.Save("node-diagram-waypoints");
+    CHECK(InkPixels(canvas, 226, 356, 234, 364) > 0, "a Bezier link curves through its waypoint too");
+}
+
 int main() {
     std::printf("NodeDiagramConceptMapTest\n");
     TestRegions();
     TestEllipse();
     TestAnnotations();
     TestHighlightPath();
+    TestOutsideTitlesAndWaypoints();
     TestRender();
+    TestRenderLinksTitlesCloud();
     std::printf("\n%s (%d failure%s)\n", g_failures ? "FAILED" : "PASSED", g_failures, g_failures == 1 ? "" : "s");
     return g_failures ? 1 : 0;
 }

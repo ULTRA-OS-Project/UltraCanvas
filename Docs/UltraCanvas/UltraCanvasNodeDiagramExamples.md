@@ -61,8 +61,10 @@
 > **Since 2.5.0** the component draws concept maps: **free-placed regions**
 > (a `NodeDiagramGroup` with its own rectangle, which may overlap other
 > regions and lie over any node), **ellipse nodes** (`NodeShape::Ellipse`),
-> **annotations** (a wrapped paragraph beside a node) and **path
-> highlighting** (`HighlightPath`). See
+> **annotations** (a wrapped paragraph beside a node), **path
+> highlighting** (`HighlightPath`), **titles outside a box**, and **link
+> waypoints**. A link now stops at the outline of the node it ends on, so the
+> arrowhead of a directed link shows. See
 > [A concept map](#a-concept-map-regions-ellipses-annotations-and-paths-250).
 
 > **Since 2.4.0** a label never runs out of its node. The **label fit**
@@ -122,6 +124,8 @@ UltraCanvasUIElement
 - **Free-placed regions** (2.5.0): coloured washes at rectangles of your choosing, overlapping freely
 - **Ellipse nodes** (2.5.0), **node annotations** (2.5.0): a wrapped paragraph beside a node
 - **Path highlighting** (2.5.0): one call colours the links along a list of nodes
+- **Link waypoints** (2.5.0): lead a link through points of your choosing, as a curve or in straight runs
+- **Links end at the node's outline** (2.5.0), for every shape, with the arrowhead on it
 
 ## Data Structures
 
@@ -175,7 +179,13 @@ enum class NodeAnnotationPosition { Right, Bottom, Left, Top };
 
 // NOTE: no enumerator may be named "None" - X11's Xlib.h defines None as a macro.
 enum class GroupLabelPosition {
-    TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, NoLabel
+    TopLeft, TopCenter, TopRight, BottomLeft, BottomCenter, NoLabel,
+    // 2.5.0
+    BottomRight,
+    OutsideTopLeft, OutsideTopCenter, OutsideTopRight,            // above the box
+    OutsideBottomLeft, OutsideBottomCenter, OutsideBottomRight,   // below it
+    OutsideLeftTop, OutsideLeftBottom,                            // beside it, level with its top / bottom
+    OutsideRightTop, OutsideRightBottom
 };
 
 // Since 2.1.0 an alias of the shared DiagramPanelPosition
@@ -281,8 +291,23 @@ struct NodeDiagramLink {
     bool   highlighted    = false;
     Color  highlightColor = Color(230, 60, 50, 255);
     double highlightWidth = 4.0;
+
+    // 2.5.0: world points the link passes through, in order
+    std::vector<Point2Dd> waypoints;
 };
 ```
+
+**Where a link ends (2.5.0).** A link that names a handle ends on the handle.
+One that does not runs towards the node's centre and stops at the node's
+outline - the ellipse, the star's points, the cloud's lobes - and a directed
+link has its arrowhead there. (Before 2.5.0 it ran on to the centre, under
+the node, and the arrowhead was hidden.) The link's label sits halfway along
+the line as drawn, and a click is tested against that line.
+
+**Waypoints (2.5.0)** lead a link round something: with `LinkStyle::Bezier`
+it is a smooth curve through every waypoint, with the other styles straight
+runs from one to the next. They are fixed world points - dragging a node or
+running a layout does not move them - and `FitView()` counts them.
 
 A highlighted link draws in `highlightColor` at `highlightWidth`, above the
 links that are not highlighted; `lineColor` and `lineWidth` are kept for when
@@ -375,6 +400,12 @@ no padding, no room added for the title - and `nodeIds` no longer shape it
 moves cluster boxes apart skips it, and a node in no group is not pushed out
 of it. Regions may therefore overlap each other, cluster boxes and nodes;
 their fills blend, so give them a low alpha.
+
+A title can sit **outside its box** (2.5.0): the `Outside...` positions put it
+above or below the box (left, centre or right) or beside it (level with its
+top or its bottom edge), flush with the box's corner and `labelMargin` clear
+of its edge. An outside title takes no room from the box, and `FitView()`
+counts it.
 
 Boxes render **behind the links** so edges crossing between clusters stay readable;
 titles render **after the nodes** so a node never covers one. Group titles and
@@ -498,6 +529,11 @@ void HighlightLink(const std::string& id, const Color& color, double width = 4.0
 void ClearLinkHighlight(const std::string& id);
 void ClearHighlights();
 std::vector<std::string> GetHighlightedLinkIds() const;
+
+// 2.5.0: the world points a link passes through
+void SetLinkWaypoints(const std::string& id, const std::vector<Point2Dd>& waypoints);
+void AddLinkWaypoint(const std::string& id, const Point2Dd& waypoint);
+void ClearLinkWaypoints(const std::string& id);
 ```
 
 `HighlightPath()` marks the link between each consecutive pair of `nodeIds` -
@@ -1245,7 +1281,9 @@ diagram->AddRegion("storing",    "Storing",    Rect2Dd(40, 120, 520, 150),
                    Color(yellow.r, yellow.g, yellow.b, 62));
 diagram->AddRegion("retrieving", "Retrieving", Rect2Dd(420, 150, 320, 300),
                    Color(green.r, green.g, green.b, 62));
-diagram->GetGroup("retrieving")->labelPosition = GroupLabelPosition::TopRight;
+// Titles outside the boxes, in the regions' colours.
+diagram->GetGroup("storing")->labelPosition    = GroupLabelPosition::OutsideTopLeft;
+diagram->GetGroup("retrieving")->labelPosition = GroupLabelPosition::OutsideTopRight;
 
 // Ellipse nodes, centred where the map wants them.
 auto addConcept = [&](const std::string& id, const std::string& label, double cx, double cy) {
@@ -1274,14 +1312,22 @@ diagram->SetNodeAnnotation("matching", "Finds the pages that hold the words of t
 auto relate = [&](const std::string& id, const std::string& from, const std::string& to,
                   const std::string& verb) {
     NodeDiagramLink link(id, from, to);
-    link.label     = verb;
-    link.directed  = false;
+    link.label     = verb;                        // directed: the arrow stops at the ellipse
     link.lineColor = Color(110, 110, 110, 255);
     link.lineWidth = 1.0;
     diagram->AddLink(link);
 };
 relate("r1", "document", "index",    "is listed in");
 relate("r2", "index",    "matching", "is searched by");
+
+// A link led round the outside of the map: a smooth curve through two points.
+NodeDiagramLink back("r3", "matching", "document");
+back.label     = "points back to";
+back.style     = LinkStyle::Bezier;
+back.lineColor = Color(110, 110, 110, 255);
+back.lineWidth = 1.0;
+back.waypoints = {Point2Dd(620, 520), Point2Dd(200, 480)};
+diagram->AddLink(back);
 
 // One thick line through each region's concepts, in its colour.
 diagram->HighlightPath({"document", "index"}, yellow, 3.5);
@@ -1291,8 +1337,8 @@ diagram->RunLayout();   // Manual: sizes the nodes for their labels, fits the vi
 ```
 
 Take a highlight back with `ClearHighlights()`; the links return to their own
-colour and width. Regions, annotations, ellipses and highlights are all
-written by `ToJson()` and read by `FromJson()`.
+colour and width. Regions, annotations, ellipses, highlights, outside titles
+and waypoints are all written by `ToJson()` and read by `FromJson()`.
 
 ## Keyboard Shortcuts
 

@@ -28,6 +28,28 @@
 //         A highlighted link draws in its highlight colour and width, above
 //         the other links, and keeps its own lineColor / lineWidth for when
 //         the highlight is cleared.
+//  - NEW: Titles outside the box. GroupLabelPosition gains BottomRight and
+//         ten Outside... values: above or below the box (left, centre,
+//         right), and beside it on the left or right (at its top or bottom).
+//         An outside title takes no room from the box; FitView counts it.
+//  - NEW: Link waypoints. NodeDiagramLink::waypoints are world points the
+//         link passes through in order - a smooth curve through them for
+//         LinkStyle::Bezier, straight runs for the other styles - so an edge
+//         can loop round the outside of the map. SetLinkWaypoints(),
+//         AddLinkWaypoint(), ClearLinkWaypoints().
+//  - CHANGED: A link that ends on a node (not on a handle) stops at the
+//         node's outline, for every shape, instead of running on to its
+//         centre under the node. The arrowhead of a directed link is
+//         therefore visible - it sat under the target node before - and a
+//         link no longer shows through a translucent node. Link labels sit at
+//         the middle of the drawn line, and a click is tested against the
+//         line as drawn (curves and steps included), not against the
+//         straight line between the centres.
+//  - FIXED: NodeShape::Cloud drew three small separate ellipses, offset to
+//         the lower right of the node. It is one cloud filling the node now,
+//         with one outline; clicks and link ends follow its lobes.
+//  - CHANGED: Star and Hexagon are hit by their outline, not by a circle or
+//         an ellipse around them.
 //  - FIXED: FromJson() returned a string as it stood in the file, escapes
 //         and all, so a label with a quote, a backslash or a line break came
 //         back changed. Strings are unescaped now.
@@ -319,7 +341,21 @@ enum class GroupLabelPosition {
     TopRight,
     BottomLeft,
     BottomCenter,
-    NoLabel
+    NoLabel,
+    // NEW in 2.5.0 (appended, so the earlier values keep their numbers)
+    BottomRight,
+    // Outside the box: above or below it ...
+    OutsideTopLeft,
+    OutsideTopCenter,
+    OutsideTopRight,
+    OutsideBottomLeft,
+    OutsideBottomCenter,
+    OutsideBottomRight,
+    // ... or beside it, level with its top or its bottom edge.
+    OutsideLeftTop,
+    OutsideLeftBottom,
+    OutsideRightTop,
+    OutsideRightBottom
 };
 
 // =============================================================================
@@ -456,6 +492,12 @@ struct NodeDiagramLink {
     bool highlighted = false;
     Color highlightColor = Color(230, 60, 50, 255);
     double highlightWidth = 4.0;
+
+    // NEW in 2.5.0: world points the link passes through, in order, between
+    // its two ends. LinkStyle::Bezier draws a smooth curve through them, the
+    // other styles straight runs. They are fixed points: moving a node or
+    // running a layout does not move them.
+    std::vector<Point2Dd> waypoints;
     
     NodeDiagramLink() = default;
     NodeDiagramLink(const std::string& linkId, const std::string& source, const std::string& target)
@@ -682,6 +724,12 @@ public:
     void ClearLinkHighlight(const std::string& id);
     void ClearHighlights();
     std::vector<std::string> GetHighlightedLinkIds() const;
+
+    // NEW in 2.5.0: the world points a link passes through (see
+    // NodeDiagramLink::waypoints).
+    void SetLinkWaypoints(const std::string& id, const std::vector<Point2Dd>& waypoints);
+    void AddLinkWaypoint(const std::string& id, const Point2Dd& waypoint);
+    void ClearLinkWaypoints(const std::string& id);
     
     NodeDiagramLink* GetLink(const std::string& id);
     std::vector<std::string> GetAllLinkIds() const;
@@ -1082,6 +1130,13 @@ private:
                         bool smooth, std::vector<Point2Dd>& outPath) const;
     HandlePosition InferHandleSide(const NodeDiagramNode& fromNode,
                                     const NodeDiagramNode& toNode) const;
+    // NEW in 2.5.0: the line a link is drawn along, as a polyline in world
+    // units - through its waypoints, in its style, and cut at the outline of
+    // each node it ends on (an end on a handle is left at the handle).
+    // False when a node is missing. `outSourceCut` / `outTargetCut` say
+    // whether that end was cut at an outline.
+    bool BuildLinkPath(const NodeDiagramLink& link, std::vector<Point2Dd>& outPath,
+                       bool* outSourceCut = nullptr, bool* outTargetCut = nullptr) const;
 
     // NEW in 2.4.0: label fit. The band of a node's shape a label of height
     // `textHeight` can occupy (world units, paddings taken off), the node size

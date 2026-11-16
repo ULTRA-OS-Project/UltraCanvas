@@ -7567,9 +7567,11 @@ endif()
 # ===== NODE DIAGRAM: CONCEPT MAPS =====
 # Free-placed regions keep their bounds and overlap through a layout, an
 # ellipse grows for its label on both axes, an annotation has a wrapped box
-# on the side asked for, HighlightPath marks the links of a path; all of it
-# and strings with escapes round-trip through JSON; then all four drawn
-# offscreen and the pixels read back. Headless.
+# on the side asked for, HighlightPath marks the links of a path, a title
+# outside its box takes no room from it, a link keeps its waypoints; all of it
+# and strings with escapes round-trip through JSON; then drawn offscreen and
+# the pixels read back - the link cut at its target's outline with its
+# arrowhead, the cloud as one shape. Headless.
 # ULTRACANVAS_SCREENSHOT_DIR=<dir> writes the picture as a PNG.
 if(TARGET UltraCanvas)
     add_executable(NodeDiagramConceptMapTest

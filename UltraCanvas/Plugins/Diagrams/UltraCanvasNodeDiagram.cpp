@@ -28,6 +28,118 @@ static constexpr double HANDLE_HIT_TOLERANCE = 4.0f;  // Extra pixels around han
 static constexpr double LINK_HIT_TOLERANCE = 8.0f;    // World pixels distance to link line
 
 // =============================================================================
+// SHAPE GEOMETRY shared by the drawing, the hit test and the link ends (2.5.0)
+// =============================================================================
+
+namespace {
+
+// The ten points of the star, the first at the top.
+std::vector<Point2Dd> StarPoints(const NodeDiagramNode& node) {
+    const double cx = node.x + node.width / 2.0, cy = node.y + node.height / 2.0;
+    const double outerR = std::min(node.width, node.height) / 2.0, innerR = outerR * 0.4;
+    std::vector<Point2Dd> pts;
+    pts.reserve(10);
+    for (int i = 0; i < 10; ++i) {
+        const double angle = i * 36.0 * NODE_DIAGRAM_PI / 180.0 - NODE_DIAGRAM_PI / 2.0;
+        const double r = (i % 2 == 0) ? outerR : innerR;
+        pts.emplace_back(cx + r * std::cos(angle), cy + r * std::sin(angle));
+    }
+    return pts;
+}
+
+// The six points of the hexagon, pointed left and right.
+std::vector<Point2Dd> HexagonPoints(const NodeDiagramNode& node) {
+    const double cx = node.x + node.width / 2.0, cy = node.y + node.height / 2.0;
+    std::vector<Point2Dd> pts;
+    pts.reserve(6);
+    for (int i = 0; i < 6; ++i) {
+        const double angle = i * 60.0 * NODE_DIAGRAM_PI / 180.0;
+        pts.emplace_back(cx + node.width / 2.0 * std::cos(angle), cy + node.height / 2.0 * std::sin(angle));
+    }
+    return pts;
+}
+
+// The cloud: a flat base and three lobes over it, as the boxes of four
+// ellipses that together fill `box` from edge to edge.
+std::vector<Rect2Dd> CloudLobes(const Rect2Dd& box) {
+    const double x = box.x, y = box.y, w = box.width, h = box.height;
+    return {
+        Rect2Dd(x + w * 0.06, y + h * 0.46, w * 0.88, h * 0.54),   // base
+        Rect2Dd(x,            y + h * 0.30, w * 0.42, h * 0.52),   // left
+        Rect2Dd(x + w * 0.22, y,            w * 0.46, h * 0.66),   // top
+        Rect2Dd(x + w * 0.56, y + h * 0.20, w * 0.44, h * 0.58),   // right
+    };
+}
+
+bool PointInEllipseBox(const Rect2Dd& box, const Point2Dd& p) {
+    if (box.width <= 0.0 || box.height <= 0.0) return false;
+    const double nx = (p.x - (box.x + box.width / 2.0)) / (box.width / 2.0);
+    const double ny = (p.y - (box.y + box.height / 2.0)) / (box.height / 2.0);
+    return nx * nx + ny * ny <= 1.0;
+}
+
+bool PointInPolygon(const std::vector<Point2Dd>& pts, const Point2Dd& p) {
+    bool inside = false;
+    for (size_t i = 0, j = pts.size() - 1; i < pts.size(); j = i++) {
+        if ((pts[i].y > p.y) != (pts[j].y > p.y) &&
+            p.x < (pts[j].x - pts[i].x) * (p.y - pts[i].y) / (pts[j].y - pts[i].y) + pts[i].x) {
+            inside = !inside;
+        }
+    }
+    return inside;
+}
+
+// A cluster title outside its box takes no room from it.
+bool IsOutsideLabel(GroupLabelPosition position) {
+    switch (position) {
+        case GroupLabelPosition::OutsideTopLeft:
+        case GroupLabelPosition::OutsideTopCenter:
+        case GroupLabelPosition::OutsideTopRight:
+        case GroupLabelPosition::OutsideBottomLeft:
+        case GroupLabelPosition::OutsideBottomCenter:
+        case GroupLabelPosition::OutsideBottomRight:
+        case GroupLabelPosition::OutsideLeftTop:
+        case GroupLabelPosition::OutsideLeftBottom:
+        case GroupLabelPosition::OutsideRightTop:
+        case GroupLabelPosition::OutsideRightBottom:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Where a title of textW x textH is drawn for a box: inside, `margin` from
+// its edges; outside, `margin` clear of the edge it sits on and flush with
+// the box's corner.
+Point2Dd GroupTitleOrigin(GroupLabelPosition position, const Rect2Dd& box,
+                          double textW, double textH, double margin) {
+    const double left = box.x, right = box.x + box.width;
+    const double top = box.y, bottom = box.y + box.height;
+    const double centre = box.x + (box.width - textW) * 0.5;
+    switch (position) {
+        case GroupLabelPosition::TopCenter:           return {centre, top + margin};
+        case GroupLabelPosition::TopRight:            return {right - textW - margin, top + margin};
+        case GroupLabelPosition::BottomLeft:          return {left + margin, bottom - textH - margin};
+        case GroupLabelPosition::BottomCenter:        return {centre, bottom - textH - margin};
+        case GroupLabelPosition::BottomRight:         return {right - textW - margin, bottom - textH - margin};
+        case GroupLabelPosition::OutsideTopLeft:      return {left, top - textH - margin};
+        case GroupLabelPosition::OutsideTopCenter:    return {centre, top - textH - margin};
+        case GroupLabelPosition::OutsideTopRight:     return {right - textW, top - textH - margin};
+        case GroupLabelPosition::OutsideBottomLeft:   return {left, bottom + margin};
+        case GroupLabelPosition::OutsideBottomCenter: return {centre, bottom + margin};
+        case GroupLabelPosition::OutsideBottomRight:  return {right - textW, bottom + margin};
+        case GroupLabelPosition::OutsideLeftTop:      return {left - textW - margin, top};
+        case GroupLabelPosition::OutsideLeftBottom:   return {left - textW - margin, bottom - textH};
+        case GroupLabelPosition::OutsideRightTop:     return {right + margin, top};
+        case GroupLabelPosition::OutsideRightBottom:  return {right + margin, bottom - textH};
+        case GroupLabelPosition::TopLeft:
+        default:                                      return {left + margin, top + margin};
+    }
+}
+
+} // namespace
+
+// =============================================================================
 // CONSTRUCTOR
 // =============================================================================
 
@@ -472,6 +584,28 @@ void UltraCanvasNodeDiagram::ClearLinkHighlight(const std::string& id) {
 
 void UltraCanvasNodeDiagram::ClearHighlights() {
     for (auto& link : links) link.highlighted = false;
+    RequestRedraw();
+}
+
+// NEW in 2.5.0: the world points a link passes through.
+void UltraCanvasNodeDiagram::SetLinkWaypoints(const std::string& id, const std::vector<Point2Dd>& waypoints) {
+    NodeDiagramLink* link = GetLink(id);
+    if (!link) return;
+    link->waypoints = waypoints;
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::AddLinkWaypoint(const std::string& id, const Point2Dd& waypoint) {
+    NodeDiagramLink* link = GetLink(id);
+    if (!link) return;
+    link->waypoints.push_back(waypoint);
+    RequestRedraw();
+}
+
+void UltraCanvasNodeDiagram::ClearLinkWaypoints(const std::string& id) {
+    NodeDiagramLink* link = GetLink(id);
+    if (!link || link->waypoints.empty()) return;
+    link->waypoints.clear();
     RequestRedraw();
 }
 
@@ -1367,7 +1501,9 @@ Rect2Dd UltraCanvasNodeDiagram::ComputeGroupBounds(const NodeDiagramGroup& group
     // the padding and sat on the first member: the edge that carries it
     // moves out by what the title needs beyond the padding.
     double titleRoom = 0.0;
-    if (!group.label.empty() && group.labelPosition != GroupLabelPosition::NoLabel) {
+    // 2.5.0: a title outside the box needs none.
+    if (!group.label.empty() && group.labelPosition != GroupLabelPosition::NoLabel &&
+        !IsOutsideLabel(group.labelPosition)) {
         double zoom = viewport.GetZoomLevel();
         if (zoom < 0.001) zoom = 1.0;
         const double titleHeight = (group.labelFontSize * 1.3 + group.labelMargin * 2.0) / zoom;
@@ -2220,7 +2356,22 @@ DiagramContentBounds UltraCanvasNodeDiagram::ComputeContentBounds() const {
             if (box.width <= 0.0 || box.height <= 0.0) continue;
             bounds.Include(box.x, box.y);
             bounds.Include(box.x + box.width, box.y + box.height);
+            // 2.5.0: a title outside its box is content too.
+            if (!group.label.empty() && IsOutsideLabel(group.labelPosition)) {
+                double zoom = viewport.GetZoomLevel();
+                if (zoom < 0.001) zoom = 1.0;
+                int textW = 0, textH = 0;
+                MeasureText(group.label, group.labelFontSize / zoom, FontWeight::Bold, textW, textH);
+                const Point2Dd at = GroupTitleOrigin(group.labelPosition, box, textW, textH,
+                                                     group.labelMargin / zoom);
+                bounds.Include(at.x, at.y);
+                bounds.Include(at.x + textW, at.y + textH);
+            }
         }
+    }
+    // 2.5.0: and the points a link is led through.
+    for (const auto& link : links) {
+        for (const auto& point : link.waypoints) bounds.Include(point.x, point.y);
     }
     return bounds;
 }
@@ -2454,13 +2605,10 @@ bool UltraCanvasNodeDiagram::PointInNode(const NodeDiagramNode& node, const Poin
             double ny = dy / halfH;
             return (nx * nx + ny * ny) <= 1.0;
         }
-        case NodeShape::Hexagon: {
-            // Approximate as inscribed ellipse: tight enough for hit testing
+        case NodeShape::Hexagon:
+            // 2.5.0: the hexagon itself (an ellipse around it before).
             if (halfW <= 0 || halfH <= 0) return false;
-            double nx = dx / halfW;
-            double ny = dy / halfH;
-            return (nx * nx + ny * ny) <= 1.0;
-        }
+            return PointInPolygon(HexagonPoints(node), worldPos);
         case NodeShape::Triangle: {
             // Apex at top center, base at bottom edge.
             // Outside vertical band -> miss.
@@ -2470,17 +2618,16 @@ bool UltraCanvasNodeDiagram::PointInNode(const NodeDiagramNode& node, const Poin
             double halfWAtY = halfW * t;
             return std::abs(dx) <= halfWAtY;
         }
-        case NodeShape::Star: {
-            // Loose: bounding circle
-            double r = std::min(halfW, halfH);
-            return (dx * dx + dy * dy) <= (r * r);
-        }
-        case NodeShape::Cloud: {
-            // Loose: bounding ellipse
+        case NodeShape::Star:
+            // 2.5.0: the star itself (the circle around it before).
             if (halfW <= 0 || halfH <= 0) return false;
-            double nx = dx / halfW;
-            double ny = dy / halfH;
-            return (nx * nx + ny * ny) <= 1.0;
+            return PointInPolygon(StarPoints(node), worldPos);
+        case NodeShape::Cloud: {
+            // 2.5.0: any of the cloud's lobes (the ellipse around it before).
+            for (const Rect2Dd& lobe : CloudLobes(Rect2Dd(node.x, node.y, node.width, node.height))) {
+                if (PointInEllipseBox(lobe, worldPos)) return true;
+            }
+            return false;
         }
     }
     return false;
@@ -2503,35 +2650,22 @@ std::string UltraCanvasNodeDiagram::FindNodeAt(const Point2Di& screenPos) {
 std::string UltraCanvasNodeDiagram::FindLinkAt(const Point2Di& screenPos) {
     Point2Dd worldPos = ScreenToWorld(screenPos);
     double toleranceWorld = LINK_HIT_TOLERANCE / viewport.GetZoomLevel();
-    
+
+    // 2.5.0: against the line as it is drawn - its curve, its steps, its
+    // waypoints - not the straight line between the two centres.
+    std::vector<Point2Dd> path;
     for (const auto& link : links) {
-        const auto* sourceNode = GetNode(link.sourceNodeId);
-        const auto* targetNode = GetNode(link.targetNodeId);
-        if (!sourceNode || !targetNode) continue;
-        
-        // Hit test against the straight line between node centers.
-        // For Bezier/Step links this is approximate but visually close enough.
-        double sx = sourceNode->x + sourceNode->width / 2.0;
-        double sy = sourceNode->y + sourceNode->height / 2.0;
-        double tx = targetNode->x + targetNode->width / 2.0;
-        double ty = targetNode->y + targetNode->height / 2.0;
-        
-        double dx = tx - sx;
-        double dy = ty - sy;
-        double lengthSq = dx * dx + dy * dy;
-        if (lengthSq <= 0.0) continue;
-        
-        double t = ((worldPos.x - sx) * dx + (worldPos.y - sy) * dy) / lengthSq;
-        t = std::clamp(t, 0.0, 1.0);
-        
-        double projX = sx + t * dx;
-        double projY = sy + t * dy;
-        
-        double distX = worldPos.x - projX;
-        double distY = worldPos.y - projY;
-        double dist = std::sqrt(distX * distX + distY * distY);
-        
-        if (dist <= toleranceWorld) return link.id;
+        if (!BuildLinkPath(link, path)) continue;
+        for (size_t i = 1; i < path.size(); ++i) {
+            const double sx = path[i - 1].x, sy = path[i - 1].y;
+            const double dx = path[i].x - sx, dy = path[i].y - sy;
+            const double lengthSq = dx * dx + dy * dy;
+            double t = lengthSq > 0.0 ? ((worldPos.x - sx) * dx + (worldPos.y - sy) * dy) / lengthSq : 0.0;
+            t = std::clamp(t, 0.0, 1.0);
+            const double distX = worldPos.x - (sx + t * dx);
+            const double distY = worldPos.y - (sy + t * dy);
+            if (std::sqrt(distX * distX + distY * distY) <= toleranceWorld) return link.id;
+        }
     }
     return "";
 }
@@ -2568,7 +2702,6 @@ int UltraCanvasNodeDiagram::FindControlButtonAt(const Point2Di& screenPos) {
 }
 
 
-static constexpr double NODE_DIAGRAM_PI_R3 = 3.14159265358979323846f;
 
 // =============================================================================
 // MAIN RENDER
@@ -2725,6 +2858,7 @@ void UltraCanvasNodeDiagram::RenderGroupLabel(IRenderContext* ctx,
     // Titles are drawn inside the world transform (so they track their box) but
     // sized in SCREEN pixels: dividing by the zoom keeps a cluster title legible
     // and proportionate at every zoom level, the same trick the box border uses.
+    if (group.labelPosition == GroupLabelPosition::NoLabel) return;
     double zoom = viewport.GetZoomLevel();
     if (zoom < 0.001) zoom = 1.0;
 
@@ -2733,35 +2867,10 @@ void UltraCanvasNodeDiagram::RenderGroupLabel(IRenderContext* ctx,
     ctx->SetFontSize(group.labelFontSize / zoom);
 
     Size2Di dims = ctx->GetTextLineDimensions(group.label);
-    double textW = static_cast<double>(dims.width);
-    double textH = static_cast<double>(dims.height);
-
-    double margin = group.labelMargin / zoom;
-    double x = box.x + margin;
-    double y = box.y + margin;
-
-    switch (group.labelPosition) {
-        case GroupLabelPosition::TopLeft:
-            break;   // Already correct
-        case GroupLabelPosition::TopCenter:
-            x = box.x + (box.width - textW) * 0.5;
-            break;
-        case GroupLabelPosition::TopRight:
-            x = box.x + box.width - textW - margin;
-            break;
-        case GroupLabelPosition::BottomLeft:
-            y = box.y + box.height - textH - margin;
-            break;
-        case GroupLabelPosition::BottomCenter:
-            x = box.x + (box.width - textW) * 0.5;
-            y = box.y + box.height - textH - margin;
-            break;
-        case GroupLabelPosition::NoLabel:
-        default:
-            return;
-    }
-
-    ctx->DrawText(group.label, {x, y});
+    // 2.5.0: inside any corner or outside any edge - see GroupTitleOrigin().
+    const Point2Dd at = GroupTitleOrigin(group.labelPosition, box, dims.width, dims.height,
+                                         group.labelMargin / zoom);
+    ctx->DrawText(group.label, {at.x, at.y});
 }
 
 // =============================================================================
@@ -3007,17 +3116,26 @@ void UltraCanvasNodeDiagram::RenderLinks(IRenderContext* ctx) {
     }
 }
 
-void UltraCanvasNodeDiagram::RenderLink(IRenderContext* ctx, const NodeDiagramLink& link) {
+// 2.5.0: the line a link is drawn along. Its ends are the handles it names,
+// else the centres of its nodes; between them it goes through the link's
+// waypoints (a Catmull-Rom curve through them for Bezier, straight runs
+// otherwise) or, without any, takes its style's own route. An end on a node
+// is then cut where the line leaves the node's shape - PointInNode() is the
+// outline, so the cut follows a star's points and a cloud's lobes - which is
+// what puts an arrowhead on the outline instead of under the node.
+bool UltraCanvasNodeDiagram::BuildLinkPath(const NodeDiagramLink& link, std::vector<Point2Dd>& path,
+                                           bool* outSourceCut, bool* outTargetCut) const {
+    path.clear();
+    if (outSourceCut) *outSourceCut = false;
+    if (outTargetCut) *outTargetCut = false;
     const auto* sourceNode = GetNode(link.sourceNodeId);
     const auto* targetNode = GetNode(link.targetNodeId);
-    if (!sourceNode || !targetNode) return;
-    
-    // Determine endpoints. If specific handles are referenced and they exist,
-    // anchor on those; otherwise use node centers.
+    if (!sourceNode || !targetNode) return false;
+
     Point2Dd srcPoint, tgtPoint;
     HandlePosition srcSide = HandlePosition::Right;
     HandlePosition tgtSide = HandlePosition::Left;
-    
+
     bool srcHandleResolved = false;
     if (!link.sourceHandleId.empty()) {
         for (const auto& h : sourceNode->handles) {
@@ -3034,7 +3152,7 @@ void UltraCanvasNodeDiagram::RenderLink(IRenderContext* ctx, const NodeDiagramLi
         srcPoint.y = sourceNode->y + sourceNode->height / 2.0;
         srcSide = InferHandleSide(*sourceNode, *targetNode);
     }
-    
+
     bool tgtHandleResolved = false;
     if (!link.targetHandleId.empty()) {
         for (const auto& h : targetNode->handles) {
@@ -3051,7 +3169,88 @@ void UltraCanvasNodeDiagram::RenderLink(IRenderContext* ctx, const NodeDiagramLi
         tgtPoint.y = targetNode->y + targetNode->height / 2.0;
         tgtSide = InferHandleSide(*targetNode, *sourceNode);
     }
-    
+
+    if (!link.waypoints.empty()) {
+        std::vector<Point2Dd> through;
+        through.reserve(link.waypoints.size() + 2);
+        through.push_back(srcPoint);
+        through.insert(through.end(), link.waypoints.begin(), link.waypoints.end());
+        through.push_back(tgtPoint);
+        if (link.style == LinkStyle::Bezier) {
+            // Catmull-Rom: through every point, the ends repeated.
+            const int segments = 16;
+            path.push_back(through.front());
+            for (size_t i = 0; i + 1 < through.size(); ++i) {
+                const Point2Dd& p0 = through[i == 0 ? 0 : i - 1];
+                const Point2Dd& p1 = through[i];
+                const Point2Dd& p2 = through[i + 1];
+                const Point2Dd& p3 = through[std::min(i + 2, through.size() - 1)];
+                for (int k = 1; k <= segments; ++k) {
+                    const double t = static_cast<double>(k) / segments, t2 = t * t, t3 = t2 * t;
+                    path.emplace_back(
+                        0.5 * (2.0 * p1.x + (p2.x - p0.x) * t + (2.0 * p0.x - 5.0 * p1.x + 4.0 * p2.x - p3.x) * t2 +
+                               (3.0 * p1.x - p0.x - 3.0 * p2.x + p3.x) * t3),
+                        0.5 * (2.0 * p1.y + (p2.y - p0.y) * t + (2.0 * p0.y - 5.0 * p1.y + 4.0 * p2.y - p3.y) * t2 +
+                               (3.0 * p1.y - p0.y - 3.0 * p2.y + p3.y) * t3));
+                }
+            }
+        } else {
+            path = through;
+        }
+    } else {
+        switch (link.style) {
+            case LinkStyle::Bezier:
+                BuildLinkBezier(srcPoint, tgtPoint, srcSide, tgtSide, path);
+                break;
+            case LinkStyle::SmoothStep:
+                BuildLinkStep(srcPoint, tgtPoint, srcSide, tgtSide, true, path);
+                break;
+            case LinkStyle::Step:
+                BuildLinkStep(srcPoint, tgtPoint, srcSide, tgtSide, false, path);
+                break;
+            case LinkStyle::Straight:
+            default:
+                path = { srcPoint, tgtPoint };
+                break;
+        }
+    }
+
+    // Cut the start of `path` where it leaves `node`: the first point outside
+    // it, and the crossing between that and the point before, by bisection.
+    // Nothing to cut when the path starts outside the node or never leaves it
+    // (two nodes on top of each other).
+    auto cutStart = [this](std::vector<Point2Dd>& line, const NodeDiagramNode& node) {
+        if (line.size() < 2 || !PointInNode(node, line.front())) return false;
+        size_t out = 1;
+        while (out < line.size() && PointInNode(node, line[out])) ++out;
+        if (out >= line.size()) return false;
+        Point2Dd inside = line[out - 1], outside = line[out];
+        for (int i = 0; i < 16; ++i) {
+            const Point2Dd mid((inside.x + outside.x) * 0.5, (inside.y + outside.y) * 0.5);
+            if (PointInNode(node, mid)) inside = mid; else outside = mid;
+        }
+        line.erase(line.begin(), line.begin() + static_cast<std::ptrdiff_t>(out - 1));
+        line.front() = outside;
+        return true;
+    };
+    if (!srcHandleResolved && sourceNode != targetNode) {
+        const bool cut = cutStart(path, *sourceNode);
+        if (outSourceCut) *outSourceCut = cut;
+    }
+    if (!tgtHandleResolved && sourceNode != targetNode) {
+        std::reverse(path.begin(), path.end());
+        const bool cut = cutStart(path, *targetNode);
+        std::reverse(path.begin(), path.end());
+        if (outTargetCut) *outTargetCut = cut;
+    }
+    return path.size() >= 2;
+}
+
+void UltraCanvasNodeDiagram::RenderLink(IRenderContext* ctx, const NodeDiagramLink& link) {
+    std::vector<Point2Dd> path;
+    bool targetCut = false;
+    if (!BuildLinkPath(link, path, nullptr, &targetCut)) return;
+
     // Style resolution: selection > hover > highlight (2.5.0) > base
     Color linkColor = link.highlighted ? link.highlightColor : link.lineColor;
     double linkWidth = link.highlighted ? link.highlightWidth : link.lineWidth;
@@ -3066,32 +3265,14 @@ void UltraCanvasNodeDiagram::RenderLink(IRenderContext* ctx, const NodeDiagramLi
             linkColor.a
         );
     }
-    
-    // Build path according to style
-    std::vector<Point2Dd> path;
-    switch (link.style) {
-        case LinkStyle::Bezier:
-            BuildLinkBezier(srcPoint, tgtPoint, srcSide, tgtSide, path);
-            break;
-        case LinkStyle::SmoothStep:
-            BuildLinkStep(srcPoint, tgtPoint, srcSide, tgtSide, true, path);
-            break;
-        case LinkStyle::Step:
-            BuildLinkStep(srcPoint, tgtPoint, srcSide, tgtSide, false, path);
-            break;
-        case LinkStyle::Straight:
-        default:
-            path = { srcPoint, tgtPoint };
-            break;
-    }
-    
+
     // Draw the polyline
     ctx->SetStrokePaint(linkColor);
     ctx->SetStrokeWidth(linkWidth);
     for (size_t i = 1; i < path.size(); ++i) {
         ctx->DrawLine(path[i - 1], path[i]);
     }
-    
+
     // Arrow head: use last segment's local direction (lesson from BlockDiagram v2.3)
     if (link.directed && path.size() >= 2) {
         const Point2Dd& tip = path.back();
@@ -3105,13 +3286,19 @@ void UltraCanvasNodeDiagram::RenderLink(IRenderContext* ctx, const NodeDiagramLi
         } else {
             ddx = 1.0; ddy = 0.0;
         }
-        // Pull tip back to node edge to avoid overshoot — small nudge
+        // On a handle the tip is pulled back off it. 2.5.0: on a node's
+        // outline it stops just clear of the node's border.
         double nudge = 6.0;
+        if (targetCut) {
+            const auto* targetNode = GetNode(link.targetNodeId);
+            nudge = (targetNode ? targetNode->borderWidth * 0.5 : 0.0) + 1.0;
+        }
         double arrowTipX = tip.x - ddx * nudge;
         double arrowTipY = tip.y - ddy * nudge;
-        RenderArrowHead(ctx, arrowTipX, arrowTipY, ddx, ddy, linkColor, 10.0);
+        // A thick link gets a head to match.
+        RenderArrowHead(ctx, arrowTipX, arrowTipY, ddx, ddy, linkColor, std::max(10.0, linkWidth * 3.0));
     }
-    
+
     if (!link.label.empty()) {
         RenderLinkLabel(ctx, link);
     }
@@ -3119,22 +3306,29 @@ void UltraCanvasNodeDiagram::RenderLink(IRenderContext* ctx, const NodeDiagramLi
 
 void UltraCanvasNodeDiagram::RenderLinkLabel(IRenderContext* ctx, const NodeDiagramLink& link) {
     if (link.label.empty()) return;
-    
-    const auto* sourceNode = GetNode(link.sourceNodeId);
-    const auto* targetNode = GetNode(link.targetNodeId);
-    if (!sourceNode || !targetNode) return;
-    
-    double sx = sourceNode->x + sourceNode->width / 2.0;
-    double sy = sourceNode->y + sourceNode->height / 2.0;
-    double tx = targetNode->x + targetNode->width / 2.0;
-    double ty = targetNode->y + targetNode->height / 2.0;
-    
-    double midX = (sx + tx) / 2.0;
-    double midY = (sy + ty) / 2.0;
-    
+
+    // 2.5.0: halfway along the line as drawn - on the curve, between the
+    // outlines - not halfway between the two centres.
+    std::vector<Point2Dd> path;
+    if (!BuildLinkPath(link, path)) return;
+    double total = 0.0;
+    for (size_t i = 1; i < path.size(); ++i) total += CalculateDistance(path[i - 1], path[i]);
+    double midX = path.front().x, midY = path.front().y;
+    double walked = 0.0;
+    for (size_t i = 1; i < path.size(); ++i) {
+        const double step = CalculateDistance(path[i - 1], path[i]);
+        if (walked + step >= total * 0.5) {
+            const double t = step > 0.0 ? (total * 0.5 - walked) / step : 0.0;
+            midX = path[i - 1].x + (path[i].x - path[i - 1].x) * t;
+            midY = path[i - 1].y + (path[i].y - path[i - 1].y) * t;
+            break;
+        }
+        walked += step;
+    }
+
     ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
     ctx->SetFontSize(style.baseFontSize - 1.0);
-    
+
     Size2Di textDim = ctx->GetTextLineDimensions(link.label);
     int textWidth = textDim.width;
     int textHeight = textDim.height;
@@ -3149,7 +3343,7 @@ void UltraCanvasNodeDiagram::RenderLinkLabel(IRenderContext* ctx, const NodeDiag
             textHeight + padding * 2),
         3.0
     );
-    
+
     ctx->SetTextPaint(Color(60, 60, 60, 255));
     // 2.0.6: Y is the TOP of text (Cairo+Pango), not baseline. Same canonical
     // pattern as RenderNodeLabel: top = midY - textHeight/2.
@@ -3306,6 +3500,9 @@ void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiag
                             node.height + 2 * grow - 2.0);
             if (node.shape == NodeShape::Circle) ctx->FillCircle({centerX, centerY + 2.0}, radius + grow - 1.0);
             else if (node.shape == NodeShape::Ellipse) ctx->FillEllipse(r);
+            else if (node.shape == NodeShape::Cloud) {
+                for (const Rect2Dd& lobe : CloudLobes(r)) ctx->FillEllipse(lobe);
+            }
             else if (rounded) ctx->FillRoundedRectangle(r, corner + grow);
             else ctx->FillRectangle(r);
         }
@@ -3351,15 +3548,7 @@ void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiag
             break;
         }
         case NodeShape::Hexagon: {
-            double rx = node.width / 2.0;
-            double ry = node.height / 2.0;
-            std::vector<Point2Dd> pts;
-            pts.reserve(6);
-            for (int i = 0; i < 6; ++i) {
-                double angle = i * 60.0 * NODE_DIAGRAM_PI_R3 / 180.0;
-                pts.emplace_back(centerX + rx * std::cos(angle),
-                                  centerY + ry * std::sin(angle));
-            }
+            const std::vector<Point2Dd> pts = HexagonPoints(node);
             ctx->FillLinePath(pts);
             ctx->DrawLinePath(pts, true);
             break;
@@ -3375,34 +3564,24 @@ void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiag
             break;
         }
         case NodeShape::Star: {
-            double outerR = radius;
-            double innerR = radius * 0.4f;
-            std::vector<Point2Dd> pts;
-            pts.reserve(10);
-            for (int i = 0; i < 10; ++i) {
-                double angle = i * 36.0 * NODE_DIAGRAM_PI_R3 / 180.0 - NODE_DIAGRAM_PI_R3 / 2.0;
-                double r = (i % 2 == 0) ? outerR : innerR;
-                pts.emplace_back(centerX + r * std::cos(angle),
-                                  centerY + r * std::sin(angle));
-            }
+            const std::vector<Point2Dd> pts = StarPoints(node);
             ctx->FillLinePath(pts);
             ctx->DrawLinePath(pts, true);
             break;
         }
         case NodeShape::Cloud: {
-            // Three overlapping ellipses. Border is approximate.
-            ctx->FillEllipse(Rect2Dd(node.x + node.width * 0.25f, centerY,
-                                      node.width * 0.2f, node.height * 0.3f));
-            ctx->FillEllipse(Rect2Dd(centerX, node.y + node.height * 0.3f,
-                                      node.width * 0.25f, node.height * 0.35f));
-            ctx->FillEllipse(Rect2Dd(node.x + node.width * 0.75f, centerY,
-                                      node.width * 0.2f, node.height * 0.3f));
-            ctx->DrawEllipse(Rect2Dd(node.x + node.width * 0.25f, centerY,
-                                      node.width * 0.2f, node.height * 0.3f));
-            ctx->DrawEllipse(Rect2Dd(centerX, node.y + node.height * 0.3f,
-                                      node.width * 0.25f, node.height * 0.35f));
-            ctx->DrawEllipse(Rect2Dd(node.x + node.width * 0.75f, centerY,
-                                      node.width * 0.2f, node.height * 0.3f));
+            // 2.5.0: one cloud. Each lobe is outlined at twice the border
+            // width, then all are filled: the fills cover every stroke that
+            // falls inside the cloud and half the width of those on its
+            // edge, which leaves one outline of the border's width. (A fill
+            // that is not opaque lets the inner strokes show through.)
+            const std::vector<Rect2Dd> lobes = CloudLobes(Rect2Dd(node.x, node.y, node.width, node.height));
+            if (borderWidth > 0.0 && borderColor.a > 0) {
+                ctx->SetStrokeWidth(borderWidth * 2.0);
+                for (const Rect2Dd& lobe : lobes) ctx->DrawEllipse(lobe);
+                ctx->SetStrokeWidth(borderWidth);
+            }
+            for (const Rect2Dd& lobe : lobes) ctx->FillEllipse(lobe);
             break;
         }
         default:
@@ -4392,6 +4571,17 @@ const char* GroupLabelPositionToString(GroupLabelPosition p) {
         case GroupLabelPosition::BottomCenter: return "bottomCenter";
         case GroupLabelPosition::NoLabel:      return "none";
         case GroupLabelPosition::TopLeft:      return "topLeft";
+        case GroupLabelPosition::BottomRight:         return "bottomRight";           // 2.5.0
+        case GroupLabelPosition::OutsideTopLeft:      return "outsideTopLeft";
+        case GroupLabelPosition::OutsideTopCenter:    return "outsideTopCenter";
+        case GroupLabelPosition::OutsideTopRight:     return "outsideTopRight";
+        case GroupLabelPosition::OutsideBottomLeft:   return "outsideBottomLeft";
+        case GroupLabelPosition::OutsideBottomCenter: return "outsideBottomCenter";
+        case GroupLabelPosition::OutsideBottomRight:  return "outsideBottomRight";
+        case GroupLabelPosition::OutsideLeftTop:      return "outsideLeftTop";
+        case GroupLabelPosition::OutsideLeftBottom:   return "outsideLeftBottom";
+        case GroupLabelPosition::OutsideRightTop:     return "outsideRightTop";
+        case GroupLabelPosition::OutsideRightBottom:  return "outsideRightBottom";
     }
     return "topLeft";
 }
@@ -4402,6 +4592,17 @@ GroupLabelPosition GroupLabelPositionFromString(const std::string& s) {
     if (s == "bottomLeft")   return GroupLabelPosition::BottomLeft;
     if (s == "bottomCenter") return GroupLabelPosition::BottomCenter;
     if (s == "none")         return GroupLabelPosition::NoLabel;
+    if (s == "bottomRight")         return GroupLabelPosition::BottomRight;           // 2.5.0
+    if (s == "outsideTopLeft")      return GroupLabelPosition::OutsideTopLeft;
+    if (s == "outsideTopCenter")    return GroupLabelPosition::OutsideTopCenter;
+    if (s == "outsideTopRight")     return GroupLabelPosition::OutsideTopRight;
+    if (s == "outsideBottomLeft")   return GroupLabelPosition::OutsideBottomLeft;
+    if (s == "outsideBottomCenter") return GroupLabelPosition::OutsideBottomCenter;
+    if (s == "outsideBottomRight")  return GroupLabelPosition::OutsideBottomRight;
+    if (s == "outsideLeftTop")      return GroupLabelPosition::OutsideLeftTop;
+    if (s == "outsideLeftBottom")   return GroupLabelPosition::OutsideLeftBottom;
+    if (s == "outsideRightTop")     return GroupLabelPosition::OutsideRightTop;
+    if (s == "outsideRightBottom")  return GroupLabelPosition::OutsideRightBottom;
     return GroupLabelPosition::TopLeft;
 }
 
@@ -4517,6 +4718,31 @@ std::vector<std::string> ExtractObjectArray(const std::string& json, const std::
             bracketDepth--;
         }
         pos++;
+    }
+    return result;
+}
+
+// 2.5.0: a flat array of numbers, e.g. "waypoints": [10, 20, 30.5, 40].
+std::vector<double> ExtractNumberArray(const std::string& json, const std::string& key) {
+    std::vector<double> result;
+    std::string searchKey = "\"" + key + "\"";
+    size_t kp = json.find(searchKey);
+    if (kp == std::string::npos) return result;
+    size_t cp = json.find(':', kp);
+    if (cp == std::string::npos) return result;
+    size_t bs = json.find('[', cp);
+    if (bs == std::string::npos) return result;
+    size_t be = json.find(']', bs);
+    if (be == std::string::npos) return result;
+
+    std::stringstream ss(json.substr(bs + 1, be - bs - 1));
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        const size_t first = token.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos) continue;
+        const size_t last = token.find_last_not_of(" \t\r\n");
+        float value = 0.0f;
+        if (TryParseFloat(token.substr(first, last - first + 1), value)) result.push_back(value);   // dot-decimal
     }
     return result;
 }
@@ -4660,6 +4886,14 @@ std::string UltraCanvasNodeDiagram::ToJson() const {
             out << ",\n      \"highlighted\": true";
             out << ",\n      \"highlightColor\": " << ColorToJsonString(l.highlightColor);
             out << ",\n      \"highlightWidth\": " << l.highlightWidth;
+        }
+        if (!l.waypoints.empty()) {   // 2.5.0: x, y, x, y ...
+            out << ",\n      \"waypoints\": [";
+            for (size_t i = 0; i < l.waypoints.size(); ++i) {
+                if (i > 0) out << ", ";
+                out << l.waypoints[i].x << ", " << l.waypoints[i].y;
+            }
+            out << "]";
         }
         out << "\n    }";
     }
@@ -4817,6 +5051,10 @@ bool UltraCanvasNodeDiagram::FromJson(const std::string& json) {
         if (l.highlighted) {
             l.highlightColor = ExtractColorValue(linkJson, "highlightColor", l.highlightColor);
             l.highlightWidth = ExtractNumberValue(linkJson, "highlightWidth", 4.0);
+        }
+        {
+            const std::vector<double> flat = ExtractNumberArray(linkJson, "waypoints");
+            for (size_t i = 0; i + 1 < flat.size(); i += 2) l.waypoints.emplace_back(flat[i], flat[i + 1]);
         }
         AddLink(l);
     }
