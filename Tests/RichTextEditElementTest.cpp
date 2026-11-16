@@ -1588,6 +1588,68 @@ int main() {
              UCRichDocument::ConcatenateRunText(edit->GetDocument()->frames[0].blocks[0].runs) == "Sender Company");
     }
 
+    // ===== A PICTURE IN A FRAME, WHILE ITS WORDS ARE EDITED =====
+    // A letterhead's logo is a picture anchored in the sender frame. Nothing
+    // floats inside a frame: the picture is in the line when the frame is
+    // drawn, and has to stay there while the frame's words are edited (it
+    // vanished, and the words moved up into its place).
+    std::cerr << "\n--- A picture in an edited frame ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        document->media.push_back({"dot.png", "image/png", kDotPng});
+        RichTextFrame frame;
+        RichTextRun logo;
+        logo.text = RichTextRun::kObjectReplacement;
+        logo.mediaIndex = 0;
+        logo.imageWidthPt = 90.0f;
+        logo.imageHeightPt = 90.0f;
+        logo.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+        RichDocBlock picture;
+        picture.runs = {logo};
+        RichTextRun line;
+        line.text = "Sender";
+        RichDocBlock words;
+        words.runs = {line};
+        frame.blocks = {picture, words};
+        document->frames = {frame};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 150.0f;
+        anchor.imageHeightPt = 60.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::Square;
+        anchor.imageFloatAlign = RichTextAlign::Right;
+        RichTextRun body;
+        body.text = "Body text beside the frame.";
+        RichDocBlock paragraph;
+        paragraph.runs = {anchor, body};
+        document->blocks = {paragraph};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df on = edit->GetFloatElementRectForTest(0);
+        TEST("A frame is as tall as the picture in it and its words: " + std::to_string(on.height),
+             on.height > 110.0f);
+        TEST("The frame opens for editing", edit->EditFrame(0) && edit->IsEditingFrame());
+        window->UpdateAndRender();
+        editor.SetCaret(editor.DocumentEnd());
+        window->UpdateAndRender();
+        const Rect2Df caret = edit->GetCaretRectForTest();
+        TEST("The words stay below the picture while they are edited: caret at " + std::to_string(caret.y)
+             + ", frame from " + std::to_string(on.y),
+             caret.y > on.y + 100.0f && caret.y < on.y + on.height);
+        const float px = on.x + 40.0f, py = on.y + 50.0f;
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, px, py));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, px, py));
+        window->UpdateAndRender();
+        TEST("...and the picture is there to click on", edit->IsEditingFrame() && edit->HasSelectedImage());
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        TEST("The frame keeps its picture and its words", edit->GetDocument()->frames[0].blocks.size() == 2
+             && edit->GetDocument()->frames[0].blocks[0].runs.front().mediaIndex == 0);
+    }
+
     // ===== FLOATS IN A HEADER, WHILE IT IS EDITED =====
     std::cerr << "\n--- Floats in an edited header ---" << std::endl;
     {

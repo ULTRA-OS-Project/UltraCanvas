@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.9.1 - a picture anchored in a text frame stays in the line while the frame's words
+//                  are edited (it vanished: no pass places a float there)
 // Version: 1.9.0 - a text frame's words edited in place (EditFrame); EMF and WMF pictures and
 //                  fills drawn through the vector readers (LoadDocumentPicture)
 // Version: 1.8.0 - pattern and picture fills; a header's or footer's floats are placed, picked up,
@@ -1929,9 +1931,12 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         // A floating picture takes no room in the line: its placeholder is
         // squeezed to nothing and the placement pass puts the picture beside
         // the text. Only a body paragraph floats one; in a cell or a header it
-        // stays in the line.
+        // stays in the line. So it does in a text frame whose words are being
+        // edited, as it does when the frame is drawn (LayoutTextFrame): nothing
+        // places a float there, and the picture would vanish for the edit.
+        const bool inEditedFrame = IsEditingFrame() && !placingParkedBody;
         const bool floats = run.IsFloatingObject() && cellRow < 0 && (blockIndex >= 0 || layingOutFurniture)
-                            && outInlineImages && block.type != RichBlockType::Table;
+                            && !inEditedFrame && outInlineImages && block.type != RichBlockType::Table;
         if (floats) {
             std::shared_ptr<UCImage> image;
             const UCRichDocument& document = *editor.GetDocument();
