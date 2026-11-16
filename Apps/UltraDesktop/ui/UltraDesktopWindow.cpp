@@ -1662,9 +1662,9 @@ void UltraDesktopWindow::AddInfoBarItems(UltraCanvasMenu& menu, const std::strin
     bool known = false;
     for (const InfoItem& item : DesktopSettings::InfoItems()) known = known || itemId == item.id;
     if (known) {
-        menu.AddItem(MenuItemData::Action("Hide this icon", [this, itemId]() { SetInfoItemShown(itemId, false); }));
+        menu.AddItem(MenuItemData::Action(Tr("Hide this icon"), [this, itemId]() { SetInfoItemShown(itemId, false); }));
     }
-    menu.AddItem(MenuItemData::Action("Info bar icons...", [this]() { OpenSystemSettings(kInfoBarSettingsPage); }));
+    menu.AddItem(MenuItemData::Action(Tr("Info bar icons..."), [this]() { OpenSystemSettings(kInfoBarSettingsPage); }));
 }
 
 void UltraDesktopWindow::SetInfoItemShown(const std::string& id, bool shown) {
@@ -2932,7 +2932,7 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
                                                      [this]() { UseAsSystemDesktop(DesktopReplacement::Beside); }));
         }
         if (mode != DesktopReplacement::Off) {
-            popupMenu_->AddItem(MenuItemData::Action("Switch back to the Windows desktop",
+            popupMenu_->AddItem(MenuItemData::Action(Tr("Switch back to the Windows desktop"),
                                                      [this]() { SwitchBackToSystemDesktop(); }));
         } else if (!sessionDesktop_) {
             // A trial run beside the Windows desktop has no title bar to close.

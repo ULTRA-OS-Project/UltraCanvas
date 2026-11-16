@@ -5,6 +5,7 @@
 //                  (ContainerStyle::FromTheme), not the light default
 // Version: 0.18.0 - Desktop > Theme is the system look (Appearance.conf), the
 //                  same as Appearance > Look: one look for every application
+// Version: 0.19.0 - the Desktop page's captions and the Global / Individual, folder and emoji switches go through Tr
 // Version: 0.18.0 - Appearance > Look: Light text, Firm or Plain (Appearance.conf's lighttext)
 // Version: 0.17.0 - Desktop > Info bar: a switch for each icon of the desktop's
 //                  info panel; --page opens the window on a page (ShowSettingsPage)
@@ -182,8 +183,8 @@ namespace {
         style.paddingVertical = 2;
         style.paddingHorizontal = 8;
         sw->SetStyle(style);
-        sw->AddSegment("Global");
-        sw->AddSegment("Individual");
+        sw->AddSegment(Tr("Global"));
+        sw->AddSegment(Tr("Individual"));
         sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return sw;
     }
@@ -523,7 +524,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     edge_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
-    addRow("uos-dt-edge-row", "Taskbar", edge_);
+    addRow("uos-dt-edge-row", Tr("Taskbar"), edge_);
 
     theme_ = std::make_shared<UltraCanvasDropdown>("uos-dt-theme", 0, 0, 200, 28);
     // The look of every application, the desktop's bars included - the
@@ -534,7 +535,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     theme_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
-    addRow("uos-dt-theme-row", "Theme", theme_);
+    addRow("uos-dt-theme-row", Tr("Theme"), theme_);
 
     dropFiles_ = std::make_shared<UltraCanvasDropdown>("uos-dt-drop", 0, 0, 200, 28);
     dropFiles_->AddItem(Tr("Sticker board (Unsorted)"), "board");
@@ -542,7 +543,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     dropFiles_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
-    addRow("uos-dt-drop-row", "Dropped files", dropFiles_);
+    addRow("uos-dt-drop-row", Tr("Dropped files"), dropFiles_);
 
     // The battery on the right bar: its percentage as a badge, or the icon
     // alone (whose fill shows the level either way).
@@ -552,7 +553,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     battery_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
-    addRow("uos-dt-battery-row", "Battery", battery_);
+    addRow("uos-dt-battery-row", Tr("Battery"), battery_);
 
     wallpaper_ = std::make_shared<UltraCanvasTextInput>("uos-dt-wallpaper", 0, 0, 260, 28);
     wallpaper_->SetPlaceholder(Tr("ULTRA OS A (the default picture)"));
@@ -560,24 +561,24 @@ void UOSSettingsWindow::BuildDesktopPage() {
     auto browse = std::make_shared<UltraCanvasButton>("uos-dt-browse", 0, 0, 90, 28, Tr("Browse..."));
     browse->SetFontSize(TextFontSize());
     browse->SetOnClick([this]() { BrowseWallpaper(); });
-    addRow("uos-dt-wallpaper-row", "Wallpaper", wallpaper_, browse);
+    addRow("uos-dt-wallpaper-row", Tr("Wallpaper"), wallpaper_, browse);
 
     ramDisc_ = std::make_shared<UltraCanvasTextInput>("uos-dt-ramdisc", 0, 0, 260, 28);
     ramDisc_->SetPlaceholder(Tr("None: no RAM disc button"));
     ramDisc_->SetTooltip(Tr("\"ultrafiler\": UltraFiler shows its RAM disc, or offers to make one. A folder: that folder opens. Empty: no RAM disc button."));
     wireText(ramDisc_);
-    addRow("uos-dt-ramdisc-row", "RAM disc", ramDisc_);
+    addRow("uos-dt-ramdisc-row", Tr("RAM disc"), ramDisc_);
 
     filer_ = std::make_shared<UltraCanvasTextInput>("uos-dt-filer", 0, 0, 260, 28);
     wireText(filer_);
-    addRow("uos-dt-filer-row", "File manager", filer_);
+    addRow("uos-dt-filer-row", Tr("File manager"), filer_);
 
     desktops_ = std::make_shared<UltraCanvasDropdown>("uos-dt-desktops", 0, 0, 120, 28);
     for (int i = 1; i <= 9; ++i) desktops_->AddItem(std::to_string(i), std::to_string(i));
     desktops_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
-    addRow("uos-dt-desktops-row", "Virtual desktops", desktops_);
+    addRow("uos-dt-desktops-row", Tr("Virtual desktops"), desktops_);
 
     // The Apps window: its view, when a category is split into its
     // sub-categories, and how many applications Recent shows.
@@ -587,7 +588,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     appsView_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
-    addRow("uos-dt-appsview-row", "Apps window", appsView_);
+    addRow("uos-dt-appsview-row", Tr("Apps window"), appsView_);
 
     appsSplit_ = std::make_shared<UltraCanvasDropdown>("uos-dt-appssplit", 0, 0, 200, 28);
     for (int above : kAppsSplitChoices) {
@@ -597,14 +598,14 @@ void UOSSettingsWindow::BuildDesktopPage() {
     appsSplit_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
-    addRow("uos-dt-appssplit-row", "Sub-categories", appsSplit_);
+    addRow("uos-dt-appssplit-row", Tr("Sub-categories"), appsSplit_);
 
     recentShown_ = std::make_shared<UltraCanvasDropdown>("uos-dt-recent", 0, 0, 120, 28);
     for (int shown : kRecentShownChoices) recentShown_->AddItem(std::to_string(shown), std::to_string(shown));
     recentShown_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
-    addRow("uos-dt-recent-row", "Recent shows", recentShown_);
+    addRow("uos-dt-recent-row", Tr("Recent shows"), recentShown_);
 
     // The Sticker board: how a card shows its file, and the size of the
     // preview that opens when the pointer rests on one.
@@ -615,7 +616,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     boardDisplay_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
-    addRow("uos-dt-boarddisplay-row", "Sticker board cards", boardDisplay_);
+    addRow("uos-dt-boarddisplay-row", Tr("Sticker board cards"), boardDisplay_);
 
     boardPreview_ = std::make_shared<UltraCanvasDropdown>("uos-dt-boardpreview", 0, 0, 120, 28);
     boardPreview_->AddItem(Tr("Small"), "small");
@@ -624,7 +625,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     boardPreview_->onSelectionChanged = [this](int, const DropdownItem&) {
         if (!refreshing_) SaveDesktopPage();
     };
-    addRow("uos-dt-boardpreview-row", "Hover preview", boardPreview_);
+    addRow("uos-dt-boardpreview-row", Tr("Hover preview"), boardPreview_);
 
     // Only where there is a system desktop to take the place of (Windows).
     if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
@@ -640,7 +641,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
                              : index == 1 ? DesktopReplacement::Beside
                                           : DesktopReplacement::Off);
         };
-        addRow("uos-dt-replace-row", "At sign-in", systemDesktop_);
+        addRow("uos-dt-replace-row", Tr("At sign-in"), systemDesktop_);
     }
     page->AddChild(body);
 
@@ -906,8 +907,8 @@ void UOSSettingsWindow::BuildLastFolderPage() {
     modeRow->SetMargin(14, 0, 0, 0);
     modeRow->AddChild(MakeLabel("uos-lf-mode-label", Tr("Applications use:")));
     modeSwitch_ = MakeScopeSwitch("uos-lf-mode", 320, 28);
-    modeSwitch_->SetSegmentText(kSegmentGlobal, "One common folder");
-    modeSwitch_->SetSegmentText(kSegmentIndividual, "Their own folders");
+    modeSwitch_->SetSegmentText(kSegmentGlobal, Tr("One common folder"));
+    modeSwitch_->SetSegmentText(kSegmentIndividual, Tr("Their own folders"));
     modeSwitch_->onSegmentSelected = [this](int index) {
         if (refreshing_) return;
         SetMode(index == kSegmentIndividual);
@@ -1063,9 +1064,9 @@ void UOSSettingsWindow::BuildEmojiPage() {
         style.paddingHorizontal = 8;
         emojiStyle_->SetStyle(style);
     }
-    emojiStyle_->AddSegment("Colour");            // kSegmentEmojiColour
-    emojiStyle_->AddSegment("Black and white");   // kSegmentEmojiMonochrome
-    emojiStyle_->AddSegment("System");            // kSegmentEmojiSystem
+    emojiStyle_->AddSegment(Tr("Colour"));            // kSegmentEmojiColour
+    emojiStyle_->AddSegment(Tr("Black and white"));   // kSegmentEmojiMonochrome
+    emojiStyle_->AddSegment(Tr("System"));            // kSegmentEmojiSystem
     emojiStyle_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     emojiStyle_->onSegmentSelected = [this](int index) {
         if (refreshing_) return;
