@@ -2918,6 +2918,69 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== A DOCX KEEPS NO PARAGRAPH OF THE WRITER'S OWN =====
+    // Word wants a paragraph after a table and one to carry a section break;
+    // the writer's are a point high and the reader takes them out again, so
+    // a document converted to DOCX has the blocks it had - however often -
+    // with a table's room below it, one page break where a section starts a
+    // page, and its lines without the font's line gap where it had none.
+    {
+        auto paragraphOf = [](const std::string& text) {
+            RichDocBlock block;
+            RichTextRun run;
+            run.text = text;
+            block.runs = {run};
+            return block;
+        };
+        auto tableOf = [](const std::string& text) {
+            RichDocBlock table;
+            table.type = RichBlockType::Table;
+            table.tableBordersFromDocument = true;
+            RichTextRun run;
+            run.text = text;
+            RichTableCell cell;
+            cell.runs = {run};
+            RichTableRow row;
+            row.cells = {cell};
+            table.tableRows = {row};
+            return table;
+        };
+        UCRichDocument converted;
+        converted.fontLineGap = false;
+        RichDocBlock address = tableOf("Address");
+        address.spaceAfterPt = 17.0f;
+        RichDocBlock pageBreak;
+        pageBreak.type = RichBlockType::PageBreak;
+        RichDocBlock second = paragraphOf("Second page");
+        second.sectionStart = true;
+        second.section.newPage = true;
+        converted.blocks = {address, tableOf("Reference"), paragraphOf("Body"), pageBreak, second};
+        UCRichDocument current = converted;
+        for (int pass = 0; pass < 2; ++pass) {
+            const std::string label = "docx conversion, pass " + std::to_string(pass);
+            const std::string path = TmpPath("converted" + std::to_string(pass) + ".docx");
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::SaveDocx(path, current, err), label + ": " + err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), label + ": " + err);
+            std::string kinds;
+            for (const RichDocBlock& block : back.blocks) {
+                kinds += block.type == RichBlockType::Table ? 'T' : block.type == RichBlockType::PageBreak ? 'B'
+                       : block.runs.empty() ? 'e' : 'P';
+            }
+            CHECK_MSG(kinds == "TTPP", label + ": two tables and two paragraphs, nothing between: " + kinds);
+            if (kinds == "TTPP") {
+                CHECK_MSG(Near(back.blocks[0].spaceAfterPt, 17.0f), label + ": the first table's room below: "
+                          + std::to_string(back.blocks[0].spaceAfterPt));
+                CHECK_MSG(back.blocks[1].spaceAfterPt < 0.0f, label + ": the second states none");
+                CHECK_MSG(back.blocks[3].sectionStart && back.blocks[3].section.newPage,
+                          label + ": the section starts its page (once)");
+            }
+            CHECK_MSG(!back.fontLineGap, label + ": lines stay without the font's line gap");
+            current = back;
+        }
+    }
+
     // ===== SECTIONS WITH THEIR OWN HEADER AND FOOTER =====
     // A cover without a header, pages with one, an appendix back to the
     // document's: each a section, written and read back by both formats.

@@ -1268,6 +1268,7 @@ private:
         // A table cell's paragraphs so far, and the style of the last one
         // (CollectCellRuns: an empty paragraph is an empty line).
         int cellParagraphs = 0;
+        OdtTextProps pendingBreakProps;        // the style of the text whose line break is pending
         OdtTextProps lastCellParagraph;
         float cellSpaceAbovePt = 0.0f, cellSpaceBelowPt = 0.0f;   // the first paragraph's space before, the last's after
         bool endsInCollapsibleSpace = false;   // last text ended in XML whitespace
@@ -2099,9 +2100,11 @@ private:
                     ctx.runs.back().field = count ? RichTextRun::Field::PageCount : RichTextRun::Field::PageNumber;
                 }
             } else if (tag == "text:line-break") {
-                // A second break in a row is an empty line.
-                if (ctx.pendingLineBreak) AppendEmptyLine(ctx, props);
+                // A second break in a row is an empty line - in the font of
+                // the break that began it, not of the one that ends it.
+                if (ctx.pendingLineBreak) AppendEmptyLine(ctx, ctx.pendingBreakProps);
                 ctx.pendingLineBreak = true;
+                ctx.pendingBreakProps = props;
             } else if (tag == "text:bookmark" || tag == "text:bookmark-start") {
                 const std::string name = Attr(elem, "text:name");
                 if (!name.empty()) ctx.bookmarks.push_back(name);

@@ -5,6 +5,7 @@
 // be put beside the PDF the document's own program exports.
 //
 //   xvfb-run -a ./DocumentRenderProbe letter.odt letter.pdf
+//   xvfb-run -a ./DocumentRenderProbe letter.odt letter.pdf letter.docx   (and write it as .docx)
 //   pdftoppm -r 60 -png letter.pdf letter
 //
 // Needs a display, as the element does. Exit code 0 when the PDF was written.
@@ -17,6 +18,7 @@
 #include "UltraCanvasRichTextEdit.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -25,7 +27,7 @@ using namespace UltraCanvas;
 
 int main(int argc, char** argv) {
     if (argc < 3) {
-        std::cerr << "usage: DocumentRenderProbe <document> <out.pdf>" << std::endl;
+        std::cerr << "usage: DocumentRenderProbe <document> <out.pdf> [<save-as.odt|.docx>]" << std::endl;
         return 2;
     }
     UltraCanvasApplication app;
@@ -50,6 +52,14 @@ int main(int argc, char** argv) {
         std::cerr << "load failed: " << error << std::endl;
         return 1;
     }
+    // A third argument: the document as read, written again in that file's
+    // format - to load in turn and see what a conversion keeps.
+    if (argc > 3) {
+        if (!UCWordDocumentIO::Save(argv[3], *document, error)) {
+            std::cerr << "save failed: " << error << std::endl;
+            return 1;
+        }
+    }
     std::cerr << document->blocks.size() << " block(s), " << document->frames.size() << " frame(s), "
               << document->media.size() << " picture(s)" << std::endl;
 
@@ -58,6 +68,8 @@ int main(int argc, char** argv) {
     std::cerr << "page " << document->page.widthPt << " x " << document->page.heightPt << " pt, margins "
               << document->page.marginLeftPt << " " << document->page.marginTopPt << " "
               << document->page.marginRightPt << " " << document->page.marginBottomPt << std::endl;
+    // DOCUMENT_PROBE_VERBOSE=1: every block's font and spacing too.
+    const bool verbose = std::getenv("DOCUMENT_PROBE_VERBOSE") != nullptr;
     auto dumpRuns = [&](const std::vector<RichTextRun>& runs, const std::string& where) {
         for (const RichTextRun& run : runs) {
             if (!run.IsFloatingObject()) continue;
@@ -79,6 +91,13 @@ int main(int argc, char** argv) {
                       << block.section.marginBottomPt << std::endl;
         }
         dumpRuns(block.runs, "block " + std::to_string(i));
+        if (verbose && block.type != RichBlockType::Table) {
+            std::cerr << "  block " << i << " type " << static_cast<int>(block.type) << ", font " << block.paragraphFontFamily
+                      << " " << block.paragraphFontSizePt << " pt, space " << block.spaceBeforePt << " / "
+                      << block.spaceAfterPt << ", line " << block.lineSpacing << " / " << block.lineHeightPt
+                      << ", " << block.runs.size() << " run(s): \""
+                      << UCRichDocument::ConcatenateRunText(block.runs).substr(0, 24) << "\"" << std::endl;
+        }
         if (block.type != RichBlockType::Table) continue;
         std::cerr << "  table at block " << i << ": width " << block.tableWidthPt << " pt, columns";
         for (float width : block.tableColumnWidths) std::cerr << " " << width;

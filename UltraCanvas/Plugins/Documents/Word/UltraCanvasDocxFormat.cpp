@@ -755,6 +755,10 @@ private:
             const int twips = tab->IntAttribute("w:val", 0);
             if (twips > 0) doc_->defaultTabStopPt = static_cast<float>(twips) / 20.0f;
         }
+        // "Don't add leading between lines of text": lines without the
+        // font's line gap.
+        auto* compat = root ? root->FirstChildElement("w:compat") : nullptr;
+        if (compat && compat->FirstChildElement("w:noLeading")) doc_->fontLineGap = false;
     }
 
 
@@ -907,10 +911,25 @@ private:
         block.paragraphFontFamily = g.fontFamily;
     }
 
+    // A paragraph a point high whose mark is in a 1 pt font: the writer's
+    // trailer after a table, or its carrier of a section break.
+    static bool IsTrailerParagraph(tinyxml2::XMLElement* pPr) {
+        auto* spacing = pPr ? pPr->FirstChildElement("w:spacing") : nullptr;
+        auto* mark = pPr ? pPr->FirstChildElement("w:rPr") : nullptr;
+        auto* size = mark ? mark->FirstChildElement("w:sz") : nullptr;
+        return spacing && size && std::string(Attr(spacing, "w:lineRule")) == "exact"
+            && spacing->IntAttribute("w:line", 240) <= 40 && size->IntAttribute("w:val", 24) <= 4;
+    }
+
     // An empty paragraph's line is as tall as its paragraph mark's font
     // (w:pPr/w:rPr), which is what Word measures it with.
     static void ApplyParagraphMark(RichDocBlock& block, tinyxml2::XMLElement* pPr) {
-        if (!block.runs.empty() || !pPr) return;
+        if (!pPr) return;
+        // A paragraph that only anchors pictures or frames has no words
+        // either: its line is the mark's too.
+        for (const RichTextRun& run : block.runs) {
+            if (!run.IsInlineImage() && !run.IsTextFrame()) return;
+        }
         Geometry mark;
         ReadStyleFont(pPr->FirstChildElement("w:rPr"), mark);
         if (mark.fontSize != kUnset && mark.fontSize > 0.0f) block.paragraphFontSizePt = mark.fontSize;
@@ -1106,6 +1125,7 @@ private:
         std::vector<RichTextRun> runs;
         std::vector<RichDocBlock> trailingImages;
         bool pendingLineBreak = false;
+        RichTextRun pendingBreakFormat;        // the format of the run whose break is pending
         // Complex field (w:fldChar begin / w:instrText / separate / end): the
         // result runs of a PAGE or NUMPAGES field are marked as that field.
         std::string fieldInstruction;
@@ -2500,14 +2520,17 @@ private:
                 if (std::string(Attr(child, "w:type")) == "page") {
                     pendingPageBreak_ = true;
                 } else {
-                    // A second break in a row is an empty line.
+                    // A second break in a row is an empty line - in the font
+                    // of the break that began it, not of the one that ends
+                    // it (a small line before a large name stays small).
                     if (ctx.pendingLineBreak) {
-                        RichTextRun empty = props;
+                        RichTextRun empty = ctx.pendingBreakFormat;
                         empty.text.clear();
                         empty.lineBreakBefore = true;
                         ctx.runs.push_back(std::move(empty));
                     }
                     ctx.pendingLineBreak = true;
+                    ctx.pendingBreakFormat = props;
                 }
             } else if (tag == "w:cr") {
                 ctx.pendingLineBreak = true;
@@ -2811,6 +2834,22 @@ private:
             return;
         }
 
+        // The trailer this writer puts after a table (Word wants a
+        // paragraph there) and the paragraph it makes to carry a section
+        // break are no paragraphs of the document: a point high, in a 1 pt
+        // font. The table's room below is the trailer's space after.
+        if (block.runs.empty() && ctx.trailingImages.empty() && IsTrailerParagraph(p->FirstChildElement("w:pPr"))) {
+            auto* pPr = p->FirstChildElement("w:pPr");
+            const bool afterTable = !doc_->blocks.empty() && doc_->blocks.back().type == RichBlockType::Table;
+            if (afterTable) {
+                auto* spacing = pPr->FirstChildElement("w:spacing");
+                if (spacing && spacing->Attribute("w:after")) {
+                    doc_->blocks.back().spaceAfterPt = static_cast<float>(spacing->IntAttribute("w:after", 0)) / 20.0f;
+                }
+            }
+            if (afterTable || pPr->FirstChildElement("w:sectPr")) return;
+        }
+
         bool emptyParagraph = block.runs.empty() && ctx.trailingImages.empty()
                               && block.type == RichBlockType::Paragraph;
         bool imageOnly = block.runs.empty() && !ctx.trailingImages.empty();
@@ -3005,10 +3044,25 @@ private:
                     }
                     emptyLine.fontSizePt = styled.paragraphFontSizePt;
                     emptyLine.fontFamily = styled.paragraphFontFamily;
+                    // An empty paragraph's line is its mark's font.
+                    if (ctx.runs.size() == runsBefore) {
+                        auto* pPr = p->FirstChildElement("w:pPr");
+                        Geometry mark;
+                        ReadStyleFont(pPr ? pPr->FirstChildElement("w:rPr") : nullptr, mark);
+                        if (mark.fontSize != kUnset && mark.fontSize > 0.0f) emptyLine.fontSizePt = mark.fontSize;
+                        if (!mark.fontFamily.empty()) emptyLine.fontFamily = mark.fontFamily;
+                    }
                 }
                 if (ctx.pendingLineBreak) {
                     ctx.runs.push_back(emptyLine);
                     ctx.pendingLineBreak = false;
+                }
+                // An empty cell is as tall as a line of its paragraph's
+                // font: an empty run says which.
+                if (ctx.runs.empty() && paragraphCount > 0 && (emptyLine.fontSizePt > 0.0f || !emptyLine.fontFamily.empty())) {
+                    RichTextRun font = emptyLine;
+                    font.lineBreakBefore = false;
+                    ctx.runs.push_back(std::move(font));
                 }
                 cell.runs = std::move(ctx.runs);
                 if (spaceAboveFirst > 0.0f) cell.paddingTopPt = std::max(0.0f, cell.paddingTopPt) + spaceAboveFirst;
@@ -4224,7 +4278,7 @@ private:
         }
     }
 
-    void WriteTable(std::ostringstream& xml, const RichDocBlock& block) {
+    void WriteTable(std::ostringstream& xml, const RichDocBlock& block, const std::string& sectPr = std::string()) {
         size_t columnCount = 0;
         for (const auto& row : block.tableRows) {
             size_t width = 0;
@@ -4329,6 +4383,20 @@ private:
                 auto flush = [&]() {
                     xml << "<w:p><w:pPr><w:spacing w:before=\"" << std::lround(above * 20.0f) << "\" w:after=\"0\"/>";
                     if (const char* jc = JustificationFor(cell.align)) xml << "<w:jc w:val=\"" << jc << "\"/>";
+                    // A paragraph without words is a line of its mark's font.
+                    bool words = false;
+                    for (const RichTextRun& run : piece) words = words || !run.text.empty();
+                    if (!words && !piece.empty() && (piece.front().fontSizePt > 0.0f || !piece.front().fontFamily.empty())) {
+                        xml << "<w:rPr>";
+                        if (!piece.front().fontFamily.empty()) {
+                            xml << "<w:rFonts w:ascii=\"" << EscapeXml(piece.front().fontFamily) << "\" w:hAnsi=\""
+                                << EscapeXml(piece.front().fontFamily) << "\"/>";
+                        }
+                        if (piece.front().fontSizePt > 0.0f) {
+                            xml << "<w:sz w:val=\"" << std::lround(piece.front().fontSizePt * 2.0f) << "\"/>";
+                        }
+                        xml << "</w:rPr>";
+                    }
                     xml << "</w:pPr>";
                     WriteRuns(xml, piece);
                     xml << "</w:p>";
@@ -4350,8 +4418,20 @@ private:
             xml << "</w:tr>\n";
         }
         xml << "</w:tbl>\n"
-            // Word requires a paragraph between a table and the section end.
-            << "<w:p/>\n";
+            // Word requires a paragraph between a table and the section end
+            // (and between two tables): a trailer the reader takes back out,
+            // which carries the table's room below and a section's end.
+            << TrailerParagraph(block.spaceAfterPt, sectPr);
+    }
+
+    // A paragraph a point high, its mark in a 1 pt font: after a table, or
+    // only to carry a section break. `spaceAfterPt` < 0: none stated.
+    static std::string TrailerParagraph(float spaceAfterPt, const std::string& sectPr) {
+        std::string xml = "<w:p><w:pPr><w:spacing w:before=\"0\"";
+        if (spaceAfterPt >= 0.0f) xml += " w:after=\"" + std::to_string(std::lround(spaceAfterPt * 20.0f)) + "\"";
+        xml += " w:line=\"20\" w:lineRule=\"exact\"/><w:rPr><w:sz w:val=\"2\"/><w:szCs w:val=\"2\"/></w:rPr>"
+             + sectPr + "</w:pPr></w:p>\n";
+        return xml;
     }
 
     // The blocks as WordprocessingML paragraphs and tables.
@@ -4373,15 +4453,26 @@ private:
             const bool viaParagraph = block.type != RichBlockType::Table && block.type != RichBlockType::Image
                                       && block.type != RichBlockType::PageBreak;
             if (endsSection && viaParagraph) pendingSectPr_ = SectionBreakXml(doc_->SectionFor(static_cast<int>(index)));
+            bool sectionWritten = false;
             switch (block.type) {
                 case RichBlockType::Table:
-                    WriteTable(body, block);
+                    // Its trailer carries the section's end.
+                    WriteTable(body, block, endsSection ? SectionBreakXml(doc_->SectionFor(static_cast<int>(index)))
+                                                        : std::string());
                     break;
                 case RichBlockType::Image:
                     WriteImage(body, block, ++drawingId_);
                     break;
                 case RichBlockType::PageBreak:
-                    body << "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\n";
+                    // Before a section that starts a page, the section's
+                    // break is the page break: one of the two, or Word and
+                    // the reader turn two pages.
+                    if (endsSection && blocks[index + 1].section.newPage) {
+                        body << TrailerParagraph(-1.0f, SectionBreakXml(doc_->SectionFor(static_cast<int>(index))));
+                        sectionWritten = true;
+                    } else {
+                        body << "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\n";
+                    }
                     break;
                 case RichBlockType::MathBlock:
                     // No OMML writer: the formula source travels as a centred
@@ -4393,8 +4484,8 @@ private:
                     WriteParagraph(body, block);
                     break;
             }
-            if (endsSection && !viaParagraph) {
-                body << "<w:p><w:pPr>" << SectionBreakXml(doc_->SectionFor(static_cast<int>(index))) << "</w:pPr></w:p>\n";
+            if (endsSection && !viaParagraph && block.type != RichBlockType::Table && !sectionWritten) {
+                body << TrailerParagraph(-1.0f, SectionBreakXml(doc_->SectionFor(static_cast<int>(index))));
             }
             pendingSectPr_.clear();
         }
@@ -4668,12 +4759,16 @@ private:
 
     // word/settings.xml carries only the default tab interval, so it is
     // written only when the document states one.
-    bool HasSettings() const { return doc_->defaultTabStopPt > 0.0f; }
+    bool HasSettings() const { return doc_->defaultTabStopPt > 0.0f || !doc_->fontLineGap; }
 
     std::string BuildSettingsXml() const {
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-               "<w:settings xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
-               "<w:defaultTabStop w:val=\"" + Twips(doc_->defaultTabStopPt) + "\"/></w:settings>\n";
+        return std::string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+               "<w:settings xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">")
+             + (doc_->defaultTabStopPt > 0.0f ? "<w:defaultTabStop w:val=\"" + Twips(doc_->defaultTabStopPt) + "\"/>"
+                                             : std::string())
+             // Lines without the font's line gap: Word's "don't add leading".
+             + (doc_->fontLineGap ? "" : "<w:compat><w:noLeading/></w:compat>")
+             + "</w:settings>\n";
     }
 
     static std::string BuildRootRelsXml() {
