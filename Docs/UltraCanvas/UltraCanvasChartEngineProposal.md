@@ -6,6 +6,7 @@ Implemented so far: P0 (the label engine upgrade, §7); the engine model layer
 plugin registry + loader that §12.12 defers to (`UltraCanvasElementPlugins`);
 the three-phase render driver (`UltraCanvasChartEngineElement` — a new subclass
 rather than a change to the 43-chart base, so Tier 0 stays untouched); the
+highlight layer (§8.2) and the axis distribution layer (§8.1); the
 parallel coordinate chart as the first native client; and the CMake target
 split for the selectable-chart mechanism: `ULTRACANVAS_CHARTS` (default empty),
 `ULTRACANVAS_CHART_RUNTIME_MODULES` (default on), a generated
@@ -22,8 +23,10 @@ engine to replace the duplication — with the parallel coordinate chart as its
 first native client.
 
 **Shipped names.** The contract of §5.3–§5.6 shipped with the shape designed
-here but under different names, so read the code blocks there as the design
-record and [`UltraCanvasChartEngine.md`](UltraCanvasChartEngine.md) as the API:
+here but under different names. §5.4–§5.6, §8.1 and §12.4 now show what was
+built; §5.3 keeps the projection interface as designed. The table maps the
+names this document first used, which other documents may still quote;
+[`UltraCanvasChartEngine.md`](UltraCanvasChartEngine.md) is the API reference:
 
 | This document | What shipped |
 |---|---|
@@ -32,6 +35,8 @@ record and [`UltraCanvasChartEngine.md`](UltraCanvasChartEngine.md) as the API:
 | `Measure` | `MeasureContent` (same `ChartLayoutRequest`) |
 | `CollectLabels` | `CollectChartLabels`, which adds `ChartLabelRequest`s to a `ChartLabelBroker` |
 | `HitTest` with a `ChartHit` | Not built: content registers its geometry with `AddHitRegion` (rectangle or polygon) while it draws, and the engine tracks `HoveredRegionId` |
+| `AddAxis` with a `ChartAxisSpec` (§6) | The chart adds a `ChartAxis` (public fields: side, scale, range, title, formatter, inverted, categories) to the `ChartAxisSet` it is handed in `DescribeAxes` |
+| `ChartEngine` and `UltraCanvasChartEngine::Instance` (§12.4) | Not built: there is no engine singleton — see §12.4 |
 | `ChartFrame` (§5.6) | `ChartEngineFrame`: plot area, axes, projection, label plan, theme (the palette is `theme->palette`), animation progress, generation. No element or chart-area bounds, and no `ChartInteractionState` |
 | `EnsureLayout` (§5.4) | `EnsureEngineLayout` |
 | `ValueToScreen` / `ScreenToValue` on a `ChartValuePoint` (§5.3) | `ToScreen` / `ToNormalized` on a `ChartNormalizedPoint`: the axes map values onto [0,1] first, and the projection maps that `(u, v)` onto the screen |
@@ -331,15 +336,16 @@ API the chart author has to think about:
 | **3** | 800 | `Annotation` | 1 | solved labels, legend, colour bar, callouts, leader lines, arrows/indicators |
 | **3** | 900 | `Interaction` | 9 | hover emphasis, crosshair, tooltip anchor, brush bands + handles, rubber band, drag ghosts |
 
-The driver in the base class is fixed and short:
+The driver in the engine element is fixed and short (shown without the
+animation step and the per-phase state saves of the real one):
 
 ```cpp
-void UltraCanvasChartElementBase::Render(IRenderContext* ctx, const Rect2Df& dirty) {
-    EnsureLayout();                    // §5.6 — only when geometry/data/style changed
-    EnsureLabelPlan();                 // §5.7 — solver runs here, NOT per frame
-    RenderPhaseUnder(ctx, frame);      // engine
-    RenderChart(ctx, frame);           // the specific chart file — the one override
-    RenderPhaseOver(ctx, frame);       // engine
+void UltraCanvasChartEngineElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
+    EnsureEngineLayout(ctx);           // §5.6 — only when geometry/data/style changed
+    EnsureLabelPlan(ctx);              // §5.7 — solver runs here, NOT per frame
+    RenderPhaseUnder(ctx);             // engine
+    RenderChartContent(ctx, frame);    // the specific chart file — the one override
+    RenderPhaseOver(ctx);              // engine
 }
 ```
 
@@ -355,33 +361,37 @@ Two rules give the brief's "prevent wrong rendering":
 
 ### 5.5 What the specific chart file provides
 
-A chart type implements one small interface. Everything it does *not* implement
-is supplied by the engine:
+A chart type implements a few virtual methods. Everything it does *not*
+implement is supplied by the engine. As built they are virtuals of the engine
+element itself, which a chart type derives from, rather than a separate
+interface:
 
 ```cpp
-class IChartContent {
-public:
+class MyChart : public UltraCanvasChartEngineElement {
     // What axes exist, their ranges, scales and titles.
-    virtual void DescribeAxes(ChartAxisSet&) = 0;
+    void DescribeAxes(ChartAxisSet& axes) override;
 
     // Optional extra margin this chart needs (axis header chips, spill-out
-    // markers, per-axis histograms...). Runs in the measure pass, not per frame.
-    virtual void Measure(ChartLayoutRequest&) {}
+    // markers...). Runs in the measure pass, not per frame.
+    void MeasureContent(IRenderContext* ctx, ChartLayoutRequest& request) override;
 
     // Labels this chart wants placed. Called ONLY when the label plan is
     // rebuilt (§5.7), never on an ordinary redraw.
-    virtual void CollectLabels(ChartLabelRequest&) {}
+    void CollectChartLabels(IRenderContext* ctx, ChartLabelBroker& broker) override;
 
-    // Phase 2. The only method that must be implemented.
-    virtual void RenderChart(IRenderContext*, const ChartFrame&) = 0;
-
-    // Optional: chart-specific picking for the interaction layer.
-    virtual bool HitTest(const Point2Dd&, ChartHit&) const { return false; }
+    // Phase 2. The only drawing a chart type must implement.
+    void RenderChartContent(IRenderContext* ctx, const ChartEngineFrame& frame) override;
 };
 ```
 
-So a new chart type is: a data model, a `RenderChart()`, and — if it has labels
-or unusual margins — two short descriptor methods. Background, grid, axes,
+Picking was designed as a `HitTest` method answering with a `ChartHit`; it
+shipped the other way round. The content registers its interactive geometry
+with `AddHitRegion` (a rectangle or a polygon, with a tooltip) while it draws,
+and the engine owns hover tracking and tooltips (`HoveredRegionId`,
+`OnHitRegionHoverChanged`), so a chart type writes no picking code at all.
+
+So a new chart type is: a data model, a `RenderChartContent()`, and — if it has
+labels or unusual margins — two short descriptor methods. Background, grid, axes,
 limiters, highlights, legend, label placement and interaction come for free and
 are never re-implemented.
 
@@ -393,25 +403,28 @@ Instead:
 ```
 pass 1  Measure: axes, legend, colour bar, marginal histograms, titles and the
                  chart itself report the space they need on each side
-pass 2  Solve:   engine subtracts the reservations → plotArea, freezes ChartFrame
+pass 2  Solve:   engine subtracts the reservations → plotArea, freezes the frame
 ```
 
-`EnsureLayout()` runs this only when the layout inputs changed (§5.9); an
+`EnsureEngineLayout()` runs this only when the layout inputs changed (§5.9); an
 ordinary repaint reuses the frozen frame:
 
 ```cpp
-struct ChartFrame {
-    Rect2Dd                 elementBounds, chartArea, plotArea;
-    const IChartProjection* projection;
-    const ChartAxisSet*     axes;
-    const ChartTheme*       theme;
-    const ChartPalette*     palette;
-    const ChartLabelPlan*   labelPlan;      // solved earlier, read-only while drawing
-    const ChartInteractionState* interaction;
-    double                  animationProgress;
-    uint64_t                generation;
+struct ChartEngineFrame {
+    Rect2Dd plotArea;
+    const ChartAxisSet* axes = nullptr;
+    const IChartProjection* projection = nullptr;
+    const ChartLabelPlan* labelPlan = nullptr;    // solved earlier, read-only while drawing
+    const ChartTheme* theme = nullptr;            // the palette is theme->palette
+    double animationProgress = 1.0;
+    uint64_t generation = 0;
 };
 ```
+
+The design's frame also carried the element and chart-area bounds, a palette
+of its own and a `ChartInteractionState`. None of them shipped: the element
+knows its own bounds, the palette is the theme's, and hover state belongs to
+the engine element with the hit regions (§5.5).
 
 The frame is **read-only during rendering**. All three phases receive the same
 frozen frame, which is what lets phase 1 and phase 3 be cached independently of
@@ -550,7 +563,7 @@ SetColormap(HeatmapColormap, bool reverse); // continuous
 SetValueFormatter(ValueFormatter);          // one ValueFormatter typedef, one home
 
 // ---- axes (one or many) ----
-size_t AddAxis(const ChartAxisSpec&);       // side, scale, range, ticks, title, formatter, inverted, categories, time
+// DescribeAxes(axes) adds each ChartAxis: side, scale, range, ticks, title, formatter, inverted, categories
 SetAxisRange(axis, lo, hi); SetAxisScale(axis, ChartScale); SetAxisInverted(axis, bool);
 SetAxisTitle(axis, text); SetAxisTickCount(axis, n); SetAxisTickFormatter(axis, fn);
 SetAxisCategories(axis, {...}); SetAxisTickRotation(axis, degrees);
@@ -701,22 +714,35 @@ Both images are joint plots: a hexbin / dot-density field with a **histogram of
 each axis's marginal distribution** drawn outside the plot on the top and right,
 sharing the axis scale exactly.
 
+**Implemented** (`Engine/UltraCanvasChartDistribution.h`,
+`UltraCanvasChartEngineElement::AddAxisDistribution`):
+
 ```cpp
 struct AxisDistribution {
-    size_t axisIndex;
-    AxisDistributionKind kind = AxisDistributionKind::Histogram; // Density|Box|Strip|Violin
-    AxisDistributionSide side = AxisDistributionSide::Outside;   // Near|Far|Both|Outside
-    int    binCount = 0;          // 0 = auto (Freedman–Diaconis)
-    double thickness = 48.0;      // reserved band, negotiated in Measure()
-    Color  fill, stroke;
-    bool   showFilteredOverlay = true;   // brushed subset over the total
-    bool   logCount = false;
+    size_t axisIndex = 0;
+    AxisDistributionKind kind = AxisDistributionKind::Histogram;  // Density|Box|Strip|Violin
+    AxisDistributionSide side = AxisDistributionSide::Outside;    // Near|Far|Both|Outside
+    std::vector<double> values;          // empty = what the axis observed
+    std::vector<double> filteredValues;  // brushed subset over the total
+    int binCount = 0;                    // 0 = auto (Freedman–Diaconis)
+    double bandwidth = 0.0;              // Density/Violin: 0 = Silverman
+    bool logCount = false;
+    double thickness = 48.0;             // the band's depth, negotiated in the layout
+    double gap = 4.0;                    // between the plot and an Outside band
+    Color fill, stroke;
+    Color filteredFill;
 };
 ```
 
-Reuses the jitter plot's quartile/mean/median maths for `Box`, and the contour
-element's KDE for `Density`. For the parallel coordinate chart this is the same
-layer, just repeated on every axis (image 4 of the PCP set).
+The overlay is the subset's values rather than a flag: the engine has no
+selection of its own to draw, so the chart passes what its brush selected.
+`Outside` reserves its band beyond the plot's **opposite** edge, as the joint
+plot does; `Near`, `Far` and `Both` draw inside the plot, or on either side of
+an in-plot rule, and reserve nothing. The statistics are the layer's own,
+one-dimensional and unit-tested (`ComputeHistogram`, `ComputeKernelDensity`,
+`ComputeBoxSummary`): the jitter plot's quartiles are private to it, and the
+contour element's KDE is two-dimensional. For the parallel coordinate chart
+this is the same layer, just repeated on every axis (image 4 of the PCP set).
 
 ### 8.2 Background highlighting (images 3, 4, 5)
 
@@ -840,14 +866,15 @@ load the rest on demand.
 
 ### 12.4 Lazy engine initialisation
 
-The engine core is itself a module (`ultracanvas_chartengine`) and must not be
-touched until a chart exists:
-
-```cpp
-// Nothing in UltraCanvas core calls this. The first chart construction does.
-ChartEngine& UltraCanvasChartEngine::Instance();   // builds theme, palette,
-                                                   // label service, registry
-```
+The engine core must not be touched until a chart exists. The design gave it
+a singleton built by the first chart (`UltraCanvasChartEngine::Instance`,
+holding the theme, the palette, the label service and the registry). **As
+built there is nothing to initialise:** the engine is the base class
+`UltraCanvasChartEngineElement`, each chart owns its theme, axes and label
+plan, and the registry is the element system's (§12.12). What a runtime chart
+module needs from the host is the engine's code, and the generated
+registration unit anchors that into a static host
+(`UltraCanvas_ChartEngineAnchor`, §12.11).
 
 Because no core code references `Plugins/Charts` today (§12.1), "the engine is
 not loaded unless a chart is used" is automatic in T1/T2 — the symbol is never

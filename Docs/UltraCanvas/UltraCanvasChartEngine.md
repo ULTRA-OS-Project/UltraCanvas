@@ -7,6 +7,7 @@
 - [Axes](#axes)
 - [Projections](#projections)
 - [Highlights (slot 200 wash / slot 700 overlay)](#highlights-slot-200-wash--slot-700-overlay)
+- [Axis distributions (slot 550)](#axis-distributions-slot-550)
 - [Phase-1 services](#phase-1-services)
 - [Bar series geometry](#bar-series-geometry)
   - [Bar connections](#bar-connections)
@@ -26,7 +27,7 @@
 type derives from it, implements **phase 2** — its own drawing — plus small
 descriptor methods, and receives everything else. Phase 1 (background, grid
 derived from the axis ticks, limiter lines, edge axes with decluttered tick
-labels) and phase 3 (in-plot axes, the solved label plan, the legend, the
+labels, axis distributions) and phase 3 (in-plot axes, the solved label plan, the legend, the
 interaction overlay) are engine-supplied, and phase 2 is clipped to the plot
 area so a chart cannot paint over the edge axes or legend by accident. In-plot
 axes render **above** the content, so a dense chart cannot bury its own axis
@@ -37,8 +38,8 @@ Live demo: **Charts → Chart Engine** in the demo application
 implementing nothing but the content contract, with an option panel that
 switches every engine service live: the three projections, the axis scales
 (including `Log` and `SymLog`), number formatting, the grid source, tick
-density, bar arrangement and slot geometry, limiters, the label plan's
-declutter, legend swatches, hit-region tooltips, the animation driver, the
+density, bar arrangement and slot geometry, limiters, highlights, axis
+distributions, the label plan's declutter, legend swatches, hit-region tooltips, the animation driver, the
 dirty model and the named-property surface. The first production client is the
 parallel coordinate chart
 ([`UltraCanvasParallelCoordinateChart.md`](UltraCanvasParallelCoordinateChart.md));
@@ -52,12 +53,15 @@ shown next to the legacy charts on **Charts → Chart Engine Comparison**.
 - Bar, line and area series geometry, markers: `include/Plugins/Charts/Engine/UltraCanvasChartSeries.h`
 - Trend lines, moving averages, Heikin-Ashi: `include/Plugins/Charts/Engine/UltraCanvasChartAnalysis.h`
 - Projections: `include/Plugins/Charts/Engine/UltraCanvasChartProjection.h`
+- Highlights: `include/Plugins/Charts/Engine/UltraCanvasChartHighlights.h`
+- Axis distributions and their statistics: `include/Plugins/Charts/Engine/UltraCanvasChartDistribution.h`
 - Label policy/plan: `include/Plugins/Charts/Engine/UltraCanvasChartLabels.h`
 - Themes and palettes: `include/Plugins/Charts/Engine/UltraCanvasChartTheme.h`
-- Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`)
+- Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`);
+  the distribution bands drawn: `Tests/AxisDistributionRenderTest.cpp`
 - Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
 
-**Version:** 1.4.1
+**Version:** 1.5.0
 **Last Modified:** 2026-11-16
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
@@ -235,6 +239,76 @@ target.smoothing = 0.0;
 target.xAxisIndex = 1;
 target.yAxisIndex = 0;
 target.label = "Target window";
+```
+
+## Axis distributions (slot 550)
+
+`AddAxisDistribution(AxisDistribution)` / `ClearAxisDistributions()` — the
+proposal's §8.1 layer (`Engine/UltraCanvasChartDistribution.h`): the
+distribution of an axis's values drawn along that axis, at its own scale.
+The joint plot's histograms above and to the right of a scatter field are
+one each on the x and the y axis; a parallel coordinate chart puts one on
+every in-plot axis.
+
+| `kind` | Draws |
+|---|---|
+| `Histogram` | Equal-width bins, bar length by count (`logCount`: by log(1 + count)); `binCount` 0 picks the Freedman–Diaconis width |
+| `Density` | A Gaussian kernel density curve; `bandwidth` 0 picks Silverman's rule |
+| `Box` | The quartile box, the median, Tukey whiskers at 1.5 IQR, the outliers past them |
+| `Strip` | One short tick per value: a rug |
+| `Violin` | The density mirrored about the band's centre line |
+
+`values` are what is summarised; left empty, the band takes what the axis
+observed while it was described (`ChartAxis::Samples()`). Give them
+explicitly when the axis saw something else: a bar chart's value axis
+observes the stack totals, not the bars. `filteredValues` is a subset —
+a brushed selection, one series — drawn over the whole in `filteredFill`
+on the same bins and the same scale, so it reads as a share of each bar.
+
+`side` decides where the band goes:
+
+| `side` | Edge axis | In-plot axis |
+|---|---|---|
+| `Outside` (default) | A band beyond the plot's **opposite** edge, `gap` + `thickness` deep: the x distribution above the plot, the y distribution to its right | As `Far` |
+| `Near` | Inside the plot, growing in from the axis's own edge | The side the ticks point to |
+| `Far` | Inside the plot, growing in from the opposite edge | The other side |
+| `Both` | `Near` and `Far` together | Mirrored about the rule |
+
+An `Outside` band takes part in the layout negotiation: the margin on its
+edge grows by its depth, and anything else on that edge — an axis, the
+legend — moves out by as much, so the band sits against the plot and
+nothing is drawn over it. Several bands on one edge stack outward in the
+order added. The inside sides reserve nothing and draw under the content
+(phase 1), clipped to the plot. Along an in-plot rule a band stops at 45%
+of the gap to the nearest other rule, whatever `thickness` asks for, so
+neighbouring axes' bands never meet.
+
+Everything is binned and smoothed in the axis's normalised space, so the
+bars line up with the ticks under every scale (a `Log` axis gets bins of
+equal width on screen) and an inverted axis flips its band with it. The box
+summary is the exception: Tukey's fences are a rule about the data, so its
+statistics are taken on the values and then mapped. The statistics are
+UI-free and unit-tested: `ComputeHistogram`, `FreedmanDiaconisBinCount`,
+`ComputeKernelDensity`, `SilvermanBandwidth`, `ComputeBoxSummary`.
+Cartesian projections only: under Polar and Ternary nothing is drawn and
+nothing reserved.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasChartEngineElement> chart; std::vector<double> selectedX; std::vector<double> selectedY; -->
+
+```cpp
+// The joint plot: the x distribution above the plot, the y one to its
+// right, with the selected points over both.
+AxisDistribution top;
+top.axisIndex = 1;                       // the x axis
+top.kind = AxisDistributionKind::Histogram;
+top.filteredValues = selectedX;
+chart->AddAxisDistribution(top);
+
+AxisDistribution right;
+right.axisIndex = 0;                     // the y axis
+right.kind = AxisDistributionKind::Density;
+right.filteredValues = selectedY;
+chart->AddAxisDistribution(right);
 ```
 
 ## Phase-1 services
