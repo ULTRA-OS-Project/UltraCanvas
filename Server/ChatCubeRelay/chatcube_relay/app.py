@@ -194,6 +194,10 @@ class TitleBody(BaseModel):
     title: str = Field(min_length=1, max_length=64)
 
 
+class PublicBody(BaseModel):
+    public: bool
+
+
 def user_json(user, online: bool | None = None) -> dict[str, Any]:
     out = {"user_id": user.user_id,
            "public_key": base64.b64encode(user.public_key).decode(),
@@ -205,7 +209,7 @@ def user_json(user, online: bool | None = None) -> dict[str, Any]:
 
 def group_json(group) -> dict[str, Any]:
     return {"group_id": group.group_id, "conversation": GROUP_PREFIX + group.group_id,
-            "title": group.title, "owner": group.owner, "members": group.members}
+            "title": group.title, "owner": group.owner, "members": group.members, "public": group.public}
 
 
 # ============================================================================
@@ -221,6 +225,9 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         raise ValueError("CHATCUBE_RELAY_RECOVERY_KEY must be 32 bytes, base64 (openssl rand -base64 32)")
     hub = Hub()
     challenges: dict[str, tuple[str, float]] = {}     # nonce -> (user_id, expiry)
+    # (user, public group) -> the messages posted there in the last minute, as
+    # (time, message id): what public_posts_per_minute counts.
+    public_posts: dict[tuple[str, str], list[tuple[float, str]]] = {}
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -674,6 +681,43 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
     async def list_groups(user_id: str = Depends(current_user)):
         return {"groups": [group_json(g) for g in store.groups_of(user_id)]}
 
+    # ---- public groups -------------------------------------------------------
+    # A group its owner made public is listed for everyone signed in and
+    # joined by anyone who wants to - its messages stay sealed for each
+    # member, so the relay still reads none of them.
+
+    @app.get("/v1/public-groups")
+    async def list_public_groups(q: str = "", user_id: str = Depends(current_user)):
+        mine = {g.group_id for g in store.groups_of(user_id)}
+        return {"groups": [{**g, "conversation": GROUP_PREFIX + g["group_id"], "joined": g["group_id"] in mine}
+                           for g in store.public_groups(q.strip()[:64])],
+                "max_members": settings.max_public_group_members}
+
+    @app.put("/v1/groups/{group_id}/public")
+    async def set_group_public(group_id: str, body: PublicBody, user_id: str = Depends(current_user)):
+        group = member_group(group_id, user_id)
+        if group.owner != user_id:
+            raise error(403, "forbidden", "Only the owner makes a group public or private")
+        store.set_group_public(group_id, body.public)
+        group = store.get_group(group_id)
+        await push_group(group)
+        return group_json(group)
+
+    @app.post("/v1/groups/{group_id}/join")
+    async def join_group(group_id: str, user_id: str = Depends(current_user)):
+        group = store.get_group(group_id)
+        if not group or not group.public:
+            raise error(404, "unknown_group", "No such public group")
+        if store.is_banned(group_id, user_id):
+            raise error(403, "banned", "The group's owner took you out of this group")
+        if user_id not in group.members:
+            if len(group.members) >= settings.max_public_group_members:
+                raise error(400, "too_many_members", "The group is full")
+            store.add_member(group_id, user_id)
+            group = store.get_group(group_id)
+            await push_group(group)
+        return group_json(group)
+
     def member_group(group_id: str, user_id: str):
         group = store.get_group(group_id)
         if not group or user_id not in group.members:
@@ -697,8 +741,11 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         group = member_group(group_id, user_id)
         if not store.get_user(body.user_id):
             raise error(404, "unknown_user", "No such user")
-        if len(group.members) >= settings.max_group_members:
+        limit = settings.max_public_group_members if group.public else settings.max_group_members
+        if len(group.members) >= limit:
             raise error(400, "too_many_members", "The group is full")
+        if group.owner != user_id and store.is_banned(group_id, body.user_id):
+            raise error(403, "banned", "The group's owner took this person out of the group")
         store.add_member(group_id, body.user_id)
         group = store.get_group(group_id)
         await push_group(group)
@@ -710,6 +757,8 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
         if member != user_id and group.owner != user_id:
             raise error(403, "forbidden", "Only the owner removes other members")
         store.remove_member(group_id, member)
+        if member != user_id and group.public:
+            store.ban(group_id, member)         # taken out of a public group: not back by Join
         await hub.send(member, {"type": "group.update",
                                 "group": {**group_json(group), "removed": True}})
         updated = store.get_group(group_id)
@@ -737,6 +786,21 @@ def create_app(settings: Settings | None = None, notifier: Notifier | None = Non
                     raise error(403, "forbidden", "Sender and recipient must both be in the group")
             elif not store.get_user(m.to):
                 raise error(404, "unknown_user", "No such user: " + m.to)
+        # A public group: so many messages a minute from one member (the
+        # copies of one message, and a file's parts, count as one).
+        now = time.time()
+        for gid, group in groups.items():
+            if not group.public:
+                continue
+            ids = {m.message_id for m in body.messages
+                   if m.conversation == GROUP_PREFIX + gid and not m.message_id.startswith("c-")}
+            recent = [(t, i) for t, i in public_posts.get((user_id, gid), []) if now - t < 60]
+            known = {i for _, i in recent}
+            fresh = ids - known
+            if fresh and len(known) + len(fresh) > settings.public_posts_per_minute:
+                raise error(429, "slow_down", "At most %d messages a minute in a public group"
+                            % settings.public_posts_per_minute)
+            public_posts[(user_id, gid)] = recent + [(now, i) for i in fresh]
         for m in body.messages:
             queued_id = store.enqueue(m.to, user_id, m.message_id, m.conversation, m.envelope)
             accepted.append({"to": m.to, "message_id": m.message_id, "id": queued_id})

@@ -1,5 +1,6 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.9 - UltraIM_FetchPublicGroups, _JoinGroup, _SetGroupPublic
 // Version: 0.1.8 - UltraIM_MakePreview makes a file's preview once: the window and the provider ask for
 //                  the same video, and a frame is not grabbed twice
 // Version: 0.1.7 - UltraIM_RenameGroup, _AddGroupMembers, _RemoveGroupMember, _LeaveConversation
@@ -724,6 +725,49 @@ void UltraIM_LeaveConversation(const std::string& providerId, const std::string&
         return;
     }
     provider->LeaveConversation(conversationId, callback ? callback : [](const UltraIMResult&) {});
+}
+
+void UltraIM_FetchPublicGroups(const std::string& providerId, const std::string& query,
+                               UltraIMPublicGroupsCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, std::vector<UltraIMPublicGroup>>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), {});
+        return;
+    }
+    provider->FetchPublicGroups(query, callback ? callback
+                                                : [](const UltraIMResult&, const std::vector<UltraIMPublicGroup>&) {});
+}
+
+void UltraIM_JoinGroup(const std::string& providerId, const std::string& conversationId,
+                       UltraIMConversationCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMConversation>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), {});
+        return;
+    }
+    if (conversationId.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Empty conversation"), {});
+        return;
+    }
+    provider->JoinGroup(conversationId, callback ? callback : [](const UltraIMResult&, const UltraIMConversation&) {});
+}
+
+void UltraIM_SetGroupPublic(const std::string& providerId, const std::string& conversationId, bool isPublic,
+                            UltraIMConversationCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMConversation>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), {});
+        return;
+    }
+    if (conversationId.empty()) {
+        if (callback) callback(UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Empty conversation"), {});
+        return;
+    }
+    provider->SetGroupPublic(conversationId, isPublic,
+                             callback ? callback : [](const UltraIMResult&, const UltraIMConversation&) {});
 }
 
 // ============================================================================

@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.14 - UltraIMConversation::isPublic, UltraIMPublicGroup: public groups found and joined
 // Version: 0.1.13 - UltraIMAuthStep::Browser: a sign-in page to open in the browser (Mastodon)
 // Version: 0.1.12 - UltraIMEventType::TransferProgress; UltraIMSearchKind::Audio: a file's bytes on their way, up or down
 // Version: 0.1.11 - UltraIMSendOptions::durationSeconds: a voice note's or a video's length, sent along
@@ -211,6 +212,19 @@ struct UltraIMConversation {
     int             unreadCount = 0;
     // End-to-end encrypted: only its members' devices can read what is in it.
     bool            isEncrypted = false;
+    // A public group: listed for everyone on the network, who may join it
+    // (UltraIM_FetchPublicGroups, UltraIM_JoinGroup); its owner sets it
+    // (UltraIM_SetGroupPublic).
+    bool            isPublic = false;
+};
+
+// A public group as the directory lists it (UltraIM_FetchPublicGroups).
+struct UltraIMPublicGroup {
+    std::string conversationId;     // the conversation it is once joined
+    std::string title;
+    std::string ownerId;
+    int         memberCount = 0;
+    bool        joined = false;     // the local user is in it
 };
 
 // ============================================================================
@@ -563,6 +577,8 @@ using UltraIMConversationsCallback = std::function<void(const UltraIMResult& res
                                                         const std::vector<UltraIMConversation>& conversations)>;
 using UltraIMConversationCallback = std::function<void(const UltraIMResult& result,
                                                        const UltraIMConversation& conversation)>;
+using UltraIMPublicGroupsCallback = std::function<void(const UltraIMResult& result,
+                                                       const std::vector<UltraIMPublicGroup>& groups)>;
 using UltraIMContactsCallback     = std::function<void(const UltraIMResult& result,
                                                        const std::vector<UltraIMContact>& contacts)>;
 using UltraIMMessagesCallback     = std::function<void(const UltraIMResult& result,

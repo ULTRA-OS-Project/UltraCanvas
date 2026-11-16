@@ -17,6 +17,7 @@
 // step Password, then Code. The e-mail address and phone number the owner
 // gives (to recover the account) are kept in the vault and on the relay,
 // for the owner alone.
+// Version: 0.1.12 - public groups (relay 1.5): the directory, joining one, the owner's public / private
 // Version: 0.1.11 - TransferProgress: a file's parts counted as they leave and as they arrive
 // Version: 0.1.10 - EditMessage (an "edit" body), SendVoiceNote, a reply's quote filled in from the store;
 //                   a contact added by someone else (contact.added, the local network's "contact")
@@ -149,6 +150,13 @@ public:
     void RemoveGroupMember(const std::string& conversationId, const std::string& memberId,
                            UltraIMResultCallback onResult) override;
     void LeaveConversation(const std::string& conversationId, UltraIMResultCallback onResult) override;
+    // Public groups (relay 1.5): GET /v1/public-groups, POST .../join,
+    // PUT .../public (the owner's). Messages in one are sealed for each
+    // member as in any group - the relay reads none of them.
+    void FetchPublicGroups(const std::string& query, UltraIMPublicGroupsCallback onResult) override;
+    void JoinGroup(const std::string& conversationId, UltraIMConversationCallback onResult) override;
+    void SetGroupPublic(const std::string& conversationId, bool isPublic,
+                        UltraIMConversationCallback onResult) override;
     // "telegram": the Telegram application's API ID and hash the relay keeps
     // (GET /v1/telegram-credentials; NotFound when it keeps none).
     void FetchSharedCredentials(const std::string& forProviderId, UltraIMSharedCredentialsCallback onResult) override;
@@ -378,6 +386,7 @@ private:
     std::map<std::string, Attempt> attempts_;           // clientId|recipient
     std::map<std::string, UltraIMPresence> presence_;   // user id -> presence
     std::map<std::string, std::string> groupOwners_;    // group conversation -> its owner's user id
+    std::set<std::string> publicGroups_;                // group conversations that are public
     std::set<std::string> fetchingUsers_;
     // Proven by a local connection's handshake: user id -> (key, name).
     std::map<std::string, std::pair<std::vector<uint8_t>, std::string>> lanKeys_;

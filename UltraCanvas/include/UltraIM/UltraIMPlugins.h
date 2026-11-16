@@ -1,6 +1,6 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
-// Version: 0.1.14 - ABI 10: UltraIMAuthStep::Browser
+// Version: 0.1.14 - ABI 10: UltraIMAuthStep::Browser; public groups (FetchPublicGroups, JoinGroup, SetGroupPublic)
 // Version: 0.1.13 - ABI 9: UltraIMEventType::TransferProgress and its fields on UltraIMEvent;
 //                   UltraIMSearchKind::Audio
 // Version: 0.1.12 - ABI 8: UltraIMSendOptions::durationSeconds
@@ -383,6 +383,28 @@ public:
         if (onResult) onResult(Unsupported("leaving conversations"));
     }
 
+    // ---- Public groups ------------------------------------------------------------
+    // A group its owner made public is listed for everyone on the network
+    // (FetchPublicGroups: those whose name holds `query`, "" = all, the
+    // biggest first) and joined by anyone (JoinGroup: the conversation it is,
+    // also as a ConversationUpdate). SetGroupPublic is the owner's (else
+    // PermissionDenied); the change reaches every member as a ConversationUpdate
+    // with UltraIMConversation::isPublic. A provider without them answers
+    // CapabilityMissing.
+    virtual void FetchPublicGroups(const std::string& query, UltraIMPublicGroupsCallback onResult) {
+        (void)query;
+        if (onResult) onResult(Unsupported("public groups"), {});
+    }
+    virtual void JoinGroup(const std::string& conversationId, UltraIMConversationCallback onResult) {
+        (void)conversationId;
+        if (onResult) onResult(Unsupported("public groups"), {});
+    }
+    virtual void SetGroupPublic(const std::string& conversationId, bool isPublic,
+                                UltraIMConversationCallback onResult) {
+        (void)conversationId; (void)isPublic;
+        if (onResult) onResult(Unsupported("public groups"), {});
+    }
+
 protected:
     static UltraIMResult Unsupported(const std::string& what) {
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
@@ -426,7 +448,9 @@ protected:
 // Version 8 (2026-11): UltraIMSendOptions::durationSeconds (a recording's length).
 // Version 9 (2026-11): TransferProgress events (transferredBytes, totalBytes, isUpload);
 // UltraIMSearchKind::Audio.
-// Version 10 (2026-11): UltraIMAuthStep::Browser (a sign-in page to open).
+// Version 10 (2026-11): UltraIMAuthStep::Browser (a sign-in page to open);
+// public groups (FetchPublicGroups, JoinGroup, SetGroupPublic,
+// UltraIMConversation::isPublic).
 // ============================================================================
 
 constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 10;

@@ -251,6 +251,88 @@ def test_group_renamed_by_a_member_and_told_to_everyone(client):
     assert client.patch(path, headers=alice.auth, json={"title": ""}).status_code == 422
 
 
+def test_a_public_group_is_listed_and_joined_by_anyone(client):
+    alice = Person(client, "Alice").join()
+    bob = Person(client, "Bob").join()
+    eve = Person(client, "Eve").join()
+    g = client.post("/v1/groups", headers=alice.auth, json={"title": "ULTRA OS lounge", "members": []}).json()
+    other = client.post("/v1/groups", headers=alice.auth, json={"title": "Private team", "members": []}).json()
+    path = "/v1/groups/" + g["group_id"]
+    assert g["public"] is False
+    # Private: not listed, not joined.
+    assert client.get("/v1/public-groups", headers=bob.auth).json()["groups"] == []
+    assert client.post(path + "/join", headers=bob.auth).status_code == 404
+
+    # Only the owner makes it public.
+    assert client.put(path + "/public", headers=bob.auth, json={"public": True}).status_code == 404
+    made = client.put(path + "/public", headers=alice.auth, json={"public": True})
+    assert made.status_code == 200 and made.json()["public"] is True
+    listed = client.get("/v1/public-groups", headers=bob.auth).json()
+    assert [x["title"] for x in listed["groups"]] == ["ULTRA OS lounge"]
+    entry = listed["groups"][0]
+    assert entry["member_count"] == 1 and entry["joined"] is False and entry["owner"] == alice.user_id
+    assert entry["conversation"] == "group:" + g["group_id"]
+    assert listed["max_members"] == 256
+    assert client.get("/v1/public-groups?q=lounge", headers=bob.auth).json()["groups"][0]["group_id"] == g["group_id"]
+    assert client.get("/v1/public-groups?q=nothing", headers=bob.auth).json()["groups"] == []
+    assert client.get("/v1/public-groups?q=%25", headers=bob.auth).json()["groups"] == []   # % is a letter here
+    assert client.get("/v1/public-groups").status_code == 401                             # signed in only
+
+    # Bob joins: everyone in it is told, and he can write to them.
+    with client.websocket_connect("/v1/ws", headers=alice.auth) as a:
+        a.receive_json()
+        joined = client.post(path + "/join", headers=bob.auth)
+        assert joined.status_code == 200 and bob.user_id in joined.json()["members"]
+        frame = a.receive_json()
+        assert frame["type"] == "group.update" and bob.user_id in frame["group"]["members"]
+    assert client.post(path + "/join", headers=bob.auth).status_code == 200            # again: the same
+    assert client.get("/v1/public-groups", headers=bob.auth).json()["groups"][0]["joined"] is True
+    copy = {"to": alice.user_id, "message_id": "p-1", "conversation": g["conversation"], "envelope": "E"}
+    assert client.post("/v1/messages", headers=bob.auth, json={"messages": [copy]}).status_code == 200
+
+    # Taken out by the owner: not back by Join; leaving by oneself is no ban.
+    eve_joined = client.post(path + "/join", headers=eve.auth)
+    assert eve_joined.status_code == 200
+    assert client.delete("%s/members/%s" % (path, eve.user_id), headers=alice.auth).status_code == 200
+    refused = client.post(path + "/join", headers=eve.auth)
+    assert refused.status_code == 403 and refused.json()["error"] == "banned"
+    assert client.post(path + "/members", headers=bob.auth, json={"user_id": eve.user_id}).status_code == 403
+    assert client.delete("%s/members/%s" % (path, bob.user_id), headers=bob.auth).status_code == 200
+    assert client.post(path + "/join", headers=bob.auth).status_code == 200
+
+    # Private again: off the list; its members stay.
+    assert client.put(path + "/public", headers=alice.auth, json={"public": False}).json()["public"] is False
+    assert client.get("/v1/public-groups", headers=eve.auth).json()["groups"] == []
+    assert bob.user_id in client.get(path, headers=alice.auth).json()["members"]
+    assert other["group_id"] not in [x["group_id"] for x in client.get("/v1/public-groups", headers=eve.auth).json()["groups"]]
+
+
+def test_a_public_group_holds_more_and_limits_posting(tmp_path):
+    settings = Settings(database=str(tmp_path / "relay.sqlite3"), max_public_group_members=4,
+                        public_posts_per_minute=3)
+    with TestClient(create_app(settings)) as client:
+        owner = Person(client, "Owner").join()
+        people = [Person(client, "P%d" % i).join() for i in range(4)]
+        g = client.post("/v1/groups", headers=owner.auth, json={"title": "Open", "members": []}).json()
+        path = "/v1/groups/" + g["group_id"]
+        client.put(path + "/public", headers=owner.auth, json={"public": True})
+        for p in people[:3]:
+            assert client.post(path + "/join", headers=p.auth).status_code == 200
+        full = client.post(path + "/join", headers=people[3].auth)
+        assert full.status_code == 400 and full.json()["error"] == "too_many_members"
+
+        def post(message_id: str):
+            copies = [{"to": p.user_id, "message_id": message_id, "conversation": g["conversation"],
+                       "envelope": "E"} for p in people[:3]]
+            return client.post("/v1/messages", headers=owner.auth, json={"messages": copies})
+        for i in range(3):
+            assert post("m-%d" % i).status_code == 200
+        assert post("m-1").status_code == 200                 # the same message again: not another
+        assert post("c-file-1").status_code == 200            # a file's part: not counted
+        slow = post("m-3")
+        assert slow.status_code == 429 and slow.json()["error"] == "slow_down"
+
+
 def test_signalling_is_forwarded_untouched(client):
     alice = Person(client, "Alice").join()
     bob = Person(client, "Bob").join()

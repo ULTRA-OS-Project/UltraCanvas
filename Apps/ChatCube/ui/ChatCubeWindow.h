@@ -71,6 +71,7 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.6 - public groups: the "Public groups" list with Join, Make public / Make private
 // Version: 0.3.5 - a Mastodon account: ToggleMastodonForm, SignInToMastodon, mastodonProviderId_
 // Version: 0.3.4 - sending in the background (SendQueue: the field is free at once, the window never
 //                  waits on a big file), a file's progress in its bubble, a video's preview picture and
@@ -198,6 +199,11 @@ private:
     void AddContact();
     void AddContactById(const std::string& id);
     void RefreshNearby();           // the "On this network" list
+    // The "Public groups" list: the ChatCube groups anyone may join, those
+    // not joined yet, each with Join; and the owner's switch in a group's menu.
+    void RefreshPublicGroups();
+    void JoinPublicGroup(const std::string& conversationId, const std::string& title);
+    void SetGroupPublic(const std::string& conversationId, bool isPublic);
     void ToggleMatrixForm();
     void SignInToMatrix(bool stored);
     // A Mastodon account: the server, then its sign-in page in the browser.
@@ -450,6 +456,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupMembers_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> nearbyBox_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> publicBox_;     // "Public groups"
+    bool showAllPublic_ = false;                                       // past the first few
+    uint64_t publicTimer_ = 0;                                         // asks for the list again
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> matrixForm_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixServer_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixUser_;

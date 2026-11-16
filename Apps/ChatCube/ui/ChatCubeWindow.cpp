@@ -210,6 +210,7 @@ ChatCubeWindow::~ChatCubeWindow() {
         if (callTimer_) app->StopTimer(callTimer_);
         if (recordTimer_) app->StopTimer(recordTimer_);
         if (searchTimer_) app->StopTimer(searchTimer_);
+        if (publicTimer_) app->StopTimer(publicTimer_);
     }
     // A recording under way goes with the window, nothing sent.
     if (voiceRecorder_) {
@@ -656,6 +657,13 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     nearbyBox_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     nearbyBox_->SetVisible(false);
     sidebar->AddChild(nearbyBox_);
+
+    // Public groups anyone may join, not joined yet (filled by RefreshPublicGroups).
+    publicBox_ = std::make_shared<UltraCanvasContainer>("cc-public-groups");
+    publicBox_->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    publicBox_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    publicBox_->SetVisible(false);
+    sidebar->AddChild(publicBox_);
 
     conversations_ = std::make_shared<ConversationListModel>();
     conversationList_ = std::make_shared<UltraCanvasListView>("cc-conversations", 0, 0, kSidebarWidth - 16, 300);
@@ -1431,6 +1439,10 @@ void ChatCubeWindow::SignIn() {
         if (created) FinishCreatedProtection(chosen, password);
         RefreshConversations();
         RefreshNearby();
+        // The public groups now, and again every few minutes: new ones appear.
+        RefreshPublicGroups();
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent(); app && !publicTimer_)
+            publicTimer_ = app->StartTimer(5 * 60 * 1000, true, [this](TimerId) { RefreshPublicGroups(); });
         UltraIMProviderInfo matrixInfo;
         if (UltraIM_GetProviderInfo(matrixProviderId_, matrixInfo) && matrixInfo.hasStoredSession &&
             matrixInfo.connectionState == UltraIMConnectionState::Disconnected)
@@ -1614,6 +1626,12 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
         if (manage) {
             who.push_back(MenuItemData::Action(Tr("Add members"), [this, id]() { AskToAddMembers(id); }));
             who.push_back(MenuItemData::Action(Tr("Rename group"), [this, id]() { AskToRenameGroup(id); }));
+        }
+        // A ChatCube group's owner: listed for everyone, or for its members alone.
+        if (provider == providerId_ && !c.ownerId.empty() && c.ownerId == me) {
+            const bool makePublic = !c.isPublic;
+            who.push_back(MenuItemData::Action(makePublic ? Tr("Make public") : Tr("Make private"),
+                                               [this, id, makePublic]() { SetGroupPublic(id, makePublic); }));
         }
     }
 
@@ -2171,6 +2189,81 @@ void ChatCubeWindow::RefreshNearby() {
     });
 }
 
+void ChatCubeWindow::RefreshPublicGroups() {
+    UltraIM_FetchPublicGroups(providerId_, std::string(),
+                              [this](const UltraIMResult& r, const std::vector<UltraIMPublicGroup>& list) {
+        publicBox_->ClearChildren();
+        std::vector<UltraIMPublicGroup> open;
+        if (r) {
+            for (const UltraIMPublicGroup& g : list) {
+                if (!g.joined) open.push_back(g);
+            }
+        }
+        if (!open.empty()) publicBox_->AddChild(MakeLabel("cc-public-title", Tr("Public groups"), 9.0f, &Look::inkMuted));
+        // The biggest few; the rest on asking.
+        constexpr size_t kShown = 4;
+        const size_t shown = showAllPublic_ ? open.size() : std::min(open.size(), kShown);
+        for (size_t i = 0; i < shown; ++i) {
+            const UltraIMPublicGroup& g = open[i];
+            auto row = MakeRow("cc-public-row", 6);
+            auto name = MakeLabel("cc-public-name", g.title, kTextFont);
+            name->SetTooltip(TrN("{n} member", "{n} members", g.memberCount));
+            name->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(name);
+            auto count = MakeLabel("cc-public-count", std::to_string(g.memberCount), 9.0f, &Look::inkMuted);
+            count->SetTooltip(TrN("{n} member", "{n} members", g.memberCount));
+            row->AddChild(count);
+            auto join = MakeButton("cc-public-join", Tr("Join"), 52, true);
+            const std::string id = g.conversationId;
+            const std::string title = g.title;
+            join->SetOnClick([this, id, title]() { JoinPublicGroup(id, title); });
+            row->AddChild(join);
+            publicBox_->AddChild(row);
+        }
+        if (open.size() > shown) {
+            auto more = MakeButton("cc-public-more", TrN("{n} more public group", "{n} more public groups",
+                                                         static_cast<long long>(open.size() - shown)),
+                                   kSidebarWidth - 16);
+            more->SetOnClick([this]() {
+                showAllPublic_ = true;
+                RefreshPublicGroups();
+            });
+            publicBox_->AddChild(more);
+        }
+        publicBox_->SetVisible(!open.empty());
+        if (window_) window_->RequestRedraw();
+    });
+}
+
+void ChatCubeWindow::JoinPublicGroup(const std::string& conversationId, const std::string& title) {
+    SetStatus(TrF("Joining {0}\xE2\x80\xA6", title));
+    UltraIM_JoinGroup(providerId_, conversationId, [this, title](const UltraIMResult& r, const UltraIMConversation& c) {
+        if (!r) {
+            SetStatus(TrF("Could not join {0}: {1}", title, r.message));
+            RefreshPublicGroups();
+            return;
+        }
+        UpsertConversation(c);
+        SetStatus(TrF("You joined {0}.", title));
+        RefreshPublicGroups();
+        OpenConversation(c.conversationId);
+    });
+}
+
+void ChatCubeWindow::SetGroupPublic(const std::string& conversationId, bool isPublic) {
+    UltraIM_SetGroupPublic(providerId_, conversationId, isPublic,
+                           [this, isPublic](const UltraIMResult& r, const UltraIMConversation& c) {
+        if (!r) {
+            SetStatus(TrF("Could not change the group: {0}", r.message));
+            return;
+        }
+        UpsertConversation(c);
+        SetStatus(isPublic ? TrF("{0} is public: everyone on ChatCube finds it under Public groups and can join.", c.title)
+                           : TrF("{0} is private again: only those in it see it.", c.title));
+        RefreshPublicGroups();
+    });
+}
+
 void ChatCubeWindow::ToggleGroupForm() {
     groupForm_->SetVisible(!groupForm_->IsVisible());
     if (window_) window_->RequestRedraw();
@@ -2315,6 +2408,7 @@ void ChatCubeWindow::UpdateHeader() {
         subtitle_->SetText(Tr("typing\xE2\x80\xA6"));
     } else if (c->isGroup) {
         subtitle_->SetText(TrN("{n} member", "{n} members", MemberCount(*c)) +
+                           (c->isPublic ? " \xC2\xB7 " + Tr("public group") : std::string()) +
                            (c->isEncrypted ? " \xC2\xB7 " + Tr("end-to-end encrypted") : std::string()));
     } else if (c->providerId == providerId_) {
         subtitle_->SetText(PresenceText(c->presence));
@@ -3887,6 +3981,8 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
         }
         case UltraIMEventType::ConversationRemove: {
             conversations_->Remove(e.conversationId);
+            // A public group left is one to join again.
+            if (e.providerId == providerId_ && e.conversationId.rfind("group:", 0) == 0) RefreshPublicGroups();
             // Its marks go with it.
             const std::string key = e.providerId + "/" + e.conversationId;
             if (marks_.pinned.erase(key) + marks_.unread.erase(key) > 0) {

@@ -155,10 +155,25 @@ CREATE INDEX IF NOT EXISTS sends_by_key ON sends(key, at)
 """)
 
 
+def _v4_public_groups(db: sqlite3.Connection) -> None:
+    # A group anyone signed in may find and join (relay 1.5); everyone's
+    # starts private. Whom its owner took out of one, who may not join again.
+    if "public" not in _columns(db, "groups"):
+        db.execute("ALTER TABLE groups ADD COLUMN public INTEGER NOT NULL DEFAULT 0")
+    _run(db, """
+CREATE TABLE IF NOT EXISTS group_bans (
+    group_id TEXT NOT NULL,
+    user_id  TEXT NOT NULL,
+    PRIMARY KEY (group_id, user_id)
+)
+""")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "accounts, contacts, groups and the offline queue (relay 1.0)", _v1_accounts_and_messages),
     Migration(2, "the owner's e-mail address and phone number (relay 1.1)", _v2_recovery_contacts),
     Migration(3, "confirming them, account recovery by e-mail link (relay 1.2)", _v3_confirmation_and_recovery),
+    Migration(4, "public groups: found and joined by anyone, the owner's bans (relay 1.5)", _v4_public_groups),
 ]
 LATEST = MIGRATIONS[-1].version
 
