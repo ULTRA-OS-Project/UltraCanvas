@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.11.0 - document text layouts (glyphs not rounded to pixels), the font's line gap, kerning by the
+//                   document, an empty line of a set height (paragraph spacing in a cell)
 // Version: 1.10.0 - a section's own header, footer and page margins (RichSectionSetup::furniture):
 //                   laid out page by page, and edited where they are shown
 // Version: 1.9.4 - a table row is as tall as its document says (RichTableRow::heightPt); a picture placed
@@ -1927,6 +1929,8 @@ void UltraCanvasRichTextEdit::ApplyParagraphGeometry(ITextLayout* layout, const 
     }
     if (block.lineSpacing > 0.0f) layout->SetLineSpacing(block.lineSpacing);
     if (block.lineHeightPt > 0.0f && !text.empty()) {
+        // A height in points is the whole line: no multiple of the font's.
+        layout->SetLineSpacing(0.0f);
         // "Exactly" is the height as given; "at least" never squeezes the
         // text below its natural line height.
         float height = block.lineHeightPt;
@@ -2010,12 +2014,38 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
     }
 
     int position = 0;
-    for (const RichTextRun& run : runs) {
+    for (size_t runIndex = 0; runIndex < runs.size(); ++runIndex) {
+        const RichTextRun& run = runs[runIndex];
         int span = (run.lineBreakBefore ? 1 : 0) + static_cast<int>(run.text.size());
         int start = position + (run.lineBreakBefore ? 1 : 0);
         int end = position + span;
         position = end;
-        if (start >= end) continue;
+        if (start >= end) {
+            // A run without text after a line break is an empty line, when
+            // the next run breaks the line again: as tall as it says, or a
+            // line of its own font. The line break that ends it carries
+            // that (an empty line is measured where it starts).
+            const bool emptyLine = run.lineBreakBefore && runIndex + 1 < runs.size() && runs[runIndex + 1].lineBreakBefore;
+            if (emptyLine) {
+                auto onBreak = [&](std::unique_ptr<ITextAttribute> attr) {
+                    if (!attr) return;
+                    attr->SetRange(end, end + 1);
+                    layout->InsertAttribute(std::move(attr));
+                };
+                if (run.emptyLineHeightPt > 0.0f && emptyLineUnitPx > 0.0f) {
+                    // Lines a font's height apart: the empty one is the
+                    // font scaled to the height wanted.
+                    onBreak(TextAttributeFactory::CreateScale(static_cast<double>(Px(run.emptyLineHeightPt) / emptyLineUnitPx)));
+                } else if (run.emptyLineHeightPt > 0.0f) {
+                    onBreak(TextAttributeFactory::CreateFontSize(1.0f));
+                    onBreak(TextAttributeFactory::CreateAbsoluteLineHeight(static_cast<double>(Px(run.emptyLineHeightPt))));
+                } else {
+                    if (run.fontSizePt > 0.0f) onBreak(TextAttributeFactory::CreateFontSize(run.fontSizePt));
+                    if (!run.fontFamily.empty()) onBreak(TextAttributeFactory::CreateFontFamily(run.fontFamily));
+                }
+            }
+            continue;
+        }
 
         auto add = [&](std::unique_ptr<ITextAttribute> attr) {
             if (!attr) return;
@@ -2359,7 +2389,9 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
         std::vector<BlockLayout::InlineImage>* outInlineImages, float paragraphOriginX,
         int cellRow, int cellColumn) const {
     std::string text = UCRichDocumentEditor::RunsText(runs);
-    auto layout = ctx->CreateTextLayout(text, false);
+    // A document's layout: its words as wide as their fonts say, so its
+    // lines break where they do in the program that wrote it.
+    auto layout = ctx->CreateDocumentTextLayout(text);
     layout->SetFontStyle(FontForBlock(block));
     if (wrapWidth > 0) {
         layout->SetExplicitWidth(wrapWidth);
@@ -2380,8 +2412,43 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     } else if (block.align != RichTextAlign::Default) {
         layout->SetAlignment(ToTextAlignment(block.align));
     }
+    // Lines a font's own distance apart: its ascent and descent and the line
+    // gap its designer gave it, as a word processor sets them (without the
+    // gap Arial's lines are 3% closer, and a page holds a line or two more
+    // than it should). A paragraph's own spacing replaces it below.
+    // Not where the document keeps its lines without the gap
+    // (UCRichDocument::fontLineGap).
+    const UCRichDocument* laidOut = editor.GetDocument().get();
+    const bool lineGap = !laidOut || laidOut->fontLineGap;
+    layout->SetLineSpacing(lineGap ? 1.0f : 0.0f);
+    // An empty line of a set height (RichTextRun::emptyLineHeightPt) is a
+    // multiple of the font's own line: how tall that is, measured once per font.
+    emptyLineUnitPx = 0.0f;
+    if (lineGap) {
+        for (const RichTextRun& run : runs) {
+            if (run.emptyLineHeightPt <= 0.0f) continue;
+            const FontStyle font = FontForBlock(block);
+            const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize);
+            auto known = lineUnitCache.find(key);
+            if (known == lineUnitCache.end()) {
+                auto probe = ctx->CreateDocumentTextLayout("X");
+                probe->SetFontStyle(font);
+                probe->SetLineSpacing(1.0f);
+                known = lineUnitCache.emplace(key, static_cast<float>(probe->GetLayoutHeight())).first;
+            }
+            emptyLineUnitPx = known->second;
+            break;
+        }
+    }
     if (paragraphOriginX >= 0.0f) {
         ApplyParagraphGeometry(layout.get(), block, text, paragraphOriginX, wrapWidth);
+    }
+    // Unkerned where the document says so (UCRichDocument::letterKerning).
+    if (const UCRichDocument* document = editor.GetDocument().get(); document && !document->letterKerning && !text.empty()) {
+        if (auto unkerned = TextAttributeFactory::CreateFontFeatures("kern=0")) {
+            unkerned->SetRange(0, static_cast<int>(text.size()));
+            layout->InsertAttribute(std::move(unkerned));
+        }
     }
     ApplyRunAttributes(layout.get(), block, runs, outHits, blockIndex, outInlineImages, cellRow, cellColumn);
     return layout;
@@ -5629,6 +5696,8 @@ bool UltraCanvasRichTextEdit::BeginFurnitureEditing(int pageIndex, bool footer) 
     furnitureDoc->frames = body->frames;        // and text frames theirs
     furnitureDoc->page = body->page;
     furnitureDoc->defaultTabStopPt = body->defaultTabStopPt;
+    furnitureDoc->letterKerning = body->letterKerning;
+    furnitureDoc->fontLineGap = body->fontLineGap;
 
     auto state = std::make_unique<FurnitureEditState>();
     state->footer = footer;
@@ -5967,6 +6036,8 @@ bool UltraCanvasRichTextEdit::EditFrame(int frameIndex) {
     frameDoc->frames = body->frames;            // its look is drawn from the document's own
     frameDoc->page = body->page;
     frameDoc->defaultTabStopPt = body->defaultTabStopPt;
+    frameDoc->letterKerning = body->letterKerning;
+    frameDoc->fontLineGap = body->fontLineGap;
     frameDoc->styles = body->styles;
 
     auto state = std::make_unique<FurnitureEditState>();
@@ -5991,6 +6062,8 @@ bool UltraCanvasRichTextEdit::BeginNoteEditing(int noteIndex) {
     noteDoc->media = body->media;
     noteDoc->page = body->page;
     noteDoc->defaultTabStopPt = body->defaultTabStopPt;
+    noteDoc->letterKerning = body->letterKerning;
+    noteDoc->fontLineGap = body->fontLineGap;
     noteDoc->styles = body->styles;
 
     auto state = std::make_unique<FurnitureEditState>();

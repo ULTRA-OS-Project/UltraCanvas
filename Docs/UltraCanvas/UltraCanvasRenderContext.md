@@ -213,6 +213,25 @@ link over its own border (framework changelog, "New text layouts wrap a long
 word between characters"). `WrapWord` keeps a long word whole (it overflows); `WrapChar`
 breaks anywhere; `WrapNone` keeps one line per paragraph and ellipsizes it.
 
+### A document's text
+
+```cpp
+auto layout = ctx->CreateDocumentTextLayout(text);
+layout->SetLineSpacing(1.0f);               // lines the font's own height apart, line gap included
+auto unkerned = TextAttributeFactory::CreateFontFeatures("kern=0");
+unkerned->SetRange(0, static_cast<int>(text.size()));
+layout->InsertAttribute(std::move(unkerned));
+```
+
+`CreateDocumentTextLayout` gives a layout whose glyphs stay where their font
+puts them, to a fraction of a pixel. An ordinary layout sets them on whole
+pixels, which suits an interface but makes a word a per cent or two narrower
+than the font says - enough for a paragraph to break its lines elsewhere than
+in the program that wrote the document. `UltraCanvasRichTextEdit` lays its
+text out this way. `TextAttributeFactory::CreateFontFeatures` sets OpenType
+features over a range, spelled as CSS `font-feature-settings` does
+(`"kern=0"`, `"liga=0"`).
+
 ## Centring text on its capitals
 
 ```cpp

@@ -963,6 +963,11 @@ private:
     std::vector<float> blockColumnWidths;
     bool hasColumns = false;
     mutable float columnWidthOverride = 0.0f;
+    // A line of a font, in pixels, by family and size (MakeRunsLayout), and
+    // that of the layout being made: the unit an empty line of a set height
+    // (RichTextRun::emptyLineHeightPt) is scaled from.
+    mutable std::map<std::string, float> lineUnitCache;
+    mutable float emptyLineUnitPx = 0.0f;
     bool placingParkedBody = false;           // PlaceFurnitureBeingEdited placing the body
     // Input method composition: the text being composed and its caret (a
     // byte offset in it), laid out in the caret's block but not in the model.

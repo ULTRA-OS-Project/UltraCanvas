@@ -6,6 +6,7 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.9.0 - RichTextRun::emptyLineHeightPt; UCRichDocument::letterKerning, fontLineGap, paragraphSpacingInCells
 // Version: 1.8.0 - Pattern fills (RichShape::fillPattern, patternBackColor, PatternBit)
 // Version: 1.7.0 - Gradient fills (RichShape::gradientStops), a drawing's own size
 //                  (RichTextFrame::drawingWidthPt / drawingHeightPt)
@@ -61,6 +62,11 @@ struct RichTextRun {
     // editor's RichTextEditStyle::letterSpacing, normally the font's).
     std::optional<float> letterSpacingPt;
     bool lineBreakBefore = false;   // hard line break precedes this run (within the same paragraph)
+    // An empty line exactly this tall (points; 0 = a line of the run's font):
+    // set on a run without text that follows a line break. A table cell keeps
+    // its paragraphs as lines, and the room between two of them - a
+    // paragraph's space before and after - as such a line.
+    float emptyLineHeightPt = 0.0f;
 
     // ===== INLINE IMAGE =====
     // A run with mediaIndex >= 0 IS a picture sitting in the run of text - a
@@ -811,6 +817,19 @@ public:
     // 0 = the view's default. ODF: style:tab-stop-distance; Word: defaultTabStop.
     float defaultTabStopPt = 0.0f;
     RichPageSetup page;
+    // Whether letters are pair-kerned ("AV" set closer). A view kerns unless
+    // the document says not to: Word sets text unkerned unless kerning is
+    // turned on (w:kern), and its files say so (ODF style:letter-kerning) -
+    // kerned, their lines come out a little shorter and break elsewhere.
+    bool letterKerning = true;
+    // Whether lines are a font's full height apart - its ascent and descent
+    // and the line gap ("external leading") its designer gave it - as Word
+    // and Writer set them. false: ascent and descent only, as documents from
+    // older Writer versions keep (ODF setting AddExternalLeading).
+    bool fontLineGap = true;
+    // Whether a paragraph's space before and after counts inside a table
+    // cell (ODF setting AddParaSpacingToTableCells; Word always counts it).
+    bool paragraphSpacingInCells = true;
     // The first section's setup (until a block with sectionStart).
     RichSectionSetup firstSection;
     // The setup of the section block `index` is in.

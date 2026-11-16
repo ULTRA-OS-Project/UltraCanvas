@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.9.0 - paragraph spacing in cells read and written; w:kern as the document's kerning
 // Version: 1.8.0 - a section's own header, footer and page margins; row heights (w:trHeight) read and written, a cell's empty paragraphs kept as empty
 //                  lines, negative float offsets
 // Version: 1.7.0 - The main document part is the one the package's relationships name
@@ -672,6 +673,7 @@ private:
         NormalizeOoxmlPrefixes(styles);
         auto* root = styles.FirstChildElement("w:styles");
         if (!root) return;
+        bool kerningStated = false;
         if (auto* defaults = root->FirstChildElement("w:docDefaults")) {
             auto* pPrDefault = defaults->FirstChildElement("w:pPrDefault");
             if (auto* pPr = pPrDefault ? pPrDefault->FirstChildElement("w:pPr") : nullptr) {
@@ -679,6 +681,7 @@ private:
             }
             auto* rPrDefault = defaults->FirstChildElement("w:rPrDefault");
             ReadStyleFont(rPrDefault ? rPrDefault->FirstChildElement("w:rPr") : nullptr, defaultGeometry_);
+            kerningStated = kerningStated || KerningOn(rPrDefault ? rPrDefault->FirstChildElement("w:rPr") : nullptr);
         }
         for (auto* style = root->FirstChildElement("w:style"); style;
              style = style->NextSiblingElement("w:style")) {
@@ -723,8 +726,20 @@ private:
             styleGeometry_[id] = entry;
             if (std::string(Attr(style, "w:default")) == "1" || std::string(Attr(style, "w:default")) == "true") {
                 defaultParagraphStyle_ = id;
+                kerningStated = kerningStated || KerningOn(style->FirstChildElement("w:rPr"));
             }
         }
+        // Word kerns pairs of letters only where w:kern turns it on - in the
+        // document defaults or the default paragraph style, for the text as
+        // a whole.
+        doc_->letterKerning = kerningStated;
+    }
+
+    // Whether run properties turn pair kerning on (w:kern, the size in half
+    // points from which fonts are kerned; 0 = off).
+    static bool KerningOn(tinyxml2::XMLElement* rPr) {
+        auto* kern = rPr ? rPr->FirstChildElement("w:kern") : nullptr;
+        return kern && kern->IntAttribute("w:val", 0) > 0;
     }
 
     // word/settings.xml: the distance between default tab stops.
@@ -2925,12 +2940,29 @@ private:
                 RichTextRun emptyLine;
                 emptyLine.lineBreakBefore = true;
                 int paragraphCount = 0;
+                float spaceAboveFirst = 0.0f, spaceAfterLast = 0.0f;
                 for (auto* p = tc->FirstChildElement("w:p"); p;
                      p = p->NextSiblingElement("w:p")) {
+                    // The room between two paragraphs - the one's space after
+                    // and the other's before - is a line of that height
+                    // between them; above the first and below the last it
+                    // is the cell's.
+                    RichDocBlock spacing;
+                    ApplyGeometry(spacing, p->FirstChildElement("w:pPr"));
+                    const float before = std::max(0.0f, spacing.spaceBeforePt);
                     if (!firstParagraph) {
                         if (ctx.pendingLineBreak) ctx.runs.push_back(emptyLine);
+                        if (spaceAfterLast + before > 0.5f) {
+                            RichTextRun spacer;
+                            spacer.lineBreakBefore = true;
+                            spacer.emptyLineHeightPt = spaceAfterLast + before;
+                            ctx.runs.push_back(std::move(spacer));
+                        }
                         ctx.pendingLineBreak = true;
+                    } else {
+                        spaceAboveFirst = before;
                     }
+                    spaceAfterLast = std::max(0.0f, spacing.spaceAfterPt);
                     paragraphCount++;
                     ctx.paragraphCharacter = ParagraphStyleCharacter(p);
                     // Alignment is a paragraph property; the cell takes its
@@ -2961,6 +2993,8 @@ private:
                     ctx.pendingLineBreak = false;
                 }
                 cell.runs = std::move(ctx.runs);
+                if (spaceAboveFirst > 0.0f) cell.paddingTopPt = std::max(0.0f, cell.paddingTopPt) + spaceAboveFirst;
+                if (spaceAfterLast > 0.0f) cell.paddingBottomPt = std::max(0.0f, cell.paddingBottomPt) + spaceAfterLast;
 
                 if (mergeRestart) {
                     openMerge[gridColumn] = OpenMerge{rowIndex, row.cells.size()};
@@ -4247,17 +4281,39 @@ private:
                     xml << "<w:vMerge w:val=\"restart\"/>";
                 }
                 if (block.tableBordersFromDocument) WriteCellFrame(xml, cell);
-                xml << "</w:tcPr><w:p>";
-                if (const char* jc = JustificationFor(cell.align)) {
-                    xml << "<w:pPr><w:jc w:val=\"" << jc << "\"/></w:pPr>";
-                }
+                xml << "</w:tcPr>";
                 std::vector<RichTextRun> runs = cell.runs;
                 if (row.header) {
                     for (auto& run : runs) run.bold = true;
                 }
                 paragraphBase_ = ParagraphBase(RichDocBlock{});     // a cell's paragraph is Normal
-                WriteRuns(xml, runs);
-                xml << "</w:p></w:tc>";
+                // The cell's lines as paragraphs without spacing of their
+                // own (it is the cell's padding, and would be counted twice
+                // when the file is read again); a line of a set height
+                // (RichTextRun::emptyLineHeightPt) is the space above the
+                // paragraph that follows it.
+                std::vector<RichTextRun> piece;
+                float above = 0.0f;
+                auto flush = [&]() {
+                    xml << "<w:p><w:pPr><w:spacing w:before=\"" << std::lround(above * 20.0f) << "\" w:after=\"0\"/>";
+                    if (const char* jc = JustificationFor(cell.align)) xml << "<w:jc w:val=\"" << jc << "\"/>";
+                    xml << "</w:pPr>";
+                    WriteRuns(xml, piece);
+                    xml << "</w:p>";
+                    piece.clear();
+                };
+                for (const RichTextRun& run : runs) {
+                    if (run.lineBreakBefore && run.text.empty() && run.emptyLineHeightPt > 0.0f) {
+                        flush();
+                        above = run.emptyLineHeightPt;
+                        continue;
+                    }
+                    piece.push_back(run);
+                    // The break after a spacer is the new paragraph's start.
+                    if (piece.size() == 1 && above > 0.0f) piece.front().lineBreakBefore = false;
+                }
+                flush();
+                xml << "</w:tc>";
             }
             xml << "</w:tr>\n";
         }
@@ -4721,7 +4777,8 @@ private:
             << "<w:docDefaults><w:rPrDefault><w:rPr>"
                "<w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\"/>"
                "<w:sz w:val=\"22\"/><w:szCs w:val=\"22\"/>"
-               "</w:rPr></w:rPrDefault></w:docDefaults>\n";
+            << (doc_->letterKerning ? "<w:kern w:val=\"2\"/>" : "")
+            << "</w:rPr></w:rPrDefault></w:docDefaults>\n";
         if (!documentHas("Normal")) {
             xml << "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\">"
                    "<w:name w:val=\"Normal\"/></w:style>\n";

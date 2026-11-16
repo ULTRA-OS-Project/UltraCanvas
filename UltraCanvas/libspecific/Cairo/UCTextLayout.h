@@ -108,7 +108,10 @@ namespace UltraCanvas {
         // explicitHeight is still remembered for vertical alignment.
         void ApplyPangoHeight();
     public:
-        explicit UCTextLayout(PangoContext* ctx);
+        // `exactGlyphPositions`: the layout gets a context of its own, like
+        // `ctx` but with glyphs left where the font puts them instead of on
+        // whole pixels (a document's text: IRenderContext::CreateDocumentTextLayout).
+        explicit UCTextLayout(PangoContext* ctx, bool exactGlyphPositions = false);
         ~UCTextLayout() override;
 
         // Move-only

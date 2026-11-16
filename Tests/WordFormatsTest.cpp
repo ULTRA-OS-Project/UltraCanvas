@@ -2800,6 +2800,71 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== PARAGRAPH SPACING IN A CELL, KERNING AND THE LINE GAP =====
+    // The room between two paragraphs of a cell is a line of that height
+    // (RichTextRun::emptyLineHeightPt); written as the next paragraph's space
+    // before and read back the same, however often. The document's kerning
+    // and line-gap settings travel too.
+    {
+        UCRichDocument spaced;
+        spaced.letterKerning = false;
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        table.tableBordersFromDocument = true;
+        RichTextRun first, spacer, second;
+        first.text = "Date";
+        spacer.lineBreakBefore = true;
+        spacer.emptyLineHeightPt = 18.0f;
+        second.text = "Name";
+        second.lineBreakBefore = true;
+        RichTableCell cell;
+        cell.runs = {first, spacer, second};
+        cell.paddingTopPt = 24.0f;
+        cell.paddingBottomPt = 6.0f;
+        cell.paddingLeftPt = cell.paddingRightPt = 0.0f;
+        RichTableRow row;
+        row.cells = {cell};
+        table.tableRows = {row};
+        spaced.blocks = {table};
+        for (const char* format : {"odt", "docx"}) {
+            const std::string label = std::string("cell spacing (") + format + ")";
+            UCRichDocument current = spaced;
+            for (int pass = 0; pass < 2; ++pass) {
+                const std::string path = TmpPath(std::string("cellspacing") + std::to_string(pass) + "." + format);
+                std::string err;
+                const bool saved = std::string(format) == "odt" ? UCWordDocumentIO::SaveOdt(path, current, err)
+                                                                : UCWordDocumentIO::SaveDocx(path, current, err);
+                CHECK_MSG(saved, label + ": " + err);
+                UCRichDocument back;
+                CHECK_MSG(UCWordDocumentIO::Load(path, back, err), label + ": " + err);
+                const RichTableCell* read = FindCell(back, "Date\n\nName", nullptr);
+                CHECK_MSG(read != nullptr, label + ": the cell");
+                if (read) {
+                    float gap = 0.0f;
+                    for (const RichTextRun& run : read->runs) gap = std::max(gap, run.emptyLineHeightPt);
+                    CHECK_MSG(UCRichDocument::ConcatenateRunText(read->runs) == "Date\n\nName" && Near(gap, 18.0f),
+                              label + ": the room between its paragraphs, pass " + std::to_string(pass) + ": "
+                              + std::to_string(gap));
+                    CHECK_MSG(Near(read->paddingTopPt, 24.0f) && Near(read->paddingBottomPt, 6.0f),
+                              label + ": its padding stays as it was, pass " + std::to_string(pass) + ": "
+                              + std::to_string(read->paddingTopPt) + " / " + std::to_string(read->paddingBottomPt));
+                }
+                CHECK_MSG(!back.letterKerning, label + ": the text stays unkerned");
+                current = back;
+            }
+        }
+        // Writer's compatibility options: no line gap, no paragraph spacing in cells.
+        UCRichDocument old = spaced;
+        old.fontLineGap = false;
+        old.paragraphSpacingInCells = false;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::SaveOdt(TmpPath("oldwriter.odt"), old, err), err);
+        UCRichDocument back;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("oldwriter.odt"), back, err), err);
+        CHECK_MSG(!back.fontLineGap && !back.paragraphSpacingInCells,
+                  "odt: the line-gap and cell-spacing options are kept (settings.xml)");
+    }
+
     // ===== SECTIONS WITH THEIR OWN HEADER AND FOOTER =====
     // A cover without a header, pages with one, an appendix back to the
     // document's: each a section, written and read back by both formats.

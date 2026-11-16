@@ -18,6 +18,7 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.6.0 - paragraph spacing in cells; text unkerned
 // Version: 2.5.0 - documents of several sections (page size), row heights, merged cells, a cell's empty
 //                 paragraphs, character styles (sprmCIstd), letter spacing, negative float offsets
 // Version: 2.4.0 - EMF and WMF pictures (their compressed BLIPs inflated), pictures and fills
@@ -1248,6 +1249,7 @@ public:
         BuildBlocks(chars);
         activeAnchors_ = nullptr;
         LoadSection();
+        doc_.letterKerning = false;                // Word 97-2003 sets text unkerned unless a run asks
         LoadHeaderStories(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
         LoadTextBoxStories(allChars);
         return true;
@@ -1383,6 +1385,10 @@ private:
     // between its two. Dropped when a row does not state its edges.
     std::vector<std::vector<std::pair<int, int>>> rowCellEdges_;
     bool cellEdgesKnown_ = true;
+    // The cell being read: its first paragraph's space before and its last
+    // one's after (points), and those of the row's finished cells.
+    float cellSpaceAboveFirst_ = 0.0f, cellSpaceAfterLast_ = 0.0f;
+    std::vector<float> cellSpaceAbove_, cellSpaceBelow_;
     bool gridFromEdges_ = false;                  // ApplyCellGrid set the columns and the spans
     struct MergeOrigin { size_t row = 0, cell = 0; };
     std::map<int, MergeOrigin> mergedDownFrom_;   // by left edge: the cell cells below merge into
@@ -2296,6 +2302,21 @@ private:
                 runs.push_back(std::move(empty));
             }
             if (cellHasParagraph_ && !runs.empty()) runs.front().lineBreakBefore = true;
+            // The room between two paragraphs - the one's space after and
+            // the other's before - is a line of that height between them;
+            // above the first and below the last it is the cell's.
+            const float before = static_cast<float>(std::max(0, pap.spaceBefore)) / 20.0f;
+            if (cellHasParagraph_) {
+                if (cellSpaceAfterLast_ + before > 0.5f) {
+                    RichTextRun spacer;
+                    spacer.lineBreakBefore = true;
+                    spacer.emptyLineHeightPt = cellSpaceAfterLast_ + before;
+                    cell_.runs.push_back(std::move(spacer));
+                }
+            } else {
+                cellSpaceAboveFirst_ = before;
+            }
+            cellSpaceAfterLast_ = static_cast<float>(std::max(0, pap.spaceAfter)) / 20.0f;
             if (!cellHasParagraph_) {
                 cell_.align = AlignFor(pap.jc);
                 // A cell holds text, not paragraphs: its first paragraph's
@@ -2309,6 +2330,9 @@ private:
             for (auto& run : runs) cell_.runs.push_back(std::move(run));
             cellHasParagraph_ = true;
             if (mark == 0x07 && pap.tableDepth <= 1) {
+                cellSpaceAbove_.push_back(cellSpaceAboveFirst_);
+                cellSpaceBelow_.push_back(cellSpaceAfterLast_);
+                cellSpaceAboveFirst_ = cellSpaceAfterLast_ = 0.0f;
                 row_.cells.push_back(std::move(cell_));
                 cell_ = RichTableCell{};
                 cellHasParagraph_ = false;
@@ -2544,7 +2568,16 @@ private:
                 }
                 *targets[side] = value;
             }
+            // The first paragraph's space before and the last one's after.
+            if (c < cellSpaceAbove_.size() && cellSpaceAbove_[c] > 0.0f) {
+                cell.paddingTopPt = std::max(0.0f, cell.paddingTopPt) + cellSpaceAbove_[c];
+            }
+            if (c < cellSpaceBelow_.size() && cellSpaceBelow_[c] > 0.0f) {
+                cell.paddingBottomPt = std::max(0.0f, cell.paddingBottomPt) + cellSpaceBelow_[c];
+            }
         }
+        cellSpaceAbove_.clear();
+        cellSpaceBelow_.clear();
         if (pap.rowHeight != 0) {
             row_.heightPt = static_cast<float>(std::abs(pap.rowHeight)) / 20.0f;
             row_.heightExact = pap.rowHeight < 0;

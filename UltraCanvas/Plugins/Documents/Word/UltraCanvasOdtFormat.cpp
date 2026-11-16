@@ -5,6 +5,7 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.9.0 - paragraph spacing in cells, the kerning, line-gap and cell-spacing settings read and written
 // Version: 1.8.0 - a section's own header, footer and margins (master pages) read and written; a table's
 //                  room above and below; an empty cell's font; page-anchored shapes placed from the sheet
 // Version: 1.7.0 - a letter laid out in a table: row heights, a cell's empty paragraphs, the default
@@ -840,6 +841,11 @@ private:
                 float distance = ParseLengthPt(Attr(pp, "style:tab-stop-distance"));
                 if (distance > 0) doc_->defaultTabStopPt = distance;
             }
+            // Pair kerning, which Word's files turn off.
+            if (auto* tp = style->FirstChildElement("style:text-properties")) {
+                const std::string kerning = Attr(tp, "style:letter-kerning");
+                if (!kerning.empty()) doc_->letterKerning = kerning != "false";
+            }
             // What every paragraph style starts from: the document's font,
             // its size and its paragraph spacing. Not its colour (the view's
             // ink serves, and follows a dark theme) nor a page's start.
@@ -863,12 +869,22 @@ private:
     void LoadSettings() {
         std::string settingsXml;
         if (!zip_.ReadEntry("settings.xml", settingsXml)) return;
-        const std::string key = "config:name=\"TabsRelativeToIndent\"";
-        size_t at = settingsXml.find(key);
-        if (at == std::string::npos) return;
-        size_t close = settingsXml.find('>', at);
-        if (close == std::string::npos) return;
-        tabsRelativeToIndent_ = settingsXml.compare(close + 1, 4, "true") == 0;
+        // A boolean config item's value, or `otherwise` when the file does
+        // not state it.
+        auto setting = [&](const char* name, bool otherwise) {
+            const std::string key = std::string("config:name=\"") + name + "\"";
+            const size_t at = settingsXml.find(key);
+            if (at == std::string::npos) return otherwise;
+            const size_t close = settingsXml.find('>', at);
+            if (close == std::string::npos) return otherwise;
+            return settingsXml.compare(close + 1, 4, "true") == 0;
+        };
+        tabsRelativeToIndent_ = setting("TabsRelativeToIndent", tabsRelativeToIndent_);
+        // Writer's compatibility options a layout depends on: whether lines
+        // include the font's line gap, and whether paragraph spacing counts
+        // in table cells. A file without them (Word's export) has both.
+        doc_->fontLineGap = setting("AddExternalLeading", true);
+        doc_->paragraphSpacingInCells = setting("AddParaSpacingToTableCells", true);
     }
 
     // Applies a paragraph style's geometry to a block, in the model's terms.
@@ -1241,6 +1257,7 @@ private:
         // (CollectCellRuns: an empty paragraph is an empty line).
         int cellParagraphs = 0;
         OdtTextProps lastCellParagraph;
+        float cellSpaceAbovePt = 0.0f, cellSpaceBelowPt = 0.0f;   // the first paragraph's space before, the last's after
         bool endsInCollapsibleSpace = false;   // last text ended in XML whitespace
         std::vector<std::string> bookmarks;    // text:bookmark(-start) names met
     };
@@ -2355,10 +2372,27 @@ private:
                 // letter spaces its address, date and text with them. One
                 // that left nothing behind is an empty line of its own.
                 const OdtTextProps paragraph = ResolveStyle(Attr(elem, "text:style-name"));
+                // The room between two paragraphs - the one's space after and
+                // the other's before - is a line of that height between them;
+                // above the first and below the last it is the cell's.
+                const bool counts = doc_->paragraphSpacingInCells;
+                auto room = [counts](float margin) {
+                    return (!counts || std::isnan(margin)) ? 0.0f : std::max(0.0f, margin);
+                };
                 if (ctx.cellParagraphs > 0) {
                     if (ctx.pendingLineBreak) AppendEmptyLine(ctx, ctx.lastCellParagraph);
+                    const float between = room(ctx.lastCellParagraph.marginBottom) + room(paragraph.marginTop);
+                    if (between > 0.5f) {
+                        RichTextRun spacer;
+                        spacer.lineBreakBefore = true;
+                        spacer.emptyLineHeightPt = between;
+                        ctx.runs.push_back(std::move(spacer));
+                    }
                     ctx.pendingLineBreak = true;
+                } else {
+                    ctx.cellSpaceAbovePt = room(paragraph.marginTop);
                 }
+                ctx.cellSpaceBelowPt = room(paragraph.marginBottom);
                 ctx.cellParagraphs++;
                 ctx.lastCellParagraph = paragraph;
                 ParseInlineNodes(elem, paragraph, "", ctx);
@@ -2495,6 +2529,10 @@ private:
                     }
                 }
                 cell.runs = std::move(ctx.runs);
+                // The first paragraph's space before and the last one's
+                // after are room inside the cell, as Writer keeps them.
+                if (ctx.cellSpaceAbovePt > 0.0f) cell.paddingTopPt = std::max(0.0f, cell.paddingTopPt) + ctx.cellSpaceAbovePt;
+                if (ctx.cellSpaceBelowPt > 0.0f) cell.paddingBottomPt = std::max(0.0f, cell.paddingBottomPt) + ctx.cellSpaceBelowPt;
                 row.cells.push_back(std::move(cell));
             }
             block.tableRows.push_back(std::move(row));
@@ -2904,6 +2942,7 @@ public:
             || !zip_.AddEntry("content.xml", BuildContentXml(body))
             || !zip_.AddEntry("styles.xml", BuildStylesXml(masterStyles))
             || !zip_.AddEntry("meta.xml", BuildMetaXml())
+            || (HasSettings() && !zip_.AddEntry("settings.xml", BuildSettingsXml()))
             || !zip_.AddEntry("META-INF/manifest.xml", BuildManifestXml())) {
             error = "Failed to write document package: " + zip_.GetLastError();
             return false;
@@ -3763,6 +3802,20 @@ private:
         }
     }
 
+    // A cell's paragraph: aligned, `above` points below the one before it,
+    // and otherwise without space before or after.
+    std::string CellParagraphStyle(RichTextAlign align, float above) {
+        const char* value = AlignValue(align);
+        const std::string name = std::string("PCell") + (value ? value : "") + (above > 0.0f ? Pt(above) : std::string());
+        if (columnStyles_.find("\"" + name + "\"") == std::string::npos) {
+            columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\""
+                             " style:parent-style-name=\"Standard\"><style:paragraph-properties"
+                           + (value ? std::string(" fo:text-align=\"") + value + "\"" : std::string())
+                           + " fo:margin-top=\"" + Pt(above) + "\" fo:margin-bottom=\"0pt\"/></style:style>\n";
+        }
+        return name;
+    }
+
     static const char* AlignedStyle(RichTextAlign align) {
         switch (align) {
             case RichTextAlign::Center: return "PCenter";
@@ -3896,9 +3949,32 @@ private:
                 if (rowSpan > 1) {
                     xml << " table:number-rows-spanned=\"" << rowSpan << "\"";
                 }
-                xml << "><text:p text:style-name=\"" << AlignedStyle(cell.align) << "\">";
-                WriteRuns(xml, cell.runs);
-                xml << "</text:p></table:table-cell>";
+                // The cell's lines as paragraphs without spacing of their
+                // own (it is the cell's padding, and would be counted twice
+                // when the file is read again); a line of a set height
+                // (RichTextRun::emptyLineHeightPt) is the space above the
+                // paragraph that follows it.
+                xml << ">";
+                std::vector<RichTextRun> piece;
+                float above = 0.0f;
+                auto flush = [&]() {
+                    xml << "<text:p text:style-name=\"" << CellParagraphStyle(cell.align, above) << "\">";
+                    WriteRuns(xml, piece);
+                    xml << "</text:p>";
+                    piece.clear();
+                };
+                for (const RichTextRun& run : cell.runs) {
+                    if (run.lineBreakBefore && run.text.empty() && run.emptyLineHeightPt > 0.0f) {
+                        flush();
+                        above = run.emptyLineHeightPt;
+                        continue;
+                    }
+                    piece.push_back(run);
+                    // The break after a spacer is the new paragraph's start.
+                    if (piece.size() == 1 && above > 0.0f) piece.front().lineBreakBefore = false;
+                }
+                flush();
+                xml << "</table:table-cell>";
                 for (int s = 1; s < columnSpan; ++s) {
                     xml << "<table:covered-table-cell/>";
                 }
@@ -4311,6 +4387,23 @@ private:
     // The page layout and the master page with its headers and footers. The
     // model's top margin is where the body starts; ODF's is where the
     // header starts, the header's height and spacing following it.
+    // settings.xml: the compatibility options the document's layout was made
+    // with, when they are not the ones a reader assumes.
+    bool HasSettings() const { return !doc_->fontLineGap || !doc_->paragraphSpacingInCells; }
+    std::string BuildSettingsXml() const {
+        auto item = [](const char* name, bool value) {
+            return std::string("<config:config-item config:name=\"") + name + "\" config:type=\"boolean\">"
+                 + (value ? "true" : "false") + "</config:config-item>";
+        };
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+               "<office:document-settings xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\" "
+               "xmlns:config=\"urn:oasis:names:tc:opendocument:xmlns:config:1.0\" office:version=\"1.3\">"
+               "<office:settings><config:config-item-set config:name=\"ooo:configuration-settings\">"
+             + item("AddExternalLeading", doc_->fontLineGap)
+             + item("AddParaSpacingToTableCells", doc_->paragraphSpacingInCells)
+             + "</config:config-item-set></office:settings></office:document-settings>\n";
+    }
+
     std::string BuildMasterStyles() {
         const UCRichDocument& doc = *doc_;
         bool any = doc.page.HasPage() || pageStyles_.size() > 1;
@@ -4392,9 +4485,13 @@ private:
             << "xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\" "
             << "xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
             << "office:version=\"1.3\">\n<office:styles>\n";
-        if (doc_->defaultTabStopPt > 0.0f) {
-            xml << "<style:default-style style:family=\"paragraph\"><style:paragraph-properties "
-                   "style:tab-stop-distance=\"" << Pt(doc_->defaultTabStopPt) << "\"/></style:default-style>\n";
+        if (doc_->defaultTabStopPt > 0.0f || !doc_->letterKerning) {
+            xml << "<style:default-style style:family=\"paragraph\">";
+            if (doc_->defaultTabStopPt > 0.0f) {
+                xml << "<style:paragraph-properties style:tab-stop-distance=\"" << Pt(doc_->defaultTabStopPt) << "\"/>";
+            }
+            if (!doc_->letterKerning) xml << "<style:text-properties style:letter-kerning=\"false\"/>";
+            xml << "</style:default-style>\n";
         }
         // Paragraphs that state no spacing (a document built from Markdown)
         // keep a small gap below, as the view gives them.
@@ -4514,6 +4611,7 @@ private:
                "manifest:media-type=\"text/xml\"/>\n"
             << "<manifest:file-entry manifest:full-path=\"styles.xml\" "
                "manifest:media-type=\"text/xml\"/>\n"
+            << (HasSettings() ? "<manifest:file-entry manifest:full-path=\"settings.xml\" manifest:media-type=\"text/xml\"/>\n" : "")
             << "<manifest:file-entry manifest:full-path=\"meta.xml\" "
                "manifest:media-type=\"text/xml\"/>\n";
         for (size_t i = 0; i < doc_->media.size(); ++i) {

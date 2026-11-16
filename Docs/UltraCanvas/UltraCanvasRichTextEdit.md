@@ -1184,7 +1184,13 @@ is as tall as its text, or as the document says (`RichTableRow::heightPt`: at
 least that, or exactly that with `heightExact` - Word's `w:trHeight`, ODF's
 `style:min-row-height` / `style:row-height`, a .doc's `sprmTDyaRowHeight`), so
 a letter laid out in a table keeps its address block where it was put. A
-cell's lines are its paragraphs, empty ones included. A table
+cell's lines are its paragraphs, empty ones included, and the room between two
+of them (the one's space after and the other's before) is an empty line of
+exactly that height (`RichTextRun::emptyLineHeightPt`); above the first and
+below the last it is part of the cell's padding. Lines are a font's own
+height apart, its line gap included, and letters are pair-kerned - unless the
+document says otherwise (`UCRichDocument::fontLineGap`, `letterKerning`:
+Word's files are unkerned, older Writer files have no line gap). A table
 continues between rows - never through a cell spanning rows - and its
 leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
 ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at
