@@ -18,6 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.13.1 - PlacedFloat::wordsOnly: a frame anchored in the frame being edited shows its words
 // Version: 1.13.0 - EditFrame / IsEditingFrame: a text frame's words edited in place
 // Version: 1.12.0 - PlacedFloat::inFooter: a header's or footer's floats picked up while it is edited
 // Version: 1.11.0 - floating frames and drawings selected, moved and resized like pictures;
@@ -818,6 +819,9 @@ private:
         // A text frame: its look and its laid-out paragraphs.
         int frameIndex = -1;
         std::shared_ptr<FurnitureLayout> frameContent;
+        // A frame anchored in the frame being edited: only its paragraphs are
+        // drawn, in the text of the frame around it (no box, no padding).
+        bool wordsOnly = false;
         // The corner its offsets count from (its paragraph, the page or the
         // page's text area), in the same coordinates as `rect`: a float
         // dragged elsewhere gets its offsets from it.

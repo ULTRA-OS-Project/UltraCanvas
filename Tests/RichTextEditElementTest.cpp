@@ -1650,6 +1650,70 @@ int main() {
              && edit->GetDocument()->frames[0].blocks[0].runs.front().mediaIndex == 0);
     }
 
+    // ===== A FRAME IN A FRAME, WHILE THE OUTER ONE IS EDITED =====
+    // A frame anchored in another has its words drawn before the paragraph
+    // that anchors it. They have to be there while the outer frame's words
+    // are edited too (its placeholder took no room, and they were hidden).
+    std::cerr << "\n--- A frame in an edited frame ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        auto paragraphOf = [](const std::string& text) {
+            RichTextRun run;
+            run.text = text;
+            RichDocBlock block;
+            block.runs = {run};
+            return block;
+        };
+        RichTextFrame inner;
+        inner.blocks = {paragraphOf("Inner one"), paragraphOf("Inner two")};
+        RichTextRun innerAnchor;
+        innerAnchor.text = RichTextRun::kObjectReplacement;
+        innerAnchor.frameIndex = 1;
+        innerAnchor.imageWidthPt = 80.0f;
+        innerAnchor.imageWrap = RichTextRun::ImageWrap::Square;
+        RichDocBlock sender = paragraphOf("Sender");
+        sender.runs.insert(sender.runs.begin(), innerAnchor);
+        RichTextFrame outer;
+        outer.blocks = {paragraphOf("Above"), sender};
+        document->frames = {outer, inner};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 150.0f;
+        anchor.imageHeightPt = 60.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::Square;
+        anchor.imageFloatAlign = RichTextAlign::Right;
+        RichDocBlock paragraph = paragraphOf("Body text beside the frame.");
+        paragraph.runs.insert(paragraph.runs.begin(), anchor);
+        document->blocks = {paragraph};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df on = edit->GetFloatElementRectForTest(0);
+        TEST("The outer frame opens for editing", edit->EditFrame(0) && edit->IsEditingFrame());
+        window->UpdateAndRender();
+        editor.SetCaret({0, 0});
+        window->UpdateAndRender();
+        const Rect2Df first = edit->GetCaretRectForTest();
+        editor.SetCaret(editor.DocumentEnd());
+        window->UpdateAndRender();
+        const Rect2Df last = edit->GetCaretRectForTest();
+        // "Above", then the inner frame's two lines, then "Sender".
+        TEST("The inner frame's words keep their room before the paragraph anchoring it: "
+             + std::to_string(last.y - first.y) + " down, a line is " + std::to_string(first.height),
+             first.height > 0.0f && last.y - first.y > 2.5f * first.height && last.y < on.y + on.height);
+        editor.InsertText(" Company");
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        const UCRichDocument& saved = *edit->GetDocument();
+        TEST("The outer frame keeps its anchor and the new words", saved.frames[0].blocks.size() == 2
+             && saved.frames[0].blocks[1].runs.front().frameIndex == 1
+             && UCRichDocument::ConcatenateRunText(saved.frames[0].blocks[1].runs).find("Sender Company")
+                != std::string::npos);
+        TEST("...and the inner frame its own", saved.frames[1].blocks.size() == 2);
+    }
+
     // ===== FLOATS IN A HEADER, WHILE IT IS EDITED =====
     std::cerr << "\n--- Floats in an edited header ---" << std::endl;
     {

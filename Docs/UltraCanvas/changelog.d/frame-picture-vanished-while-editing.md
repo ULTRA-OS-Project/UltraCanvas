@@ -9,3 +9,9 @@
   are drawn, selected and resized as before the double-click.
   `RichTextEditElementTest` opens such a frame and checks that the words stay
   below the picture and that a click still finds it.
+- **A frame anchored in a text frame lost its words while the outer frame was
+  edited.** Drawn, the inner frame's paragraphs stand before the paragraph
+  that anchors it (`WithFramesInlineIn`); edited, its placeholder took no room
+  and nothing drew them. They are now shown in the same place for as long as
+  the outer frame is open (`PlacedFloat::wordsOnly`) - shown, not edited: they
+  are the inner frame's, and stay as they were when the editing ends.

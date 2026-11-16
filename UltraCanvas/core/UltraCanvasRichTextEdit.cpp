@@ -8,7 +8,8 @@
 // caret geometry and selection painting need no translation layer.
 //
 // Version: 1.9.1 - a picture anchored in a text frame stays in the line while the frame's words
-//                  are edited (it vanished: no pass places a float there)
+//                  are edited (it vanished: no pass places a float there), and a frame anchored
+//                  in it keeps its words before their paragraph (they were hidden)
 // Version: 1.9.0 - a text frame's words edited in place (EditFrame); EMF and WMF pictures and
 //                  fills drawn through the vector readers (LoadDocumentPicture)
 // Version: 1.8.0 - pattern and picture fills; a header's or footer's floats are placed, picked up,
@@ -1166,7 +1167,9 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
     const RichTextFrame* frame = editor.GetDocument()->frames.size() > static_cast<size_t>(placed.frameIndex)
         ? &editor.GetDocument()->frames[static_cast<size_t>(placed.frameIndex)] : nullptr;
     if (!frame) return;
-    if (frame->IsDrawing()) {
+    if (placed.wordsOnly) {
+        // Its paragraphs as they stand in the text of the frame around it.
+    } else if (frame->IsDrawing()) {
         // A drawing: its shapes, scaled from the box they were drawn for to
         // the frame's (once it has been resized), then its words over them.
         const double drawnWidth = Px(frame->drawingWidthPt), drawnHeight = Px(frame->drawingHeightPt);
@@ -1178,11 +1181,12 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
         for (const RichShape& shape : frame->shapes) DrawShape(ctx, shape, 0.0, 0.0, 0);
         ctx->PopState();
     }
-    if (!frame->backgroundColor.empty()) {
+    if (!placed.wordsOnly && !frame->backgroundColor.empty()) {
         ctx->DrawFilledRectangle(target, ParseHexColor(frame->backgroundColor, Colors::Transparent),
                                  0.0f, Colors::Transparent);
     }
-    if (frame->border.IsVisible()) {
+    if (placed.wordsOnly) {
+    } else if (frame->border.IsVisible()) {
         const double width = std::max(1.0, static_cast<double>(Px(frame->border.widthPt)));
         const double half = width * 0.5;
         ctx->DrawFilledRectangle(Rect2Dd(target.x + half, target.y + half, target.width - width, target.height - width),
@@ -1193,7 +1197,7 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
         ctx->DrawFilledRectangle(target, Colors::Transparent, 1.0f, style.tableGuideColor);
     }
     if (!placed.frameContent) return;
-    const float inset = TextFrameInset(placed.frameIndex);
+    const float inset = placed.wordsOnly ? 0.0f : TextFrameInset(placed.frameIndex);
     const FurnitureLayout& content = *placed.frameContent;
     // Words centred or at the foot of a frame taller than they are.
     float down = 0.0f;
@@ -5633,9 +5637,29 @@ float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
             box.blockIndex = -1;                  // its box, not something to pick up
             placedFloats.push_back(std::move(box));
             y = placed->rect.y + inset;
+            const float left = placed->rect.x + inset;
             for (int i = 0; i < count; i++) {
+                // A frame anchored in this one: its words stand before the
+                // paragraph that anchors it, as when this frame is drawn
+                // (WithFramesInlineIn) - shown, not edited, until this
+                // frame's editing ends.
+                for (const RichTextRun& run : editor.GetBlock(i).runs) {
+                    if (!run.IsTextFrame() || run.frameIndex == furnitureEdit->frameIndex) continue;
+                    std::shared_ptr<FurnitureLayout> words =
+                        LayoutTextFrame(ctx, run.frameIndex, furnitureEdit->frameInnerWidth);
+                    if (!words || words->height <= 0.0f) continue;
+                    PlacedFloat inner;
+                    inner.blockIndex = -1;
+                    inner.frameIndex = run.frameIndex;
+                    inner.frameContent = words;
+                    inner.wordsOnly = true;
+                    inner.wrap = RichTextRun::ImageWrap::Square;
+                    inner.rect = Rect2Df(left, y, furnitureEdit->frameInnerWidth, words->height);
+                    placedFloats.push_back(std::move(inner));
+                    y += words->height;
+                }
                 BlockLayout& bl = blockLayouts[static_cast<size_t>(i)];
-                bl.columnX = placed->rect.x + inset;
+                bl.columnX = left;
                 bl.bounds.x = bl.textLeft;
                 bl.bounds.y = y;
                 y += bl.bounds.height + GapAfterBlock(i);
