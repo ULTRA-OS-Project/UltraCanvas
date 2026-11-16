@@ -2,6 +2,10 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.7.0 - The main document part is the one the package's relationships name
+//                  (word/document2.xml, say), with its own folder and
+//                  relationships; parts that bind the OOXML namespaces to other prefixes
+//                  (ns0:p, a default namespace) read as the w:/r:/a: ones they are
 // Version: 1.6.0 - Pattern fills (a:pattFill) and picture fills (a:blipFill) read and written
 // Version: 1.5.0 - Gradient fills read and written (a:gradFill, VML v:fill); VML pictures
 //                  (v:imagedata) as pictures in the line or floating
@@ -11,7 +15,7 @@
 // Version: 1.3.0 - w:spacing in w:rPr: a run's (and a character style's) letter spacing, read
 //                  and written
 // Version: 1.2.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -72,6 +76,116 @@ struct DocxRelationship {
     bool external = false;
 };
 
+// The prefix the reader expects for each OOXML namespace it reads by name,
+// transitional and strict (ISO 29500 strict) URIs alike.
+const std::map<std::string, std::string>& CanonicalOoxmlPrefixes() {
+    static const std::map<std::string, std::string> prefixes = {
+        {"http://schemas.openxmlformats.org/wordprocessingml/2006/main", "w"},
+        {"http://purl.oclc.org/ooxml/wordprocessingml/main", "w"},
+        {"http://schemas.openxmlformats.org/officeDocument/2006/relationships", "r"},
+        {"http://purl.oclc.org/ooxml/officeDocument/relationships", "r"},
+        {"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing", "wp"},
+        {"http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing", "wp"},
+        {"http://schemas.openxmlformats.org/drawingml/2006/main", "a"},
+        {"http://purl.oclc.org/ooxml/drawingml/main", "a"},
+        {"http://schemas.openxmlformats.org/drawingml/2006/picture", "pic"},
+        {"http://purl.oclc.org/ooxml/drawingml/picture", "pic"},
+        {"http://schemas.openxmlformats.org/officeDocument/2006/math", "m"},
+        {"http://purl.oclc.org/ooxml/officeDocument/math", "m"},
+        {"http://schemas.openxmlformats.org/markup-compatibility/2006", "mc"},
+        {"http://schemas.microsoft.com/office/word/2010/wordprocessingShape", "wps"},
+        {"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup", "wpg"},
+        {"http://schemas.microsoft.com/office/word/2010/wordml", "w14"},
+        {"urn:schemas-microsoft-com:vml", "v"},
+        {"urn:schemas-microsoft-com:office:office", "o"},
+    };
+    return prefixes;
+}
+
+// The reader matches element and attribute names as written (w:p, r:id).
+// Word writes those prefixes, but XML lets a producer pick its own - ns0:p
+// from a Python XML library, or the WordprocessingML namespace as the
+// default one - and such a part read as having no body. Renames every
+// prefix bound to a known namespace to the expected one, in place.
+void NormalizeOoxmlPrefixes(tinyxml2::XMLElement* element,
+                            std::map<std::string, std::string> renames) {
+    // This element's declarations, over its parent's.
+    for (const auto* a = element->FirstAttribute(); a; a = a->Next()) {
+        const std::string name = a->Name();
+        std::string prefix;
+        if (name == "xmlns") prefix = "";
+        else if (name.compare(0, 6, "xmlns:") == 0) prefix = name.substr(6);
+        else continue;
+        const auto known = CanonicalOoxmlPrefixes().find(a->Value());
+        if (known != CanonicalOoxmlPrefixes().end() && known->second != prefix)
+            renames[prefix] = known->second;
+        else
+            renames.erase(prefix);
+    }
+    if (renames.empty()) {
+        for (auto* child = element->FirstChildElement(); child; child = child->NextSiblingElement())
+            NormalizeOoxmlPrefixes(child, renames);
+        return;
+    }
+    auto rename = [&renames](const std::string& name, bool attribute) -> std::string {
+        const size_t colon = name.find(':');
+        // An attribute without a prefix is in no namespace, whatever the default one.
+        if (colon == std::string::npos && attribute) return name;
+        const std::string prefix = colon == std::string::npos ? "" : name.substr(0, colon);
+        if (prefix == "xmlns") return name;
+        const auto to = renames.find(prefix);
+        if (to == renames.end()) return name;
+        return to->second + ":" + (colon == std::string::npos ? name : name.substr(colon + 1));
+    };
+    const std::string elementName = element->Name() ? element->Name() : "";
+    const std::string renamedElement = rename(elementName, false);
+    if (renamedElement != elementName) element->SetName(renamedElement.c_str());
+    std::vector<std::pair<std::string, std::string>> renamedAttributes;
+    std::vector<std::string> oldNames;
+    for (const auto* a = element->FirstAttribute(); a; a = a->Next()) {
+        const std::string name = a->Name();
+        const std::string renamed = rename(name, true);
+        if (renamed != name) {
+            oldNames.push_back(name);
+            renamedAttributes.emplace_back(renamed, a->Value());
+        }
+    }
+    for (const auto& name : oldNames) element->DeleteAttribute(name.c_str());
+    for (const auto& [name, value] : renamedAttributes) element->SetAttribute(name.c_str(), value.c_str());
+    for (auto* child = element->FirstChildElement(); child; child = child->NextSiblingElement())
+        NormalizeOoxmlPrefixes(child, renames);
+}
+
+void NormalizeOoxmlPrefixes(tinyxml2::XMLDocument& document) {
+    if (auto* root = document.RootElement()) NormalizeOoxmlPrefixes(root, {});
+}
+
+// Whether a package part is a WordprocessingML main document part: by its
+// content type in [Content_Types].xml, or - a package that names none - by
+// the namespace its root is in.
+bool IsWordMainDocumentPart(const UCZipPackageReader& zip, const std::string& part) {
+    std::string typesXml;
+    if (zip.ReadEntry("[Content_Types].xml", typesXml)) {
+        tinyxml2::XMLDocument types;
+        if (types.Parse(typesXml.c_str()) == tinyxml2::XML_SUCCESS && types.RootElement()) {
+            for (auto* e = types.RootElement()->FirstChildElement(); e; e = e->NextSiblingElement()) {
+                const char* partName = e->Attribute("PartName");
+                const char* contentType = e->Attribute("ContentType");
+                if (!partName || !contentType) continue;
+                // Part names compare without regard to case (OPC).
+                if (ToLower(partName) != ToLower("/" + part)) continue;
+                return std::string(contentType).find("wordprocessingml.document") != std::string::npos
+                    || std::string(contentType).find("wordprocessingml.template") != std::string::npos;
+            }
+        }
+    }
+    std::string xml;
+    if (!zip.ReadEntry(part, xml)) return false;
+    xml.resize(std::min<size_t>(xml.size(), 4096));
+    return xml.find("wordprocessingml/2006/main") != std::string::npos
+        || xml.find("ooxml/wordprocessingml/main") != std::string::npos;
+}
+
 // A run of nothing but spaces - <w:t xml:space="preserve"> </w:t>, the space
 // between two differently formatted words - is text, but tinyxml2 drops
 // whitespace-only text. Each such space is swapped for a private-use marker
@@ -79,18 +193,43 @@ struct DocxRelationship {
 // xml:space="preserve" Word ignores the whitespace too, so that is left alone.
 constexpr const char* kKeptSpaceMarker = "\xEE\x80\x81";   // U+E001
 
+// The prefix (with its colon) the part's root binds to the WordprocessingML
+// namespace: "w:" as Word writes it, "ns0:" from some producers, "" when it
+// is the default namespace. This runs on the text, before the part is parsed
+// and NormalizeOoxmlPrefixes renames them.
+std::string WordprocessingPrefix(const std::string& xml) {
+    const size_t rootEnd = xml.find('>', xml.find('<', xml.find("?>") == std::string::npos ? 0 : xml.find("?>") + 2));
+    const std::string root = xml.substr(0, rootEnd);
+    for (const char* uri : {"http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                            "http://purl.oclc.org/ooxml/wordprocessingml/main"}) {
+        for (size_t at = root.find(uri); at != std::string::npos; at = root.find(uri, at + 1)) {
+            // ... xmlns:PREFIX="uri" or xmlns="uri"
+            const size_t equals = root.rfind('=', at);
+            const size_t xmlns = root.rfind("xmlns", equals);
+            if (equals == std::string::npos || xmlns == std::string::npos) continue;
+            if (root[xmlns + 5] == '=') return "";
+            if (root[xmlns + 5] == ':') return root.substr(xmlns + 6, equals - xmlns - 6) + ":";
+        }
+    }
+    return "w:";
+}
+
 void ProtectWhitespaceRuns(std::string& xml) {
+    const std::string prefix = WordprocessingPrefix(xml);
+    const std::string openTag = "<" + prefix + "t";
+    const std::string closeTag = "</" + prefix + "t>";
     std::string out;
     out.reserve(xml.size());
     size_t pos = 0;
     while (true) {
-        size_t open = xml.find("<w:t", pos);
+        size_t open = xml.find(openTag, pos);
         if (open == std::string::npos) break;
-        const char after = open + 4 < xml.size() ? xml[open + 4] : '\0';
+        const size_t nameEnd = open + openTag.size();
+        const char after = nameEnd < xml.size() ? xml[nameEnd] : '\0';
         size_t close = xml.find('>', open);
         if ((after != '>' && after != ' ') || close == std::string::npos || xml[close - 1] == '/') {
-            out.append(xml, pos, open + 4 - pos);
-            pos = open + 4;
+            out.append(xml, pos, nameEnd - pos);
+            pos = nameEnd;
             continue;
         }
         size_t text = close + 1;
@@ -99,7 +238,7 @@ void ProtectWhitespaceRuns(std::string& xml) {
         out.append(xml, pos, text - pos);
         const bool preserve =
             xml.substr(open, close - open).find("xml:space=\"preserve\"") != std::string::npos;
-        if (end > text && preserve && xml.compare(end, 6, "</w:t>") == 0) {
+        if (end > text && preserve && xml.compare(end, closeTag.size(), closeTag) == 0) {
             for (size_t i = text; i < end; ++i) out += kKeptSpaceMarker;
         } else {
             out.append(xml, text, end - text);
@@ -135,11 +274,16 @@ public:
                 error += ": " + filePath;
                 return false;
         }
+        // Usually word/document.xml, but not always (word/document2.xml):
+        // what counts is the part the package's relationships call the
+        // office document.
+        mainPart_ = WordFormatInternal::FindDocxMainPart(zip_);
         std::string documentXml;
-        if (!zip_.ReadEntry("word/document.xml", documentXml)) {
-            error = "The package has no word/document.xml — not a Word document: " + filePath;
+        if (mainPart_.empty() || !zip_.ReadEntry(mainPart_, documentXml)) {
+            error = "The package has no main document part — not a Word document: " + filePath;
             return false;
         }
+        partFolder_ = mainPart_.substr(0, mainPart_.find_last_of('/') + 1);
         LoadRelationships();
         LoadTheme();
         LoadStyles();
@@ -151,6 +295,7 @@ public:
             error = "The Word document content is not valid XML: " + filePath;
             return false;
         }
+        NormalizeOoxmlPrefixes(docXml_);
         auto* root = docXml_.FirstChildElement("w:document");
         auto* body = root ? root->FirstChildElement("w:body") : nullptr;
         if (!body) {
@@ -268,6 +413,10 @@ private:
     UCZipPackageReader zip_;
     UCRichDocument* doc_ = nullptr;
     tinyxml2::XMLDocument docXml_;
+    // The main document part (word/document.xml as a rule) and its folder,
+    // which its relationship targets and the other parts are relative to.
+    std::string mainPart_ = "word/document.xml";
+    std::string partFolder_ = "word/";
     std::map<std::string, DocxRelationship> relationships_;
     std::map<std::string, std::string> styleNames_;        // styleId -> display name
     std::map<std::string, StyleGeometry> styleGeometry_;   // paragraph styleId -> geometry
@@ -358,7 +507,7 @@ private:
     // body marks.
     void LoadComments() {
         if (commentIndexById_.empty()) return;
-        std::string partName = "word/comments.xml";
+        std::string partName = partFolder_ + "comments.xml";
         for (const auto& [id, rel] : relationships_) {
             const std::string file = "comments.xml";
             if (!rel.external && rel.target.size() >= file.size()
@@ -371,6 +520,7 @@ private:
         ProtectWhitespaceRuns(xml);
         tinyxml2::XMLDocument part;
         if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !part.RootElement()) return;
+        NormalizeOoxmlPrefixes(part);
         for (auto* c = part.RootElement()->FirstChildElement("w:comment"); c; c = c->NextSiblingElement("w:comment")) {
             auto found = commentIndexById_.find(Attr(c, "w:id"));
             if (found == commentIndexById_.end()) continue;
@@ -413,7 +563,21 @@ private:
         return v.empty() || (v != "false" && v != "0" && v != "none");
     }
 
-    void LoadRelationships() { relationships_ = ReadRelationships("word/_rels/document.xml.rels"); }
+    void LoadRelationships() {
+        relationships_ = ReadRelationships(partFolder_ + "_rels/" + mainPart_.substr(partFolder_.size()) + ".rels");
+    }
+
+    // The part a relationship of the main part's names by its type
+    // (".../styles"), or the conventional name in the main part's folder.
+    std::string PartByRelationship(const std::string& typeSuffix, const std::string& fallbackName) const {
+        for (const auto& [id, rel] : relationships_) {
+            if (!rel.external && rel.type.size() >= typeSuffix.size()
+                && rel.type.compare(rel.type.size() - typeSuffix.size(), typeSuffix.size(), typeSuffix) == 0) {
+                return ResolvePartPath(rel.target);
+            }
+        }
+        return partFolder_ + fallbackName;
+    }
 
     // A part's relationships (word/_rels/<part>.rels).
     std::map<std::string, DocxRelationship> ReadRelationships(const std::string& relsPath) {
@@ -436,11 +600,12 @@ private:
         return out;
     }
 
-    // Resolves a relationship target relative to word/ into a package path.
-    static std::string ResolvePartPath(const std::string& target) {
+    // Resolves a relationship target relative to the main part's folder
+    // (word/) into a package path.
+    std::string ResolvePartPath(const std::string& target) const {
         std::string path = target;
         if (!path.empty() && path[0] == '/') return path.substr(1);
-        path = "word/" + path;
+        path = partFolder_ + path;
         // Collapse "word/../x" to "x".
         size_t pos;
         while ((pos = path.find("/../")) != std::string::npos) {
@@ -456,9 +621,10 @@ private:
 
     void LoadStyles() {
         std::string stylesXml;
-        if (!zip_.ReadEntry("word/styles.xml", stylesXml)) return;
+        if (!zip_.ReadEntry(PartByRelationship("/styles", "styles.xml"), stylesXml)) return;
         tinyxml2::XMLDocument styles;
         if (styles.Parse(stylesXml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        NormalizeOoxmlPrefixes(styles);
         auto* root = styles.FirstChildElement("w:styles");
         if (!root) return;
         if (auto* defaults = root->FirstChildElement("w:docDefaults")) {
@@ -519,9 +685,10 @@ private:
     // word/settings.xml: the distance between default tab stops.
     void LoadSettings() {
         std::string settingsXml;
-        if (!zip_.ReadEntry("word/settings.xml", settingsXml)) return;
+        if (!zip_.ReadEntry(PartByRelationship("/settings", "settings.xml"), settingsXml)) return;
         tinyxml2::XMLDocument settings;
         if (settings.Parse(settingsXml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        NormalizeOoxmlPrefixes(settings);
         auto* root = settings.FirstChildElement("w:settings");
         auto* tab = root ? root->FirstChildElement("w:defaultTabStop") : nullptr;
         if (tab) {
@@ -692,9 +859,10 @@ private:
 
     void LoadNumbering() {
         std::string numberingXml;
-        if (!zip_.ReadEntry("word/numbering.xml", numberingXml)) return;
+        if (!zip_.ReadEntry(PartByRelationship("/numbering", "numbering.xml"), numberingXml)) return;
         tinyxml2::XMLDocument numbering;
         if (numbering.Parse(numberingXml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        NormalizeOoxmlPrefixes(numbering);
         auto* root = numbering.FirstChildElement("w:numbering");
         if (!root) return;
         for (auto* abstractNum = root->FirstChildElement("w:abstractNum"); abstractNum;
@@ -1180,7 +1348,7 @@ private:
                         {"accent1", "4472C4"}, {"accent2", "ED7D31"}, {"accent3", "A5A5A5"},
                         {"accent4", "FFC000"}, {"accent5", "5B9BD5"}, {"accent6", "70AD47"},
                         {"hlink", "0563C1"}, {"folHlink", "954F72"}};
-        std::string path = "word/theme/theme1.xml";
+        std::string path = partFolder_ + "theme/theme1.xml";
         for (const auto& [id, rel] : relationships_) {
             if (rel.type.size() >= 6 && rel.type.compare(rel.type.size() - 6, 6, "/theme") == 0) {
                 path = ResolvePartPath(rel.target);
@@ -1190,6 +1358,7 @@ private:
         if (!zip_.ReadEntry(path, xml)) return;
         tinyxml2::XMLDocument theme;
         if (theme.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !theme.RootElement()) return;
+        NormalizeOoxmlPrefixes(theme);
         auto* scheme = FindDescendant(theme.RootElement(), "a:clrScheme");
         for (auto* entry = scheme ? scheme->FirstChildElement() : nullptr; entry; entry = entry->NextSiblingElement()) {
             std::string name = entry->Name() ? entry->Name() : "";
@@ -2861,7 +3030,7 @@ private:
                 if (!target) continue;   // even pages: not modelled
                 auto rel = relationships_.find(Attr(ref, "r:id"));
                 if (rel == relationships_.end()) continue;
-                LoadHeaderFooterPart("word/" + rel->second.target, header ? target->header : target->footer);
+                LoadHeaderFooterPart(ResolvePartPath(rel->second.target), header ? target->header : target->footer);
             }
         }
         if (!doc_->firstPageDiffers) doc_->firstPageFurniture = RichPageFurniture{};
@@ -2874,6 +3043,7 @@ private:
         ProtectWhitespaceRuns(xml);
         tinyxml2::XMLDocument part;
         if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        NormalizeOoxmlPrefixes(part);
         auto* root = part.RootElement();
         if (!root) return;
         // Its pictures are named by its own relationships (over the
@@ -2919,7 +3089,7 @@ private:
         bool any = false;
         for (const auto& [key, index] : noteIndexById_) any = any || key[0] == prefix[0];
         if (!any) return;
-        std::string partName = endnote ? "word/endnotes.xml" : "word/footnotes.xml";
+        std::string partName = partFolder_ + (endnote ? "endnotes.xml" : "footnotes.xml");
         for (const auto& [id, rel] : relationships_) {
             const std::string file = endnote ? "endnotes.xml" : "footnotes.xml";
             if (!rel.external && rel.target.size() >= file.size()
@@ -2932,6 +3102,7 @@ private:
         ProtectWhitespaceRuns(xml);
         tinyxml2::XMLDocument part;
         if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        NormalizeOoxmlPrefixes(part);
         auto* root = part.RootElement();
         if (!root) return;
         const char* noteTag = endnote ? "w:endnote" : "w:footnote";
@@ -4517,6 +4688,29 @@ private:
 };
 
 } // namespace
+
+std::string WordFormatInternal::FindDocxMainPart(const UCZipPackageReader& zip) {
+    std::string relsXml;
+    if (zip.ReadEntry("_rels/.rels", relsXml)) {
+        tinyxml2::XMLDocument rels;
+        if (rels.Parse(relsXml.c_str()) == tinyxml2::XML_SUCCESS && rels.RootElement()) {
+            const std::string officeDocument = "/officeDocument";
+            for (auto* rel = rels.RootElement()->FirstChildElement(); rel; rel = rel->NextSiblingElement()) {
+                const char* type = rel->Attribute("Type");
+                const char* target = rel->Attribute("Target");
+                if (!type || !target) continue;
+                const std::string t(type);
+                if (t.size() < officeDocument.size()
+                    || t.compare(t.size() - officeDocument.size(), officeDocument.size(), officeDocument) != 0)
+                    continue;
+                std::string part(target);
+                if (!part.empty() && part[0] == '/') part.erase(0, 1);
+                if (!part.empty() && zip.HasEntry(part) && IsWordMainDocumentPart(zip, part)) return part;
+            }
+        }
+    }
+    return zip.HasEntry("word/document.xml") ? "word/document.xml" : std::string();
+}
 
 bool UCWordDocumentIO::LoadDocx(const std::string& filePath, UCRichDocument& outDocument,
                                 std::string& outError, const std::string& password) {

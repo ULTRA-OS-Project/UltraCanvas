@@ -12,6 +12,8 @@
 // store there is only what came with the OpenSSL build. SSL_CERT_FILE or
 // SSL_CERT_DIR, when set, is taken as the whole answer instead.
 //
+// Version: 0.2.1 - a signature that does not hold names its signer on every OpenSSL
+//                  build: looked up by the signer info when CMS_verify attached none
 // Version: 0.2.0 - the system's roots include Windows' ROOT store and macOS's
 //                  anchors and trust settings
 // Version: 0.1.0
@@ -249,6 +251,24 @@ void FillSignature(CMS_ContentInfo* cms, UltraCryptCmsSignature& out) {
     Certs carried(CMS_get1_certs(cms));
     for (int i = 0; carried && i < sk_X509_num(carried.get()); ++i)
         out.certificatesPem.push_back(PemOf(sk_X509_value(carried.get(), i)));
+    // CMS_get0_signers names only the certificates CMS_verify attached to
+    // the signer infos, and whether it attaches them before a signature that
+    // does not hold depends on the OpenSSL build (the Windows CI row's left
+    // them out, 2026-11-16). A signature that fails still names its signer, so the
+    // certificate is looked up here by the signer info's own identifier.
+    if (out.signerCertificatePem.empty() && carried) {
+        STACK_OF(CMS_SignerInfo)* infos = CMS_get0_SignerInfos(cms);
+        for (int s = 0; infos && s < sk_CMS_SignerInfo_num(infos) && out.signerCertificatePem.empty(); ++s) {
+            CMS_SignerInfo* info = sk_CMS_SignerInfo_value(infos, s);
+            for (int i = 0; i < sk_X509_num(carried.get()); ++i) {
+                X509* candidate = sk_X509_value(carried.get(), i);
+                if (CMS_SignerInfo_cert_cmp(info, candidate) == 0) {
+                    out.signerCertificatePem = PemOf(candidate);
+                    break;
+                }
+            }
+        }
+    }
     ERR_clear_error();
 }
 
