@@ -2,8 +2,10 @@
 # to it. Pure Python, no system packages. On main - and when started by hand
 # (Run workflow) - the tested relay is then put on the live server
 # (deploy/update.sh: database backed up, code installed, restarted, rolled
-# back when it does not answer with its new version). The deploy job does
-# nothing until the server's secrets are set (README: Deploying from CI).
+# back when it does not answer with its new version). Without the server's
+# secrets (README: Deploying from CI) the deploy fails here, naming the ones
+# it cannot see - a deploy that did nothing must not look like one that
+# worked; a fork, which has no server, is only told.
 name: ChatCube relay
 
 on:
@@ -49,11 +51,21 @@ jobs:
       - name: Is the server set up?
         id: ready
         run: |
-          if [ -n "$SSH_KEY" ] && [ -n "$SSH_HOST" ] && [ -n "$SSH_USER" ] && [ -n "$SSH_KNOWN_HOSTS" ]; then
+          missing=""
+          [ -n "$SSH_KEY" ] || missing="$missing CHATCUBE_RELAY_SSH_KEY"
+          [ -n "$SSH_HOST" ] || missing="$missing CHATCUBE_RELAY_SSH_HOST"
+          [ -n "$SSH_USER" ] || missing="$missing CHATCUBE_RELAY_SSH_USER"
+          [ -n "$SSH_KNOWN_HOSTS" ] || missing="$missing CHATCUBE_RELAY_SSH_KNOWN_HOSTS"
+          if [ -z "$missing" ]; then
             echo "ok=1" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::The ChatCube relay was not deployed: set CHATCUBE_RELAY_SSH_KEY, _HOST, _USER and _KNOWN_HOSTS (Server/ChatCubeRelay/README.md, Deploying from CI)."
+            exit 0
           fi
+          why="The ChatCube relay was not deployed: this job cannot see$missing. They must be Actions secrets (not variables) of $GITHUB_REPOSITORY, or of its chatcube-relay environment - see Server/ChatCubeRelay/README.md, Deploying from CI."
+          if [ "$GITHUB_REPOSITORY" = "ULTRA-OS-Project/UltraCanvas" ]; then
+            echo "::error::$why"
+            exit 1
+          fi
+          echo "::notice::$why"
       - name: Copy the relay to the server
         if: steps.ready.outputs.ok == '1'
         run: |
