@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 // Apps/UltraStore/web/test/webstore-test.mjs
 // The UltraStore web store end to end in Chromium: the fixture site
-// (test/fixture, published by the admin backend) served with the build's
-// module, loader and runtime laid over it, as a host would serve it.
+// (test/fixture, published by the admin backend) with the build's test
+// module, loader and runtime laid over it (stage-store.mjs), served as a
+// host would serve it - one folder, nothing rewritten on the way out.
 //
+//   0. Without a browser: the store's module (site/'s, the one a store is
+//      published with) holds the store's keys and not the fixture's, the
+//      test module holds both, and the store's module is within its budget.
 //   1. The runtime from the site: Discover paints, the catalog verifies
-//      (WebCrypto, the fixture's key built into the test module), an app's
-//      page and a category open by address, the back button returns, and
-//      the budgets hold (the module's Brotli size, the first screen's
-//      requests and pictures).
+//      (the fixture's key built into the test module), an app's page and a
+//      category open by address, the back button returns, and the budgets
+//      hold (the first screen's requests and pictures).
 //   2. A tampered catalog is refused: the page says so and shows nothing
 //      from it.
+//   2b. The store's module in the test module's place: it runs, and refuses
+//      the fixture's catalog - a key it was not built with signed it.
 //   3. The UltraCanvas extension installed: the runtime comes from it and
 //      the site sends only the pages, the loader, the module and the
 //      catalog.
@@ -18,12 +23,17 @@
 //   node webstore-test.mjs <build dir of Apps/UltraStore/web> <build dir of UltraCanvas/OS/WASM/runtime>
 //
 // Environment:
+//   UWS_STORE       the store to serve, as stage-store.mjs left it: CI stages
+//                   and uploads it first, so a run's artifact is the store
+//                   that was tested. A folder that holds no store yet is
+//                   staged into from the build; with none named, a temporary
+//                   folder is, and removed afterwards
 //   UWS_OUT         screenshots and logs (default: uws-test-out)
 //   UWS_CHROME      a Chrome / Chromium binary (default: Playwright's Chromium)
 //   UWS_PLAYWRIGHT  the playwright package when not resolvable from here
 //   UWS_TIMEOUT     ms to wait for the app to start (default 120000)
 //
-// Version: 0.1.0
+// Version: 0.2.0 - serves one staged store (stage-store.mjs, UWS_STORE), not the fixture with the build's files mapped in by the server; the store's module apart from the test module: its keys, its budget, its refusal of the fixture's catalog
 // Author: UltraCanvas Framework / ULTRA OS
 import fs from 'node:fs';
 import http from 'node:http';
@@ -31,6 +41,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { stageStore } from './stage-store.mjs';
 
 const [webBuild, runtimeBuild] = process.argv.slice(2);
 if (!webBuild || !runtimeBuild) {
@@ -38,46 +49,52 @@ if (!webBuild || !runtimeBuild) {
     process.exit(2);
 }
 const here = path.dirname(fileURLToPath(import.meta.url));
-const fixture = path.join(here, 'fixture');
-const site = path.resolve(webBuild, 'site');
 const extension = path.resolve(runtimeBuild, 'ultracanvas-extension');
+// The store's module: site/'s, which trusts the store's keys alone. The
+// staged store carries the test module under the same name.
+const storeModule = path.resolve(webBuild, 'site', 'ultrastore-web.wasm');
 const out = process.env.UWS_OUT || 'uws-test-out';
 const startTimeout = Number(process.env.UWS_TIMEOUT || 120000);
 fs.mkdirSync(out, { recursive: true });
 const { chromium } = await import(process.env.UWS_PLAYWRIGHT || 'playwright');
 
-const siteJson = JSON.parse(fs.readFileSync(path.join(site, 'site.json'), 'utf8'));
-const runtimeVersion = siteJson.runtime_version || '';
+// ===== The store: the fixture with the build's files in place of the stand-ins =====
+// Staged as publish lays it: the runtime under runtime/<its hash>/, the
+// pages naming that folder and the built version, so the extension (the same
+// build) is accepted.
+let store = process.env.UWS_STORE ? path.resolve(process.env.UWS_STORE) : '';
+let staged = false;
+if (store && fs.existsSync(path.join(store, 'index.html'))) {
+    console.log(`     serving the staged store ${store}`);
+} else {
+    staged = !store;
+    if (!store) store = fs.mkdtempSync(path.join(os.tmpdir(), 'uws-store-'));
+    const made = stageStore(webBuild, store);
+    console.log(`     staged ${made.files.length} files in ${store}, the runtime under ${made.runtimeFolder}`);
+}
 
-// ===== A static server: the fixture, with the build's files in place of the stand-ins =====
-// The pages name runtime/<hash of the fixture's stand-in>/; any runtime/
-// folder serves the built runtime, and the pages' data-runtime-version is
-// the built version, so the extension (the same build) is accepted.
+// ===== A static server over it =====
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.wasm': 'application/wasm',
                 '.data': 'application/octet-stream', '.json': 'application/json', '.sig': 'text/plain',
                 '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif' };
 let served = [];
 let tamper = false;
+let serveStoreModule = false;
 function resolve(urlPath) {
-    const rel = decodeURIComponent(urlPath).replace(/^\/+/, '');
-    const m = rel.match(/^runtime\/[0-9a-f]+\/(.+)$/);
-    if (m) return path.join(site, 'runtime', m[1]);
-    if (rel === 'ultrastore-web.wasm' || rel === 'ultracanvas-loader.js' || rel === 'ultrastore.png' || rel.startsWith('locale/')) return path.join(site, rel);
-    let file = path.join(fixture, rel);
+    let file = path.join(store, decodeURIComponent(urlPath).replace(/^\/+/, ''));
     if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
     return file;
 }
 const server = http.createServer((req, res) => {
     const file = resolve(new URL(req.url, 'http://x').pathname);
-    if (!(file.startsWith(fixture) || file.startsWith(site)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    if (!file.startsWith(store + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
         res.writeHead(404);
         res.end();
         return;
     }
-    let body = fs.readFileSync(file);
-    if (file.endsWith('.html')) body = Buffer.from(body.toString('utf8').replace(/data-runtime-version="[^"]*"/, `data-runtime-version="${runtimeVersion}"`));
+    let body = fs.readFileSync(serveStoreModule && file === path.join(store, 'ultrastore-web.wasm') ? storeModule : file);
     if (tamper && file.endsWith('catalog.json')) body = Buffer.from(body.toString('utf8').replace('"sequence"', '"sequence_"').replace(/"price": "29.90"/, '"price": "0.90"'));
-    served.push({ path: path.relative(file.startsWith(site) ? site : fixture, file), bytes: body.length });
+    served.push({ path: path.relative(store, file), bytes: body.length });
     res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream' });
     res.end(body);
 });
@@ -127,13 +144,30 @@ async function waitState(page) {
 const launch = { headless: true };
 if (process.env.UWS_CHROME) launch.executablePath = process.env.UWS_CHROME;
 
-// ===== The budgets that need no browser =====
+// ===== 0. What needs no browser: the keys in each module, the budget =====
 {
-    const module = fs.readFileSync(path.join(site, 'ultrastore-web.wasm'));
-    const brotli = zlib.brotliCompressSync(module, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }).length;
-    console.log(`     ultrastore-web.wasm: ${kib(module.length)} raw, ${kib(brotli)} Brotli`);
-    check(brotli <= 150 * 1024, `the module is within its budget (${kib(brotli)} Brotli of 150 KiB)`);
-    const shadow = fs.readFileSync(path.join(fixture, 'index.html'), 'utf8');
+    const module = fs.readFileSync(storeModule);
+    const testModule = fs.readFileSync(path.join(store, 'ultrastore-web.wasm'));
+    // The keys are string literals in the module (UltraStoreBuiltin.h), so
+    // its bytes show which it was built with. The test module is the
+    // control: were the fixture's key not readable in it, its absence from
+    // the store's module would say nothing.
+    const hexKey = (file) => (fs.readFileSync(file, 'utf8').split(/\r?\n/).find((line) => /^[0-9a-fA-F]{64}$/.test(line.trim())) || '').trim().toLowerCase();
+    const fixtureKey = hexKey(path.join(here, 'fixture', 'trusted-key.hex'));
+    const keysDir = path.resolve(here, '..', '..', 'keys');
+    const storeKeys = fs.readdirSync(keysDir).filter((name) => name.endsWith('.pub')).sort().map((name) => hexKey(path.join(keysDir, name)));
+    check(fixtureKey.length === 64 && storeKeys.length > 0 && storeKeys.every((key) => key.length === 64),
+        `the fixture's key and the store's ${storeKeys.length} key(s) (Apps/UltraStore/keys/*.pub) read as 64 hex digits`);
+    check(storeKeys.every((key) => module.includes(key)), 'the store\'s module holds the store\'s keys');
+    check(testModule.includes(fixtureKey) && storeKeys.every((key) => testModule.includes(key)), 'the test module holds the fixture\'s key and the store\'s');
+    check(!module.includes(fixtureKey), 'the store\'s module does not hold the fixture\'s key');
+    check(!module.equals(testModule), 'the staged store carries the test module, not the store\'s');
+
+    const brotli = (bytes) => zlib.brotliCompressSync(bytes, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }).length;
+    const size = brotli(module);
+    console.log(`     ultrastore-web.wasm: ${kib(module.length)} raw, ${kib(size)} Brotli (the test module: ${kib(testModule.length)} raw, ${kib(brotli(testModule))} Brotli)`);
+    check(size <= 150 * 1024, `the store's module is within its budget (${kib(size)} Brotli of 150 KiB)`);
+    const shadow = fs.readFileSync(path.join(store, 'index.html'), 'utf8');
     check(/<h1|<h2/.test(shadow) && shadow.includes('ultrastore://app/'), 'the HTML shadow carries the store\'s texts and the deep links');
 }
 
@@ -219,6 +253,26 @@ if (process.env.UWS_CHROME) launch.executablePath = process.env.UWS_CHROME;
     tamper = false;
 }
 
+// ===== 2b. The store's module: the fixture's key is not one of its own =====
+// A new browser, so nothing an accepted catalog announced is remembered: the
+// module has the keys it was built with and no others.
+{
+    serveStoreModule = true;
+    const browser = await chromium.launch(launch);
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const log = watch(page, '2b-store-module');
+    await page.goto(base);
+    const s = await waitState(page);
+    check(s.state === 'running', `store's module: it runs (${s.status})`);
+    check(await log.waitFor('[ultrastore-web] catalog refused', startTimeout), 'store\'s module: the fixture\'s catalog is refused');
+    check(!log.lines.some((l) => l.includes('catalog accepted')), 'store\'s module: nothing from it is accepted');
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: path.join(out, '2b-store-module.png') });
+    log.done();
+    await browser.close();
+    serveStoreModule = false;
+}
+
 // ===== 3. The extension installed =====
 if (fs.existsSync(path.join(extension, 'manifest.json'))) {
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'uws-profile-'));
@@ -248,5 +302,6 @@ if (fs.existsSync(path.join(extension, 'manifest.json'))) {
 }
 
 server.close();
+if (staged) fs.rmSync(store, { recursive: true, force: true });
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
 process.exit(failures ? 1 : 0);

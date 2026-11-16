@@ -322,6 +322,12 @@ public:
     // same setting; a Ctrl+V copy never does.
     FilerDropConfirmation dropConfirmation = FilerDropConfirmation::MoveOnly;
 
+    // Display > Copy dialog style: how that question is laid out
+    // (UltraCanvasFilerWidget::SetTransferDialogStyle) - a summary with the
+    // file's icon and the two paths, or the file and its destination as two
+    // cards.
+    FilerTransferDialogStyle transferDialogStyle = FilerTransferDialogStyle::Summary;
+
     // ===== HANDLING > FILE OPERATIONS =====
     // The standing answers to the questions a copy, move or delete asks
     // (UltraCanvasFilerWidget::SetConfirmTrashDelete and friends). The drop
@@ -579,6 +585,10 @@ public:
         if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
         it = kv.find("handling.dragdrop.confirmation");
         if (it != kv.end()) dropConfirmation = ParseDropConfirmation(it->second);
+        it = kv.find("display.copy.dialog.style");
+        if (it != kv.end())
+            transferDialogStyle = it->second == "cards"
+                    ? FilerTransferDialogStyle::Cards : FilerTransferDialogStyle::Summary;
         it = kv.find("handling.fileops.confirm.trash");
         if (it != kv.end())
             confirmTrashDelete =
@@ -737,6 +747,9 @@ public:
              << (dropOnFolderCopies ? "copy" : "move") << "\n";
         file << "handling.dragdrop.confirmation = "
              << FormatDropConfirmation(dropConfirmation) << "\n";
+        file << "display.copy.dialog.style = "
+             << (transferDialogStyle == FilerTransferDialogStyle::Cards ? "cards" : "summary")
+             << "\n";
         file << "handling.fileops.confirm.trash = "
              << (confirmTrashDelete ? "true" : "false") << "\n";
         file << "handling.fileops.conflict = "

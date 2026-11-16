@@ -1,5 +1,6 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
+// Version: 1.11.0 - UCImageRaster::WarmUpImageMagickInBackground
 // Version: 1.10.0 - UCPixmapCairo::IsOpaque, Init(w, h, opaque): a picture without
 //                   an alpha channel is an RGB24 pixmap
 // Version: 1.9.0 - FromBgra / FromRgba: a picture from pixels in memory, no decoding
@@ -360,6 +361,17 @@ namespace VectorStorage { class VectorDocument; }
 
 
         static bool InitializeImageSubsysterm(const char* programName);
+        // ImageMagick reads what no other loader does (TGA, PCX, PSD, an
+        // RLE BMP...), and starts up on the first such picture: its
+        // configuration and, on Windows, every coder DLL - seconds, on the
+        // thread that asked. This does it now on a thread of its own, so the
+        // first one opens at once; a load meanwhile waits only for what is
+        // left. Once per process, after InitializeImageSubsysterm; nothing
+        // without ImageMagick, or with UC_NO_MAGICK_WARMUP set. The
+        // application calls it at launch (UltraCanvasApplication); a
+        // command-line tool that reads no such pictures does not.
+        // ShutdownImageSubsysterm waits for it.
+        static void WarmUpImageMagickInBackground();
         static void ShutdownImageSubsysterm();
     };
 

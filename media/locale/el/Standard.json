@@ -158,6 +158,7 @@
   },
   "Copy files": "Αντιγραφή αρχείων",
   "Copy finished": "Η αντιγραφή ολοκληρώθηκε",
+  "Copy instead": "Αντιγραφή αντί αυτού",
   "Copy path": "Αντιγραφή διαδρομής",
   "Copy skipped items again": "Επανάληψη αντιγραφής στοιχείων που παραλείφθηκαν",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Μετακίνηση κάτω",
   "Move files": "Μετακίνηση αρχείων",
   "Move finished": "Η μετακίνηση ολοκληρώθηκε",
+  "Move instead": "Μετακίνηση αντί αυτού",
   "Move skipped items again": "Επανάληψη μετακίνησης στοιχείων που παραλείφθηκαν",
   "Move to Recycle Bin": "Μετακίνηση στον Κάδο Ανακύκλωσης",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Η «Μετακίνηση στον Κάδο Ανακύκλωσης» μπορεί να αναιρεθεί από τον Κάδο Ανακύκλωσης. Η «Οριστική διαγραφή» δεν μπορεί να αναιρεθεί.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Διακόπηκε στο:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Αποθηκεύει αυτές τις ρυθμίσεις χωρίς να τις δοκιμάσει· θα δοκιμαστούν την επόμενη φορά που θα χρησιμοποιηθεί ο λογαριασμός.",
   "Style": "Στυλ",
+  "Subfolder of \"{0}\"": "Υποφάκελος του «{0}»",
   "Submit": "Υποβολή",
   "Success": "Επιτυχία",
   "System": "Σύστημα",

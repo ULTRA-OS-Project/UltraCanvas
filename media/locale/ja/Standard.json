@@ -151,6 +151,7 @@
   },
   "Copy files": "ファイルのコピー",
   "Copy finished": "コピー完了",
+  "Copy instead": "代わりにコピー",
   "Copy path": "パスをコピー",
   "Copy skipped items again": "スキップした項目をもう一度コピー",
   "Copy {n} item into \"{0}\"?": {
@@ -412,6 +413,7 @@
   "Move down": "下へ移動",
   "Move files": "ファイルの移動",
   "Move finished": "移動完了",
+  "Move instead": "代わりに移動",
   "Move skipped items again": "スキップした項目をもう一度移動",
   "Move to Recycle Bin": "ごみ箱に移動",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "「ごみ箱に移動」はごみ箱から元に戻せます。「完全に削除」は元に戻せません。",
@@ -612,6 +614,7 @@
   "Stopped at:": "停止した場所:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "この設定を試さずに保存します。次にアカウントを使用するときに試されます。",
   "Style": "スタイル",
+  "Subfolder of \"{0}\"": "「{0}」のサブフォルダー",
   "Submit": "送信",
   "Success": "成功",
   "System": "システム",

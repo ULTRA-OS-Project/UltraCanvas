@@ -478,6 +478,16 @@ namespace UltraCanvas {
                dialogConfig.dialogType != DialogType::Custom;
     }
 
+    void UltraCanvasModalDialog::SetMessageVisible(bool visible) {
+        if (!messageArea || messageArea->IsVisible() == visible) return;
+        messageArea->SetVisible(visible);
+        InvalidateLayout();
+    }
+
+    bool UltraCanvasModalDialog::IsMessageVisible() const {
+        return messageArea && messageArea->IsVisible();
+    }
+
     void UltraCanvasModalDialog::SetDialogButtons(DialogButtons buttons) {
         dialogConfig.buttons = buttons;
 

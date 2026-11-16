@@ -3607,6 +3607,32 @@ add_test(
 )
 message(STATUS "    Test registered: CSSLayoutGrowFromZeroTest")
 
+# ===== CSS LAYOUT HIDDEN SETTER TEST =====
+# A flex, grid or table setter on a hidden box keeps it hidden and sets the
+# kind it is shown again as - UltraTexter's Markdown bar appeared on a
+# plain-text tab when a theme change restyled it. Struct Layout only.
+message(STATUS "  Building CSSLayoutHiddenSetterTest...")
+add_executable(CSSLayoutHiddenSetterTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutHiddenSetterTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+)
+target_include_directories(CSSLayoutHiddenSetterTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutHiddenSetterTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutHiddenSetterTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutHiddenSetterTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutHiddenSetterTest
+    COMMAND CSSLayoutHiddenSetterTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutHiddenSetterTest")
+
 # ===== CSS LAYOUT SAFE ALIGNMENT TEST =====
 # Content that does not fit its flex line aligns to the START of it rather than
 # to a negative offset, so a scrolling pane can reach all of it - the demo's
@@ -4599,6 +4625,24 @@ set_target_properties(ControlLimitsTest PROPERTIES
 add_test(NAME ControlLimitsTest COMMAND ControlLimitsTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ControlLimitsTest")
+
+# ===== RIDGELINE MODEL TEST =====
+# The ridgeline model: quantiles, bandwidth rules, the kernel density (area,
+# bounds, binning), the x range, the scales, statistics, sorting, validation
+# and the samples. UI-free.
+message(STATUS "  Building RidgelineModelTest...")
+add_executable(RidgelineModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/RidgelineModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasRidgelineModel.cpp
+)
+target_include_directories(RidgelineModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(RidgelineModelTest PRIVATE cxx_std_20)
+set_target_properties(RidgelineModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME RidgelineModelTest COMMAND RidgelineModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: RidgelineModelTest")
 
 # ===== HISTOGRAM MODEL TEST =====
 # The image histogram model: every pixel layout, premultiplied and
@@ -6581,6 +6625,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: CurveHistogramTest")
 else()
     message(STATUS "  CurveHistogramTest skipped (UltraCanvas not present)")
+endif()
+
+# ===== RIDGELINE CHART RENDER TEST =====
+# UltraCanvasRidgelineChart drawn offscreen: rows on their baselines, the
+# lower row in front where they overlap, hit strips, the value column, the
+# colourings and hover. With ULTRACANVAS_SCREENSHOT_DIR set, each case is
+# written there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building RidgelineChartRenderTest...")
+    add_executable(RidgelineChartRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/RidgelineChartRenderTest.cpp
+    )
+    target_include_directories(RidgelineChartRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(RidgelineChartRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(RidgelineChartRenderTest PRIVATE UltraCanvas)
+    set_target_properties(RidgelineChartRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME RidgelineChartRenderTest COMMAND RidgelineChartRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: RidgelineChartRenderTest")
+else()
+    message(STATUS "  RidgelineChartRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== HISTOGRAM CHART RENDER TEST =====

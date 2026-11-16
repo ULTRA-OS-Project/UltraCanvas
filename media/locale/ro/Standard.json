@@ -165,6 +165,7 @@
   },
   "Copy files": "Copiere fișiere",
   "Copy finished": "Copiere finalizată",
+  "Copy instead": "Copiază în schimb",
   "Copy path": "Copiere cale",
   "Copy skipped items again": "Copiere din nou a elementelor omise",
   "Copy {n} item into \"{0}\"?": {
@@ -438,6 +439,7 @@
   "Move down": "Mutare în jos",
   "Move files": "Mutare fișiere",
   "Move finished": "Mutare finalizată",
+  "Move instead": "Mută în schimb",
   "Move skipped items again": "Mutare din nou a elementelor omise",
   "Move to Recycle Bin": "Mutare în Coșul de reciclare",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Operația „Mutare în Coșul de reciclare” poate fi anulată din Coșul de reciclare. Operația „Ștergere definitivă” nu poate fi anulată.",
@@ -648,6 +650,7 @@
   "Stopped at:": "Oprit la:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Salvează aceste setări fără a le încerca; vor fi încercate la următoarea folosire a contului.",
   "Style": "Stil",
+  "Subfolder of \"{0}\"": "Subdosar al „{0}”",
   "Submit": "Remitere",
   "Success": "Reușită",
   "System": "Sistem",

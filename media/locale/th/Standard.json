@@ -151,6 +151,7 @@
   },
   "Copy files": "คัดลอกไฟล์",
   "Copy finished": "คัดลอกเสร็จสิ้น",
+  "Copy instead": "คัดลอกแทน",
   "Copy path": "คัดลอกพาธ",
   "Copy skipped items again": "คัดลอกรายการที่ข้ามอีกครั้ง",
   "Copy {n} item into \"{0}\"?": {
@@ -412,6 +413,7 @@
   "Move down": "ย้ายลง",
   "Move files": "ย้ายไฟล์",
   "Move finished": "ย้ายเสร็จสิ้น",
+  "Move instead": "ย้ายแทน",
   "Move skipped items again": "ย้ายรายการที่ข้ามอีกครั้ง",
   "Move to Recycle Bin": "ย้ายไปที่ถังรีไซเคิล",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "“ย้ายไปที่ถังรีไซเคิล” สามารถเลิกทำได้จากถังรีไซเคิล “ลบอย่างถาวร” ไม่สามารถเลิกทำได้",
@@ -612,6 +614,7 @@
   "Stopped at:": "หยุดที่:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "บันทึกการตั้งค่าเหล่านี้โดยไม่ทดลองใช้ ระบบจะทดลองใช้เมื่อใช้บัญชีครั้งถัดไป",
   "Style": "สไตล์",
+  "Subfolder of \"{0}\"": "โฟลเดอร์ย่อยของ “{0}”",
   "Submit": "ส่งข้อมูล",
   "Success": "สำเร็จ",
   "System": "ระบบ",
