@@ -743,6 +743,21 @@ else()
     message(STATUS "  RichTextEditElementTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== DOCUMENT RENDER PROBE =====
+# Not a test: loads a word-processing document and writes what the rich text
+# edit draws of it as a PDF, to compare with its own program's export.
+if(TARGET UltraCanvas)
+    add_executable(DocumentRenderProbe
+        ${CMAKE_CURRENT_SOURCE_DIR}/DocumentRenderProbe.cpp
+    )
+    target_include_directories(DocumentRenderProbe PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DocumentRenderProbe PRIVATE cxx_std_20)
+    target_link_libraries(DocumentRenderProbe PRIVATE UltraCanvas)
+    set_target_properties(DocumentRenderProbe PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+endif()
+
 # ===== AT-SPI BRIDGE TEST =====
 # The Linux screen-reader bridge end to end: a libatspi client (as Orca uses
 # it) finds AtspiBridgeTestApp on a private accessibility bus, reads its

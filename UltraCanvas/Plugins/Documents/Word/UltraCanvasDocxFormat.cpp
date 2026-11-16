@@ -2,6 +2,8 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.7.0 - row heights (w:trHeight) read and written, a cell's empty paragraphs kept as empty
+//                  lines, negative float offsets
 // Version: 1.6.0 - Pattern fills (a:pattFill) and picture fills (a:blipFill) read and written
 // Version: 1.5.0 - Gradient fills read and written (a:gradFill, VML v:fill); VML pictures
 //                  (v:imagedata) as pictures in the line or floating
@@ -1018,7 +1020,7 @@ private:
                                     : side == "center" ? RichTextAlign::Center : RichTextAlign::Left;
             } else if (offsetOf(positionH, x)) {
                 run.imageFloatAlign = RichTextAlign::Default;
-                run.imageOffsetXPt = page ? x : std::max(0.0f, x);
+                run.imageOffsetXPt = x;                 // left of its area too: a banner starts in the margin
             }
         }
         if (auto* positionV = anchor->FirstChildElement("wp:positionV")) {
@@ -1032,7 +1034,7 @@ private:
                 run.floatVerticalAlign = side == "center" ? VAlign::Middle
                                        : (side == "bottom" || side == "outside") ? VAlign::Bottom : VAlign::Top;
             } else if (offsetOf(positionV, y)) {
-                run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+                run.imageOffsetYPt = y;                 // above its paragraph too
             }
         }
     }
@@ -1144,10 +1146,10 @@ private:
         else {
             run.imageFloatAlign = RichTextAlign::Default;
             const float x = length("margin-left");
-            run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+            run.imageOffsetXPt = x;
         }
         const float y = length("margin-top");
-        run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+        run.imageOffsetYPt = y;
         // Wrapping: w10:wrap's type; none means over or under the text.
         run.imageWrap = RichTextRun::ImageWrap::Square;
         if (auto* wrap = FindDescendant(pict, "w10:wrap")) {
@@ -2065,10 +2067,10 @@ private:
         else {
             run.imageFloatAlign = RichTextAlign::Default;
             const float x = length("margin-left") + length("left");
-            run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+            run.imageOffsetXPt = x;
         }
         const float y = length("margin-top") + length("top");
-        run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+        run.imageOffsetYPt = y;
         run.imageWrap = RichTextRun::ImageWrap::InFrontOfText;
         if (auto* wrap = FindDescendant(element, "w10:wrap")) {
             const std::string type = Attr(wrap, "type");
@@ -2250,8 +2252,18 @@ private:
                 ctx.pendingLineBreak = false;
                 if (!run.text.empty()) ctx.runs.push_back(std::move(run));
             } else if (tag == "w:br") {
-                if (std::string(Attr(child, "w:type")) == "page") pendingPageBreak_ = true;
-                else ctx.pendingLineBreak = true;
+                if (std::string(Attr(child, "w:type")) == "page") {
+                    pendingPageBreak_ = true;
+                } else {
+                    // A second break in a row is an empty line.
+                    if (ctx.pendingLineBreak) {
+                        RichTextRun empty = props;
+                        empty.text.clear();
+                        empty.lineBreakBefore = true;
+                        ctx.runs.push_back(std::move(empty));
+                    }
+                    ctx.pendingLineBreak = true;
+                }
             } else if (tag == "w:cr") {
                 ctx.pendingLineBreak = true;
             } else if (tag == "w:tab") {
@@ -2624,6 +2636,11 @@ private:
             RichTableRow row;
             if (auto* trPr = tr->FirstChildElement("w:trPr")) {
                 row.header = trPr->FirstChildElement("w:tblHeader") != nullptr;
+                // The row's height: exactly so, or at least (the default rule).
+                if (auto* height = trPr->FirstChildElement("w:trHeight")) {
+                    row.heightPt = std::max(0.0f, static_cast<float>(height->IntAttribute("w:val", 0)) / 20.0f);
+                    row.heightExact = row.heightPt > 0.0f && std::string(Attr(height, "w:hRule")) == "exact";
+                }
             }
 
             const size_t rowIndex = block.tableRows.size();
@@ -2689,9 +2706,20 @@ private:
                 }
                 InlineContext ctx;
                 bool firstParagraph = true;
+                // Each paragraph is a line of the cell, an empty one too (a
+                // letter spaces its address, date and text with them): one
+                // that left no run behind becomes an empty line of its own,
+                // in its paragraph's font.
+                RichTextRun emptyLine;
+                emptyLine.lineBreakBefore = true;
+                int paragraphCount = 0;
                 for (auto* p = tc->FirstChildElement("w:p"); p;
                      p = p->NextSiblingElement("w:p")) {
-                    if (!firstParagraph) ctx.pendingLineBreak = true;
+                    if (!firstParagraph) {
+                        if (ctx.pendingLineBreak) ctx.runs.push_back(emptyLine);
+                        ctx.pendingLineBreak = true;
+                    }
+                    paragraphCount++;
                     ctx.paragraphCharacter = ParagraphStyleCharacter(p);
                     // Alignment is a paragraph property; the cell takes its
                     // first paragraph's, and its frame where the cell has none.
@@ -2713,6 +2741,12 @@ private:
                         if (run.fontSizePt <= 0.0f) run.fontSizePt = styled.paragraphFontSizePt;
                         if (run.fontFamily.empty()) run.fontFamily = styled.paragraphFontFamily;
                     }
+                    emptyLine.fontSizePt = styled.paragraphFontSizePt;
+                    emptyLine.fontFamily = styled.paragraphFontFamily;
+                }
+                if (ctx.pendingLineBreak) {
+                    ctx.runs.push_back(emptyLine);
+                    ctx.pendingLineBreak = false;
                 }
                 cell.runs = std::move(ctx.runs);
 
@@ -3927,7 +3961,15 @@ private:
         std::vector<int> rowSpanRemaining(columnCount, 0);
         for (const auto& row : block.tableRows) {
             xml << "<w:tr>";
-            if (row.header) xml << "<w:trPr><w:tblHeader/></w:trPr>";
+            if (row.header || row.heightPt > 0.0f) {
+                xml << "<w:trPr>";
+                if (row.heightPt > 0.0f) {
+                    xml << "<w:trHeight w:val=\"" << std::lround(row.heightPt * 20.0f) << "\" w:hRule=\""
+                        << (row.heightExact ? "exact" : "atLeast") << "\"/>";
+                }
+                if (row.header) xml << "<w:tblHeader/>";
+                xml << "</w:trPr>";
+            }
 
             size_t cellIndex = 0;
             for (size_t col = 0; col < columnCount; ) {

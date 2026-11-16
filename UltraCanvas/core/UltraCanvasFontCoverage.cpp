@@ -223,6 +223,13 @@ namespace UltraCanvas {
             { "Courier New",     { "Liberation Mono", "Cousine", "Courier", "Nimbus Mono PS" } },
             { "Calibri",         { "Carlito" } },
             { "Cambria",         { "Caladea" } },
+            // The other way round: a document written in Writer names the
+            // Liberation fonts, which Windows has the originals of.
+            { "Liberation Sans",  { "Arial", "Arimo", "Helvetica" } },
+            { "Liberation Serif", { "Times New Roman", "Tinos", "Times" } },
+            { "Liberation Mono",  { "Courier New", "Cousine", "Courier" } },
+            { "Carlito",          { "Calibri" } },
+            { "Caladea",          { "Cambria" } },
         };
         return kSubstitutes;
     }

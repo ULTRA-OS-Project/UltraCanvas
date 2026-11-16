@@ -9,6 +9,7 @@
 // Version: 1.8.0 - Pattern fills (RichShape::fillPattern, patternBackColor, PatternBit)
 // Version: 1.7.0 - Gradient fills (RichShape::gradientStops), a drawing's own size
 //                  (RichTextFrame::drawingWidthPt / drawingHeightPt)
+// Version: 1.7.0 - RichTableRow::heightPt / heightExact: a table row's height as the document sets it
 // Version: 1.6.0 - Drawn shapes (RichShape, RichTextFrame::shapes)
 // Version: 1.5.0 - Text frames (RichTextRun::frameIndex, UCRichDocument::frames)
 //                  and floats placed from the page or its margins
@@ -299,6 +300,12 @@ struct RichTableCell {
 struct RichTableRow {
     std::vector<RichTableCell> cells;
     bool header = false;
+    // The row's height as the document sets it (points; 0 = as tall as its
+    // text): at least this tall, or - heightExact - this tall whatever its
+    // text needs. A letter laid out in a table holds its address block down
+    // the page with a tall row.
+    float heightPt = 0.0f;
+    bool heightExact = false;
 };
 
 struct RichDocBlock {

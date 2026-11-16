@@ -7,6 +7,9 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.9.4 - a table row is as tall as its document says (RichTableRow::heightPt); a picture placed
+//                  from the page keeps its width; floats are cut at the edges of their page; an offset
+//                  may put a float in a margin
 // Version: 1.9.3 - the font report reads the text in text frames too, and the whole document
 //                  while a header, a note or a frame is edited
 // Version: 1.9.2 - the font report leaves out a family an installed font stands in for by name
@@ -1005,8 +1008,11 @@ UltraCanvasRichTextEdit::PlacedFloat UltraCanvasRichTextEdit::PlaceFloat(
         case RichTextAlign::Default: x = areaLeft + image.offsetX; break;
         default: x = areaLeft; break;
     }
-    const float minX = fromPage ? -Px(pageSetup.marginLeftPt) : 0.0f;
-    const float maxX = fromPage ? column + Px(pageSetup.marginRightPt) - image.width : column - image.width;
+    // Kept on the sheet: in the column when it is aligned in it, anywhere on
+    // the page when the document says where (an offset may reach into a margin).
+    const bool anywhere = fromPage || image.floatAlign == RichTextAlign::Default;
+    const float minX = anywhere ? -Px(pageSetup.marginLeftPt) : 0.0f;
+    const float maxX = anywhere ? column + Px(pageSetup.marginRightPt) - image.width : column - image.width;
     x = std::clamp(x, minX, std::max(minX, maxX));
     // Down: from the paragraph's top, or within the page or its text area.
     float areaTop = paragraphTop, areaHeight = std::max(paragraphHeight, height);
@@ -1149,7 +1155,27 @@ void UltraCanvasRichTextEdit::DrawFloats(IRenderContext* ctx, bool behindText) {
     for (const PlacedFloat& placed : placedFloats) {
         if ((placed.wrap == RichTextRun::ImageWrap::BehindText) != behindText) continue;
         if (placed.rect.y + placed.rect.height < viewTop || placed.rect.y > viewBottom) continue;
+        // On its paragraph's page and no further: a banner taller or wider
+        // than the sheet, or one that starts above it, is cut by its edges
+        // (it showed on the page before, and on the desk between them).
+        const PageFrame* page = nullptr;
+        if (pageView && !furnitureEdit && placed.blockIndex >= 0
+            && placed.blockIndex < static_cast<int>(blockLayouts.size())) {
+            const float anchorY = blockLayouts[static_cast<size_t>(placed.blockIndex)].bounds.y;
+            for (const PageFrame& frame : pages) {
+                if (frame.top > anchorY) break;
+                page = &frame;
+            }
+        }
+        if (!page) {
+            DrawPlacedFloat(ctx, placed);
+            continue;
+        }
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(visibleArea.x + pageLeftX, visibleArea.y + page->top - scrollOffset,
+                              pageWidthPx, pageHeightPx));
         DrawPlacedFloat(ctx, placed);
+        ctx->PopState();
     }
 }
 
@@ -1197,8 +1223,9 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
         ctx->DrawFilledRectangle(Rect2Dd(target.x + half, target.y + half, target.width - width, target.height - width),
                                  Colors::Transparent, static_cast<float>(width),
                                  ParseHexColor(frame->border.color, style.textColor));
-    } else if (!readOnly && !frame->IsDrawing()) {
-        // An editable view shows where a borderless frame is, as Writer does.
+    } else if (!readOnly && !printing && !frame->IsDrawing()) {
+        // An editable view shows where a borderless frame is, as Writer does
+        // (on the screen: a print or a PDF has no such line).
         ctx->DrawFilledRectangle(target, Colors::Transparent, 1.0f, style.tableGuideColor);
     }
     if (!placed.frameContent) return;
@@ -1993,8 +2020,11 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                       : (image ? static_cast<float>(image->GetWidth()) : 16.0f);
                 height = run.imageHeightPt > 0.0f ? Px(run.imageHeightPt)
                        : (image ? static_cast<float>(image->GetHeight()) : 16.0f);
+                // Never wider than the column - unless it is placed on the
+                // page, not in the column: a banner across the whole sheet
+                // keeps its size, and the page's edge cuts it.
                 const float maxWidth = std::max(16.0f, ColumnWidth());
-                if (width > maxWidth) {
+                if (width > maxWidth && run.floatHorizontalFrom != RichTextRun::FloatOrigin::Page) {
                     height *= maxWidth / width;
                     width = maxWidth;
                 }
@@ -2618,6 +2648,11 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                 }
 
                 if (rowHeight <= 0.0f) rowHeight = static_cast<float>(style.baseFont.fontSize) * 1.3f;
+                // The height the document gives the row: at least that, or
+                // exactly that.
+                if (row.heightPt > 0.0f) {
+                    rowHeight = row.heightExact ? Px(row.heightPt) : std::max(rowHeight, Px(row.heightPt));
+                }
                 // Every cell that belongs to this row alone takes its height.
                 for (size_t i = firstCellOfRow; i < bl.cells.size(); i++) {
                     bool spans = false;

@@ -18,6 +18,8 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.5.0 - documents of several sections (page size), row heights, merged cells, a cell's empty
+//                 paragraphs, character styles (sprmCIstd), letter spacing, negative float offsets
 // Version: 2.4.0 - EMF and WMF pictures (their compressed BLIPs inflated), pictures and fills
 // Version: 2.3.0 - Pattern fills (their 1-bit bitmaps), texture and picture fills
 // Version: 2.2.0 - Gradient (shade) fills
@@ -111,6 +113,8 @@ constexpr uint16_t kSprmCIss = 0x2A48;
 constexpr uint16_t kSprmCHps = 0x4A43;
 constexpr uint16_t kSprmCRgFtc0 = 0x4A4F;
 constexpr uint16_t kSprmCCv = 0x6870;
+constexpr uint16_t kSprmCIstd = 0x4A30;          // the character style a run has
+constexpr uint16_t kSprmCDxaSpace = 0x8840;      // letter spacing, twips
 constexpr uint16_t kSprmCPicLocation = 0x6A03;
 constexpr uint16_t kSprmCSymbol = 0x6A09;
 constexpr uint16_t kSprmCHighlight = 0x2A0C;
@@ -141,6 +145,7 @@ constexpr uint16_t kSprmPOutLvl = 0x2640;
 constexpr uint16_t kSprmPFPageBreakBefore = 0x2407;
 constexpr uint16_t kSprmTDefTable = 0xD608;
 constexpr uint16_t kSprmTTableHeader = 0x3404;
+constexpr uint16_t kSprmTDyaRowHeight = 0x9407;
 constexpr uint16_t kSprmTTableBorders80 = 0xD605;
 constexpr uint16_t kSprmTTableBorders = 0xD613;
 constexpr uint16_t kSprmTDefTableShd80 = 0xD609;
@@ -231,6 +236,7 @@ struct DocCharProps {
     int symbolFont = -1;
     uint16_t symbolChar = 0;
     std::string highlight;        // highlighter or character shading, "#RRGGBB"
+    int spacingTwips = 0;         // letters set wider (> 0) or tighter (< 0)
 };
 
 struct DocParaProps {
@@ -244,6 +250,7 @@ struct DocParaProps {
     int outlineLevel = 9;         // 9 = body text
     bool pageBreakBefore = false;
     bool headerRow = false;
+    int rowHeight = 0;            // twips: > 0 at least, < 0 exactly (sprmTDyaRowHeight)
     std::vector<int> cellEdges;   // twips, one more than the row's cells
     // Geometry, in twips (1/20 pt). Word's defaults are all zero.
     int leftIndent = 0;
@@ -266,6 +273,9 @@ struct DocParaProps {
         std::string background;
         RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
         float padding[4] = {-1.0f, -1.0f, -1.0f, -1.0f};   // top, left, bottom, right (points)
+        // Merged with the cell to its left, or with the one above it; a
+        // cell that starts a run of cells merged downwards.
+        bool mergedAcross = false, mergedDown = false, startsMergeDown = false;
     };
     int tableJc = 0;              // 0 left, 1 centre, 2 right
     int gapHalf = -1;             // twips; half the room between two cells' text
@@ -425,6 +435,7 @@ void ApplyCharSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
             case kSprmCKul: props.underline = b != 0; break;
             case kSprmCIss: props.position = b; break;
             case kSprmCHps: props.halfPoints = std::max<int>(2, ReadU16(data, sprm.operand)); break;
+            case kSprmCDxaSpace: props.spacingTwips = ReadI16(data, sprm.operand); break;
             case kSprmCRgFtc0: props.fontIndex = ReadU16(data, sprm.operand); break;
             case kSprmCIco: props.color = IcoColor(b); break;
             case kSprmCCv: {
@@ -502,6 +513,7 @@ void ApplyParaSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
                 ApplyTabChanges(data, sprm.operand, sprm.operandSize, true, props);
                 break;
             case kSprmTTableHeader: props.headerRow = b != 0; break;
+            case kSprmTDyaRowHeight: props.rowHeight = ReadI16(data, sprm.operand); break;
             case kSprmTDefTable: {
                 // cb (2) | itcMac (1) | rgdxaCenter[itcMac + 1] (2 each) |
                 // rgTc80[itcMac] (20 each: flags, width, then four Brc80
@@ -523,6 +535,10 @@ void ApplyParaSprms(const std::vector<uint8_t>& data, size_t begin, size_t end,
                     if (tc + 20 > end) break;
                     auto& format = props.cellFormats[static_cast<size_t>(i)];
                     const uint16_t tcgrf = ReadU16(data, tc);
+                    // fFirstMerged (bit 0), fMerged (1), fVertMerge (5), fVertRestart (6).
+                    format.mergedAcross = (tcgrf & 0x02) != 0 && (tcgrf & 0x01) == 0;
+                    format.startsMergeDown = (tcgrf & 0x60) == 0x60;
+                    format.mergedDown = (tcgrf & 0x20) != 0 && !format.startsMergeDown;
                     const int vertical = (tcgrf >> 7) & 3;
                     format.verticalAlign = vertical == 1 ? RichVerticalAlign::Middle
                                          : vertical == 2 ? RichVerticalAlign::Bottom : RichVerticalAlign::Top;
@@ -710,6 +726,16 @@ public:
         if (!style.defined) return nullptr;
         Resolve(style);
         return &style;
+    }
+
+    // Lays character style `istd` (and the ones it is based on, first) over
+    // `props`: only what the style itself states changes.
+    void ApplyCharacterStyle(int istd, const DocCharProps& paragraphStyle, DocCharProps& props, int depth = 0) {
+        if (depth > 16 || istd < 0 || istd >= static_cast<int>(styles_.size())) return;
+        const DocStyle& style = styles_[static_cast<size_t>(istd)];
+        if (!style.defined || style.kind != 2) return;
+        if (style.base != 0x0FFF && style.base != istd) ApplyCharacterStyle(style.base, paragraphStyle, props, depth + 1);
+        if (style.chpxEnd > style.chpx) ApplyCharSprms(*table_, style.chpx, style.chpxEnd, paragraphStyle, props);
     }
 
     // Character properties of paragraph style `istd`, fully resolved.
@@ -1235,8 +1261,11 @@ public:
         int xaPage = 12240, yaPage = 15840, left = 1800, right = 1800, top = 1440, bottom = 1440;
         int headerTop = 720, footerBottom = 720;
         const uint32_t fc = FcAt(6), lcb = LcbAt(6);   // PlcfSed
-        if (lcb >= 4 + 12 && static_cast<size_t>(fc) + lcb <= table_.size()) {
-            const uint32_t fcSepx = ReadU32(table_, fc + 8 + 2);   // first Sed, after two CPs
+        if (lcb >= 4 + 16 && static_cast<size_t>(fc) + lcb <= table_.size()) {
+            // n + 1 CPs, then n Seds of 12 bytes: the first Sed follows all
+            // the CPs (a letter of three sections has four of them).
+            const uint32_t sections = (lcb - 4) / 16;
+            const uint32_t fcSepx = ReadU32(table_, fc + 4 * (sections + 1) + 2);
             if (fcSepx != 0xFFFFFFFFu && fcSepx + 2 <= word_.size()) {
                 const size_t size = ReadU16(word_, fcSepx);
                 ForEachSprm(word_, fcSepx + 2, fcSepx + 2 + size, [&](const Sprm& sprm) {
@@ -1349,6 +1378,14 @@ private:
     bool cellHasParagraph_ = false;
     struct RowBorders { bool present = false; RichBorder sides[6]; };
     std::vector<RowBorders> rowTableBorders_;   // per row of the table being built
+    // The left and right edge (twips) of every cell kept, per row: the
+    // table's grid is the union of them, and a cell spans the columns
+    // between its two. Dropped when a row does not state its edges.
+    std::vector<std::vector<std::pair<int, int>>> rowCellEdges_;
+    bool cellEdgesKnown_ = true;
+    bool gridFromEdges_ = false;                  // ApplyCellGrid set the columns and the spans
+    struct MergeOrigin { size_t row = 0, cell = 0; };
+    std::map<int, MergeOrigin> mergedDownFrom_;   // by left edge: the cell cells below merge into
 
     // ===== FLOATING SHAPES =====
     // Word 97 keeps a floating picture or text box as an OfficeArt shape: its
@@ -1733,7 +1770,7 @@ private:
             case 3: case 5: run.imageFloatAlign = RichTextAlign::Right; break;
             default:
                 run.imageFloatAlign = RichTextAlign::Default;
-                run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+                run.imageOffsetXPt = x;             // left of its area too: a banner starts in the margin
                 break;
         }
         switch (shape.posV) {
@@ -1742,7 +1779,7 @@ private:
             case 3: run.floatVerticalAlign = VAlign::Bottom; break;
             default:
                 run.floatVerticalAlign = VAlign::Top;
-                run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+                run.imageOffsetYPt = y;             // above its paragraph too
                 break;
         }
         // wr: 0 around, 1 top and bottom, 2 square, 3 none (in front or
@@ -2053,6 +2090,13 @@ private:
         DocCharProps props = paragraphStyle;
         const FkpRange* range = FindFkpRange(chpx_, fc);
         if (range && range->grpprlEnd > range->grpprl) {
+            // The run's character style first (a "P" in the brand's colour),
+            // then what the run states itself.
+            int characterStyle = -1;
+            ForEachSprm(word_, range->grpprl, range->grpprlEnd, [&](const Sprm& sprm) {
+                if (sprm.code == kSprmCIstd) characterStyle = ReadU16(word_, sprm.operand);
+            });
+            if (characterStyle >= 0) stylesheet_.ApplyCharacterStyle(characterStyle, paragraphStyle, props);
             ApplyCharSprms(word_, range->grpprl, range->grpprlEnd, paragraphStyle, props);
         }
         return props;
@@ -2085,6 +2129,7 @@ private:
         }
         run.code = IsMonospaceFont(run.fontFamily);
         if (!props.highlight.empty() && props.highlight != base.highlight) run.highlightColor = props.highlight;
+        if (props.spacingTwips != base.spacingTwips) run.letterSpacingPt = static_cast<float>(props.spacingTwips) / 20.0f;
         return run;
     }
 
@@ -2240,6 +2285,16 @@ private:
             // Paragraphs of one cell share it, a line apart; the cell mark
             // closes it. Nested tables flatten into their outer cell.
             if (!tableOpen_) OpenTable();
+            // Each paragraph is a line of the cell, an empty one too (a
+            // letter spaces its address, date and text with them): an empty
+            // line in the font of its paragraph mark.
+            if (cellHasParagraph_ && runs.empty()) {
+                const DocCharProps markChars = hasMark ? CharProps(markFc, styleChars) : styleChars;
+                RichTextRun empty;
+                if (markChars.halfPoints > 0) empty.fontSizePt = static_cast<float>(markChars.halfPoints) / 2.0f;
+                empty.fontFamily = FontName(markChars.fontIndex);
+                runs.push_back(std::move(empty));
+            }
             if (cellHasParagraph_ && !runs.empty()) runs.front().lineBreakBefore = true;
             if (!cellHasParagraph_) {
                 cell_.align = AlignFor(pap.jc);
@@ -2350,6 +2405,9 @@ private:
     static bool ParagraphIsOnePicture(const std::vector<RichTextRun>& runs, RichDocBlock& image) {
         const RichTextRun* picture = nullptr;
         for (const auto& run : runs) {
+            // A floating picture is placed by its own offsets (a banner at
+            // the page's top edge): it stays a run of its paragraph.
+            if (run.IsFloatingObject()) return false;
             if (run.IsInlineImage()) {
                 if (picture) return false;
                 picture = &run;
@@ -2487,6 +2545,53 @@ private:
                 *targets[side] = value;
             }
         }
+        if (pap.rowHeight != 0) {
+            row_.heightPt = static_cast<float>(std::abs(pap.rowHeight)) / 20.0f;
+            row_.heightExact = pap.rowHeight < 0;
+        }
+        // Merged cells: one merged with its left neighbour widens it, one
+        // merged with the cell above lengthens that one; neither is a cell
+        // of its own. Rows state their own cell edges, so a cell's columns
+        // are counted once the whole table's edges are known (CloseTable).
+        if (!row_.cells.empty()) {
+            const bool edgesKnown = pap.cellEdges.size() == row_.cells.size() + 1;
+            if (!edgesKnown) cellEdgesKnown_ = false;
+            std::vector<RichTableCell> kept;
+            std::vector<std::pair<int, int>> keptEdges;
+            const size_t rowIndex = tableBlock_.tableRows.size();
+            for (size_t c = 0; c < row_.cells.size(); ++c) {
+                const DocParaProps::CellFormat format =
+                    c < pap.cellFormats.size() ? pap.cellFormats[c] : DocParaProps::CellFormat{};
+                const int left = edgesKnown ? pap.cellEdges[c] : static_cast<int>(c);
+                const int right = edgesKnown ? pap.cellEdges[c + 1] : static_cast<int>(c) + 1;
+                if (format.mergedAcross && !kept.empty()) {
+                    keptEdges.back().second = right;
+                    if (!edgesKnown) kept.back().columnSpan++;
+                    continue;
+                }
+                auto above = mergedDownFrom_.find(left);
+                if (format.mergedDown && above != mergedDownFrom_.end()
+                    && above->second.row < tableBlock_.tableRows.size()
+                    && above->second.cell < tableBlock_.tableRows[above->second.row].cells.size()) {
+                    RichTableCell& origin = tableBlock_.tableRows[above->second.row].cells[above->second.cell];
+                    origin.rowSpan = static_cast<int>(rowIndex - above->second.row) + 1;
+                    continue;
+                }
+                if (format.startsMergeDown) mergedDownFrom_[left] = MergeOrigin{rowIndex, kept.size()};
+                else mergedDownFrom_.erase(left);
+                kept.push_back(std::move(row_.cells[c]));
+                keptEdges.emplace_back(left, right);
+            }
+            if (kept.empty()) {
+                // Every cell continues one from above: the row is only height
+                // for them. A cell to hold it keeps the rows counted right.
+                kept.emplace_back();
+                keptEdges.emplace_back(0, 0);
+                cellEdgesKnown_ = false;
+            }
+            row_.cells = std::move(kept);
+            rowCellEdges_.push_back(std::move(keptEdges));
+        }
         if (!row_.cells.empty()) {
             tableBlock_.tableRows.push_back(std::move(row_));
             RowBorders borders;
@@ -2528,16 +2633,71 @@ private:
             DocParaProps none;
             FinishRow(none);
         }
+        ApplyCellGrid();
         ResolveTableBorders();
-        // Widths only hold when every row has the same number of cells.
+        // Widths only hold when every row fills the grid's columns.
         size_t columns = tableBlock_.tableColumnWidths.size();
         for (const auto& row : tableBlock_.tableRows) {
+            if (gridFromEdges_) break;
             if (row.cells.size() != columns) { tableBlock_.tableColumnWidths.clear(); break; }
         }
         if (!tableBlock_.tableRows.empty()) doc_.blocks.push_back(std::move(tableBlock_));
         tableOpen_ = false;
         tableBlock_ = RichDocBlock{};
         rowTableBorders_.clear();
+        rowCellEdges_.clear();
+        mergedDownFrom_.clear();
+        cellEdgesKnown_ = true;
+    }
+
+    // The table's grid from its rows' cell edges: every edge any row has is
+    // a column boundary, and a cell spans the columns between its own two (a
+    // row with fewer, wider cells has merged ones - Writer writes a merged
+    // cell as one wide cell, Word as cells flagged merged).
+    void ApplyCellGrid() {
+        gridFromEdges_ = false;
+        if (!cellEdgesKnown_ || rowCellEdges_.size() != tableBlock_.tableRows.size()) return;
+        // Only a table whose rows differ in their number of cells has merged
+        // ones; rows of equal count are columns as the first row states them,
+        // even where a later row sets its edges a little differently.
+        bool sameCount = true;
+        for (const RichTableRow& row : tableBlock_.tableRows) {
+            sameCount = sameCount && row.cells.size() == tableBlock_.tableRows.front().cells.size();
+        }
+        if (sameCount) return;
+        std::vector<int> edges;
+        for (const auto& row : rowCellEdges_) {
+            for (const auto& cell : row) {
+                edges.push_back(cell.first);
+                edges.push_back(cell.second);
+            }
+        }
+        std::sort(edges.begin(), edges.end());
+        // Edges a point apart are one edge.
+        std::vector<int> grid;
+        for (int edge : edges) {
+            if (grid.empty() || edge - grid.back() > 20) grid.push_back(edge);
+        }
+        if (grid.size() < 2) return;
+        auto column = [&grid](int edge) {
+            size_t best = 0;
+            for (size_t i = 1; i < grid.size(); ++i) {
+                if (std::abs(grid[i] - edge) < std::abs(grid[best] - edge)) best = i;
+            }
+            return static_cast<int>(best);
+        };
+        for (size_t r = 0; r < tableBlock_.tableRows.size(); ++r) {
+            RichTableRow& row = tableBlock_.tableRows[r];
+            if (rowCellEdges_[r].size() != row.cells.size()) return;
+            for (size_t c = 0; c < row.cells.size(); ++c) {
+                row.cells[c].columnSpan = std::max(1, column(rowCellEdges_[r][c].second) - column(rowCellEdges_[r][c].first));
+            }
+        }
+        gridFromEdges_ = true;
+        tableBlock_.tableColumnWidths.clear();
+        for (size_t i = 0; i + 1 < grid.size(); ++i) {
+            tableBlock_.tableColumnWidths.push_back(static_cast<float>(grid[i + 1] - grid[i]));
+        }
     }
 };
 

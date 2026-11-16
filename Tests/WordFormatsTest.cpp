@@ -2639,6 +2639,185 @@ int main(int argc, char** argv) {
         CHECK_MSG(!state.letterSpacingPt && !state.letterSpacingMixed, "an unset delta gives the words back to the view's spacing");
     }
 
+    // ===== A LETTER LAID OUT IN A TABLE =====
+    // What a letter template needs of a table and of the pictures round it:
+    // rows as tall as the document says, the empty paragraphs that space a
+    // cell's text, a banner that starts above its paragraph and left of the
+    // margin - written and read back by both formats.
+    {
+        UCRichDocument letter;
+        RichDocBlock anchor;
+        RichTextRun banner;
+        banner.text = RichTextRun::kObjectReplacement;
+        banner.mediaIndex = letter.AddMedia("dot.png", "image/png",
+                                            std::vector<uint8_t>(kTinyPng, kTinyPng + sizeof(kTinyPng)));
+        banner.imageWidthPt = 612.0f;
+        banner.imageHeightPt = 52.0f;
+        banner.imageWrap = RichTextRun::ImageWrap::BehindText;
+        banner.imageFloatAlign = RichTextAlign::Default;
+        banner.floatHorizontalFrom = RichTextRun::FloatOrigin::Page;
+        banner.floatVerticalFrom = RichTextRun::FloatOrigin::Paragraph;
+        banner.imageOffsetXPt = 0.0f;
+        banner.imageOffsetYPt = -42.5f;
+        anchor.runs = {banner};
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        table.tableBordersFromDocument = true;
+        auto line = [](const std::string& text, bool breakBefore) {
+            RichTextRun run;
+            run.text = text;
+            run.lineBreakBefore = breakBefore;
+            return run;
+        };
+        RichTableCell address;
+        address.runs = {line("Name", false), line("", true), line("Date", true), line("", true)};
+        RichTableRow tall, exact;
+        tall.cells = {address};
+        tall.heightPt = 561.6f;
+        RichTableCell logo;
+        logo.runs = {line("NP", false)};
+        exact.cells = {logo};
+        exact.heightPt = 50.4f;
+        exact.heightExact = true;
+        table.tableRows = {tall, exact};
+        letter.blocks = {anchor, table};
+
+        for (const char* format : {"odt", "docx"}) {
+            const std::string label = std::string("letter table (") + format + ")";
+            const std::string path = TmpPath(std::string("letter.") + format);
+            std::string err;
+            const bool saved = std::string(format) == "odt" ? UCWordDocumentIO::SaveOdt(path, letter, err)
+                                                            : UCWordDocumentIO::SaveDocx(path, letter, err);
+            CHECK_MSG(saved, label + ": " + err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), label + ": " + err);
+            const RichDocBlock* read = nullptr;
+            const RichTextRun* floating = nullptr;
+            for (const RichDocBlock& block : back.blocks) {
+                if (block.type == RichBlockType::Table) read = &block;
+                for (const RichTextRun& run : block.runs) if (run.IsFloatingObject()) floating = &run;
+            }
+            CHECK_MSG(read && read->tableRows.size() == 2, label + ": the table");
+            if (read && read->tableRows.size() == 2) {
+                CHECK_MSG(Near(read->tableRows[0].heightPt, 561.6f) && !read->tableRows[0].heightExact,
+                          label + ": a row at least so tall");
+                CHECK_MSG(Near(read->tableRows[1].heightPt, 50.4f) && read->tableRows[1].heightExact,
+                          label + ": a row exactly so tall");
+                CHECK_MSG(UCRichDocument::ConcatenateRunText(read->tableRows[0].cells[0].runs) == "Name\n\nDate\n",
+                          label + ": the cell's empty lines, got \""
+                          + UCRichDocument::ConcatenateRunText(read->tableRows[0].cells[0].runs) + "\"");
+            }
+            CHECK_MSG(floating != nullptr, label + ": the banner still floats");
+            if (floating) {
+                CHECK_MSG(Near(floating->imageOffsetYPt, -42.5f), label + ": it starts above its paragraph");
+                CHECK_MSG(Near(floating->imageWidthPt, 612.0f), label + ": it keeps its width");
+            }
+        }
+    }
+
+    // ===== AN ODT AS WORD WRITES ONE =====
+    // Word's ODT export: the font and size in the default paragraph style
+    // only, a cell's spacing done with empty paragraphs, and a picture turned
+    // about its centre ("translate rotate translate") in a group.
+    {
+        const std::string styles =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-styles xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\""
+            " xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\""
+            " xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\""
+            " xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\">"
+            "<office:font-face-decls><style:font-face style:name=\"Posterama\" svg:font-family=\"Posterama\"/>"
+            "</office:font-face-decls><office:styles>"
+            "<style:default-style style:family=\"paragraph\"><style:paragraph-properties fo:margin-bottom=\"0.1527in\"/>"
+            "<style:text-properties style:font-name=\"Posterama\" fo:font-size=\"11pt\" fo:color=\"#000000\"/>"
+            "</style:default-style>"
+            "<style:style style:name=\"Normal\" style:family=\"paragraph\">"
+            "<style:paragraph-properties fo:margin-bottom=\"0in\"/></style:style>"
+            "<style:style style:name=\"Loose\" style:family=\"paragraph\"/>"
+            "<style:style style:name=\"Small\" style:family=\"paragraph\" style:parent-style-name=\"Normal\">"
+            "<style:text-properties fo:font-size=\"10pt\"/></style:style>"
+            "</office:styles></office:document-styles>";
+        const std::string content =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\""
+            " xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\""
+            " xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\""
+            " xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\""
+            " xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\""
+            " xmlns:xlink=\"http://www.w3.org/1999/xlink\""
+            " xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\""
+            " xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\">"
+            "<office:automatic-styles>"
+            "<style:style style:name=\"R1\" style:family=\"table-row\">"
+            "<style:table-row-properties style:min-row-height=\"7.8in\"/></style:style>"
+            "<style:style style:name=\"g\" style:family=\"graphic\"><style:graphic-properties style:wrap=\"run-through\""
+            " style:run-through=\"background\" style:horizontal-rel=\"page-content\" style:vertical-rel=\"paragraph\""
+            " style:horizontal-pos=\"from-left\" style:vertical-pos=\"from-top\"/></style:style>"
+            "</office:automatic-styles><office:body><office:text>"
+            "<text:p text:style-name=\"Normal\">Body words</text:p>"
+            "<text:p text:style-name=\"Loose\">Loose words</text:p>"
+            "<text:p text:style-name=\"Small\">Small words</text:p>"
+            "<text:p text:style-name=\"Normal\"><draw:g draw:style-name=\"g\" text:anchor-type=\"paragraph\">"
+            "<draw:frame draw:transform=\"translate(-4in -0.36in) rotate(-1.5708) translate(0in 2.74in)\""
+            " svg:width=\"8in\" svg:height=\"0.72in\"><draw:image xlink:href=\"media/dot.png\"/></draw:frame>"
+            "</draw:g></text:p>"
+            "<table:table><table:table-column/>"
+            "<table:table-row table:style-name=\"R1\"><table:table-cell>"
+            "<text:p text:style-name=\"Normal\">Name</text:p><text:p text:style-name=\"Normal\"/>"
+            "<text:p text:style-name=\"Normal\"/><text:p text:style-name=\"Normal\">Date</text:p>"
+            "<text:p text:style-name=\"Normal\"/></table:table-cell></table:table-row></table:table>"
+            "</office:text></office:body></office:document-content>";
+        const std::string path = TmpPath("word-export.odt");
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(path));
+            zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.text"), false);
+            zip.AddEntry("styles.xml", styles);
+            zip.AddEntry("content.xml", content);
+            zip.AddEntry("media/dot.png", kTinyPng, sizeof(kTinyPng));
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument doc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(path, doc, err), err);
+        const RichDocBlock* body = FindBlock(doc, "Body words");
+        const RichDocBlock* loose = FindBlock(doc, "Loose words");
+        const RichDocBlock* small = FindBlock(doc, "Small words");
+        CHECK_MSG(body && body->paragraphFontFamily == "Posterama" && Near(body->paragraphFontSizePt, 11.0f),
+                  "odt: a style based on nothing takes the default paragraph style's font and size");
+        CHECK_MSG(body && Near(body->spaceAfterPt, 0.0f), "odt: ...and keeps the spacing it states itself");
+        CHECK_MSG(loose && Near(loose->spaceAfterPt, 0.1527f * 72.0f), "odt: ...or the default's when it states none");
+        CHECK_MSG(small && small->paragraphFontFamily == "Posterama" && Near(small->paragraphFontSizePt, 10.0f),
+                  "odt: a style based on another gets the default's font through it");
+        if (body && !body->runs.empty()) {
+            CHECK_MSG(body->runs[0].color.empty(), "odt: the default style's colour is the view's ink, not the runs'");
+        }
+        const RichDocBlock* table = nullptr;
+        const RichTextRun* group = nullptr;
+        for (const RichDocBlock& block : doc.blocks) {
+            if (block.type == RichBlockType::Table) table = &block;
+            for (const RichTextRun& run : block.runs) if (run.IsTextFrame()) group = &run;
+        }
+        CHECK_MSG(table && table->tableRows.size() == 1 && Near(table->tableRows[0].heightPt, 7.8f * 72.0f)
+                  && !table->tableRows[0].heightExact, "odt: a row's least height");
+        if (table && !table->tableRows.empty() && !table->tableRows[0].cells.empty()) {
+            const std::string text = UCRichDocument::ConcatenateRunText(table->tableRows[0].cells[0].runs);
+            CHECK_MSG(text == "Name\n\n\nDate\n", "odt: a cell's empty paragraphs are empty lines, got \"" + text + "\"");
+        }
+        // Turned a quarter about its centre at (0, 2.74in): 0.72in wide and
+        // 8in tall, from 0.36in left of the text area and 1.26in above the
+        // paragraph.
+        CHECK_MSG(group != nullptr, "odt: the group is a drawing");
+        if (group) {
+            CHECK_MSG(Near(group->imageWidthPt, 0.72f * 72.0f) && Near(group->imageHeightPt, 8.0f * 72.0f),
+                      "odt: a member turned a quarter stands tall: " + std::to_string(group->imageWidthPt)
+                      + " x " + std::to_string(group->imageHeightPt));
+            CHECK_MSG(Near(group->imageOffsetXPt, -0.36f * 72.0f) && Near(group->imageOffsetYPt, (2.74f - 4.0f) * 72.0f),
+                      "odt: ...where its transforms put it: " + std::to_string(group->imageOffsetXPt)
+                      + ", " + std::to_string(group->imageOffsetYPt));
+        }
+    }
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;
