@@ -366,6 +366,21 @@ Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `Add
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AutoOrderAxes(`, which no header declares
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::use of undeclared identifier 'UpdateStatusBar'
 # signature Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md: 844aee959169040729c20d732a5e2dcba8d0e13c3c92c17d2878c4b332606126
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapConnectorStyle::Ring' does not exist (no member named 'Ring' in 'MindMapConnectorStyle')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapLayoutOptions::balloonFanSweep' does not exist (no member named 'balloonFanSweep' in 'MindMapLayoutOptions')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapLayoutOptions::balloonGap' does not exist (no member named 'balloonGap' in 'MindMapLayoutOptions')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapLayoutOptions::balloonMetroTrunks' does not exist (no member named 'balloonMetroTrunks' in 'MindMapLayoutOptions')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapLayoutOptions::balloonRepairOverlaps' does not exist (no member named 'balloonRepairOverlaps' in 'MindMapLayoutOptions')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapLayoutOptions::balloonRing' does not exist (no member named 'balloonRing' in 'MindMapLayoutOptions')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapLayoutOptions::balloonTrunkLength' does not exist (no member named 'balloonTrunkLength' in 'MindMapLayoutOptions')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapNodeShape::Triangle' does not exist (no member named 'Triangle' in 'MindMapNodeShape')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapStructure::Balloon' does not exist (no member named 'Balloon' in 'MindMapStructure')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapStyle::branchLabelAlongTrunk' does not exist (no member named 'branchLabelAlongTrunk' in 'MindMapStyle')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapStyle::connectorWidthByDepth' does not exist (no member named 'connectorWidthByDepth' in 'MindMapStyle')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapStyle::sizeByDepth' does not exist (no member named 'sizeByDepth' in 'MindMapStyle')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::'MindMapTopicStyle::arcNote' does not exist (no member named 'arcNote' in 'MindMapTopicStyle')
+Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md::prose names `DrawTextAlongPath(`, which no header declares
+# signature Docs/UltraCanvas/UltraCanvasRadialClusterMapProposal.md: 812c299b4925a19a54b2248002f6ca21f4ad0190ea7898bd41f8a83d6d4fef04
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::cannot initialize a parameter of type 'RequirementTraceDirection' with an rvalue of type 'int'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetLayout' in 'UltraCanvasRequirementDiagram'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::prose names `SetStrictSemantics(`, which no header declares
