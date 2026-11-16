@@ -323,6 +323,26 @@ None of the start-up or delivery path has run against a device: the stack
 cannot start on this machine (no IPv6), so it is verified by building
 against the SDK and by the start-up failing cleanly with its cause logged.
 
+### Vendor backends: Xiaomi miIO, started (2026-11-16)
+
+The plan for the devices no standard protocol reaches - Xiaomi / Mi and
+Roborock vacuums over miIO, LG appliances over ThinQ, a Home Assistant
+bridge - is `Docs/Research/SmartHomeVendorBackendsPlan.md`. Built so far,
+phase 1 steps 1.1-1.3:
+
+- MD5 in UltraCrypt (legacy-gated), which miIO fixes as its key derivation
+  and checksum.
+- `protocols/Xiaomi/miio/MiioPacket.*`: the 32-byte header, the MD5
+  checksum, AES-128-CBC keyed from the device token, the hello.
+- `protocols/Xiaomi/miio/MiioRpc.*`: JSON-RPC requests and replies, MIoT
+  get / set properties and actions.
+- `tests/MiioCodecTest.cpp` (36 checks, every build) matches a packet built
+  independently with openssl and md5sum byte for byte.
+
+Not built yet: the UDP transport (1.4), the backend and its model profiles
+(1.5), and the vacuum / appliance vocabulary in the facade (phase 0) that a
+backend needs to be more than an inert tile. Nothing has met a device.
+
 ### Logging
 
 `SmartHomeProtocolBase::Log` and `ReportError` wrote nothing; they write

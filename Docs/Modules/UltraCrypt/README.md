@@ -23,8 +23,8 @@ This document specifies **what UltraCrypt must provide and why** (§1–2), the
 **Implemented so far** — `UltraCanvas/{include,core}/UltraCrypt/`, backed by
 libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`,
-`UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
-SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
+`UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 and MD5
+(legacy-gated) and SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
 Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
 X25519 key agreement (§5.8.1),
@@ -51,7 +51,12 @@ accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. One caller
 sets `allowLegacy`: the reader of password-protected Office files
 (`UltraCanvasOfficeEncryption.cpp`), because Office 2010 derives its keys with
 SHA-1 - a password hash and key derivation, which SHA-1's collisions do not
-reach. It writes SHA-512, so nothing UltraCanvas writes depends on SHA-1. HKDF is
+reach. It writes SHA-512, so nothing UltraCanvas writes depends on SHA-1.
+MD5 is vendored the same way (RFC 1321, checked against its test suite) and
+gated harder: `allowLegacy` for a digest, and HMAC, HKDF and PBKDF2 refuse it
+outright. It is here for foreign protocols that fix it and cannot be changed
+from this side - Xiaomi's miIO derives its AES key and IV with MD5 and
+checksums every packet with it (`SmartHome/protocols/Xiaomi/miio`). HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
 which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18. AES is
 vendored too (`UltraCryptAes.cpp`, ~470 lines), because libsodium has no AES

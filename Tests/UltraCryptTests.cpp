@@ -36,6 +36,7 @@
 #include "UltraCanvasTextUtils.h"
 
 #include <cstdio>
+#include <algorithm>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -803,6 +804,59 @@ static void TestSha1() {
     UltraCrypt_Hmac(UltraCryptHashAlgorithm::SHA1, longKey, t5, std::strlen(t5), mac);
     CheckHex(mac, "aa4ae5e15272d00e95705637ce8a3b55ed402112",
              "RFC 2202 case 6, HMAC-SHA-1 (over-long key)");
+}
+
+// ===== MD5 (RFC 1321) =====
+// Only for foreign protocols that fix it (Xiaomi miIO). The digests are the
+// RFC's own test suite (§A.5), confirmed with coreutils' md5sum.
+static void TestMd5() {
+    std::printf("MD5 (legacy, foreign protocols)\n");
+    std::vector<uint8_t> digest;
+
+    auto refused = UltraCrypt_Hash(UltraCryptHashAlgorithm::MD5, "abc", 3, digest);
+    Check(!refused && refused.code == UltraCryptResultCode::NotSupported,
+          "plain MD5 is refused without allowLegacy");
+
+    UltraCryptHashOptions legacy;
+    legacy.allowLegacy = true;
+    const struct { const char* input; const char* md5; } suite[] = {
+        {"", "d41d8cd98f00b204e9800998ecf8427e"},
+        {"a", "0cc175b9c0f1b6a831c399e269772661"},
+        {"abc", "900150983cd24fb0d6963f7d28e17f72"},
+        {"message digest", "f96b697d7cb7938d525a2f31aaf161d0"},
+        {"abcdefghijklmnopqrstuvwxyz", "c3fcd3d76192e4007dfb496cca67e13b"},
+        {"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+         "d174ab98d277d9f5a5611c2c9f419d9f"},
+        {"12345678901234567890123456789012345678901234567890123456789012345678901234567890",
+         "57edf4a22be3c955ac49da2e2107b67a"},
+    };
+    for (const auto& v : suite) {
+        const bool ok = static_cast<bool>(UltraCrypt_Hash(UltraCryptHashAlgorithm::MD5,
+                                                          v.input, std::strlen(v.input), digest, legacy));
+        Check(ok, "MD5 with allowLegacy succeeds");
+        CheckHex(digest, v.md5, "RFC 1321 A.5 vector");
+    }
+    Check(UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm::MD5) == 16, "MD5 digest size is 16");
+    Check(UltraCrypt_IsHashAvailable(UltraCryptHashAlgorithm::MD5), "MD5 needs no backend");
+
+    // Streaming, across block boundaries in odd pieces.
+    std::string million(1000000, 'a');
+    UltraCryptHasher hasher(UltraCryptHashAlgorithm::MD5);
+    for (size_t at = 0; at < million.size(); at += 997) {
+        hasher.Update(million.data() + at, std::min<size_t>(997, million.size() - at));
+    }
+    CheckHex(hasher.Final(), "7707d6ae4e027c70eea2a935c2296f21", "streaming MD5 of one million 'a'");
+
+    // Nothing keyed or derived over MD5.
+    std::vector<uint8_t> mac;
+    UltraCryptSecureBuffer key = BufferFromHex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b");
+    auto hmac = UltraCrypt_Hmac(UltraCryptHashAlgorithm::MD5, key, "Hi There", 8, mac);
+    Check(!hmac && hmac.code == UltraCryptResultCode::NotSupported, "HMAC-MD5 is refused");
+    UltraCryptSecureBuffer derived;
+    auto hkdf = UltraCrypt_DeriveKeyHkdf(UltraCryptHashAlgorithm::MD5, key, {}, {}, 16, derived);
+    Check(!hkdf && hkdf.code == UltraCryptResultCode::NotSupported, "HKDF-MD5 is refused");
+    auto pbkdf2 = UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm::MD5, key, {1, 2, 3, 4}, 1, 16, derived);
+    Check(!pbkdf2 && pbkdf2.code == UltraCryptResultCode::NotSupported, "PBKDF2-MD5 is refused");
 }
 
 // ===== HKDF (RFC 5869) =====
@@ -1682,6 +1736,7 @@ int main() {
     TestSha1();
     TestHmac();
     TestHkdf();
+    TestMd5();
     TestPbkdf2();
     TestEncodings();
     TestAead();

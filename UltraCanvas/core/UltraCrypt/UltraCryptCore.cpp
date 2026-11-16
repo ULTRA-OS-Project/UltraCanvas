@@ -383,6 +383,104 @@ void HmacSha1(const uint8_t* key, size_t keySize,
 } // namespace
 
 // ============================================================================
+// MD5 — vendored, foreign protocols only
+// ============================================================================
+// libsodium omits MD5, rightly. It is here because protocols this framework
+// talks to fix it and cannot be changed from this side (Xiaomi miIO derives
+// its AES key and IV with MD5 and checksums every packet with it).
+// UltraCrypt_Hash gates it behind allowLegacy; HMAC and the KDFs refuse it.
+//
+// RFC 1321 §3. Verified against the RFC's own test suite (§A.5) in
+// Tests/UltraCryptTests.cpp.
+namespace {
+
+struct Md5State {
+    uint32_t a = 0, b = 0, c = 0, d = 0;
+    uint64_t bitCount = 0;
+    uint8_t buffer[64] = {};
+    size_t bufferLen = 0;
+};
+
+constexpr uint32_t kMd5K[64] = {
+    0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee, 0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
+    0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be, 0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
+    0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa, 0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
+    0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed, 0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a,
+    0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c, 0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
+    0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05, 0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
+    0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039, 0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
+    0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1, 0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391,
+};
+constexpr uint8_t kMd5Shift[64] = {
+    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+    5,  9, 14, 20, 5,  9, 14, 20, 5,  9, 14, 20, 5,  9, 14, 20,
+    4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+};
+
+void Md5Init(Md5State& s) {
+    s = Md5State{};
+    s.a = 0x67452301; s.b = 0xefcdab89; s.c = 0x98badcfe; s.d = 0x10325476;
+}
+
+void Md5Compress(Md5State& s, const uint8_t* block) {
+    uint32_t m[16];
+    for (int i = 0; i < 16; ++i) {   // little-endian words
+        m[i] = static_cast<uint32_t>(block[i * 4]) | (static_cast<uint32_t>(block[i * 4 + 1]) << 8) |
+               (static_cast<uint32_t>(block[i * 4 + 2]) << 16) | (static_cast<uint32_t>(block[i * 4 + 3]) << 24);
+    }
+    uint32_t a = s.a, b = s.b, c = s.c, d = s.d;
+    for (int i = 0; i < 64; ++i) {
+        uint32_t f;
+        int g;
+        if (i < 16)      { f = (b & c) | (~b & d);  g = i; }
+        else if (i < 32) { f = (d & b) | (~d & c);  g = (5 * i + 1) % 16; }
+        else if (i < 48) { f = b ^ c ^ d;           g = (3 * i + 5) % 16; }
+        else             { f = c ^ (b | ~d);        g = (7 * i) % 16; }
+        const uint32_t sum = a + f + kMd5K[i] + m[g];
+        a = d; d = c; c = b;
+        b = b + ((sum << kMd5Shift[i]) | (sum >> (32 - kMd5Shift[i])));
+    }
+    s.a += a; s.b += b; s.c += c; s.d += d;
+    UltraCrypt_SecureZero(m, sizeof(m));
+}
+
+void Md5Update(Md5State& s, const uint8_t* data, size_t size) {
+    s.bitCount += static_cast<uint64_t>(size) * 8;
+    for (size_t i = 0; i < size; ++i) {
+        s.buffer[s.bufferLen++] = data[i];
+        if (s.bufferLen == 64) {
+            Md5Compress(s, s.buffer);
+            s.bufferLen = 0;
+        }
+    }
+}
+
+void Md5Final(Md5State& s, uint8_t out[16]) {
+    const uint64_t bits = s.bitCount;
+    const uint8_t pad = 0x80, zero = 0;
+    Md5Update(s, &pad, 1);
+    while (s.bufferLen != 56) Md5Update(s, &zero, 1);
+    uint8_t lengthLE[8];
+    for (int i = 0; i < 8; ++i) lengthLE[i] = static_cast<uint8_t>(bits >> (8 * i));
+    Md5Update(s, lengthLE, 8);   // completes the last block
+    const uint32_t words[4] = {s.a, s.b, s.c, s.d};
+    for (int w = 0; w < 4; ++w) {
+        for (int i = 0; i < 4; ++i) out[w * 4 + i] = static_cast<uint8_t>(words[w] >> (8 * i));
+    }
+}
+
+void Md5OneShot(const uint8_t* data, size_t size, uint8_t out[16]) {
+    Md5State s;
+    Md5Init(s);
+    Md5Update(s, data, size);
+    Md5Final(s, out);
+    UltraCrypt_SecureZero(&s, sizeof(s));
+}
+
+} // namespace
+
+// ============================================================================
 // Hashing
 // ============================================================================
 size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm) {
@@ -390,6 +488,7 @@ size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm) {
         case UltraCryptHashAlgorithm::SHA1:   return 20;
         case UltraCryptHashAlgorithm::SHA256: return 32;
         case UltraCryptHashAlgorithm::SHA512: return 64;
+        case UltraCryptHashAlgorithm::MD5:    return 16;
     }
     return 0;
 }
@@ -398,6 +497,7 @@ bool UltraCrypt_IsHashAvailable(UltraCryptHashAlgorithm algorithm) {
     // SHA-1 is ours, so it is available even without a backend; everything else
     // comes from libsodium.
     if (algorithm == UltraCryptHashAlgorithm::SHA1) return true;
+    if (algorithm == UltraCryptHashAlgorithm::MD5) return true;   // ours too
     return EnsureReady();
 }
 
@@ -422,6 +522,18 @@ UltraCryptResult UltraCrypt_Hash(UltraCryptHashAlgorithm algorithm,
                     outDigest.data());
         return UltraCryptResult::Ok();
     }
+    if (algorithm == UltraCryptHashAlgorithm::MD5) {
+        if (!options.allowLegacy) {
+            return UltraCryptResult::Error(
+                UltraCryptResultCode::NotSupported,
+                "MD5 is broken and is provided for foreign protocols that fix it; "
+                "set UltraCryptHashOptions::allowLegacy to use it");
+        }
+        outDigest.assign(16, 0);
+        const uint8_t empty = 0;
+        Md5OneShot(data ? static_cast<const uint8_t*>(data) : &empty, size, outDigest.data());
+        return UltraCryptResult::Ok();
+    }
     if (!EnsureReady()) return NoBackend();
 #ifdef ULTRACRYPT_HAVE_SODIUM
     outDigest.assign(UltraCrypt_GetDigestSize(algorithm), 0);
@@ -431,6 +543,7 @@ UltraCryptResult UltraCrypt_Hash(UltraCryptHashAlgorithm algorithm,
     int rc = -1;
     switch (algorithm) {
         case UltraCryptHashAlgorithm::SHA1:
+        case UltraCryptHashAlgorithm::MD5:
             break;   // handled above, before the backend is consulted
         case UltraCryptHashAlgorithm::SHA256:
             rc = crypto_hash_sha256(outDigest.data(), in, size);
@@ -511,6 +624,7 @@ namespace {
 struct HasherState {
     UltraCryptHashAlgorithm algorithm;
     Sha1State sha1;
+    Md5State md5;
     crypto_hash_sha256_state sha256;
     crypto_hash_sha512_state sha512;
 };
@@ -546,6 +660,7 @@ void UltraCryptHasher::Reset() {
     if (!s) return;
     switch (algorithm_) {
         case UltraCryptHashAlgorithm::SHA1:   Sha1Init(s->sha1); break;
+        case UltraCryptHashAlgorithm::MD5:    Md5Init(s->md5); break;
         case UltraCryptHashAlgorithm::SHA256: crypto_hash_sha256_init(&s->sha256); break;
         case UltraCryptHashAlgorithm::SHA512: crypto_hash_sha512_init(&s->sha512); break;
     }
@@ -559,6 +674,7 @@ void UltraCryptHasher::Update(const void* data, size_t size) {
     const auto* in = static_cast<const unsigned char*>(data);
     switch (algorithm_) {
         case UltraCryptHashAlgorithm::SHA1:   Sha1Update(s->sha1, in, size); break;
+        case UltraCryptHashAlgorithm::MD5:    Md5Update(s->md5, in, size); break;
         case UltraCryptHashAlgorithm::SHA256: crypto_hash_sha256_update(&s->sha256, in, size); break;
         case UltraCryptHashAlgorithm::SHA512: crypto_hash_sha512_update(&s->sha512, in, size); break;
     }
@@ -575,6 +691,7 @@ std::vector<uint8_t> UltraCryptHasher::Final() {
     digest.assign(GetDigestSize(), 0);
     switch (algorithm_) {
         case UltraCryptHashAlgorithm::SHA1:   Sha1Final(s->sha1, digest.data()); break;
+        case UltraCryptHashAlgorithm::MD5:    Md5Final(s->md5, digest.data()); break;
         case UltraCryptHashAlgorithm::SHA256: crypto_hash_sha256_final(&s->sha256, digest.data()); break;
         case UltraCryptHashAlgorithm::SHA512: crypto_hash_sha512_final(&s->sha512, digest.data()); break;
     }
@@ -597,6 +714,10 @@ UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
         return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
                                        "null data with non-zero size");
     }
+    if (algorithm == UltraCryptHashAlgorithm::MD5) {
+        return UltraCryptResult::Error(UltraCryptResultCode::NotSupported,
+                                       "HMAC-MD5 is not offered: nothing requires it for compatibility");
+    }
     if (algorithm == UltraCryptHashAlgorithm::SHA1) {
         // Permitted without allowLegacy: HMAC-SHA-1 is sound and TOTP needs it.
         outMac.assign(20, 0);
@@ -617,6 +738,7 @@ UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
 
     switch (algorithm) {
         case UltraCryptHashAlgorithm::SHA1:
+        case UltraCryptHashAlgorithm::MD5:
             break;   // handled above, before the backend is consulted
         case UltraCryptHashAlgorithm::SHA256: {
             crypto_auth_hmacsha256_state state;
@@ -998,10 +1120,10 @@ UltraCryptResult UltraCrypt_DeriveKeyHkdf(
         size_t outputLength,
         UltraCryptSecureBuffer& outKey) {
     outKey.Clear();
-    if (algorithm == UltraCryptHashAlgorithm::SHA1) {
+    if (algorithm == UltraCryptHashAlgorithm::SHA1 || algorithm == UltraCryptHashAlgorithm::MD5) {
         return UltraCryptResult::Error(
             UltraCryptResultCode::NotSupported,
-            "HKDF-SHA-1 is not offered: nothing requires it for compatibility");
+            "HKDF over SHA-1 or MD5 is not offered: nothing requires it for compatibility");
     }
     if (!EnsureReady()) return NoBackend();
     if (outputLength == 0) {
@@ -1108,10 +1230,10 @@ UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(
         size_t outputLength,
         UltraCryptSecureBuffer& outKey) {
     outKey.Clear();
-    if (algorithm == UltraCryptHashAlgorithm::SHA1) {
+    if (algorithm == UltraCryptHashAlgorithm::SHA1 || algorithm == UltraCryptHashAlgorithm::MD5) {
         return UltraCryptResult::Error(
             UltraCryptResultCode::NotSupported,
-            "PBKDF2-SHA-1 is not offered: the formats PBKDF2 is here for use SHA-256 or SHA-512");
+            "PBKDF2 over SHA-1 or MD5 is not offered: the formats PBKDF2 is here for use SHA-256 or SHA-512");
     }
     if (iterations == 0 || outputLength == 0) {
         return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,

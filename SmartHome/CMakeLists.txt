@@ -440,6 +440,15 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
                                ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Matter)
     add_test(NAME SmartHomeMatterNodeStore COMMAND SmartHomeMatterNodeStoreTest)
 
+    # Xiaomi miIO packets and RPC: bytes and text, no device, no socket.
+    add_executable(SmartHomeMiioCodecTest tests/MiioCodecTest.cpp
+                   protocols/Xiaomi/miio/MiioPacket.cpp
+                   protocols/Xiaomi/miio/MiioRpc.cpp)
+    target_link_libraries(SmartHomeMiioCodecTest PRIVATE SmartHome)
+    target_include_directories(SmartHomeMiioCodecTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Xiaomi/miio)
+    add_test(NAME SmartHomeMiioCodec COMMAND SmartHomeMiioCodecTest)
+
     add_executable(SmartHomeWidgetTest tests/WidgetTest.cpp)
     target_link_libraries(SmartHomeWidgetTest PRIVATE SmartHomeUI)
 

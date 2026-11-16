@@ -29,6 +29,7 @@
 // hardware-gated; AES-CBC and AES-CTR (and the PBKDF2 those formats key them
 // with) exist only for foreign formats and are portable.
 //
+// Version: 0.4.2 - MD5, legacy-gated like SHA-1, for the protocols that use it
 // Version: 0.4.1 - X.509 and CMS in UltraCryptX509.h
 // Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -152,11 +153,18 @@ enum class UltraCryptHashAlgorithm : uint8_t {
     // reach. Nothing UltraCanvas writes uses it.
     SHA1,
     SHA256,
-    SHA512
+    SHA512,
+    // LEGACY, and broken for anything that needs collision resistance. Here
+    // only because foreign protocols fix it as their key derivation and
+    // checksum - Xiaomi's miIO keys AES with MD5(token) and checks each
+    // packet with MD5 - and a device cannot be asked to use something else.
+    // Like SHA1 as a digest it needs UltraCryptHashOptions::allowLegacy;
+    // HMAC, HKDF and PBKDF2 refuse it. Nothing UltraCanvas writes uses it.
+    MD5
 };
 
 struct UltraCryptHashOptions {
-    bool allowLegacy = false;    // required to use SHA1 as a plain digest
+    bool allowLegacy = false;    // required to use SHA1 or MD5 as a plain digest
 };
 
 size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm);
