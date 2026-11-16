@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.25.0 - ImageMagick warmed up in the background at launch (WarmUpImageMagickInBackground)
 // Version: 1.24.0 - the font aliases append "sans-serif" to a request without a generic family
 //                  (fontconfig's 49-sansserif.conf), so an unknown family falls to the sans font
 // Version: 1.23.0 - a key pressed with the focus on a popup's own window goes to the window the popup belongs
@@ -1407,6 +1408,9 @@ namespace UltraCanvas {
         endStep("fontconfig setup");
 
         UCImage::InitializeImageSubsysterm(appName.c_str());
+        // ImageMagick's start-up (seconds on Windows) on a thread of its own,
+        // not on the first TGA / PCX / PSD the user opens.
+        UCImage::WarmUpImageMagickInBackground();
         endStep("image subsystem");
 
         // Every connection follows the proxy settings shared by all

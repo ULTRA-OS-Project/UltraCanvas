@@ -13,12 +13,15 @@
 //                                  masks; RGB, or RGBA when the file carries
 //                                  alpha. The resolution in the header
 //                                  becomes xres / yres.
+//                                  RLE8 and RLE4 bitmaps too: the framework
+//                                  decodes those runs itself.
 //
-// What stb_image does not read (RLE-compressed BMPs, OS/2 2.x variants) the
-// loader does not claim, so libvips hands it to magickload as before.
+// What neither reads (OS/2 2.x Huffman or RLE24 bitmaps) the loader does not
+// claim, so libvips hands it to magickload as before.
 //
 // Registered by vips_foreign_bmp_init_types(), which the image subsystem
 // calls once after VIPS_INIT (UCImageRaster::InitializeImageSubsysterm).
+// Version: 1.1.0 - RLE8 and RLE4 bitmaps
 // Version: 1.0.0
 // Last Modified: 2026-11-16
 // Author: UltraCanvas Framework

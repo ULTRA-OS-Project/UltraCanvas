@@ -1,5 +1,7 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.13.0 - WarmUpImageMagickInBackground: ImageMagick's start-up off the UI
+//                   thread, so the first TGA / PCX / PSD does not wait for it
 // Version: 2.12.0 - BMP read by the framework's own libvips loader (VipsBmpPlugin, stb_image):
 //                   no ImageMagick start-up on the first BMP
 // Version: 2.11.0 - the framework's JPEG XL loader and saver registered where libvips has none (VipsJxlPlugin)
@@ -66,6 +68,7 @@
 #include <map>
 #include <sstream>
 #include <mutex>
+#include <thread>
 #include <memory>
 #include <iostream>
 #include <unordered_map>
@@ -422,11 +425,58 @@ namespace UltraCanvas {
         return true;
     }
 
+    namespace {
+        // The warm-up thread, joined before libvips shuts down: ImageMagick
+        // torn down under a load still running would take the process with it.
+        std::mutex g_magickWarmUpMutex;
+        std::thread g_magickWarmUp;
+
+        // A 2 x 2, 24-bit BMP: a picture ImageMagick knows by its signature.
+        const uint8_t kWarmUpBmp[] = {
+            'B', 'M', 70, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0,
+            40, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 1, 0, 24, 0, 0, 0, 0, 0,
+            16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 255, 0, 255, 0, 0, 0,
+            255, 0, 0, 255, 255, 255, 0, 0,
+        };
+    }
+
+    void UCImageRaster::WarmUpImageMagickInBackground() {
+        if (!VipsHasMagickLoadFallback()) return;
+        const char* off = std::getenv("UC_NO_MAGICK_WARMUP");
+        if (off && *off && std::string(off) != "0") return;
+        std::lock_guard<std::mutex> lock(g_magickWarmUpMutex);
+        if (g_magickWarmUp.joinable()) return;   // once
+        g_magickWarmUp = std::thread([]() {
+            const auto start = std::chrono::steady_clock::now();
+            try {
+                // magickload by name: the framework's own BMP loader would
+                // otherwise take the picture and ImageMagick stay asleep.
+                VipsBlob* blob = vips_blob_new(nullptr, kWarmUpBmp, sizeof(kWarmUpBmp));
+                vips::VImage image = vips::VImage::magickload_buffer(blob);
+                vips_area_unref(VIPS_AREA(blob));
+                (void)image.avg();   // decoded, not only its header read
+            } catch (const vips::VError& e) {
+                debugOutput << "ImageMagick warm-up failed: " << e.what() << std::endl;
+                vips_error_clear();
+                return;
+            }
+            const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - start).count();
+            debugOutput << "ImageMagick warmed up in the background in " << ms << " ms" << std::endl;
+        });
+    }
+
     void UCImageRaster::ShutdownImageSubsysterm() {
+        {
+            std::lock_guard<std::mutex> lock(g_magickWarmUpMutex);
+            if (g_magickWarmUp.joinable()) g_magickWarmUp.join();
+        }
         vips_shutdown();
     }
 #else
     bool UCImageRaster::InitializeImageSubsysterm(const char *) { return true; }
+    void UCImageRaster::WarmUpImageMagickInBackground() {}
     void UCImageRaster::ShutdownImageSubsysterm() {}
 #endif
 
