@@ -2865,6 +2865,63 @@ int main(int argc, char** argv) {
                   "odt: the line-gap and cell-spacing options are kept (settings.xml)");
     }
 
+    // ===== A .DOC'S LATER SECTIONS AND ITS SHAPES' SHADOWS =====
+    // word-sections.doc is word-sections.fodt saved as Word 97 by LibreOffice:
+    // a cover with the document's header and a shadowed rectangle, a chapter
+    // with a header and footer of its own and a wider top margin, and an
+    // appendix back under the document's header.
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        UCRichDocument doc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(std::string(WORDTEST_FIXTURE_DIR) + "/word-sections.doc", doc, err), err);
+        auto headerText = [](const RichPageFurniture& furniture) {
+            std::string text;
+            for (const RichDocBlock& block : furniture.header) text += UCRichDocument::ConcatenateRunText(block.runs);
+            return text;
+        };
+        int chapterAt = -1, appendixAt = -1;
+        const RichShape* box = nullptr;
+        for (size_t i = 0; i < doc.blocks.size(); ++i) {
+            const std::string text = UCRichDocument::ConcatenateRunText(doc.blocks[i].runs);
+            if (text == "Chapter words") chapterAt = static_cast<int>(i);
+            if (text == "Appendix words") appendixAt = static_cast<int>(i);
+        }
+        for (const RichTextFrame& frame : doc.frames) {
+            if (!frame.shapes.empty()) box = &frame.shapes.front();
+        }
+        CHECK_MSG(headerText(doc.pageFurniture) == "Document header", "doc: the first section's header is the document's");
+        CHECK_MSG(chapterAt > 0 && appendixAt > chapterAt, "doc: the three sections' words");
+        if (chapterAt > 0 && appendixAt > chapterAt) {
+            const RichSectionSetup& chapter = doc.SectionFor(chapterAt);
+            const RichSectionSetup& appendix = doc.SectionFor(appendixAt);
+            CHECK_MSG(doc.blocks[static_cast<size_t>(chapterAt)].sectionStart && chapter.newPage,
+                      "doc: the second section starts at its paragraph, on a new page");
+            const RichPageFurniture& chapterPages = doc.FurnitureFor(chapter, false, 1);
+            CHECK_MSG(headerText(chapterPages) == "Chapter header", "doc: ...with its own header, got \""
+                      + headerText(chapterPages) + "\"");
+            CHECK_MSG(!chapterPages.footer.empty()
+                      && UCRichDocument::ConcatenateRunText(chapterPages.footer[0].runs) == "Chapter footer",
+                      "doc: ...and its own footer");
+            CHECK_MSG(chapter.marginTopPt > doc.page.marginTopPt + 20.0f, "doc: ...and its wider top margin: "
+                      + std::to_string(chapter.marginTopPt) + " against " + std::to_string(doc.page.marginTopPt));
+            const RichPageFurniture& appendixPages = doc.FurnitureFor(appendix, false, 2);
+            CHECK_MSG(headerText(appendixPages) == "Document header" && appendixPages.footer.empty(),
+                      "doc: the third is back under the document's header, without a footer");
+        }
+        CHECK_MSG(box != nullptr, "doc: the rectangle");
+        if (box) {
+            CHECK_MSG(box->HasShadow() && Lower(box->shadowColor) == "#5e5e5e", "doc: its shadow's colour, got \""
+                      + box->shadowColor + "\"");
+            CHECK_MSG(Near(box->shadowOffsetXPt, 2.83f) && Near(box->shadowOffsetYPt, 5.67f),
+                      "doc: where it falls (0.1 cm right, 0.2 cm down): " + std::to_string(box->shadowOffsetXPt)
+                      + ", " + std::to_string(box->shadowOffsetYPt));
+            CHECK_MSG(std::abs(box->shadowOpacity - 0.65f) < 0.03f, "doc: how much of it shows: "
+                      + std::to_string(box->shadowOpacity));
+        }
+    }
+#endif
+
     // ===== A SHAPE'S DROP SHADOW =====
     // A page frame drawn as a rectangle throws a shadow: its colour, where it
     // falls and how much of it shows, through both formats.

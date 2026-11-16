@@ -704,6 +704,9 @@ private:
             int byteOffset = 0;                   // the placeholder, in layout text
             float width = 0.0f;
             float height = 0.0f;
+            // A picture on a line of its own, centred or at the right: how
+            // far from the placeholder's left it is drawn.
+            float lineOffsetX = 0.0f;
             std::shared_ptr<UCImage> image;
             std::string altText;
             // A typeset formula (a math run) instead of a picture: drawn with
@@ -968,6 +971,7 @@ private:
     // (RichTextRun::emptyLineHeightPt) is scaled from.
     mutable std::map<std::string, float> lineUnitCache;
     mutable float emptyLineUnitPx = 0.0f;
+    mutable bool layoutLineGap = true;            // the layout being made has the font's line gap
     bool placingParkedBody = false;           // PlaceFurnitureBeingEdited placing the body
     // Input method composition: the text being composed and its caret (a
     // byte offset in it), laid out in the caret's block but not in the model.

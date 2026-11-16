@@ -18,6 +18,7 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.7.0 - the sections after the first: their header, footer and margins; shapes' shadows
 // Version: 2.6.0 - paragraph spacing in cells; text unkerned
 // Version: 2.5.0 - documents of several sections (page size), row heights, merged cells, a cell's empty
 //                 paragraphs, character styles (sprmCIstd), letter spacing, negative float offsets
@@ -1246,11 +1247,14 @@ public:
         LoadShapeAnchors(41, headerAnchors_);      // PlcSpaHdr: the headers' and footers'
         activeAnchors_ = &anchors_;
         anchorCpBase_ = 0;
+        recordParagraphStarts_ = true;             // which block each of the body's paragraphs begins
         BuildBlocks(chars);
+        recordParagraphStarts_ = false;
         activeAnchors_ = nullptr;
         LoadSection();
         doc_.letterKerning = false;                // Word 97-2003 sets text unkerned unless a run asks
         LoadHeaderStories(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
+        ApplyLaterSections(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
         LoadTextBoxStories(allChars);
         return true;
     }
@@ -1329,6 +1333,112 @@ public:
         }
     }
 
+    // What a section's SEPX says of its pages: where the text and the header
+    // and footer stand (twips; unset = Word's defaults), whether its first
+    // page has its own header, and whether it starts a page.
+    struct SectionPages {
+        int top = 1440, bottom = 1440, headerTop = 720, footerBottom = 720;
+        bool titlePage = false;
+        bool newPage = true;
+    };
+    SectionPages ReadSectionPages(uint32_t fcSepx) const {
+        SectionPages pages;
+        if (fcSepx == 0xFFFFFFFFu || fcSepx + 2 > word_.size()) return pages;
+        const size_t size = ReadU16(word_, fcSepx);
+        ForEachSprm(word_, fcSepx + 2, fcSepx + 2 + size, [&](const Sprm& sprm) {
+            const int value = ReadI16(word_, sprm.operand);
+            switch (sprm.code) {
+                case 0x9023: pages.top = std::abs(value); break;                  // sprmSDyaTop
+                case 0x9024: pages.bottom = std::abs(value); break;               // sprmSDyaBottom
+                case 0xB017: pages.headerTop = value; break;                      // sprmSDyaHdrTop
+                case 0xB018: pages.footerBottom = value; break;                   // sprmSDyaHdrBottom
+                case 0x300A: pages.titlePage = word_[sprm.operand] != 0; break;   // sprmSFTitlePage
+                case 0x3009: pages.newPage = word_[sprm.operand] != 0; break;     // sprmSBkc: 0 = continuous
+                default: break;
+            }
+        });
+        return pages;
+    }
+
+    // The sections after the first: each starts at the paragraph its CP
+    // names, with a header and footer of its own where its stories are not
+    // empty (an empty story keeps the section before's), and its own room
+    // for them. PlcfHdd holds six stories per section after the six note
+    // separators: even header, odd header, even footer, odd footer, first
+    // page's header, first page's footer.
+    void ApplyLaterSections(const std::vector<DocChar>& allChars, size_t storyStart, uint32_t ccpHdd) {
+        const uint32_t fc = FcAt(6), lcb = LcbAt(6);       // PlcfSed
+        if (lcb < 4 + 16 || static_cast<size_t>(fc) + lcb > table_.size()) return;
+        const uint32_t sections = (lcb - 4) / 16;
+        if (sections < 2) return;
+        const uint32_t fcHdd = FcAt(11), lcbHdd = LcbAt(11);
+        const size_t storyCount = (ccpHdd > 0 && lcbHdd >= 8 && static_cast<size_t>(fcHdd) + lcbHdd <= table_.size())
+                                ? lcbHdd / 4 - 1 : 0;
+        // A story of the PlcfHdd, read like the body. False when it is empty.
+        auto story = [&](size_t index, std::vector<RichDocBlock>& out) {
+            if (index >= storyCount) return false;
+            const size_t begin = ReadU32(table_, fcHdd + index * 4);
+            const size_t end = ReadU32(table_, fcHdd + (index + 1) * 4);
+            if (end <= begin || storyStart + end > allChars.size()) return false;
+            std::vector<DocChar> text(allChars.begin() + static_cast<std::ptrdiff_t>(storyStart + begin),
+                                      allChars.begin() + static_cast<std::ptrdiff_t>(storyStart + end));
+            std::vector<RichDocBlock> body = std::move(doc_.blocks);
+            doc_.blocks.clear();
+            activeAnchors_ = &headerAnchors_;
+            anchorCpBase_ = begin;
+            BuildBlocks(text);
+            activeAnchors_ = nullptr;
+            out = std::move(doc_.blocks);
+            doc_.blocks = std::move(body);
+            while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
+            return true;
+        };
+        // What a section inherits: the first section's, as its stories say.
+        RichPageFurniture pagesNow, firstNow;
+        story(7, pagesNow.header);
+        story(9, pagesNow.footer);
+        story(10, firstNow.header);
+        story(11, firstNow.footer);
+        bool ownFurniture = false;
+        const size_t seds = fc + 4 * (sections + 1);
+        for (uint32_t k = 1; k < sections; ++k) {
+            const size_t startCp = ReadU32(table_, fc + 4 * k);
+            const SectionPages pages = ReadSectionPages(ReadU32(table_, seds + 12 * k + 2));
+            const size_t base = 6 + 6 * static_cast<size_t>(k);
+            ownFurniture = story(base + 1, pagesNow.header) || ownFurniture;
+            ownFurniture = story(base + 3, pagesNow.footer) || ownFurniture;
+            ownFurniture = story(base + 4, firstNow.header) || ownFurniture;
+            ownFurniture = story(base + 5, firstNow.footer) || ownFurniture;
+            // The block its first paragraph became.
+            size_t blockIndex = doc_.blocks.size();
+            for (const auto& [cp, block] : paragraphStarts_) {
+                if (cp >= startCp) { blockIndex = block; break; }
+            }
+            if (blockIndex == 0 || blockIndex >= doc_.blocks.size()) continue;
+            RichDocBlock& block = doc_.blocks[blockIndex];
+            if (!block.sectionStart) block.section = doc_.SectionFor(static_cast<int>(blockIndex) - 1);
+            block.sectionStart = true;
+            block.section.newPage = pages.newPage;
+            block.section.furniture = -1;
+            if (ownFurniture || pages.titlePage) {
+                RichSectionFurniture own;
+                own.pages = pagesNow;
+                own.firstPageDiffers = pages.titlePage;
+                if (pages.titlePage) own.firstPage = firstNow;
+                block.section.furniture = static_cast<int>(doc_.sectionFurniture.size());
+                doc_.sectionFurniture.push_back(std::move(own));
+            }
+            auto own = [](int twips, float documents) {
+                const float value = static_cast<float>(twips) / 20.0f;
+                return std::abs(value - documents) > 0.05f ? value : -1.0f;
+            };
+            block.section.marginTopPt = own(pages.top, doc_.page.marginTopPt);
+            block.section.marginBottomPt = own(pages.bottom, doc_.page.marginBottomPt);
+            block.section.headerTopPt = own(pages.headerTop, doc_.page.headerTopPt);
+            block.section.footerBottomPt = own(pages.footerBottom, doc_.page.footerBottomPt);
+        }
+    }
+
 private:
     const std::vector<uint8_t>& word_;
     const std::vector<uint8_t>& table_;
@@ -1385,6 +1495,10 @@ private:
     // between its two. Dropped when a row does not state its edges.
     std::vector<std::vector<std::pair<int, int>>> rowCellEdges_;
     bool cellEdgesKnown_ = true;
+    // The body's paragraphs: the CP each begins at and the block it became
+    // (or begins), for the sections after the first to find their start.
+    bool recordParagraphStarts_ = false;
+    std::vector<std::pair<size_t, size_t>> paragraphStarts_;
     // The cell being read: its first paragraph's space before and its last
     // one's after (points), and those of the row's finished cells.
     float cellSpaceAboveFirst_ = 0.0f, cellSpaceAfterLast_ = 0.0f;
@@ -1418,6 +1532,12 @@ private:
         int32_t textLeft = 91440;               // EMU
         int anchorText = 0;                     // 0 top, 1 middle, 2 bottom (and their centred kinds)
         double rotation = 0.0;                  // degrees, clockwise
+        // Its shadow: on or off, colour, how much of it shows (16.16), and
+        // its offsets (EMU; Word's default is 2 pt down and right).
+        bool shadow = false;
+        uint32_t shadowColor = 0x00808080;
+        int32_t shadowOpacity = 0x00010000;
+        int32_t shadowOffsetX = 25400, shadowOffsetY = 25400;
         int lineDashing = 0;                    // 0 solid, 2 dotted, other dashes
         bool arrowStart = false, arrowEnd = false;
         int32_t adjust = -1;                    // adjustValue: a rounded rectangle's corner, of 21600
@@ -1590,6 +1710,13 @@ private:
                     }
                     switch (id) {
                         case 0x0004: shape.rotation = static_cast<double>(static_cast<int32_t>(value)) / 65536.0; break;
+                        case 0x0201: shape.shadowColor = value; break;                                // shadowColor
+                        case 0x0204: shape.shadowOpacity = static_cast<int32_t>(value); break;        // shadowOpacity
+                        case 0x0205: shape.shadowOffsetX = static_cast<int32_t>(value); break;        // shadowOffsetX
+                        case 0x0206: shape.shadowOffsetY = static_cast<int32_t>(value); break;        // shadowOffsetY
+                        case 0x023F:                                                                  // fShadow (with fUsefShadow)
+                            if (value & 0x00020000u) shape.shadow = (value & 0x2u) != 0;
+                            break;
                         case 0x0087: shape.anchorText = static_cast<int>(value); break;               // anchorText
                         case 0x0140: shape.geoLeft = static_cast<int32_t>(value); break;
                         case 0x0141: shape.geoTop = static_cast<int32_t>(value); break;
@@ -1916,6 +2043,12 @@ private:
         else if (source.lineDashing != 0) shape.dash = RichShape::Dash::Dashed;
         shape.arrowStart = source.arrowStart;
         shape.arrowEnd = source.arrowEnd;
+        if (source.shadow) {
+            shape.shadowColor = (source.shadowColor >> 24) == 0 ? ColorRefHex(source.shadowColor) : std::string("#808080");
+            shape.shadowOpacity = std::clamp(static_cast<float>(source.shadowOpacity) / 65536.0f, 0.0f, 1.0f);
+            shape.shadowOffsetXPt = static_cast<float>(source.shadowOffsetX) / 12700.0f;
+            shape.shadowOffsetYPt = static_cast<float>(source.shadowOffsetY) / 12700.0f;
+        }
         if (!shape.IsClosed()) shape.fillColor.clear();
         if (source.textId > 0 && depth > 0) {
             // A member's words: a frame of their own, read with the stories.
@@ -2213,6 +2346,7 @@ private:
     // chars[begin, end) is the paragraph's text; chars[end] (when in range)
     // is the mark that ended it.
     void EmitParagraph(const std::vector<DocChar>& chars, size_t begin, size_t end) {
+        if (recordParagraphStarts_) paragraphStarts_.emplace_back(begin, doc_.blocks.size());
         const bool hasMark = end < chars.size();
         const uint32_t mark = hasMark ? chars[end].ch : 0x0D;
         const uint32_t markFc = hasMark ? chars[end].fc

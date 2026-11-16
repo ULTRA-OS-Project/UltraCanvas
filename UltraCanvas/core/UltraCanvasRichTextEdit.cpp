@@ -2063,7 +2063,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                     attr->SetRange(end, end + 1);
                     layout->InsertAttribute(std::move(attr));
                 };
-                if (run.emptyLineHeightPt > 0.0f && emptyLineUnitPx > 0.0f) {
+                if (run.emptyLineHeightPt > 0.0f && emptyLineUnitPx > 0.0f && layoutLineGap) {
                     // Lines a font's height apart: the empty one is the
                     // font scaled to the height wanted.
                     onBreak(TextAttributeFactory::CreateScale(static_cast<double>(Px(run.emptyLineHeightPt) / emptyLineUnitPx)));
@@ -2173,14 +2173,38 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                 height *= maxWidth / width;
                 width = maxWidth;
             }
+            // A picture text stops above and goes on below (wrap "none"),
+            // kept in the line because nothing floats here - in a text
+            // frame, a cell: it stands on a line of its own, as wide as the
+            // line, at the side or the middle it is aligned to, and the
+            // paragraph's words follow below it. A paragraph of nothing else
+            // keeps its own (empty) line under the picture, as Writer sets it.
+            // (A centred picture text may pass leaves no room at its sides
+            // worth using: it is set the same way, as when it floats.)
+            const bool ownLine = run.IsFloatingObject()
+                && (run.imageWrap == RichTextRun::ImageWrap::TopAndBottom
+                    || (run.imageWrap == RichTextRun::ImageWrap::Square && run.imageFloatAlign == RichTextAlign::Center));
+            float boxWidth = width, below = 0.0f, lineOffsetX = 0.0f;
+            if (ownLine) {
+                boxWidth = std::max(width, maxWidth - 0.5f);
+                if (run.imageFloatAlign == RichTextAlign::Center) lineOffsetX = (boxWidth - width) * 0.5f;
+                else if (run.imageFloatAlign == RichTextAlign::Right) lineOffsetX = boxWidth - width;
+                bool words = false;
+                for (const RichTextRun& other : runs) {
+                    words = words || (!other.IsInlineImage() && !other.IsTextFrame() && !other.text.empty());
+                }
+                if (!words) below = emptyLineUnitPx;
+            }
             // The picture sits on the baseline, which is where a word processor
             // puts an inline image.
-            add(TextAttributeFactory::CreateShape(width, height, 0.0));
+            add(TextAttributeFactory::CreateShape(boxWidth, height, below));
+            if (ownLine) add(TextAttributeFactory::CreateFallback(false));
             if (outInlineImages) {
                 BlockLayout::InlineImage placed;
                 placed.byteOffset = start;
                 placed.width = width;
                 placed.height = height;
+                placed.lineOffsetX = lineOffsetX;
                 placed.image = image;
                 placed.altText = run.imageAltText;
                 outInlineImages->push_back(std::move(placed));
@@ -2459,22 +2483,26 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     layout->SetLineSpacing(lineGap ? 1.0f : 0.0f);
     // An empty line of a set height (RichTextRun::emptyLineHeightPt) is a
     // multiple of the font's own line: how tall that is, measured once per font.
+    // The same unit is the line a paragraph keeps below a picture that
+    // stands on a line of its own.
     emptyLineUnitPx = 0.0f;
-    if (lineGap) {
-        for (const RichTextRun& run : runs) {
-            if (run.emptyLineHeightPt <= 0.0f) continue;
-            const FontStyle font = FontForBlock(block);
-            const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize);
-            auto known = lineUnitCache.find(key);
-            if (known == lineUnitCache.end()) {
-                auto probe = ctx->CreateDocumentTextLayout("X");
-                probe->SetFontStyle(font);
-                probe->SetLineSpacing(1.0f);
-                known = lineUnitCache.emplace(key, static_cast<float>(probe->GetLayoutHeight())).first;
-            }
-            emptyLineUnitPx = known->second;
-            break;
+    layoutLineGap = lineGap;
+    for (const RichTextRun& run : runs) {
+        const bool ownLinePicture = run.IsInlineImage()
+            && (run.imageWrap == RichTextRun::ImageWrap::TopAndBottom
+                || (run.imageWrap == RichTextRun::ImageWrap::Square && run.imageFloatAlign == RichTextAlign::Center));
+        if (run.emptyLineHeightPt <= 0.0f && !ownLinePicture) continue;
+        const FontStyle font = FontForBlock(block);
+        const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize) + (lineGap ? "|gap" : "");
+        auto known = lineUnitCache.find(key);
+        if (known == lineUnitCache.end()) {
+            auto probe = ctx->CreateDocumentTextLayout("X");
+            probe->SetFontStyle(font);
+            probe->SetLineSpacing(lineGap ? 1.0f : 0.0f);
+            known = lineUnitCache.emplace(key, static_cast<float>(probe->GetLayoutHeight())).first;
         }
+        emptyLineUnitPx = known->second;
+        break;
     }
     if (paragraphOriginX >= 0.0f) {
         ApplyParagraphGeometry(layout.get(), block, text, paragraphOriginX, wrapWidth);
@@ -3129,7 +3157,7 @@ void UltraCanvasRichTextEdit::DrawInlineImages(IRenderContext* ctx, const BlockL
                               originY + bl.layout->IndexToBaseline(placed.byteOffset));
             continue;
         }
-        Rect2Dd target(originX + static_cast<double>(box.x),
+        Rect2Dd target(originX + static_cast<double>(box.x) + placed.lineOffsetX,
                        originY + static_cast<double>(box.y),
                        placed.width, placed.height);
         if (placed.image) {
@@ -3565,7 +3593,7 @@ void UltraCanvasRichTextEdit::ForEachImage(
             const Rect2Di box = layout.layout->IndexToPos(placed.byteOffset);
             at.byteOffset = placed.byteOffset;
             const float y = visibleArea.y + BlockToContentY(owner, originY + static_cast<float>(box.y)) - scrollOffset;
-            visit(at, Rect2Df(originX + static_cast<float>(box.x), y, placed.width, placed.height));
+            visit(at, Rect2Df(originX + static_cast<float>(box.x) + placed.lineOffsetX, y, placed.width, placed.height));
         }
     };
     for (const PlacedFloat& placed : placedFloats) {

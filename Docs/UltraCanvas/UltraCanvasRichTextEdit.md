@@ -587,7 +587,10 @@ says:
 
 Text that stops above a picture goes on right below it, with no distance of
 its own, and a paragraph whose first line does not fit above the picture
-starts below it.
+starts below it. Where nothing floats - in a text frame, in a table cell -
+such a picture stands on a line of its own, at the side or in the middle it
+is aligned to, with the paragraph's words below it; a paragraph of nothing
+else keeps its empty line under the picture.
 
 DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
 offset from the paragraph) and ODT frames anchored to a paragraph or character
