@@ -1,5 +1,7 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.12.0 - BMP read by the framework's own libvips loader (VipsBmpPlugin, stb_image):
+//                   no ImageMagick start-up on the first BMP
 // Version: 2.11.0 - the framework's JPEG XL loader and saver registered where libvips has none (VipsJxlPlugin)
 // Version: 2.10.0 - a picture without an alpha channel decodes to an RGB24 pixmap
 //                   (no alpha, a copy when composited); GetPixmap keeps a large
@@ -42,6 +44,7 @@
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
 #include "VipsIcoPlugin.h"
+#include "VipsBmpPlugin.h"
 #include "VipsGifPlugin.h"
 #ifdef HAS_LIBJXL
 #include "VipsJxlPlugin.h"                          // jxlload / jxlsave where libvips has none
@@ -409,6 +412,9 @@ namespace UltraCanvas {
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
         vips_foreign_ico_init_types();
+        // BMP without ImageMagick: magickload was its only reader, and the
+        // first BMP paid for ImageMagick's start-up (seconds on Windows).
+        vips_foreign_bmp_init_types();
         vips_foreign_gif_init_types();
 #ifdef HAS_LIBJXL
         vips_foreign_jxl_init_types();

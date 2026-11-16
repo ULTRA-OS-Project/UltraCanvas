@@ -16,11 +16,16 @@
 // runner has every codec (JPEG XL on ubuntu-22.04 through the framework's
 // own loader on a libjxl built from source).
 //
+// And BMP is read by the framework's own loader (VipsBmpPlugin), never by
+// ImageMagick: magickload was its only reader, and the first BMP a program
+// opened paid for ImageMagick's start-up (seconds on Windows).
+//
 // Headless; needs libvips (reports SKIP without it).
+// Version: 1.1.0 - BMP through ucbmpload, not magickload
 // Version: 1.0.2 - no CI exception any more: JPEG XL decodes on every runner
 // Version: 1.0.1 - UC_IMAGE_FORMATS_OPTIONAL named for the 22.04 runner (no libjxl)
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -28,6 +33,7 @@
 #include "../UltraCanvas/libspecific/Cairo/QoiPixmapCodec.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -118,6 +124,51 @@ int main() {
             const std::vector<uint8_t> blob = QoiCompressPixmap(*withAlpha);
             auto back = QoiDecompressPixmap(blob);
             Check(back && !back->IsOpaque(), "a pixmap with alpha comes back with it from its QOI blob");
+        }
+    }
+
+    // ----- BMP without ImageMagick -----
+    {
+        const std::string path = PathToUtf8(images / "dice.bmp");
+        try {
+            vips::VImage file = vips::VImage::new_from_file(path.c_str());
+            Check(std::string(file.get_string("vips-loader")) == "ucbmpload",
+                  "a .bmp file is read by ucbmpload, not ImageMagick");
+            Check(file.width() == 800 && file.height() == 600 && file.bands() == 4, "... 800 x 600, RGBA");
+            if (vips_type_find("VipsOperation", "magickload") != 0) {
+                vips::VImage magick = vips::VImage::magickload(path.c_str());
+                const bool same = magick.width() == file.width() && magick.height() == file.height() &&
+                                  magick.bands() == file.bands() && (magick - file).abs().max() == 0.0;
+                Check(same, "... pixel for pixel what ImageMagick reads");
+            }
+        } catch (const vips::VError& e) {
+            Check(false, std::string("a .bmp file opens: ") + e.what());
+        }
+
+        // A 2 x 2, 24-bit, bottom-up BMP from memory: rows padded to 4 bytes,
+        // stored last row first, blue-green-red.
+        const uint8_t bmp[] = {
+            'B', 'M', 70, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0,                 // file header
+            40, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 1, 0, 24, 0, 0, 0, 0, 0,   // info header
+            16, 0, 0, 0, 0x13, 0x0B, 0, 0, 0x13, 0x0B, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 255,   0, 255, 0,   0, 0,                                  // bottom row: red, green
+            255, 0, 0,   255, 255, 255, 0, 0,                                // top row: blue, white
+        };
+        try {
+            vips::VImage mem = vips::VImage::new_from_buffer(bmp, sizeof(bmp), "");
+            Check(std::string(mem.get_string("vips-loader")) == "ucbmpload_buffer",
+                  "a BMP in memory is read by ucbmpload_buffer");
+            const std::vector<double> topLeft = mem.getpoint(0, 0);
+            const std::vector<double> bottomLeft = mem.getpoint(0, 1);
+            const std::vector<double> bottomRight = mem.getpoint(1, 1);
+            Check(mem.bands() == 3 && topLeft == std::vector<double>{0, 0, 255} &&
+                      bottomLeft == std::vector<double>{255, 0, 0} &&
+                      bottomRight == std::vector<double>{0, 255, 0},
+                  "... the right way up, red-green-blue");
+            // 2835 pixels a metre is 72 dpi.
+            Check(std::abs(mem.xres() * 25.4 - 72.0) < 0.1, "... with the resolution the header gives");
+        } catch (const vips::VError& e) {
+            Check(false, std::string("a BMP in memory opens: ") + e.what());
         }
     }
 
