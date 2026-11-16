@@ -1,3 +1,28 @@
+#### 2026-11-16 *0.1.18*
+- **The web store's `site/` never carries a test key.** A build configured
+  with `-DULTRASTORE_WEB_TEST_KEYS` - every CI build, since the browser
+  test's fixture catalog is signed with a key made for it - compiled that
+  key into the one module there was, so no run left a `site/` a store could
+  be published with. Under emcmake the option now builds a second module
+  from the same sources, `ultrastore-web-test.wasm`, that trusts the store's
+  keys and the test keys; it stays beside `site/`, and `site/`'s
+  `ultrastore-web.wasm` trusts `Apps/UltraStore/keys/*.pub` and nothing
+  else, whatever the build was configured with. No new keys were needed:
+  the production key is the one already there, the native store's.
+  Natively the option still adds the keys to the one program, which is a
+  tool to look at a publish folder.
+  - The browser test holds the build to it: the store's module's bytes hold
+    the store's keys and not the fixture's (the test module, which holds
+    both, is the control), it is the module the 150 KB Brotli budget is
+    measured on, and served in the test module's place it runs and refuses
+    the fixture's catalog.
+  - `test/stage-store.mjs` stages the store the test opens - the fixture
+    with the test module, the loader, the catalogues and the runtime laid
+    over it as the admin backend's publish lays a `site/` - and
+    `wasm-build.yml` uploads it as `preview/` beside `site/` in the run's
+    `ultrastore-web-dynamic` artifact (the framework's changelog has the
+    workflow's side of it).
+
 #### 2026-11-14 *0.1.17*
 - **The web store** (`Apps/UltraStore/web`, `Docs/UltraStore/WebstoreBrief.md`): the shop's Discover, categories and app pages as an UltraCanvas application a browser runs - a side module on the UltraCanvas runtime, from the UltraCanvas extension when it is installed and from the site's `runtime/<hash>/` otherwise - served from the catalog base by the admin backend's publish. The catalog comes from the site's own origin and is verified in the browser (UltraCrypt through the runtime, WebCrypto's Ed25519 as the fallback) against the keys built in and the ones an accepted catalog announced, with the sequence check; a catalog that does not verify is not shown. *Install*, *Try* and *Buy* open the native store's `ultrastore://app/<id>` link; the page offers the store's download where the link finds none. Every page has an address (`?page=app/<id>`, the published `app/<id>/`), with an HTML shadow for search engines and the moment before the module paints. The site carries the translation catalogues and the module fetches the visitor's language's before it draws. Builds natively as `ultrastore-web <publish folder>` with the demos.
 - **The catalog's picture variants**: `icon_variants` and `screenshot_variants`, entries `{format, width, url}`, read leniently and written when present - the pictures at the web store's sizes and browser formats, which it picks by the format the browser decodes and the device pixel ratio, never resizing in the browser. A store that does not know the keys is unaffected.

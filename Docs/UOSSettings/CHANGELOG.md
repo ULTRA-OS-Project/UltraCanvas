@@ -1,3 +1,29 @@
+#### 2026-11-16 *0.26.0*
+- **The Desktop page's captions and three switches can be translated.**
+  The row captions (Taskbar, Theme, Dropped files ... At sign-in), the
+  Global / Individual and One common folder / Their own folders switches of
+  File dialogs and the Colour / Black and white / System switch of Emoji
+  were written straight into the window and stayed English in every
+  language - beside notes that named them in the reader's own. They go
+  through `Tr` now and are translated in all thirty languages, in the
+  wording the notes quote.
+- **The Sub-categories choices are translated too** ("Never", "Above 8
+  applications"), and the Desktop page's caption column is as wide as its
+  widest caption, measured in the font it is drawn in (between 130 and
+  320 px at 12 pt), so a translated caption ("Virtuelle Schreibtische",
+  "Abgelegte Dateien") is not cut short as it was in a column 130 px wide.
+- **The info bar's icons and the programs that start with the desktop are
+  named in the reader's language.** Their names come from the desktop's
+  own source, so UOS-Settings now takes the desktop's catalogue as a second
+  set (`UltraLocalisation::AddSet("UltraDesktop")`); the info bar's
+  checkboxes passed a variable to `Tr`, which no catalogue ever held.
+- **UOS-Settings is translated throughout.** The thirty other languages had
+  a quarter of the window's texts - the tree and the Language page - and
+  showed the rest in English: the Desktop, File dialogs, Appearance,
+  Notifications and Devices pages with their notes. The 79 missing texts
+  are now in every language's catalogue (machine drafts, as the rest,
+  until a person reviews them).
+
 #### 2026-11-15 *0.25.0*
 - **Appearance > Look has a Light text row.** *Firm*, the default, draws
   light text on a dark ground a little stronger in every application, so a

@@ -1,3 +1,254 @@
+#### 2026-11-16 *0.9.569*
+- **A BMP opens at once: the framework reads it itself, not through
+  ImageMagick.** libvips has no BMP loader, so a `.bmp` went to `magickload`,
+  and the first one a program opened paid for ImageMagick's start-up on the
+  thread that asked - on Windows its configuration and every coder DLL under
+  `modules-Q16HDRI\coders`, about six seconds in the demo app when the
+  Bitmap Elements tree reached BMP Images. `VipsBmpPlugin`
+  (`libspecific/Cairo`) registers `ucbmpload` / `ucbmpload_buffer` beside
+  the ICO and QOI loaders, reading with the bundled stb_image: 1, 4, 8, 16,
+  24 and 32-bit BMPs, top-down or bottom-up, bit-field masks, alpha, and the
+  header's resolution as `xres` / `yres`. Every libvips path takes it -
+  `UCImageRaster`, `PixelFX::ExtractImageInfo`, the media viewer, the export
+  dialog. RLE8 and RLE4 bitmaps, which stb_image does not read, are decoded
+  by the plug-in itself (runs, indices as they are, deltas). Pixel for pixel
+  what ImageMagick reads (`ImageFormatsTest`); only OS/2 2.x Huffman and
+  RLE24 bitmaps are left to ImageMagick. BMP is still written through it.
+- **ImageMagick starts up in the background at launch.** The formats only
+  it reads (TGA, PCX, PSD, ...) paid the same start-up on the first file
+  opened. `UCImageRaster::WarmUpImageMagickInBackground()` loads a tiny
+  picture through `magickload` on a thread of its own; a load meanwhile
+  waits only for what is left, and `ShutdownImageSubsysterm` joins the
+  thread. `UltraCanvasApplication` calls it after the image subsystem
+  starts; command-line tools and tests do not call it and pay nothing.
+  `UC_NO_MAGICK_WARMUP=1` turns it off.
+- **A document that opens with a table starts its caret in the first cell.**
+  `UCRichDocumentEditor` put a new document's caret at `{0, 0}` - for a table
+  that is the table outside its cells, which the rich text editor draws as a
+  bar the whole table high, and where nothing could be typed. An ODT letter
+  whose address is a table showed that bar down the left of the address.
+  `DocumentStart()` is now the top-left cell of such a table, which is where
+  a new document's caret starts and where Ctrl+Home goes; Select All still
+  starts before the table, so it still takes the table whole.
+  `RichTextEditorTest` covers it.
+- **The checkbox, the radio button and the switch take one string as their
+  identifier too.** `UltraCanvasCheckbox("WrapLines")`,
+  `UltraCanvasRadio("SizeLarge")` and `UltraCanvasSwitch("DarkMode")` name
+  the element and leave its text empty; the one string was the text, as the
+  label's was. With the label these were the four elements, of the 42 that
+  have a one-string constructor, that did not take the identifier there.
+  Nothing in this repository built any of the three from one string, so
+  nothing here changes; an application outside it that wrote
+  `UltraCanvasCheckbox(Tr("Wrap long lines"))` now gets a box without a
+  caption, and writes `("WrapLines", Tr("Wrap long lines"))` or
+  `("", Tr("Wrap long lines"))`.
+  - `scripts/check_label_identifiers.py` reports all four, and reads the
+    framework's headers as well: an element - any class that derives from
+    `UltraCanvasUIElement`, 179 of them - whose explicit one-string
+    constructor names its parameter as a text (`labelText`, `caption`,
+    `title`) is refused, so the rule has no fifth exception.
+  - `WarnIfIdentifierReadsAsText` covers the three, and
+    `Tests/ElementIdentifierTest.cpp` pins them.
+- **A signature that does not hold names its signer on every OpenSSL build.**
+  `UltraCrypt_CmsVerifyDetached` / `UltraCrypt_CmsVerifyAttached` took the
+  signer from `CMS_get0_signers`, which lists only the certificates
+  `CMS_verify` attached - and the Windows CI row's OpenSSL attaches none to a
+  signature whose content was changed, so `signerCertificatePem` came back
+  empty there and `UltraCryptTests` failed ("the signer is still named"). The
+  signer's certificate is now also looked up among the ones the signature
+  carries, by its signer info's identifier.
+- **A .docx that names its main part differently, or picks its own XML
+  prefixes, opens as a document.** The Word reader looked only for
+  `word/document.xml`, so a package whose main part has another name
+  (`word/document2.xml`, as files that went through Word for the web can
+  have) was not recognised as Word at all and an application fell back to
+  its raw view - Texter showed it as hex. It now takes the part the package's
+  `_rels/.rels` names as the office document (checked against
+  `[Content_Types].xml`; a workbook or deck is still not Word), with its
+  relationships, styles, numbering, settings, theme, notes and comments
+  found from that part's folder. A part that binds the OOXML namespaces to
+  other prefixes (`ns0:p` from Python XML libraries, WordprocessingML as the
+  default namespace, the strict ISO 29500 URIs) is read as the `w:` / `r:` /
+  `a:` one it is, where it used to read as having no body; the spaces between
+  differently formatted words survive in it too. `WordFormatsTest` covers all
+  three shapes.
+- **A flex, grid or table setter no longer un-hides an element.** Every
+  `CSSLayout::Layout` setter of that kind (`SetFlexGap`, `SetFlexRow`,
+  `SetFlexAlignItems`, `SetGridGap`, `SetTable`, ...) set `display` outright,
+  so calling one on an element hidden with `SetVisible(false)` / `Hide()`
+  showed it again. `UltraCanvasToolbar::SetAppearance` sets the bar's gap, so
+  restyling a hidden toolbar - as an application does on every theme change -
+  brought it back: UltraTexter's Markdown bar appeared beside plain text. On a
+  hidden box the setter now changes the kind of box it is shown again as
+  (what `Show()` restores), as in CSS, where `gap` never undoes
+  `display: none`. New `CSSLayoutHiddenSetterTest`.
+- **An input dialog shows its whole prompt.**
+  `UltraCanvasDialogManager::ShowInputDialog()` opened a window of a fixed
+  400 x 150 and put the prompt in a one-line label above the field, so a
+  prompt longer than the window was wide ended in an ellipsis - UltraAI's
+  *Add from Hugging Face* read "The repository and the GGUF file in it, as
+  "organis…" - and the label's width squeezed the severity icon to a sliver
+  beside it. The prompt is the message area's now: it wraps at the dialog's
+  width and the window grows to the height the lines and the field need, up
+  to most of the monitor, past which the prompt scrolls and the field and
+  the buttons stay. A short prompt leaves the dialog at its configured
+  size. A config that carries a `message` as well keeps `inputLabel` as the
+  field's caption, and that wraps too. `Tests/InputDialogPromptTest.cpp`
+  pins it on a real window, and CI runs it on a virtual display. Every caller gains it: the password prompts of
+  the file loader and the viewers, the rename dialogs, UltraDBAdmin's and
+  UltraPassword's prompts.
+- **`UltraCanvasNodeDiagram` 2.5.0 draws concept maps.** Four things a
+  hand-drawn map of concepts needs and the element did not have:
+  - **Free-placed regions.** A `NodeDiagramGroup` with `freeBounds` set draws
+    at its own `bounds` rectangle instead of around its members.
+    `AddRegion(id, label, bounds, fill)` makes one; `SetGroupBounds()` /
+    `ClearGroupBounds()` switch a group between the two. A region stays where
+    it is put - the pass that moves cluster boxes apart skips it and no node
+    is pushed out of it - so regions overlap each other, cluster boxes and
+    nodes, which a member-fitted box never could over empty space.
+  - **`NodeShape::Ellipse`**, filling the node's width and height (`Circle`
+    remains a circle of the smaller side). Hit testing, the shadow and the
+    label fit follow the ellipse, and like `Rectangle` it grows for its label
+    in width and height separately.
+  - **Node annotations.** `NodeDiagramNode::annotation` is a paragraph drawn
+    beside the node (`annotationPosition`: right, bottom, left, top), wrapped
+    at `annotationMaxWidth`, line breaks kept; `SetNodeAnnotation()` and
+    `GetNodeAnnotationBounds()`. `FitView()` and the minimap count it; the
+    overlap passes do not.
+  - **Path highlighting.** `HighlightPath(nodeIds, color, width)` marks the
+    link between each consecutive pair of nodes, in either direction, and
+    returns how many it marked; `HighlightLink()`, `ClearLinkHighlight()`,
+    `ClearHighlights()`, `GetHighlightedLinkIds()`. A highlighted link draws
+    above the others and keeps its own colour and width for when the
+    highlight is cleared.
+
+  - **Titles outside the box.** `GroupLabelPosition` gains `BottomRight` and
+    ten `Outside...` values: above or below the box (left, centre, right)
+    and beside it (level with its top or bottom edge). An outside title
+    takes no room from the box, and `FitView()` counts it.
+  - **Link waypoints.** `NodeDiagramLink::waypoints` are world points a link
+    passes through - a smooth curve through them for `LinkStyle::Bezier`,
+    straight runs otherwise - so an edge can loop round the outside of a
+    map. `SetLinkWaypoints()`, `AddLinkWaypoint()`, `ClearLinkWaypoints()`.
+
+  All of it is written by `ToJson()` and read by `FromJson()`. The demo's
+  Node Diagram page has a **Concept map** tab that uses them together, and
+  `Tests/NodeDiagramConceptMapTest.cpp` pins them.
+- **`UltraCanvasNodeDiagram::FromJson()` unescapes strings.** It returned a
+  string as it stood in the file, so a label with a quote, a backslash or a
+  line break came back with the escape still in it, and a string ending in a
+  backslash ran on into the next key.
+- **A node diagram's links end at the node's outline.** A link that ends on
+  a node (not on a handle) ran on to the node's centre, under the node, so
+  the arrowhead of every directed link was hidden and the link showed
+  through a translucent node. It stops where it meets the shape now - an
+  ellipse, a star's points, a cloud's lobes - with the arrowhead on the
+  outline; a thick link gets a head to match. The link's label sits halfway
+  along the line as drawn, and a click is tested against that line, curves
+  and steps included, where it was tested against the straight line between
+  the two centres. Diagrams with directed links between plain nodes show
+  their arrows for the first time.
+- **`NodeShape::Cloud` is a cloud.** It drew three small separate ellipses
+  offset to the lower right of the node - their rectangles were built as if
+  `FillEllipse` took a centre. It is one shape filling the node, with one
+  outline; clicks and link ends follow its lobes. Star and Hexagon nodes are
+  hit by their own outline too, not by a circle or an ellipse around them.
+- **A label built from one string takes it as its identifier.**
+  `UltraCanvasLabel("CountLabel")` and `CreateLabel("CountLabel")` make a
+  label named CountLabel with no text; until now the one string was the
+  label's *text* and the label had no identifier - the reverse of
+  `UltraCanvasContainer` and of 38 of the 42 elements with a one-string
+  constructor. It read like the others and meant the opposite, and eleven
+  callers in this repository had handed it a name: the dialog's severity
+  icon, Texter's status bar and search counter, four labels of the demo,
+  three of the HTML builder (`MakeId(...)`), and the framework's own
+  `LabelBuilder`, whose `LabelBuilder("greeting").Build()` therefore made an
+  unnamed label that said "greeting". None showed, because each set its
+  text on the next line, but none could be found by name - it was noticed
+  when a test looked for the input dialog's "InputLabel" and found nothing -
+  and each was one deleted `SetText` away from showing its own variable name.
+  Those eleven are right as written now. One caller meant text (the demo's
+  info window) and passes a name and the text.
+  - **This changes what existing code means.** A label built from its text
+    alone - `UltraCanvasLabel(Tr("Hint"))`, `CreateLabel("Two words")` -
+    still compiles and now shows nothing. Write the text second:
+    `("", Tr("Hint"))`, or `("HintLabel", Tr("Hint"))`. An application
+    outside this repository needs the same look through its one-string
+    labels.
+  - `scripts/check_label_identifiers.py` (CI's `label-identifiers.yml`,
+    with tests of its own in `scripts/tests/`) finds them: a label - by
+    `make_shared`, `make_unique`, `new`, a declaration, a base-class
+    initialiser or `CreateLabel`, on one line or several - built from
+    exactly one argument that is a `Tr` / `TrF` / `TrN` / `TrC` call or a
+    string literal that is not a name. It runs on any folder:
+    `python3 scripts/check_label_identifiers.py path/to/your/app`. An
+    identifier that really reads as text says so with
+    `// label-identifier-ok: <why>`.
+  - What the check cannot read - a variable - the framework reports at run
+    time: `WarnIfIdentifierReadsAsText` (`UltraCanvasUIElement.h`) writes one
+    line to `debugOutput` when a one-string element is given an identifier
+    with a space or a line break in it, for the first twenty.
+  - `AGENTS.md` (*Core conventions*) and the label's document state the
+    rule.
+- **Ridgeline chart (Phase 1).** `UltraCanvasRidgelineChart` (chart engine)
+  draws one curve per row on its own baseline, rising over the rows above it
+  (a joyplot): the rows back to front, so the lower row covers the one
+  behind it, their names, a value column with its header ("Average score"),
+  and a tooltip with the row, the x and its statistics. The UI-free
+  `UltraCanvasRidgelineModel` turns raw values into curves by a Gaussian
+  kernel density (Scott's or Silverman's bandwidth or a fixed one,
+  reflection at the bounds of a scale such as 0-10, binning for large rows)
+  or takes curves as given, scales them to one scale, to each row's peak or
+  to equal areas, sorts the rows and gives each its count, mean, median,
+  quartiles and peak. Colourings: one colour, alternating, a colour map down
+  the rows or by the value column. Demo: **Charts > Ridgeline Chart** (word
+  ratings and times of day, invented). Tests: `RidgelineModelTest`,
+  `RidgelineChartRenderTest`. Guide: `UltraCanvasRidgelineChart.md`.
+- **The Filer's move / copy question is redrawn, in two styles.** The
+  question a drop or a Cut + Paste asks (`SetDropConfirmation`) put its two
+  paths in code spans - red on most themes, which read as an error - wrapped
+  the destination in the middle of a folder name, and repeated the same long
+  prefix in *From* and *Into*, so the one folder that differed was hard to
+  find. `UltraCanvasFilerWidget::SetTransferDialogStyle(FilerTransferDialogStyle)`
+  chooses between `Summary` (the default: the entry's icon beside the
+  question, its type and size, then *From* and *Into* as breadcrumb rows with
+  the last folder bold and the middle of a long path elided) and `Cards`
+  (source and destination as two cards with an arrow between them, the verb
+  that was not asked for set apart as *Copy instead* / *Move instead*).
+  `UltraCanvasModalDialog::SetMessageVisible()` / `IsMessageVisible()` are
+  new for it: a dialog whose elements present the message hides the message
+  area and still answers `GetMessage()` and `GetDetails()` with the text.
+  `Tests/FilerPaneDragTest.cpp` asks the question in both styles.
+- **`wasm-build.yml` uploads what it builds, not only pictures of it.**
+  Three of a run's artifacts were named after a product and held none of
+  it: `ultrastore-web-dynamic`, `ultracanvas-runtime-dynamic` and
+  `ultraweb-runtime-<variant>` carried the browser tests' screenshots and
+  console logs, so the archive with the UltraStore web store's name had no
+  WebAssembly in it and a green run read as a build that produced nothing.
+  Each name now holds the product, collected right after the build and
+  uploaded before any test runs - a build that fails a test is the one
+  somebody wants to download - with a `README.txt` and usable as unzipped;
+  an empty folder or a missing `.wasm` fails the job. The screenshots and
+  logs move to `*-smoke-<variant>`, named as `wasm-smoke-<variant>` is
+  beside `wasm-demo-<variant>`.
+  - `ultraweb-runtime-<variant>` (the single-threaded variants) and
+    `ultracanvas-runtime-dynamic`: each runtime as its build leaves it -
+    `site/`, the sample site with the loader, the sample app and the runtime
+    under `runtime/`, which any static host serves, and the browser
+    extension's folder. The runtime tests open the uploaded folder.
+  - `ultrastore-web-dynamic`: `site/`, the folder the admin backend's
+    publish takes (`web.site_dir`), and `preview/`, a whole store to look
+    at: the test's fixture store with the build laid over it the way publish
+    lays it (`Apps/UltraStore/web/test/stage-store.mjs`: the runtime under
+    `runtime/<hash>/`, every page naming that folder and the build's runtime
+    version). The browser test (`webstore-test.mjs`, `UWS_STORE`) serves
+    `preview/` as a static host would, in place of the fixture with the
+    build's files mapped in and the pages rewritten by its own server, so
+    the store an artifact holds is the store the run tested.
+  - `site/`'s module trusts the store's keys alone: the fixture's test key
+    is in a second module now, which only `preview/` carries (UltraStore's
+    changelog has the build's side of it).
+
 #### 2026-11-16 *0.9.568*
 - **UltraIM: a Mastodon provider** (`Plugins/UltraIM/mastodon`, module
   `ultraim_mastodon`): the direct messages of a Mastodon server over its
