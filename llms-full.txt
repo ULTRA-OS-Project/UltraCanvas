@@ -88242,6 +88242,15 @@ p->Play();
 if (auto f = p->GetCurrentFrame()) { /* upload f to a pixmap */ }
 ```
 
+`LoadFromFile` returns false - with the reason in `GetLastError()` and
+`onError`, the state `Error` and nothing loaded - for no path, a file that does
+not exist, a folder, or an empty or unreadable file, before any backend or
+registered codec sees it. True means the file was handed to the backend; a
+damaged file is still accepted then and reported later through `onError`,
+when the backend finds out (it opens a source asynchronously). Before
+2026-11 an empty file "loaded" too, and the caller showed a player that never
+played.
+
 Transport: `Play / Pause / Stop / Seek(seconds)`.
 Properties: `Volume`, `Mute`, `Loop`, `PlaybackRate`.
 Frame access: `GetCurrentFrame()` (thread-safe).
@@ -111769,46 +111778,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/desktop-translated.md
-==============================================================================
-
-- **The desktop can be translated, and is, in thirty languages.** Six in
-  seven of its texts were written straight into the code - every tooltip of
-  the bars, the menus of the clock, battery, info bar, clipboard and
-  settings button, the Wi-Fi, Bluetooth, loudspeaker, clock and clipboard
-  panels, the Task Manager, the Apps window with its categories and
-  sub-kinds, the sticker board, the dialogs - so the desktop showed in
-  English whatever the language. They go through `Tr` / `TrF` / `TrN` now
-  (415 texts where the catalogue had 61), sentences that were glued from
-  fragments are whole texts with placeholders, and counted texts have their
-  plural forms.
-  - Label tables that kept their texts beside ids or icons carry `Tr`
-    literals where they are used, so the extractor sees them: the clock
-    styles, the taskbar edges (whose `Tr(choice.label)` reached no
-    catalogue), the day and month names, the board designs.
-  - The Apps window's categories and sub-kinds keep their English names for
-    sorting and tests; `AppCategoryDisplayName`, `AppSubcategoryDisplayName`
-    and `AppGroupDisplayName` (`UltraDesktopAppCategories.h`) give the
-    names it shows. `StartupProgramLabel`, `StartupProgramName` and
-    `InfoItemLabel` (`UltraDesktopSettings.h`) do the same for the programs
-    that start with the desktop and the info bar's icons.
-  - The short date on the clock takes a short month name of its own
-    instead of the first three bytes of the long one, which cut a
-    translated name in the middle of a letter.
-  - The task list recognises the clipboard panel's window by its translated
-    title too.
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/info-bar-menu-translated.md
-==============================================================================
-
-- **Three menu items can be translated.** "Hide this icon" and "Info bar
-  icons..." on the info bar's right-click menu and "Switch back to the
-  Windows desktop" were written straight into the menu; they go through
-  `Tr` now and are translated in all thirty languages, in the wording
-  UOS-Settings' notes quote.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
