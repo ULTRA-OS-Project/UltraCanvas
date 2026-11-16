@@ -102,7 +102,7 @@ public:
     void ApplyDisplaySettings(const CategoryBoardSettings& settings);
 
     // The categories every new board starts with.
-    static const std::vector<std::string>& DefaultCategories();
+    static std::vector<std::string> DefaultCategories();
 
 private:
     void SaveBoard();
