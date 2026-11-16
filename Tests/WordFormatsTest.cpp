@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -802,6 +803,90 @@ int main(int argc, char** argv) {
         CHECK(DetectWordDocumentFormat(TmpPath("garbage.docx")) == WordDocumentFormat::Unknown);
         CHECK(!UCWordDocumentIO::Load(TmpPath("garbage.docx"), dummy, err));
         CHECK(!err.empty());
+    }
+
+    // ===== 5a. A .docx the way other producers write it =====
+    // Word for the web names the main part word/document2.xml; a Python XML
+    // library writes ns0:p for w:p; others use the WordprocessingML
+    // namespace as the default one. Each read as no Word document at all -
+    // Texter showed the file as hex - or as one without a body.
+    {
+        // A space between two differently formatted words is a run of its
+        // own, which the reader has to keep (ProtectWhitespaceRuns).
+        {
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::SaveDocx(TmpPath("spaces.docx"),
+                                                 UCRichDocument::FromMarkdown("Word **bold** *italic* end.\n"), err), err);
+        }
+        // Every entry of spaces.docx, with the given changes.
+        auto rewriteSample = [](const std::string& target,
+                                const std::function<void(std::string& name, std::string& data)>& change) {
+            UCZipPackageReader in;
+            UCZipPackageWriter out;
+            if (!in.Open(TmpPath("spaces.docx")) || !out.Open(target)) return false;
+            for (const std::string& entry : in.EntryNames()) {
+                std::string name = entry, data;
+                if (!in.ReadEntry(entry, data)) return false;
+                change(name, data);
+                if (!out.AddEntry(name, data)) return false;
+            }
+            return out.Finalize();
+        };
+        auto replaceAll = [](std::string& text, const std::string& from, const std::string& to) {
+            for (size_t at = 0; (at = text.find(from, at)) != std::string::npos; at += to.size())
+                text.replace(at, from.size(), to);
+        };
+        const std::string wml = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        auto checkReads = [](const std::string& path, const char* label) {
+            CHECK_MSG(DetectWordDocumentFormat(path) == WordDocumentFormat::Docx, label);
+            UCRichDocument read;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(path, read, err), std::string(label) + ": " + err);
+            CHECK_MSG(read.ToPlainText().find("Word bold italic end.") != std::string::npos,
+                      std::string(label) + ": " + read.ToPlainText());
+        };
+
+        CHECK(rewriteSample(TmpPath("main-part-document2.docx"), [&](std::string& name, std::string& data) {
+            if (name == "word/document.xml") name = "word/document2.xml";
+            if (name == "word/_rels/document.xml.rels") name = "word/_rels/document2.xml.rels";
+            replaceAll(data, "word/document.xml", "word/document2.xml");   // _rels/.rels
+            replaceAll(data, "/word/document.xml", "/word/document2.xml"); // [Content_Types].xml
+        }));
+        checkReads(TmpPath("main-part-document2.docx"), "docx-main-part-document2");
+
+        CHECK(rewriteSample(TmpPath("prefix-ns0.docx"), [&](std::string& name, std::string& data) {
+            if (name != "word/document.xml") return;
+            replaceAll(data, "<w:", "<ns0:");
+            replaceAll(data, "</w:", "</ns0:");
+            replaceAll(data, " w:", " ns0:");
+            replaceAll(data, "xmlns:w=", "xmlns:ns0=");
+        }));
+        checkReads(TmpPath("prefix-ns0.docx"), "docx-prefix-ns0");
+
+        CHECK(rewriteSample(TmpPath("default-namespace.docx"), [&](std::string& name, std::string& data) {
+            if (name != "word/document.xml") return;
+            replaceAll(data, "<w:", "<");
+            replaceAll(data, "</w:", "</");
+            replaceAll(data, "xmlns:w=\"" + wml + "\"",
+                       "xmlns=\"" + wml + "\" xmlns:w=\"" + wml + "\"");
+        }));
+        checkReads(TmpPath("default-namespace.docx"), "docx-default-namespace");
+
+        // A package whose office document is not a Word one (a workbook)
+        // stays unknown, not a Word document missing its body.
+        UCZipPackageWriter workbook;
+        CHECK(workbook.Open(TmpPath("workbook.docx")));
+        workbook.AddEntry("[Content_Types].xml",
+            "<?xml version=\"1.0\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+            "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/"
+            "vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/></Types>");
+        workbook.AddEntry("_rels/.rels",
+            "<?xml version=\"1.0\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+            "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/"
+            "relationships/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>");
+        workbook.AddEntry("xl/workbook.xml", "<workbook/>");
+        CHECK(workbook.Finalize());
+        CHECK(DetectWordDocumentFormat(TmpPath("workbook.docx")) == WordDocumentFormat::Unknown);
     }
 
     // ===== 5b. Legacy .doc import (real Word 97 fixture) =====
