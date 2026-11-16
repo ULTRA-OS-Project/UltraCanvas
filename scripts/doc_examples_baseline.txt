@@ -373,20 +373,17 @@ Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetL
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::prose names `SetStrictSemantics(`, which no header declares
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::use of undeclared identifier 'RequirementLayout'
 # signature Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md: c646c77dfc5758a2cd5d05f3a74eb0282649d38aea34d272d3a6ce6880f27ae8
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'RidgelineKernelDensity' is not a member of UltraCanvasEngineLineChart, UltraCanvasJitterPlotElement, UltraCanvasFileLoader, UltraCanvasChartEngineElement, nor a free function
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'RidgelineScottBandwidth' is not a member of UltraCanvasEngineLineChart, UltraCanvasJitterPlotElement, UltraCanvasFileLoader, UltraCanvasChartEngineElement, nor a free function
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'RidgelineSilvermanBandwidth' is not a member of UltraCanvasEngineLineChart, UltraCanvasJitterPlotElement, UltraCanvasFileLoader, UltraCanvasChartEngineElement, nor a free function
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::header "Plugins/Charts/Engine/Charts/UltraCanvasRidgelineModel.h" does not exist
+Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'RidgelineDensityOptions::tailCut' does not exist (no member named 'tailCut' in 'RidgelineDensityOptions')
+Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'RidgelineRow::entries' does not exist (no member named 'entries' in 'RidgelineRow')
+Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'UltraCanvasRidgelineModel::period' does not exist (no member named 'period' in 'UltraCanvasRidgelineModel')
+Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::'UltraCanvasRidgelineModel::series' does not exist (no member named 'series' in 'UltraCanvasRidgelineModel')
+Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::no member named 'onRowClick' in 'UltraCanvasRidgelineChart'
 Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::prose names `SetMarks(`, which no header declares
 Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::prose names `SetObliqueView(`, which no header declares
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::prose names `SetOverlap(`, which no header declares
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::prose names `SetShowRowLines(`, which no header declares
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::prose names `SetValueColumn(`, which no header declares
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::use of undeclared identifier 'CreateRidgelineChart'
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::use of undeclared identifier 'RidgelineColoring'
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::use of undeclared identifier 'RidgelineValue'
-Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::use of undeclared identifier 'UltraCanvasRidgelineModel'
-# signature Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md: e8fc1d0dd1c51186e14e4f9c1a545b46bfb514f91934aabab75f6457fcfa1ff8
+Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::signature differs: `RidgelineRowStatistics Statistics(size_t row, size_t series = 0) const` - the header has: RidgelineRowStatistics Statistics(size_t row) const;
+Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::signature differs: `double Bandwidth(size_t row, size_t series = 0) const` - the header has: double Bandwidth(size_t row) const;
+Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md::signature differs: `std::vector<RidgelineCurvePoint> Curve(size_t row, size_t series = 0) const` - the header has: std::vector<RidgelineCurvePoint> Curve(size_t row) const;
+# signature Docs/UltraCanvas/UltraCanvasRidgelineChartProposal.md: 1e8cafc60d7da9bd6fda1cfd9298def9ab1c737fa28fe4c514946f20b22206a2
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernaryPoint::group' does not exist (no member named 'group' in 'TernaryPoint')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::'TernarySeriesKind::Bubble' does not exist (no member named 'Bubble' in 'TernarySeriesKind')
 Docs/UltraCanvas/UltraCanvasTernaryChartProposal.md::signature differs: `std::vector<TernaryPoint> SoilSamples()` - the header has: TernaryModel SoilSamples();

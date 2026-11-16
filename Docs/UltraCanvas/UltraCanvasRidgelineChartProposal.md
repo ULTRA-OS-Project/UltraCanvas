@@ -1,6 +1,39 @@
 # UltraCanvasRidgelineChart — Research & Feature Proposal
 
-**Status:** Proposal. Nothing in this document is implemented yet.
+**Status:** **Phase 1 is implemented** (2026-11-16) as `UltraCanvasRidgelineChart`
+and `UltraCanvasRidgelineModel` - see [`UltraCanvasRidgelineChart.md`](UltraCanvasRidgelineChart.md)
+for the guide. It delivered R1, R2, R4-R6, D1-D4 and the statistics in the
+model, A1-A7, N2 and I1 in the chart, the `WordRatings` and
+`DailyActivities` samples, the demo page (**Charts → Ridgeline Chart**),
+`Tests/RidgelineModelTest.cpp` and `Tests/RidgelineChartRenderTest.cpp`.
+Phases 2 and 3 and the Follow-up are still to come.
+
+How Phase 1 departs from the plan below, and why:
+
+* **A row holds `values` and `curve` itself, not `entries` per series, and
+  the model has no `series` yet.** Several series per row are Phase 2 (R3);
+  a list nothing can fill with more than one item would only be a promise
+  in the API. Phase 2 adds the second series beside them.
+* **No `period` and no `tailCut` yet** (R7 and D5 are Phase 2). The
+  time-of-day sample covers 03:00 to 03:00 as hours 3 to 27, with a
+  formatter that reads them as clock times, which needs no wrap.
+* **The rows are not a visible category axis** (§4.2). The value column has
+  to sit between the names and the plot, and margins a chart reserves do
+  not add to an axis band, so the names, the value column and its header
+  are the chart's own furniture beside a hidden 0..1 row axis, as the
+  ternary chart draws its own axes. The chart places each baseline itself,
+  so the tallest curve ends exactly at the top of the plot.
+* **`RidgelineValue::Hidden`, not `None`:** X11's `Xlib.h` defines `None`.
+* **`onRowHover` is in Phase 1** (I3 planned it for Phase 2), and it fires
+  as the pointer moves along a row as well as between rows: the demo's
+  read-out needs the x. `onRowClick` and the fading of other rows (I2)
+  are still Phase 2.
+* **The word sample uses a fixed bandwidth of 0.6.** §7.3 below is
+  corrected: Scott's rule does not give whole-number ratings a bandwidth
+  near 1.
+* **Hover works in strips:** each row's area is cut into 64 vertical strips,
+  so the tooltip can give the x under the pointer and the curve's height
+  there.
 
 A ridgeline chart (also called a joyplot) stacks one distribution per row.
 Every row has its own baseline. Its curve is a smooth, filled outline, and
@@ -397,9 +430,12 @@ top curve would be cut off or cover the title.
   drawn only inside the bounds. The reference word chart draws tails past
   10; with bounds set they end at 10, which is correct for the data.
 * **Whole numbers.** Ratings are integers. With a small bandwidth the curve
-  becomes a row of spikes at each integer. Scott's rule on such data gives a
-  bandwidth near 1, which is smooth; a fixed bandwidth below 0.5 earns a
-  `Validate` warning.
+  becomes a row of spikes at each integer. Scott's rule does not avoid
+  this: 300 ratings with a spread of about one point give it a bandwidth
+  near 0.35, which spikes. (An earlier draft of this section said Scott
+  gives about 1; Phase 1 showed it does not.) Such data wants a fixed
+  bandwidth of 0.5 to 0.8, as the word sample uses (0.6); a fixed bandwidth
+  below 0.5 over whole-number values earns a `Validate` warning.
 
 ### 7.4 Long, thin tails
 
@@ -492,7 +528,7 @@ other charts.
 
 | Phase | Delivers | Retires |
 |---|---|---|
-| **1** | The model with R1, R2, R4-R6, D1-D4 and the statistics; the chart with A1-A7, N2 and I1; the `WordRatings` and `DailyActivities` samples; the demo page (**Charts → Ridgeline Chart**) with an overlap slider and choices of scale, sort and colouring; the guide; model and render tests | Reference shapes 2 and 3; shape 1 without the wrap and side notes |
+| **1** *(done)* | The model with R1, R2, R4-R6, D1-D4 and the statistics; the chart with A1-A7, N2 and I1; the `WordRatings` and `DailyActivities` samples; the demo page (**Charts → Ridgeline Chart**) with an overlap slider and choices of scale, sort and colouring; the guide; model and render tests | Reference shapes 2 and 3; shape 1 without the wrap and side notes |
 | **2** | Several series per row with a legend (R3); the wrapping axis (R7); tail cut and binned curves (D5, D6); marks and quantile bands (N1, N3); highlight and row callbacks (I2, I3); CSV and JSON (X1, X2) with demo Open / Save through `UltraCanvasFileLoader` | Reference shape 1 in full |
 | **3** | The oblique view and floor grid (O1, O2); row groups (R8); side notes (N4); the pointer rule across rows (I4) | Reference shape 4 |
 | **Follow-up** | A change of its own, after Phase 1: `UltraCanvasJitterPlotElement`'s private `CalculateKernelDensity` (its violin and raincloud modes) moves onto `RidgelineKernelDensity` and the bandwidth rules, so the framework has one 1D density. The violins should look the same; the jitter plot's tests and demo page confirm it | The second copy of the density |
