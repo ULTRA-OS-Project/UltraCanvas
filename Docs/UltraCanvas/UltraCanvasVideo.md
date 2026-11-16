@@ -81,6 +81,15 @@ p->Play();
 if (auto f = p->GetCurrentFrame()) { /* upload f to a pixmap */ }
 ```
 
+`LoadFromFile` returns false - with the reason in `GetLastError()` and
+`onError`, the state `Error` and nothing loaded - for no path, a file that does
+not exist, a folder, or an empty or unreadable file, before any backend or
+registered codec sees it. True means the file was handed to the backend; a
+damaged file is still accepted then and reported later through `onError`,
+when the backend finds out (it opens a source asynchronously). Before
+2026-11 an empty file "loaded" too, and the caller showed a player that never
+played.
+
 Transport: `Play / Pause / Stop / Seek(seconds)`.
 Properties: `Volume`, `Mute`, `Loop`, `PlaybackRate`.
 Frame access: `GetCurrentFrame()` (thread-safe).
