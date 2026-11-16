@@ -17,3 +17,8 @@
   - The font report leaves out a family with an installed stand-in.
   - The table is the framework's own: a substitution a user added to the
     Windows registry by hand is not read.
+- **The font report did not read text frames.** A family named only in a
+  text frame - a letterhead's sender block, the words in a drawing's shapes -
+  was never reported as missing, nor its characters without a font. The report
+  reads `UCRichDocument::frames` now, and stays the whole document's while a
+  header, a note or a frame is being edited (it shrank to the part edited).

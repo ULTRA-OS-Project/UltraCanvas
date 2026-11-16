@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.9.3 - the font report reads the text in text frames too, and the whole document
+//                  while a header, a note or a frame is edited
 // Version: 1.9.2 - the font report leaves out a family an installed font stands in for by name
 //                  (FontFamilySubstitute: Helvetica drawn in Arial)
 // Version: 1.9.1 - a picture anchored in a text frame stays in the line while the frame's words
@@ -6339,7 +6341,11 @@ void UltraCanvasRichTextEdit::RefreshFontReport() {
     fontReportDue = false;
 
     FontReport report;
-    const std::shared_ptr<UCRichDocument> document = editor.GetDocument();
+    // The whole document, also while one part of it is edited (a header, a
+    // note, a frame's words: written into it as they are typed) - the report
+    // is the document's, and must not change for a double-click.
+    const std::shared_ptr<UCRichDocument> document = furnitureEdit ? furnitureEdit->bodyEditor.GetDocument()
+                                                                   : editor.GetDocument();
     if (document) {
         // The text by the family it is set in ("" the base font), and the
         // families the document itself names, each once.
@@ -6375,6 +6381,9 @@ void UltraCanvasRichTextEdit::RefreshFontReport() {
         };
         addBlocks(document->blocks);
         for (const RichNote& note : document->notes) addBlocks(note.blocks);
+        // A letterhead's sender block is a text frame: its words, and those
+        // in a drawing's shapes, are frames of the document too.
+        for (const RichTextFrame& frame : document->frames) addBlocks(frame.blocks);
         for (const RichPageFurniture* furniture : {&document->pageFurniture, &document->firstPageFurniture}) {
             addBlocks(furniture->header);
             addBlocks(furniture->footer);

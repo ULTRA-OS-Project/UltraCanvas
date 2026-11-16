@@ -2344,6 +2344,46 @@ int main() {
              typed.missingScripts[0].downloadUrl.rfind("https://", 0) == 0);
         TEST("The change was announced", reported == 1);
 
+        // A family named only in a text frame (a letterhead's sender block)
+        // is reported too, and still is while the frame's words are edited.
+        {
+            auto framed = std::make_shared<UCRichDocument>();
+            RichTextRun inFrame;
+            inFrame.text = "Sender";
+            inFrame.fontFamily = "No Such Frame Family 12345";
+            RichDocBlock frameWords;
+            frameWords.runs = {inFrame};
+            RichTextFrame frame;
+            frame.blocks = {frameWords};
+            framed->frames = {frame};
+            RichTextRun anchor;
+            anchor.text = RichTextRun::kObjectReplacement;
+            anchor.frameIndex = 0;
+            anchor.imageWidthPt = 150.0f;
+            anchor.imageWrap = RichTextRun::ImageWrap::Square;
+            RichDocBlock body = block;
+            body.runs.insert(body.runs.begin(), anchor);
+            framed->blocks = {body};
+            fontEdit->SetDocument(framed);
+            window->UpdateAndRender();
+            auto bothMissing = [&]() {
+                const std::vector<std::string>& missing = fontEdit->GetFontReport().missingFamilies;
+                return missing.size() == 2
+                    && std::find(missing.begin(), missing.end(), "No Such Frame Family 12345") != missing.end()
+                    && std::find(missing.begin(), missing.end(), "No Such Family 12345") != missing.end();
+            };
+            TEST("A family named only in a text frame is reported with the body's", bothMissing());
+            window->UpdateAndRender();
+            TEST("The frame opens for editing", fontEdit->EditFrame(0));
+            fontEdit->InsertText("x");
+            window->UpdateAndRender();
+            TEST("...and the report is still the whole document's", bothMissing());
+            fontEdit->FinishHeaderFooterEditing();
+            fontEdit->SetDocument(document);
+            window->UpdateAndRender();
+            reported = 0;
+        }
+
         // A press on the notice is not a press in the text.
         window->UpdateAndRender();
         const RichDocPosition before = fontEdit->GetEditor().GetCaret();
