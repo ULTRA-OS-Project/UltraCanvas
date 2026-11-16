@@ -104,6 +104,8 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.50.0 - SetTransferDialogStyle: the move / copy question as a summary with the entry's icon
+//          and breadcrumb paths (the default) or as two cards, source and destination
 // Version: 1.49.1 - a text file's preview page is paper in either look: its text dark ink, not the theme's
 // Version: 1.49.0 - FilerStyle::FromTheme, ApplyTheme: the widget follows the theme; a SetStyle by hand
 //                   stops the following
@@ -507,6 +509,23 @@ namespace UltraCanvas {
         MoveOnly,
         AlwaysConfirm,
         CopyOnly       // ask only when the drop copies (a move is carried out)
+    };
+
+    // ===== HOW THE MOVE / COPY QUESTION LOOKS =====
+    // The question a drop or a Cut + Paste asks (SetDropConfirmation) says
+    // the same thing in either style - what is going, from where, into which
+    // folder, how much - and offers the same answers.
+    //   Summary — the entry's icon beside the question with its type and
+    //             size under it, then From and Into as two breadcrumb rows:
+    //             the part of the path both share is quiet, the folder each
+    //             ends in is bold. Move, Copy and Cancel as buttons.
+    //   Cards   — what is going and the folder it goes into as two cards
+    //             with an arrow between them, the folder they are in on one
+    //             line under them. The verb that was asked for and Cancel as
+    //             buttons; the other verb sits apart, at the left of the bar.
+    enum class FilerTransferDialogStyle {
+        Summary,
+        Cards
     };
 
     // ===== WHAT A DELETE DOES =====
@@ -1278,6 +1297,9 @@ namespace UltraCanvas {
         // another program are copies and are covered by AlwaysConfirm.
         void SetDropConfirmation(FilerDropConfirmation mode) { dropConfirmation = mode; }
         FilerDropConfirmation GetDropConfirmation() const { return dropConfirmation; }
+        // How that question is laid out (see FilerTransferDialogStyle).
+        void SetTransferDialogStyle(FilerTransferDialogStyle look) { transferDialogStyle = look; }
+        FilerTransferDialogStyle GetTransferDialogStyle() const { return transferDialogStyle; }
         // The confirmation offers both verbs - Move and Copy - with the one
         // the gesture asked for as the coloured default, so a wrong modifier
         // never needs a second drag. A move asked for by Cut + Paste (Ctrl+X,
@@ -2472,6 +2494,7 @@ namespace UltraCanvas {
         bool dragEnabled = true;
         bool dropOnFolderCopies = false;   // plain drop on a folder: move / copy
         FilerDropConfirmation dropConfirmation = FilerDropConfirmation::NeverConfirm;
+        FilerTransferDialogStyle transferDialogStyle = FilerTransferDialogStyle::Summary;
         // The standing answers (see the setters above).
         bool confirmTrashDelete = true;
         FilerConflictPolicy conflictPolicy = FilerConflictPolicy::Ask;
@@ -3947,6 +3970,9 @@ namespace UltraCanvas {
         struct OperationDialogButton {
             std::string label;
             DialogButtonRole role = DialogButtonRole::Normal;
+            // Apart from the answers, at the left of the button bar: the
+            // alternative to what was asked for ("Copy instead").
+            bool aside = false;
         };
         struct OperationDialogSpec {
             std::string title;
@@ -3954,6 +3980,12 @@ namespace UltraCanvas {
             std::string question;                 // the message line
             std::string facts;                    // Markdown under it, may be empty
             std::string note;                     // Markdown under the list, may be empty
+            // Elements under the question and the facts, above the list:
+            // each carries its own height.
+            std::vector<std::shared_ptr<UltraCanvasUIElement>> content;
+            // `content` says what `question` and `facts` say: the dialog
+            // keeps both as its message and details but does not show them.
+            bool messageAsElements = false;
             // Entries listed under the facts (the display's own icons, size,
             // modified) with an optional caption above; `rowNotes`, when
             // given per row, replaces the size / modified columns with one
@@ -3973,6 +4005,8 @@ namespace UltraCanvas {
             // time a background folder walk lands, so a size still being
             // counted fills in without holding the question back.
             std::function<std::string()> liveFacts;
+            // The same for `content`: brings its elements up to date.
+            std::function<void()> liveContent;
         };
         // Shows the dialog; `onAnswer(buttonIndex, applyToAll)` runs for the
         // button that was pressed, `onDismiss` when the dialog went without
@@ -3985,6 +4019,7 @@ namespace UltraCanvas {
         // (OperationDialogSpec::liveFacts), and the source of those facts.
         std::weak_ptr<UltraCanvasModalDialog> liveFactsDialog;
         std::function<std::string()> liveFactsSource;
+        std::function<void()> liveContentSource;
         // Puts the current liveFacts into that dialog; asking again also
         // re-queues a walk a rescan dropped.
         void RefreshLiveDialogFacts();
@@ -3993,6 +4028,14 @@ namespace UltraCanvas {
         // background walk runs), or a set's tally. Call it again as walks
         // land (OperationDialogSpec::liveFacts) for the finished figure.
         std::string CountedSizeFact(const std::vector<FilerEntry>& entries);
+        // The move / copy question's elements for the current
+        // transferDialogStyle, put into `spec` (content, liveContent, buttons).
+        void BuildTransferSummary(OperationDialogSpec& spec,
+                                  const std::vector<FilerEntry>& entries,
+                                  const std::string& from, const std::string& destDir);
+        void BuildTransferCards(OperationDialogSpec& spec,
+                                const std::vector<FilerEntry>& entries,
+                                const std::string& from, const std::string& destDir);
         // The entry list the operation dialogs share (the delete confirmation's
         // list, generalised): at most kOperationListRows rows, `visibleRows`
         // of them at a time, the rest behind a scrollbar.

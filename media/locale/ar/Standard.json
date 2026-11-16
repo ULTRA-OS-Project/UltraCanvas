@@ -186,6 +186,7 @@
   },
   "Copy files": "نسخ الملفات",
   "Copy finished": "اكتمل النسخ",
+  "Copy instead": "نسخ بدلاً من ذلك",
   "Copy path": "نسخ المسار",
   "Copy skipped items again": "نسخ العناصر المتخطاة مرة أخرى",
   "Copy {n} item into \"{0}\"?": {
@@ -477,6 +478,7 @@
   "Move down": "نقل لأسفل",
   "Move files": "نقل الملفات",
   "Move finished": "اكتمل النقل",
+  "Move instead": "نقل بدلاً من ذلك",
   "Move skipped items again": "نقل العناصر المتخطاة مرة أخرى",
   "Move to Recycle Bin": "نقل إلى سلة المحذوفات",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "يمكن التراجع عن «نقل إلى سلة المحذوفات» من سلة المحذوفات. لا يمكن التراجع عن «حذف نهائي».",
@@ -702,6 +704,7 @@
   "Stopped at:": "توقف عند:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "يحفظ هذه الإعدادات دون تجربتها؛ وتُجرَّب في المرة التالية التي يُستخدم فيها الحساب.",
   "Style": "النمط",
+  "Subfolder of \"{0}\"": "مجلد فرعي من «{0}»",
   "Submit": "تقديم",
   "Success": "نجاح",
   "System": "النظام",

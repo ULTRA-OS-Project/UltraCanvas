@@ -151,6 +151,7 @@
   },
   "Copy files": "Sao chép tệp",
   "Copy finished": "Sao chép hoàn tất",
+  "Copy instead": "Sao chép thay vào đó",
   "Copy path": "Sao chép đường dẫn",
   "Copy skipped items again": "Sao chép lại các mục đã bỏ qua",
   "Copy {n} item into \"{0}\"?": {
@@ -412,6 +413,7 @@
   "Move down": "Di chuyển xuống",
   "Move files": "Di chuyển tệp",
   "Move finished": "Di chuyển hoàn tất",
+  "Move instead": "Di chuyển thay vào đó",
   "Move skipped items again": "Di chuyển lại các mục đã bỏ qua",
   "Move to Recycle Bin": "Chuyển vào Thùng rác",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "“Chuyển vào Thùng rác” có thể hoàn tác từ Thùng rác. “Xóa vĩnh viễn” không thể hoàn tác.",
@@ -612,6 +614,7 @@
   "Stopped at:": "Dừng tại:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Lưu các cài đặt này mà không thử chúng; chúng sẽ được thử vào lần tới tài khoản được dùng.",
   "Style": "Kiểu",
+  "Subfolder of \"{0}\"": "Thư mục con của “{0}”",
   "Submit": "Gửi đi",
   "Success": "Thành công",
   "System": "Hệ thống",

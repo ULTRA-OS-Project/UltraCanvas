@@ -158,6 +158,7 @@
   },
   "Copy files": "Bestanden kopiëren",
   "Copy finished": "Kopiëren voltooid",
+  "Copy instead": "In plaats daarvan kopiëren",
   "Copy path": "Pad kopiëren",
   "Copy skipped items again": "Overgeslagen items opnieuw kopiëren",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Omlaag",
   "Move files": "Bestanden verplaatsen",
   "Move finished": "Verplaatsen voltooid",
+  "Move instead": "In plaats daarvan verplaatsen",
   "Move skipped items again": "Overgeslagen items opnieuw verplaatsen",
   "Move to Recycle Bin": "Naar Prullenbak verplaatsen",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "'Naar Prullenbak verplaatsen' kan vanuit de Prullenbak ongedaan worden gemaakt. 'Permanent verwijderen' kan niet ongedaan worden gemaakt.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Gestopt bij:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Slaat deze instellingen op zonder ze te proberen; ze worden geprobeerd wanneer het account weer wordt gebruikt.",
   "Style": "Stijl",
+  "Subfolder of \"{0}\"": "Submap van '{0}'",
   "Submit": "Verzenden",
   "Success": "Gelukt",
   "System": "Systeem",

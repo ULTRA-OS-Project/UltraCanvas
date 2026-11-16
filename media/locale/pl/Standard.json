@@ -165,6 +165,7 @@
   },
   "Copy files": "Kopiowanie plików",
   "Copy finished": "Kopiowanie zakończone",
+  "Copy instead": "Zamiast tego skopiuj",
   "Copy path": "Kopiuj ścieżkę",
   "Copy skipped items again": "Ponów kopiowanie pominiętych elementów",
   "Copy {n} item into \"{0}\"?": {
@@ -438,6 +439,7 @@
   "Move down": "Przenieś w dół",
   "Move files": "Przenoszenie plików",
   "Move finished": "Przenoszenie zakończone",
+  "Move instead": "Zamiast tego przenieś",
   "Move skipped items again": "Ponów przenoszenie pominiętych elementów",
   "Move to Recycle Bin": "Przenieś do kosza",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Operację „Przenieś do kosza” można cofnąć z kosza. Operacji „Usuń trwale” nie można cofnąć.",
@@ -648,6 +650,7 @@
   "Stopped at:": "Zatrzymano na:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Zapisuje te ustawienia bez ich sprawdzania; zostaną sprawdzone przy następnym użyciu konta.",
   "Style": "Styl",
+  "Subfolder of \"{0}\"": "Podfolder folderu „{0}”",
   "Submit": "Zatwierdź",
   "Success": "Sukces",
   "System": "System",
