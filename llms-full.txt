@@ -103930,7 +103930,11 @@ tinyxml2's, cut into elements from the TCP byte stream by `XmppSplitter`.
   and `ws://`, are refused unless they are on this computer. The endpoint
   that connected is kept with the keys and tried first next time.
   `SetTlsOptions` takes a CA bundle (tests). Over TCP a single space keeps a
-  quiet connection open.
+  quiet connection open, and a server that has said nothing for
+  `XmppTimings::pingIntervalMs` is pinged (XEP-0199): no answer, nor anything
+  else, within `pingTimeoutMs` and the connection counts as gone and is made
+  again - a server that hangs, or a path that drops packets without a word,
+  is found this way, where a write never fails.
 - **Sign-in** (`UltraIMLoginType::UsernamePassword`): the bare JID
   (`username`, `erin@example.org`) and the password, by SASL SCRAM-SHA-256,
   else SCRAM-SHA-1, else PLAIN (only over TLS or to this computer).
@@ -103958,7 +103962,9 @@ Tests: `Tests/UltraIM/XmppProviderTests.cpp` against `xmpp_fake_server.py`
 one with STARTTLS and a direct-TLS one, sharing users and archives): the
 splitter on awkward reads, server-field forms, SRV ordering, an untrusted
 certificate refused, STARTTLS and WebSocket clients talking both ways,
-direct TLS with the endpoint kept and resumed, a dropped TCP connection;
+direct TLS with the endpoint kept and resumed, a dropped TCP connection, a
+quiet server pinged and kept, one fallen silent with its socket open found
+by the unanswered ping;
 SCRAM-SHA-256,
 SCRAM-SHA-1 and PLAIN (nothing kept), plain `ws://` to another computer
 refused, the WebSocket found from host-meta, the kept keys and a changed
