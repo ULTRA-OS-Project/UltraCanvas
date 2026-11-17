@@ -124,6 +124,17 @@ if(TARGET UltraIMXmppCore)
     set_tests_properties(XmppProviderTests PROPERTIES TIMEOUT 300)
 endif()
 
+# IRC: against irc_fake_server.py, a small IRCv3 server (standard-library
+# python3, plain and TLS); skips without python3.
+if(TARGET UltraIMIrcCore)
+    add_executable(IrcProviderTests IrcProviderTests.cpp)
+    target_compile_features(IrcProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(IrcProviderTests PRIVATE UltraIMIrcCore)
+    target_compile_definitions(IrcProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME IrcProviderTests COMMAND IrcProviderTests)
+    set_tests_properties(IrcProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
 # Telegram: the provider against FakeTdJson (a libtdjson stand-in holding a
 # small Telegram in memory, built here), and its requests against the real
 # TDLib - the one the configure step fetched into Plugins/UltraIM/tdlib, or

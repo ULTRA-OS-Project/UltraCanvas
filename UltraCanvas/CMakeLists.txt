@@ -4891,6 +4891,33 @@ else()
     message(STATUS "  [−] UltraIM provider XMPP - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
+# ----- UltraIM provider: IRC ---------------------------------------------------
+# IRC with IRCv3 (Plugins/UltraIM/irc/): TLS on 6697 through UltraNet's TCP and
+# TLS, SASL sign-in, channels as groups and private messages as chats,
+# server-time, echo-message, chathistory where the server has it. An archive
+# the tests link, and the module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_irc_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/irc)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_irc_dir}/IrcModule.cpp)
+    file(GLOB _ultraim_irc_sources ${_ultraim_irc_dir}/Irc*.cpp)
+    list(REMOVE_ITEM _ultraim_irc_sources ${_ultraim_irc_dir}/IrcModule.cpp)
+    add_library(UltraIMIrcCore STATIC ${_ultraim_irc_sources})
+    set_target_properties(UltraIMIrcCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMIrcCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMIrcCore PUBLIC ${_ultraim_irc_dir})
+    target_link_libraries(UltraIMIrcCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMIrcPlugin MODULE ${_ultraim_irc_dir}/IrcModule.cpp)
+    set_target_properties(UltraIMIrcPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_irc"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMIrcPlugin PRIVATE UltraIMIrcCore)
+    message(STATUS "  [✓] UltraIM provider IRC - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider IRC - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
 # ----- UltraIM provider: Telegram ----------------------------------------------
 # On TDLib through its JSON interface (Plugins/UltraIM/telegram/), loaded at
 # run time: nothing of TDLib is linked, so the provider builds everywhere and
