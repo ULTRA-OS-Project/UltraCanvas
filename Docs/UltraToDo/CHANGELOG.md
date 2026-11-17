@@ -3,6 +3,9 @@
   writes a task: its title and description, an optional planned end (a day,
   or a day and a time), the time it is estimated to take, a reminder and an
   alarm, and files attached to it as to a mail.
+- **Columns in a wide window**: one below about 900 px, then two, three,
+  up to four panels side by side, read row by row so the most urgent stays
+  first; the window changes them as it is resized.
 - **Done and the history.** Every task has a *Done* button that moves it
   to the history (*To do* / *History* at the top right, with their counts,
   Ctrl+H); there it is listed, the latest finished first, with *Reopen* to

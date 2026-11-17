@@ -6,6 +6,10 @@
 // box that marks it done, how urgent it is, the planned end, the estimated
 // time and the latest start, the description, and the attached files as
 // thumbnails - a click opens one in the program the system opens it with.
+// A window wide enough for two panels side by side shows the list in
+// columns - up to four, the panels sharing the width - read row by row, the
+// most urgent first, so the order stays the same in any width.
+//
 // Done on a panel moves the task to the history (To do | History at the
 // top), where Reopen brings it back.
 //
@@ -19,6 +23,7 @@
 // Started with --background the window can be closed: the program stays,
 // keeps the reminders going, and comes forward at the next start; Quit ends
 // it.
+// Version: 0.3.0 - the list in columns when the window is wide enough
 // Version: 0.2.0 - Done on every task moves it to the history (To do | History)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -70,6 +75,10 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildPanel(const ToDoTask& task, int64_t now);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAttachments(const ToDoTask& task);
     void Rebuild();
+    // The columns (see the top of this file): how many fit in `width`, the
+    // window's client width; the list is built again when that changes.
+    static int ColumnsFor(int width);
+    void LayoutColumns(int width);
     void UpdateSummary(int64_t now);
     void ApplyLook();
     bool OnKey(const UltraCanvas::UCEvent& event);
@@ -108,6 +117,7 @@ private:
     // To do | History: the open tasks, or the finished ones.
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> view_;
     bool history_ = false;
+    int columns_ = 1;             // the panels side by side in the list now
     std::shared_ptr<UltraCanvas::UltraCanvasButton> quit_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> list_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> notice_;   // the last reminder, in the window

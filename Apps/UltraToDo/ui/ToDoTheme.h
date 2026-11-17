@@ -111,6 +111,9 @@ constexpr float kPanelRadius   = 16.0f;
 constexpr float kPanelBorder   = 3.0f;    // wide enough for a pastel to read as a colour
 constexpr float kControlHeight = 28.0f;
 constexpr float kAddButtonSize = 48.0f;
+constexpr float kColumnMinWidth = 440.0f;   // a panel is never narrower than this in a second column
+constexpr int   kMaxColumns    = 4;
+constexpr float kListPaddingX  = 18.0f;    // the list's padding: 2 left, 16 right (the scrollbar)
 constexpr float kThumbWidth    = 96.0f;
 constexpr float kThumbHeight   = 68.0f;
 

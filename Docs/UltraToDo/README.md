@@ -29,6 +29,12 @@ reminder before it has to be started and an alarm at its planned end.
 | *Edit* | everything about the task, in the task dialog (open tasks) |
 | *Delete* | deletes the task and the files attached to it, after asking |
 
+**Columns.** A window wide enough for two panels side by side shows the
+list in columns - one below about 900 px, then two, three, up to four, the
+panels sharing the width. The order reads row by row, left to right, the most
+urgent first, so it is the same in any width; a row is as tall as its
+tallest panel.
+
 The task dialog has the title, the description, the planned end (a day, and
 a time of day if it has one; a day alone means the end of that day), the
 estimated time (days, hours, minutes), the reminder, the alarm and the

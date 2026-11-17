@@ -1,5 +1,6 @@
 // Apps/UltraToDo/ui/UltraToDoWindow.cpp
 // See UltraToDoWindow.h.
+// Version: 0.4.0 - the list in columns when the window is wide enough (LayoutColumns)
 // Version: 0.3.0 - Done on every task moves it to the history (To do | History); Reopen brings it back
 // Version: 0.2.0 - the panels' pastel is their border, their fill a faint tint of it
 // Version: 0.1.0
@@ -117,12 +118,15 @@ bool UltraToDoWindow::Create() {
     window->AddChild(notice_);
 
     list_ = CreateScrollableContainer("todo.list", 0, 0, 0, 0);
+    // A column of rows, each with columns_ panels side by side (Rebuild).
     list_->layout.SetFlexColumn().SetFlexGap(Theme::kGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     list_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
     list_->SetShowHorizontalScrollbar(false);
     // Room for the scrollbar on the right and for the panels' borders.
     list_->SetPadding(2, 16, 2, 2);
     window->AddChild(list_);
+    columns_ = ColumnsFor(config.width);
+    window->onWindowResize = [this](int width, int) { LayoutColumns(width); };
 
     ApplyLook();
     themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
@@ -351,12 +355,31 @@ void UltraToDoWindow::Rebuild() {
 
     // The history is the finished tasks, the latest finished first (the
     // order Sorted gives them); the list is the open ones.
-    int shown = 0;
+    std::vector<std::shared_ptr<UltraCanvasContainer>> panels;
     for (const ToDoTask& task : store_.Sorted(now)) {
         if (task.done != history_) continue;
-        list_->AddChild(BuildPanel(task, now));
-        ++shown;
+        panels.push_back(BuildPanel(task, now));
     }
+    // Row by row, columns_ to a row, so the order reads left to right; a
+    // row is as tall as its tallest panel, and the last row's free places
+    // are filled with empty space so its panels are as wide as the others.
+    for (size_t first = 0; first < panels.size(); first += static_cast<size_t>(columns_)) {
+        auto row = CreateContainer("todo.row" + std::to_string(first), 0, 0, 0, 0);
+        row->layout.SetFlexRow().SetFlexGap(Theme::kGap).SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        row->size.height = CSSLayout::Dimension::Auto();
+        row->layoutItem.SetFlexShrink(0);
+        for (int column = 0; column < columns_; ++column) {
+            const size_t index = first + static_cast<size_t>(column);
+            std::shared_ptr<UltraCanvasContainer> cell =
+                index < panels.size() ? panels[index]
+                                      : CreateContainer("todo.row" + std::to_string(first) + ".free" +
+                                                            std::to_string(column), 0, 0, 0, 1);
+            cell->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
+            row->AddChild(cell);
+        }
+        list_->AddChild(row);
+    }
+    const size_t shown = panels.size();
     if (shown == 0) {
         auto empty = CreateContainer("todo.empty", 0, 0, 0, 0);
         Theme::ApplyPanel(empty, Theme::Lavender());
@@ -381,6 +404,19 @@ void UltraToDoWindow::Rebuild() {
     }
     list_->ScrollToVertical(scroll);
     UpdateSummary(now);
+}
+
+int UltraToDoWindow::ColumnsFor(int width) {
+    const float available = static_cast<float>(width) - 2.0f * Theme::kPagePadding - Theme::kListPaddingX;
+    const int fit = static_cast<int>((available + Theme::kGap) / (Theme::kColumnMinWidth + Theme::kGap));
+    return std::clamp(fit, 1, Theme::kMaxColumns);
+}
+
+void UltraToDoWindow::LayoutColumns(int width) {
+    const int columns = ColumnsFor(width);
+    if (columns == columns_) return;   // the rows share out the new width themselves
+    columns_ = columns;
+    Rebuild();
 }
 
 void UltraToDoWindow::UpdateSummary(int64_t now) {
