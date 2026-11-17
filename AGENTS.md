@@ -511,6 +511,17 @@ close button would (`onWindowClosing` may refuse, `onWindowClosed` runs, the
 settings are written) and ends. `UltraCanvasApplication::CloseAllWindows()`
 is the same from inside a test.
 
+The light or the dark look - or a font, an accent, a text scale, high
+contrast - is chosen for one run with `ULTRACANVAS_HOST_APPEARANCE`, which
+stands in for the desktop's settings
+(`Docs/UltraCanvas/UltraCanvasHostAppearance.md`):
+`ULTRACANVAS_HOST_APPEARANCE=dark xvfb-run -a ./build/UltraToDo` shows the
+dark look with no change to the code, and `=light` the light one. An
+application that follows the host (the default policy) or builds its own
+theme from it (`SetThemeProvider`) takes it; one fixed at
+`ThemePolicy::Light` or `Dark` keeps its look. Screenshot a page in both
+before calling it theme compliant.
+
 `TextMetricsScreenshotTest` doubles as the screenshot fixture for the
 text-metrics and crisp-border rules: with `ULTRACANVAS_SCREENSHOT_DIR=<dir>` it
 writes the window as PPM files (the caret, a selection, the popup menu) that
