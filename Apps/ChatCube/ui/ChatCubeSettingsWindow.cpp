@@ -14,6 +14,7 @@
 // through, ULTRA OS's own by default), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
+// Version: 0.4.6 - a note on the XMPP account
 // Version: 0.4.5 - a note on the Signal account (signal-cli)
 // Version: 0.4.4 - a note on the Mattermost and Zulip accounts
 // Version: 0.4.3 - Mastodon in the notes on accounts, the data folder and the networks
@@ -558,6 +559,9 @@ std::shared_ptr<UltraCanvasContainer> BuildAccountsPage(State* d) {
             Tr("Signal links this computer to the Signal account on your phone, as Signal Desktop does: a QR "
             "code to scan in Signal's Linked devices. ChatCube talks to Signal through signal-cli, which must "
             "be installed (it needs Java 21), or through a signal-cli daemon whose address you give."));
+    AddNote(parts, "cc-set-accounts-note-xmpp",
+            Tr("XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your "
+            "server from the address. Your server must offer XMPP over WebSocket, as most do."));
     AddNote(parts, "cc-set-accounts-note2",
             Tr("Your ChatCube ID is a key made on this computer and has no password; there is nothing to sign "
             "out of. Send the ID to the people who should reach you."));

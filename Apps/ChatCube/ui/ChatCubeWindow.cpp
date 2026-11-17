@@ -561,6 +561,12 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     signalToggle_->SetTooltip(TrF("{0} account", std::string("Signal")));
     signalToggle_->SetOnClick([this]() { ToggleSignalForm(); });
     signalDoors->AddChild(signalToggle_);
+    xmpp_.toggle = MakeIconButton("cc-xmpp", "xmpp", xmpp_.name, doorWidth, false, false);
+    xmpp_.toggle->SetTooltip(TrF("{0} account", xmpp_.name));
+    xmpp_.toggle->SetOnClick([this]() { ToggleAccountForm(xmpp_); });
+    xmpp_.toggle->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    signalToggle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    signalDoors->AddChild(xmpp_.toggle);
     sidebar->AddChild(doors);
     sidebar->AddChild(moreDoors);
     sidebar->AddChild(lastDoors);
@@ -638,6 +644,8 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
 
     BuildAccountForm(mattermost_, *sidebar, Tr("Server, e.g. chat.example.org"), Tr("User name or e-mail address"));
     BuildAccountForm(zulip_, *sidebar, Tr("Organization, e.g. chat.zulip.org"), Tr("E-mail address"));
+    BuildAccountForm(xmpp_, *sidebar, Tr("Server (empty: found from your address)"),
+                     Tr("Your address, e.g. erin@example.org"));
 
     // A Telegram account: the phone number, then the code, then the
     // two-step password if there is one - one field at a time; or a QR code
@@ -1293,7 +1301,7 @@ void ChatCubeWindow::RenderStatus() {
     const std::pair<std::string, const char*> networks[] = {
         {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
         {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"},
-        {signalProviderId_, "Signal"}};
+        {signalProviderId_, "Signal"}, {xmpp_.providerId, "XMPP"}};
     for (const auto& network : networks) {
         auto it = providerStatus_.find(network.first);
         if (it == providerStatus_.end()) continue;
@@ -1522,7 +1530,7 @@ void ChatCubeWindow::SignIn() {
         if (UltraIM_GetProviderInfo(signalProviderId_, signalInfo) && signalInfo.hasStoredSession &&
             signalInfo.connectionState == UltraIMConnectionState::Disconnected)
             SignInToSignal(true);
-        for (AccountForm* f : {&mattermost_, &zulip_}) {
+        for (AccountForm* f : {&mattermost_, &zulip_, &xmpp_}) {
             UltraIMProviderInfo stored;
             if (UltraIM_GetProviderInfo(f->providerId, stored) && stored.hasStoredSession &&
                 stored.connectionState == UltraIMConnectionState::Disconnected)
@@ -2022,7 +2030,9 @@ void ChatCubeWindow::AddContactById(const std::string& id) {
     AddContactOn(ProviderOfAddress(id), id);
 }
 
-void ChatCubeWindow::AddContactOn(const std::string& provider, const std::string& id) {
+void ChatCubeWindow::AddContactOn(const std::string& provider, const std::string& address) {
+    // An xmpp: link is the address after it.
+    const std::string id = address.rfind("xmpp:", 0) == 0 ? address.substr(5) : address;
     SetStatus(Tr("Adding contact\xE2\x80\xA6"));
     UltraIM_AddContact(provider, id, [this](const UltraIMResult& r, const UltraIMConversation& c) {
         if (!r) {
@@ -2419,6 +2429,7 @@ void ChatCubeWindow::BuildAccountForm(AccountForm& f, UltraCanvasContainer& side
 ChatCubeWindow::AccountForm* ChatCubeWindow::AccountFormOf(const std::string& providerId) {
     if (providerId == mattermost_.providerId) return &mattermost_;
     if (providerId == zulip_.providerId) return &zulip_;
+    if (providerId == xmpp_.providerId) return &xmpp_;
     return nullptr;
 }
 
@@ -2458,8 +2469,10 @@ void ChatCubeWindow::SignInToAccount(AccountForm& f, bool stored) {
             credentials.server = Trim(f.server->GetText());
             credentials.username = Trim(f.user->GetText());
             credentials.password = f.password->GetText();
-            if (credentials.server.empty() || credentials.username.empty() || credentials.password.empty()) {
-                SetStatus(TrF("{0}: enter the server, your account and your password.", f.name));
+            if ((credentials.server.empty() && !f.serverOptional) || credentials.username.empty() ||
+                credentials.password.empty()) {
+                SetStatus(f.serverOptional ? TrF("{0}: enter your address and your password.", f.name)
+                                           : TrF("{0}: enter the server, your account and your password.", f.name));
                 return;
             }
         }
@@ -2698,11 +2711,13 @@ std::vector<std::string> ChatCubeWindow::ProvidersOfAddress(const std::string& a
                         [](char c) { return c >= '0' && c <= '9'; }))
             return {signalProviderId_};
     }
-    // An e-mail address: a Zulip account, or a Mattermost one.
+    if (address.rfind("xmpp:", 0) == 0) return {xmpp_.providerId};
+    // An address name@domain: a Zulip or Mattermost account's e-mail, or an
+    // XMPP address (a room's too).
     const size_t at = address.find('@');
     if (at != std::string::npos && at > 0 && address.find('.', at) != std::string::npos &&
         address.find(' ') == std::string::npos)
-        return {zulip_.providerId, mattermost_.providerId};
+        return {zulip_.providerId, mattermost_.providerId, xmpp_.providerId};
     return {providerId_};
 }
 
@@ -4271,7 +4286,7 @@ std::vector<ChatCubeSettingsWindow::Account> ChatCubeWindow::Accounts() const {
     const std::pair<std::string, const char*> networks[] = {
         {providerId_, "ChatCube Direct"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
         {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"},
-        {signalProviderId_, "Signal"}};
+        {signalProviderId_, "Signal"}, {xmpp_.providerId, "XMPP"}};
     for (const auto& [id, name] : networks) {
         ChatCubeSettingsWindow::Account account;
         account.providerId = id;

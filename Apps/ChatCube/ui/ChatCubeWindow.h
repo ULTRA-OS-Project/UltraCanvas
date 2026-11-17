@@ -71,6 +71,7 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.10 - an XMPP account (the address and password; the server found from its domain)
 // Version: 0.3.9 - Signal: linked to the phone by a QR code (signal-cli); +phone asks Telegram or Signal
 // Version: 0.3.8 - Mattermost and Zulip accounts (AccountForm); an address more than one signed-in
 //                  network takes asks which (ProvidersOfAddress)
@@ -229,6 +230,7 @@ private:
         std::shared_ptr<UltraCanvas::UltraCanvasTextInput> password;
         std::shared_ptr<UltraCanvas::UltraCanvasTextInput> code;
         std::shared_ptr<UltraCanvas::UltraCanvasButton>    signIn;
+        bool serverOptional = false;        // XMPP: the address's domain finds the server
     };
     void BuildAccountForm(AccountForm& f, UltraCanvas::UltraCanvasContainer& sidebar, const std::string& serverHint,
                           const std::string& userHint);
@@ -538,6 +540,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasQRCode>    signalQr_;
     AccountForm mattermost_{"mattermost", "Mattermost", {}, {}, {}, {}, {}, {}, {}};
     AccountForm zulip_{"zulip", "Zulip", {}, {}, {}, {}, {}, {}, {}};
+    AccountForm xmpp_{"xmpp", "XMPP", {}, {}, {}, {}, {}, {}, {}, true};
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> networkMenu_;   // "Add on which network?"
     std::string activeProvider_;    // the open conversation's provider
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
