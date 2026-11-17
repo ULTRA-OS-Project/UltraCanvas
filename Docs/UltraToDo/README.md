@@ -21,12 +21,13 @@ reminder before it has to be started and an alarm at its planned end.
 | Part | What it does |
 |---|---|
 | The round **+** (top left, Ctrl+N) | writes a new task |
-| A panel's box | marks the task done, or open again |
-| A panel's mark (top right) | how urgent it is: *Overdue by 2 h*, *Start now*, *Start in 30 min*, *No date*, *Done* |
-| *Attach* | adds documents, pictures or any other file to the task |
-| *Edit* | everything about the task, in the task dialog |
+| *To do* / *History* (top right, Ctrl+H) | the tasks to do, or the history of the finished ones, with their counts |
+| *Done* | marks the task done and moves it to the history |
+| *Reopen* (in the history) | moves the task back to the list of tasks to do |
+| A panel's mark (top right) | how urgent it is: *Overdue by 2 h*, *Start now*, *Start in 30 min*, *No date*; *Done* in the history |
+| *Attach* | adds documents, pictures or any other file to the task (open tasks) |
+| *Edit* | everything about the task, in the task dialog (open tasks) |
 | *Delete* | deletes the task and the files attached to it, after asking |
-| *Show finished* | shows or hides the tasks that are done |
 
 The task dialog has the title, the description, the planned end (a day, and
 a time of day if it has one; a day alone means the end of that day), the
@@ -54,9 +55,10 @@ list, from the top:
 | butter | to be started within a day |
 | mint | planned, with more than a day to spare |
 | sky | without a planned end, in the order they were written |
-| mist | done, the latest finished first |
 
-Within each group the earliest latest start comes first. The pastel is the
+Within each group the earliest latest start comes first. Finished tasks are
+not in the list: *Done* moves them to the history, where they are listed in
+grey, the latest finished first, with the time each was finished. The pastel is the
 panel's border; the fill is a faint tint of it over the theme's panel
 colour, so the text stays readable in either look.
 

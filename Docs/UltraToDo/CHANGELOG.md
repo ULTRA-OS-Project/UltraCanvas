@@ -3,10 +3,14 @@
   writes a task: its title and description, an optional planned end (a day,
   or a day and a time), the time it is estimated to take, a reminder and an
   alarm, and files attached to it as to a mail.
+- **Done and the history.** Every task has a *Done* button that moves it
+  to the history (*To do* / *History* at the top right, with their counts,
+  Ctrl+H); there it is listed, the latest finished first, with *Reopen* to
+  bring it back and *Delete*.
 - **The most urgent first.** The list is ordered by the latest moment a task
   can be started and still be finished by its planned end (planned end minus
-  estimated time), not by the planned end alone; tasks without a date follow,
-  finished ones last.
+  estimated time), not by the planned end alone; tasks without a date
+  follow.
 - **Panels with round corners**, one per task, coloured by urgency: rose
   overdue, peach "start now", butter within a day, mint later, sky without a
   date, mist done. The pastel is the panel's border; its fill is a faint tint

@@ -6,6 +6,8 @@
 // box that marks it done, how urgent it is, the planned end, the estimated
 // time and the latest start, the description, and the attached files as
 // thumbnails - a click opens one in the program the system opens it with.
+// Done on a panel moves the task to the history (To do | History at the
+// top), where Reopen brings it back.
 //
 // Reminders and alarms: every 15 seconds the window looks for one that is
 // due (DueNotices). It puts it on the desktop as a notification
@@ -17,6 +19,7 @@
 // Started with --background the window can be closed: the program stays,
 // keeps the reminders going, and comes forward at the next start; Quit ends
 // it.
+// Version: 0.2.0 - Done on every task moves it to the history (To do | History)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -39,7 +42,7 @@
 
 namespace UltraCanvas {
     class UltraCanvasButton;
-    class UltraCanvasCheckbox;
+    class UltraCanvasSegmentedControl;
     class UltraCanvasContainer;
     class UltraCanvasImageElement;
     class UltraCanvasLabel;
@@ -74,7 +77,9 @@ private:
     void NewTask();
     void EditTask(const std::string& id);
     void ConfirmDelete(const std::string& id);
+    // Done moves a task to the history, Reopen brings it back to the list.
     void SetDone(const std::string& id, bool done);
+    void ShowHistory(bool history);
     void AttachTo(const std::string& id);
     void OpenAttachment(const std::string& taskId, const std::string& file);
     bool Save();
@@ -100,7 +105,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> addButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> heading_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> summary_;
-    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> showFinished_;
+    // To do | History: the open tasks, or the finished ones.
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> view_;
+    bool history_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> quit_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> list_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> notice_;   // the last reminder, in the window

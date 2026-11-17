@@ -1,5 +1,6 @@
 // Apps/UltraToDo/ui/UltraToDoWindow.cpp
 // See UltraToDoWindow.h.
+// Version: 0.3.0 - Done on every task moves it to the history (To do | History); Reopen brings it back
 // Version: 0.2.0 - the panels' pastel is their border, their fill a faint tint of it
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -11,7 +12,6 @@
 
 #include "UltraCanvasBadge.h"
 #include "UltraCanvasButton.h"
-#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
@@ -20,6 +20,7 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasNativeFileIcons.h"    // NativeFileIconThreadScope
 #include "UltraCanvasNotificationActivation.h"
 #include "UltraCanvasPathUtf8.h"
@@ -203,12 +204,19 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildTopBar() {
     titles->AddChild(summary_);
     bar->AddChild(titles);
 
-    showFinished_ = UltraCanvasCheckbox::CreateCheckbox("todo.showFinished", 0, 0, 0, Theme::kControlHeight,
-                                                        Tr("Show finished"), true);
-    showFinished_->size.width = CSSLayout::Dimension::Auto();
-    showFinished_->layoutItem.SetFlexShrink(0);
-    showFinished_->onStateChanged = [this](CheckedState, CheckedState) { Rebuild(); };
-    bar->AddChild(showFinished_);
+    // The open tasks, or the history of the finished ones; the counts are
+    // set by UpdateSummary.
+    view_ = CreateSegmentedControl("todo.view", 0, 0, 240, Theme::kControlHeight);
+    view_->AddSegment(Tr("To do"));
+    view_->AddSegment(Tr("History"));
+    view_->SetSelectedIndex(0);
+    view_->layoutItem.SetFlexShrink(0);
+    view_->SetTooltip(Tr("The tasks to do, or the history of the finished ones (Ctrl+H)"));
+    view_->onSegmentSelected = [this](int index) {
+        // The bar - with this control in it - stays; only the list is rebuilt.
+        ShowHistory(index == 1);
+    };
+    bar->AddChild(view_);
 
     quit_ = Theme::MakePill("todo.quit", Tr("Quit"), 64);
     quit_->SetTooltip(Tr("Stop UltraToDo running in the background, and its reminders with it (Ctrl+Q)"));
@@ -234,18 +242,9 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildPanel(const ToDoTask
     panel->size.height = CSSLayout::Dimension::Auto();
     panel->layoutItem.SetFlexShrink(0);
 
-    // ----- done box, title, urgency -----
+    // ----- title, urgency -----
     auto head = MakeRow(id + ".head", 28);
-    auto done = UltraCanvasCheckbox::CreateCheckbox(id + ".done", 0, 0, 24, 24, "", task.done);
-    done->layoutItem.SetFlexShrink(0);
-    done->SetTooltip(task.done ? Tr("Open the task again") : Tr("Mark the task done"));
     const std::string taskId = task.id;
-    done->onStateChanged = [this, taskId](CheckedState, CheckedState now) {
-        const bool checked = now == CheckedState::Checked;
-        // The list - with this box in it - is rebuilt after the click.
-        app_.PostToUIThread([this, taskId, checked]() { SetDone(taskId, checked); });
-    };
-    head->AddChild(done);
     auto title = Theme::MakeLine(id + ".title", task.title, 28, Theme::SizeHeading(),
                                  task.done ? Theme::InkMuted() : Theme::Ink(), FontWeight::Bold);
     title->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -276,19 +275,33 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildPanel(const ToDoTask
     // ----- attachments -----
     if (!task.attachments.empty()) panel->AddChild(BuildAttachments(task));
 
-    // ----- Attach, Edit, Delete -----
+    // ----- Attach, Edit, Delete, Done - or, in the history, Reopen, Delete -----
     auto foot = MakeRow(id + ".foot", Theme::kControlHeight);
     foot->AddStretchSpacer(1);
-    auto attach = Theme::MakePill(id + ".attach", Tr("Attach"), 72);
-    attach->SetTooltip(Tr("Attach documents or pictures to the task"));
-    attach->onClick = [this, taskId]() { AttachTo(taskId); };
-    foot->AddChild(attach);
-    auto edit = Theme::MakePill(id + ".edit", Tr("Edit"), 64);
-    edit->onClick = [this, taskId]() { EditTask(taskId); };
-    foot->AddChild(edit);
+    if (!task.done) {
+        auto attach = Theme::MakePill(id + ".attach", Tr("Attach"), 72);
+        attach->SetTooltip(Tr("Attach documents or pictures to the task"));
+        attach->onClick = [this, taskId]() { AttachTo(taskId); };
+        foot->AddChild(attach);
+        auto edit = Theme::MakePill(id + ".edit", Tr("Edit"), 64);
+        edit->onClick = [this, taskId]() { EditTask(taskId); };
+        foot->AddChild(edit);
+    }
     auto remove = Theme::MakePill(id + ".delete", Tr("Delete"), 64);
     remove->onClick = [this, taskId]() { ConfirmDelete(taskId); };
     foot->AddChild(remove);
+    // The list - with this button in it - is rebuilt after the click.
+    if (task.done) {
+        auto reopen = Theme::MakePill(id + ".reopen", Tr("Reopen"), 72, /*main=*/true);
+        reopen->SetTooltip(Tr("Move the task back to the list of tasks to do"));
+        reopen->onClick = [this, taskId]() { app_.PostToUIThread([this, taskId]() { SetDone(taskId, false); }); };
+        foot->AddChild(reopen);
+    } else {
+        auto done = Theme::MakePill(id + ".done", Tr("Done"), 72, /*main=*/true);
+        done->SetTooltip(Tr("Mark the task done and move it to the history"));
+        done->onClick = [this, taskId]() { app_.PostToUIThread([this, taskId]() { SetDone(taskId, true); }); };
+        foot->AddChild(done);
+    }
     panel->AddChild(foot);
     return panel;
 }
@@ -336,10 +349,11 @@ void UltraToDoWindow::Rebuild() {
     waiting_.clear();
     list_->ClearChildren();
 
-    const bool showFinished = !showFinished_ || showFinished_->IsChecked();
+    // The history is the finished tasks, the latest finished first (the
+    // order Sorted gives them); the list is the open ones.
     int shown = 0;
     for (const ToDoTask& task : store_.Sorted(now)) {
-        if (task.done && !showFinished) continue;
+        if (task.done != history_) continue;
         list_->AddChild(BuildPanel(task, now));
         ++shown;
     }
@@ -349,13 +363,18 @@ void UltraToDoWindow::Rebuild() {
         empty->SetPadding(24);
         empty->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         empty->size.height = CSSLayout::Dimension::Auto();
-        empty->AddChild(Theme::MakeLine("todo.empty.title", store_.Tasks().empty() ? Tr("Nothing to do yet")
-                                                                                   : Tr("Everything is done"),
-                                        28, Theme::SizeHeading(), Theme::Ink(), FontWeight::Bold));
-        empty->AddChild(Theme::MakeWrapped("todo.empty.text",
-                                           Tr("Press the round + at the top left to write a task: what is to be done, "
-                                              "by when, how long it takes - and a reminder before it has to be started."),
-                                           Theme::SizeBody(), Theme::InkMuted()));
+        std::string heading, text;
+        if (history_) {
+            heading = Tr("No finished tasks yet");
+            text = Tr("A task's Done button moves it here. Reopen brings it back to the list.");
+        } else {
+            heading = store_.Tasks().empty() ? Tr("Nothing to do yet") : Tr("Everything is done");
+            text = Tr("Press the round + at the top left to write a task: what is to be done, "
+                      "by when, how long it takes - and a reminder before it has to be started.");
+        }
+        empty->AddChild(Theme::MakeLine("todo.empty.title", heading, 28, Theme::SizeHeading(), Theme::Ink(),
+                                        FontWeight::Bold));
+        empty->AddChild(Theme::MakeWrapped("todo.empty.text", text, Theme::SizeBody(), Theme::InkMuted()));
         if (!loadError_.empty())
             empty->AddChild(Theme::MakeWrapped("todo.empty.error", loadError_, Theme::SizeBody(), Theme::Danger()));
         list_->AddChild(empty);
@@ -365,9 +384,12 @@ void UltraToDoWindow::Rebuild() {
 }
 
 void UltraToDoWindow::UpdateSummary(int64_t now) {
-    int open = 0, overdue = 0, startNow = 0;
+    int open = 0, overdue = 0, startNow = 0, finished = 0;
     for (const ToDoTask& task : store_.Tasks()) {
-        if (task.done) continue;
+        if (task.done) {
+            ++finished;
+            continue;
+        }
         ++open;
         const ToDoUrgency urgency = UrgencyOf(task, now);
         if (urgency == ToDoUrgency::Overdue) ++overdue;
@@ -377,6 +399,10 @@ void UltraToDoWindow::UpdateSummary(int64_t now) {
     if (overdue > 0) text += "   ·   " + TrN("{n} overdue", "{n} overdue", overdue);
     if (startNow > 0) text += "   ·   " + TrN("{n} to start now", "{n} to start now", startNow);
     if (summary_) summary_->SetText(text);
+    if (view_) {
+        view_->SetSegmentText(0, TrF("To do ({0})", open));
+        view_->SetSegmentText(1, TrF("History ({0})", finished));
+    }
     if (window_) window_->SetWindowTitle(overdue > 0 ? "(" + std::to_string(overdue) + ") " + WindowTitle()
                                                      : WindowTitle());
 }
@@ -400,6 +426,10 @@ bool UltraToDoWindow::OnKey(const UCEvent& event) {
     };
     if (is('n', UCKeys::N)) {
         NewTask();
+        return true;
+    }
+    if (is('h', UCKeys::H)) {
+        ShowHistory(!history_);
         return true;
     }
     if (is('q', UCKeys::Q)) {
@@ -461,8 +491,25 @@ void UltraToDoWindow::ConfirmDelete(const std::string& id) {
 }
 
 void UltraToDoWindow::SetDone(const std::string& id, bool done) {
-    if (!store_.SetDone(id, done, NowSeconds())) return;
+    const ToDoTask* task = store_.Find(id);
+    if (!task || !store_.SetDone(id, done, NowSeconds())) return;
+    const std::string title = task->title;
     Save();
+    // Where the task went, on the line above the list.
+    if (notice_) {
+        notice_->SetText(done ? TrF("\"{0}\" is done and in the history.", title)
+                              : TrF("\"{0}\" is back in the list of tasks to do.", title));
+        Theme::ApplyPanel(notice_, done ? Theme::Mint() : Theme::Sky());
+        notice_->SetVisible(true);
+    }
+    Rebuild();
+}
+
+void UltraToDoWindow::ShowHistory(bool history) {
+    if (history_ == history) return;
+    history_ = history;
+    if (view_ && view_->GetSelectedIndex() != (history ? 1 : 0)) view_->SetSelectedIndex(history ? 1 : 0);
+    list_->ScrollToVertical(0);
     Rebuild();
 }
 
