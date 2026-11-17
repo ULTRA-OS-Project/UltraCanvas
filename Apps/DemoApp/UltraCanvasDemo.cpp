@@ -1820,7 +1820,7 @@ namespace UltraCanvas {
                 .AddVariant("fishbonediagram", Tr("Compact"));
 
         infoBuilder.AddItem("timelinediagram", Tr("Timeline Diagram"),
-                            Tr("Narrative timeline infographic with nine design presets"),
+                            Tr("Narrative timeline infographic with ten design presets"),
                             ImplementationStatus::FullyImplemented,
                             [this]() { return CreateTimelineDiagramExamples(); },
                             "DemoApp/UltraCanvasTimelineDiagramExamples.cpp",
@@ -1833,7 +1833,8 @@ namespace UltraCanvas {
                 .AddVariant("timelinediagram", Tr("Serpentine"))
                 .AddVariant("timelinediagram", Tr("Hanging"))
                 .AddVariant("timelinediagram", Tr("Chevron"))
-                .AddVariant("timelinediagram", Tr("Steps"));
+                .AddVariant("timelinediagram", Tr("Steps"))
+                .AddVariant("timelinediagram", Tr("Wave"));
 
         // ("heatmap" placeholder removed: the heat map is implemented and
         // registered in the Charts section as "heatmapchart" — interactive

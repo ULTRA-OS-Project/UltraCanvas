@@ -11,9 +11,12 @@
 // See Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md for the research
 // behind the split.
 //
+// Version: 1.1.0 - the Wave design: a chain of half-rings that bend alternately along an axis
+//                  at any angle, nodes where they meet, the caption inside each ring and the
+//                  text beside it; GetItemArc
 // Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -44,7 +47,8 @@ namespace UltraCanvas {
         Serpentine,   // Snaking ribbon wrapping over several runs
         Hanging,      // Axis on top, stems dropping to bubbles of varying size
         Chevron,      // Sequence of arrow blocks pointing forward
-        Steps         // Ascending staircase blocks
+        Steps,        // Ascending staircase blocks
+        Wave          // Chain of half-rings bending alternately, nodes where two meet
     };
 
     enum class TimelineNodeShape {
@@ -58,7 +62,9 @@ namespace UltraCanvas {
     };
 
     // Which side of the spine an item's content is placed on. "Above" means
-    // left for the vertical design, "Below" means right.
+    // left for the vertical design, "Below" means right. For the wave design
+    // "Above" is the side up (and to the right, on a falling diagonal) of the
+    // direction the wave runs in: the side its half-ring bulges to.
     enum class TimelineSidePolicy {
         Alternate,    // Zigzag: item 0 above, item 1 below, ...
         AllAbove,
@@ -211,6 +217,15 @@ namespace UltraCanvas {
         double serpentineTurnRadius = 40.0;
         int hangingTiers = 2;             // Vertical stagger tiers for bubbles
         double stepRise = 0.0;            // Steps design; 0 = automatic
+
+        // Wave design: the angle of the line the half-rings are threaded on,
+        // in degrees from the horizontal, clockwise: 0 runs left to right,
+        // 45 falls from the top left to the bottom right, 90 runs top-down,
+        // -45 rises from the bottom left. Clamped to -90..90.
+        double waveAxisAngle = 45.0;
+        bool waveAutoAngle = false;       // Pick the angle that gives the largest rings instead
+        bool waveFillInside = true;       // Pale half-disc inside each ring, behind the caption
+        Color waveInsideColor = Color(240, 242, 245, 255);
     };
 
     // Identifies one item for hit testing. index < 0 means "no item".
@@ -263,6 +278,14 @@ namespace UltraCanvas {
             Color color;
             bool hasConnector = false;
             bool hasBlock = false;
+            // Wave design: the half-ring, drawn from arcStartAngle clockwise
+            // through pi radians (the side it bulges to is in the middle)
+            Point2Dd arcCenter;
+            double arcRadius = 0.0;
+            double arcStartAngle = 0.0;
+            bool hasArc = false;
+            int textAlign = 0;          // -1 left, 0 centred, +1 right
+            float captionSize = 0.0f;   // Wave design: the size the caption fits the ring at
         };
         struct TimelineLayout {
             Rect2Dd diagramArea;
@@ -270,6 +293,8 @@ namespace UltraCanvas {
             std::vector<Point2Dd> spinePoints;   // Polyline the spine follows
             Rect2Dd spineRect;                   // Straight designs
             double contentScale = 1.0;           // Auto-shrink factor for fonts
+            Point2Dd pathEnd;                    // Wave design: where the last ring ends
+            bool hasPathEnd = false;
             bool valid = false;
         };
         TimelineLayout layout;
@@ -359,6 +384,12 @@ namespace UltraCanvas {
         // or the index is out of range.
         bool GetItemNodeCenter(size_t index, Point2Dd& outCenter) const;
         bool GetItemContentRect(size_t index, Rect2Dd& outRect) const;
+        // Wave design only: the half-ring an item is drawn on - its centre,
+        // radius, and the angle it starts at (radians, clockwise from the
+        // positive x axis); the ring sweeps pi radians clockwise from there.
+        // An application places its own icon or picture beside it this way.
+        bool GetItemArc(size_t index, Point2Dd& outCenter, double& outRadius,
+                        double& outStartAngle) const;
 
         // ===== CALLBACKS =====
         std::function<void(size_t, const TimelineItem&)> onItemSelect;
@@ -404,11 +435,13 @@ namespace UltraCanvas {
         void LayoutHanging(IRenderContext* ctx);
         void LayoutChevron(IRenderContext* ctx);
         void LayoutSteps(IRenderContext* ctx);
+        void LayoutWave(IRenderContext* ctx);
 
         // ===== DRAWING =====
         void DrawTitles(IRenderContext* ctx);
         void DrawSpine(IRenderContext* ctx);
         void DrawSerpentineRibbon(IRenderContext* ctx);
+        void DrawWave(IRenderContext* ctx);
         void DrawScaleRow(IRenderContext* ctx);
         void DrawItems(IRenderContext* ctx);
         void DrawConnector(IRenderContext* ctx, const ItemLayout& il);
