@@ -208,7 +208,7 @@ private:
         int         unread = 0;
         UltraIMPresence presence = UltraIMPresence::Unknown;
     };
-    struct Job {
+    struct IrcTask {
         std::function<void()> run;
         bool locked = true;                     // run holding mutex_
     };
@@ -425,7 +425,7 @@ private:
     // The thread.
     std::mutex workMutex_;
     std::condition_variable workWake_;
-    std::deque<Job> jobs_;
+    std::deque<IrcTask> jobs_;
     bool stopping_ = false;
     std::thread worker_;
 };

@@ -235,7 +235,7 @@ void IrcProvider::Enqueue(std::function<void()> job, bool locked) {
     {
         std::lock_guard<std::mutex> lock(workMutex_);
         if (stopping_) return;
-        jobs_.push_back(Job{std::move(job), locked});
+        jobs_.push_back(IrcTask{std::move(job), locked});
     }
     workWake_.notify_one();
 }
@@ -292,7 +292,7 @@ void IrcProvider::Run() {
             wanted = wanted_;
             reconnectAt = reconnectAt_;
         }
-        std::deque<Job> jobs;
+        std::deque<IrcTask> jobs;
         {
             std::unique_lock<std::mutex> lock(workMutex_);
             if (!open && jobs_.empty() && !stopping_) {
@@ -303,7 +303,7 @@ void IrcProvider::Run() {
             if (stopping_) break;
             jobs.swap(jobs_);
         }
-        for (Job& job : jobs) {
+        for (IrcTask& job : jobs) {
             if (job.locked) {
                 std::lock_guard<std::mutex> lock(mutex_);
                 job.run();
