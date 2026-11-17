@@ -15,6 +15,9 @@
 // to ITextLayout, so layout hit-testing maps to these offsets with no
 // translation step.
 //
+// Version: 1.4.1 - DocumentStart is the first cell of a table that opens the
+//                  document, where a new document's caret starts too: on the
+//                  table outside its cells it stood the whole table high
 // Version: 1.4.0 - SetFloatOffset: a floating object moved to offsets; the picture calls
 //                  (IsImageAt, SetImageSize) take text frames and drawings too
 // Version: 1.3.0 - a run's own letter spacing as a format: RichCharFormatDelta::
@@ -281,6 +284,8 @@ public:
     // cell, which is what Home and End should reach there.
     RichDocPosition BlockStart(const RichDocPosition& pos) const { return ContainerStart(pos); }
     RichDocPosition BlockEnd(const RichDocPosition& pos) const;
+    // The first place text can go: the top-left cell when the document opens
+    // with a table (the caret is never on a table outside its cells).
     RichDocPosition DocumentStart() const;
     RichDocPosition DocumentEnd() const;
     // Word boundaries around `pos` (used by double-click and by SelectWordAt).

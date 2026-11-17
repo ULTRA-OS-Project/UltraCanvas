@@ -17,6 +17,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
+#include "DisplayRequired.h"
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -45,6 +46,11 @@ static int failCount = 0;
 
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: " << reason << std::endl;                         \
         return 0;                                                             \
     } while (0)

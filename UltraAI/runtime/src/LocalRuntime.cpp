@@ -2,11 +2,14 @@
 // The facade: inventory, install jobs, engine supervision and the shared
 // record of running engines (runtime.json), composed from the parts in
 // LocalRuntimeInternal.h.
+// Version: 0.5.0 - catalogue sources (RefreshCatalogueSources, the copies under catalogues/),
+//                  Hugging Face search, the accelerator per engine, ProbeModel, installed
+//                  models read back from their folders, no default gallery address
 // Version: 0.4.0 - whisper-server: speech models, models whose engine has no build here are not offered
 // Version: 0.3.0 - signed galleries (RefreshGallery verifies, keys pinned)
 // Version: 0.2.0 - topics: topics.json, the topic preferences, new models
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-15
 // Author: UltraAI Module
 
 #include "UltraAILocalRuntime.h"
@@ -27,9 +30,11 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <ctime>
 #include <deque>
 #include <map>
 #include <mutex>
+#include <set>
 #include <thread>
 
 namespace UltraAI {
@@ -69,6 +74,47 @@ Error MakeError(ErrorCode code, const std::string& message, const std::string& p
     e.message      = message;
     e.providerCode = providerCode;
     return e;
+}
+
+// Today as "2026-11-15" (UTC).
+std::string TodayText() {
+    const std::time_t now = static_cast<std::time_t>(NowUnix());
+    std::tm parts {};
+#if defined(_WIN32)
+    gmtime_s(&parts, &now);
+#else
+    gmtime_r(&now, &parts);
+#endif
+    char buffer[16];
+    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d", &parts);
+    return buffer;
+}
+
+// What a host said about one file, kept so it is asked once.
+struct FileFacts {
+    uint64_t    sizeBytes = 0;
+    std::string sha256;
+};
+
+// The copy of one catalogue source in use.
+struct SourceCopy {
+    std::string fetched;
+    int         skipped = 0;
+    std::vector<LocalModelInfo> models;
+};
+
+// The sources as the runtime keeps them: ids made usable, no address the
+// runtime would not fetch, no id twice.
+std::vector<CatalogueSource> NormalizeSources(const std::vector<CatalogueSource>& sources) {
+    std::vector<CatalogueSource> out;
+    for (CatalogueSource source : sources) {
+        source.id = NormalizeSourceId(source.id);
+        if (source.id.empty() || ResolveSourceUrl(source.url).empty()) continue;
+        if (std::any_of(out.begin(), out.end(), [&](const CatalogueSource& o) { return o.id == source.id; })) continue;
+        if (source.name.empty()) source.name = source.id;
+        out.push_back(std::move(source));
+    }
+    return out;
 }
 
 // One entry of runtime.json.
@@ -194,6 +240,11 @@ public:
     Topics topics_;
     TopicPreferences topicPreferences_;
     std::vector<LocalModelInfo> userModels_;
+    std::map<std::string, SourceCopy> sourceCopies_;    // by source id; the enabled sources only
+    std::map<std::string, FileFacts> fileFacts_;        // by file URL
+    // Installed models no catalogue lists, by folder name, read from their
+    // model.json once.
+    mutable std::map<std::string, LocalModelInfo> orphans_;
     LocalRuntimeSettings settings_;
     std::map<std::string, std::string> engineOverrides_;
     std::map<std::string, int64_t> lastTouchWritten_;   // baseUrl -> when runtime.json last took a touch
@@ -210,7 +261,20 @@ public:
     // ----- inventory -----
     std::vector<LocalModelInfo> AllModelsLocked() const;
     bool FindModelLocked(const std::string& modelId, LocalModelInfo& out) const;
-    void DecorateModelLocked(LocalModelInfo& model) const;
+    // `installedFolders`: the model folders that hold a model.json, when the
+    // caller has listed them (a whole inventory); null asks the disk.
+    void DecorateModelLocked(LocalModelInfo& model,
+                             const std::set<std::string>* installedFolders = nullptr) const;
+    // The names of the model folders that hold a model.json.
+    std::set<std::string> InstalledFoldersLocked() const;
+    // The record of an installed model's folder (its model.json), read
+    // once; null when the folder holds no readable record.
+    const LocalModelInfo* OrphanLocked(const std::string& folder) const;
+    // The accelerator the settings name for an engine ("" = Auto).
+    std::string PreferredAcceleratorLocked(const std::string& engineId) const;
+    // Read the copies of the enabled sources back from catalogues/.
+    void LoadSourceCopiesLocked();
+    void SaveFileFactsLocked();
     bool FindEngineLocked(const std::string& engineId, EngineInfo& out) const;
     void DecorateEngineLocked(EngineInfo& engine) const;
     // Where an installed engine's executable is: an override, or an
@@ -235,7 +299,12 @@ public:
     Error DoInstallModel(const std::string& modelId, const std::shared_ptr<Job>& job);
     Error DoInstallEngine(const std::string& engineId, const std::string& accelerator,
                           const std::shared_ptr<Job>& job);
+    // Ask the file's host for its size and hash (Hugging Face's tree API);
+    // ok and unchanged for a host that has no such answer.
+    Error QueryHostFile(LocalModelFile& file);
+    // The same, best effort: an unreachable host is no error.
     Error ResolveHostHash(LocalModelFile& file);
+    Error GetText(const std::string& url, int timeoutMs, std::string& out);
     void Report(const std::shared_ptr<Job>& job);
     void WorkerLoop();
     std::string Enqueue(std::shared_ptr<Job> job);
@@ -316,6 +385,20 @@ void LocalRuntime::Impl::LoadState() {
 
     if (ReadWholeFile(paths_.userModelsJson, text)) ParseModels(text, userModels_, error);
     if (ReadWholeFile(paths_.settingsJson, text)) ParseSettings(text, settings_);
+    settings_.catalogueSources = NormalizeSources(settings_.catalogueSources);
+    LoadSourceCopiesLocked();
+    if (ReadWholeFile(paths_.fileFactsJson, text)) {
+        const json doc = json::parse(text, nullptr, false);
+        if (doc.is_object() && doc.contains("files") && doc["files"].is_object()) {
+            for (auto it = doc["files"].begin(); it != doc["files"].end(); ++it) {
+                if (!it.value().is_object()) continue;
+                FileFacts facts;
+                facts.sizeBytes = it.value().value("size", 0ull);
+                facts.sha256    = it.value().value("sha256", "");
+                fileFacts_[it.key()] = std::move(facts);
+            }
+        }
+    }
 
     // The topic preferences. The first time, every model already in the
     // catalogue counts as seen: "new" means published after this machine
@@ -336,6 +419,38 @@ void LocalRuntime::Impl::LoadState() {
         const std::string value = UltraCanvas::GetEnvUtf8(("ULTRAAI_LOCAL_ENGINE_" + UpperId(e.id)).c_str());
         if (!value.empty()) engineOverrides_[e.id] = value;
     }
+}
+
+void LocalRuntime::Impl::LoadSourceCopiesLocked() {
+    sourceCopies_.clear();
+    for (const CatalogueSource& source : settings_.catalogueSources) {
+        if (!source.enabled) continue;
+        std::string text, id;
+        SourceCopy copy;
+        if (!ReadWholeFile(paths_.catalogues / PathFromUtf8(source.id + ".json"), text)) continue;
+        if (!ParseSourceCache(text, id, copy.fetched, copy.skipped, copy.models) || id != source.id) continue;
+        sourceCopies_[source.id] = std::move(copy);
+    }
+}
+
+void LocalRuntime::Impl::SaveFileFactsLocked() {
+    json files = json::object();
+    for (const auto& kv : fileFacts_) {
+        json e;
+        e["size"] = kv.second.sizeBytes;
+        if (!kv.second.sha256.empty()) e["sha256"] = kv.second.sha256;
+        files[kv.first] = std::move(e);
+    }
+    json doc;
+    doc["formatVersion"] = 1;
+    doc["files"]         = std::move(files);
+    std::string error;
+    WriteFileAtomic(paths_.fileFactsJson, doc.dump(1, ' ', false, json::error_handler_t::replace), error);
+}
+
+std::string LocalRuntime::Impl::PreferredAcceleratorLocked(const std::string& engineId) const {
+    auto it = settings_.engineAccelerators.find(engineId);
+    return it != settings_.engineAccelerators.end() ? it->second : settings_.preferredAccelerator;
 }
 
 void LocalRuntime::Impl::SaveUserModels() {
@@ -378,14 +493,28 @@ bool LocalRuntime::Impl::IsModelInstalled(const LocalModelInfo& model, std::stri
     outPrimary.clear();
     for (const auto& f : model.files) {
         if (!fs::is_regular_file(folder / PathFromUtf8(f.name), ec)) return false;
-        if (outPrimary.empty() && f.name.rfind("mmproj", 0) != 0) {
+        if (outPrimary.empty() && !IsProjectorFile(f)) {
             outPrimary = PathToUtf8(folder / PathFromUtf8(f.name));
         }
     }
     return !outPrimary.empty();
 }
 
-void LocalRuntime::Impl::DecorateModelLocked(LocalModelInfo& model) const {
+void LocalRuntime::Impl::DecorateModelLocked(LocalModelInfo& model,
+                                             const std::set<std::string>* installedFolders) const {
+    // What a host told us about a file the catalogue gives no size for.
+    bool sized = false;
+    for (LocalModelFile& f : model.files) {
+        if (f.sizeBytes && !f.sha256.empty()) continue;
+        auto fact = fileFacts_.find(f.url);
+        if (fact == fileFacts_.end() || f.url.empty()) continue;
+        if (!f.sizeBytes && fact->second.sizeBytes) { f.sizeBytes = fact->second.sizeBytes; sized = true; }
+        if (f.sha256.empty()) f.sha256 = fact->second.sha256;
+    }
+    if (sized) {
+        model.sizeBytes = 0;
+        for (const LocalModelFile& f : model.files) model.sizeBytes += f.sizeBytes;
+    }
     model.fit = ComputeFit(model, hardware_);
     // An engine whose builds here are CPU builds only (llama-server and
     // whisper-server on an Intel Mac) runs the model on the CPU whatever the
@@ -395,7 +524,11 @@ void LocalRuntime::Impl::DecorateModelLocked(LocalModelInfo& model) const {
         model.fit = ModelFit::RunsOnCpu;
     }
     std::string primary;
-    model.installed = IsModelInstalled(model, primary);
+    // With the folders listed, a model without one is not installed and
+    // the disk is not asked again (a gallery holds a few thousand).
+    const bool mayBeInstalled = !installedFolders || model.source == LocalModelSource::File ||
+                                installedFolders->count(ModelFolderName(model.id)) > 0;
+    model.installed = mayBeInstalled && IsModelInstalled(model, primary);
     model.running   = false;
     if (model.installed) {
         model.primaryFile   = primary;
@@ -408,19 +541,69 @@ void LocalRuntime::Impl::DecorateModelLocked(LocalModelInfo& model) const {
     }
 }
 
+std::set<std::string> LocalRuntime::Impl::InstalledFoldersLocked() const {
+    std::set<std::string> out;
+    std::error_code ec;
+    for (fs::directory_iterator it(paths_.models, ec), end; !ec && it != end; it.increment(ec)) {
+        std::error_code fileEc;
+        if (fs::is_regular_file(it->path() / "model.json", fileEc)) out.insert(PathToUtf8(it->path().filename()));
+    }
+    return out;
+}
+
+const LocalModelInfo* LocalRuntime::Impl::OrphanLocked(const std::string& folder) const {
+    auto cached = orphans_.find(folder);
+    if (cached != orphans_.end()) return &cached->second;
+    // The record an install leaves: {"model": {...}}.
+    std::string text, error;
+    std::vector<LocalModelInfo> one;
+    if (!ReadWholeFile(paths_.models / PathFromUtf8(folder) / "model.json", text)) return nullptr;
+    const json doc = json::parse(text, nullptr, false);
+    if (!doc.is_object() || !doc.contains("model")) return nullptr;
+    json wrapped;
+    wrapped["models"] = json::array({doc["model"]});
+    if (!ParseModels(wrapped.dump(-1, ' ', false, json::error_handler_t::replace), one, error) ||
+        one.empty() || ModelFolderName(one.front().id) != folder) {
+        return nullptr;
+    }
+    return &orphans_.emplace(folder, one.front()).first->second;
+}
+
 std::vector<LocalModelInfo> LocalRuntime::Impl::AllModelsLocked() const {
     std::vector<LocalModelInfo> out = catalogue_.models;
-    for (const auto& m : userModels_) {
-        if (std::none_of(out.begin(), out.end(), [&](const LocalModelInfo& c) { return c.id == m.id; })) {
-            out.push_back(m);
+    std::set<std::string> ids;
+    for (const auto& m : out) ids.insert(m.id);
+    for (const CatalogueSource& source : settings_.catalogueSources) {
+        auto copy = sourceCopies_.find(source.id);
+        if (!source.enabled || copy == sourceCopies_.end()) continue;
+        for (const auto& m : copy->second.models) {
+            if (ids.insert(m.id).second) out.push_back(m);
         }
     }
-    // A catalogue model whose engine has no build for this platform is not
-    // offered (a gallery that leaves a platform out): it could not be started.
-    for (auto& m : out) DecorateModelLocked(m);
+    for (const auto& m : userModels_) {
+        if (ids.insert(m.id).second) out.push_back(m);
+    }
+    // Installed models nothing above lists: their catalogue dropped them,
+    // or their source was turned off. They are still on the disk.
+    const std::set<std::string> installed = InstalledFoldersLocked();
+    std::set<std::string> known;
+    for (const auto& m : out) known.insert(ModelFolderName(m.id));
+    for (auto it = orphans_.begin(); it != orphans_.end();) {
+        if (!installed.count(it->first) || known.count(it->first)) it = orphans_.erase(it);
+        else ++it;
+    }
+    for (const std::string& folder : installed) {
+        if (known.count(folder)) continue;
+        if (const LocalModelInfo* orphan = OrphanLocked(folder)) out.push_back(*orphan);
+    }
+
+    // A catalogue or source model whose engine has no build for this
+    // platform is not offered (a gallery that leaves a platform out): it
+    // could not be started.
+    for (auto& m : out) DecorateModelLocked(m, &installed);
     std::map<std::string, bool> runsHere;
     out.erase(std::remove_if(out.begin(), out.end(), [&](const LocalModelInfo& m) {
-        if (m.installed || m.source != LocalModelSource::Catalogue) return false;
+        if (m.installed || (m.source != LocalModelSource::Catalogue && m.source != LocalModelSource::Gallery)) return false;
         auto it = runsHere.find(m.engineId);
         if (it == runsHere.end()) it = runsHere.emplace(m.engineId, EngineRunsHereLocked(m.engineId)).first;
         return !it->second;
@@ -432,7 +615,7 @@ bool LocalRuntime::Impl::EngineRunsHereLocked(const std::string& engineId) const
     const EngineInfo* engine = gallery_.Find(engineId);
     if (!engine || engineOverrides_.count(engineId)) return true;
     EngineBundleInfo bundle;
-    if (ChooseBundleFor(*engine, hardware_, settings_.preferredAccelerator, bundle)) return true;
+    if (ChooseBundleFor(*engine, hardware_, PreferredAcceleratorLocked(engineId), bundle)) return true;
     std::string exe, accelerator;
     return InstalledEngineExecutableLocked(*engine, exe, accelerator);
 }
@@ -446,13 +629,31 @@ bool LocalRuntime::Impl::EngineHasGpuBuildLocked(const std::string& engineId) co
 }
 
 bool LocalRuntime::Impl::FindModelLocked(const std::string& modelId, LocalModelInfo& out) const {
-    if (const LocalModelInfo* m = catalogue_.Find(modelId)) {
-        out = *m;
+    auto byId = [&](const LocalModelInfo& m) { return m.id == modelId; };
+    const LocalModelInfo* found = catalogue_.Find(modelId);
+    if (!found) {
+        // "<source id>:<name>": the source's copy.
+        const size_t colon = modelId.find(':');
+        auto copy = colon == std::string::npos ? sourceCopies_.end() : sourceCopies_.find(modelId.substr(0, colon));
+        if (copy != sourceCopies_.end()) {
+            auto it = std::find_if(copy->second.models.begin(), copy->second.models.end(), byId);
+            if (it != copy->second.models.end()) found = &*it;
+        }
+    }
+    if (!found) {
+        auto it = std::find_if(userModels_.begin(), userModels_.end(), byId);
+        if (it != userModels_.end()) found = &*it;
+    }
+    if (found) {
+        out = *found;
     } else {
-        auto it = std::find_if(userModels_.begin(), userModels_.end(),
-                               [&](const LocalModelInfo& u) { return u.id == modelId; });
-        if (it == userModels_.end()) return false;
-        out = *it;
+        // An installed model no catalogue lists any more.
+        const std::string folder = ModelFolderName(modelId);
+        std::error_code ec;
+        if (!fs::is_regular_file(paths_.models / PathFromUtf8(folder) / "model.json", ec)) return false;
+        const LocalModelInfo* orphan = OrphanLocked(folder);
+        if (!orphan || orphan->id != modelId) return false;
+        out = *orphan;
     }
     DecorateModelLocked(out);
     return true;
@@ -468,7 +669,7 @@ bool LocalRuntime::Impl::FindEngineLocked(const std::string& engineId, EngineInf
 
 void LocalRuntime::Impl::DecorateEngineLocked(EngineInfo& engine) const {
     EngineBundleInfo chosen;
-    const bool haveChoice = ChooseBundleFor(engine, hardware_, settings_.preferredAccelerator, chosen);
+    const bool haveChoice = ChooseBundleFor(engine, hardware_, PreferredAcceleratorLocked(engine.id), chosen);
     std::error_code ec;
     for (auto& b : engine.bundles) {
         const fs::path folder = BundleFolder(b);
@@ -492,8 +693,8 @@ bool LocalRuntime::Impl::InstalledEngineExecutableLocked(const EngineInfo& engin
             : FindExecutableIn(PathFromUtf8(ov->second), engine.executable);
         if (!exe.empty()) {
             outExe = exe;
-            outAccelerator = settings_.preferredAccelerator.empty() ? std::string("cpu")
-                                                                    : settings_.preferredAccelerator;
+            const std::string preferred = PreferredAcceleratorLocked(engine.id);
+            outAccelerator = preferred.empty() ? std::string("cpu") : preferred;
             return true;
         }
     }
@@ -646,10 +847,34 @@ Error LocalRuntime::Impl::DownloadVerified(const std::string& url, const fs::pat
     return {};
 }
 
-Error LocalRuntime::Impl::ResolveHostHash(LocalModelFile& file) {
-    // Hugging Face reports each LFS file's sha256 through its tree API.
+Error LocalRuntime::Impl::GetText(const std::string& url, int timeoutMs, std::string& out) {
+    if (!transport_) return MakeError(ErrorCode::NetworkError, "this build has no network transport");
+    TransportRequest req;
+    req.method    = "GET";
+    req.url       = url;
+    req.timeoutMs = timeoutMs;
+    Error error;
+    const TransportResponse resp = transport_->Request(req, &error);
+    if (!error.IsOk()) return error;
+    if (resp.statusCode != 200) {
+        // The host only: an address may be long, and the status says the rest.
+        const size_t scheme = url.find("://");
+        const size_t slash = scheme == std::string::npos ? std::string::npos : url.find('/', scheme + 3);
+        const std::string host = scheme == std::string::npos
+            ? url : url.substr(scheme + 3, slash == std::string::npos ? std::string::npos : slash - scheme - 3);
+        return MakeError(resp.statusCode == 404 ? ErrorCode::ModelNotFound : ErrorCode::NetworkError,
+                         host + " answered HTTP " + std::to_string(resp.statusCode),
+                         std::to_string(resp.statusCode));
+    }
+    out = resp.body;
+    return {};
+}
+
+Error LocalRuntime::Impl::QueryHostFile(LocalModelFile& file) {
+    // Hugging Face reports each LFS file's sha256 and size through its tree
+    // API, one folder at a time.
     const std::string prefix = "https://huggingface.co/";
-    if (file.url.rfind(prefix, 0) != 0 || !transport_) return {};
+    if (file.url.rfind(prefix, 0) != 0) return {};
     const std::string rest = file.url.substr(prefix.size());
     const size_t resolve = rest.find("/resolve/");
     if (resolve == std::string::npos) return {};
@@ -658,22 +883,26 @@ Error LocalRuntime::Impl::ResolveHostHash(LocalModelFile& file) {
     const size_t slash = after.find('/');
     if (slash == std::string::npos) return {};
     const std::string revision = after.substr(0, slash);
-    const std::string path = after.substr(slash + 1);
+    std::string path = after.substr(slash + 1);
+    const size_t query = path.find('?');
+    if (query != std::string::npos) path.resize(query);
+    const size_t lastSlash = path.rfind('/');
+    const std::string folder = lastSlash == std::string::npos ? std::string() : path.substr(0, lastSlash);
 
-    TransportRequest req;
-    req.method    = "GET";
-    req.url       = HuggingFaceTreeUrl(repo, revision);
-    req.timeoutMs = 20000;
-    Error error;
-    const TransportResponse resp = transport_->Request(req, &error);
-    if (!error.IsOk()) return {};              // offline hash lookup is best effort
-    if (resp.statusCode != 200) return {};
+    std::string body;
+    Error error = GetText(HuggingFaceTreeUrl(repo, revision, folder), 20000, body);
+    if (!error.IsOk()) return error;
     uint64_t size = 0;
     std::string sha;
-    if (ParseHuggingFaceTree(resp.body, path, size, sha)) {
+    if (ParseHuggingFaceTree(body, path, size, sha)) {
         if (size) file.sizeBytes = size;
-        if (!sha.empty()) file.sha256 = sha;
+        if (!sha.empty() && file.sha256.empty()) file.sha256 = sha;
     }
+    return {};
+}
+
+Error LocalRuntime::Impl::ResolveHostHash(LocalModelFile& file) {
+    QueryHostFile(file);        // offline, the lookup is best effort
     return {};
 }
 
@@ -687,7 +916,7 @@ Error LocalRuntime::Impl::DoInstallEngine(const std::string& engineId, const std
         if (!FindEngineLocked(engineId, engine)) {
             return MakeError(ErrorCode::ModelNotFound, "unknown engine \"" + engineId + "\"");
         }
-        if (!ChooseBundleFor(engine, hardware_, accelerator.empty() ? settings_.preferredAccelerator
+        if (!ChooseBundleFor(engine, hardware_, accelerator.empty() ? PreferredAcceleratorLocked(engineId)
                                                                     : accelerator, bundle)) {
             return MakeError(ErrorCode::UnsupportedFormat,
                              "the gallery has no " + engineId + " build for " + hardware_.platform +
@@ -809,9 +1038,29 @@ Error LocalRuntime::Impl::DoInstallModel(const std::string& modelId, const std::
     const fs::path folder = ModelFolder(model.id);
     std::error_code ec;
 
+    // Nothing a catalogue names may land outside the model's own folder.
+    for (const auto& f : model.files) {
+        if (!IsSafeModelFileName(f.name)) {
+            return MakeError(ErrorCode::InvalidRequest,
+                             "model \"" + modelId + "\" names a file that is not a plain file name");
+        }
+    }
     // Hashes and sizes from the host when the catalogue has none.
+    bool asked = false;
     for (auto& f : model.files) {
-        if (f.sha256.empty()) ResolveHostHash(f);
+        if (!f.sha256.empty() && f.sizeBytes) continue;
+        const uint64_t sizeBefore = f.sizeBytes;
+        const std::string shaBefore = f.sha256;
+        ResolveHostHash(f);
+        if (f.sizeBytes != sizeBefore || f.sha256 != shaBefore) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            fileFacts_[f.url] = FileFacts{f.sizeBytes, f.sha256};
+            asked = true;
+        }
+    }
+    if (asked) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        SaveFileFactsLocked();
     }
     uint64_t total = 0;
     for (const auto& f : model.files) total += f.sizeBytes;
@@ -845,13 +1094,20 @@ Error LocalRuntime::Impl::DoInstallModel(const std::string& modelId, const std::
     record.running = false;
     record.installedPath.clear();
     record.primaryFile.clear();
+    record.sizeBytes = 0;
+    for (const auto& f : record.files) record.sizeBytes += f.sizeBytes;
     json doc;
     doc["formatVersion"] = 1;
     doc["installed"]     = NowUnix();
     doc["model"]         = json::parse(SerializeModels({record}))["models"][0];
     std::string writeError;
-    if (!WriteFileAtomic(folder / "model.json", doc.dump(2), writeError)) {
+    if (!WriteFileAtomic(folder / "model.json", doc.dump(2, ' ', false, json::error_handler_t::replace), writeError)) {
         return MakeError(ErrorCode::ProviderError, writeError);
+    }
+    {
+        // A record read before this install is stale.
+        std::lock_guard<std::mutex> lock(mutex_);
+        orphans_.erase(ModelFolderName(model.id));
     }
     return {};
 }
@@ -1039,8 +1295,10 @@ LocalModelInfo LocalRuntime::Recommend(const std::string& capability) const {
             if (m.source == LocalModelSource::Catalogue && m.fit == wanted) return m;
         }
     }
+    // A model the user brought, of unknown size. A catalogue source's is
+    // never picked on its own: the user chooses those.
     for (const auto& m : models) {
-        if (m.fit == ModelFit::Unknown) return m;
+        if (m.fit == ModelFit::Unknown && m.source != LocalModelSource::Gallery) return m;
     }
     return LocalModelInfo{};
 }
@@ -1058,6 +1316,11 @@ bool LocalRuntime::ChooseBundle(const std::string& engineId, EngineBundleInfo& o
         if (b.recommended) { out = b; return true; }
     }
     return false;
+}
+
+std::string LocalRuntime::PreferredAccelerator(const std::string& engineId) const {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+    return impl_->PreferredAcceleratorLocked(engineId);
 }
 
 const HardwareProfile& LocalRuntime::Hardware() const { return impl_->hardware_; }
@@ -1124,30 +1387,67 @@ Error LocalRuntime::AddModelFile(const std::string& pathUtf8, const std::string&
 Error LocalRuntime::AddHuggingFaceModel(const std::string& repo, const std::string& file,
                                         const std::string& capability,
                                         const std::string& displayName, std::string& outModelId) {
-    if (repo.find('/') == std::string::npos || file.empty() || file.find("..") != std::string::npos ||
-        file.find('/') != std::string::npos) {
+    HuggingFaceModelRequest request;
+    request.repo        = repo;
+    request.file        = file;
+    request.capability  = capability;
+    request.displayName = displayName;
+    return AddHuggingFaceModel(request, outModelId);
+}
+
+Error LocalRuntime::AddHuggingFaceModel(const HuggingFaceModelRequest& request, std::string& outModelId) {
+    // A path inside the repository: no way out of it, nothing an address
+    // has no use for.
+    auto pathOk = [](const std::string& path) {
+        if (path.empty() || path.front() == '/' || path.back() == '/' || path.find("..") != std::string::npos) return false;
+        for (unsigned char c : path) {
+            if (c <= 0x20 || c == 0x7F || c == '\\' || c == '?' || c == '#') return false;
+        }
+        return true;
+    };
+    const size_t slash = request.repo.find('/');
+    if (slash == std::string::npos || slash == 0 || slash + 1 >= request.repo.size() ||
+        request.repo.find('/', slash + 1) != std::string::npos || !pathOk(request.repo) || !pathOk(request.file)) {
         return MakeError(ErrorCode::InvalidRequest,
                          "a Hugging Face model is \"organisation/repository\" and a file name in it");
     }
-    if (capability != "textllm" && capability != "embeddings" && capability != "speechtotext") {
+    if (request.capability != "textllm" && request.capability != "embeddings" && request.capability != "speechtotext") {
         return MakeError(ErrorCode::InvalidRequest,
                          "a model serves \"textllm\", \"embeddings\" (a GGUF) or \"speechtotext\" (a whisper.cpp "
-                         "ggml .bin), not \"" + capability + "\"");
+                         "ggml .bin), not \"" + request.capability + "\"");
     }
     LocalModelInfo model;
-    model.id          = "hf:" + repo + ":" + file;
-    model.displayName = displayName.empty() ? file : displayName;
-    model.capability  = capability;
-    model.engineId    = EngineForCapability(capability);
+    model.id          = "hf:" + request.repo + ":" + request.file;
+    model.capability  = request.capability;
+    model.engineId    = EngineForCapability(request.capability);
     model.source      = LocalModelSource::HuggingFace;
-    model.license     = "see the repository";
-    LocalModelFile f;
-    f.name = file;
-    f.url  = HuggingFaceFileUrl(repo, "", file);
-    impl_->ResolveHostHash(f);
-    model.files.push_back(f);
-    model.sizeBytes = f.sizeBytes;
-    if (capability == "embeddings") model.engineArgs = {"--embeddings"};
+    model.license     = request.license.empty() ? std::string("see the repository") : request.license;
+    model.homepage    = "https://huggingface.co/" + request.repo;
+
+    std::set<std::string> names;
+    auto add = [&](const std::string& path, bool projector) -> bool {
+        if (!pathOk(path)) return false;
+        LocalModelFile f;
+        const size_t last = path.rfind('/');
+        f.name      = last == std::string::npos ? path : path.substr(last + 1);
+        f.url       = HuggingFaceFileUrl(request.repo, request.revision, path);
+        f.projector = projector;
+        if (!IsSafeModelFileName(f.name) || !names.insert(f.name).second) return false;
+        impl_->ResolveHostHash(f);
+        model.sizeBytes += f.sizeBytes;
+        model.files.push_back(std::move(f));
+        return true;
+    };
+    bool ok = add(request.file, false);
+    for (const std::string& part : request.extraFiles) ok = ok && add(part, false);
+    if (!request.projectorFile.empty()) ok = ok && add(request.projectorFile, true);
+    if (!ok) {
+        return MakeError(ErrorCode::InvalidRequest,
+                         "the files of a Hugging Face model are paths inside its repository, each with a name of its own");
+    }
+    model.displayName    = request.displayName.empty() ? model.files.front().name : request.displayName;
+    model.supportsVision = !request.projectorFile.empty();
+    if (request.capability == "embeddings") model.engineArgs = {"--embeddings"};
     {
         std::lock_guard<std::mutex> lock(impl_->mutex_);
         impl_->userModels_.erase(
@@ -1161,12 +1461,76 @@ Error LocalRuntime::AddHuggingFaceModel(const std::string& repo, const std::stri
     return {};
 }
 
+Error LocalRuntime::SearchHuggingFace(const std::string& query, bool ggufOnly, int limit,
+                                      std::vector<HuggingFaceRepo>& out) {
+    out.clear();
+    std::string body;
+    Error error = impl_->GetText(HuggingFaceSearchUrl(query, ggufOnly, limit), 30000, body);
+    if (!error.IsOk()) return error;
+    if (!ParseHuggingFaceSearch(body, out)) {
+        return MakeError(ErrorCode::ProviderError, "Hugging Face's answer to the search is not a list of repositories");
+    }
+    return {};
+}
+
+Error LocalRuntime::ListHuggingFaceFiles(const std::string& repo, std::vector<HuggingFaceFile>& out,
+                                         HuggingFaceRepo* outRepo) {
+    out.clear();
+    const size_t slash = repo.find('/');
+    bool plain = slash != std::string::npos && slash > 0 && slash + 1 < repo.size() &&
+                 repo.find('/', slash + 1) == std::string::npos && repo.find("..") == std::string::npos;
+    for (unsigned char c : repo) {
+        if (c <= 0x20 || c == 0x7F || c == '?' || c == '#' || c == '\\') plain = false;
+    }
+    if (!plain) {
+        return MakeError(ErrorCode::InvalidRequest, "a Hugging Face repository is \"organisation/repository\"");
+    }
+    // Hugging Face answers 401 for a repository that does not exist, as it
+    // does for a private one (it will not say which); 404 for the rest.
+    auto missing = [](const Error& e) {
+        return e.code == ErrorCode::ModelNotFound || e.providerCode == "401";
+    };
+    const Error noSuch = MakeError(ErrorCode::ModelNotFound,
+                                   "Hugging Face has no public repository \"" + repo + "\"");
+    // The repository's own facts first: they say what its files serve. A
+    // repository that will not give them still lists its files.
+    HuggingFaceRepo facts;
+    facts.id = repo;
+    std::string body;
+    Error error = impl_->GetText(HuggingFaceRepoUrl(repo), 20000, body);
+    if (error.IsOk()) {
+        ParseHuggingFaceRepo(body, facts);
+    } else if (missing(error)) {
+        return noSuch;
+    }
+    if (outRepo) *outRepo = facts;
+    error = impl_->GetText(HuggingFaceTreeUrl(repo, "") + "?recursive=true", 30000, body);
+    if (!error.IsOk()) return missing(error) ? noSuch : error;
+    if (!ParseHuggingFaceFiles(body, facts, out)) {
+        return MakeError(ErrorCode::ProviderError, "Hugging Face's list of the files of " + repo + " is not usable");
+    }
+    HardwareProfile hardware;
+    bool gpuBuild = true;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex_);
+        hardware = impl_->hardware_;
+        gpuBuild = impl_->EngineHasGpuBuildLocked("llama-server");
+    }
+    for (HuggingFaceFile& f : out) {
+        LocalModelInfo probe;
+        probe.sizeBytes = f.sizeBytes;
+        f.fit = ComputeFit(probe, hardware);
+        if (f.fit == ModelFit::Recommended && (f.capability == "speechtotext" || !gpuBuild)) f.fit = ModelFit::RunsOnCpu;
+    }
+    return {};
+}
+
 Error LocalRuntime::ForgetModel(const std::string& modelId) {
     LocalModelInfo model;
     if (!FindModel(modelId, model)) {
         return MakeError(ErrorCode::ModelNotFound, "unknown model \"" + modelId + "\"");
     }
-    if (model.source == LocalModelSource::Catalogue) {
+    if (model.source == LocalModelSource::Catalogue || model.source == LocalModelSource::Gallery) {
         return MakeError(ErrorCode::InvalidRequest, "a catalogue model is removed, not forgotten");
     }
     if (model.installed && model.source != LocalModelSource::File) {
@@ -1463,8 +1827,26 @@ void LocalRuntime::SetSettings(const LocalRuntimeSettings& settings) {
     if (next.galleryUrl != impl_->settings_.galleryUrl && next.trustedKeys == impl_->settings_.trustedKeys) {
         next.trustedKeys.clear();
     }
+    next.catalogueSources = NormalizeSources(next.catalogueSources);
+    auto same = [](const CatalogueSource& a, const CatalogueSource& b) {
+        return a.id == b.id && a.url == b.url && a.enabled == b.enabled;
+    };
+    const bool sourcesChanged = !std::equal(next.catalogueSources.begin(), next.catalogueSources.end(),
+                                            impl_->settings_.catalogueSources.begin(),
+                                            impl_->settings_.catalogueSources.end(), same);
+    // The copy of a source that is gone, or points somewhere else now, says
+    // nothing about what the list holds.
+    std::error_code ec;
+    for (const CatalogueSource& old : impl_->settings_.catalogueSources) {
+        auto kept = std::find_if(next.catalogueSources.begin(), next.catalogueSources.end(),
+                                 [&](const CatalogueSource& n) { return n.id == old.id; });
+        if (kept == next.catalogueSources.end() || kept->url != old.url) {
+            fs::remove(impl_->paths_.catalogues / PathFromUtf8(old.id + ".json"), ec);
+        }
+    }
     impl_->settings_ = next;
     impl_->SaveSettings();
+    if (sourcesChanged) impl_->LoadSourceCopiesLocked();
 }
 
 Error LocalRuntime::RefreshGallery() {
@@ -1472,9 +1854,11 @@ Error LocalRuntime::RefreshGallery() {
     std::vector<std::string> trustedKeys;
     {
         std::lock_guard<std::mutex> lock(impl_->mutex_);
-        url = impl_->settings_.galleryUrl.empty() ? DefaultGalleryUrl() : impl_->settings_.galleryUrl;
+        url = impl_->settings_.galleryUrl;
         trustedKeys = impl_->settings_.trustedKeys;
     }
+    // No gallery address: the copies shipped with the framework stay in use.
+    if (url.empty()) return {};
     if (!impl_->transport_) {
         return MakeError(ErrorCode::NetworkError, "this build has no network transport");
     }
@@ -1587,6 +1971,104 @@ Error LocalRuntime::RefreshGallery() {
 std::string LocalRuntime::GalleryPublished() const {
     std::lock_guard<std::mutex> lock(impl_->mutex_);
     return impl_->gallery_.published;
+}
+
+Error LocalRuntime::RefreshCatalogueSources(std::vector<CatalogueSourceStatus>* outStatus) {
+    std::vector<CatalogueSource> sources;
+    {
+        std::lock_guard<std::mutex> lock(impl_->mutex_);
+        sources = impl_->settings_.catalogueSources;
+    }
+    if (outStatus) outStatus->clear();
+    Error first;
+    for (const CatalogueSource& source : sources) {
+        if (!source.enabled) continue;
+        CatalogueSourceStatus status;
+        status.source = source;
+        std::string body, parseError;
+        SourceCopy copy;
+        status.error = impl_->GetText(ResolveSourceUrl(source.url), 60000, body);
+        if (status.error.IsOk() &&
+            !ParseCatalogueSourceDocument(body, source, copy.models, copy.skipped, parseError)) {
+            status.error = MakeError(ErrorCode::ProviderError,
+                                     "the list of " + source.name + " is not usable: " + parseError);
+        }
+        if (status.error.IsOk()) {
+            copy.fetched = TodayText();
+            status.models  = static_cast<int>(copy.models.size());
+            status.skipped = copy.skipped;
+            status.fetched = copy.fetched;
+            std::string writeError;
+            WriteFileAtomic(impl_->paths_.catalogues / PathFromUtf8(source.id + ".json"),
+                            SerializeSourceCache(source, copy.fetched, copy.skipped, copy.models), writeError);
+            std::lock_guard<std::mutex> lock(impl_->mutex_);
+            // The settings may have moved on while the download ran.
+            const auto& now = impl_->settings_.catalogueSources;
+            if (std::any_of(now.begin(), now.end(), [&](const CatalogueSource& s) {
+                    return s.id == source.id && s.url == source.url && s.enabled; })) {
+                impl_->sourceCopies_[source.id] = std::move(copy);
+            }
+        } else {
+            if (first.IsOk()) first = status.error;
+            // The earlier copy stays in use; say what it holds.
+            std::lock_guard<std::mutex> lock(impl_->mutex_);
+            auto kept = impl_->sourceCopies_.find(source.id);
+            if (kept != impl_->sourceCopies_.end()) {
+                status.models  = static_cast<int>(kept->second.models.size());
+                status.skipped = kept->second.skipped;
+                status.fetched = kept->second.fetched;
+            }
+        }
+        if (outStatus) outStatus->push_back(std::move(status));
+    }
+    return first;
+}
+
+std::vector<CatalogueSourceStatus> LocalRuntime::ListCatalogueSources() const {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+    std::vector<CatalogueSourceStatus> out;
+    for (const CatalogueSource& source : impl_->settings_.catalogueSources) {
+        CatalogueSourceStatus status;
+        status.source = source;
+        auto copy = impl_->sourceCopies_.find(source.id);
+        if (copy != impl_->sourceCopies_.end()) {
+            status.models  = static_cast<int>(copy->second.models.size());
+            status.skipped = copy->second.skipped;
+            status.fetched = copy->second.fetched;
+        }
+        out.push_back(std::move(status));
+    }
+    return out;
+}
+
+Error LocalRuntime::ProbeModel(const std::string& modelId, LocalModelInfo& out) {
+    if (!FindModel(modelId, out)) {
+        return MakeError(ErrorCode::ModelNotFound, "unknown model \"" + modelId + "\"");
+    }
+    Error first;
+    bool learned = false;
+    for (LocalModelFile f : out.files) {
+        if ((f.sizeBytes && !f.sha256.empty()) || f.url.empty()) continue;
+        const uint64_t sizeBefore = f.sizeBytes;
+        const std::string shaBefore = f.sha256;
+        const Error error = impl_->QueryHostFile(f);
+        if (!error.IsOk()) {
+            if (first.IsOk()) first = error;
+            continue;
+        }
+        if (f.sizeBytes == sizeBefore && f.sha256 == shaBefore) continue;
+        std::lock_guard<std::mutex> lock(impl_->mutex_);
+        impl_->fileFacts_[f.url] = FileFacts{f.sizeBytes, f.sha256};
+        learned = true;
+    }
+    if (learned) {
+        {
+            std::lock_guard<std::mutex> lock(impl_->mutex_);
+            impl_->SaveFileFactsLocked();
+        }
+        FindModel(modelId, out);
+    }
+    return first;
 }
 
 std::string LocalRuntime::CapabilityOf(const std::string& modelId) const {

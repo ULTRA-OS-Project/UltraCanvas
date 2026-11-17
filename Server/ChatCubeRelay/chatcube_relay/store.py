@@ -58,6 +58,8 @@ class Group:
     title: str
     owner: str
     members: list[str]
+    public: bool = False
+    description: str = ""
 
 
 class Store:
@@ -363,13 +365,13 @@ class Store:
 
     def get_group(self, group_id: str) -> Group | None:
         with self._lock:
-            row = self._db.execute("SELECT group_id, title, owner FROM groups WHERE group_id=?",
+            row = self._db.execute("SELECT group_id, title, owner, public, description FROM groups WHERE group_id=?",
                                    (group_id,)).fetchone()
             if not row:
                 return None
             members = [r["user_id"] for r in self._db.execute(
                 "SELECT user_id FROM group_members WHERE group_id=? ORDER BY rowid", (group_id,))]
-        return Group(row["group_id"], row["title"], row["owner"], members)
+        return Group(row["group_id"], row["title"], row["owner"], members, bool(row["public"]), row["description"])
 
     def groups_of(self, user_id: str) -> list[Group]:
         with self._lock:
@@ -381,6 +383,10 @@ class Store:
         with self._lock:
             self._db.execute("UPDATE groups SET title=? WHERE group_id=?", (title, group_id))
 
+    def describe_group(self, group_id: str, description: str) -> None:
+        with self._lock:
+            self._db.execute("UPDATE groups SET description=? WHERE group_id=?", (description, group_id))
+
     def add_member(self, group_id: str, user_id: str) -> None:
         with self._lock:
             self._db.execute("INSERT OR IGNORE INTO group_members(group_id, user_id) VALUES (?,?)",
@@ -389,6 +395,46 @@ class Store:
     def remove_member(self, group_id: str, user_id: str) -> None:
         with self._lock:
             self._db.execute("DELETE FROM group_members WHERE group_id=? AND user_id=?", (group_id, user_id))
+
+    def set_group_public(self, group_id: str, public: bool) -> None:
+        with self._lock:
+            self._db.execute("UPDATE groups SET public=? WHERE group_id=?", (1 if public else 0, group_id))
+
+    def public_groups(self, query: str = "", limit: int = 100) -> list[dict]:
+        """The public groups, the biggest first: id, title, owner, how many
+        are in it. `query` keeps those whose title holds it (any case)."""
+        like = "%" + query.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT g.group_id, g.title, g.owner, g.description, COUNT(m.user_id) AS members FROM groups g "
+                "LEFT JOIN group_members m ON m.group_id = g.group_id "
+                "WHERE g.public=1 AND g.title LIKE ? ESCAPE '!' "
+                "GROUP BY g.group_id ORDER BY members DESC, g.title COLLATE NOCASE LIMIT ?",
+                (like, limit)).fetchall()
+        return [{"group_id": r["group_id"], "title": r["title"], "owner": r["owner"],
+                 "description": r["description"], "member_count": r["members"]} for r in rows]
+
+    def ban(self, group_id: str, user_id: str) -> None:
+        with self._lock:
+            self._db.execute("INSERT OR IGNORE INTO group_bans(group_id, user_id) VALUES (?,?)",
+                             (group_id, user_id))
+
+    def unban(self, group_id: str, user_id: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM group_bans WHERE group_id=? AND user_id=?", (group_id, user_id))
+
+    def bans(self, group_id: str) -> list[User]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT u.user_id, u.public_key, u.display_name FROM group_bans b "
+                "JOIN users u ON u.user_id = b.user_id WHERE b.group_id=? ORDER BY u.display_name",
+                (group_id,)).fetchall()
+        return [User(r["user_id"], bytes(r["public_key"]), r["display_name"]) for r in rows]
+
+    def is_banned(self, group_id: str, user_id: str) -> bool:
+        with self._lock:
+            return self._db.execute("SELECT 1 FROM group_bans WHERE group_id=? AND user_id=?",
+                                    (group_id, user_id)).fetchone() is not None
 
     # ---- offline queue -------------------------------------------------------
 

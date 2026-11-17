@@ -213,9 +213,10 @@ std::vector<std::string> BuildEngineArgs(const EngineInfo& engine, const LocalMo
     if (engine.id == "llama-server") {
         args.push_back("--alias");
         args.push_back(model.id);
-        // A multimodal projector beside the weights: "mmproj*.gguf".
+        // A multimodal projector beside the weights: a file marked as one,
+        // or named "mmproj*.gguf".
         for (const auto& f : model.files) {
-            if (f.name.rfind("mmproj", 0) == 0 && !model.installedPath.empty()) {
+            if (IsProjectorFile(f) && !model.installedPath.empty()) {
                 args.push_back("--mmproj");
                 args.push_back(model.installedPath + "/" + f.name);
                 break;

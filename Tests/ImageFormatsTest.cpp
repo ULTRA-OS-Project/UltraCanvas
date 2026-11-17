@@ -16,11 +16,17 @@
 // runner has every codec (JPEG XL on ubuntu-22.04 through the framework's
 // own loader on a libjxl built from source).
 //
+// And BMP is read by the framework's own loader (VipsBmpPlugin), never by
+// ImageMagick: magickload was its only reader, and the first BMP a program
+// opened paid for ImageMagick's start-up (seconds on Windows).
+//
 // Headless; needs libvips (reports SKIP without it).
+// Version: 1.2.0 - an RLE4 BMP through ucbmpload; ImageMagick warmed up in the background
+// Version: 1.1.0 - BMP through ucbmpload, not magickload
 // Version: 1.0.2 - no CI exception any more: JPEG XL decodes on every runner
 // Version: 1.0.1 - UC_IMAGE_FORMATS_OPTIONAL named for the 22.04 runner (no libjxl)
 // Version: 1.0.0
-// Last Modified: 2026-11-02
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -28,6 +34,7 @@
 #include "../UltraCanvas/libspecific/Cairo/QoiPixmapCodec.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -121,7 +128,109 @@ int main() {
         }
     }
 
+    // ----- BMP without ImageMagick -----
+    {
+        const std::string path = PathToUtf8(images / "dice.bmp");
+        try {
+            vips::VImage file = vips::VImage::new_from_file(path.c_str());
+            Check(std::string(file.get_string("vips-loader")) == "ucbmpload",
+                  "a .bmp file is read by ucbmpload, not ImageMagick");
+            Check(file.width() == 800 && file.height() == 600 && file.bands() == 4, "... 800 x 600, RGBA");
+            if (vips_type_find("VipsOperation", "magickload") != 0) {
+                vips::VImage magick = vips::VImage::magickload(path.c_str());
+                const bool same = magick.width() == file.width() && magick.height() == file.height() &&
+                                  magick.bands() == file.bands() && (magick - file).abs().max() == 0.0;
+                Check(same, "... pixel for pixel what ImageMagick reads");
+            }
+        } catch (const vips::VError& e) {
+            Check(false, std::string("a .bmp file opens: ") + e.what());
+        }
+
+        // A 2 x 2, 24-bit, bottom-up BMP from memory: rows padded to 4 bytes,
+        // stored last row first, blue-green-red.
+        const uint8_t bmp[] = {
+            'B', 'M', 70, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0,                 // file header
+            40, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 1, 0, 24, 0, 0, 0, 0, 0,   // info header
+            16, 0, 0, 0, 0x13, 0x0B, 0, 0, 0x13, 0x0B, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 255,   0, 255, 0,   0, 0,                                  // bottom row: red, green
+            255, 0, 0,   255, 255, 255, 0, 0,                                // top row: blue, white
+        };
+        try {
+            vips::VImage mem = vips::VImage::new_from_buffer(bmp, sizeof(bmp), "");
+            Check(std::string(mem.get_string("vips-loader")) == "ucbmpload_buffer",
+                  "a BMP in memory is read by ucbmpload_buffer");
+            const std::vector<double> topLeft = mem.getpoint(0, 0);
+            const std::vector<double> bottomLeft = mem.getpoint(0, 1);
+            const std::vector<double> bottomRight = mem.getpoint(1, 1);
+            Check(mem.bands() == 3 && topLeft == std::vector<double>{0, 0, 255} &&
+                      bottomLeft == std::vector<double>{255, 0, 0} &&
+                      bottomRight == std::vector<double>{0, 255, 0},
+                  "... the right way up, red-green-blue");
+            // 2835 pixels a metre is 72 dpi.
+            Check(std::abs(mem.xres() * 25.4 - 72.0) < 0.1, "... with the resolution the header gives");
+        } catch (const vips::VError& e) {
+            Check(false, std::string("a BMP in memory opens: ") + e.what());
+        }
+    }
+
+    // ----- an RLE BMP, which stb_image does not read, without ImageMagick too -----
+    {
+        // 7 x 3, RLE4, a five-colour palette. Bottom row: a run of four
+        // alternating 1, 2, then three indices as they are (3, 4, 1); next
+        // row: 4, 3, 2 as they are, a delta of one pixel, a run of three 4s;
+        // the bitmap ends before the top row, which keeps entry 0.
+        const uint8_t rle[] = {
+            'B', 'M', 96, 0, 0, 0, 0, 0, 0, 0, 74, 0, 0, 0,
+            40, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 1, 0, 4, 0, 2, 0, 0, 0,
+            22, 0, 0, 0, 0x13, 0x0B, 0, 0, 0x13, 0x0B, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0,
+            30, 20, 10, 0,   0, 0, 255, 0,   0, 255, 0, 0,   255, 0, 0, 0,   0, 200, 200, 0,
+            4, 0x12, 0, 3, 0x34, 0x10, 0, 0,
+            0, 3, 0x43, 0x20, 0, 2, 1, 0, 3, 0x44, 0, 0,
+            0, 1,
+        };
+        try {
+            vips::VImage mem = vips::VImage::new_from_buffer(rle, sizeof(rle), "");
+            Check(std::string(mem.get_string("vips-loader")) == "ucbmpload_buffer",
+                  "an RLE4 BMP is read by ucbmpload_buffer, not ImageMagick");
+            using P = std::vector<double>;
+            const P red{255, 0, 0}, green{0, 255, 0}, blue{0, 0, 255}, yellow{200, 200, 0}, base{10, 20, 30};
+            Check(mem.width() == 7 && mem.height() == 3 && mem.bands() == 3 &&
+                      mem.getpoint(0, 2) == red && mem.getpoint(3, 2) == green && mem.getpoint(4, 2) == blue &&
+                      mem.getpoint(5, 2) == yellow && mem.getpoint(6, 2) == red,
+                  "... runs and indices as they are");
+            Check(mem.getpoint(0, 1) == yellow && mem.getpoint(2, 1) == green && mem.getpoint(3, 1) == base &&
+                      mem.getpoint(4, 1) == yellow && mem.getpoint(6, 1) == yellow,
+                  "... a delta skips a pixel, which keeps palette entry 0");
+            Check(mem.getpoint(3, 0) == base, "... a row the bitmap ends before is palette entry 0");
+            if (vips_type_find("VipsOperation", "magickload") != 0) {
+                VipsBlob* blob = vips_blob_new(nullptr, rle, sizeof(rle));
+                vips::VImage magick = vips::VImage::magickload_buffer(blob);
+                vips_area_unref(VIPS_AREA(blob));
+                Check(magick.bands() == 3 && (magick - mem).abs().max() == 0.0,
+                      "... pixel for pixel what ImageMagick reads");
+            }
+        } catch (const vips::VError& e) {
+            Check(false, std::string("an RLE4 BMP opens: ") + e.what());
+        }
+    }
+
+    // ----- ImageMagick warmed up in the background -----
+    if (vips_type_find("VipsOperation", "magickload") != 0) {
+        // Twice is once; a load meanwhile is served, and the shutdown at the
+        // end of a program waits for the thread.
+        UCImageRaster::WarmUpImageMagickInBackground();
+        UCImageRaster::WarmUpImageMagickInBackground();
+        try {
+            vips::VImage picture = vips::VImage::black(3, 2).copy(
+                    vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_sRGB));
+            Check(picture.width() == 3, "a picture is made while ImageMagick warms up");
+        } catch (const vips::VError& e) {
+            Check(false, std::string("libvips works while ImageMagick warms up: ") + e.what());
+        }
+    }
+
     std::cout << (g_failures == 0 ? "ImageFormatsTest: all checks passed" : "ImageFormatsTest: FAILURES") << std::endl;
+    UCImageRaster::ShutdownImageSubsysterm();   // joins the warm-up
     return g_failures == 0 ? 0 : 1;
 #endif
 }

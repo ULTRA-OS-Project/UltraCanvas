@@ -293,6 +293,29 @@ if __name__ == "__main__":
     Expect("a number", "42", "");
     Expect("url", "https://example.com/a?b=c", "");
 
+    // ===== A LOWER BAR, FOR TEXT KNOWN TO BE CODE =====
+    // A Markdown code block: a short snippet rarely piles up the default
+    // four points, and there is no prose to mistake for code.
+    const LanguageDetectOptions code{1, 1};
+    auto ExpectCode = [&](const std::string& name, const std::string& text,
+                          const std::string& byDefault, const std::string& lowered) {
+        const std::string got = DetectLanguageFromContent(text);
+        const std::string gotLow = DetectLanguageFromContent(text, code);
+        const bool ok = got == byDefault && gotLow == lowered;
+        std::cerr << (ok ? "PASS" : "FAIL") << ": " << name << " (default \"" << got
+                  << "\", lower bar \"" << gotLow << "\")" << std::endl;
+        if (!ok) failCount++;
+        testCount++;
+    };
+    ExpectCode("a JavaScript call", "console.log(x);\n", "", "JavaScript");
+    ExpectCode("a Python call", "print(x)\n", "", "Python");
+    ExpectCode("a C++ declaration", "std::vector<int> v;\n", "", "C++");
+    ExpectCode("prose stays nothing on the lower bar", "just some words here\n", "", "");
+    ExpectCode("the default overload is unchanged", "def f(x):\n    return x\n", "Python", "Python");
+    ExpectCode("echo $HOME is a shell command", "echo $HOME\n", "", "Shell Script");
+    ExpectCode("echo $x; is a PHP statement", "echo $name;\n", "", "PHP");
+    ExpectCode("echo of a quoted variable is shell", "echo \"$PATH\"\n", "", "Shell Script");
+
     std::cerr << std::endl << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;
 }

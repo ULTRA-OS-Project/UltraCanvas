@@ -9,8 +9,9 @@ protect it when you want them to.
 ChatCube is the window; the networks are UltraIM providers
 ([`Docs/Modules/UltraIM`](../../Docs/Modules/UltraIM/README.md)). This release
 uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`), Matrix
-(`.../matrix`) and Telegram (`.../telegram`); XMPP and other messengers with
-an open API come later as further providers.
+(`.../matrix`), Telegram (`.../telegram`) and the direct messages of
+Mastodon (`.../mastodon`); XMPP and other messengers with an open API come
+later as further providers.
 Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/ChatCubeDirectPlan.md).
 The first ChatCube draft, which this replaces, is kept under
 [`Docs/ChatCube/v1-draft`](../../Docs/ChatCube/v1-draft/README.md).
@@ -86,6 +87,14 @@ The first ChatCube draft, which this replaces, is kept under
    without typing anything. The person you add is told: your chat appears in
    their list at once (or at their next sign-in), before you write.
 4. **New group** takes a name and the members' IDs, separated by commas.
+   **Public groups** under it lists the ChatCube groups anyone may join -
+   the biggest first, with how many are in each - and **Join** puts you in
+   one at once, no invitation needed (what was written before you joined is
+   not shown). A group of your own becomes one with *Make public* in its
+   menu, and *Make private* takes it off the list; its messages stay
+   end-to-end encrypted either way. A public group holds up to 256 people,
+   and someone you take out of it cannot join again by themselves. Needs a
+   relay of version 1.5.0 or later.
    **Matrix account** signs in to a Matrix homeserver (`matrix.org`, or your
    own) with your user name and password; your Matrix rooms then sit in the
    same list, and a Matrix ID (`@name:server`) in *Add* or *New group* goes
@@ -117,6 +126,16 @@ The first ChatCube draft, which this replaces, is kept under
    have one. Your
    Telegram chats join the list; `@username`, `t.me/name` or `+phone` in
    *Add* or *New group* goes to Telegram.
+   **Mastodon** (beside Telegram) asks for your server (`mastodon.social`,
+   or any other) and opens its own sign-in page in your browser: you sign
+   in there and allow ChatCube, and ChatCube is signed in - your password
+   never passes through it. Your direct messages (statuses "only for the
+   people mentioned") join the list, one chat per set of people however
+   many threads they are; `@user@server` or a profile's address
+   (`https://server/@user`) in *Add* or *New group* goes to Mastodon.
+   Messages are text, pictures, videos and sound - Mastodon takes no other
+   file - and come every few seconds (ChatCube asks the server; Mastodon
+   has no typing, read ticks or calls).
 5. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
    *Settings* below). A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
@@ -156,9 +175,18 @@ The first ChatCube draft, which this replaces, is kept under
    ChatCube as well; a copy they saved elsewhere is theirs. Matrix deletes
    for everyone only; Telegram has both.
 
+   A file on its way shows a bar with how far it is (*Sending 42 %*,
+   *Receiving 42 %*). Sending never holds up the window: the field is free at
+   once and the file goes in the background. A video shows its preview
+   picture and length - one ChatCube makes itself when the sender sent none -
+   and plays in a player over the field when clicked; a song (MP3, OGG, M4A,
+   FLAC, WAV ...) plays in its bubble like a voice message.
+
    The field over the messages searches the chat: what you type finds the
    messages with those words in all of its history, and the list shows only
-   them (with how many) until the × shows the whole chat again.
+   them (with how many) until the × shows the whole chat again. The chips
+   under it - *All*, *Pictures*, *Videos*, *Audio*, *Files*, *Links* - show
+   only that kind of message, with or without words.
 
    The microphone beside the field records a **voice message** - the bar in
    its place shows how long, × throws it away, the send button sends it -
@@ -186,7 +214,16 @@ The first ChatCube draft, which this replaces, is kept under
    group* and *Delete chat* - the chat and its messages go from this
    computer; they keep theirs. A group: *Members*, each with *Send a
    message*, *Copy ID* and, for the group's owner, *Remove from group*;
-   *Add members*, *Rename group* and *Leave group*. What the chat's network
+   *Group settings…*, *Add members*, *Rename group*, *Make public* /
+   *Make private* (the owner's, ChatCube groups) and *Leave group*.
+   **Group settings…** opens the group's editor: its name and, for a
+   ChatCube group, a description (what it is about, up to 500 characters -
+   shown when its name is hovered, and under *Public groups*), *Make public*
+   / *Make private*, and every member with **Message** and, for the owner,
+   **Remove** and **Block**. Someone removed may come back (*Join*, or a
+   member adds them); someone blocked is taken out and kept out until the
+   owner unblocks them in the editor's *Blocked* list. In a private group
+   any member changes the name and description; in a public one, the owner. What the chat's network
    cannot do is not offered, and what it refuses the account (in most
    Telegram groups only administrators rename or take people out) says so
    on the status line. Pins and unread marks are kept in the settings file.

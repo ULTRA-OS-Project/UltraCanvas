@@ -34,6 +34,7 @@
   - [File Explorer Example](#file-explorer-example)
   - [Event Handling](#event-handling)
   - [Rows still loading](#rows-still-loading)
+  - [Dimmed rows](#dimmed-rows)
   - [Using TreeViewBuilder](#using-treeviewbuilder)
 - [Keyboard Navigation](#keyboard-navigation)
 - [Mouse Interaction](#mouse-interaction)
@@ -181,6 +182,7 @@ struct TreeNodeData {
 
     uint64_t accessSequence = 0;           // Sort key for TreeSortMode::LastAccess
     bool loading = false;                  // children being fetched: a bar slides along the row's foot
+    bool dimmed = false;                   // label in the muted text colour (SetDimmedTextColor)
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText);
@@ -226,7 +228,7 @@ struct TreeViewColumn {
     int           minWidth   = 0;            // floor for flexible columns / resize
     float         flexWeight = 1.0f;         // relative share among flexible columns
     TextAlignment alignment  = TextAlignment::Left;
-    Color         textColor  = Color(40, 40, 40);         // default cell text colour
+    Color         textColor  = Colors::Transparent;       // Transparent => the tree's text colour (the theme's ink)
     Color         accentBackground = Colors::Transparent; // optional fill behind the cell
     int           accentPadding    = 0;      // px added around the accent fill
     bool          isTreeColumn = false;      // hosts indent/expander/icon; draws node->data.text
@@ -275,9 +277,10 @@ struct TreeColumnStyle {
 ```cpp
 auto varsTree = std::make_shared<UltraCanvasColumnsTreeView>("VarsTree", 300, 330);
 varsTree->SetColumns({
-    { "name",  "Name",  0,   0,  2.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent,  0, true  },
-    { "type",  "Type",  128, 0,  1.0f, TextAlignment::Left, Color(40, 40, 40), Color(255, 190, 130), 4, false },
-    { "value", "Value", 0,   48, 1.0f, TextAlignment::Left, Color(40, 40, 40), Colors::Transparent,  0, false },
+    { "name",  "Name",  0,   0,  2.0f, TextAlignment::Left, Colors::Transparent, Colors::Transparent,  0, true  },
+    // dark text on the light orange accent, in either look
+    { "type",  "Type",  128, 0,  1.0f, TextAlignment::Left, Color(40, 40, 40),   Color(255, 190, 130), 4, false },
+    { "value", "Value", 0,   48, 1.0f, TextAlignment::Left, Colors::Transparent, Colors::Transparent,  0, false },
 });
 varsTree->SetShowColumnHeader(true);
 
@@ -881,6 +884,7 @@ void SetFocusRingColor(const Color& color);
 void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
+void SetDimmedTextColor(const Color& color);   // a dimmed row's label; the theme's inkMuted
 void SetExpandButtonColor(const Color& color);
 void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol);
 void SetExpanderArrowColor(const Color& color);
@@ -1091,6 +1095,21 @@ treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
     // Show a context menu at event.pointerWindow
     ShowContextMenu(node, event);
 };
+```
+
+### Dimmed rows
+
+A row the tree normally leaves out but shows for now - a hidden folder the
+user went to, an entry that is only there because a search found it - can
+read as secondary with `TreeNodeData::dimmed`. Its label is drawn in the
+tree's dimmed text colour (`SetDimmedTextColor`; under a theme its muted ink,
+so it follows a switch to dark), not the text colour. A `textColor` of the
+node's own and the selection text on a selected row still take precedence.
+
+```cpp
+TreeNodeData config("/home/me/.config", ".config");
+config.dimmed = true;                      // drawn lighter than its siblings
+treeView->AddNode("/home/me", config);
 ```
 
 ### Using TreeViewBuilder
@@ -1337,6 +1356,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 | 1.2.0 | 2026-10-02 | `GetRequiredWidth` - the width the widest row on show needs |
 | 1.2.1 | 2026-10-07 | Docs: columns API (`SetColumns`, `TreeViewColumn`, `data.cells`), real constructors and builder calls |
 | 1.3.0 | 2026-10-22 | `SetExpanderStyle`: the expand button as an arrow (`TreeExpanderStyle::Chevron`), `SetExpanderArrowColor` |
+| 1.4.0 | 2026-11-16 | `TreeNodeData::dimmed` and `SetDimmedTextColor`: a row drawn in the muted text colour |
 
 ## See Also
 

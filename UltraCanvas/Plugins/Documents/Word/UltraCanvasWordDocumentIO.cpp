@@ -2,8 +2,10 @@
 // Format detection and load/save dispatch for word-processing documents.
 // The per-format readers/writers live in UltraCanvasOdtFormat.cpp,
 // UltraCanvasDocxFormat.cpp and Plugins/Documents/LaTeX/.
+// Version: 1.3.1 - A .docx is recognised by its main document part as the package's
+//                  relationships name it (word/document2.xml, say)
 // Version: 1.3.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -56,7 +58,7 @@ WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath) {
                 && mimetype.find("application/vnd.oasis.opendocument.text") != std::string::npos) {
                 return WordDocumentFormat::Odt;
             }
-            if (zip.HasEntry("word/document.xml")) {
+            if (!WordFormatInternal::FindDocxMainPart(zip).empty()) {
                 return WordDocumentFormat::Docx;
             }
             // Some producers omit the mimetype entry; fall back to content.xml

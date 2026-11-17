@@ -1,3 +1,62 @@
+#### 2026-11-16 *0.4.22*
+- **The desktop can be translated, and is, in thirty languages.** Six in
+  seven of its texts were written straight into the code - every tooltip of
+  the bars, the menus of the clock, battery, info bar, clipboard and
+  settings button, the Wi-Fi, Bluetooth, loudspeaker, clock and clipboard
+  panels, the Task Manager, the Apps window with its categories and
+  sub-kinds, the sticker board, the dialogs - so the desktop showed in
+  English whatever the language. They go through `Tr` / `TrF` / `TrN` now
+  (415 texts where the catalogue had 61), sentences that were glued from
+  fragments are whole texts with placeholders, and counted texts have their
+  plural forms.
+  - Label tables that kept their texts beside ids or icons carry `Tr`
+    literals where they are used, so the extractor sees them: the clock
+    styles, the taskbar edges (whose `Tr(choice.label)` reached no
+    catalogue), the day and month names, the board designs.
+  - The Apps window's categories and sub-kinds keep their English names for
+    sorting and tests; `AppCategoryDisplayName`, `AppSubcategoryDisplayName`
+    and `AppGroupDisplayName` (`UltraDesktopAppCategories.h`) give the
+    names it shows. `StartupProgramLabel`, `StartupProgramName` and
+    `InfoItemLabel` (`UltraDesktopSettings.h`) do the same for the programs
+    that start with the desktop and the info bar's icons.
+  - The short date on the clock takes a short month name of its own
+    instead of the first three bytes of the long one, which cut a
+    translated name in the middle of a letter.
+  - The task list recognises the clipboard panel's window by its translated
+    title too.
+- **Three menu items can be translated.** "Hide this icon" and "Info bar
+  icons..." on the info bar's right-click menu and "Switch back to the
+  Windows desktop" were written straight into the menu; they go through
+  `Tr` now and are translated in all thirty languages, in the wording
+  UOS-Settings' notes quote.
+
+#### 2026-11-15 *0.4.21*
+- **The clipboard button opens UltraClipboard.** A click on the right bar's
+  clipboard button shows the whole history in UltraClipboard. A copy already
+  running, also one started in the background, comes forward instead of a
+  second one starting. The small quick panel stays on `Super+V`, for picking
+  what to paste from any window, and on the button's right-click menu as
+  *Quick panel (Super+V)*, which replaces *Open UltraClipboard* there.
+  Without UltraClipboard beside the desktop, the button opens the quick panel
+  as before.
+
+#### 2026-11-15 *0.4.20*
+- **The Apps window keeps your place in the tiles as well.** The tree view
+  stopped jumping back to the top in 0.4.19; the tiles still did, because the
+  whole scrolling area was built again on every keystroke in the filter box,
+  every new list of applications and every application moved. The area is
+  kept now and only the tiles inside it are made again, so the view stays
+  where you left it. Switching to the tree and back, or a filter that matches
+  nothing, builds the page afresh as before.
+- **The Apps window can be tested.** It read the machine's own `.desktop`
+  files and made its own window, so nothing could drive it: `Hooks`
+  gains `applications`, a list handed to the window in place of the scan
+  (nothing is read from disk or kept between openings), `ShowApps` is public
+  beside it, and `Window()` lets a caller reach the page's elements by their
+  identifiers. `UltraDesktopAppStarterTest` uses all three to hold both views
+  to keeping the chosen category, the opened categories and the scroll
+  position across a rebuild; CI runs it on a virtual display.
+
 #### 2026-11-15 *0.4.19*
 - **The Apps window's category tree keeps its place while you type in the
   filter box.** Every keystroke - and every new list of applications, and

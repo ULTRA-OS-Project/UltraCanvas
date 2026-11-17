@@ -11,6 +11,7 @@
   - [Editable Vector Documents](#editable-vector-documents)
   - [Save Settings](#save-settings)
   - [A Drawing Saved as a Bitmap](#a-drawing-saved-as-a-bitmap)
+  - [A Video Saved in Another Type](#a-video-saved-in-another-type)
   - [Transparent Decompression](#transparent-decompression)
   - [Runtime Format Inventory](#runtime-format-inventory)
   - [A Dialog's File Types](#a-dialogs-file-types)
@@ -101,6 +102,13 @@ UltraCanvasFileLoader::OpenImage(opts, [](const FileLoadResult& r, std::shared_p
 UltraCanvasFileLoader::OpenAudio(opts, [](const FileLoadResult& r, std::shared_ptr<UCAudio> audio) {
     if (r.IsSuccess()) Play(audio);
 });
+
+// Save a recording in another audio type (WAV always; MP3 / FLAC / Ogg Vorbis /
+// Opus with their encoders; a codec plugin's too). The Save dialog's types are
+// AddSaveTypes(opts, MediaFormatCategory::Audio). The same type is copied as it is.
+std::string audioError;
+UltraCanvasFileLoader::ConvertAudioFile("talk.flac", "talk.mp3", audioError);
+// ... or a UCAudio you hold: UltraCanvasFileLoader::SaveAudio(audio, "take.wav", audioError)
 
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT;
 // a PowerPoint deck, .pptx, as an outline of its slides).
@@ -276,6 +284,47 @@ it: libvips' HEIF loader takes both file endings wherever libheif is, but
 libheif decodes a HEIC only with its HEVC plug-in (libde265) and an AVIF only
 with an AV1 one (aomdec, dav1d). The build asks libheif when its headers are
 installed; without them, the inventory goes by the loader's file endings.
+
+### A Video Saved in Another Type
+
+`ConvertVideoFile(source, target, error, progress)` writes a film in the type
+its new name ends in: the same type is the file copied as it is, another is
+decoded and encoded again, picture and sound. The core has no video encoder,
+so a type is written by the converter its codec registration carries
+(`MediaCodecRegistration::convertVideo`): an application that has VideoFX
+links `VideoFXUltraCanvasFormats` and calls `VideoFX_RegisterWithFileLoader()`
+once at start-up, which registers every container VideoFX's FFmpeg writes
+(MP4, MOV, Matroska, WebM, AVI as its encoders allow). Without a converter only
+the same type is written, and `GetVideoSaveExtensions()` is empty - offer no
+video *Save as* then. The Save dialog's types are `AddVideoSaveTypes(opts)`,
+not `AddSaveTypes(opts, MediaFormatCategory::Video)`: that one lists every
+container the build writes, a camera recording's muxers too, which need not
+be types a file can be converted to.
+
+A conversion takes as long as encoding the film does, so it runs off the UI
+thread, and `progress` (0..1, on that thread) returning false stops it. It is
+written beside the target and moved there when complete: a stopped or failed
+one leaves no half file, and keeps the file it was to replace.
+
+<!-- doc-check: void ShowProgress(double fraction); bool StopRequested(); void ShowError(const std::string& message); -->
+```cpp
+#include "VideoFXUltraCanvasFormats.h"   // link VideoFXUltraCanvasFormats
+
+VideoFX::VideoFX_RegisterWithFileLoader();   // once, at start-up
+
+FileDialogOptions save;
+save.SetDefaultFileName("holiday.webm");
+UltraCanvasFileLoader::AddVideoSaveTypes(save);   // WebM first, then MP4, MOV, ...
+
+// On a worker thread (the media viewer runs it behind a progress window):
+std::string error;
+if (!UltraCanvasFileLoader::ConvertVideoFile("holiday.mp4", "holiday.webm", error,
+        [](double fraction) { ShowProgress(fraction); return !StopRequested(); }))
+    ShowError(error);   // "Stopped" when it was stopped
+```
+
+The media viewer's *Save as* for a video is this call - see
+[UltraCanvasMediaViewer](../../UltraCanvas/UltraCanvasMediaViewer.md#saving-a-drawing-a-recording-or-a-video).
 
 ### Transparent Decompression
 Apps never need to care about what compression format they are dealing

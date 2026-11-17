@@ -64,6 +64,11 @@ static int failCount = 0;
 
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
         return 0;                                                             \
     } while (0)
@@ -361,6 +366,58 @@ int main() {
     waitForPaste(left / "Target");
     TEST("answered with Move, the file moves into the folder it was dropped on",
          Exists(left / "Target" / "e.txt") && !Exists(right / "e.txt"));
+
+    // ----- The question in its two styles -----
+    // Summary, the default: the question beside the file's icon, From and
+    // Into as breadcrumb rows, Move and Copy as two buttons. The dialog keeps
+    // the text as its message and details without showing it a second time.
+    Touch(right / "g.txt");
+    rightFiler->Refresh();
+    auto askAboutG = [&]() {
+        Frame(window, outer);
+        target = FindEntry(app, window, *leftFiler, "Target");
+        const Point2Di g = FindEntry(app, window, *rightFiler, "g.txt");
+        DragTo(app, window, g, target);
+        Send(app, window, UCEventType::MouseUp, target);
+        PumpUntil(app, window, [&]() { return UltraCanvasDialogManager::GetCurrentModalDialog() != nullptr; });
+        return UltraCanvasDialogManager::GetCurrentModalDialog();
+    };
+    TEST("the question is a summary unless the host asks for cards",
+         leftFiler->GetTransferDialogStyle() == FilerTransferDialogStyle::Summary);
+    question = askAboutG();
+    TEST("the summary puts the question and both paths into elements of its own",
+         question && !question->IsMessageVisible() &&
+         question->FindChildById("FilerOpQuestion") && question->FindChildById("FilerOpIcon") &&
+         question->FindChildById("FilerOpFromPath") && question->FindChildById("FilerOpIntoPath") &&
+         !question->FindChildById("FilerOpCards"));
+    TEST("the dialog still answers with where the file goes",
+         question && question->GetDetails().find(PathToUtf8(left / "Target")) != std::string::npos);
+    TEST("the summary offers both verbs as buttons",
+         question && question->FindChildById("DialogBtn_Custom_Move") &&
+         question->FindChildById("DialogBtn_Custom_Copy") && !question->FindChildById("FilerOpAside"));
+    Answer("Cancel");
+    PumpUntil(app, window, [&]() { return UltraCanvasDialogManager::GetCurrentModalDialog() == nullptr; });
+
+    // Cards: the file and the folder as two cards; one answer stands out
+    // and the other verb sits apart, at the left of the button bar.
+    leftFiler->SetTransferDialogStyle(FilerTransferDialogStyle::Cards);
+    question = askAboutG();
+    TEST("the cards show what is going and the folder it goes into",
+         question && !question->IsMessageVisible() &&
+         question->FindChildById("FilerOpSource") && question->FindChildById("FilerOpTarget") &&
+         !question->FindChildById("FilerOpIntoPath"));
+    auto* aside = question ? dynamic_cast<UltraCanvasButton*>(question->FindChildById("FilerOpAside"))
+                           : nullptr;
+    TEST("the cards keep the other verb apart from the answers",
+         aside && aside->GetText() == "Copy instead" &&
+         question->FindChildById("DialogBtn_Custom_Move") &&
+         !question->FindChildById("DialogBtn_Custom_Copy"));
+    if (aside && aside->onClick) aside->onClick();
+    PumpUntil(app, window, [&]() { return UltraCanvasDialogManager::GetCurrentModalDialog() == nullptr; });
+    waitForPaste(left / "Target");
+    TEST("answered with Copy instead, the file is copied and the original stays",
+         Exists(left / "Target" / "g.txt") && Exists(right / "g.txt"));
+    leftFiler->SetTransferDialogStyle(FilerTransferDialogStyle::Summary);
     leftFiler->SetDropConfirmation(FilerDropConfirmation::NeverConfirm);
 
     // ----- Leaving the other display takes its drop state away -----

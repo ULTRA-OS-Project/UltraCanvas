@@ -1,3 +1,35 @@
+#### 2026-11-16 *1.85*
+- **A tall caret beside a table at the top of a document is gone.** A
+  document that opens with a table (an ODT letter's address block) showed a
+  blinking bar the height of the whole table at its left edge; the caret now
+  starts in the table's first cell, one line high, and Ctrl+Home goes there
+  too (framework editor fix).
+- **A .docx that opened as hex opens as a document.** A file whose main part
+  is not `word/document.xml` (`word/document2.xml`, as files that went through
+  Word for the web can have) and a file written with its own XML prefixes were
+  not recognised as Word documents, so Texter showed their bytes (framework
+  Word reader fix).
+- **The Markdown bar no longer appears beside plain text after a theme
+  change.** Toggling the theme restyled the hidden bar, and the restyle showed
+  it again on any tab. The cause was in the framework's layout (see its
+  changelog); Markdown and word-processing tabs keep their bar as before.
+
+#### 2026-11-15 *1.84*
+- **A window started dark has a dark menu bar, toolbar and status bar.** The
+  dark colours were laid over the window only when the look changed, so a
+  start under the dark look (`--dark`, or a dark desktop) kept the light menu
+  bar, toolbar and status bar strip it was built with, around a dark document.
+  The status bar strip itself also had no dark colour at all; it now follows
+  the look in both directions.
+- **View > Dark Mode: Document Background.** Under the dark look, text tabs
+  can show their text on a dark page (as before), a light grey one or a white
+  one, while the window around them stays dark. Remembered in the settings
+  (`darkDocumentBackground`); the light look is unaffected.
+- **The "dictionary could not be loaded" message can be translated.** It was
+  put together from English pieces around the dictionary's name; it is now
+  two whole sentences through `TrF`, and names the dictionary still in use by
+  its own name, as the status bar does, instead of by its code.
+
 #### 2026-11-15 *1.83*
 - **The status bar says which language the document is spell checked in.**
   A new item beside the zoom shows "Spelling: English (United States)" (the

@@ -1,5 +1,9 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
+# Version: 1.5.0 - ultracanvas-module-link-probes: every module archive linked on its
+#                  own, whole, with no core, so an undeclared dependency fails here
+# Version: 1.4.9 - uc-net links UltraCanvasTextUtils, so a program that links UltraNet
+#                  without the core (ultradbadmin-relay) resolves Trim and Base64Encode
 # Version: 1.4.8 - the static link cycle between the core and UltraRTC is declared, so a static build links
 # Version: 1.4.7
 # Last Modified: 2026-11-01
@@ -948,6 +952,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartAnalysis.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartDistribution.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasControlLimits.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
         # Engine ports of the legacy charts (Docs/UltraCanvas/UltraCanvasEngineCharts.md)
@@ -969,6 +974,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasTernaryModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasHistogramChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasRidgelineModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasRidgelineChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -1935,10 +1942,12 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
 if(ULTRACANVAS_HAS_VIPS)
     # vips foreign loader and saver for QOI — consumes the codec symbols
     # above — the framework's own Windows icon (.ico) loader and saver, and
-    # its GIF saver for a libvips without one.
+    # its GIF saver for a libvips without one, and its BMP loader (stb_image;
+    # libvips has none, and ImageMagick's start-up made the first BMP slow).
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsIcoPlugin.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsBmpPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsGifPlugin.cpp
     )
     if(ULTRACANVAS_HAS_LIBJXL)
@@ -3680,6 +3689,16 @@ if(ULTRACANVAS_ENABLE_NET)
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
             $<INSTALL_INTERFACE:include/ultracanvas/include>)
     target_link_libraries(uc-net PUBLIC ${UC_CURL_LINK} Threads::Threads)
+    # UltraNetMime calls Trim() and Base64Encode(), which live in the
+    # UltraCanvasTextUtils archive. The shared core links that archive and
+    # absorbs uc-net whole, so a consumer of the core never noticed the gap --
+    # but a program that links uc-net WITHOUT the core (ultradbadmin-relay:
+    # UltraDatabase, UltraVault, UltraNet, UltraCrypt, no window, no core) got
+    # "undefined reference to UltraCanvas::Trim" at its final link. PRIVATE, so
+    # consumers link the archive without inheriting its include directories;
+    # the core's own link line already names it, and a plain archive repeated
+    # there is harmless (unlike a whole-archive one).
+    target_link_libraries(uc-net PRIVATE UltraCanvasTextUtils)
     # iconv converts mail text in any charset (ISO-2022-JP, Shift_JIS, GB18030,
     # KOI8-R, windows-125x, ...) to UTF-8. Part of the C library on glibc and
     # Android; libiconv on macOS and MSYS2 (already installed for Texter).
@@ -4551,6 +4570,94 @@ _ultracanvas_absorb_modules(
     uc-net uc-win ${_ultracanvas_optional_archives} uc-message uc-networkmonitor
     uc-database uc-vault uc-crypt uc-localisation VirtualFS)
 
+# ===== EVERY MODULE ARCHIVE LINKS ON ITS OWN (STATIC CORE) =====
+# With a STATIC core, a module's public name resolves to its archive alone, so
+# that archive has to carry its own dependencies. Nothing in an ordinary build
+# says whether it does: every application links several archives at once, and a
+# symbol one archive forgot to ask for is handed to it by another, or by the
+# core, off the same link line. The gap shows only in a program whose line is
+# short enough to miss it.
+#
+# ultradbadmin-relay was that program. uc-net had never named the
+# UltraCanvasTextUtils archive whose Trim() and Base64Encode() its UltraNetMime
+# objects call, and the relay - UltraDatabase, UltraVault, UltraNet,
+# UltraCrypt, no window, no core - failed to link with "undefined reference to
+# UltraCanvas::Trim" the day its OpenID Connect sign-in was switched on
+# (#1265). Nothing in the tree would have caught it; a clean build did, months
+# later.
+#
+# One probe program per archive does catch it: an empty main, the archive
+# forced in WHOLE, and nothing else of UltraCanvas on the line. Whole matters -
+# a plain link pulls only the objects whose symbols the program needs, which
+# for an empty main is none at all, and would prove nothing. Forced in whole,
+# every object's undefined symbols must resolve from that archive's own
+# declared dependencies, which is the property the relay needed.
+#
+# A SHARED core is deliberately different and gets no probes: there every
+# archive is absorbed into libultracanvas, a module's public name resolves to
+# that one DSO, and an archive is allowed to leave its shared home to supply
+# what it uses - uc-message, for instance, compiles UltraCanvasJSON in only for
+# a static core, precisely so the DSO stays the single home of those symbols.
+# Probing an archive on its own there would report that arrangement as a fault.
+#
+# Build them all with the ultracanvas-module-link-probes target; CI does, in
+# the static row of the Element modules workflow. They are EXCLUDE_FROM_ALL,
+# so an ordinary build does not pay for them.
+if(NOT ULTRACANVAS_BUILD_SHARED AND NOT CMAKE_VERSION VERSION_LESS 3.24)
+    set(_uc_probe_source ${CMAKE_CURRENT_BINARY_DIR}/ultracanvas-module-link-probe.cpp)
+    file(WRITE ${_uc_probe_source}
+        "// Generated by UltraCanvas/CMakeLists.txt - see \"EVERY MODULE ARCHIVE\n"
+        "// LINKS ON ITS OWN\". The program does nothing: the link is the test.\n"
+        "int main() { return 0; }\n")
+    add_custom_target(ultracanvas-module-link-probes)
+    function(_ultracanvas_module_link_probe archive)
+        if(NOT TARGET ${archive})
+            return()
+        endif()
+        get_target_property(_type ${archive} TYPE)
+        if(NOT _type STREQUAL "STATIC_LIBRARY")
+            return()
+        endif()
+        # An archive that says it depends on the core is not standalone and
+        # cannot be probed. uc-rtc is the one such case, and it is deliberate:
+        # its engine calls the device glue compiled into the core
+        # (UltraRtcInternal::OpenCamera, OpenMicrophone, OpenSpeaker -
+        # undefined in libultrartc.a, defined in the core), a cycle declared
+        # above so GNU ld's single pass resolves it. Probing it would report
+        # those three for ever, which is not news.
+        get_target_property(_archive_links ${archive} LINK_LIBRARIES)
+        if(_archive_links AND ${ULTRACANVAS_LIB_NAME} IN_LIST _archive_links)
+            message(STATUS "    ${archive} depends on the core: no link probe")
+            return()
+        endif()
+        set(_probe uc-link-probe-${archive})
+        add_executable(${_probe} EXCLUDE_FROM_ALL ${_uc_probe_source})
+        target_compile_features(${_probe} PRIVATE cxx_std_20)
+        # Named ONCE, and whole. The reference carries the archive's own
+        # declared dependencies with it, so naming it a second time plainly
+        # would only put its objects on the line twice - which under
+        # --whole-archive is "multiple definition", not a missing symbol.
+        target_link_libraries(${_probe} PRIVATE
+            "$<LINK_LIBRARY:WHOLE_ARCHIVE,${archive}>")
+        # A sibling archive's own dependencies can name this one again; whole
+        # wins, as it does for the shared core (see "MODULE HOMES").
+        set_property(TARGET ${_probe} PROPERTY
+            "LINK_LIBRARY_OVERRIDE_${archive}" WHOLE_ARCHIVE)
+        set_target_properties(${_probe} PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/link-probes)
+        add_dependencies(ultracanvas-module-link-probes ${_probe})
+    endfunction()
+
+    # Every archive the core absorbs, and the two text-utility archives -
+    # which are what uc-net was missing.
+    foreach(_archive uc-net uc-win uc-im uc-rtc uc-message uc-networkmonitor
+                     uc-database uc-vault uc-crypt uc-localisation VirtualFS
+                     UltraCanvasTextUtils UltraCanvasBase32)
+        _ultracanvas_module_link_probe(${_archive})
+    endforeach()
+    message(STATUS "  Module archive link probes - target: ultracanvas-module-link-probes")
+endif()
+
 # ===== ULTRAIM PROVIDER: CHATCUBE DIRECT =====
 # The ULTRA OS native messenger as an UltraIM provider module
 # (Plugins/UltraIM/direct/, Docs/Research/ChatCubeDirectPlan.md). Its code is
@@ -4647,6 +4754,30 @@ if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCryp
     message(STATUS "  [✓] UltraIM provider Matrix - ENABLED (end-to-end encryption: ${_ultraim_matrix_e2ee})")
 else()
     message(STATUS "  [−] UltraIM provider Matrix - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: Mastodon ----------------------------------------------
+# The direct messages of a Mastodon server over its REST API
+# (Plugins/UltraIM/mastodon/): browser sign-in (OAuth), conversations polled,
+# pictures, videos and sound, replies, edits, deletes. An archive the tests
+# link, and the module loaded from <build>/Plugins/UltraIM.
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt)
+    set(_ultraim_mastodon_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/mastodon)
+    add_library(UltraIMMastodonCore STATIC ${_ultraim_mastodon_dir}/MastodonProvider.cpp)
+    set_target_properties(UltraIMMastodonCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMMastodonCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMMastodonCore PUBLIC ${_ultraim_mastodon_dir})
+    target_link_libraries(UltraIMMastodonCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMMastodonPlugin MODULE ${_ultraim_mastodon_dir}/MastodonModule.cpp)
+    set_target_properties(UltraIMMastodonPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_mastodon"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMMastodonPlugin PRIVATE UltraIMMastodonCore)
+    message(STATUS "  [✓] UltraIM provider Mastodon - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider Mastodon - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
 # ----- UltraIM provider: Telegram ----------------------------------------------

@@ -1,7 +1,10 @@
 // Apps/UltraAIApp/UltraAITopicsPage.cpp
 // The settings window's "Model topics" page (UltraAITopicsPage.h).
+// Version: 0.1.2 - the topic table's columns fit beside its scrollbar (State was cut off)
+// Version: 0.1.1 - no default gallery address: Refresh needs a model server; a catalogue
+//                  source's models are offered for a topic once installed
 // Version: 0.1.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-17
 // Author: UltraAI Module
 
 #include "UltraAITopicsPage.h"
@@ -176,10 +179,16 @@ void UltraAITopicsPage::BuildServerRow(UltraCanvasContainer& body) {
 
 void UltraAITopicsPage::BuildTopicTable(UltraCanvasContainer& body) {
     topicTable_ = MakeTable("uai-tp-topics", kTopicRows, topicModel_);
-    topicModel_->AddColumn(ListColumnDef(Tr("Topic"), 140, TextAlignment::Left, Tr("What the model is used for")));
+    // The columns fit beside the list's own scrollbar: the table is 480 wide,
+    // and with more topics than rows (seven, in six) the bar takes 12 and
+    // the border 2. At 476 they did not, so the table scrolled sideways and
+    // State showed "Not installe". State is the one read at a glance, and
+    // has room for a longer word than the English; a name too long for its
+    // column ends in an ellipsis and is whole in the selected topic's line.
+    topicModel_->AddColumn(ListColumnDef(Tr("Topic"), 120, TextAlignment::Left, Tr("What the model is used for")));
     topicModel_->AddColumn(ListColumnDef(Tr("Service"), 76, TextAlignment::Left, Tr("The kind of model the topic needs")));
-    topicModel_->AddColumn(ListColumnDef(Tr("Model used"), 170, TextAlignment::Left, Tr("The model this computer uses for the topic")));
-    topicModel_->AddColumn(ListColumnDef(Tr("State"), 90, TextAlignment::Left, Tr("Installed, or downloaded when first used")));
+    topicModel_->AddColumn(ListColumnDef(Tr("Model used"), 154, TextAlignment::Left, Tr("The model this computer uses for the topic")));
+    topicModel_->AddColumn(ListColumnDef(Tr("State"), 100, TextAlignment::Left, Tr("Installed, or downloaded when first used")));
     topicTable_->onSelectionChanged = [this](const std::vector<int>&) { RefreshTopicControls(); };
     body.AddChild(topicTable_);
 }
@@ -359,7 +368,12 @@ void UltraAITopicsPage::RefreshTopicControls() {
                 if (m.id == ref.modelId) add(m, true);
             }
         }
-        for (const auto& m : models) add(m, false);
+        // A catalogue source lists models by the thousand: of those, the
+        // installed ones only. The Local models page is where one is found.
+        for (const auto& m : models) {
+            if (m.source == LocalModelSource::Gallery && !m.installed) continue;
+            add(m, false);
+        }
         if (!choice.modelId.empty() &&
             std::find(modelIds_.begin(), modelIds_.end(), choice.modelId) == modelIds_.end()) {
             modelDropdown_->AddItem(TrF("{0} - not available", choice.modelId), choice.modelId);
@@ -432,11 +446,19 @@ void UltraAITopicsPage::OnServerChanged() {
     s.galleryUrl = url;
     rt.SetSettings(s);
     serverInput_->SetText(url);
-    SetStatus(url.empty() ? Tr("The built-in gallery is used. Refresh to load it.") : Tr("Saved. Refresh to load the server's models."));
+    SetStatus(url.empty() ? Tr("No model server: the topics and models shipped with UltraAI are used.")
+                          : Tr("Saved. Refresh to load the server's models."));
 }
 
 void UltraAITopicsPage::OnRefreshFromServer() {
     OnServerChanged();
+    // Without a model server there is nothing to fetch (there is no default
+    // address any more), and nothing the topics could ask to be downloaded.
+    if (LocalRuntime::Instance().GetSettings().galleryUrl.empty()) {
+        SetStatus(Tr("No model server is set: the topics and models shipped with UltraAI are used. "
+                     "The Local models page downloads the wider catalogue."));
+        return;
+    }
     if (refreshing_->exchange(true)) return;
     if (refreshButton_) refreshButton_->SetDisabled(true);
     SetStatus(Tr("Fetching the models and topics from the server…"));

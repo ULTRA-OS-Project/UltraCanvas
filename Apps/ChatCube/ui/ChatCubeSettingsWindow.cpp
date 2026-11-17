@@ -14,6 +14,7 @@
 // through, ULTRA OS's own by default), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
+// Version: 0.4.3 - Mastodon in the notes on accounts, the data folder and the networks
 // Version: 0.4.2 - the look follows a change while open (OnLook): a choice on the Look page shows at once
 // Version: 0.4.1 - every text a person reads through Tr (UltraLocalisation)
 // Version: 0.4.0 - Networks > Relay: the relay server, no longer asked on the sign-in page
@@ -21,7 +22,7 @@
 // Version: 0.2.0 - Networks > Proxy: the proxy Matrix and the relay are
 //                  reached through, shared by every ULTRA OS application
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeSettingsWindow.h"
@@ -545,8 +546,8 @@ std::shared_ptr<UltraCanvasContainer> BuildAccountsPage(State* d) {
     FillAccounts(d);
 
     AddNote(parts, "cc-set-accounts-note1",
-            Tr("Signing in to Matrix or Telegram is done from the sidebar, with the Matrix and Telegram buttons "
-            "under your ChatCube ID."));
+            Tr("Signing in to Matrix, Telegram or Mastodon is done from the sidebar, with the Matrix, Telegram "
+            "and Mastodon buttons under your ChatCube ID."));
     AddNote(parts, "cc-set-accounts-note2",
             Tr("Your ChatCube ID is a key made on this computer and has no password; there is nothing to sign "
             "out of. Send the ID to the people who should reach you."));
@@ -645,7 +646,7 @@ std::shared_ptr<UltraCanvasContainer> BuildDataFolderPage(State* d) {
 
     AddNote(parts, "cc-set-data-note1",
             Tr("The data folder holds your ChatCube ID's key vault, your contacts and the history of your "
-            "conversations, the Matrix and Telegram sessions, and in cache/ the pictures and files of the "
+            "conversations, the Matrix, Telegram and Mastodon sessions, and in cache/ the pictures and files of the "
             "messages."));
     AddNote(parts, "cc-set-data-note2",
             Tr("Keep it safe: the key vault is your ChatCube ID. Copied to another computer with the folder, "
@@ -682,8 +683,8 @@ std::shared_ptr<UltraCanvasContainer> BuildAboutPage(State* d) {
             "are online, through a relay when the other person is not. There is no account and no "
             "password: your ChatCube ID is a key made on this computer."));
     AddNote(parts, "cc-set-about-note2",
-            Tr("Matrix and Telegram join the same list. Each network is an UltraIM module beside the program "
-            "(Plugins/UltraIM)."));
+            Tr("Matrix, Telegram and Mastodon join the same list. Each network is an UltraIM module beside the "
+            "program (Plugins/UltraIM)."));
     return parts.page;
 }
 
@@ -696,7 +697,7 @@ std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
     AddNote(parts, "cc-set-start-note2",
             Tr("Messages - the key that sends, and whether typing is shown, to the other side and to you."));
     AddNote(parts, "cc-set-start-note3",
-            Tr("Networks - your ChatCube ID, the Matrix and Telegram accounts and signing out of them, the "
+            Tr("Networks - your ChatCube ID, the Matrix, Telegram and Mastodon accounts and signing out of them, the "
             "people on this network, the proxy and the relay server."));
     AddNote(parts, "cc-set-start-note4",
             Tr("Extras - the folder ChatCube keeps your identity, contacts and history in, and the version."));

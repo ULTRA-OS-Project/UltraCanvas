@@ -6,9 +6,14 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.10.0 - RichTextRun::imageRotationDeg: a floating picture turned about its centre
+// Version: 1.9.0 - RichTextRun::emptyLineHeightPt; UCRichDocument::letterKerning, fontLineGap, paragraphSpacingInCells
 // Version: 1.8.0 - Pattern fills (RichShape::fillPattern, patternBackColor, PatternBit)
 // Version: 1.7.0 - Gradient fills (RichShape::gradientStops), a drawing's own size
 //                  (RichTextFrame::drawingWidthPt / drawingHeightPt)
+// Version: 1.8.0 - a section's own header and footer (RichSectionSetup::furniture,
+//                  UCRichDocument::sectionFurniture, FurnitureFor, AllFurniture) and its pages' margins
+// Version: 1.7.0 - RichTableRow::heightPt / heightExact: a table row's height as the document sets it
 // Version: 1.6.0 - Drawn shapes (RichShape, RichTextFrame::shapes)
 // Version: 1.5.0 - Text frames (RichTextRun::frameIndex, UCRichDocument::frames)
 //                  and floats placed from the page or its margins
@@ -58,6 +63,11 @@ struct RichTextRun {
     // editor's RichTextEditStyle::letterSpacing, normally the font's).
     std::optional<float> letterSpacingPt;
     bool lineBreakBefore = false;   // hard line break precedes this run (within the same paragraph)
+    // An empty line exactly this tall (points; 0 = a line of the run's font):
+    // set on a run without text that follows a line break. A table cell keeps
+    // its paragraphs as lines, and the room between two of them - a
+    // paragraph's space before and after - as such a line.
+    float emptyLineHeightPt = 0.0f;
 
     // ===== INLINE IMAGE =====
     // A run with mediaIndex >= 0 IS a picture sitting in the run of text - a
@@ -93,6 +103,9 @@ struct RichTextRun {
     RichTextAlign imageFloatAlign = RichTextAlign::Left;
     float imageOffsetXPt = 0.0f;
     float imageOffsetYPt = 0.0f;        // from the top of its paragraph
+    // A picture turned about its centre, clockwise: its size and offsets are
+    // those of the box before it is turned (Word's a:xfrm rot).
+    float imageRotationDeg = 0.0f;
     // What the offsets and the alignment count from. By default a float is
     // placed across the text column and down from its paragraph; a
     // letterhead's frames are placed from the page's edges (Page) or from
@@ -235,8 +248,21 @@ struct RichSectionSetup {
     int columns = 1;
     float columnGapPt = 36.0f;
     bool newPage = false;
+    // The section's own header and footer: an index into
+    // UCRichDocument::sectionFurniture, or -1 for the document's
+    // (pageFurniture / firstPageFurniture). A letter of several page styles -
+    // a cover without a header, pages with one - has a section each.
+    int furniture = -1;
+    // Where the section's pages put their body and furniture, when that
+    // differs from the document's page (RichPageSetup's fields of the same
+    // names, points); < 0 = the document's.
+    float marginTopPt = -1.0f, marginBottomPt = -1.0f;
+    float headerTopPt = -1.0f, footerBottomPt = -1.0f;
     bool operator==(const RichSectionSetup& other) const {
-        return columns == other.columns && columnGapPt == other.columnGapPt && newPage == other.newPage;
+        return columns == other.columns && columnGapPt == other.columnGapPt && newPage == other.newPage
+            && furniture == other.furniture && marginTopPt == other.marginTopPt
+            && marginBottomPt == other.marginBottomPt && headerTopPt == other.headerTopPt
+            && footerBottomPt == other.footerBottomPt;
     }
 };
 
@@ -299,6 +325,12 @@ struct RichTableCell {
 struct RichTableRow {
     std::vector<RichTableCell> cells;
     bool header = false;
+    // The row's height as the document sets it (points; 0 = as tall as its
+    // text): at least this tall, or - heightExact - this tall whatever its
+    // text needs. A letter laid out in a table holds its address block down
+    // the page with a tall row.
+    float heightPt = 0.0f;
+    bool heightExact = false;
 };
 
 struct RichDocBlock {
@@ -590,6 +622,15 @@ struct RichShape {
     // A radial gradient's centre, from 0 to 1 across and down the box.
     float gradientCenterX = 0.5f, gradientCenterY = 0.5f;
     bool HasGradient() const { return gradientStops.size() >= 2; }
+    // A drop shadow: the shape's outline again, moved by the offsets and
+    // filled with this colour (empty = no shadow), `shadowOpacity` of it
+    // showing (0..1), its edge softened over `shadowBlurPt`. A filled shape
+    // throws one; a line does not.
+    std::string shadowColor;
+    float shadowOffsetXPt = 0.0f, shadowOffsetYPt = 0.0f;
+    float shadowOpacity = 1.0f;
+    float shadowBlurPt = 0.0f;
+    bool HasShadow() const { return !shadowColor.empty(); }
     std::string lineColor;                // "#RRGGBB"; empty = no outline
     float lineWidthPt = 0.75f;
     enum class Dash { Solid, Dashed, Dotted };
@@ -754,6 +795,14 @@ struct RichPageFurniture {
     bool IsEmpty() const { return header.empty() && footer.empty(); }
 };
 
+// A section's own header and footer (RichSectionSetup::furniture): those of
+// its pages, and of its first page when that differs.
+struct RichSectionFurniture {
+    RichPageFurniture pages;
+    RichPageFurniture firstPage;
+    bool firstPageDiffers = false;
+};
+
 // Options for UCRichDocument::ToHTML.
 struct RichDocumentHTMLOptions {
     // The src a picture gets, given its index into UCRichDocument::media.
@@ -781,6 +830,19 @@ public:
     // 0 = the view's default. ODF: style:tab-stop-distance; Word: defaultTabStop.
     float defaultTabStopPt = 0.0f;
     RichPageSetup page;
+    // Whether letters are pair-kerned ("AV" set closer). A view kerns unless
+    // the document says not to: Word sets text unkerned unless kerning is
+    // turned on (w:kern), and its files say so (ODF style:letter-kerning) -
+    // kerned, their lines come out a little shorter and break elsewhere.
+    bool letterKerning = true;
+    // Whether lines are a font's full height apart - its ascent and descent
+    // and the line gap ("external leading") its designer gave it - as Word
+    // and Writer set them. false: ascent and descent only, as documents from
+    // older Writer versions keep (ODF setting AddExternalLeading).
+    bool fontLineGap = true;
+    // Whether a paragraph's space before and after counts inside a table
+    // cell (ODF setting AddParaSpacingToTableCells; Word always counts it).
+    bool paragraphSpacingInCells = true;
     // The first section's setup (until a block with sectionStart).
     RichSectionSetup firstSection;
     // The setup of the section block `index` is in.
@@ -794,6 +856,38 @@ public:
     bool firstPageDiffers = false;
     const RichPageFurniture& FurnitureForPage(int pageIndex) const {
         return (firstPageDiffers && pageIndex == 0) ? firstPageFurniture : pageFurniture;
+    }
+    // The headers and footers of sections that have their own
+    // (RichSectionSetup::furniture indexes this).
+    std::vector<RichSectionFurniture> sectionFurniture;
+    // The header and footer of a page of `section`: the section's own where
+    // it has some - its first page's on `firstPageOfSection` - else the
+    // document's, as FurnitureForPage(pageIndex) gives them.
+    const RichPageFurniture& FurnitureFor(const RichSectionSetup& section, bool firstPageOfSection,
+                                          int pageIndex) const {
+        if (section.furniture < 0 || section.furniture >= static_cast<int>(sectionFurniture.size())) {
+            return FurnitureForPage(pageIndex);
+        }
+        const RichSectionFurniture& own = sectionFurniture[static_cast<size_t>(section.furniture)];
+        return (own.firstPageDiffers && firstPageOfSection) ? own.firstPage : own.pages;
+    }
+    // Every header and footer the document has: its own two and each
+    // section's (for whatever walks all of a document's text).
+    std::vector<RichPageFurniture*> AllFurniture() {
+        std::vector<RichPageFurniture*> all{&pageFurniture, &firstPageFurniture};
+        for (RichSectionFurniture& own : sectionFurniture) {
+            all.push_back(&own.pages);
+            all.push_back(&own.firstPage);
+        }
+        return all;
+    }
+    std::vector<const RichPageFurniture*> AllFurniture() const {
+        std::vector<const RichPageFurniture*> all{&pageFurniture, &firstPageFurniture};
+        for (const RichSectionFurniture& own : sectionFurniture) {
+            all.push_back(&own.pages);
+            all.push_back(&own.firstPage);
+        }
+        return all;
     }
 
     bool IsEmpty() const { return blocks.empty(); }

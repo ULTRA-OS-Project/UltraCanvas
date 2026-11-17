@@ -44,10 +44,13 @@ with their status, edits the working copies, merges the sets, undoes,
 saves and exports. A test drives it on a folder of its own; a headless tool
 could too.
 
-`UltraCanvasLocalisationEditor` is the element over it: a toolbar (the
-application, the language, the comparison language, the search, the status
-filter, the *Sets...* picker, the two switches, Undo, Draft, Export, Save), a
-columns tree view, the edit row under it and a status line. It derives from
+`UltraCanvasLocalisationEditor` is the element over it: four rows of
+controls - the application and the language; the search, the status filter
+and the comparison language; the *Sets...* picker and the two switches; Undo,
+Draft, Export and Save to the right - then a columns tree view, the edit row
+under it and a status line. The rows are kept short so that each fits a
+narrow page (a settings page leaves the editor about 620 px): no control
+loses its label to another, and the search field is the one that gives way. It derives from
 `UltraCanvasContainer` and lays itself out with the CSS flex layout, so it
 fills whatever it is put in.
 
@@ -113,6 +116,15 @@ shared sets* holds what the bases and Standard carry that the application
 does not use. The search field matches the key, the texts and the compared
 text; the *Show* list filters by status (untranslated, machine drafts,
 overrides, collisions between bases, changed since the shipped file).
+
+The marks follow the look. In a light one a text from a set that does not
+answer is grey, an untranslated row red and a changed one dark green; in a
+dark one they are the theme's muted ink, its danger colour and a light
+green, and the status line is the muted ink. A theme can name its own as
+the element roles `localisation-editor.muted`, `.untranslated`, `.changed`
+and `.status`. When the look changes while the editor is open, the rows are
+filled again in the new colours. Every other cell is the grid's text colour
+(the theme's ink).
 
 ### Editing
 

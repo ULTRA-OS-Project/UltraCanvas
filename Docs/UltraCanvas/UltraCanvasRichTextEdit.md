@@ -585,12 +585,27 @@ says:
 | `TopAndBottom` (or a centred `Square`) | stops above it and resumes below |
 | `BehindText` / `InFrontOfText` | ignores it; it is drawn under / over the text |
 
+Text that stops above a picture goes on right below it, with no distance of
+its own, and a paragraph whose first line does not fit above the picture
+starts below it. Where nothing floats - in a text frame, in a table cell -
+such a picture stands on a line of its own, at the side or in the middle it
+is aligned to, with the paragraph's words below it; a paragraph of nothing
+else keeps its empty line under the picture.
+
 DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
 offset from the paragraph) and ODT frames anchored to a paragraph or character
 (`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
 write back out; HTML output floats them with CSS. A floating picture is
 selected, resized and described like any other. In a table cell it stays in
 the line.
+
+The offsets may be negative: a banner anchored in a page's first paragraph
+starts above it, at the sheet's top edge, and left of the text in the margin.
+A picture placed from the page (`floatHorizontalFrom` `Page`) keeps its size
+when it is wider than the column - a banner across the whole sheet - and in
+page view every floating object is cut at the edges of its paragraph's page,
+so one taller or wider than the sheet does not show on the next page or on
+the desk.
 
 **In a header or footer** a floating picture or frame floats too: on every
 page it is placed from that page (or from its header paragraph), drawn with
@@ -608,6 +623,39 @@ there and continues the paragraph below it. (Such a paragraph is laid out in
 two parts joined into one layout, so the caret, clicks and selection treat
 it as one.) A paragraph that would be left too narrow beside a picture
 starts below it instead.
+
+**In a table cell.** A picture, frame or drawing the text ignores (`BehindText`,
+`InFrontOfText`) floats from its cell: across from the left edge of the
+cell's text, down from the line it is anchored in, and over the rest of the
+table if it is bigger than the cell - a card's background picture, anchored in
+the first cell, lies under the whole card. It takes no room, and it is drawn
+but not picked up, moved or resized from the page. Any other frame or drawing
+in a cell stands in the cell's line, as wide and tall as it says (a frame at
+least as tall as its words; a drawing with room for its outline), with the
+line's descent under it - a photo drawn as the fill of a shape. (Square and
+top-and-bottom *pictures* in a cell stay in the line as before.)
+
+**Turned.** `RichTextRun::imageRotationDeg` turns a floating picture clockwise
+about its centre; its size and offsets are those of the box before the turn
+(Word's `a:xfrm rot`, ODF's `draw:transform`), so a 150 x 389 pt picture
+turned three quarters covers 389 x 150 pt round the same centre.
+
+```cpp
+RichTextRun banner;
+banner.text = RichTextRun::kObjectReplacement;
+banner.mediaIndex = document->AddMedia("banner.jpg", "image/jpeg", bytes);
+banner.imageWidthPt = 150.0f;                       // before the turn
+banner.imageHeightPt = 389.0f;
+banner.imageWrap = RichTextRun::ImageWrap::BehindText;
+banner.imageFloatAlign = RichTextAlign::Default;    // at imageOffsetXPt
+banner.imageOffsetXPt = 113.0f;
+banner.imageOffsetYPt = -118.0f;
+banner.imageRotationDeg = 270.0f;                   // lies on its side
+```
+
+A picture or drawn shape standing in a line makes that line as tall as it is
+and keeps the line's descent under it, with words beside it or alone in its
+paragraph.
 
 **Placed from the page.** By default a float counts across from the text
 column and down from its paragraph. `floatHorizontalFrom` and
@@ -1163,7 +1211,26 @@ sized for the page's column fills it. Blocks go onto pages in order, and a
 page break starts a new one. A paragraph that does not fit in what is left of
 a page continues on the next, broken between lines with widow and orphan
 control (at least two lines stay together at the foot of one page and the
-top of the next; a paragraph of three lines or fewer moves whole). A table
+top of the next; a paragraph of three lines or fewer moves whole). A section may have a header and footer of its own
+(`RichSectionSetup::furniture`, an index into
+`UCRichDocument::sectionFurniture`; -1 = the document's) and its own room
+above and below the text (`marginTopPt`, `marginBottomPt`, `headerTopPt`,
+`footerBottomPt`; < 0 = the document's page): each page is framed by the
+section it begins in, the section's first page with its first-page header
+where it has one, and a double-click on a header edits the one that page
+shows. ODF master pages and Word sections with their own header references
+read into this and write back out. A row
+is as tall as its text, or as the document says (`RichTableRow::heightPt`: at
+least that, or exactly that with `heightExact` - Word's `w:trHeight`, ODF's
+`style:min-row-height` / `style:row-height`, a .doc's `sprmTDyaRowHeight`), so
+a letter laid out in a table keeps its address block where it was put. A
+cell's lines are its paragraphs, empty ones included, and the room between two
+of them (the one's space after and the other's before) is an empty line of
+exactly that height (`RichTextRun::emptyLineHeightPt`); above the first and
+below the last it is part of the cell's padding. Lines are a font's own
+height apart, its line gap included, and letters are pair-kerned - unless the
+document says otherwise (`UCRichDocument::fontLineGap`, `letterKerning`:
+Word's files are unkerned, older Writer files have no line gap). A table
 continues between rows - never through a cell spanning rows - and its
 leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
 ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at

@@ -18,13 +18,17 @@
 // them - what a list of every installed font needs - and Return still chooses
 // (Linux reports Return with "\r" as its text, which is not a letter).
 //
+// The focus outline: border and an inner line in focusBorderColor while the
+// dropdown is focused and closed, read back from the window's pixels.
+//
 // Every event goes through the application's own dispatch. Opens a real
 // window, so it runs under Xvfb (xvfb-run -a) and skips itself without a
-// DISPLAY.
+// DISPLAY - unless ULTRACANVAS_TEST_DISPLAY_REQUIRED=1, where that fails.
+// Version: 1.3.0 - the focus outline on real pixels; a skip fails under ULTRACANVAS_TEST_DISPLAY_REQUIRED
 // Version: 1.2.0 - type-ahead, through the focused dropdown and through its open list
 // Version: 1.1.0 - the dropdown takes the keyboard focus: Tab, a click, Down / Space
 // Version: 1.0.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -53,8 +57,14 @@ static int failCount = 0;
         testCount++;                                                          \
     } while (0)
 
+// ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (CI's virtual-display step) makes a
+// skip a failure: there it would pass for a run.
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                   \
+            std::cerr << "FAIL: a display was required, and " << reason << std::endl; \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
         return 0;                                                             \
     } while (0)
@@ -286,6 +296,45 @@ int main() {
     Key(app, window, UCKeys::Space, " ");
     TEST("Space still opens the focused dropdown", dropdown->IsDropdownOpen());
     Key(app, window, UCKeys::Escape);
+
+    // ----- The focus outline, on real pixels -----
+    // While the dropdown holds the focus and its list is closed, its border
+    // and a line one pixel inside it take focusBorderColor; open, or once the
+    // focus leaves, the border is borderColor again. Looked for along the
+    // button's edges only (DisplayTest::RingSides): the label sits inside.
+    {
+        const Color outline(255, 0, 255);
+        const Color border(180, 180, 180);
+        DropdownStyle look = dropdown->GetStyle();
+        look.focusBorderColor = outline;
+        look.borderColor = border;
+        dropdown->SetStyle(look);
+        const Rect2Di edges(20, 20, 120, 24);   // the button, as created above
+
+        TEST("the dropdown is focused and closed before the outline checks",
+             dropdown->IsFocused() && !dropdown->IsDropdownOpen());
+        DisplayTest::Frame(window, {dropdown, button});
+        TEST("focused, the dropdown shows the focus outline on all four sides",
+             DisplayTest::RingSides(window, edges, outline) == 4);
+        TEST("focused, the plain border is not drawn",
+             DisplayTest::RingSides(window, edges, border) == 0);
+
+        Key(app, window, UCKeys::Space, " ");
+        DisplayTest::Frame(window, {dropdown, button});
+        TEST("open, the outline gives way to the list",
+             dropdown->IsDropdownOpen() && DisplayTest::RingSides(window, edges, outline) == 0);
+        Key(app, window, UCKeys::Escape);
+        DisplayTest::Frame(window, {dropdown, button});
+        TEST("closed again, the outline is back",
+             !dropdown->IsDropdownOpen() && DisplayTest::RingSides(window, edges, outline) == 4);
+
+        Key(app, window, UCKeys::Tab);
+        DisplayTest::Frame(window, {dropdown, button});
+        TEST("Tab takes the focus to the button", button->IsFocused() && !dropdown->IsFocused());
+        TEST("unfocused, the outline is gone", DisplayTest::RingSides(window, edges, outline) == 0);
+        TEST("and the plain border is back on all four sides",
+             DisplayTest::RingSides(window, edges, border) == 4);
+    }
 
     std::cerr << "========================================" << std::endl;
     std::cerr << "Tests: " << testCount << ", failed: " << failCount << std::endl;

@@ -5539,6 +5539,337 @@ namespace UltraCanvas {
         return size + ")";
     }
 
+    namespace {
+        // ===== THE MOVE / COPY QUESTION'S ELEMENTS =====
+        // An entry's icon as the file display draws it - thumbnail or type
+        // icon, shortcut arrow and padlock included - as an element a dialog
+        // can hold.
+        // ui-reuse-exempt: the picture is the file display's own drawing of the entry (DrawEntryIcon)
+        class FilerEntryIconElement : public UltraCanvasUIElement {
+        public:
+            FilerEntry entry;
+            std::function<void(IRenderContext*, const FilerEntry&, const Rect2Di&)> drawIcon;
+
+            FilerEntryIconElement(const std::string& id, float side)
+                    : UltraCanvasUIElement(id, side, side) {
+                layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            }
+            void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+                if (!IsVisible()) return;
+                UltraCanvasUIElement::Render(ctx, dirtyRect);
+                if (!drawIcon) return;
+                const Rect2Df b = GetLocalBounds();
+                ctx->PushState();
+                drawIcon(ctx, entry, Rect2Di(static_cast<int>(b.x), static_cast<int>(b.y),
+                                             static_cast<int>(b.width), static_cast<int>(b.height)));
+                ctx->PopState();
+            }
+        };
+
+        // Text as Pango markup takes it.
+        std::string EscapeTransferMarkup(const std::string& text) {
+            std::string out;
+            out.reserve(text.size());
+            for (char c : text) {
+                if (c == '&') out += "&amp;";
+                else if (c == '<') out += "&lt;";
+                else if (c == '>') out += "&gt;";
+                else out += c;
+            }
+            return out;
+        }
+
+        // The folders of a path, outermost first: "C:", "Projekte", "Charts".
+        std::vector<std::string> PathCrumbs(const std::string& path) {
+            std::vector<std::string> crumbs;
+            if (!path.empty() && path.front() == '/') crumbs.emplace_back("/");
+            std::string part;
+            for (char c : path) {
+                if (c == '/' || c == '\\') {
+                    if (!part.empty()) crumbs.push_back(part);
+                    part.clear();
+                } else {
+                    part += c;
+                }
+            }
+            if (!part.empty()) crumbs.push_back(part);
+            return crumbs;
+        }
+
+        // How many characters a UTF-8 text has.
+        size_t CrumbLength(const std::string& text) {
+            size_t n = 0;
+            for (unsigned char c : text) if ((c & 0xC0) != 0x80) ++n;
+            return n;
+        }
+
+        // A path as one line of breadcrumbs: the folders leading up to the
+        // last one in `quiet`, the last one bold - it is the one a reader
+        // looks for. Past `budget` characters the middle folders give way to
+        // an ellipsis; the drive and the folders nearest the end stay.
+        std::string CrumbMarkup(const std::string& path, const Color& quiet, size_t budget,
+                                const std::string& caption = std::string()) {
+            static const std::string kSeparator = " \xE2\x80\xBA ";   // a single right angle quote
+            std::vector<std::string> crumbs = PathCrumbs(path);
+            const std::string lead0 = caption.empty() ? std::string() : caption + " ";
+            if (crumbs.empty())
+                return "<span foreground=\"" + quiet.ToHexString() + "\">"
+                     + EscapeTransferMarkup(lead0 + path) + "</span>";
+            const std::string last = crumbs.back();
+            crumbs.pop_back();
+            size_t used = CrumbLength(lead0) + CrumbLength(last);
+            size_t firstKept = crumbs.size();
+            while (firstKept > 0 && used + CrumbLength(crumbs[firstKept - 1]) + 3 <= budget) {
+                used += CrumbLength(crumbs[firstKept - 1]) + 3;
+                --firstKept;
+            }
+            if (firstKept == 1) firstKept = 0;   // an ellipsis for one folder saves nothing
+            std::string lead = lead0;
+            if (firstKept > 0) lead += crumbs.front() + kSeparator + "\xE2\x80\xA6" + kSeparator;
+            for (size_t i = firstKept; i < crumbs.size(); ++i) lead += crumbs[i] + kSeparator;
+            return "<span foreground=\"" + quiet.ToHexString() + "\">" + EscapeTransferMarkup(lead)
+                 + "</span><b>" + EscapeTransferMarkup(last) + "</b>";
+        }
+
+        // `t` of the way from `a` to `b`.
+        Color MixColors(const Color& a, const Color& b, float t) {
+            auto mix = [t](float x, float y) {
+                return static_cast<uint8_t>(std::lround(x + (y - x) * t));
+            };
+            return Color(mix(a.r, b.r), mix(a.g, b.g), mix(a.b, b.b), 255);
+        }
+
+        std::shared_ptr<UltraCanvasLabel> TransferLabel(const std::string& id, float height,
+                                                        const std::string& text, float fontSize,
+                                                        const Color& color) {
+            auto label = std::make_shared<UltraCanvasLabel>(id, 0.0f, height);
+            label->SetText(text);
+            label->SetFontSize(fontSize);
+            label->SetTextColor(color);
+            label->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+            label->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            return label;
+        }
+
+        // The question's own line: bold, wrapped onto a second line when the
+        // names in it are long.
+        std::shared_ptr<UltraCanvasLabel> TransferQuestionLabel(const std::string& question,
+                                                                float fontSize, const Color& color,
+                                                                size_t charsPerLine) {
+            const float line = std::ceil(fontSize * 1.6f);
+            const bool two = CrumbLength(question) > charsPerLine;
+            auto label = TransferLabel("FilerOpQuestion", two ? 2.0f * line : line, question,
+                                       fontSize + 1.0f, color);
+            label->SetFontWeight(FontWeight::Bold);
+            label->SetWrap(TextWrap::WrapWord);
+            label->SetAlignment(TextAlignment::Left,
+                                two ? VerticalAlignment::Top : VerticalAlignment::Middle);
+            return label;
+        }
+
+        // What is going, under its name: "JPEG Image · 47.1 KB".
+        std::string TransferSubLine(const std::vector<FilerEntry>& entries,
+                                    const std::string& size) {
+            if (entries.size() == 1 && !entries.front().typeName.empty() && !size.empty())
+                return entries.front().typeName + " \xC2\xB7 " + size;
+            return entries.size() == 1 && size.empty() ? entries.front().typeName : size;
+        }
+    }
+
+    void UltraCanvasFilerWidget::BuildTransferSummary(OperationDialogSpec& spec,
+                                                      const std::vector<FilerEntry>& entries,
+                                                      const std::string& from,
+                                                      const std::string& destDir) {
+        const float font = style.fontSize > 0.0f ? style.fontSize : 12.0f;
+        const float small = style.smallFontSize > 0.0f ? style.smallFontSize : 11.0f;
+        const Color quiet = MixColors(style.textColor, style.backgroundColor, 0.35f);
+
+        // ----- the icon, the question, type and size -----
+        auto question = TransferQuestionLabel(spec.question, font, style.textColor,
+                                              entries.empty() ? 62 : 54);
+        auto sub = TransferLabel("FilerOpSubLine", std::ceil(small * 1.6f),
+                                 TransferSubLine(entries, CountedSizeFact(entries)), small, quiet);
+        auto words = std::make_shared<UltraCanvasContainer>("FilerOpWords");
+        words->layout.SetFlexColumn().SetFlexGap(2.0f)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        words->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        words->AddChild(question);
+        words->AddChild(sub);
+        const float wordsHeight = question->GetHeight() + 2.0f + sub->GetHeight();
+        words->size.height = CSSLayout::Dimension::Px(wordsHeight);
+
+        constexpr float kIcon = 40.0f;
+        auto head = std::make_shared<UltraCanvasContainer>(
+                "FilerOpHead", 0.0f, std::max(kIcon, wordsHeight));
+        head->layout.SetFlexRow().SetFlexGap(12.0f)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        head->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        if (!entries.empty()) {
+            auto icon = std::make_shared<FilerEntryIconElement>("FilerOpIcon", kIcon);
+            icon->entry = entries.front();
+            icon->drawIcon = [this](IRenderContext* ctx, const FilerEntry& e, const Rect2Di& r) {
+                DrawEntryIcon(ctx, e, r);
+            };
+            head->AddChild(icon);
+        }
+        head->AddChild(words);
+        spec.content.push_back(head);
+
+        // ----- From and Into, as breadcrumbs on a quiet ground -----
+        const std::string fromCaption = Tr("From:"), intoCaption = Tr("Into:");
+        const float captionWidth = 10.0f + 0.6f * small * static_cast<float>(
+                std::max(CrumbLength(fromCaption), CrumbLength(intoCaption)));
+        const float rowHeight = std::ceil(font * 1.7f);
+        auto row = [&](const std::string& id, const std::string& caption,
+                       const std::string& markup) {
+            auto line = std::make_shared<UltraCanvasContainer>(id, 0.0f, rowHeight);
+            line->layout.SetFlexRow().SetFlexGap(8.0f)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            line->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            auto name = std::make_shared<UltraCanvasLabel>(id + "Caption", captionWidth, rowHeight,
+                                                          caption);
+            name->SetFontSize(small);
+            name->SetTextColor(quiet);
+            name->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            auto path = std::make_shared<UltraCanvasLabel>(id + "Path", 0.0f, rowHeight);
+            path->SetTextIsMarkup(true);
+            path->SetText(markup);
+            path->SetFontSize(font);
+            path->SetTextColor(style.textColor);
+            path->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            line->AddChild(name);
+            line->AddChild(path);
+            return line;
+        };
+        constexpr size_t kCrumbBudget = 54;
+        auto places = std::make_shared<UltraCanvasContainer>(
+                "FilerOpPlaces", 0.0f, 2.0f * rowHeight + 6.0f + 20.0f);
+        places->SetBackgroundColor(MixColors(style.backgroundColor, style.textColor, 0.05f));
+        places->SetBorderRadius(6.0f);
+        places->SetPadding(10.0f, 12.0f);
+        places->layout.SetFlexColumn().SetFlexGap(6.0f)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        places->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        places->AddChild(row("FilerOpFrom", fromCaption,
+                from.empty() ? EscapeTransferMarkup(Tr("several folders"))
+                             : CrumbMarkup(from, quiet, kCrumbBudget)));
+        places->AddChild(row("FilerOpInto", intoCaption,
+                             CrumbMarkup(destDir, quiet, kCrumbBudget)));
+        spec.content.push_back(places);
+
+        // The size of a folder is still being counted when the dialog opens.
+        spec.liveContent = [this, sub, entries]() {
+            const std::string now = TransferSubLine(entries, CountedSizeFact(entries));
+            if (now != sub->GetText()) sub->SetText(now);
+        };
+    }
+
+    void UltraCanvasFilerWidget::BuildTransferCards(OperationDialogSpec& spec,
+                                                    const std::vector<FilerEntry>& entries,
+                                                    const std::string& from,
+                                                    const std::string& destDir) {
+        const float font = style.fontSize > 0.0f ? style.fontSize : 12.0f;
+        const float small = style.smallFontSize > 0.0f ? style.smallFontSize : 11.0f;
+        const Color quiet = MixColors(style.textColor, style.backgroundColor, 0.35f);
+        const Color edge = MixColors(style.backgroundColor, style.textColor, 0.22f);
+        const Color accent = MixColors(style.selectionColor, style.textColor, 0.45f);
+
+        spec.content.push_back(TransferQuestionLabel(spec.question, font, style.textColor, 62));
+
+        // ----- what is going -> where it goes -----
+        constexpr float kIcon = 44.0f;
+        const float nameHeight = std::ceil(font * 1.6f), subHeight = std::ceil(small * 1.6f);
+        const float cardHeight = 12.0f + kIcon + 6.0f + nameHeight + 2.0f + subHeight + 12.0f;
+        std::shared_ptr<UltraCanvasLabel> sizeLine;
+        auto card = [&](const std::string& id, const FilerEntry& pictured,
+                        const std::string& name, const std::string& under, bool target) {
+            auto box = std::make_shared<UltraCanvasContainer>(id, 0.0f, cardHeight);
+            box->SetBorders(1.0f, target ? accent : edge, 6.0f);
+            if (target)
+                box->SetBackgroundColor(MixColors(style.backgroundColor, style.selectionColor, 0.45f));
+            box->SetPadding(12.0f, 10.0f);
+            box->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            box->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
+            auto icon = std::make_shared<FilerEntryIconElement>(id + "Icon", kIcon);
+            icon->entry = pictured;
+            icon->drawIcon = [this](IRenderContext* ctx, const FilerEntry& e, const Rect2Di& r) {
+                DrawEntryIcon(ctx, e, r);
+            };
+            icon->SetMargin(0, 0, 6, 0);
+            auto title = TransferLabel(id + "Name", nameHeight, name, font, style.textColor);
+            title->SetFontWeight(FontWeight::Bold);
+            title->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+            title->SetMargin(0, 0, 2, 0);
+            auto line = TransferLabel(id + "Sub", subHeight, under, small, quiet);
+            line->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+            box->AddChild(icon);
+            box->AddChild(title);
+            box->AddChild(line);
+            if (!target) sizeLine = line;
+            return box;
+        };
+
+        auto cards = std::make_shared<UltraCanvasContainer>("FilerOpCards", 0.0f, cardHeight);
+        cards->layout.SetFlexRow().SetFlexGap(8.0f)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        cards->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        const fs::path destPath = PathFromUtf8(destDir);
+        const std::string destName = PathToUtf8(destPath.filename());
+        const std::string destParent = PathToUtf8(destPath.parent_path());
+        const std::string destParentName = PathToUtf8(destPath.parent_path().filename());
+        if (!entries.empty()) {
+            const std::string name = entries.size() == 1
+                    ? RepairLegacyEncodedName(entries.front().name)
+                    : TrN("{n} item", "{n} items", static_cast<long long>(entries.size()));
+            cards->AddChild(card("FilerOpSource", entries.front(), name,
+                                 TransferSubLine(entries, CountedSizeFact(entries)), false));
+            auto arrow = std::make_shared<UltraCanvasLabel>("FilerOpArrow", 28.0f, 28.0f,
+                                                            "\xE2\x86\x92");
+            arrow->SetFontSize(font + 8.0f);
+            arrow->SetTextColor(accent);
+            arrow->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+            arrow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            cards->AddChild(arrow);
+        }
+        const bool intoSubfolder = !from.empty() && destParent == from && !destParentName.empty();
+        cards->AddChild(card("FilerOpTarget", TypeEntryFor(destDir, true),
+                             destName.empty() ? destDir : destName,
+                             intoSubfolder ? TrF("Subfolder of \"{0}\"", destParentName)
+                                           : destParentName,
+                             true));
+        spec.content.push_back(cards);
+
+        // ----- where that is: one line when the folder is a subfolder of
+        // the one the entries are in, From and Into otherwise -----
+        constexpr size_t kLineBudget = 66;
+        auto place = [&](const std::string& id, const std::string& caption,
+                         const std::string& path) {
+            auto line = std::make_shared<UltraCanvasLabel>(id, 0.0f, std::ceil(small * 1.6f));
+            line->SetTextIsMarkup(true);
+            line->SetText(path.empty()
+                    ? EscapeTransferMarkup(caption + " " + Tr("several folders"))
+                    : CrumbMarkup(path, quiet, kLineBudget, caption));
+            line->SetFontSize(small);
+            line->SetTextColor(style.textColor);
+            line->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            spec.content.push_back(line);
+        };
+        place("FilerOpFrom", Tr("From:"), from);
+        if (!intoSubfolder) place("FilerOpInto", Tr("Into:"), destDir);
+
+        if (sizeLine) {
+            spec.liveContent = [this, sizeLine, entries]() {
+                const std::string now = TransferSubLine(entries, CountedSizeFact(entries));
+                if (now != sizeLine->GetText()) sizeLine->SetText(now);
+            };
+        }
+    }
+
     void UltraCanvasFilerWidget::ConfirmTransfer(const std::vector<std::string>& sources,
                                                  const std::string& destDir,
                                                  bool copyRequested,
@@ -5598,7 +5929,20 @@ namespace UltraCanvas {
         spec.buttons = {{verb, DialogButtonRole::Default},
                         {other, DialogButtonRole::Normal},
                         {Tr("Cancel"), DialogButtonRole::Cancel}};
-        spec.width = entries.size() > 1 ? 600 : 520;
+        spec.width = entries.size() > 1 ? 600 : 540;
+        // The question and its facts as elements, in the style the host
+        // chose. The dialog keeps both as its message and details all the
+        // same - what it says, to anything that asks it - without showing
+        // them a second time.
+        spec.messageAsElements = true;
+        if (transferDialogStyle == FilerTransferDialogStyle::Cards) {
+            BuildTransferCards(spec, entries, from, destDir);
+            // One answer stands out; the other verb sits apart from it.
+            spec.buttons[1].label = copyRequested ? Tr("Move instead") : Tr("Copy instead");
+            spec.buttons[1].aside = true;
+        } else {
+            BuildTransferSummary(spec, entries, from, destDir);
+        }
 
         const bool shown = ShowOperationDialog(spec,
                 [proceed, onCancel, copyRequested](size_t button, bool) {
@@ -5913,6 +6257,10 @@ namespace UltraCanvas {
         dialog->SetStyle(fonts);
         const float smallFont = fonts.detailsFontSize;
 
+        if (spec.messageAsElements) dialog->SetMessageVisible(false);
+        for (const auto& element : spec.content) {
+            if (element) dialog->AddDialogElement(element);
+        }
         if (!spec.listCaption.empty()) {
             auto caption = std::make_shared<UltraCanvasLabel>("FilerOpListCaption", 0, 0, 0, 18);
             caption->SetText(spec.listCaption);
@@ -5965,11 +6313,33 @@ namespace UltraCanvas {
             const OperationDialogButton& b = spec.buttons[i];
             const DialogResult result = b.role == DialogButtonRole::Cancel
                     ? DialogResult::Cancel : DialogResult::Yes;
+            if (b.aside) {
+                // Apart from the answers, and quieter than them: no frame
+                // until the pointer is over it.
+                const float width = 24.0f + 0.6f * fonts.buttonFontSize
+                                          * static_cast<float>(b.label.size());
+                auto aside = std::make_shared<UltraCanvasButton>(
+                        "FilerOpAside", 0, 0, static_cast<long>(width),
+                        static_cast<long>(fonts.buttonHeight));
+                aside->SetText(b.label);
+                ButtonStyle quiet = aside->GetStyle();
+                quiet.normalColor = Color(0, 0, 0, 0);
+                quiet.borderWidth = 0.0f;
+                aside->SetStyle(quiet);
+                if (fonts.buttonFontSize > 0.0f) aside->SetFontSize(fonts.buttonFontSize);
+                aside->onClick = [chosen, i, result, dialog = dialog.get()]() {
+                    *chosen = i;
+                    dialog->CloseDialog(result);
+                };
+                dialog->AddFooterElement(aside);
+                continue;
+            }
             dialog->AddCustomButton(b.label, result, b.role, [chosen, i]() { *chosen = i; });
         }
-        if (spec.liveFacts) {
+        if (spec.liveFacts || spec.liveContent) {
             liveFactsDialog = dialog;
             liveFactsSource = spec.liveFacts;
+            liveContentSource = spec.liveContent;
         }
         auto alive = thumbAlive;
         dialog->onResult = [this, alive, chosen, applyToAll, onAnswer, onDismiss](DialogResult) {
@@ -5977,6 +6347,7 @@ namespace UltraCanvas {
             if (alive->load()) {
                 liveFactsDialog.reset();
                 liveFactsSource = nullptr;
+                liveContentSource = nullptr;
             }
             if (chosen->has_value()) {
                 if (onAnswer) onAnswer(**chosen, *applyToAll);
@@ -5989,12 +6360,15 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::RefreshLiveDialogFacts() {
-        if (!liveFactsSource) return;
+        if (!liveFactsSource && !liveContentSource) return;
         auto dialog = liveFactsDialog.lock();
         if (!dialog) {
             liveFactsSource = nullptr;
+            liveContentSource = nullptr;
             return;
         }
+        if (liveContentSource) liveContentSource();
+        if (!liveFactsSource) return;
         const std::string facts = liveFactsSource();
         if (facts != dialog->GetDetails()) dialog->SetDetails(facts);
     }

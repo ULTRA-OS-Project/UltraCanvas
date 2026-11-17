@@ -51,9 +51,10 @@
 // goes with Enter or the send button - what was typed as the caption of
 // the first picture or video.
 //
-// Next to ChatCube Direct, a Matrix account (the "matrix" provider) can be
-// added from the sidebar; its rooms join the same list, and everything done
-// in a conversation goes to that conversation's provider.
+// Next to ChatCube Direct, a Matrix, a Telegram and a Mastodon account (the
+// "matrix", "telegram" and "mastodon" providers) can be added from the
+// sidebar; their chats join the same list, and everything done in a
+// conversation goes to that conversation's provider.
 //
 // A call shows a bar across the top of the chat view:
 //
@@ -70,6 +71,14 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.7 - the group editor (Group settings): a description, members removed, blocked, messaged
+// Version: 0.3.6 - public groups: the "Public groups" list with Join, Make public / Make private
+// Version: 0.3.5 - a Mastodon account: ToggleMastodonForm, SignInToMastodon, mastodonProviderId_
+// Version: 0.3.4 - sending in the background (SendQueue: the field is free at once, the window never
+//                  waits on a big file), a file's progress in its bubble, a video's preview picture and
+//                  length shown as it goes, songs played in their bubble, videos played in the chat (a
+//                  player over the field), the filter chips over the chat (pictures, videos, audio,
+//                  files, links)
 // Version: 0.3.3 - a reply (the message menu's Reply: a bar over the field, the quote in the bubble), an
 //                  edit (double click on one's own message, or Edit in its menu), the search field over
 //                  the chat, voice messages (the microphone: recorded, then sent, played in their bubble)
@@ -101,10 +110,11 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "ChatCubeGroupWindow.h"
 #include "ChatCubeProfileWindow.h"
 #include "ChatCubeSettings.h"
 #include "ChatCubeSettingsWindow.h"
@@ -114,10 +124,15 @@
 #include "UltraCanvasWindow.h"
 #include "UltraIM/UltraIMTypes.h"
 
+#include <condition_variable>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace UltraCanvas {
@@ -136,6 +151,7 @@ class UltraCanvasVideoTile;
 class UltraCanvasAudioRecorder;
 class UltraCanvasAudioPlayer;
 class UltraCanvasVideoRecorderElement;
+class UltraCanvasVideoPlayerElement;
 }
 
 namespace ChatCube {
@@ -185,8 +201,16 @@ private:
     void AddContact();
     void AddContactById(const std::string& id);
     void RefreshNearby();           // the "On this network" list
+    // The "Public groups" list: the ChatCube groups anyone may join, those
+    // not joined yet, each with Join; and the owner's switch in a group's menu.
+    void RefreshPublicGroups();
+    void JoinPublicGroup(const std::string& conversationId, const std::string& title);
+    void SetGroupPublic(const std::string& conversationId, bool isPublic);
     void ToggleMatrixForm();
     void SignInToMatrix(bool stored);
+    // A Mastodon account: the server, then its sign-in page in the browser.
+    void ToggleMastodonForm();
+    void SignInToMastodon(bool stored);
     // The keys to encrypted Matrix rooms to a passphrase-protected file (the
     // format Element reads), and back from one.
     void ExportMatrixKeys();
@@ -273,8 +297,23 @@ private:
     void OpenVideoRecorder();
     void CloseVideoRecorder(bool keepFile);
     void SendVideoMessage();
-    // A voice message's bubble: played here, or paused; fetched first.
+    // A sound's bubble - a voice message or a song: played here, or paused;
+    // fetched first.
     void ToggleVoicePlayback(int row);
+    // A video played in the chat: a player over the field, with its own
+    // controls and a x; fetched first.
+    void PlayVideoInChat(int row);
+    void ShowVideoPlayer(const std::string& path, const std::string& title);
+    void CloseVideoPlayer();
+    // A search's kind (the chips over the chat): everything, or pictures,
+    // videos, audio, files or links only.
+    void SetSearchKind(UltraIMSearchKind kind);
+    // A video here without a preview picture (its sender's ChatCube made
+    // none): one made from the file, in the background, with the clip's
+    // size and length - once per message.
+    void EnsureVideoPreview(const UltraIMMessage& message);
+    // Runs `f` on the UI thread, unless the window has gone meanwhile.
+    void OnUI(std::function<void()> f);
     void PlayVoice(const std::string& clientId, const std::string& path);
     void StopVoicePlayback();
     // Where a recording is written: ChatCube's cache, a name by the time.
@@ -340,6 +379,10 @@ private:
     void AskToAddMembers(const std::string& conversationId);
     void AddToGroup(const std::string& groupId, const std::string& memberId);
     void AskToLeave(const std::string& conversationId);
+    // The group editor (name, description, public, members, blocked).
+    void OpenGroupEditor(const std::string& conversationId);
+    // The owner's: out of the group, and kept out until unblocked (asks first).
+    void BlockMember(const std::string& conversationId, const std::string& memberId);
     // The open conversation gone (left, deleted, its network signed out of).
     void CloseConversationView();
 
@@ -419,6 +462,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> groupMembers_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> nearbyBox_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> publicBox_;     // "Public groups"
+    bool showAllPublic_ = false;                                       // past the first few
+    uint64_t publicTimer_ = 0;                                         // asks for the list again
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> matrixForm_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixServer_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixUser_;
@@ -443,6 +489,11 @@ private:
     std::string telegramRelayApiHash_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixToggle_;
     std::string matrixProviderId_ = "matrix";
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    mastodonToggle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> mastodonForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> mastodonServer_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    mastodonSignIn_;
+    std::string mastodonProviderId_ = "mastodon";
     std::string activeProvider_;    // the open conversation's provider
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
     std::shared_ptr<ConversationListModel>             conversations_;
@@ -480,7 +531,11 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> searchRow_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     searchInfo_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> filterRow_;
     std::string searchText_;            // what the list shows the matches of ("" all)
+    UltraIMSearchKind searchKind_ = UltraIMSearchKind::AnyKind;
+    UltraIMSearchKind shownKind_ = UltraIMSearchKind::AnyKind;   // what the list shows now
+    std::vector<std::pair<UltraIMSearchKind, std::shared_ptr<UltraCanvas::UltraCanvasButton>>> filterChips_;
     uint64_t    searchTimer_ = 0;
     int         searchSerial_ = 0;      // the answer of an older search is dropped
     bool        settingSearch_ = false; // the field set by hand, not typed
@@ -500,6 +555,31 @@ private:
     double      videoNoteSeconds_ = 0;
     bool        videoNoteReady_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasAudioPlayer> voicePlayer_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> videoPlayerPanel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasVideoPlayerElement> videoPlayer_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     videoPlayerTitle_;
+    // Everything sent goes through one thread of its own, in order: reading
+    // a big file, making a video's preview picture and handing the file to
+    // the network never hold up the window. alive_ turns false when the
+    // window goes, so nothing comes back to it after.
+    class SendQueue {
+    public:
+        SendQueue();
+        ~SendQueue();               // what is queued still goes, then the thread ends
+        void Post(std::function<void()> job);
+    private:
+        void Run();
+        std::mutex mutex_;
+        std::condition_variable wake_;
+        std::deque<std::function<void()>> jobs_;
+        bool stop_ = false;
+        std::thread thread_;
+    };
+    std::shared_ptr<bool>      alive_ = std::make_shared<bool>(true);
+    std::unique_ptr<SendQueue> sendQueue_ = std::make_unique<SendQueue>();
+    std::unique_ptr<SendQueue> previewQueue_ = std::make_unique<SendQueue>();   // previews of videos received
+    std::set<std::string>      previewAsked_;
+    std::map<std::string, UltraIMAttachment> previewsMade_;   // client id -> what was learned of its video
     std::string playingVoice_;          // the client id of the voice message playing
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachmentStrip_;
     std::vector<StagedAttachment>                      staged_;
@@ -507,6 +587,7 @@ private:
     UltraCanvas::UltraCanvasMediaViewerWindow          viewer_;         // a picture or a video, full size
     std::shared_ptr<UltraCanvas::UltraCanvasMenu>      messageMenu_;    // a message's right-click menu
     std::unique_ptr<ChatCubeProfileWindow>             profileWindow_;  // Edit profile
+    std::unique_ptr<ChatCubeGroupWindow>               groupWindow_;    // a group's editor
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
     std::string actionStatus_;
     std::map<std::string, std::string> providerStatus_;   // provider id -> its state

@@ -132,7 +132,7 @@ void MapSymbolFontRuns(UCRichDocument& document) {
         }
     };
     mapBlocks(document.blocks);
-    for (RichPageFurniture* furniture : {&document.pageFurniture, &document.firstPageFurniture}) {
+    for (RichPageFurniture* furniture : document.AllFurniture()) {
         mapBlocks(furniture->header);
         mapBlocks(furniture->footer);
     }

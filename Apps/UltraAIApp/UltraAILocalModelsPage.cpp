@@ -1,24 +1,30 @@
 // Apps/UltraAIApp/UltraAILocalModelsPage.cpp
 // The settings window's "Local models" page (UltraAILocalModelsPage.h).
+// Version: 0.2.1 - the settings window scrolls its pages, so the page no longer squeezes itself into
+//                  800 px: the usual spacing, the note on the catalogue and the search, and the
+//                  catalogue's line beside an action's
+// Version: 0.2.0 - the engine line and Acceleration follow the selected model, per engine;
+//                  catalogue sources, search and filters; Hugging Face search
 // Version: 0.1.1 - speech-to-text models: labelled, added as a whisper .bin
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-17
 // Author: UltraAI Module
 
 #include "UltraAILocalModelsPage.h"
 
+#include "UltraAICatalogueSourcesDialog.h"
+#include "UltraAIHuggingFaceDialog.h"
+#include "UltraAILocalModelText.h"
 #include "UltraAISettingsWidgets.h"
 
 #include "UltraCanvasApplication.h"      // UltraCanvasApplicationBase::GetCurrent
 #include "UltraCanvasFileLoader.h"       // OpenFileDialog
 #include "UltraCanvasListDelegate.h"
 #include "UltraCanvasListSelection.h"
-#include "UltraCanvasModalDialog.h"      // ShowInputDialog
 #include "UltraCanvasUtils.h"            // OpenURL
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
-#include <cstdio>
 #include <functional>
 #include <thread>
 #include <utility>
@@ -28,6 +34,7 @@ namespace UltraAIApp {
 using namespace UltraCanvas;
 using namespace UltraAI;
 using namespace SettingsWidgets;
+using namespace LocalModelText;
 
 namespace {
 
@@ -36,51 +43,36 @@ constexpr int kTableHeight   = 7 * kRowHeight + 26 + 2;   // seven rows and the 
 constexpr int kLabelWidth    = 150;
 constexpr int kDropdownWidth = 200;
 
-std::string Bytes(uint64_t bytes) {
-    if (!bytes) return "—";
-    char buffer[32];
-    if (bytes >= 1024ull * 1024 * 1024) {
-        std::snprintf(buffer, sizeof(buffer), "%.1f GB", static_cast<double>(bytes) / (1024.0 * 1024 * 1024));   // locale-ok: shown to the user
-    } else if (bytes >= 1024ull * 1024) {
-        std::snprintf(buffer, sizeof(buffer), "%.0f MB", static_cast<double>(bytes) / (1024.0 * 1024));   // locale-ok: shown to the user
-    } else {
-        std::snprintf(buffer, sizeof(buffer), "%.0f KB", static_cast<double>(bytes) / 1024.0);   // locale-ok: shown to the user
+std::string Lower(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return text;
+}
+
+// What Auto picks for an engine here: the computer's first accelerator
+// the engine has a build for that is not an optional one.
+std::string AutoAccelerator(const EngineInfo& engine, const HardwareProfile& hw) {
+    std::vector<std::string> order = hw.accelerators;
+    if (std::find(order.begin(), order.end(), "cpu") == order.end()) order.push_back("cpu");
+    for (const std::string& accel : order) {
+        for (const EngineBundleInfo& b : engine.bundles) {
+            if (b.platform == hw.platform && b.accelerator == accel && !b.optional) return accel;
+        }
     }
-    return buffer;
+    return {};
 }
 
-std::string AcceleratorLabel(const std::string& id) {
-    if (id == "cpu")    return Tr("CPU only");
-    if (id == "vulkan") return Tr("Vulkan (any GPU)");
-    if (id == "metal")  return Tr("Metal (Apple GPU)");
-    if (id == "cuda12") return Tr("CUDA 12 (NVIDIA)");
-    if (id == "rocm")   return Tr("ROCm (AMD)");
-    return id;
-}
-
-std::string CapabilityLabel(const std::string& capability) {
-    if (capability == "textllm")    return Tr("Chat");
-    if (capability == "embeddings") return Tr("Embeddings");
-    if (capability == "speechtotext") return Tr("Speech to text");
-    return capability;
-}
-
-std::string FitLabel(ModelFit fit) {
-    switch (fit) {
-        case ModelFit::Recommended: return "GPU";
-        case ModelFit::RunsOnCpu:   return "CPU";
-        case ModelFit::TooLarge:    return Tr("Too large");
-        case ModelFit::Unknown:     return "—";
-    }
-    return "—";
-}
-
-std::string FitTooltip(ModelFit fit) {
-    switch (fit) {
-        case ModelFit::Recommended: return Tr("Fits this computer's GPU memory: runs on the GPU");
-        case ModelFit::RunsOnCpu:   return Tr("Fits system memory: runs on the CPU, or partly on the GPU");
-        case ModelFit::TooLarge:    return Tr("Does not fit this computer's memory");
-        case ModelFit::Unknown:     return Tr("No memory requirement on record");
+// Where a model is listed from, for its tooltip.
+std::string SourceLabel(const LocalModelInfo& m, const std::vector<CatalogueSourceStatus>& sources) {
+    switch (m.source) {
+        case LocalModelSource::Catalogue:   return Tr("Recommended");
+        case LocalModelSource::File:        return Tr("Your file");
+        case LocalModelSource::HuggingFace: return "Hugging Face";
+        case LocalModelSource::Gallery:
+            for (const auto& s : sources) {
+                if (s.source.id == m.gallery) return s.source.name;
+            }
+            return m.gallery;
     }
     return {};
 }
@@ -126,6 +118,7 @@ std::shared_ptr<UltraCanvasContainer> UltraAILocalModelsPage::Build(UltraCanvasW
 
     BuildHardwareLine(*parts.body);
     BuildEngineRow(*parts.body);
+    BuildFilterRow(*parts.body);
     BuildModelTable(*parts.body);
     BuildActionRow(*parts.body);
     BuildProgressRow(*parts.body);
@@ -136,7 +129,7 @@ std::shared_ptr<UltraCanvasContainer> UltraAILocalModelsPage::Build(UltraCanvasW
             Tr("GPU: the model fits the graphics card's memory and runs there. CPU: "
             "it fits system memory and runs on the processor, slower. Too large: "
             "it cannot be loaded on this computer. A model is downloaded from its "
-            "publisher under the licence the table names."));
+            "publisher under the licence its tooltip names."));
     AddNote(parts, "uai-lm-note2",
             Tr("Ask: a service that needs a model it does not have asks first. "
             "Automatic: it downloads and continues. Never: models are only "
@@ -145,6 +138,11 @@ std::shared_ptr<UltraCanvasContainer> UltraAILocalModelsPage::Build(UltraCanvasW
             Tr("A running engine is shared by every UltraCanvas application that "
             "wants the same model and stopped when nothing has used it for the "
             "idle time."));
+    AddNote(parts, "uai-lm-note4",
+            Tr("Refresh catalogue downloads the lists of the catalogue sources - "
+            "LocalAI's model gallery to begin with - and Search Hugging Face finds "
+            "any model there. The engine a model needs is shown above the table "
+            "when the model is selected, and is downloaded with it."));
 
     Refresh();
     return parts.page;
@@ -157,6 +155,41 @@ void UltraAILocalModelsPage::BuildHardwareLine(UltraCanvasContainer& body) {
     body.AddChild(hardwareLabel_);
 }
 
+void UltraAILocalModelsPage::BuildFilterRow(UltraCanvasContainer& body) {
+    auto row = MakeRow("uai-lm-filter-row", 28);
+    searchInput_ = std::make_shared<UltraCanvasTextInput>("uai-lm-search", 0, 0, 200, 26);
+    searchInput_->SetPlaceholder(Tr("Search the models"));
+    searchInput_->SetFontSize(kTextFontSize);
+    searchInput_->size.height = CSSLayout::Dimension::Px(26);
+    searchInput_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    searchInput_->onTextChanged = [this](const std::string& text) {
+        filterText_ = Lower(text);
+        ApplyFilter();
+    };
+    row->AddChild(searchInput_);
+
+    serviceDropdown_ = MakeDropdown("uai-lm-service", 130);
+    serviceDropdown_->AddItem(Tr("All services"), "");
+    serviceDropdown_->AddItem(CapabilityLabel("textllm"), "textllm");
+    serviceDropdown_->AddItem(CapabilityLabel("embeddings"), "embeddings");
+    serviceDropdown_->AddItem(CapabilityLabel("speechtotext"), "speechtotext");
+    serviceDropdown_->SetSelectedIndex(0, false);
+    serviceDropdown_->onSelectionChanged = [this](int, const DropdownItem& item) {
+        filterService_ = item.value;
+        ApplyFilter();
+    };
+    row->AddChild(serviceDropdown_);
+
+    sourceDropdown_ = MakeDropdown("uai-lm-source", 150);
+    sourceDropdown_->onSelectionChanged = [this](int index, const DropdownItem&) {
+        if (index < 0 || index >= static_cast<int>(sourceFilterIds_.size())) return;
+        filterSource_ = sourceFilterIds_[static_cast<size_t>(index)];
+        ApplyFilter();
+    };
+    row->AddChild(sourceDropdown_);
+    body.AddChild(row);
+}
+
 void UltraAILocalModelsPage::BuildEngineRow(UltraCanvasContainer& body) {
     engineLabel_ = MakeText("uai-lm-engine", "", kTextWidth);
     body.AddChild(engineLabel_);
@@ -167,10 +200,12 @@ void UltraAILocalModelsPage::BuildEngineRow(UltraCanvasContainer& body) {
     row->AddChild(lbl);
     accelDropdown_ = MakeDropdown("uai-lm-accel", kDropdownWidth);
     accelDropdown_->onSelectionChanged = [this](int index, const DropdownItem&) {
-        if (index < 0 || index >= static_cast<int>(accelIds_.size())) return;
+        if (index < 0 || index >= static_cast<int>(accelIds_.size()) || engineId_.empty()) return;
+        // The choice is the shown engine's own: another engine's GPU build
+        // may not suit this computer.
         LocalRuntime& rt = LocalRuntime::Instance();
         LocalRuntimeSettings s = rt.GetSettings();
-        s.preferredAccelerator = accelIds_[static_cast<size_t>(index)];
+        s.engineAccelerators[engineId_] = accelIds_[static_cast<size_t>(index)];
         rt.SetSettings(s);
         RefreshEngine();
     };
@@ -205,7 +240,7 @@ void UltraAILocalModelsPage::BuildModelTable(UltraCanvasContainer& body) {
     table_->size.width  = CSSLayout::Dimension::Px(kTextWidth);
     table_->size.height = CSSLayout::Dimension::Px(kTableHeight);
     table_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    table_->onSelectionChanged = [this](const std::vector<int>&) { RefreshButtons(); };
+    table_->onSelectionChanged = [this](const std::vector<int>&) { OnSelectionChanged(); };
     body.AddChild(table_);
 }
 
@@ -219,10 +254,12 @@ void UltraAILocalModelsPage::BuildActionRow(UltraCanvasContainer& body) {
     row->AddChild(removeButton_);
     row->AddChild(stopButton_);
     row->AddChild(forgetButton_);
-    statusLabel_ = MakeLabel("uai-lm-status", "", kNoteFontSize, kNoteTextColor);
-    statusLabel_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    row->AddChild(statusLabel_);
     body.AddChild(row);
+    // What the last action did, on a line of its own: it names models and
+    // sources and needs the page's width.
+    statusLabel_ = MakeText("uai-lm-status", "", kTextWidth, kNoteFontSize, kNoteTextColor);
+    statusLabel_->SetVisible(false);        // no line while there is nothing to say
+    body.AddChild(statusLabel_);
 }
 
 void UltraAILocalModelsPage::BuildProgressRow(UltraCanvasContainer& body) {
@@ -255,10 +292,14 @@ void UltraAILocalModelsPage::BuildProgressRow(UltraCanvasContainer& body) {
 
 void UltraAILocalModelsPage::BuildAddRow(UltraCanvasContainer& body) {
     auto row = MakeRow("uai-lm-add-row", 30);
-    row->AddChild(MakeButton("uai-lm-add-file", Tr("Add model file..."), 130, [this]() { OnAddFile(); }));
-    row->AddChild(MakeButton("uai-lm-add-hf", Tr("Add from Hugging Face..."), 170, [this]() { OnAddHuggingFace(); }));
-    row->AddChild(MakeButton("uai-lm-refresh", Tr("Refresh catalogue"), 130, [this]() { OnRefreshCatalogue(); }));
+    row->AddChild(MakeButton("uai-lm-add-file", Tr("Add model file"), 108, [this]() { OnAddFile(); }));
+    row->AddChild(MakeButton("uai-lm-add-hf", Tr("Search Hugging Face"), 142, [this]() { OnAddHuggingFace(); }));
+    row->AddChild(MakeButton("uai-lm-refresh", Tr("Refresh catalogue"), 126, [this]() { OnRefreshCatalogue(); }));
+    row->AddChild(MakeButton("uai-lm-sources", Tr("Sources"), 72, [this]() { OnSources(); }));
     body.AddChild(row);
+    // The catalogue sources and what each holds.
+    sourcesLabel_ = MakeText("uai-lm-sources-line", "", kTextWidth, kNoteFontSize, kNoteTextColor);
+    body.AddChild(sourcesLabel_);
 }
 
 void UltraAILocalModelsPage::BuildSettingsRows(UltraCanvasContainer& body) {
@@ -349,67 +390,123 @@ void UltraAILocalModelsPage::Refresh() {
         idleDropdown_->SetSelectedIndex(best, false);
     }
 
-    RefreshEngine();
+    RefreshFilters();
     RefreshTable();
+    RefreshEngine();
     RefreshDisk();
+    RefreshSourcesLine();
+}
+
+void UltraAILocalModelsPage::RefreshFilters() {
+    if (!sourceDropdown_) return;
+    // All, the recommended ones, each catalogue source that is turned on,
+    // the user's own, what is installed.
+    sourceDropdown_->ClearItems();
+    sourceFilterIds_.clear();
+    auto add = [&](const std::string& label, const std::string& id) {
+        sourceDropdown_->AddItem(label, id);
+        sourceFilterIds_.push_back(id);
+    };
+    add(Tr("All sources"), "");
+    add(Tr("Recommended"), "@recommended");
+    for (const CatalogueSourceStatus& s : LocalRuntime::Instance().ListCatalogueSources()) {
+        if (s.source.enabled) add(s.source.name, s.source.id);
+    }
+    add(Tr("Your models"), "@yours");
+    add(Tr("Installed"), "@installed");
+    int selected = 0;
+    for (size_t i = 0; i < sourceFilterIds_.size(); ++i) {
+        if (sourceFilterIds_[i] == filterSource_) selected = static_cast<int>(i);
+    }
+    // A source that is gone takes its filter with it.
+    if (selected == 0) filterSource_.clear();
+    sourceDropdown_->SetSelectedIndex(selected, false);
+}
+
+std::string UltraAILocalModelsPage::ShownEngineId() const {
+    if (const LocalModelInfo* m = SelectedModel()) return m->engineId;
+    // Nothing selected: the engine shown last, else the first listed model's.
+    if (!engineId_.empty()) return engineId_;
+    if (!rows_.empty()) return rows_.front().engineId;
+    return "llama-server";
 }
 
 void UltraAILocalModelsPage::RefreshEngine() {
     LocalRuntime& rt = LocalRuntime::Instance();
     const HardwareProfile& hw = rt.Hardware();
-    const LocalRuntimeSettings s = rt.GetSettings();
+    engineId_ = ShownEngineId();
+    const LocalModelInfo* selected = SelectedModel();
 
-    // The accelerator choice: Auto, then every accelerator the gallery has a
-    // bundle for on this platform.
     std::vector<EngineInfo> engines = rt.ListEngines();
-    const EngineInfo* llama = nullptr;
+    const EngineInfo* engine = nullptr;
     for (const auto& e : engines) {
-        if (e.id == "llama-server") llama = &e;
+        if (e.id == engineId_) engine = &e;
     }
+    // The builds this engine has for this computer, one per accelerator.
+    std::vector<const EngineBundleInfo*> builds;
+    if (engine) {
+        for (const auto& b : engine->bundles) {
+            if (b.platform != hw.platform) continue;
+            if (std::any_of(builds.begin(), builds.end(),
+                            [&](const EngineBundleInfo* o) { return o->accelerator == b.accelerator; })) continue;
+            builds.push_back(&b);
+        }
+    }
+    EngineBundleInfo chosen;
+    const bool haveChoice = rt.ChooseBundle(engineId_, chosen);
+
     if (accelDropdown_) {
         accelDropdown_->ClearItems();
         accelIds_.clear();
-        std::string autoLabel = Tr("Automatic");
-        EngineBundleInfo chosen;
-        if (rt.ChooseBundle("llama-server", chosen)) {
-            autoLabel += " (" + AcceleratorLabel(chosen.accelerator) + ")";
-        }
-        accelDropdown_->AddItem(autoLabel, "");
-        accelIds_.push_back("");
-        if (llama) {
-            for (const auto& b : llama->bundles) {
-                if (b.platform != hw.platform) continue;
-                if (std::find(accelIds_.begin(), accelIds_.end(), b.accelerator) != accelIds_.end()) continue;
-                std::string label = AcceleratorLabel(b.accelerator);
-                if (b.optional) label += ", " + Bytes(b.sizeBytes);
-                accelDropdown_->AddItem(label, b.accelerator);
-                accelIds_.push_back(b.accelerator);
+        if (builds.size() <= 1) {
+            // One build, or none: nothing to choose. It is what is installed
+            // with the engine's first model.
+            const std::string only = builds.empty() ? std::string() : builds.front()->accelerator;
+            accelDropdown_->AddItem(builds.empty() ? Tr("No build for this computer") : AcceleratorLabel(only), only);
+            accelIds_.push_back(only);
+            accelDropdown_->SetSelectedIndex(0, false);
+            accelDropdown_->SetDisabled(true);
+        } else {
+            // Auto, then every accelerator the gallery has a build for here.
+            std::string autoLabel = Tr("Automatic");
+            const std::string autoAccel = AutoAccelerator(*engine, hw);
+            if (!autoAccel.empty()) autoLabel += " (" + AcceleratorLabel(autoAccel) + ")";
+            accelDropdown_->AddItem(autoLabel, "");
+            accelIds_.push_back("");
+            for (const EngineBundleInfo* b : builds) {
+                std::string label = AcceleratorLabel(b->accelerator);
+                if (b->optional) label += ", " + Bytes(b->sizeBytes);
+                accelDropdown_->AddItem(label, b->accelerator);
+                accelIds_.push_back(b->accelerator);
             }
+            const std::string preferred = rt.PreferredAccelerator(engineId_);
+            int index = 0;
+            for (size_t i = 0; i < accelIds_.size(); ++i) {
+                if (accelIds_[i] == preferred) index = static_cast<int>(i);
+            }
+            accelDropdown_->SetSelectedIndex(index, false);
+            accelDropdown_->SetDisabled(false);
         }
-        int selected = 0;
-        for (size_t i = 0; i < accelIds_.size(); ++i) {
-            if (accelIds_[i] == s.preferredAccelerator) selected = static_cast<int>(i);
-        }
-        accelDropdown_->SetSelectedIndex(selected, false);
+        accelDropdown_->RequestRedraw();
     }
 
     // The engine line and its button.
+    const std::string subject = selected ? TrF("Engine for {0}", selected->displayName) : Tr("Engine");
     std::string text;
     bool installed = false;
-    EngineBundleInfo chosen;
-    const bool haveChoice = rt.ChooseBundle("llama-server", chosen);
-    if (!llama) {
-        text = Tr("Engine: the gallery has no llama-server for this build.");
+    if (!engine) {
+        text = TrF("{0}: {1} is not in the engine gallery.", subject, engineId_);
     } else if (!haveChoice) {
-        text = TrF("Engine: llama-server {0} - no build for {1} in the gallery.", llama->version, hw.platform);
+        text = TrF("{0}: {1} {2} - no build for {3}.", subject, engine->id, engine->version, hw.platform);
     } else {
         installed = chosen.installed;
-        text = installed ? TrF("Engine: llama-server {0} - {1}, installed", llama->version,
+        text = installed ? TrF("{0}: {1} {2} - {3}, installed", subject, engine->id, engine->version,
                                AcceleratorLabel(chosen.accelerator))
-                         : TrF("Engine: llama-server {0} - {1}, not installed ({2}, downloaded with the first model)",
-                               llama->version, AcceleratorLabel(chosen.accelerator), Bytes(chosen.sizeBytes));
+                         : TrF("{0}: {1} {2} - {3}, not installed ({4}, downloaded with its first model)",
+                               subject, engine->id, engine->version, AcceleratorLabel(chosen.accelerator),
+                               Bytes(chosen.sizeBytes));
         // Other installed bundles are worth a word: they take disk.
-        for (const auto& b : llama->bundles) {
+        for (const auto& b : engine->bundles) {
             if (b.installed && b.accelerator != chosen.accelerator) {
                 text += "; " + TrF("{0} also installed", AcceleratorLabel(b.accelerator));
             }
@@ -425,19 +522,66 @@ void UltraAILocalModelsPage::RefreshEngine() {
 
 void UltraAILocalModelsPage::RefreshTable() {
     if (!table_ || !tableModel_) return;
-    LocalRuntime& rt = LocalRuntime::Instance();
+    models_ = LocalRuntime::Instance().ListModels();
+    // Installed first, then the recommended ones, the user's own, and the
+    // models of the catalogue sources; each in its order.
+    auto rank = [](const LocalModelInfo& m) {
+        if (m.installed) return 0;
+        switch (m.source) {
+            case LocalModelSource::Catalogue:   return 1;
+            case LocalModelSource::File:
+            case LocalModelSource::HuggingFace: return 2;
+            case LocalModelSource::Gallery:     return 3;
+        }
+        return 3;
+    };
+    std::stable_sort(models_.begin(), models_.end(), [&](const LocalModelInfo& a, const LocalModelInfo& b) {
+        return rank(a) < rank(b);
+    });
+    ApplyFilter();
+}
+
+void UltraAILocalModelsPage::ApplyFilter() {
+    if (!table_ || !tableModel_) return;
     std::string selectedId;
     if (const LocalModelInfo* current = SelectedModel()) selectedId = current->id;
 
-    rows_ = rt.ListModels();
-    // Installed first, then the catalogue's, then the user's; each in its order.
-    std::stable_sort(rows_.begin(), rows_.end(), [](const LocalModelInfo& a, const LocalModelInfo& b) {
-        if (a.installed != b.installed) return a.installed;
-        return false;
-    });
+    // Every word of the search has to be somewhere in the model's name,
+    // its id, its tags or its licence.
+    std::vector<std::string> words;
+    for (size_t start = 0; start < filterText_.size();) {
+        const size_t end = filterText_.find(' ', start);
+        const std::string word = filterText_.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        if (!word.empty()) words.push_back(word);
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    auto shown = [&](const LocalModelInfo& m) {
+        if (!filterService_.empty() && m.capability != filterService_) return false;
+        if (filterSource_ == "@recommended") {
+            if (m.source != LocalModelSource::Catalogue) return false;
+        } else if (filterSource_ == "@yours") {
+            if (m.source != LocalModelSource::File && m.source != LocalModelSource::HuggingFace) return false;
+        } else if (filterSource_ == "@installed") {
+            if (!m.installed) return false;
+        } else if (!filterSource_.empty()) {
+            if (m.source != LocalModelSource::Gallery || m.gallery != filterSource_) return false;
+        }
+        if (words.empty()) return true;
+        std::string haystack = m.displayName + " " + m.id + " " + m.license;
+        for (const std::string& tag : m.tags) haystack += " " + tag;
+        haystack = Lower(haystack);
+        for (const std::string& word : words) {
+            if (haystack.find(word) == std::string::npos) return false;
+        }
+        return true;
+    };
 
+    const std::vector<CatalogueSourceStatus> sources = LocalRuntime::Instance().ListCatalogueSources();
+    rows_.clear();
     std::vector<MultiColumnListItem> items;
-    for (const auto& m : rows_) {
+    for (const auto& m : models_) {
+        if (!shown(m)) continue;
         std::string state = m.running ? Tr("Running") : m.installed ? Tr("Installed") : Tr("Not installed");
         if (m.fit == ModelFit::TooLarge && !m.installed) state = Tr("Too large");
         std::string name = m.displayName;
@@ -445,25 +589,96 @@ void UltraAILocalModelsPage::RefreshTable() {
         if (m.source == LocalModelSource::HuggingFace) name = TrF("{0} (Hugging Face)", name);
         MultiColumnListItem item({name, CapabilityLabel(m.capability), Bytes(m.sizeBytes),
                                   FitLabel(m.fit), state});
-        item.tooltip = m.description.empty() ? m.displayName : m.description;
-        if (!m.license.empty()) item.SetCellTooltip(0, TrF("Licence: {0}", m.license) +
-                                                       (m.description.empty() ? "" : "\n" + m.description));
+        // Where it is from, its licence and what it is, on the name.
+        std::string about = SourceLabel(m, sources);
+        if (!m.license.empty()) about += " - " + TrF("Licence: {0}", m.license);
+        std::string description = m.description;
+        if (description.size() > 420) {
+            size_t cutAt = 420;
+            while (cutAt > 0 && (static_cast<unsigned char>(description[cutAt]) & 0xC0) == 0x80) --cutAt;
+            description = description.substr(0, cutAt) + "…";
+        }
+        item.tooltip = description.empty() ? m.displayName : description;
+        // The whole name too: the column is narrower than a gallery's names.
+        item.SetCellTooltip(0, m.displayName + "\n" + about + (description.empty() ? "" : "\n" + description));
+        item.SetCellTooltip(2, m.sizeBytes ? Bytes(m.sizeBytes)
+                                           : Tr("Its catalogue names no size; it is asked of the host when the row is selected"));
         item.SetCellTooltip(3, FitTooltip(m.fit));
         if (m.installed) item.SetCellTooltip(4, m.installedPath);
         items.push_back(std::move(item));
+        rows_.push_back(m);
     }
     tableModel_->SetItems(std::move(items));
 
     // Keep the row the user had.
-    if (!selectedId.empty()) {
+    bool kept = false;
+    if (!selectedId.empty() && table_->GetSelection()) {
         for (size_t i = 0; i < rows_.size(); ++i) {
-            if (rows_[i].id == selectedId && table_->GetSelection()) {
+            if (rows_[i].id == selectedId) {
                 table_->GetSelection()->Select(static_cast<int>(i));
+                kept = true;
                 break;
             }
         }
     }
+    if (!kept && table_->GetSelection()) table_->GetSelection()->Clear();
     RefreshButtons();
+    RefreshEngine();
+}
+
+void UltraAILocalModelsPage::OnSelectionChanged() {
+    RefreshButtons();
+    RefreshEngine();
+    ProbeSelected();
+}
+
+void UltraAILocalModelsPage::ProbeSelected() {
+    const LocalModelInfo* m = SelectedModel();
+    if (!m || probing_ || m->installed || m->source == LocalModelSource::File) return;
+    const bool unsized = std::any_of(m->files.begin(), m->files.end(),
+                                     [](const LocalModelFile& f) { return f.sizeBytes == 0; });
+    if (!unsized || !probed_.insert(m->id).second) return;
+    // A LocalAI gallery lists no sizes: the host is asked, once per model,
+    // so that the size and the fit are known before anything is downloaded.
+    probing_ = true;
+    const std::string id = m->id;
+    std::thread worker([this, alive = alive_, id]() {
+        LocalModelInfo model;
+        const Error error = LocalRuntime::Instance().ProbeModel(id, model);
+        OnUiThread([this, alive, error, sized = model.sizeBytes > 0]() {
+            if (!alive->load()) return;
+            probing_ = false;
+            if (sized) RefreshTable();
+            else if (!error.IsOk()) SetStatus(TrF("The size could not be asked for: {0}", error.message));
+            // The selection may have moved on while the host answered.
+            ProbeSelected();
+        });
+    });
+    worker.detach();
+}
+
+void UltraAILocalModelsPage::SelectModel(const std::string& modelId) {
+    auto find = [&]() {
+        for (size_t i = 0; i < rows_.size(); ++i) {
+            if (rows_[i].id == modelId) return static_cast<int>(i);
+        }
+        return -1;
+    };
+    int row = find();
+    if (row < 0) {
+        // Hidden by the search or a filter: show everything.
+        filterText_.clear();
+        filterService_.clear();
+        filterSource_.clear();
+        if (searchInput_) searchInput_->SetText("");
+        if (serviceDropdown_) serviceDropdown_->SetSelectedIndex(0, false);
+        if (sourceDropdown_) sourceDropdown_->SetSelectedIndex(0, false);
+        ApplyFilter();
+        row = find();
+    }
+    if (row < 0 || !table_ || !table_->GetSelection()) return;
+    table_->GetSelection()->Select(row);
+    table_->ScrollToRow(row);
 }
 
 void UltraAILocalModelsPage::RefreshButtons() {
@@ -477,7 +692,9 @@ void UltraAILocalModelsPage::RefreshButtons() {
     set(installButton_, m && !m->installed && m->fit != ModelFit::TooLarge && !jobRunning);
     set(removeButton_,  m && m->installed && m->source != LocalModelSource::File && !jobRunning);
     set(stopButton_,    m && m->running);
-    set(forgetButton_,  m && m->source != LocalModelSource::Catalogue && !jobRunning);
+    // Forget is for what the user added; a catalogue's model is only removed.
+    set(forgetButton_,  m && (m->source == LocalModelSource::File || m->source == LocalModelSource::HuggingFace) &&
+                        !jobRunning);
 }
 
 void UltraAILocalModelsPage::RefreshDisk() {
@@ -488,9 +705,26 @@ void UltraAILocalModelsPage::RefreshDisk() {
     std::string text = used ? (s.diskCapBytes ? TrF("Disk: {0} used of a {1} limit", Bytes(used), Bytes(s.diskCapBytes))
                                              : TrF("Disk: {0} used", Bytes(used)))
                             : Tr("Disk: nothing used yet");
-    const std::string published = rt.GalleryPublished();
-    if (!published.empty()) text += "; " + TrF("catalogue of {0}", published);
     diskLabel_->SetText(text);
+}
+
+void UltraAILocalModelsPage::RefreshSourcesLine() {
+    if (!sourcesLabel_) return;
+    // The recommended list and each catalogue source: what it holds, since when.
+    LocalRuntime& rt = LocalRuntime::Instance();
+    int recommended = 0;
+    for (const auto& m : models_) {
+        if (m.source == LocalModelSource::Catalogue) ++recommended;
+    }
+    std::string text = TrN("{n} recommended model", "{n} recommended models", recommended);
+    for (const CatalogueSourceStatus& s : rt.ListCatalogueSources()) {
+        if (!s.source.enabled) continue;
+        text += "; ";
+        text += s.fetched.empty()
+            ? TrF("{0}: not downloaded yet", s.source.name)
+            : TrF("{0}: {1} models of {2}", s.source.name, s.models, s.fetched);
+    }
+    sourcesLabel_->SetText(text);
 }
 
 void UltraAILocalModelsPage::ShowProgress(const InstallProgress& p) {
@@ -528,6 +762,7 @@ void UltraAILocalModelsPage::HideProgress() {
 void UltraAILocalModelsPage::SetStatus(const std::string& text) {
     if (statusLabel_) {
         statusLabel_->SetText(text);
+        statusLabel_->SetVisible(!text.empty());
         statusLabel_->RequestRedraw();
     }
 }
@@ -587,17 +822,18 @@ void UltraAILocalModelsPage::OnInstall() {
 void UltraAILocalModelsPage::OnInstallEngine() {
     LocalRuntime& rt = LocalRuntime::Instance();
     EngineBundleInfo chosen;
-    if (!rt.ChooseBundle("llama-server", chosen) || !activeJobId_.empty()) return;
+    const std::string engineId = engineId_;
+    if (engineId.empty() || !rt.ChooseBundle(engineId, chosen) || !activeJobId_.empty()) return;
     if (chosen.installed) {
         const std::string accelerator = chosen.accelerator;
-        RunThenRefresh([accelerator]() {
-            const Error error = LocalRuntime::Instance().RemoveEngine("llama-server", accelerator);
-            return error.IsOk() ? Tr("Engine removed.") : error.message;
+        RunThenRefresh([engineId, accelerator]() {
+            const Error error = LocalRuntime::Instance().RemoveEngine(engineId, accelerator);
+            return error.IsOk() ? TrF("{0} removed.", engineId) : error.message;
         });
         return;
     }
     SetStatus("");
-    activeJobId_ = rt.InstallEngine("llama-server", chosen.accelerator, ProgressSink());
+    activeJobId_ = rt.InstallEngine(engineId, chosen.accelerator, ProgressSink());
     RefreshButtons();
     RefreshEngine();
 }
@@ -680,54 +916,58 @@ void UltraAILocalModelsPage::OnAddFile() {
 }
 
 void UltraAILocalModelsPage::OnAddHuggingFace() {
-    UltraCanvasDialogManager::ShowInputDialog(
-        Tr("The repository and the GGUF file in it, as \"organisation/repository:file.gguf\". "
-        "Add \"embeddings\" after a space for an embedding model. A whisper.cpp model "
-        "(\"ggerganov/whisper.cpp:ggml-medium.bin\") is a speech-to-text model."),
-        Tr("Add a model from Hugging Face"), "", InputType::Text,
-        [this, alive = alive_](DialogResult result, const std::string& text) {
+    // The dialog searches, lists a repository's files and registers the one
+    // picked; this page then shows it and, when asked, installs it.
+    auto dialog = std::make_shared<UltraAIHuggingFaceDialog>(
+        [this, alive = alive_](const std::string& modelId, const std::string& name, bool install) {
             if (!alive->load()) return;
-            if (result != DialogResult::OK || text.empty()) return;
-            std::string spec = text, capability = "textllm";
-            const size_t space = spec.find(' ');
-            if (space != std::string::npos) {
-                if (spec.substr(space + 1).find("embed") != std::string::npos) capability = "embeddings";
-                spec = spec.substr(0, space);
+            Refresh();
+            SelectModel(modelId);
+            if (install && activeJobId_.empty()) {
+                OnInstall();
+            } else {
+                SetStatus(TrF("Added {0}. Install downloads it.", name));
             }
-            if (spec.size() > 4 && spec.compare(spec.size() - 4, 4, ".bin") == 0) capability = "speechtotext";
-            const size_t colon = spec.find(':');
-            if (colon == std::string::npos) {
-                SetStatus(Tr("Write it as organisation/repository:file.gguf"));
-                return;
-            }
-            const std::string repo = spec.substr(0, colon), file = spec.substr(colon + 1);
-            busy_ = true;
-            RefreshButtons();
-            SetStatus(TrF("Asking Hugging Face about {0}…", file));
-            std::thread worker([this, alive, repo, file, capability]() {
-                std::string id;
-                const Error error = LocalRuntime::Instance().AddHuggingFaceModel(repo, file, capability, "", id);
-                const std::string status = error.IsOk()
-                    ? TrF("Added {0} from {1}; select it and Install.", file, repo)
-                    : error.message;
-                OnUiThread([this, alive, status]() {
-                    if (!alive->load()) return;
-                    busy_ = false;
-                    SetStatus(status);
-                    Refresh();
-                });
-            });
-            worker.detach();
-        },
-        parent_);
+        });
+    dialog->CreateHuggingFaceDialog();
+    dialog->ShowModal(parent_);
 }
 
 void UltraAILocalModelsPage::OnRefreshCatalogue() {
+    SetStatus(Tr("Downloading the catalogues…"));
     RunThenRefresh([]() {
-        const Error error = LocalRuntime::Instance().RefreshGallery();
-        return error.IsOk() ? Tr("Catalogue refreshed.")
-                            : TrF("Could not refresh the catalogue: {0}", error.message);
+        LocalRuntime& rt = LocalRuntime::Instance();
+        std::string text;
+        // The engine gallery of a model server, when the settings name one.
+        const Error gallery = rt.RefreshGallery();
+        if (!gallery.IsOk()) text = TrF("Engine gallery: {0}", gallery.message);
+        std::vector<CatalogueSourceStatus> sources;
+        rt.RefreshCatalogueSources(&sources);
+        if (sources.empty()) {
+            if (!text.empty()) text += " ";
+            text += Tr("No catalogue source is turned on; Sources adds one.");
+        }
+        for (const CatalogueSourceStatus& s : sources) {
+            if (!text.empty()) text += " ";
+            if (!s.error.IsOk()) {
+                text += TrF("{0}: {1}.", s.source.name, s.error.message);
+            } else if (s.skipped > 0) {
+                text += TrF("{0}: {1} models ({2} more need an engine UltraAI does not have).",
+                            s.source.name, s.models, s.skipped);
+            } else {
+                text += TrF("{0}: {1} models.", s.source.name, s.models);
+            }
+        }
+        return text;
     });
+}
+
+void UltraAILocalModelsPage::OnSources() {
+    auto dialog = std::make_shared<UltraAICatalogueSourcesDialog>([this, alive = alive_]() {
+        if (alive->load()) Refresh();
+    });
+    dialog->CreateSourcesDialog();
+    dialog->ShowModal(parent_);
 }
 
 void UltraAILocalModelsPage::OnOpenFolder() {
@@ -739,6 +979,8 @@ void UltraAILocalModelsPage::RestoreDefaults() {
     LocalRuntimeSettings s = rt.GetSettings();
     s.policy = DownloadPolicy::Ask;
     s.preferredAccelerator.clear();
+    s.engineAccelerators.clear();
+    s.catalogueSources = DefaultCatalogueSources();
     s.idleMinutes = 15;
     rt.SetSettings(s);
     Refresh();

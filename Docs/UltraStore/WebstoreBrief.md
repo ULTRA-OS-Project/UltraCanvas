@@ -266,4 +266,9 @@ numbers), with these corrections to the plan above:
   module's Brotli size, Discover's pictures, an app page's screenshots)
   against a fixture store published by the admin backend
   (`test/fixture`, `make-fixture.sh`) - the runtime from the site, a
-  tampered catalog refused, and the runtime from the extension.
+  tampered catalog refused, and the runtime from the extension. The store
+  it tests - the fixture with the build's test module, loader and runtime
+  laid over it (`test/stage-store.mjs`) - is `preview/` in the run's
+  `ultrastore-web-dynamic` artifact, a folder a static host serves; `site/`
+  beside it is the build's own, whose module trusts the store's keys alone
+  (the test checks that too) and which a store is published with.

@@ -2,6 +2,10 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.1 - the clipboard button opens UltraClipboard (a running one, even
+//                  in the background, comes forward); Super+V and the button's
+//                  right-click menu keep the quick panel; without UltraClipboard
+//                  beside the desktop the button opens the quick panel as before
 // Version: 0.8.0 - one look for everything: the bars follow the system look
 //                  (Appearance.conf, UltraCanvasTheme), the Theme menu sets it
 //                  for every application (Dark, Light, As the system), and the
@@ -654,7 +658,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     // The ULTRA OS logo in its own colours, wider than the other items: it
     // is twice as wide as it is high. The variant drawn for the theme's
     // ground.
-    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath(Bars().logo),
+    auto settingsButton = AddBarButton(system, "settings", Tr("ULTRA OS settings"), IconPath(Bars().logo),
                                        [this]() { OpenSystemSettings(); });
     settingsButton->SetUseIconAsMask(false);
     const int logoBox = vertical ? kBarThickness - 4 : kLogoButtonWide;
@@ -662,7 +666,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     settingsButton->SetElementSize(Size2Df(static_cast<float>(logoBox), static_cast<float>(kBarButton)));
     settingsButton->SetIconSize(logoWidth, logoWidth * kLogoHeight / kLogoWidth);
     settingsButton->onContextMenu = [this](int x, int y) { ShowSettingsButtonMenu(x, y); };
-    AddBarButton(system, "apps", "Applications", IconPath("apps.svg"),
+    AddBarButton(system, "apps", Tr("Applications"), IconPath("apps.svg"),
                  [this]() { OpenAppStarter(); });
     bar->AddChild(system);
 
@@ -690,8 +694,8 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     TuckAgainstWave(pinned, wave2, vertical, false);
     if (!settings_.ramDiscPath.empty()) {
         const std::string tip = settings_.ramDiscPath == kRamDiscFromFiler
-                ? std::string("RAM disc")
-                : "RAM disc (" + settings_.ramDiscPath + ")";
+                ? Tr("RAM disc")
+                : TrF("RAM disc ({0})", settings_.ramDiscPath);
         AddBarButton(pinned, "ramdisc", tip, IconPath("ramdisc.svg"),
                      [this]() { OpenRamDisc(); });
     }
@@ -711,7 +715,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
             std::string error;
             if (!UltraCanvasDesktopShell::LaunchApplication(launched, {}, &error)) {
                 debugOutput << "UltraDesktop: could not start " << launched.name << ": " << error << std::endl;
-                UltraCanvasAlert::Error("Could not start " + launched.name + ": " + error, "UltraDesktop", nullptr,
+                UltraCanvasAlert::Error(TrF("Could not start {0}: {1}", launched.name, error), "UltraDesktop", nullptr,
                                         window_.get());
                 return;
             }
@@ -840,18 +844,19 @@ void UltraDesktopWindow::ShowClockMenu(int windowX, int windowY) {
     if (!window_) return;
     struct Choice {
         const char* style;
-        const char* label;
+        std::string label;
     };
-    static const Choice kChoices[] = {
-        {"analog-date", "Analog clock with the date"},
-        {"analog", "Analog clock"},
-        {"digital-date", "Digital clock with the date"},
-        {"digital", "Digital clock"},
-        {"digital-seconds", "Digital clock with seconds"},
+    // Built on each call: Tr needs literal keys and the language in use now.
+    const Choice kChoices[] = {
+        {"analog-date", Tr("Analog clock with the date")},
+        {"analog", Tr("Analog clock")},
+        {"digital-date", Tr("Digital clock with the date")},
+        {"digital", Tr("Digital clock")},
+        {"digital-seconds", Tr("Digital clock with seconds")},
     };
     popupMenu_ = std::make_shared<UltraCanvasMenu>("ClockMenu", 0, 0, 240, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
-    popupMenu_->AddItem(MenuItemData::Header("Clock"));
+    popupMenu_->AddItem(MenuItemData::Header(Tr("Clock")));
     for (const Choice& choice : kChoices) {
         const std::string style = choice.style;
         popupMenu_->AddItem(MenuItemData::Radio(choice.label, 1, settings_.clockStyle == style, [this, style]() {
@@ -863,7 +868,7 @@ void UltraDesktopWindow::ShowClockMenu(int windowX, int windowY) {
         }));
     }
     popupMenu_->AddItem(MenuItemData::Separator());
-    popupMenu_->AddItem(MenuItemData::Action("Calendar and clock...", [this]() { OpenClockPanel(); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Calendar and clock..."), [this]() { OpenClockPanel(); }));
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
@@ -872,12 +877,12 @@ void UltraDesktopWindow::ShowBatteryMenu(int windowX, int windowY) {
     if (!window_) return;
     popupMenu_ = std::make_shared<UltraCanvasMenu>("BatteryMenu", 0, 0, 240, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
-    popupMenu_->AddItem(MenuItemData::Header("Battery"));
-    popupMenu_->AddItem(MenuItemData::Checkbox("Show the percentage", settings_.batteryPercent, [this](bool on) {
+    popupMenu_->AddItem(MenuItemData::Header(Tr("Battery")));
+    popupMenu_->AddItem(MenuItemData::Checkbox(Tr("Show the percentage"), settings_.batteryPercent, [this](bool on) {
         SetBatteryPercentShown(on);
     }));
     popupMenu_->AddItem(MenuItemData::Separator());
-    popupMenu_->AddItem(MenuItemData::Action("Battery details...", [this]() { OpenDevicePanel("battery"); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Battery details..."), [this]() { OpenDevicePanel("battery"); }));
     popupMenu_->AddItem(MenuItemData::Separator());
     AddInfoBarItems(*popupMenu_, "battery");
     PopupElementSettings settings;
@@ -988,7 +993,7 @@ std::string UsbTitle(const USBDeviceInfo& device) {
     if (!device.productName.empty()) return device.productName;
     char ids[24];
     std::snprintf(ids, sizeof(ids), "%04x:%04x", device.vendorId, device.productId);
-    return "USB device " + std::string(ids);
+    return TrF("USB device {0}", ids);
 }
 
 // "15.6 GB", "512 MB" - whole numbers and a tenth, without the locale's
@@ -1013,7 +1018,7 @@ DevicePanelContent ReadUsbPanel() {
     const std::vector<RemovableDrive> drives = UltraCanvasRemovableDrives::List(&driveError);
     if (!drives.empty()) {
         DevicePanelEntry heading;
-        heading.title = "Drives";
+        heading.title = Tr("Drives");
         heading.heading = true;
         content.entries.push_back(heading);
     }
@@ -1026,11 +1031,11 @@ DevicePanelContent ReadUsbPanel() {
                                                     : drive.labels[i] + " (" + drive.mountPoints[i] + ")");
         }
         entry.detail = JoinParts({drive.bus, SizeText(drive.sizeBytes),
-                                  where.empty() ? "nothing mounted" : JoinParts(where)});
+                                  where.empty() ? Tr("nothing mounted") : JoinParts(where)});
         entry.highlighted = !drive.mountPoints.empty();
-        entry.actionLabel = "Safely remove";
-        entry.busyText = "Writing out what is left and unmounting " + drive.name + "...";
-        entry.doneText = drive.name + " can be pulled out now.";
+        entry.actionLabel = Tr("Safely remove");
+        entry.busyText = TrF("Writing out what is left and unmounting {0}...", drive.name);
+        entry.doneText = TrF("{0} can be pulled out now.", drive.name);
         const std::string id = drive.id;
         entry.action = [id]() {
             std::string error;
@@ -1044,7 +1049,7 @@ DevicePanelContent ReadUsbPanel() {
         if (device.isHub) continue;
         if (devices++ == 0 && !drives.empty()) {
             DevicePanelEntry heading;
-            heading.title = "Devices";
+            heading.title = Tr("Devices");
             heading.heading = true;
             content.entries.push_back(heading);
         }
@@ -1053,19 +1058,20 @@ DevicePanelContent ReadUsbPanel() {
         entry.detail = JoinParts({device.vendorName, device.deviceClass, device.speed});
         content.entries.push_back(entry);
     }
-    content.summary = devices == 0 ? "" : std::to_string(devices) + (devices == 1 ? " device attached" : " devices attached");
+    content.summary = devices == 0 ? std::string()
+                                   : TrN("{n} device attached", "{n} devices attached", static_cast<long long>(devices));
     if (!drives.empty()) {
-        content.summary += std::string(content.summary.empty() ? "" : ", ") + std::to_string(drives.size()) +
-                           (drives.size() == 1 ? " drive" : " drives");
+        content.summary += std::string(content.summary.empty() ? "" : ", ") +
+                           TrN("{n} drive", "{n} drives", static_cast<long long>(drives.size()));
     }
-    content.empty = "No USB devices are attached (hubs are not counted).";
+    content.empty = Tr("No USB devices are attached (hubs are not counted).");
     return content;
 }
 
 DevicePanelContent ReadKeyboardPanel(const std::string& layout) {
     DevicePanelContent content;
-    content.summary = layout.empty() ? "The keyboard layout in use is not known."
-                                     : "Keyboard layout in use: " + layout;
+    content.summary = layout.empty() ? Tr("The keyboard layout in use is not known.")
+                                     : TrF("Keyboard layout in use: {0}", layout);
     for (const USBDeviceInfo& device : UltraCanvasHardwareInfo::ListUSBDevices()) {
         if (device.isHub) continue;
         const std::string words = Lowered(device.productName + " " + device.deviceClass);
@@ -1079,20 +1085,20 @@ DevicePanelContent ReadKeyboardPanel(const std::string& layout) {
         if (device.kind != "Keyboard" || !device.paired) continue;
         DevicePanelEntry entry;
         entry.title = device.name;
-        entry.detail = JoinParts({"Bluetooth", device.connected ? "connected" : "not connected",
-                                  device.batteryPercent ? "battery " + std::to_string(*device.batteryPercent) + "%"
-                                                        : ""});
+        entry.detail = JoinParts({"Bluetooth", device.connected ? Tr("connected") : Tr("not connected"),
+                                  device.batteryPercent ? TrF("battery {0}%", *device.batteryPercent)
+                                                        : std::string()});
         entry.highlighted = device.connected;
         content.entries.push_back(entry);
     }
-    content.empty = "No separate keyboard was recognised. A laptop's built-in keyboard, and a wireless "
-                    "receiver that does not name itself a keyboard, are not listed.";
+    content.empty = Tr("No separate keyboard was recognised. A laptop's built-in keyboard, and a wireless "
+                       "receiver that does not name itself a keyboard, are not listed.");
     return content;
 }
 
 DevicePanelContent ReadWebcamPanel(bool inUse) {
     DevicePanelContent content;
-    content.summary = inUse ? "A program is using a camera now." : "No program is using a camera.";
+    content.summary = inUse ? Tr("A program is using a camera now.") : Tr("No program is using a camera.");
     for (const VideoDeviceInfo& camera : UltraCanvasVideoDevices::ListCameras()) {
         DevicePanelEntry entry;
         entry.title = camera.name.empty() ? camera.id : camera.name;
@@ -1104,8 +1110,8 @@ DevicePanelContent ReadWebcamPanel(bool inUse) {
                 bestH = mode.height;
             }
         }
-        entry.detail = JoinParts({camera.isDefault ? "default" : "",
-                                  best > 0 ? "up to " + std::to_string(bestW) + " x " + std::to_string(bestH) : ""});
+        entry.detail = JoinParts({camera.isDefault ? Tr("default") : std::string(),
+                                  best > 0 ? TrF("up to {0} x {1}", bestW, bestH) : std::string()});
         entry.highlighted = camera.isDefault;
         content.entries.push_back(entry);
     }
@@ -1125,39 +1131,39 @@ DevicePanelContent ReadWebcamPanel(bool inUse) {
         }
     }
     content.empty = UltraCanvasVideoDevices::IsAvailable()
-                        ? "No camera was found."
-                        : "No camera was found. (This build lists cameras through USB only.)";
+                        ? Tr("No camera was found.")
+                        : Tr("No camera was found. (This build lists cameras through USB only.)");
     return content;
 }
 
 DevicePanelContent ReadMicrophonePanel(bool inUse) {
     DevicePanelContent content;
-    content.summary = inUse ? "A program is recording from a microphone now." : "No program is recording.";
+    content.summary = inUse ? Tr("A program is recording from a microphone now.") : Tr("No program is recording.");
     for (const AudioDeviceInfo& input : UltraCanvasAudioDevices::ListInputDevices()) {
         DevicePanelEntry entry;
         entry.title = input.name.empty() ? input.id : input.name;
-        entry.detail = JoinParts({input.isDefault ? "default input" : "",
-                                  input.maxChannels == 1 ? "mono" : input.maxChannels == 2 ? "stereo" : ""});
+        entry.detail = JoinParts({input.isDefault ? Tr("default input") : std::string(),
+                                  input.maxChannels == 1 ? Tr("mono") : input.maxChannels == 2 ? Tr("stereo") : std::string()});
         entry.highlighted = input.isDefault;
         content.entries.push_back(entry);
     }
-    content.empty = UltraCanvasAudioDevices::IsAvailable() ? "No microphone was found."
-                                                           : "This build has no audio support to list microphones.";
+    content.empty = UltraCanvasAudioDevices::IsAvailable() ? Tr("No microphone was found.")
+                                                           : Tr("This build has no audio support to list microphones.");
     return content;
 }
 
 DevicePanelContent ReadBatteryPanel(const DesktopDeviceActivity& activity) {
     DevicePanelContent content;
     if (!activity.batteryPresent) {
-        content.summary = "This computer runs on mains power: it has no battery.";
+        content.summary = Tr("This computer runs on mains power: it has no battery.");
         return content;
     }
     DevicePanelEntry entry;
-    entry.title = activity.batteryPercent >= 0 ? std::to_string(activity.batteryPercent) + "%" : "Battery";
-    entry.detail = activity.batteryCharging ? "charging" : "on battery";
+    entry.title = activity.batteryPercent >= 0 ? std::to_string(activity.batteryPercent) + "%" : Tr("Battery");
+    entry.detail = activity.batteryCharging ? Tr("charging") : Tr("on battery");
     entry.highlighted = activity.batteryCharging;
     content.entries.push_back(entry);
-    content.summary = activity.batteryCharging ? "Plugged in and charging." : "Running on the battery.";
+    content.summary = activity.batteryCharging ? Tr("Plugged in and charging.") : Tr("Running on the battery.");
     return content;
 }
 
@@ -1216,9 +1222,9 @@ void UltraDesktopWindow::OpenDevicePanel(const std::string& device) {
     // Read afresh each time: the panel is made again with what the device
     // poll saw last.
     const DesktopDeviceActivity activity = lastActivity_;
-    const DevicePanelAction explorer{"Device Explorer", "Printers, scanners and cameras in detail",
+    const DevicePanelAction explorer{Tr("Device Explorer"), Tr("Printers, scanners and cameras in detail"),
                                      []() { UltraCanvasDesktopShell::LaunchProgram("DeviceExplorer"); }};
-    const DevicePanelAction tasks{"Task Manager", "The hardware page lists every device",
+    const DevicePanelAction tasks{Tr("Task Manager"), Tr("The hardware page lists every device"),
                                   [this]() { OpenTasks(); }};
     if (device == "usb") {
         panel = std::make_shared<UltraDesktopDevicePanel>("USB", ReadUsbPanel,
@@ -1229,22 +1235,22 @@ void UltraDesktopWindow::OpenDevicePanel(const std::string& device) {
     } else if (device == "keyboard") {
         const std::string layout = activity.keyboardLayout;
         panel = std::make_shared<UltraDesktopDevicePanel>(
-            "Keyboard", [layout]() { return ReadKeyboardPanel(layout); },
+            Tr("Keyboard"), [layout]() { return ReadKeyboardPanel(layout); },
             std::vector<DevicePanelAction>{
-                {"Bluetooth", "Pair a wireless keyboard", [this]() { OpenBluetoothPanel(); }}, tasks});
+                {"Bluetooth", Tr("Pair a wireless keyboard"), [this]() { OpenBluetoothPanel(); }}, tasks});
     } else if (device == "webcam") {
         const bool inUse = activity.webcamInUse;
         panel = std::make_shared<UltraDesktopDevicePanel>(
-            "Webcam", [inUse]() { return ReadWebcamPanel(inUse); }, std::vector<DevicePanelAction>{explorer, tasks});
+            Tr("Webcam"), [inUse]() { return ReadWebcamPanel(inUse); }, std::vector<DevicePanelAction>{explorer, tasks});
     } else if (device == "mic") {
         const bool inUse = activity.microphoneInUse;
         panel = std::make_shared<UltraDesktopDevicePanel>(
-            "Microphone", [inUse]() { return ReadMicrophonePanel(inUse); },
-            std::vector<DevicePanelAction>{{"Loudspeaker", "The output's volume", [this]() { OpenVolumePanel(); }},
+            Tr("Microphone"), [inUse]() { return ReadMicrophonePanel(inUse); },
+            std::vector<DevicePanelAction>{{Tr("Loudspeaker"), Tr("The output's volume"), [this]() { OpenVolumePanel(); }},
                                            tasks});
     } else if (device == "battery") {
         panel = std::make_shared<UltraDesktopDevicePanel>(
-            "Battery", [activity]() { return ReadBatteryPanel(activity); }, std::vector<DevicePanelAction>{tasks});
+            Tr("Battery"), [activity]() { return ReadBatteryPanel(activity); }, std::vector<DevicePanelAction>{tasks});
     } else {
         return;
     }
@@ -1265,11 +1271,16 @@ void UltraDesktopWindow::ReadSpeaker() {
 // volume in the words. Playing or not is the device poll's.
 void UltraDesktopWindow::ApplySpeaker() {
     if (!info_) return;
-    std::string words = "Loudspeaker";
-    if (haveSpeaker_ && speaker_.available) {
-        words += speaker_.muted ? ": muted" : ": " + std::to_string(speaker_.volumePercent) + "%";
+    const bool playing = haveLastActivity_ && lastActivity_.speakerPlaying;
+    std::string words;
+    if (!(haveSpeaker_ && speaker_.available)) {
+        words = playing ? Tr("Loudspeaker, playing") : Tr("Loudspeaker");
+    } else if (speaker_.muted) {
+        words = playing ? Tr("Loudspeaker: muted, playing") : Tr("Loudspeaker: muted");
+    } else {
+        words = playing ? TrF("Loudspeaker: {0}%, playing", speaker_.volumePercent)
+                        : TrF("Loudspeaker: {0}%", speaker_.volumePercent);
     }
-    if (haveLastActivity_ && lastActivity_.speakerPlaying) words += ", playing";
     if (haveSpeaker_ && speaker_.available && speaker_.muted) {
         info_->SetItemBadgeDot("speaker", kMarkerOn);
     } else if (haveLastActivity_ && lastActivity_.speakerPlaying) {
@@ -1288,7 +1299,7 @@ void UltraDesktopWindow::LockScreen() {
     std::string error;
     if (UltraCanvasDesktopShell::LockSession(&error)) return;
     debugOutput << "UltraDesktop: the screen was not locked: " << error << std::endl;
-    UltraCanvasDialogManager::ShowWarning("The screen could not be locked.\n\n" + error, "UltraDesktop", nullptr,
+    UltraCanvasDialogManager::ShowWarning(Tr("The screen could not be locked.") + "\n\n" + error, "UltraDesktop", nullptr,
                                           window_.get());
 }
 
@@ -1328,9 +1339,9 @@ void UltraDesktopWindow::ShowPinnedMenu(const UCDesktopEntry& entry, int windowX
     popupMenu_ = std::make_shared<UltraCanvasMenu>("PinnedMenu", 0, 0, 220, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
     popupMenu_->AddItem(MenuItemData::Header(Shorten(entry.name, 40)));
-    popupMenu_->AddItem(MenuItemData::Action("Open", [entry]() { UltraCanvasDesktopShell::LaunchApplication(entry); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Open"), [entry]() { UltraCanvasDesktopShell::LaunchApplication(entry); }));
     popupMenu_->AddItem(MenuItemData::Separator());
-    popupMenu_->AddItem(MenuItemData::Action("Unpin from taskbar", [this, entry]() { SetPinned(entry, false); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Unpin from taskbar"), [this, entry]() { SetPinned(entry, false); }));
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
@@ -1350,20 +1361,27 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     desktopCount_ = std::clamp(DesiredDesktopCount(), 1, 9);
     for (int i = 0; i < desktopCount_; ++i) {
         const std::string id = "desktop" + std::to_string(i + 1);
-        AddBarToggle(organiser_, id, "Desktop " + std::to_string(i + 1), "", std::to_string(i + 1),
+        AddBarToggle(organiser_, id, TrF("Desktop {0}", i + 1), "", std::to_string(i + 1),
                      [this, i](bool) { SwitchToDesktop(i); });
     }
     organiser_->AddSeparator();
     // The pinboard is the Sticker board; the free-form notes keep a note
     // of their own.
-    AddBarToggle(organiser_, "categoryboard", "Sticker board: drop files into categories",
+    AddBarToggle(organiser_, "categoryboard", Tr("Sticker board: drop files into categories"),
                  IconPath("pinboard.svg"), "", [this](bool on) { ToggleCategoryBoard(on); });
-    AddBarToggle(organiser_, "stickerboard", "Notes on the wallpaper", IconPath("notes.svg"), "",
+    AddBarToggle(organiser_, "stickerboard", Tr("Notes on the wallpaper"), IconPath("notes.svg"), "",
                  [this](bool on) { ToggleStickerboard(on); });
-    auto clipboard = AddBarButton(organiser_, "clipboard", "Clipboard history (Super+V)",
+    auto clipboard = AddBarButton(organiser_, "clipboard", Tr("UltraClipboard: the clipboard history (Super+V: the quick panel)"),
                                   IconPath("clipboard.svg"), nullptr);
     clipboardButton_ = clipboard.get();
     clipboard->onClick = [this, button = clipboard.get()]() {
+        // The whole history is UltraClipboard's: the button opens it. The
+        // quick panel stays on Super+V and the right-click menu, and is
+        // what the button opens where UltraClipboard is not installed.
+        if (!UltraCanvasDesktopShell::FindProgram("UltraClipboard").empty()) {
+            OpenClipboardApplication({});
+            return;
+        }
         if (history_) {
             ToggleClipboardPanel(true);
             return;
@@ -1378,7 +1396,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     // A click snips an area in UltraSnip; the right click offers the other
     // shapes, a recording and the plain whole-screen capture.
     auto screenshot = AddBarButton(organiser_, "screenshot",
-                                   "Snip: a picture or a video of the screen (Super+Shift+S)",
+                                   Tr("Snip: a picture or a video of the screen (Super+Shift+S)"),
                                    IconPath("screenshot.svg"), [this]() { OpenSnip({"--rectangle"}); });
     screenshot->onContextMenu = [this](int windowX, int windowY) { ShowScreenshotMenu(windowX, windowY); };
     bar->AddChild(organiser_);
@@ -1413,24 +1431,24 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
         if (!settings_.ShowsInfoItem(id)) return nullptr;
         return AddBarButton(info_, id, tooltip, IconPath(icon), std::move(onClick));
     };
-    add("mail", "Email", "mail.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraMail"); });
+    add("mail", Tr("Email"), "mail.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraMail"); });
     add("notifications", Tr("Notifications"), "notifications.svg",
         [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNotifications"); });
-    add("upload", "Upload", "upload.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    add("download", "Download", "download.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    add("lan", "Internet / LAN", "lan.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("upload", Tr("Upload"), "upload.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("download", Tr("Download"), "download.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    add("lan", Tr("Internet / LAN"), "lan.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
     add("vpn", "VPN", "vpn.svg", [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
     add("bluetooth", "Bluetooth", "bluetooth.svg", [this]() { OpenBluetoothPanel(); });
     add("wifi", "Wi-Fi", "wifi.svg", [this]() { OpenWifiPanel(); });
     add("usb", "USB", "usb.svg", [this]() { OpenDevicePanel("usb"); });
-    add("keyboard", "Keyboard", "keyboard.svg", [this]() { OpenDevicePanel("keyboard"); });
-    add("webcam", "Webcam", "webcam.svg", [this]() { OpenDevicePanel("webcam"); });
-    add("mic", "Microphone", "mic.svg", [this]() { OpenDevicePanel("mic"); });
-    add("speaker", "Loudspeaker", "speaker.svg", [this]() { OpenVolumePanel(); });
-    if (auto battery = add("battery", "Battery", "battery.svg", [this]() { OpenDevicePanel("battery"); })) {
+    add("keyboard", Tr("Keyboard"), "keyboard.svg", [this]() { OpenDevicePanel("keyboard"); });
+    add("webcam", Tr("Webcam"), "webcam.svg", [this]() { OpenDevicePanel("webcam"); });
+    add("mic", Tr("Microphone"), "mic.svg", [this]() { OpenDevicePanel("mic"); });
+    add("speaker", Tr("Loudspeaker"), "speaker.svg", [this]() { OpenVolumePanel(); });
+    if (auto battery = add("battery", Tr("Battery"), "battery.svg", [this]() { OpenDevicePanel("battery"); })) {
         battery->onContextMenu = [this](int windowX, int windowY) { ShowBatteryMenu(windowX, windowY); };
     }
-    add("tasks", "Task Manager", "tasks.svg", [this]() { OpenTasks(); });
+    add("tasks", Tr("Task Manager"), "tasks.svg", [this]() { OpenTasks(); });
     for (const auto& item : info_->GetItems()) {
         if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(item)) {
             button->SetElementSize(Size2Df(static_cast<float>(InfoButtonSize()), static_cast<float>(InfoButtonSize())));
@@ -1531,17 +1549,18 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
 std::vector<MenuItemData> UltraDesktopWindow::TaskbarEdgeItems() {
     struct Choice {
         TaskbarEdge edge;
-        const char* label;
+        std::string label;
     };
-    static const Choice kChoices[] = {
-        {TaskbarEdge::Left, "Taskbar on the left"},
-        {TaskbarEdge::Top, "Taskbar at the top"},
-        {TaskbarEdge::Bottom, "Taskbar at the bottom"},
+    // Built on each call: Tr needs literal keys and the language in use now.
+    const Choice kChoices[] = {
+        {TaskbarEdge::Left, Tr("Taskbar on the left")},
+        {TaskbarEdge::Top, Tr("Taskbar at the top")},
+        {TaskbarEdge::Bottom, Tr("Taskbar at the bottom")},
     };
     std::vector<MenuItemData> items;
     for (const Choice& choice : kChoices) {
         const TaskbarEdge edge = choice.edge;
-        items.push_back(MenuItemData::Radio(Tr(choice.label), 2, settings_.taskbarEdge == edge,
+        items.push_back(MenuItemData::Radio(choice.label, 2, settings_.taskbarEdge == edge,
                                             [this, edge]() { SetTaskbarEdge(edge); }));
     }
     return items;
@@ -1637,7 +1656,7 @@ void UltraDesktopWindow::ShowInfoBarMenu(int windowX, int windowY, const std::st
     if (!window_) return;
     popupMenu_ = std::make_shared<UltraCanvasMenu>("InfoBarMenu", 0, 0, 240, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
-    popupMenu_->AddItem(MenuItemData::Header("Info bar"));
+    popupMenu_->AddItem(MenuItemData::Header(Tr("Info bar")));
     AddInfoBarItems(*popupMenu_, itemId);
     popupMenu_->AddItem(MenuItemData::Separator());
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
@@ -1651,9 +1670,9 @@ void UltraDesktopWindow::AddInfoBarItems(UltraCanvasMenu& menu, const std::strin
     bool known = false;
     for (const InfoItem& item : DesktopSettings::InfoItems()) known = known || itemId == item.id;
     if (known) {
-        menu.AddItem(MenuItemData::Action("Hide this icon", [this, itemId]() { SetInfoItemShown(itemId, false); }));
+        menu.AddItem(MenuItemData::Action(Tr("Hide this icon"), [this, itemId]() { SetInfoItemShown(itemId, false); }));
     }
-    menu.AddItem(MenuItemData::Action("Info bar icons...", [this]() { OpenSystemSettings(kInfoBarSettingsPage); }));
+    menu.AddItem(MenuItemData::Action(Tr("Info bar icons..."), [this]() { OpenSystemSettings(kInfoBarSettingsPage); }));
 }
 
 void UltraDesktopWindow::SetInfoItemShown(const std::string& id, bool shown) {
@@ -1701,7 +1720,7 @@ void UltraDesktopWindow::DropFiles(const std::vector<std::string>& files, const 
     if (settings_.dropFilesOn == "desktop" && desktopIcons_) {
         std::string error;
         if (!desktopIcons_->TakeFiles(files, at, error)) {
-            UltraCanvasAlert::Error(Tr("Not every file could be put on the desktop: ") + error, "UltraDesktop",
+            UltraCanvasAlert::Error(TrF("Not every file could be put on the desktop: {0}", error), "UltraDesktop",
                                     nullptr, window_.get());
         }
         return;
@@ -1774,7 +1793,7 @@ void UltraDesktopWindow::OpenDisplaySettings() {
     std::string error;
     if (UltraCanvasDesktopShell::OpenDisplaySettings(&error)) return;
     debugOutput << "UltraDesktop: display settings: " << error << std::endl;
-    UltraCanvasAlert::Error(Tr("The display settings could not be opened: ") + error, "UltraDesktop", nullptr,
+    UltraCanvasAlert::Error(TrF("The display settings could not be opened: {0}", error), "UltraDesktop", nullptr,
                             window_.get());
 }
 
@@ -1787,10 +1806,10 @@ void UltraDesktopWindow::OpenSystemSettings(const std::string& page) {
     if (UltraCanvasDesktopShell::LaunchProgram("UOS-Settings", arguments, &error)) return;
     debugOutput << "UltraDesktop: UOS-Settings: " << error << std::endl;
     UltraCanvasDialogManager::ShowWarning(
-            "UOS-Settings, the ULTRA OS settings application, could not be started. "
-            "It holds the desktop's settings too: install it beside UltraDesktop or "
-            "on the PATH.\n\n" + error,
-            "ULTRA OS settings", nullptr, window_.get());
+            Tr("UOS-Settings, the ULTRA OS settings application, could not be started. "
+               "It holds the desktop's settings too: install it beside UltraDesktop or "
+               "on the PATH.") + "\n\n" + error,
+            Tr("ULTRA OS settings"), nullptr, window_.get());
 }
 
 void UltraDesktopWindow::OpenAppStarter() {
@@ -1877,24 +1896,24 @@ void UltraDesktopWindow::OpenSnip(const std::vector<std::string>& arguments) {
     }
     if (UltraCanvasDesktopShell::LaunchProgram("UltraSnip", arguments, &error)) return;
     debugOutput << "UltraDesktop: UltraSnip could not be started: " << error << std::endl;
-    UltraCanvasAlert::Error("UltraSnip could not be started: " + error, "Screenshot", nullptr, window_.get());
+    UltraCanvasAlert::Error(TrF("UltraSnip could not be started: {0}", error), Tr("Screenshot"), nullptr, window_.get());
 }
 
 void UltraDesktopWindow::ShowScreenshotMenu(int windowX, int windowY) {
     if (!window_) return;
     popupMenu_ = std::make_shared<UltraCanvasMenu>("ScreenshotButtonMenu", 0, 0, 260, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
-    popupMenu_->AddItem(MenuItemData::Header("Snip"));
-    popupMenu_->AddItem(MenuItemData::Action("Snip an area", [this]() { OpenSnip({"--rectangle"}); }));
-    popupMenu_->AddItem(MenuItemData::Action("Snip a window", [this]() { OpenSnip({"--window"}); }));
-    popupMenu_->AddItem(MenuItemData::Action("Snip the whole screen", [this]() { OpenSnip({"--screen"}); }));
+    popupMenu_->AddItem(MenuItemData::Header(Tr("Snip")));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Snip an area"), [this]() { OpenSnip({"--rectangle"}); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Snip a window"), [this]() { OpenSnip({"--window"}); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Snip the whole screen"), [this]() { OpenSnip({"--screen"}); }));
     popupMenu_->AddItem(MenuItemData::Separator());
-    popupMenu_->AddItem(MenuItemData::Action("Record an area", [this]() { OpenSnip({"--rectangle", "--video"}); }));
-    popupMenu_->AddItem(MenuItemData::Action("Record a window", [this]() { OpenSnip({"--window", "--video"}); }));
-    popupMenu_->AddItem(MenuItemData::Action("Record the whole screen", [this]() { OpenSnip({"--screen", "--video"}); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Record an area"), [this]() { OpenSnip({"--rectangle", "--video"}); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Record a window"), [this]() { OpenSnip({"--window", "--video"}); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Record the whole screen"), [this]() { OpenSnip({"--screen", "--video"}); }));
     popupMenu_->AddItem(MenuItemData::Separator());
-    popupMenu_->AddItem(MenuItemData::Action("Screenshot now, to Pictures", [this]() { TakeScreenshot(); }));
-    popupMenu_->AddItem(MenuItemData::Action("Open UltraSnip", [this]() { OpenSnip({}); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Screenshot now, to Pictures"), [this]() { TakeScreenshot(); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Open UltraSnip"), [this]() { OpenSnip({}); }));
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX - 270, windowY), *window_, settings);
 }
@@ -1905,12 +1924,12 @@ void UltraDesktopWindow::TakeScreenshot() {
     auto screenshot = organiser_ ? std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("screenshot")) : nullptr;
     if (UltraCanvasDesktopShell::CaptureScreen(path, &error)) {
         if (organiser_) organiser_->SetItemBadgeDot("screenshot", kMarkerSaved);
-        if (screenshot) screenshot->SetTooltip("Saved " + path);
+        if (screenshot) screenshot->SetTooltip(TrF("Saved {0}", path));
         screenshotBadgeTicks_ = kScreenshotTicks;
     } else {
         debugOutput << "UltraDesktop: screenshot failed: " << error << std::endl;
         if (organiser_) organiser_->SetItemBadgeDot("screenshot", kMarkerOn);
-        if (screenshot) screenshot->SetTooltip("Screenshot failed: " + error);
+        if (screenshot) screenshot->SetTooltip(TrF("Screenshot failed: {0}", error));
         screenshotBadgeTicks_ = kScreenshotTicks;
     }
 }
@@ -1959,7 +1978,7 @@ void UltraDesktopWindow::PrepareCategoryBoard() {
     if (!window_ || !workArea_) return;
     if (!boardWindow_) {
         WindowConfig config;
-        config.title = "Sticker board";
+        config.title = Tr("Sticker board");
         config.type = WindowType::Borderless;
         const Rect2Df bounds = workArea_->GetBoundsInWindow();
         config.width = std::max(400, static_cast<int>(bounds.width));
@@ -2189,7 +2208,7 @@ void UltraDesktopWindow::FitInfoPanel() {
         StyleBarButton(chevron);
         chevron->SetElementSize(Size2Df(static_cast<float>(InfoButtonSize()), static_cast<float>(InfoButtonSize())));
         chevron->SetIconSize(InfoIconSize(), InfoIconSize());
-        chevron->SetTooltip("More");
+        chevron->SetTooltip(Tr("More"));
     }
     const std::vector<std::string> overflow = info_->GetOverflowItemIds();
     if (overflow.empty()) return;
@@ -2695,11 +2714,11 @@ void UltraDesktopWindow::ApplyBattery(const DesktopDeviceActivity& now) {
         } else if (auto badge = info_->SetItemBadge("battery", std::to_string(now.batteryPercent), color)) {
             badge->SetGrowInward(true);
         }
-        if (button) button->SetTooltip("Battery: " + std::to_string(now.batteryPercent) + "%" +
-                                       (now.batteryCharging ? ", charging" : ""));
+        if (button) button->SetTooltip(now.batteryCharging ? TrF("Battery: {0}%, charging", now.batteryPercent)
+                                                           : TrF("Battery: {0}%", now.batteryPercent));
     } else {
         info_->ClearItemBadge("battery");
-        if (button) button->SetTooltip("Battery: none (mains power)");
+        if (button) button->SetTooltip(Tr("Battery: none (mains power)"));
     }
 }
 
@@ -2718,13 +2737,13 @@ void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
 
     // Red: a device is on.
     marker("webcam", now.webcamInUse, kMarkerOn);
-    tooltip("webcam", now.webcamInUse ? "Webcam: in use" : "Webcam");
+    tooltip("webcam", now.webcamInUse ? Tr("Webcam: in use") : Tr("Webcam"));
     marker("mic", now.microphoneInUse, kMarkerOn);
-    tooltip("mic", now.microphoneInUse ? "Microphone: recording" : "Microphone");
+    tooltip("mic", now.microphoneInUse ? Tr("Microphone: recording") : Tr("Microphone"));
     marker("bluetooth", now.bluetoothPowered, kMarkerOn);
-    tooltip("bluetooth", !now.bluetoothPresent ? "Bluetooth: no adapter"
-            : now.bluetoothPowered ? "Bluetooth: on, " + std::to_string(now.bluetoothConnectedDevices) + " connected"
-                                   : "Bluetooth: off");
+    tooltip("bluetooth", !now.bluetoothPresent ? Tr("Bluetooth: no adapter")
+            : now.bluetoothPowered ? TrF("Bluetooth: on, {0} connected", now.bluetoothConnectedDevices)
+                                   : Tr("Bluetooth: off"));
 
     // Yellow: activity. (The speaker's marker and words are ApplySpeaker's,
     // which adds the volume.)
@@ -2735,29 +2754,29 @@ void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
     if (haveBefore) {
         const uint64_t down = (now.bytesReceived - std::min(now.bytesReceived, before.bytesReceived)) / kDevicePollSeconds;
         const uint64_t up = (now.bytesSent - std::min(now.bytesSent, before.bytesSent)) / kDevicePollSeconds;
-        tooltip("download", "Download: " + FormatFileSize(static_cast<size_t>(down)) + "/s");
-        tooltip("upload", "Upload: " + FormatFileSize(static_cast<size_t>(up)) + "/s");
+        tooltip("download", TrF("Download: {0}/s", FormatFileSize(static_cast<size_t>(down))));
+        tooltip("upload", TrF("Upload: {0}/s", FormatFileSize(static_cast<size_t>(up))));
     }
 
     // Links: a red marker means the link is down, none means fine; Wi-Fi
     // shows green while it is joined, so a glance tells it from "off".
     marker("lan", !now.lanConnected && !now.wifiConnected && !now.internetInterfaceUp, kMarkerOn);
-    tooltip("lan", now.lanConnected ? "LAN: connected" : now.internetInterfaceUp ? "Internet: connected" : "Internet / LAN: no link");
+    tooltip("lan", now.lanConnected ? Tr("LAN: connected") : now.internetInterfaceUp ? Tr("Internet: connected") : Tr("Internet / LAN: no link"));
     if (now.wifiPresent && now.wifiConnected) {
         info_->SetItemBadgeDot("wifi", kMarkerLinkUp);
     } else {
         marker("wifi", now.wifiPresent, kMarkerOn);
     }
-    tooltip("wifi", !now.wifiPresent ? "Wi-Fi: no adapter"
-            : now.wifiConnected ? ("Wi-Fi: " + (now.wifiSsid.empty() ? std::string("connected") : now.wifiSsid))
-                                : "Wi-Fi: not connected");
+    tooltip("wifi", !now.wifiPresent ? Tr("Wi-Fi: no adapter")
+            : now.wifiConnected ? (now.wifiSsid.empty() ? Tr("Wi-Fi: connected") : TrF("Wi-Fi: {0}", now.wifiSsid))
+                                : Tr("Wi-Fi: not connected"));
     marker("vpn", now.vpnConnected, kMarkerActive);
-    tooltip("vpn", now.vpnConnected ? "VPN: connected" : "VPN: off");
+    tooltip("vpn", now.vpnConnected ? Tr("VPN: connected") : Tr("VPN: off"));
 
     // Counts.
     if (now.usbDeviceCount > 0) info_->SetItemBadgeCount("usb", now.usbDeviceCount, kMarkerCount);
     else info_->ClearItemBadge("usb");
-    tooltip("usb", "USB: " + std::to_string(now.usbDeviceCount) + " device" + (now.usbDeviceCount == 1 ? "" : "s"));
+    tooltip("usb", TrN("USB: {n} device", "USB: {n} devices", static_cast<long long>(now.usbDeviceCount)));
 
     ApplyBattery(now);
 
@@ -2767,7 +2786,7 @@ void UltraDesktopWindow::ApplyDeviceActivity(const DesktopDeviceActivity& now,
                        [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
         if (auto badge = info_->SetItemBadge("keyboard", Shorten(layout, 3), kMarkerCount))
             badge->SetGrowInward(true);   // "DEU" stays on the screen
-        tooltip("keyboard", "Keyboard layout: " + layout);
+        tooltip("keyboard", TrF("Keyboard layout: {0}", layout));
     }
 }
 
@@ -2780,9 +2799,9 @@ void UltraDesktopWindow::ApplyNotices() {
         info_->ClearItemBadge("mail");
     }
     if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("mail"))) {
-        if (mail.updatedUnixSeconds == 0) button->SetTooltip("Email");
-        else if (!mail.text.empty()) button->SetTooltip("Email: " + mail.text);
-        else button->SetTooltip("Email: " + std::to_string(mail.count) + " unread");
+        if (mail.updatedUnixSeconds == 0) button->SetTooltip(Tr("Email"));
+        else if (!mail.text.empty()) button->SetTooltip(TrF("Email: {0}", mail.text));
+        else button->SetTooltip(TrN("Email: {n} unread", "Email: {n} unread", static_cast<long long>(mail.count)));
     }
     // UltraNotifications publishes its unread count while it runs (in the
     // background when "Start with the desktop" names it).
@@ -2850,21 +2869,21 @@ void UltraDesktopWindow::ShowWindowMenu(uint64_t windowId, int windowX, int wind
     if (title != runningTitles_.end() && !title->second.empty()) {
         popupMenu_->AddItem(MenuItemData::Header(Shorten(title->second, 40)));
     }
-    popupMenu_->AddItem(MenuItemData::Action("Activate", [windowId]() { UltraCanvasDesktopShell::ActivateWindow(windowId); }));
-    popupMenu_->AddItem(MenuItemData::Action("Minimize", [windowId]() { UltraCanvasDesktopShell::MinimizeWindow(windowId); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Activate"), [windowId]() { UltraCanvasDesktopShell::ActivateWindow(windowId); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Minimize"), [windowId]() { UltraCanvasDesktopShell::MinimizeWindow(windowId); }));
     if (desktopCount_ > 1) {
         std::vector<MenuItemData> desktops;
         for (int i = 0; i < desktopCount_; ++i) {
-            desktops.push_back(MenuItemData::Action("Desktop " + std::to_string(i + 1), [this, windowId, i]() {
+            desktops.push_back(MenuItemData::Action(TrF("Desktop {0}", i + 1), [this, windowId, i]() {
                 UltraCanvasDesktopShell::MoveWindowToVirtualDesktop(windowId, i);
                 windowsDirty_.store(true);
             }));
         }
-        desktops.push_back(MenuItemData::Action("Every desktop", [this, windowId]() {
+        desktops.push_back(MenuItemData::Action(Tr("Every desktop"), [this, windowId]() {
             UltraCanvasDesktopShell::MoveWindowToVirtualDesktop(windowId, -1);
             windowsDirty_.store(true);
         }));
-        popupMenu_->AddItem(MenuItemData::Submenu("Move to", desktops));
+        popupMenu_->AddItem(MenuItemData::Submenu(Tr("Move to"), desktops));
     }
     // Its application, when one is installed under its class: pinned from here.
     for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
@@ -2873,13 +2892,13 @@ void UltraDesktopWindow::ShowWindowMenu(uint64_t windowId, int windowX, int wind
             const UCDesktopEntry application = *entry;
             const bool pinned = IsPinned(application);
             popupMenu_->AddItem(MenuItemData::Separator());
-            popupMenu_->AddItem(MenuItemData::Action(pinned ? "Unpin from taskbar" : "Pin to taskbar",
+            popupMenu_->AddItem(MenuItemData::Action(pinned ? Tr("Unpin from taskbar") : Tr("Pin to taskbar"),
                                                      [this, application, pinned]() { SetPinned(application, !pinned); }));
         }
         break;
     }
     popupMenu_->AddItem(MenuItemData::Separator());
-    popupMenu_->AddItem(MenuItemData::Action("Close window", [windowId]() { UltraCanvasDesktopShell::CloseWindow(windowId); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Close window"), [windowId]() { UltraCanvasDesktopShell::CloseWindow(windowId); }));
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
@@ -2888,44 +2907,44 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     if (!window_) return;
     popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 300, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
-    popupMenu_->AddItem(MenuItemData::Action("ULTRA OS settings", [this]() { OpenSystemSettings(); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("ULTRA OS settings"), [this]() { OpenSystemSettings(); }));
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Taskbar position"), TaskbarEdgeItems()));
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
     // The programs that start with the desktop, in the background.
     std::vector<MenuItemData> startup;
     for (const StartupProgram& program : DesktopSettings::StartupPrograms()) {
         const std::string name = program.program;
-        startup.push_back(MenuItemData::Checkbox(program.name, settings_.StartsWithDesktop(name), [this, name](bool on) {
+        startup.push_back(MenuItemData::Checkbox(StartupProgramName(program), settings_.StartsWithDesktop(name), [this, name](bool on) {
             settings_.SetStartsWithDesktop(name, on);
             SaveSettings();
             // Now as well, not only from the next start.
             if (on) StartStartupPrograms();
         }));
     }
-    popupMenu_->AddItem(MenuItemData::Submenu("Start with the desktop", startup));
+    popupMenu_->AddItem(MenuItemData::Submenu(Tr("Start with the desktop"), startup));
     // Only Windows has a desktop of its own to switch from, and back to.
     if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
         popupMenu_->AddItem(MenuItemData::Separator());
         const DesktopReplacement mode = UltraCanvasDesktopShell::GetSystemDesktopReplacement();
         if (mode == DesktopReplacement::Off) {
-            popupMenu_->AddItem(MenuItemData::Action("Use as the Windows desktop (beside Explorer)",
+            popupMenu_->AddItem(MenuItemData::Action(Tr("Use as the Windows desktop (beside Explorer)"),
                                                      [this]() { UseAsSystemDesktop(DesktopReplacement::Beside); }));
         }
         if (mode != DesktopReplacement::Instead &&
             UltraCanvasDesktopShell::CanReplaceSystemDesktop(DesktopReplacement::Instead)) {
-            popupMenu_->AddItem(MenuItemData::Action("Use instead of Explorer (from the next sign-in)",
+            popupMenu_->AddItem(MenuItemData::Action(Tr("Use instead of Explorer (from the next sign-in)"),
                                                      [this]() { UseAsSystemDesktop(DesktopReplacement::Instead); }));
         }
         if (mode == DesktopReplacement::Instead) {
-            popupMenu_->AddItem(MenuItemData::Action("Keep Explorer running beside UltraDesktop",
+            popupMenu_->AddItem(MenuItemData::Action(Tr("Keep Explorer running beside UltraDesktop"),
                                                      [this]() { UseAsSystemDesktop(DesktopReplacement::Beside); }));
         }
         if (mode != DesktopReplacement::Off) {
-            popupMenu_->AddItem(MenuItemData::Action("Switch back to the Windows desktop",
+            popupMenu_->AddItem(MenuItemData::Action(Tr("Switch back to the Windows desktop"),
                                                      [this]() { SwitchBackToSystemDesktop(); }));
         } else if (!sessionDesktop_) {
             // A trial run beside the Windows desktop has no title bar to close.
-            popupMenu_->AddItem(MenuItemData::Action("Close UltraDesktop", []() {
+            popupMenu_->AddItem(MenuItemData::Action(Tr("Close UltraDesktop"), []() {
                 if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
             }));
         }
@@ -2936,10 +2955,10 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
         // would be, rather than leave it out without a word; and this is
         // always a trial run, with no title bar to close.
         popupMenu_->AddItem(MenuItemData::Separator());
-        popupMenu_->AddItem(MenuItemData::Action("Use as the Windows desktop...", [this, why]() {
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Use as the Windows desktop..."), [this, why]() {
             UltraCanvasDialogManager::ShowInformation(why, "UltraDesktop", nullptr, window_.get());
         }));
-        popupMenu_->AddItem(MenuItemData::Action("Close UltraDesktop", []() {
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Close UltraDesktop"), []() {
             if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
         }));
     }
@@ -2949,13 +2968,13 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     const bool ownsSession = shellSession_ || !UltraCanvasDesktopShell::CanReplaceSystemDesktop();
     if (ownsSession && UltraCanvasDesktopShell::CanLockSession()) {
         popupMenu_->AddItem(MenuItemData::Separator());
-        popupMenu_->AddItem(MenuItemData::ActionWithShortcut("Lock screen", "Super+L", [this]() { LockScreen(); }));
+        popupMenu_->AddItem(MenuItemData::ActionWithShortcut(Tr("Lock screen"), "Super+L", [this]() { LockScreen(); }));
     }
     if (ownsSession && UltraCanvasDesktopShell::CanEndSession()) {
         popupMenu_->AddItem(MenuItemData::Separator());
-        popupMenu_->AddItem(MenuItemData::Action("Sign out...", [this]() { ConfirmEndSession(SessionEnd::SignOut); }));
-        popupMenu_->AddItem(MenuItemData::Action("Restart...", [this]() { ConfirmEndSession(SessionEnd::Restart); }));
-        popupMenu_->AddItem(MenuItemData::Action("Shut down...", [this]() { ConfirmEndSession(SessionEnd::ShutDown); }));
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Sign out..."), [this]() { ConfirmEndSession(SessionEnd::SignOut); }));
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Restart..."), [this]() { ConfirmEndSession(SessionEnd::Restart); }));
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Shut down..."), [this]() { ConfirmEndSession(SessionEnd::ShutDown); }));
     }
     PopupElementSettings settings;
     popupMenu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
@@ -3115,15 +3134,15 @@ void UltraDesktopWindow::UseAsSystemDesktop(DesktopReplacement how) {
         sessionDesktop_ = true;
         if (instead && !shellSession_) {
             UltraCanvasDialogManager::ShowInformation(
-                    "From the next sign-in UltraDesktop is the desktop, and Explorer does not start: sign out and "
-                    "in again to see it.\n\nShould UltraDesktop ever fail to start, Explorer starts in its place "
-                    "for that session. \"Switch back to the Windows desktop\", here or in UOS-Settings, undoes it.",
+                    Tr("From the next sign-in UltraDesktop is the desktop, and Explorer does not start: sign out and "
+                       "in again to see it.\n\nShould UltraDesktop ever fail to start, Explorer starts in its place "
+                       "for that session. \"Switch back to the Windows desktop\", here or in UOS-Settings, undoes it."),
                     "UltraDesktop", nullptr, window_.get());
         }
         return;
     }
     debugOutput << "UltraDesktop: not the desktop at sign-in: " << error << std::endl;
-    UltraCanvasDialogManager::ShowWarning("UltraDesktop could not take the place of the Windows desktop.\n\n" + error,
+    UltraCanvasDialogManager::ShowWarning(Tr("UltraDesktop could not take the place of the Windows desktop.") + "\n\n" + error,
                                           "UltraDesktop", nullptr, window_.get());
 }
 
@@ -3131,7 +3150,7 @@ void UltraDesktopWindow::SwitchBackToSystemDesktop() {
     std::string error;
     if (!UltraCanvasDesktopShell::RestoreSystemDesktop(&error)) {
         debugOutput << "UltraDesktop: the Windows desktop not restored: " << error << std::endl;
-        UltraCanvasDialogManager::ShowWarning("The Windows desktop could not be restored.\n\n" + error,
+        UltraCanvasDialogManager::ShowWarning(Tr("The Windows desktop could not be restored.") + "\n\n" + error,
                                               "UltraDesktop", nullptr, window_.get());
         return;
     }
@@ -3141,16 +3160,15 @@ void UltraDesktopWindow::SwitchBackToSystemDesktop() {
 }
 
 void UltraDesktopWindow::ConfirmEndSession(SessionEnd how) {
-    const char* question = how == SessionEnd::SignOut ? "Sign out now? Programs that are open are asked to close."
-                         : how == SessionEnd::Restart ? "Restart the computer now? Programs that are open are asked "
-                                                        "to close."
-                                                      : "Shut down the computer now? Programs that are open are "
-                                                        "asked to close.";
+    const std::string question =
+            how == SessionEnd::SignOut ? Tr("Sign out now? Programs that are open are asked to close.")
+            : how == SessionEnd::Restart ? Tr("Restart the computer now? Programs that are open are asked to close.")
+                                         : Tr("Shut down the computer now? Programs that are open are asked to close.");
     UltraCanvasDialogManager::ShowConfirmation(question, "UltraDesktop", [this, how](bool confirmed) {
         if (!confirmed) return;
         std::string error;
         if (UltraCanvasDesktopShell::EndSession(how, &error)) return;
-        UltraCanvasDialogManager::ShowWarning("The session did not end.\n\n" + error, "UltraDesktop", nullptr,
+        UltraCanvasDialogManager::ShowWarning(Tr("The session did not end.") + "\n\n" + error, "UltraDesktop", nullptr,
                                               window_.get());
     }, window_.get());
 }
@@ -3369,7 +3387,7 @@ void UltraDesktopWindow::ShowClipboardMenu(int windowX, int windowY) {
     auto* clipboard = GetClipboard();
     popupMenu_ = std::make_shared<UltraCanvasMenu>("ClipboardMenu", 0, 0, 320, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
-    popupMenu_->AddItem(MenuItemData::Header("Clipboard history"));
+    popupMenu_->AddItem(MenuItemData::Header(Tr("Clipboard history")));
     size_t shown = 0;
     if (clipboard) {
         const auto& entries = clipboard->GetEntries();
@@ -3391,12 +3409,12 @@ void UltraDesktopWindow::ShowClipboardMenu(int windowX, int windowY) {
         }
     }
     if (shown == 0) {
-        MenuItemData empty = MenuItemData::Action("Nothing copied yet", []() {});
+        MenuItemData empty = MenuItemData::Action(Tr("Nothing copied yet"), []() {});
         empty.enabled = false;
         popupMenu_->AddItem(empty);
     } else {
         popupMenu_->AddItem(MenuItemData::Separator());
-        popupMenu_->AddItem(MenuItemData::Action("Clear history", []() {
+        popupMenu_->AddItem(MenuItemData::Action(Tr("Clear history"), []() {
             if (auto* cb = GetClipboard()) cb->ClearHistory();
         }));
     }
@@ -3417,7 +3435,9 @@ std::string ActiveApplicationName() {
     for (const auto& window : UltraCanvasDesktopShell::ListWindows()) {
         if (window.id != active) continue;
         std::string name = !window.appName.empty() ? window.appName : window.appClass;
-        if (name == "UltraDesktop" || window.title == "Clipboard") return "";
+        // The clipboard panel's own window, by the title it was given
+        // (UltraDesktopClipboardPanel), which is translated.
+        if (name == "UltraDesktop" || window.title == "Clipboard" || window.title == Tr("Clipboard")) return "";
         return name;
     }
     return "";
@@ -3538,7 +3558,7 @@ void UltraDesktopWindow::CopyHistoryEntry(int64_t entryId) {
     if (!history_ || !clipboard) return;
     std::vector<ClipboardFormat> formats;
     if (!history_->ReadFormats(entryId, formats) || !RestoreToClipboard(*clipboard, formats)) {
-        UltraCanvasAlert::Error("This copy can no longer be read from the clipboard history.", "Clipboard",
+        UltraCanvasAlert::Error(Tr("This copy can no longer be read from the clipboard history."), Tr("Clipboard"),
                                 nullptr, window_.get());
         return;
     }
@@ -3548,7 +3568,7 @@ void UltraDesktopWindow::CopyHistoryEntry(int64_t entryId) {
 void UltraDesktopWindow::OpenClipboardApplication(const std::vector<std::string>& arguments) {
     std::string error;
     if (UltraCanvasDesktopShell::LaunchProgram("UltraClipboard", arguments, &error)) return;
-    UltraCanvasAlert::Error("UltraClipboard could not be started: " + error, "Clipboard", nullptr, window_.get());
+    UltraCanvasAlert::Error(TrF("UltraClipboard could not be started: {0}", error), Tr("Clipboard"), nullptr, window_.get());
 }
 
 void UltraDesktopWindow::SetClipboardRecording(bool on) {
@@ -3566,22 +3586,23 @@ void UltraDesktopWindow::SetClipboardRecording(bool on) {
 void UltraDesktopWindow::UpdateClipboardButton() {
     if (!clipboardButton_) return;
     clipboardButton_->SetIcon(IconPath(clipboardPaused_ ? "clipboard-paused.svg" : "clipboard.svg"));
-    clipboardButton_->SetTooltip(clipboardPaused_ ? "Clipboard history - recording is paused (Super+V)"
-                                                  : "Clipboard history (Super+V)");
+    clipboardButton_->SetTooltip(clipboardPaused_
+            ? Tr("UltraClipboard: the clipboard history - recording is paused (Super+V: the quick panel)")
+            : Tr("UltraClipboard: the clipboard history (Super+V: the quick panel)"));
 }
 
 void UltraDesktopWindow::ShowClipboardButtonMenu(int windowX, int windowY) {
     if (!window_ || !history_) return;
     popupMenu_ = std::make_shared<UltraCanvasMenu>("ClipboardButtonMenu", 0, 0, 240, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
-    popupMenu_->AddItem(MenuItemData::Header("Clipboard history"));
-    popupMenu_->AddItem(MenuItemData::Action(clipboardPaused_ ? "Resume recording" : "Pause recording",
+    popupMenu_->AddItem(MenuItemData::Header(Tr("Clipboard history")));
+    popupMenu_->AddItem(MenuItemData::Action(clipboardPaused_ ? Tr("Resume recording") : Tr("Pause recording"),
                                              [this]() { SetClipboardRecording(clipboardPaused_); }));
-    popupMenu_->AddItem(MenuItemData::Action("Open UltraClipboard", [this]() { OpenClipboardApplication({}); }));
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Quick panel (Super+V)"), [this]() { ToggleClipboardPanel(true); }));
     popupMenu_->AddItem(MenuItemData::Separator());
-    popupMenu_->AddItem(MenuItemData::Action("Clear history\xE2\x80\xA6", [this]() {
-        UltraCanvasAlert::Confirm("Remove every entry from the clipboard history? Pinned entries stay.",
-                                  "Clear clipboard history", [this](bool yes) {
+    popupMenu_->AddItem(MenuItemData::Action(Tr("Clear history\xE2\x80\xA6"), [this]() {
+        UltraCanvasAlert::Confirm(Tr("Remove every entry from the clipboard history? Pinned entries stay."),
+                                  Tr("Clear clipboard history"), [this](bool yes) {
                                       if (!yes || !history_) return;
                                       history_->Clear(false);
                                       if (clipboardPanel_) clipboardPanel_->Refresh();

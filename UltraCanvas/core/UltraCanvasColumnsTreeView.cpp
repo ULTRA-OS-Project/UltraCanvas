@@ -3,7 +3,7 @@
 // of columns (SetColumns), an optional fixed header band, and draggable column
 // widths. One column is the "tree column" (hosts the indent/expander/icon and draws
 // node->data.text); every other column draws its cell from node->data.cells.
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-15
 #include "UltraCanvasColumnsTreeView.h"
 #include "UltraCanvasApplication.h"
 #include <algorithm>
@@ -188,9 +188,10 @@ namespace UltraCanvas {
                 if (!cell || cell->text.empty()) continue;
                 text = cell->text;
                 // the cell's own colour, else the selection text colour on a
-                // selected row, else the column's
+                // selected row, else the column's, else the tree's text colour
                 color = cell->textColor != Colors::Transparent ? cell->textColor
-                      : (node->selected && GetSelectionTextColor().a > 0 ? GetSelectionTextColor() : col.textColor);
+                      : (node->selected && GetSelectionTextColor().a > 0 ? GetSelectionTextColor()
+                         : col.textColor != Colors::Transparent ? col.textColor : GetTextColor());
             }
 
             // Optional accent fill behind the cell (e.g. the Type column).

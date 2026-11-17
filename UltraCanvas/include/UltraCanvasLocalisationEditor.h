@@ -28,8 +28,15 @@
 //   editor->Open("UltraVideo", "de");
 //   editor->SetDrafter(...);                // UltraAI, where the host links it
 //
+// Version: 1.2.0 - the action buttons on a row of their own, under the
+//                 Sets button and the two switches, which keep their labels;
+//                 "Compare with" beside "Show"
+// Version: 1.1.0 - the grid's marks (a text taken from another set, an
+//                 untranslated row, a changed one) and the status line take
+//                 their colours from the theme in a dark look, and follow a
+//                 change of look (ApplyTheme); the light look keeps its colours
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -287,6 +294,9 @@ namespace UltraCanvas {
         void SetColumnVisible(const std::string& set, bool visible);
         bool IsColumnVisible(const std::string& set) const;
         void Rebuild();
+        // A change of look: the rows are filled again with the marks'
+        // colours for it (MarkColors), and the status line follows.
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
 
         // ----- editing, open to the keyboard and to tests -----
         bool SelectRow(const std::string& key);

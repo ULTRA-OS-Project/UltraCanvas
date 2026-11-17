@@ -16,6 +16,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTheme.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -81,7 +82,7 @@ UltraDesktopStickerboard::UltraDesktopStickerboard(const std::string& identifier
     style.cornerRadius = kAddButton / 2;
     style.fontSize = 20;
     add->SetStyle(style);
-    add->SetTooltip("New note");
+    add->SetTooltip(Tr("New note"));
     add->onClick = [this]() { AddNote(); };
     AddChild(add);
     PlaceChildAt(add, Rect2Df(12, 12, kAddButton, kAddButton));
@@ -140,7 +141,7 @@ void UltraDesktopStickerboard::BuildNote(const Sticker& sticker) {
     note.grip->SetTextColor(Color(0, 0, 0, 120));
     note.grip->SetAlignment(TextAlignment::Center);
     note.grip->layoutItem.SetFlexGrow(1.0f);
-    note.grip->SetTooltip("Drag to move");
+    note.grip->SetTooltip(Tr("Drag to move"));
     bar->AddChild(note.grip);
 
     auto colour = std::make_shared<UltraCanvasButton>("Sticker." + id + ".Color", 0, 0, 22, 20, "◐");
@@ -154,9 +155,9 @@ void UltraDesktopStickerboard::BuildNote(const Sticker& sticker) {
         b->SetStyle(style);
         b->layoutItem.SetFlexShrink(0.0f);
     }
-    colour->SetTooltip("Next colour");
+    colour->SetTooltip(Tr("Next colour"));
     colour->onClick = [this, id]() { CycleColor(id); };
-    close->SetTooltip("Remove note");
+    close->SetTooltip(Tr("Remove note"));
     close->onClick = [this, id]() { RemoveNote(id); };
     bar->AddChild(colour);
     bar->AddChild(close);

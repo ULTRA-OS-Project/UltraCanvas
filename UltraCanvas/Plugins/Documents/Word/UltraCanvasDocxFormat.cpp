@@ -2,6 +2,15 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.10.0 - theme fonts (asciiTheme / hAnsiTheme), capitals (w:caps) from a run or its paragraph's
+//                   style, a turned picture (a:xfrm rot) read and written, round2SameRect's outline
+// Version: 1.9.0 - paragraph spacing in cells read and written; w:kern as the document's kerning
+// Version: 1.8.0 - a section's own header, footer and page margins; row heights (w:trHeight) read and written, a cell's empty paragraphs kept as empty
+//                  lines, negative float offsets
+// Version: 1.7.0 - The main document part is the one the package's relationships name
+//                  (word/document2.xml, say), with its own folder and
+//                  relationships; parts that bind the OOXML namespaces to other prefixes
+//                  (ns0:p, a default namespace) read as the w:/r:/a: ones they are
 // Version: 1.6.0 - Pattern fills (a:pattFill) and picture fills (a:blipFill) read and written
 // Version: 1.5.0 - Gradient fills read and written (a:gradFill, VML v:fill); VML pictures
 //                  (v:imagedata) as pictures in the line or floating
@@ -11,7 +20,7 @@
 // Version: 1.3.0 - w:spacing in w:rPr: a run's (and a character style's) letter spacing, read
 //                  and written
 // Version: 1.2.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -72,6 +81,116 @@ struct DocxRelationship {
     bool external = false;
 };
 
+// The prefix the reader expects for each OOXML namespace it reads by name,
+// transitional and strict (ISO 29500 strict) URIs alike.
+const std::map<std::string, std::string>& CanonicalOoxmlPrefixes() {
+    static const std::map<std::string, std::string> prefixes = {
+        {"http://schemas.openxmlformats.org/wordprocessingml/2006/main", "w"},
+        {"http://purl.oclc.org/ooxml/wordprocessingml/main", "w"},
+        {"http://schemas.openxmlformats.org/officeDocument/2006/relationships", "r"},
+        {"http://purl.oclc.org/ooxml/officeDocument/relationships", "r"},
+        {"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing", "wp"},
+        {"http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing", "wp"},
+        {"http://schemas.openxmlformats.org/drawingml/2006/main", "a"},
+        {"http://purl.oclc.org/ooxml/drawingml/main", "a"},
+        {"http://schemas.openxmlformats.org/drawingml/2006/picture", "pic"},
+        {"http://purl.oclc.org/ooxml/drawingml/picture", "pic"},
+        {"http://schemas.openxmlformats.org/officeDocument/2006/math", "m"},
+        {"http://purl.oclc.org/ooxml/officeDocument/math", "m"},
+        {"http://schemas.openxmlformats.org/markup-compatibility/2006", "mc"},
+        {"http://schemas.microsoft.com/office/word/2010/wordprocessingShape", "wps"},
+        {"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup", "wpg"},
+        {"http://schemas.microsoft.com/office/word/2010/wordml", "w14"},
+        {"urn:schemas-microsoft-com:vml", "v"},
+        {"urn:schemas-microsoft-com:office:office", "o"},
+    };
+    return prefixes;
+}
+
+// The reader matches element and attribute names as written (w:p, r:id).
+// Word writes those prefixes, but XML lets a producer pick its own - ns0:p
+// from a Python XML library, or the WordprocessingML namespace as the
+// default one - and such a part read as having no body. Renames every
+// prefix bound to a known namespace to the expected one, in place.
+void NormalizeOoxmlPrefixes(tinyxml2::XMLElement* element,
+                            std::map<std::string, std::string> renames) {
+    // This element's declarations, over its parent's.
+    for (const auto* a = element->FirstAttribute(); a; a = a->Next()) {
+        const std::string name = a->Name();
+        std::string prefix;
+        if (name == "xmlns") prefix = "";
+        else if (name.compare(0, 6, "xmlns:") == 0) prefix = name.substr(6);
+        else continue;
+        const auto known = CanonicalOoxmlPrefixes().find(a->Value());
+        if (known != CanonicalOoxmlPrefixes().end() && known->second != prefix)
+            renames[prefix] = known->second;
+        else
+            renames.erase(prefix);
+    }
+    if (renames.empty()) {
+        for (auto* child = element->FirstChildElement(); child; child = child->NextSiblingElement())
+            NormalizeOoxmlPrefixes(child, renames);
+        return;
+    }
+    auto rename = [&renames](const std::string& name, bool attribute) -> std::string {
+        const size_t colon = name.find(':');
+        // An attribute without a prefix is in no namespace, whatever the default one.
+        if (colon == std::string::npos && attribute) return name;
+        const std::string prefix = colon == std::string::npos ? "" : name.substr(0, colon);
+        if (prefix == "xmlns") return name;
+        const auto to = renames.find(prefix);
+        if (to == renames.end()) return name;
+        return to->second + ":" + (colon == std::string::npos ? name : name.substr(colon + 1));
+    };
+    const std::string elementName = element->Name() ? element->Name() : "";
+    const std::string renamedElement = rename(elementName, false);
+    if (renamedElement != elementName) element->SetName(renamedElement.c_str());
+    std::vector<std::pair<std::string, std::string>> renamedAttributes;
+    std::vector<std::string> oldNames;
+    for (const auto* a = element->FirstAttribute(); a; a = a->Next()) {
+        const std::string name = a->Name();
+        const std::string renamed = rename(name, true);
+        if (renamed != name) {
+            oldNames.push_back(name);
+            renamedAttributes.emplace_back(renamed, a->Value());
+        }
+    }
+    for (const auto& name : oldNames) element->DeleteAttribute(name.c_str());
+    for (const auto& [name, value] : renamedAttributes) element->SetAttribute(name.c_str(), value.c_str());
+    for (auto* child = element->FirstChildElement(); child; child = child->NextSiblingElement())
+        NormalizeOoxmlPrefixes(child, renames);
+}
+
+void NormalizeOoxmlPrefixes(tinyxml2::XMLDocument& document) {
+    if (auto* root = document.RootElement()) NormalizeOoxmlPrefixes(root, {});
+}
+
+// Whether a package part is a WordprocessingML main document part: by its
+// content type in [Content_Types].xml, or - a package that names none - by
+// the namespace its root is in.
+bool IsWordMainDocumentPart(const UCZipPackageReader& zip, const std::string& part) {
+    std::string typesXml;
+    if (zip.ReadEntry("[Content_Types].xml", typesXml)) {
+        tinyxml2::XMLDocument types;
+        if (types.Parse(typesXml.c_str()) == tinyxml2::XML_SUCCESS && types.RootElement()) {
+            for (auto* e = types.RootElement()->FirstChildElement(); e; e = e->NextSiblingElement()) {
+                const char* partName = e->Attribute("PartName");
+                const char* contentType = e->Attribute("ContentType");
+                if (!partName || !contentType) continue;
+                // Part names compare without regard to case (OPC).
+                if (ToLower(partName) != ToLower("/" + part)) continue;
+                return std::string(contentType).find("wordprocessingml.document") != std::string::npos
+                    || std::string(contentType).find("wordprocessingml.template") != std::string::npos;
+            }
+        }
+    }
+    std::string xml;
+    if (!zip.ReadEntry(part, xml)) return false;
+    xml.resize(std::min<size_t>(xml.size(), 4096));
+    return xml.find("wordprocessingml/2006/main") != std::string::npos
+        || xml.find("ooxml/wordprocessingml/main") != std::string::npos;
+}
+
 // A run of nothing but spaces - <w:t xml:space="preserve"> </w:t>, the space
 // between two differently formatted words - is text, but tinyxml2 drops
 // whitespace-only text. Each such space is swapped for a private-use marker
@@ -79,18 +198,43 @@ struct DocxRelationship {
 // xml:space="preserve" Word ignores the whitespace too, so that is left alone.
 constexpr const char* kKeptSpaceMarker = "\xEE\x80\x81";   // U+E001
 
+// The prefix (with its colon) the part's root binds to the WordprocessingML
+// namespace: "w:" as Word writes it, "ns0:" from some producers, "" when it
+// is the default namespace. This runs on the text, before the part is parsed
+// and NormalizeOoxmlPrefixes renames them.
+std::string WordprocessingPrefix(const std::string& xml) {
+    const size_t rootEnd = xml.find('>', xml.find('<', xml.find("?>") == std::string::npos ? 0 : xml.find("?>") + 2));
+    const std::string root = xml.substr(0, rootEnd);
+    for (const char* uri : {"http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                            "http://purl.oclc.org/ooxml/wordprocessingml/main"}) {
+        for (size_t at = root.find(uri); at != std::string::npos; at = root.find(uri, at + 1)) {
+            // ... xmlns:PREFIX="uri" or xmlns="uri"
+            const size_t equals = root.rfind('=', at);
+            const size_t xmlns = root.rfind("xmlns", equals);
+            if (equals == std::string::npos || xmlns == std::string::npos) continue;
+            if (root[xmlns + 5] == '=') return "";
+            if (root[xmlns + 5] == ':') return root.substr(xmlns + 6, equals - xmlns - 6) + ":";
+        }
+    }
+    return "w:";
+}
+
 void ProtectWhitespaceRuns(std::string& xml) {
+    const std::string prefix = WordprocessingPrefix(xml);
+    const std::string openTag = "<" + prefix + "t";
+    const std::string closeTag = "</" + prefix + "t>";
     std::string out;
     out.reserve(xml.size());
     size_t pos = 0;
     while (true) {
-        size_t open = xml.find("<w:t", pos);
+        size_t open = xml.find(openTag, pos);
         if (open == std::string::npos) break;
-        const char after = open + 4 < xml.size() ? xml[open + 4] : '\0';
+        const size_t nameEnd = open + openTag.size();
+        const char after = nameEnd < xml.size() ? xml[nameEnd] : '\0';
         size_t close = xml.find('>', open);
         if ((after != '>' && after != ' ') || close == std::string::npos || xml[close - 1] == '/') {
-            out.append(xml, pos, open + 4 - pos);
-            pos = open + 4;
+            out.append(xml, pos, nameEnd - pos);
+            pos = nameEnd;
             continue;
         }
         size_t text = close + 1;
@@ -99,7 +243,7 @@ void ProtectWhitespaceRuns(std::string& xml) {
         out.append(xml, pos, text - pos);
         const bool preserve =
             xml.substr(open, close - open).find("xml:space=\"preserve\"") != std::string::npos;
-        if (end > text && preserve && xml.compare(end, 6, "</w:t>") == 0) {
+        if (end > text && preserve && xml.compare(end, closeTag.size(), closeTag) == 0) {
             for (size_t i = text; i < end; ++i) out += kKeptSpaceMarker;
         } else {
             out.append(xml, text, end - text);
@@ -135,11 +279,16 @@ public:
                 error += ": " + filePath;
                 return false;
         }
+        // Usually word/document.xml, but not always (word/document2.xml):
+        // what counts is the part the package's relationships call the
+        // office document.
+        mainPart_ = WordFormatInternal::FindDocxMainPart(zip_);
         std::string documentXml;
-        if (!zip_.ReadEntry("word/document.xml", documentXml)) {
-            error = "The package has no word/document.xml — not a Word document: " + filePath;
+        if (mainPart_.empty() || !zip_.ReadEntry(mainPart_, documentXml)) {
+            error = "The package has no main document part — not a Word document: " + filePath;
             return false;
         }
+        partFolder_ = mainPart_.substr(0, mainPart_.find_last_of('/') + 1);
         LoadRelationships();
         LoadTheme();
         LoadStyles();
@@ -151,6 +300,7 @@ public:
             error = "The Word document content is not valid XML: " + filePath;
             return false;
         }
+        NormalizeOoxmlPrefixes(docXml_);
         auto* root = docXml_.FirstChildElement("w:document");
         auto* body = root ? root->FirstChildElement("w:body") : nullptr;
         if (!body) {
@@ -178,7 +328,6 @@ public:
         pendingBookmarks_.clear();
         parsingBody_ = false;
         ApplySections(body->FirstChildElement("w:sectPr"));
-        LoadSection(body->FirstChildElement("w:sectPr"));
         LoadNotes(RichNote::Kind::Footnote);
         LoadNotes(RichNote::Kind::Endnote);
         LoadComments();
@@ -204,6 +353,7 @@ private:
         // The style's character size and font (w:rPr beside its w:pPr).
         float fontSize = kUnset;
         std::string fontFamily;
+        int caps = -1;                      // w:caps in the style: 1 on, 0 off, -1 not stated
     };
     struct StyleGeometry {
         std::string basedOn;
@@ -268,6 +418,10 @@ private:
     UCZipPackageReader zip_;
     UCRichDocument* doc_ = nullptr;
     tinyxml2::XMLDocument docXml_;
+    // The main document part (word/document.xml as a rule) and its folder,
+    // which its relationship targets and the other parts are relative to.
+    std::string mainPart_ = "word/document.xml";
+    std::string partFolder_ = "word/";
     std::map<std::string, DocxRelationship> relationships_;
     std::map<std::string, std::string> styleNames_;        // styleId -> display name
     std::map<std::string, StyleGeometry> styleGeometry_;   // paragraph styleId -> geometry
@@ -299,8 +453,11 @@ private:
     // Bookmarks started between paragraphs, for the next one.
     std::vector<std::string> pendingBookmarks_;
     // Sections: each paragraph w:sectPr ends one, after the block index given.
-    struct SectionEnd { int lastBlock; RichSectionSetup setup; };
+    struct SectionEnd { int lastBlock; RichSectionSetup setup; tinyxml2::XMLElement* sectPr = nullptr; };
     std::vector<SectionEnd> sectionEnds_;
+    // The room the header and footer in force take when they are only empty
+    // lines (a section without references keeps the one before it).
+    float emptyHeaderNow_ = 0.0f, emptyFooterNow_ = 0.0f;
     bool parsingBody_ = false;
 
     static RichSectionSetup ReadSectionSetup(tinyxml2::XMLElement* sectPr) {
@@ -320,14 +477,55 @@ private:
     // ended.
     void ApplySections(tinyxml2::XMLElement* bodySectPr) {
         std::vector<SectionEnd> sections = sectionEnds_;
-        sections.push_back({static_cast<int>(doc_->blocks.size()) - 1, ReadSectionSetup(bodySectPr)});
+        sections.push_back({static_cast<int>(doc_->blocks.size()) - 1, ReadSectionSetup(bodySectPr), bodySectPr});
         doc_->firstSection = sections.front().setup;
+        // The page, and the header and footer every page has unless its
+        // section says otherwise, are the first section's.
+        RichPageFurniture pagesNow, firstNow;      // what a section inherits: the one before it
+        LoadSection(sections.front().sectPr, &pagesNow, &firstNow);
+        bool ownFurniture = false;                // some section so far named a header or footer of its own
         for (size_t k = 1; k < sections.size(); k++) {
+            // A section without a reference of a kind keeps the header or
+            // footer of the section before it.
+            tinyxml2::XMLElement* sectPr = sections[k].sectPr;
+            RichSectionSetup& setup = sections[k].setup;
+            bool titlePage = false;
+            if (sectPr) {
+                titlePage = sectPr->FirstChildElement("w:titlePg") != nullptr;
+                ownFurniture = ReadFurnitureReferences(sectPr, pagesNow, firstNow, &emptyHeaderNow_, &emptyFooterNow_)
+                               || ownFurniture;
+                if (auto* margins = sectPr->FirstChildElement("w:pgMar")) {
+                    auto value = [&](const char* name, float fallback) {
+                        return margins->Attribute(name) ? std::abs(static_cast<float>(margins->IntAttribute(name, 0)) / 20.0f)
+                                                        : fallback;
+                    };
+                    const float headerTop = value("w:header", doc_->page.headerTopPt);
+                    const float footerBottom = value("w:footer", doc_->page.footerBottomPt);
+                    float top = value("w:top", doc_->page.marginTopPt);
+                    float bottom = value("w:bottom", doc_->page.marginBottomPt);
+                    // A header of empty lines takes its room here too.
+                    if (emptyHeaderNow_ > 0.0f) top = std::max(top, headerTop + emptyHeaderNow_);
+                    if (emptyFooterNow_ > 0.0f) bottom = std::max(bottom, footerBottom + emptyFooterNow_);
+                    auto differs = [](float a, float b) { return std::abs(a - b) > 0.05f; };
+                    if (differs(top, doc_->page.marginTopPt)) setup.marginTopPt = top;
+                    if (differs(bottom, doc_->page.marginBottomPt)) setup.marginBottomPt = bottom;
+                    if (differs(headerTop, doc_->page.headerTopPt)) setup.headerTopPt = headerTop;
+                    if (differs(footerBottom, doc_->page.footerBottomPt)) setup.footerBottomPt = footerBottom;
+                }
+            }
+            if (ownFurniture || titlePage) {
+                RichSectionFurniture own;
+                own.pages = pagesNow;
+                own.firstPageDiffers = titlePage;
+                if (titlePage) own.firstPage = firstNow;
+                setup.furniture = static_cast<int>(doc_->sectionFurniture.size());
+                doc_->sectionFurniture.push_back(std::move(own));
+            }
             const int start = sections[k - 1].lastBlock + 1;
             if (start <= 0 || start >= static_cast<int>(doc_->blocks.size())) continue;
             RichDocBlock& block = doc_->blocks[static_cast<size_t>(start)];
             block.sectionStart = true;
-            block.section = sections[k].setup;
+            block.section = setup;
         }
     }
     // Comments: w:id -> index into doc_->comments, and those whose range the
@@ -358,7 +556,7 @@ private:
     // body marks.
     void LoadComments() {
         if (commentIndexById_.empty()) return;
-        std::string partName = "word/comments.xml";
+        std::string partName = partFolder_ + "comments.xml";
         for (const auto& [id, rel] : relationships_) {
             const std::string file = "comments.xml";
             if (!rel.external && rel.target.size() >= file.size()
@@ -371,6 +569,7 @@ private:
         ProtectWhitespaceRuns(xml);
         tinyxml2::XMLDocument part;
         if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !part.RootElement()) return;
+        NormalizeOoxmlPrefixes(part);
         for (auto* c = part.RootElement()->FirstChildElement("w:comment"); c; c = c->NextSiblingElement("w:comment")) {
             auto found = commentIndexById_.find(Attr(c, "w:id"));
             if (found == commentIndexById_.end()) continue;
@@ -413,7 +612,21 @@ private:
         return v.empty() || (v != "false" && v != "0" && v != "none");
     }
 
-    void LoadRelationships() { relationships_ = ReadRelationships("word/_rels/document.xml.rels"); }
+    void LoadRelationships() {
+        relationships_ = ReadRelationships(partFolder_ + "_rels/" + mainPart_.substr(partFolder_.size()) + ".rels");
+    }
+
+    // The part a relationship of the main part's names by its type
+    // (".../styles"), or the conventional name in the main part's folder.
+    std::string PartByRelationship(const std::string& typeSuffix, const std::string& fallbackName) const {
+        for (const auto& [id, rel] : relationships_) {
+            if (!rel.external && rel.type.size() >= typeSuffix.size()
+                && rel.type.compare(rel.type.size() - typeSuffix.size(), typeSuffix.size(), typeSuffix) == 0) {
+                return ResolvePartPath(rel.target);
+            }
+        }
+        return partFolder_ + fallbackName;
+    }
 
     // A part's relationships (word/_rels/<part>.rels).
     std::map<std::string, DocxRelationship> ReadRelationships(const std::string& relsPath) {
@@ -436,11 +649,12 @@ private:
         return out;
     }
 
-    // Resolves a relationship target relative to word/ into a package path.
-    static std::string ResolvePartPath(const std::string& target) {
+    // Resolves a relationship target relative to the main part's folder
+    // (word/) into a package path.
+    std::string ResolvePartPath(const std::string& target) const {
         std::string path = target;
         if (!path.empty() && path[0] == '/') return path.substr(1);
-        path = "word/" + path;
+        path = partFolder_ + path;
         // Collapse "word/../x" to "x".
         size_t pos;
         while ((pos = path.find("/../")) != std::string::npos) {
@@ -456,11 +670,13 @@ private:
 
     void LoadStyles() {
         std::string stylesXml;
-        if (!zip_.ReadEntry("word/styles.xml", stylesXml)) return;
+        if (!zip_.ReadEntry(PartByRelationship("/styles", "styles.xml"), stylesXml)) return;
         tinyxml2::XMLDocument styles;
         if (styles.Parse(stylesXml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        NormalizeOoxmlPrefixes(styles);
         auto* root = styles.FirstChildElement("w:styles");
         if (!root) return;
+        bool kerningStated = false;
         if (auto* defaults = root->FirstChildElement("w:docDefaults")) {
             auto* pPrDefault = defaults->FirstChildElement("w:pPrDefault");
             if (auto* pPr = pPrDefault ? pPrDefault->FirstChildElement("w:pPr") : nullptr) {
@@ -468,6 +684,7 @@ private:
             }
             auto* rPrDefault = defaults->FirstChildElement("w:rPrDefault");
             ReadStyleFont(rPrDefault ? rPrDefault->FirstChildElement("w:rPr") : nullptr, defaultGeometry_);
+            kerningStated = kerningStated || KerningOn(rPrDefault ? rPrDefault->FirstChildElement("w:rPr") : nullptr);
         }
         for (auto* style = root->FirstChildElement("w:style"); style;
              style = style->NextSiblingElement("w:style")) {
@@ -512,22 +729,39 @@ private:
             styleGeometry_[id] = entry;
             if (std::string(Attr(style, "w:default")) == "1" || std::string(Attr(style, "w:default")) == "true") {
                 defaultParagraphStyle_ = id;
+                kerningStated = kerningStated || KerningOn(style->FirstChildElement("w:rPr"));
             }
         }
+        // Word kerns pairs of letters only where w:kern turns it on - in the
+        // document defaults or the default paragraph style, for the text as
+        // a whole.
+        doc_->letterKerning = kerningStated;
+    }
+
+    // Whether run properties turn pair kerning on (w:kern, the size in half
+    // points from which fonts are kerned; 0 = off).
+    static bool KerningOn(tinyxml2::XMLElement* rPr) {
+        auto* kern = rPr ? rPr->FirstChildElement("w:kern") : nullptr;
+        return kern && kern->IntAttribute("w:val", 0) > 0;
     }
 
     // word/settings.xml: the distance between default tab stops.
     void LoadSettings() {
         std::string settingsXml;
-        if (!zip_.ReadEntry("word/settings.xml", settingsXml)) return;
+        if (!zip_.ReadEntry(PartByRelationship("/settings", "settings.xml"), settingsXml)) return;
         tinyxml2::XMLDocument settings;
         if (settings.Parse(settingsXml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        NormalizeOoxmlPrefixes(settings);
         auto* root = settings.FirstChildElement("w:settings");
         auto* tab = root ? root->FirstChildElement("w:defaultTabStop") : nullptr;
         if (tab) {
             const int twips = tab->IntAttribute("w:val", 0);
             if (twips > 0) doc_->defaultTabStopPt = static_cast<float>(twips) / 20.0f;
         }
+        // "Don't add leading between lines of text": lines without the
+        // font's line gap.
+        auto* compat = root ? root->FirstChildElement("w:compat") : nullptr;
+        if (compat && compat->FirstChildElement("w:noLeading")) doc_->fontLineGap = false;
     }
 
 
@@ -614,15 +848,61 @@ private:
         base.tabs.insert(base.tabs.end(), over.tabs.begin(), over.tabs.end());
         take(base.fontSize, over.fontSize);
         if (!over.fontFamily.empty()) base.fontFamily = over.fontFamily;
+        if (over.caps >= 0) base.caps = over.caps;
     }
 
-    static void ReadStyleFont(tinyxml2::XMLElement* rPr, Geometry& g) {
+    void ReadStyleFont(tinyxml2::XMLElement* rPr, Geometry& g) const {
         if (!rPr) return;
         if (auto* sz = rPr->FirstChildElement("w:sz")) g.fontSize = sz->FloatAttribute("w:val", 0.0f) / 2.0f;
         if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
-            const std::string family = Attr(fonts, "w:ascii");
+            const std::string family = FontFamilyOf(fonts);
             if (!family.empty()) g.fontFamily = family;
         }
+        if (rPr->FirstChildElement("w:caps")) g.caps = ToggleOn(rPr, "w:caps") ? 1 : 0;
+    }
+
+    // The family a w:rFonts names for Latin text: by name, or the theme's
+    // heading ("major") or body ("minor") font - Word's own templates name
+    // no family at all, only "minorHAnsi".
+    std::string themeMajorFont_, themeMinorFont_;
+    std::string FontFamilyOf(tinyxml2::XMLElement* fonts) const {
+        if (!fonts) return "";
+        std::string family = Attr(fonts, "w:ascii");
+        if (!family.empty()) return family;
+        std::string theme = Attr(fonts, "w:asciiTheme");
+        if (theme.empty()) theme = Attr(fonts, "w:hAnsiTheme");
+        if (theme.empty()) return Attr(fonts, "w:hAnsi");
+        return theme.rfind("major", 0) == 0 ? themeMajorFont_ : themeMinorFont_;
+    }
+
+    // Capitals for every letter of a text shown in capitals (w:caps): the
+    // model has no such display, so the text itself is capitals. Latin,
+    // Greek and Cyrillic letters; others are left as they are.
+    static std::string ToCapitals(const std::string& text) {
+        std::string out;
+        out.reserve(text.size());
+        for (size_t i = 0; i < text.size();) {
+            const unsigned char lead = static_cast<unsigned char>(text[i]);
+            size_t length = lead < 0x80 ? 1 : (lead >> 5) == 0x6 ? 2 : (lead >> 4) == 0xE ? 3 : (lead >> 3) == 0x1E ? 4 : 1;
+            if (i + length > text.size()) length = 1;
+            if (length == 1) {
+                out.push_back(lead >= 'a' && lead <= 'z' ? static_cast<char>(lead - 32) : static_cast<char>(lead));
+            } else if (length == 2) {
+                unsigned code = ((lead & 0x1Fu) << 6) | (static_cast<unsigned char>(text[i + 1]) & 0x3Fu);
+                if ((code >= 0xE0 && code <= 0xFE && code != 0xF7) || (code >= 0x3B1 && code <= 0x3C9 && code != 0x3C2)
+                    || (code >= 0x430 && code <= 0x44F)) code -= 0x20;
+                else if (code >= 0x450 && code <= 0x45F) code -= 0x50;
+                else if (code == 0xFF) code = 0x178;
+                else if (((code >= 0x100 && code <= 0x137) || (code >= 0x14A && code <= 0x177)) && (code & 1)) code -= 1;
+                else if (((code >= 0x139 && code <= 0x148) || (code >= 0x179 && code <= 0x17E)) && !(code & 1)) code -= 1;
+                out.push_back(static_cast<char>(0xC0 | (code >> 6)));
+                out.push_back(static_cast<char>(0x80 | (code & 0x3F)));
+            } else {
+                out.append(text, i, length);
+            }
+            i += length;
+        }
+        return out;
     }
 
     Geometry StyleChainGeometry(const std::string& styleId, int depth = 0) const {
@@ -680,10 +960,25 @@ private:
         block.paragraphFontFamily = g.fontFamily;
     }
 
+    // A paragraph a point high whose mark is in a 1 pt font: the writer's
+    // trailer after a table, or its carrier of a section break.
+    static bool IsTrailerParagraph(tinyxml2::XMLElement* pPr) {
+        auto* spacing = pPr ? pPr->FirstChildElement("w:spacing") : nullptr;
+        auto* mark = pPr ? pPr->FirstChildElement("w:rPr") : nullptr;
+        auto* size = mark ? mark->FirstChildElement("w:sz") : nullptr;
+        return spacing && size && std::string(Attr(spacing, "w:lineRule")) == "exact"
+            && spacing->IntAttribute("w:line", 240) <= 40 && size->IntAttribute("w:val", 24) <= 4;
+    }
+
     // An empty paragraph's line is as tall as its paragraph mark's font
     // (w:pPr/w:rPr), which is what Word measures it with.
-    static void ApplyParagraphMark(RichDocBlock& block, tinyxml2::XMLElement* pPr) {
-        if (!block.runs.empty() || !pPr) return;
+    void ApplyParagraphMark(RichDocBlock& block, tinyxml2::XMLElement* pPr) const {
+        if (!pPr) return;
+        // A paragraph that only anchors pictures or frames has no words
+        // either: its line is the mark's too.
+        for (const RichTextRun& run : block.runs) {
+            if (!run.IsInlineImage() && !run.IsTextFrame()) return;
+        }
         Geometry mark;
         ReadStyleFont(pPr->FirstChildElement("w:rPr"), mark);
         if (mark.fontSize != kUnset && mark.fontSize > 0.0f) block.paragraphFontSizePt = mark.fontSize;
@@ -692,9 +987,10 @@ private:
 
     void LoadNumbering() {
         std::string numberingXml;
-        if (!zip_.ReadEntry("word/numbering.xml", numberingXml)) return;
+        if (!zip_.ReadEntry(PartByRelationship("/numbering", "numbering.xml"), numberingXml)) return;
         tinyxml2::XMLDocument numbering;
         if (numbering.Parse(numberingXml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        NormalizeOoxmlPrefixes(numbering);
         auto* root = numbering.FirstChildElement("w:numbering");
         if (!root) return;
         for (auto* abstractNum = root->FirstChildElement("w:abstractNum"); abstractNum;
@@ -764,6 +1060,12 @@ private:
     }
 
     // What a paragraph's style (and the default style under it) gives its text.
+    bool ParagraphStyleCaps(tinyxml2::XMLElement* p) const {
+        auto* pPr = p ? p->FirstChildElement("w:pPr") : nullptr;
+        auto* pStyle = pPr ? pPr->FirstChildElement("w:pStyle") : nullptr;
+        return StyleChainGeometry(pStyle ? Attr(pStyle, "w:val") : defaultParagraphStyle_).caps == 1;
+    }
+
     RichStyleCharacter ParagraphStyleCharacter(tinyxml2::XMLElement* p) const {
         auto* pPr = p ? p->FirstChildElement("w:pPr") : nullptr;
         auto* pStyle = pPr ? pPr->FirstChildElement("w:pStyle") : nullptr;
@@ -777,7 +1079,7 @@ private:
     }
 
     // A w:style's character properties.
-    static RichStyleCharacter ReadStyleCharacter(tinyxml2::XMLElement* rPr) {
+    RichStyleCharacter ReadStyleCharacter(tinyxml2::XMLElement* rPr) const {
         RichStyleCharacter character;
         if (!rPr) return character;
         if (rPr->FirstChildElement("w:b")) character.bold = ToggleOn(rPr, "w:b");
@@ -786,7 +1088,7 @@ private:
         if (rPr->FirstChildElement("w:strike")) character.strikethrough = ToggleOn(rPr, "w:strike");
         if (auto* sz = rPr->FirstChildElement("w:sz")) character.fontSizePt = sz->FloatAttribute("w:val", 0.0f) / 2.0f;
         if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
-            const std::string family = Attr(fonts, "w:ascii");
+            const std::string family = FontFamilyOf(fonts);
             if (!family.empty()) character.fontFamily = family;
         }
         if (auto* color = rPr->FirstChildElement("w:color")) {
@@ -878,6 +1180,8 @@ private:
         std::vector<RichTextRun> runs;
         std::vector<RichDocBlock> trailingImages;
         bool pendingLineBreak = false;
+        RichTextRun pendingBreakFormat;        // the format of the run whose break is pending
+        bool paragraphCaps = false;            // the paragraph's style sets its text in capitals (w:caps)
         // Complex field (w:fldChar begin / w:instrText / separate / end): the
         // result runs of a PAGE or NUMPAGES field are marked as that field.
         std::string fieldInstruction;
@@ -971,7 +1275,7 @@ private:
             if (fill.size() == 6 && fill != "auto") run.highlightColor = "#" + fill;
         }
         if (auto* fonts = rPr->FirstChildElement("w:rFonts")) {
-            run.fontFamily = Attr(fonts, "w:ascii");
+            run.fontFamily = FontFamilyOf(fonts);
             std::string lower = ToLower(run.fontFamily);
             if (lower.find("courier") != std::string::npos
                 || lower.find("consolas") != std::string::npos
@@ -1018,7 +1322,7 @@ private:
                                     : side == "center" ? RichTextAlign::Center : RichTextAlign::Left;
             } else if (offsetOf(positionH, x)) {
                 run.imageFloatAlign = RichTextAlign::Default;
-                run.imageOffsetXPt = page ? x : std::max(0.0f, x);
+                run.imageOffsetXPt = x;                 // left of its area too: a banner starts in the margin
             }
         }
         if (auto* positionV = anchor->FirstChildElement("wp:positionV")) {
@@ -1032,7 +1336,7 @@ private:
                 run.floatVerticalAlign = side == "center" ? VAlign::Middle
                                        : (side == "bottom" || side == "outside") ? VAlign::Bottom : VAlign::Top;
             } else if (offsetOf(positionV, y)) {
-                run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+                run.imageOffsetYPt = y;                 // above its paragraph too
             }
         }
     }
@@ -1144,10 +1448,10 @@ private:
         else {
             run.imageFloatAlign = RichTextAlign::Default;
             const float x = length("margin-left");
-            run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+            run.imageOffsetXPt = x;
         }
         const float y = length("margin-top");
-        run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+        run.imageOffsetYPt = y;
         // Wrapping: w10:wrap's type; none means over or under the text.
         run.imageWrap = RichTextRun::ImageWrap::Square;
         if (auto* wrap = FindDescendant(pict, "w10:wrap")) {
@@ -1180,7 +1484,7 @@ private:
                         {"accent1", "4472C4"}, {"accent2", "ED7D31"}, {"accent3", "A5A5A5"},
                         {"accent4", "FFC000"}, {"accent5", "5B9BD5"}, {"accent6", "70AD47"},
                         {"hlink", "0563C1"}, {"folHlink", "954F72"}};
-        std::string path = "word/theme/theme1.xml";
+        std::string path = partFolder_ + "theme/theme1.xml";
         for (const auto& [id, rel] : relationships_) {
             if (rel.type.size() >= 6 && rel.type.compare(rel.type.size() - 6, 6, "/theme") == 0) {
                 path = ResolvePartPath(rel.target);
@@ -1190,6 +1494,13 @@ private:
         if (!zip_.ReadEntry(path, xml)) return;
         tinyxml2::XMLDocument theme;
         if (theme.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !theme.RootElement()) return;
+        NormalizeOoxmlPrefixes(theme);
+        // The heading and body fonts styles name as "majorHAnsi" / "minorHAnsi".
+        for (auto [tag, target] : {std::pair{"a:majorFont", &themeMajorFont_}, std::pair{"a:minorFont", &themeMinorFont_}}) {
+            auto* font = FindDescendant(theme.RootElement(), tag);
+            auto* latin = font ? font->FirstChildElement("a:latin") : nullptr;
+            if (latin) *target = Attr(latin, "typeface");
+        }
         auto* scheme = FindDescendant(theme.RootElement(), "a:clrScheme");
         for (auto* entry = scheme ? scheme->FirstChildElement() : nullptr; entry; entry = entry->NextSiblingElement()) {
             std::string name = entry->Name() ? entry->Name() : "";
@@ -1444,6 +1755,59 @@ private:
         return filled;
     }
 
+    // Word's "rectangle: top corners rounded" (round2SameRect): its two top
+    // corners rounded by adj1, its two bottom ones by adj2 - each a share of
+    // the shorter side, so the outline depends on the box (an arch when adj1
+    // is a half and the box is upright).
+    static void ApplyRound2SameRect(tinyxml2::XMLElement* preset, RichShape& shape) {
+        double adjust1 = 16667.0, adjust2 = 0.0;
+        if (auto* list = preset->FirstChildElement("a:avLst")) {
+            for (auto* gd = list->FirstChildElement("a:gd"); gd; gd = gd->NextSiblingElement("a:gd")) {
+                const std::string name = Attr(gd, "name");
+                const std::string formula = Attr(gd, "fmla");
+                if (formula.rfind("val ", 0) != 0) continue;
+                if (name == "adj1") WordFormatInternal::ReadNumberAt(formula, 4, adjust1);
+                else if (name == "adj2") WordFormatInternal::ReadNumberAt(formula, 4, adjust2);
+            }
+        }
+        const float w = shape.widthPt, h = shape.heightPt;
+        if (w <= 0.0f || h <= 0.0f) return;
+        const float shorter = std::min(w, h);
+        const float top = shorter * std::clamp(static_cast<float>(adjust1 / 100000.0), 0.0f, 0.5f);
+        const float bottom = shorter * std::clamp(static_cast<float>(adjust2 / 100000.0), 0.0f, 0.5f);
+        const float k = 0.5523f;                    // a quarter circle as one curve
+        using Op = RichShape::PathPoint::Op;
+        shape.kind = RichShape::Kind::Path;
+        shape.path.clear();
+        auto point = [&](Op op, float x, float y) {
+            RichShape::PathPoint p;
+            p.op = op;
+            p.x = x / w;
+            p.y = y / h;
+            shape.path.push_back(p);
+        };
+        auto curve = [&](float c1x, float c1y, float c2x, float c2y, float x, float y) {
+            RichShape::PathPoint p;
+            p.op = Op::Curve;
+            p.c1x = c1x / w; p.c1y = c1y / h;
+            p.c2x = c2x / w; p.c2y = c2y / h;
+            p.x = x / w;     p.y = y / h;
+            shape.path.push_back(p);
+        };
+        point(Op::Move, top, 0.0f);
+        point(Op::Line, w - top, 0.0f);
+        if (top > 0.0f) curve(w - top + top * k, 0.0f, w, top - top * k, w, top);
+        point(Op::Line, w, h - bottom);
+        if (bottom > 0.0f) curve(w, h - bottom + bottom * k, w - bottom + bottom * k, h, w - bottom, h);
+        point(Op::Line, bottom, h);
+        if (bottom > 0.0f) curve(bottom - bottom * k, h, 0.0f, h - bottom + bottom * k, 0.0f, h - bottom);
+        point(Op::Line, 0.0f, top);
+        if (top > 0.0f) curve(0.0f, top - top * k, top - top * k, 0.0f, top, 0.0f);
+        RichShape::PathPoint close;
+        close.op = Op::Close;
+        shape.path.push_back(close);
+    }
+
     // A shape's geometry, fill and outline (wps:spPr, pic:spPr), falling back
     // to its theme style's (wps:style) where it states none.
     void ReadShapeLook(tinyxml2::XMLElement* spPr, tinyxml2::XMLElement* styleRefs, RichShape& shape) {
@@ -1462,6 +1826,7 @@ private:
         if (auto* preset = spPr ? spPr->FirstChildElement("a:prstGeom") : nullptr) {
             const std::string name = Attr(preset, "prst");
             shape.ApplyPreset(name);
+            if (name == "round2SameRect") ApplyRound2SameRect(preset, shape);
             if (shape.kind == RichShape::Kind::RoundRectangle) {
                 if (auto* list = preset->FirstChildElement("a:avLst")) {
                     for (auto* gd = list->FirstChildElement("a:gd"); gd; gd = gd->NextSiblingElement("a:gd")) {
@@ -1513,6 +1878,24 @@ private:
         if (!fillStated) shape.fillColor = styleFill;
         shape.lineColor = styleLine;
         if (styleLineWidth > 0.0f) shape.lineWidthPt = styleLineWidth;
+        // An outer shadow: how far (dist) and which way (dir, 60000ths of a
+        // degree clockwise from the right), its blur and its colour's alpha.
+        auto* effects = spPr ? spPr->FirstChildElement("a:effectLst") : nullptr;
+        if (auto* outer = effects ? effects->FirstChildElement("a:outerShdw") : nullptr) {
+            const double distance = static_cast<double>(ParseEmu(Attr(outer, "dist"))) / kEmuPerPoint;
+            const double direction = outer->DoubleAttribute("dir", 0.0) / 60000.0 * 3.14159265358979323846 / 180.0;
+            shape.shadowOffsetXPt = static_cast<float>(distance * std::cos(direction));
+            shape.shadowOffsetYPt = static_cast<float>(distance * std::sin(direction));
+            shape.shadowBlurPt = static_cast<float>(ParseEmu(Attr(outer, "blurRad"))) / kEmuPerPoint;
+            const std::string colour = DrawingColor(outer);
+            shape.shadowColor = colour.empty() ? "#000000" : colour;
+            shape.shadowOpacity = 1.0f;
+            for (auto* kind = outer->FirstChildElement(); kind; kind = kind->NextSiblingElement()) {
+                if (auto* alpha = kind->FirstChildElement("a:alpha")) {
+                    shape.shadowOpacity = std::clamp(static_cast<float>(alpha->IntAttribute("val", 100000)) / 100000.0f, 0.0f, 1.0f);
+                }
+            }
+        }
         if (auto* line = spPr ? spPr->FirstChildElement("a:ln") : nullptr) {
             if (line->Attribute("w")) shape.lineWidthPt = static_cast<float>(ParseEmu(Attr(line, "w"))) / kEmuPerPoint;
             if (line->FirstChildElement("a:noFill")) shape.lineColor.clear();
@@ -2065,10 +2448,10 @@ private:
         else {
             run.imageFloatAlign = RichTextAlign::Default;
             const float x = length("margin-left") + length("left");
-            run.imageOffsetXPt = run.floatHorizontalFrom == Origin::Page ? x : std::max(0.0f, x);
+            run.imageOffsetXPt = x;
         }
         const float y = length("margin-top") + length("top");
-        run.imageOffsetYPt = run.floatVerticalFrom == Origin::Paragraph ? std::max(0.0f, y) : y;
+        run.imageOffsetYPt = y;
         run.imageWrap = RichTextRun::ImageWrap::InFrontOfText;
         if (auto* wrap = FindDescendant(element, "w10:wrap")) {
             const std::string type = Attr(wrap, "type");
@@ -2206,6 +2589,12 @@ private:
         run.imageHeightPt = heightPt;
         run.imageAltText = altText;
         ApplyAnchorPlacement(anchor, run);
+        // Turned (a:xfrm rot, 60000ths of a degree): a banner on its side.
+        if (auto* spPr = FindDescendant(drawing, "pic:spPr")) {
+            if (auto* xfrm = spPr->FirstChildElement("a:xfrm")) {
+                run.imageRotationDeg = static_cast<float>(xfrm->IntAttribute("rot", 0)) / 60000.0f;
+            }
+        }
         run.lineBreakBefore = ctx.pendingLineBreak;
         ctx.pendingLineBreak = false;
         ctx.runs.push_back(std::move(run));
@@ -2217,6 +2606,10 @@ private:
         props.linkTarget = linkTarget;
         ctx.paragraphCharacter.ApplyTo(props);
         ParseRunProperties(runElem->FirstChildElement("w:rPr"), props);
+        // In capitals: by the run itself, else by its paragraph's style.
+        auto* ownProps = runElem->FirstChildElement("w:rPr");
+        const bool capitals = ownProps && ownProps->FirstChildElement("w:caps") ? ToggleOn(ownProps, "w:caps")
+                                                                                : ctx.paragraphCaps;
 
         for (auto* child = runElem->FirstChildElement(); child;
              child = child->NextSiblingElement()) {
@@ -2246,12 +2639,26 @@ private:
                 for (size_t at; (at = run.text.find(kKeptSpaceMarker)) != std::string::npos;) {
                     run.text.replace(at, 3, " ");
                 }
+                if (capitals) run.text = ToCapitals(run.text);
                 run.lineBreakBefore = ctx.pendingLineBreak;
                 ctx.pendingLineBreak = false;
                 if (!run.text.empty()) ctx.runs.push_back(std::move(run));
             } else if (tag == "w:br") {
-                if (std::string(Attr(child, "w:type")) == "page") pendingPageBreak_ = true;
-                else ctx.pendingLineBreak = true;
+                if (std::string(Attr(child, "w:type")) == "page") {
+                    pendingPageBreak_ = true;
+                } else {
+                    // A second break in a row is an empty line - in the font
+                    // of the break that began it, not of the one that ends
+                    // it (a small line before a large name stays small).
+                    if (ctx.pendingLineBreak) {
+                        RichTextRun empty = ctx.pendingBreakFormat;
+                        empty.text.clear();
+                        empty.lineBreakBefore = true;
+                        ctx.runs.push_back(std::move(empty));
+                    }
+                    ctx.pendingLineBreak = true;
+                    ctx.pendingBreakFormat = props;
+                }
             } else if (tag == "w:cr") {
                 ctx.pendingLineBreak = true;
             } else if (tag == "w:tab") {
@@ -2478,6 +2885,7 @@ private:
         if (block.type != RichBlockType::Heading && block.type != RichBlockType::BlockQuote
             && block.type != RichBlockType::CodeBlock) {
             ctx.paragraphCharacter = ParagraphStyleCharacter(p);
+            ctx.paragraphCaps = ParagraphStyleCaps(p);
         }
         block.styleId = ParagraphStyleId(p);
         if (auto* pPr = p->FirstChildElement("w:pPr"); pPr && pPr->FirstChildElement("w:bidi")) {
@@ -2510,7 +2918,7 @@ private:
             ~SectionEndGuard() {
                 if (sectPr && reader->parsingBody_) {
                     reader->sectionEnds_.push_back({static_cast<int>(reader->doc_->blocks.size()) - 1,
-                                                    ReadSectionSetup(sectPr)});
+                                                    ReadSectionSetup(sectPr), sectPr});
                 }
             }
         } sectionEndGuard{this, endsSection};
@@ -2552,6 +2960,22 @@ private:
             doc_->blocks.push_back(std::move(promoted));
             for (auto& image : ctx.trailingImages) doc_->blocks.push_back(std::move(image));
             return;
+        }
+
+        // The trailer this writer puts after a table (Word wants a
+        // paragraph there) and the paragraph it makes to carry a section
+        // break are no paragraphs of the document: a point high, in a 1 pt
+        // font. The table's room below is the trailer's space after.
+        if (block.runs.empty() && ctx.trailingImages.empty() && IsTrailerParagraph(p->FirstChildElement("w:pPr"))) {
+            auto* pPr = p->FirstChildElement("w:pPr");
+            const bool afterTable = !doc_->blocks.empty() && doc_->blocks.back().type == RichBlockType::Table;
+            if (afterTable) {
+                auto* spacing = pPr->FirstChildElement("w:spacing");
+                if (spacing && spacing->Attribute("w:after")) {
+                    doc_->blocks.back().spaceAfterPt = static_cast<float>(spacing->IntAttribute("w:after", 0)) / 20.0f;
+                }
+            }
+            if (afterTable || pPr->FirstChildElement("w:sectPr")) return;
         }
 
         bool emptyParagraph = block.runs.empty() && ctx.trailingImages.empty()
@@ -2624,6 +3048,11 @@ private:
             RichTableRow row;
             if (auto* trPr = tr->FirstChildElement("w:trPr")) {
                 row.header = trPr->FirstChildElement("w:tblHeader") != nullptr;
+                // The row's height: exactly so, or at least (the default rule).
+                if (auto* height = trPr->FirstChildElement("w:trHeight")) {
+                    row.heightPt = std::max(0.0f, static_cast<float>(height->IntAttribute("w:val", 0)) / 20.0f);
+                    row.heightExact = row.heightPt > 0.0f && std::string(Attr(height, "w:hRule")) == "exact";
+                }
             }
 
             const size_t rowIndex = block.tableRows.size();
@@ -2689,10 +3118,39 @@ private:
                 }
                 InlineContext ctx;
                 bool firstParagraph = true;
+                // Each paragraph is a line of the cell, an empty one too (a
+                // letter spaces its address, date and text with them): one
+                // that left no run behind becomes an empty line of its own,
+                // in its paragraph's font.
+                RichTextRun emptyLine;
+                emptyLine.lineBreakBefore = true;
+                int paragraphCount = 0;
+                float spaceAboveFirst = 0.0f, spaceAfterLast = 0.0f;
                 for (auto* p = tc->FirstChildElement("w:p"); p;
                      p = p->NextSiblingElement("w:p")) {
-                    if (!firstParagraph) ctx.pendingLineBreak = true;
+                    // The room between two paragraphs - the one's space after
+                    // and the other's before - is a line of that height
+                    // between them; above the first and below the last it
+                    // is the cell's.
+                    RichDocBlock spacing;
+                    ApplyGeometry(spacing, p->FirstChildElement("w:pPr"));
+                    const float before = std::max(0.0f, spacing.spaceBeforePt);
+                    if (!firstParagraph) {
+                        if (ctx.pendingLineBreak) ctx.runs.push_back(emptyLine);
+                        if (spaceAfterLast + before > 0.5f) {
+                            RichTextRun spacer;
+                            spacer.lineBreakBefore = true;
+                            spacer.emptyLineHeightPt = spaceAfterLast + before;
+                            ctx.runs.push_back(std::move(spacer));
+                        }
+                        ctx.pendingLineBreak = true;
+                    } else {
+                        spaceAboveFirst = before;
+                    }
+                    spaceAfterLast = std::max(0.0f, spacing.spaceAfterPt);
+                    paragraphCount++;
                     ctx.paragraphCharacter = ParagraphStyleCharacter(p);
+            ctx.paragraphCaps = ParagraphStyleCaps(p);
                     // Alignment is a paragraph property; the cell takes its
                     // first paragraph's, and its frame where the cell has none.
                     if (firstParagraph) {
@@ -2713,8 +3171,31 @@ private:
                         if (run.fontSizePt <= 0.0f) run.fontSizePt = styled.paragraphFontSizePt;
                         if (run.fontFamily.empty()) run.fontFamily = styled.paragraphFontFamily;
                     }
+                    emptyLine.fontSizePt = styled.paragraphFontSizePt;
+                    emptyLine.fontFamily = styled.paragraphFontFamily;
+                    // An empty paragraph's line is its mark's font.
+                    if (ctx.runs.size() == runsBefore) {
+                        auto* pPr = p->FirstChildElement("w:pPr");
+                        Geometry mark;
+                        ReadStyleFont(pPr ? pPr->FirstChildElement("w:rPr") : nullptr, mark);
+                        if (mark.fontSize != kUnset && mark.fontSize > 0.0f) emptyLine.fontSizePt = mark.fontSize;
+                        if (!mark.fontFamily.empty()) emptyLine.fontFamily = mark.fontFamily;
+                    }
+                }
+                if (ctx.pendingLineBreak) {
+                    ctx.runs.push_back(emptyLine);
+                    ctx.pendingLineBreak = false;
+                }
+                // An empty cell is as tall as a line of its paragraph's
+                // font: an empty run says which.
+                if (ctx.runs.empty() && paragraphCount > 0 && (emptyLine.fontSizePt > 0.0f || !emptyLine.fontFamily.empty())) {
+                    RichTextRun font = emptyLine;
+                    font.lineBreakBefore = false;
+                    ctx.runs.push_back(std::move(font));
                 }
                 cell.runs = std::move(ctx.runs);
+                if (spaceAboveFirst > 0.0f) cell.paddingTopPt = std::max(0.0f, cell.paddingTopPt) + spaceAboveFirst;
+                if (spaceAfterLast > 0.0f) cell.paddingBottomPt = std::max(0.0f, cell.paddingBottomPt) + spaceAfterLast;
 
                 if (mergeRestart) {
                     openMerge[gridColumn] = OpenMerge{rowIndex, row.cells.size()};
@@ -2831,7 +3312,40 @@ private:
 
     // The body's section: page size and margins, and the header and footer
     // parts it references (w:titlePg gives the first page its own).
-    void LoadSection(tinyxml2::XMLElement* sectPr) {
+    // A sectPr's header and footer references, read into the default pages'
+    // and the first page's furniture. True when it names any.
+    // `emptyHeader` / `emptyFooter`: the height of a default header or footer
+    // that is only empty paragraphs (kept as no header at all), which Word
+    // still makes room for.
+    float emptyFurnitureHeightPt_ = 0.0f;         // set by LoadHeaderFooterPart
+    bool ReadFurnitureReferences(tinyxml2::XMLElement* sectPr, RichPageFurniture& pagesOut, RichPageFurniture& firstOut,
+                                 float* emptyHeader = nullptr, float* emptyFooter = nullptr) {
+        bool any = false;
+        for (const char* kind : {"w:headerReference", "w:footerReference"}) {
+            const bool header = std::string(kind) == "w:headerReference";
+            for (auto* ref = sectPr->FirstChildElement(kind); ref; ref = ref->NextSiblingElement(kind)) {
+                const std::string type = Attr(ref, "w:type");
+                RichPageFurniture* target = type == "first" ? &firstOut
+                                          : (type == "default" || type.empty()) ? &pagesOut : nullptr;
+                if (!target) continue;   // even pages: not modelled
+                auto rel = relationships_.find(Attr(ref, "r:id"));
+                if (rel == relationships_.end()) continue;
+                LoadHeaderFooterPart(ResolvePartPath(rel->second.target), header ? target->header : target->footer);
+                if (target == &pagesOut) {
+                    if (header && emptyHeader) *emptyHeader = emptyFurnitureHeightPt_;
+                    if (!header && emptyFooter) *emptyFooter = emptyFurnitureHeightPt_;
+                }
+                any = true;
+            }
+        }
+        return any;
+    }
+
+    // The document's page and its header and footer, from its first section.
+    // `pagesOut` / `firstOut` get what that section's references name, for
+    // the sections after it to inherit.
+    void LoadSection(tinyxml2::XMLElement* sectPr, RichPageFurniture* pagesOut = nullptr,
+                     RichPageFurniture* firstOut = nullptr) {
         if (!sectPr) return;
         auto twips = [](tinyxml2::XMLElement* e, const char* name) {
             return e ? static_cast<float>(e->IntAttribute(name, 0)) / 20.0f : 0.0f;
@@ -2852,18 +3366,13 @@ private:
         page.marginBottomPt = std::abs(page.marginBottomPt);
 
         doc_->firstPageDiffers = sectPr->FirstChildElement("w:titlePg") != nullptr;
-        for (const char* kind : {"w:headerReference", "w:footerReference"}) {
-            const bool header = std::string(kind) == "w:headerReference";
-            for (auto* ref = sectPr->FirstChildElement(kind); ref; ref = ref->NextSiblingElement(kind)) {
-                const std::string type = Attr(ref, "w:type");
-                RichPageFurniture* target = type == "first" ? &doc_->firstPageFurniture
-                                          : (type == "default" || type.empty()) ? &doc_->pageFurniture : nullptr;
-                if (!target) continue;   // even pages: not modelled
-                auto rel = relationships_.find(Attr(ref, "r:id"));
-                if (rel == relationships_.end()) continue;
-                LoadHeaderFooterPart("word/" + rel->second.target, header ? target->header : target->footer);
-            }
-        }
+        ReadFurnitureReferences(sectPr, doc_->pageFurniture, doc_->firstPageFurniture,
+                                &emptyHeaderNow_, &emptyFooterNow_);
+        // The text starts below a header of empty lines, and ends above such a footer.
+        if (emptyHeaderNow_ > 0.0f) page.marginTopPt = std::max(page.marginTopPt, page.headerTopPt + emptyHeaderNow_);
+        if (emptyFooterNow_ > 0.0f) page.marginBottomPt = std::max(page.marginBottomPt, page.footerBottomPt + emptyFooterNow_);
+        if (pagesOut) *pagesOut = doc_->pageFurniture;
+        if (firstOut) *firstOut = doc_->firstPageFurniture;
         if (!doc_->firstPageDiffers) doc_->firstPageFurniture = RichPageFurniture{};
     }
 
@@ -2874,6 +3383,7 @@ private:
         ProtectWhitespaceRuns(xml);
         tinyxml2::XMLDocument part;
         if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        NormalizeOoxmlPrefixes(part);
         auto* root = part.RootElement();
         if (!root) return;
         // Its pictures are named by its own relationships (over the
@@ -2895,8 +3405,14 @@ private:
         out.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
                    std::make_move_iterator(doc_->blocks.end()));
         doc_->blocks.resize(start);
-        // An empty paragraph Word keeps in every header is not content.
-        while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) out.pop_back();
+        // An empty paragraph Word keeps in every header is not content - but
+        // a header of nothing else still takes its lines' room on the page.
+        float emptyLines = 0.0f;
+        while (!out.empty() && out.back().type == RichBlockType::Paragraph && out.back().runs.empty()) {
+            emptyLines += (out.back().paragraphFontSizePt > 0.0f ? out.back().paragraphFontSizePt : 11.0f) * 1.3f;
+            out.pop_back();
+        }
+        emptyFurnitureHeightPt_ = out.empty() ? emptyLines : 0.0f;
     }
 
     int NoteFor(RichNote::Kind kind, const std::string& id) {
@@ -2919,7 +3435,7 @@ private:
         bool any = false;
         for (const auto& [key, index] : noteIndexById_) any = any || key[0] == prefix[0];
         if (!any) return;
-        std::string partName = endnote ? "word/endnotes.xml" : "word/footnotes.xml";
+        std::string partName = partFolder_ + (endnote ? "endnotes.xml" : "footnotes.xml");
         for (const auto& [id, rel] : relationships_) {
             const std::string file = endnote ? "endnotes.xml" : "footnotes.xml";
             if (!rel.external && rel.target.size() >= file.size()
@@ -2932,6 +3448,7 @@ private:
         ProtectWhitespaceRuns(xml);
         tinyxml2::XMLDocument part;
         if (part.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS) return;
+        NormalizeOoxmlPrefixes(part);
         auto* root = part.RootElement();
         if (!root) return;
         const char* noteTag = endnote ? "w:endnote" : "w:footnote";
@@ -3654,8 +4171,21 @@ private:
         } else {
             xml << "<a:solidFill><a:srgbClr val=\"" << EscapeXml(rgb(shape.fillColor)) << "\"/></a:solidFill>";
         }
+        // The shadow, after the line (a:effectLst follows a:ln).
+        auto shadow = [&]() {
+            if (!shape.HasShadow()) return;
+            const double distance = std::hypot(shape.shadowOffsetXPt, shape.shadowOffsetYPt);
+            double degrees = std::atan2(shape.shadowOffsetYPt, shape.shadowOffsetXPt) * 180.0 / 3.14159265358979323846;
+            if (degrees < 0.0) degrees += 360.0;
+            xml << "<a:effectLst><a:outerShdw blurRad=\"" << Emu(shape.shadowBlurPt) << "\" dist=\""
+                << Emu(static_cast<float>(distance)) << "\" dir=\"" << std::lround(degrees * 60000.0)
+                << "\" algn=\"ctr\" rotWithShape=\"0\"><a:srgbClr val=\"" << EscapeXml(rgb(shape.shadowColor))
+                << "\"><a:alpha val=\"" << std::lround(std::clamp(shape.shadowOpacity, 0.0f, 1.0f) * 100000.0f)
+                << "\"/></a:srgbClr></a:outerShdw></a:effectLst>";
+        };
         if (shape.lineColor.empty()) {
             xml << "<a:ln><a:noFill/></a:ln>";
+            shadow();
             return;
         }
         xml << "<a:ln w=\"" << Emu(shape.lineWidthPt) << "\"><a:solidFill><a:srgbClr val=\""
@@ -3665,6 +4195,7 @@ private:
         if (shape.arrowStart) xml << "<a:headEnd type=\"triangle\"/>";
         if (shape.arrowEnd) xml << "<a:tailEnd type=\"triangle\"/>";
         xml << "</a:ln>";
+        shadow();
     }
 
     static const char* BodyAnchor(RichShape::TextAnchor anchor) {
@@ -3818,7 +4349,11 @@ private:
             << EscapeXml(name) << "\"/><pic:cNvPicPr/></pic:nvPicPr>"
             << "<pic:blipFill><a:blip r:embed=\"rIdImg" << (block.mediaIndex + 1)
             << "\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>"
-            << "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" << cx
+            << "<pic:spPr><a:xfrm";
+        if (floating && floating->imageRotationDeg != 0.0f) {
+            xml << " rot=\"" << std::lround(static_cast<double>(floating->imageRotationDeg) * 60000.0) << "\"";
+        }
+        xml << "><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" << cx
             << "\" cy=\"" << cy << "\"/></a:xfrm>"
             << "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>"
             << "</pic:pic></a:graphicData></a:graphic>"
@@ -3876,7 +4411,7 @@ private:
         }
     }
 
-    void WriteTable(std::ostringstream& xml, const RichDocBlock& block) {
+    void WriteTable(std::ostringstream& xml, const RichDocBlock& block, const std::string& sectPr = std::string()) {
         size_t columnCount = 0;
         for (const auto& row : block.tableRows) {
             size_t width = 0;
@@ -3927,7 +4462,15 @@ private:
         std::vector<int> rowSpanRemaining(columnCount, 0);
         for (const auto& row : block.tableRows) {
             xml << "<w:tr>";
-            if (row.header) xml << "<w:trPr><w:tblHeader/></w:trPr>";
+            if (row.header || row.heightPt > 0.0f) {
+                xml << "<w:trPr>";
+                if (row.heightPt > 0.0f) {
+                    xml << "<w:trHeight w:val=\"" << std::lround(row.heightPt * 20.0f) << "\" w:hRule=\""
+                        << (row.heightExact ? "exact" : "atLeast") << "\"/>";
+                }
+                if (row.header) xml << "<w:tblHeader/>";
+                xml << "</w:trPr>";
+            }
 
             size_t cellIndex = 0;
             for (size_t col = 0; col < columnCount; ) {
@@ -3957,23 +4500,71 @@ private:
                     xml << "<w:vMerge w:val=\"restart\"/>";
                 }
                 if (block.tableBordersFromDocument) WriteCellFrame(xml, cell);
-                xml << "</w:tcPr><w:p>";
-                if (const char* jc = JustificationFor(cell.align)) {
-                    xml << "<w:pPr><w:jc w:val=\"" << jc << "\"/></w:pPr>";
-                }
+                xml << "</w:tcPr>";
                 std::vector<RichTextRun> runs = cell.runs;
                 if (row.header) {
                     for (auto& run : runs) run.bold = true;
                 }
                 paragraphBase_ = ParagraphBase(RichDocBlock{});     // a cell's paragraph is Normal
-                WriteRuns(xml, runs);
-                xml << "</w:p></w:tc>";
+                // The cell's lines as paragraphs without spacing of their
+                // own (it is the cell's padding, and would be counted twice
+                // when the file is read again); a line of a set height
+                // (RichTextRun::emptyLineHeightPt) is the space above the
+                // paragraph that follows it.
+                std::vector<RichTextRun> piece;
+                float above = 0.0f;
+                auto flush = [&]() {
+                    xml << "<w:p><w:pPr><w:spacing w:before=\"" << std::lround(above * 20.0f) << "\" w:after=\"0\"/>";
+                    if (const char* jc = JustificationFor(cell.align)) xml << "<w:jc w:val=\"" << jc << "\"/>";
+                    // A paragraph without words is a line of its mark's font.
+                    bool words = false;
+                    for (const RichTextRun& run : piece) words = words || !run.text.empty();
+                    if (!words && !piece.empty() && (piece.front().fontSizePt > 0.0f || !piece.front().fontFamily.empty())) {
+                        xml << "<w:rPr>";
+                        if (!piece.front().fontFamily.empty()) {
+                            xml << "<w:rFonts w:ascii=\"" << EscapeXml(piece.front().fontFamily) << "\" w:hAnsi=\""
+                                << EscapeXml(piece.front().fontFamily) << "\"/>";
+                        }
+                        if (piece.front().fontSizePt > 0.0f) {
+                            xml << "<w:sz w:val=\"" << std::lround(piece.front().fontSizePt * 2.0f) << "\"/>";
+                        }
+                        xml << "</w:rPr>";
+                    }
+                    xml << "</w:pPr>";
+                    WriteRuns(xml, piece);
+                    xml << "</w:p>";
+                    piece.clear();
+                };
+                for (const RichTextRun& run : runs) {
+                    if (run.lineBreakBefore && run.text.empty() && run.emptyLineHeightPt > 0.0f) {
+                        flush();
+                        above = run.emptyLineHeightPt;
+                        continue;
+                    }
+                    piece.push_back(run);
+                    // The break after a spacer is the new paragraph's start.
+                    if (piece.size() == 1 && above > 0.0f) piece.front().lineBreakBefore = false;
+                }
+                flush();
+                xml << "</w:tc>";
             }
             xml << "</w:tr>\n";
         }
         xml << "</w:tbl>\n"
-            // Word requires a paragraph between a table and the section end.
-            << "<w:p/>\n";
+            // Word requires a paragraph between a table and the section end
+            // (and between two tables): a trailer the reader takes back out,
+            // which carries the table's room below and a section's end.
+            << TrailerParagraph(block.spaceAfterPt, sectPr);
+    }
+
+    // A paragraph a point high, its mark in a 1 pt font: after a table, or
+    // only to carry a section break. `spaceAfterPt` < 0: none stated.
+    static std::string TrailerParagraph(float spaceAfterPt, const std::string& sectPr) {
+        std::string xml = "<w:p><w:pPr><w:spacing w:before=\"0\"";
+        if (spaceAfterPt >= 0.0f) xml += " w:after=\"" + std::to_string(std::lround(spaceAfterPt * 20.0f)) + "\"";
+        xml += " w:line=\"20\" w:lineRule=\"exact\"/><w:rPr><w:sz w:val=\"2\"/><w:szCs w:val=\"2\"/></w:rPr>"
+             + sectPr + "</w:pPr></w:p>\n";
+        return xml;
     }
 
     // The blocks as WordprocessingML paragraphs and tables.
@@ -3995,15 +4586,26 @@ private:
             const bool viaParagraph = block.type != RichBlockType::Table && block.type != RichBlockType::Image
                                       && block.type != RichBlockType::PageBreak;
             if (endsSection && viaParagraph) pendingSectPr_ = SectionBreakXml(doc_->SectionFor(static_cast<int>(index)));
+            bool sectionWritten = false;
             switch (block.type) {
                 case RichBlockType::Table:
-                    WriteTable(body, block);
+                    // Its trailer carries the section's end.
+                    WriteTable(body, block, endsSection ? SectionBreakXml(doc_->SectionFor(static_cast<int>(index)))
+                                                        : std::string());
                     break;
                 case RichBlockType::Image:
                     WriteImage(body, block, ++drawingId_);
                     break;
                 case RichBlockType::PageBreak:
-                    body << "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\n";
+                    // Before a section that starts a page, the section's
+                    // break is the page break: one of the two, or Word and
+                    // the reader turn two pages.
+                    if (endsSection && blocks[index + 1].section.newPage) {
+                        body << TrailerParagraph(-1.0f, SectionBreakXml(doc_->SectionFor(static_cast<int>(index))));
+                        sectionWritten = true;
+                    } else {
+                        body << "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\n";
+                    }
                     break;
                 case RichBlockType::MathBlock:
                     // No OMML writer: the formula source travels as a centred
@@ -4015,8 +4617,8 @@ private:
                     WriteParagraph(body, block);
                     break;
             }
-            if (endsSection && !viaParagraph) {
-                body << "<w:p><w:pPr>" << SectionBreakXml(doc_->SectionFor(static_cast<int>(index))) << "</w:pPr></w:p>\n";
+            if (endsSection && !viaParagraph && block.type != RichBlockType::Table && !sectionWritten) {
+                body << TrailerParagraph(-1.0f, SectionBreakXml(doc_->SectionFor(static_cast<int>(index))));
             }
             pendingSectPr_.clear();
         }
@@ -4038,14 +4640,76 @@ private:
         return std::string("<w:type w:val=\"") + (section.newPage ? "nextPage" : "continuous") + "\"/>";
     }
 
-    std::string SectionBreakXml(const RichSectionSetup& section) const {
-        return "<w:sectPr>" + SectionTypeXml(section) + PageGeometryXml() + SectionColumnsXml(section) + "</w:sectPr>";
+    std::string SectionBreakXml(const RichSectionSetup& section) {
+        bool titlePage = false;
+        const std::string references = FurnitureReferencesXml(section, titlePage);
+        return "<w:sectPr>" + references + SectionTypeXml(section) + PageGeometryXml(&section)
+             + SectionColumnsXml(section) + (titlePage ? "<w:titlePg/>" : "") + "</w:sectPr>";
+    }
+
+    // The header and footer references of a section's w:sectPr, their parts
+    // written once each. A section says all of its own (Word hands a section
+    // without one the header of the section before): an empty part where it
+    // has none but another section does. `titlePage`: its first page differs.
+    std::map<std::pair<const void*, std::string>, size_t> furniturePartOf_;   // (blocks, kind + type) -> part number
+    std::string FurnitureReferencesXml(const RichSectionSetup& section, bool& titlePage) {
+        const UCRichDocument& doc = *doc_;
+        const bool ownSet = section.furniture >= 0 && section.furniture < static_cast<int>(doc.sectionFurniture.size());
+        const RichSectionFurniture* own = ownSet ? &doc.sectionFurniture[static_cast<size_t>(section.furniture)] : nullptr;
+        // The document's first-page header is its first page's alone: only
+        // the first section's pages begin with it.
+        const bool documentFirst = !own && doc.firstPageDiffers && &section == &doc.SectionFor(0);
+        titlePage = own ? own->firstPageDiffers : documentFirst;
+        const RichPageFurniture& pages = own ? own->pages : doc.pageFurniture;
+        const RichPageFurniture& first = own ? own->firstPage : doc.firstPageFurniture;
+        bool anyHeader = false, anyFooter = false;
+        for (const RichPageFurniture* furniture : doc.AllFurniture()) {
+            anyHeader = anyHeader || !furniture->header.empty();
+            anyFooter = anyFooter || !furniture->footer.empty();
+        }
+        std::ostringstream refs;
+        auto part = [&](const std::vector<RichDocBlock>& blocks, const char* kind, const char* type, bool wanted) {
+            if (!wanted) return;
+            const auto key = std::make_pair(static_cast<const void*>(blocks.empty() ? nullptr : &blocks),
+                                            std::string(kind) + type);
+            auto known = furniturePartOf_.find(key);
+            if (known == furniturePartOf_.end()) {
+                FurniturePart p;
+                p.kind = kind;
+                p.type = type;
+                p.name = std::string(kind) + std::to_string(furnitureParts_.size() + 1) + ".xml";
+                const char* root = std::string(kind) == "header" ? "w:hdr" : "w:ftr";
+                // Written apart from the body: its lists are its own.
+                const auto savedList = currentListNumId_;
+                const std::string savedSectPr = pendingSectPr_;
+                p.xml = std::string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<")
+                      + root + " " + kPartNamespaces + ">" + (blocks.empty() ? std::string("<w:p/>") : WriteBlocks(blocks))
+                      + "</" + root + ">\n";
+                currentListNumId_ = savedList;
+                pendingSectPr_ = savedSectPr;
+                known = furniturePartOf_.emplace(key, furnitureParts_.size() + 1).first;
+                furnitureParts_.push_back(std::move(p));
+            }
+            refs << "<w:" << kind << "Reference w:type=\"" << type << "\" r:id=\"rIdPart" << known->second << "\"/>";
+        };
+        part(pages.header, "header", "default", anyHeader);
+        if (titlePage) part(first.header, "header", "first", anyHeader);
+        part(pages.footer, "footer", "default", anyFooter);
+        if (titlePage) part(first.footer, "footer", "first", anyFooter);
+        return refs.str();
     }
 
     // The page size and margins, Word's defaults (A4, 2 cm margins) where
     // the document states no page.
-    std::string PageGeometryXml() const {
-        const RichPageSetup& page = doc_->page;
+    std::string PageGeometryXml(const RichSectionSetup* section = nullptr) const {
+        RichPageSetup page = doc_->page;
+        if (section) {
+            // A section's own room for its header and footer.
+            if (section->marginTopPt >= 0.0f) page.marginTopPt = section->marginTopPt;
+            if (section->marginBottomPt >= 0.0f) page.marginBottomPt = section->marginBottomPt;
+            if (section->headerTopPt >= 0.0f) page.headerTopPt = section->headerTopPt;
+            if (section->footerBottomPt >= 0.0f) page.footerBottomPt = section->footerBottomPt;
+        }
         auto twips = [](float pt) { return std::lround(pt * 20.0f); };
         const bool hasPage = page.HasPage();
         std::ostringstream xml;
@@ -4132,34 +4796,17 @@ private:
 
     std::string SectionPropertiesXml() {
         const UCRichDocument& doc = *doc_;
-        std::ostringstream refs;
-        auto part = [&](const std::vector<RichDocBlock>& blocks, const char* kind, const char* type) {
-            if (blocks.empty()) return;
-            FurniturePart p;
-            p.kind = kind;
-            p.type = type;
-            p.name = std::string(kind) + std::to_string(furnitureParts_.size() + 1) + ".xml";
-            const char* root = std::string(kind) == "header" ? "w:hdr" : "w:ftr";
-            p.xml = std::string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<")
-                  + root + " " + kPartNamespaces + ">" + WriteBlocks(blocks) + "</" + root + ">\n";
-            refs << "<w:" << kind << "Reference w:type=\"" << type << "\" r:id=\"rIdPart"
-                 << (furnitureParts_.size() + 1) << "\"/>";
-            furnitureParts_.push_back(std::move(p));
-        };
-        part(doc.pageFurniture.header, "header", "default");
-        if (doc.firstPageDiffers) part(doc.firstPageFurniture.header, "header", "first");
-        part(doc.pageFurniture.footer, "footer", "default");
-        if (doc.firstPageDiffers) part(doc.firstPageFurniture.footer, "footer", "first");
-
         // The last section's: the one the body's own w:sectPr ends.
         const RichSectionSetup& last = doc.SectionFor(static_cast<int>(doc.blocks.size()) - 1);
         const bool sectioned = doc.HasColumns() || std::any_of(doc.blocks.begin(), doc.blocks.end(),
                                                                [](const RichDocBlock& b) { return b.sectionStart; });
+        bool titlePage = false;
+        const std::string references = FurnitureReferencesXml(last, titlePage);
         std::ostringstream xml;
-        xml << "<w:sectPr>" << refs.str();
+        xml << "<w:sectPr>" << references;
         if (sectioned) xml << SectionTypeXml(last);
-        xml << PageGeometryXml() << SectionColumnsXml(last);
-        if (doc.firstPageDiffers) xml << "<w:titlePg/>";
+        xml << PageGeometryXml(&last) << SectionColumnsXml(last);
+        if (titlePage) xml << "<w:titlePg/>";
         xml << "</w:sectPr>";
         return xml.str();
     }
@@ -4245,12 +4892,16 @@ private:
 
     // word/settings.xml carries only the default tab interval, so it is
     // written only when the document states one.
-    bool HasSettings() const { return doc_->defaultTabStopPt > 0.0f; }
+    bool HasSettings() const { return doc_->defaultTabStopPt > 0.0f || !doc_->fontLineGap; }
 
     std::string BuildSettingsXml() const {
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-               "<w:settings xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
-               "<w:defaultTabStop w:val=\"" + Twips(doc_->defaultTabStopPt) + "\"/></w:settings>\n";
+        return std::string("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+               "<w:settings xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">")
+             + (doc_->defaultTabStopPt > 0.0f ? "<w:defaultTabStop w:val=\"" + Twips(doc_->defaultTabStopPt) + "\"/>"
+                                             : std::string())
+             // Lines without the font's line gap: Word's "don't add leading".
+             + (doc_->fontLineGap ? "" : "<w:compat><w:noLeading/></w:compat>")
+             + "</w:settings>\n";
     }
 
     static std::string BuildRootRelsXml() {
@@ -4386,7 +5037,8 @@ private:
             << "<w:docDefaults><w:rPrDefault><w:rPr>"
                "<w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\"/>"
                "<w:sz w:val=\"22\"/><w:szCs w:val=\"22\"/>"
-               "</w:rPr></w:rPrDefault></w:docDefaults>\n";
+            << (doc_->letterKerning ? "<w:kern w:val=\"2\"/>" : "")
+            << "</w:rPr></w:rPrDefault></w:docDefaults>\n";
         if (!documentHas("Normal")) {
             xml << "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\">"
                    "<w:name w:val=\"Normal\"/></w:style>\n";
@@ -4517,6 +5169,29 @@ private:
 };
 
 } // namespace
+
+std::string WordFormatInternal::FindDocxMainPart(const UCZipPackageReader& zip) {
+    std::string relsXml;
+    if (zip.ReadEntry("_rels/.rels", relsXml)) {
+        tinyxml2::XMLDocument rels;
+        if (rels.Parse(relsXml.c_str()) == tinyxml2::XML_SUCCESS && rels.RootElement()) {
+            const std::string officeDocument = "/officeDocument";
+            for (auto* rel = rels.RootElement()->FirstChildElement(); rel; rel = rel->NextSiblingElement()) {
+                const char* type = rel->Attribute("Type");
+                const char* target = rel->Attribute("Target");
+                if (!type || !target) continue;
+                const std::string t(type);
+                if (t.size() < officeDocument.size()
+                    || t.compare(t.size() - officeDocument.size(), officeDocument.size(), officeDocument) != 0)
+                    continue;
+                std::string part(target);
+                if (!part.empty() && part[0] == '/') part.erase(0, 1);
+                if (!part.empty() && zip.HasEntry(part) && IsWordMainDocumentPart(zip, part)) return part;
+            }
+        }
+    }
+    return zip.HasEntry("word/document.xml") ? "word/document.xml" : std::string();
+}
 
 bool UCWordDocumentIO::LoadDocx(const std::string& filePath, UCRichDocument& outDocument,
                                 std::string& outError, const std::string& password) {

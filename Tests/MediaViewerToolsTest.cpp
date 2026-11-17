@@ -2,8 +2,11 @@
 // The media viewer's toolbar offers only the view / edit tools the shown file
 // takes. A photo gets zoom, rotate / mirror, the colour adjustments, Curves
 // and Save as; a drawing is never offered colour sliders or a histogram; a
-// text file, a spreadsheet, a 3D model, a video or an audio file gets none of
-// them, because its view brings its own controls. And colour set on one photo
+// text file, a spreadsheet, a 3D model or a video gets none of them, because
+// its view brings its own controls; a recording the player opens gets only
+// Save as (another audio type), and so does a video the player opens - but
+// only where a converter writes some video type (VideoFX's, registered by the
+// application): a build without one offers no video Save as. And colour set on one photo
 // must not tint the drawing browsed to next - with the sliders hidden there
 // would be no way to take it off.
 //
@@ -68,6 +71,9 @@
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasAudio.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasMediaCodecRegistry.h"
 
 #include <chrono>
 #include <deque>
@@ -457,6 +463,62 @@ int main() {
     Expect(*viewer, model, false, false, false, false);
     Expect(*viewer, video, false, false, false, false);
     Expect(*viewer, audio, false, false, false, false);
+    // A recording the player opens is offered Save as - in every audio type
+    // this build encodes. (The empty song.mp3 above opens nowhere: nothing.)
+    {
+        AudioBufferInfo info;
+        info.sampleRate = 22050;
+        info.channels = 1;
+        info.frameCount = 2205;
+        info.durationSeconds = 0.1;
+        std::vector<int16_t> samples(info.frameCount, 0);
+        auto tone = UCAudio::FromRawPCM(samples.data(), samples.size() * sizeof(int16_t), info);
+        const fs::path wav = dir / "tone.wav";
+        std::string error;
+        if (tone && UltraCanvasFileLoader::SaveAudio(*tone, PathToUtf8(wav), error)) {
+            viewer->SetFiles({ PathToUtf8(wav) });
+            const bool opened = viewer->GetAvailableTools().save;
+            std::cout << "\ntone.wav\n";
+            Check(opened == CanDecodeMediaFile(MediaCodecKind::Audio, PathToUtf8(wav)),
+                  "tone.wav: offers Save as where the player opens it");
+            Expect(*viewer, wav, false, false, false, opened);
+        } else {
+            std::cout << "\n(no audio writer in this build: " << error << ")\n";
+        }
+    }
+
+    // A film the player opens is offered Save as only where a converter
+    // writes some video type. The core has none: an application registers
+    // VideoFX's. Here a converter of the test's own stands in for it.
+    {
+        const fs::path film = media / "videos" / PathFromUtf8("Lola Lexy - No kings.mp4");
+        const std::string filmLabel = PathToUtf8(film.filename());
+        const bool anyConverter = !UltraCanvasFileLoader::GetVideoSaveExtensions().empty();
+        Check(!anyConverter, "the core alone converts no video type (no converter is registered)");
+        Expect(*viewer, film, false, false, false, false);
+
+        MediaCodecRegistration converter;
+        converter.extension = "ucvtools";
+        converter.description = "Test video type";
+        converter.kind = MediaCodecKind::Video;
+        converter.convertVideo = [](const std::string&, const std::string&, const MediaProgressFn&,
+                                    std::string& error) {
+            error = "only a stand-in";
+            return false;
+        };
+        RegisterMediaCodec(converter);
+        viewer->SetFiles({ PathToUtf8(film) });
+        const bool offered = viewer->GetAvailableTools().save;
+        std::cout << "\n" << filmLabel << " (a converter registered)\n";
+        if (!offered) std::cout << "         (the player did not open it here: no Save as either way)\n";
+        Check(!offered || CanDecodeMediaFile(MediaCodecKind::Video, PathToUtf8(film)),
+              filmLabel + ": offers Save as only for a film the player opens");
+        Expect(*viewer, film, false, false, false, offered);
+        // The empty clip.mp4: the player refuses it - nothing to save.
+        Expect(*viewer, video, false, false, false, false);
+        UnregisterMediaCodec(MediaCodecKind::Video, "ucvtools");
+        Expect(*viewer, film, false, false, false, false);    // no converter: no Save as again
+    }
 
     // A PDF zooms in the PDF view; without the PDF plugin a libvips build
     // rasterizes it onto the image surface instead. Either way it is a

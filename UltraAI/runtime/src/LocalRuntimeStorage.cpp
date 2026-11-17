@@ -1,9 +1,10 @@
 // UltraAI/runtime/src/LocalRuntimeStorage.cpp
 // The runtime's folders and files, hashing (UltraCrypt), unpacking
 // (VirtualFS), and the processes it starts and stops.
+// Version: 0.2.1 - catalogues/ and file-facts.json
 // Version: 0.2.0 - VerifyDocumentSignature
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-15
 // Author: UltraAI Module
 
 #include "LocalRuntimeInternal.h"
@@ -68,6 +69,8 @@ Paths Paths::For(const fs::path& root) {
     p.userModelsJson = root / "user-models.json";
     p.topicsJson     = root / "gallery" / "topics.json";
     p.topicPreferencesJson = root / "topic-preferences.json";
+    p.catalogues     = root / "catalogues";
+    p.fileFactsJson  = root / "file-facts.json";
     return p;
 }
 
@@ -85,6 +88,7 @@ bool Paths::EnsureFolders(std::string& outError) const {
         }
     }
     fs::create_directories(galleryJson.parent_path(), ec);
+    fs::create_directories(catalogues, ec);
     return true;
 }
 

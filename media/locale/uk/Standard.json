@@ -165,6 +165,7 @@
   },
   "Copy files": "Копіювання файлів",
   "Copy finished": "Копіювання завершено",
+  "Copy instead": "Скопіювати натомість",
   "Copy path": "Копіювати шлях",
   "Copy skipped items again": "Повторити копіювання пропущених елементів",
   "Copy {n} item into \"{0}\"?": {
@@ -438,6 +439,7 @@
   "Move down": "Перемістити вниз",
   "Move files": "Переміщення файлів",
   "Move finished": "Переміщення завершено",
+  "Move instead": "Перемістити натомість",
   "Move skipped items again": "Повторити переміщення пропущених елементів",
   "Move to Recycle Bin": "Перемістити до кошика",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Дію «Перемістити до кошика» можна скасувати з кошика. Дію «Видалити остаточно» скасувати неможливо.",
@@ -648,6 +650,7 @@
   "Stopped at:": "Зупинено на:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Зберігає ці налаштування, не перевіряючи їх; їх буде перевірено під час наступного використання облікового запису.",
   "Style": "Стиль",
+  "Subfolder of \"{0}\"": "Підпапка в «{0}»",
   "Submit": "Надіслати",
   "Success": "Успішно",
   "System": "Система",

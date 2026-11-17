@@ -50,6 +50,9 @@
 # current for any branch, and the branch the session starts on has its copy
 # fetched here - both hooks then see the branch as it is on origin.
 #
+# Version: 1.8.0 - libc++'s headers unpacked privately for scripts/check_libcxx_syntax.py (the
+#                  Windows rows' library); not installed: libc++-dev removes libunwind-dev, and GStreamer with it
+# Version: 1.7.0 - xvfb, xauth and xclip, for the window tests CI runs on a virtual display
 # Version: 1.6.0 - Tesseract, Leptonica and the English OCR data (the OCR plugin)
 # Version: 1.5.0 - the fetch refspec widened to every branch and the session's
 #                  branch copy fetched, for the Stop hooks on a shallow clone
@@ -59,7 +62,7 @@
 # Version: 1.1.1 - Hunspell and the en_US dictionary, as CI now installs
 # Version: 1.1.0 - every library CI installs, not only libsodium
 # Version: 1.0.0
-# Last Modified: 2026-10-21
+# Last Modified: 2026-11-17
 # Author: UltraCanvas Framework
 set -u
 
@@ -103,6 +106,9 @@ PACKAGES=(
     libhunspell-dev hunspell-en-us
     # the OCR plugin (Tesseract, Leptonica) and the English data its test reads with
     libtesseract-dev libleptonica-dev tesseract-ocr-eng
+    # the window tests CI runs on a virtual display (xvfb-run), and xclip, the
+    # other program ClipboardIncrTest copies to and from when it is installed
+    xvfb xauth xclip
 )
 
 # The comma-decimal locale the locale tests run under.
@@ -145,6 +151,32 @@ register_branch_copy() {
         "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || true
 }
 register_branch_copy
+
+# ---- libc++'s headers, for scripts/check_libcxx_syntax.py ------------------
+#
+# The Windows rows compile against libc++, and scripts/check_libcxx_syntax.py
+# type-checks a change against it here - the one check of the Windows build a
+# session can run (AGENTS.md, house rule 2). It needs libc++'s headers, which
+# the image lacks. They are NOT installed: on Ubuntu 24.04 libc++-dev needs
+# LLVM's libunwind-18-dev, which conflicts with the libunwind-dev that
+# libgstreamer1.0-dev needs, so apt removes one for the other and GStreamer's
+# pkg-config file stops resolving - the build then leaves the media backends
+# out without a word (seen 2026-11-17). The script downloads the two dev
+# packages and unpacks them into a private folder instead (no root, no package
+# changed). A few seconds the first time; nothing once they are there.
+fetch_libcxx_headers() {
+    local repo="${CLAUDE_PROJECT_DIR:-.}" script
+    script="$repo/scripts/check_libcxx_syntax.py"
+    [ -f "$script" ] && command -v clang++ >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1 || return 0
+    # Installed already, or unpacked by an earlier start: nothing to do.
+    compgen -G "/usr/lib/llvm-*/include/c++/v1/__config" >/dev/null && return 0
+    compgen -G "${ULTRACANVAS_LIBCXX_ROOT:-$HOME/.cache/ultracanvas/libcxx}/usr/lib/llvm-*/include/c++/v1/__config" \
+        >/dev/null && return 0
+    timeout 120 python3 "$script" --fetch-libcxx >>"${TMPDIR:-/tmp}/ultracanvas-session-start.log" 2>&1 ||
+        echo "Cloud setup: libc++'s headers could not be fetched (see ${TMPDIR:-/tmp}/ultracanvas-session-start.log);" \
+             "scripts/check_libcxx_syntax.py cannot run in this session."
+}
+fetch_libcxx_headers
 
 mapfile -t missing < <(missing_packages)
 need_locale=0

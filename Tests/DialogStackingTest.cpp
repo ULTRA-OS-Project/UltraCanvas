@@ -20,6 +20,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasWindow.h"
+#include "DisplayRequired.h"
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -99,7 +100,10 @@ int main() {
     if (std::getenv("DISPLAY") && app.Initialize("DialogStackingTest")) display = app.GetDisplay();
 
     if (!display) {
-        std::cerr << "SKIP: the window checks (no X11 display)" << std::endl;
+        if (DisplayTest::DisplayRequired())
+            TEST("the window checks: a display was required, and there is no X11 display", false);
+        else
+            std::cerr << "SKIP: the window checks (no X11 display)" << std::endl;
     } else {
         UltraCanvasDialogManager::SetUseNativeDialogs(false);
 

@@ -11,6 +11,7 @@
 // Last Modified: 2026-10-08
 // Author: UltraCanvas Framework
 #include <algorithm>
+#include <atomic>
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasApplication.h"
@@ -18,6 +19,25 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+
+    void WarnIfIdentifierReadsAsText(const char* elementClass, const std::string& identifier) {
+        // Words, not a name: a space or a line break in it.
+        if (identifier.find_first_of(" \t\n") == std::string::npos) return;
+        if (!IsDebugOutputEnabled()) return;
+        // A list built in a loop says it twenty times, not ten thousand.
+        static std::atomic<int> said{0};
+        if (said.fetch_add(1) >= 20) return;
+        size_t shown = std::min<size_t>(identifier.size(), 48);
+        while (shown > 0 && shown < identifier.size() &&
+               (static_cast<unsigned char>(identifier[shown]) & 0xC0) == 0x80) {
+            --shown;        // not inside a character
+        }
+        debugOutput << "Warning: " << elementClass << "(\"" << identifier.substr(0, shown)
+                    << (shown < identifier.size() ? "..." : "")
+                    << "\"): one string is the element's identifier, and this one reads as text, "
+                       "so the element shows none. Pass the text second: (\"\", text) or (identifier, text)."
+                    << std::endl;
+    }
 
     void UltraCanvasUIElement::SetAccessibleName(const std::string& name) {
         if (accessibleName == name) return;

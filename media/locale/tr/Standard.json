@@ -158,6 +158,7 @@
   },
   "Copy files": "Dosya kopyalama",
   "Copy finished": "Kopyalama tamamlandı",
+  "Copy instead": "Bunun yerine kopyala",
   "Copy path": "Yolu kopyala",
   "Copy skipped items again": "Atlanan öğeleri yeniden kopyala",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Aşağı taşı",
   "Move files": "Dosya taşıma",
   "Move finished": "Taşıma tamamlandı",
+  "Move instead": "Bunun yerine taşı",
   "Move skipped items again": "Atlanan öğeleri yeniden taşı",
   "Move to Recycle Bin": "Geri Dönüşüm Kutusuna Taşı",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "“Geri Dönüşüm Kutusuna Taşı” işlemi Geri Dönüşüm Kutusundan geri alınabilir. “Kalıcı olarak sil” işlemi geri alınamaz.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Durduğu yer:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Bu ayarları denemeden kaydeder; hesap bir sonraki kullanıldığında denenirler.",
   "Style": "Stil",
+  "Subfolder of \"{0}\"": "“{0}” alt klasörü",
   "Submit": "Gönder",
   "Success": "Başarılı",
   "System": "Sistem",

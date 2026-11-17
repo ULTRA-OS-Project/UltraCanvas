@@ -6,13 +6,17 @@
 // Every page is built the same way (MakePage): a bold title, a one-line
 // caption, the controls, and at the foot of the page, in its own tinted
 // block, the notes that explain the setting. A page's "Restore defaults"
-// button sits at the left end of the bottom bar, opposite Close.
+// button sits at the left end of the bottom bar, opposite Close. A page
+// taller than the window scrolls, vertically, as UOS-Settings' pages do.
+// Version: 0.5.0 - every page scrolls when it is taller than the window (the
+//                  Local models page lost its notes under the bottom bar); the
+//                  Endpoints form keeps to its width (its status wraps)
 // Version: 0.4.0 - Services > Proxy: the proxy the cloud providers are reached through,
 //                  shared by every ULTRA OS application (MakeProxySettingsPage)
 // Version: 0.3.0 - the Model topics page
 // Version: 0.2.0 - the Local models page; the local provider's models in the endpoint editor
 // Version: 0.1.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-17
 // Author: UltraAI Module
 
 #include "UltraAISettingsWindow.h"
@@ -485,6 +489,12 @@ namespace {
                                     [d]() { SaveEndpoint(d); }));
         d->epStatus = MakeLabel("uai-ep-status", "", kTextFontSize, kNoteTextColor);
         d->epStatus->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        // Between the two buttons the status has about 200 px of the form's
+        // 480. On one line ("Editing a new endpoint - fill in the form and
+        // Save.") it widened the whole form past the page, so every field ran
+        // under the page's edge and Delete was cut off. It wraps instead: two
+        // lines fit the row.
+        d->epStatus->SetWrap(TextWrap::WrapWord);
         footer->AddChild(d->epStatus);
         footer->AddChild(MakeButton("uai-ep-delete", Tr("Delete"), 110,
                                     [d]() { DeleteEndpoint(d); }));
@@ -568,6 +578,20 @@ namespace {
                  const std::shared_ptr<UltraCanvasContainer>& page) {
         page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        // A page taller than the window scrolls - the Local models page is,
+        // and every page is in a window made small - rather than losing its
+        // notes under the bottom bar. The page itself is the scroll view, so
+        // each keeps its own place when another is shown. Vertically only:
+        // the bar narrows the page, which would otherwise make a horizontal
+        // overflow of its own width. A page that fits shows no bar, and its
+        // spacer still holds the notes at the foot. The bar is the theme's,
+        // as the lists' beside it are; the page's own flags stay.
+        ContainerStyle scrolling = ContainerStyle::FromTheme(UltraCanvasTheme::Current(),
+                                                             page->GetContainerStyle());
+        scrolling.autoShowScrollbars          = true;
+        scrolling.autoShowVerticalScrollbar   = true;
+        scrolling.autoShowHorizontalScrollbar = false;
+        page->SetContainerStyle(scrolling);
         d->pages[pageId] = page;
         d->pageArea->AddChild(page);
     }
@@ -714,6 +738,9 @@ namespace {
             d->epModels.clear();
             for (const LocalModelInfo& m : LocalRuntime::Instance().ListModels()) {
                 if (m.fit == ModelFit::TooLarge) continue;
+                // A catalogue source's models by the thousand are found on
+                // the Local models page; here, the installed ones of them.
+                if (m.source == LocalModelSource::Gallery && !m.installed) continue;
                 Endpoint::DiscoveredModel dm;
                 dm.name = m.id;
                 // The task is stored with the endpoint and compared ("translation"):

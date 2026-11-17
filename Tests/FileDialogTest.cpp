@@ -44,9 +44,17 @@
 //
 // The naming rule and the settings store are checked on their own and always
 // run; the dialog itself is read back from the composited pixels, so that
-// part runs under Xvfb and skips - rather than fails - without a display.
+// part runs under Xvfb and skips - rather than fails - without a display,
+// unless ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (CI's virtual-display step),
+// where a skip would read as a pass and fails instead. Plain ctest has no
+// display, so until that step ran it nothing did: "its rows scaled down with
+// the type" failed on every display from 0.9.541 to 2026-11-15 unseen.
+// Version: 1.9.0 - a skip fails under ULTRACANVAS_TEST_DISPLAY_REQUIRED, and keeps earlier failures
+// Version: 1.8.1 - the settings-window check asks for the window's type size, not
+//                 for one below the dialog's own: since the kit follows the theme
+//                 the two are the same where no desktop names a font
 // Version: 1.8.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -101,10 +109,20 @@ static int failCount = 0;
         testCount++;                                                          \
     } while (0)
 
+// The dialog half cannot run. Where a display was asked for that is a
+// failure, not a skip (DisplayTest::DisplayRequired); either way a check of
+// the half that did run and failed still fails the suite.
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
-        std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
-        return 0;                                                             \
+        if (DisplayTest::DisplayRequired()) {                                 \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
+        std::cerr << "SKIP: the dialog itself (" << reason << ")" << std::endl; \
+        std::cerr << "\n   " << (testCount - failCount) << "/" << testCount   \
+                  << " passed" << std::endl;                                  \
+        return failCount == 0 ? 0 : 1;                                        \
     } while (0)
 
 namespace {
@@ -567,11 +585,7 @@ int main() {
         TEST("... nor one from CreateButton", CreateButton("made", 0, 0, 28, 28)->GetText().empty());
     }
 
-    if (!std::getenv("DISPLAY")) {
-        std::cerr << "SKIP: the dialog itself (no DISPLAY)" << std::endl;
-        std::cerr << "\n   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
-        return failCount == 0 ? 0 : 1;
-    }
+    if (!std::getenv("DISPLAY")) SKIP_ALL("there is no DISPLAY");
 
     // The dialog remembers its view and size in the settings folder: keep
     // the test's copy away from the user's, and start from the defaults.
@@ -586,7 +600,7 @@ int main() {
     RedirectSettingsFolder(scratch / "config");
 
     UltraCanvasApplication app;
-    if (!app.Initialize("FileDialogTest")) SKIP_ALL("application would not initialise");
+    if (!app.Initialize("FileDialogTest")) SKIP_ALL("the application would not initialise");
     UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
     FileDialogConfig config;
@@ -971,23 +985,25 @@ int main() {
             run.dialog->CloseDialog(DialogResult::Cancel);
 
             // From a settings window: the window's type size (UltraSnip's
-            // File type page), its rows scaled to it, and no wider than the
-            // captions and controls need - at the dialog's own 12 and a fixed
-            // 420 it towered over the 10-point window it came from.
+            // File type page), every control inside a window no wider than
+            // the captions and controls need. That size is the theme's body
+            // size since the kit follows the theme (0.9.541) - 12 where no
+            // desktop names a font, as under Xvfb - so it is not always
+            // smaller than the dialog's own 12; the rows are measured below,
+            // at a size that is.
             {
                 const size_t count = UltraCanvasDialogManager::GetActiveDialogs().size();
                 SettingsPageKit::ShowSaveSettingsDialog("jpg", nullptr);
                 const auto now = UltraCanvasDialogManager::GetActiveDialogs();
                 auto small = now.size() > count ? now.back() : nullptr;
-                TEST("A settings window opens a type's settings in its own type size", small != nullptr);
+                TEST("A settings window opens a type's settings in its own type size",
+                     small && small->GetStyle().messageFontSize == SettingsPageKit::TextFontSize());
                 if (small) {
                     for (int frame = 0; frame < 3; ++frame) small->UpdateAndRender();
                     auto* box = small->FindChildById("SaveSetting_progressive");
                     auto* slider = small->FindChildById("SaveSetting_quality");
                     auto* defaults = small->FindChildById("SaveSettingsDefaults");
                     const float width = static_cast<float>(small->GetWidth());
-                    TEST("... its rows scaled down with the type", box && box->GetHeight() < 28.0f);
-                    TEST("... as wide as its content, not a fixed 420", width < 420.0f);
                     TEST("... every control inside the window",
                          slider && box && slider->GetBoundsInWindow().Right() <= width &&
                          box->GetBoundsInWindow().Right() <= width);
@@ -1000,6 +1016,39 @@ int main() {
                     }
                     small->CloseDialog(DialogResult::Cancel);
                 }
+            }
+
+            // At a type size below the dialog's own 12 - the 10 the settings
+            // windows had before they followed the theme - its rows scale
+            // down with the type and it is as wide as its content: at the
+            // dialog's own 12 and a fixed 420 it towered over the 10-point
+            // window it came from. Measured against the dialog at its own
+            // size rather than a pixel count, so it holds at any desktop's.
+            {
+                struct Measured { float row = 0.0f; float width = 0.0f; };
+                auto measure = [](float fontSize) -> Measured {
+                    Measured m;
+                    const size_t count = UltraCanvasDialogManager::GetActiveDialogs().size();
+                    UltraCanvasFileLoader::ShowSaveSettingsDialog("jpg", FileSavePicture(), FileSaveImageSize(),
+                                                                  nullptr, nullptr, fontSize);
+                    const auto now = UltraCanvasDialogManager::GetActiveDialogs();
+                    auto shown = now.size() > count ? now.back() : nullptr;
+                    if (!shown) return m;
+                    for (int frame = 0; frame < 3; ++frame) shown->UpdateAndRender();
+                    if (auto* box = shown->FindChildById("SaveSetting_progressive")) m.row = box->GetHeight();
+                    m.width = static_cast<float>(shown->GetWidth());
+                    shown->CloseDialog(DialogResult::Cancel);
+                    return m;
+                };
+                const Measured own = measure(0.0f);
+                const Measured smaller = measure(10.0f);
+                TEST("A type's settings at a smaller type size: its rows scaled down with the type",
+                     own.row > 0.0f && smaller.row > 0.0f && smaller.row < own.row);
+                TEST("... as wide as its content, not a fixed 420",
+                     smaller.width > 0.0f && smaller.width < own.width && smaller.width < 420.0f);
+                if (smaller.row >= own.row || smaller.width >= own.width)
+                    std::cerr << "      row " << smaller.row << " / " << own.row
+                              << ", width " << smaller.width << " / " << own.width << std::endl;
             }
 
             // The picture's size given: a Size row first, for this save only.
@@ -1033,6 +1082,18 @@ int main() {
             auto* keep = top ? dynamic_cast<UltraCanvasCheckbox*>(top->FindChildById("SaveSizeKeepProportions"))
                              : nullptr;
             TEST("With the picture's size, a bitmap's settings have a Size row", sizeW && sizeH && keep);
+            // At the Save dialog's type size, fields and lists included: at a
+            // fixed 12 its captions, checkboxes and buttons towered over the
+            // Save dialog (and its own fields) where the theme's body text is
+            // smaller, as on Windows.
+            if (top && sizeW) {
+                const float typeSize = run.dialog->GetStyle().messageFontSize;
+                auto* list = dynamic_cast<UltraCanvasDropdown*>(top->FindChildById("SaveSetting_colours"));
+                TEST("The settings are at the Save dialog's type size",
+                     top->GetStyle().messageFontSize == typeSize &&
+                     sizeW->GetStyle().fontStyle.fontSize == typeSize &&
+                     (!list || list->GetStyle().fontSize == typeSize));
+            }
             if (sizeW && sizeH && keep) {
                 TEST("... opened on the picture's size, proportions kept",
                      sizeW->GetIntValue() == 640 && sizeH->GetIntValue() == 480 && keep->IsChecked());

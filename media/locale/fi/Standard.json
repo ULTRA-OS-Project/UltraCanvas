@@ -158,6 +158,7 @@
   },
   "Copy files": "Tiedostojen kopiointi",
   "Copy finished": "Kopiointi valmis",
+  "Copy instead": "Kopioi sen sijaan",
   "Copy path": "Kopioi polku",
   "Copy skipped items again": "Kopioi ohitetut kohteet uudelleen",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Siirrä alas",
   "Move files": "Tiedostojen siirto",
   "Move finished": "Siirto valmis",
+  "Move instead": "Siirrä sen sijaan",
   "Move skipped items again": "Siirrä ohitetut kohteet uudelleen",
   "Move to Recycle Bin": "Siirrä roskakoriin",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Toiminnon ”Siirrä roskakoriin” voi perua roskakorista. Toimintoa ”Poista pysyvästi” ei voi perua.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Pysähtyi kohtaan:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Tallentaa nämä asetukset kokeilematta niitä; ne kokeillaan, kun tiliä seuraavan kerran käytetään.",
   "Style": "Tyyli",
+  "Subfolder of \"{0}\"": "Kansion ”{0}” alikansio",
   "Submit": "Lähetä",
   "Success": "Onnistui",
   "System": "Järjestelmä",

@@ -10,8 +10,11 @@
 // The dialog is drawn at the caller's type size when one is given (a
 // settings window's), its rows and columns scaled to it, and is as wide as
 // its captions and controls need.
+// Version: 1.4.0 - one type size for everything in it: the theme's body size unless the
+//                  caller gives one (the Save dialog gives its own), the size fields and
+//                  lists included
 // Version: 1.3.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -191,9 +194,14 @@ namespace UltraCanvas {
         config.buttons = DialogButtons::OKCancel;
         config.defaultButton = DialogButton::OK;
         config.showIcon = false;
-        // The type size: the caller's (a settings window opens it at its own,
-        // so it reads as part of that window), else the dialog's own.
+        // The type size: the caller's (a settings window, or the Save dialog
+        // it is opened from, at its own, so it reads as part of that window),
+        // else the theme's body size - the size the spinners and lists below
+        // take from the theme anyway. A fixed 12 here drew the captions,
+        // checkboxes and buttons a third larger than the fields beside them
+        // on Windows, whose body text is smaller.
         const ModalDialogStyle defaultLook = ModalDialogStyle::Default();
+        if (fontSize <= 0.0f) fontSize = ModalDialogStyle::FromTheme().messageFontSize;
         if (fontSize <= 0.0f) fontSize = defaultLook.messageFontSize;
         const Metrics m(fontSize);
 
@@ -255,6 +263,14 @@ namespace UltraCanvas {
                                        : "Height in pixels");
             width->layoutItem.SetFlexShrink(0);
             height->layoutItem.SetFlexShrink(0);
+            // The numbers at the dialog's size, as the captions are.
+            for (const auto& field : {width, height}) {
+                SpinnerVisualStyle look = field->GetStyle();
+                if (look.fontStyle.fontSize != fontSize) {
+                    look.fontStyle.fontSize = fontSize;
+                    field->SetStyle(look);
+                }
+            }
             auto times = std::make_shared<UltraCanvasLabel>("SaveSize-times", 0, 0, 14, m.rowHeight, "\u00D7");
             auto unit = std::make_shared<UltraCanvasLabel>("SaveSize-unit", 0, 0, 22, m.rowHeight, "px");
             for (const auto& label : {times, unit}) {
@@ -393,6 +409,11 @@ namespace UltraCanvas {
                     auto list = std::make_shared<UltraCanvasDropdown>(id, 0, 0, m.controlWidth, m.rowHeight);
                     list->size.width = CSSLayout::Dimension::Px(m.controlWidth);
                     list->layoutItem.SetJustifySelf(CSSLayout::JustifySelf::Start);
+                    if (list->GetStyle().fontSize != fontSize) {
+                        DropdownStyle look = list->GetStyle();
+                        look.fontSize = fontSize;
+                        list->SetStyle(look);
+                    }
                     for (const FileSaveChoice& choice : spec.choices) list->AddItem(choice.label, choice.value);
                     list->SetSelectedIndex(ChoiceIndex(spec, values->Get(key)), false);
                     if (!spec.help.empty()) list->SetTooltip(spec.help);

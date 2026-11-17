@@ -1,3 +1,585 @@
+#### 2026-11-17 *0.9.570*
+- **Chart engine: axis distributions.** `AddAxisDistribution` draws the
+  distribution of an axis's values along that axis, at the axis's own scale:
+  a histogram, a kernel density curve, a box summary (quartiles, median,
+  Tukey whiskers, outliers), a strip of ticks, or a violin. It is the layer
+  the engine reserved slot 550 for and never drew - the joint plot's
+  histograms above and to the right of a scatter field, or a histogram on
+  every axis of a parallel coordinate chart. An `Outside` band takes its
+  depth beyond the plot's opposite edge in the layout, and the axes and the
+  legend on that edge move out by as much, so nothing is drawn over it;
+  `Near`, `Far` and `Both` draw inside the plot or on either side of an
+  in-plot rule, stopping short of the next rule and never leaving the plot:
+  the first and last rules of a parallel coordinate chart, which stand on
+  the plot's edges, draw theirs inward rather than over the margin's tick
+  labels or the legend. A subset - a brushed
+  selection, one series - can be drawn over the whole on the same bins. The
+  statistics (`ComputeHistogram` with Freedman-Diaconis bins,
+  `ComputeKernelDensity` with Silverman's bandwidth, `ComputeBoxSummary`)
+  are UI-free and unit-tested in `Engine/UltraCanvasChartDistribution.h`,
+  `ChartAxis::Samples()` returns what an axis observed, and the demo's
+  Chart Engine page shows every kind and side on its Annotations tab.
+- **The chart engine documents match the code.** `UltraCanvasChartEngine.md`
+  no longer calls the highlight layer "not yet implemented" beside its own
+  section on it, and the engine proposal shows the contract that was built
+  (`RenderChartContent`, `ChartEngineFrame`, `AddHitRegion`, axes added in
+  `DescribeAxes`, no engine singleton) instead of eight types no header
+  declares, with a table from the names it first used to the shipped ones.
+- **Every module archive is now held to carrying its own dependencies.** With
+  a static core a module's public name resolves to its archive alone, so a
+  symbol that archive forgot to ask for has to come from somewhere - and in an
+  ordinary build it does, because every application links several archives at
+  once and they cover for each other. The gap shows only in a program whose
+  link line is short enough to miss it. That is how `uc-net` reached a clean
+  build with `UltraNetMime` calling `Trim()` and `Base64Encode()` from an
+  archive it had never named, and `ultradbadmin-relay` failed to link months
+  later. The new `ultracanvas-module-link-probes` target builds one probe per
+  archive: an empty `main`, that archive forced in whole, nothing else of
+  UltraCanvas on the line. Every object's undefined symbols then have to
+  resolve from the archive's own declared dependencies, so a gap fails in CI -
+  the static row of the Element modules workflow - rather than in somebody's
+  application. Twelve archives pass today. `uc-rtc` is left out, because its
+  engine really does call the device glue compiled into the core, and a shared
+  core gets no probes at all: there every archive is absorbed into
+  `libultracanvas` and is *meant* to leave its shared home to supply what it
+  uses. Backing the `uc-net` fix out again reports `UltraCanvas::Trim`,
+  `Base64Encode` **and** `Base64Decode` - one more than the relay had got far
+  enough to meet.
+- **CI builds all six platform rows on `main` every night** (02:23 UTC, a
+  `schedule` in `build.yml`). A full build otherwise ran only when something
+  merged, so a change in a runner image or in a library the runners install
+  fresh - MSYS2's OpenSSL on 2026-11-16 - first turned an unrelated pull
+  request red. The nightly run is a validation run: nothing is signed or
+  published, and it has its own concurrency group so it never replaces a
+  release build waiting on `main`.
+- **The video player refuses a file it cannot open, at once.**
+  `UltraCanvasVideoPlayer::LoadFromFile` (and the player element's) returned
+  true for an empty file, a file that did not exist and a folder: the
+  backends - GStreamer, Media Foundation, AVFoundation, Android - accept any
+  path and report what they cannot play only later, on their own threads, so
+  the caller showed a player that never played. It now returns false with
+  the reason in `GetLastError()` and `onError` (state `Error`, nothing loaded)
+  for no path, a missing file, a folder, an empty or unreadable file, before
+  any backend or registered codec sees it. A damaged file is still accepted
+  and reported later, as before. The media viewer's video *Save as* check
+  leaves an empty file to the player. Test: `VideoCodecPluginTest`
+  (`TestPlayerRefusesNoFile`). Docs: `UltraCanvasVideo.md`.
+
+#### 2026-11-16 *0.9.569*
+- **A BMP opens at once: the framework reads it itself, not through
+  ImageMagick.** libvips has no BMP loader, so a `.bmp` went to `magickload`,
+  and the first one a program opened paid for ImageMagick's start-up on the
+  thread that asked - on Windows its configuration and every coder DLL under
+  `modules-Q16HDRI\coders`, about six seconds in the demo app when the
+  Bitmap Elements tree reached BMP Images. `VipsBmpPlugin`
+  (`libspecific/Cairo`) registers `ucbmpload` / `ucbmpload_buffer` beside
+  the ICO and QOI loaders, reading with the bundled stb_image: 1, 4, 8, 16,
+  24 and 32-bit BMPs, top-down or bottom-up, bit-field masks, alpha, and the
+  header's resolution as `xres` / `yres`. Every libvips path takes it -
+  `UCImageRaster`, `PixelFX::ExtractImageInfo`, the media viewer, the export
+  dialog. RLE8 and RLE4 bitmaps, which stb_image does not read, are decoded
+  by the plug-in itself (runs, indices as they are, deltas). Pixel for pixel
+  what ImageMagick reads (`ImageFormatsTest`); only OS/2 2.x Huffman and
+  RLE24 bitmaps are left to ImageMagick. BMP is still written through it.
+- **ImageMagick starts up in the background at launch.** The formats only
+  it reads (TGA, PCX, PSD, ...) paid the same start-up on the first file
+  opened. `UCImageRaster::WarmUpImageMagickInBackground()` loads a tiny
+  picture through `magickload` on a thread of its own; a load meanwhile
+  waits only for what is left, and `ShutdownImageSubsysterm` joins the
+  thread. `UltraCanvasApplication` calls it after the image subsystem
+  starts; command-line tools and tests do not call it and pay nothing.
+  `UC_NO_MAGICK_WARMUP=1` turns it off.
+- **A document that opens with a table starts its caret in the first cell.**
+  `UCRichDocumentEditor` put a new document's caret at `{0, 0}` - for a table
+  that is the table outside its cells, which the rich text editor draws as a
+  bar the whole table high, and where nothing could be typed. An ODT letter
+  whose address is a table showed that bar down the left of the address.
+  `DocumentStart()` is now the top-left cell of such a table, which is where
+  a new document's caret starts and where Ctrl+Home goes; Select All still
+  starts before the table, so it still takes the table whole.
+  `RichTextEditorTest` covers it.
+- **The checkbox, the radio button and the switch take one string as their
+  identifier too.** `UltraCanvasCheckbox("WrapLines")`,
+  `UltraCanvasRadio("SizeLarge")` and `UltraCanvasSwitch("DarkMode")` name
+  the element and leave its text empty; the one string was the text, as the
+  label's was. With the label these were the four elements, of the 42 that
+  have a one-string constructor, that did not take the identifier there.
+  Nothing in this repository built any of the three from one string, so
+  nothing here changes; an application outside it that wrote
+  `UltraCanvasCheckbox(Tr("Wrap long lines"))` now gets a box without a
+  caption, and writes `("WrapLines", Tr("Wrap long lines"))` or
+  `("", Tr("Wrap long lines"))`.
+  - `scripts/check_label_identifiers.py` reports all four, and reads the
+    framework's headers as well: an element - any class that derives from
+    `UltraCanvasUIElement`, 179 of them - whose explicit one-string
+    constructor names its parameter as a text (`labelText`, `caption`,
+    `title`) is refused, so the rule has no fifth exception.
+  - `WarnIfIdentifierReadsAsText` covers the three, and
+    `Tests/ElementIdentifierTest.cpp` pins them.
+- **A signature that does not hold names its signer on every OpenSSL build.**
+  `UltraCrypt_CmsVerifyDetached` / `UltraCrypt_CmsVerifyAttached` took the
+  signer from `CMS_get0_signers`, which lists only the certificates
+  `CMS_verify` attached - and the Windows CI row's OpenSSL attaches none to a
+  signature whose content was changed, so `signerCertificatePem` came back
+  empty there and `UltraCryptTests` failed ("the signer is still named"). The
+  signer's certificate is now also looked up among the ones the signature
+  carries, by its signer info's identifier.
+- **A .docx that names its main part differently, or picks its own XML
+  prefixes, opens as a document.** The Word reader looked only for
+  `word/document.xml`, so a package whose main part has another name
+  (`word/document2.xml`, as files that went through Word for the web can
+  have) was not recognised as Word at all and an application fell back to
+  its raw view - Texter showed it as hex. It now takes the part the package's
+  `_rels/.rels` names as the office document (checked against
+  `[Content_Types].xml`; a workbook or deck is still not Word), with its
+  relationships, styles, numbering, settings, theme, notes and comments
+  found from that part's folder. A part that binds the OOXML namespaces to
+  other prefixes (`ns0:p` from Python XML libraries, WordprocessingML as the
+  default namespace, the strict ISO 29500 URIs) is read as the `w:` / `r:` /
+  `a:` one it is, where it used to read as having no body; the spaces between
+  differently formatted words survive in it too. `WordFormatsTest` covers all
+  three shapes.
+- **A flex, grid or table setter no longer un-hides an element.** Every
+  `CSSLayout::Layout` setter of that kind (`SetFlexGap`, `SetFlexRow`,
+  `SetFlexAlignItems`, `SetGridGap`, `SetTable`, ...) set `display` outright,
+  so calling one on an element hidden with `SetVisible(false)` / `Hide()`
+  showed it again. `UltraCanvasToolbar::SetAppearance` sets the bar's gap, so
+  restyling a hidden toolbar - as an application does on every theme change -
+  brought it back: UltraTexter's Markdown bar appeared beside plain text. On a
+  hidden box the setter now changes the kind of box it is shown again as
+  (what `Show()` restores), as in CSS, where `gap` never undoes
+  `display: none`. New `CSSLayoutHiddenSetterTest`.
+- **An input dialog shows its whole prompt.**
+  `UltraCanvasDialogManager::ShowInputDialog()` opened a window of a fixed
+  400 x 150 and put the prompt in a one-line label above the field, so a
+  prompt longer than the window was wide ended in an ellipsis - UltraAI's
+  *Add from Hugging Face* read "The repository and the GGUF file in it, as
+  "organis…" - and the label's width squeezed the severity icon to a sliver
+  beside it. The prompt is the message area's now: it wraps at the dialog's
+  width and the window grows to the height the lines and the field need, up
+  to most of the monitor, past which the prompt scrolls and the field and
+  the buttons stay. A short prompt leaves the dialog at its configured
+  size. A config that carries a `message` as well keeps `inputLabel` as the
+  field's caption, and that wraps too. `Tests/InputDialogPromptTest.cpp`
+  pins it on a real window, and CI runs it on a virtual display. Every caller gains it: the password prompts of
+  the file loader and the viewers, the rename dialogs, UltraDBAdmin's and
+  UltraPassword's prompts.
+- **`UltraCanvasNodeDiagram` 2.5.0 draws concept maps.** Four things a
+  hand-drawn map of concepts needs and the element did not have:
+  - **Free-placed regions.** A `NodeDiagramGroup` with `freeBounds` set draws
+    at its own `bounds` rectangle instead of around its members.
+    `AddRegion(id, label, bounds, fill)` makes one; `SetGroupBounds()` /
+    `ClearGroupBounds()` switch a group between the two. A region stays where
+    it is put - the pass that moves cluster boxes apart skips it and no node
+    is pushed out of it - so regions overlap each other, cluster boxes and
+    nodes, which a member-fitted box never could over empty space.
+  - **`NodeShape::Ellipse`**, filling the node's width and height (`Circle`
+    remains a circle of the smaller side). Hit testing, the shadow and the
+    label fit follow the ellipse, and like `Rectangle` it grows for its label
+    in width and height separately.
+  - **Node annotations.** `NodeDiagramNode::annotation` is a paragraph drawn
+    beside the node (`annotationPosition`: right, bottom, left, top), wrapped
+    at `annotationMaxWidth`, line breaks kept; `SetNodeAnnotation()` and
+    `GetNodeAnnotationBounds()`. `FitView()` and the minimap count it; the
+    overlap passes do not.
+  - **Path highlighting.** `HighlightPath(nodeIds, color, width)` marks the
+    link between each consecutive pair of nodes, in either direction, and
+    returns how many it marked; `HighlightLink()`, `ClearLinkHighlight()`,
+    `ClearHighlights()`, `GetHighlightedLinkIds()`. A highlighted link draws
+    above the others and keeps its own colour and width for when the
+    highlight is cleared.
+
+  - **Titles outside the box.** `GroupLabelPosition` gains `BottomRight` and
+    ten `Outside...` values: above or below the box (left, centre, right)
+    and beside it (level with its top or bottom edge). An outside title
+    takes no room from the box, and `FitView()` counts it.
+  - **Link waypoints.** `NodeDiagramLink::waypoints` are world points a link
+    passes through - a smooth curve through them for `LinkStyle::Bezier`,
+    straight runs otherwise - so an edge can loop round the outside of a
+    map. `SetLinkWaypoints()`, `AddLinkWaypoint()`, `ClearLinkWaypoints()`.
+
+  All of it is written by `ToJson()` and read by `FromJson()`. The demo's
+  Node Diagram page has a **Concept map** tab that uses them together, and
+  `Tests/NodeDiagramConceptMapTest.cpp` pins them.
+- **`UltraCanvasNodeDiagram::FromJson()` unescapes strings.** It returned a
+  string as it stood in the file, so a label with a quote, a backslash or a
+  line break came back with the escape still in it, and a string ending in a
+  backslash ran on into the next key.
+- **A node diagram's links end at the node's outline.** A link that ends on
+  a node (not on a handle) ran on to the node's centre, under the node, so
+  the arrowhead of every directed link was hidden and the link showed
+  through a translucent node. It stops where it meets the shape now - an
+  ellipse, a star's points, a cloud's lobes - with the arrowhead on the
+  outline; a thick link gets a head to match. The link's label sits halfway
+  along the line as drawn, and a click is tested against that line, curves
+  and steps included, where it was tested against the straight line between
+  the two centres. Diagrams with directed links between plain nodes show
+  their arrows for the first time.
+- **`NodeShape::Cloud` is a cloud.** It drew three small separate ellipses
+  offset to the lower right of the node - their rectangles were built as if
+  `FillEllipse` took a centre. It is one shape filling the node, with one
+  outline; clicks and link ends follow its lobes. Star and Hexagon nodes are
+  hit by their own outline too, not by a circle or an ellipse around them.
+- **A label built from one string takes it as its identifier.**
+  `UltraCanvasLabel("CountLabel")` and `CreateLabel("CountLabel")` make a
+  label named CountLabel with no text; until now the one string was the
+  label's *text* and the label had no identifier - the reverse of
+  `UltraCanvasContainer` and of 38 of the 42 elements with a one-string
+  constructor. It read like the others and meant the opposite, and eleven
+  callers in this repository had handed it a name: the dialog's severity
+  icon, Texter's status bar and search counter, four labels of the demo,
+  three of the HTML builder (`MakeId(...)`), and the framework's own
+  `LabelBuilder`, whose `LabelBuilder("greeting").Build()` therefore made an
+  unnamed label that said "greeting". None showed, because each set its
+  text on the next line, but none could be found by name - it was noticed
+  when a test looked for the input dialog's "InputLabel" and found nothing -
+  and each was one deleted `SetText` away from showing its own variable name.
+  Those eleven are right as written now. One caller meant text (the demo's
+  info window) and passes a name and the text.
+  - **This changes what existing code means.** A label built from its text
+    alone - `UltraCanvasLabel(Tr("Hint"))`, `CreateLabel("Two words")` -
+    still compiles and now shows nothing. Write the text second:
+    `("", Tr("Hint"))`, or `("HintLabel", Tr("Hint"))`. An application
+    outside this repository needs the same look through its one-string
+    labels.
+  - `scripts/check_label_identifiers.py` (CI's `label-identifiers.yml`,
+    with tests of its own in `scripts/tests/`) finds them: a label - by
+    `make_shared`, `make_unique`, `new`, a declaration, a base-class
+    initialiser or `CreateLabel`, on one line or several - built from
+    exactly one argument that is a `Tr` / `TrF` / `TrN` / `TrC` call or a
+    string literal that is not a name. It runs on any folder:
+    `python3 scripts/check_label_identifiers.py path/to/your/app`. An
+    identifier that really reads as text says so with
+    `// label-identifier-ok: <why>`.
+  - What the check cannot read - a variable - the framework reports at run
+    time: `WarnIfIdentifierReadsAsText` (`UltraCanvasUIElement.h`) writes one
+    line to `debugOutput` when a one-string element is given an identifier
+    with a space or a line break in it, for the first twenty.
+  - `AGENTS.md` (*Core conventions*) and the label's document state the
+    rule.
+- **Ridgeline chart (Phase 1).** `UltraCanvasRidgelineChart` (chart engine)
+  draws one curve per row on its own baseline, rising over the rows above it
+  (a joyplot): the rows back to front, so the lower row covers the one
+  behind it, their names, a value column with its header ("Average score"),
+  and a tooltip with the row, the x and its statistics. The UI-free
+  `UltraCanvasRidgelineModel` turns raw values into curves by a Gaussian
+  kernel density (Scott's or Silverman's bandwidth or a fixed one,
+  reflection at the bounds of a scale such as 0-10, binning for large rows)
+  or takes curves as given, scales them to one scale, to each row's peak or
+  to equal areas, sorts the rows and gives each its count, mean, median,
+  quartiles and peak. Colourings: one colour, alternating, a colour map down
+  the rows or by the value column. Demo: **Charts > Ridgeline Chart** (word
+  ratings and times of day, invented). Tests: `RidgelineModelTest`,
+  `RidgelineChartRenderTest`. Guide: `UltraCanvasRidgelineChart.md`.
+- **The Filer's move / copy question is redrawn, in two styles.** The
+  question a drop or a Cut + Paste asks (`SetDropConfirmation`) put its two
+  paths in code spans - red on most themes, which read as an error - wrapped
+  the destination in the middle of a folder name, and repeated the same long
+  prefix in *From* and *Into*, so the one folder that differed was hard to
+  find. `UltraCanvasFilerWidget::SetTransferDialogStyle(FilerTransferDialogStyle)`
+  chooses between `Summary` (the default: the entry's icon beside the
+  question, its type and size, then *From* and *Into* as breadcrumb rows with
+  the last folder bold and the middle of a long path elided) and `Cards`
+  (source and destination as two cards with an arrow between them, the verb
+  that was not asked for set apart as *Copy instead* / *Move instead*).
+  `UltraCanvasModalDialog::SetMessageVisible()` / `IsMessageVisible()` are
+  new for it: a dialog whose elements present the message hides the message
+  area and still answers `GetMessage()` and `GetDetails()` with the text.
+  `Tests/FilerPaneDragTest.cpp` asks the question in both styles.
+- **`wasm-build.yml` uploads what it builds, not only pictures of it.**
+  Three of a run's artifacts were named after a product and held none of
+  it: `ultrastore-web-dynamic`, `ultracanvas-runtime-dynamic` and
+  `ultraweb-runtime-<variant>` carried the browser tests' screenshots and
+  console logs, so the archive with the UltraStore web store's name had no
+  WebAssembly in it and a green run read as a build that produced nothing.
+  Each name now holds the product, collected right after the build and
+  uploaded before any test runs - a build that fails a test is the one
+  somebody wants to download - with a `README.txt` and usable as unzipped;
+  an empty folder or a missing `.wasm` fails the job. The screenshots and
+  logs move to `*-smoke-<variant>`, named as `wasm-smoke-<variant>` is
+  beside `wasm-demo-<variant>`.
+  - `ultraweb-runtime-<variant>` (the single-threaded variants) and
+    `ultracanvas-runtime-dynamic`: each runtime as its build leaves it -
+    `site/`, the sample site with the loader, the sample app and the runtime
+    under `runtime/`, which any static host serves, and the browser
+    extension's folder. The runtime tests open the uploaded folder.
+  - `ultrastore-web-dynamic`: `site/`, the folder the admin backend's
+    publish takes (`web.site_dir`), and `preview/`, a whole store to look
+    at: the test's fixture store with the build laid over it the way publish
+    lays it (`Apps/UltraStore/web/test/stage-store.mjs`: the runtime under
+    `runtime/<hash>/`, every page naming that folder and the build's runtime
+    version). The browser test (`webstore-test.mjs`, `UWS_STORE`) serves
+    `preview/` as a static host would, in place of the fixture with the
+    build's files mapped in and the pages rewritten by its own server, so
+    the store an artifact holds is the store the run tested.
+  - `site/`'s module trusts the store's keys alone: the fixture's test key
+    is in a second module now, which only `preview/` carries (UltraStore's
+    changelog has the build's side of it).
+
+#### 2026-11-16 *0.9.568*
+- **UltraIM: a Mastodon provider** (`Plugins/UltraIM/mastodon`, module
+  `ultraim_mastodon`): the direct messages of a Mastodon server over its
+  REST API through UltraNet. A chat is the set of people in it - its id
+  their addresses, so a chat opened before its first message and the
+  threads its messages make are one; statuses as text
+  (`HTML::ExtractPlainText`), their first attachment as picture, video or
+  sound; polled every few seconds, several new statuses arriving in order,
+  edits and deletes noticed; replies, edits (`PUT`), deletes, read marks,
+  leaving, media uploads with `TransferProgress`, search through
+  `UltraIM_SearchByFetching`. Sign-in registers the application with the
+  server once and runs OAuth with PKCE on a loopback address; the token is
+  kept in UltraVault. Tested against `Tests/UltraIM/mastodon_fake_server.py`,
+  a small Mastodon in standard-library python (`MastodonProviderTests`).
+- **Public groups in ChatCube Direct** (plug-in ABI 11; ChatCube relay
+  1.5.0). `UltraIM_FetchPublicGroups`, `UltraIM_JoinGroup` and
+  `UltraIM_SetGroupPublic`, `UltraIMConversation::isPublic` and
+  `UltraIMPublicGroup`: a group's owner lists it for everyone on the relay,
+  anyone joins it, and its messages stay sealed for each member. The relay
+  keeps the mark (schema 4), lists the public groups
+  (`GET /v1/public-groups`), lets anyone join (`POST .../join`), bars whom
+  the owner took out, holds up to 256 in one and limits posting into it.
+- **Group descriptions and blocking** (plug-in ABI 12; ChatCube relay
+  1.5.0): `UltraIM_SetGroupDescription` with `UltraIMConversation::description`
+  and `UltraIMPublicGroup::description`; `UltraIM_BlockGroupMember`,
+  `UltraIM_UnblockGroupMember` and `UltraIM_FetchBlockedMembers` - the owner
+  keeps someone out of a group until unblocked. The relay takes
+  `PATCH /v1/groups/{id}` with a description and blocks with
+  `PUT` / `DELETE /v1/groups/{id}/blocked/{user}`.
+- **`UltraIMAuthStep::Browser`** (plug-in ABI 10): a sign-in step with
+  nothing to type in the application - the hint is a web page to open in
+  the browser, after which the provider goes on by itself.
+
+#### 2026-11-15 *0.9.567*
+- **DropdownKeyboardTest runs in CI, and checks the dropdown's focus outline
+  on real pixels.** The suite opens a real window, so in "Run unit tests" -
+  which has no display - it skipped as a whole, its keyboard checks (Return
+  choosing, Tab and the focus, type-ahead) included. It now runs in the
+  virtual-display step next to the tree and list view focus tests, with
+  `ULTRACANVAS_TEST_DISPLAY_REQUIRED=1` turning its skip into a failure. Its
+  new section reads the dropdown button's edges back from the window
+  (`DisplayTest::RingSides`): the outline in `focusBorderColor` on all four
+  sides while the dropdown is focused and closed, none while its list is open
+  or once the focus has gone, and the plain border back on all four sides.
+- **`FileDialogTest` passes on a display again.** Its check that the
+  save-settings dialog opened from a settings window has shorter rows assumed
+  the window's type is smaller than the dialog's own 12 - true while
+  `SettingsPageKit` drew at a constant 10, but since the kit follows the
+  theme (0.9.541) its `TextFontSize()` is the desktop's body size, 12 where
+  no desktop names a font, as under Xvfb, and the dialog then rightly draws
+  its 28-pixel rows. The dialog's scaling was never at fault (21, 23 and 26
+  pixels at 9, 10 and 11 points). The test now checks that a settings window
+  opens the dialog at its own type size, and measures the shorter rows and
+  narrower window at 10 points against the dialog at its own size, so it
+  holds at any desktop's size (run at 10, 12 and 14). The file dialog's
+  documentation and the loader's header no longer name the old
+  `kTextFontSize`.
+- **Indented Markdown code blocks are highlighted.** A code block indented
+  four spaces has no language tag, and the text area drew it plain. Each
+  block's language is now found once per block: a clear guess from its own
+  text (`DetectLanguageFromContent`); else the language the nearest code fence
+  above it names; else a guess on a lower bar, since the text is known to be
+  code - so a one-line `console.log(x);` or `print(x)` is placed too. A block
+  none of them places stays plain, so indented prose is never coloured as
+  code. `DetectLanguageFromContent` gains an overload taking
+  `LanguageDetectOptions` (the minimum score and lead; the one-argument form
+  is unchanged). An application that knows the
+  language sets it for every indented block with
+  `UltraCanvasTextArea::SetIndentedCodeLanguage("C++")`. A blank line between
+  two indented code lines now belongs to the block, as CommonMark has it, so
+  the line state carries through it: a `/* comment */` open across the blank
+  line stays a comment. Fenced and indented blocks share one highlighting
+  routine, which takes a tokenizer name as the detector gives it
+  ("Common Lisp") as well as a fence tag.
+- **The localisation editor's controls fit a narrow page.** In UOS-Settings'
+  Translations page, two things were cut off:
+  - the *Show the whole sets* and *Edit shared sets* switches lost their
+    labels ("Sho", "Ed") to the action buttons beside them;
+  - the *Compare with* list ran off the first row.
+
+  The action buttons (Undo, Draft with UltraAI, Export, Save) now have a row
+  of their own, to the right, and *Compare with* sits beside *Show* on the
+  second row, where the search field gives way. Every control keeps its
+  whole label.
+- **The media viewer saves a drawing as a drawing, and a recording in
+  another audio type.** *Save as* on an SVG, a DXF, an EMF or any file the
+  vector view shows offers every vector type this build writes and every
+  bitmap type, drawn again at the size the Settings give
+  (`AddVectorDocumentSaveTypes` / `SaveVectorDocument`); the vector view
+  offers *Save as* too, so an SVG has one where libvips has no SVG loader
+  (Windows). A drawing turned or mirrored on the image surface is still saved
+  as the picture, and the same type as the file on show is copied as it is.
+  A recording the audio player opened is offered every audio type this build
+  encodes, through the new `UltraCanvasFileLoader::SaveAudio` /
+  `ConvertAudioFile` (the same type copied as it is, another decoded and
+  encoded). Tests: `MediaViewerSaveTest`, `MediaViewerToolsTest`.
+- **The toolbar icons fill their slot.** `zoom-fit`, `rotate-left/right`,
+  `mirror-h/v`, `curves` and `slideshow` drew inside a 3-4 unit margin of
+  their 24-unit box, about 11 px of a 16 px slot; their view box is cropped
+  to the drawing and the mirror triangles are larger.
+- **The Save settings dialog is set in one type size.** Its captions,
+  checkboxes and buttons were drawn at a fixed 12 while the size fields and
+  lists followed the theme's body size, smaller on Windows; it now takes the
+  theme's body size, the Save dialog opens it at its own, and the spinners
+  and dropdowns follow (`FileDialogTest`).
+- **A video shown in the media viewer can be saved in another type.**
+  *Save as* was there for a picture, a drawing and a recording, never for a
+  film: the core has no video encoder, and the one transcoder, VideoFX, is a
+  sibling module on FFmpeg. FileLoader gains the seam:
+  `UltraCanvasFileLoader::ConvertVideoFile(source, target, error, progress)`
+  copies the same type as it is and converts another with the converter
+  its codec registration carries (`MediaCodecRegistration::convertVideo`,
+  new; it makes the entry `canEncode`), written beside the target and moved
+  there when complete - a stopped or failed conversion leaves no half file
+  and keeps the one it was to replace. `CanConvertVideoTo`,
+  `GetVideoSaveExtensions` and `AddVideoSaveTypes(opts)` list what it writes.
+  `VideoFX/ultracanvas/VideoFXUltraCanvasFormats.h` (library
+  `VideoFXUltraCanvasFormats`) registers VideoFX's converter for every
+  container its FFmpeg writes - MP4, MOV, Matroska, WebM, AVI as the
+  encoders allow - with `VideoFX_RegisterWithFileLoader()`. The viewer
+  offers *Save as* for a video its player opened once a converter is
+  registered (`ShowVideoSaveDialog`), and converts on a worker thread
+  behind `UltraCanvasProgressDialog` - the ring follows the encoder, Cancel
+  stops it. A build without a converter offers a video no *Save as*, rather
+  than one that fails: `canEncode` alone is not enough, since on Linux the
+  built-in table marks the GStreamer capture muxers (MP4, MOV, MKV, WebM,
+  AVI) `canEncode` with no way to convert a file. Tests:
+  `MediaViewerSaveTest` (a converter of the test's own: copy, convert,
+  stop, a converter that ignores a stop, failure, the earlier file kept;
+  VideoFX's on a generated clip into every type it writes),
+  `MediaViewerToolsTest` (a film offers *Save as* only with a converter).
+  Docs: *Saving a drawing, a recording or a video* in
+  `UltraCanvasMediaViewer.md`, *A Video Saved in Another Type* in
+  `Docs/Modules/FileLoader/README.md`, the VideoFX README's *Which files*.
+
+#### 2026-11-16 *0.9.566*
+- **UltraIM: progress of a file on its way, and sound as a search kind.**
+  `UltraIMEventType::TransferProgress` (`transferredBytes`, `totalBytes`,
+  `isUpload`, the message's client id) while a picture, video or file goes
+  out or comes in: ChatCube Direct counts its 32 KiB parts as they leave and
+  arrive, Telegram reads `updateFile`, Matrix UltraNet's per-request
+  progress (`MatrixHttp` Upload / Download take a callback).
+  `UltraIMSearchKind::Audio` finds voice messages and songs sent as files
+  (which `Files` now leaves out) - on the device, in Direct's store and
+  through Telegram's voice-note filter. `UltraIM_MakePreview` makes a file's
+  preview once per run. Provider ABI 9.
+
+#### 2026-11-15 *0.9.565*
+- **A window that is never closed now lets go of its OS window.** Closing a
+  window ran the whole native teardown - the OS window, its drawing surface,
+  its input context, its drag-drop registration. *Destroying* one ran none of
+  it: `~UltraCanvasWindowBase` cannot call a virtual override, so a window
+  that went without `Close()` first - the application's own windows at
+  shutdown, or simply the last `shared_ptr` going away - left all of it
+  behind. The X server kept the window until the connection closed, which is
+  why nobody noticed. Each platform window class releases its native half in
+  its own destructor now, as the Wayland and WASM ones already did. New
+  `WindowShutdownTest` asks the X server whether the windows really went, and
+  destroys an application with a window and an open popup still on it - the
+  shape of the SIGSEGV that the first display-backed CI run turned up.
+- **The window tests that nobody ran now run in CI.** UltraMail's four
+  display-backed suites - the account bar, the folder tree, the message pane,
+  the format bar - were built by every row and run by none: the Linux row's
+  `ctest` has no display and selected `^UltraMailEngine$` alone, and the
+  suites skip themselves without one. Five assertions of the account bar's
+  suite had been failing since the tiles learned to be dragged, and nothing
+  said so until someone read it by hand. They now run on a virtual display,
+  as `FilerVanishedFolderTest` and the tree view's focus-ring test do, and so
+  does UltraDesktop's new Apps window test. A suite that would skip in that
+  step fails instead (`ULTRACANVAS_TEST_DISPLAY_REQUIRED=1`), so a missing
+  display can never again read as a pass.
+- **Column tree views are readable in the dark look.** A column's cells
+  were drawn in a fixed dark grey (`TreeViewColumn::textColor`, 40,40,40),
+  near-invisible on a dark ground. The default is now `Colors::Transparent`,
+  which means the tree's own text colour, the theme's ink. A column given a
+  colour of its own keeps it. UOS-Settings' Translations grid showed it
+  most, in its set columns and the Shown column.
+- **The localisation editor's marks follow the look.** Its marks are a text
+  from another set, an untranslated row and a changed row, plus the status
+  line. They keep their colours in a light look. In a dark one they take the
+  theme's muted ink, its danger colour and a light green, and a theme can
+  name its own (`localisation-editor.muted`, `.untranslated`, `.changed`,
+  `.status`). A change of look while the editor is open fills the rows
+  again (`UltraCanvasLocalisationEditor::ApplyTheme`).
+- **Text in a dark window is as firm as the desktop's own.** A dark
+  UltraFiler beside a dark Explorer read thinner and greyer in the same
+  font. Cairo blends a glyph's edge in sRGB numbers, not in light - a pixel
+  white covers by half on black comes out 128 where 188 should arrive - so
+  dark text on white gains weight and light text on a dark ground loses it;
+  DirectWrite, ClearType and Core Text correct for that, and now the render
+  context does: text whose colour is light is drawn a second time, which
+  lifts a half-covered pixel to three quarters (191) and leaves a covered
+  one as it is. On by default in every application, under any theme
+  (`RenderContextCairo::SetLightTextBoost`, 1 by default, 0 for every text
+  once; `ULTRACANVAS_LIGHT_TEXT_BOOST=0` for one run). No advance, extent
+  or layout changes. Dark text, translucent text, text painted with a
+  pattern and a PDF, PostScript or SVG page are drawn as before. Test:
+  `LightTextBoostTest`. Docs: *Light text on a dark ground* in
+  `UltraCanvasTextRenderingExamples.md`.
+- **The dark theme's text is white.** `UltraCanvasTheme::Dark()`'s `ink`
+  was 235 grey, which read greyer than a native dark window beside it; it
+  is white now, as the Windows and GNOME dark looks write their text. The
+  muted (190) and faint (150) inks are unchanged.
+- **Light text, firm or plain, is a setting.** `Appearance.conf` gains
+  `lighttext=firm | plain` (`AppearanceSettings::lightText`,
+  `HostAppearance::firmLightText`, `lighttext=` in
+  `ULTRACANVAS_HOST_APPEARANCE`); the application hands it to the render
+  context when it changes and redraws, so a running application follows
+  UOS-Settings within a moment. `ULTRACANVAS_LIGHT_TEXT_BOOST` still decides
+  for its run.
+- **DemoApp's Text Rendering page shows it.** A *Light Text* option (Plain,
+  Half, Firm) and a card of light text on a dark ground in the dark theme's
+  three inks.
+- **A row no longer measures text that takes the rest of its line as zero
+  wide.** An item with `flex: 1 1 0` has a base size of zero, and a row a
+  column measures "at most this wide" measured it there: a wrapping label
+  came out a letter a line, the row many times too tall. DemoApp's Text
+  Rendering page showed its first sample and then a blank area the height
+  of the window. Such a row now grows toward the width it is offered by the
+  content of the items that grow from a set basis (their max-content
+  contribution, CSS Flexbox 9.9.1), so they are measured at the width they
+  will be arranged at. Test: `CSSLayoutGrowFromZeroTest`.
+- **The light text setting and the demo's samples are translated** in all
+  thirty languages (machine drafts, as the rest).
+- **The list view shows which row has the keyboard focus.** It worked out the
+  focused row and handed it to the delegate as `ListItemStyleOption::isFocused`,
+  but nothing drew it, so a keyboard user could not tell the row the arrow
+  keys go on from apart from one that is merely selected. While the list holds
+  the focus, that row now carries a dashed one-pixel ring just inside its
+  edges, the way the tree view's does; it goes when the focus leaves and the
+  selection stays. The view draws it over the delegate, once across the row,
+  so custom delegates and multi-column rows get one ring. Its colour is
+  `ListViewStyle::focusRingOnSelectionColor` on a selected row (the theme's
+  text-on-accent) and the selection colour on any other;
+  `UltraCanvasListView::SetFocusRingColor` sets one for every row. A list that
+  never takes the focus (a dropdown's open list) shows none.
+- **ListViewFocusRingTest** checks it on real pixels under Xvfb - the ring on
+  all four sides of the focused row while focused and on none after, one ring
+  across a two-column row, the automatic and the set colour - and CI's
+  virtual-display step runs it next to TreeViewKeyboardTest, whose pixel
+  helpers (`RowShows`, `RingSides`) moved to `Tests/DisplayTestSupport.h` for
+  both.
+- **UltraNet links without the core again.** `UltraNetMime` calls `Trim()` and
+  `Base64Encode()`, which live in the `UltraCanvasTextUtils` archive, but
+  `uc-net` never named that archive: the shared core links it and absorbs
+  `uc-net` whole, so anything built against the core saw no gap. A program
+  that links UltraNet *without* the core did - `ultradbadmin-relay`, the
+  headless server half of UltraDBAdmin's browser build, failed to link with
+  *"undefined reference to `UltraCanvas::Trim`"* as soon as its OpenID Connect
+  sign-in was enabled. `uc-net` now links the archive itself.
+- **An application no longer crashes on its way out.** A window's destructor
+  closes its popups, and closing a popup hides its window - which on X11 asks
+  the application for the display. But `windows` is a member of
+  `UltraCanvasApplicationBase`, so the windows were destroyed by the *base*
+  destructor, which runs after the platform half of the application has
+  already gone and cleared its instance pointer: `Hide()` then read the
+  display through a null application and the process died with SIGSEGV. Every
+  platform application now calls the new `DestroyWindows()` at the top of its
+  own destructor, so a window is always destroyed while the application it
+  reaches back for is still whole, and `UltraCanvasLinuxWindow::Hide()`
+  survives having no application left. The first display-backed CI run of
+  UltraMail's message-pane suite caught this: 60 of 60 assertions passed and
+  the binary still exited 139.
+
 #### 2026-11-15 *0.9.564*
 - **UltraIM: a recording's length travels with it.**
   `UltraIMSendOptions::durationSeconds` - a voice note's or a video's length,

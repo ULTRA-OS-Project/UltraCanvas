@@ -101,6 +101,12 @@ the accent colour used elsewhere. The same switch exists one level down as
 `DialogConfig::showIcon`, and on a live dialog as
 `UltraCanvasModalDialog::SetIconVisible(bool)` / `IsIconVisible()`.
 
+The message has the same switch on a live dialog:
+`UltraCanvasModalDialog::SetMessageVisible(bool)` / `IsMessageVisible()`. A
+dialog whose own elements (`AddDialogElement`) present the message — beside a
+picture, as cards — hides the message area, which then takes no room, while
+`GetMessage()` and `GetDetails()` go on answering with the text.
+
 This is what [`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md) uses:
 its ring is the dialog's graphic, so it opens without a badge and the ring is
 horizontally centred.
