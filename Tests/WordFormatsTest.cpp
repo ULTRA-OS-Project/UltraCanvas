@@ -3622,9 +3622,9 @@ int main(int argc, char** argv) {
             "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><c:chart><c:plotArea><c:barChart>"
             "<c:barDir val=\"col\"/>" + seriesXml("Column 1", "004586", "9.1 2.4") + seriesXml("Column 2", "ff420e", "3.2 8.8")
             + "</c:barChart></c:plotArea><c:legend><c:legendPos val=\"r\"/></c:legend></c:chart></c:chartSpace>";
-        {
+        auto writePackage = [&](const std::string& path, const std::string& chartPart) {
             UCZipPackageWriter zip;
-            CHECK(zip.Open(TmpPath("writer.docx")));
+            CHECK(zip.Open(path));
             zip.AddEntry("[Content_Types].xml", std::string(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
@@ -3654,9 +3654,10 @@ int main(int argc, char** argv) {
                 "<w:abstractNum w:abstractNumId=\"1\"><w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"none\"/>"
                 "<w:suff w:val=\"nothing\"/><w:lvlText w:val=\"\"/></w:lvl></w:abstractNum>"
                 "<w:num w:numId=\"1\"><w:abstractNumId w:val=\"1\"/></w:num></w:numbering>"));
-            zip.AddEntry("word/charts/chart1.xml", chartXml);
+            zip.AddEntry("word/charts/chart1.xml", chartPart);
             CHECK(zip.Finalize());
-        }
+        };
+        writePackage(TmpPath("writer.docx"), chartXml);
         UCRichDocument writer;
         std::string err;
         CHECK_MSG(UCWordDocumentIO::Load(TmpPath("writer.docx"), writer, err), err);
@@ -3715,6 +3716,62 @@ int main(int argc, char** argv) {
                           && words.find("10|") != std::string::npos, "docx: ...with its categories, legend and axis values: " + words);
             }
         }
+        // The other kinds: bars lying down, columns one on the other, a pie.
+        {
+            auto shapesOf = [&](const std::string& name, const std::string& plot) {
+                const std::string part =
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                    "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+                    "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><c:chart><c:plotArea>" + plot
+                    + "</c:plotArea><c:legend><c:legendPos val=\"r\"/></c:legend></c:chart></c:chartSpace>";
+                writePackage(TmpPath("writer-" + name + ".docx"), part);
+                UCRichDocument read;
+                std::string error;
+                CHECK_MSG(UCWordDocumentIO::Load(TmpPath("writer-" + name + ".docx"), read, error), error);
+                std::vector<RichShape> shapes;
+                for (const RichDocBlock& block : read.blocks) {
+                    for (const RichTextRun& run : block.runs) {
+                        const RichTextFrame* frame = run.IsTextFrame() ? read.FrameFor(run) : nullptr;
+                        if (frame && frame->shapes.size() == 1) shapes = frame->shapes[0].children;
+                    }
+                }
+                return shapes;
+            };
+            const std::string two = seriesXml("Column 1", "004586", "9.1 2.4") + seriesXml("Column 2", "ff420e", "3.2 8.8");
+            // Lying down: a bar is as long as its value, across the chart.
+            float longest = 0.0f, thickest = 0.0f;
+            for (const RichShape& shape : shapesOf("bar", "<c:barChart><c:barDir val=\"bar\"/><c:grouping val=\"clustered\"/>"
+                                                          + two + "</c:barChart>")) {
+                if (shape.kind != RichShape::Kind::Rectangle || Lower(shape.fillColor) != "#004586" || shape.widthPt <= 8.0f) continue;
+                longest = std::max(longest, shape.widthPt);
+                thickest = std::max(thickest, shape.heightPt);
+            }
+            CHECK_MSG(longest > 100.0f && thickest > 0.0f && thickest < 40.0f,
+                      "docx: a bar chart's bars lie down: " + std::to_string(longest) + " long, " + std::to_string(thickest) + " thick");
+            // Stacked: the second series stands on the first, in the same column.
+            float blueTop = -1.0f, redBottom = -1.0f, blueLeft = -1.0f, redLeft = -2.0f;
+            for (const RichShape& shape : shapesOf("stacked", "<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"stacked\"/>"
+                                                              + two + "</c:barChart>")) {
+                if (shape.kind != RichShape::Kind::Rectangle || shape.heightPt <= 8.0f || shape.fillColor.empty()) continue;
+                if (Lower(shape.fillColor) == "#004586" && blueTop < 0.0f) { blueTop = shape.yPt; blueLeft = shape.xPt; }
+                if (Lower(shape.fillColor) == "#ff420e" && redBottom < 0.0f) { redBottom = shape.yPt + shape.heightPt; redLeft = shape.xPt; }
+            }
+            CHECK_MSG(Near(blueTop, redBottom) && Near(blueLeft, redLeft),
+                      "docx: stacked columns stand one on the other: " + std::to_string(redBottom) + " on " + std::to_string(blueTop));
+            // A pie: a slice for each value of its first series, 9.1 of 11.5 more than half the round.
+            int slices = 0, curves = 0;
+            for (const RichShape& shape : shapesOf("pie", "<c:pieChart><c:varyColors val=\"1\"/>"
+                                                          + seriesXml("Column 1", "004586", "9.1 2.4") + "</c:pieChart>")) {
+                if (shape.kind != RichShape::Kind::Path) continue;
+                slices++;
+                int arcs = 0;
+                for (const RichShape::PathPoint& point : shape.path) arcs += point.op == RichShape::PathPoint::Op::Curve ? 1 : 0;
+                curves = std::max(curves, arcs);
+            }
+            CHECK_MSG(slices == 2 && curves == 4, "docx: a pie's slices, the larger of four arcs: " + std::to_string(slices)
+                      + " slices, " + std::to_string(curves) + " arcs");
+        }
+
         // Saved and read again, the chart is still there (as the drawing it became).
         for (const char* ext : {"docx", "odt"}) {
             const std::string path = TmpPath(std::string("writer-saved.") + ext);

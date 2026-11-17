@@ -7,6 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.15.1 - a document's own bullet is drawn in the text's colour, half as large again
 // Version: 1.15.0 - a heading in its style's size and font; the first paragraph's space above; a hanging first
 //                   line left of the column; a paragraph whose float does not fit its page moves on
 // Version: 1.14.2 - a line without words has its paragraph's set line height (a cell's, a body paragraph's)
@@ -3832,9 +3833,14 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
         }
     } else if (!bl.markerText.empty()) {
         const FontStyle markerFont = MarkerFontFor(block);
+        // A document's own bullet is a word processor's: in the text's
+        // colour, and as large as the symbol font's it was (the view's own
+        // bullets are a text font's, in the marker colour).
+        const bool documentBullet = !block.orderedList && !block.checkbox && !block.bulletText.empty();
+        const Color markerColor = documentBullet ? style.textColor : style.listMarkerColor;
         ctx->PushState();
         ctx->SetFontStyle(markerFont);
-        ctx->SetTextPaint(style.listMarkerColor);
+        ctx->SetTextPaint(markerColor);
         // At the usual marker position, unless the label is too wide to fit
         // before the text there ("1.2.3.", "(viii)"): then it moves left to
         // end a small gap before the text, but never past the column edge.
@@ -3854,7 +3860,7 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
             markerX = std::max(textRight + gap, static_cast<double>(originX + bl.markerLeft) - width);
         }
         if (!drawnBullet || !DrawBulletMark(ctx, bl.markerText, Point2Dd(markerX, originY), markerFont,
-                                            style.listMarkerColor)) {
+                                            markerColor, documentBullet ? 1.5 : 1.0)) {
             ctx->DrawText(bl.markerText, Point2Dd(markerX, originY));
         }
         ctx->PopState();

@@ -648,8 +648,9 @@ grows and shrinks with what is typed. A click outside, or
 `FinishHeaderFooterEditing()`, ends it.
 
 A **chart** in a DOCX (DrawingML, `c:chartSpace`) is read as such a drawing:
-columns or lines for its series from the values the file keeps with it, a
-value axis with its grid, the categories under it and a legend. It is a
+columns (side by side, stacked or stacked to 100%), bars lying down, lines
+or a pie's slices for its series from the values the file keeps with it, a
+value axis with its grid, the categories beside it and a legend. It is a
 picture of the chart - saved again it is a drawing, not a chart. A .doc's
 chart is the metafile picture Word stored with it, drawn by the vector
 readers (`RegisterVectorFormatsPlugin()`).

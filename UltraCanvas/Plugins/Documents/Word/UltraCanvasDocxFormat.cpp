@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.13.1 - charts: pies, bars lying down, stacked and per-cent columns
 // Version: 1.13.0 - charts (c:chartSpace) drawn as shapes; nil paragraph borders; numbering levels without
 //                   number or bullet; a font named with its alternatives
 // Version: 1.12.1 - a cell paragraph's own line multiple read and written
@@ -2545,8 +2546,10 @@ private:
     // A chart (DrawingML c:chartSpace in its own part): drawn from the
     // values the file keeps with it, as a drawing of shapes - columns or
     // lines for its series, a value axis with its grid, the categories under
-    // it and a legend. Columns for a bar or column chart, lines for a line
-    // or area chart; any other kind is drawn as columns of its series.
+    // it and a legend. Columns for a column chart (side by side, stacked or
+    // stacked to 100%), bars lying down for a bar chart, lines for a line or
+    // area chart, slices for a pie or doughnut; any other kind is drawn as
+    // columns of its series.
     static void CollectChartPoints(tinyxml2::XMLElement* from, std::vector<std::string>& out) {
         for (auto* child = from ? from->FirstChildElement() : nullptr; child; child = child->NextSiblingElement()) {
             if (std::string(child->Name() ? child->Name() : "") == "c:pt") {
@@ -2577,12 +2580,22 @@ private:
         struct Series { std::string name, color; std::vector<double> values; };
         std::vector<Series> series;
         std::vector<std::string> categories;
-        bool lines = false;
+        bool lines = false, pie = false, horizontal = false, stacked = false, percent = false;
+        std::vector<std::string> pointColors;       // a pie's slices, where the file colours them
         static const char* const kPalette[] = {"#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47"};
         for (auto* kind = plot->FirstChildElement(); kind; kind = kind->NextSiblingElement()) {
             const std::string tag = kind->Name() ? kind->Name() : "";
             if (tag.size() < 7 || tag.compare(tag.size() - 5, 5, "Chart") != 0) continue;
-            if (series.empty()) lines = tag == "c:lineChart" || tag == "c:areaChart" || tag == "c:scatterChart";
+            if (series.empty()) {
+                lines = tag == "c:lineChart" || tag == "c:areaChart" || tag == "c:scatterChart";
+                pie = tag == "c:pieChart" || tag == "c:pie3DChart" || tag == "c:doughnutChart" || tag == "c:ofPieChart";
+                if (auto* direction = kind->FirstChildElement("c:barDir")) horizontal = std::string(Attr(direction, "val")) == "bar";
+                if (auto* grouping = kind->FirstChildElement("c:grouping")) {
+                    const std::string how = Attr(grouping, "val");
+                    percent = how == "percentStacked";
+                    stacked = !lines && (how == "stacked" || percent);
+                }
+            }
             for (auto* ser = kind->FirstChildElement("c:ser"); ser; ser = ser->NextSiblingElement("c:ser")) {
                 Series one;
                 if (auto* name = FindDescendant(ser->FirstChildElement("c:tx"), "c:v")) one.name = name->GetText() ? name->GetText() : "";
@@ -2595,6 +2608,17 @@ private:
                     if (fill) one.color = DrawingColor(fill);
                 }
                 if (one.color.empty()) one.color = kPalette[series.size() % 6];
+                if (pie && series.empty()) {
+                    for (auto* point = ser->FirstChildElement("c:dPt"); point; point = point->NextSiblingElement("c:dPt")) {
+                        auto* index = point->FirstChildElement("c:idx");
+                        auto* look = point->FirstChildElement("c:spPr");
+                        auto* fill = look ? look->FirstChildElement("a:solidFill") : nullptr;
+                        const size_t at = static_cast<size_t>(std::max(0, index ? index->IntAttribute("val", 0) : 0));
+                        if (!fill || at >= 4096) continue;
+                        if (pointColors.size() <= at) pointColors.resize(at + 1);
+                        pointColors[at] = DrawingColor(fill);
+                    }
+                }
                 std::vector<std::string> points;
                 auto* values = ser->FirstChildElement("c:val");
                 if (!values) values = ser->FirstChildElement("c:yVal");
@@ -2616,6 +2640,22 @@ private:
             for (double value : one.values) highest = std::max(highest, value);
         }
         if (count == 0) return false;
+        if (stacked) {
+            // Stacked: a category's values one on the other - as shares of
+            // their sum where the chart says per cent.
+            highest = 0.0;
+            for (size_t c = 0; c < count; c++) {
+                double sum = 0.0;
+                for (const Series& one : series) sum += c < one.values.size() ? std::max(0.0, one.values[c]) : 0.0;
+                if (percent && sum > 0.0) {
+                    for (Series& one : series) {
+                        if (c < one.values.size()) one.values[c] = std::max(0.0, one.values[c]) * 100.0 / sum;
+                    }
+                    sum = 100.0;
+                }
+                highest = std::max(highest, sum);
+            }
+        }
         // The value axis: a round step, five or so of them to the top.
         double step = 1.0;
         if (highest > 0.0) {
@@ -2637,7 +2677,9 @@ private:
         const float width = run.imageWidthPt, height = run.imageHeightPt;
         const bool legend = FindDescendant(chart.RootElement(), "c:legend") != nullptr;
         const float legendWidth = legend ? std::min(90.0f, width * 0.25f) : 0.0f;
-        const float left = 26.0f, plotTop = 8.0f, right = width - legendWidth - 6.0f, bottom = height - 18.0f;
+        // (Beside horizontal bars the categories take the room at the left.)
+        const float left = horizontal ? std::min(70.0f, width * 0.25f) : 26.0f;
+        const float plotTop = 8.0f, right = width - legendWidth - 6.0f, bottom = height - 18.0f;
         const float plotWidth = std::max(10.0f, right - left), plotHeight = std::max(10.0f, bottom - plotTop);
 
         RichShape group;
@@ -2686,67 +2728,149 @@ private:
             line.lineWidthPt = 0.5f;
             group.children.push_back(std::move(line));
         };
-        // The grid and its values, from the foot up.
-        for (int i = 0; i <= steps; i++) {
-            const float y = bottom - plotHeight * static_cast<float>(i) / static_cast<float>(steps);
-            rule(left, y, plotWidth, 0.0f, i == 0 ? "#808080" : "#D0D0D0");
-            std::ostringstream value;
-            value.imbue(std::locale::classic());
-            value << step * i;
-            words(0.0f, y - 5.0f, left - 4.0f, 10.0f, value.str(), RichTextAlign::Right);
-        }
-        rule(left, plotTop, 0.0f, plotHeight, "#808080");
-        const float slot = plotWidth / static_cast<float>(count);
-        if (lines) {
-            for (const Series& one : series) {
-                RichShape path;
-                path.kind = RichShape::Kind::Path;
-                path.xPt = left;
-                path.yPt = plotTop;
-                path.widthPt = plotWidth;
-                path.heightPt = plotHeight;
-                path.lineColor = one.color;
-                path.lineWidthPt = 1.5f;
-                for (size_t c = 0; c < one.values.size(); c++) {
-                    RichShape::PathPoint point;
-                    point.op = c == 0 ? RichShape::PathPoint::Op::Move : RichShape::PathPoint::Op::Line;
-                    point.x = (static_cast<float>(c) + 0.5f) / static_cast<float>(count);
-                    point.y = 1.0f - static_cast<float>(std::clamp(one.values[c] / top, 0.0, 1.0));
-                    path.path.push_back(point);
+        auto filled = [&](float x, float y, float w, float h, const std::string& color) {
+            if (w <= 0.0f || h <= 0.0f) return;
+            RichShape box;
+            box.xPt = x;
+            box.yPt = y;
+            box.widthPt = w;
+            box.heightPt = h;
+            box.fillColor = color;
+            group.children.push_back(std::move(box));
+        };
+        // What the legend names: the series - or, for a pie, its slices.
+        std::vector<std::pair<std::string, std::string>> keys;      // name, colour
+        if (pie) {
+            // A pie: the first series' values as slices, clockwise from
+            // twelve o'clock, each a path of arcs in the pie's square.
+            const Series& one = series.front();
+            double total = 0.0;
+            for (double value : one.values) total += std::max(0.0, value);
+            if (total <= 0.0) return false;
+            const float side = std::max(10.0f, std::min(width - legendWidth - 12.0f, height - 12.0f));
+            const float pieLeft = (width - legendWidth - side) * 0.5f, pieTop = (height - side) * 0.5f;
+            constexpr double kTurn = 6.283185307179586;
+            double angle = -kTurn / 4.0;
+            for (size_t i = 0; i < one.values.size(); i++) {
+                const std::string color = i < pointColors.size() && !pointColors[i].empty() ? pointColors[i] : kPalette[i % 6];
+                keys.emplace_back(i < categories.size() ? categories[i] : one.name, color);
+                const double sweep = std::max(0.0, one.values[i]) / total * kTurn;
+                if (sweep <= 0.0) continue;
+                RichShape slice;
+                slice.kind = RichShape::Kind::Path;
+                slice.xPt = pieLeft;
+                slice.yPt = pieTop;
+                slice.widthPt = side;
+                slice.heightPt = side;
+                slice.fillColor = color;
+                slice.lineColor = "#FFFFFF";
+                slice.lineWidthPt = 0.75f;
+                auto at = [](double a) { return std::pair<float, float>(static_cast<float>(0.5 + 0.5 * std::cos(a)),
+                                                                        static_cast<float>(0.5 + 0.5 * std::sin(a))); };
+                RichShape::PathPoint point;
+                point.op = RichShape::PathPoint::Op::Move;
+                point.x = point.y = 0.5f;
+                slice.path.push_back(point);
+                point.op = RichShape::PathPoint::Op::Line;
+                std::tie(point.x, point.y) = at(angle);
+                slice.path.push_back(point);
+                const int pieces = std::max(1, static_cast<int>(std::ceil(sweep / (kTurn / 4.0) - 1e-9)));
+                const double piece = sweep / pieces, reach = 4.0 / 3.0 * std::tan(piece / 4.0) * 0.5;
+                for (int k = 0; k < pieces; k++) {
+                    const double from = angle + piece * k, to = from + piece;
+                    RichShape::PathPoint arc;
+                    arc.op = RichShape::PathPoint::Op::Curve;
+                    arc.c1x = static_cast<float>(0.5 + 0.5 * std::cos(from) - reach * std::sin(from));
+                    arc.c1y = static_cast<float>(0.5 + 0.5 * std::sin(from) + reach * std::cos(from));
+                    arc.c2x = static_cast<float>(0.5 + 0.5 * std::cos(to) + reach * std::sin(to));
+                    arc.c2y = static_cast<float>(0.5 + 0.5 * std::sin(to) - reach * std::cos(to));
+                    std::tie(arc.x, arc.y) = at(to);
+                    slice.path.push_back(arc);
                 }
-                group.children.push_back(std::move(path));
+                RichShape::PathPoint close;
+                close.op = RichShape::PathPoint::Op::Close;
+                slice.path.push_back(close);
+                group.children.push_back(std::move(slice));
+                angle += sweep;
             }
         } else {
-            const float bar = slot * 0.7f / static_cast<float>(series.size());
-            for (size_t s = 0; s < series.size(); s++) {
-                for (size_t c = 0; c < series[s].values.size(); c++) {
-                    const float tall = plotHeight * static_cast<float>(std::clamp(series[s].values[c] / top, 0.0, 1.0));
-                    if (tall <= 0.0f) continue;
-                    RichShape column;
-                    column.xPt = left + slot * static_cast<float>(c) + slot * 0.15f + bar * static_cast<float>(s);
-                    column.yPt = bottom - tall;
-                    column.widthPt = bar;
-                    column.heightPt = tall;
-                    column.fillColor = series[s].color;
-                    group.children.push_back(std::move(column));
+            for (const Series& one : series) keys.emplace_back(one.name, one.color);
+            auto value = [&](int i) {
+                std::ostringstream text;
+                text.imbue(std::locale::classic());
+                text << step * i;
+                return text.str() + (percent ? "%" : "");
+            };
+            const float slot = (horizontal ? plotHeight : plotWidth) / static_cast<float>(count);
+            if (horizontal) {
+                // Bars lying down: the values along the foot, the
+                // categories up the left, the first at the bottom.
+                for (int i = 0; i <= steps; i++) {
+                    const float x = left + plotWidth * static_cast<float>(i) / static_cast<float>(steps);
+                    rule(x, plotTop, 0.0f, plotHeight, i == 0 ? "#808080" : "#D0D0D0");
+                    words(x - 20.0f, bottom + 3.0f, 40.0f, 12.0f, value(i), RichTextAlign::Center);
+                }
+                rule(left, bottom, plotWidth, 0.0f, "#808080");
+                for (size_t c = 0; c < count && c < categories.size(); c++) {
+                    words(0.0f, bottom - slot * (static_cast<float>(c) + 0.5f) - 5.0f, left - 4.0f, 10.0f, categories[c],
+                          RichTextAlign::Right);
+                }
+            } else {
+                // The grid and its values, from the foot up.
+                for (int i = 0; i <= steps; i++) {
+                    const float y = bottom - plotHeight * static_cast<float>(i) / static_cast<float>(steps);
+                    rule(left, y, plotWidth, 0.0f, i == 0 ? "#808080" : "#D0D0D0");
+                    words(0.0f, y - 5.0f, left - 4.0f, 10.0f, value(i), RichTextAlign::Right);
+                }
+                rule(left, plotTop, 0.0f, plotHeight, "#808080");
+                for (size_t c = 0; c < count && c < categories.size(); c++) {
+                    words(left + slot * static_cast<float>(c), bottom + 3.0f, slot, 12.0f, categories[c], RichTextAlign::Center);
                 }
             }
-        }
-        for (size_t c = 0; c < count && c < categories.size(); c++) {
-            words(left + slot * static_cast<float>(c), bottom + 3.0f, slot, 12.0f, categories[c], RichTextAlign::Center);
+            if (lines) {
+                for (const Series& one : series) {
+                    RichShape path;
+                    path.kind = RichShape::Kind::Path;
+                    path.xPt = left;
+                    path.yPt = plotTop;
+                    path.widthPt = plotWidth;
+                    path.heightPt = plotHeight;
+                    path.lineColor = one.color;
+                    path.lineWidthPt = 1.5f;
+                    for (size_t c = 0; c < one.values.size(); c++) {
+                        RichShape::PathPoint point;
+                        point.op = c == 0 ? RichShape::PathPoint::Op::Move : RichShape::PathPoint::Op::Line;
+                        point.x = (static_cast<float>(c) + 0.5f) / static_cast<float>(count);
+                        point.y = 1.0f - static_cast<float>(std::clamp(one.values[c] / top, 0.0, 1.0));
+                        path.path.push_back(point);
+                    }
+                    group.children.push_back(std::move(path));
+                }
+            } else {
+                // Columns (or bars): side by side in their category's slot,
+                // or one on the other.
+                const float extent = horizontal ? plotWidth : plotHeight;
+                const float thick = slot * 0.7f / (stacked ? 1.0f : static_cast<float>(series.size()));
+                for (size_t c = 0; c < count; c++) {
+                    float base = 0.0f;
+                    for (size_t s = 0; s < series.size(); s++) {
+                        if (c >= series[s].values.size()) continue;
+                        const float length = extent * static_cast<float>(std::clamp(series[s].values[c] / top, 0.0, 1.0));
+                        const float across = slot * static_cast<float>(c) + slot * 0.15f
+                                           + (stacked ? 0.0f : thick * static_cast<float>(s));
+                        if (horizontal) filled(left + base, bottom - across - thick, length, thick, series[s].color);
+                        else filled(left + across, bottom - base - length, thick, length, series[s].color);
+                        if (stacked) base += length;
+                    }
+                }
+            }
         }
         if (legend) {
             const float x = right + 10.0f;
-            float y = plotTop + std::max(0.0f, (plotHeight - 11.0f * static_cast<float>(series.size())) * 0.5f);
-            for (const Series& one : series) {
-                RichShape key;
-                key.xPt = x;
-                key.yPt = y + 2.0f;
-                key.widthPt = 6.0f;
-                key.heightPt = 6.0f;
-                key.fillColor = one.color;
-                group.children.push_back(std::move(key));
-                words(x + 9.0f, y, std::max(10.0f, width - x - 9.0f), 10.0f, one.name, RichTextAlign::Left);
+            float y = plotTop + std::max(0.0f, (plotHeight - 11.0f * static_cast<float>(keys.size())) * 0.5f);
+            for (const auto& [name, color] : keys) {
+                filled(x, y + 2.0f, 6.0f, 6.0f, color);
+                words(x + 9.0f, y, std::max(10.0f, width - x - 9.0f), 10.0f, name, RichTextAlign::Left);
                 y += 11.0f;
             }
         }
