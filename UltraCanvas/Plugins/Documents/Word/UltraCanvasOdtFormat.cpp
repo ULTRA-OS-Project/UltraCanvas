@@ -554,6 +554,7 @@ private:
     };
     std::map<std::string, TablePlacement> tablePlacements_;    // table style -> width, position
     std::vector<std::string> columnDefaultCellStyles_;         // of the table being read
+    bool cellLineMultiples_ = false;                           // a cell's proportional line height is every line's
     std::map<std::string, std::string> fontFamilies_;          // font-face name -> family
     bool tabsRelativeToIndent_ = true;                         // Writer's default
     // Numbering runs per LIST, not per text:list element: a list that
@@ -895,6 +896,11 @@ private:
         // in table cells. A file without them (Word's export) has both.
         doc_->fontLineGap = setting("AddExternalLeading", true);
         doc_->paragraphSpacingInCells = setting("AddParaSpacingToTableCells", true);
+        doc_->breakAfterSlash = setting("UltraCanvasBreakAfterSlash", true);
+        // A multiple of the font's line on every line of a cell is Word's
+        // way (and this writer's file says so); Writer sets a one-line
+        // paragraph at 122% as it does at 100%.
+        cellLineMultiples_ = setting("UltraCanvasCellLineMultiples", false);
     }
 
     // Applies a paragraph style's geometry to a block, in the model's terms.
@@ -2455,7 +2461,14 @@ private:
                         ApplyPropsToRun(first, ctx.lastCellParagraph);
                         ctx.runs.push_back(std::move(first));
                     }
-                    const float between = room(ctx.lastCellParagraph.marginBottom) + room(paragraph.marginTop);
+                    float between = room(ctx.lastCellParagraph.marginBottom) + room(paragraph.marginTop);
+                    // Writer sets a paragraph of proportional line height
+                    // (122%) that much higher lines - all but the first in
+                    // its cell: the room is above the paragraph's line.
+                    if (!cellLineMultiples_ && !std::isnan(paragraph.lineSpacing) && paragraph.lineSpacing > 1.01f) {
+                        const float size = paragraph.fontSizePt > 0.0f ? paragraph.fontSizePt : 12.0f;
+                        between += (paragraph.lineSpacing - 1.0f) * size * 1.15f;
+                    }
                     if (between > 0.5f) {
                         RichTextRun spacer;
                         spacer.lineBreakBefore = true;
@@ -2469,7 +2482,7 @@ private:
                     if (!std::isnan(paragraph.lineHeightPt) && paragraph.lineHeightPt > 0.0f) {
                         ctx.cellLineHeightPt = paragraph.lineHeightPt;
                         ctx.cellLineHeightAtLeast = paragraph.lineHeightAtLeast;
-                    } else if (!std::isnan(paragraph.lineSpacing) && paragraph.lineSpacing > 0.0f
+                    } else if (cellLineMultiples_ && !std::isnan(paragraph.lineSpacing) && paragraph.lineSpacing > 0.0f
                                && std::abs(paragraph.lineSpacing - 1.0f) > 0.01f) {
                         ctx.cellLineSpacing = paragraph.lineSpacing;
                     }
@@ -3978,6 +3991,7 @@ private:
                    + Pt(cell.lineHeightPt) + "\"";
         } else if (cell.lineSpacing > 0.0f) {
             props += " fo:line-height=\"" + std::to_string(std::lround(cell.lineSpacing * 100.0f)) + "%\"";
+            usesCellLineMultiples_ = true;
         }
         std::string text;
         if (mark && mark->fontSizePt > 0.0f) text += " fo:font-size=\"" + Pt(mark->fontSizePt) + "\"";
@@ -4597,7 +4611,10 @@ private:
     // header starts, the header's height and spacing following it.
     // settings.xml: the compatibility options the document's layout was made
     // with, when they are not the ones a reader assumes.
-    bool HasSettings() const { return !doc_->fontLineGap || !doc_->paragraphSpacingInCells; }
+    bool HasSettings() const {
+        return !doc_->fontLineGap || !doc_->paragraphSpacingInCells || !doc_->breakAfterSlash || usesCellLineMultiples_;
+    }
+    bool usesCellLineMultiples_ = false;          // a cell written with a line multiple (RichTableCell::lineSpacing)
     std::string BuildSettingsXml() const {
         auto item = [](const char* name, bool value) {
             return std::string("<config:config-item config:name=\"") + name + "\" config:type=\"boolean\">"
@@ -4609,6 +4626,12 @@ private:
                "<office:settings><config:config-item-set config:name=\"ooo:configuration-settings\">"
              + item("AddExternalLeading", doc_->fontLineGap)
              + item("AddParaSpacingToTableCells", doc_->paragraphSpacingInCells)
+             + "</config:config-item-set>"
+               // What Writer has no setting for, in a set of its own (Writer
+               // keeps to its own sets and leaves this one alone).
+               "<config:config-item-set config:name=\"ultracanvas:layout-settings\">"
+             + item("UltraCanvasBreakAfterSlash", doc_->breakAfterSlash)
+             + item("UltraCanvasCellLineMultiples", usesCellLineMultiples_)
              + "</config:config-item-set></office:settings></office:document-settings>\n";
     }
 

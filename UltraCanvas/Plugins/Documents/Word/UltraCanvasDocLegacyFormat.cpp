@@ -1253,6 +1253,7 @@ public:
         activeAnchors_ = nullptr;
         LoadSection();
         doc_.letterKerning = false;                // Word 97-2003 sets text unkerned unless a run asks
+        doc_.breakAfterSlash = false;              // ...and keeps "a/b" whole
         LoadHeaderStories(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
         ApplyLaterSections(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
         LoadTextBoxStories(allChars);

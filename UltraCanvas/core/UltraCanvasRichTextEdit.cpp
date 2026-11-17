@@ -2378,6 +2378,42 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             continue;       // a picture carries no text formatting
         }
 
+        // No line break after a slash inside a word, where the document's
+        // program sets none (UCRichDocument::breakAfterSlash).
+        if (!editor.GetDocument()->breakAfterSlash && !run.IsInlineImage() && !run.IsTextFrame()) {
+            const std::string& all = layout->GetText();
+            for (int at = start; at < end; at++) {
+                if (all[static_cast<size_t>(at)] != '/' || at + 1 >= static_cast<int>(all.size())) continue;
+                const char next = all[static_cast<size_t>(at) + 1];
+                if (next == ' ' || next == '\n' || next == '\t') continue;
+                auto whole = TextAttributeFactory::CreateAllowBreaks(false);
+                whole->SetRange(at, UCRichDocumentEditor::NextCharOffset(all, at + 1));
+                layout->InsertAttribute(std::move(whole));
+            }
+        }
+
+        // Spaces a line ends with (before a line break, or at the text's
+        // end) take no room: with them a line that just fits was broken a
+        // word early. Not where the caret stands in or after them - a space
+        // just typed moves the caret.
+        if ((runIndex + 1 == runs.size() || runs[runIndex + 1].lineBreakBefore) && !run.text.empty()
+            && run.text.back() == ' ' && !run.IsInlineImage() && !run.IsTextFrame()) {
+            int spaces = 0;
+            while (spaces < static_cast<int>(run.text.size())
+                   && run.text[run.text.size() - 1 - static_cast<size_t>(spaces)] == ' ') spaces++;
+            const int from = end - spaces;
+            auto near = [&](const RichDocPosition& p) {
+                return p.blockIndex == blockIndex && p.cellRow == cellRow && p.cellColumn == cellColumn
+                    && p.byteOffset >= from && p.byteOffset <= end;
+            };
+            const bool editing = !printing && blockIndex >= 0 && (near(editor.GetCaret()) || near(editor.GetAnchor()));
+            if (!editing) {
+                auto hidden = TextAttributeFactory::CreateShape(0.0, 0.0, 0.0);
+                hidden->SetRange(from, end);
+                layout->InsertAttribute(std::move(hidden));
+            }
+        }
+
         // A cell's lines of a set height (RichTableCell::lineHeightPt): its
         // words' lines; a picture in the line keeps its own height. "At
         // least" leaves a line of a larger font as it is.
@@ -2907,7 +2943,12 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
             // relative width from the document, else the whole column.
             const float columnSpace = std::max(24.0f * static_cast<float>(columnCount), columnSpan - indent);
             float tableWidth = columnSpace;
-            if (block.tableWidthPt > 0.0f) tableWidth = std::min(Px(block.tableWidthPt), columnSpace);
+            // A width in points is kept where it is a little more than the
+            // column's (Word lets such a table reach into the margin or the
+            // gap between columns): squeezed, its words no longer fit its cells.
+            if (block.tableWidthPt > 0.0f) {
+                tableWidth = std::min(Px(block.tableWidthPt), columnSpace + Px(EffectivePageSetup().marginRightPt));
+            }
             else if (block.tableWidthPercent > 0.0f) tableWidth = columnSpace * std::min(100.0f, block.tableWidthPercent) / 100.0f;
             tableWidth = std::max(tableWidth, 24.0f * static_cast<float>(columnCount));
             float tableLeft = 0.0f;
@@ -2939,6 +2980,69 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                     // A width the document states is kept, however narrow
                     // (a hair of a column that only sets another off).
                     columnLeft[c + 1] = columnLeft[c] + std::max(usable ? 1.0f : 24.0f, share);
+                }
+            }
+
+            // Columns that give way to their content (RichDocBlock::
+            // tableAutoFit): one narrower than the longest word or the widest
+            // picture in it takes what it needs from the columns with room
+            // to spare, then from the room beside the table.
+            if (block.tableAutoFit && columnCount > 0) {
+                std::vector<float> need(columnCount, 0.0f);
+                std::vector<int> covered(columnCount, 0);
+                for (const RichTableRow& row : block.tableRows) {
+                    size_t gridColumn = 0;
+                    for (const RichTableCell& modelCell : row.cells) {
+                        while (gridColumn < columnCount && covered[gridColumn] > 0) gridColumn++;
+                        if (gridColumn >= columnCount) break;
+                        const size_t span = static_cast<size_t>(std::clamp(modelCell.columnSpan, 1,
+                                                                static_cast<int>(columnCount - gridColumn)));
+                        if (modelCell.rowSpan > 1) {
+                            for (size_t c = gridColumn; c < gridColumn + span; c++) covered[c] = modelCell.rowSpan;
+                        }
+                        if (span == 1 && !modelCell.runs.empty()) {
+                            const float padLeft = modelCell.paddingLeftPt >= 0.0f ? Px(modelCell.paddingLeftPt) : 4.0f;
+                            const float padRight = modelCell.paddingRightPt >= 0.0f ? Px(modelCell.paddingRightPt) : 4.0f;
+                            const float width = columnLeft[gridColumn + 1] - columnLeft[gridColumn];
+                            RichDocBlock cellBlock;
+                            cellBlock.type = RichBlockType::Paragraph;
+                            // Laid out at the column's width (pictures keep
+                            // the size they have there), then broken at
+                            // every word: the widest line is what it needs.
+                            // (As the cell itself is: what floats or
+                            // stands in its line is taken as it is there.)
+                            std::vector<BlockLayout::InlineImage> unused;
+                            auto measure = MakeRunsLayout(ctx, cellBlock, modelCell.runs,
+                                                          std::max(1.0f, width - padLeft - padRight), nullptr,
+                                                          blockIndex, &unused, -1.0f, 0, 0);
+                            measure->SetWrap(TextWrap::WrapWord);
+                            measure->SetExplicitWidth(1.0);
+                            need[gridColumn] = std::max(need[gridColumn],
+                                                        static_cast<float>(measure->GetLayoutWidth()) + padLeft + padRight);
+                        }
+                        gridColumn += span;
+                    }
+                    for (int& rows : covered) rows = std::max(0, rows - 1);
+                }
+                std::vector<float> widths(columnCount, 0.0f);
+                float grow = 0.0f, slack = 0.0f;
+                for (size_t c = 0; c < columnCount; c++) {
+                    widths[c] = columnLeft[c + 1] - columnLeft[c];
+                    if (need[c] > widths[c] + 0.5f) grow += need[c] - widths[c];
+                    else slack += widths[c] - need[c];
+                }
+                if (grow > 0.0f) {
+                    // From the columns with room to spare, each by its share;
+                    // the rest from the room the table has beside it.
+                    const float taken = std::min(grow, slack);
+                    const float beside = std::max(0.0f, columnSpace - tableLeft - tableWidth);
+                    const float granted = taken + std::min(grow - taken, beside);
+                    const float share = granted / grow;
+                    for (size_t c = 0; c < columnCount; c++) {
+                        if (need[c] > widths[c] + 0.5f) widths[c] += (need[c] - widths[c]) * share;
+                        else if (slack > 0.0f) widths[c] -= (widths[c] - need[c]) * taken / slack;
+                    }
+                    for (size_t c = 0; c < columnCount; c++) columnLeft[c + 1] = columnLeft[c] + widths[c];
                 }
             }
 

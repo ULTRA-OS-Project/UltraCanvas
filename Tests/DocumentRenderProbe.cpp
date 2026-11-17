@@ -110,7 +110,8 @@ int main(int argc, char** argv) {
                 dumpRuns(cell.runs, "a cell of block " + std::to_string(i));
                 if (verbose) {
                     // The cell's lines as the reader made them.
-                    std::cerr << "\n      cell pad " << cell.paddingTopPt << "/" << cell.paddingBottomPt
+                    std::cerr << "\n      cell pad " << cell.paddingTopPt << "/" << cell.paddingBottomPt << " sides "
+                              << cell.paddingLeftPt << "/" << cell.paddingRightPt
                               << " line " << cell.lineHeightPt << (cell.lineHeightAtLeast ? "+" : "")
                               << " x" << cell.lineSpacing << ":";
                     for (const RichTextRun& run : cell.runs) {

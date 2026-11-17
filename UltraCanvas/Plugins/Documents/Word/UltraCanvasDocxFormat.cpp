@@ -764,6 +764,7 @@ private:
         // font's line gap.
         auto* compat = root ? root->FirstChildElement("w:compat") : nullptr;
         if (compat && compat->FirstChildElement("w:noLeading")) doc_->fontLineGap = false;
+        doc_->breakAfterSlash = false;             // Word keeps "a/b" whole
     }
 
 
@@ -3047,6 +3048,13 @@ private:
         std::map<std::pair<size_t, size_t>, RichDocBlock> paragraphFrames; // (row, cell) -> first paragraph
         // Word's default cell margins (0.19 cm at the sides), then the table's.
         float tableMargins[4] = {0.0f, 0.0f, 5.4f, 5.4f};
+        // Columns give way to their content unless the layout is fixed.
+        block.tableAutoFit = true;
+        if (auto* tblPr = tbl->FirstChildElement("w:tblPr")) {
+            if (auto* tableLayout = tblPr->FirstChildElement("w:tblLayout")) {
+                block.tableAutoFit = std::string(Attr(tableLayout, "w:type")) != "fixed";
+            }
+        }
         if (auto* tblPr = tbl->FirstChildElement("w:tblPr")) {
             ReadCellMargins(tblPr->FirstChildElement("w:tblCellMar"), tableMargins);
         }
@@ -4539,7 +4547,9 @@ private:
         for (const char* side : {"top", "left", "bottom", "right", "insideH", "insideV"}) {
             xml << "<w:" << side << " " << tableLine;
         }
-        xml << "</w:tblBorders></w:tblPr><w:tblGrid>";
+        xml << "</w:tblBorders>";
+        if (!block.tableAutoFit) xml << "<w:tblLayout w:type=\"fixed\"/>";
+        xml << "</w:tblPr><w:tblGrid>";
         // Known proportions become twips across the table's width (9000 twips,
         // 6.25in, when it has none of its own).
         const std::vector<float>& widths = block.tableColumnWidths;

@@ -501,6 +501,12 @@ struct RichDocBlock {
     float tableWidthPercent = 0.0f;
     RichTextAlign tableAlign = RichTextAlign::Default;
     float tableIndentPt = 0.0f;
+    // Table: its columns give way to their content (Word's table layout
+    // "autofit", its default): a column narrower than the longest word or
+    // the widest picture in it is widened to hold it - at the cost of
+    // columns with room to spare, then of the table's width. false: the
+    // widths are kept as stated (Word's "fixed" layout, Writer's tables).
+    bool tableAutoFit = false;
     int mediaIndex = -1;                // Image
     std::string imageAltText;           // Image
     float imageWidthPt = 0.0f;          // Image: 0 = unknown
@@ -853,6 +859,10 @@ public:
     // turned on (w:kern), and its files say so (ODF style:letter-kerning) -
     // kerned, their lines come out a little shorter and break elsewhere.
     bool letterKerning = true;
+    // Whether a line may be broken after a slash inside a word
+    // ("she/her/hers", a path): Unicode's line breaking allows it, Word does
+    // not - its documents keep such a word whole.
+    bool breakAfterSlash = true;
     // Whether lines are a font's full height apart - its ascent and descent
     // and the line gap ("external leading") its designer gave it - as Word
     // and Writer set them. false: ascent and descent only, as documents from
