@@ -968,6 +968,24 @@ else()
     message(STATUS "  ChartElementBehaviourTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TIMELINE DIAGRAM WAVE TEST =====
+# The timeline diagram's Wave design: rings that chain into one wave, text
+# clear of the rings and of each other at every axis angle, colours, clicks.
+if(TARGET UltraCanvas)
+    add_executable(TimelineDiagramWaveTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TimelineDiagramWaveTest.cpp
+    )
+    target_include_directories(TimelineDiagramWaveTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TimelineDiagramWaveTest PRIVATE cxx_std_20)
+    target_link_libraries(TimelineDiagramWaveTest PRIVATE UltraCanvas)
+    set_target_properties(TimelineDiagramWaveTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TimelineDiagramWaveTest COMMAND TimelineDiagramWaveTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TimelineDiagramWaveTest")
+endif()
+
 # ===== GAUGE LINEAR MODES TEST =====
 # The gauge's six bar modes: inside their box at every size and orientation,
 # the bar drawn where there is room, the value following a changed range.
