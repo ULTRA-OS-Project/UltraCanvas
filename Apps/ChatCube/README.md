@@ -261,7 +261,10 @@ The first ChatCube draft, which this replaces, is kept under
    *Appearance*: the look - System, Light or Dark, shown at once - and how
    times and dates are written (`14:05` or `2:05 PM`; `31.10.2026`,
    `2026-10-31` or `10/31/2026`). *Messages*: whether Enter or Ctrl+Enter
-   sends, and whether typing is shown to the other side and to you.
+   sends, and whether typing is shown to the other side and to you. Someone
+   typing shows in the chat's header and in its row of the list, in the
+   accent colour - in a group with their name ("Anna is typing…", "Anna and
+   Ben are typing…").
    *Networks*: where each network stands, your ChatCube ID to copy, signing
    out of Matrix or Telegram, and whether the people on this network are
    listed in the sidebar. *Extras*: the data folder, to open or copy, and the
