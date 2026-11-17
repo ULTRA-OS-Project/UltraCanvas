@@ -5,6 +5,7 @@
 // hash and change name only when their content does; a behaviour module
 // reaches exactly the pages that ask for it; a broken link or anchor and a
 // page over budget fail the build; what an earlier build left is removed.
+// Version: 0.3.0 - the swap navigation
 // Version: 0.2.0 - Markdown (front matter, ids, admonitions, tabs, wrapped lines, highlighting), AddDocs
 //                  (folders, categories, links, translations), the doc layout, the search index
 // Version: 0.1.0
@@ -705,6 +706,66 @@ static void TestVersions() {
     fs::remove_all(dir, ec);
 }
 
+// The swap navigation: the pages say so (data-us-nav), every module that
+// starts again on us:page says so (data-us-swap), the swap module is
+// written and linked; an app's module is not ready unless the app says so;
+// a site that loads pages has none of it.
+static void TestSwap() {
+    std::printf("The swap navigation\n");
+    const fs::path dir = TempDir("swap");
+    auto build = [&](Navigation navigation, bool tabsReady, const fs::path& out) {
+        SiteConfig config = FixtureConfig();
+        config.navigation = navigation;
+        Builder builder(config);
+        builder.AddScript("tabs", "document.addEventListener('us:page', () => {});\n", tabsReady);
+        builder.AddFile("media/pic.png", "picture");
+        AddFixtureRoutes(builder);
+        BuildResult result = builder.Build(UltraCanvas::PathToUtf8(out));
+        PrintErrors(result);
+        return result.ok;
+    };
+    auto swapFile = [](const fs::path& out) {
+        std::error_code ec;
+        for (const auto& entry : fs::directory_iterator(out / "assets" / "js", ec)) {
+            if (entry.path().filename().string().rfind("swap.", 0) == 0) return entry.path().filename().string();
+        }
+        return std::string();
+    };
+
+    const fs::path swapped = dir / "swap";
+    Check(build(Navigation::Swap, false, swapped), "a swap site builds");
+    const std::string home = Read(swapped / "index.html");
+    const std::string about = Read(swapped / "about" / "index.html");
+    const std::string file = swapFile(swapped);
+    Check(Contains(home, "<html lang=\"en\" data-us-nav=\"swap\">"), "a swap site's pages say so on <html>");
+    Check(!file.empty() && Contains(home, "/assets/js/" + file + "\" data-us-swap></script>") &&
+              Contains(Read(swapped / "assets" / "js" / file), "us:page"),
+          "the swap module is written and linked on every page");
+    Check(Contains(home, "/assets/js/core.") && Contains(home, ".js\" data-us-swap></script>\n<script type=\"module\" src=\"/assets/js/swap."),
+          "the core module is marked as starting again");
+    Check(Contains(about, "/assets/js/tabs.") && !Contains(about, "\" data-us-swap></script>\n<script type=\"speculationrules\">"),
+          "an app's module the app did not mark is not marked: a page with it is loaded the ordinary way");
+
+    const fs::path ready = dir / "ready";
+    Check(build(Navigation::Swap, true, ready), "a swap site with a ready module builds");
+    Check(Contains(Read(ready / "about" / "index.html"), "\" data-us-swap></script>\n<script type=\"speculationrules\">"),
+          "an app's module marked swapReady is marked on the page");
+
+    const fs::path loaded = dir / "load";
+    Check(build(Navigation::Load, true, loaded), "a site that loads pages builds");
+    const std::string plain = Read(loaded / "index.html");
+    Check(Contains(plain, "<html lang=\"en\">") && !Contains(plain, "data-us-swap") && !Contains(plain, "/swap.") && swapFile(loaded).empty(),
+          "a site that loads pages has no swap module and no marks");
+
+    SiteConfig config = FixtureConfig();
+    Builder reserved(config);
+    reserved.AddScript("swap", "1;\n");
+    reserved.AddFile("media/pic.png", "picture");
+    AddFixtureRoutes(reserved);
+    BuildResult refused = reserved.Build(UltraCanvas::PathToUtf8(dir / "reserved"));
+    Check(!refused.ok && HasError(refused, "'swap'"), "an app cannot name a behaviour 'swap'");
+}
+
 int main() {
     TestHelpers();
     TestBuild();
@@ -714,6 +775,7 @@ int main() {
     TestBasePath();
     TestPhaseD();
     TestVersions();
+    TestSwap();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

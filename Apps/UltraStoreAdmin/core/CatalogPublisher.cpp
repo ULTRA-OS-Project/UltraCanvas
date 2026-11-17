@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/CatalogPublisher.cpp
+// Version: 0.6.1 - web.navigation
 // Version: 0.6.0 - the mark for the pages under go/
 // Version: 0.5.0 - a restricted package on an app with a trial
 // Version: 0.4.1 - market_url from the settings
@@ -348,7 +349,8 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
     // (WebStoreHtml.h), or "wasm", the WebAssembly store from the web store
     // build's folder web.site_dir (WebSite.h). Unset, a store that names
     // that folder keeps the WebAssembly store it had, and any other gets
-    // the HTML one; "off" writes none.
+    // the HTML one; "off" writes none. web.navigation "swap" gives the
+    // HTML store the swap navigation (UltraSite::Navigation::Swap).
     std::string webOutput = db.Setting("web.output");
     const std::string siteDir = db.Setting("web.site_dir");
     if (webOutput.empty()) webOutput = siteDir.empty() ? "html" : "wasm";
@@ -364,6 +366,7 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
         web.catalogBaseUrl = pagesBase;
         web.storeDownloadUrl = db.Setting("web.store_download_url");
         web.contactUrl = storeContact;
+        if (db.Setting("web.navigation") == "swap") web.navigation = "swap";
         const auto site = WriteWebSite(catalog, options.outDirUtf8, web);
         if (!site) return R::Failure(site.error.code, site.error.message, site.error.detail);
         report.webPages = site.Value().pages;

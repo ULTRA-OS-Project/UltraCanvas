@@ -61,6 +61,10 @@ struct WebSiteOptions {
     // The HTML store's words: the folder of the shipped translations
     // (media/locale); empty: UltraLocalisation's shipped folder.
     std::string localeDirUtf8;
+    // The HTML store's navigation (the setting web.navigation): "load", or
+    // "swap" - pages swapped in place where the browser does not prerender
+    // (UltraSite::Navigation::Swap).
+    std::string navigation = "load";
 };
 
 struct WebSiteReport {

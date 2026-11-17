@@ -138,6 +138,13 @@ with it the site follows the visitor's system and offers a toggle that
 remembers the choice; without it the site is light only. The font is the
 theme's family where the visitor has it, else the system's: nothing is
 downloaded. The main and footer menus become the navbar and the footer.
+
+`"navigation": "swap"` in `site.json` (`--navigation swap` on `ultrapress
+docs`) gives the HTML + JavaScript output the swap navigation: in browsers
+that do not prerender pages (Firefox, Safari) a click swaps the new page
+in place instead of loading it, with Back, Forward, focus and scroll kept.
+Without it, or `"load"`, every click is a page load. See *The swap
+navigation* in `Docs/Modules/UltraSite/README.md`.
 Beside the pages: the hashed stylesheet and script, `feed.xml`,
 `sitemap.xml`, `robots.txt`, `404.html`, `.htaccess`, `_headers` and the
 media folder. A link to a page or a picture the site does not have, an
@@ -210,6 +217,7 @@ ultrapress publish mysite out --sizes                             # and what eve
 ultrapress docs Docs out --name "My docs" --url https://docs.my.example   # a Markdown folder as a documentation site
 ultrapress serve mysite --port 3000                               # look at it on this computer: built, served on 127.0.0.1, rebuilt on a change
 ultrapress publish mysite out --precompress                       # with a .gz (and .br) copy beside every page, stylesheet and script
+ultrapress docs Docs out --navigation swap                        # pages swapped in place where the browser does not prerender them
 ultrapress publish mysite out --output wasm --renderer ultrapress-0.1.0.js   # the WebAssembly output, the renderer referenced (later)
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
 ultrapress hosts                                                  # the hosts a site can be published to

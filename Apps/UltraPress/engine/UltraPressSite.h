@@ -14,6 +14,7 @@
 // PublishOptions::output for one run): this one, or the HTML shadow with
 // the WebAssembly renderer (PublishStatic, UltraPressPublish.h).
 // Design: Docs/Research/UltraSiteStaticSitesProposal.md §6.
+// Version: 0.3.1 - the swap navigation (Site::navigation, DocsSiteOptions::navigation)
 // Version: 0.3.0 - responsive pictures, precompressed copies, versioned docs, the blog's index and tags
 // Version: 0.2.0 - documentation: a site's docs/ folder (and i18n/<lang>/docs) as doc pages with search; PublishDocsFolder
 // Version: 0.1.0
@@ -82,6 +83,9 @@ struct DocsSiteOptions {
     // ordered by its versions.json or newest first by name, each published
     // at /<label>/ with a banner leading to the latest.
     std::string versionsFolder;
+    // "load", or "swap": pages swapped in place where the browser does not
+    // prerender (UltraSite::Navigation::Swap).
+    std::string navigation = "load";
 };
 PublishResult PublishDocsFolder(const DocsSiteOptions& options, const std::string& outputDirectory);
 

@@ -280,6 +280,8 @@ pre.us-code { line-height: 1.5; tab-size: 4; }
 :root[data-theme=dark] .tok-o { color: #fdba74; }
 
 .us-visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* The heading the swap navigation gives the focus to: no ring for a click. */
+h1[tabindex="-1"]:focus:not(:focus-visible) { outline: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }

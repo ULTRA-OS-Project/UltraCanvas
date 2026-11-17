@@ -1,5 +1,6 @@
 // Apps/UltraPress/cli/UltraPressCli.cpp
 // The commands: new, check, page, publish, import, hosts, help, --version.
+// Version: 0.7.3 - docs --navigation
 // Version: 0.7.2 - hosts add --port; an ftp host's scheme checked before it is stored
 // Version: 0.7.1 - media prune; a picture's pixels in the list
 // Version: 0.6.0 - media: the library listed, files added and removed; check finds missing media
@@ -78,10 +79,12 @@ void PrintHelp() {
         "      --prune deletes on the host what an earlier publish put there and the site no longer has\n"
         "  ultrapress docs <markdown-dir> <out-dir> [--name <name>] [--url <url>] [--language <code>]\n"
         "                  [--edit-url <base>] [--source-root <dir> --source-url <base>] [--exclude <name>]...\n"
-        "                  [--versions <dir>] [--sizes] [--no-budgets] [--broken-links warn] [--precompress] [--quiet]\n"
+        "                  [--versions <dir>] [--navigation load|swap] [--sizes] [--no-budgets] [--broken-links warn]\n"
+        "                  [--precompress] [--quiet]"
         "      a folder of Markdown as a documentation site, the way Docusaurus publishes one: a page\n"
         "      per file, the sidebar after the folders, a table of contents, search, links between the\n"
-        "      files kept; a link out of the folder goes to --source-url + its path under --source-root\n"
+        "      files kept; a link out of the folder goes to --source-url + its path under --source-root;\n"
+        "      --navigation swap swaps pages in place in browsers that do not prerender them\n"
         "  ultrapress serve <site-dir|built-dir> [--port <n>] [--base <path>]\n"
         "      the site on this computer only (127.0.0.1): built as HTML + JavaScript into\n"
         "      <site>/.ultrapress/preview and built again when a file of it changed; a built\n"
@@ -340,6 +343,7 @@ int CommandDocs(const std::vector<std::string>& args) {
     options.brokenLinksWarn = Option(args, "--broken-links", "error") == "warn";
     options.precompress = HasFlag(args, "--precompress");
     options.versionsFolder = Option(args, "--versions", "");
+    options.navigation = Option(args, "--navigation", "load");
     const PublishResult result = PublishDocsFolder(options, args[1]);
     const bool quiet = HasFlag(args, "--quiet");
     if (!quiet) {

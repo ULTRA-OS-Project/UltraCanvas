@@ -115,6 +115,7 @@ The settings in `admin.sqlite`:
 | `packages.base_url` | where `packages/` and `restricted/` are served; the catalog's URL when unset |
 | `store.contact` | how a future partner reaches the store's team to sign up (an address, a page); printed on the partners' join pages and the web store's |
 | `web.output` | which web store `publish` lays beside the catalog. `html` is the store as HTML + JavaScript (`WebStoreHtml.h`). `wasm` is the WebAssembly store from `web.site_dir`. `off` writes none. Unset, a store with `web.site_dir` keeps the WebAssembly store and any other gets the HTML one |
+| `web.navigation` | `swap` gives the HTML web store the swap navigation: in browsers that do not prerender pages, a click swaps the new page in place instead of loading it (UltraSite's *The swap navigation*). Unset or `load`: every click is a page load |
 | `web.site_dir` | the web store build's `site/` folder (`Apps/UltraStore/web`, built under emcmake - or `site/` of a `wasm-build.yml` run's `ultrastore-web-dynamic` artifact): the WebAssembly store's module, loader and runtime, which `web.output` `wasm` lays beside the catalog with the HTML shadow pages |
 | `web.store_download_url` | where the native store is downloaded; the web store's *Get UltraStore* |
 | `texts.languages` | the languages `translate` fills, codes separated by spaces; set by `init` to the official list |

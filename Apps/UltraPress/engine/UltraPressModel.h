@@ -5,6 +5,7 @@
 // emitter, later the element renderer) read it and never change it.
 // Design: Docs/Research/UltraPressDesignProposal.md §5.1.
 // Version: 0.9.1 - Page::tags
+// Version: 0.9.1 - Site::navigation ("navigation" in site.json): the swap navigation
 // Version: 0.9.0 - Site::output (WebAssembly or HTML + JavaScript), Theme::darkColors
 // Version: 0.8.3 - IsSiteAddress: what the site's url has to be
 // Version: 0.8.2 - SitePathText: '\' becomes '/' on Windows only
@@ -121,6 +122,10 @@ struct Site {
     std::vector<Page> pages;
     Hosting hosting;
     std::string output = kOutputHtml;     // "html" or "wasm": what Publish writes ("output" in site.json)
+    // The HTML + JavaScript output's navigation ("navigation" in site.json):
+    // "load", or "swap" - a page swapped in place where the browser does not
+    // prerender (UltraSite::Navigation::Swap).
+    std::string navigation = "load";
 
     const Page* FindPage(const std::string& slug) const;
     const Menu* FindMenu(const std::string& name) const;

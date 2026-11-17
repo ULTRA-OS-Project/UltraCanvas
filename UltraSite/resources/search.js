@@ -2,8 +2,8 @@
 // searches the site's index for the page's language, fetched on the first
 // focus. Results are a list under the box (arrow keys, Enter, Escape) or,
 // on the search page, the page's own list. Without it the box submits to
-// /search/, which lists every page. "/" puts the cursor into the box.
-const forms = [...document.querySelectorAll('form[data-us~="search"]')];
+// /search/, which lists every page. "/" puts the cursor into the box. The
+// boxes start again on every page the swap navigation brings in (us:page).
 const loads = new Map();
 let shown = 0;
 
@@ -98,106 +98,119 @@ function item(record, query, id) {
   return li;
 }
 
-for (const form of forms) {
-  const input = form.querySelector('input[type="search"]');
-  if (!input) continue;
-  const page = form.dataset.results ? document.getElementById(form.dataset.results) : null;
-  const list = page ? null : document.createElement('ul');
-  const listId = 'us-search-list-' + (++shown);
-  let active = -1;
-  let records = [];
-  if (list) {
-    list.className = 'us-search-results';
-    list.id = listId;
-    list.setAttribute('role', 'listbox');
-    list.hidden = true;
-    form.append(list);
-    input.setAttribute('role', 'combobox');
-    input.setAttribute('aria-controls', listId);
-    input.setAttribute('aria-expanded', 'false');
-    input.setAttribute('aria-autocomplete', 'list');
-  }
-  const close = () => {
-    if (!list) return;
-    list.hidden = true;
-    input.setAttribute('aria-expanded', 'false');
-    input.removeAttribute('aria-activedescendant');
-    active = -1;
-  };
-  const mark = (index) => {
-    const options = list.querySelectorAll('[role="option"]');
-    options.forEach((option, i) => option.setAttribute('aria-selected', String(i === index)));
-    active = index;
-    if (options[index]) {
-      input.setAttribute('aria-activedescendant', options[index].id);
-      options[index].scrollIntoView({ block: 'nearest' });
-    }
-  };
-  const show = async () => {
-    const query = input.value.trim();
-    const index = await load(form.dataset.index);
-    if (query !== input.value.trim()) return;
-    records = find(index, query).slice(0, page ? 100 : 8);
-    const target = page || list;
-    target.replaceChildren();
-    if (page) {
-      const noscript = document.querySelector('.us-search-noscript');
-      const all = document.querySelector('.us-site-index');
-      if (noscript) noscript.hidden = true;
-      if (all) all.hidden = !!query;
-    }
-    if (!query) {
-      close();
-      return;
-    }
-    if (!records.length) {
-      const nothing = document.createElement(page ? 'p' : 'li');
-      nothing.className = 'us-search-nothing';
-      nothing.textContent = (form.dataset.nothing || 'Nothing found for') + ' “' + query + '”';
-      target.append(nothing);
-    } else {
-      const holder = page ? document.createElement('ul') : target;
-      if (page) {
-        holder.className = 'us-search-results us-search-results-page';
-        target.append(holder);
-      }
-      records.forEach((record, i) => holder.append(item(record, query, listId + '-' + i)));
-    }
+// To a result: through the swap navigation where it runs (it cancels the
+// us:navigate event), else an ordinary page load.
+function go(url) {
+  const event = new CustomEvent('us:navigate', { detail: url, cancelable: true });
+  if (document.dispatchEvent(event)) location.href = url;
+}
+
+function start() {
+  for (const form of document.querySelectorAll('form[data-us~="search"]')) {
+    const input = form.querySelector('input[type="search"]');
+    if (!input || form.hasAttribute('data-us-started')) continue;
+    form.setAttribute('data-us-started', '');
+    const page = form.dataset.results ? document.getElementById(form.dataset.results) : null;
+    const list = page ? null : document.createElement('ul');
+    const listId = 'us-search-list-' + (++shown);
+    let active = -1;
+    let records = [];
     if (list) {
-      list.hidden = false;
-      input.setAttribute('aria-expanded', 'true');
+      list.className = 'us-search-results';
+      list.id = listId;
+      list.setAttribute('role', 'listbox');
+      list.hidden = true;
+      form.append(list);
+      input.setAttribute('role', 'combobox');
+      input.setAttribute('aria-controls', listId);
+      input.setAttribute('aria-expanded', 'false');
+      input.setAttribute('aria-autocomplete', 'list');
+    }
+    const close = () => {
+      if (!list) return;
+      list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
       active = -1;
-    }
-  };
-  input.addEventListener('focus', () => load(form.dataset.index), { once: true });
-  input.addEventListener('input', show);
-  input.addEventListener('keydown', (event) => {
-    if (!list || list.hidden) return;
-    const count = records.length;
-    if (event.key === 'ArrowDown' && count) {
-      mark((active + 1) % count);
-      event.preventDefault();
-    } else if (event.key === 'ArrowUp' && count) {
-      mark((active - 1 + count) % count);
-      event.preventDefault();
-    } else if (event.key === 'Enter' && active >= 0) {
-      location.href = records[active].u;
-      event.preventDefault();
-    } else if (event.key === 'Escape') {
-      close();
-    }
-  });
-  form.addEventListener('focusout', (event) => {
-    if (!form.contains(event.relatedTarget)) close();
-  });
-  if (page) {
-    const query = new URLSearchParams(location.search).get('q');
-    if (query) {
-      input.value = query;
-      show();
+    };
+    const mark = (index) => {
+      const options = list.querySelectorAll('[role="option"]');
+      options.forEach((option, i) => option.setAttribute('aria-selected', String(i === index)));
+      active = index;
+      if (options[index]) {
+        input.setAttribute('aria-activedescendant', options[index].id);
+        options[index].scrollIntoView({ block: 'nearest' });
+      }
+    };
+    const show = async () => {
+      const query = input.value.trim();
+      const index = await load(form.dataset.index);
+      if (query !== input.value.trim()) return;
+      records = find(index, query).slice(0, page ? 100 : 8);
+      const target = page || list;
+      target.replaceChildren();
+      if (page) {
+        const noscript = document.querySelector('.us-search-noscript');
+        const all = document.querySelector('.us-site-index');
+        if (noscript) noscript.hidden = true;
+        if (all) all.hidden = !!query;
+      }
+      if (!query) {
+        close();
+        return;
+      }
+      if (!records.length) {
+        const nothing = document.createElement(page ? 'p' : 'li');
+        nothing.className = 'us-search-nothing';
+        nothing.textContent = (form.dataset.nothing || 'Nothing found for') + ' “' + query + '”';
+        target.append(nothing);
+      } else {
+        const holder = page ? document.createElement('ul') : target;
+        if (page) {
+          holder.className = 'us-search-results us-search-results-page';
+          target.append(holder);
+        }
+        records.forEach((record, i) => holder.append(item(record, query, listId + '-' + i)));
+      }
+      if (list) {
+        list.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+        active = -1;
+      }
+    };
+    input.addEventListener('focus', () => load(form.dataset.index), { once: true });
+    input.addEventListener('input', show);
+    input.addEventListener('keydown', (event) => {
+      if (!list || list.hidden) return;
+      const count = records.length;
+      if (event.key === 'ArrowDown' && count) {
+        mark((active + 1) % count);
+        event.preventDefault();
+      } else if (event.key === 'ArrowUp' && count) {
+        mark((active - 1 + count) % count);
+        event.preventDefault();
+      } else if (event.key === 'Enter' && active >= 0) {
+        go(records[active].u);
+        event.preventDefault();
+      } else if (event.key === 'Escape') {
+        close();
+      }
+    });
+    form.addEventListener('focusout', (event) => {
+      if (!form.contains(event.relatedTarget)) close();
+    });
+    if (page) {
+      const query = new URLSearchParams(location.search).get('q');
+      if (query) {
+        input.value = query;
+        show();
+      }
     }
   }
 }
+
+start();
+document.addEventListener('us:page', start);
 
 document.addEventListener('keydown', (event) => {
   if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;

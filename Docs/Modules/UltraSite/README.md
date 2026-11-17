@@ -125,6 +125,55 @@ Both leave alone:
   nor in `.html`;
 - a visitor who asked to save data.
 
+### The swap navigation
+
+`SiteConfig::navigation` says how a visitor moves between pages:
+
+- **`Navigation::Load`** (the default): an ordinary page load each time,
+  made instant by the prefetch and prerender above.
+- **`Navigation::Swap`**: the same where the browser prerenders
+  (Chromium, Edge), since a prerendered page appears at once. In the
+  others (Firefox, Safari) a click on a page of the site does not load it.
+  `swap.js` fetches it - usually already fetched while the pointer rested
+  on the link - and puts its `<body>` and its own `<head>` lines in place
+  of this page's.
+
+What a swap keeps as a page load would:
+
+- **The address, Back and Forward.** Each swap is a history entry. Back
+  and Forward swap too, and every page comes back scrolled where it was
+  left. A link within the page (`#anchor`) is left to the browser.
+- **The head.** The title, description, canonical address, language
+  links, social card and structured data are the new page's. The
+  stylesheet, the policy and the scripts stay.
+- **The scripts.** The ones already running keep running and start again
+  on the new page (the document's `us:page` event). A module the new
+  page needs and this one did not is loaded then.
+- **Focus and screen readers.** The new `<h1>` gets the focus, and the
+  new title is announced in an `aria-live` region.
+- **The look.** The change is a view transition where the browser has
+  them and the visitor allows motion.
+
+It loads the page the ordinary way instead:
+
+- on a modified click (Ctrl, Shift, Alt, Cmd) or a middle click;
+- when the fetch fails, or the answer is not HTML or not a 200 (the
+  404 page is a page load);
+- when the new page has another stylesheet or another security policy,
+  or is not a swap page;
+- when this page or the new one loads a module not written to start
+  again: one without `data-us-swap`.
+
+On a swap site every page says so: `<html data-us-nav="swap">`, and each
+module script that starts again carries `data-us-swap`. The swap module
+is in every page and counts towards its script budget: about 2.5 KB
+compressed.
+
+Set it with `navigation = Navigation::Swap`; UltraPress with
+`"navigation": "swap"` in `site.json` or `ultrapress docs --navigation
+swap`; the UltraStore web store with the setting `web.navigation`
+`swap`.
+
 ---
 
 ## Using it
@@ -314,6 +363,29 @@ The rules for a module:
 - **What it may do.** Fetch nothing from another origin, never change the
   page's text, track nobody, and use no `eval` and no inline handler. The
   security policy enforces the last one.
+- **The swap navigation.** On a site with `Navigation::Swap` a module runs
+  once, but the pages change under it. A module written for that does its
+  work in a function it also runs on the document's `us:page` event. It
+  removes the listeners it added to `window` or `document` before adding
+  them again, and skips an element it already enhanced. The app then
+  passes `swapReady` (`AddScript(name, source, true)`). A page that loads
+  a module without it is loaded the ordinary way. The library's modules
+  are written so.
+
+```js
+// tabs, ready for the swap navigation.
+let page = null;
+function start() {
+  if (page) page.abort();
+  page = new AbortController();
+  for (const element of document.querySelectorAll('[data-us~="tabs"]:not([data-ready])')) {
+    element.dataset.ready = '1';
+  }
+  addEventListener('resize', () => {}, { signal: page.signal });
+}
+start();
+document.addEventListener('us:page', start);
+```
 
 ### Budgets
 

@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/core/WebStoreHtml.cpp
 // The web store as HTML + JavaScript (WebStoreHtml.h): the catalog's apps
 // as UltraSite routes, in every language of the catalog's texts.
+// Version: 0.1.1 - web.navigation "swap": the swap navigation; the install module starts again on us:page
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "WebStoreHtml.h"
@@ -120,19 +121,25 @@ const char* kStoreCss = R"CSS(
 // it was - no store took the link - the store's download next to it says so.
 const char* kInstallJs = R"JS(// UltraStore install module: a link to ultrastore:// that no store answers
 // leaves the page in focus; the download beside it is then pointed out.
-// Without it the download link simply stands there.
-for (const link of document.querySelectorAll('a[data-us~="install"]')) {
-  link.addEventListener('click', () => {
-    const note = link.closest('.store-actions') && link.closest('.store-actions').nextElementSibling;
-    let left = false;
-    const away = () => { left = true; };
-    window.addEventListener('blur', away, { once: true });
-    document.addEventListener('visibilitychange', away, { once: true });
-    setTimeout(() => {
-      if (!left && note && note.classList.contains('store-get')) note.setAttribute('data-missing', '');
-    }, 1500);
-  });
+// Without it the download link simply stands there. It starts again on
+// every page the swap navigation brings in (the us:page event).
+function start() {
+  for (const link of document.querySelectorAll('a[data-us~="install"]')) {
+    link.addEventListener('click', () => {
+      const note = link.closest('.store-actions') && link.closest('.store-actions').nextElementSibling;
+      let left = false;
+      const away = () => { left = true; };
+      window.addEventListener('blur', away, { once: true });
+      document.addEventListener('visibilitychange', away, { once: true });
+      setTimeout(() => {
+        if (!left && note && note.classList.contains('store-get')) note.setAttribute('data-missing', '');
+      }, 1500);
+    });
+  }
 }
+
+start();
+document.addEventListener('us:page', start);
 )JS";
 
 // The store's words in one language: its own catalogue over the standard
@@ -365,6 +372,7 @@ Result<WebSiteReport> WriteHtmlWebSite(const Catalog& catalog, const std::string
     config.extraCss = kStoreCss;
     config.generator = "UltraStore";
     config.search = true;
+    if (options.navigation == "swap") config.navigation = UltraSite::Navigation::Swap;
     // The catalog's own files are never prerendered.
     config.noPrefetch = {"/media/", "/packages/", "/restricted/", "/catalog.json"};
     // Each language's frame: the navbar into its own pages, its words.
@@ -401,7 +409,7 @@ Result<WebSiteReport> WriteHtmlWebSite(const Catalog& catalog, const std::string
         }
     }
     UltraSite::Builder builder(config);
-    builder.AddScript("install", kInstallJs);
+    builder.AddScript("install", kInstallJs, true);
     auto url = [&builder](const std::string& path) { return builder.Url(path); };
 
     const std::vector<const Component*> listed = ListedApps(catalog);

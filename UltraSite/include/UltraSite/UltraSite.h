@@ -21,6 +21,8 @@
 // Headless: links the core library (JSON, HTMLReader, UltraCrypt) and zlib,
 // opens no window.
 //
+// Version: 0.5.0 - SiteConfig::navigation: the swap navigation (resources/swap.js); AddScript's swapReady;
+//                  the library's modules start again on the us:page event
 // Version: 0.4.0 - BuildOptions::precompress (.gz, and .br with Brotli), GzipBytes, BrotliBytes; the preview
 //                  server (UltraSiteServer.h); Picture (responsive variants); versioned docs
 // Version: 0.3.0 - a site under a path (its url's): Url(), BasePath(); every address the builder writes
@@ -38,6 +40,7 @@
 #include <cstddef>
 #include <functional>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -126,6 +129,22 @@ struct Heading {
     std::string id;
 };
 
+// How a visitor moves from page to page.
+enum class Navigation {
+    // An ordinary page load, made instant by prefetching the page behind a
+    // link and, in Chromium, prerendering it (the speculation rules).
+    Load,
+    // As Load in a browser that prerenders. In the others (Firefox, Safari)
+    // a click fetches the page - usually already fetched while the pointer
+    // rested on the link - and puts its body and head lines in place of
+    // this page's: the scripts keep running, every module starts again on
+    // the us:page event, the new <h1> gets the focus, the title is
+    // announced, and the address, Back, Forward and scroll positions behave
+    // as with page loads. A page that loads a module not written to start
+    // again (AddScript without swapReady) is loaded the ordinary way.
+    Swap,
+};
+
 struct SiteConfig {
     // "https://example.org", no trailing slash: canonical links, sitemap.
     // A site under a path ("https://store.example/v1") is served from that
@@ -162,6 +181,7 @@ struct SiteConfig {
     // language's; the site's own language, and any other without one,
     // takes navbar, footer, footerText and labels above.
     std::map<std::string, Frame> frames;
+    Navigation navigation = Navigation::Load;
 };
 
 struct Route {
@@ -327,7 +347,13 @@ public:
     // element with data-us="<behaviour>" (several separated by spaces). It
     // finds those elements itself (document.querySelectorAll('[data-us~=
     // "<behaviour>"]')) and enhances them. Replaces one of the same name.
-    void AddScript(const std::string& behaviour, std::string source);
+    // swapReady: the module starts again on every page the swap navigation
+    // brings in - it does its work in a function it also runs on the
+    // document's us:page event, and removes the listeners it added to
+    // window or document before adding them again (an AbortController).
+    // The library's own modules are. On a site with Navigation::Swap a page
+    // that loads a module that is not is loaded the ordinary way.
+    void AddScript(const std::string& behaviour, std::string source, bool swapReady = false);
 
     void AddRoute(Route route);
 
@@ -370,6 +396,7 @@ private:
     std::vector<Route> routes;
     std::map<std::string, LayoutFunction> layouts;
     std::map<std::string, std::string> scripts;                     // behaviour -> source
+    std::set<std::string> swapReady;                                // the app's behaviours that start again on us:page
     std::map<std::string, std::vector<NavItem>> sidebars;
     struct PendingAsset { std::string sourcePath, content, url, file; };
     std::vector<PendingAsset> assets;

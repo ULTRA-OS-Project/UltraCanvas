@@ -4,6 +4,7 @@
 // by reading every page back through the HTMLReader, the budgets measured,
 // and the folder written - with what an earlier build left and this one did
 // not removed.
+// Version: 0.1.1 - the swap navigation: data-us-nav, data-us-swap, the swap module
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
@@ -309,7 +310,9 @@ void ReadPage(const std::string& html, Builder::PageFacts& facts) {
 struct Builder::Prepared {
     std::string css, cssFile, cssUrl;
     std::string core, coreFile, coreUrl;
+    std::string swap, swapFile, swapUrl;   // the swap navigation's module: Navigation::Swap only
     std::map<std::string, std::pair<std::string, std::string>> behaviours;   // name -> file, content
+    std::set<std::string> swapReady;                                         // behaviours that start again on us:page
     std::string logoUrl;
     std::string themeScript;
     std::string speculationRules;
@@ -459,7 +462,11 @@ void Builder::AddFile(const std::string& relativePath, std::string content) {
 
 void Builder::AddLayout(const std::string& name, LayoutFunction layout) { layouts[name] = std::move(layout); }
 
-void Builder::AddScript(const std::string& behaviour, std::string source) { scripts[behaviour] = std::move(source); }
+void Builder::AddScript(const std::string& behaviour, std::string source, bool ready) {
+    scripts[behaviour] = std::move(source);
+    if (ready) swapReady.insert(behaviour);
+    else swapReady.erase(behaviour);
+}
 
 void Builder::AddRoute(Route route) { routes.push_back(std::move(route)); }
 
@@ -475,6 +482,11 @@ void Builder::Prepare(Prepared& prepared, std::vector<std::string>& errors) {
     prepared.core = StripScript(Resource(Resources::kCoreJs, Resources::kCoreJsSize));
     prepared.coreFile = "assets/js/core." + ContentHash(prepared.core) + ".js";
     prepared.coreUrl = Url("/" + prepared.coreFile);
+    if (config.navigation == Navigation::Swap) {
+        prepared.swap = StripScript(Resource(Resources::kSwapJs, Resources::kSwapJsSize));
+        prepared.swapFile = "assets/js/swap." + ContentHash(prepared.swap) + ".js";
+        prepared.swapUrl = Url("/" + prepared.swapFile);
+    }
 
     // The library's behaviours, then the app's (which may replace one).
     std::map<std::string, std::string> all = {
@@ -484,9 +496,13 @@ void Builder::Prepare(Prepared& prepared, std::vector<std::string>& errors) {
         {"copy", Resource(Resources::kCopyJs, Resources::kCopyJsSize)},
     };
     for (const auto& [name, source] : scripts) all[name] = source;
+    // The library's own modules start again on us:page; an app's when it says so.
     for (const auto& [name, source] : all) {
-        if (!IsBehaviourName(name) || name == "core") {
-            errors.push_back("behaviour name '" + name + "' is not [a-z0-9-], or is 'core'");
+        if (!scripts.count(name) || swapReady.count(name)) prepared.swapReady.insert(name);
+    }
+    for (const auto& [name, source] : all) {
+        if (!IsBehaviourName(name) || name == "core" || name == "swap") {
+            errors.push_back("behaviour name '" + name + "' is not [a-z0-9-], or is 'core' or 'swap'");
             continue;
         }
         const std::string stripped = StripScript(source);
@@ -602,7 +618,12 @@ std::string Builder::Head(const Route& route, const Prepared& prepared, const st
     if (documentTitle.empty()) {
         documentTitle = route.title.empty() || route.title == config.name ? config.name : route.title + " - " + config.name;
     }
-    std::string out = "<!doctype html>\n<html lang=\"" + Attr(language) + "\">\n<head>\n<meta charset=\"utf-8\">\n";
+    const bool swap = config.navigation == Navigation::Swap;
+    // On a swap site every module that starts again on us:page says so
+    // (data-us-swap): the swap module loads any other page the ordinary way.
+    const std::string ready = swap ? " data-us-swap" : "";
+    std::string out = "<!doctype html>\n<html lang=\"" + Attr(language) + "\"" + (swap ? " data-us-nav=\"swap\"" : "") +
+                      ">\n<head>\n<meta charset=\"utf-8\">\n";
     out += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
     if (!prepared.csp.empty()) out += "<meta http-equiv=\"Content-Security-Policy\" content=\"" + Attr(prepared.csp) + "\">\n";
     out += "<title>" + EscapeText(documentTitle) + "</title>\n";
@@ -634,10 +655,13 @@ std::string Builder::Head(const Route& route, const Prepared& prepared, const st
     }
     if (!prepared.themeScript.empty()) out += "<script>" + prepared.themeScript + "</script>\n";
     out += "<link rel=\"stylesheet\" href=\"" + prepared.cssUrl + "\">\n";
-    out += "<script type=\"module\" src=\"" + prepared.coreUrl + "\"></script>\n";
+    out += "<script type=\"module\" src=\"" + prepared.coreUrl + "\"" + ready + "></script>\n";
+    if (swap) out += "<script type=\"module\" src=\"" + prepared.swapUrl + "\"" + ready + "></script>\n";
     for (const std::string& name : behaviours) {
         auto found = prepared.behaviours.find(name);
-        if (found != prepared.behaviours.end()) out += "<script type=\"module\" src=\"" + Url("/" + found->second.first) + "\"></script>\n";
+        if (found == prepared.behaviours.end()) continue;
+        out += "<script type=\"module\" src=\"" + Url("/" + found->second.first) + "\"" +
+               (prepared.swapReady.count(name) ? ready : std::string()) + "></script>\n";
     }
     out += "<script type=\"speculationrules\">" + prepared.speculationRules + "</script>\n";
     out += route.extraHead;
@@ -995,6 +1019,7 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
 
     output[prepared.cssFile] = prepared.css;
     output[prepared.coreFile] = prepared.core;
+    if (!prepared.swapFile.empty()) output[prepared.swapFile] = prepared.swap;
     std::set<std::string> usedBehaviours;
     for (const auto& [file, names] : behavioursOfPage) usedBehaviours.insert(names.begin(), names.end());
     for (const auto& [name, script] : prepared.behaviours) {
@@ -1127,7 +1152,9 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
     };
     const Budgets& budgets = config.budgets;
     measure(prepared.cssFile, prepared.css, budgets.stylesheet);
-    const size_t coreSize = measure(prepared.coreFile, prepared.core, budgets.coreScript);
+    size_t coreSize = measure(prepared.coreFile, prepared.core, budgets.coreScript);
+    // The swap module is in every page of a swap site, as the core is.
+    if (!prepared.swapFile.empty()) coreSize += measure(prepared.swapFile, prepared.swap, budgets.behaviourScript);
     std::map<std::string, size_t> behaviourSize;
     for (const auto& [name, script] : prepared.behaviours) {
         if (usedBehaviours.count(name)) behaviourSize[name] = measure(script.first, script.second, budgets.behaviourScript);

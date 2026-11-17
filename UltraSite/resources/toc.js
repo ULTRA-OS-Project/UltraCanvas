@@ -1,8 +1,14 @@
 // UltraSite toc module: the doc layout's table of contents marks the
 // heading being read - the last one scrolled past the top of the window.
-// Without it the table of contents is plain links.
-const toc = document.querySelector('[data-us~="toc"]');
-if (toc) {
+// Without it the table of contents is plain links. It starts again on
+// every page the swap navigation brings in (the us:page event).
+let page = null;
+
+function start() {
+  if (page) page.abort();
+  page = new AbortController();
+  const toc = document.querySelector('[data-us~="toc"]');
+  if (!toc) return;
   const links = new Map();
   for (const link of toc.querySelectorAll('a[href^="#"]')) {
     links.set(decodeURIComponent(link.hash.slice(1)), link);
@@ -27,7 +33,10 @@ if (toc) {
     queued = true;
     requestAnimationFrame(mark);
   };
-  addEventListener('scroll', queue, { passive: true });
-  addEventListener('resize', queue, { passive: true });
+  addEventListener('scroll', queue, { passive: true, signal: page.signal });
+  addEventListener('resize', queue, { passive: true, signal: page.signal });
   mark();
 }
+
+start();
+document.addEventListener('us:page', start);

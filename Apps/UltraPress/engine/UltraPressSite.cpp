@@ -1,6 +1,7 @@
 // Apps/UltraPress/engine/UltraPressSite.cpp
 // The HTML + JavaScript output: a site's pages, menus and theme handed to
 // UltraSite, and the choice between the two outputs.
+// Version: 0.3.1 - the swap navigation from site.json and DocsSiteOptions
 // Version: 0.3.0 - pictures through UltraSite::Picture, precompress, versioned_docs, the blog
 // Version: 0.2.0 - the site's docs/ (and its translations) through AddDocs, with search; PublishDocsFolder
 // Version: 0.1.0
@@ -321,6 +322,7 @@ PublishResult PublishHtml(const Site& site, const std::string& siteDirectory,
     config.cspAdditions = {{"frame-src", "https:"}, {"media-src", "https:"}};
     // A site with documentation can be searched.
     config.search = fs::is_directory(UltraCanvas::PathFromUtf8(siteDirectory) / kDocsFolder, ec);
+    if (site.navigation == "swap") config.navigation = UltraSite::Navigation::Swap;
 
     HtmlOptions html = options.html;
     html.styled = true;
@@ -445,6 +447,7 @@ PublishResult PublishDocsFolder(const DocsSiteOptions& options, const std::strin
     config.language = options.language;
     config.search = true;
     config.generator = "UltraPress";
+    if (options.navigation == "swap") config.navigation = UltraSite::Navigation::Swap;
     // UltraSite's own light look, and a dark one.
     config.tokens.dark = {{"bg", "#101218"}, {"fg", "#e6e7eb"}, {"muted", "#9aa0ab"}, {"accent", "#7aa7ff"},
                           {"accent-fg", "#0b1020"}, {"surface", "#1a1d26"}, {"border", "#2b2f3a"}};

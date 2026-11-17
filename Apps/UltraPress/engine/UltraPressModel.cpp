@@ -1,6 +1,7 @@
 // Apps/UltraPress/engine/UltraPressModel.cpp
 // The content model: JSON in and out, the site folder, addresses, the page list.
 // Version: 0.9.1 - a page's "tags"
+// Version: 0.9.1 - "navigation" in site.json
 // Version: 0.9.0 - "output" in site.json, "dark" in theme.json
 // Version: 0.8.3 - IsSiteAddress
 // Version: 0.8.2 - SitePathText
@@ -334,6 +335,7 @@ JSONValue SiteToJson(const Site& site) {
     json.Set("languages", languages);
     json.Set("owner", site.owner);
     json.Set("output", site.output);
+    if (site.navigation == "swap") json.Set("navigation", site.navigation);
     if (!site.hosting.account.empty()) {
         json.Set("hosting", JSONValue::MakeObject().Set("account", site.hosting.account).Set("path", site.hosting.path));
     }
@@ -355,6 +357,7 @@ void SiteFromJson(const JSONValue& json, Site& site) {
     // A site from before the two outputs, or with a value this version does
     // not know, publishes HTML + JavaScript.
     site.output = json["output"].GetString(kOutputHtml) == kOutputWasm ? kOutputWasm : kOutputHtml;
+    site.navigation = json["navigation"].GetString("load") == "swap" ? "swap" : "load";
     if (json.Contains("hosting")) {
         site.hosting.account = json["hosting"]["account"].GetString();
         site.hosting.path = json["hosting"]["path"].GetString("/");

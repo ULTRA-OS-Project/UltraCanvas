@@ -4,7 +4,8 @@
 **Status:** Phases A to D built (2026-11-17): `UltraSite/` 0.4,
 UltraPress's HTML + JavaScript output, its documentation, `ultrapress docs`
 and `ultrapress serve`, and the UltraStore web store as HTML + JavaScript
-(§13 to §16). The `form` module and the `swap` navigation wait (§16).
+(§13 to §16), and the `swap` navigation (§17). The `form` module waits
+(§16).
 **Scope:** `UltraSite`, one shared headless library that writes the **HTML +
 JavaScript** output of UltraPress (`Apps/UltraPress`) and of the UltraStore
 web store (`Apps/UltraStoreAdmin`). It writes it the way
@@ -841,8 +842,52 @@ What waits, and why:
   is installed here, which prerenders through the speculation rules
   anyway, so the condition could not be measured. Without that number the
   added complexity (re-running behaviours, restoring focus and scroll) is
-  not justified.
+  not justified. (Built afterwards as an option a site chooses: §17.)
 - **Responsive pictures in Markdown docs.** `UCRichDocument::ToHTML`
   writes the `<img>` itself. A picture hook like `codeBlock` would bring
   them in.
+
+---
+
+## 17. The swap navigation
+
+Built as an option rather than on the measurement §4.2 asked for: a site
+chooses it (`SiteConfig::navigation`, UltraPress's `"navigation"`, the
+store's `web.navigation`), and the default stays the page load. The
+reference is the README's *The swap navigation*.
+
+- **Where it runs.** Only in a browser without speculation rules. In
+  Chromium a prerendered page is shown at once, and a swap would be
+  slower.
+- **Its own module.** `swap.js`, about 2.5 KB compressed, is in every
+  page of a swap site and in no page of any other. `core.js` stays at
+  0.9 KB.
+- **What it costs the modules.** Each module does its work in a
+  `start()` it runs at load and on the document's `us:page` event, and
+  removes its window and document listeners through an `AbortController`.
+  The library's toc, tabs, copy and search modules, the core's theme
+  toggle and the store's install module are written so. An app's own
+  module is marked `swapReady` when it is. A page that loads one that is
+  not is loaded the ordinary way, so a module that was never adapted
+  still works.
+- **The checks it keeps.** The site still works with JavaScript off:
+  every link is an ordinary link, which the swap intercepts. A failed
+  fetch, a 404, another stylesheet or another policy falls back to a
+  page load.
+- **Tested.** On this repository's `Docs/` (418 pages), in Chromium with
+  speculation rules switched off, as Firefox and Safari see the site:
+  - a click swaps without a document load;
+  - title, canonical link, focus on the `<h1>` and the announcement are
+    right;
+  - the toc module is loaded for the new page and follows the scroll,
+    every code block gets one copy button, and the theme toggle and
+    search work after a swap, Enter on a result swapping too;
+  - Back and Forward swap, with the scroll restored;
+  - an anchor only scrolls, a Ctrl-click is the browser's, a missing page
+    is a page load;
+  - there are no policy violations or script errors;
+  - on a phone with reduced motion it swaps too;
+  - plain Chromium loads pages as before.
+- **Still to measure.** Firefox and Safari themselves, which this
+  environment does not have.
 
