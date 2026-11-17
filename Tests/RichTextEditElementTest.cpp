@@ -13,10 +13,12 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasFontCoverage.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasAccessibilityBridge.h"
+#include "DisplayRequired.h"
 
 #include <algorithm>
 #include <cmath>
@@ -43,6 +45,11 @@ static int failCount = 0;
 
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
         return 0;                                                             \
     } while (0)
@@ -461,6 +468,23 @@ int main() {
             }
         }
         TEST("Clicking inside the table puts the caret in a cell", clickReachedCell);
+
+        // A click in the margin left of the table, level with it, goes into
+        // the nearest cell - never onto the table outside its cells, where
+        // the caret would be drawn the whole table high.
+        bool leftClickReachedTable = false;
+        bool leftClickOutsideCells = false;
+        for (int y = 20; y <= 200; y += 4) {
+            editor.SetCaret(editor.DocumentStart());
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 1, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 1, static_cast<float>(y)));
+            window->UpdateAndRender();
+            if (editor.GetCaret().blockIndex != tableBlock) continue;
+            leftClickReachedTable = true;
+            if (!editor.GetCaret().InCell()) leftClickOutsideCells = true;
+        }
+        TEST("A click left of the table reaches it", leftClickReachedTable);
+        TEST("... and puts the caret in a cell, not on the table", !leftClickOutsideCells);
 
         // Clicking the right-hand column reaches a different cell than the left.
         int leftColumn = -1, rightColumn = -1;
@@ -1445,6 +1469,94 @@ int main() {
             window->UpdateAndRender();
             window->UpdateAndRender();
             TEST("Pattern and picture fills draw", edit->GetFloatRectForTest(1).height > 0.0f);
+        }
+
+        // In a table cell: a drawing stands in the cell's line and takes its
+        // room (the row grows by it); a picture behind the text floats from
+        // the cell - turned or not - and takes none.
+        {
+            auto card = std::make_shared<UCRichDocument>(*document);
+            const std::vector<uint8_t> png(kDotPng.begin(), kDotPng.end());
+            const int media = card->AddMedia("back.png", "image/png", png);
+            RichTextRun label;
+            label.text = "3";
+            RichTextRun photo = drawing(1, 120.0f, 90.0f);
+            photo.lineBreakBefore = true;
+            RichTextRun back;
+            back.text = RichTextRun::kObjectReplacement;
+            back.mediaIndex = media;
+            back.imageWidthPt = 60.0f;
+            back.imageHeightPt = 300.0f;
+            back.imageWrap = RichTextRun::ImageWrap::BehindText;
+            back.imageFloatAlign = RichTextAlign::Default;
+            back.imageOffsetXPt = 100.0f;
+            back.imageOffsetYPt = -100.0f;
+            back.imageRotationDeg = 270.0f;
+            auto tableOf = [&](std::vector<RichTextRun> runs) {
+                RichDocBlock table;
+                table.type = RichBlockType::Table;
+                RichTableCell left, right;
+                left.runs = std::move(runs);
+                RichTextRun name;
+                name.text = "Name";
+                right.runs = {name};
+                RichTableRow row;
+                row.cells = {left, right};
+                table.tableRows = {row};
+                return table;
+            };
+            RichDocBlock after;
+            after.runs = {words};
+            auto afterTop = [&](std::vector<RichTextRun> runs) {
+                card->blocks = {tableOf(std::move(runs)), after};
+                edit->SetDocument(card);
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                return edit->GetCaretRectForTest().y;
+            };
+            const float plain = afterTop({label});
+            const float withPhoto = afterTop({label, photo});
+            TEST("A drawing in a table cell takes its room in the cell: the text after the table moves down by "
+                 + std::to_string(withPhoto - plain), withPhoto - plain > 85.0f && withPhoto - plain < 140.0f);
+            TEST("...standing in the line, not floating", edit->GetFloatRectForTest(0).width == 0.0f);
+            const float withBack = afterTop({back, label});
+            const Rect2Df backRect = edit->GetFloatRectForTest(0);
+            TEST("A picture behind the text floats from its cell and takes no room: " + std::to_string(withBack - plain),
+                 std::abs(withBack - plain) < 1.0f && backRect.width > 0.0f);
+            // 60 x 300 pt, its box as before the turn: 100 pt right of the
+            // cell's text, 100 pt above its line.
+            TEST("...its box where the offsets put it: " + std::to_string(backRect.x) + ", " + std::to_string(backRect.y)
+                 + " " + std::to_string(backRect.width) + " x " + std::to_string(backRect.height),
+                 backRect.height > backRect.width * 4.5f && backRect.x > backRect.width
+                 && backRect.y < plain - backRect.width);
+
+            // A picture in a line makes its line as tall as it is, where
+            // the document's lines keep their fonts' gap too.
+            RichTextRun tall;
+            tall.text = RichTextRun::kObjectReplacement;
+            tall.mediaIndex = media;
+            tall.imageWidthPt = 40.0f;
+            tall.imageHeightPt = 120.0f;
+            RichDocBlock pictured;
+            pictured.runs = {words, tall};
+            RichDocBlock wordsOnly;
+            wordsOnly.runs = {words};
+            auto secondTop = [&](const RichDocBlock& first) {
+                card->blocks = {first, after};
+                card->fontLineGap = true;
+                edit->SetDocument(card);
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                return edit->GetCaretRectForTest().y;
+            };
+            const float lineOnly = secondTop(wordsOnly);
+            const float lineWithPicture = secondTop(pictured);
+            TEST("A picture in a line makes the line as tall as it is: the next paragraph " + std::to_string(lineWithPicture - lineOnly)
+                 + " lower", lineWithPicture - lineOnly > 100.0f);
             edit->SetDocument(document);
             window->UpdateAndRender();
         }
@@ -1586,6 +1698,204 @@ int main() {
         TEST("A click outside it goes back to the body", !edit->IsEditingFrame());
         TEST("...and the frame holds the new words",
              UCRichDocument::ConcatenateRunText(edit->GetDocument()->frames[0].blocks[0].runs) == "Sender Company");
+    }
+
+    // ===== A SECTION'S OWN HEADER =====
+    // Pages of a section with a header of its own show that one, start their
+    // text below it, and a double-click edits it - not the document's.
+    std::cerr << "\n--- A section's own header ---" << std::endl;
+    {
+        auto paragraphOf = [](const std::string& text) {
+            RichDocBlock block;
+            RichTextRun run;
+            run.text = text;
+            block.runs = {run};
+            return block;
+        };
+        auto document = std::make_shared<UCRichDocument>();
+        document->page.widthPt = 595.0f;
+        document->page.heightPt = 842.0f;
+        document->page.marginTopPt = document->page.marginBottomPt = 72.0f;
+        document->page.marginLeftPt = document->page.marginRightPt = 72.0f;
+        document->page.headerTopPt = document->page.footerBottomPt = 36.0f;
+        document->pageFurniture.header = {paragraphOf("Document header")};
+        RichSectionFurniture own;
+        own.pages.header = {paragraphOf("Chapter header")};
+        document->sectionFurniture = {own};
+        RichDocBlock chapter = paragraphOf("Chapter words");
+        chapter.sectionStart = true;
+        chapter.section.newPage = true;
+        chapter.section.furniture = 0;
+        chapter.section.marginTopPt = 144.0f;
+        document->blocks = {paragraphOf("Cover words"), chapter};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        edit->SetPageView(true);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        TEST("The section starts a page of its own: " + std::to_string(edit->GetPageCount()) + " pages",
+             edit->GetPageCount() == 2);
+        editor.SetCaret({0, 0});
+        window->UpdateAndRender();
+        const float coverY = edit->GetCaretRectForTest().y + edit->GetScrollOffset();
+        editor.SetCaret({1, 0});
+        window->UpdateAndRender();
+        const float chapterY = edit->GetCaretRectForTest().y + edit->GetScrollOffset();
+        // A page lower, and a further inch for the section's own top margin
+        // (144 pt against the document's 72 pt: 96 px).
+        const float pageStep = 842.0f * 96.0f / 72.0f;
+        TEST("Its text starts below its own top margin: " + std::to_string(chapterY - coverY - pageStep)
+             + " px lower on its page than the cover's on its",
+             chapterY - coverY - pageStep > 80.0f && chapterY - coverY - pageStep < 140.0f);
+        TEST("Its header opens for editing", edit->EditHeader(1) && edit->IsEditingHeaderOrFooter());
+        window->UpdateAndRender();
+        edit->InsertText(" edited");
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        const UCRichDocument& saved = *edit->GetDocument();
+        TEST("The section's header took the edit",
+             !saved.sectionFurniture.empty() && !saved.sectionFurniture[0].pages.header.empty()
+             && UCRichDocument::ConcatenateRunText(saved.sectionFurniture[0].pages.header[0].runs) == "Chapter header edited");
+        TEST("...and the document's is as it was",
+             !saved.pageFurniture.header.empty()
+             && UCRichDocument::ConcatenateRunText(saved.pageFurniture.header[0].runs) == "Document header");
+        edit->SetPageView(false);
+        window->UpdateAndRender();
+    }
+
+    // ===== A PICTURE IN A FRAME, WHILE ITS WORDS ARE EDITED =====
+    // A letterhead's logo is a picture anchored in the sender frame. Nothing
+    // floats inside a frame: the picture is in the line when the frame is
+    // drawn, and has to stay there while the frame's words are edited (it
+    // vanished, and the words moved up into its place).
+    std::cerr << "\n--- A picture in an edited frame ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        document->media.push_back({"dot.png", "image/png", kDotPng});
+        RichTextFrame frame;
+        RichTextRun logo;
+        logo.text = RichTextRun::kObjectReplacement;
+        logo.mediaIndex = 0;
+        logo.imageWidthPt = 90.0f;
+        logo.imageHeightPt = 90.0f;
+        logo.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+        RichDocBlock picture;
+        picture.runs = {logo};
+        RichTextRun line;
+        line.text = "Sender";
+        RichDocBlock words;
+        words.runs = {line};
+        frame.blocks = {picture, words};
+        document->frames = {frame};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 150.0f;
+        anchor.imageHeightPt = 60.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::Square;
+        anchor.imageFloatAlign = RichTextAlign::Right;
+        RichTextRun body;
+        body.text = "Body text beside the frame.";
+        RichDocBlock paragraph;
+        paragraph.runs = {anchor, body};
+        document->blocks = {paragraph};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df on = edit->GetFloatElementRectForTest(0);
+        TEST("A frame is as tall as the picture in it and its words: " + std::to_string(on.height),
+             on.height > 110.0f);
+        TEST("The frame opens for editing", edit->EditFrame(0) && edit->IsEditingFrame());
+        window->UpdateAndRender();
+        editor.SetCaret(editor.DocumentEnd());
+        window->UpdateAndRender();
+        const Rect2Df caret = edit->GetCaretRectForTest();
+        TEST("The words stay below the picture while they are edited: caret at " + std::to_string(caret.y)
+             + ", frame from " + std::to_string(on.y),
+             caret.y > on.y + 100.0f && caret.y < on.y + on.height);
+        const float px = on.x + 40.0f, py = on.y + 50.0f;
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, px, py));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, px, py));
+        window->UpdateAndRender();
+        TEST("...and the picture is there to click on", edit->IsEditingFrame() && edit->HasSelectedImage());
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        TEST("The frame keeps its picture and its words", edit->GetDocument()->frames[0].blocks.size() == 2
+             && edit->GetDocument()->frames[0].blocks[0].runs.front().mediaIndex == 0);
+    }
+
+    // ===== A FRAME IN A FRAME, WHILE THE OUTER ONE IS EDITED =====
+    // A frame anchored in another has its words drawn before the paragraph
+    // that anchors it. They have to be there while the outer frame's words
+    // are edited too (its placeholder took no room, and they were hidden).
+    std::cerr << "\n--- A frame in an edited frame ---" << std::endl;
+    {
+        auto document = std::make_shared<UCRichDocument>();
+        auto paragraphOf = [](const std::string& text) {
+            RichTextRun run;
+            run.text = text;
+            RichDocBlock block;
+            block.runs = {run};
+            return block;
+        };
+        RichTextFrame inner;
+        inner.blocks = {paragraphOf("Inner one"), paragraphOf("Inner two")};
+        // ...and it is a drawing, one of whose shapes holds words of its own.
+        RichTextFrame memberWords;
+        memberWords.shapeText = true;
+        memberWords.blocks = {paragraphOf("Member words")};
+        RichShape member;
+        member.widthPt = 80.0f;
+        member.heightPt = 20.0f;
+        member.textFrame = 2;
+        inner.shapes = {member};
+        RichTextRun innerAnchor;
+        innerAnchor.text = RichTextRun::kObjectReplacement;
+        innerAnchor.frameIndex = 1;
+        innerAnchor.imageWidthPt = 80.0f;
+        innerAnchor.imageWrap = RichTextRun::ImageWrap::Square;
+        RichDocBlock sender = paragraphOf("Sender");
+        sender.runs.insert(sender.runs.begin(), innerAnchor);
+        RichTextFrame outer;
+        outer.blocks = {paragraphOf("Above"), sender};
+        document->frames = {outer, inner, memberWords};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 150.0f;
+        anchor.imageHeightPt = 60.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::Square;
+        anchor.imageFloatAlign = RichTextAlign::Right;
+        RichDocBlock paragraph = paragraphOf("Body text beside the frame.");
+        paragraph.runs.insert(paragraph.runs.begin(), anchor);
+        document->blocks = {paragraph};
+        edit->SetZoom(1.0f);
+        edit->SetDocument(document);
+        window->UpdateAndRender();
+        window->UpdateAndRender();
+        const Rect2Df on = edit->GetFloatElementRectForTest(0);
+        TEST("The outer frame opens for editing", edit->EditFrame(0) && edit->IsEditingFrame());
+        window->UpdateAndRender();
+        editor.SetCaret({0, 0});
+        window->UpdateAndRender();
+        const Rect2Df first = edit->GetCaretRectForTest();
+        editor.SetCaret(editor.DocumentEnd());
+        window->UpdateAndRender();
+        const Rect2Df last = edit->GetCaretRectForTest();
+        // "Above", the inner frame's two lines, its shape's line, then "Sender".
+        TEST("The inner frame's words and its shape's keep their room before the paragraph anchoring it: "
+             + std::to_string(last.y - first.y) + " down, a line is " + std::to_string(first.height),
+             first.height > 0.0f && last.y - first.y > 3.5f * first.height && last.y < on.y + on.height);
+        editor.InsertText(" Company");
+        edit->FinishHeaderFooterEditing();
+        window->UpdateAndRender();
+        const UCRichDocument& saved = *edit->GetDocument();
+        TEST("The outer frame keeps its anchor and the new words", saved.frames[0].blocks.size() == 2
+             && saved.frames[0].blocks[1].runs.front().frameIndex == 1
+             && UCRichDocument::ConcatenateRunText(saved.frames[0].blocks[1].runs).find("Sender Company")
+                != std::string::npos);
+        TEST("...and the inner frame its own", saved.frames[1].blocks.size() == 2);
     }
 
     // ===== FLOATS IN A HEADER, WHILE IT IS EDITED =====
@@ -2178,6 +2488,22 @@ int main() {
         TEST("A family that is not installed is reported",
              report.missingFamilies.size() == 1 && report.missingFamilies[0] == "No Such Family 12345");
         TEST("...and no script, the text has fonts", report.missingScripts.empty());
+
+        // A family an installed font stands in for by name is not missing: a
+        // letter written on Windows names Helvetica, which is Arial there.
+        if (!FontFamilySubstitute("Helvetica").empty()) {
+            auto aliased = std::make_shared<UCRichDocument>(*document);
+            aliased->blocks[0].runs[0].fontFamily = "helvetica";
+            fontEdit->SetDocument(aliased);
+            window->UpdateAndRender();
+            const UltraCanvasRichTextEdit::FontReport& both = fontEdit->GetFontReport();
+            TEST("A family with an installed stand-in is not reported",
+                 both.missingFamilies.size() == 1 && both.missingFamilies[0] == "No Such Family 12345");
+            fontEdit->SetDocument(document);
+            window->UpdateAndRender();
+        } else {
+            std::cerr << "SKIP: Helvetica is installed, or nothing stands in for it here" << std::endl;
+        }
         TEST("The notice is shown", fontEdit->IsFontNoticeVisible());
 
         int reported = 0;
@@ -2191,6 +2517,46 @@ int main() {
              !typed.missingScripts.empty() &&
              typed.missingScripts[0].downloadUrl.rfind("https://", 0) == 0);
         TEST("The change was announced", reported == 1);
+
+        // A family named only in a text frame (a letterhead's sender block)
+        // is reported too, and still is while the frame's words are edited.
+        {
+            auto framed = std::make_shared<UCRichDocument>();
+            RichTextRun inFrame;
+            inFrame.text = "Sender";
+            inFrame.fontFamily = "No Such Frame Family 12345";
+            RichDocBlock frameWords;
+            frameWords.runs = {inFrame};
+            RichTextFrame frame;
+            frame.blocks = {frameWords};
+            framed->frames = {frame};
+            RichTextRun anchor;
+            anchor.text = RichTextRun::kObjectReplacement;
+            anchor.frameIndex = 0;
+            anchor.imageWidthPt = 150.0f;
+            anchor.imageWrap = RichTextRun::ImageWrap::Square;
+            RichDocBlock body = block;
+            body.runs.insert(body.runs.begin(), anchor);
+            framed->blocks = {body};
+            fontEdit->SetDocument(framed);
+            window->UpdateAndRender();
+            auto bothMissing = [&]() {
+                const std::vector<std::string>& missing = fontEdit->GetFontReport().missingFamilies;
+                return missing.size() == 2
+                    && std::find(missing.begin(), missing.end(), "No Such Frame Family 12345") != missing.end()
+                    && std::find(missing.begin(), missing.end(), "No Such Family 12345") != missing.end();
+            };
+            TEST("A family named only in a text frame is reported with the body's", bothMissing());
+            window->UpdateAndRender();
+            TEST("The frame opens for editing", fontEdit->EditFrame(0));
+            fontEdit->InsertText("x");
+            window->UpdateAndRender();
+            TEST("...and the report is still the whole document's", bothMissing());
+            fontEdit->FinishHeaderFooterEditing();
+            fontEdit->SetDocument(document);
+            window->UpdateAndRender();
+            reported = 0;
+        }
 
         // A press on the notice is not a press in the text.
         window->UpdateAndRender();

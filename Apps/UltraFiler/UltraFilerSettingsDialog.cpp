@@ -116,6 +116,7 @@ namespace {
     constexpr const char* kPageTabStyle = "display/tab-style";
     constexpr const char* kPageNewTab = "display/new-tab";
     constexpr const char* kPageHomeFolder = "display/home";
+    constexpr const char* kPageCopyDialog = "display/copy-dialog";
     constexpr const char* kPageFiles = "display/files";
     constexpr const char* kPageIgnoredFiles = "display/ignored-files";
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
@@ -162,6 +163,10 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>  homeAllRadio;
         std::shared_ptr<UltraCanvasRadio>  homePredefinedRadio;
         UltraCanvasRadioGroup              homeContentGroup;
+        // Display > Copy dialog style
+        std::shared_ptr<UltraCanvasRadio>  copyDialogSummaryRadio;
+        std::shared_ptr<UltraCanvasRadio>  copyDialogCardsRadio;
+        UltraCanvasRadioGroup              copyDialogGroup;
 
         // Display > File names: one radio per choice (full name, 2, 3, 4
         // lines), paired with the line count it stands for (0 = full name).
@@ -1435,6 +1440,43 @@ namespace {
         return parts.page;
     }
 
+    // ===== DISPLAY > COPY DIALOG STYLE =====
+    std::shared_ptr<UltraCanvasContainer> BuildCopyDialogPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-copydialog", Tr("Copy dialog style"),
+                Tr("How the question looks that a move or a copy asks before "
+                   "it is carried out:"));
+
+        const bool cards =
+                d->settings->transferDialogStyle == FilerTransferDialogStyle::Cards;
+
+        d->copyDialogSummaryRadio = MakeChoice("ufl-set-copydlg-summary",
+                Tr("Summary - the file's icon and size, then both paths"), !cards);
+        d->copyDialogCardsRadio = MakeChoice("ufl-set-copydlg-cards",
+                Tr("Cards - the file and its destination folder side by side"), cards);
+        d->copyDialogGroup.AddRadioButton(d->copyDialogSummaryRadio);
+        d->copyDialogGroup.AddRadioButton(d->copyDialogCardsRadio);
+        d->copyDialogGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->transferDialogStyle = (selected == d->copyDialogCardsRadio)
+                    ? FilerTransferDialogStyle::Cards : FilerTransferDialogStyle::Summary;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->copyDialogSummaryRadio);
+        parts.body->AddChild(d->copyDialogCardsRadio);
+
+        AddNote(parts, "ufl-set-copydlg-note1",
+                Tr("Summary shows where the files come from and where they go "
+                   "as two paths, and offers Move and Copy as two buttons. "
+                   "Cards shows the file and the folder with an arrow between "
+                   "them, with one button for what was asked and the other "
+                   "choice set apart."));
+        AddNote(parts, "ufl-set-copydlg-note2",
+                Tr("Whether the question is asked at all is set under "
+                   "Handling > File operations."));
+        return parts.page;
+    }
+
     // ===== HANDLING > DRAG & DROP =====
     std::shared_ptr<UltraCanvasContainer> BuildDragDropPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-dragdrop", Tr("Drag & Drop"),
@@ -2600,6 +2642,7 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPagePathBar, Tr("Path bar"));
         AddTreeNode(d, kPageDisplay, kPageNewTab, Tr("New tab"));
         AddTreeNode(d, kPageDisplay, kPageHomeFolder, Tr("Home folder"));
+        AddTreeNode(d, kPageDisplay, kPageCopyDialog, Tr("Copy dialog style"));
         AddTreeNode(d, kPageDisplay, kPageFiles, Tr("Files"));
         AddTreeNode(d, kPageDisplay, kPageIgnoredFiles, Tr("Ignored files"));
         AddTreeNode(d, kPageDisplay, kPageFileNames, Tr("File names"));
@@ -2627,6 +2670,7 @@ namespace {
         AddPage(d, kPageTabStyle, BuildTabStylePage(d));
         AddPage(d, kPagePathBar, BuildPathBarPage(d));
         AddPage(d, kPageHomeFolder, BuildHomeFolderPage(d));
+        AddPage(d, kPageCopyDialog, BuildCopyDialogPage(d));
         AddPage(d, kPageFiles, BuildFilesPage(d));
         AddPage(d, kPageIgnoredFiles, BuildIgnoredFilesPage(d));
         AddPage(d, kPageFileNames, BuildFileNamesPage(d));

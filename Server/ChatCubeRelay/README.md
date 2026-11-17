@@ -290,7 +290,8 @@ the tested relay on the live server: it copies this directory to the server
 over SSH, runs `update.sh` there and then asks the public address
 (`vars.CHATCUBE_RELAY_URL`, default `https://relay-chatcube.ultraos.eu`)
 for the version this commit carries. Until the secrets below are set the
-deploy job only says so, and nothing is touched. Its GitHub environment,
+deploy job fails at its first step, naming the secrets it cannot see, and
+nothing is touched (in a fork, which has no server, it only says so). Its GitHub environment,
 `chatcube-relay`, can be given a required reviewer (*Settings >
 Environments*) so a deploy waits for a click.
 

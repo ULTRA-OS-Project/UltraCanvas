@@ -17,6 +17,8 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
+// Version: 1.8.0 - axis distributions (AddAxisDistribution, slot 550): histogram, density,
+//                  box, strip and violin along an axis, in a band outside the plot or inside it
 // Version: 1.7.0 - SetExtraGridAxes: further value axes ruled like the grid axis (stacked panes);
 //                  GetLimiters, GetHighlights, HitRegionAt; ChartLimiter::captionPlacement
 // Version: 1.6.1 - under the ternary projection the plot area drawn is the triangle
@@ -31,13 +33,14 @@
 //   a partial extent, span annotations
 // Version: 1.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.3.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
 #include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartAxis.h"
+#include "Plugins/Charts/Engine/UltraCanvasChartDistribution.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartHighlights.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartLabels.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartProjection.h"
@@ -259,6 +262,17 @@ public:
     void ClearHighlights();
     const std::vector<ChartHighlight>& GetHighlights() const { return highlights; }
 
+    // Axis distributions (Engine/UltraCanvasChartDistribution.h, slot 550):
+    // the marginal distribution of an axis's values drawn along it at the
+    // axis's own scale - a histogram, density curve, box summary, strip or
+    // violin. An Outside band on an edge axis reserves room beyond the
+    // plot's opposite edge in the layout negotiation (the joint plot); the
+    // other sides draw inside the plot, under the content. Cartesian
+    // projections only: under Polar and Ternary nothing is drawn.
+    size_t AddAxisDistribution(const AxisDistribution& distribution);
+    void ClearAxisDistributions();
+    const std::vector<AxisDistribution>& GetAxisDistributions() const { return distributions; }
+
     // Span annotations (ChartSpanAnnotation above) - drawn over the content.
     size_t AddSpanAnnotation(const ChartSpanAnnotation& span);
     void ClearSpanAnnotations();
@@ -370,6 +384,7 @@ protected:
     virtual void RenderEngineHighlights(IRenderContext* ctx, int zSlot);
     virtual void RenderEngineGrid(IRenderContext* ctx);
     virtual void RenderEngineLimiters(IRenderContext* ctx);
+    virtual void RenderEngineDistributions(IRenderContext* ctx);
     // Edge axes render under the content (slot 500); in-plot axes render in
     // the Over phase so the chart's own marks cannot paint over them.
     virtual void RenderEngineAxes(IRenderContext* ctx);
@@ -464,6 +479,15 @@ private:
     std::vector<PolarRimTick> PolarRimTicks(IRenderContext* ctx, size_t axisIndex) const;
     std::vector<ChartLimiter> limiters;
     std::vector<ChartHighlight> highlights;
+    std::vector<AxisDistribution> distributions;
+    // Layout of the Outside distribution bands (RunLayout): per plot edge, in
+    // ChartAxisEdge order, the depth they take between the plot and the edge
+    // axes, which move out by as much; per distribution, its offset from the
+    // plot edge when several stack on one edge.
+    double distributionBand[4] = {0.0, 0.0, 0.0, 0.0};
+    std::vector<double> distributionOffsets;
+    void LayoutDistributionBands();
+    void RenderDistribution(IRenderContext* ctx, const AxisDistribution& d, double outsideOffset);
     std::vector<ChartSpanAnnotation> spanAnnotations;
     void RenderEngineSpanAnnotations(IRenderContext* ctx);
     // A span's screen end points, false when an axis is missing.

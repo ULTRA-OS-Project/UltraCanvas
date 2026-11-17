@@ -126,8 +126,11 @@ EmojiRun LayOutWithBundledFonts(bool withScaling = true) {
 // The family fontconfig matches `family` to in a configuration of the
 // bundled fonts alone, with the generic aliases loaded into it or not - as
 // Windows' inline configuration for an empty fontconfig had none.
-std::string MatchInBundledFonts(const char* family, bool withAliases) {
+// `extraFontsDir`: a folder of fonts added to them (a system's Liberation fonts).
+std::string MatchInBundledFonts(const char* family, bool withAliases, const std::string& extraFontsDir = {}) {
     FcConfig* config = FcConfigCreate();
+    if (!extraFontsDir.empty())
+        FcConfigAppFontAddDir(config, reinterpret_cast<const FcChar8*>(extraFontsDir.c_str()));
     const std::string dir = GetBundledFontsDir();
     for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
         const std::string file = dir + kEmbeddedAllFonts[i];
@@ -214,6 +217,27 @@ int main() {
         std::cerr << "  monospace: \"" << without << "\" without the aliases, \"" << with << "\" with them"
                   << std::endl;
         TEST("monospace is Ubuntu Mono with the aliases", with == "Ubuntu Mono");
+
+        // A family with a stand-in of another name (GetFontFamilySubstitutes):
+        // Helvetica is Arial on Windows; here, where the Liberation fonts are
+        // installed, it is Liberation Sans - not the interface font.
+        TEST("the aliases name the families with stand-ins",
+             aliases.find("<family>Helvetica</family>") != std::string::npos &&
+             aliases.find("<family>Arial</family>") != std::string::npos);
+        const std::string liberation = "/usr/share/fonts/truetype/liberation";
+        if (std::filesystem::exists(liberation + "/LiberationSans-Regular.ttf")) {
+            const std::string plain = MatchInBundledFonts("Helvetica", false, liberation);
+            const std::string aliased = MatchInBundledFonts("Helvetica", true, liberation);
+            std::cerr << "  Helvetica: \"" << plain << "\" without the aliases, \"" << aliased
+                      << "\" with them" << std::endl;
+            TEST("Helvetica is Liberation Sans with the aliases", aliased == "Liberation Sans");
+            TEST("Times is Liberation Serif with the aliases",
+                 MatchInBundledFonts("Times", true, liberation) == "Liberation Serif");
+            TEST("a family with no stand-in still falls to the interface font",
+                 MatchInBundledFonts("No Such Family 12345", true, liberation) == "Ubuntu");
+        } else {
+            std::cerr << "  SKIP: no Liberation fonts to stand in for Helvetica" << std::endl;
+        }
     }
 
     // ----- drawn -----

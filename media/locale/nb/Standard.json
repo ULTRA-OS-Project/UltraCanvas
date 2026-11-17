@@ -158,6 +158,7 @@
   },
   "Copy files": "Kopier filer",
   "Copy finished": "Kopiering fullført",
+  "Copy instead": "Kopier i stedet",
   "Copy path": "Kopier bane",
   "Copy skipped items again": "Kopier overhoppede elementer på nytt",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Flytt ned",
   "Move files": "Flytt filer",
   "Move finished": "Flytting fullført",
+  "Move instead": "Flytt i stedet",
   "Move skipped items again": "Flytt overhoppede elementer på nytt",
   "Move to Recycle Bin": "Flytt til papirkurven",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "«Flytt til papirkurven» kan angres fra papirkurven. «Slett permanent» kan ikke angres.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Stoppet ved:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Lagrer disse innstillingene uten å prøve dem; de prøves neste gang kontoen brukes.",
   "Style": "Stil",
+  "Subfolder of \"{0}\"": "Undermappe av «{0}»",
   "Submit": "Send inn",
   "Success": "Vellykket",
   "System": "System",

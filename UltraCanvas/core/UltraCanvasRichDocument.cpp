@@ -981,7 +981,7 @@ std::vector<RichDocBlock> UCRichDocument::WithFramesInlineIn(const std::vector<R
 UCRichDocument UCRichDocument::WithFramesInline() const {
     UCRichDocument flat = *this;
     flat.blocks = WithFramesInlineIn(blocks);
-    for (RichPageFurniture* furniture : {&flat.pageFurniture, &flat.firstPageFurniture}) {
+    for (RichPageFurniture* furniture : flat.AllFurniture()) {
         furniture->header = WithFramesInlineIn(furniture->header);
         furniture->footer = WithFramesInlineIn(furniture->footer);
     }

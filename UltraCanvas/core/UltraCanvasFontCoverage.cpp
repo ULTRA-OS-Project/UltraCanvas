@@ -1,5 +1,6 @@
 // core/UltraCanvasFontCoverage.cpp
 // The characters of a text no font covers, by script. See UltraCanvasFontCoverage.h.
+// Version: 1.2.0 - FontFamilySubstitute, GetFontFamilySubstitutes
 // Version: 1.1.0 - IsFontFamilyAvailable from a list made once per font set (GetFontSetGeneration);
 //                  FirstInstalledFontFamily
 // Version: 1.0.0
@@ -206,6 +207,49 @@ namespace UltraCanvas {
             generation = current;
         }
         return families.count(lower(family)) > 0;
+    }
+
+    const std::vector<FontFamilySubstitutes>& GetFontFamilySubstitutes() {
+        // Windows' own table first (HKLM ... FontSubstitutes, the same on
+        // every Windows since NT 4), then fontconfig's 30-metric-aliases.conf.
+        static const std::vector<FontFamilySubstitutes> kSubstitutes = {
+            { "Helvetica",       { "Arial", "Liberation Sans", "Arimo", "Nimbus Sans", "Nimbus Sans L" } },
+            { "Helv",            { "Arial", "Liberation Sans", "Arimo", "Nimbus Sans" } },
+            { "Times",           { "Times New Roman", "Liberation Serif", "Tinos", "Nimbus Roman", "Nimbus Roman No9 L" } },
+            { "Tms Rmn",         { "Times New Roman", "Liberation Serif", "Tinos", "Nimbus Roman" } },
+            { "Courier",         { "Courier New", "Liberation Mono", "Cousine", "Nimbus Mono PS", "Nimbus Mono L" } },
+            { "Arial",           { "Liberation Sans", "Arimo", "Helvetica", "Nimbus Sans" } },
+            { "Times New Roman", { "Liberation Serif", "Tinos", "Times", "Nimbus Roman" } },
+            { "Courier New",     { "Liberation Mono", "Cousine", "Courier", "Nimbus Mono PS" } },
+            { "Calibri",         { "Carlito" } },
+            { "Cambria",         { "Caladea" } },
+            // The other way round: a document written in Writer names the
+            // Liberation fonts, which Windows has the originals of.
+            { "Liberation Sans",  { "Arial", "Arimo", "Helvetica" } },
+            { "Liberation Serif", { "Times New Roman", "Tinos", "Times" } },
+            { "Liberation Mono",  { "Courier New", "Cousine", "Courier" } },
+            { "Carlito",          { "Calibri" } },
+            { "Caladea",          { "Cambria" } },
+        };
+        return kSubstitutes;
+    }
+
+    std::string FontFamilySubstitute(const std::string& family) {
+        if (family.empty() || IsFontFamilyAvailable(family)) return std::string();
+        auto sameName = [&family](const char* name) {
+            const std::string other(name);
+            return other.size() == family.size()
+                && std::equal(other.begin(), other.end(), family.begin(), [](unsigned char a, unsigned char b) {
+                       return std::tolower(a) == std::tolower(b);
+                   });
+        };
+        for (const FontFamilySubstitutes& known : GetFontFamilySubstitutes()) {
+            if (!sameName(known.family)) continue;
+            for (const char* substitute : known.substitutes) {
+                if (IsFontFamilyAvailable(substitute)) return substitute;
+            }
+        }
+        return std::string();
     }
 
     std::string FirstInstalledFontFamily(const std::vector<std::string>& families) {

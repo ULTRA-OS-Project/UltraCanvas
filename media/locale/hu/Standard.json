@@ -158,6 +158,7 @@
   },
   "Copy files": "Fájlok másolása",
   "Copy finished": "Másolás befejezve",
+  "Copy instead": "Inkább másolás",
   "Copy path": "Elérési út másolása",
   "Copy skipped items again": "Kihagyott elemek ismételt másolása",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Mozgatás le",
   "Move files": "Fájlok áthelyezése",
   "Move finished": "Áthelyezés befejezve",
+  "Move instead": "Inkább áthelyezés",
   "Move skipped items again": "Kihagyott elemek ismételt áthelyezése",
   "Move to Recycle Bin": "Áthelyezés a Lomtárba",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "Az „Áthelyezés a Lomtárba” művelet a Lomtárból visszavonható. A „Végleges törlés” művelet nem vonható vissza.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Leállt itt:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Kipróbálás nélkül menti ezeket a beállításokat; a fiók következő használatakor próbálja ki őket.",
   "Style": "Stílus",
+  "Subfolder of \"{0}\"": "„{0}” almappája",
   "Submit": "Elküldés",
   "Success": "Sikeres",
   "System": "Rendszer",

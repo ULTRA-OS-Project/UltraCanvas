@@ -147,9 +147,11 @@ namespace {
             // but read or write nothing without its HEVC / AV1 codecs.
             f.canLoad     = VipsCanDecode(dotExt);
             f.canSave     = VipsCanEncode(dotExt);
-            // ICO and QOI are the framework's own libvips loaders and savers.
+            // ICO and QOI are the framework's own libvips loaders and savers;
+            // BMP is read by its own loader (and written by ImageMagick).
             f.provider    = std::string(c.ext) == "ico" ? "UltraCanvas (VipsIcoPlugin)"
                           : std::string(c.ext) == "qoi" ? "UltraCanvas (VipsQoiLoader)"
+                          : std::string(c.ext) == "bmp" ? "UltraCanvas (VipsBmpPlugin)"
                           : "libvips";
             // ImageMagick reads what no dedicated loader claims - not a HEIC
             // the HEIF loader claims and cannot decode: that loader is the one

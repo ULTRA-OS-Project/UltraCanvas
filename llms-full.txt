@@ -1083,7 +1083,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `CountCharactersWithoutFont` / `FindScriptsWithoutFont` - the characters of
   a text no font covers (drawn as hex boxes), by script, each with a free Noto
   font and its download page - plus `FontDownloadUrl` and
-  `IsFontFamilyAvailable`. `UltraCanvasRichTextEdit::GetFontReport` and its
+  `IsFontFamilyAvailable`, and `FontFamilySubstitute` /
+  `GetFontFamilySubstitutes` - the installed font that stands in for a family
+  by name (Helvetica in Arial on Windows; aliases in the generated
+  fontconfig set). `UltraCanvasRichTextEdit::GetFontReport` and its
   notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
@@ -11492,6 +11495,12 @@ the accent colour used elsewhere. The same switch exists one level down as
 `DialogConfig::showIcon`, and on a live dialog as
 `UltraCanvasModalDialog::SetIconVisible(bool)` / `IsIconVisible()`.
 
+The message has the same switch on a live dialog:
+`UltraCanvasModalDialog::SetMessageVisible(bool)` / `IsMessageVisible()`. A
+dialog whose own elements (`AddDialogElement`) present the message — beside a
+picture, as cards — hides the message area, which then takes no room, while
+`GetMessage()` and `GetDetails()` go on answering with the text.
+
 This is what [`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md) uses:
 its ring is the dialog's graphic, so it opens without a badge and the ring is
 horizontally centred.
@@ -18412,6 +18421,7 @@ FILE: Docs/UltraCanvas/UltraCanvasChartEngine.md
 - [Axes](#axes)
 - [Projections](#projections)
 - [Highlights (slot 200 wash / slot 700 overlay)](#highlights-slot-200-wash--slot-700-overlay)
+- [Axis distributions (slot 550)](#axis-distributions-slot-550)
 - [Phase-1 services](#phase-1-services)
 - [Bar series geometry](#bar-series-geometry)
   - [Bar connections](#bar-connections)
@@ -18431,7 +18441,7 @@ FILE: Docs/UltraCanvas/UltraCanvasChartEngine.md
 type derives from it, implements **phase 2** — its own drawing — plus small
 descriptor methods, and receives everything else. Phase 1 (background, grid
 derived from the axis ticks, limiter lines, edge axes with decluttered tick
-labels) and phase 3 (in-plot axes, the solved label plan, the legend, the
+labels, axis distributions) and phase 3 (in-plot axes, the solved label plan, the legend, the
 interaction overlay) are engine-supplied, and phase 2 is clipped to the plot
 area so a chart cannot paint over the edge axes or legend by accident. In-plot
 axes render **above** the content, so a dense chart cannot bury its own axis
@@ -18442,8 +18452,8 @@ Live demo: **Charts → Chart Engine** in the demo application
 implementing nothing but the content contract, with an option panel that
 switches every engine service live: the three projections, the axis scales
 (including `Log` and `SymLog`), number formatting, the grid source, tick
-density, bar arrangement and slot geometry, limiters, the label plan's
-declutter, legend swatches, hit-region tooltips, the animation driver, the
+density, bar arrangement and slot geometry, limiters, highlights, axis
+distributions, the label plan's declutter, legend swatches, hit-region tooltips, the animation driver, the
 dirty model and the named-property surface. The first production client is the
 parallel coordinate chart
 ([`UltraCanvasParallelCoordinateChart.md`](UltraCanvasParallelCoordinateChart.md));
@@ -18457,13 +18467,16 @@ shown next to the legacy charts on **Charts → Chart Engine Comparison**.
 - Bar, line and area series geometry, markers: `include/Plugins/Charts/Engine/UltraCanvasChartSeries.h`
 - Trend lines, moving averages, Heikin-Ashi: `include/Plugins/Charts/Engine/UltraCanvasChartAnalysis.h`
 - Projections: `include/Plugins/Charts/Engine/UltraCanvasChartProjection.h`
+- Highlights: `include/Plugins/Charts/Engine/UltraCanvasChartHighlights.h`
+- Axis distributions and their statistics: `include/Plugins/Charts/Engine/UltraCanvasChartDistribution.h`
 - Label policy/plan: `include/Plugins/Charts/Engine/UltraCanvasChartLabels.h`
 - Themes and palettes: `include/Plugins/Charts/Engine/UltraCanvasChartTheme.h`
-- Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`)
+- Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`);
+  the distribution bands drawn: `Tests/AxisDistributionRenderTest.cpp`
 - Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
 
-**Version:** 1.4.0
-**Last Modified:** 2026-10-20
+**Version:** 1.5.0
+**Last Modified:** 2026-11-16
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -18640,6 +18653,81 @@ target.smoothing = 0.0;
 target.xAxisIndex = 1;
 target.yAxisIndex = 0;
 target.label = "Target window";
+```
+
+## Axis distributions (slot 550)
+
+`AddAxisDistribution(AxisDistribution)` / `ClearAxisDistributions()` — the
+proposal's §8.1 layer (`Engine/UltraCanvasChartDistribution.h`): the
+distribution of an axis's values drawn along that axis, at its own scale.
+The joint plot's histograms above and to the right of a scatter field are
+one each on the x and the y axis; a parallel coordinate chart puts one on
+every in-plot axis.
+
+| `kind` | Draws |
+|---|---|
+| `Histogram` | Equal-width bins, bar length by count (`logCount`: by log(1 + count)); `binCount` 0 picks the Freedman–Diaconis width |
+| `Density` | A Gaussian kernel density curve; `bandwidth` 0 picks Silverman's rule |
+| `Box` | The quartile box, the median, Tukey whiskers at 1.5 IQR, the outliers past them |
+| `Strip` | One short tick per value: a rug |
+| `Violin` | The density mirrored about the band's centre line |
+
+`values` are what is summarised; left empty, the band takes what the axis
+observed while it was described (`ChartAxis::Samples()`). Give them
+explicitly when the axis saw something else: a bar chart's value axis
+observes the stack totals, not the bars. `filteredValues` is a subset —
+a brushed selection, one series — drawn over the whole in `filteredFill`
+on the same bins and the same scale, so it reads as a share of each bar.
+
+`side` decides where the band goes:
+
+| `side` | Edge axis | In-plot axis |
+|---|---|---|
+| `Outside` (default) | A band beyond the plot's **opposite** edge, `gap` + `thickness` deep: the x distribution above the plot, the y distribution to its right | As `Far` |
+| `Near` | Inside the plot, growing in from the axis's own edge | The side the ticks point to |
+| `Far` | Inside the plot, growing in from the opposite edge | The other side |
+| `Both` | `Near` and `Far` together | Mirrored about the rule |
+
+An `Outside` band takes part in the layout negotiation: the margin on its
+edge grows by its depth, and anything else on that edge — an axis, the
+legend — moves out by as much, so the band sits against the plot and
+nothing is drawn over it. Several bands on one edge stack outward in the
+order added. The inside sides reserve nothing and draw under the content
+(phase 1), clipped to the plot. Along an in-plot rule a band stops at 45%
+of the gap to the nearest other rule, whatever `thickness` asks for, so
+neighbouring axes' bands never meet, and it never leaves the plot: each
+side gets at most the room between the rule and the plot's edge. The first
+and last rules of a parallel coordinate chart stand on the plot's edges,
+with no room outward, so a one-sided band there (one with less than half
+its depth of room on its side) turns inward instead of spilling over the
+margin's tick labels or the legend; `Both` keeps only the side with room.
+
+Everything is binned and smoothed in the axis's normalised space, so the
+bars line up with the ticks under every scale (a `Log` axis gets bins of
+equal width on screen) and an inverted axis flips its band with it. The box
+summary is the exception: Tukey's fences are a rule about the data, so its
+statistics are taken on the values and then mapped. The statistics are
+UI-free and unit-tested: `ComputeHistogram`, `FreedmanDiaconisBinCount`,
+`ComputeKernelDensity`, `SilvermanBandwidth`, `ComputeBoxSummary`.
+Cartesian projections only: under Polar and Ternary nothing is drawn and
+nothing reserved.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasChartEngineElement> chart; std::vector<double> selectedX; std::vector<double> selectedY; -->
+
+```cpp
+// The joint plot: the x distribution above the plot, the y one to its
+// right, with the selected points over both.
+AxisDistribution top;
+top.axisIndex = 1;                       // the x axis
+top.kind = AxisDistributionKind::Histogram;
+top.filteredValues = selectedX;
+chart->AddAxisDistribution(top);
+
+AxisDistribution right;
+right.axisIndex = 0;                     // the y axis
+right.kind = AxisDistributionKind::Density;
+right.filteredValues = selectedY;
+chart->AddAxisDistribution(right);
 ```
 
 ## Phase-1 services
@@ -18849,9 +18937,10 @@ and unit-tested; the content maps the results through its axes.
     marks the chart actually draws**: a limiter-line key belongs with a
     chart that draws limiters, and a 50%/95% confidence-ellipse key belongs
     with a scatter/jitter chart that draws group-highlight ellipses — that
-    highlighting style is the engine's reserved `Highlight` layer (slot
-    200, group rectangles / ellipses / hull blobs / value bands), not yet
-    implemented; when it lands, its key pairs with this custom area.
+    highlighting style is the engine's `Highlight` layer
+    (`AddHighlight` with `ChartHighlightShape::ConfidenceEllipse`, see
+    [Highlights](#highlights-slot-200-wash--slot-700-overlay)), and its key
+    pairs with this custom area.
   - `ChartLegendEntry.swatch` picks the swatch: `Square | Circle | Ring |
     Line | DashedLine | Marker | Glyph | Gradient | Outline | Hatched |
     Image` (`imagePath` for `Image`) — line series get a line, scatter gets
@@ -36050,6 +36139,23 @@ question when the mode covers moves: it changes where the files live just the
 same. A Ctrl+V copy is deliberate and never asks. With dialogs disabled the drop
 is carried out rather than lost.
 
+The question comes in two styles, chosen with
+`SetTransferDialogStyle(FilerTransferDialogStyle)`; both say the same thing
+and offer the same answers:
+
+| Style | The question shows |
+|---|---|
+| `Summary` (the default) | the entry's icon beside the question with its type and size under it, then *From* and *Into* as two breadcrumb rows — the folders both paths share are quiet, the folder each ends in is bold, and a long path gives up its middle folders, never the name at its end. Move, Copy and Cancel are buttons. |
+| `Cards` | what is going and the folder it goes into as two cards with an arrow between them, and the folder they are in on one line under them (*From* and *Into* when the destination is not a subfolder of the source). The verb that was asked for and Cancel are buttons; the other verb — *Copy instead* — sits apart at the left of the bar. |
+
+```cpp
+filer->SetTransferDialogStyle(FilerTransferDialogStyle::Cards);
+```
+
+Several entries show the first one's icon, their count and their total, with
+the list of them under it as before. A folder's size fills in while the
+dialog is open, as its walk lands.
+
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
 [drag overlay](#drag-overlay) for that, because an element cannot paint outside
@@ -38300,6 +38406,7 @@ if (!IsFontFamilyAvailable("Georgia")) {
     std::string where = FontDownloadUrl("Georgia");   // a search on Google Fonts
 }
 std::string family = FirstInstalledFontFamily({"Helvetica Neue", "Arial", "sans-serif"});
+std::string standIn = FontFamilySubstitute("Helvetica");   // "Arial" on Windows, "" where Helvetica is installed
 ```
 
 | | |
@@ -38309,6 +38416,8 @@ std::string family = FirstInstalledFontFamily({"Helvetica Neue", "Arial", "sans-
 | `std::string FontDownloadUrl(family)` | A search for the family on Google Fonts. |
 | `bool IsFontFamilyAvailable(family)` | Whether the text engine knows the family, ignoring case. A family it doesn't know is drawn in a substitute. The installed families are listed once per font set and kept, so calling it for every run of a page is cheap. |
 | `std::string FirstInstalledFontFamily(families)` | The entry of a CSS `font-family` list to draw in, as a browser picks it: the first the text engine has, or an entry that needs no font of that name (`""` for the interface font, or `"sans-serif"`, `"serif"`, `"monospace"`). `""` when nothing in the list is installed. `{"Helvetica Neue", "Arial"}` is `"Arial"` on Windows. The HTML reader draws a page's text in it. |
+| `std::string FontFamilySubstitute(family)` | The installed family that stands in for one nobody has installed, by name: the first of its known substitutes the text engine has, ignoring case. `"Helvetica"` is `"Arial"` on Windows and `"Liberation Sans"` on most Linux systems. `""` when none is installed, and when the family is installed itself. `UltraCanvasRichTextEdit`'s font report leaves such a family out: it is drawn as every other program on that computer draws it. |
+| `const std::vector<FontFamilySubstitutes>& GetFontFamilySubstitutes()` | The families with stand-ins, each with its substitutes in the order they are tried: the names Windows maps itself (Helvetica and Helv onto Arial, Times and Tms Rmn onto Times New Roman, Courier onto Courier New) and the metric-compatible pairs fontconfig maps on Linux (Arial and Liberation Sans, Calibri and Carlito, Cambria and Caladea). Where the framework makes the fontconfig set itself (Windows, Android) it carries them as aliases, so the text is drawn by them. |
 
 The character counts ask afresh on each call. `IsFontFamilyAvailable` reads
 its list again whenever the font set changes (`GetFontSetGeneration`), so a
@@ -47865,6 +47974,12 @@ navigation->SetElementSize(CSSLayout::Dimension::Px(260), CSSLayout::Dimension::
 content->layoutItem.SetFlexGrow(2);
 content->InvalidateLayout();            // a direct layoutItem / size edit needs this
 ```
+
+A hidden element stays hidden until `SetVisible(true)`: a flex, grid or table
+setter on it (`SetFlexGap`, `SetFlexRow`, `SetGridGap`, `SetTable`...)
+changes the kind of box it comes back as, not whether it is shown - as in
+CSS, where `gap` never undoes `display: none`. So restyling a hidden toolbar
+(`SetAppearance` sets its gap) does not bring it back.
 
 `SetVisible`, `SetElementSize`, `SetPadding`, `SetMargin` and `AddChild`
 re-run the layout themselves. A direct edit of `layout`, `layoutItem`, `size`
@@ -64943,6 +65058,25 @@ link over its own border (framework changelog, "New text layouts wrap a long
 word between characters"). `WrapWord` keeps a long word whole (it overflows); `WrapChar`
 breaks anywhere; `WrapNone` keeps one line per paragraph and ellipsizes it.
 
+### A document's text
+
+```cpp
+auto layout = ctx->CreateDocumentTextLayout(text);
+layout->SetLineSpacing(1.0f);               // lines the font's own height apart, line gap included
+auto unkerned = TextAttributeFactory::CreateFontFeatures("kern=0");
+unkerned->SetRange(0, static_cast<int>(text.size()));
+layout->InsertAttribute(std::move(unkerned));
+```
+
+`CreateDocumentTextLayout` gives a layout whose glyphs stay where their font
+puts them, to a fraction of a pixel. An ordinary layout sets them on whole
+pixels, which suits an interface but makes a word a per cent or two narrower
+than the font says - enough for a paragraph to break its lines elsewhere than
+in the program that wrote the document. `UltraCanvasRichTextEdit` lays its
+text out this way. `TextAttributeFactory::CreateFontFeatures` sets OpenType
+features over a range, spelled as CSS `font-feature-settings` does
+(`"kern=0"`, `"liga=0"`).
+
 ## Centring text on its capitals
 
 ```cpp
@@ -66689,12 +66823,27 @@ says:
 | `TopAndBottom` (or a centred `Square`) | stops above it and resumes below |
 | `BehindText` / `InFrontOfText` | ignores it; it is drawn under / over the text |
 
+Text that stops above a picture goes on right below it, with no distance of
+its own, and a paragraph whose first line does not fit above the picture
+starts below it. Where nothing floats - in a text frame, in a table cell -
+such a picture stands on a line of its own, at the side or in the middle it
+is aligned to, with the paragraph's words below it; a paragraph of nothing
+else keeps its empty line under the picture.
+
 DOCX `<wp:anchor>` pictures (wrap, `wp:align` or `wp:posOffset`, vertical
 offset from the paragraph) and ODT frames anchored to a paragraph or character
 (`style:wrap`, `style:horizontal-pos`, `svg:x`/`svg:y`) read into this and
 write back out; HTML output floats them with CSS. A floating picture is
 selected, resized and described like any other. In a table cell it stays in
 the line.
+
+The offsets may be negative: a banner anchored in a page's first paragraph
+starts above it, at the sheet's top edge, and left of the text in the margin.
+A picture placed from the page (`floatHorizontalFrom` `Page`) keeps its size
+when it is wider than the column - a banner across the whole sheet - and in
+page view every floating object is cut at the edges of its paragraph's page,
+so one taller or wider than the sheet does not show on the next page or on
+the desk.
 
 **In a header or footer** a floating picture or frame floats too: on every
 page it is placed from that page (or from its header paragraph), drawn with
@@ -66712,6 +66861,39 @@ there and continues the paragraph below it. (Such a paragraph is laid out in
 two parts joined into one layout, so the caret, clicks and selection treat
 it as one.) A paragraph that would be left too narrow beside a picture
 starts below it instead.
+
+**In a table cell.** A picture, frame or drawing the text ignores (`BehindText`,
+`InFrontOfText`) floats from its cell: across from the left edge of the
+cell's text, down from the line it is anchored in, and over the rest of the
+table if it is bigger than the cell - a card's background picture, anchored in
+the first cell, lies under the whole card. It takes no room, and it is drawn
+but not picked up, moved or resized from the page. Any other frame or drawing
+in a cell stands in the cell's line, as wide and tall as it says (a frame at
+least as tall as its words; a drawing with room for its outline), with the
+line's descent under it - a photo drawn as the fill of a shape. (Square and
+top-and-bottom *pictures* in a cell stay in the line as before.)
+
+**Turned.** `RichTextRun::imageRotationDeg` turns a floating picture clockwise
+about its centre; its size and offsets are those of the box before the turn
+(Word's `a:xfrm rot`, ODF's `draw:transform`), so a 150 x 389 pt picture
+turned three quarters covers 389 x 150 pt round the same centre.
+
+```cpp
+RichTextRun banner;
+banner.text = RichTextRun::kObjectReplacement;
+banner.mediaIndex = document->AddMedia("banner.jpg", "image/jpeg", bytes);
+banner.imageWidthPt = 150.0f;                       // before the turn
+banner.imageHeightPt = 389.0f;
+banner.imageWrap = RichTextRun::ImageWrap::BehindText;
+banner.imageFloatAlign = RichTextAlign::Default;    // at imageOffsetXPt
+banner.imageOffsetXPt = 113.0f;
+banner.imageOffsetYPt = -118.0f;
+banner.imageRotationDeg = 270.0f;                   // lies on its side
+```
+
+A picture or drawn shape standing in a line makes that line as tall as it is
+and keeps the line's descent under it, with words beside it or alone in its
+paragraph.
 
 **Placed from the page.** By default a float counts across from the text
 column and down from its paragraph. `floatHorizontalFrom` and
@@ -67267,7 +67449,26 @@ sized for the page's column fills it. Blocks go onto pages in order, and a
 page break starts a new one. A paragraph that does not fit in what is left of
 a page continues on the next, broken between lines with widow and orphan
 control (at least two lines stay together at the foot of one page and the
-top of the next; a paragraph of three lines or fewer moves whole). A table
+top of the next; a paragraph of three lines or fewer moves whole). A section may have a header and footer of its own
+(`RichSectionSetup::furniture`, an index into
+`UCRichDocument::sectionFurniture`; -1 = the document's) and its own room
+above and below the text (`marginTopPt`, `marginBottomPt`, `headerTopPt`,
+`footerBottomPt`; < 0 = the document's page): each page is framed by the
+section it begins in, the section's first page with its first-page header
+where it has one, and a double-click on a header edits the one that page
+shows. ODF master pages and Word sections with their own header references
+read into this and write back out. A row
+is as tall as its text, or as the document says (`RichTableRow::heightPt`: at
+least that, or exactly that with `heightExact` - Word's `w:trHeight`, ODF's
+`style:min-row-height` / `style:row-height`, a .doc's `sprmTDyaRowHeight`), so
+a letter laid out in a table keeps its address block where it was put. A
+cell's lines are its paragraphs, empty ones included, and the room between two
+of them (the one's space after and the other's before) is an empty line of
+exactly that height (`RichTextRun::emptyLineHeightPt`); above the first and
+below the last it is part of the cell's padding. Lines are a font's own
+height apart, its line gap included, and letters are pair-kerned - unless the
+document says otherwise (`UCRichDocument::fontLineGap`, `letterKerning`:
+Word's files are unkerned, older Writer files have no line gap). A table
 continues between rows - never through a cell spanning rows - and its
 leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
 ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at
@@ -67444,6 +67645,208 @@ Honest limits of this first version — none of them silently misbehave:
 - [`UltraCanvasTextAreaExamples.md`](UltraCanvasTextAreaExamples.md) — the plain
   text and Markdown surface
 - [`UltraCanvasUIElements.md`](UltraCanvasUIElements.md) — the element catalogue
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasRidgelineChart.md
+==============================================================================
+
+# UltraCanvasRidgelineChart
+
+A ridgeline chart (also called a joyplot): one row per category, each with a
+filled curve on its own baseline that may rise over the rows above it. Read
+down the rows to compare where each row's values lie, how widely they
+spread, and whether they have one hump or two.
+
+```cpp
+#include "Plugins/Charts/Engine/Charts/UltraCanvasRidgelineChart.h"
+```
+
+- Design: [`UltraCanvasRidgelineChartProposal.md`](UltraCanvasRidgelineChartProposal.md)
+  (this is Phase 1 of three)
+
+## Contents
+
+- [Overview](#overview)
+- [Quick start](#quick-start)
+- [Rows from values: the density](#rows-from-values-the-density)
+- [Rows from curves](#rows-from-curves)
+- [Scale, order and statistics](#scale-order-and-statistics)
+- [Appearance](#appearance)
+- [Reading the chart](#reading-the-chart)
+- [Demo](#demo)
+- [Tests](#tests)
+
+## Overview
+
+| Part | What it is |
+|---|---|
+| `UltraCanvasRidgelineModel` | UI-free: the rows, the kernel density, the scaling, sorting and each row's statistics |
+| `UltraCanvasRidgelineChart` | The chart on the chart engine: the rows back to front, their names, a value column, the x axis, hover |
+
+A row gets its curve one of two ways: from **raw values**, whose spread the
+model turns into a smooth curve (a Gaussian kernel density), or from a
+**curve the program already has**, as (x, y) points. Rows are drawn from the
+top down, so each row's fill covers the outline of the row behind it, and
+the pointer finds the row in front.
+
+## Quick start
+
+```cpp
+UltraCanvasRidgelineModel model;
+model.title = "Response times";
+model.xTitle = "Milliseconds";
+model.rows.push_back({"Server A", {112, 98, 130, 141, 120, 105}, {}, Color(0, 0, 0, 0), ""});
+model.rows.push_back({"Server B", {210, 190, 260, 180, 230, 205}, {}, Color(0, 0, 0, 0), ""});
+model.Sort(RidgelineSort::ByMedian);
+
+auto chart = CreateRidgelineChart("times", 0, 0, 700, 500);
+chart->SetModel(model);
+chart->SetOverlap(2.0);                                   // peaks rise two rows
+chart->SetValueColumn("Median", RidgelineValue::Median, 0);
+```
+
+## Rows from values: the density
+
+The model smooths each row's values with a Gaussian kernel. The kernel's
+width, the **bandwidth**, decides how smooth the curve is:
+
+```cpp
+model.density.rule = RidgelineBandwidth::Scott;      // 1.06 sigma n^(-1/5), the default
+model.density.rule = RidgelineBandwidth::Silverman;  // 0.9 min(sigma, IQR / 1.34) n^(-1/5)
+model.density.rule = RidgelineBandwidth::Fixed;      // in x units:
+model.density.bandwidth = 0.6;
+model.density.adjust = 1.5;                          // smoother than the rule says
+model.density.sharedBandwidth = true;                // every row equally smooth
+```
+
+A **bounded scale**, such as a rating from 0 to 10, gets its bounds. The
+density is then reflected at each bound, so it neither leaks past the ends
+nor sags at them:
+
+```cpp
+model.density.lowerBound = 0.0;
+model.density.upperBound = 10.0;
+```
+
+**Whole numbers** need care. Ratings from 0 to 10 with a spread of about one
+point give Scott's rule a bandwidth near 0.35 for 300 answers, and the curve
+then shows a spike at every whole number. A fixed bandwidth of 0.5 to 0.8
+draws the shape instead; `Validate()` warns when a fixed bandwidth below
+0.5 meets whole-number values.
+
+The curve is evaluated at `density.resolution` points (256) over the x
+range: the data, three bandwidths wider, clamped to the bounds, or
+`model.xMin` / `model.xMax` when set. A row of more than about a thousand
+values is binned first, which keeps it fast at any size. The density
+function is free for other uses:
+
+```cpp
+std::vector<double> xs = {0.0, 0.5, 1.0};
+std::vector<double> heights = RidgelineKernelDensity({0.2, 0.4, 1.1}, xs, 0.3, 0.0);   // reflected at 0
+double h = RidgelineScottBandwidth({0.2, 0.4, 1.1});
+```
+
+## Rows from curves
+
+When the program already has the curve, such as participants per quarter
+hour, it gives the points instead of values (x increasing, y not negative):
+
+```cpp
+RidgelineRow running;
+running.name = "Running";
+for (int q = 0; q <= 96; ++q) {
+    const double hour = 3.0 + q * 0.25;
+    running.curve.push_back({hour, std::exp(-0.5 * (hour - 7.0) * (hour - 7.0))});
+}
+model.rows.push_back(running);
+model.scale = RidgelineScale::RowPeak;
+model.curveName = "Participants";
+```
+
+A supplied curve is joined smoothly (a monotone cubic, which never rises
+above its points), so a coarse curve still draws round.
+
+## Scale, order and statistics
+
+| `model.scale` | Every row's curve is |
+|---|---|
+| `Shared` (default) | on one scale: the tallest point of any row is 1, so heights can be compared |
+| `RowPeak` | scaled to its own peak: only the shapes are compared |
+| `RowArea` | given the same area, then one scale |
+
+`SetOverlap(rows)` sets how many row heights a curve of height 1 spans (0.5
+to 5; at 1 it just reaches the next baseline up).
+
+```cpp
+model.Sort(RidgelineSort::ByMean);           // ByMedian, ByPeak, ByName; `true` = falling
+RidgelineRowStatistics s = model.Statistics(0);
+// s.count, s.mean, s.median, s.standardDeviation, s.quartile1, s.quartile3,
+// s.minimum, s.maximum, s.peakAt (the x of the curve's highest point)
+```
+
+A supplied curve's statistics are those of the distribution it draws: its
+weighted mean, its median and quartiles by area. `count` is 0. Rows without
+data sort last, and `Validate()` names them.
+
+## Appearance
+
+```cpp
+chart->SetColoring(RidgelineColoring::ByRowValue);   // by the value column (the mean when it is off)
+chart->SetColormap(HeatmapColormap::RdYlGn);         // red to green
+chart->SetColoring(RidgelineColoring::ByRow);        // a colour map down the rows
+chart->SetColoring(RidgelineColoring::Alternating);  // two colours (SetAlternateColors)
+chart->SetColoring(RidgelineColoring::Single);       // SetFillColor
+chart->SetFillOpacity(0.85f);
+chart->SetGradientFill(true);                        // fades towards the baseline
+chart->SetOutline(Color(255, 255, 255, 255), 1.5f);  // alpha 0 = the fill, darker; width 0 = none
+chart->SetShowRowLines(true);                        // a thin line along each baseline
+chart->SetXTicks({3, 6, 9, 12, 15, 18, 21, 24, 27});
+chart->SetXFormatter([](double h) { return std::to_string(static_cast<int>(h) % 24) + ":00"; });
+```
+
+A row's own `color` (alpha above 0) wins over the colouring. The value
+column shows `Mean`, `Median`, `Count` or `Peak` (an x, through the
+formatter), with its header; the row names and values are drawn left of the
+plot, and when rows are closer than a line of text every n-th name is shown.
+The chart's title is the model's, and its subtitle is drawn under it. Lines
+across the plot (an average, a target) are the engine's limiters on axis 1
+(`AddLimiter`).
+
+## Reading the chart
+
+```cpp
+chart->onRowHover = [&chart](int row) {      // -1 when the pointer leaves the rows
+    if (row >= 0) std::string text = chart->DescribeRow(row, chart->GetHoveredX());
+};
+double baseline = chart->RowBaseline(2);     // normalised plot height
+double height = chart->RowHeightAt(2, 5.0);  // the curve above it at x = 5
+```
+
+The tooltip, and `DescribeRow`, give the row, the x under the pointer, the
+curve's unscaled height there, and the row's count, mean and median (for a
+curve: where it peaks and its middle half). A hovered row's name turns bold
+and a thin rule marks the x on its curve.
+
+## Demo
+
+**Charts > Ridgeline Chart** shows two invented samples:
+`UltraCanvasRidgelineModel::WordRatings()`, how 300 people might rate 33
+words from *Abysmal* to *Perfect* on a scale of 0 to 10, coloured red to
+green by the average score; and `DailyActivities()`, when in the day people
+might do 16 activities, from 03:00 to 03:00, each to its own peak. The
+overlap, scale, order and colouring can be changed, and the row under the
+pointer is read out.
+
+## Tests
+
+`Tests/RidgelineModelTest.cpp` checks the quantiles, both bandwidth rules,
+the density (its area, a single value's peak, reflection at bounds, binning
+against the exact sum), the x range, the three scales, statistics from
+values and from curves, sorting, validation and the samples.
+`Tests/RidgelineChartRenderTest.cpp` draws the chart and checks the rows'
+colours on their baselines, the lower row in front where rows overlap, the
+tallest curve reaching the top, the hit strips and tooltips, the value
+column, the colourings and hover.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSTLElement.md
@@ -81647,7 +82050,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTimelineDiagram.md
 # UltraCanvasTimelineDiagram
 
 A **narrative timeline infographic**: an ordered list of events laid out along a
-decorative path, with nine design presets. Items carry a period caption, a
+decorative path, with ten design presets. Items carry a period caption, a
 title, a paragraph and an icon; they are evenly spaced by default, so this is
 the presentation timeline rather than a date-accurate schedule.
 
@@ -81666,8 +82069,8 @@ the presentation timeline rather than a date-accurate schedule.
 **Source:** `Plugins/Diagrams/UltraCanvasTimelineDiagram.cpp`
 **Base class:** `UltraCanvasChartElementBase`
 **Demo:** `Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp` (Info Graphics > Timeline Diagram)
-**Version:** 1.0.0
-**Last Modified:** 2026-07-30
+**Version:** 1.1.0
+**Last Modified:** 2026-11-17
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -81677,6 +82080,7 @@ the presentation timeline rather than a date-accurate schedule.
 - [Data model](#data-model)
   - [Managing items](#managing-items)
 - [Designs](#designs)
+  - [The wave](#the-wave)
 - [Layout options](#layout-options)
   - [Even vs. proportional placement](#even-vs-proportional-placement)
 - [Palettes and color](#palettes-and-color)
@@ -81780,9 +82184,43 @@ current style. This is the same contract as `UltraCanvasGanttChart`.
 | `Hanging` | Axis on top, stems dropping to bubbles of varying size, text wrapped to the circle |
 | `Chevron` | Arrow blocks pointing forward — process/phase presentation |
 | `Steps` | Ascending staircase blocks for growth narratives |
+| `Wave` | A chain of thick half-rings bending to alternate sides, a node where two meet, the caption inside each ring and the text beside it |
 
 Cards, boxes and bubbles **size themselves to their text**; anything that still
 does not fit is ellipsized (`style.maxBodyLines` caps the body).
+
+### The wave
+
+`Wave` threads one half-ring per item on a straight axis. Each ring bends the
+other way from the one before, so together they make one smooth wave; the
+item's node sits where its ring begins, a plain dot closes the path where the
+last one ends. The caption (a year, a phase) is drawn inside the ring, as
+large as fits there, over a pale half-disc; the title, in the ring's colour,
+and the body sit beside the ring on the side it bulges to - flush to it.
+
+```cpp
+auto wave = CreateTimelineDiagramElement("history", 0, 0, 900, 640, TimelineDesign::Wave);
+wave->SetItems(TimelineDiagramSamples::CompanyHistory());
+
+wave->EditStyle().waveAxisAngle = 0.0;    // 45 falls diagonally (default), 90 runs top-down,
+                                          // -45 rises from the bottom left
+wave->EditStyle().waveAutoAngle = false;  // true: the angle that gives the largest rings
+wave->EditStyle().waveFillInside = true;  // the pale half-disc behind the caption
+wave->StyleChanged();
+```
+
+The rings are made as large as the frame allows while every item's text keeps
+room of its own: on an axis of 40 degrees or steeper the text sits beside the
+rings, alternately right and left; on a flatter one it sits above and below.
+No text block covers a ring or another block. The other options apply as
+elsewhere: `SetSidePolicy` decides which way each ring bends (*above* is the
+side up from the axis - up and to the right on the default diagonal, right on
+a top-down wave), `SetReverseOrder` runs the wave from the other end,
+`TimelinePlacement::Proportional` gives rings of different sizes by date,
+`GradientAlongPath` fades each ring into the next one's colour, and
+`SetCurrentIndex` draws the rings after the current item lighter.
+`style.spineThickness` is the width of the band, `style.connectorStyle`
+(hidden by default) adds a stem from each ring to its text.
 
 ## Layout options
 
@@ -81894,6 +82332,13 @@ Point2Dd center;
 Rect2Dd rect;
 if (timeline->GetItemNodeCenter(0, center)) { /* node position, element-local */ }
 if (timeline->GetItemContentRect(0, rect))  { /* text block of item 0 */ }
+
+// Wave design: the half-ring item 0 is drawn on - an icon beside the ring
+double radius = 0.0, startAngle = 0.0;
+if (timeline->GetItemArc(0, center, radius, startAngle)) {
+    // The ring sweeps pi radians clockwise from startAngle; it bulges towards
+    // startAngle + pi / 2
+}
 ```
 
 ## Sample data
@@ -84424,6 +84869,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
   - [File Explorer Example](#file-explorer-example)
   - [Event Handling](#event-handling)
   - [Rows still loading](#rows-still-loading)
+  - [Dimmed rows](#dimmed-rows)
   - [Using TreeViewBuilder](#using-treeviewbuilder)
 - [Keyboard Navigation](#keyboard-navigation)
 - [Mouse Interaction](#mouse-interaction)
@@ -84571,6 +85017,7 @@ struct TreeNodeData {
 
     uint64_t accessSequence = 0;           // Sort key for TreeSortMode::LastAccess
     bool loading = false;                  // children being fetched: a bar slides along the row's foot
+    bool dimmed = false;                   // label in the muted text colour (SetDimmedTextColor)
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText);
@@ -85272,6 +85719,7 @@ void SetFocusRingColor(const Color& color);
 void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
+void SetDimmedTextColor(const Color& color);   // a dimmed row's label; the theme's inkMuted
 void SetExpandButtonColor(const Color& color);
 void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol);
 void SetExpanderArrowColor(const Color& color);
@@ -85482,6 +85930,21 @@ treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
     // Show a context menu at event.pointerWindow
     ShowContextMenu(node, event);
 };
+```
+
+### Dimmed rows
+
+A row the tree normally leaves out but shows for now - a hidden folder the
+user went to, an entry that is only there because a search found it - can
+read as secondary with `TreeNodeData::dimmed`. Its label is drawn in the
+tree's dimmed text colour (`SetDimmedTextColor`; under a theme its muted ink,
+so it follows a switch to dark), not the text colour. A `textColor` of the
+node's own and the selection text on a selected row still take precedence.
+
+```cpp
+TreeNodeData config("/home/me/.config", ".config");
+config.dimmed = true;                      // drawn lighter than its siblings
+treeView->AddNode("/home/me", config);
 ```
 
 ### Using TreeViewBuilder
@@ -85728,6 +86191,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 | 1.2.0 | 2026-10-02 | `GetRequiredWidth` - the width the widest row on show needs |
 | 1.2.1 | 2026-10-07 | Docs: columns API (`SetColumns`, `TreeViewColumn`, `data.cells`), real constructors and builder calls |
 | 1.3.0 | 2026-10-22 | `SetExpanderStyle`: the expand button as an arrow (`TreeExpanderStyle::Chevron`), `SetExpanderArrowColor` |
+| 1.4.0 | 2026-11-16 | `TreeNodeData::dimmed` and `SetDimmedTextColor`: a row drawn in the muted text colour |
 
 ## See Also
 
@@ -86117,6 +86581,7 @@ Each takes its data through setters and renders itself; most have a
 | 100% stacked columns of *different widths* (Marimekko / mosaic) | `UltraCanvasMekkoChartElement` | `Plugins/Charts/UltraCanvasMekkoChart.h` |
 | Mixes of three parts that add up to 100 % - vote shares, soil texture, alloys - as points in a triangle (ternary plot) | `UltraCanvasTernaryChart` | `Plugins/Charts/Engine/Charts/UltraCanvasTernaryChart.h` |
 | A picture's histogram: how many pixels have each level of red, green and blue (overlaid or one channel) or luminosity, beside a photo | `UltraCanvasHistogramChart` | `Plugins/Charts/Engine/Charts/UltraCanvasHistogramChart.h` |
+| How a value is spread in each of many groups, as overlapping curves one row each - ratings per word, times of day per activity (a ridgeline chart or joyplot) | `UltraCanvasRidgelineChart` | `Plugins/Charts/Engine/Charts/UltraCanvasRidgelineChart.h` |
 | Many measures per item: radar, or parallel coordinates | `UltraCanvasRadarChartElement`, `UltraCanvasParallelCoordinateChartElement` | `Plugins/Charts/UltraCanvasRadarChartElement.h`, `Plugins/Charts/UltraCanvasParallelCoordinateChart.h` |
 | Angle / radius space: polar series, radial bars, activity rings, ringed infographic | `UltraCanvasPolarChart`, `UltraCanvasRadialBarChart`, `UltraCanvasCircularProgressChart`, `UltraCanvasCircularInfoGraphic` | matching `Plugins/Charts/*.h` |
 | A matrix of values as colour: heatmap, hexbin, contribution calendar | `UltraCanvasHeatmapChartElement`, `UltraCanvasHexbinChartElement`, `UltraCanvasCalendarHeatmapElement` | `Plugins/Charts/UltraCanvasHeatmapChart.h`, `Plugins/Charts/UltraCanvasHexbinChart.h`, `Plugins/Charts/UltraCanvasCalendarHeatmap.h` |
@@ -88010,6 +88475,15 @@ p->Play();
 if (auto f = p->GetCurrentFrame()) { /* upload f to a pixmap */ }
 ```
 
+`LoadFromFile` returns false - with the reason in `GetLastError()` and
+`onError`, the state `Error` and nothing loaded - for no path, a file that does
+not exist, a folder, or an empty or unreadable file, before any backend or
+registered codec sees it. True means the file was handed to the backend; a
+damaged file is still accepted then and reported later through `onError`,
+when the backend finds out (it opens a source asynchronously). Before
+2026-11 an empty file "loaded" too, and the caller showed a player that never
+played.
+
 Transport: `Play / Pause / Stop / Seek(seconds)`.
 Properties: `Volume`, `Mute`, `Loop`, `PlaybackRate`.
 Frame access: `GetCurrentFrame()` (thread-safe).
@@ -89041,6 +89515,15 @@ node UltraCanvas/OS/WASM/runtime/test/runtime-test.mjs build-ucr
 
 Branded Google Chrome no longer loads unpacked extensions from the command
 line (Chrome 137), so the test runs Playwright's Chromium.
+
+The `wasm-build.yml` workflow runs it in its `dynamic` variant, on the
+folder it uploads first as the run's `ultracanvas-runtime-dynamic`
+artifact: `site/` (the loader, the two pages, `hello-app.wasm` and the
+runtime under `runtime/`) and `ultracanvas-extension/`, with a
+`README.txt`. Unzip it, serve `site/` with any static host
+(`python3 -m http.server --bind 127.0.0.1 8080`) and the sample app runs;
+load `ultracanvas-extension/` unpacked for the extension's side. The
+test's screenshots and console logs are `ultracanvas-runtime-smoke-dynamic`.
 
 ## Limits of the prototype
 
@@ -111528,46 +112011,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/desktop-translated.md
-==============================================================================
-
-- **The desktop can be translated, and is, in thirty languages.** Six in
-  seven of its texts were written straight into the code - every tooltip of
-  the bars, the menus of the clock, battery, info bar, clipboard and
-  settings button, the Wi-Fi, Bluetooth, loudspeaker, clock and clipboard
-  panels, the Task Manager, the Apps window with its categories and
-  sub-kinds, the sticker board, the dialogs - so the desktop showed in
-  English whatever the language. They go through `Tr` / `TrF` / `TrN` now
-  (415 texts where the catalogue had 61), sentences that were glued from
-  fragments are whole texts with placeholders, and counted texts have their
-  plural forms.
-  - Label tables that kept their texts beside ids or icons carry `Tr`
-    literals where they are used, so the extractor sees them: the clock
-    styles, the taskbar edges (whose `Tr(choice.label)` reached no
-    catalogue), the day and month names, the board designs.
-  - The Apps window's categories and sub-kinds keep their English names for
-    sorting and tests; `AppCategoryDisplayName`, `AppSubcategoryDisplayName`
-    and `AppGroupDisplayName` (`UltraDesktopAppCategories.h`) give the
-    names it shows. `StartupProgramLabel`, `StartupProgramName` and
-    `InfoItemLabel` (`UltraDesktopSettings.h`) do the same for the programs
-    that start with the desktop and the info bar's icons.
-  - The short date on the clock takes a short month name of its own
-    instead of the first three bytes of the long one, which cut a
-    translated name in the middle of a letter.
-  - The task list recognises the clipboard panel's window by its translated
-    title too.
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/info-bar-menu-translated.md
-==============================================================================
-
-- **Three menu items can be translated.** "Hide this icon" and "Info bar
-  icons..." on the info bar's right-click menu and "Switch back to the
-  Windows desktop" were written straight into the menu; they go through
-  `Tr` now and are translated in all thirty languages, in the wording
-  UOS-Settings' notes quote.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md

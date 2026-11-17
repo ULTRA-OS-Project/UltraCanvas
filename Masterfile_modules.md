@@ -880,7 +880,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `CountCharactersWithoutFont` / `FindScriptsWithoutFont` - the characters of
   a text no font covers (drawn as hex boxes), by script, each with a free Noto
   font and its download page - plus `FontDownloadUrl` and
-  `IsFontFamilyAvailable`. `UltraCanvasRichTextEdit::GetFontReport` and its
+  `IsFontFamilyAvailable`, and `FontFamilySubstitute` /
+  `GetFontFamilySubstitutes` - the installed font that stands in for a family
+  by name (Helvetica in Arial on Windows; aliases in the generated
+  fontconfig set). `UltraCanvasRichTextEdit::GetFontReport` and its
   notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 

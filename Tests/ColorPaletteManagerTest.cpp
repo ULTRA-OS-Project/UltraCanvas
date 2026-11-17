@@ -136,6 +136,19 @@ bool WritePpm(const std::shared_ptr<UltraCanvasWindow>& window, const std::strin
     return static_cast<bool>(out);
 }
 
+// The window part cannot run. Where a display was asked for
+// (DisplayTest::DisplayRequired) that is a failure, not a skip; either way a
+// failed check of the part that did run still fails the suite.
+int SkipWindowPart(const std::string& why) {
+    if (DisplayTest::DisplayRequired()) {
+        std::cerr << "FAIL: a display was required, and " << why << std::endl;
+        return 1;
+    }
+    std::cerr << "SKIP: window part (" << why << ")" << std::endl;
+    std::cerr << "\n" << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
+    return failCount == 0 ? 0 : 1;
+}
+
 } // namespace
 
 int main() {
@@ -236,26 +249,16 @@ int main() {
         TEST("the gallery offers a whole 256-colour GIF palette", hasGif);
     }
 
-    if (!std::getenv("DISPLAY")) {
-        std::cerr << "SKIP: window part (no DISPLAY)" << std::endl;
-        std::cerr << "\n" << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
-        return failCount == 0 ? 0 : 1;
-    }
+    if (!std::getenv("DISPLAY")) return SkipWindowPart("there is no DISPLAY");
 
     UltraCanvasApplication app;
-    if (!app.Initialize("ColorPaletteManagerTest")) {
-        std::cerr << "SKIP: application would not initialise" << std::endl;
-        return failCount == 0 ? 0 : 1;
-    }
+    if (!app.Initialize("ColorPaletteManagerTest")) return SkipWindowPart("the application would not initialise");
     WindowConfig cfg;
     cfg.title = "ColorPaletteManagerTest";
     cfg.width = kWidth;
     cfg.height = kHeight;
     auto window = CreateWindow(cfg);
-    if (!window) {
-        std::cerr << "SKIP: window could not be created" << std::endl;
-        return failCount == 0 ? 0 : 1;
-    }
+    if (!window) return SkipWindowPart("the window could not be created");
     window->Show();
     DisplayTest::ActivateWindow(app, window);
 

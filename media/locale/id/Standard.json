@@ -151,6 +151,7 @@
   },
   "Copy files": "Salin file",
   "Copy finished": "Penyalinan selesai",
+  "Copy instead": "Salin saja",
   "Copy path": "Salin jalur",
   "Copy skipped items again": "Salin lagi item yang dilewati",
   "Copy {n} item into \"{0}\"?": {
@@ -412,6 +413,7 @@
   "Move down": "Pindahkan ke bawah",
   "Move files": "Pindahkan file",
   "Move finished": "Pemindahan selesai",
+  "Move instead": "Pindahkan saja",
   "Move skipped items again": "Pindahkan lagi item yang dilewati",
   "Move to Recycle Bin": "Pindahkan ke Keranjang Sampah",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "\"Pindahkan ke Keranjang Sampah\" dapat diurungkan dari Keranjang Sampah. \"Hapus permanen\" tidak dapat diurungkan.",
@@ -612,6 +614,7 @@
   "Stopped at:": "Berhenti di:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Menyimpan pengaturan ini tanpa mencobanya; pengaturan dicoba saat akun digunakan berikutnya.",
   "Style": "Gaya",
+  "Subfolder of \"{0}\"": "Subfolder dari \"{0}\"",
   "Submit": "Kirim",
   "Success": "Berhasil",
   "System": "Sistem",

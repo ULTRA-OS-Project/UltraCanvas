@@ -44,7 +44,12 @@
 //
 // The naming rule and the settings store are checked on their own and always
 // run; the dialog itself is read back from the composited pixels, so that
-// part runs under Xvfb and skips - rather than fails - without a display.
+// part runs under Xvfb and skips - rather than fails - without a display,
+// unless ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (CI's virtual-display step),
+// where a skip would read as a pass and fails instead. Plain ctest has no
+// display, so until that step ran it nothing did: "its rows scaled down with
+// the type" failed on every display from 0.9.541 to 2026-11-15 unseen.
+// Version: 1.9.0 - a skip fails under ULTRACANVAS_TEST_DISPLAY_REQUIRED, and keeps earlier failures
 // Version: 1.8.1 - the settings-window check asks for the window's type size, not
 //                 for one below the dialog's own: since the kit follows the theme
 //                 the two are the same where no desktop names a font
@@ -104,10 +109,20 @@ static int failCount = 0;
         testCount++;                                                          \
     } while (0)
 
+// The dialog half cannot run. Where a display was asked for that is a
+// failure, not a skip (DisplayTest::DisplayRequired); either way a check of
+// the half that did run and failed still fails the suite.
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
-        std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
-        return 0;                                                             \
+        if (DisplayTest::DisplayRequired()) {                                 \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
+        std::cerr << "SKIP: the dialog itself (" << reason << ")" << std::endl; \
+        std::cerr << "\n   " << (testCount - failCount) << "/" << testCount   \
+                  << " passed" << std::endl;                                  \
+        return failCount == 0 ? 0 : 1;                                        \
     } while (0)
 
 namespace {
@@ -570,11 +585,7 @@ int main() {
         TEST("... nor one from CreateButton", CreateButton("made", 0, 0, 28, 28)->GetText().empty());
     }
 
-    if (!std::getenv("DISPLAY")) {
-        std::cerr << "SKIP: the dialog itself (no DISPLAY)" << std::endl;
-        std::cerr << "\n   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
-        return failCount == 0 ? 0 : 1;
-    }
+    if (!std::getenv("DISPLAY")) SKIP_ALL("there is no DISPLAY");
 
     // The dialog remembers its view and size in the settings folder: keep
     // the test's copy away from the user's, and start from the defaults.
@@ -589,7 +600,7 @@ int main() {
     RedirectSettingsFolder(scratch / "config");
 
     UltraCanvasApplication app;
-    if (!app.Initialize("FileDialogTest")) SKIP_ALL("application would not initialise");
+    if (!app.Initialize("FileDialogTest")) SKIP_ALL("the application would not initialise");
     UltraCanvasDialogManager::SetUseNativeDialogs(false);
 
     FileDialogConfig config;

@@ -158,6 +158,7 @@
   },
   "Copy files": "फ़ाइलें कॉपी करें",
   "Copy finished": "कॉपी पूर्ण",
+  "Copy instead": "इसके बजाय कॉपी करें",
   "Copy path": "पथ कॉपी करें",
   "Copy skipped items again": "छोड़े गए आइटम फिर से कॉपी करें",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "नीचे ले जाएँ",
   "Move files": "फ़ाइलें ले जाएँ",
   "Move finished": "ले जाना पूर्ण",
+  "Move instead": "इसके बजाय ले जाएँ",
   "Move skipped items again": "छोड़े गए आइटम फिर से ले जाएँ",
   "Move to Recycle Bin": "रीसायकल बिन में ले जाएँ",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "“रीसायकल बिन में ले जाएँ” को रीसायकल बिन से पूर्ववत किया जा सकता है। “स्थायी रूप से हटाएँ” को पूर्ववत नहीं किया जा सकता।",
@@ -630,6 +632,7 @@
   "Stopped at:": "यहाँ रुका:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "इन सेटिंग्स को आज़माए बिना सहेजता है; खाते के अगली बार उपयोग होने पर इन्हें आज़माया जाएगा।",
   "Style": "शैली",
+  "Subfolder of \"{0}\"": "“{0}” का सबफ़ोल्डर",
   "Submit": "सबमिट करें",
   "Success": "सफल",
   "System": "सिस्टम",

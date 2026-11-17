@@ -91,8 +91,7 @@ bool Fail(const char* what) { std::printf("FAIL: %s\n", what); return true; }
 int ControlsThroughWindow() {
     // ULTRACANVAS_TEST_DISPLAY_REQUIRED=1 (CI's virtual-display step) makes
     // a missing display a failure, so a broken Xvfb cannot pass as a skip.
-    const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
-    const bool displayRequired = required && std::string(required) == "1";
+    const bool displayRequired = UltraCanvas::DisplayTest::DisplayRequired();
     if (!std::getenv("DISPLAY")) {
         if (displayRequired) { std::puts("FAIL: a display was required, and there is none"); return 1; }
         std::puts("skip windowed checks: no DISPLAY (run under xvfb-run -a)");

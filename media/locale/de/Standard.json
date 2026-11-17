@@ -158,6 +158,7 @@
   },
   "Copy files": "Dateien kopieren",
   "Copy finished": "Kopieren abgeschlossen",
+  "Copy instead": "Stattdessen kopieren",
   "Copy path": "Pfad kopieren",
   "Copy skipped items again": "Übersprungene Elemente erneut kopieren",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Nach unten",
   "Move files": "Dateien verschieben",
   "Move finished": "Verschieben abgeschlossen",
+  "Move instead": "Stattdessen verschieben",
   "Move skipped items again": "Übersprungene Elemente erneut verschieben",
   "Move to Recycle Bin": "In den Papierkorb legen",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "„In den Papierkorb legen“ lässt sich über den Papierkorb rückgängig machen. „Endgültig löschen“ lässt sich nicht rückgängig machen.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Abgebrochen bei:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Speichert diese Einstellungen, ohne sie zu prüfen; sie werden bei der nächsten Verwendung des Kontos geprüft.",
   "Style": "Stil",
+  "Subfolder of \"{0}\"": "Unterordner von „{0}“",
   "Submit": "Absenden",
   "Success": "Erfolg",
   "System": "System",

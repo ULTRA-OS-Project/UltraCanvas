@@ -53,8 +53,9 @@ public:
                          std::string& outError, const std::string& password = std::string());
     // Word 97-2003 binary (CFB container, piece table, FKPs, stylesheet,
     // list tables): headings, character formatting, alignment, bullet and
-    // numbered lists, tables, hyperlinks and PNG/JPEG pictures. Headers,
-    // footers, footnotes and floating drawings are not read. There is
+    // numbered lists, tables (merged cells, row heights), hyperlinks,
+    // pictures, floating pictures and drawings with their shadows, and each
+    // section's header, footer and page margins. Footnotes are not read. There is
     // deliberately no .doc writer; save as .docx or .odt instead.
     static bool LoadDoc(const std::string& filePath, UCRichDocument& outDocument,
                         std::string& outError);

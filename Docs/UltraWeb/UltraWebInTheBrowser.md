@@ -225,7 +225,15 @@ The fonts are half of it: all fourteen bundled faces are preloaded.
   Branded Google Chrome no longer loads unpacked extensions from the
   command line (Chrome 137), so the test runs Playwright's Chromium.
 
-The `wasm-build.yml` workflow runs both in its single-threaded variant.
+The `wasm-build.yml` workflow runs both in its single-threaded variants
+(`single-thread`, the runtime that ships, and `dynamic`), the second on the
+folder each uploads first as the run's `ultraweb-runtime-<variant>` artifact:
+`site/` (the loader, the two pages, `hello.wasm`, `hello.txt` and the
+runtime under `runtime/`) and `ultraweb-extension/`, with a `README.txt`.
+Unzip it, serve `site/` with any static host
+(`python3 -m http.server --bind 127.0.0.1 8080`) and the sample app runs;
+load `ultraweb-extension/` unpacked for the extension's side. The test's
+screenshots and console logs are `ultraweb-runtime-smoke-<variant>`.
 
 ## Limits of the prototype
 

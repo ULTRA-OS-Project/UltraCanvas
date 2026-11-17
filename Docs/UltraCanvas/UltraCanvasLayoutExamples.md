@@ -380,6 +380,12 @@ content->layoutItem.SetFlexGrow(2);
 content->InvalidateLayout();            // a direct layoutItem / size edit needs this
 ```
 
+A hidden element stays hidden until `SetVisible(true)`: a flex, grid or table
+setter on it (`SetFlexGap`, `SetFlexRow`, `SetGridGap`, `SetTable`...)
+changes the kind of box it comes back as, not whether it is shown - as in
+CSS, where `gap` never undoes `display: none`. So restyling a hidden toolbar
+(`SetAppearance` sets its gap) does not bring it back.
+
 `SetVisible`, `SetElementSize`, `SetPadding`, `SetMargin` and `AddChild`
 re-run the layout themselves. A direct edit of `layout`, `layoutItem`, `size`
 or `boxConstraints` after the window has been shown needs `InvalidateLayout()`.

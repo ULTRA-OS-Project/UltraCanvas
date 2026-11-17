@@ -158,6 +158,7 @@
   },
   "Copy files": "Copia file",
   "Copy finished": "Copia completata",
+  "Copy instead": "Copia invece",
   "Copy path": "Copia percorso",
   "Copy skipped items again": "Copia di nuovo gli elementi saltati",
   "Copy {n} item into \"{0}\"?": {
@@ -425,6 +426,7 @@
   "Move down": "Sposta giù",
   "Move files": "Sposta file",
   "Move finished": "Spostamento completato",
+  "Move instead": "Sposta invece",
   "Move skipped items again": "Sposta di nuovo gli elementi saltati",
   "Move to Recycle Bin": "Sposta nel Cestino",
   "Move to Recycle Bin can be undone from the Recycle Bin. Delete permanently cannot be undone.": "«Sposta nel Cestino» può essere annullato dal Cestino. «Elimina definitivamente» non può essere annullato.",
@@ -630,6 +632,7 @@
   "Stopped at:": "Interrotto a:",
   "Stores these settings without trying them; they are tried the next time the account is used.": "Salva queste impostazioni senza provarle; verranno provate al prossimo utilizzo dell'account.",
   "Style": "Stile",
+  "Subfolder of \"{0}\"": "Sottocartella di «{0}»",
   "Submit": "Invia",
   "Success": "Operazione riuscita",
   "System": "Sistema",
