@@ -65,6 +65,17 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.45.4 - the path bars under Dark: dark grey segments, the current folder's segment in the
+//                  arrow's strong blue with white, the seams in the ground; set again by ApplyLook on
+//                  every theme change instead of following the theme themselves
+// Version: 1.45.3 - split view under a dark theme: the right-hand pane takes the current theme when
+//                  it joins the window (it was built at start-up, under the light look, and out of
+//                  the window missed every change since); the preview's viewers likewise when the
+//                  pane is put up again; the folder preview follows the theme (its style set by
+//                  hand had stopped it)
+// Version: 1.45.2 - the status line's quieter half ("3 drives, 424.5 GB free ...") takes the
+//                  look's statusQuiet (a fixed #6b6b73 before, near unreadable on the dark well),
+//                  and is written again on a theme change
 // Version: 1.45.1 - the drive rows of the folder tree keep a dark tint under a dark theme while
 //                  their colour is the default (a light blue band before), again on a theme change;
 //                  the path bars take the theme's colours (a light grey strip before) and follow it;
@@ -198,6 +209,17 @@ namespace fs = std::filesystem;
 namespace UltraCanvas {
 
 namespace {
+
+    // A theme change reaches only what is in a window at the time (the
+    // application hands it to each window's tree). A part the filer keeps
+    // out of the window while hidden - the split view's right-hand pane, the
+    // preview pane's viewers - missed every change made meanwhile, and the
+    // one it was built under may be the light look of start-up. Put back, it
+    // takes the current theme: an element that follows re-styles, any other
+    // ignores it.
+    void CatchUpTheme(const std::shared_ptr<UltraCanvasUIElement>& part) {
+        if (part) part->OnThemeChanged(UltraCanvasTheme::Current());
+    }
 
     // Suffix marking the lazy placeholder child of an unexpanded folder node.
     constexpr const char* kPlaceholderSuffix = "\n#placeholder";
@@ -995,8 +1017,21 @@ namespace {
 
     BreadcrumbStyle MakePathBreadcrumbStyle() {
         // The arrow shape with the theme's colours (Arrow() alone is the
-        // light look); the bar follows the theme from there (SetFollowTheme)
-        BreadcrumbStyle s = BreadcrumbStyle::FromTheme(UltraCanvasTheme::Current(), BreadcrumbStyle::Arrow());
+        // light look: light grey segments, which glare on a dark row).
+        // ApplyLook sets it again on a theme change - the bar does not
+        // follow the theme by itself, which would put the theme's soft
+        // accent back on the current segment.
+        const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+        BreadcrumbStyle s = BreadcrumbStyle::FromTheme(theme, BreadcrumbStyle::Arrow());
+        if (theme.dark && !theme.highContrast) {
+            // Under Dark the folder you are in keeps the arrow's strong blue
+            // with white on it (4.6:1), the segments before it the raised
+            // dark grey, and the seam between two segments is the row's
+            // ground rather than a light grey line.
+            s.currentItemBackgroundColor = Color(0, 120, 215, 255);
+            s.currentItemTextColor = Colors::White;
+            s.separatorColor = theme.roles.ground;
+        }
         s.overflowMode = BreadcrumbOverflowMode::Collapse;
         s.keepFirstItemOnCollapse = true;
         s.minVisibleAfterCollapse = 2;
@@ -1167,13 +1202,15 @@ namespace {
     }
 
     // The status bar's left line: `primary` in bold, `secondary` after it in
-    // the quieter grey - the way the file display's info bar drew them.
+    // the quieter grey - the way the file display's info bar drew them. The
+    // grey is the theme's (FilerLook::statusQuiet): a fixed one is lost on
+    // the dark well.
     std::string StatusInfoMarkup(const std::string& primary,
                                  const std::string& secondary) {
         std::string markup;
         if (!primary.empty()) markup = "<b>" + EscapeStatusMarkup(primary) + "</b>";
         if (!secondary.empty()) {
-            markup += "<span foreground=\"#6b6b73\">";
+            markup += "<span foreground=\"" + Look().statusQuiet.ToHexString() + "\">";
             if (!primary.empty()) markup += "  ·  ";
             markup += EscapeStatusMarkup(secondary) + "</span>";
         }
@@ -1451,6 +1488,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     folderPreviewStyle.smallFontSize = UiFontSize();
     folderPreviewStyle.folderIconScale = 0.7f;
     folderPreview->SetStyle(folderPreviewStyle);
+    // The theme's colours over this shape, as the tabs' displays: the style
+    // set by hand had stopped the following, so the pane kept the light look
+    folderPreview->SetFollowTheme(true);
     folderPreview->SetViewType(FilerViewType::ThumbnailsSmall);
     folderPreview->SetHoverIconMenuEnabled(false);
     // The pane is narrow; prefetching every subfolder of a merely previewed
@@ -1666,9 +1706,14 @@ void UltraFilerWindow::ApplyLook() {
         folderTree->SetBackgroundColor(look.ground);
     }
     if (statusRow) statusRow->SetBackgroundColor(look.statusBar);
+    // The path bars: the window's, and the split view's two (styled while
+    // the right one is out of the window too)
+    for (const auto& crumb : {breadcrumb, leftPaneBreadcrumb, rightPaneBreadcrumb})
+        if (crumb) crumb->SetStyle(MakePathBreadcrumbStyle());
     if (statusInfoLabel) statusInfoLabel->SetTextColor(look.inkMuted);
     if (statusSelectionLabel) statusSelectionLabel->SetTextColor(look.inkFaint);
     if (statusLabel) statusLabel->SetTextColor(statusNoteIsError ? look.danger : look.inkMuted);
+    UpdateStatusBar();   // the left line's markup carries the quiet grey itself
     if (statusProgress) statusProgress->SetGaugeColor(look.accent);
     ApplyTreeColors();   // the default drive rows have a light and a dark tint
     if (computerPane) computerPane->SetBackgroundColor(look.panel);
@@ -2804,7 +2849,6 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
     breadcrumb->SetStyle(MakePathBreadcrumbStyle());
-    breadcrumb->SetFollowTheme(true);
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
     row->AddChild(breadcrumb);
@@ -9268,6 +9312,8 @@ void UltraFilerWindow::AttachFolderPreview() {
     // renders over the preview and is hit before it.
     if (folderPreviewPromoteButton)
         previewPane->AddChild(folderPreviewPromoteButton);
+    CatchUpTheme(folderPreview);
+    CatchUpTheme(folderPreviewPromoteButton);
 }
 
 void UltraFilerWindow::DetachFolderPreview() {
@@ -9408,7 +9454,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             previewPane->layout.SetFlexColumn()
                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
             if (wantFolder) AttachFolderPreview();
-            else            previewPane->AddChild(preview);
+            else            { previewPane->AddChild(preview); CatchUpTheme(preview); }
             ApplySplitPaneMinSizes();
             BalanceSplitPanes();
             if (filer) filer->EnsureSelectionVisible();
@@ -9433,7 +9479,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             previewPane->layout.SetFlexColumn()
                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
             if (wantFolder) AttachFolderPreview();
-            else            previewPane->AddChild(preview);
+            else            { previewPane->AddChild(preview); CatchUpTheme(preview); }
 
             if (arranged && !sizes.empty()) {
                 // The new split line takes its thickness from the donors
@@ -9477,6 +9523,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             } else {
                 DetachFolderPreview();
                 previewPane->AddChild(preview);
+                CatchUpTheme(preview);
             }
             previewShowsFolder = wantFolder;
         }
@@ -9599,7 +9646,6 @@ void UltraFilerWindow::BuildSplitViewPanes() {
         crumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-pane-breadcrumb-" + suffix,
                                                         0, 0, 0, 28);
         crumb->SetStyle(MakePathBreadcrumbStyle());
-        crumb->SetFollowTheme(true);
         crumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Center);
         header->AddChild(crumb);
@@ -9703,6 +9749,9 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         rightPane->layout.SetFlexColumn()
                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         rightPane->AddChild(rightPaneBox);
+        // Built at start-up and out of the window until now: its display,
+        // path bar and tree button take the theme as it is
+        CatchUpTheme(rightPaneBox);
         leftPaneHeader->SetVisible(true);
         // Each pane has a path bar of its own now; the navigation row's,
         // which only ever said where the active one is, gives way.
