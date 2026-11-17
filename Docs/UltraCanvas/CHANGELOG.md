@@ -25,6 +25,23 @@
   Each tested against a stand-in in standard-library python
   (`SignalProviderTests`, `XmppProviderTests`, `IrcProviderTests`). No
   plug-in ABI change.
+- **UltraNet sockets: no SIGPIPE, and a timeout told from a broken
+  connection.** `UltraNet_TcpSend` no longer raises SIGPIPE on a connection
+  the peer closed - which ended the program - but fails with
+  `ConnectionReset`: sends pass `MSG_NOSIGNAL`, sockets carry `SO_NOSIGPIPE`
+  where there is no such flag (macOS), and OpenSSL's own writes (handshake,
+  write, close-notify) hold SIGPIPE back on their thread. `UltraNet_TcpReceive`
+  now answers the same three ways on every backend, plain and through
+  `UltraNet_TlsWrap`: bytes; `Ok` with no bytes when the peer closed;
+  `Timeout` when nothing came in time (the connection is still there) - before,
+  OpenSSL and plain sockets answered a timeout like a broken connection
+  (`ReceiveFailed`) and Schannel and Secure Transport like a closed one (no
+  bytes), so callers timed their reads to tell them apart. A broken one is
+  `ConnectionReset` or `ReceiveFailed`; `UltraNet_UdpReceive` answers
+  `Timeout` too. The IRC provider and ChatCube Direct's LAN link go by the
+  code now. Tests: `test_socket_errors.cpp` in `UltraNetTests` (plain TCP,
+  UDP, and TLS against a python3 ssl server, with SIGPIPE at its default
+  action).
 - **`UltraNetTls.h`: header comment corrected.** It still described TLS on
   a TCP handle as Stage-3 stubs deferred to UltraNet v1.1; `UltraNet_TlsWrap`
   and `UltraNet_TlsHandshake` have long been implemented (OpenSSL, Schannel,

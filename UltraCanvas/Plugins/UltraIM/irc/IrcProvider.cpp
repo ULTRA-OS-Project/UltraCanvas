@@ -283,7 +283,6 @@ void IrcProvider::Flush() {
 }
 
 void IrcProvider::Run() {
-    IrcConnection::BlockSigPipeOnThisThread();
     for (;;) {
         bool open = conn_.IsOpen();
         bool wanted = false;

@@ -1,6 +1,10 @@
 // include/UltraNet/UltraNetSocket.h
 // Raw TCP and UDP sockets — POSIX sockets on Linux/macOS, Winsock on Windows.
 // Independent of libcurl. Sync-only in Stage 3.
+// Version: 0.5.0 - sends never raise SIGPIPE; a receive tells a timeout (Timeout) from a
+//                  broken connection (ConnectionReset / ReceiveFailed) and a closed one
+//                  (Ok, no bytes) - over TLS as well
+// Last Modified: 2026-11-17
 // Version: 0.4.0 - a TCP connection through a proxy (UltraNetSocketOptions::proxy /
 //                  useProxySetting: SOCKS 5, 4, 4a or an HTTP CONNECT tunnel),
 //                  UltraNet_TcpOpen with the reason, UltraNet_SocketDetach
@@ -81,11 +85,22 @@ UltraNetHandle UltraNet_TcpAccept(
     UltraNetEndpoint& outRemote,
     int timeoutMs = 0);
 
+// Sends what the socket takes now (outBytesSent; call again for the rest).
+// A connection the peer closed fails with ConnectionReset (or SendFailed) -
+// never with SIGPIPE, on any platform, over TLS as well.
 UltraNetResult UltraNet_TcpSend(
     UltraNetHandle handle,
     const std::vector<uint8_t>& data,
     int& outBytesSent);
 
+// Waits up to timeoutMs (0: the socket's own receive timeout, none by
+// default) for bytes, plain or through TLS alike:
+//   Ok with bytes         - data;
+//   Ok with no bytes      - the peer closed the connection;
+//   Timeout               - nothing came in time; the connection is still
+//                           there, call again;
+//   ConnectionReset /
+//   ReceiveFailed         - the connection broke.
 UltraNetResult UltraNet_TcpReceive(
     UltraNetHandle handle,
     std::vector<uint8_t>& outData,
@@ -105,6 +120,7 @@ UltraNetResult UltraNet_UdpSend(
     int port,
     const std::vector<uint8_t>& data);
 
+// As UltraNet_TcpReceive: Timeout when no datagram came in time.
 UltraNetResult UltraNet_UdpReceive(
     UltraNetHandle handle,
     std::vector<uint8_t>& outData,

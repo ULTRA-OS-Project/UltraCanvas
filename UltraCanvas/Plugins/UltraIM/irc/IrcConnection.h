@@ -5,13 +5,10 @@
 //
 // Used from one thread only (the provider's): TLS cannot read and write
 // from two threads at once, so the provider reads with a short timeout and
-// writes between reads. UltraNet's reads answer a timeout and a closed or
-// broken connection alike (an error, or no bytes - by backend), so a read
-// that comes back empty at once, several times in a row, is taken as the
-// connection gone; one that waited the whole timeout as quiet.
-// On POSIX, SIGPIPE is held back on the thread that uses the connection: a
-// write to a connection the server closed fails instead of ending the program.
-// Version: 0.1.0
+// writes between reads. UltraNet tells a read that waited out its time
+// (Timeout: quiet) from a connection that closed or broke, and raises no
+// SIGPIPE on a write to a closed one.
+// Version: 0.1.1 - UltraNet's Timeout read as quiet; SIGPIPE left to UltraNet
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 #pragma once
@@ -51,14 +48,10 @@ public:
     bool IsOpen() const { return handle_ != UltraNetInvalidHandle; }
     bool IsTls() const { return tls_; }
 
-    // Holds SIGPIPE back on the calling thread (POSIX; nothing elsewhere).
-    static void BlockSigPipeOnThisThread();
-
 private:
     UltraNetHandle handle_ = UltraNetInvalidHandle;
     bool tls_ = false;
     std::string buffer_;
-    int quickFailures_ = 0;
 };
 
 } // namespace UltraIMIrc
