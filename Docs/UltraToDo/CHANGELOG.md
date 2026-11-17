@@ -1,0 +1,22 @@
+#### 2026-11-17 *0.1.0*
+- **UltraToDo, the task list of ULTRA OS.** A round **+** at the top left
+  writes a task: its title and description, an optional planned end (a day,
+  or a day and a time), the time it is estimated to take, a reminder and an
+  alarm, and files attached to it as to a mail.
+- **The most urgent first.** The list is ordered by the latest moment a task
+  can be started and still be finished by its planned end (planned end minus
+  estimated time), not by the planned end alone; tasks without a date follow,
+  finished ones last.
+- **Pastel panels with round corners**, one per task, coloured by urgency:
+  rose overdue, peach "start now", butter within a day, mint later, sky
+  without a date, mist done. Under a dark look the pastels are mixed into the
+  theme's panel colour.
+- **Attachments with thumbnails**: documents, pictures and any other file are
+  copied into the task's folder and shown as thumbnails (a photo itself, a
+  PDF's first page, a document's first lines, else the type's icon); a click
+  opens the file.
+- **Reminders and alarms**: a reminder from 2 days before the latest start
+  to the latest start itself, an alarm at the planned end. Both go to the
+  desktop as notifications (UltraMessage) and are shown in the window; an
+  alarm also asks to be acknowledged. `--background` keeps them running
+  without the window.

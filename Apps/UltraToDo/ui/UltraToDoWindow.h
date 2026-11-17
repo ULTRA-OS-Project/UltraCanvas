@@ -1,0 +1,128 @@
+// Apps/UltraToDo/ui/UltraToDoWindow.h
+// UltraToDo's window: a round "+" at the top left that writes a new task,
+// and below it every task as a pastel panel with round corners, the most
+// urgent first (SortByUrgency: by the latest moment it can be started and
+// still be finished by its planned end). A panel shows the title with the
+// box that marks it done, how urgent it is, the planned end, the estimated
+// time and the latest start, the description, and the attached files as
+// thumbnails - a click opens one in the program the system opens it with.
+//
+// Reminders and alarms: every 15 seconds the window looks for one that is
+// due (DueNotices). It puts it on the desktop as a notification
+// (system.notification on UltraMessage, where the bus is in the build) and
+// says it in the window too, so it is not missed where no notification
+// service draws it. A click on the notification brings the window forward
+// with the task marked.
+//
+// Started with --background the window can be closed: the program stays,
+// keeps the reminders going, and comes forward at the next start; Quit ends
+// it.
+// Version: 0.1.0
+// Author: UltraCanvas Framework / ULTRA OS
+#pragma once
+
+#include "core/ToDoStore.h"
+
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasImage.h"   // UCPixmap
+#include "UltraCanvasTimer.h"
+#include "UltraCanvasWindow.h"
+
+#include <cstdint>
+#include <future>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace UltraCanvas {
+    class UltraCanvasButton;
+    class UltraCanvasCheckbox;
+    class UltraCanvasContainer;
+    class UltraCanvasImageElement;
+    class UltraCanvasLabel;
+    struct UCEvent;
+}
+
+namespace UltraToDo {
+
+class UltraToDoWindow {
+public:
+    explicit UltraToDoWindow(UltraCanvas::UltraCanvasApplication& app);
+    ~UltraToDoWindow();
+
+    bool Create();
+    void Show();
+    // Another start handed over (UltraCanvasSingleInstance): forward, shown
+    // first when it was hidden.
+    void Present();
+    void SetKeepRunning(bool keep);
+    // A click on one of UltraToDo's notifications: forward, the task marked.
+    void PresentTask(const std::string& taskId);
+
+private:
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildTopBar();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildPanel(const ToDoTask& task, int64_t now);
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAttachments(const ToDoTask& task);
+    void Rebuild();
+    void UpdateSummary(int64_t now);
+    void ApplyLook();
+    bool OnKey(const UltraCanvas::UCEvent& event);
+
+    void NewTask();
+    void EditTask(const std::string& id);
+    void ConfirmDelete(const std::string& id);
+    void SetDone(const std::string& id, bool done);
+    void AttachTo(const std::string& id);
+    void OpenAttachment(const std::string& taskId, const std::string& file);
+    bool Save();
+
+    // Reminders and alarms (see the top of this file).
+    void Tick();
+    void CheckNotices(int64_t now);
+    void Announce(const std::vector<std::pair<ToDoTask, ToDoNotice>>& notices, int64_t now);
+    bool PostDesktopNotification(const ToDoTask& task, const ToDoNotice& notice, int64_t now);
+    void DisconnectBus();
+
+    // Thumbnails are made on worker threads; the image elements waiting for
+    // one are filled in when it arrives (PollThumbnails).
+    void RequestThumbnail(const std::string& path, UltraCanvas::UltraCanvasImageElement* image);
+    void PollThumbnails();
+
+    UltraCanvas::UltraCanvasApplication& app_;
+    ToDoStore store_;
+    std::string loadError_;
+
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> topBar_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> addButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> heading_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> summary_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> showFinished_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> quit_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> list_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> notice_;   // the last reminder, in the window
+
+    bool keepRunning_ = false;
+    bool shown_ = false;
+    int themeHandler_ = 0;
+    std::string markedTask_;      // the task a notification was clicked for
+    int ticks_ = 0;
+
+    UltraCanvas::TimerId timer_ = 0;
+    UltraCanvas::TimerId thumbTimer_ = 0;
+
+    std::map<std::string, std::shared_ptr<UltraCanvas::UCPixmap>> thumbnails_;
+    std::map<std::string, std::vector<UltraCanvas::UltraCanvasImageElement*>> waiting_;
+    std::vector<std::pair<std::string, std::future<std::shared_ptr<UltraCanvas::UCPixmap>>>> jobs_;
+
+    // The bus (UltraMessage), connected at the first notice.
+    uint64_t endpoint_ = 0;
+    bool busFailed_ = false;
+    std::mutex postedMutex_;
+    std::map<std::string, std::string> posted_;   // notification id -> task id
+};
+
+} // namespace UltraToDo

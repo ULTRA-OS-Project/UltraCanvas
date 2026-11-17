@@ -12,11 +12,18 @@ namespace UltraToDo {
 namespace {
 constexpr int64_t kDay = 24 * 60 * 60;
 
-// The group a task is listed in: 0 planned and open, 1 open without a
-// planned end, 2 finished.
-int GroupOf(const ToDoTask& task) {
-    if (task.done) return 2;
-    return task.HasDue() ? 0 : 1;
+// The group a task is listed in: 0 overdue, 1 to start now, 2 planned,
+// 3 open without a planned end, 4 finished.
+int GroupOf(const ToDoTask& task, int64_t now) {
+    switch (UrgencyOf(task, now)) {
+        case ToDoUrgency::Overdue:     return 0;
+        case ToDoUrgency::StartNow:    return 1;
+        case ToDoUrgency::Soon:
+        case ToDoUrgency::Later:       return 2;
+        case ToDoUrgency::Unscheduled: return 3;
+        case ToDoUrgency::Finished:    return 4;
+    }
+    return 3;
 }
 } // namespace
 
@@ -45,22 +52,23 @@ ToDoUrgency UrgencyOf(const ToDoTask& task, int64_t now) {
     return ToDoUrgency::Later;
 }
 
-bool MoreUrgent(const ToDoTask& a, const ToDoTask& b) {
-    const int groupA = GroupOf(a), groupB = GroupOf(b);
+bool MoreUrgent(const ToDoTask& a, const ToDoTask& b, int64_t now) {
+    const int groupA = GroupOf(a, now), groupB = GroupOf(b, now);
     if (groupA != groupB) return groupA < groupB;
-    if (groupA == 0) {
+    if (groupA <= 2) {
         const int64_t startA = LatestStartOf(a), startB = LatestStartOf(b);
         if (startA != startB) return startA < startB;
         if (a.due != b.due) return a.due < b.due;
-    } else if (groupA == 2) {
+    } else if (groupA == 4) {
         if (a.completed != b.completed) return a.completed > b.completed;
     }
     if (a.created != b.created) return a.created < b.created;
     return a.id < b.id;
 }
 
-void SortByUrgency(std::vector<ToDoTask>& tasks) {
-    std::stable_sort(tasks.begin(), tasks.end(), MoreUrgent);
+void SortByUrgency(std::vector<ToDoTask>& tasks, int64_t now) {
+    std::stable_sort(tasks.begin(), tasks.end(),
+                     [now](const ToDoTask& a, const ToDoTask& b) { return MoreUrgent(a, b, now); });
 }
 
 std::vector<ToDoNotice> DueNotices(const std::vector<ToDoTask>& tasks, int64_t now) {

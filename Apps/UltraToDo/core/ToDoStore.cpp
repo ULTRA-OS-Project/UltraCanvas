@@ -186,9 +186,9 @@ bool ToDoStore::Save(std::string& error) const {
     return true;
 }
 
-std::vector<ToDoTask> ToDoStore::Sorted() const {
+std::vector<ToDoTask> ToDoStore::Sorted(int64_t now) const {
     std::vector<ToDoTask> sorted = tasks_;
-    SortByUrgency(sorted);
+    SortByUrgency(sorted, now);
     return sorted;
 }
 

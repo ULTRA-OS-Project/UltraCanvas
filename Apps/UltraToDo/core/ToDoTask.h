@@ -8,7 +8,8 @@
 //
 //   latest start = planned end - estimated time
 //
-// The list is ordered by that moment, not by the planned end: a report due on
+// The list is ordered by that moment, not by the planned end (once overdue,
+// a task goes to the top): a report due on
 // Friday that takes two days is more urgent on Wednesday than a call due on
 // Thursday that takes five minutes.
 //
@@ -80,11 +81,13 @@ enum class ToDoUrgency {
 };
 ToDoUrgency UrgencyOf(const ToDoTask& task, int64_t now);
 
-// The list's order: open tasks with a planned end by their latest start (the
-// most urgent first), then open tasks without one in the order they were
-// written, then finished tasks, the latest finished first.
-bool MoreUrgent(const ToDoTask& a, const ToDoTask& b);
-void SortByUrgency(std::vector<ToDoTask>& tasks);
+// The list's order at `now`: overdue tasks first, then those whose latest
+// start has passed, then the rest of the planned ones - within each by their
+// latest start, the earliest first - then open tasks without a planned end in
+// the order they were written, then finished tasks, the latest finished
+// first.
+bool MoreUrgent(const ToDoTask& a, const ToDoTask& b, int64_t now);
+void SortByUrgency(std::vector<ToDoTask>& tasks, int64_t now);
 
 enum class ToDoNoticeKind { Reminder, Alarm };
 struct ToDoNotice {

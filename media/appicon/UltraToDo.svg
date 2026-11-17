@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- UltraToDo: pastel task panels with round corners and a round check. -->
+  <rect x="12" y="12" width="232" height="232" rx="56" fill="#E2D9FA"/>
+  <rect x="40" y="52" width="176" height="44" rx="18" fill="#FFD6DD" stroke="#E5B3BD" stroke-width="3"/>
+  <rect x="40" y="106" width="176" height="44" rx="18" fill="#FFF4C2" stroke="#E2D49C" stroke-width="3"/>
+  <rect x="40" y="160" width="176" height="44" rx="18" fill="#CFF0DA" stroke="#A9D4B7" stroke-width="3"/>
+  <rect x="96" y="68" width="96" height="12" rx="6" fill="#B98692"/>
+  <rect x="96" y="122" width="80" height="12" rx="6" fill="#B3A46A"/>
+  <rect x="96" y="176" width="104" height="12" rx="6" fill="#7FAA8D"/>
+  <circle cx="68" cy="74" r="12" fill="#FFFFFF" stroke="#B98692" stroke-width="3"/>
+  <circle cx="68" cy="128" r="12" fill="#FFFFFF" stroke="#B3A46A" stroke-width="3"/>
+  <circle cx="68" cy="182" r="14" fill="#6B57B8"/>
+  <path d="M61 182 l5 6 l10 -12" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

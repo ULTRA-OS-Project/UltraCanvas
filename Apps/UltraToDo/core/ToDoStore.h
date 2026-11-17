@@ -37,8 +37,8 @@ public:
     bool Save(std::string& error) const;
 
     const std::vector<ToDoTask>& Tasks() const { return tasks_; }
-    // The tasks in the list's order (SortByUrgency).
-    std::vector<ToDoTask> Sorted() const;
+    // The tasks in the list's order at `now` (SortByUrgency).
+    std::vector<ToDoTask> Sorted(int64_t now) const;
     const ToDoTask* Find(const std::string& id) const;
 
     // Adds a task (an empty id: it gets one, and `now` as its creation time)
