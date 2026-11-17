@@ -13,6 +13,7 @@
 // folder read directly, the daemon stopped with Shutdown and started again
 // with the link it kept. Skips without python3, unless
 // ULTRAIM_TEST_SIGNAL_REQUIRED is set.
+// Version: 0.1.1 - a receipt quicker than the send's answer (/_test/send_delay) still gives the tick
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -461,6 +462,19 @@ void TestEndToEnd(const std::string& url, const fs::path& base) {
         return x.type == UltraIMEventType::MessageDelivered && x.message.messageId == helloId &&
                x.deliveryStatus == UltraIMDeliveryStatus::Read;
     }));
+
+    // A receipt quicker than the send's answer: kept, and the tick given
+    // once the message is recorded - not lost.
+    PostTest(url, "/_test/send_delay", Object({{"seconds", "1.5"}}));
+    UltraIMSendOptions quick;
+    quick.clientMessageId = "c-quick";
+    CHECK(alice->SendText(aliceToBob, "Quick, Bob", quick));
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& x) { return IsReceived(x, "Quick, Bob"); }));
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& x) {
+        return x.type == UltraIMEventType::MessageDelivered && x.message.clientMessageId == "c-quick" &&
+               x.deliveryStatus == UltraIMDeliveryStatus::Delivered;
+    }));
+    PostTest(url, "/_test/send_delay", Object({{"seconds", "0"}}));
 
     // A reply (a quote of Alice's message).
     UltraIMSendOptions reply;
