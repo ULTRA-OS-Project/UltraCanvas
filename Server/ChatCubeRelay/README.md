@@ -297,15 +297,23 @@ an old name is still read when the new one is not set, and the script warns.
 ### Deploying from CI
 
 The `ChatCube relay` workflow tests every change to this directory, and on
-`main` - or started by hand, *Actions > ChatCube relay > Run workflow* - puts
-the tested relay on the live server: it copies this directory to the server
-over SSH, runs `update.sh` there and then asks the public address
-(`vars.CHATCUBE_RELAY_URL`, default `https://relay-chatcube.ultraos.eu`)
-for the version this commit carries. Until the secrets below are set the
-deploy job fails at its first step, naming the secrets it cannot see, and
-nothing is touched (in a fork, which has no server, it only says so). Its GitHub environment,
-`chatcube-relay`, can be given a required reviewer (*Settings >
-Environments*) so a deploy waits for a click.
+`main` - or started by hand, *Actions > ChatCube relay > Run workflow* -
+copies the tested sources to the live server over SSH, into
+`~/chatcube-relay-src` of the deploy user (the previous copy replaced whole),
+and does nothing more. Installing them is the operator's: logged in on the
+server, they run the copy's own `update.sh` with their own rights,
+
+```bash
+src=/home/relay-deploy/chatcube-relay-src
+sudo "$src/deploy/update.sh" "$src"
+```
+
+and the job's summary says which version it copied. So the deploy user
+needs no root rights and no sudo rule. Until the secrets below are set the
+job fails at its first step, naming the secrets it cannot see, and nothing
+is touched (in a fork, which has no server, it only says so). Its GitHub
+environment, `chatcube-relay`, can be given a required reviewer (*Settings >
+Environments*) so a copy waits for a click.
 
 Once, on the server:
 
@@ -314,11 +322,13 @@ sudo useradd --create-home --shell /bin/bash relay-deploy
 sudo -u relay-deploy mkdir -m 700 /home/relay-deploy/.ssh
 # The public half of a key made for this alone (ssh-keygen -t ed25519 -N "" -f relay_deploy):
 echo 'ssh-ed25519 AAAA... relay-deploy' | sudo -u relay-deploy tee /home/relay-deploy/.ssh/authorized_keys
-# update.sh where the deploy user cannot change it, and the one command it may run as root:
-sudo install -m 755 Server/ChatCubeRelay/deploy/update.sh /usr/local/sbin/chatcube-relay-update
-echo 'relay-deploy ALL=(root) NOPASSWD: /usr/local/sbin/chatcube-relay-update *' | sudo tee /etc/sudoers.d/chatcube-relay-deploy
-sudo chmod 440 /etc/sudoers.d/chatcube-relay-deploy
 ```
+
+The deploy user can change what lands in its folder, `update.sh` included,
+so read what you are about to run as root; a relay set up for an earlier
+version of this workflow can drop its sudo rule
+(`sudo rm /etc/sudoers.d/chatcube-relay-deploy`) and the installed
+`/usr/local/sbin/chatcube-relay-update`.
 
 In the repository's *Settings > Secrets and variables > Actions* (or the
 `chatcube-relay` environment's secrets):
@@ -330,9 +340,6 @@ In the repository's *Settings > Secrets and variables > Actions* (or the
 | `CHATCUBE_RELAY_SSH_KEY` | the private half of that key |
 | `CHATCUBE_RELAY_SSH_KNOWN_HOSTS` | `ssh-keyscan <host>` - checked against the server's own key first; the job never trusts a host key it has not been given. With SSH on another port, `ssh-keyscan -p <port> <host>`: its lines name the host as `[host]:port`, which is what ssh looks for there |
 | `CHATCUBE_RELAY_SSH_PORT` | optional: the server's SSH port, when it is not 22. A port is no secret, so it may be an Actions variable instead (the secret wins when both are set) |
-
-`update.sh` itself is installed by hand, so a change to it reaches the server
-when it is installed again (the command above).
 
 Give ChatCube the relay's `https://` address. A bare host is taken as
 `https://`, and an `http://` address that the server redirects to `https://`
