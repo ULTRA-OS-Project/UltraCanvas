@@ -65,6 +65,9 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.45.2 - the status line's quieter half ("3 drives, 424.5 GB free ...") takes the
+//                  look's statusQuiet (a fixed #6b6b73 before, near unreadable on the dark well),
+//                  and is written again on a theme change
 // Version: 1.45.1 - the drive rows of the folder tree keep a dark tint under a dark theme while
 //                  their colour is the default (a light blue band before), again on a theme change;
 //                  the path bars take the theme's colours (a light grey strip before) and follow it;
@@ -1167,13 +1170,15 @@ namespace {
     }
 
     // The status bar's left line: `primary` in bold, `secondary` after it in
-    // the quieter grey - the way the file display's info bar drew them.
+    // the quieter grey - the way the file display's info bar drew them. The
+    // grey is the theme's (FilerLook::statusQuiet): a fixed one is lost on
+    // the dark well.
     std::string StatusInfoMarkup(const std::string& primary,
                                  const std::string& secondary) {
         std::string markup;
         if (!primary.empty()) markup = "<b>" + EscapeStatusMarkup(primary) + "</b>";
         if (!secondary.empty()) {
-            markup += "<span foreground=\"#6b6b73\">";
+            markup += "<span foreground=\"" + Look().statusQuiet.ToHexString() + "\">";
             if (!primary.empty()) markup += "  ·  ";
             markup += EscapeStatusMarkup(secondary) + "</span>";
         }
@@ -1669,6 +1674,7 @@ void UltraFilerWindow::ApplyLook() {
     if (statusInfoLabel) statusInfoLabel->SetTextColor(look.inkMuted);
     if (statusSelectionLabel) statusSelectionLabel->SetTextColor(look.inkFaint);
     if (statusLabel) statusLabel->SetTextColor(statusNoteIsError ? look.danger : look.inkMuted);
+    UpdateStatusBar();   // the left line's markup carries the quiet grey itself
     if (statusProgress) statusProgress->SetGaugeColor(look.accent);
     ApplyTreeColors();   // the default drive rows have a light and a dark tint
     if (computerPane) computerPane->SetBackgroundColor(look.panel);

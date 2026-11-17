@@ -11,8 +11,8 @@
 //   const FilerLook look = Look();
 //   row->SetBackgroundColor(look.ground);
 //
-// Version: 1.0.0
-// Last Modified: 2026-11-11
+// Version: 1.1.0 - statusQuiet, the status line's quieter grey per theme
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -35,6 +35,7 @@ struct FilerLook {
     Color ink;           // text, and the icons drawn as masks
     Color inkMuted;      // captions, the status line
     Color inkFaint;      // a separator, a mount path
+    Color statusQuiet;   // the status line's second half, after the bold part
     Color line;          // hairlines between the bars, a field's border
     Color border;        // a button's thin outline: the line
     Color accent;        // the progress gauge, the scan button
@@ -65,6 +66,11 @@ struct FilerLook {
         l.ink = r.ink;
         l.inkMuted = r.inkMuted;
         l.inkFaint = r.inkFaint;
+        // The light design's grey (#6b6b73) under the standard light theme;
+        // elsewhere the faint ink, which reads on a dark well and keeps the
+        // high-contrast themes' ratios.
+        l.statusQuiet = (!theme.dark && !theme.highContrast) ? Color(107, 107, 115)
+                                                             : r.inkFaint;
         l.line = r.line;
         l.border = r.line;
         l.accent = r.accent;
