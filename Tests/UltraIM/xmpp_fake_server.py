@@ -2,7 +2,11 @@
 """A small XMPP server in memory, for XmppProviderTests: XMPP over WebSocket
 (RFC 7395) on an HTTP server that also answers XEP-0156 discovery
 (/.well-known/host-meta.json and host-meta) and the HTTP File Upload slots
-(XEP-0363 PUT and GET).
+(XEP-0363 PUT and GET); and XMPP over TCP (RFC 6120) on two more ports - one
+plain, with STARTTLS offered (and required) when there is a certificate, and
+one with TLS from the start (XEP-0368 direct TLS). All of them share the same
+users, rosters, rooms and archives: a client over TCP and one over the
+WebSocket talk to each other.
 
 What it speaks: the WebSocket itself (RFC 6455: the upgrade, text frames,
 the client's masking, close, ping and pong); SASL SCRAM-SHA-256,
@@ -16,16 +20,18 @@ discovery; an upload service; a group chat service (XEP-0045: created,
 configured, joined, members, invitations, messages, its own archive);
 bookmarks in PEP (XEP-0402) and private storage (XEP-0048).
 
-Standard library only. Prints {"url": "http://127.0.0.1:<port>"} once it
-listens; runs until it is killed.
+Standard library only. Prints {"url": "http://127.0.0.1:<port>", "tcp":
+<port>, "tls": <port>} once it listens ("tls" only with --cert); runs until
+it is killed.
 
-    xmpp_fake_server.py --users alice,bob,carol
+    xmpp_fake_server.py --users alice,bob,carol [--cert cert.pem --key key.pem]
 
 Each user is <name>@example.org with the password "<name>-pass". For the
 tests: POST /_test/drop {"user": "alice"} cuts alice's connections without
 a goodbye; POST /_test/mechanisms {"mechanisms": [...]} sets the SASL
 mechanisms offered; POST /_test/password {"user": ..., "password": ...}
-changes a password (a new salt).
+changes a password (a new salt); POST /_test/starttls {"offer": false}
+stops offering STARTTLS on the plain TCP port.
 """
 
 import argparse
@@ -35,7 +41,9 @@ import hashlib
 import hmac
 import json
 import secrets
+import select
 import socket
+import ssl
 import struct
 import sys
 import threading
@@ -49,6 +57,7 @@ MUC = "conference.example.org"
 UPLOAD = "upload.example.org"
 
 NS_FRAMING = "urn:ietf:params:xml:ns:xmpp-framing"
+NS_TLS = "urn:ietf:params:xml:ns:xmpp-tls"
 NS_STREAMS = "http://etherx.jabber.org/streams"
 NS_CLIENT = "jabber:client"
 NS_SASL = "urn:ietf:params:xml:ns:xmpp-sasl"
@@ -95,6 +104,7 @@ ROOMS = {}          # room bare JID -> Room
 UPLOADS = {}        # path -> {"size", "type", "auth", "data"}
 MECHANISMS = ["SCRAM-SHA-256", "SCRAM-SHA-1", "PLAIN"]
 BASE = {"url": ""}
+TLS = {"context": None, "starttls": True}  # the server's certificate; STARTTLS offered on the plain port
 HASHES = {"SCRAM-SHA-256": "sha256", "SCRAM-SHA-1": "sha1"}
 
 
@@ -493,6 +503,177 @@ class Conn:
         self.full = self.user + "/" + res
         sessions[res] = self
         self.send(result(iq, E(NS_BIND, "bind", children=[E(NS_BIND, "jid", text=self.full)])))
+
+
+# ---- XMPP over TCP (RFC 6120) -----------------------------------------------------------
+
+class TcpConn(Conn):
+    """The same connection over a byte stream: the stream header instead of
+    <open/>, the elements one after another, STARTTLS. One lock covers every
+    read and write of the socket (an SSL socket takes neither from two
+    threads at once), so the socket is non-blocking and read when select()
+    says so."""
+
+    def __init__(self, sock, tls):
+        super().__init__(sock, None)
+        self.tls = tls
+        self.io_lock = threading.Lock()
+        self.parser = None
+        self.depth = 0
+        self.root = None
+        self.restart = False
+
+    def write(self, data):
+        with self.send_lock:
+            if not self.alive:
+                return
+            view = memoryview(data)
+            try:
+                while view:
+                    try:
+                        with self.io_lock:
+                            n = self.sock.send(view)
+                        view = view[n:]
+                    except (ssl.SSLWantWriteError, ssl.SSLWantReadError, BlockingIOError):
+                        select.select([], [self.sock], [], 1.0)
+            except (OSError, ValueError):
+                self.alive = False
+
+    def send(self, el):
+        self.write(xml(el).encode())
+
+    def send_raw(self, text):
+        self.write(text.encode())
+
+    def new_parser(self):
+        self.parser = ET.XMLPullParser(events=("start", "end"))
+        self.depth = 0
+        self.root = None
+
+    def loop(self):
+        self.new_parser()
+        try:
+            while self.alive:
+                pending = self.tls and self.sock.pending()
+                if not pending:
+                    readable, _, _ = select.select([self.sock], [], [], 0.2)
+                    if not readable:
+                        continue
+                try:
+                    with self.io_lock:
+                        data = self.sock.recv(65536)
+                except (ssl.SSLWantReadError, ssl.SSLWantWriteError, BlockingIOError):
+                    continue
+                if not data:
+                    break
+                self.feed(data)
+        except Exception:     # a broken stream, a failed handshake, a dropped socket: gone
+            pass
+        finally:
+            with LOCK:
+                self.gone()
+            try:
+                self.sock.close()
+            except OSError:
+                pass
+
+    def feed(self, data):
+        self.parser.feed(data)
+        for event, el in self.parser.read_events():
+            if event == "start":
+                self.depth += 1
+                if self.depth == 1:
+                    self.root = el
+                    with LOCK:
+                        self.stream_header()
+                continue
+            self.depth -= 1
+            if self.depth == 0:
+                # </stream:stream>: ours too, and the connection closed.
+                self.send_raw("</stream:stream>")
+                self.drop()
+                return
+            if self.depth == 1:
+                with LOCK:
+                    self.handle(el)
+                try:
+                    self.root.remove(el)
+                except ValueError:
+                    pass
+                if self.restart:
+                    # A new stream (after STARTTLS or SASL): what this parser had is done.
+                    self.restart = False
+                    self.new_parser()
+                    return
+
+    def stream_header(self):
+        self.send_raw("<?xml version='1.0'?><stream:stream xmlns='jabber:client' xmlns:stream='%s' from='%s' "
+                      "id='%s' version='1.0' xml:lang='en'>" % (NS_STREAMS, DOMAIN, new_id()))
+        if not self.tls and TLS["context"] is not None and TLS["starttls"]:
+            inner = xml(E(NS_TLS, "starttls", children=[E(NS_TLS, "required")]))
+        elif self.user:
+            inner = xml(E(NS_BIND, "bind")) + xml(E(NS_SESSION, "session", children=[E(NS_SESSION, "optional")]))
+        else:
+            inner = xml(E(NS_SASL, "mechanisms", children=[E(NS_SASL, "mechanism", text=m) for m in MECHANISMS]))
+        self.send_raw("<stream:features>%s</stream:features>" % inner)
+
+    def handle(self, el):
+        ns, name = split(el.tag)
+        if ns == NS_TLS and name == "starttls":
+            return self.starttls()
+        if ns == NS_FRAMING:
+            return      # (not on TCP)
+        signed_in = self.user is not None
+        super().handle(el)
+        if not signed_in and self.user is not None:
+            self.restart = True     # SASL done: the client opens a new stream
+
+    def starttls(self):
+        if self.tls or TLS["context"] is None:
+            self.send(E(NS_TLS, "failure"))
+            self.send_raw("</stream:stream>")
+            return self.drop()
+        self.send(E(NS_TLS, "proceed"))
+        with self.send_lock, self.io_lock:
+            self.sock.setblocking(True)
+            self.sock.settimeout(10)
+            try:
+                self.sock = TLS["context"].wrap_socket(self.sock, server_side=True)
+            except (ssl.SSLError, OSError):
+                self.alive = False
+                raise
+            self.sock.setblocking(False)
+            self.tls = True
+        self.restart = True
+
+
+def serve_tcp(sock, direct_tls):
+    try:
+        if direct_tls:
+            sock.settimeout(10)
+            sock = TLS["context"].wrap_socket(sock, server_side=True)
+        sock.setblocking(False)
+    except (ssl.SSLError, OSError):
+        try:
+            sock.close()
+        except OSError:
+            pass
+        return
+    TcpConn(sock, direct_tls).loop()
+
+
+def listen_tcp(direct_tls):
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    server.listen(16)
+
+    def accept():
+        while True:
+            sock, _ = server.accept()
+            threading.Thread(target=serve_tcp, args=(sock, direct_tls), daemon=True).start()
+    threading.Thread(target=accept, daemon=True).start()
+    return server.getsockname()[1]
 
 
 # ---- iq -----------------------------------------------------------------------------------
@@ -1111,6 +1292,8 @@ class Handler(BaseHTTPRequestHandler):
                 MECHANISMS[:] = body["mechanisms"]
             elif path == "/_test/password":
                 set_password(body["user"] + "@" + DOMAIN, body["password"])
+            elif path == "/_test/starttls":
+                TLS["starttls"] = bool(body.get("offer", True))
             else:
                 return self.reply(404, b"{}")
         self.reply(200, b"{}")
@@ -1135,7 +1318,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--users", default="alice,bob,carol")
     parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--cert", default="")
+    parser.add_argument("--key", default="")
     args = parser.parse_args()
+    if args.cert:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(args.cert, args.key)
+        TLS["context"] = context
     for name in args.users.split(","):
         name = name.strip().lower()
         if name:
@@ -1143,7 +1332,10 @@ def main():
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
     BASE["url"] = "http://127.0.0.1:%d" % server.server_address[1]
-    print(json.dumps({"url": BASE["url"]}), flush=True)
+    ports = {"url": BASE["url"], "tcp": listen_tcp(False)}
+    if TLS["context"] is not None:
+        ports["tls"] = listen_tcp(True)
+    print(json.dumps(ports), flush=True)
     server.serve_forever()
 
 

@@ -1,5 +1,6 @@
 // Plugins/UltraIM/xmpp/XmppProvider.cpp
 // XMPP - chats, rooms and the roster of an XMPP account as UltraIM conversations
+// Version: 0.2.0 - TCP (STARTTLS, direct TLS), the endpoint found by SRV / host-meta / 5222 and kept
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -39,24 +40,6 @@ std::string Lower(std::string s) {
 
 bool StartsWith(const std::string& s, const char* prefix) {
     return s.rfind(prefix, 0) == 0;
-}
-
-std::string HostOf(const std::string& url) {
-    std::string host = url;
-    const size_t scheme = host.find("://");
-    if (scheme != std::string::npos) host = host.substr(scheme + 3);
-    const size_t end = host.find_first_of("/?#");
-    if (end != std::string::npos) host = host.substr(0, end);
-    if (!host.empty() && host.front() == '[') return host.substr(1, host.find(']') - 1);
-    const size_t colon = host.rfind(':');
-    if (colon != std::string::npos) host = host.substr(0, colon);
-    return Lower(host);
-}
-
-// This computer: the one place a connection without TLS is taken (tests).
-bool IsLoopback(const std::string& url) {
-    const std::string host = HostOf(url);
-    return host == "127.0.0.1" || host == "localhost" || host == "::1";
 }
 
 std::string LowerExtension(const std::string& path) {
@@ -336,9 +319,14 @@ std::string XmppProvider::GetLocalUserId() const {
     return account_.jid;
 }
 
-std::string XmppProvider::GetWebSocketUrl() const {
+std::string XmppProvider::GetEndpoint() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return account_.url;
+}
+
+void XmppProvider::SetTlsOptions(const UltraNetTlsOptions& options) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    tlsOptions_ = options;
 }
 
 std::string XmppProvider::GetBoundJid() const {
@@ -505,12 +493,17 @@ void XmppProvider::SignInOnWorker(UltraIMCredentials credentials, UltraIMResultC
         return fail(UltraIMResult::Error(UltraIMResultCode::InvalidArgument,
                                          "Sign in with your XMPP address (name@example.org) and password"));
     }
-    if (!Trim(credentials.server).empty() || account.url.empty()) {
-        std::string error;
-        const std::string url = FindWebSocket(JidDomain(account.jid), Trim(credentials.server), error);
-        if (url.empty()) return fail(UltraIMResult::Error(UltraIMResultCode::NetworkError, error));
-        account.url = url;
+    const std::string server = Trim(credentials.server);
+    std::vector<EndpointStage> stages;
+    if (server.empty() && !account.url.empty()) {
+        // The endpoint that connected last time first; the domain's anew
+        // only when it no longer does.
+        const std::string kept = account.url;
+        stages.push_back([kept](std::string&) { return std::vector<std::string>{kept}; });
     }
+    std::string error;
+    for (EndpointStage& stage : EndpointStages(JidDomain(account.jid), server, error)) stages.push_back(std::move(stage));
+    if (stages.empty()) return fail(UltraIMResult::Error(UltraIMResultCode::NetworkError, error));
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (account_.jid != account.jid) {
@@ -526,7 +519,40 @@ void XmppProvider::SignInOnWorker(UltraIMCredentials credentials, UltraIMResultC
         account_.url = account.url;
     }
     LoadLocalState();
-    const UltraIMResult r = Connect(account, true);
+    // Each endpoint in turn, until one connects; a server that answered
+    // (a wrong password, ...) ends the search.
+    std::vector<std::string> tried, notes;
+    UltraIMResult r = UltraIMResult::Error(UltraIMResultCode::NetworkError, "No XMPP server found");
+    bool connected = false;
+    for (EndpointStage& stage : stages) {
+        std::string note;
+        const std::vector<std::string> urls = stage(note);
+        if (!note.empty()) notes.push_back(note);
+        for (const std::string& url : urls) {
+            if (std::find(tried.begin(), tried.end(), url) != tried.end()) continue;
+            tried.push_back(url);
+            account.url = url;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                account_.url = url;
+            }
+            r = Connect(account, true);
+            if (r || r.code != UltraIMResultCode::NetworkError) {
+                connected = true;
+                break;
+            }
+            notes.push_back(r.message);
+        }
+        if (connected) break;
+    }
+    if (!connected && notes.size() > 1) {
+        std::string all;
+        for (const std::string& n : notes) all += (all.empty() ? "" : "; ") + n;
+        r = UltraIMResult::Error(UltraIMResultCode::NetworkError, "No XMPP server of " + JidDomain(account.jid) +
+                                                                      " could be reached: " + all);
+    } else if (!connected && notes.size() == 1) {
+        r = UltraIMResult::Error(UltraIMResultCode::NetworkError, notes.front());
+    }
     if (!r) {
         // Keys the server no longer takes (the password was changed): forgotten.
         if (usingStored && r.code == UltraIMResultCode::AuthFailed) ForgetAccount();
@@ -535,32 +561,55 @@ void XmppProvider::SignInOnWorker(UltraIMCredentials credentials, UltraIMResultC
     if (onResult) onResult(r);
 }
 
-std::string XmppProvider::FindWebSocket(const std::string& domain, const std::string& server, std::string& error) {
-    std::string url;
-    if (StartsWith(server, "wss://") || StartsWith(server, "ws://")) {
-        url = server;
-    } else {
-        std::string base = server.empty() ? "https://" + domain
-                                          : server.find("://") == std::string::npos ? "https://" + server : server;
+std::vector<XmppProvider::EndpointStage> XmppProvider::EndpointStages(const std::string& domain,
+                                                                      const std::string& server, std::string& error) {
+    std::vector<EndpointStage> stages;
+    const std::string lower = Lower(server);
+    if (server.empty()) {
+        // The DNS SRV records (direct TLS and STARTTLS), then the WebSocket
+        // host-meta announces, then the usual port, then the usual WebSocket.
+        auto noStartTls = std::make_shared<bool>(false);
+        stages.push_back([domain, noStartTls](std::string&) {
+            std::vector<std::string> urls;
+            for (const XmppEndpoint& e : XmppLookupSrvEndpoints(domain, 5000, noStartTls.get())) urls.push_back(e.url);
+            return urls;
+        });
+        stages.push_back([this, domain](std::string&) {
+            const std::string url = Discover("https://" + domain);
+            return url.empty() ? std::vector<std::string>() : std::vector<std::string>{url};
+        });
+        stages.push_back([domain, noStartTls](std::string&) {
+            std::vector<std::string> urls;
+            if (!*noStartTls) urls.push_back(XmppEndpointUrl(XmppTransport::StartTls, domain, 5222));
+            urls.push_back("wss://" + domain + "/xmpp-websocket");
+            return urls;
+        });
+        return stages;
+    }
+    if (StartsWith(lower, "https://") || StartsWith(lower, "http://")) {
+        // Where to look for the WebSocket (XEP-0156).
+        std::string base = server;
         const size_t path = base.find('/', base.find("://") + 3);
         if (path != std::string::npos) base = base.substr(0, path);
-        url = Discover(base);
-        // Nothing announced: where Prosody (and many others) put it.
-        if (url.empty() && server.empty()) url = "wss://" + domain + "/xmpp-websocket";
-        if (url.empty()) {
-            error = "No XMPP WebSocket address is announced at " + base + " (/.well-known/host-meta)";
-            return std::string();
-        }
+        stages.push_back([this, base](std::string& note) {
+            const std::string url = Discover(base);
+            if (url.empty()) {
+                note = "No XMPP WebSocket address is announced at " + base + " (/.well-known/host-meta)";
+                return std::vector<std::string>();
+            }
+            return std::vector<std::string>{url};
+        });
+        return stages;
     }
-    if (StartsWith(url, "ws://") && !IsLoopback(url)) {
-        error = "The XMPP server's address " + url + " has no TLS (ws://): use its wss:// address";
-        return std::string();
+    XmppEndpoint endpoint;
+    if (!ParseXmppEndpoint(server, endpoint)) {
+        error = "Not an XMPP server address: " + server +
+                " (xmpp://host:port, xmpps://host:port, host:port, wss://..., https://...)";
+        return stages;
     }
-    if (!StartsWith(url, "ws://") && !StartsWith(url, "wss://")) {
-        error = "Not a WebSocket address: " + url;
-        return std::string();
-    }
-    return url;
+    const std::string url = endpoint.url;
+    stages.push_back([url](std::string&) { return std::vector<std::string>{url}; });
+    return stages;
 }
 
 std::string XmppProvider::Discover(const std::string& base) {
@@ -599,6 +648,19 @@ std::string XmppProvider::Discover(const std::string& base) {
 }
 
 UltraIMResult XmppProvider::Connect(Account& account, bool fresh) {
+    XmppEndpoint endpoint;
+    if (!ParseXmppEndpoint(account.url, endpoint))
+        return UltraIMResult::Error(UltraIMResultCode::NetworkError, "Not an XMPP server address: " + account.url);
+    const bool tcp = endpoint.transport != XmppTransport::WebSocket;
+    // Without TLS only to this computer: refused before anything is sent.
+    if (!tcp && StartsWith(Lower(account.url), "ws://") && !XmppPlainStreamAllowed(endpoint.host))
+        return UltraIMResult::Error(UltraIMResultCode::NetworkError, "The XMPP server's address " + account.url +
+                                                                         " has no TLS (ws://): use its wss:// address");
+    UltraNetTlsOptions tls;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        tls = tlsOptions_;
+    }
     auto stream = std::make_shared<XmppStream>();
     uint64_t generation = 0;
     {
@@ -619,22 +681,41 @@ UltraIMResult XmppProvider::Connect(Account& account, bool fresh) {
         Enqueue([this, generation, why]() { Dropped(generation, why); });
     };
     std::string error;
-    if (!stream->Connect(account.url, timings_.connectTimeoutMs, timings_.pingIntervalMs, error))
+    const std::string domain = JidDomain(account.jid);
+    bool certificateRefused = false;
+    // (TLS on TCP is verified for the domain, the name the server must prove, RFC 6120 13.7.2.1.)
+    const bool connected =
+        tcp ? stream->ConnectTcp(endpoint.host, endpoint.port, endpoint.transport == XmppTransport::DirectTls, domain,
+                                 tls, timings_.connectTimeoutMs, timings_.pingIntervalMs, error, certificateRefused)
+            : stream->Connect(account.url, timings_.connectTimeoutMs, timings_.pingIntervalMs, error);
+    if (!connected)
         return abandon(UltraIMResult::Error(UltraIMResultCode::NetworkError,
                                             "Could not reach the XMPP server at " + account.url + ": " + error));
-    const std::string domain = JidDomain(account.jid);
-    XmlElement open("open", Ns::Framing);
-    open.Set("to", domain).Set("version", "1.0").Set("xml:lang", "en");
-    const auto isFeatures = [](const XmlElement& e) { return e.Is("features", Ns::Streams); };
     XmlElement features;
-    if (!stream->Exchange(open, isFeatures, features, timings_.requestTimeoutMs))
-        return abandon(UltraIMResult::Error(UltraIMResultCode::NetworkError,
-                                            "The server at " + account.url + " does not speak XMPP over WebSocket"));
-    const bool secure = StartsWith(account.url, "wss://") || IsLoopback(account.url);
+    const std::string notXmpp = "The server at " + account.url + " does not speak XMPP" +
+                                (tcp ? std::string() : std::string(" over WebSocket"));
+    if (!stream->OpenStream(domain, features, timings_.requestTimeoutMs))
+        return abandon(UltraIMResult::Error(UltraIMResultCode::NetworkError, notXmpp));
+    if (tcp && !stream->IsTls()) {
+        if (features.Child("starttls", Ns::Tls)) {
+            // STARTTLS, then the stream from the start over TLS (RFC 6120 5.4.3.3).
+            if (!stream->StartTls(domain, tls, timings_.requestTimeoutMs, error, certificateRefused))
+                return abandon(UltraIMResult::Error(UltraIMResultCode::NetworkError,
+                                                    "Could not start TLS with the XMPP server at " + account.url + ": " +
+                                                        error));
+            if (!stream->OpenStream(domain, features, timings_.requestTimeoutMs))
+                return abandon(UltraIMResult::Error(UltraIMResultCode::NetworkError, notXmpp));
+        } else if (!XmppPlainStreamAllowed(endpoint.host)) {
+            return abandon(UltraIMResult::Error(UltraIMResultCode::NetworkError,
+                                                "The XMPP server at " + account.url +
+                                                    " offers no TLS (STARTTLS): not signing in without it"));
+        }
+    }
+    const bool secure = stream->IsTls() || XmppPlainStreamAllowed(endpoint.host);
     const UltraIMResult auth = Authenticate(*stream, features, account, secure);
     if (!auth) return abandon(auth);
     // The stream starts over once signed in (RFC 6120 6.4.6).
-    if (!stream->Exchange(open, isFeatures, features, timings_.requestTimeoutMs))
+    if (!stream->OpenStream(domain, features, timings_.requestTimeoutMs))
         return abandon(UltraIMResult::Error(UltraIMResultCode::NetworkError, "The server did not restart the stream"));
     std::string resource;
     {
@@ -660,18 +741,23 @@ UltraIMResult XmppProvider::Connect(Account& account, bool fresh) {
         session.Add("session", Ns::Session);
         stream->Iq(session, reply, timings_.requestTimeoutMs);
     }
+    bool outdated = false;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (generation != generation_) {
-            // Signed out (or in again) meanwhile.
-            stream->Close();
-            return UltraIMResult::Error(UltraIMResultCode::InvalidState, "Signed out while signing in");
+        outdated = generation != generation_;
+        if (!outdated) {
+            boundJid_ = full;
+            resource_ = JidResource(full).empty() ? resource : JidResource(full);
+            account_ = account;
+            signedIn_ = true;
+            backoffMs_ = 0;
         }
-        boundJid_ = full;
-        resource_ = JidResource(full).empty() ? resource : JidResource(full);
-        account_ = account;
-        signedIn_ = true;
-        backoffMs_ = 0;
+    }
+    if (outdated) {
+        // Signed out (or in again) meanwhile. (Closed outside the lock: the
+        // stream waits for its thread, which may be waiting for the lock.)
+        stream->Close();
+        return UltraIMResult::Error(UltraIMResultCode::InvalidState, "Signed out while signing in");
     }
     // SCRAM's keys are kept for the next start; after PLAIN nothing is.
     if (account.hasKeys) SaveAccount(account);

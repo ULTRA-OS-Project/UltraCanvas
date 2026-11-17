@@ -1,16 +1,39 @@
 // Plugins/UltraIM/xmpp/XmppProvider.h
-// XMPP (Jabber) - an UltraIM provider for any XMPP server, over XMPP's
-// WebSocket binding (RFC 7395) through UltraNet: wss://, where libcurl
-// carries the TLS. The classic TCP binding (STARTTLS on port 5222, or
-// direct TLS on 5223, through UltraNet_TlsWrap) is not used yet.
+// XMPP (Jabber) - an UltraIM provider for any XMPP server, through UltraNet,
+// over either of XMPP's transports: the classic TCP binding (RFC 6120) -
+// STARTTLS on port 5222, or direct TLS from the start on 5223 (XEP-0368),
+// both through UltraNet_TlsWrap with the certificate always verified for the
+// address's domain - or the WebSocket binding (RFC 7395), wss://, where
+// libcurl carries the TLS. Without TLS (a server that offers no STARTTLS,
+// ws://) only to this computer (tests); PLAIN only over TLS, or to this
+// computer.
+//
+// Where it connects - credentials.server:
+//
+//   ""                          found from the address's domain, in this
+//                               order: the DNS SRV records
+//                               _xmpps-client._tcp.<domain> (direct TLS) and
+//                               _xmpp-client._tcp.<domain> (STARTTLS), by
+//                               priority and weight (RFC 2782; direct TLS
+//                               first in one priority); the WebSocket that
+//                               https://<domain>/.well-known/host-meta(.json)
+//                               announces (XEP-0156); <domain>:5222 with
+//                               STARTTLS; last wss://<domain>/xmpp-websocket.
+//                               Each is tried until one connects;
+//   "xmpp://host[:port]",       TCP with STARTTLS (port 5222 when none given);
+//   "host:port", "host"
+//   "xmpps://host[:port]"       TCP with direct TLS (port 5223);
+//   "wss://..." ("ws://...")    the WebSocket at that address;
+//   "https://..."               the WebSocket its host-meta announces.
+//
+// The endpoint that connected ("xmpps://chat.example.org:5223",
+// "xmpp://example.org:5222", "wss://...") is kept with the keys, and a
+// sign-in from them (and a reconnect) goes there again first; the domain's
+// endpoints are looked up anew only when it no longer connects. A wss://
+// address kept by an earlier version is used as it is.
 //
 // Here:
 //
-//   - the server is found from the address's domain (XEP-0156: the
-//     WebSocket link of https://<domain>/.well-known/host-meta.json, else of
-//     host-meta's XML); credentials.server overrides it with the WebSocket's
-//     address itself (wss://...) or another place to look (a domain, an
-//     https:// address). ws:// without TLS only to this computer (tests);
 //   - a 1:1 conversation is a chat with a contact, its id the contact's bare
 //     JID ("bob@example.org"); the contacts are the roster (RFC 6121), with
 //     their presence; a group is a multi-user chat room (XEP-0045), its id
@@ -35,7 +58,7 @@
 // the password, by SASL SCRAM-SHA-256, else SCRAM-SHA-1, else PLAIN (only
 // over TLS, or to this computer). What is kept in UltraVault is not the
 // password but SCRAM's ClientKey and ServerKey with the salt and iteration
-// count they were derived with (and the JID and the WebSocket address): a
+// count they were derived with (and the JID and the endpoint): a
 // SignIn with empty credentials signs in with them. A server that offers
 // PLAIN alone gets nothing kept - the password is asked for at the next
 // start. A changed password makes the kept keys useless: AuthRequire.
@@ -44,6 +67,7 @@
 // someone not yet among the contacts is added and asked back; an invitation
 // to a room is accepted and the room bookmarked.
 //
+// Version: 0.2.0 - the TCP binding: STARTTLS, direct TLS, DNS SRV, the endpoint kept; SetTlsOptions
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -51,6 +75,7 @@
 
 #include "XmppScram.h"
 #include "XmppStream.h"
+#include "XmppTcp.h"
 #include "XmppXml.h"
 
 #include "UltraIM/UltraIMPlugins.h"
@@ -74,7 +99,7 @@ namespace UltraIMXmpp {
 struct XmppTimings {
     int requestTimeoutMs = 30000;   // an iq's answer
     int connectTimeoutMs = 15000;
-    int pingIntervalMs = 30000;     // the WebSocket's pings (a silent connection checked)
+    int pingIntervalMs = 30000;     // the WebSocket's pings, TCP's whitespace keepalive (a silent connection checked)
     int reconnectFirstMs = 1000;    // after a dropped connection; doubled each time
     int reconnectMaxMs = 60000;
 };
@@ -94,9 +119,9 @@ public:
     void Shutdown() override;
 
     // credentials.username: the bare JID; password. server: "" (found from
-    // the JID's domain), the WebSocket's address (wss://...), or where to
-    // look for it (a domain, https://...). Empty credentials (or the stored
-    // JID with no password): the stored keys.
+    // the JID's domain) or one of the forms in the comment at the top
+    // (xmpp://, xmpps://, host:port, wss://, https://). Empty credentials (or
+    // the stored JID with no password): the stored keys.
     void SignIn(const UltraIMCredentials& credentials, UltraIMResultCallback onResult) override;
     // Disconnects; the stored keys stay for the next sign-in.
     void SignOut() override;
@@ -152,8 +177,14 @@ public:
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
     void SetTimings(const XmppTimings& timings) { timings_ = timings; }
-    // The WebSocket's address in use (or last used); the full JID bound.
-    std::string GetWebSocketUrl() const;
+    // TLS settings for the TCP binding (a CA file to trust besides the
+    // system's, ...); the certificate and its host name are verified whatever
+    // they say.
+    void SetTlsOptions(const UltraNetTlsOptions& options);
+    // The endpoint in use (or last used): "xmpp://host:port",
+    // "xmpps://host:port" or the WebSocket's address. The full JID bound.
+    std::string GetEndpoint() const;
+    std::string GetWebSocketUrl() const { return GetEndpoint(); }     // (the name it had)
     std::string GetBoundJid() const;
 
 private:
@@ -197,7 +228,7 @@ private:
     // What signs in (again).
     struct Account {
         std::string jid;                // bare
-        std::string url;                // the WebSocket's
+        std::string url;                // the endpoint (XmppEndpoint::url)
         std::string password;           // in memory only, for a reconnect; "" with keys
         ScramKeys   keys;
         bool        hasKeys = false;
@@ -212,7 +243,12 @@ private:
 
     // ---- signing in -------------------------------------------------------
     void SignInOnWorker(UltraIMCredentials credentials, UltraIMResultCallback onResult);
-    std::string FindWebSocket(const std::string& domain, const std::string& server, std::string& error);
+    // Where a sign-in tries to connect, in stages: a stage is asked for its
+    // endpoints only when none before it connected. Empty with error when
+    // credentials.server is not an address this provider takes.
+    using EndpointStage = std::function<std::vector<std::string>(std::string& note)>;
+    std::vector<EndpointStage> EndpointStages(const std::string& domain, const std::string& server,
+                                              std::string& error);
     std::string Discover(const std::string& base);
     UltraIMResult Connect(Account& account, bool fresh);
     UltraIMResult Authenticate(XmppStream& stream, const XmlElement& features, Account& account, bool secure);
@@ -274,6 +310,7 @@ private:
     UltraIMConfig     config_;
     UltraIMEventSink  sink_;
     XmppTimings       timings_;
+    UltraNetTlsOptions tlsOptions_;     // (mutex_)
     std::atomic<UltraIMConnectionState> state_{UltraIMConnectionState::Disconnected};
 
     mutable UltraVault::DeviceKeyVault vault_;

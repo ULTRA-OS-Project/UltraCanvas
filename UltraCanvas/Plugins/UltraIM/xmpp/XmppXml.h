@@ -10,6 +10,7 @@
 // its own has its parent's. Written back, an element says xmlns="..." only
 // where its namespace differs from its parent's - never a prefix.
 //
+// Version: 0.1.1 - Ns::Tls (STARTTLS)
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -27,6 +28,7 @@ namespace Ns {
 inline constexpr const char* Framing = "urn:ietf:params:xml:ns:xmpp-framing";
 inline constexpr const char* Streams = "http://etherx.jabber.org/streams";
 inline constexpr const char* Client = "jabber:client";
+inline constexpr const char* Tls = "urn:ietf:params:xml:ns:xmpp-tls";
 inline constexpr const char* Sasl = "urn:ietf:params:xml:ns:xmpp-sasl";
 inline constexpr const char* Bind = "urn:ietf:params:xml:ns:xmpp-bind";
 inline constexpr const char* Session = "urn:ietf:params:xml:ns:xmpp-session";

@@ -12,12 +12,23 @@
 // byte for byte; a room made, joined by the invited, messages both ways,
 // its history, left, joined again by its address; a chat hidden and back
 // with its next message; a dropped connection reconnecting.
-// Skips without python3, unless ULTRAIM_TEST_XMPP_REQUIRED is set.
+// The TCP binding: the stream splitter on awkward reads (an element over
+// several reads, several in one, CDATA and attributes with '>' in them,
+// nested elements of one name, a restart, the end), the server addresses
+// read, the no-TLS policy, SRV records ordered; then end to end - STARTTLS
+// and direct TLS signed in and talking with a WebSocket client, an untrusted
+// certificate refused both ways, a server without STARTTLS taken only on
+// this computer, the endpoint kept and signed in to again, a drop over TCP
+// reconnecting.
+// Skips without python3, unless ULTRAIM_TEST_XMPP_REQUIRED is set; the TLS
+// part needs openssl as well.
+// Version: 0.2.0 - the TCP binding: splitter, endpoints, SRV order, STARTTLS / direct TLS end to end
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 
 #include "XmppProvider.h"
+#include "XmppTcp.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include "UltraIM/UltraIMCore.h"
@@ -260,12 +271,208 @@ void Post(const std::string& url, const std::string& path, const std::string& js
     CHECK(answer.statusCode == 200);
 }
 
+
+// ============================================================================
+// THE TCP BINDING, WITHOUT A SERVER
+// ============================================================================
+
+std::vector<XmppSplitter::Item> FeedInPieces(XmppSplitter& splitter, const std::vector<std::string>& pieces) {
+    std::vector<XmppSplitter::Item> out;
+    for (const std::string& piece : pieces) splitter.Feed(piece, out);
+    return out;
+}
+
+void TestSplitter() {
+    const std::string header =
+        "<?xml version='1.0'?><stream:stream xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' "
+        "from='example.org' id='s1' version='1.0'>";
+    const std::string features =
+        "<stream:features><mechanisms xmlns='urn:ietf:params:xml:ns:xmpp-sasl'><mechanism>PLAIN</mechanism>"
+        "</mechanisms></stream:features>";
+    const std::string message = "<message to='bob@example.org' id='m1'><body>hello</body></message>";
+    const std::string cdata = "<message id='m2'><body><![CDATA[a > b </message> <x>]]></body></message>";
+    const std::string quoted = "<iq id='a>b' type=\"result\" note='x/>'/>";
+    const std::string nested = "<x xmlns='urn:t'><x><x/>t</x><!-- a > comment </x> --></x>";
+
+    // The header and an element, each over several reads.
+    XmppSplitter s;
+    auto items = FeedInPieces(s, {header.substr(0, 20), header.substr(20, 40), header.substr(60)});
+    CHECK(items.size() == 1 && items[0].kind == XmppSplitter::Kind::Header);
+    CHECK(items.size() == 1 && items[0].text.rfind("<stream:stream", 0) == 0);
+    const std::string streamHeader = items.empty() ? std::string() : items[0].text;
+    items = FeedInPieces(s, {message.substr(0, 9), message.substr(9, 30)});
+    CHECK(items.empty() && s.Pending() > 0);
+    items = FeedInPieces(s, {message.substr(39)});
+    CHECK(items.size() == 1 && items[0].kind == XmppSplitter::Kind::Element && items[0].text == message);
+    // Two (and more) in one read, the keepalive's spaces between them.
+    items = FeedInPieces(s, {" " + features + "\n " + message + " " + quoted});
+    CHECK(items.size() == 3);
+    CHECK(items.size() == 3 && items[0].text == features && items[1].text == message && items[2].text == quoted);
+    // CDATA and a comment with '>' and end tags in them; nested elements of one name.
+    items = FeedInPieces(s, {cdata.substr(0, 30), cdata.substr(30) + nested.substr(0, 25), nested.substr(25)});
+    CHECK(items.size() == 2 && items[0].text == cdata && items[1].text == nested);
+    // One byte at a time: the same.
+    {
+        XmppSplitter bytes;
+        const std::string all = header + features + " " + cdata + quoted + nested + message + "</stream:stream>";
+        std::vector<XmppSplitter::Item> got;
+        for (char c : all) bytes.Feed(&c, 1, got);
+        CHECK(got.size() == 7);
+        if (got.size() == 7) {
+            CHECK(got[0].kind == XmppSplitter::Kind::Header);
+            CHECK(got[1].text == features && got[2].text == cdata && got[3].text == quoted);
+            CHECK(got[4].text == nested && got[5].text == message);
+            CHECK(got[6].kind == XmppSplitter::Kind::End);
+        }
+    }
+    // A restart (a new header in the stream) and the end.
+    items = FeedInPieces(s, {"<stream:stream xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams' "
+                             "id='s2' version='1.0'>" + features + "</stream:stream>"});
+    CHECK(items.size() == 3);
+    CHECK(items.size() == 3 && items[0].kind == XmppSplitter::Kind::Header && items[0].text.find("'s2'") != std::string::npos);
+    CHECK(items.size() == 3 && items[2].kind == XmppSplitter::Kind::End);
+    items = FeedInPieces(s, {message});
+    CHECK(items.empty());       // nothing after the end
+    // Not XML: an error, once.
+    {
+        XmppSplitter bad;
+        auto got = FeedInPieces(bad, {header, "hello <message/>"});
+        CHECK(got.size() == 2 && got[1].kind == XmppSplitter::Kind::Error);
+        XmppSplitter dtd;
+        got = FeedInPieces(dtd, {header, "<!DOCTYPE x>"});
+        CHECK(got.size() == 2 && got[1].kind == XmppSplitter::Kind::Error);
+        XmppSplitter noStream;
+        got = FeedInPieces(noStream, {"<message/>"});
+        CHECK(got.size() == 1 && got[0].kind == XmppSplitter::Kind::Error);
+    }
+    // Reset: a new stream from the start (after STARTTLS).
+    s.Reset();
+    items = FeedInPieces(s, {header + message});
+    CHECK(items.size() == 2 && items[1].text == message);
+
+    // Read in the header's namespaces.
+    XmlElement e;
+    CHECK(XmppParseStreamElement(streamHeader, features, e));
+    CHECK(e.Is("features", Ns::Streams));
+    CHECK(e.Child("mechanisms", Ns::Sasl) != nullptr);
+    CHECK(XmppParseStreamElement(streamHeader, cdata, e));
+    CHECK(e.Is("message", Ns::Client) && e.ChildText("body") == "a > b </message> <x>");
+    CHECK(XmppParseStreamElement(streamHeader, quoted, e));
+    CHECK(e.Is("iq", Ns::Client) && e.Attr("id") == "a>b" && e.Attr("note") == "x/>");
+    CHECK(XmppParseStreamElement(std::string(), "<stream:error><conflict xmlns='urn:x'/></stream:error>", e));
+    CHECK(e.Is("error", Ns::Streams));
+    CHECK(!XmppParseStreamElement(streamHeader, "<message><body></message>", e));
+    CHECK(XmppStreamHeader("example.org").find("to='example.org'") != std::string::npos);
+}
+
+void TestEndpoints() {
+    XmppEndpoint e;
+    CHECK(ParseXmppEndpoint("xmpp://Chat.Example.org", e));
+    CHECK(e.transport == XmppTransport::StartTls && e.host == "chat.example.org" && e.port == 5222);
+    CHECK(e.url == "xmpp://chat.example.org:5222");
+    CHECK(ParseXmppEndpoint("xmpps://chat.example.org", e));
+    CHECK(e.transport == XmppTransport::DirectTls && e.port == 5223 && e.url == "xmpps://chat.example.org:5223");
+    CHECK(ParseXmppEndpoint("xmpps://chat.example.org:443/", e));
+    CHECK(e.transport == XmppTransport::DirectTls && e.port == 443);
+    CHECK(ParseXmppEndpoint(" chat.example.org:5269 ", e));
+    CHECK(e.transport == XmppTransport::StartTls && e.host == "chat.example.org" && e.port == 5269);
+    CHECK(ParseXmppEndpoint("example.org", e));
+    CHECK(e.transport == XmppTransport::StartTls && e.port == 5222 && e.url == "xmpp://example.org:5222");
+    CHECK(ParseXmppEndpoint("[::1]:5333", e));
+    CHECK(e.host == "::1" && e.port == 5333 && e.url == "xmpp://[::1]:5333");
+    CHECK(ParseXmppEndpoint("xmpps://[2001:db8::5]", e));
+    CHECK(e.host == "2001:db8::5" && e.port == 5223 && e.url == "xmpps://[2001:db8::5]:5223");
+    CHECK(ParseXmppEndpoint(e.url, e) && e.url == "xmpps://[2001:db8::5]:5223");     // the kept form reads back
+    CHECK(ParseXmppEndpoint("wss://chat.example.org/xmpp-websocket", e));
+    CHECK(e.transport == XmppTransport::WebSocket && e.host == "chat.example.org" && e.port == 443);
+    CHECK(e.url == "wss://chat.example.org/xmpp-websocket");
+    CHECK(ParseXmppEndpoint("ws://127.0.0.1:8080/xmpp-websocket", e));
+    CHECK(e.transport == XmppTransport::WebSocket && e.host == "127.0.0.1" && e.port == 8080);
+    CHECK(!ParseXmppEndpoint("https://example.org", e));
+    CHECK(!ParseXmppEndpoint("ftp://example.org", e));
+    CHECK(!ParseXmppEndpoint("example.org:", e));
+    CHECK(!ParseXmppEndpoint("example.org:99999", e));
+    CHECK(!ParseXmppEndpoint("example.org:52a", e));
+    CHECK(!ParseXmppEndpoint("bob@example.org", e));
+    CHECK(!ParseXmppEndpoint("", e));
+
+    // Without TLS only to this computer.
+    CHECK(XmppPlainStreamAllowed("127.0.0.1") && XmppPlainStreamAllowed("127.0.1.1"));
+    CHECK(XmppPlainStreamAllowed("localhost") && XmppPlainStreamAllowed("::1") && XmppPlainStreamAllowed("[::1]"));
+    CHECK(!XmppPlainStreamAllowed("chat.example.net"));
+    CHECK(!XmppPlainStreamAllowed("127.example.net"));
+    CHECK(!XmppPlainStreamAllowed("10.0.0.1"));
+    CHECK(!XmppPlainStreamAllowed(""));
+}
+
+void TestSrvOrder() {
+    bool notOffered = true;
+    auto starttls = XmppParseSrvAnswers({"10 0 5222 b.example.org.", "5 0 5222 A.example.org.", "bad record",
+                                         "20 5 0 zero-port.example.org."},
+                                        false, &notOffered);
+    CHECK(!notOffered && starttls.size() == 2);
+    CHECK(starttls.size() == 2 && starttls[1].target == "a.example.org" && !starttls[1].directTls);
+    auto direct = XmppParseSrvAnswers({"10 0 5223 tls.example.org"}, true);
+    CHECK(direct.size() == 1 && direct[0].directTls && direct[0].port == 5223);
+    XmppParseSrvAnswers({"0 0 0 ."}, false, &notOffered);
+    CHECK(notOffered);
+
+    // By priority; in one priority direct TLS first.
+    std::vector<XmppSrvRecord> all = starttls;
+    all.insert(all.end(), direct.begin(), direct.end());
+    auto ordered = XmppOrderSrvRecords(all, [](uint32_t) { return 0u; });
+    CHECK(ordered.size() == 3);
+    if (ordered.size() == 3) {
+        CHECK(ordered[0].target == "a.example.org");
+        CHECK(ordered[1].target == "tls.example.org" && ordered[1].directTls);
+        CHECK(ordered[2].target == "b.example.org");
+    }
+    // By weight in one priority: weight 0 first; the draw picks the first
+    // record whose running sum reaches it.
+    std::vector<XmppSrvRecord> weighted;
+    for (const auto& [target, weight] : std::vector<std::pair<std::string, int>>{{"w10", 10}, {"w0", 0}, {"w30", 30}, {"w60", 60}}) {
+        XmppSrvRecord r;
+        r.priority = 1;
+        r.weight = weight;
+        r.port = 5222;
+        r.target = target;
+        weighted.push_back(r);
+    }
+    const auto names = [](const std::vector<XmppSrvRecord>& list) {
+        std::string out;
+        for (const auto& r : list) out += r.target + " ";
+        return out;
+    };
+    // Always the lowest draw: in the order given, weight 0 first.
+    CHECK(names(XmppOrderSrvRecords(weighted, [](uint32_t) { return 0u; })) == "w0 w10 w30 w60 ");
+    // Always the highest: the last with weight each time.
+    CHECK(names(XmppOrderSrvRecords(weighted, [](uint32_t n) { return n; })) == "w60 w30 w10 w0 ");
+    // 35 of 100: past w0 (0) and w10 (10), into w30 (40); then of 70 left, 35 is in w60 (0+10+60).
+    CHECK(names(XmppOrderSrvRecords(weighted, [](uint32_t n) { return n == 100 ? 35u : n == 70 ? 35u : 0u; })) ==
+          "w30 w60 w0 w10 ");
+    // The real draw keeps every record once.
+    bool everyOnce = true;
+    for (int round = 0; round < 20; ++round) {
+        std::vector<std::string> got;
+        for (const auto& r : XmppOrderSrvRecords(weighted)) got.push_back(r.target);
+        std::sort(got.begin(), got.end());
+        everyOnce = everyOnce && got == std::vector<std::string>{"w0", "w10", "w30", "w60"};
+    }
+    CHECK(everyOnce);
+}
+
 #if !defined(_WIN32)
 struct FakeServer {
     pid_t pid = -1;
     std::string url;
+    int tcp = 0, tls = 0;       // XMPP over TCP: STARTTLS (plain without a certificate), direct TLS
 
-    bool Start(const std::string& python) {
+    static int PortOf(const std::string& line, const std::string& key) {
+        const size_t at = line.find("\"" + key + "\": ");
+        return at == std::string::npos ? 0 : std::atoi(line.c_str() + at + key.size() + 4);
+    }
+    // cert / key: the server's certificate (empty: no TLS on TCP).
+    bool Start(const std::string& python, const std::string& cert, const std::string& key) {
         const std::string probe = python + " -c 'import http.server' >/dev/null 2>&1";
         if (std::system(probe.c_str()) != 0) return false;
         int out[2];
@@ -276,8 +483,12 @@ struct FakeServer {
             close(out[0]);
             close(out[1]);
             const std::string script = std::string(ULTRAIM_TEST_DIR) + "/xmpp_fake_server.py";
-            execlp(python.c_str(), python.c_str(), script.c_str(), "--users", "alice,bob,carol,dave",
-                   static_cast<char*>(nullptr));
+            const char* users = "alice,bob,carol,dave,erin,frank,gina";
+            if (cert.empty())
+                execlp(python.c_str(), python.c_str(), script.c_str(), "--users", users, static_cast<char*>(nullptr));
+            else
+                execlp(python.c_str(), python.c_str(), script.c_str(), "--users", users, "--cert", cert.c_str(), "--key",
+                       key.c_str(), static_cast<char*>(nullptr));
             _exit(127);
         }
         close(out[1]);
@@ -292,7 +503,9 @@ struct FakeServer {
         }
         const size_t begin = at + 8;
         url = line.substr(begin, line.find('"', begin) - begin);
-        return true;
+        tcp = PortOf(line, "tcp");
+        tls = PortOf(line, "tls");
+        return tcp != 0 && (cert.empty() || tls != 0);
     }
     void Stop() {
         if (pid > 0) {
@@ -735,12 +948,168 @@ void TestEndToEnd(const std::string& url, const fs::path& base) {
     alice->p->Shutdown();
     CHECK(A.GetConnectionState() == UltraIMConnectionState::Disconnected);
 }
+
+// ---- XMPP over TCP ---------------------------------------------------------------------------
+
+std::unique_ptr<Client_> NewTcpClient(const fs::path& dir, const std::string& caFile) {
+    auto c = NewClient(dir);
+    XmppTimings fast;
+    fast.requestTimeoutMs = 10000;
+    fast.reconnectFirstMs = 300;
+    fast.reconnectMaxMs = 2000;
+    fast.pingIntervalMs = 250;      // the whitespace keepalive, often
+    c->p->SetTimings(fast);
+    if (!caFile.empty()) {
+        UltraNetTlsOptions tls;
+        tls.caBundlePath = caFile;
+        c->p->SetTlsOptions(tls);
+    }
+    return c;
+}
+
+void TestTcp(const FakeServer& server, const fs::path& base, const std::string& caFile) {
+    const std::string ws = "ws" + server.url.substr(4) + "/xmpp-websocket";
+    const std::string starttls = "xmpp://127.0.0.1:" + std::to_string(server.tcp);
+    const std::string direct = "xmpps://127.0.0.1:" + std::to_string(server.tls);
+    const std::string erinJid = "erin@example.org", frankJid = "frank@example.org", ginaJid = "gina@example.org";
+    UltraIMResult r;
+
+    // ---- an untrusted certificate: refused, by STARTTLS and by direct TLS -------------------------
+    {
+        auto untrusting = NewTcpClient(base / "untrusting", std::string());
+        r = SignIn(*untrusting->p, Password(starttls, "erin"));
+        CHECK(!r.success && r.code == UltraIMResultCode::NetworkError);
+        CHECK(r.message.find("certificate") != std::string::npos);
+        r = SignIn(*untrusting->p, Password(direct, "erin"));
+        CHECK(!r.success && r.code == UltraIMResultCode::NetworkError);
+        CHECK(r.message.find("certificate") != std::string::npos);
+        CHECK(!untrusting->p->HasStoredSession());
+        untrusting->p->Shutdown();
+    }
+
+    // ---- STARTTLS: signed in, and talking with a WebSocket client ------------------------------
+    auto erin = NewTcpClient(base / "erin", caFile);
+    auto frank = NewClient(base / "frank");
+    XmppProvider& e = *erin->p;
+    XmppProvider& f = *frank->p;
+    r = SignIn(e, Password(starttls, "erin"));
+    CHECK(r.success);
+    CHECK(e.GetConnectionState() == UltraIMConnectionState::Connected);
+    CHECK(e.GetEndpoint() == starttls);
+    CHECK(e.GetBoundJid().rfind(erinJid + "/ChatCube-", 0) == 0);
+    CHECK(e.HasStoredSession());
+    r = SignIn(f, Password(ws, "frank"));
+    CHECK(r.success);
+    UltraIMConversation chat;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { e.AddContact(frankJid, cb); }, chat));
+    CHECK(chat.conversationId == frankJid);
+    CHECK(erin->events.WaitFor([&](const UltraIMEvent& ev) {
+        return ev.type == UltraIMEventType::PresenceChange && ev.contactId == frankJid &&
+               ev.presence == UltraIMPresence::Online;
+    }));
+    CHECK(e.SendText(frankJid, "hello over tcp", Client("t-1")));
+    UltraIMEvent got;
+    CHECK(frank->events.WaitFor([](const UltraIMEvent& ev) { return IsReceived(ev, "hello over tcp"); }, &got));
+    CHECK(got.message.senderId == erinJid && got.conversationId == erinJid);
+    CHECK(erin->events.WaitFor([](const UltraIMEvent& ev) {
+        return ev.type == UltraIMEventType::MessageDelivered && ev.message.clientMessageId == "t-1";
+    }));
+    // A long one, over several TCP reads; text that needs escaping.
+    const std::string longText = std::string(40000, 'x') + " <&> ]]> \"'";
+    CHECK(f.SendText(erinJid, longText, Client("w-1")));
+    CHECK(erin->events.WaitFor([&](const UltraIMEvent& ev) { return IsReceived(ev, longText); }, &got));
+    CHECK(got.message.senderId == frankJid);
+    // The keepalive's spaces (every 250 ms) do not disturb the stream.
+    std::this_thread::sleep_for(std::chrono::milliseconds(900));
+    CHECK(e.GetConnectionState() == UltraIMConnectionState::Connected);
+    CHECK(f.SendText(erinJid, "still here", Client("w-2")));
+    CHECK(erin->events.WaitFor([](const UltraIMEvent& ev) { return IsReceived(ev, "still here"); }));
+    {
+        const auto history = Fetch(e, frankJid);
+        bool both = false, mine = false;
+        for (const auto& m : history) {
+            both = both || m.text == "still here";
+            mine = mine || (m.text == "hello over tcp" && m.isOwn);
+        }
+        CHECK(both && mine);
+    }
+
+    // ---- direct TLS ----------------------------------------------------------------------------
+    {
+        auto gina = NewTcpClient(base / "gina", caFile);
+        r = SignIn(*gina->p, Password(direct, "gina"));
+        CHECK(r.success);
+        CHECK(gina->p->GetEndpoint() == direct);
+        UltraIMConversation withGina;
+        CHECK(WaitConversation([&](UltraIMConversationCallback cb) { e.AddContact(ginaJid, cb); }, withGina));
+        CHECK(gina->events.WaitFor([&](const UltraIMEvent& ev) {
+            return ev.type == UltraIMEventType::ConversationUpdate && ev.conversationId == erinJid;
+        }));
+        CHECK(e.SendText(ginaJid, "to direct tls", Client("t-2")));
+        CHECK(gina->events.WaitFor([](const UltraIMEvent& ev) { return IsReceived(ev, "to direct tls"); }, &got));
+        CHECK(got.message.senderId == erinJid);
+        CHECK(gina->p->SendText(erinJid, "from direct tls", Client("g-1")));
+        CHECK(erin->events.WaitFor([](const UltraIMEvent& ev) { return IsReceived(ev, "from direct tls"); }));
+        // The endpoint is kept with the keys: the next start goes there again.
+        gina->p->Shutdown();
+        gina = NewTcpClient(base / "gina", caFile);
+        CHECK(gina->p->HasStoredSession());
+        r = SignIn(*gina->p, UltraIMCredentials());
+        CHECK(r.success);
+        CHECK(gina->p->GetEndpoint() == direct);
+        CHECK(e.SendText(ginaJid, "after the restart", Client("t-3")));
+        CHECK(gina->events.WaitFor([](const UltraIMEvent& ev) { return IsReceived(ev, "after the restart"); }));
+        gina->p->Shutdown();
+    }
+
+    // ---- a dropped TCP connection reconnects ---------------------------------------------------
+    erin->events.Clear();
+    Post(server.url, "/_test/drop", "{\"user\": \"erin\"}");
+    CHECK(erin->events.WaitFor([](const UltraIMEvent& ev) {
+        return ev.type == UltraIMEventType::ConnectionStateChange &&
+               ev.connectionState == UltraIMConnectionState::Reconnecting;
+    }));
+    CHECK(erin->events.WaitFor([](const UltraIMEvent& ev) {
+        return ev.type == UltraIMEventType::ConnectionStateChange &&
+               ev.connectionState == UltraIMConnectionState::Connected;
+    }, nullptr, 20));
+    CHECK(e.GetEndpoint() == starttls);
+    CHECK(f.SendText(erinJid, "after the tcp drop", Client("w-3")));
+    CHECK(erin->events.WaitFor([](const UltraIMEvent& ev) { return IsReceived(ev, "after the tcp drop"); }));
+
+    // ---- no STARTTLS offered: only to this computer (the "host:port" form) ---------------------
+    Post(server.url, "/_test/starttls", "{\"offer\": false}");
+    {
+        auto plain = NewTcpClient(base / "plain", caFile);
+        r = SignIn(*plain->p, Password("127.0.0.1:" + std::to_string(server.tcp), "frank"));
+        CHECK(r.success);
+        CHECK(plain->p->GetEndpoint() == starttls);
+        plain->p->Shutdown();
+    }
+    Post(server.url, "/_test/starttls", "{\"offer\": true}");
+
+    frank->p->Shutdown();
+    erin->p->Shutdown();
+    CHECK(e.GetConnectionState() == UltraIMConnectionState::Disconnected);
+}
+
+// Without a certificate: plain TCP to this computer, no TLS to verify.
+void TestTcpPlain(const FakeServer& server, const fs::path& base) {
+    auto plain = NewTcpClient(base / "plain", std::string());
+    const UltraIMResult r = SignIn(*plain->p, Password("xmpp://localhost:" + std::to_string(server.tcp), "erin"));
+    CHECK(r.success);
+    CHECK(plain->p->GetEndpoint() == "xmpp://localhost:" + std::to_string(server.tcp));
+    plain->p->Shutdown();
+}
 #endif
 
 } // namespace
 
 int main() {
     UltraNet_Initialize();
+    TestSplitter();
+    TestEndpoints();
+    TestSrvOrder();
 #if defined(_WIN32)
     std::printf("XmppProviderTests: skipped on Windows\n");
 #else
@@ -748,14 +1117,32 @@ int main() {
     std::error_code ec;
     fs::remove_all(base, ec);
     fs::create_directories(base, ec);
+    const bool required = !UltraCanvas::GetEnvUtf8("ULTRAIM_TEST_XMPP_REQUIRED").empty();
+    const std::string cert = UltraCanvas::PathToUtf8(base / "cert.pem");
+    const std::string key = UltraCanvas::PathToUtf8(base / "key.pem");
+    // The server's certificate, which the test trusts as its CA file: for the
+    // XMPP domain (what the client verifies), and this computer.
+    const std::string make =
+        "openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj \"/CN=example.org\" "
+        "-addext \"subjectAltName=DNS:example.org,DNS:localhost,IP:127.0.0.1\" "
+        "-addext \"extendedKeyUsage=serverAuth\" -addext \"keyUsage=digitalSignature,keyEncipherment\" -keyout \"" +
+        key + "\" -out \"" + cert + "\" > /dev/null 2>&1";
+    const bool haveOpenssl = std::system(make.c_str()) == 0;
     FakeServer server;
-    if (!server.Start("python3")) {
-        const bool required = !UltraCanvas::GetEnvUtf8("ULTRAIM_TEST_XMPP_REQUIRED").empty();
+    if (!server.Start("python3", haveOpenssl ? cert : std::string(), haveOpenssl ? key : std::string())) {
         std::printf("XmppProviderTests: %s (no python3)\n", required ? "FAIL" : "SKIP");
-        return required ? 1 : 0;
+        std::printf("XmppProviderTests: %d checks, %d failures\n", g_checks, g_failures);
+        return required || g_failures ? 1 : 0;
     }
-    std::printf("  server %s\n", server.url.c_str());
+    std::printf("  server %s, tcp %d, tls %d\n", server.url.c_str(), server.tcp, server.tls);
     TestEndToEnd(server.url, base);
+    if (haveOpenssl) {
+        TestTcp(server, base, cert);
+    } else {
+        std::printf("  TLS over TCP: %s (no openssl)\n", required ? "FAIL" : "SKIP");
+        if (required) ++g_failures;
+        TestTcpPlain(server, base);
+    }
     server.Stop();
     fs::remove_all(base, ec);
 #endif
