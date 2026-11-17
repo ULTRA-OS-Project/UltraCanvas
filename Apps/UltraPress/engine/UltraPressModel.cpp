@@ -1,5 +1,6 @@
 // Apps/UltraPress/engine/UltraPressModel.cpp
 // The content model: JSON in and out, the site folder, addresses, the page list.
+// Version: 0.9.1 - a page's "tags"
 // Version: 0.9.0 - "output" in site.json, "dark" in theme.json
 // Version: 0.8.3 - IsSiteAddress
 // Version: 0.8.2 - SitePathText
@@ -211,6 +212,11 @@ JSONValue PageToJson(const Page& page) {
     if (!page.language.empty()) json.Set("language", page.language);
     json.Set("template", page.templateName);
     json.Set("pinned", page.pinned);
+    if (!page.tags.empty()) {
+        JSONValue tags = JSONValue::MakeArray();
+        for (const std::string& tag : page.tags) tags.Append(tag);
+        json.Set("tags", tags);
+    }
     JSONValue seo = JSONValue::MakeObject();
     seo.Set("description", page.seo.description);
     if (!page.seo.image.empty()) seo.Set("image", page.seo.image);
@@ -232,6 +238,9 @@ Page PageFromJson(const JSONValue& json) {
     page.language = json["language"].GetString();
     page.templateName = json["template"].GetString("default");
     page.pinned = json["pinned"].GetBoolean(false);
+    for (const JSONValue& tag : json["tags"].GetElements()) {
+        if (!tag.GetString().empty()) page.tags.push_back(tag.GetString());
+    }
     page.seo.description = json["seo"]["description"].GetString();
     page.seo.image = json["seo"]["image"].GetString();
     page.seo.noindex = json["seo"]["noindex"].GetBoolean(false);

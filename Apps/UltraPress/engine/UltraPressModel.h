@@ -4,6 +4,7 @@
 // ordered tree of blocks. Everything here is data; the renderers (the HTML
 // emitter, later the element renderer) read it and never change it.
 // Design: Docs/Research/UltraPressDesignProposal.md §5.1.
+// Version: 0.9.1 - Page::tags
 // Version: 0.9.0 - Site::output (WebAssembly or HTML + JavaScript), Theme::darkColors
 // Version: 0.8.3 - IsSiteAddress: what the site's url has to be
 // Version: 0.8.2 - SitePathText: '\' becomes '/' on Windows only
@@ -54,6 +55,7 @@ struct Page {
     std::string language;                // empty: the site's
     std::string templateName = "default";
     bool pinned = false;                 // sorts first in the page list
+    std::vector<std::string> tags;       // a post's tags: the blog's pages per tag (the HTML + JavaScript output)
     PageSeo seo;
     std::vector<Block> blocks;
 

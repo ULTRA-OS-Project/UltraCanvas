@@ -14,6 +14,7 @@
 // PublishOptions::output for one run): this one, or the HTML shadow with
 // the WebAssembly renderer (PublishStatic, UltraPressPublish.h).
 // Design: Docs/Research/UltraSiteStaticSitesProposal.md §6.
+// Version: 0.3.0 - responsive pictures, precompressed copies, versioned docs, the blog's index and tags
 // Version: 0.2.0 - documentation: a site's docs/ folder (and i18n/<lang>/docs) as doc pages with search; PublishDocsFolder
 // Version: 0.1.0
 // Last Modified: 2026-11-17
@@ -56,7 +57,10 @@ const char* BlockStylesheet();
 // after the folders, a table of contents, previous and next - and the site
 // gets a search box (UltraSite's AddDocs). A translation is the same files
 // under <site>/i18n/<language>/docs, at /<language>/docs/, joined page by
-// page. The WebAssembly output does not show them.
+// page. Earlier versions are versioned_docs/<label> at /docs/<label>/,
+// ordered by versions.json (["2.0", "1.0"]) or newest first by name. A site
+// with posts gets /blog/ - the posts, newest first - and /blog/tags/<tag>/
+// for each post's tags. The WebAssembly output shows none of them.
 constexpr const char* kDocsFolder = "docs";
 
 // A folder of Markdown alone published as a documentation site, the way
@@ -73,6 +77,11 @@ struct DocsSiteOptions {
     bool enforceBudgets = true;
     bool brokenLinksWarn = false;          // a broken link a warning, not an error
     bool removeStale = true;
+    bool precompress = false;              // .gz (and .br) copies beside the pages
+    // Earlier versions: a folder whose subfolders are versions ("1.0"),
+    // ordered by its versions.json or newest first by name, each published
+    // at /<label>/ with a banner leading to the latest.
+    std::string versionsFolder;
 };
 PublishResult PublishDocsFolder(const DocsSiteOptions& options, const std::string& outputDirectory);
 

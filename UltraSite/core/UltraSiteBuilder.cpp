@@ -15,10 +15,12 @@
 #include "DataFormats/UltraCanvasJSON.h"
 #include "HTMLReader/HTMLDocument.h"
 #include "HTMLReader/HTMLParser.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -228,6 +230,15 @@ std::string OutputPath(const fs::path& relative) {
     return text;
 }
 
+std::string BasePathOf(const std::string& url) {
+    const size_t scheme = url.find("://");
+    const size_t slash = scheme == std::string::npos ? std::string::npos : url.find('/', scheme + 3);
+    if (slash == std::string::npos) return "/";
+    std::string base = url.substr(slash);
+    if (base.back() != '/') base += '/';
+    return base;
+}
+
 std::string RouteFile(const std::string& path) {
     if (path.empty() || path == "/") return "index.html";
     std::string relative = path[0] == '/' ? path.substr(1) : path;
@@ -308,13 +319,7 @@ struct Builder::Prepared {
 };
 
 Builder::Builder(SiteConfig siteConfig) : config(std::move(siteConfig)) {
-    // The path of the site's address: "https://store.example/v1" -> "/v1/".
-    const size_t scheme = config.url.find("://");
-    const size_t slash = scheme == std::string::npos ? std::string::npos : config.url.find('/', scheme + 3);
-    if (slash != std::string::npos) {
-        basePath = config.url.substr(slash);
-        if (basePath.back() != '/') basePath += '/';
-    }
+    basePath = BasePathOf(config.url);
     layouts["page"] = [](const Route& route) { return route.bodyHtml; };
     layouts["post"] = [](const Route& route) {
         std::string out = "<article class=\"us-post\">\n<h1>" + EscapeText(route.title) + "</h1>\n";
@@ -352,6 +357,91 @@ std::string Builder::Asset(const std::string& sourcePath) {
         return std::string();
     }
     return AssetFromText(sourcePath, content);
+}
+
+namespace {
+
+// The image library, started once; false when this build cannot decode.
+bool ImageLibrary() {
+    static const bool started = UltraCanvas::UCImageRaster::InitializeImageSubsysterm("UltraSite");
+    return started;
+}
+
+// Whether the image library writes the format here: tried once, on a small
+// copy of the first picture, since a library without an AV1 encoder reads
+// AVIF and writes none.
+bool Writes(const std::string& format, const std::string& samplePath) {
+    static std::map<std::string, bool> known;
+    auto found = known.find(format);
+    if (found != known.end()) return found->second;
+    bool ok = false;
+    if (auto sample = UltraCanvas::UCImageRaster::Load(samplePath, /*loadOnlyHeader=*/false)) {
+        UltraCanvas::UCImageSave::ImageExportOptions save;
+        save.format = format == "avif" ? UltraCanvas::UCImageSaveFormat::AVIF : UltraCanvas::UCImageSaveFormat::WEBP;
+        save.targetWidth = 16;
+        save.maintainAspectRatio = true;
+        std::error_code ec;
+        const fs::path probe = fs::temp_directory_path(ec) / ("ultrasite-probe-" + std::to_string(reinterpret_cast<std::uintptr_t>(&known)) + "." + format);
+        ok = sample->Save(UltraCanvas::PathToUtf8(probe), save).empty() && fs::is_regular_file(probe, ec) && fs::file_size(probe, ec) > 0;
+        fs::remove(probe, ec);
+    }
+    known[format] = ok;
+    return ok;
+}
+
+} // namespace
+
+std::string Builder::Picture(const std::string& sourcePath, const PictureOptions& options) {
+    std::string bytes;
+    if (!ReadFile(sourcePath, bytes)) {
+        assetErrors.push_back("cannot read the picture " + sourcePath);
+        return std::string();
+    }
+    const std::string original = options.originalUrl.empty() ? AssetFromText(sourcePath, bytes) : options.originalUrl;
+    int width = 0, height = 0;
+    std::string extension;
+    const std::string stem = SafeStem(SplitFileName(sourcePath, extension));
+    const bool raster = extension != ".svg" && extension != ".gif";
+    if (raster && ImageLibrary()) {
+        if (auto header = UltraCanvas::UCImageRaster::Load(sourcePath, /*loadOnlyHeader=*/true)) {
+            width = header->GetWidth();
+            height = header->GetHeight();
+        }
+    }
+    std::string img = "<img";
+    if (!options.cssClass.empty()) img += " class=\"" + Attr(options.cssClass) + "\"";
+    img += " src=\"" + Attr(original) + "\" alt=\"" + Attr(options.alt) + "\"";
+    if (width > 0 && height > 0) img += " width=\"" + std::to_string(width) + "\" height=\"" + std::to_string(height) + "\"";
+    img += options.first ? " fetchpriority=\"high\" decoding=\"async\">" : " loading=\"lazy\" decoding=\"async\">";
+    if (width <= 0) return img;
+
+    // The widths below the picture's own, and its own: never larger.
+    std::vector<int> widths;
+    for (int w : options.widths) if (w > 0 && w < width) widths.push_back(w);
+    widths.push_back(width);
+    std::sort(widths.begin(), widths.end());
+    widths.erase(std::unique(widths.begin(), widths.end()), widths.end());
+    const std::string hash = ContentHash(bytes);
+    std::string html = "<picture>";
+    bool any = false;
+    for (const char* format : {"avif", "webp"}) {
+        if (!Writes(format, sourcePath)) {
+            const std::string note = std::string("this build's image library writes no ") + format + ": the pictures have no " + format + " variants";
+            if (std::find(pictureNotes.begin(), pictureNotes.end(), note) == pictureNotes.end()) pictureNotes.push_back(note);
+            continue;
+        }
+        any = true;
+        std::string srcset;
+        for (int w : widths) {
+            const std::string file = "assets/img/" + stem + "." + hash + "." + std::to_string(w) + "." + format;
+            if (std::none_of(variants.begin(), variants.end(), [&](const PendingVariant& v) { return v.file == file; })) {
+                variants.push_back({sourcePath, file, format, w});
+            }
+            srcset += (srcset.empty() ? "" : ", ") + Url("/" + file) + " " + std::to_string(w) + "w";
+        }
+        html += "<source type=\"image/" + std::string(format) + "\" srcset=\"" + Attr(srcset) + "\" sizes=\"" + Attr(options.sizes) + "\">";
+    }
+    return any ? html + img + "</picture>" : img;
 }
 
 void Builder::AddDirectory(const std::string& sourceDirectory, const std::string& publishedPrefix) {
@@ -665,8 +755,17 @@ std::string Builder::DocLayout(const Route& route) const {
     }
 
     std::string out = "<div class=\"us-doc\">\n";
-    out += "<aside class=\"us-sidebar\" id=\"us-sidebar\">\n<a class=\"us-sidebar-close\" href=\"#main\">" + EscapeText(labels.close) +
-           "</a>\n<nav aria-label=\"" + Attr(labels.docsNav) + "\">";
+    out += "<aside class=\"us-sidebar\" id=\"us-sidebar\">\n<a class=\"us-sidebar-close\" href=\"#main\">" + EscapeText(labels.close) + "</a>\n";
+    if (route.versions.size() > 1) {
+        // The versions, this page in each.
+        out += "<nav class=\"us-versions\" aria-label=\"" + Attr(labels.versions) + "\"><ul>";
+        for (const auto& [label, path] : route.versions) {
+            out += "<li><a href=\"" + Attr(Url(path)) + "\"" + (label == route.version ? " aria-current=\"page\"" : "") + ">" +
+                   EscapeText(label) + "</a></li>";
+        }
+        out += "</ul></nav>\n";
+    }
+    out += "<nav aria-label=\"" + Attr(labels.docsNav) + "\">";
     tree(items, out);
     out += "</nav>\n</aside>\n<div class=\"us-doc-main\">\n";
     if (!items.empty()) out += "<a class=\"us-sidebar-open\" href=\"#us-sidebar\">" + EscapeText(labels.menu) + "</a>\n";
@@ -684,6 +783,13 @@ std::string Builder::DocLayout(const Route& route) const {
     }
     if (!tocList.empty()) {
         out += "<details class=\"us-toc-mobile\"><summary>" + EscapeText(labels.toc) + "</summary>" + tocList + "</details>\n";
+    }
+    if (!route.latestPath.empty()) {
+        std::string text = labels.outdated;
+        const size_t mark = text.find("{0}");
+        if (mark != std::string::npos) text.replace(mark, 3, route.version);
+        out += "<div class=\"us-admonition us-admonition-warning us-outdated\" role=\"note\"><p>" + EscapeText(text) + " <a href=\"" +
+               Attr(Url(route.latestPath)) + "\">" + EscapeText(labels.latest) + "</a></p></div>\n";
     }
     out += "<article class=\"us-doc-content\">\n";
     if (route.bodyHtml.find("<h1") == std::string::npos) out += "<h1>" + EscapeText(route.title) + "</h1>\n";
@@ -828,6 +934,7 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
     Prepare(prepared, errors);
     errors.insert(errors.end(), assetErrors.begin(), assetErrors.end());
     result.warnings.insert(result.warnings.end(), prepared.notes.begin(), prepared.notes.end());
+    result.warnings.insert(result.warnings.end(), pictureNotes.begin(), pictureNotes.end());
     if (!HashAvailable()) {
         result.warnings.push_back("no SHA-256 in this build (UltraCrypt without libsodium): asset names carry an FNV-1a hash "
                                   "and the pages carry no Content-Security-Policy");
@@ -991,6 +1098,7 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
                 } else {
                     const std::string relative = target.substr(1);
                     if (output.count(relative) || copied.count(relative)) continue;   // a file: no anchors to check
+                    if (std::any_of(variants.begin(), variants.end(), [&](const PendingVariant& v) { return v.file == relative; })) continue;
                     std::error_code exists;
                     if (!options.removeStale && !relative.empty() &&
                         fs::is_regular_file(UltraCanvas::PathFromUtf8(outputDirectory) / UltraCanvas::PathFromUtf8(relative), exists)) {
@@ -1055,6 +1163,20 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
             continue;
         }
         result.files.push_back(relative);
+        // The compressed copies of the text a browser downloads.
+        if (!options.precompress || content.size() < 256) continue;
+        const size_t dot = relative.rfind('.');
+        const std::string extension = dot == std::string::npos ? std::string() : relative.substr(dot);
+        static const std::set<std::string> kText = {".html", ".css", ".js", ".json", ".xml", ".txt", ".svg"};
+        if (!kText.count(extension)) continue;
+        for (const auto& [suffix, bytes] : {std::pair<std::string, std::string>{".gz", GzipBytes(content)}, {".br", BrotliBytes(content)}}) {
+            if (bytes.empty()) continue;
+            if (!WriteFile(outDir / UltraCanvas::PathFromUtf8(relative + suffix), bytes)) {
+                errors.push_back("cannot write " + relative + suffix);
+                continue;
+            }
+            result.files.push_back(relative + suffix);
+        }
     }
     for (const auto& [relative, source] : copied) {
         const fs::path target = outDir / UltraCanvas::PathFromUtf8(relative);
@@ -1066,6 +1188,38 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
             continue;
         }
         result.files.push_back(relative);
+    }
+
+    // The pictures' variants: encoded unless an earlier build left the same
+    // file (its name carries the picture's content hash).
+    std::map<std::string, std::shared_ptr<UltraCanvas::UCImageRaster>> decoded;
+    for (const PendingVariant& variant : variants) {
+        const fs::path target = outDir / UltraCanvas::PathFromUtf8(variant.file);
+        if (fs::is_regular_file(target, ec) && fs::file_size(target, ec) > 0) {
+            result.files.push_back(variant.file);
+            continue;
+        }
+        auto& picture = decoded[variant.sourcePath];
+        if (!picture) picture = UltraCanvas::UCImageRaster::Load(variant.sourcePath, /*loadOnlyHeader=*/false);
+        if (!picture) {
+            errors.push_back("cannot decode the picture " + variant.sourcePath);
+            continue;
+        }
+        UltraCanvas::UCImageSave::ImageExportOptions save;
+        save.format = variant.format == "avif" ? UltraCanvas::UCImageSaveFormat::AVIF : UltraCanvas::UCImageSaveFormat::WEBP;
+        save.targetWidth = variant.width;
+        save.maintainAspectRatio = true;
+        save.preserveMetadata = false;
+        save.preserveTransparency = true;
+        save.webp.quality = 80;
+        save.avif.quality = 60;
+        fs::create_directories(target.parent_path(), ec);
+        const std::string error = picture->Save(UltraCanvas::PathToUtf8(target), save);
+        if (!error.empty() || !fs::is_regular_file(target, ec)) {
+            errors.push_back("cannot write " + variant.file + (error.empty() ? std::string() : ": " + error));
+            continue;
+        }
+        result.files.push_back(variant.file);
     }
 
     // What an earlier build wrote and this one did not, then the folders

@@ -2,6 +2,7 @@
 // The HTML shadow, sitemap, robots and feed. Text goes through
 // HTML::EscapeText everywhere; the two blocks that carry HTML (richtext,
 // html) are the owner's own and pass through.
+// Version: 0.9.1 - a media picture through HtmlOptions::picture
 // Version: 0.9.0 - the styled markup and Parts() for the HTML + JavaScript output
 // Version: 0.7.2 - width and height on every <img>
 // Version: 0.7.0 - paragraphs split by the model (SplitParagraphs)
@@ -149,7 +150,12 @@ static std::string MediaSrc(const std::string& path) {
 // One picture. The shadow writes src, alt and the size; the styled markup
 // also says how to fetch it: the page's first, large picture (the hero's)
 // at once and first, every other one when it comes near the viewport.
-std::string HtmlEmitter::Img(const std::string& src, const std::string& alt, bool first) const {
+std::string HtmlEmitter::Img(const std::string& src, const std::string& alt, const std::string& role) const {
+    const bool first = role == "hero";
+    if (options.picture && !src.empty() && !IsAbsoluteUrl(src)) {
+        const std::string picture = options.picture(src, alt, role);
+        if (!picture.empty()) return picture;
+    }
     std::string out = "<img src=\"" + Attr(MediaSrc(src)) + "\" alt=\"" + Attr(alt) + "\"" + ImgSize(options.siteDirectory, src);
     if (options.styled) out += first ? " fetchpriority=\"high\" decoding=\"async\"" : " loading=\"lazy\" decoding=\"async\"";
     return out + ">";
@@ -180,12 +186,12 @@ void HtmlEmitter::EmitBlock(const UltraPress::Block& block, PageContext& context
         out += "<h1>" + EscapeText(block.Text("title")) + "</h1>\n";
         out += Paragraphs(block.Text("text"));
         if (!block.Text("picture").empty()) {
-            out += "<figure>" + Img(block.Text("picture"), "", true) + "</figure>\n";
+            out += "<figure>" + Img(block.Text("picture"), "", "hero") + "</figure>\n";
         }
         EmitLinks(site, block.Items("buttons"), out);
         out += "</section>\n";
     } else if (type == "picture") {
-        out += "<figure>" + Img(block.Text("src"), block.Text("alt"), false);
+        out += "<figure>" + Img(block.Text("src"), block.Text("alt"), "picture");
         if (!block.Text("caption").empty()) out += "<figcaption>" + EscapeText(block.Text("caption")) + "</figcaption>";
         out += "</figure>\n";
     } else if (type == "columns") {
@@ -201,7 +207,7 @@ void HtmlEmitter::EmitBlock(const UltraPress::Block& block, PageContext& context
     } else if (type == "card") {
         out += "<article class=\"card\">\n";
         if (!block.Text("picture").empty()) {
-            out += "<figure>" + Img(block.Text("picture"), "", false) + "</figure>\n";
+            out += "<figure>" + Img(block.Text("picture"), "", "card") + "</figure>\n";
         }
         out += "<h3>" + EscapeText(block.Text("title")) + "</h3>\n";
         out += Paragraphs(block.Text("text"));

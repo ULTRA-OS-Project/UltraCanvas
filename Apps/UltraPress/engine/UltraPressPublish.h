@@ -36,6 +36,9 @@ struct PublishOptions {
     // The HTML + JavaScript output: a page or asset over its budget fails
     // the publish; off, it is a warning.
     bool enforceBudgets = true;
+    // The HTML + JavaScript output: a .gz copy (and .br, with Brotli) beside
+    // every page, stylesheet and script, for a server that sends them.
+    bool precompress = false;
 };
 
 struct PublishResult {

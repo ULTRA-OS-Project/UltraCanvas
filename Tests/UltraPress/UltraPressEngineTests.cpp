@@ -1089,6 +1089,68 @@ static void TestTwoOutputs() {
     fs::remove_all(dir, ec);
 }
 
+static void TestPicturesVersionsBlog() {
+    std::printf("Pictures, compressed copies, versioned docs, the blog\n");
+    if (!HasHtmlOutput()) return;
+    const fs::path dir = TempDir("phase-d");
+    const fs::path siteDir = dir / "site";
+    std::error_code ec;
+    fs::copy(ULTRAPRESS_EXAMPLE_DIR, siteDir, fs::copy_options::recursive, ec);
+    fs::create_directories(siteDir / "media", ec);
+    fs::copy_file(ULTRAPRESS_TEST_PICTURE, siteDir / "media" / "landscape.jpg", ec);
+    fs::create_directories(siteDir / "versioned_docs" / "1.0", ec);
+    WriteTextFile(UltraCanvas::PathToUtf8(siteDir / "versioned_docs" / "1.0" / "index.md"), "# The docs of 1.0\n\nAs they were.\n");
+    WriteTextFile(UltraCanvas::PathToUtf8(siteDir / "versions.json"), "[\"1.0\"]");
+    Site site;
+    std::vector<std::string> errors;
+    Check(LoadSite(UltraCanvas::PathToUtf8(siteDir), site, errors), "the copy of the example site loads");
+    site.pages[0].blocks[0].Set("picture", "media/landscape.jpg");
+    Page post;
+    post.slug = "hello";
+    post.title = "Hello";
+    post.kind = "post";
+    post.date = "2026-11-17";
+    post.seo.description = "The first post.";
+    post.tags = {"News", "Release notes"};
+    site.pages.push_back(post);
+    Check(SaveSite(UltraCanvas::PathToUtf8(siteDir), site, errors), "the site saves");
+    Site loaded;
+    Check(LoadSite(UltraCanvas::PathToUtf8(siteDir), loaded, errors) && loaded.FindPage("hello") &&
+              loaded.FindPage("hello")->tags == post.tags,
+          "a post's tags round-trip through its file");
+
+    const fs::path out = dir / "out";
+    PublishOptions options;
+    options.precompress = true;
+    const PublishResult result = Publish(loaded, UltraCanvas::PathToUtf8(siteDir), UltraCanvas::PathToUtf8(out), options);
+    for (const std::string& error : result.errors) std::printf("  error: %s\n", error.c_str());
+    Check(result.ok, "the site publishes with a picture, a version and a blog");
+    std::string home;
+    ReadTextFile(UltraCanvas::PathToUtf8(out / "index.html"), home);
+    Check(Contains(home, "src=\"/media/landscape.jpg\"") && Contains(home, "width=\"1000\" height=\"563\"") &&
+              Contains(home, "fetchpriority=\"high\""),
+          "the hero's picture keeps its original, with its size, fetched first");
+    if (Contains(home, "<picture>")) {
+        Check(Contains(home, "sizes=\"(min-width: 60rem) 40vw, 100vw\"") && fs::is_directory(out / "assets" / "img"),
+              "and has its variants at the hero's widths");
+    }
+    Check(fs::exists(out / "index.html.gz") && fs::exists(out / "the-plan" / "index.html.gz"), "every page has its .gz copy");
+    std::string version;
+    ReadTextFile(UltraCanvas::PathToUtf8(out / "docs" / "1.0" / "index.html"), version);
+    Check(Contains(version, "The docs of 1.0") && Contains(version, "us-outdated") && Contains(version, "<nav class=\"us-versions\""),
+          "versioned_docs/1.0 is published at /docs/1.0/, an earlier version");
+    std::string blog, tag, hello;
+    ReadTextFile(UltraCanvas::PathToUtf8(out / "blog" / "index.html"), blog);
+    ReadTextFile(UltraCanvas::PathToUtf8(out / "blog" / "tags" / "release-notes" / "index.html"), tag);
+    ReadTextFile(UltraCanvas::PathToUtf8(out / "hello" / "index.html"), hello);
+    Check(Contains(blog, "<a href=\"/hello/\">Hello</a>") && Contains(blog, "The first post.") &&
+              Contains(blog, "href=\"/blog/tags/news/\""),
+          "the blog lists the posts with their tags");
+    Check(Contains(tag, "<h1>Release notes</h1>") && Contains(tag, "<a href=\"/hello/\">Hello</a>"), "a tag's page lists its posts");
+    Check(Contains(hello, "<p class=\"up-tags\">") && Contains(hello, "href=\"/blog/tags/release-notes/\""), "a post links its tags");
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     TestStarterRoundTrip();
     TestValidation();
@@ -1103,6 +1165,7 @@ int main() {
     TestShadowImageSizes();
     TestBackslashInNames();
     TestTwoOutputs();
+    TestPicturesVersionsBlog();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

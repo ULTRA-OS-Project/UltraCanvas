@@ -21,6 +21,8 @@
 // Headless: links the core library (JSON, HTMLReader, UltraCrypt) and zlib,
 // opens no window.
 //
+// Version: 0.4.0 - BuildOptions::precompress (.gz, and .br with Brotli), GzipBytes, BrotliBytes; the preview
+//                  server (UltraSiteServer.h); Picture (responsive variants); versioned docs
 // Version: 0.3.0 - a site under a path (its url's): Url(), BasePath(); every address the builder writes
 //                  carries the path, the link check reads it back; files already in the folder count
 //                  when nothing is swept (BuildOptions::removeStale off)
@@ -103,6 +105,9 @@ struct Labels {
     std::string copy = "Copy";                       // a code block's copy button
     std::string copied = "Copied";
     std::string languages = "Languages";             // the language switcher's <nav aria-label>
+    std::string versions = "Versions";               // the doc layout's version switcher
+    std::string outdated = "This is the documentation of version {0}.";   // above an earlier version's page
+    std::string latest = "Read the latest version";
 };
 
 // The frame of the pages in one language: its navbar, footer and words
@@ -183,6 +188,13 @@ struct Route {
     std::string sidebar;
     std::vector<Heading> toc;
     std::string editUrl;
+    // The doc layout's versions: this page's ("2.0"), every version's
+    // label and the address of this page in it (its root where the page is
+    // not there), newest first, and for an earlier version's page the
+    // latest version's address, which a banner above it names.
+    std::string version;
+    std::vector<std::pair<std::string, std::string>> versions;
+    std::string latestPath;
     bool searchable = true;                  // in the search index
 };
 
@@ -202,6 +214,14 @@ struct DocsTranslation {
     std::string routePrefix;                 // "/de/docs/"
 };
 
+// An earlier version of the docs: the same folder as it was at that
+// release, published at its own prefix with its own sidebar.
+struct DocsVersion {
+    std::string label;                       // "1.0"
+    std::string folder;
+    std::string routePrefix;                 // "/docs/1.0/"
+};
+
 struct DocsOptions {
     std::string folder;
     std::string routePrefix = "/docs/";
@@ -212,12 +232,27 @@ struct DocsOptions {
     std::string sourceUrl;
     std::vector<std::string> exclude;        // file and folder names left out wherever they are ("CHANGELOG.md")
     std::vector<DocsTranslation> translations;
+    // Earlier versions, newest first. With any, `folder` is the latest
+    // version, named currentVersion; an earlier version's pages say so, link
+    // to the latest, and are left out of the search.
+    std::vector<DocsVersion> versions;
+    std::string currentVersion = "Latest";
 };
 
 struct DocsReport {
     size_t pages = 0;
     std::vector<std::string> errors;         // a file that cannot be read, two files for one address
     std::vector<std::string> warnings;       // a link that leads nowhere the site knows
+};
+
+// How Builder::Picture writes a picture.
+struct PictureOptions {
+    std::string alt;                                   // what it shows, for those who cannot see it
+    std::string cssClass;
+    std::vector<int> widths = {480, 960, 1440};       // the variants, those below the picture's own width
+    std::string sizes = "100vw";                       // how wide it is shown: the <img> sizes attribute
+    bool first = false;                                // the page's large first picture: fetched at once
+    std::string originalUrl;                           // where the original is served; empty: as a hashed asset
 };
 
 // What a layout writes into <main>, given the route.
@@ -232,6 +267,11 @@ struct BuildOptions {
     bool checkLinks = true;                  // a broken internal link or anchor is an error
     bool brokenLinksWarn = false;            // ... or only a warning (Docusaurus's onBrokenLinks: 'warn')
     bool enforceBudgets = true;              // over budget is an error; off, a warning
+    // Beside every page, stylesheet, script, index and list of the site, its
+    // .gz copy - and its .br copy where the build has Brotli - for a server
+    // that sends a file's compressed copy itself (nginx gzip_static /
+    // brotli_static, Caddy's precompressed, the preview server).
+    bool precompress = false;
 };
 
 struct SizeEntry {
@@ -265,6 +305,14 @@ public:
     std::string Asset(const std::string& sourcePath);
     // The same for content in memory, named `fileName`.
     std::string AssetFromText(const std::string& fileName, const std::string& content);
+
+    // A picture as <picture>: AVIF and WebP variants at the widths below
+    // its own (written by Build under assets/img/, named by the picture's
+    // content hash, so a later build reuses them), and the original as the
+    // <img>, with its width and height so the page does not shift, fetched
+    // lazily unless it is the page's first. A picture the image library
+    // cannot read (or a build without it) is a plain <img>.
+    std::string Picture(const std::string& sourcePath, const PictureOptions& options = {});
 
     // A folder copied as it is under `publishedPrefix` ("media"), not
     // hashed: an app's media library. Links into it are checked against
@@ -325,12 +373,19 @@ private:
     std::map<std::string, std::vector<NavItem>> sidebars;
     struct PendingAsset { std::string sourcePath, content, url, file; };
     std::vector<PendingAsset> assets;
+    struct PendingVariant { std::string sourcePath, file, format; int width = 0; };
+    std::vector<PendingVariant> variants;
+    std::vector<std::string> pictureNotes;   // a format the image library cannot write
     std::vector<std::pair<std::string, std::string>> directories;   // source, prefix
     std::vector<std::pair<std::string, std::string>> files;         // relative path, content
     std::vector<std::string> assetErrors;
 };
 
 // ----- Helpers the apps share ---------------------------------------------------
+
+// The path a site with this address is served from:
+// "https://store.example/v1" -> "/v1/", "https://example.org" -> "/".
+std::string BasePathOf(const std::string& url);
 
 // The file a route path is written to: "/" -> "index.html", "/a/b/" ->
 // "a/b/index.html", "/x.html" -> "x.html", "/a" -> "a/index.html".
@@ -342,6 +397,12 @@ std::string ContentHash(const std::string& content, size_t length = 10);
 
 // Bytes after gzip -9 (raw size without zlib).
 size_t CompressedSize(const std::string& content);
+
+// The content as a .gz file (gzip -9) and as a .br file (Brotli at its best
+// quality); empty when the build has no zlib, or no Brotli.
+std::string GzipBytes(const std::string& content);
+std::string BrotliBytes(const std::string& content);
+bool BrotliAvailable();
 
 // The CSS of a token set: ":root{--us-bg:#fff;...}" and the dark rules.
 // Throws nothing; a bad name or value is skipped and reported in `errors`.

@@ -128,6 +128,7 @@ struct GeneratedIndex {
 // One language's tree, loaded.
 struct Tree {
     std::string language, prefix, sidebar;
+    std::string version;               // a version's label; empty for a translation
     fs::path root;
     std::vector<DocFile> files;
     std::vector<NavItem> navigation;
@@ -156,10 +157,16 @@ DocsReport Builder::AddDocs(const DocsOptions& options) {
     DocsReport report;
     const std::string mainLanguage = options.language.empty() ? config.language : options.language;
     std::vector<Tree> trees;
-    trees.push_back({mainLanguage, options.routePrefix, options.sidebar, UltraCanvas::PathFromUtf8(options.folder), {}, {}, {}});
+    const bool versioned = !options.versions.empty();
+    trees.push_back({mainLanguage, options.routePrefix, options.sidebar, versioned ? options.currentVersion : std::string(),
+                     UltraCanvas::PathFromUtf8(options.folder), {}, {}, {}});
     for (const DocsTranslation& translation : options.translations) {
-        trees.push_back({translation.language, translation.routePrefix, options.sidebar + "-" + translation.language,
+        trees.push_back({translation.language, translation.routePrefix, options.sidebar + "-" + translation.language, std::string(),
                          UltraCanvas::PathFromUtf8(translation.folder), {}, {}, {}});
+    }
+    for (const DocsVersion& version : options.versions) {
+        trees.push_back({mainLanguage, version.routePrefix, options.sidebar + "-v-" + version.label, version.label,
+                         UltraCanvas::PathFromUtf8(version.folder), {}, {}, {}});
     }
 
     const fs::path sourceRoot = options.sourceRoot.empty() ? fs::path() : fs::absolute(UltraCanvas::PathFromUtf8(options.sourceRoot)).lexically_normal();
@@ -353,13 +360,31 @@ DocsReport Builder::AddDocs(const DocsOptions& options) {
         if (!hasRootPage) tree.generated.push_back({tree.prefix, config.name, tree.navigation});
     }
 
-    // The same file in the other languages.
+    // The same file in the other languages (the latest version's), and in
+    // the other versions.
     std::map<std::string, std::map<std::string, std::string>> alternates;   // relative file -> language -> route
-    if (trees.size() > 1) {
-        for (const Tree& tree : trees) {
-            for (const DocFile& file : tree.files) alternates[file.relative][tree.language] = file.path;
+    std::map<std::string, std::map<std::string, std::string>> inVersion;    // relative file -> version -> route
+    for (const Tree& tree : trees) {
+        const bool earlier = !tree.version.empty() && &tree != &trees.front();
+        for (const DocFile& file : tree.files) {
+            if (!earlier) alternates[file.relative][tree.language] = file.path;
+            if (!tree.version.empty()) inVersion[file.relative][tree.version] = file.path;
         }
     }
+    // A route's versions: each version's label and this page's address in
+    // it, else that version's root, newest first.
+    auto versionsOf = [&](const std::string& relative) {
+        std::vector<std::pair<std::string, std::string>> out;
+        if (!versioned) return out;
+        for (const Tree& tree : trees) {
+            if (tree.version.empty()) continue;
+            auto found = inVersion.find(relative);
+            std::string path = tree.prefix;
+            if (found != inVersion.end() && found->second.count(tree.version)) path = found->second.at(tree.version);
+            out.emplace_back(tree.version, path);
+        }
+        return out;
+    };
 
     for (Tree& tree : trees) {
         AddSidebar(tree.sidebar, tree.navigation);
@@ -375,8 +400,19 @@ DocsReport Builder::AddDocs(const DocsOptions& options) {
             route.sidebar = tree.sidebar;
             if (!options.editUrl.empty() && &tree == &trees.front()) route.editUrl = options.editUrl + file.relative;
             route.date = file.matter.values["last_update"];
-            auto other = alternates.find(file.relative);
-            if (other != alternates.end() && other->second.size() > 1) route.alternates = other->second;
+            const bool earlier = !tree.version.empty() && &tree != &trees.front();
+            if (!earlier) {
+                auto other = alternates.find(file.relative);
+                if (other != alternates.end() && other->second.size() > 1) route.alternates = other->second;
+            }
+            if (!tree.version.empty()) {
+                route.version = tree.version;
+                route.versions = versionsOf(file.relative);
+                if (earlier) {
+                    route.latestPath = route.versions.front().second;
+                    route.searchable = false;   // the search finds the latest
+                }
+            }
             AddRoute(std::move(route));
             ++report.pages;
         }
@@ -390,6 +426,14 @@ DocsReport Builder::AddDocs(const DocsOptions& options) {
             route.layout = "doc";
             route.title = index.title;
             route.sidebar = tree.sidebar;
+            if (!tree.version.empty()) {
+                route.version = tree.version;
+                route.versions = versionsOf(std::string());   // each version's root
+                if (&tree != &trees.front()) {
+                    route.latestPath = route.versions.front().second;
+                    route.searchable = false;
+                }
+            }
             route.bodyHtml = "<h1>" + UltraCanvas::HTML::EscapeText(index.title) + "</h1>\n<ul class=\"us-cards\">\n";
             for (const NavItem& item : index.items) {
                 route.bodyHtml += "<li><a href=\"" + UltraCanvas::HTML::EscapeText(Url(item.href)) + "\"><strong>" +

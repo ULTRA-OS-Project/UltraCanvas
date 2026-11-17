@@ -19,7 +19,7 @@ UltraPress and the UltraStore web store each have two outputs:
 UltraSite is (b). The design and the plan are in
 [`Docs/Research/UltraSiteStaticSitesProposal.md`](../../Research/UltraSiteStaticSitesProposal.md).
 
-> **Status (2026-11, v0.3, Phases A to C of the proposal):**
+> **Status (2026-11, v0.4, Phases A to D of the proposal):**
 > - **Phase A:** routes; the `page` and `post` layouts, plus layouts an
 >   app adds; design tokens with a light and an optional dark look; hashed
 >   assets; `core.js`; behaviour modules an app registers; the link and
@@ -39,8 +39,11 @@ UltraSite is (b). The design and the plan are in
 >   `docs/` folder and `ultrapress docs`. The UltraStore admin backend
 >   publishes the web store through it
 >   (`Apps/UltraStoreAdmin/core/WebStoreHtml.h`).
-> - **Next:** responsive picture variants, precompressed files, a preview
->   server and versioned docs (Phase D).
+> - **Phase D:** responsive pictures (`Builder::Picture`), precompressed
+>   `.gz` and `.br` copies, a preview server (`UltraSiteServer.h`), and
+>   versioned docs.
+> - **Not built:** the `form` module and the `swap` navigation (see the
+>   proposal, §16).
 >
 > Sources are under `UltraSite/{include,core,resources}`. The target is
 > `UltraSite`, the header `<UltraSite/UltraSite.h>`, and the namespace
@@ -173,6 +176,66 @@ std::fputs(result.SizeReport().c_str(), stdout);
 The helpers `RouteFile`, `ContentHash`, `CompressedSize`, `TokensCss`,
 `MinifyCss` and `StripScript` are public, for apps that write files of
 their own beside the site.
+
+### Pictures
+
+`Builder::Picture(sourcePath, PictureOptions)` writes a picture as a
+`<picture>`:
+
+- **Variants.** AVIF and WebP at the `widths` below the picture's own,
+  plus its own width, under `assets/img/` with the picture's content hash
+  in the name. A later build reuses a variant that is already there.
+  `sizes` says how wide the picture is shown.
+- **The original.** It is the `<img>`, with its width and height so the
+  page does not shift. It is fetched lazily, or first with `first` (the
+  page's large picture). It is published as a hashed asset unless
+  `originalUrl` says where it already is.
+- **What this machine writes.** The build checks once which formats the
+  image library can write. A library without an AV1 encoder writes no
+  AVIF, so the pictures get WebP only and the build warns.
+- **The fallback.** A picture the library cannot read, an SVG or a GIF is
+  a plain `<img>`.
+
+### Compressed copies
+
+`BuildOptions::precompress` writes `.gz` copies (gzip -9) and, where the
+build has Brotli, `.br` copies (its best quality) of every page,
+stylesheet, script, search index, sitemap and feed over 256 bytes. These
+are for a server that sends a file's compressed copy itself, without
+compressing on every request:
+
+```nginx
+gzip_static on;          # ngx_http_gzip_static_module
+brotli_static on;        # ngx_brotli
+```
+
+```text
+file_server {
+    precompressed br gzip    # Caddy
+}
+```
+
+A host that compresses on its own (Apache's `mod_deflate` from the
+`.htaccess`, Netlify, Cloudflare) needs neither.
+
+### The preview server
+
+`UltraSiteServer.h` serves a built folder on 127.0.0.1, the way a host
+would:
+
+- the site's path in front;
+- a folder's `index.html` for its address, and a 301 for an address
+  without its slash;
+- the 404 page with status 404;
+- the `.htaccess` cache rules, and the `.br` or `.gz` copy for a browser
+  that takes it;
+- nothing hidden, and nothing outside the folder.
+
+`Respond` is one request's answer, with no socket (the tests use it).
+`Serve` listens through UltraNet until its `stop` flag is set, and calls
+`beforeRequest` first, which a preview uses to rebuild a site whose files
+changed. It is for looking at a site before it is uploaded, not for the
+internet: one request at a time, GET and HEAD only.
 
 ### A site under a path
 
@@ -338,6 +401,19 @@ const UltraSite::MarkdownResult page = UltraSite::MarkdownToHtml(markdown, optio
   and `danger`. GitHub's `> [!NOTE]` alerts work too.
 - **Tabs.** `:::tabs`, then one `::tab[Label]` line per tab, then `:::`.
   Each tab is a `<section>` under its label, readable without script.
+
+### Versions
+
+`DocsOptions::versions` lists earlier versions of the docs (`label`,
+`folder`, `routePrefix`), newest first. `folder` is then the latest,
+named `currentVersion`:
+
+- **Sidebars.** Each version has its own (`<sidebar>-v-<label>`).
+- **The switcher.** Above the sidebar, it leads to the same page in every
+  version, or to a version's root where the page is not there.
+- **Earlier versions.** Their pages carry a banner (`Labels::outdated`,
+  `Labels::latest`) naming the latest version, and the search leaves them
+  out, as Docusaurus does.
 
 ### Search
 

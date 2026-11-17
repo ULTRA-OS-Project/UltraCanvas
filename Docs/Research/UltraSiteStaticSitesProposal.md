@@ -1,10 +1,10 @@
 # UltraSite — the HTML + JavaScript output of UltraPress and UltraStore (Investigation and Proposal)
 
 **Date:** 2026-11-17
-**Status:** Phases A to C built (2026-11-17): `UltraSite/` 0.3,
-UltraPress's HTML + JavaScript output, its documentation and `ultrapress
-docs`, and the UltraStore web store as HTML + JavaScript (§13 to §15).
-Phase D is a proposal.
+**Status:** Phases A to D built (2026-11-17): `UltraSite/` 0.4,
+UltraPress's HTML + JavaScript output, its documentation, `ultrapress docs`
+and `ultrapress serve`, and the UltraStore web store as HTML + JavaScript
+(§13 to §16). The `form` module and the `swap` navigation wait (§16).
 **Scope:** `UltraSite`, one shared headless library that writes the **HTML +
 JavaScript** output of UltraPress (`Apps/UltraPress`) and of the UltraStore
 web store (`Apps/UltraStoreAdmin`). It writes it the way
@@ -780,4 +780,65 @@ Where the build differs from the plan above:
   system's fonts follow (question 5).
 - **The partner pages stay where they were.** The `go/` and `join/` pages
   keep their own frame (`PageFrame.cpp`), shared with the payment service.
+
+---
+
+## 16. What Phase D built, and what waits
+
+Built on 2026-11-17:
+
+- **Responsive pictures.** `Builder::Picture` writes AVIF and WebP
+  variants at the widths below a picture's own, plus its own, named by
+  content hash and reused by a later build. The original is the `<img>`,
+  with its size. UltraPress gives every media picture its role's widths
+  and `sizes` (the hero, a card, a picture block).
+- **Precompressed copies.** `BuildOptions::precompress` writes `.gz`
+  copies (zlib) and `.br` copies (Brotli, optional). They are for nginx's
+  `gzip_static` / `brotli_static` and Caddy's `precompressed`.
+  `ultrapress publish --precompress` and `ultrapress docs --precompress`
+  ask for them.
+- **The preview server.** `UltraSiteServer.h` serves a built folder on
+  127.0.0.1, the way a host would: the site's path, the trailing-slash
+  redirect, the 404 page, the cache rules and the compressed copies.
+  `ultrapress serve <site>` builds the site, serves it, and builds it
+  again before answering a page when a file of the site changed. It also
+  serves a built folder as it is.
+- **Versioned docs.** `DocsOptions::versions` gives each earlier version
+  its own prefix and sidebar, a version switcher, and a banner leading to
+  the latest; the search finds only the latest. In UltraPress the
+  versions are `versioned_docs/<label>/` with `versions.json`, and in
+  `ultrapress docs` `--versions <dir>`.
+- **The blog.** A post's `"tags"`, `/blog/` (the posts, newest first) and
+  `/blog/tags/<tag>/`.
+
+What the build found:
+
+- **This machine's image library writes no AVIF.** libvips reads it, but
+  libheif here has no AV1 encoder ("heifsave: Unsupported compression").
+  Writing a `<source type="image/avif">` for files that would never exist
+  would break the page. So `Picture` tries each format once, on a 16-pixel
+  copy of the first picture, lists only what it can write, and says what
+  it left out. CI's runners will tell whether theirs write AVIF.
+- **A file time's zero is not "long ago".** `ultrapress serve` first
+  compared modification times against a zero `file_time_type`, but
+  libstdc++'s file clock counts from 2174, so every real time is negative
+  and no change was ever seen. It starts from `file_time_type::min()`.
+
+What waits, and why:
+
+- **The `form` module.** UltraPress's forms post to `/api/form/<id>` and
+  `/api/newsletter/subscribe`, which a static host does not have. The
+  module is only worth writing together with the endpoint: the server
+  tier (`UltraPressDesignProposal.md` §6.2) or a third-party form service
+  chosen by the site. Until then the forms post normally, as they always
+  have.
+- **The `swap` navigation.** §4.2 made it conditional on Firefox or
+  Safari navigating more slowly than 150 ms from the cache. Only Chromium
+  is installed here, which prerenders through the speculation rules
+  anyway, so the condition could not be measured. Without that number the
+  added complexity (re-running behaviours, restoring focus and scroll) is
+  not justified.
+- **Responsive pictures in Markdown docs.** `UCRichDocument::ToHTML`
+  writes the `<img>` itself. A picture hook like `codeBlock` would bring
+  them in.
 

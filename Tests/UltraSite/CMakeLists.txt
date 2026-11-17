@@ -15,5 +15,7 @@ add_executable(UltraSiteTests UltraSiteTests.cpp)
 target_compile_features(UltraSiteTests PRIVATE cxx_std_20)
 target_link_libraries(UltraSiteTests PRIVATE UltraSite ${ULTRACANVAS_LIBRARY})
 set_target_properties(UltraSiteTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${_UST_BIN_DIR})
+# A photograph of the repository's (1000 x 563) for the picture variants.
+target_compile_definitions(UltraSiteTests PRIVATE ULTRASITE_TEST_PICTURE="${CMAKE_SOURCE_DIR}/media/images/landscape.jpg")
 include(CTest)
 add_test(NAME UltraSite COMMAND UltraSiteTests WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

@@ -1,6 +1,7 @@
 // Apps/UltraPress/engine/UltraPressSite.cpp
 // The HTML + JavaScript output: a site's pages, menus and theme handed to
 // UltraSite, and the choice between the two outputs.
+// Version: 0.3.0 - pictures through UltraSite::Picture, precompress, versioned_docs, the blog
 // Version: 0.2.0 - the site's docs/ (and its translations) through AddDocs, with search; PublishDocsFolder
 // Version: 0.1.0
 // Last Modified: 2026-11-17
@@ -8,6 +9,7 @@
 #include "UltraPressSite.h"
 #include "UltraPressHtml.h"
 
+#include "DataFormats/UltraCanvasJSON.h"
 #include "HTMLReader/HTMLDocument.h"
 #include "UltraCanvasPathUtf8.h"
 
@@ -16,6 +18,8 @@
 #endif
 
 #include <filesystem>
+#include <map>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -108,6 +112,15 @@ const char* kBlockStylesheet = R"CSS(
 .downloads ul { list-style: none; padding: 0; }
 .downloads li { padding: .8rem 0; border-bottom: 1px solid var(--us-border); }
 .downloads small { color: var(--us-muted); }
+.up-posts { list-style: none; padding: 0; margin: 0; max-width: 46rem; }
+.up-posts li { padding: 1.25rem 0; border-bottom: 1px solid var(--us-border); }
+.up-posts h2 { margin: 0 0 .25rem; font-size: 1.4rem; }
+.up-posts h2 a { color: var(--us-fg); text-decoration: none; }
+.up-posts h2 a:hover { color: var(--us-accent); }
+.up-posts p { margin: .35rem 0; }
+.up-tags { display: flex; flex-wrap: wrap; gap: .4rem; }
+.up-tags a { padding: .15rem .65rem; border-radius: 999px; background: var(--us-surface); border: 1px solid var(--us-border); color: var(--us-fg); font-size: .85rem; text-decoration: none; }
+.up-tags a:hover { border-color: var(--us-accent); }
 )CSS";
 
 // The defaults of the element renderer (PaletteFromTheme), by UltraSite's
@@ -155,6 +168,95 @@ std::vector<UltraSite::NavItem> NavItems(const Site& site, const std::vector<Men
         out.push_back(std::move(nav));
     }
     return out;
+}
+#endif
+
+#if ULTRAPRESS_HAS_ULTRASITE
+// The earlier versions of the docs in `folder`: its subfolders, in the order
+// of its versions.json (["2.0", "1.0"], newest first) or, without one,
+// newest first by name; each published at `prefix` + its label.
+std::vector<UltraSite::DocsVersion> VersionsIn(const fs::path& folder, const fs::path& orderFile, const std::string& prefix) {
+    std::vector<UltraSite::DocsVersion> out;
+    std::error_code ec;
+    if (!fs::is_directory(folder, ec)) return out;
+    std::vector<std::string> labels;
+    if (fs::is_regular_file(orderFile, ec)) {
+        UltraCanvas::JSONParseResult parsed;
+        const UltraCanvas::JSONValue order = UltraCanvas::JSON::ParseFile(UltraCanvas::PathToUtf8(orderFile), &parsed);
+        if (parsed.success) {
+            for (const UltraCanvas::JSONValue& label : order.GetElements()) labels.push_back(label.GetString());
+        }
+    }
+    if (labels.empty()) {
+        for (const fs::directory_entry& entry : fs::directory_iterator(folder, ec)) {
+            if (entry.is_directory(ec)) labels.push_back(UltraCanvas::PathToUtf8(entry.path().filename()));
+        }
+        std::sort(labels.rbegin(), labels.rend());
+    }
+    for (const std::string& label : labels) {
+        const fs::path versionFolder = folder / UltraCanvas::PathFromUtf8(label);
+        if (!label.empty() && fs::is_directory(versionFolder, ec)) {
+            out.push_back({label, UltraCanvas::PathToUtf8(versionFolder), prefix + label + "/"});
+        }
+    }
+    return out;
+}
+
+// The blog: an index of the posts, newest first, and a page per tag.
+void AddBlog(UltraSite::Builder& builder, const Site& site, bool includeDrafts, std::vector<std::string>& warnings) {
+    std::vector<const Page*> posts;
+    for (const Page& page : site.pages) {
+        if (page.kind == "post" && (page.IsPublished() || includeDrafts)) posts.push_back(&page);
+    }
+    if (posts.empty()) return;
+    if (site.FindPage("blog")) {
+        warnings.push_back("the site has a page called blog: the blog's index is left out");
+        return;
+    }
+    std::stable_sort(posts.begin(), posts.end(), [](const Page* a, const Page* b) { return a->date > b->date; });
+    auto list = [&](const std::vector<const Page*>& entries) {
+        std::string html = "<ul class=\"up-posts\">\n";
+        for (const Page* post : entries) {
+            html += "<li><article><h2><a href=\"" + UltraCanvas::HTML::EscapeText(builder.Url(PagePath(*post))) + "\">" +
+                    UltraCanvas::HTML::EscapeText(post->title) + "</a></h2>";
+            if (!post->date.empty()) html += "<p class=\"us-post-date\"><time datetime=\"" + UltraCanvas::HTML::EscapeText(post->date) + "\">" +
+                                             UltraCanvas::HTML::EscapeText(post->date) + "</time></p>";
+            if (!post->seo.description.empty()) html += "<p>" + UltraCanvas::HTML::EscapeText(post->seo.description) + "</p>";
+            if (!post->tags.empty()) {
+                html += "<p class=\"up-tags\">";
+                for (const std::string& tag : post->tags) {
+                    html += "<a href=\"" + UltraCanvas::HTML::EscapeText(builder.Url("/blog/tags/" + MakeSlug(tag) + "/")) + "\">" +
+                            UltraCanvas::HTML::EscapeText(tag) + "</a> ";
+                }
+                html += "</p>";
+            }
+            html += "</article></li>\n";
+        }
+        return html + "</ul>\n";
+    };
+    UltraSite::Route index;
+    index.path = "/blog/";
+    index.title = "Blog";
+    index.description = site.tagline;
+    index.bodyHtml = "<h1>Blog</h1>\n" + list(posts);
+    builder.AddRoute(std::move(index));
+    std::map<std::string, std::pair<std::string, std::vector<const Page*>>> tags;   // slug -> name, posts
+    for (const Page* post : posts) {
+        for (const std::string& tag : post->tags) {
+            auto& entry = tags[MakeSlug(tag)];
+            if (entry.first.empty()) entry.first = tag;
+            entry.second.push_back(post);
+        }
+    }
+    for (const auto& [slug, entry] : tags) {
+        UltraSite::Route page;
+        page.path = "/blog/tags/" + slug + "/";
+        page.title = entry.first;
+        page.noindex = true;   // the posts are indexed on their own pages
+        page.bodyHtml = "<h1>" + UltraCanvas::HTML::EscapeText(entry.first) + "</h1>\n<p><a href=\"" +
+                        UltraCanvas::HTML::EscapeText(builder.Url("/blog/")) + "\">Blog</a></p>\n" + list(entry.second);
+        builder.AddRoute(std::move(page));
+    }
 }
 #endif
 
@@ -225,9 +327,32 @@ PublishResult PublishHtml(const Site& site, const std::string& siteDirectory,
     html.includeStyle = false;
     html.rendererScript.clear();
     if (html.siteDirectory.empty()) html.siteDirectory = siteDirectory;
+    UltraSite::Builder builder(config);
+    // The site's pictures as <picture>s with their variants, the original
+    // where the media folder puts it; each role at the widths it is shown.
+    html.picture = [&builder, siteDirectory](const std::string& mediaPath, const std::string& alt, const std::string& role) {
+        const std::string relative = mediaPath[0] == '/' ? mediaPath.substr(1) : mediaPath;
+        const fs::path source = UltraCanvas::PathFromUtf8(siteDirectory) / UltraCanvas::PathFromUtf8(relative);
+        std::error_code exists;
+        if (!fs::is_regular_file(source, exists)) return std::string();
+        UltraSite::PictureOptions picture;
+        picture.alt = alt;
+        picture.originalUrl = builder.Url("/" + relative);
+        picture.first = role == "hero";
+        if (role == "hero") {
+            picture.widths = {480, 800, 1200};
+            picture.sizes = "(min-width: 60rem) 40vw, 100vw";
+        } else if (role == "card") {
+            picture.widths = {400, 800};
+            picture.sizes = "(min-width: 60rem) 24rem, 100vw";
+        } else {
+            picture.widths = {480, 960, 1440};
+            picture.sizes = "(min-width: 72rem) 72rem, 100vw";
+        }
+        return builder.Picture(UltraCanvas::PathToUtf8(source), picture);
+    };
     HtmlEmitter emitter(site, html);
 
-    UltraSite::Builder builder(config);
     const std::string feedLink = "<link rel=\"alternate\" type=\"application/rss+xml\" title=\"" +
                                  UltraCanvas::HTML::EscapeText(site.name) + "\" href=\"/feed.xml\">";
     for (const Page& page : site.pages) {
@@ -254,9 +379,18 @@ PublishResult PublishHtml(const Site& site, const std::string& siteDirectory,
         route.bodyHtml = route.layout == "page" && page.slug != "home" && !heroFirst
                              ? "<h1>" + UltraCanvas::HTML::EscapeText(page.title) + "</h1>\n" + parts.body
                              : parts.body;
+        if (page.kind == "post" && !page.tags.empty()) {
+            route.bodyHtml += "<p class=\"up-tags\">";
+            for (const std::string& tag : page.tags) {
+                route.bodyHtml += "<a href=\"" + UltraCanvas::HTML::EscapeText(builder.Url("/blog/tags/" + MakeSlug(tag) + "/")) + "\">" +
+                                  UltraCanvas::HTML::EscapeText(tag) + "</a> ";
+            }
+            route.bodyHtml += "</p>\n";
+        }
         builder.AddRoute(std::move(route));
     }
     builder.AddFile("feed.xml", emitter.Feed());
+    AddBlog(builder, site, options.includeDrafts, result.warnings);
     const fs::path media = UltraCanvas::PathFromUtf8(siteDirectory) / "media";
     if (options.copyMedia && fs::is_directory(media, ec)) builder.AddDirectory(UltraCanvas::PathToUtf8(media), "media");
 
@@ -272,6 +406,9 @@ PublishResult PublishHtml(const Site& site, const std::string& siteDirectory,
                 docsOptions.translations.push_back({language, UltraCanvas::PathToUtf8(translated), "/" + language + "/docs/"});
             }
         }
+        // Earlier versions: versioned_docs/<label>, ordered by versions.json.
+        docsOptions.versions = VersionsIn(UltraCanvas::PathFromUtf8(siteDirectory) / "versioned_docs",
+                                          UltraCanvas::PathFromUtf8(siteDirectory) / "versions.json", "/docs/");
         const UltraSite::DocsReport docsReport = builder.AddDocs(docsOptions);
         result.errors.insert(result.errors.end(), docsReport.errors.begin(), docsReport.errors.end());
         result.warnings.insert(result.warnings.end(), docsReport.warnings.begin(), docsReport.warnings.end());
@@ -281,6 +418,7 @@ PublishResult PublishHtml(const Site& site, const std::string& siteDirectory,
     build.removeStale = options.removeStale;
     build.keep = {".ultrapress-deploy.json"};
     build.enforceBudgets = options.enforceBudgets;
+    build.precompress = options.precompress;
     const UltraSite::BuildResult built = builder.Build(outputDirectory, build);
     result.ok = built.ok && result.errors.empty();
     result.files = built.files;
@@ -318,6 +456,11 @@ PublishResult PublishDocsFolder(const DocsSiteOptions& options, const std::strin
     docs.sourceRoot = options.sourceRoot;
     docs.sourceUrl = options.sourceUrl;
     docs.exclude = options.exclude;
+    if (!options.versionsFolder.empty()) {
+        const fs::path versions = UltraCanvas::PathFromUtf8(options.versionsFolder);
+        docs.versions = VersionsIn(versions, versions / "versions.json", "/");
+        if (docs.versions.empty()) result.warnings.push_back(options.versionsFolder + " holds no version folders");
+    }
     const UltraSite::DocsReport report = builder.AddDocs(docs);
     result.errors = report.errors;
     result.warnings = report.warnings;
@@ -325,6 +468,7 @@ PublishResult PublishDocsFolder(const DocsSiteOptions& options, const std::strin
     build.removeStale = options.removeStale;
     build.keep = {".ultrapress-deploy.json"};
     build.enforceBudgets = options.enforceBudgets;
+    build.precompress = options.precompress;
     build.brokenLinksWarn = options.brokenLinksWarn;
     const UltraSite::BuildResult built = builder.Build(outputDirectory, build);
     result.ok = built.ok && result.errors.empty();

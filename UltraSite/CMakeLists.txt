@@ -4,6 +4,7 @@
 # library: routes in, a folder of pages, a hashed stylesheet and hashed
 # script modules out. The stylesheet and the scripts under resources/ are
 # compiled into the library, so it needs no file beside it at run time.
+# Version: 0.4.0 - the preview server, Brotli (optional) for the .br copies
 # Version: 0.2.0 - the Markdown docs, the search, toc, tabs and copy modules
 # Version: 0.1.0
 # Last Modified: 2026-11-17
@@ -47,6 +48,7 @@ add_library(UltraSite STATIC
     core/UltraSiteAssets.cpp
     core/UltraSiteMarkdown.cpp
     core/UltraSiteDocs.cpp
+    core/UltraSiteServer.cpp
 )
 set_target_properties(UltraSite PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -68,6 +70,23 @@ find_package(ZLIB QUIET)
 if(ZLIB_FOUND)
     target_link_libraries(UltraSite PRIVATE ZLIB::ZLIB)
     target_compile_definitions(UltraSite PRIVATE ULTRASITE_HAS_ZLIB=1)
+endif()
+
+# Brotli writes the .br copies BuildOptions::precompress asks for; without
+# it the .gz copies are written alone. Optional, as in VirtualFS.
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(ULTRASITE_BROTLI QUIET IMPORTED_TARGET libbrotlienc)
+endif()
+if(ULTRASITE_BROTLI_FOUND)
+    target_link_libraries(UltraSite PRIVATE PkgConfig::ULTRASITE_BROTLI)
+    target_compile_definitions(UltraSite PRIVATE ULTRASITE_HAS_BROTLI=1)
+endif()
+
+# The preview server (core/UltraSiteServer.cpp) listens through UltraNet,
+# which lives in the core library or, under a static core, beside it.
+if(TARGET UltraNet)
+    target_link_libraries(UltraSite PUBLIC UltraNet)
 endif()
 
 message(STATUS "  [+] UltraSite - the HTML + JavaScript site builder")

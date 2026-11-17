@@ -3171,7 +3171,12 @@ modules. UltraPress publishes its HTML + JavaScript output, a site's
 (`Apps/UltraPress/engine/UltraPressSite.h`); the UltraStore admin backend
 writes the web store through it (`Apps/UltraStoreAdmin/core/WebStoreHtml.h`),
 under the catalog's path (a site's `url` with a path is served from it:
-`Builder::Url`) and in every catalog language (`SiteConfig::frames`). Headless: links the core library (JSON, HTMLReader, UltraCrypt) and
+`Builder::Url`) and in every catalog language (`SiteConfig::frames`).
+Responsive pictures (`Builder::Picture`: AVIF / WebP variants by content
+hash), `.gz` / `.br` copies (`BuildOptions::precompress`; Brotli
+optional), versioned docs (`DocsOptions::versions`), and a loopback preview
+server over UltraNet (`UltraSiteServer.h`: `Respond`, `Serve`) behind
+`ultrapress serve`. Headless: links the core library (JSON, HTMLReader, UltraCrypt) and
 zlib. Sources under `UltraSite/{include,core,resources}`, target
 `UltraSite`, header `<UltraSite/UltraSite.h>`, `namespace UltraSite`;
 see `Docs/Modules/UltraSite/README.md` and

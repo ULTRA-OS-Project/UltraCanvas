@@ -19,6 +19,11 @@
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
 #include "UltraPressSite.h"
+
+#if ULTRAPRESS_HAS_ULTRASITE
+#include "UltraSite/UltraSite.h"
+#include "UltraSite/UltraSiteServer.h"
+#endif
 #include "UltraPressDeploy.h"
 #if ULTRAPRESS_HAS_ULTRACLOUD
 #include "UltraPressHosting.h"
@@ -32,6 +37,8 @@
 #endif
 
 #include <cstdio>
+#include <cstdlib>
+#include <functional>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -59,7 +66,7 @@ void PrintHelp() {
         "      add copies files in under a clean name, remove deletes unused ones, prune every unused one\n"
         "  ultrapress page <site-dir> <slug>\n"
         "      print the page's HTML shadow\n"
-        "  ultrapress publish <site-dir> <out-dir> [--output html|wasm] [--renderer <script.js>] [--drafts] [--sizes]\n"
+        "  ultrapress publish <site-dir> <out-dir> [--output html|wasm] [--renderer <script.js>] [--drafts] [--sizes] [--precompress]\n"
         "                                          [--to <host>|--to site [--path <remote-folder>] [--force] [--prune]]\n"
         "      the site's output (\"output\" in site.json; --output for this run) into <out-dir>:\n"
         "      html - every page styled, with small script modules, a hashed stylesheet,\n"
@@ -71,10 +78,14 @@ void PrintHelp() {
         "      --prune deletes on the host what an earlier publish put there and the site no longer has\n"
         "  ultrapress docs <markdown-dir> <out-dir> [--name <name>] [--url <url>] [--language <code>]\n"
         "                  [--edit-url <base>] [--source-root <dir> --source-url <base>] [--exclude <name>]...\n"
-        "                  [--sizes] [--no-budgets] [--broken-links warn] [--quiet]\n"
+        "                  [--versions <dir>] [--sizes] [--no-budgets] [--broken-links warn] [--precompress] [--quiet]\n"
         "      a folder of Markdown as a documentation site, the way Docusaurus publishes one: a page\n"
         "      per file, the sidebar after the folders, a table of contents, search, links between the\n"
         "      files kept; a link out of the folder goes to --source-url + its path under --source-root\n"
+        "  ultrapress serve <site-dir|built-dir> [--port <n>] [--base <path>]\n"
+        "      the site on this computer only (127.0.0.1): built as HTML + JavaScript into\n"
+        "      <site>/.ultrapress/preview and built again when a file of it changed; a built\n"
+        "      folder (index.html) is served as it is; .br / .gz copies go to browsers that take them\n"
         "  ultrapress hosts\n"
         "      the hosts a site can be published to: FTP, FTPS, SFTP, WebDAV, Nextcloud\n"
         "  ultrapress hosts add <ftp|webdav|nextcloud> --server <url> --user <name> [--password <p>]\n"
@@ -225,6 +236,92 @@ int CommandPage(const std::vector<std::string>& args) {
     return 0;
 }
 
+// The site on this computer: built into <site>/.ultrapress/preview and
+// served on 127.0.0.1, built again when a file of the site changed since
+// (checked before each page is answered). A folder that holds no site but
+// an index.html - a built site - is served as it is.
+int CommandServe(const std::vector<std::string>& args) {
+    if (args.empty()) { PrintHelp(); return 2; }
+#if ULTRAPRESS_HAS_ULTRASITE
+    namespace fs = std::filesystem;
+    const fs::path folder = UltraCanvas::PathFromUtf8(args[0]);
+    std::error_code ec;
+    const bool isSite = fs::is_regular_file(folder / "site.json", ec);
+    std::string served = args[0];
+    std::string basePath = "/";
+    std::function<void(const std::string&)> refresh;
+    // The newest change under the site, the preview folder aside.
+    auto newest = [folder]() {
+        // min(), not zero: the file clock's epoch may lie in the future
+        // (libstdc++'s is 2174), so today's times are negative.
+        fs::file_time_type latest = fs::file_time_type::min();
+        std::error_code e;
+        for (fs::recursive_directory_iterator it(folder, e), end; it != end; it.increment(e)) {
+            if (it->path().filename() == ".ultrapress") { it.disable_recursion_pending(); continue; }
+            if (it->is_regular_file(e)) latest = std::max(latest, it->last_write_time(e));
+        }
+        return latest;
+    };
+    fs::file_time_type built = fs::file_time_type::min();
+    if (isSite) {
+        served = UltraCanvas::PathToUtf8(folder / ".ultrapress" / "preview");
+        auto build = [&, args]() {
+            Site site;
+            std::vector<std::string> errors;
+            if (!LoadSite(args[0], site, errors)) {
+                for (const std::string& e : errors) std::fprintf(stderr, "%s\n", e.c_str());
+                return false;
+            }
+            PublishOptions options;
+            options.output = kOutputHtml;
+            options.enforceBudgets = false;
+            const PublishResult result = Publish(site, args[0], served, options);
+            for (const std::string& e : result.errors) std::fprintf(stderr, "%s\n", e.c_str());
+            basePath = UltraSite::BasePathOf(site.url);
+            built = newest();
+            return true;
+        };
+        if (!build()) return 1;
+        refresh = [&, build](const std::string& target) {
+            const std::string path = target.substr(0, target.find('?'));
+            if (!path.empty() && path.back() != '/' && path.find(".html") == std::string::npos) return;   // pages only
+            if (newest() != built) {
+                std::printf("the site changed: building it again\n");
+                build();
+            }
+        };
+    } else if (!fs::is_regular_file(folder / "index.html", ec)) {
+        std::fprintf(stderr, "%s holds neither a site (site.json) nor a built one (index.html)\n", args[0].c_str());
+        return 1;
+    }
+    UltraSite::ServeOptions serve;
+    serve.port = ParsePort(Option(args, "--port", "3000"));
+    if (serve.port == 0) {
+        std::fprintf(stderr, "--port takes a number from 1 to 65535\n");
+        return 2;
+    }
+    serve.basePath = Option(args, "--base", basePath);
+    serve.beforeRequest = refresh;
+    serve.onReady = [&](int port) {
+        std::printf("serving %s at http://127.0.0.1:%d%s - Ctrl+C stops\n", served.c_str(), port, serve.basePath.c_str());
+        std::fflush(stdout);
+    };
+    serve.onRequest = [](const std::string& line) {
+        std::printf("  %s\n", line.c_str());
+        std::fflush(stdout);
+    };
+    const std::string error = UltraSite::Serve(served, serve);
+    if (!error.empty()) {
+        std::fprintf(stderr, "%s\n", error.c_str());
+        return 1;
+    }
+    return 0;
+#else
+    std::fprintf(stderr, "this build has no UltraSite, so no preview server\n");
+    return 1;
+#endif
+}
+
 // A folder of Markdown as a documentation site: `ultrapress docs`.
 int CommandDocs(const std::vector<std::string>& args) {
     if (args.size() < 2) { PrintHelp(); return 2; }
@@ -241,6 +338,8 @@ int CommandDocs(const std::vector<std::string>& args) {
     }
     options.enforceBudgets = !HasFlag(args, "--no-budgets");
     options.brokenLinksWarn = Option(args, "--broken-links", "error") == "warn";
+    options.precompress = HasFlag(args, "--precompress");
+    options.versionsFolder = Option(args, "--versions", "");
     const PublishResult result = PublishDocsFolder(options, args[1]);
     const bool quiet = HasFlag(args, "--quiet");
     if (!quiet) {
@@ -262,6 +361,7 @@ int CommandPublish(const std::vector<std::string>& args) {
     options.html.rendererScript = Option(args, "--renderer", "");
     options.includeDrafts = HasFlag(args, "--drafts");
     options.output = Option(args, "--output", "");
+    options.precompress = HasFlag(args, "--precompress");
     const PublishResult result = Publish(site, args[0], args[1], options);
     PrintIssues(result.issues);
     for (const std::string& warning : result.warnings) std::fprintf(stderr, "warning: %s\n", warning.c_str());
@@ -495,6 +595,7 @@ int CommandLine(int argc, char** argv) {
     if (command == "page") return CommandPage(args);
     if (command == "publish") return CommandPublish(args);
     if (command == "docs") return CommandDocs(args);
+    if (command == "serve") return CommandServe(args);
     if (command == "import") return CommandImport(args);
     if (command == "hosts") return CommandHosts(args);
     if (command == "media") return CommandMedia(args);

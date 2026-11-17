@@ -18,6 +18,9 @@
 #if ULTRASITE_HAS_ZLIB
 #include <zlib.h>
 #endif
+#if ULTRASITE_HAS_BROTLI
+#include <brotli/encode.h>
+#endif
 
 namespace UltraSite {
 
@@ -102,6 +105,53 @@ size_t CompressedSize(const std::string& content) {
     }
 #endif
     return content.size();
+}
+
+std::string GzipBytes(const std::string& content) {
+#if ULTRASITE_HAS_ZLIB
+    z_stream stream{};
+    // 15 + 16: a gzip header and trailer, as a server sends Content-Encoding: gzip.
+    if (deflateInit2(&stream, 9, Z_DEFLATED, 15 + 16, 9, Z_DEFAULT_STRATEGY) != Z_OK) return std::string();
+    std::string out(deflateBound(&stream, static_cast<uLong>(content.size())) + 32, '\0');
+    stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(content.data()));
+    stream.avail_in = static_cast<uInt>(content.size());
+    stream.next_out = reinterpret_cast<Bytef*>(out.data());
+    stream.avail_out = static_cast<uInt>(out.size());
+    const int status = deflate(&stream, Z_FINISH);
+    const size_t written = stream.total_out;
+    deflateEnd(&stream);
+    if (status != Z_STREAM_END) return std::string();
+    out.resize(written);
+    return out;
+#else
+    (void)content;
+    return std::string();
+#endif
+}
+
+std::string BrotliBytes(const std::string& content) {
+#if ULTRASITE_HAS_BROTLI
+    size_t size = BrotliEncoderMaxCompressedSize(content.size());
+    if (size == 0) size = content.size() + 1024;
+    std::string out(size, '\0');
+    if (!BrotliEncoderCompress(BROTLI_MAX_QUALITY, BROTLI_DEFAULT_WINDOW, BROTLI_MODE_TEXT, content.size(),
+                               reinterpret_cast<const uint8_t*>(content.data()), &size, reinterpret_cast<uint8_t*>(out.data()))) {
+        return std::string();
+    }
+    out.resize(size);
+    return out;
+#else
+    (void)content;
+    return std::string();
+#endif
+}
+
+bool BrotliAvailable() {
+#if ULTRASITE_HAS_BROTLI
+    return true;
+#else
+    return false;
+#endif
 }
 
 bool CompressionAvailable() {

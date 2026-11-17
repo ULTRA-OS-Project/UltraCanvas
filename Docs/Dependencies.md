@@ -50,6 +50,7 @@ built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-ap
   - [UltraMail: signed and encrypted mail](#ultramail-signed-and-encrypted-mail)
   - [UltraDatabase module](#ultradatabase-module)
   - [Ultra Net module](#ultra-net-module)
+  - [UltraSite module](#ultrasite-module)
   - [UltraVault module](#ultravault-module)
   - [UltraWin module](#ultrawin-module)
   - [VideoFX module](#videofx-module)
@@ -553,6 +554,20 @@ configure time naming what is missing.
 > core and needs only **nlohmann/json** ([json.nlohmann.me](https://json.nlohmann.me/),
 > [github.com/nlohmann/json](https://github.com/nlohmann/json), MIT), vendored
 > as a single header at `UltraCanvas/third_party/nlohmann/json.hpp`.
+
+### UltraSite module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Content hashes of the assets, the inline scripts' Content-Security-Policy hashes | libsodium through UltraCrypt (optional; FNV-1a and no policy without it) | the same | the same |
+| Compressed sizes for the budgets, the `.gz` copies | zlib (a core dependency) | zlib | zlib |
+| The `.br` copies (`BuildOptions::precompress`) | Brotli's encoder, `libbrotlienc` (`libbrotli-dev`, optional) | `brotli` (optional) | MSYS2 `brotli` (optional) |
+| Picture variants (`Builder::Picture`: AVIF, WebP) | libvips through the core's image library; AVIF needs libheif with an AV1 encoder | the same | the same |
+| The preview server (`UltraSiteServer.h`) | UltraNet's sockets | the same | the same |
+
+> Without Brotli the `.br` copies are left out and nothing else changes;
+> without an AV1 encoder the pictures get WebP variants only, and the build
+> says so.
 
 ### UltraVault module
 

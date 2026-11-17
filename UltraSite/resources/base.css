@@ -217,6 +217,12 @@ body:has(.us-doc) .us-navbar .us-container, body:has(.us-doc) .us-footer .us-con
   .us-toc-mobile { display: none; }
 }
 
+/* The version switcher, above the sidebar. */
+.us-versions ul { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 1rem; padding: 0 0 .75rem; list-style: none; border-bottom: 1px solid var(--us-border); }
+.us-sidebar .us-versions a { display: inline-block; padding: .2rem .65rem; border: 1px solid var(--us-border); border-radius: 999px; font-size: .85rem; }
+.us-sidebar .us-versions a[aria-current] { background: var(--us-accent); border-color: var(--us-accent); color: var(--us-accent-fg); }
+.us-outdated p { margin: 0; }
+
 /* A generated index: the folder's pages as cards. */
 .us-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem; list-style: none; margin: 0; padding: 0; }
 .us-cards a { display: block; height: 100%; padding: 1rem 1.1rem; border: 1px solid var(--us-border); border-radius: var(--us-radius); color: var(--us-fg); text-decoration: none; }

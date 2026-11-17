@@ -12,12 +12,16 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSite/UltraSite.h"
 #include "UltraSite/UltraSiteMarkdown.h"
+#include "UltraSite/UltraSiteServer.h"
+#include "UltraNet/UltraNetSocket.h"
 
 #include "HTMLReader/HTMLDocument.h"
 #include "HTMLReader/HTMLParser.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
+#include <atomic>
+#include <thread>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -540,6 +544,167 @@ static void TestBasePath() {
     fs::remove_all(dir, ec);
 }
 
+static void TestPhaseD() {
+    std::printf("Precompressed copies, the preview server, pictures\n");
+    const fs::path dir = TempDir("phase-d");
+    SiteConfig config = FixtureConfig();
+    config.url = "https://example.org/v1";
+    config.navbar = {{"About", "/about/", {}}};
+    config.footer.clear();
+    Builder builder(config);
+    PictureOptions picture;
+    picture.alt = "A landscape";
+    picture.widths = {480, 960, 1440};
+    picture.first = true;
+    const std::string html = builder.Picture(ULTRASITE_TEST_PICTURE, picture);
+    const bool decoded = Contains(html, "<picture>");
+    Check(Contains(html, "alt=\"A landscape\"") && Contains(html, "src=\"/v1/assets/landscape."), "the original is a hashed asset under the site's path");
+    if (decoded) {
+        Check((Contains(html, "type=\"image/avif\"") || Contains(html, "type=\"image/webp\"")) && Contains(html, " 480w, ") &&
+                  Contains(html, " 960w, ") && Contains(html, " 1000w\"") &&
+                  !Contains(html, "1440w") && Contains(html, "width=\"1000\" height=\"563\"") && Contains(html, "fetchpriority=\"high\""),
+              "a picture's variants at the widths below its own and its own, the <img> with its size");
+    } else {
+        std::printf("  (no image library in this build: the picture is a plain <img>)\n");
+    }
+    Route home;
+    home.path = "/";
+    home.title = "Example";
+    home.bodyHtml = "<h1>Home</h1>" + html + "<p><a href=\"" + builder.Url("/about/") + "\">About</a></p>" + std::string(2000, ' ') + "<p>text</p>";
+    builder.AddRoute(home);
+    Route about;
+    about.path = "/about/";
+    about.title = "About";
+    about.bodyHtml = "<h1>About</h1><p>Who.</p>";
+    builder.AddRoute(about);
+    const fs::path out = dir / "out";
+    BuildOptions options;
+    options.precompress = true;
+    const BuildResult result = builder.Build(UltraCanvas::PathToUtf8(out), options);
+    PrintErrors(result);
+    Check(result.ok, "the site builds with its variants and its compressed copies");
+    const std::string gz = Read(out / "index.html.gz");
+    Check(gz.size() > 2 && static_cast<unsigned char>(gz[0]) == 0x1f && static_cast<unsigned char>(gz[1]) == 0x8b,
+          "a page's .gz copy is gzip");
+    Check(fs::exists(out / "index.html.br") == BrotliAvailable(), "a .br copy where the build has Brotli");
+    if (decoded) {
+        size_t written = 0;
+        for (const fs::directory_entry& entry : fs::directory_iterator(out / "assets" / "img")) {
+            if (entry.file_size() > 0) ++written;
+        }
+        const size_t formats = (Contains(html, "image/avif") ? 1u : 0u) + (Contains(html, "image/webp") ? 1u : 0u);
+        Check(written == 3 * formats, "three widths in each format the image library writes");
+        const auto stamp = fs::last_write_time(*fs::directory_iterator(out / "assets" / "img"));
+        builder.Build(UltraCanvas::PathToUtf8(out), options);
+        Check(fs::last_write_time(*fs::directory_iterator(out / "assets" / "img")) == stamp, "a later build reuses the variants");
+    }
+
+    // The preview server, request by request.
+    const std::string folder = UltraCanvas::PathToUtf8(out);
+    ServeResponse page = Respond(folder, "/v1/", "GET", "/v1/", "");
+    Check(page.status == 200 && Contains(page.body, "<h1>Home</h1>") && page.contentType == "text/html; charset=utf-8" &&
+              page.cacheControl == "no-cache",
+          "a folder's address serves its index.html, checked on every visit");
+    Check(Respond(folder, "/v1/", "GET", "/v1/about", "").location == "/v1/about/", "an address without its slash is sent to it");
+    Check(Respond(folder, "/v1/", "GET", "/v1", "").location == "/v1/", "the site's path without its slash too");
+    const ServeResponse missing = Respond(folder, "/v1/", "GET", "/v1/nothing/", "");
+    Check(missing.status == 404 && Contains(missing.body, "Page not found"), "a missing page answers 404 with the 404 page");
+    Check(Respond(folder, "/v1/", "GET", "/about/", "").status == 404, "an address outside the site's path is not there");
+    Check(Respond(folder, "/v1/", "GET", "/v1/.htaccess", "").status == 403 && Respond(folder, "/v1/", "GET", "/v1/%2e%2e/x", "").status == 403,
+          "nothing hidden, nothing outside the folder");
+    Check(Respond(folder, "/v1/", "POST", "/v1/", "").status == 405, "GET and HEAD only");
+    const ServeResponse compressed = Respond(folder, "/v1/", "GET", "/v1/?x=1", "gzip, deflate, br");
+    Check(compressed.contentEncoding == (BrotliAvailable() ? "br" : "gzip") && compressed.body != page.body,
+          "the compressed copy the browser takes");
+    Check(Respond(folder, "/v1/", "HEAD", "/v1/", "").body.empty(), "HEAD sends no body");
+    bool immutable = false;
+    for (const fs::directory_entry& entry : fs::directory_iterator(out / "assets")) {
+        const std::string name = entry.path().filename().string();
+        if (name.rfind("site.", 0) == 0 && name.size() > 4 && name.compare(name.size() - 4, 4, ".css") == 0) {
+            immutable = Respond(folder, "/v1/", "GET", "/v1/assets/" + name, "").cacheControl == "public, max-age=31536000, immutable";
+        }
+    }
+    Check(immutable, "a hashed file is cached for a year");
+
+    // And over a socket, on the loopback interface.
+    std::atomic<bool> stop{false};
+    std::atomic<int> port{0};
+    ServeOptions serve;
+    serve.port = 0;
+    serve.basePath = "/v1/";
+    serve.stop = &stop;
+    serve.onReady = [&](int p) { port = p; };
+    std::thread server([&]() { Serve(folder, serve); });
+    for (int i = 0; i < 100 && port == 0; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    std::string reply;
+    if (port != 0) {
+        const UltraNetHandle client = UltraNet_TcpConnect("127.0.0.1", port);
+        if (client != UltraNetInvalidHandle) {
+            const std::string request = "GET /v1/about/ HTTP/1.1\r\nHost: localhost\r\n\r\n";
+            int sent = 0;
+            UltraNet_TcpSend(client, std::vector<uint8_t>(request.begin(), request.end()), sent);
+            for (int i = 0; i < 50; ++i) {
+                std::vector<uint8_t> chunk;
+                if (!UltraNet_TcpReceive(client, chunk, 65536, 2000).success || chunk.empty()) break;
+                reply.append(chunk.begin(), chunk.end());
+            }
+            UltraNet_SocketClose(client);
+        }
+    }
+    stop = true;
+    server.join();
+    Check(reply.rfind("HTTP/1.1 200 OK\r\n", 0) == 0 && Contains(reply, "<h1>About</h1>"), "the server answers over the loopback interface");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+static void TestVersions() {
+    std::printf("Versioned docs\n");
+    const fs::path dir = TempDir("versions");
+    Write(dir / "docs" / "index.md", "# Docs\n\nThe latest.\n");
+    Write(dir / "docs" / "guide.md", "# Guide\n\nHow it works now.\n");
+    Write(dir / "v1" / "index.md", "# Docs\n\nVersion one.\n");
+    Write(dir / "v1" / "guide.md", "# Guide\n\nHow it worked.\n");
+    Write(dir / "v1" / "removed.md", "# Removed\n\nGone since.\n");
+    SiteConfig config = FixtureConfig();
+    config.navbar = {{"Docs", "/docs/", {}}};
+    config.footer.clear();
+    config.search = true;
+    Builder builder(config);
+    Route front;
+    front.path = "/";
+    front.title = "Example";
+    front.bodyHtml = "<h1>Example</h1>";
+    builder.AddRoute(front);
+    DocsOptions options;
+    options.folder = UltraCanvas::PathToUtf8(dir / "docs");
+    options.currentVersion = "2.0";
+    options.versions = {{"1.0", UltraCanvas::PathToUtf8(dir / "v1"), "/docs/1.0/"}};
+    const DocsReport report = builder.AddDocs(options);
+    Check(report.errors.empty() && report.pages == 5, "the latest docs and an earlier version load");
+    const fs::path out = dir / "out";
+    const BuildResult result = builder.Build(UltraCanvas::PathToUtf8(out));
+    PrintErrors(result);
+    Check(result.ok && fs::exists(out / "docs" / "guide" / "index.html") && fs::exists(out / "docs" / "1.0" / "guide" / "index.html") &&
+              fs::exists(out / "docs" / "1.0" / "removed" / "index.html"),
+          "each version at its own prefix");
+    const std::string latest = Read(out / "docs" / "guide" / "index.html");
+    Check(Contains(latest, "<nav class=\"us-versions\"") && Contains(latest, "<a href=\"/docs/guide/\" aria-current=\"page\">2.0</a>") &&
+              Contains(latest, "<a href=\"/docs/1.0/guide/\">1.0</a>") && !Contains(latest, "us-outdated"),
+          "the version switcher leads to the same page in each version");
+    const std::string old = Read(out / "docs" / "1.0" / "removed" / "index.html");
+    Check(Contains(old, "us-outdated") && Contains(old, "This is the documentation of version 1.0.") && Contains(old, "<a href=\"/docs/\">2.0</a>"),
+          "an earlier version's page says so; a page the latest lacks leads to its root");
+    std::string index;
+    for (const fs::directory_entry& entry : fs::directory_iterator(out / "search")) {
+        if (entry.path().extension() == ".json") index = Read(entry.path());
+    }
+    Check(Contains(index, "How it works now") && !Contains(index, "How it worked") && !Contains(index, "Gone since"),
+          "the search finds the latest version only");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     TestHelpers();
     TestBuild();
@@ -547,6 +712,8 @@ int main() {
     TestMarkdown();
     TestDocs();
     TestBasePath();
+    TestPhaseD();
+    TestVersions();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

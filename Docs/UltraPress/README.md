@@ -170,6 +170,23 @@ Link to it from a menu with `{"title": "Docs", "url": "/docs/"}`, as the
 example site does. The WebAssembly output leaves the docs out. The
 reference is `Docs/Modules/UltraSite/README.md`, *Documentation sites*.
 
+**Earlier versions** of the docs go in `versioned_docs/<label>/`, ordered
+by `versions.json` (`["2.0", "1.0"]`, newest first), else newest first by
+name. Each is published at `/docs/<label>/` with a version switcher, and a
+banner leads to the latest. **A blog** comes with any site that has posts:
+
+- `/blog/` lists them newest first, with their dates, descriptions and
+  tags;
+- `/blog/tags/<tag>/` lists each tag's posts;
+- a post links its tags, which are `"tags"` in its page file.
+
+**Pictures** of the site's media are `<picture>`s:
+
+- the original where `media/` puts it;
+- AVIF and WebP variants, at the widths each role is shown at: the hero's
+  picture fetched first, a card's and a picture block's lazily;
+- WebP alone where the machine's image library writes no AVIF.
+
 `ultrapress docs` publishes a folder of Markdown on its own, with no
 UltraPress site around it. A link out of the folder goes to
 `--source-url` plus its path under `--source-root`, which is a
@@ -191,6 +208,8 @@ ultrapress page mysite home                                       # the front pa
 ultrapress publish mysite out                                     # the site's output, into out/
 ultrapress publish mysite out --sizes                             # and what every page and asset weighs
 ultrapress docs Docs out --name "My docs" --url https://docs.my.example   # a Markdown folder as a documentation site
+ultrapress serve mysite --port 3000                               # look at it on this computer: built, served on 127.0.0.1, rebuilt on a change
+ultrapress publish mysite out --precompress                       # with a .gz (and .br) copy beside every page, stylesheet and script
 ultrapress publish mysite out --output wasm --renderer ultrapress-0.1.0.js   # the WebAssembly output, the renderer referenced (later)
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
 ultrapress hosts                                                  # the hosts a site can be published to
