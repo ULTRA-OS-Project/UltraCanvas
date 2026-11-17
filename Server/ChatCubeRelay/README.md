@@ -328,7 +328,8 @@ In the repository's *Settings > Secrets and variables > Actions* (or the
 | `CHATCUBE_RELAY_SSH_HOST` | the server's host name |
 | `CHATCUBE_RELAY_SSH_USER` | `relay-deploy` |
 | `CHATCUBE_RELAY_SSH_KEY` | the private half of that key |
-| `CHATCUBE_RELAY_SSH_KNOWN_HOSTS` | `ssh-keyscan <host>` - checked against the server's own key first; the job never trusts a host key it has not been given |
+| `CHATCUBE_RELAY_SSH_KNOWN_HOSTS` | `ssh-keyscan <host>` - checked against the server's own key first; the job never trusts a host key it has not been given. With SSH on another port, `ssh-keyscan -p <port> <host>`: its lines name the host as `[host]:port`, which is what ssh looks for there |
+| `CHATCUBE_RELAY_SSH_PORT` | optional: the server's SSH port, when it is not 22. A port is no secret, so it may be an Actions variable instead (the secret wins when both are set) |
 
 `update.sh` itself is installed by hand, so a change to it reaches the server
 when it is installed again (the command above).
