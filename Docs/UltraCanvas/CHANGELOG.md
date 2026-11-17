@@ -1,3 +1,275 @@
+#### 2026-11-17 *0.9.572*
+- **A button's one-character label is centred.** A label is centred on its
+  line box, which holds the font's ascender and descender room: right for a
+  word, whose capitals then sit in the middle, but a lone symbol sits
+  wherever the font puts it in that box - a `"+"` of 26 px came out 2.5 px
+  low in a round 48 px button (UltraToDo's add button), a `"×"` and a `"‹"`
+  1.5 to 2.5 px low. A label of one character (a symbol, a check mark, a
+  single letter), centred, now has its drawn shape put in the middle of the
+  button, across and down, on whole pixels; a word stays where it was.
+  `Tests/OneCharacterCentringTest.cpp` measures it from the drawn pixels.
+- **The file display's last fixed greys follow the theme.** Under a dark
+  theme four of them stayed in their light-look shade and were close to
+  unreadable on the dark well or dialog:
+  - the scroll bars' track and thumb: `FilerStyle::scrollbarTrackColor`,
+    `scrollbarThumbColor` and `scrollbarThumbHeldColor`, which `FromTheme`
+    fills with a light veil for the track under a dark theme, the muted ink
+    for the thumb and the ink while it is dragged;
+  - the gear beside the hidden-items notice: `FilerStyle::toolGlyphColor`,
+    `toolHoverColor` and `toolPressedColor`, the muted ink on the theme's
+    hover and pressed fills, applied again on every `SetStyle`;
+  - the caption over the list in the copy / move / conflict dialogs and the
+    note under it, now `LabelVariant::Muted` labels rather than fixed
+    colours.
+
+  The defaults of a `FilerStyle` built by hand are the old colours, so a
+  host that does not follow the theme looks as before.
+- **A round gauge can be a small marker.** `UltraCanvasGaugeDiagramElement`
+  in `CircularRing` mode kept its card layout at every size - 30 px of padding
+  and a 20 px minimum radius - and always drew its value in the middle, so
+  below about 60 px it drew a corner of a ring and a number. Two options,
+  off by default so every gauge looks as before:
+  - `SetRingCompact(true)`: the ring fills the element - no title, no
+    padding, no minimum radius - for a ring of 12 to 40 px in a row of text
+    or buttons; nothing is drawn outside the element.
+  - `SetRingValueText(false)`: the ring without the number; a centre label
+    or icon, when set, is centred on its own.
+  `GaugeLinearModesTest` draws a compact ring at 12, 16, 26 and 40 px.
+- **A one-character text is centred in labels, badges and segmented controls
+  too**, as on the button. Centred on the font's line, a lone "+", "×" or
+  "‹" sat 1.5 to 2 px low - an "×" in a 32 px label, a "+" in a badge, a
+  pager's "‹" in a segment, and UltraDesktop's 18 px window-preview close
+  mark 1.5 px low - so an application had to nudge it with padding tuned to
+  one font and size, or draw an icon instead. The rule is now one helper,
+  `DrawTextCentredOnInk` with `IsSingleCharacterText`
+  (`UltraCanvasTextLayoutCache.h`): the character's ink in the middle, on
+  whole pixels. The button uses it too. A label centres one character so
+  when it is centred both ways and is plain text (no markup, shadow, inline
+  images or boxes, or selection); a badge in its pill; a segment when the
+  character is its only content. Words are drawn as before.
+  `Tests/OneCharacterCentringTest.cpp` (was `ButtonTextCentringTest`)
+  measures all four from the drawn pixels.
+- **A PDF's thumbnail is a white page in the dark look too.** The PDF engine
+  hands a page back with the paper it does not paint transparent - nearly
+  every PDF leaves its paper unpainted - so on a dark tile (UltraFiler,
+  UltraDesktop's boards, UltraToDo's attachments) a PDF showed as a dark page
+  with only its own white boxes light. The first page is now laid on white
+  paper: what the page leaves transparent is white, what it paints keeps its
+  colour, and the thumbnail is opaque. The thumbnail disk cache's renderer
+  generation is 4, so dark thumbnails already cached are drawn again once.
+  `FilePreviewsTest` checks it on a new fixture, `pdf-blue-square.pdf`
+  (`Tests/fixtures/make-pdf-fixtures.py` writes it).
+- **`UCRichDocument::ToHTML` writes a nested list inside its parent item.**
+  It wrote the inner `<ul>` beside the item it belonged to, directly inside
+  the outer list, which HTML does not allow (browsers showed it, a
+  validator and a screen reader's list count did not agree). Each item now
+  stays open until the next item at its level or the end of its list, so
+  the inner list sits in it: `<li>two<ul><li>nested</li></ul></li>`. A
+  list that starts deeper gets an empty item to hold it. A flat list is
+  written byte for byte as before.
+- **UltraIM Signal: a delivery tick that came too early was lost.** When the
+  other side's receipt reached signal-cli before its answer to `send`
+  (a slow machine: the ARM CI runner), the provider had not recorded the
+  message yet and dropped the receipt, so the message never showed as
+  delivered. Such a receipt is now kept and applied once the send is
+  recorded. `SignalProviderTests` forces the order (`/_test/send_delay` in
+  the stand-in daemon).
+- **ChatCube Direct: renaming a group could report the old name.** A group
+  request's reply and the relay's `group.update` pushes arrive on two
+  connections (UltraNet's request thread and the socket's), and every group
+  request - create, rename, add members, join, describe, make public - wrote
+  the relay's reply to the store and then read the conversation back. An
+  older push applied in between (the group as it was just made) was read
+  back instead, so `RenameGroup` could hand its caller the previous title;
+  `DirectProviderTests` failed on it now and then in CI (the check after
+  `RenameGroup(..., "Crew")`). `UpsertGroup` now returns the conversation as
+  the relay's record has it, and the requests report that. The store was
+  never left wrong: the relay pushes the new state as well, in order on the
+  socket.
+- **ChatCube relay 1.6.0: every group carries a revision, and ChatCube
+  Direct drops a record older than the one it holds.** The relay had nothing
+  to order a group's records by, so a client could not tell an old one from
+  a new one: the group as it was made, pushed late on the socket, put the
+  old name back over a rename until the next push. The relay now gives each
+  group a `revision` (1 when made, one more with every change, bumped in the
+  same database write as the change; schema migration 5, existing groups
+  start at 1) in every answer and push that carries a group, and tells a
+  member taken out at the revision the removal made. `DirectProvider` keeps
+  the newest revision applied per group and drops older records - and, for
+  a group it was taken out of, a record from that same change - so a late
+  record can neither revert a group nor bring back one it left. The check
+  and the store write are one step under their own lock. A relay before
+  1.6.0 sends no revision, and records are applied as before.
+  `DirectProviderTests` now checks Bob's stored record keeps the new name
+  right after a rename; the relay's tests cover every change raising the
+  revision and the migration.
+- **The ChatCube relay's `deploy/update.sh` names its settings with a
+  `CHATCUBE_` prefix** (0.2.0): `CHATCUBE_RELAY_HOME`, `CHATCUBE_RELAY_USER`,
+  `CHATCUBE_RELAY_SERVICE`, `CHATCUBE_RELAY_ENV_FILE`,
+  `CHATCUBE_RELAY_BACKUPS`, `CHATCUBE_KEEP_BACKUPS`, `CHATCUBE_SYSTEMCTL`,
+  `CHATCUBE_RUN_AS` and `CHATCUBE_FORCE`, in line with the relay's own
+  `CHATCUBE_RELAY_*` settings. The unprefixed names of 0.1 are still read
+  when the new one is unset, with a warning. The installed copy on a server
+  (`/usr/local/sbin/chatcube-relay-update`) changes only when it is
+  installed again (README: Deploying from CI).
+- **UltraIM: Mattermost and Zulip providers** (`Plugins/UltraIM/mattermost`,
+  `Plugins/UltraIM/zulip`; modules `ultraim_mattermost`, `ultraim_zulip`).
+  Mattermost over its REST API v4: password with an MFA code
+  (`UltraIMAuthStep::Code`) or a personal access token, direct and group
+  messages and team channels, polled, thread replies, files, edits,
+  deletes, read marks. Zulip over its REST API: password or API key, direct
+  and group messages and stream topics, news from the event queue, uploads,
+  edits, deletes, read flags. Both keep their session in UltraVault, answer
+  `FetchAccountProfile` with the account's name, and are tested against a
+  stand-in server in standard-library python (`MattermostProviderTests`,
+  `ZulipProviderTests`). No plug-in ABI change.
+- **UltraIM: Signal, XMPP and IRC providers** (`Plugins/UltraIM/signal`,
+  `Plugins/UltraIM/xmpp`, `Plugins/UltraIM/irc`; modules `ultraim_signal`,
+  `ultraim_xmpp`, `ultraim_irc`). Signal through a signal-cli daemon's
+  JSON-RPC (the user's, or one the provider starts), linked to the phone by
+  a QR code (`UltraIMLoginType::QRCode`, step `OtherDevice`). XMPP over TCP
+  (STARTTLS on 5222, direct TLS on 5223 - XEP-0368 - by `UltraNet_TlsWrap`;
+  the server found by SRV, then host-meta, then `<domain>:5222`, the endpoint
+  that connected kept) or the WebSocket binding (RFC 7395), with tinyxml2:
+  SCRAM-SHA-256/1 keeping the derived keys rather than the password, roster, MUC rooms from bookmarks,
+  MAM history, receipts, markers, chat states, corrections, retractions,
+  replies, carbons, HTTP File Upload. IRC with IRCv3 over UltraNet TCP and
+  `UltraNet_TlsWrap`: SASL PLAIN or NickServ, CHATHISTORY, server-time,
+  msgid, echo-message, labeled-response, typing, replies, a `*server`
+  conversation for notices and raw commands, reconnecting with backoff.
+  Each tested against a stand-in in standard-library python
+  (`SignalProviderTests`, `XmppProviderTests`, `IrcProviderTests`). No
+  plug-in ABI change.
+- **UltraNet sockets: no SIGPIPE, and a timeout told from a broken
+  connection.** `UltraNet_TcpSend` no longer raises SIGPIPE on a connection
+  the peer closed - which ended the program - but fails with
+  `ConnectionReset`: sends pass `MSG_NOSIGNAL`, sockets carry `SO_NOSIGPIPE`
+  where there is no such flag (macOS), and OpenSSL's own writes (handshake,
+  write, close-notify) hold SIGPIPE back on their thread. `UltraNet_TcpReceive`
+  now answers the same three ways on every backend, plain and through
+  `UltraNet_TlsWrap`: bytes; `Ok` with no bytes when the peer closed;
+  `Timeout` when nothing came in time (the connection is still there) - before,
+  OpenSSL and plain sockets answered a timeout like a broken connection
+  (`ReceiveFailed`) and Schannel and Secure Transport like a closed one (no
+  bytes), so callers timed their reads to tell them apart. A broken one is
+  `ConnectionReset` or `ReceiveFailed`; `UltraNet_UdpReceive` answers
+  `Timeout` too. The IRC provider and ChatCube Direct's LAN link go by the
+  code now. `UltraNet_TcpOpen` / `UltraNet_TcpConnect` try every address
+  the name resolves to, in order, until one connects: before, only the first
+  was tried, so `localhost` resolving to `::1` first missed a server on
+  `127.0.0.1` (the IRC tests on the Ubuntu 22.04 ARM runner), as a server's
+  unreachable IPv6 address would. Tests: `test_socket_errors.cpp` in `UltraNetTests` (plain TCP,
+  UDP, and TLS against a python3 ssl server, with SIGPIPE at its default
+  action).
+- **`UltraNetTls.h`: header comment corrected.** It still described TLS on
+  a TCP handle as Stage-3 stubs deferred to UltraNet v1.1; `UltraNet_TlsWrap`
+  and `UltraNet_TlsHandshake` have long been implemented (OpenSSL, Schannel,
+  SecureTransport). The comment now says so and when to use it. No code
+  change.
+- **UltraSite: a site under a path, and a frame per language.**
+  - **A path.** A site whose `url` has a path (`https://store.example/v1`)
+    is served from it, as Docusaurus's `baseUrl` is. Routes keep their
+    site paths, and every address the builder writes carries the path:
+    assets, navigation, search, the 404 page, `.htaccess` and `_headers`.
+    `Builder::Url` does the same for an app's own HTML, and the link check
+    reads the addresses back in that path.
+  - **Shared folders.** With `removeStale` off, the files a folder already
+    holds count as link targets, for a site that shares its folder (a
+    store's catalog and media).
+  - **Frames.** `SiteConfig::frames` gives another language its own
+    navbar, footer and words.
+- **UltraSite publishes documentation sites.** It builds them the way
+  Docusaurus does, without React, hydration or a bundler.
+  - **Loading.** `Builder::AddDocs` reads a folder of Markdown: a page per
+    file, a folder's `index.md` or `README.md` as the folder's page, and a
+    generated page for a folder without one. It reads front matter
+    (`title`, `description`, `slug`, `sidebar_label`, `sidebar_position`,
+    `draft`) and `_category_.json`. A link to another `.md` becomes that
+    page's address, a file in the folder becomes an asset, and a file
+    outside it goes to a repository's file view. Translations are joined
+    page by page.
+  - **The `doc` layout.** A sidebar in which only the categories leading
+    to the page are expanded, a table of contents, breadcrumbs, previous
+    and next, and *Edit this page*. On a phone the sidebar opens without
+    script.
+  - **Markdown** (`UltraSiteMarkdown.h`). Heading ids are spelled as
+    GitHub spells them, so a repository's anchors keep working. Code is
+    highlighted when the site is built. There are `:::note` / `:::tip` /
+    `:::warning` admonitions, GitHub's `> [!NOTE]` alerts, and `:::tabs`.
+    Wrapped lines are joined into paragraphs.
+  - **Search.** An index per language and a search page that lists every
+    page without script. An index over its budget keeps titles, headings
+    and descriptions only.
+  - **New behaviour modules:** `search`, `toc`, `tabs` and `copy`. A
+    language switcher, and the frame's words in `Labels`.
+  - **The build reads each page back once,** not three times.
+    `BuildOptions::brokenLinksWarn` makes a broken link a warning, as
+    Docusaurus's `onBrokenLinks: 'warn'` does.
+- **`UCRichDocument::ToHTML` gains two hooks for web pages** in
+  `RichDocumentHTMLOptions`. `headingId` gives each heading an `id`, and
+  `codeBlock` writes a code block's HTML itself, highlighted, say. Unset,
+  the output is what it was.
+- **UltraSite: a new module that writes a website as HTML + JavaScript.**
+  It works the way Docusaurus builds a site, without React, hydration or a
+  bundler. A list of routes becomes a folder any static host serves:
+  - every route as a complete, styled page: head, skip link, navbar, the
+    `page` or `post` layout or an app's own, and footer;
+  - one stylesheet built from the base, the site's design tokens (a light
+    and an optional dark look, as `--us-*` custom properties, with a toggle
+    that never flashes) and the app's rules;
+  - `core.js` on every page (prefetch on intent, the theme toggle), and
+    behaviour modules an app registers, each loaded only by the pages whose
+    body names it with `data-us`;
+  - the stylesheet and the scripts named by their content hash and cached
+    for a year;
+  - `sitemap.xml`, `robots.txt`, `404.html`, `.htaccess` and `_headers`,
+    with a Content-Security-Policy that runs no script from another origin;
+  - speculation rules, so Chromium prerenders the next page.
+
+  The build reads every page back through the HTMLReader. It fails on a
+  broken internal link or anchor, an unknown behaviour, or a page or asset
+  over its compressed-size budget, and it removes what an earlier build
+  left behind. Pages work with JavaScript turned off.
+  - `UltraSite/` (target `UltraSite`, header `<UltraSite/UltraSite.h>`) and
+    `Docs/Modules/UltraSite/README.md`. The design is
+    `Docs/Research/UltraSiteStaticSitesProposal.md`.
+  - Tests: `Tests/UltraSite` (ctest `UltraSite`, built with
+    `-DULTRACANVAS_BUILD_ULTRASITE_TESTS=ON`), run by the build workflow on
+    every platform.
+  - `scripts/check_doc_examples.py` now compiles the module's README.
+- **UltraSite: responsive pictures, compressed copies, a preview server and
+  versioned docs.**
+  - **Pictures.** `Builder::Picture` writes a picture as a `<picture>`
+    with AVIF and WebP variants at the widths below its own. The variants
+    are named by the picture's content hash, so a later build reuses them.
+    The original is the `<img>`, with its size. A format this machine's
+    image library cannot write is left out, and the build says so.
+  - **Compressed copies.** `BuildOptions::precompress` writes `.gz` copies
+    and, where the build finds Brotli, `.br` copies of the pages,
+    stylesheet, scripts and lists, for nginx's `gzip_static` /
+    `brotli_static` and Caddy's `precompressed`. Brotli is an optional
+    dependency (`libbrotlienc`).
+  - **The preview server.** `UltraSiteServer.h` serves a built folder on
+    127.0.0.1, the way a host would: the site's path, the trailing-slash
+    redirect, the 404 page, the cache rules and the compressed copies.
+    `Respond` answers one request without a socket; `Serve` listens
+    through UltraNet.
+  - **Versioned docs.** `DocsOptions::versions` gives each earlier version
+    its own prefix and sidebar, a version switcher, and a banner leading
+    to the latest. The search finds only the latest.
+  - `BasePathOf(url)` gives the path a site is served from.
+- **UltraIM XMPP: a silent server is found over TCP.** After
+  `XmppTimings::pingIntervalMs` with nothing from the server, the TCP stream
+  sends an XMPP ping (XEP-0199); no answer - nor anything else - within the
+  new `XmppTimings::pingTimeoutMs` (30 s) ends the stream, and the provider
+  reconnects as after any drop. The whitespace keepalive alone found a
+  connection that was gone only when a write failed, which a server that
+  hangs, or a path that drops packets silently, never makes happen. The
+  pings' answers stay inside the stream. Tested in `XmppProviderTests`: a
+  quiet server answering keeps the connection; one made silent with its
+  socket open (`/_test/silence` in `xmpp_fake_server.py`) is found and
+  reconnected to.
+
 #### 2026-11-17 *0.9.571*
 - **CI runs every window test on a display, and a skip there fails.** 33
   of the framework's window tests open a real window, read it back, and
