@@ -5,7 +5,7 @@
 
 add_library(UltraIMTestProviderModule MODULE TestProviderModule.cpp)
 set_target_properties(UltraIMTestProviderModule PROPERTIES
-    OUTPUT_NAME "ultraim_testprovider"
+    OUTPUT_NAME "ultraim_moduletest"
     PREFIX ""
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/modules)
 target_compile_features(UltraIMTestProviderModule PRIVATE cxx_std_20)
