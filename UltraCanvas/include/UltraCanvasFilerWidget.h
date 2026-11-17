@@ -104,6 +104,8 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.52.0 - RenderFileThumbnail: a word-processing document (odt, docx, doc) is its first
+//                  page as laid out, not a page of its text lines
 // Version: 1.51.0 - FilerStyle: toolGlyphColor / toolHoverColor / toolPressedColor (the hidden-items
 //                  notice's gear) and scrollbarTrackColor / scrollbarThumbColor /
 //                  scrollbarThumbHeldColor, from the theme in FromTheme
@@ -826,10 +828,11 @@ namespace UltraCanvas {
 
     // ===== A FILE'S PICTURE =====
     // A file's content as a small picture, made the way the Filer's tiles
-    // make theirs: a photo or drawing itself, a PDF's first page, a book's
-    // cover, a 3D model, a font specimen, a video's poster frame, the preview
-    // a layered image carries - and for a text document (Word, LibreOffice,
-    // Markdown, a spreadsheet, plain text) a page with its first lines.
+    // make theirs: a photo or drawing itself, a PDF's or a word-processing
+    // document's (Word, LibreOffice) first page, a book's cover, a 3D model,
+    // a font specimen, a video's poster frame, the preview a layered image
+    // carries - and for another text document (Markdown, RTF, a
+    // spreadsheet, plain text) a page with its first lines.
     // `width` x `height` are logical pixels, drawn at `scale` device pixels
     // each. Blocking - it decodes and renders - so call it from a worker
     // thread. nullptr when this build can make no picture of the format (a

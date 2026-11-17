@@ -1,7 +1,8 @@
 // core/UltraCanvasFilePreviewsBuiltin.cpp
 // The preview providers of the formats compiled into the framework
 // (UltraCanvasFilePreviews.h): a PDF's first page, an e-book's cover, a
-// video's poster frame, a Word document's and a PowerPoint deck's text. Each
+// video's poster frame, a word-processing document's first page and its text,
+// a PowerPoint deck's text. Each
 // was a function inside the Filer until the registry existed; it is the same
 // code, registered under the format's extensions instead of called by name.
 //
@@ -9,6 +10,9 @@
 // and a format that moves into a runtime module takes its provider with it
 // and registers it from the module's init.
 //
+// Version: 1.2.0 - a word-processing document (.odt, .docx, .doc) draws its first page as the
+//                  document lays it out - its fonts, pictures, colours, header and footer - not
+//                  a page of its text lines: the "word-processing" provider renders thumbnails
 // Version: 1.1.0 - a PDF's first page on white paper: the page the engine left transparent showed
 //                  the tile under it (a dark page with white patches on a dark tile)
 // Version: 1.0.0
@@ -17,6 +21,8 @@
 
 #include "UltraCanvasFilePreviews.h"
 #include "UltraCanvasRichDocument.h"
+#include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasVideoThumbnail.h"
 #include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasPresentationPptx.h"
@@ -149,6 +155,89 @@ bool ReadWordDocument(const std::string& path, UCRichDocument& document) {
     return true;
 }
 
+// ===== Word processing: the first page, as a picture =====
+// The page itself, laid out by the rich-text element exactly as its PDF
+// export and its print pages are (UltraCanvasRichTextEdit::BeginPrintLayout /
+// RenderPrintPage): the document's own page size and margins, its fonts and
+// sizes, pictures, colours, tables, header and footer. What the Filer drew
+// before was a page of the text's lines in one small grey font, which said
+// what a document says but not what it looks like.
+//
+// Serialized: the layout goes through a render context and the process-wide
+// font machinery, as the Filer's vector drawings do (RenderVectorDrawingPixmap
+// holds a lock for the same reason). The element is made here, never shown,
+// and set to a light style of its own, so the page is paper in either theme.
+//
+// Only the first page is wanted, so a long document is cut to its first
+// blocks before it is laid out: page 1 of a 400-page report costs what page 1
+// of a letter does. kFirstPageBlockCap is far more paragraphs than one page
+// holds.
+constexpr size_t kFirstPageBlockCap = 200;
+constexpr double kPixelsPerPoint = 96.0 / 72.0;
+
+std::shared_ptr<UCPixmap> RenderWordFirstPage(const std::string& path, const FileThumbnailRequest& r) {
+    if (r.width <= 0 || r.height <= 0) return nullptr;
+    auto document = std::make_shared<UCRichDocument>();
+    std::string error;
+    if (!UCWordDocumentIO::Load(path, *document, error)) return nullptr;
+    if (document->blocks.size() > kFirstPageBlockCap) document->blocks.resize(kFirstPageBlockCap);
+
+    static std::mutex layoutMutex;
+    std::lock_guard<std::mutex> lock(layoutMutex);
+
+    auto layout = std::make_shared<UltraCanvasRichTextEdit>("WordPagePreview", 0, 0, 1, 1);
+    // The editor's own defaults (its base font included), never the theme's:
+    // ink on white paper whatever the desktop looks like.
+    RichTextEditStyle style = layout->GetStyle();
+    const RichTextEditStyle paper;
+    style.textColor = paper.textColor;
+    style.backgroundColor = paper.backgroundColor;
+    style.pageColor = paper.pageColor;
+    style.linkColor = paper.linkColor;
+    style.quoteBarColor = paper.quoteBarColor;
+    style.quoteTextColor = paper.quoteTextColor;
+    style.codeTextColor = paper.codeTextColor;
+    style.codeBackgroundColor = paper.codeBackgroundColor;
+    style.codeBorderColor = paper.codeBorderColor;
+    style.ruleColor = paper.ruleColor;
+    style.listMarkerColor = paper.listMarkerColor;
+    style.tableBorderColor = paper.tableBorderColor;
+    style.imagePlaceholderColor = paper.imagePlaceholderColor;
+    layout->SetStyle(style);
+    layout->SetShowFontNotice(false);
+    layout->SetDocument(document);
+
+    const RichPageSetup page = layout->GetEffectivePageSetup();
+    const double pageW = page.widthPt * kPixelsPerPoint;
+    const double pageH = page.heightPt * kPixelsPerPoint;
+    if (pageW < 1.0 || pageH < 1.0) return nullptr;
+    // The page fitted into the box asked for, at the display's scale.
+    const double fit = std::min(DeviceEdge(r.width, r.scale) / pageW,
+                                DeviceEdge(r.height, r.scale) / pageH);
+    const int w = std::max(1, static_cast<int>(std::lround(pageW * fit)));
+    const int h = std::max(1, static_cast<int>(std::lround(pageH * fit)));
+
+    auto pixmap = std::make_shared<UCPixmap>();
+    if (!pixmap->Init(w, h)) return nullptr;
+    std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(w, h), nullptr);
+    if (!ctx) return nullptr;
+    ctx->Clear(Colors::White);
+    // Laid out unscaled, so lines break where they do on the full-size page,
+    // then drawn scaled down to the thumbnail.
+    const int pages = layout->BeginPrintLayout(ctx.get());
+    if (pages > 0) {
+        ctx->PushState();
+        ctx->Scale(fit, fit);
+        layout->RenderPrintPage(ctx.get(), 0);
+        ctx->PopState();
+    }
+    layout->EndPrintLayout();
+    if (pages <= 0) return nullptr;
+    ctx->FlushToSurface(pixmap->GetSurface(), Point2Dd(0, 0));
+    pixmap->MarkDirty();
+    return pixmap;
+}
+
 // ===== PowerPoint: the slide outline =====
 // Each slide's number and title, then its bullets, tables and notes, as
 // UltraCanvasPresentationPptx outlines a deck. A protected deck answers false.
@@ -199,6 +288,11 @@ void RegisterBuiltinFilePreviewProviders() {
         word.name = "word-processing";
         word.documentExtensions = {"odt", "docx", "doc", "tex"};
         word.ReadDocument = ReadWordDocument;
+        // The first page as a picture. Not a .tex: its page is what a TeX
+        // engine would set, which this layout is not, so it keeps its outline
+        // of title and sections.
+        word.thumbnailExtensions = {"odt", "docx", "doc"};
+        word.RenderThumbnail = RenderWordFirstPage;
         RegisterFilePreviewProvider(std::move(word));
 
         FilePreviewProvider deck;
