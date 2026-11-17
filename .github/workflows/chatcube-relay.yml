@@ -1,11 +1,13 @@
 # The ChatCube relay (Server/ChatCubeRelay): its tests, on every change
 # to it. Pure Python, no system packages. On main - and when started by hand
-# (Run workflow) - the tested relay is then put on the live server
-# (deploy/update.sh: database backed up, code installed, restarted, rolled
-# back when it does not answer with its new version). Without the server's
-# secrets (README: Deploying from CI) the deploy fails here, naming the ones
-# it cannot see - a deploy that did nothing must not look like one that
-# worked; a fork, which has no server, is only told.
+# (Run workflow) - the tested sources are then copied to the live server, to
+# ~/chatcube-relay-src of the deploy user, and nothing more: the operator
+# logs in and runs deploy/update.sh there themselves (database backed up,
+# code installed, restarted, rolled back when it does not answer with its
+# new version), so the deploy user needs no root rights. Without the
+# server's secrets (README: Deploying from CI) the copy fails here, naming
+# the ones it cannot see - a copy that did nothing must not look like one
+# that worked; a fork, which has no server, is only told.
 name: ChatCube relay
 
 on:
@@ -48,7 +50,6 @@ jobs:
       # The server's SSH port, when not 22: a secret or a variable (a port
       # is no secret), the secret first.
       SSH_PORT: ${{ secrets.CHATCUBE_RELAY_SSH_PORT || vars.CHATCUBE_RELAY_SSH_PORT || '22' }}
-      RELAY_URL: ${{ vars.CHATCUBE_RELAY_URL || 'https://relay-chatcube.ultraos.eu' }}
     steps:
       - uses: actions/checkout@v4
       - name: Is the server set up?
@@ -66,31 +67,39 @@ jobs:
             echo "ok=1" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          why="The ChatCube relay was not deployed: this job cannot see$missing. They must be Actions secrets (not variables) of $GITHUB_REPOSITORY, or of its chatcube-relay environment - see Server/ChatCubeRelay/README.md, Deploying from CI."
+          why="The ChatCube relay was not copied to the server: this job cannot see$missing. They must be Actions secrets (not variables) of $GITHUB_REPOSITORY, or of its chatcube-relay environment - see Server/ChatCubeRelay/README.md, Deploying from CI."
           if [ "$GITHUB_REPOSITORY" = "ULTRA-OS-Project/UltraCanvas" ]; then
             echo "::error::$why"
             exit 1
           fi
           echo "::notice::$why"
-      - name: Copy the relay to the server
+      - name: Copy the tested sources to the server
         if: steps.ready.outputs.ok == '1'
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/relay_deploy && chmod 600 ~/.ssh/relay_deploy
           # The server's key pinned: never trust on first use.
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # This commit's sources replace the previous copy whole, so nothing
+          # left from an older version is installed with the next.
           tar -C Server/ChatCubeRelay --exclude=__pycache__ -czf - . |
             ssh -i ~/.ssh/relay_deploy -o BatchMode=yes -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
               'rm -rf ~/chatcube-relay-src && mkdir -p ~/chatcube-relay-src && tar -C ~/chatcube-relay-src -xzf -'
-      - name: Update the running relay
+      - name: Say what to run on the server
         if: steps.ready.outputs.ok == '1'
+        # Installing is the operator's, logged in on the server with their
+        # own rights. The deploy user's name is a secret (masked in logs),
+        # so the summary does not name it.
         run: |
-          ssh -i ~/.ssh/relay_deploy -o BatchMode=yes -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-            'sudo -n /usr/local/sbin/chatcube-relay-update "$HOME/chatcube-relay-src"'
-      - name: Ask the public address
-        if: steps.ready.outputs.ok == '1'
-        run: |
-          want=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Server/ChatCubeRelay/pyproject.toml | head -1)
-          got=$(curl -fsS --retry 5 --retry-delay 3 "$RELAY_URL/healthz" | sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p')
-          echo "$RELAY_URL answers $got (this commit: $want)"
-          [ "$got" = "$want" ]
+          version=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Server/ChatCubeRelay/pyproject.toml | head -1)
+          {
+            echo "### ChatCube relay $version copied to the server"
+            echo
+            echo "The sources of $GITHUB_SHA are in ~/chatcube-relay-src of the deploy user. Nothing is installed yet. On the server, with the deploy user's home in place of /home/DEPLOY_USER:"
+            echo
+            echo '```bash'
+            echo 'src=/home/DEPLOY_USER/chatcube-relay-src'
+            echo 'sudo "$src/deploy/update.sh" "$src"'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::ChatCube relay $version copied to ~/chatcube-relay-src of the deploy user - run its deploy/update.sh on the server to install it."

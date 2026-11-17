@@ -29,9 +29,9 @@
 # Through sudo, which clears the environment, set them on its command line:
 # sudo CHATCUBE_RELAY_HOME=/srv/relay deploy/update.sh ...
 #
-# The CI deploy job (.github/workflows/chatcube-relay.yml) copies the new
-# code to the server and runs this through sudo; by hand it is the same
-# command. Exit 0: the relay runs the new version. Exit 1: it was rolled back
+# The CI deploy job (.github/workflows/chatcube-relay.yml) only copies the
+# new code to the server, to ~/chatcube-relay-src of its deploy user; the
+# operator logs in and runs this with that folder as SOURCE_DIR. Exit 0: the relay runs the new version. Exit 1: it was rolled back
 # (or nothing was changed) and runs what it ran before.
 #
 # Version: 0.2.0 - its settings are named CHATCUBE_* (CHATCUBE_RELAY_HOME, ...);
