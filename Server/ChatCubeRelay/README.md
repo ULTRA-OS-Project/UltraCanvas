@@ -325,10 +325,7 @@ echo 'ssh-ed25519 AAAA... relay-deploy' | sudo -u relay-deploy tee /home/relay-d
 ```
 
 The deploy user can change what lands in its folder, `update.sh` included,
-so read what you are about to run as root; a relay set up for an earlier
-version of this workflow can drop its sudo rule
-(`sudo rm /etc/sudoers.d/chatcube-relay-deploy`) and the installed
-`/usr/local/sbin/chatcube-relay-update`.
+so read what you are about to run as root.
 
 In the repository's *Settings > Secrets and variables > Actions* (or the
 `chatcube-relay` environment's secrets):

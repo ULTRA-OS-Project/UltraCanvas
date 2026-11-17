@@ -6,5 +6,4 @@
   copied; the operator logs in and runs the copy's `deploy/update.sh`
   themselves. The step that asked the public address for the new version
   went with it, and so did `vars.CHATCUBE_RELAY_URL`. The deploy user needs
-  no sudo rule any more - the README (Deploying from CI) says what to remove
-  on a server set up for the earlier workflow.
+  no sudo rule (README: Deploying from CI).
