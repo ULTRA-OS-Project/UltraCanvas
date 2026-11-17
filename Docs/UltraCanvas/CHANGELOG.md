@@ -10,6 +10,11 @@
   `FetchAccountProfile` with the account's name, and are tested against a
   stand-in server in standard-library python (`MattermostProviderTests`,
   `ZulipProviderTests`). No plug-in ABI change.
+- **`UltraNetTls.h`: header comment corrected.** It still described TLS on
+  a TCP handle as Stage-3 stubs deferred to UltraNet v1.1; `UltraNet_TlsWrap`
+  and `UltraNet_TlsHandshake` have long been implemented (OpenSSL, Schannel,
+  SecureTransport). The comment now says so and when to use it. No code
+  change.
 
 #### 2026-11-17 *0.9.570*
 - **Chart engine: axis distributions.** `AddAxisDistribution` draws the
