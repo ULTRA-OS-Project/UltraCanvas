@@ -5,6 +5,7 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.12.1 - a cell paragraph's own proportional line height (70%); a file by Word sets it on every line
 // Version: 1.12.0 - table cells: a paragraph per line, line heights, nested tables read as tables, the font a
 //                   picture in a line stands in, a negative table indent; Writer's proportional line
 //                   height in cells; settings items of our own
@@ -881,6 +882,12 @@ private:
     // (Writer's own default) or from the page margin (Word's convention,
     // kept in documents Writer imported from Word).
     void LoadSettings() {
+        // A file Word wrote sets a proportional line height on every line
+        // of a cell, as Word does (Writer's own files: see CollectCellRuns).
+        std::string metaXml;
+        if (zip_.ReadEntry("meta.xml", metaXml) && metaXml.find("MicrosoftWord") != std::string::npos) {
+            cellLineMultiples_ = true;
+        }
         std::string settingsXml;
         if (!zip_.ReadEntry("settings.xml", settingsXml)) return;
         // A boolean config item's value, or `otherwise` when the file does
@@ -903,7 +910,7 @@ private:
         // A multiple of the font's line on every line of a cell is Word's
         // way (and this writer's file says so); Writer sets a one-line
         // paragraph at 122% as it does at 100%.
-        cellLineMultiples_ = setting("UltraCanvasCellLineMultiples", false);
+        cellLineMultiples_ = setting("UltraCanvasCellLineMultiples", cellLineMultiples_);
     }
 
     // Applies a paragraph style's geometry to a block, in the model's terms.
@@ -2485,15 +2492,22 @@ private:
                     if (!std::isnan(paragraph.lineHeightPt) && paragraph.lineHeightPt > 0.0f) {
                         ctx.cellLineHeightPt = paragraph.lineHeightPt;
                         ctx.cellLineHeightAtLeast = paragraph.lineHeightAtLeast;
-                    } else if (cellLineMultiples_ && !std::isnan(paragraph.lineSpacing) && paragraph.lineSpacing > 0.0f
-                               && std::abs(paragraph.lineSpacing - 1.0f) > 0.01f) {
-                        ctx.cellLineSpacing = paragraph.lineSpacing;
                     }
                 }
                 ctx.cellSpaceBelowPt = room(paragraph.marginBottom);
                 ctx.cellParagraphs++;
                 ctx.lastCellParagraph = paragraph;
+                const size_t runsBefore = ctx.runs.size();
                 ParseInlineNodes(elem, paragraph, "", ctx);
+                // A paragraph's own line multiple is its runs': tighter
+                // lines (70%) always, wider ones where every line takes them.
+                if (!std::isnan(paragraph.lineSpacing) && paragraph.lineSpacing > 0.0f
+                    && (std::isnan(paragraph.lineHeightPt) || paragraph.lineHeightPt <= 0.0f)
+                    && (paragraph.lineSpacing < 0.99f || (paragraph.lineSpacing > 1.01f && cellLineMultiples_))) {
+                    for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                        if (!ctx.runs[r].IsInlineImage() && !ctx.runs[r].IsTextFrame()) ctx.runs[r].lineSpacing = paragraph.lineSpacing;
+                    }
+                }
             } else if (tag == "table:table" && frameDepth_ == 0) {
                 // A table in the cell: a frame of its own standing in the
                 // cell's line, as wide as the table says.
@@ -3985,15 +3999,16 @@ private:
     // The style of one line of a cell: the cell's alignment and line height,
     // the room above it, and - for a line without words - the font it is a
     // line of (`mark`).
-    std::string CellParagraphStyle(const RichTableCell& cell, float above, const RichTextRun* mark) {
+    std::string CellParagraphStyle(const RichTableCell& cell, float above, const RichTextRun* mark, float multiple) {
         const char* value = AlignValue(cell.align);
         std::string props = (value ? std::string(" fo:text-align=\"") + value + "\"" : std::string())
                           + " fo:margin-top=\"" + Pt(above) + "\" fo:margin-bottom=\"0pt\"";
         if (cell.lineHeightPt > 0.0f) {
             props += std::string(cell.lineHeightAtLeast ? " style:line-height-at-least=\"" : " fo:line-height=\"")
                    + Pt(cell.lineHeightPt) + "\"";
-        } else if (cell.lineSpacing > 0.0f) {
-            props += " fo:line-height=\"" + std::to_string(std::lround(cell.lineSpacing * 100.0f)) + "%\"";
+        } else if (multiple > 0.0f || cell.lineSpacing > 0.0f) {
+            props += " fo:line-height=\"" + std::to_string(std::lround((multiple > 0.0f ? multiple : cell.lineSpacing) * 100.0f))
+                   + "%\"";
             usesCellLineMultiples_ = true;
         }
         std::string text;
@@ -4160,7 +4175,11 @@ private:
                     bool words = false;
                     for (const RichTextRun& run : piece) words = words || !run.text.empty();
                     const RichTextRun* mark = !words && !piece.empty() ? &piece.front() : nullptr;
-                    xml << "<text:p text:style-name=\"" << CellParagraphStyle(cell, above, mark) << "\">";
+                    float multiple = 0.0f;        // the line's own, before the cell's
+                    for (const RichTextRun& run : piece) {
+                        if (run.lineSpacing > 0.0f) { multiple = run.lineSpacing; break; }
+                    }
+                    xml << "<text:p text:style-name=\"" << CellParagraphStyle(cell, above, mark, multiple) << "\">";
                     WriteRuns(xml, piece);
                     xml << "</text:p>";
                     piece.clear();

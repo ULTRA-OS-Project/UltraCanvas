@@ -6,6 +6,7 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.13.0 - RichTextRun::lineSpacing: a cell paragraph's own line multiple
 // Version: 1.12.0 - RichDocBlock::tableAutoFit; UCRichDocument::breakAfterSlash
 // Version: 1.11.0 - RichDocBlock::columnBreakBefore; RichTextFrame::nestedTable; RichTableCell::lineHeightPt,
 //                   lineHeightAtLeast, lineSpacing; imageRotationDeg for a picture in the line too
@@ -71,6 +72,11 @@ struct RichTextRun {
     // its paragraphs as lines, and the room between two of them - a
     // paragraph's space before and after - as such a line.
     float emptyLineHeightPt = 0.0f;
+    // In a table cell: this run's lines are that multiple of its font's own
+    // line (0 = as the cell says, RichTableCell::lineSpacing). A cell keeps
+    // its paragraphs as lines; one set tighter or wider than the others - a
+    // heading at 70% - says so on its runs.
+    float lineSpacing = 0.0f;
 
     // ===== INLINE IMAGE =====
     // A run with mediaIndex >= 0 IS a picture sitting in the run of text - a
@@ -186,6 +192,7 @@ struct RichTextRun {
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
             && letterSpacingPt == other.letterSpacingPt
+            && lineSpacing == other.lineSpacing
             && highlightColor == other.highlightColor && characterStyleId == other.characterStyleId
             && commentIds == other.commentIds && change == other.change && revision == other.revision
             && field == Field::Plain && other.field == Field::Plain   // a field stays its own run

@@ -1713,6 +1713,11 @@ int main() {
                 const float natural = top(0.0f), spaced = top(30.0f);
                 TEST("A cell's lines are at least as tall as it says: three lines " + std::to_string(spaced - natural)
                      + " taller", spaced - natural > 30.0f && spaced - natural < 90.0f);
+                // ...and lines of their own multiple (a heading at 70%).
+                for (RichTextRun& run : table.tableRows[0].cells[0].runs) run.lineSpacing = 0.7f;
+                const float tight = top(0.0f);
+                TEST("A cell's lines at 70% of their font's stand closer: three lines " + std::to_string(natural - tight)
+                     + " lower", natural - tight > 6.0f);
             }
 
             // A column break: the paragraph starts the section's next

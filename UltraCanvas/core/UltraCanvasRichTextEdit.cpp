@@ -7,6 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.14.1 - a cell's runs with a line multiple of their own (RichTextRun::lineSpacing)
 // Version: 1.14.0 - columns that give way to their content; a table nested in a cell edited in place; spaces a
 //                   line ends with take no room; no break after a slash where the document says so
 // Version: 1.13.0 - column breaks; tables nested in cells; a cell's line heights; empty first and last lines of
@@ -2421,7 +2422,8 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         // least" leaves a line of a larger font as it is.
         // A multiple (RichTableCell::lineSpacing) is of the run's own font's
         // line, measured when the layout was made.
-        if (cellRow >= 0 && (block.lineHeightPt > 0.0f || block.lineSpacing > 0.0f)) {
+        // A run's own multiple (RichTextRun::lineSpacing) goes before the cell's.
+        if (cellRow >= 0 && layoutStatedLines) {
             FontStyle font = FontForBlock(block);
             if (run.fontSizePt > 0.0f) font.fontSize = run.fontSizePt;
             if (!run.fontFamily.empty()) font.fontFamily = run.fontFamily;
@@ -2435,7 +2437,8 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             if (block.lineHeightPt > 0.0f) {
                 height = block.lineHeightAtLeast ? std::max(natural, Px(block.lineHeightPt)) : Px(block.lineHeightPt);
             } else {
-                height = natural * block.lineSpacing;
+                height = natural * (run.lineSpacing > 0.0f ? run.lineSpacing
+                                    : block.lineSpacing > 0.0f ? block.lineSpacing : 1.0f);
             }
             if (height > 0.0f) add(TextAttributeFactory::CreateAbsoluteLineHeight(static_cast<double>(height)));
         }
@@ -2736,7 +2739,9 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     // A cell's lines of a set height or multiple, and a picture in a line:
     // each run's own font's line.
     {
-        const bool cellLines = cellRow >= 0 && (block.lineHeightPt > 0.0f || block.lineSpacing > 0.0f);
+        layoutStatedLines = cellRow >= 0 && (block.lineHeightPt > 0.0f || block.lineSpacing > 0.0f);
+        for (const RichTextRun& run : runs) layoutStatedLines = layoutStatedLines || (cellRow >= 0 && run.lineSpacing > 0.0f);
+        const bool cellLines = layoutStatedLines;
         for (const RichTextRun& run : runs) {
             if (run.IsTextFrame() || run.text.empty()) continue;
             if (!run.IsInlineImage() && !cellLines) continue;
@@ -2769,7 +2774,7 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     // the box lies over its neighbours. Such a paragraph is set without.
     // So is a cell whose lines have a set height or multiple: a height in
     // points is the whole line.
-    const bool statedLines = cellRow >= 0 && (block.lineHeightPt > 0.0f || block.lineSpacing > 0.0f);
+    const bool statedLines = layoutStatedLines;
     if (lineGap && (layoutHasBox || statedLines)) layout->SetLineSpacing(0.0f);
     return layout;
 }

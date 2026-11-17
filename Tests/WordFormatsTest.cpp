@@ -3426,6 +3426,7 @@ int main(int argc, char** argv) {
             "<w:tc><w:p><w:r><w:t>inner two</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/></w:tc></w:tr>"
             "<w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr>"
             "<w:p><w:pPr><w:spacing w:line=\"276\" w:lineRule=\"auto\"/></w:pPr><w:r><w:t>Spaced</w:t></w:r></w:p>"
+            "<w:p><w:pPr><w:spacing w:line=\"168\" w:lineRule=\"auto\"/></w:pPr><w:r><w:t>Tight</w:t></w:r></w:p>"
             "</w:tc></w:tr></w:tbl>"
             "<w:p><w:r><w:br w:type=\"column\"/></w:r><w:r><w:t>Second column</w:t></w:r></w:p>"
             "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:rPr><w:sz w:val=\"8\"/></w:rPr>" + inlinePicture + "</w:r>"
@@ -3502,8 +3503,16 @@ int main(int argc, char** argv) {
             if (docx) CHECK_MSG(first.lineHeightPt <= 0.0f, label + ": the first paragraph sets no line height");
             else CHECK_MSG(Near(first.lineHeightPt, 15.0f) && first.lineHeightAtLeast, label + ": a cell's lines at least 15 pt");
             const RichTableCell& second = table->tableRows[1].cells[0];
-            CHECK_MSG(std::abs(second.lineSpacing - 1.15f) < 0.01f, label + ": lines 1.15 times their font's, got "
-                      + std::to_string(second.lineSpacing));
+            // A cell's lines 1.15 times their font's (the cell's, or - from
+            // an ODT - each line's own), and one paragraph in it at 70%.
+            float spaced = second.lineSpacing, tight = 0.0f;
+            for (const RichTextRun& run : second.runs) {
+                if (run.text == "Spaced" && run.lineSpacing > 0.0f) spaced = run.lineSpacing;
+                if (run.text == "Tight") tight = run.lineSpacing;
+            }
+            CHECK_MSG(std::abs(spaced - 1.15f) < 0.01f, label + ": lines 1.15 times their font's, got "
+                      + std::to_string(spaced));
+            CHECK_MSG(std::abs(tight - 0.7f) < 0.01f, label + ": a paragraph of its own at 70%, got " + std::to_string(tight));
             CHECK_MSG(pictured != nullptr, label + ": the picture and the shape are in a paragraph's line");
             if (pictured) {
                 const RichTextRun* picture = nullptr;

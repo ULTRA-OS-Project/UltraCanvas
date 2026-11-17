@@ -1252,7 +1252,9 @@ Word's files are unkerned, older Writer files have no line gap). A cell's
 lines can have a set height (`RichTableCell::lineHeightPt`, exactly or - with
 `lineHeightAtLeast` - at least that) or be a multiple of each font's own line
 (`RichTableCell::lineSpacing`, Word's 1.15); a picture in such a line keeps
-its own height. An empty first or last line of a cell is a line of its own
+its own height. A paragraph of the cell set tighter or wider than the others
+- a heading at 70% - says so on its runs (`RichTextRun::lineSpacing`), which
+go before the cell's. An empty first or last line of a cell is a line of its own
 font (Word's 2 pt paragraphs that set a signature's parts a hair apart), and a
 picture lower than a line of its run's font stands in such a line. A table can
 start left of its column (a negative `tableIndentPt`, Word's `w:tblInd`), and

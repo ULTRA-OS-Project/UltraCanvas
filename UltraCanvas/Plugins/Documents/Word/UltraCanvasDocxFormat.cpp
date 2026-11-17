@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.12.1 - a cell paragraph's own line multiple read and written
 // Version: 1.12.0 - w:tblLayout (autofit or fixed) read and written
 // Version: 1.11.0 - tables nested in cells, column breaks, a cell's line height and multiple, negative w:tblInd,
 //                   a cell's lines written as paragraphs, shapes and turned pictures in the line
@@ -3254,6 +3255,17 @@ private:
                     const size_t runsBefore = ctx.runs.size();
                     ParseInlineContainer(p, "", ctx);
                     emptyAfterTable = afterNestedTable && ctx.runs.size() == runsBefore;
+                    // A paragraph set tighter or wider than the cell's first
+                    // says so on its runs.
+                    if (spacing.lineHeightPt <= 0.0f) {
+                        const float own = spacing.lineSpacing > 0.0f ? spacing.lineSpacing : 1.0f;
+                        const float cells = cell.lineSpacing > 0.0f ? cell.lineSpacing : 1.0f;
+                        if (std::abs(own - cells) > 0.01f) {
+                            for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                                if (!ctx.runs[r].IsInlineImage() && !ctx.runs[r].IsTextFrame()) ctx.runs[r].lineSpacing = own;
+                            }
+                        }
+                    }
                     afterNestedTable = false;
                     // A cell keeps runs, not paragraphs: text without a size
                     // or font of its own takes its paragraph style's here.
@@ -4630,8 +4642,15 @@ private:
                     if (cell.lineHeightPt > 0.0f) {
                         xml << " w:line=\"" << std::lround(cell.lineHeightPt * 20.0f) << "\" w:lineRule=\""
                             << (cell.lineHeightAtLeast ? "atLeast" : "exact") << "\"";
-                    } else if (cell.lineSpacing > 0.0f) {
-                        xml << " w:line=\"" << std::lround(cell.lineSpacing * 240.0f) << "\" w:lineRule=\"auto\"";
+                    } else {
+                        // The line's own multiple, before the cell's.
+                        float multiple = cell.lineSpacing;
+                        for (const RichTextRun& run : piece) {
+                            if (run.lineSpacing > 0.0f) { multiple = run.lineSpacing; break; }
+                        }
+                        if (multiple > 0.0f) {
+                            xml << " w:line=\"" << std::lround(multiple * 240.0f) << "\" w:lineRule=\"auto\"";
+                        }
                     }
                     xml << "/>";
                     if (const char* jc = JustificationFor(cell.align)) xml << "<w:jc w:val=\"" << jc << "\"/>";

@@ -18,6 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.17.1 - layoutStatedLines
 // Version: 1.17.0 - a frame standing in a line (a table nested in a cell) is edited in place
 //                   (InlineFrameRect, FurnitureEditState::frameHostBlock)
 // Version: 1.16.0 - tables nested in cells and drawings in a body line stand in the line; PlaceCellFloats
@@ -1004,6 +1005,7 @@ private:
     // (RichTextRun::emptyLineHeightPt) is scaled from.
     mutable std::map<std::string, float> lineUnitCache;
     mutable float emptyLineUnitPx = 0.0f;
+    mutable bool layoutStatedLines = false;       // the layout being made is a cell's with set line heights
     mutable bool layoutHasBox = false;            // the layout being made has a box standing in a line
     // The paragraphs of the frames standing in a table cell's lines, by
     // frame: laid out by the table's layout just before the cell's.
