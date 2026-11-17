@@ -1,8 +1,10 @@
 // Apps/UltraStoreAdmin/core/WebSite.cpp
 // The web store's site in the publish folder (WebSite.h).
+// Version: 0.2.0 - output "html" writes the HTML + JavaScript store (WebStoreHtml.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "WebSite.h"
+#include "WebStoreHtml.h"
 
 #include "Verifier.h"
 
@@ -433,6 +435,7 @@ std::string WebPageHtml(const Catalog& catalog, const std::string& page, const s
 
 Result<WebSiteReport> WriteWebSite(const Catalog& catalog, const std::string& outDirUtf8, const WebSiteOptions& options) {
     using R = Result<WebSiteReport>;
+    if (options.output == "html") return WriteHtmlWebSite(catalog, outDirUtf8, options);
     WebSiteReport report;
     std::error_code ec;
     std::string error;

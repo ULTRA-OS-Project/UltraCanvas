@@ -21,6 +21,9 @@
 // Headless: links the core library (JSON, HTMLReader, UltraCrypt) and zlib,
 // opens no window.
 //
+// Version: 0.3.0 - a site under a path (its url's): Url(), BasePath(); every address the builder writes
+//                  carries the path, the link check reads it back; files already in the folder count
+//                  when nothing is swept (BuildOptions::removeStale off)
 // Version: 0.2.0 - Phase B: the doc layout (sidebar, table of contents, breadcrumbs, previous/next),
 //                  AddDocs (a Markdown folder, translations), search, the toc / tabs / copy / search
 //                  modules, the language switcher, Labels
@@ -102,6 +105,15 @@ struct Labels {
     std::string languages = "Languages";             // the language switcher's <nav aria-label>
 };
 
+// The frame of the pages in one language: its navbar, footer and words
+// (SiteConfig::frames). A language without one takes SiteConfig's own.
+struct Frame {
+    std::vector<NavItem> navbar;
+    std::vector<NavItem> footer;
+    std::string footerText;
+    Labels labels;
+};
+
 // A heading of a page, for its table of contents.
 struct Heading {
     int level = 2;
@@ -110,7 +122,12 @@ struct Heading {
 };
 
 struct SiteConfig {
-    std::string url;                         // "https://example.org", no trailing slash: canonical links, sitemap
+    // "https://example.org", no trailing slash: canonical links, sitemap.
+    // A site under a path ("https://store.example/v1") is served from that
+    // path: routes keep their site paths ("/app/x/"), and the builder writes
+    // every address with the path in front ("/v1/app/x/") - an app writing
+    // a body does the same with Builder::Url.
+    std::string url;
     std::string name;                        // the brand in the navbar, og:site_name, the default <title>
     std::string tagline;
     std::string logo;                        // a picture file: hashed into assets/ and shown before the name; empty: the name alone
@@ -135,6 +152,11 @@ struct SiteConfig {
     // The language switcher's names: "de" -> "Deutsch". A language not
     // named shows its code.
     std::map<std::string, std::string> languageNames;
+    // The frame of another language's pages - its navbar leading into its
+    // own pages, its words - by language ("de"). A route takes its
+    // language's; the site's own language, and any other without one,
+    // takes navbar, footer, footerText and labels above.
+    std::map<std::string, Frame> frames;
 };
 
 struct Route {
@@ -202,7 +224,10 @@ struct DocsReport {
 using LayoutFunction = std::function<std::string(const Route&)>;
 
 struct BuildOptions {
-    bool removeStale = true;                 // delete what an earlier build wrote and this one did not
+    // Delete what an earlier build wrote and this one did not. Off, a file
+    // already in the folder is a target links may name (a folder the site
+    // shares with other files: a store's catalog and media).
+    bool removeStale = true;
     std::vector<std::string> keep;           // relative paths removeStale leaves alone (a deploy manifest)
     bool checkLinks = true;                  // a broken internal link or anchor is an error
     bool brokenLinksWarn = false;            // ... or only a warning (Docusaurus's onBrokenLinks: 'warn')
@@ -234,7 +259,8 @@ public:
     Builder& operator=(const Builder&) = delete;
 
     // A file published under its content hash: "assets/<stem>.<hash10>.<ext>",
-    // cached for a year. Returns its URL ("/assets/logo.3f9a1c2b7e.png"), or
+    // cached for a year. Returns its URL ("/assets/logo.3f9a1c2b7e.png",
+    // under the site's path when it has one), or
     // empty (and an error at Build) when the file cannot be read.
     std::string Asset(const std::string& sourcePath);
     // The same for content in memory, named `fileName`.
@@ -271,6 +297,12 @@ public:
     std::string RenderPage(const Route& route);
 
     const SiteConfig& Config() const { return config; }
+    // The path the site is served from: "/", or "/v1/" for a url of
+    // "https://store.example/v1".
+    const std::string& BasePath() const { return basePath; }
+    // A site path as the pages write it: "/app/x/" -> "/v1/app/x/". Any
+    // other text (an absolute URL, "#top") is returned as it is.
+    std::string Url(const std::string& sitePath) const;
 
     struct PageFacts;      // what reading a page back finds (the build's own)
 
@@ -281,15 +313,17 @@ private:
                      PageFacts* facts = nullptr) const;
     std::string Head(const Route& route, const Prepared& prepared, const std::vector<std::string>& behaviours) const;
     std::string DocLayout(const Route& route) const;
+    Frame FrameFor(const std::string& language) const;
     std::string SearchForm(const Route& route, const Prepared& prepared, bool large) const;
     Route SearchPage(const Prepared& prepared) const;
 
     SiteConfig config;
+    std::string basePath = "/";
     std::vector<Route> routes;
     std::map<std::string, LayoutFunction> layouts;
     std::map<std::string, std::string> scripts;                     // behaviour -> source
     std::map<std::string, std::vector<NavItem>> sidebars;
-    struct PendingAsset { std::string sourcePath, content, url; bool fromFile = true; };
+    struct PendingAsset { std::string sourcePath, content, url, file; };
     std::vector<PendingAsset> assets;
     std::vector<std::pair<std::string, std::string>> directories;   // source, prefix
     std::vector<std::pair<std::string, std::string>> files;         // relative path, content

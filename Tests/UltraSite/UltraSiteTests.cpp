@@ -488,12 +488,65 @@ static void TestDocs() {
     fs::remove_all(dir, ec);
 }
 
+static void TestBasePath() {
+    std::printf("A site under a path\n");
+    const fs::path dir = TempDir("base");
+    SiteConfig config = FixtureConfig();
+    config.url = "https://example.org/v1";
+    config.navbar = {{"About", "/about/", {}}};
+    config.footer.clear();
+    config.search = true;
+    Builder builder(config);
+    Check(builder.BasePath() == "/v1/" && builder.Url("/about/") == "/v1/about/" && builder.Url("https://x.org/") == "https://x.org/" &&
+              builder.Url("#top") == "#top",
+          "the site's path comes from its url; Url puts it in front of a site path");
+    Route home;
+    home.path = "/";
+    home.title = "Example";
+    home.bodyHtml = "<h1>Home</h1><p><a href=\"" + builder.Url("/about/") + "\">About</a> <a href=\"about/#team\">relative</a>"
+                    " <a href=\"" + builder.Url("/catalog.json") + "\">the catalog</a></p>";
+    builder.AddRoute(home);
+    Route about;
+    about.path = "/about/";
+    about.title = "About";
+    about.bodyHtml = "<h1>About</h1><h2 id=\"team\">Team</h2><p><a href=\"../\">back</a></p>";
+    builder.AddRoute(about);
+    const fs::path out = dir / "out";
+    Write(out / "catalog.json", "{}");   // a file the folder already holds
+    BuildOptions keep;
+    keep.removeStale = false;
+    const BuildResult result = builder.Build(UltraCanvas::PathToUtf8(out), keep);
+    PrintErrors(result);
+    Check(result.ok, "a site under a path builds, its links resolved in that path");
+    const std::string page = Read(out / "about" / "index.html");
+    Check(fs::exists(out / "index.html") && Contains(page, "<link rel=\"stylesheet\" href=\"/v1/assets/site.") &&
+              Contains(page, "<a class=\"us-brand\" href=\"/v1/\">") && Contains(page, "<a href=\"/v1/about/\" aria-current=\"page\">About</a>") &&
+              Contains(page, "<link rel=\"canonical\" href=\"https://example.org/v1/about/\">") &&
+              Contains(page, "action=\"/v1/search/\"") && Contains(page, "data-index=\"/v1/search/en."),
+          "every address the builder writes carries the path; the files stay at the folder's root");
+    Check(Contains(Read(out / "sitemap.xml"), "<loc>https://example.org/v1/about/</loc>") &&
+              Contains(Read(out / ".htaccess"), "ErrorDocument 404 /v1/404.html") && Contains(Read(out / "_headers"), "/v1/assets/*"),
+          "the sitemap and the host's rules too");
+    Check(fs::exists(out / "catalog.json"), "with removeStale off, the folder's other files stay");
+
+    Builder outside(config);
+    Route stray = home;
+    stray.bodyHtml = "<h1>Home</h1><p><a href=\"/about/\">a link without the path</a></p>";
+    outside.AddRoute(stray);
+    outside.AddRoute(about);
+    const BuildResult refused = outside.Build(UltraCanvas::PathToUtf8(dir / "outside"));
+    Check(!refused.ok && HasError(refused, "leaves the site's path /v1/"), "a link that leaves the site's path is reported");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     TestHelpers();
     TestBuild();
     TestChecks();
     TestMarkdown();
     TestDocs();
+    TestBasePath();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

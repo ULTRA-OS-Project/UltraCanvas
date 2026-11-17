@@ -1,9 +1,10 @@
 # UltraSite — the HTML + JavaScript output of UltraPress and UltraStore (Investigation and Proposal)
 
 **Date:** 2026-11-17
-**Status:** Phases A and B built (2026-11-17): `UltraSite/` 0.2,
+**Status:** Phases A to C built (2026-11-17): `UltraSite/` 0.3,
 UltraPress's HTML + JavaScript output, its documentation and `ultrapress
-docs` (§13, §14). Phases C and D are a proposal.
+docs`, and the UltraStore web store as HTML + JavaScript (§13 to §15).
+Phase D is a proposal.
 **Scope:** `UltraSite`, one shared headless library that writes the **HTML +
 JavaScript** output of UltraPress (`Apps/UltraPress`) and of the UltraStore
 web store (`Apps/UltraStoreAdmin`). It writes it the way
@@ -712,4 +713,71 @@ Not built, and left for later:
   read;
 - reference-style links (`[text][ref]`);
 - the WebAssembly output showing the docs.
+
+---
+
+## 15. What Phase C built, and what it found different
+
+Built on 2026-11-17:
+
+- **The store.** `Apps/UltraStoreAdmin/core/WebStoreHtml.h`. The admin
+  backend's publish writes the web store through UltraSite when
+  `web.output` is `html`.
+- **The default.** Unset, a store that names `web.site_dir` keeps the
+  WebAssembly store it had, and any other gets the HTML one. `off` writes
+  none.
+- **Pages.** Discover; the categories, with their free and paid lists as
+  pages; each category; each app.
+- **Languages.** One tree per language of the apps' texts. Their words
+  come from the store's own translations, with a navbar into that
+  language's pages and a language switcher.
+- **Search, markup, actions.** A search box, `SoftwareApplication` JSON-LD
+  for each app, and *Install* / *Try* / *Buy* as `ultrastore://` links.
+  The store's own `install` module points at the download when no store
+  answers the link.
+- **UltraSite 0.3.** A site under a path, `Builder::Url`, a frame per
+  language, and the folder's own files as link targets when nothing is
+  swept.
+
+The acceptance site is the web store's browser-test fixture
+(`Apps/UltraStore/web/test/fixture`, nine apps, English and German),
+published again as HTML. The admin tests check every listed app's page in
+both languages, and that the publish gives no warning.
+
+| Discover, first visit | Measured | Budget (§7) |
+|---|---|---|
+| Without its pictures (page, stylesheet, scripts; gzip -9) | 11 KB | 60 KB |
+| Its pictures on the first screen (1280 × 800, Chromium) | 47 KB | 300 KB |
+
+Checked in Chromium (Playwright), with no console errors under the
+policy:
+
+- the German pages' navbar leads into the German pages;
+- searching "video" finds UltraVideo;
+- the free list works with JavaScript off.
+
+Where the build differs from the plan above:
+
+- **The catalog lives under a path** (`https://store.ultraos.eu/v1`), and
+  the WebAssembly store's pages used relative links for it. UltraSite
+  learned a site path, as Docusaurus has `baseUrl`, rather than writing
+  relative links. A page then reads the same at any depth, and the link
+  check still resolves every address.
+- **The publish folder is shared.** It holds the catalog, the media, the
+  packages and the partner pages. So the store's build sweeps nothing, and
+  links into the folder's own files count. A missing picture, a broken
+  link or a page over budget is a warning in the publish report, never a
+  failed publish, because the catalog matters more than a page.
+- **No `filter` module.** The price filter is three pages written when
+  the site is built (all, `free/`, `paid/`). That works without script
+  and is prefetched like any page.
+- **No `carousel` or `lightbox`.** Screenshots are a scroll-snapped strip
+  of links to the full pictures, which needs no script.
+- **The tokens repeat `StoreTheme.h`'s values.** That header belongs to
+  the window and pulls in the UI, which the headless admin core cannot
+  include. Both name each other.
+- **Fonts are not downloaded.** Manrope and Inter are named first and the
+  system's fonts follow (question 5).
+- **The partner pages stay where they were.** The `go/` and `join/` pages
+  keep their own frame (`PageFrame.cpp`), shared with the payment service.
 

@@ -19,7 +19,7 @@ UltraPress and the UltraStore web store each have two outputs:
 UltraSite is (b). The design and the plan are in
 [`Docs/Research/UltraSiteStaticSitesProposal.md`](../../Research/UltraSiteStaticSitesProposal.md).
 
-> **Status (2026-11, v0.2, Phases A and B of the proposal):**
+> **Status (2026-11, v0.3, Phases A to C of the proposal):**
 > - **Phase A:** routes; the `page` and `post` layouts, plus layouts an
 >   app adds; design tokens with a light and an optional dark look; hashed
 >   assets; `core.js`; behaviour modules an app registers; the link and
@@ -32,11 +32,15 @@ UltraSite is (b). The design and the plan are in
 >   admonitions and tabs, a search index per language with a search page,
 >   the `search`, `toc`, `tabs` and `copy` modules, a language switcher,
 >   and the frame's words in `Labels`.
+> - **Phase C:** a site under a path, and a frame (navbar, footer, words)
+>   per language.
 > - **Users:** UltraPress publishes through it
 >   (`Apps/UltraPress/engine/UltraPressSite.h`), including a site's
->   `docs/` folder and `ultrapress docs`.
-> - **Next:** the UltraStore web store (Phase C); responsive picture
->   variants, precompressed files and a preview server (Phase D).
+>   `docs/` folder and `ultrapress docs`. The UltraStore admin backend
+>   publishes the web store through it
+>   (`Apps/UltraStoreAdmin/core/WebStoreHtml.h`).
+> - **Next:** responsive picture variants, precompressed files, a preview
+>   server and versioned docs (Phase D).
 >
 > Sources are under `UltraSite/{include,core,resources}`. The target is
 > `UltraSite`, the header `<UltraSite/UltraSite.h>`, and the namespace
@@ -169,6 +173,32 @@ std::fputs(result.SizeReport().c_str(), stdout);
 The helpers `RouteFile`, `ContentHash`, `CompressedSize`, `TokensCss`,
 `MinifyCss` and `StripScript` are public, for apps that write files of
 their own beside the site.
+
+### A site under a path
+
+A site whose `url` has a path - `https://store.example/v1` - is served
+from that path, as Docusaurus's `baseUrl` is:
+
+- **Routes.** They keep their site paths (`/app/x/`), and the files go at
+  the folder's root (`app/x/index.html`).
+- **Addresses.** Every address the builder writes carries the path:
+  assets, the navbar, the sidebar, the search, the 404 page, `.htaccess`
+  and `_headers`. A body the app writes uses `Builder::Url("/app/x/")`.
+- **The link check** reads addresses back in that path, and reports one
+  that leaves it.
+- `BasePath()` says which path it is.
+
+With `BuildOptions::removeStale` off, a file the folder already holds is
+a target links may name. That is how the store's pages link to the
+catalog's media in the same folder.
+
+### A frame per language
+
+`SiteConfig::frames` holds another language's navbar, footer, footer line
+and `Labels` (`Frame`), so a German page leads into the German pages in
+German. A route takes its language's frame; the site's own language, and
+any language without a frame, take `navbar`, `footer`, `footerText` and
+`labels`.
 
 ### Tokens
 

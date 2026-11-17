@@ -18,7 +18,7 @@ and the flags), and §4.3 of
 [`../Research/UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)
 (the measured sizes and which levers move them).
 
-**Two outputs (decided 2026-11-17).** The web store offers two published outputs: (a) WebAssembly, as this document describes, and (b) HTML + JavaScript, written by the shared library proposed in [`../Research/UltraSiteStaticSitesProposal.md`](../Research/UltraSiteStaticSitesProposal.md). The store's operator chooses, through the admin backend's `web.output` setting.
+**Two outputs (decided 2026-11-17).** The web store offers two published outputs: (a) WebAssembly, as this document describes, and (b) HTML + JavaScript, written by the shared library proposed in [`../Research/UltraSiteStaticSitesProposal.md`](../Research/UltraSiteStaticSitesProposal.md). The store's operator chooses, through the admin backend's `web.output` setting. The HTML + JavaScript store was built on 2026-11-17 (`Apps/UltraStoreAdmin/core/WebStoreHtml.h`); this brief stays the record of the WebAssembly one.
 
 ## What the repository already has
 

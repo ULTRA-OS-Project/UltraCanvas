@@ -30,6 +30,8 @@
 namespace UltraStore::Ui::Theme {
 
 // ===== colours (the design's tokens) =====
+// The web store as HTML + JavaScript repeats these values as its CSS tokens
+// (Apps/UltraStoreAdmin/core/WebStoreHtml.cpp, kLightTokens): change both.
 inline const UltraCanvas::Color kPageBackground {255, 255, 255};   // the ground
 inline const UltraCanvas::Color kSurface        {255, 255, 255};
 inline const UltraCanvas::Color kSurfaceSoft    {248, 250, 252};   // #F8FAFC: the hero, the footer

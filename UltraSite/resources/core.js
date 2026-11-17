@@ -22,7 +22,7 @@ function isPage(link) {
   if (link.origin !== location.origin || link.hasAttribute('download') || link.hasAttribute('data-no-prefetch')) return false;
   if (link.target && link.target !== '_self') return false;
   const path = link.pathname;
-  if (path.startsWith('/assets/')) return false;
+  if (path.includes('/assets/')) return false;
   return path.endsWith('/') || path.endsWith('.html');
 }
 

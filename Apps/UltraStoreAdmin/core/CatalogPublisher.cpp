@@ -11,6 +11,7 @@
 
 #include "PackageStore.h"
 #include "WebSite.h"
+#include "WebStoreHtml.h"
 
 #include "Affiliates.h"
 #include "PageFrame.h"
@@ -342,10 +343,23 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
     for (const PublishedPage& page : written) {
         if (const auto r = db.RememberPage(page.path, page.kind); !r) return R::Failure(r.error.code, r.error.message, r.error.detail);
     }
-    // The web store beside the catalog (WebSite.h): wanted when web.site_dir
-    // names the web store build's site folder.
-    if (const std::string siteDir = db.Setting("web.site_dir"); !siteDir.empty()) {
+    // The web store beside the catalog, in one of its two outputs (the
+    // setting web.output): "html", the store as HTML + JavaScript
+    // (WebStoreHtml.h), or "wasm", the WebAssembly store from the web store
+    // build's folder web.site_dir (WebSite.h). Unset, a store that names
+    // that folder keeps the WebAssembly store it had, and any other gets
+    // the HTML one; "off" writes none.
+    std::string webOutput = db.Setting("web.output");
+    const std::string siteDir = db.Setting("web.site_dir");
+    if (webOutput.empty()) webOutput = siteDir.empty() ? "html" : "wasm";
+    if (webOutput == "html" && !HasHtmlWebStore()) {
+        report.warnings.push_back("web store: this build has no HTML + JavaScript output (UltraSite); set web.output to wasm or off");
+        webOutput = "off";
+    }
+    report.webOutput = webOutput;
+    if (webOutput == "html" || webOutput == "wasm") {
         WebSiteOptions web;
+        web.output = webOutput;
         web.siteDirUtf8 = siteDir;
         web.catalogBaseUrl = pagesBase;
         web.storeDownloadUrl = db.Setting("web.store_download_url");
@@ -353,6 +367,7 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
         const auto site = WriteWebSite(catalog, options.outDirUtf8, web);
         if (!site) return R::Failure(site.error.code, site.error.message, site.error.detail);
         report.webPages = site.Value().pages;
+        report.webLanguages = site.Value().languages;
         report.webRuntime = site.Value().runtimeFolder;
         for (const std::string& w : site.Value().warnings) report.warnings.push_back("web store: " + w);
     }

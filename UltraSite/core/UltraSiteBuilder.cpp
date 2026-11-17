@@ -308,6 +308,13 @@ struct Builder::Prepared {
 };
 
 Builder::Builder(SiteConfig siteConfig) : config(std::move(siteConfig)) {
+    // The path of the site's address: "https://store.example/v1" -> "/v1/".
+    const size_t scheme = config.url.find("://");
+    const size_t slash = scheme == std::string::npos ? std::string::npos : config.url.find('/', scheme + 3);
+    if (slash != std::string::npos) {
+        basePath = config.url.substr(slash);
+        if (basePath.back() != '/') basePath += '/';
+    }
     layouts["page"] = [](const Route& route) { return route.bodyHtml; };
     layouts["post"] = [](const Route& route) {
         std::string out = "<article class=\"us-post\">\n<h1>" + EscapeText(route.title) + "</h1>\n";
@@ -321,14 +328,20 @@ Builder::Builder(SiteConfig siteConfig) : config(std::move(siteConfig)) {
 
 void Builder::AddSidebar(const std::string& id, std::vector<NavItem> items) { sidebars[id] = std::move(items); }
 
+std::string Builder::Url(const std::string& sitePath) const {
+    if (sitePath.empty() || sitePath[0] != '/' || sitePath.rfind("//", 0) == 0) return sitePath;
+    return basePath + sitePath.substr(1);
+}
+
 std::string Builder::AssetFromText(const std::string& fileName, const std::string& content) {
     std::string extension;
     const std::string stem = SafeStem(SplitFileName(fileName, extension));
-    const std::string url = "/assets/" + stem + "." + ContentHash(content) + extension;
+    const std::string file = "assets/" + stem + "." + ContentHash(content) + extension;
+    const std::string url = Url("/" + file);
     for (const PendingAsset& asset : assets) {
         if (asset.url == url) return url;
     }
-    assets.push_back({fileName, content, url, false});
+    assets.push_back({fileName, content, url, file});
     return url;
 }
 
@@ -367,11 +380,11 @@ void Builder::Prepare(Prepared& prepared, std::vector<std::string>& errors) {
     errors.insert(errors.end(), tokenErrors.begin(), tokenErrors.end());
     prepared.css = MinifyCss(css);
     prepared.cssFile = "assets/site." + ContentHash(prepared.css) + ".css";
-    prepared.cssUrl = "/" + prepared.cssFile;
+    prepared.cssUrl = Url("/" + prepared.cssFile);
 
     prepared.core = StripScript(Resource(Resources::kCoreJs, Resources::kCoreJsSize));
     prepared.coreFile = "assets/js/core." + ContentHash(prepared.core) + ".js";
-    prepared.coreUrl = "/" + prepared.coreFile;
+    prepared.coreUrl = Url("/" + prepared.coreFile);
 
     // The library's behaviours, then the app's (which may replace one).
     std::map<std::string, std::string> all = {
@@ -410,11 +423,11 @@ void Builder::Prepare(Prepared& prepared, std::vector<std::string>& errors) {
             pages[route.language.empty() ? config.language : route.language].push_back({&route, SearchSections(route.bodyHtml)});
         }
         if (!pages.count(config.language)) pages[config.language];
-        auto write = [](const std::vector<Entry>& entries, bool texts) {
+        auto write = [this](const std::vector<Entry>& entries, bool texts) {
             std::string index = "[";
             for (const Entry& entry : entries) {
                 if (index.size() > 1) index += ",\n";
-                index += "[" + UltraCanvas::JSON::EscapeString(entry.route->title) + "," + UltraCanvas::JSON::EscapeString(entry.route->path) +
+                index += "[" + UltraCanvas::JSON::EscapeString(entry.route->title) + "," + UltraCanvas::JSON::EscapeString(Url(entry.route->path)) +
                          "," + UltraCanvas::JSON::EscapeString(entry.route->description) + ",[";
                 bool first = true;
                 for (const SearchRecord& section : entry.sections) {
@@ -443,11 +456,11 @@ void Builder::Prepare(Prepared& prepared, std::vector<std::string>& errors) {
 
     // Prerender a page of the site when the pointer rests on its link
     // (Chromium); never an asset, a download or a path the app excludes.
-    std::vector<std::string> excluded = {"/assets/"};
+    std::vector<std::string> excluded = {Url("/assets/")};
     for (const std::string& prefix : config.noPrefetch) {
-        if (!prefix.empty() && std::find(excluded.begin(), excluded.end(), prefix) == excluded.end()) excluded.push_back(prefix);
+        if (!prefix.empty() && std::find(excluded.begin(), excluded.end(), Url(prefix)) == excluded.end()) excluded.push_back(Url(prefix));
     }
-    std::string rules = "{\"prerender\":[{\"where\":{\"and\":[{\"href_matches\":\"/*\"}";
+    std::string rules = "{\"prerender\":[{\"where\":{\"and\":[{\"href_matches\":" + UltraCanvas::JSON::EscapeString(basePath + "*") + "}";
     for (const std::string& prefix : excluded) {
         rules += ",{\"not\":{\"href_matches\":" + UltraCanvas::JSON::EscapeString(prefix + "*") + "}}";
     }
@@ -534,7 +547,7 @@ std::string Builder::Head(const Route& route, const Prepared& prepared, const st
     out += "<script type=\"module\" src=\"" + prepared.coreUrl + "\"></script>\n";
     for (const std::string& name : behaviours) {
         auto found = prepared.behaviours.find(name);
-        if (found != prepared.behaviours.end()) out += "<script type=\"module\" src=\"/" + found->second.first + "\"></script>\n";
+        if (found != prepared.behaviours.end()) out += "<script type=\"module\" src=\"" + Url("/" + found->second.first) + "\"></script>\n";
     }
     out += "<script type=\"speculationrules\">" + prepared.speculationRules + "</script>\n";
     out += route.extraHead;
@@ -552,14 +565,21 @@ std::string Builder::Head(const Route& route, const Prepared& prepared, const st
     return out;
 }
 
+Frame Builder::FrameFor(const std::string& language) const {
+    auto found = config.frames.find(language.empty() ? config.language : language);
+    if (found != config.frames.end()) return found->second;
+    return Frame{config.navbar, config.footer, config.footerText, config.labels};
+}
+
 std::string Builder::SearchForm(const Route& route, const Prepared& prepared, bool large) const {
     const std::string language = route.language.empty() ? config.language : route.language;
     auto index = prepared.searchIndex.find(language);
     if (index == prepared.searchIndex.end()) index = prepared.searchIndex.find(config.language);
     if (index == prepared.searchIndex.end()) return std::string();
-    const Labels& labels = config.labels;
+    const Frame frame = FrameFor(language);
+    const Labels& labels = frame.labels;
     std::string out = std::string("<form class=\"us-search") + (large ? " us-search-large" : "") +
-                      "\" role=\"search\" action=\"/search/\" method=\"get\" data-us=\"search\" data-index=\"/" + index->second.first +
+                      "\" role=\"search\" action=\"" + Url("/search/") + "\" method=\"get\" data-us=\"search\" data-index=\"" + Url("/" + index->second.first) +
                       "\" data-nothing=\"" + Attr(labels.searchNothing) + "\"" + (large ? " data-results=\"us-search-results\"" : "") + ">";
     out += "<input type=\"search\" name=\"q\" placeholder=\"" + Attr(labels.search) + "\" aria-label=\"" + Attr(labels.search) +
            "\" autocomplete=\"off\" spellcheck=\"false\">";
@@ -579,7 +599,7 @@ Route Builder::SearchPage(const Prepared& prepared) const {
     // Every page, so a visitor without script finds them too.
     for (const Route& route : routes) {
         if (route.noindex || !route.searchable) continue;
-        page.bodyHtml += "<li><a href=\"" + Attr(route.path) + "\"" +
+        page.bodyHtml += "<li><a href=\"" + Attr(Url(route.path)) + "\"" +
                          (route.language.empty() ? std::string() : " hreflang=\"" + Attr(route.language) + "\"") + ">" +
                          EscapeText(route.title.empty() ? route.path : route.title) + "</a></li>\n";
     }
@@ -588,7 +608,8 @@ Route Builder::SearchPage(const Prepared& prepared) const {
 }
 
 std::string Builder::DocLayout(const Route& route) const {
-    const Labels& labels = config.labels;
+    const Frame frame = FrameFor(route.language);
+    const Labels& labels = frame.labels;
     static const std::vector<NavItem> kNone;
     auto sidebar = sidebars.find(route.sidebar);
     const std::vector<NavItem>& items = sidebar == sidebars.end() ? kNone : sidebar->second;
@@ -598,7 +619,7 @@ std::string Builder::DocLayout(const Route& route) const {
         for (const NavItem& item : list) {
             std::string link = item.href.empty()
                                    ? "<span>" + EscapeText(item.label) + "</span>"
-                                   : "<a href=\"" + Attr(item.href) + "\"" + (item.href == route.path ? " aria-current=\"page\"" : "") +
+                                   : "<a href=\"" + Attr(Url(item.href)) + "\"" + (item.href == route.path ? " aria-current=\"page\"" : "") +
                                          ">" + EscapeText(item.label) + "</a>";
             if (item.children.empty()) {
                 out += "<li>" + link + "</li>";
@@ -657,7 +678,7 @@ std::string Builder::DocLayout(const Route& route) const {
             const NavItem& step = *trail[i];
             if (i + 1 == trail.size()) out += "<li><span aria-current=\"page\">" + EscapeText(step.label) + "</span></li>";
             else if (step.href.empty()) out += "<li><span>" + EscapeText(step.label) + "</span></li>";
-            else out += "<li><a href=\"" + Attr(step.href) + "\">" + EscapeText(step.label) + "</a></li>";
+            else out += "<li><a href=\"" + Attr(Url(step.href)) + "\">" + EscapeText(step.label) + "</a></li>";
         }
         out += "</ol></nav>\n";
     }
@@ -688,12 +709,12 @@ std::string Builder::DocLayout(const Route& route) const {
         out += "<nav class=\"us-pagination\" aria-label=\"" + Attr(labels.pagination) + "\">";
         if (here != order.begin()) {
             const NavItem& previous = **(here - 1);
-            out += "<a class=\"us-prev\" href=\"" + Attr(previous.href) + "\" rel=\"prev\"><small>" + EscapeText(labels.previous) +
+            out += "<a class=\"us-prev\" href=\"" + Attr(Url(previous.href)) + "\" rel=\"prev\"><small>" + EscapeText(labels.previous) +
                    "</small><span>" + EscapeText(previous.label) + "</span></a>";
         }
         if (here + 1 != order.end()) {
             const NavItem& next = **(here + 1);
-            out += "<a class=\"us-next\" href=\"" + Attr(next.href) + "\" rel=\"next\"><small>" + EscapeText(labels.next) +
+            out += "<a class=\"us-next\" href=\"" + Attr(Url(next.href)) + "\" rel=\"next\"><small>" + EscapeText(labels.next) +
                    "</small><span>" + EscapeText(next.label) + "</span></a>";
         }
         out += "</nav>\n";
@@ -716,8 +737,9 @@ std::string Builder::Page(const Route& route, const Prepared& prepared, std::vec
     } else {
         main = layout->second(route);
     }
-    const Labels& labels = config.labels;
     const std::string language = route.language.empty() ? config.language : route.language;
+    const Frame frame = FrameFor(language);
+    const Labels& labels = frame.labels;
 
     std::function<void(const std::vector<NavItem>&, std::string&)> list = [&](const std::vector<NavItem>& items, std::string& out) {
         out += "<ul>";
@@ -726,7 +748,7 @@ std::string Builder::Page(const Route& route, const Prepared& prepared, std::vec
             if (item.href.empty()) {
                 out += "<span>" + EscapeText(item.label) + "</span>";
             } else {
-                out += "<a href=\"" + Attr(item.href) + "\"";
+                out += "<a href=\"" + Attr(Url(item.href)) + "\"";
                 if (item.href == route.path) out += " aria-current=\"page\"";
                 if (IsAbsoluteUrl(item.href)) out += " rel=\"noopener\"";
                 out += ">" + EscapeText(item.label) + "</a>";
@@ -738,12 +760,12 @@ std::string Builder::Page(const Route& route, const Prepared& prepared, std::vec
     };
 
     std::string body = "<body>\n<a class=\"us-skip\" href=\"#main\">" + EscapeText(labels.skipLink) + "</a>\n";
-    body += "<header class=\"us-navbar\">\n<div class=\"us-container\">\n<a class=\"us-brand\" href=\"/\">";
+    body += "<header class=\"us-navbar\">\n<div class=\"us-container\">\n<a class=\"us-brand\" href=\"" + Url("/") + "\">";
     if (!prepared.logoUrl.empty()) body += "<img src=\"" + prepared.logoUrl + "\" alt=\"\" width=\"32\" height=\"32\">";
     body += "<span>" + EscapeText(config.name) + "</span></a>\n";
-    if (!config.navbar.empty()) {
+    if (!frame.navbar.empty()) {
         body += "<nav class=\"us-nav\" aria-label=\"" + Attr(labels.mainNav) + "\">";
-        list(config.navbar, body);
+        list(frame.navbar, body);
         body += "</nav>\n";
     }
     if (config.search) body += SearchForm(route, prepared, false) + "\n";
@@ -758,7 +780,7 @@ std::string Builder::Page(const Route& route, const Prepared& prepared, std::vec
             if (name == config.languageNames.end()) {
                 std::transform(label.begin(), label.end(), label.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
             }
-            body += "<li><a href=\"" + Attr(path) + "\" hreflang=\"" + Attr(code) + "\" lang=\"" + Attr(code) + "\"" +
+            body += "<li><a href=\"" + Attr(Url(path)) + "\" hreflang=\"" + Attr(code) + "\" lang=\"" + Attr(code) + "\"" +
                     (code == language ? " aria-current=\"page\"" : "") + ">" + EscapeText(label) + "</a></li>";
         }
         body += "</ul></nav>\n";
@@ -771,12 +793,12 @@ std::string Builder::Page(const Route& route, const Prepared& prepared, std::vec
     body += main;
     if (!main.empty() && main.back() != '\n') body += "\n";
     body += "</main>\n<footer class=\"us-footer\">\n<div class=\"us-container\">\n";
-    if (!config.footer.empty()) {
+    if (!frame.footer.empty()) {
         body += "<nav aria-label=\"" + Attr(labels.footerNav) + "\">";
-        list(config.footer, body);
+        list(frame.footer, body);
         body += "</nav>\n";
     }
-    if (!config.footerText.empty()) body += "<p>" + EscapeText(config.footerText) + "</p>\n";
+    if (!frame.footerText.empty()) body += "<p>" + EscapeText(frame.footerText) + "</p>\n";
     body += "</div>\n</footer>\n</body>\n</html>\n";
 
     // One reading of the body: the behaviours it asks for (the frame's
@@ -821,7 +843,7 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
         notFound.noindex = true;
         notFound.searchable = false;
         notFound.bodyHtml = "<h1>" + EscapeText(config.labels.notFoundTitle) + "</h1>\n<p>" + EscapeText(config.labels.notFoundText) +
-                            "</p>\n<p><a href=\"/\">" + EscapeText(config.name) + "</a></p>\n";
+                            "</p>\n<p><a href=\"" + Url("/") + "\">" + EscapeText(config.name) + "</a></p>\n";
         all.push_back(notFound);
     }
     if (config.search && std::none_of(all.begin(), all.end(), [](const Route& r) { return r.path == "/search/"; })) {
@@ -871,7 +893,7 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
     for (const auto& [name, script] : prepared.behaviours) {
         if (usedBehaviours.count(name)) output[script.first] = script.second;
     }
-    for (const PendingAsset& asset : assets) output[asset.url.substr(1)] = asset.content;
+    for (const PendingAsset& asset : assets) output[asset.file] = asset.content;
     for (const auto& [language, index] : prepared.searchIndex) output[index.first] = index.second;
     for (const auto& [relative, content] : files) output[relative] = content;
 
@@ -894,7 +916,7 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
         "# Written by UltraSite. Files named by their content hash are cached for a\n"
         "# year; pages and the site's lists are checked again on every visit.\n"
         "AddType text/javascript .js .mjs\nAddType image/avif .avif\nAddType image/webp .webp\nAddType font/woff2 .woff2\n"
-        "ErrorDocument 404 /404.html\n"
+        "ErrorDocument 404 " + Url("/404.html") + "\n"
         "<IfModule mod_headers.c>\n"
         "  Header set X-Content-Type-Options \"nosniff\"\n"
         "  Header set Referrer-Policy \"strict-origin-when-cross-origin\"\n";
@@ -914,7 +936,7 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
     output[".htaccess"] = htaccess;
     std::string headers = "/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n";
     if (!policy.empty()) headers += "  Content-Security-Policy: " + policy + "\n";
-    headers += "/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n";
+    headers += Url("/assets/") + "*\n  Cache-Control: public, max-age=31536000, immutable\n";
     output["_headers"] = headers;
 
     // The copied folders, file by file, so links into them can be checked.
@@ -947,9 +969,20 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
                 }
                 const size_t query = target.find('?');
                 if (query != std::string::npos) target = target.substr(0, query);
-                if (target.empty()) target = routePath;
-                else if (target[0] != '/') target = BaseFolder(routePath) + target;
+                // In the address space the pages are served from, then
+                // back to a site path.
+                if (target.empty()) target = Url(routePath);
+                else if (target[0] != '/') target = BaseFolder(Url(routePath)) + target;
                 target = NormalizePath(target);
+                if (target.compare(0, basePath.size(), basePath) == 0) {
+                    target = "/" + target.substr(basePath.size());
+                } else if (target + "/" == basePath) {
+                    target = "/";
+                } else {
+                    (options.brokenLinksWarn ? result.warnings : errors).push_back(routePath + ": the link to " + reference +
+                                                                                   " leaves the site's path " + basePath);
+                    continue;
+                }
 
                 std::string targetFile;
                 auto page = pageByPath.find(target);
@@ -958,6 +991,11 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
                 } else {
                     const std::string relative = target.substr(1);
                     if (output.count(relative) || copied.count(relative)) continue;   // a file: no anchors to check
+                    std::error_code exists;
+                    if (!options.removeStale && !relative.empty() &&
+                        fs::is_regular_file(UltraCanvas::PathFromUtf8(outputDirectory) / UltraCanvas::PathFromUtf8(relative), exists)) {
+                        continue;   // a file the folder already holds, which this build leaves where it is
+                    }
                     (options.brokenLinksWarn ? result.warnings : errors).push_back(routePath + ": broken link to " + reference);
                     continue;
                 }

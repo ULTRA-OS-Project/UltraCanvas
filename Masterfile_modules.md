@@ -3168,8 +3168,10 @@ time, admonitions and tabs (`UltraSiteMarkdown.h`), a search index per
 language, a search page and the `search`, `toc`, `tabs` and `copy`
 modules. UltraPress publishes its HTML + JavaScript output, a site's
 `docs/` and `ultrapress docs` through it
-(`Apps/UltraPress/engine/UltraPressSite.h`); the UltraStore web store is
-next. Headless: links the core library (JSON, HTMLReader, UltraCrypt) and
+(`Apps/UltraPress/engine/UltraPressSite.h`); the UltraStore admin backend
+writes the web store through it (`Apps/UltraStoreAdmin/core/WebStoreHtml.h`),
+under the catalog's path (a site's `url` with a path is served from it:
+`Builder::Url`) and in every catalog language (`SiteConfig::frames`). Headless: links the core library (JSON, HTMLReader, UltraCrypt) and
 zlib. Sources under `UltraSite/{include,core,resources}`, target
 `UltraSite`, header `<UltraSite/UltraSite.h>`, `namespace UltraSite`;
 see `Docs/Modules/UltraSite/README.md` and

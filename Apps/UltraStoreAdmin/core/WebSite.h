@@ -34,6 +34,8 @@
 // that folder. Without the setting nothing of the site is written and the
 // publish folder is what it was; with it and a folder lacking the module,
 // the pages are written without the script and the report warns.
+// Version: 0.2.0 - WebSiteOptions::output and localeDirUtf8, WebSiteReport::languages and sizeReport for the
+//                  HTML + JavaScript store (WebStoreHtml.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -52,6 +54,13 @@ struct WebSiteOptions {
     std::string storeDownloadUrl;     // where the native store is downloaded (web.store_download_url); empty: not offered
     std::string contactUrl;           // the store's contact (store.contact), a URL or an address
     std::string storeName = "UltraStore";
+    // Which of the two outputs (the setting web.output): "wasm" - the HTML
+    // shadow and the WebAssembly store from siteDirUtf8 (WriteWebSite) -
+    // or "html" - the store as HTML + JavaScript (WebStoreHtml.h).
+    std::string output = "wasm";
+    // The HTML store's words: the folder of the shipped translations
+    // (media/locale); empty: UltraLocalisation's shipped folder.
+    std::string localeDirUtf8;
 };
 
 struct WebSiteReport {
@@ -60,13 +69,17 @@ struct WebSiteReport {
     std::string runtimeFolder;        // "runtime/<hash>/" when the runtime was copied, else ""
     std::string runtimeVersion;       // from site.json, "" when unknown
     std::vector<std::string> warnings;
+    std::vector<std::string> languages;   // the HTML store's page trees, the first at the root
+    std::string sizeReport;               // the HTML store's: what every page and asset weighs
 };
 
 // The media variant of a format and the smallest width at or above `width`,
 // nullptr when there is none of the format.
 const UltraStore::MediaVariant* VariantFor(const std::vector<UltraStore::MediaVariant>& variants, const std::string& format, int width);
 
-// Writes the site into the publish folder: the files from the site folder,
+// Writes the site into the publish folder - with options.output "html" the
+// HTML + JavaScript store (WriteHtmlWebSite, WebStoreHtml.h); otherwise the
+// WebAssembly one: the files from the site folder,
 // then a page for Discover, the categories, each category and each app the
 // catalog lists (hidden apps get none; unlisted apps get their page, which
 // nothing links to). The relative media paths of the catalog work as they

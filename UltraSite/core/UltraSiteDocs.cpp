@@ -241,8 +241,9 @@ DocsReport Builder::AddDocs(const DocsOptions& options) {
         for (DocFile& file : tree.files) {
             MarkdownOptions markdown;
             markdown.baseDirectory = UltraCanvas::PathToUtf8(file.source.parent_path());
-            markdown.copyLabel = config.labels.copy;
-            markdown.copiedLabel = config.labels.copied;
+            const Frame frame = FrameFor(tree.language);
+            markdown.copyLabel = frame.labels.copy;
+            markdown.copiedLabel = frame.labels.copied;
             markdown.image = [this](const std::string& name, const std::vector<uint8_t>& data) {
                 return AssetFromText(name, std::string(data.begin(), data.end()));
             };
@@ -261,9 +262,9 @@ DocsReport Builder::AddDocs(const DocsOptions& options) {
                 fs::path withoutSlash = resolved;
                 if (!withoutSlash.has_filename()) withoutSlash = withoutSlash.parent_path();
                 auto page = pageOfFile.find(withoutSlash);
-                if (page != pageOfFile.end()) return page->second + anchor;
+                if (page != pageOfFile.end()) return Url(page->second) + anchor;
                 auto folderPage = pageOfFolder.find(withoutSlash);
-                if (folderPage != pageOfFolder.end()) return folderPage->second + anchor;
+                if (folderPage != pageOfFolder.end()) return Url(folderPage->second) + anchor;
                 std::error_code exists;
                 const bool insideTree = !withoutSlash.lexically_relative(tree.root).empty() &&
                                         withoutSlash.lexically_relative(tree.root).begin()->string() != "..";
@@ -391,7 +392,7 @@ DocsReport Builder::AddDocs(const DocsOptions& options) {
             route.sidebar = tree.sidebar;
             route.bodyHtml = "<h1>" + UltraCanvas::HTML::EscapeText(index.title) + "</h1>\n<ul class=\"us-cards\">\n";
             for (const NavItem& item : index.items) {
-                route.bodyHtml += "<li><a href=\"" + UltraCanvas::HTML::EscapeText(item.href) + "\"><strong>" +
+                route.bodyHtml += "<li><a href=\"" + UltraCanvas::HTML::EscapeText(Url(item.href)) + "\"><strong>" +
                                   UltraCanvas::HTML::EscapeText(item.label) + "</strong>";
                 auto description = descriptionOf.find(item.href);
                 if (description != descriptionOf.end() && !description->second.empty()) {
