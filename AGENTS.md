@@ -658,6 +658,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraClipboard/CHANGELOG.md` | UltraClipboard — the clipboard history |
 | `Docs/UltraNotifications/CHANGELOG.md` | UltraNotifications — the notifications after their pop-up |
 | `Docs/UltraSnip/CHANGELOG.md` | UltraSnip — screenshots and screen recordings |
+| `Docs/UltraToDo/CHANGELOG.md` | UltraToDo — the task list, with reminders and alarms |
 | `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |

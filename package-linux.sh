@@ -54,6 +54,7 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # records it itself while it is open on another desktop.
 # UltraNotifications keeps the notifications after their toast has gone and
 # counts the unread for UltraDesktop's bell.
+# UltraToDo is the task list, with reminders and alarms.
 # UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
 # UltraCanvasStart, the setup application, is in the bundle like every app;
 # scripts/package-ultracanvasstart.sh cuts it out of the bundle on its own.
@@ -63,7 +64,7 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraNotifications UltraWeb UltraCanvasStart ultrapress
+      UltraAuthenticator UltraPassword UltraClipboard UltraNotifications UltraToDo UltraWeb UltraCanvasStart ultrapress
       SmartHomeCenter UltraDBAdmin)
 
 # AnchorPoint is peer-to-peer file sharing: the window, and `anchorpoint-cli`,
