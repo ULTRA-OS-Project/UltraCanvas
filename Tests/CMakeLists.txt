@@ -753,6 +753,11 @@ if(TARGET UltraCanvas)
     target_include_directories(DocumentRenderProbe PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(DocumentRenderProbe PRIVATE cxx_std_20)
     target_link_libraries(DocumentRenderProbe PRIVATE UltraCanvas)
+    # The vector readers draw a document's metafile pictures (a .doc's chart).
+    if(TARGET UltraCanvasVectorPlugin)
+        target_link_libraries(DocumentRenderProbe PRIVATE UltraCanvasVectorPlugin)
+        target_compile_definitions(DocumentRenderProbe PRIVATE DOCUMENT_PROBE_HAS_VECTOR_PLUGIN=1)
+    endif()
     set_target_properties(DocumentRenderProbe PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )

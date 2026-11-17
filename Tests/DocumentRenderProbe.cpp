@@ -9,6 +9,7 @@
 //   pdftoppm -r 60 -png letter.pdf letter
 //
 // Needs a display, as the element does. Exit code 0 when the PDF was written.
+// Version: 1.1.2 - registers the vector readers, so a document's EMF and WMF pictures are drawn
 // Version: 1.1.1 - ...and each cell's side paddings
 // Version: 1.1.0 - DOCUMENT_PROBE_VERBOSE lists each table cell's lines
 // Version: 1.0.0
@@ -19,6 +20,9 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#ifdef DOCUMENT_PROBE_HAS_VECTOR_PLUGIN
+#include "Vector/UltraCanvasVectorFormatsPlugin.h"
+#endif
 
 #include <cstdlib>
 #include <iostream>
@@ -37,6 +41,10 @@ int main(int argc, char** argv) {
         std::cerr << "the application would not initialise (no display?)" << std::endl;
         return 2;
     }
+    // The vector readers: a document's metafile pictures (a .doc's chart) are drawn through them.
+#ifdef DOCUMENT_PROBE_HAS_VECTOR_PLUGIN
+    RegisterVectorFormatsPlugin();
+#endif
     WindowConfig cfg;
     cfg.title = "DocumentRenderProbe";
     cfg.width = 1000;

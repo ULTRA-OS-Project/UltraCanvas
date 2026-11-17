@@ -3582,6 +3582,154 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== A document the way Writer saves it as DOCX =====
+    // Every paragraph with borders of "nil", headings in a numbering whose
+    // levels show nothing, fonts named with their alternatives, and a chart.
+    {
+        std::cout << "\n--- Writer's DOCX: nil borders, silent numbering, font lists, a chart ---\n";
+        const std::string wml = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"";
+        const std::string documentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<w:document " + wml + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+            "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" "
+            "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><w:body>"
+            "<w:p><w:pPr><w:pBdr><w:top w:val=\"nil\"/><w:left w:val=\"nil\"/><w:bottom w:val=\"nil\"/><w:right w:val=\"nil\"/>"
+            "</w:pBdr></w:pPr></w:p>"
+            "<w:p><w:pPr><w:pStyle w:val=\"Heading1\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>"
+            "<w:ind w:left=\"0\" w:hanging=\"432\"/></w:pPr><w:r><w:t>A heading</w:t></w:r></w:p>"
+            "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Open Sans;Arial\" w:hAnsi=\"Open Sans;Arial\"/></w:rPr><w:t>Body</w:t></w:r></w:p>"
+            "<w:p><w:pPr><w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" w:color=\"808080\"/></w:pBdr></w:pPr></w:p>"
+            "<w:p><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"3810000\" cy=\"1905000\"/>"
+            "<wp:docPr id=\"1\" name=\"\"/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+            "<c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" r:id=\"rId7\"/>"
+            "</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
+            "</w:body></w:document>";
+        auto seriesXml = [](const char* name, const char* color, const char* values) {
+            std::string xml = std::string("<c:ser><c:tx><c:strRef><c:strCache><c:pt idx=\"0\"><c:v>") + name
+                + "</c:v></c:pt></c:strCache></c:strRef></c:tx><c:spPr><a:solidFill><a:srgbClr val=\"" + color
+                + "\"/></a:solidFill></c:spPr><c:cat><c:strRef><c:strCache><c:pt idx=\"0\"><c:v>Row 1</c:v></c:pt>"
+                  "<c:pt idx=\"1\"><c:v>Row 2</c:v></c:pt></c:strCache></c:strRef></c:cat><c:val><c:numRef><c:numCache>";
+            int index = 0;
+            std::istringstream list(values);
+            for (std::string value; list >> value; index++) {
+                xml += "<c:pt idx=\"" + std::to_string(index) + "\"><c:v>" + value + "</c:v></c:pt>";
+            }
+            return xml + "</c:numCache></c:numRef></c:val></c:ser>";
+        };
+        const std::string chartXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+            "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><c:chart><c:plotArea><c:barChart>"
+            "<c:barDir val=\"col\"/>" + seriesXml("Column 1", "004586", "9.1 2.4") + seriesXml("Column 2", "ff420e", "3.2 8.8")
+            + "</c:barChart></c:plotArea><c:legend><c:legendPos val=\"r\"/></c:legend></c:chart></c:chartSpace>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("writer.docx")));
+            zip.AddEntry("[Content_Types].xml", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document.main+xml\"/></Types>"));
+            zip.AddEntry("_rels/.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "officeDocument\" Target=\"word/document.xml\"/></Relationships>"));
+            zip.AddEntry("word/_rels/document.xml.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId7\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "chart\" Target=\"charts/chart1.xml\"/></Relationships>"));
+            zip.AddEntry("word/document.xml", documentXml);
+            zip.AddEntry("word/styles.xml", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:styles " + wml + ">"
+                "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/></w:style>"
+                "<w:style w:type=\"paragraph\" w:styleId=\"Heading1\"><w:name w:val=\"heading 1\"/><w:basedOn w:val=\"Normal\"/>"
+                "<w:rPr><w:rFonts w:ascii=\"Liberation Sans;Arial\" w:hAnsi=\"Liberation Sans;Arial\"/><w:b/><w:sz w:val=\"36\"/>"
+                "</w:rPr></w:style></w:styles>"));
+            zip.AddEntry("word/numbering.xml", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:numbering " + wml + ">"
+                "<w:abstractNum w:abstractNumId=\"1\"><w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"none\"/>"
+                "<w:suff w:val=\"nothing\"/><w:lvlText w:val=\"\"/></w:lvl></w:abstractNum>"
+                "<w:num w:numId=\"1\"><w:abstractNumId w:val=\"1\"/></w:num></w:numbering>"));
+            zip.AddEntry("word/charts/chart1.xml", chartXml);
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument writer;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("writer.docx"), writer, err), err);
+        int rules = 0;
+        const RichDocBlock* heading = nullptr;
+        const RichTextRun* body = nullptr;
+        const RichTextRun* chart = nullptr;
+        for (const RichDocBlock& block : writer.blocks) {
+            if (block.type == RichBlockType::HorizontalRule) rules++;
+            if (block.type == RichBlockType::Heading) heading = &block;
+            CHECK_MSG(block.type != RichBlockType::ListItem, "docx: a level without number or bullet makes no list item");
+            for (const RichTextRun& run : block.runs) {
+                if (run.text == "Body") body = &run;
+                if (run.IsTextFrame()) chart = &run;
+            }
+        }
+        CHECK_MSG(rules == 1, "docx: only a border that is drawn is a rule (\"nil\" is none), got " + std::to_string(rules));
+        CHECK_MSG(heading && UCRichDocument::ConcatenateRunText(heading->runs) == "A heading",
+                  "docx: the heading in a silent numbering is a heading");
+        if (heading) {
+            CHECK_MSG(heading->paragraphFontFamily == "Liberation Sans" && Near(heading->paragraphFontSizePt, 18.0f),
+                      "docx: ...in its style's font and size, the first of the names: \"" + heading->paragraphFontFamily
+                      + "\" " + std::to_string(heading->paragraphFontSizePt));
+            CHECK_MSG(Near(heading->firstLineIndentPt, -21.6f), "docx: ...its first line hanging 21.6 pt");
+        }
+        CHECK_MSG(body && body->fontFamily == "Open Sans", "docx: a run's font is the first of its names, got \""
+                  + (body ? body->fontFamily : std::string()) + "\"");
+        CHECK_MSG(chart && chart->imageWrap == RichTextRun::ImageWrap::Inline && Near(chart->imageWidthPt, 300.0f)
+                  && Near(chart->imageHeightPt, 150.0f), "docx: the chart stands in its line, 300 x 150 pt");
+        if (chart && chart->frameIndex < static_cast<int>(writer.frames.size())) {
+            const RichTextFrame& frame = writer.frames[static_cast<size_t>(chart->frameIndex)];
+            CHECK_MSG(frame.shapes.size() == 1 && frame.shapes[0].kind == RichShape::Kind::Group, "docx: ...drawn as a group of shapes");
+            if (frame.shapes.size() == 1) {
+                // Two series of two values: four columns, in the series' colours, the 9.1 the tallest.
+                int blue = 0, red = 0;
+                float tallest = 0.0f, shortest = 1e9f;
+                std::string words;
+                for (const RichShape& shape : frame.shapes[0].children) {
+                    if (shape.kind == RichShape::Kind::Rectangle && shape.heightPt > 8.0f && !shape.fillColor.empty()) {
+                        if (Lower(shape.fillColor) == "#004586") blue++;
+                        if (Lower(shape.fillColor) == "#ff420e") red++;
+                        tallest = std::max(tallest, shape.heightPt);
+                        shortest = std::min(shortest, shape.heightPt);
+                    }
+                    if (shape.textFrame >= 0 && shape.textFrame < static_cast<int>(writer.frames.size())) {
+                        for (const RichDocBlock& block : writer.frames[static_cast<size_t>(shape.textFrame)].blocks) {
+                            words += UCRichDocument::ConcatenateRunText(block.runs) + "|";
+                        }
+                    }
+                }
+                CHECK_MSG(blue == 2 && red == 2, "docx: ...two columns for each of its two series, got " + std::to_string(blue)
+                          + " and " + std::to_string(red));
+                CHECK_MSG(tallest > 0.0f && std::abs(shortest / tallest - 2.4f / 9.1f) < 0.02f,
+                          "docx: ...as tall as their values: " + std::to_string(shortest) + " and " + std::to_string(tallest));
+                CHECK_MSG(words.find("Row 1|") != std::string::npos && words.find("Column 2|") != std::string::npos
+                          && words.find("10|") != std::string::npos, "docx: ...with its categories, legend and axis values: " + words);
+            }
+        }
+        // Saved and read again, the chart is still there (as the drawing it became).
+        for (const char* ext : {"docx", "odt"}) {
+            const std::string path = TmpPath(std::string("writer-saved.") + ext);
+            CHECK_MSG(UCWordDocumentIO::Save(path, writer, err), err);
+            UCRichDocument again;
+            CHECK_MSG(UCWordDocumentIO::Load(path, again, err), err);
+            bool drawing = false;
+            for (const RichDocBlock& block : again.blocks) {
+                for (const RichTextRun& run : block.runs) drawing = drawing || run.IsTextFrame();
+            }
+            CHECK_MSG(drawing, std::string("saved as ") + ext + ": the chart is kept as a drawing");
+            CHECK_MSG(again.ToPlainText().find("Row 2") != std::string::npos, std::string("saved as ") + ext + ": ...with its words");
+        }
+    }
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;

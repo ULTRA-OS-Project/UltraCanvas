@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.15.0 - a heading in its style's size and font; the first paragraph's space above; a hanging first
+//                   line left of the column; a paragraph whose float does not fit its page moves on
 // Version: 1.14.2 - a line without words has its paragraph's set line height (a cell's, a body paragraph's)
 // Version: 1.14.1 - a cell's runs with a line multiple of their own (RichTextRun::lineSpacing)
 // Version: 1.14.0 - columns that give way to their content; a table nested in a cell edited in place; spaces a
@@ -892,6 +894,9 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
             // Fitted round this page's pictures first: that can change its
             // height, and so whether it fits.
             float top = pageEmpty ? y : y + before;
+            // The document's first paragraph keeps its space above (a
+            // title's); at the top of any later page it is dropped.
+            if (i == 0 && sourceBlock.spaceBeforePt > 0.0f) top += Px(sourceBlock.spaceBeforePt);
             if (breakPending) {
                 newPage();
                 breakPending = false;
@@ -2923,8 +2928,10 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
     if (block.type != RichBlockType::ListItem) {
         // A hanging indent puts the first line left of the others: the layout
         // starts there, and its (negative) indent moves the rest back in.
+        // (Left of the column even, where the indent is smaller than the
+        // hang - Writer's headings - as far as the page's margin reaches.)
         const float hang = Px(std::min(0.0f, block.firstLineIndentPt));
-        bl.textLeft = std::max(0.0f, indent + hang);
+        bl.textLeft = std::max(pageView ? -Px(EffectivePageSetup().marginLeftPt) : 0.0f, indent + hang);
         wrapWidth = std::max(1.0f, columnSpan - bl.textLeft - Px(std::max(0.0f, block.rightIndentPt)));
     }
 
@@ -3287,7 +3294,7 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
             }
             bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth,
                                        blockIndex >= 0 ? &bl.hitRects : nullptr, blockIndex,
-                                       &bl.inlineImages, bl.textLeft);
+                                       &bl.inlineImages, std::max(0.0f, bl.textLeft));   // (no origin left of the column: < 0 means none)
             // Beside a float for only its first lines: those stay narrow, and
             // the lines below it take the column's full width again.
             if (blockIndex >= 0 && !bl.markerOnRight && !block.rightToLeft

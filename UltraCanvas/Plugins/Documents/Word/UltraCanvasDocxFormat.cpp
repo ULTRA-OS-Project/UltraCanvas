@@ -2,6 +2,8 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.13.0 - charts (c:chartSpace) drawn as shapes; nil paragraph borders; numbering levels without
+//                   number or bullet; a font named with its alternatives
 // Version: 1.12.1 - a cell paragraph's own line multiple read and written
 // Version: 1.12.0 - w:tblLayout (autofit or fixed) read and written
 // Version: 1.11.0 - tables nested in cells, column breaks, a cell's line height and multiple, negative w:tblInd,
@@ -2539,6 +2541,231 @@ private:
         }
     }
 
+    // ===== CHARTS =====
+    // A chart (DrawingML c:chartSpace in its own part): drawn from the
+    // values the file keeps with it, as a drawing of shapes - columns or
+    // lines for its series, a value axis with its grid, the categories under
+    // it and a legend. Columns for a bar or column chart, lines for a line
+    // or area chart; any other kind is drawn as columns of its series.
+    static void CollectChartPoints(tinyxml2::XMLElement* from, std::vector<std::string>& out) {
+        for (auto* child = from ? from->FirstChildElement() : nullptr; child; child = child->NextSiblingElement()) {
+            if (std::string(child->Name() ? child->Name() : "") == "c:pt") {
+                const size_t index = static_cast<size_t>(std::max(0, child->IntAttribute("idx", static_cast<int>(out.size()))));
+                if (index < 4096) {
+                    if (out.size() <= index) out.resize(index + 1);
+                    auto* value = child->FirstChildElement("c:v");
+                    out[index] = value && value->GetText() ? value->GetText() : "";
+                }
+            } else {
+                CollectChartPoints(child, out);
+            }
+        }
+    }
+
+    bool ParseChart(tinyxml2::XMLElement* drawing, tinyxml2::XMLElement* graphicData, InlineContext& ctx) {
+        auto* reference = FindDescendant(graphicData, "c:chart");
+        if (!reference) return false;
+        auto relation = relationships_.find(Attr(reference, "r:id"));
+        if (relation == relationships_.end()) return false;
+        std::string xml;
+        if (!zip_.ReadEntry(ResolvePartPath(relation->second.target), xml)) return false;
+        tinyxml2::XMLDocument chart;
+        if (chart.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !chart.RootElement()) return false;
+        auto* plot = FindDescendant(chart.RootElement(), "c:plotArea");
+        if (!plot) return false;
+
+        struct Series { std::string name, color; std::vector<double> values; };
+        std::vector<Series> series;
+        std::vector<std::string> categories;
+        bool lines = false;
+        static const char* const kPalette[] = {"#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47"};
+        for (auto* kind = plot->FirstChildElement(); kind; kind = kind->NextSiblingElement()) {
+            const std::string tag = kind->Name() ? kind->Name() : "";
+            if (tag.size() < 7 || tag.compare(tag.size() - 5, 5, "Chart") != 0) continue;
+            if (series.empty()) lines = tag == "c:lineChart" || tag == "c:areaChart" || tag == "c:scatterChart";
+            for (auto* ser = kind->FirstChildElement("c:ser"); ser; ser = ser->NextSiblingElement("c:ser")) {
+                Series one;
+                if (auto* name = FindDescendant(ser->FirstChildElement("c:tx"), "c:v")) one.name = name->GetText() ? name->GetText() : "";
+                if (auto* look = ser->FirstChildElement("c:spPr")) {
+                    auto* fill = look->FirstChildElement("a:solidFill");
+                    if (!fill) {
+                        auto* line = look->FirstChildElement("a:ln");
+                        fill = line ? line->FirstChildElement("a:solidFill") : nullptr;
+                    }
+                    if (fill) one.color = DrawingColor(fill);
+                }
+                if (one.color.empty()) one.color = kPalette[series.size() % 6];
+                std::vector<std::string> points;
+                auto* values = ser->FirstChildElement("c:val");
+                if (!values) values = ser->FirstChildElement("c:yVal");
+                CollectChartPoints(values, points);
+                for (const std::string& point : points) {
+                    double value = 0.0;
+                    if (!point.empty()) WordFormatInternal::ReadNumberAt(point, 0, value);
+                    one.values.push_back(value);
+                }
+                if (categories.empty()) CollectChartPoints(ser->FirstChildElement("c:cat"), categories);
+                if (!one.values.empty()) series.push_back(std::move(one));
+            }
+        }
+        if (series.empty()) return false;
+        size_t count = categories.size();
+        double highest = 0.0;
+        for (const Series& one : series) {
+            count = std::max(count, one.values.size());
+            for (double value : one.values) highest = std::max(highest, value);
+        }
+        if (count == 0) return false;
+        // The value axis: a round step, five or so of them to the top.
+        double step = 1.0;
+        if (highest > 0.0) {
+            const double rough = highest / 5.0;
+            const double magnitude = std::pow(10.0, std::floor(std::log10(rough)));
+            const double share = rough / magnitude;
+            step = (share <= 1.0 ? 1.0 : share <= 2.0 ? 2.0 : share <= 5.0 ? 5.0 : 10.0) * magnitude;
+        }
+        const int steps = std::max(1, static_cast<int>(std::ceil(highest / step - 1e-9)));
+        const double top = step * steps;
+
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        if (auto* extent = FindDescendant(drawing, "wp:extent")) {
+            run.imageWidthPt = static_cast<float>(ParseEmu(Attr(extent, "cx"))) / kEmuPerPoint;
+            run.imageHeightPt = static_cast<float>(ParseEmu(Attr(extent, "cy"))) / kEmuPerPoint;
+        }
+        if (run.imageWidthPt < 40.0f || run.imageHeightPt < 40.0f) return false;
+        const float width = run.imageWidthPt, height = run.imageHeightPt;
+        const bool legend = FindDescendant(chart.RootElement(), "c:legend") != nullptr;
+        const float legendWidth = legend ? std::min(90.0f, width * 0.25f) : 0.0f;
+        const float left = 26.0f, plotTop = 8.0f, right = width - legendWidth - 6.0f, bottom = height - 18.0f;
+        const float plotWidth = std::max(10.0f, right - left), plotHeight = std::max(10.0f, bottom - plotTop);
+
+        RichShape group;
+        group.kind = RichShape::Kind::Group;
+        group.widthPt = width;
+        group.heightPt = height;
+        {
+            // The chart's area: nothing to see, but it keeps the drawing as
+            // large as the chart where a group is as large as its members
+            // (ODF's draw:g).
+            RichShape area;
+            area.widthPt = width;
+            area.heightPt = height;
+            group.children.push_back(std::move(area));
+        }
+        auto words = [&](float x, float y, float w, float h, const std::string& text, RichTextAlign align) {
+            RichTextFrame label;
+            label.shapeText = true;
+            RichDocBlock paragraph;
+            paragraph.align = align;
+            paragraph.spaceBeforePt = 0.0f;
+            paragraph.spaceAfterPt = 0.0f;
+            RichTextRun letters;
+            letters.text = text;
+            letters.fontSizePt = 7.0f;
+            paragraph.runs.push_back(std::move(letters));
+            label.blocks.push_back(std::move(paragraph));
+            RichShape box;
+            box.xPt = x;
+            box.yPt = y;
+            box.widthPt = w;
+            box.heightPt = h;
+            box.textPaddingPt = 0.0f;
+            box.textFrame = static_cast<int>(doc_->frames.size());
+            doc_->frames.push_back(std::move(label));
+            group.children.push_back(std::move(box));
+        };
+        auto rule = [&](float x, float y, float w, float h, const char* color) {
+            RichShape line;
+            line.kind = RichShape::Kind::Line;
+            line.xPt = x;
+            line.yPt = y;
+            line.widthPt = w;
+            line.heightPt = h;
+            line.lineColor = color;
+            line.lineWidthPt = 0.5f;
+            group.children.push_back(std::move(line));
+        };
+        // The grid and its values, from the foot up.
+        for (int i = 0; i <= steps; i++) {
+            const float y = bottom - plotHeight * static_cast<float>(i) / static_cast<float>(steps);
+            rule(left, y, plotWidth, 0.0f, i == 0 ? "#808080" : "#D0D0D0");
+            std::ostringstream value;
+            value.imbue(std::locale::classic());
+            value << step * i;
+            words(0.0f, y - 5.0f, left - 4.0f, 10.0f, value.str(), RichTextAlign::Right);
+        }
+        rule(left, plotTop, 0.0f, plotHeight, "#808080");
+        const float slot = plotWidth / static_cast<float>(count);
+        if (lines) {
+            for (const Series& one : series) {
+                RichShape path;
+                path.kind = RichShape::Kind::Path;
+                path.xPt = left;
+                path.yPt = plotTop;
+                path.widthPt = plotWidth;
+                path.heightPt = plotHeight;
+                path.lineColor = one.color;
+                path.lineWidthPt = 1.5f;
+                for (size_t c = 0; c < one.values.size(); c++) {
+                    RichShape::PathPoint point;
+                    point.op = c == 0 ? RichShape::PathPoint::Op::Move : RichShape::PathPoint::Op::Line;
+                    point.x = (static_cast<float>(c) + 0.5f) / static_cast<float>(count);
+                    point.y = 1.0f - static_cast<float>(std::clamp(one.values[c] / top, 0.0, 1.0));
+                    path.path.push_back(point);
+                }
+                group.children.push_back(std::move(path));
+            }
+        } else {
+            const float bar = slot * 0.7f / static_cast<float>(series.size());
+            for (size_t s = 0; s < series.size(); s++) {
+                for (size_t c = 0; c < series[s].values.size(); c++) {
+                    const float tall = plotHeight * static_cast<float>(std::clamp(series[s].values[c] / top, 0.0, 1.0));
+                    if (tall <= 0.0f) continue;
+                    RichShape column;
+                    column.xPt = left + slot * static_cast<float>(c) + slot * 0.15f + bar * static_cast<float>(s);
+                    column.yPt = bottom - tall;
+                    column.widthPt = bar;
+                    column.heightPt = tall;
+                    column.fillColor = series[s].color;
+                    group.children.push_back(std::move(column));
+                }
+            }
+        }
+        for (size_t c = 0; c < count && c < categories.size(); c++) {
+            words(left + slot * static_cast<float>(c), bottom + 3.0f, slot, 12.0f, categories[c], RichTextAlign::Center);
+        }
+        if (legend) {
+            const float x = right + 10.0f;
+            float y = plotTop + std::max(0.0f, (plotHeight - 11.0f * static_cast<float>(series.size())) * 0.5f);
+            for (const Series& one : series) {
+                RichShape key;
+                key.xPt = x;
+                key.yPt = y + 2.0f;
+                key.widthPt = 6.0f;
+                key.heightPt = 6.0f;
+                key.fillColor = one.color;
+                group.children.push_back(std::move(key));
+                words(x + 9.0f, y, std::max(10.0f, width - x - 9.0f), 10.0f, one.name, RichTextAlign::Left);
+                y += 11.0f;
+            }
+        }
+
+        RichTextFrame frame;
+        if (auto* docPr = FindDescendant(drawing, "wp:docPr")) frame.name = Attr(docPr, "name");
+        if (frame.name.empty()) frame.name = "Chart";
+        frame.shapes.push_back(std::move(group));
+        if (drawing->FirstChildElement("wp:inline")) run.imageWrap = RichTextRun::ImageWrap::Inline;
+        else ApplyAnchorPlacement(drawing->FirstChildElement("wp:anchor"), run);
+        run.imageAltText = frame.name;
+        run.frameIndex = static_cast<int>(doc_->frames.size());
+        doc_->frames.push_back(std::move(frame));
+        run.lineBreakBefore = ctx.pendingLineBreak;
+        ctx.pendingLineBreak = false;
+        ctx.runs.push_back(std::move(run));
+        return true;
+    }
+
     void ParseDrawing(tinyxml2::XMLElement* drawing, InlineContext& ctx) {
         if (std::string(drawing->Name() ? drawing->Name() : "") == "w:pict") {
             // VML: a text box, else drawn shapes.
@@ -2556,6 +2783,7 @@ private:
             else ParseDrawingShapes(drawing, graphicData, ctx);
             return;
         }
+        if (uri.find("/chart") != std::string::npos && ParseChart(drawing, graphicData, ctx)) return;
         auto* blip = FindDescendant(drawing, "a:blip");
         if (!blip) {
             ParseTextBox(drawing, ctx);

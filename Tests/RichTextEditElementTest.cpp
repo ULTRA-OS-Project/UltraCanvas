@@ -1789,6 +1789,79 @@ int main() {
                      && std::abs(second.y - first.y) < 2.0f);
                 edit->SetPageView(false);
             }
+
+            // On pages: a heading in its style's own size, the first
+            // paragraph's space above, a hanging first line left of the
+            // column, and a picture that does not fit the rest of its page.
+            {
+                auto paged = std::make_shared<UCRichDocument>();
+                const std::vector<uint8_t> bytes(kDotPng.begin(), kDotPng.end());
+                const int dot = paged->AddMedia("tall.png", "image/png", bytes);
+                RichDocBlock heading, body;
+                heading.type = RichBlockType::Heading;
+                heading.headingLevel = 1;
+                heading.runs = {words};
+                body.runs = {words};
+                auto bodyTop = [&]() {
+                    edit->SetDocument(paged);
+                    edit->SetPageView(true);
+                    window->UpdateAndRender();
+                    window->UpdateAndRender();
+                    edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                    window->UpdateAndRender();
+                    return edit->GetCaretRectForTest();
+                };
+                heading.paragraphFontSizePt = 10.0f;
+                paged->blocks = {heading, body};
+                const Rect2Df small = bodyTop();
+                heading.paragraphFontSizePt = 40.0f;
+                paged->blocks = {heading, body};
+                const Rect2Df large = bodyTop();
+                TEST("A heading is set in the size its document gives it: the text after a 40 pt one "
+                     + std::to_string(large.y - small.y) + " lower than after a 10 pt one", large.y - small.y > 30.0f);
+                heading.spaceBeforePt = 30.0f;
+                paged->blocks = {heading, body};
+                const Rect2Df spaced = bodyTop();
+                TEST("The document's first paragraph keeps its space above: " + std::to_string(spaced.y - large.y),
+                     std::abs(spaced.y - large.y - 40.0f) < 2.0f);
+                // The body's first line 18 pt left of its others, with no indent: left of the column.
+                RichDocBlock hanging = body;
+                hanging.firstLineIndentPt = -18.0f;
+                paged->blocks = {heading, hanging};
+                const Rect2Df hung = bodyTop();
+                TEST("A hanging first line starts left of the column where the paragraph has no indent: "
+                     + std::to_string(spaced.x - hung.x) + " left", std::abs(spaced.x - hung.x - 24.0f) < 2.0f);
+                // Forty lines of text, then a paragraph anchoring a 300 pt
+                // picture text flows round: it goes to the next page whole.
+                RichTextRun tallPicture;
+                tallPicture.text = RichTextRun::kObjectReplacement;
+                tallPicture.mediaIndex = dot;
+                tallPicture.imageWidthPt = 200.0f;
+                tallPicture.imageHeightPt = 300.0f;
+                tallPicture.imageWrap = RichTextRun::ImageWrap::Square;
+                tallPicture.imageFloatAlign = RichTextAlign::Center;
+                RichDocBlock anchor;
+                anchor.runs = {tallPicture, words};
+                auto pictureTop = [&](int linesBefore) {
+                    std::vector<RichDocBlock> blocks;
+                    for (int i = 0; i < linesBefore; i++) blocks.push_back(body);
+                    blocks.push_back(anchor);
+                    paged->blocks = blocks;
+                    edit->SetDocument(paged);
+                    edit->SetPageView(true);
+                    window->UpdateAndRender();
+                    window->UpdateAndRender();
+                    return edit->GetFloatRectForTest(0).y;
+                };
+                // Each line before it moves it one line down - until it no
+                // longer fits, when it is a page's margins and more further on.
+                const float five = pictureTop(5), six = pictureTop(6), forty = pictureTop(40);
+                const float line = six - five;
+                TEST("A picture too tall for the rest of its page goes to the next page with its paragraph: "
+                     + std::to_string(forty - five) + " down for 35 lines of " + std::to_string(line),
+                     line > 5.0f && forty - five > 35.0f * line + 80.0f);
+                edit->SetPageView(false);
+            }
             edit->SetDocument(document);
             window->UpdateAndRender();
         }

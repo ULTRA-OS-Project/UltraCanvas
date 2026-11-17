@@ -5,6 +5,7 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.12.3 - a heading's own font, size and spacing read and written
 // Version: 1.12.2 - a turned picture in the line (as-char with draw:transform) read and written
 // Version: 1.12.1 - a cell paragraph's own proportional line height (70%); a file by Word sets it on every line
 // Version: 1.12.0 - table cells: a paragraph per line, line heights, nested tables read as tables, the font a
@@ -2294,7 +2295,8 @@ private:
             || block.type == RichBlockType::CodeBlock) {
             runBase = OdtTextProps{};
         }
-        if (block.type == RichBlockType::Paragraph || block.type == RichBlockType::ListItem) {
+        if (block.type == RichBlockType::Paragraph || block.type == RichBlockType::ListItem
+            || block.type == RichBlockType::Heading) {
             block.paragraphFontSizePt = paraProps.fontSizePt;
             block.paragraphFontFamily = paraProps.fontFamily;
         }
@@ -4500,7 +4502,12 @@ private:
                     if (!block.styleId.empty() && doc_->FindStyle(block.styleId)) {
                         body << "<text:h text:style-name=\"" << EscapeXml(ParagraphStyleFor(block)) << "\"";
                     } else {
-                        body << "<text:h text:style-name=\"Heading_20_" << std::clamp(block.headingLevel, 1, 6) << "\"";
+                        // Its own font, size, spacing and indents on top of
+                        // the heading style, where it has any.
+                        const std::string level = "Heading_20_" + std::to_string(std::clamp(block.headingLevel, 1, 6));
+                        const bool own = block.HasParagraphGeometry() || block.align != RichTextAlign::Default
+                            || block.columnBreakBefore || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty();
+                        body << "<text:h text:style-name=\"" << (own ? GeometryStyleFor(block, level) : level) << "\"";
                     }
                     body << " text:outline-level=\"" << std::clamp(block.headingLevel, 1, 6) << "\">";
                     WriteBookmarks(body, block);

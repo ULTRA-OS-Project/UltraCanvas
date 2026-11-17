@@ -647,6 +647,13 @@ and columns are added and removed as in any table, and the cell around it
 grows and shrinks with what is typed. A click outside, or
 `FinishHeaderFooterEditing()`, ends it.
 
+A **chart** in a DOCX (DrawingML, `c:chartSpace`) is read as such a drawing:
+columns or lines for its series from the values the file keeps with it, a
+value axis with its grid, the categories under it and a legend. It is a
+picture of the chart - saved again it is a drawing, not a chart. A .doc's
+chart is the metafile picture Word stored with it, drawn by the vector
+readers (`RegisterVectorFormatsPlugin()`).
+
 A **drawing set in a paragraph's line** (wrap `Inline`: Word's `wp:inline`
 shape, ODF's `as-char` one) stands in that line in the body too, where the
 paragraph's alignment puts it; it is no float.
@@ -1298,6 +1305,12 @@ otherwise), with page number and page count fields
 (`RichTextRun::field`) filled in for that page. The body starts below the
 top margin, or below the header when the header is taller than the margin
 leaves room for; the footer likewise.
+
+A heading is set in the size and font its document's style gives it
+(`paragraphFontSizePt`, `paragraphFontFamily`), the document's first paragraph
+keeps its space above, a hanging first line starts left of the column where
+the paragraph's indent is smaller than the hang, and a paragraph whose picture
+or frame would reach past the foot of the page goes to the next page with it.
 
 **Column breaks.** `RichDocBlock::columnBreakBefore` starts the block in its
 section's next column, at the height the columns began at - or on the next
