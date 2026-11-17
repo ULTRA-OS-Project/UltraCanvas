@@ -1,6 +1,7 @@
 // include/UltraNet/UltraNetSocket.h
 // Raw TCP and UDP sockets — POSIX sockets on Linux/macOS, Winsock on Windows.
 // Independent of libcurl. Sync-only in Stage 3.
+// Version: 0.5.1 - a connection tries every address of the name in turn
 // Version: 0.5.0 - sends never raise SIGPIPE; a receive tells a timeout (Timeout) from a
 //                  broken connection (ConnectionReset / ReceiveFailed) and a closed one
 //                  (Ok, no bytes) - over TLS as well
@@ -64,6 +65,9 @@ UltraNetHandle UltraNet_TcpConnect(
     int port,
     const UltraNetSocketOptions& options = UltraNetSocketOptions::Default());
 
+// Every address the name resolves to is tried in turn, in the resolver's
+// order, until one takes the connection ("localhost" as ::1 and 127.0.0.1;
+// a server whose IPv6 address is not reachable from here).
 // UltraNet_TcpConnect with the reason it failed: HostNotFound,
 // ConnectionRefused, Timeout, AuthenticationRequired / AuthenticationFailed
 // (the proxy's sign-in), Unsupported (a TLS proxy), with the proxy named in

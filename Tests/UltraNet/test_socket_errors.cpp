@@ -8,6 +8,7 @@
 //     test program.
 // The TLS half talks to a python3 ssl server with a certificate made by the
 // openssl command; it skips without either.
+// Version: 0.1.2 - "localhost" reached on 127.0.0.1 whatever it resolves to first
 // Version: 0.1.1 - <unistd.h> for getpid (macOS)
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
@@ -131,6 +132,27 @@ TEST(tcp_receive_tells_timeout_closed_and_data_apart) {
     CHECK(last.code == UltraNetResultCode::ConnectionReset || last.code == UltraNetResultCode::SendFailed);
 
     UltraNet_SocketClose(client);
+    UltraNet_SocketClose(listener);
+}
+
+// A name with several addresses is reached on whichever takes the connection:
+// "localhost" can resolve to ::1 before 127.0.0.1, and a listener on
+// 127.0.0.1 alone must still be reached by name.
+TEST(tcp_connect_tries_every_address_of_a_name) {
+    UltraNetSocketOptions options;
+    options.bindAddress = "127.0.0.1";
+    options.reuseAddress = true;
+    UltraNetHandle listener = UltraNet_TcpListen(0, options);
+    REQUIRE(listener != UltraNetInvalidHandle);
+    UltraNetEndpoint local;
+    REQUIRE(UltraNet_SocketLocalEndpoint(listener, local).success);
+    UltraNetHandle client = UltraNetInvalidHandle;
+    UltraNetSocketOptions connect;
+    connect.connectTimeoutMs = 3000;
+    const UltraNetResult r = UltraNet_TcpOpen("localhost", local.port, connect, client);
+    CHECK(r.success);
+    CHECK(client != UltraNetInvalidHandle);
+    if (client != UltraNetInvalidHandle) UltraNet_SocketClose(client);
     UltraNet_SocketClose(listener);
 }
 
