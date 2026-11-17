@@ -14,6 +14,7 @@
 // through, ULTRA OS's own by default), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
+// Version: 0.4.4 - a note on the Mattermost and Zulip accounts
 // Version: 0.4.3 - Mastodon in the notes on accounts, the data folder and the networks
 // Version: 0.4.2 - the look follows a change while open (OnLook): a choice on the Look page shows at once
 // Version: 0.4.1 - every text a person reads through Tr (UltraLocalisation)
@@ -548,6 +549,10 @@ std::shared_ptr<UltraCanvasContainer> BuildAccountsPage(State* d) {
     AddNote(parts, "cc-set-accounts-note1",
             Tr("Signing in to Matrix, Telegram or Mastodon is done from the sidebar, with the Matrix, Telegram "
             "and Mastodon buttons under your ChatCube ID."));
+    AddNote(parts, "cc-set-accounts-note-teams",
+            Tr("Mattermost and Zulip, the team chats, have their buttons in the row below: your server, "
+            "your user name or e-mail and your password - and the code from your authenticator app when your "
+            "account asks for one."));
     AddNote(parts, "cc-set-accounts-note2",
             Tr("Your ChatCube ID is a key made on this computer and has no password; there is nothing to sign "
             "out of. Send the ID to the people who should reach you."));

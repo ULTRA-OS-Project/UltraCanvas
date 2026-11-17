@@ -71,6 +71,8 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.8 - Mattermost and Zulip accounts (AccountForm); an address more than one signed-in
+//                  network takes asks which (ProvidersOfAddress)
 // Version: 0.3.7 - the group editor (Group settings): a description, members removed, blocked, messaged
 // Version: 0.3.6 - public groups: the "Public groups" list with Join, Make public / Make private
 // Version: 0.3.5 - a Mastodon account: ToggleMastodonForm, SignInToMastodon, mastodonProviderId_
@@ -200,6 +202,8 @@ private:
     void StopRecoveryPolling();
     void AddContact();
     void AddContactById(const std::string& id);
+    // On that network, chosen (the menu that asks) or the address's own.
+    void AddContactOn(const std::string& provider, const std::string& id);
     void RefreshNearby();           // the "On this network" list
     // The "Public groups" list: the ChatCube groups anyone may join, those
     // not joined yet, each with Join; and the owner's switch in a group's menu.
@@ -211,6 +215,27 @@ private:
     // A Mastodon account: the server, then its sign-in page in the browser.
     void ToggleMastodonForm();
     void SignInToMastodon(bool stored);
+    // A network signed in to with a server, a user and a password - and a
+    // code when the account asks for one (Mattermost's MFA): Mattermost and
+    // Zulip, one form each, built and run alike.
+    struct AccountForm {
+        std::string providerId;
+        std::string name;                                   // "Mattermost"
+        std::shared_ptr<UltraCanvas::UltraCanvasButton>    toggle;
+        std::shared_ptr<UltraCanvas::UltraCanvasContainer> form;
+        std::shared_ptr<UltraCanvas::UltraCanvasTextInput> server;
+        std::shared_ptr<UltraCanvas::UltraCanvasTextInput> user;
+        std::shared_ptr<UltraCanvas::UltraCanvasTextInput> password;
+        std::shared_ptr<UltraCanvas::UltraCanvasTextInput> code;
+        std::shared_ptr<UltraCanvas::UltraCanvasButton>    signIn;
+    };
+    void BuildAccountForm(AccountForm& f, UltraCanvas::UltraCanvasContainer& sidebar, const std::string& serverHint,
+                          const std::string& userHint);
+    void ToggleAccountForm(AccountForm& f);
+    void SignInToAccount(AccountForm& f, bool stored);
+    AccountForm* AccountFormOf(const std::string& providerId);
+    // A network's sign-in and connection events: true when they were one of these forms'.
+    bool OnAccountEvent(const UltraIMEvent& e);
     // The keys to encrypted Matrix rooms to a passphrase-protected file (the
     // format Element reads), and back from one.
     void ExportMatrixKeys();
@@ -228,6 +253,10 @@ private:
     // The Telegram application's API ID and hash the relay keeps, so nobody
     // types them; then `then` (the stored Telegram session resumed, say).
     void FetchTelegramCredentials(std::function<void()> then);
+    // The networks an address can belong to, the likeliest first: @name:server
+    // Matrix; @user@server Mastodon; @user Telegram or Mattermost; +phone, t.me
+    // Telegram; name@domain Zulip or Mattermost; a ChatCube ID ChatCube.
+    std::vector<std::string> ProvidersOfAddress(const std::string& address) const;
     // The provider an address belongs to: @name:server Matrix, +phone /
     // @username / t.me/... Telegram, anything else a ChatCube ID.
     std::string ProviderOfAddress(const std::string& address) const;
@@ -494,6 +523,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> mastodonServer_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    mastodonSignIn_;
     std::string mastodonProviderId_ = "mastodon";
+    AccountForm mattermost_{"mattermost", "Mattermost", {}, {}, {}, {}, {}, {}, {}};
+    AccountForm zulip_{"zulip", "Zulip", {}, {}, {}, {}, {}, {}, {}};
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> networkMenu_;   // "Add on which network?"
     std::string activeProvider_;    // the open conversation's provider
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
     std::shared_ptr<ConversationListModel>             conversations_;

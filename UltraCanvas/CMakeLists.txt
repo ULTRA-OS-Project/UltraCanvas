@@ -4780,6 +4780,57 @@ else()
     message(STATUS "  [−] UltraIM provider Mastodon - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
+# ----- UltraIM provider: Mattermost ----------------------------------------------------
+# The channels and direct messages of a Mattermost server over its REST API
+# (Plugins/UltraIM/mattermost/): password (with an MFA code) or a personal
+# access token, channels and DMs polled, threads as replies, files, edits,
+# deletes. An archive the tests link, and the module loaded from
+# <build>/Plugins/UltraIM.
+set(_ultraim_mattermost_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/mattermost)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_mattermost_dir}/MattermostModule.cpp)
+    add_library(UltraIMMattermostCore STATIC ${_ultraim_mattermost_dir}/MattermostProvider.cpp)
+    set_target_properties(UltraIMMattermostCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMMattermostCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMMattermostCore PUBLIC ${_ultraim_mattermost_dir})
+    target_link_libraries(UltraIMMattermostCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMMattermostPlugin MODULE ${_ultraim_mattermost_dir}/MattermostModule.cpp)
+    set_target_properties(UltraIMMattermostPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_mattermost"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMMattermostPlugin PRIVATE UltraIMMattermostCore)
+    message(STATUS "  [✓] UltraIM provider Mattermost - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider Mattermost - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: Zulip ---------------------------------------------------------
+# The streams and direct messages of a Zulip server over its REST API
+# (Plugins/UltraIM/zulip/): password or API key, the event queue for news,
+# streams by topic, direct and group messages, uploads, edits, deletes. An
+# archive the tests link, and the module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_zulip_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/zulip)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_zulip_dir}/ZulipModule.cpp)
+    add_library(UltraIMZulipCore STATIC ${_ultraim_zulip_dir}/ZulipProvider.cpp)
+    set_target_properties(UltraIMZulipCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMZulipCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMZulipCore PUBLIC ${_ultraim_zulip_dir})
+    target_link_libraries(UltraIMZulipCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMZulipPlugin MODULE ${_ultraim_zulip_dir}/ZulipModule.cpp)
+    set_target_properties(UltraIMZulipPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_zulip"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMZulipPlugin PRIVATE UltraIMZulipCore)
+    message(STATUS "  [✓] UltraIM provider Zulip - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider Zulip - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
 # ----- UltraIM provider: Telegram ----------------------------------------------
 # On TDLib through its JSON interface (Plugins/UltraIM/telegram/), loaded at
 # run time: nothing of TDLib is linked, so the provider builds everywhere and

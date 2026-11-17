@@ -546,8 +546,18 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     mastodonToggle_->SetOnClick([this]() { ToggleMastodonForm(); });
     mastodonToggle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     moreDoors->AddChild(mastodonToggle_);
+    // A third row: the networks signed in to with a server and an account.
+    auto lastDoors = MakeRow("cc-doors-3", 6);
+    for (AccountForm* f : {&mattermost_, &zulip_}) {
+        f->toggle = MakeIconButton("cc-" + f->providerId, f->providerId, f->name, doorWidth, false, false);
+        f->toggle->SetTooltip(TrF("{0} account", f->name));
+        f->toggle->SetOnClick([this, f]() { ToggleAccountForm(*f); });
+        f->toggle->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        lastDoors->AddChild(f->toggle);
+    }
     sidebar->AddChild(doors);
     sidebar->AddChild(moreDoors);
+    sidebar->AddChild(lastDoors);
 
     // A Matrix account next to ChatCube Direct.
     matrixForm_ = std::make_shared<UltraCanvasContainer>("cc-matrix-form");
@@ -590,6 +600,9 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     mastodonForm_->AddChild(mastodonSignIn_);
     mastodonForm_->SetVisible(false);
     sidebar->AddChild(mastodonForm_);
+
+    BuildAccountForm(mattermost_, *sidebar, Tr("Server, e.g. chat.example.org"), Tr("User name or e-mail address"));
+    BuildAccountForm(zulip_, *sidebar, Tr("Organization, e.g. chat.zulip.org"), Tr("E-mail address"));
 
     // A Telegram account: the phone number, then the code, then the
     // two-step password if there is one - one field at a time; or a QR code
@@ -1244,7 +1257,7 @@ void ChatCubeWindow::RenderStatus() {
     // The networks in a fixed order, each under the name the sidebar uses.
     const std::pair<std::string, const char*> networks[] = {
         {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
-        {mastodonProviderId_, "Mastodon"}};
+        {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"}};
     for (const auto& network : networks) {
         auto it = providerStatus_.find(network.first);
         if (it == providerStatus_.end()) continue;
@@ -1469,6 +1482,12 @@ void ChatCubeWindow::SignIn() {
         if (UltraIM_GetProviderInfo(mastodonProviderId_, mastodonInfo) && mastodonInfo.hasStoredSession &&
             mastodonInfo.connectionState == UltraIMConnectionState::Disconnected)
             SignInToMastodon(true);
+        for (AccountForm* f : {&mattermost_, &zulip_}) {
+            UltraIMProviderInfo stored;
+            if (UltraIM_GetProviderInfo(f->providerId, stored) && stored.hasStoredSession &&
+                stored.connectionState == UltraIMConnectionState::Disconnected)
+                SignInToAccount(*f, true);
+        }
         // The relay's Telegram keys first: a stored Telegram session resumes
         // with them, so a change of keys on the relay reaches it.
         FetchTelegramCredentials([this]() {
@@ -1940,8 +1959,32 @@ void ChatCubeWindow::AddContact() {
 }
 
 void ChatCubeWindow::AddContactById(const std::string& id) {
+    // More than one signed-in network takes this address (@user: Telegram and
+    // Mattermost; an e-mail: Zulip and Mattermost): which one is asked.
+    std::vector<std::pair<std::string, std::string>> connected;     // provider, name
+    for (const std::string& provider : ProvidersOfAddress(id)) {
+        UltraIMProviderInfo info;
+        if (UltraIM_GetProviderInfo(provider, info) && info.connectionState == UltraIMConnectionState::Connected)
+            connected.push_back({provider, info.displayName.empty() ? provider : info.displayName});
+    }
+    if (connected.size() > 1 && window_) {
+        networkMenu_ = std::make_shared<UltraCanvasMenu>("cc-network-menu", 0, 0, 220, 0);
+        networkMenu_->SetMenuType(MenuType::PopupMenu);
+        networkMenu_->AddItem(MenuItemData::Header(TrF("Add {0} - on which network?", id)));
+        for (const auto& [provider, name] : connected) {
+            const std::string chosen = provider;
+            networkMenu_->AddItem(MenuItemData::Action(name, [this, chosen, id]() { AddContactOn(chosen, id); }));
+        }
+        PopupElementSettings settings;
+        networkMenu_->OpenMenu(Point2Di(16, 88), *window_, settings);
+        return;
+    }
+    AddContactOn(ProviderOfAddress(id), id);
+}
+
+void ChatCubeWindow::AddContactOn(const std::string& provider, const std::string& id) {
     SetStatus(Tr("Adding contact\xE2\x80\xA6"));
-    UltraIM_AddContact(ProviderOfAddress(id), id, [this](const UltraIMResult& r, const UltraIMConversation& c) {
+    UltraIM_AddContact(provider, id, [this](const UltraIMResult& r, const UltraIMConversation& c) {
         if (!r) {
             SetStatus(TrF("Could not add the contact: {0}", r.message));
             return;
@@ -2219,6 +2262,153 @@ void ChatCubeWindow::SignInToMastodon(bool stored) {
     });
 }
 
+void ChatCubeWindow::BuildAccountForm(AccountForm& f, UltraCanvasContainer& sidebar, const std::string& serverHint,
+                                      const std::string& userHint) {
+    const std::string id = "cc-" + f.providerId;
+    f.form = std::make_shared<UltraCanvasContainer>(id + "-form");
+    f.form->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    f.form->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    AccountForm* form = &f;
+    const auto go = [this, form](const std::string&) { SignInToAccount(*form, false); return true; };
+    f.server = MakeInput(id + "-server", serverHint, kSidebarWidth - 16);
+    f.form->AddChild(f.server);
+    f.user = MakeInput(id + "-user", userHint, kSidebarWidth - 16);
+    f.form->AddChild(f.user);
+    f.password = MakeInput(id + "-password", Tr("Password"), kSidebarWidth - 16);
+    f.password->SetInputType(TextInputType::Password);
+    f.password->onEnterPressed = go;
+    f.form->AddChild(f.password);
+    // The account's second step, when it has one (an authenticator's code).
+    f.code = MakeInput(id + "-code", Tr("The code from your authenticator app"), kSidebarWidth - 16);
+    f.code->onEnterPressed = go;
+    f.code->SetVisible(false);
+    f.form->AddChild(f.code);
+    f.signIn = MakeButton(id + "-go", TrF("Sign in to {0}", f.name), kSidebarWidth - 16, true);
+    f.signIn->SetOnClick([this, form]() { SignInToAccount(*form, false); });
+    f.form->AddChild(f.signIn);
+    f.form->SetVisible(false);
+    sidebar.AddChild(f.form);
+}
+
+ChatCubeWindow::AccountForm* ChatCubeWindow::AccountFormOf(const std::string& providerId) {
+    if (providerId == mattermost_.providerId) return &mattermost_;
+    if (providerId == zulip_.providerId) return &zulip_;
+    return nullptr;
+}
+
+void ChatCubeWindow::ToggleAccountForm(AccountForm& f) {
+    UltraIMProviderInfo info;
+    if (!UltraIM_GetProviderInfo(f.providerId, info)) {
+        SetStatus(TrF("The {0} module was not found (Plugins/UltraIM).", f.name));
+        return;
+    }
+    if (info.connectionState == UltraIMConnectionState::Connected) {
+        f.form->SetVisible(false);
+        SetStatus(TrF("{0}: signed in as {1}", f.name, info.localUserId));
+    } else {
+        f.form->SetVisible(!f.form->IsVisible());
+    }
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::SignInToAccount(AccountForm& f, bool stored) {
+    UltraIMCredentials credentials;
+    credentials.loginType = UltraIMLoginType::UsernamePassword;
+    if (!stored) {
+        UltraIMProviderInfo info;
+        UltraIM_GetProviderInfo(f.providerId, info);
+        if (info.authStep == UltraIMAuthStep::Code && f.code->IsVisible()) {
+            // The second step: the code alone (the provider kept the rest).
+            credentials.otpCode = Trim(f.code->GetText());
+            if (credentials.otpCode.empty()) {
+                SetStatus(TrF("{0}: enter the code from your authenticator app.", f.name));
+                return;
+            }
+        } else {
+            credentials.server = Trim(f.server->GetText());
+            credentials.username = Trim(f.user->GetText());
+            credentials.password = f.password->GetText();
+            if (credentials.server.empty() || credentials.username.empty() || credentials.password.empty()) {
+                SetStatus(TrF("{0}: enter the server, your account and your password.", f.name));
+                return;
+            }
+        }
+        f.signIn->SetDisabled(true);
+    }
+    SetProviderStatus(f.providerId, Tr("signing in\xE2\x80\xA6"));
+    AccountForm* form = &f;
+    UltraIM_SignIn(f.providerId, credentials, [this, form, stored](const UltraIMResult& r) {
+        if (!stored) form->signIn->SetDisabled(false);
+        if (r.code == UltraIMResultCode::NeedsInput) {
+            // A code is asked for (AuthStepChange shows the field).
+            SetProviderStatus(form->providerId, Tr("enter the code from your authenticator app"));
+            return;
+        }
+        if (!r) {
+            SetProviderStatus(form->providerId, r.message);
+            return;
+        }
+        form->password->SetText("");        // not kept: the session token is
+        form->code->SetText("");
+        form->code->SetVisible(false);
+        form->form->SetVisible(false);
+        RefreshConversations();
+    });
+}
+
+bool ChatCubeWindow::OnAccountEvent(const UltraIMEvent& e) {
+    AccountForm* f = AccountFormOf(e.providerId);
+    if (!f) return false;
+    switch (e.type) {
+        case UltraIMEventType::ConnectionStateChange: {
+            if (settingsWindow_) settingsWindow_->RefreshAccounts();
+            if (e.connectionState == UltraIMConnectionState::Connected) {
+                UltraIMProviderInfo info;
+                UltraIM_GetProviderInfo(f->providerId, info);
+                SetProviderStatus(f->providerId, TrF("signed in as {0}", info.localUserId));
+                SetNetworkButton(f->toggle, f->name, TrF("{0}: signed in as {1}", f->name, info.localUserId));
+                RefreshConversations();
+                // The next sign-in starts at the server again, not at a code.
+                f->server->SetVisible(true);
+                f->user->SetVisible(true);
+                f->password->SetVisible(true);
+                f->code->SetVisible(false);
+            } else if (e.connectionState == UltraIMConnectionState::Error) {
+                SetProviderStatus(f->providerId, e.errorText);
+                f->signIn->SetDisabled(false);
+            } else if (e.connectionState == UltraIMConnectionState::Reconnecting) {
+                SetProviderStatus(f->providerId, Tr("connection lost - reconnecting\xE2\x80\xA6"));
+            } else if (e.connectionState == UltraIMConnectionState::Connecting) {
+                SetProviderStatus(f->providerId, Tr("signing in\xE2\x80\xA6"));
+            } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
+                SetProviderStatus(f->providerId, Tr("signed out"));
+                SetNetworkButton(f->toggle, f->name, TrF("{0} account", f->name));
+            }
+            return true;
+        }
+        case UltraIMEventType::AuthStepChange: {
+            const bool code = e.authStep == UltraIMAuthStep::Code;
+            f->code->SetVisible(code);
+            f->server->SetVisible(!code);
+            f->user->SetVisible(!code);
+            f->password->SetVisible(!code);
+            if (code) {
+                f->form->SetVisible(true);
+                if (!e.errorText.empty()) f->code->SetPlaceholder(e.errorText);
+            }
+            if (window_) window_->RequestRedraw();
+            return true;
+        }
+        case UltraIMEventType::AuthRequire:
+            SetProviderStatus(f->providerId, Tr("the session ended - sign in again"));
+            f->form->SetVisible(true);
+            SetNetworkButton(f->toggle, f->name, TrF("{0} account", f->name));
+            return true;
+        default:
+            return false;
+    }
+}
+
 void ChatCubeWindow::RefreshNearby() {
     UltraIM_FetchNearbyContacts(providerId_, [this](const UltraIMResult&, const std::vector<UltraIMContact>& list) {
         nearbyBox_->ClearChildren();
@@ -2352,15 +2542,33 @@ void ChatCubeWindow::CreateGroup() {
     });
 }
 
-std::string ChatCubeWindow::ProviderOfAddress(const std::string& address) const {
-    if (address.empty()) return providerId_;
+std::vector<std::string> ChatCubeWindow::ProvidersOfAddress(const std::string& address) const {
+    if (address.empty()) return {providerId_};
     // Mastodon: @user@server, or a profile's page (https://server/@user).
-    if (address[0] == '@' && address.find('@', 1) != std::string::npos) return mastodonProviderId_;
-    if (address.rfind("https://", 0) == 0 && address.find("/@") != std::string::npos) return mastodonProviderId_;
-    if (address[0] == '@') return address.find(':') != std::string::npos ? matrixProviderId_ : telegramProviderId_;
+    if (address[0] == '@' && address.find('@', 1) != std::string::npos) return {mastodonProviderId_};
+    if (address.rfind("https://", 0) == 0 && address.find("/@") != std::string::npos) return {mastodonProviderId_};
+    if (address[0] == '@') {
+        if (address.find(':') != std::string::npos) return {matrixProviderId_};
+        return {telegramProviderId_, mattermost_.providerId};
+    }
     if (address[0] == '+' || address.rfind("t.me/", 0) == 0 || address.rfind("https://t.me/", 0) == 0)
-        return telegramProviderId_;
-    return providerId_;
+        return {telegramProviderId_};
+    // An e-mail address: a Zulip account, or a Mattermost one.
+    const size_t at = address.find('@');
+    if (at != std::string::npos && at > 0 && address.find('.', at) != std::string::npos &&
+        address.find(' ') == std::string::npos)
+        return {zulip_.providerId, mattermost_.providerId};
+    return {providerId_};
+}
+
+std::string ChatCubeWindow::ProviderOfAddress(const std::string& address) const {
+    // The first signed-in network that takes the address, else the likeliest.
+    const std::vector<std::string> candidates = ProvidersOfAddress(address);
+    for (const std::string& id : candidates) {
+        UltraIMProviderInfo info;
+        if (UltraIM_GetProviderInfo(id, info) && info.connectionState == UltraIMConnectionState::Connected) return id;
+    }
+    return candidates.front();
 }
 
 std::string ChatCubeWindow::ProviderOf(const std::string& conversationId) const {
@@ -3917,7 +4125,7 @@ std::vector<ChatCubeSettingsWindow::Account> ChatCubeWindow::Accounts() const {
     std::vector<ChatCubeSettingsWindow::Account> accounts;
     const std::pair<std::string, const char*> networks[] = {
         {providerId_, "ChatCube Direct"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
-        {mastodonProviderId_, "Mastodon"}};
+        {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"}};
     for (const auto& [id, name] : networks) {
         ChatCubeSettingsWindow::Account account;
         account.providerId = id;
@@ -3978,6 +4186,10 @@ void ChatCubeWindow::SignOutOf(const std::string& providerId) {
         SetNetworkButton(mastodonToggle_, "Mastodon", Tr("Mastodon account"));
         mastodonForm_->SetVisible(false);
         SetProviderStatus(mastodonProviderId_, Tr("signed out"));
+    } else if (AccountForm* f = AccountFormOf(providerId)) {
+        SetNetworkButton(f->toggle, f->name, TrF("{0} account", f->name));
+        f->form->SetVisible(false);
+        SetProviderStatus(f->providerId, Tr("signed out"));
     }
     if (conversationList_) conversationList_->RequestRedraw();
     if (window_) window_->RequestRedraw();
@@ -3987,8 +4199,9 @@ void ChatCubeWindow::SignOutOf(const std::string& providerId) {
 
 void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
     if (e.providerId != providerId_ && e.providerId != matrixProviderId_ && e.providerId != telegramProviderId_ &&
-        e.providerId != mastodonProviderId_)
+        e.providerId != mastodonProviderId_ && !AccountFormOf(e.providerId))
         return;
+    if (OnAccountEvent(e)) return;
     const bool matrix = e.providerId == matrixProviderId_;
     const bool mastodon = e.providerId == mastodonProviderId_;
     const bool telegram = e.providerId == telegramProviderId_;

@@ -80,6 +80,28 @@ if(TARGET UltraIMMastodonCore)
     set_tests_properties(MastodonProviderTests PROPERTIES TIMEOUT 300)
 endif()
 
+# Mattermost: against mattermost_fake_server.py, a small Mattermost in memory
+# (standard-library python3); skips without python3.
+if(TARGET UltraIMMattermostCore)
+    add_executable(MattermostProviderTests MattermostProviderTests.cpp)
+    target_compile_features(MattermostProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(MattermostProviderTests PRIVATE UltraIMMattermostCore)
+    target_compile_definitions(MattermostProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME MattermostProviderTests COMMAND MattermostProviderTests)
+    set_tests_properties(MattermostProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
+# Zulip: against zulip_fake_server.py, a small Zulip in memory
+# (standard-library python3); skips without python3.
+if(TARGET UltraIMZulipCore)
+    add_executable(ZulipProviderTests ZulipProviderTests.cpp)
+    target_compile_features(ZulipProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(ZulipProviderTests PRIVATE UltraIMZulipCore)
+    target_compile_definitions(ZulipProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME ZulipProviderTests COMMAND ZulipProviderTests)
+    set_tests_properties(ZulipProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
 # Telegram: the provider against FakeTdJson (a libtdjson stand-in holding a
 # small Telegram in memory, built here), and its requests against the real
 # TDLib - the one the configure step fetched into Plugins/UltraIM/tdlib, or
