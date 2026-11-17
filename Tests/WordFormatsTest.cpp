@@ -3770,6 +3770,41 @@ int main(int argc, char** argv) {
             }
             CHECK_MSG(slices == 2 && curves == 4, "docx: a pie's slices, the larger of four arcs: " + std::to_string(slices)
                       + " slices, " + std::to_string(curves) + " arcs");
+            // A scatter chart: each point over its own x, on an axis of
+            // values - (1, 2), (2, 4) and (10, 8), the last far to the right.
+            auto points = [](const char* tag, const char* values) {
+                std::string xml = std::string("<") + tag + "><c:numRef><c:numCache>";
+                int index = 0;
+                std::istringstream list(values);
+                for (std::string value; list >> value; index++) {
+                    xml += "<c:pt idx=\"" + std::to_string(index) + "\"><c:v>" + value + "</c:v></c:pt>";
+                }
+                return xml + "</c:numCache></c:numRef></" + tag + ">";
+            };
+            std::vector<float> markX, markY;
+            int joins = 0;
+            std::string scatterWords;
+            for (const RichShape& shape : shapesOf("scatter", "<c:scatterChart><c:scatterStyle val=\"lineMarker\"/><c:ser>"
+                     "<c:spPr><a:ln><a:solidFill><a:srgbClr val=\"004586\"/></a:solidFill></a:ln></c:spPr>"
+                     + points("c:xVal", "1 2 10") + points("c:yVal", "2 4 8") + "</c:ser></c:scatterChart>"
+                     "<c:valAx><c:scaling/><c:axPos val=\"b\"/></c:valAx><c:valAx><c:scaling/><c:axPos val=\"l\"/></c:valAx>")) {
+                if (shape.kind == RichShape::Kind::Ellipse) {
+                    markX.push_back(shape.xPt + shape.widthPt * 0.5f);
+                    markY.push_back(shape.yPt + shape.heightPt * 0.5f);
+                }
+                if (shape.kind == RichShape::Kind::Path && Lower(shape.lineColor) == "#004586") joins += static_cast<int>(shape.path.size());
+            }
+            CHECK_MSG(markX.size() == 3 && joins == 3, "docx: a scatter chart's three points, marked and joined: "
+                      + std::to_string(markX.size()) + " marks, " + std::to_string(joins) + " joined");
+            if (markX.size() == 3) {
+                // Along a value axis the third point is eight times as far
+                // from the second as the second from the first (over
+                // categories they would be evenly spaced).
+                const float near = markX[1] - markX[0], far = markX[2] - markX[1];
+                CHECK_MSG(near > 1.0f && std::abs(far / near - 8.0f) < 0.1f,
+                          "docx: ...each over its own x: " + std::to_string(near) + " and " + std::to_string(far));
+                CHECK_MSG(std::abs((markY[0] - markY[1]) / (markY[1] - markY[2]) - 0.5f) < 0.02f, "docx: ...and at its value's height");
+            }
         }
 
         // Saved and read again, the chart is still there (as the drawing it became).

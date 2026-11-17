@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.14.0 - charts: a scatter chart's points over a value axis of their own
 // Version: 1.13.1 - charts: pies, bars lying down, stacked and per-cent columns
 // Version: 1.13.0 - charts (c:chartSpace) drawn as shapes; nil paragraph borders; numbering levels without
 //                   number or bullet; a font named with its alternatives
@@ -2577,10 +2578,15 @@ private:
         auto* plot = FindDescendant(chart.RootElement(), "c:plotArea");
         if (!plot) return false;
 
-        struct Series { std::string name, color; std::vector<double> values; };
+        struct Series {
+            std::string name, color;
+            std::vector<double> values;
+            std::vector<double> across;         // a scatter chart's x of each value
+            bool joined = true, marked = true;  // ...and whether its points are joined by a line, and marked
+        };
         std::vector<Series> series;
         std::vector<std::string> categories;
-        bool lines = false, pie = false, horizontal = false, stacked = false, percent = false;
+        bool lines = false, pie = false, horizontal = false, stacked = false, percent = false, scatter = false;
         std::vector<std::string> pointColors;       // a pie's slices, where the file colours them
         static const char* const kPalette[] = {"#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47"};
         for (auto* kind = plot->FirstChildElement(); kind; kind = kind->NextSiblingElement()) {
@@ -2588,6 +2594,7 @@ private:
             if (tag.size() < 7 || tag.compare(tag.size() - 5, 5, "Chart") != 0) continue;
             if (series.empty()) {
                 lines = tag == "c:lineChart" || tag == "c:areaChart" || tag == "c:scatterChart";
+                scatter = tag == "c:scatterChart";
                 pie = tag == "c:pieChart" || tag == "c:pie3DChart" || tag == "c:doughnutChart" || tag == "c:ofPieChart";
                 if (auto* direction = kind->FirstChildElement("c:barDir")) horizontal = std::string(Attr(direction, "val")) == "bar";
                 if (auto* grouping = kind->FirstChildElement("c:grouping")) {
@@ -2598,7 +2605,8 @@ private:
             }
             for (auto* ser = kind->FirstChildElement("c:ser"); ser; ser = ser->NextSiblingElement("c:ser")) {
                 Series one;
-                if (auto* name = FindDescendant(ser->FirstChildElement("c:tx"), "c:v")) one.name = name->GetText() ? name->GetText() : "";
+                auto* title = ser->FirstChildElement("c:tx");       // (a series need not have a name)
+                if (auto* name = title ? FindDescendant(title, "c:v") : nullptr) one.name = name->GetText() ? name->GetText() : "";
                 if (auto* look = ser->FirstChildElement("c:spPr")) {
                     auto* fill = look->FirstChildElement("a:solidFill");
                     if (!fill) {
@@ -2627,6 +2635,36 @@ private:
                     double value = 0.0;
                     if (!point.empty()) WordFormatInternal::ReadNumberAt(point, 0, value);
                     one.values.push_back(value);
+                }
+                if (tag == "c:scatterChart") {
+                    // Each point's own x (its number in the row where the
+                    // file gives none or words), and how the points show.
+                    std::vector<std::string> xs;
+                    CollectChartPoints(ser->FirstChildElement("c:xVal"), xs);
+                    for (size_t i = 0; i < one.values.size(); i++) {
+                        double x = static_cast<double>(i + 1);
+                        if (i < xs.size() && !xs[i].empty()) {
+                            size_t end = WordFormatInternal::ReadNumberAt(xs[i], 0, x);
+                            if (end == 0) x = static_cast<double>(i + 1);
+                        }
+                        one.across.push_back(x);
+                    }
+                    auto* look = ser->FirstChildElement("c:spPr");
+                    auto* line = look ? look->FirstChildElement("a:ln") : nullptr;
+                    one.joined = !(line && line->FirstChildElement("a:noFill"));
+                    if (auto* style = kind->FirstChildElement("c:scatterStyle")) {
+                        if (std::string(Attr(style, "val")) == "marker") one.joined = false;
+                    }
+                    if (auto* marker = ser->FirstChildElement("c:marker")) {
+                        auto* symbol = marker->FirstChildElement("c:symbol");
+                        if (symbol && std::string(Attr(symbol, "val")) == "none") one.marked = false;
+                        auto* markerLook = marker->FirstChildElement("c:spPr");
+                        auto* fill = markerLook ? markerLook->FirstChildElement("a:solidFill") : nullptr;
+                        if (fill && !(look && (look->FirstChildElement("a:solidFill") || (line && line->FirstChildElement("a:solidFill"))))) {
+                            one.color = DrawingColor(fill);
+                        }
+                    }
+                    if (!one.joined && !one.marked) one.marked = true;      // something to see
                 }
                 if (categories.empty()) CollectChartPoints(ser->FirstChildElement("c:cat"), categories);
                 if (!one.values.empty()) series.push_back(std::move(one));
@@ -2657,13 +2695,15 @@ private:
             }
         }
         // The value axis: a round step, five or so of them to the top.
-        double step = 1.0;
-        if (highest > 0.0) {
-            const double rough = highest / 5.0;
+        // (The reader stays free of the UI stack, so the step is worked out
+        // here, by the rule of the chart engine's NiceNumber.)
+        auto roundStep = [](double rough) {
+            if (!(rough > 0.0) || !std::isfinite(rough)) return 1.0;
             const double magnitude = std::pow(10.0, std::floor(std::log10(rough)));
             const double share = rough / magnitude;
-            step = (share <= 1.0 ? 1.0 : share <= 2.0 ? 2.0 : share <= 5.0 ? 5.0 : 10.0) * magnitude;
-        }
+            return (share <= 1.0 ? 1.0 : share <= 2.0 ? 2.0 : share <= 5.0 ? 5.0 : 10.0) * magnitude;
+        };
+        const double step = roundStep(highest / 5.0);
         const int steps = std::max(1, static_cast<int>(std::ceil(highest / step - 1e-9)));
         const double top = step * steps;
 
@@ -2792,6 +2832,103 @@ private:
                 slice.path.push_back(close);
                 group.children.push_back(std::move(slice));
                 angle += sweep;
+            }
+        } else if (scatter) {
+            // Points over two value axes: each runs from a round number
+            // under its lowest value (nought, unless the values lie far
+            // from it) to one over its highest, or as the file states.
+            for (const Series& one : series) keys.emplace_back(one.name, one.color);
+            struct Axis { double low = 0.0, high = 1.0, step = 1.0; };
+            auto axisOver = [&](bool along) {
+                double low = 0.0, high = 0.0;
+                bool any = false;
+                for (const Series& one : series) {
+                    for (double v : along ? one.across : one.values) {
+                        low = any ? std::min(low, v) : v;
+                        high = any ? std::max(high, v) : v;
+                        any = true;
+                    }
+                }
+                if (low > 0.0 && low < high * 5.0 / 6.0) low = 0.0;
+                if (high < 0.0 && high > low * 5.0 / 6.0) high = 0.0;
+                if (high <= low) { high = low + 1.0; if (low > 0.0) low = std::max(0.0, low - 1.0); }
+                // What the file states for this axis: the one at the foot
+                // or top is the points' x, the one at a side their value.
+                bool statedLow = false, statedHigh = false;
+                for (auto* ax = plot->FirstChildElement("c:valAx"); ax; ax = ax->NextSiblingElement("c:valAx")) {
+                    auto* side = ax->FirstChildElement("c:axPos");
+                    const std::string pos = side ? Attr(side, "val") : "";
+                    if ((pos == "b" || pos == "t") != along) continue;
+                    auto* scaling = ax->FirstChildElement("c:scaling");
+                    if (!scaling) continue;
+                    if (auto* least = scaling->FirstChildElement("c:min")) { low = least->DoubleAttribute("val", low); statedLow = true; }
+                    if (auto* most = scaling->FirstChildElement("c:max")) { high = most->DoubleAttribute("val", high); statedHigh = true; }
+                    if (high <= low) high = low + 1.0;
+                    break;
+                }
+                Axis axis;
+                axis.step = roundStep((high - low) / 5.0);
+                axis.low = statedLow ? low : std::floor(low / axis.step + 1e-9) * axis.step;
+                axis.high = statedHigh ? high : std::ceil(high / axis.step - 1e-9) * axis.step;
+                return axis;
+            };
+            const Axis xAxis = axisOver(true), yAxis = axisOver(false);
+            auto label = [](double v, double step) {
+                if (std::abs(v) < step * 1e-9) v = 0.0;
+                std::ostringstream text;
+                text.imbue(std::locale::classic());
+                text << v;
+                return text.str();
+            };
+            auto share = [](const Axis& axis, double v) {
+                return static_cast<float>(std::clamp((v - axis.low) / (axis.high - axis.low), 0.0, 1.0));
+            };
+            // The grid: a rule and its value at each step of both axes, the
+            // axes themselves where the other's nought is (else at its low end).
+            const float noughtX = left + plotWidth * share(xAxis, 0.0), noughtY = bottom - plotHeight * share(yAxis, 0.0);
+            for (double v = std::ceil(yAxis.low / yAxis.step - 1e-9) * yAxis.step; v <= yAxis.high + yAxis.step * 1e-6; v += yAxis.step) {
+                const float y = bottom - plotHeight * share(yAxis, v);
+                rule(left, y, plotWidth, 0.0f, "#D0D0D0");
+                words(0.0f, y - 5.0f, left - 4.0f, 10.0f, label(v, yAxis.step), RichTextAlign::Right);
+            }
+            for (double v = std::ceil(xAxis.low / xAxis.step - 1e-9) * xAxis.step; v <= xAxis.high + xAxis.step * 1e-6; v += xAxis.step) {
+                const float x = left + plotWidth * share(xAxis, v);
+                rule(x, plotTop, 0.0f, plotHeight, "#D0D0D0");
+                words(x - 20.0f, bottom + 3.0f, 40.0f, 12.0f, label(v, xAxis.step), RichTextAlign::Center);
+            }
+            rule(left, noughtY, plotWidth, 0.0f, "#808080");
+            rule(noughtX, plotTop, 0.0f, plotHeight, "#808080");
+            for (const Series& one : series) {
+                if (one.joined && one.values.size() > 1) {
+                    RichShape path;
+                    path.kind = RichShape::Kind::Path;
+                    path.xPt = left;
+                    path.yPt = plotTop;
+                    path.widthPt = plotWidth;
+                    path.heightPt = plotHeight;
+                    path.lineColor = one.color;
+                    path.lineWidthPt = 1.5f;
+                    for (size_t c = 0; c < one.values.size(); c++) {
+                        RichShape::PathPoint point;
+                        point.op = c == 0 ? RichShape::PathPoint::Op::Move : RichShape::PathPoint::Op::Line;
+                        point.x = share(xAxis, one.across[c]);
+                        point.y = 1.0f - share(yAxis, one.values[c]);
+                        path.path.push_back(point);
+                    }
+                    group.children.push_back(std::move(path));
+                }
+                if (!one.marked) continue;
+                for (size_t c = 0; c < one.values.size(); c++) {
+                    constexpr float kMark = 5.0f;
+                    RichShape mark;
+                    mark.kind = RichShape::Kind::Ellipse;
+                    mark.xPt = left + plotWidth * share(xAxis, one.across[c]) - kMark * 0.5f;
+                    mark.yPt = bottom - plotHeight * share(yAxis, one.values[c]) - kMark * 0.5f;
+                    mark.widthPt = kMark;
+                    mark.heightPt = kMark;
+                    mark.fillColor = one.color;
+                    group.children.push_back(std::move(mark));
+                }
             }
         } else {
             for (const Series& one : series) keys.emplace_back(one.name, one.color);
