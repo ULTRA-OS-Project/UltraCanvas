@@ -144,7 +144,7 @@ public:
         for (const char* set : {"Standard", "UltraStore"}) {
             UltraCanvas::LocalisationCatalogue catalogue;
             std::string error;
-            const std::string path = UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(folder) / language / (std::string(set) + ".json"));
+            const std::string path = folder + "/" + language + "/" + set + ".json";
             if (UltraCanvas::UltraLocalisation::ReadCatalogue(path, catalogue, error)) {
                 for (const auto& [key, value] : catalogue.entries) {
                     if (!value.empty()) entries[key] = value;

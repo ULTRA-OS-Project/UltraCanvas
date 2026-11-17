@@ -44,7 +44,8 @@ struct ServeOptions {
 };
 
 // Serves `folder` until `stop` is set (or for ever without one). Returns
-// an empty string when it stopped, else why it could not listen.
+// an empty string when it stopped, else why it could not listen - always
+// so in a build without UltraNet (WebAssembly).
 std::string Serve(const std::string& folder, const ServeOptions& options);
 
 } // namespace UltraSite

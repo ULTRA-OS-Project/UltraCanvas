@@ -235,7 +235,10 @@ would:
 `Serve` listens through UltraNet until its `stop` flag is set, and calls
 `beforeRequest` first, which a preview uses to rebuild a site whose files
 changed. It is for looking at a site before it is uploaded, not for the
-internet: one request at a time, GET and HEAD only.
+internet: one request at a time, GET and HEAD only. A build without
+UltraNet (WebAssembly, or `-DULTRACANVAS_ENABLE_NET=OFF`) still has
+`Respond`, but its `Serve` returns at once with the reason it cannot
+listen.
 
 ### A site under a path
 

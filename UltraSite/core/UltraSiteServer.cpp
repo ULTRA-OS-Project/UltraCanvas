@@ -1,6 +1,9 @@
 // UltraSite/core/UltraSiteServer.cpp
 // The preview server (UltraSiteServer.h): requests answered from the
 // output folder over UltraNet's sockets, on the loopback interface only.
+// A build without UltraNet (WebAssembly, -DULTRACANVAS_ENABLE_NET=OFF) keeps
+// Respond; its Serve only says it cannot listen.
+// Version: 0.1.1 - builds without UltraNet: Serve reports it has no network
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
@@ -8,8 +11,10 @@
 #include "UltraSiteInternal.h"
 
 #include "UltraCanvasPathUtf8.h"
+#if defined(ULTRACANVAS_HAS_NET)
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetSocket.h"
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -167,6 +172,11 @@ ServeResponse Respond(const std::string& folder, const std::string& basePath, co
     return response;
 }
 
+#if !defined(ULTRACANVAS_HAS_NET)
+std::string Serve(const std::string&, const ServeOptions& options) {
+    return "cannot listen on 127.0.0.1:" + std::to_string(options.port) + " - this build has no UltraNet";
+}
+#else
 std::string Serve(const std::string& folder, const ServeOptions& options) {
     UltraNet_Initialize();
     UltraNetSocketOptions socket;
@@ -242,5 +252,6 @@ std::string Serve(const std::string& folder, const ServeOptions& options) {
     UltraNet_SocketClose(listener);
     return std::string();
 }
+#endif
 
 } // namespace UltraSite
