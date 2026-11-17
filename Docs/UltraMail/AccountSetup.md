@@ -85,7 +85,7 @@ For a **Microsoft 365 work or school** mailbox the tenant administrator must
 leave **IMAP** and **Authenticated SMTP** enabled for the mailbox (Exchange
 admin center → the mailbox → *Email apps*); otherwise the sign-in succeeds
 but the mail session is refused. Addresses on a company's own domain are not
-in UltraMail's provider table yet (see [section 5](#5-other-providers)).
+in UltraMail's provider table yet (see [section 5](#5-other-providers-autoconfig-and-manual-settings)).
 
 ### Yahoo Mail (`yahoo.com`, `yahoo.de`, `ymail.com`, `rocketmail.com`, Yahoo's country domains)
 

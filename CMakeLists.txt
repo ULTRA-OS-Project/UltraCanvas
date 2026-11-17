@@ -376,6 +376,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
     set(BUILD_ULTRANOTIFICATIONS OFF CACHE BOOL "Build the UltraNotifications application")
     set(BUILD_ULTRASNIP OFF CACHE BOOL "Build the UltraSnip application")
+    set(BUILD_ULTRATODO OFF CACHE BOOL "Build the UltraToDo application")
     set(BUILD_ULTRAVIDEO OFF CACHE BOOL "Build the UltraVideo application")
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
     set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
@@ -694,9 +695,20 @@ if(BUILD_ULTRAFIBU AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraFIBU)
 endif()
 
+# ===== ULTRASITE =====
+# The HTML + JavaScript output of a website: routes in, a folder of styled
+# pages, a hashed stylesheet and hashed script modules out
+# (Docs/Modules/UltraSite/README.md). UltraPress and the UltraStore admin
+# backend publish through it. Headless; links the core library.
+option(BUILD_ULTRASITE "Build the UltraSite module" ON)
+if(BUILD_ULTRASITE AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_subdirectory(UltraSite)
+endif()
+
 # ===== ULTRAPRESS =====
-# The website and shop builder that publishes WebAssembly
-# (Docs/Research/UltraPressDesignProposal.md). Phase 1 begins with the
+# The website and shop builder that publishes WebAssembly or HTML +
+# JavaScript (Docs/Research/UltraPressDesignProposal.md, the HTML output
+# through UltraSite). Phase 1 begins with the
 # headless engine and the `ultrapress` command line; the editor and the
 # renderer follow. The engine links the core for UltraCanvasJSON and the
 # HTMLReader, so it is built wherever the core is.
@@ -842,6 +854,15 @@ endif()
 option(BUILD_ULTRANOTIFICATIONS "Build the UltraNotifications application" ON)
 if(BUILD_ULTRANOTIFICATIONS)
     add_subdirectory(Apps/UltraNotifications)
+endif()
+
+# ===== ULTRATODO =====
+# The task list of ULTRA OS: tasks with a planned end, an estimated time, a
+# description and attached files, the most urgent first, a reminder before a
+# task has to be started and an alarm at its planned end.
+option(BUILD_ULTRATODO "Build the UltraToDo application" ON)
+if(BUILD_ULTRATODO)
+    add_subdirectory(Apps/UltraToDo)
 endif()
 
 # ===== ULTRASNIP =====
@@ -1852,6 +1873,17 @@ if(ULTRACANVAS_BUILD_ULTRAPRESS_TESTS AND TARGET UltraPressEngine)
     message(STATUS "── UltraPress engine test suite enabled (target: UltraPressEngineTests) ──")
 endif()
 
+# ===== ULTRASITE TESTS =====
+# The builder on fixture sites: the pages, the hashed assets, the behaviour
+# modules, the link and anchor check, the budgets, the stale files.
+option(ULTRACANVAS_BUILD_ULTRASITE_TESTS "Build the UltraSite test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASITE_TESTS AND TARGET UltraSite)
+    enable_testing()
+    add_subdirectory(Tests/UltraSite)
+    message(STATUS "")
+    message(STATUS "── UltraSite test suite enabled (target: UltraSiteTests) ──")
+endif()
+
 # ===== ULTRACLEANER ENGINE TESTS =====
 # Headless engine tests: the path guard, the rule table, the scanner and the
 # remover, all driven over temporary trees. Enabled on its own switch.
@@ -2717,6 +2749,19 @@ if (BUILD_TESTS)
     # UltraCrypt unit tests (Tests/CryptTests.cmake, shared with
     # the ULTRACANVAS_BUILD_CRYPT_TESTS option).
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/CryptTests.cmake)
+
+    # UltraToDo's task model and store: the latest start, the order by
+    # urgency, reminders and alarms given once, the task file and the
+    # attachments under a Thai-and-emoji folder. Headless.
+    if(TARGET UltraToDoCore)
+        add_executable(UltraToDoTests Tests/UltraToDoTests.cpp)
+        target_link_libraries(UltraToDoTests PRIVATE UltraToDoCore)
+        set_target_properties(UltraToDoTests PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        )
+        add_test(NAME UltraToDoTests COMMAND UltraToDoTests
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
 
     # Authenticator vault: confidentiality on disk, wrong-password refusal,
     # tamper detection over the whole container, and durability of each

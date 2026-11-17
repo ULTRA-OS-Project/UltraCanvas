@@ -628,6 +628,25 @@ search, open and dismiss.
 **Built on:** UltraMessage, UltraCanvasMessageCenter.
 **Version:** 0.1.0 (2026-11-06).
 
+### UltraToDo
+
+**Purpose:** the task list: tasks with a planned end, an estimated time, a
+description and attached files, the most urgent first.
+
+**Capabilities:**
+- A round + writes a task; each task is a pastel panel with round corners,
+  coloured by how urgent it is.
+- Ordered by the latest start (planned end minus estimated time), overdue
+  tasks first.
+- Files attached as to a mail, copied with the task and shown as
+  thumbnails.
+- A reminder before the latest start and an alarm at the planned end, as
+  desktop notifications and in the window; `--background` keeps them
+  running without the window.
+
+**Built on:** UltraMessage (notifications), FileLoader (the file dialogs).
+**Version:** 0.1.0 (2026-11-17).
+
 ### UltraCleaner
 
 **Purpose:** finds and removes the leftovers macOS, Windows and Linux leave

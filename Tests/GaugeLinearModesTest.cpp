@@ -17,8 +17,15 @@
 //  5. A pointer label pushed to the edge keeps clear of it (flush with the
 //     clip, its antialiasing bled a pixel past it on cairo 1.16).
 //
+//  6. A compact CircularRing (SetRingCompact, SetRingValueText(false)) works
+//     as an inline marker at 12 to 40 px: the ring is drawn in its colour,
+//     round the middle, with nothing outside the element and no number in
+//     it. Before, the ring kept the card's 30 px of padding and a 20 px
+//     minimum radius, and drew a corner of a ring and its value.
+//
 // Each gauge is drawn into a canvas with a margin round it; a pixel in the
 // margin that is not white was drawn outside the element.
+// Version: 1.2.0 - the compact CircularRing as an inline marker
 // Version: 1.1.0 - pointer labels keep clear of the edge
 // Author: UltraCanvas Framework
 
@@ -207,12 +214,44 @@ void TestLabelsClearOfEdge() {
 
 } // namespace
 
+void TestCompactRing() {
+    std::cout << "6. a compact CircularRing is a small marker\n";
+    for (int size : {12, 16, 26, 40}) {
+        auto g = CreateGaugeDiagramElement("marker", 0, 0, static_cast<float>(size), static_cast<float>(size));
+        g->SetMode(GaugeMode::CircularRing);
+        g->SetMinValue(0);
+        g->SetMaxValue(100);
+        g->SetValue(100);                       // the whole ring lit
+        g->SetRingThickness(size >= 26 ? 5.0f : 3.0f);
+        g->SetGaugeColor(Color(0, 120, 255));
+        g->SetTrackColor(Color(230, 230, 230));
+        g->SetBackgroundColor(Colors::White);
+        g->SetTitle("Power");                   // no room for it: not drawn
+        g->SetRingCompact(true);
+        g->SetRingValueText(false);
+        const Drawn d = Draw(g, size, size);
+        const std::string at = std::to_string(size) + " px";
+        Check(d.PixelsOutside() == 0, at + ": nothing outside the element");
+        // The ring is lit on all four sides, half a stroke in from the edge.
+        const int c = size / 2, in = std::max(1, static_cast<int>(g->GetRingThickness() / 2.0f) + 1);
+        const bool top = IsBlue(d.At(c, in)), bottom = IsBlue(d.At(c, size - 1 - in));
+        const bool left = IsBlue(d.At(in, c)), right = IsBlue(d.At(size - 1 - in, c));
+        Check(top && bottom && left && right, at + ": the ring is drawn round the middle");
+        if (size >= 26) Check(d.At(c, c) == 0xFFFFFF, at + ": no value in the centre");
+    }
+    // The same gauge without the options keeps its card layout (and its value).
+    auto card = CreateGaugeDiagramElement("card", 0, 0, 160, 160);
+    card->SetMode(GaugeMode::CircularRing);
+    Check(!card->GetRingCompact() && card->GetRingValueText(), "off by default");
+}
+
 int main() {
     TestNothingOutside();
     TestBarIsDrawn();
     TestValueFollowsRange();
     TestSegmentedVertical();
     TestLabelsClearOfEdge();
+    TestCompactRing();
     std::cout << (g_count - g_failures) << " of " << g_count << " checks passed\n";
     return g_failures == 0 ? 0 : 1;
 }

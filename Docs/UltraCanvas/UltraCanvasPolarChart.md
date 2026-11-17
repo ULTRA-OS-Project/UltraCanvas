@@ -21,7 +21,7 @@
   - [Polar scatter with a numeric angle axis](#polar-scatter-with-a-numeric-angle-axis)
   - [Stacked polar columns (Nightingale rose)](#stacked-polar-columns-nightingale-rose)
   - [Tolerance bands behind a categorical line](#tolerance-bands-behind-a-categorical-line)
-  - [A 270° fan with a donut hole](#a-270°-fan-with-a-donut-hole)
+  - [A 270° fan with a donut hole](#a-270-fan-with-a-donut-hole)
   - [Dual angle axis](#dual-angle-axis)
 - [Rendering Order](#rendering-order)
 - [Interaction Details](#interaction-details)

@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraToDo. `Icon=UltraToDo` is resolved
+# through the icon themes; the install rules put media/appicon/UltraToDo.png
+# and .svg into share/icons/hicolor.
+Type=Application
+Version=1.5
+Name=UltraToDo
+GenericName=Task List
+Comment=Tasks with a planned end and an estimated time, the most urgent first, with reminders and alarms
+Exec=UltraToDo
+TryExec=UltraToDo
+Icon=UltraToDo
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraToDo
+Categories=Office;ProjectManagement;
+Keywords=todo;tasks;reminder;alarm;deadline;

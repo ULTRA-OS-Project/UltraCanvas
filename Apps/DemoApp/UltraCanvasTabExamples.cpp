@@ -72,8 +72,6 @@ namespace UltraCanvas {
         auto classicTabs = std::make_shared<UltraCanvasTabbedContainer>("ClassicTabs", 0, 0, 800, 220);
         classicTabs->SetTabStyle(TabStyle::Classic);
         classicTabs->SetTabHeight(30);
-//        classicTabs->SetCornerRadius(4.0f);
-//        classicTabs->SetTabElevation(2.0f);
 
         classicTabs->AddTab(Tr("Home"), CreateSampleTabContent("Classic1",
                                                            Tr("Classic Style Features:\n\n"
@@ -104,8 +102,6 @@ namespace UltraCanvas {
         auto modernTabs = std::make_shared<UltraCanvasTabbedContainer>("ModernTabs", 0, 0, 800, 220);
         modernTabs->SetTabStyle(TabStyle::Modern);
         modernTabs->SetTabHeight(32);
-//        modernTabs->SetActiveTabIndicatorHeight(3.0f);
-//        modernTabs->SetActiveTabIndicatorColor(Color(33, 150, 243)); // Material Blue
 
         modernTabs->AddTab(Tr("Files and Folders"), CreateSampleTabContent("Modern1",
                                                                        Tr("Modern Style Features:\n\n"
@@ -404,8 +400,6 @@ namespace UltraCanvas {
         newTabATabs->SetShowNewTabButton(true);
         newTabATabs->SetNewTabButtonWidth(32);
         newTabATabs->SetNewButtonColor(Colors::Transparent);
-//        newTabATabs->SetNewTabButtonIcon("+");
-        //newTabATabs->UseDefaultNewTabColors(true);  // Inherit tab colors
 
         // Set up new tab callback
         newTabATabs->onNewTabRequest = [newTabATabs = newTabATabs.get()]() {
@@ -463,17 +457,6 @@ namespace UltraCanvas {
 
         // Enable Style B - Icon Button
         newTabBTabs->SetShowNewTabButton(true);
-//        newTabBTabs->SetNewTabButtonSize(24,24);
-//        newTabBTabs->SetNewTabButtonIcon("+");
-//        newTabBTabs->SetNewTabIconSize(16.0f);
-//        newTabBTabs->SetNewTabIconColors(
-//                Color(100, 100, 100),  // Normal
-//                Color(50, 50, 50)      // Hover
-//        );
-//        newTabBTabs->SetNewTabIconBackgroundColors(
-//                Colors::Transparent,           // Normal
-//                Color(220, 220, 220, 100)     // Hover
-//        );
 
         // Set up new tab callback
         newTabBTabs->onNewTabRequest = [newTabBTabs = newTabBTabs.get()]() {

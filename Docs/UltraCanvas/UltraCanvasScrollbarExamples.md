@@ -497,5 +497,5 @@ container->AddChild(sb);
 
 - [`Apps/DemoApp/UltraCanvasScrollbarExamples.cpp`](../../Apps/DemoApp/UltraCanvasScrollbarExamples.cpp) - Full runnable demo of every variant above
 - [`include/UltraCanvasScrollbar.h`](../../UltraCanvas/include/UltraCanvasScrollbar.h) - Public API header
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Hosting container
-- [UltraCanvasLabel](UltraCanvasLabel.md) - Companion text element
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) - Hosting container
+- [UltraCanvasLabel](UltraCanvasLabelExamples.md) - Companion text element

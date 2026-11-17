@@ -426,4 +426,4 @@ cloudVenn->SetStyle(VennStyle::Classic);
 - [UltraCanvasFlowChartExamples](UltraCanvasFlowChartExamples.md) — node/edge editors
 - [UltraCanvasDendrogramExamples](UltraCanvasDendrogramExamples.md) — hierarchical clustering trees
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — line charts
-- [UltraCanvasChartElementBase](UltraCanvasChartElementBase.md) — common chart base
+- [UltraCanvasChartElementBase](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h) — common chart base

@@ -1,3 +1,6 @@
+#### 2026-11-17 *0.1.19*
+- **The games shop variant of the design** (`Docs/UltraStore/design/Games*.dc.html`, on the design canvas): Discover, a game's page, the genre browser with working genre, price, age-rating and players filters, and the phone's Discover - the shop's chrome with a violet accent, covers where the apps have icons, the genres Action, 3D, Simulation, Tactics, Adventure, Learning (by age band), Retro, Board games, Puzzle, Racing, Role-playing and Sports, and on the game page the PEGI rating with its descriptors, players and co-op, controller support, a trailer, system requirements and a demo. A design only: the catalog knows the category `games` and none of those fields yet; every game on the pages is sample data.
+
 #### 2026-11-16 *0.1.18*
 - **The web store's `site/` never carries a test key.** A build configured
   with `-DULTRASTORE_WEB_TEST_KEYS` - every CI build, since the browser

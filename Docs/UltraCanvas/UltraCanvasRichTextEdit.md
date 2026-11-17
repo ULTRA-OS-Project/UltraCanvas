@@ -158,6 +158,14 @@ out.imageSource = [](int mediaIndex) { return "cid:part" + std::to_string(mediaI
 std::string html = document->ToHTML(out);                // default: data: URIs
 ```
 
+Two more hooks of `RichDocumentHTMLOptions` make the HTML a web page's:
+`headingId` answers the `id` each heading carries, given its level and
+text, so a table of contents and a link's `#anchor` can reach it; and
+`codeBlock` writes a code block's whole HTML itself, given its fence
+language and text - highlighted, say. Unset, the output is unchanged.
+UltraSite's Markdown pages are written through both
+(`Docs/Modules/UltraSite/README.md`).
+
 | HTML | becomes |
 |---|---|
 | `<p>`, `<div>`, `<h1>`–`<h6>`, `<hr>` | paragraphs, headings, rules; `<br>` a line break; the space between blocks is the elements' margins, collapsed as CSS does |

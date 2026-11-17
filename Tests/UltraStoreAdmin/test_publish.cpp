@@ -6,14 +6,20 @@
 #include "admin_helpers.h"
 
 #include "CatalogPublisher.h"
+#include "WebStoreHtml.h"
 #include "KeyVault.h"
 #include "PackageStore.h"
 #include "Verifier.h"
 #include "WebSite.h"
 
 #include "UltraCrypt/UltraCryptCore.h"
+#if __has_include("UltraSite/UltraSite.h")
+#include "UltraSite/UltraSite.h"
+#define ULTRASTOREADMIN_TEST_HTML_STORE 1
+#endif
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 
 using namespace UltraStoreAdmin;
@@ -201,6 +207,7 @@ TEST(publish_lays_the_web_store_beside_the_catalog) {
     hello.releases[0].depends.clear();
     hello.categories = {"utilities"};
     hello.featured = true;
+    hello.summary.byLanguage["de"] = "Sagt hallo";
     hello.icon = "media/org.ultraos.hello/icon.png";
     hello.iconVariants = {{"webp", 64, "media/org.ultraos.hello/icon-64.webp"}, {"webp", 128, "media/org.ultraos.hello/icon-128.webp"}, {"avif", 256, "media/org.ultraos.hello/icon-256.avif"}};
     REQUIRE(db.PutComponent(hello).Ok());
@@ -224,9 +231,39 @@ TEST(publish_lays_the_web_store_beside_the_catalog) {
     options.outDirUtf8 = Join(dir, "out");
     options.generatedAt = "2026-11-14T10:00:00Z";
 
-    // Without web.site_dir: no page of the site, as before.
+    // Without web.output and web.site_dir: the store as HTML + JavaScript,
+    // in English at the root and in every language of the apps' texts.
+    const auto html = Publish(db, added.Value().id, "pass", options);
+    REQUIRE(html.Ok());
+    if (HasHtmlWebStore()) {
+        REQUIRE_EQ(html.Value().webOutput, std::string("html"));
+        REQUIRE(html.Value().webLanguages.size() == 2 && html.Value().webLanguages[1] == "de");
+        const std::string home = ReadFile(Join(options.outDirUtf8, "index.html"));
+        REQUIRE(home.find("<link rel=\"stylesheet\" href=\"/assets/site.") != std::string::npos);
+        REQUIRE(home.find("Featured app") != std::string::npos && home.find("Says hello") != std::string::npos);
+        REQUIRE(home.find("Secret") == std::string::npos);
+        REQUIRE(home.find("data-us=\"search\"") != std::string::npos);
+        const std::string app = ReadFile(Join(options.outDirUtf8, "app/org.ultraos.hello/index.html"));
+        REQUIRE(app.find("<h1>Hello</h1>") != std::string::npos);
+        REQUIRE(app.find("href=\"ultrastore://app/org.ultraos.hello\" data-us=\"install\"") != std::string::npos);
+        REQUIRE(app.find("<link rel=\"canonical\" href=\"https://store.example/app/org.ultraos.hello/\">") != std::string::npos);
+        REQUIRE(app.find("type=\"image/webp\" srcset=\"/media/org.ultraos.hello/icon-128.webp 1x\"") != std::string::npos);
+        REQUIRE(app.find("\"@type\":\"SoftwareApplication\"") != std::string::npos);
+        REQUIRE(app.find("href=\"https://ultraos.eu/ultrastore\"") != std::string::npos);   // the store's download beside Install
+        REQUIRE(app.find("hreflang=\"de\" href=\"https://store.example/de/app/org.ultraos.hello/\"") != std::string::npos);
+        const std::string german = ReadFile(Join(options.outDirUtf8, "de/app/org.ultraos.hello/index.html"));
+        REQUIRE(german.find("<html lang=\"de\">") != std::string::npos && german.find("Sagt hallo") != std::string::npos);
+        REQUIRE(german.find("href=\"/de/categories/\"") != std::string::npos);   // the navbar leads into the German pages
+        REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "categories/free/index.html"))));
+        REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "category/utilities/index.html"))));
+        REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "app/org.ultraos.secret/index.html"))));
+        REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "catalog.json"))));   // nothing swept
+    }
+    REQUIRE(db.SetSetting("web.output", "off").Ok());
+    std::filesystem::remove(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "index.html")));
     REQUIRE(Publish(db, added.Value().id, "pass", options).Ok());
     REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "index.html"))));
+    REQUIRE(db.SetSetting("web.output", "").Ok());
 
     // A site folder as the web store's build leaves it (the bytes stand in).
     const std::string site = Join(dir, "site");
@@ -284,3 +321,69 @@ TEST(publish_lays_the_web_store_beside_the_catalog) {
     REQUIRE(ReadFile(Join(options.outDirUtf8, "index.html")).find("ultracanvas-loader.js\" data-app") == std::string::npos);
     RemoveDir(dir);
 }
+
+#if ULTRASTOREADMIN_TEST_HTML_STORE
+// The web store's fixture - a store the admin backend published, its icons,
+// screenshots and their variants - published again as HTML + JavaScript:
+// every listed app has a page in every language its texts are in, the
+// words in those languages, and Discover's first visit, without its
+// pictures, stays within the proposal's 60 KB.
+TEST(the_fixture_store_as_html_within_its_budget) {
+    if (!HasHtmlWebStore()) SKIP("no UltraSite in this build");
+    const std::string fixture = ULTRASTORE_WEB_FIXTURE_DIR;
+    const auto parsed = UltraStore::ParseCatalog(ReadFile(Join(fixture, "catalog.json")));
+    REQUIRE(parsed.Ok());
+    const UltraStore::Catalog& catalog = parsed.Value();
+    const std::string dir = TempDir("fixture-html");
+    const std::string out = Join(dir, "out");
+    std::error_code ec;
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(out), ec);
+    std::filesystem::copy(UltraCanvas::PathFromUtf8(Join(fixture, "media")), UltraCanvas::PathFromUtf8(Join(out, "media")),
+                          std::filesystem::copy_options::recursive, ec);
+    REQUIRE(!ec);
+    WebSiteOptions web;
+    web.output = "html";
+    web.catalogBaseUrl = "https://store.example/v1";
+    web.storeDownloadUrl = "https://ultraos.eu/ultrastore";
+    web.localeDirUtf8 = ULTRASTORE_LOCALE_DIR;
+    const auto written = WriteWebSite(catalog, out, web);
+    REQUIRE(written.Ok());
+    const WebSiteReport& report = written.Value();
+    for (const std::string& w : report.warnings) std::printf("         warning: %s\n", w.c_str());
+    REQUIRE(report.warnings.empty());   // every picture there, every link resolved, every page under budget
+    REQUIRE(!report.languages.empty() && report.languages.front() == "en");
+    for (const UltraStore::Component& app : catalog.apps) {
+        if (app.visibility != UltraStore::Visibility::Listed) continue;
+        for (const std::string& language : report.languages) {
+            const std::string page = language == "en" ? "app/" + app.id + "/index.html" : language + "/app/" + app.id + "/index.html";
+            REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(out, page))));
+        }
+    }
+    // Under the catalog's path: every address carries /v1/.
+    const std::string home = ReadFile(Join(out, "index.html"));
+    REQUIRE(home.find("href=\"/v1/assets/site.") != std::string::npos);
+    REQUIRE(home.find("href=\"/v1/categories/\"") != std::string::npos);
+    if (std::find(report.languages.begin(), report.languages.end(), "de") != report.languages.end()) {
+        const std::string german = ReadFile(Join(out, "de/index.html"));
+        REQUIRE(german.find("Entdecken") != std::string::npos);   // Discover, from the store's own German catalogue
+    }
+
+    // Discover's first visit without its pictures: the page, the stylesheet
+    // and the scripts it loads, compressed as the build measures them.
+    size_t total = UltraSite::CompressedSize(home);
+    for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(UltraCanvas::PathFromUtf8(Join(out, "assets")))) {
+        const std::string name = UltraCanvas::PathToUtf8(entry.path().filename());
+        if (name.rfind("site.", 0) == 0 || name.rfind("core.", 0) == 0 || name.rfind("install.", 0) == 0 || name.rfind("search.", 0) == 0) {
+            total += UltraSite::CompressedSize(ReadFile(UltraCanvas::PathToUtf8(entry.path())));
+        }
+    }
+    std::printf("         %zu languages; Discover without its pictures: %zu bytes compressed\n", report.languages.size(), total);
+    REQUIRE(total > 0 && total <= 60 * 1024);
+    // ULTRASTORE_HTML_FIXTURE_OUT=<folder> keeps the store there, to look at in a browser.
+    if (const char* keep = std::getenv("ULTRASTORE_HTML_FIXTURE_OUT")) {
+        std::filesystem::copy(UltraCanvas::PathFromUtf8(out), UltraCanvas::PathFromUtf8(keep),
+                              std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
+    }
+    RemoveDir(dir);
+}
+#endif

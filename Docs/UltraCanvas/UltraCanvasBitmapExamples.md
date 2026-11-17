@@ -473,8 +473,8 @@ The reason for a failed load is passed to `onImageLoadFailed` and returned by `G
 
 ## See Also
 
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) - Base class
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) - Base class
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) - Rendering system
-- [UltraCanvasEvent](UltraCanvasEvent.md) - Event handling
-- [UltraCanvasButton](UltraCanvasButton.md) - Interactive button component
-- [UltraCanvasVideoElement](UltraCanvasVideoElement.md) - Video playback component
+- [UltraCanvasEvent](../../UltraCanvas/include/UltraCanvasEvent.h) - Event handling
+- [UltraCanvasButton](UltraCanvasButtonExamples.md) - Interactive button component
+- [UltraCanvasVideoPlayerElement](../../UltraCanvas/include/UltraCanvasVideoPlayerElement.h) - Video playback component

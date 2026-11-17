@@ -160,6 +160,41 @@
       "title": "Super admin: Terms and notices",
       "expand": "fill",
       "is_interactive": true
+    },
+    "GamesHome.dc.html": {
+      "x": 0,
+      "y": 14000,
+      "w": 1440,
+      "h": 2860,
+      "title": "Games: Discover (home)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "GamesDetail.dc.html": {
+      "x": 1520,
+      "y": 14000,
+      "w": 1440,
+      "h": 2560,
+      "title": "Games: Game page (Skyline Siege)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "GamesGenres.dc.html": {
+      "x": 3040,
+      "y": 14000,
+      "w": 1440,
+      "h": 2160,
+      "title": "Games: Browse by genre",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "GamesPhoneHome.dc.html": {
+      "x": 4560,
+      "y": 14000,
+      "w": 390,
+      "h": 844,
+      "title": "Games phone: Discover",
+      "radius": 44
     }
   },
   "order": [
@@ -179,7 +214,11 @@
     "SuperMerchantDetail.dc.html",
     "SuperReview.dc.html",
     "SuperReports.dc.html",
-    "SuperTerms.dc.html"
+    "SuperTerms.dc.html",
+    "GamesHome.dc.html",
+    "GamesDetail.dc.html",
+    "GamesGenres.dc.html",
+    "GamesPhoneHome.dc.html"
   ],
   "notes": {
     "desk": {
@@ -244,6 +283,20 @@
       "w": 420,
       "text": "The operator tier is not in Docs/UltraStore*/README.md yet: it is a proposal for a marketplace where other publishers (merchants) run shops in UltraStore. The operator approves and releases app submissions, handles reports from users and merchants, warns, suspends and reinstates merchants and apps, and keeps every merchant on the current terms of service. Dark sidebar marks the tier. All names, counts and cases are sample data.",
       "fill": "purple"
+    },
+    "games": {
+      "x": 0,
+      "y": 13700,
+      "text": "UltraStore - games shop variant",
+      "kind": "title1",
+      "maxW": 4950
+    },
+    "gamesnote": {
+      "x": 4560,
+      "y": 15000,
+      "w": 420,
+      "text": "A variant of the shop for computer games: the same chrome, type and shapes, the accent violet #7C3AED (a prop; blue is one click away), covers instead of icons, and the genres Action, 3D, Simulation, Tactics, Adventure, Learning (education, by age), Retro, Board games, Puzzle, Racing, Role-playing, Sports. The game page adds the PEGI rating with descriptors, players and co-op, controller support, system requirements and a demo. The repository has no games proposal: the catalog knows the category 'games' only; genre, age rating, players, input and requirements are proposed fields. Every game, studio, count and [PRICE] is invented sample data.",
+      "fill": "green"
     }
   },
   "designSystems": []

@@ -21,13 +21,13 @@
   - [Clear / View / Selection](#clear--view--selection)
   - [Callbacks](#callbacks)
 - [Usage Examples](#usage-examples)
-  - [Library branch — single-floor program](#library-branch-—-single-floor-program)
+  - [Library branch — single-floor program](#library-branch--single-floor-program)
   - [Adding direct, secondary, and service links](#adding-direct-secondary-and-service-links)
   - [A floor zone wrapping all rooms](#a-floor-zone-wrapping-all-rooms)
   - [Reporting selection through callbacks](#reporting-selection-through-callbacks)
-  - [Multi-floor villa — directed inter-floor circulation](#multi-floor-villa-—-directed-inter-floor-circulation)
+  - [Multi-floor villa — directed inter-floor circulation](#multi-floor-villa--directed-inter-floor-circulation)
   - [Creating zones with a small helper lambda](#creating-zones-with-a-small-helper-lambda)
-  - [Office program — public and back-of-house zones](#office-program-—-public-and-back-of-house-zones)
+  - [Office program — public and back-of-house zones](#office-program--public-and-back-of-house-zones)
   - [Inspecting links on click](#inspecting-links-on-click)
 - [Render Order](#render-order)
 - [Manual Layout Notes](#manual-layout-notes)
@@ -474,8 +474,8 @@ needing to call `UpdateRoom` with a full struct.
 - [UltraCanvasNodeDiagramExamples](UltraCanvasNodeDiagramExamples.md) — interactive graph editor with handles
 - [UltraCanvasGourceTreeExamples](UltraCanvasGourceTreeExamples.md) — radial filesystem tree
 - [UltraCanvasArcDiagramExamples](UltraCanvasArcDiagramExamples.md) — nodes on a baseline with arc edges
-- [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demo
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
+- [UltraCanvasTabbedContainer](../../UltraCanvas/include/UltraCanvasTabbedContainer.h) — tab control used by the demo
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
 
 
 ---

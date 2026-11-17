@@ -10,8 +10,8 @@
   - [Factory Functions](#factory-functions)
   - [Segment Management](#segment-management)
   - [Segment Properties](#segment-properties)
-  - [Selection — Single Mode](#selection-—-single-mode)
-  - [Selection — Multiple / Toggle Modes](#selection-—-multiple--toggle-modes)
+  - [Selection — Single Mode](#selection--single-mode)
+  - [Selection — Multiple / Toggle Modes](#selection--multiple--toggle-modes)
   - [Selection Mode](#selection-mode)
   - [Styling](#styling)
 - [Enumerations](#enumerations)
@@ -30,6 +30,7 @@
   - [Disabled Segments](#disabled-segments)
   - [A Segment in Its Own Colour](#a-segment-in-its-own-colour)
   - [A Tooltip for Each Segment](#a-tooltip-for-each-segment)
+  - [One Character per Segment (a Pager)](#one-character-per-segment-a-pager)
   - [Variable-Length Segments with a Custom Theme](#variable-length-segments-with-a-custom-theme)
 - [Keyboard Navigation](#keyboard-navigation)
 - [See Also](#see-also)
@@ -441,6 +442,20 @@ shape->SetSegmentTooltip(1, "Window: the window you click");
 shape->SetSegmentTooltip(2, "Full screen: the whole screen");
 ```
 
+### One Character per Segment (a Pager)
+
+A segment whose caption is one character - a pager's "‹" and "›", a "+" -
+has that character's drawn shape put in the middle of the segment. A word
+is centred on its capitals so the captions of a row line up, but a lone
+symbol has no capitals and sat 1.5 to 2 px low that way. No icon is needed
+to get it centred:
+
+```cpp
+auto pager = CreateSegmentedControl("pager", 50, 820, 80, 28);
+pager->AddSegment("\u2039");   // ‹
+pager->AddSegment("\u203A");   // ›
+```
+
 ### Variable-Length Segments with a Custom Theme
 
 ```cpp
@@ -470,7 +485,7 @@ When the control has focus:
 
 ## See Also
 
-- [UltraCanvasButton](UltraCanvasButton.md) - Single-purpose clickable button
-- [UltraCanvasMenu](UltraCanvasMenu.md) - Menus with checkable/radio items
-- [UltraCanvasToolbar](UltraCanvasToolbar.md) - Toolbar of actions
-- [UltraCanvasLabel](UltraCanvasLabel.md) - Companion text element
+- [UltraCanvasButton](UltraCanvasButtonExamples.md) - Single-purpose clickable button
+- [UltraCanvasMenu](UltraCanvasMenuExamples.md) - Menus with checkable/radio items
+- [UltraCanvasToolbar](UltraCanvasToolbarExamples.md) - Toolbar of actions
+- [UltraCanvasLabel](UltraCanvasLabelExamples.md) - Companion text element

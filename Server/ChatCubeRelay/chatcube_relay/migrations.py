@@ -173,11 +173,21 @@ CREATE TABLE IF NOT EXISTS group_bans (
 """)
 
 
+def _v5_group_revisions(db: sqlite3.Connection) -> None:
+    # A group's revision (relay 1.6): one more with every change, so a client
+    # tells an older record of the group from a newer one - its pushes and
+    # its own requests' replies arrive on two connections, in no set order.
+    # An existing group starts at 1, as a new one does.
+    if "revision" not in _columns(db, "groups"):
+        db.execute("ALTER TABLE groups ADD COLUMN revision INTEGER NOT NULL DEFAULT 1")
+
+
 MIGRATIONS: list[Migration] = [
     Migration(1, "accounts, contacts, groups and the offline queue (relay 1.0)", _v1_accounts_and_messages),
     Migration(2, "the owner's e-mail address and phone number (relay 1.1)", _v2_recovery_contacts),
     Migration(3, "confirming them, account recovery by e-mail link (relay 1.2)", _v3_confirmation_and_recovery),
     Migration(4, "public groups, a group's description, the owner's blocks (relay 1.5)", _v4_public_groups),
+    Migration(5, "a revision on every group, one more with each change (relay 1.6)", _v5_group_revisions),
 ]
 LATEST = MIGRATIONS[-1].version
 

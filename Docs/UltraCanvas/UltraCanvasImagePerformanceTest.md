@@ -518,8 +518,8 @@ Each format is written with its Save settings
 
 ## See Also
 
-- [UltraCanvasImageElement](UltraCanvasImageElement.md) — Image display widget used for the thumbnails
+- [UltraCanvasImageElement](../../UltraCanvas/include/UltraCanvasImageElement.h) — Image display widget used for the thumbnails
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Status/info text labels
 - [UltraCanvasButton](UltraCanvasButtonExamples.md) — "Choose Image..." button
 - [UltraCanvasSwitch](UltraCanvasSwitch.md) — the format switches of the settings dialog
-- [UltraCanvasContainer](UltraCanvasContainer.md) — Layout root for the benchmark
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) — Layout root for the benchmark

@@ -2,6 +2,8 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.7.1 - ToHTML: a nested list inside its parent item (<li>one<ul>...</ul></li>), not beside it
+// Version: 1.7.0 - ToHTML: the headingId and codeBlock hooks of RichDocumentHTMLOptions
 // Version: 1.6.0 - RichShape::PatternBit: Word's preset pattern tiles
 // Version: 1.5.0 - Drawn shapes: RichShape presets; plain text, Markdown and HTML
 //                  spell a drawing's group members' words
@@ -1658,6 +1660,11 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
     std::ostringstream html;
     int openListLevel = -1;   // -1 = no list open
     std::vector<bool> listOrderedStack;
+    // Whether each open list's last item is still open: a deeper list goes
+    // inside it (<li>one<ul>...</ul></li>), which is the only place HTML
+    // allows one, so an item is closed by the next at its level or by the
+    // end of its list.
+    std::vector<bool> itemOpen;
     int openQuotes = 0;
     const HtmlImageSource& imageSource = options.imageSource;
     auto runsHtml = [&](const std::vector<RichTextRun>& runs) {
@@ -1666,8 +1673,10 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
 
     auto closeListsTo = [&](int level) {
         while (openListLevel > level) {
+            if (itemOpen.back()) html << "</li>\n";
             html << (listOrderedStack.back() ? "</ol>\n" : "</ul>\n");
             listOrderedStack.pop_back();
+            itemOpen.pop_back();
             --openListLevel;
         }
     };
@@ -1692,6 +1701,10 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
             case RichBlockType::Heading: {
                 int level = std::clamp(block.headingLevel, 1, 6);
                 html << "<h" << level << (block.rightToLeft ? " dir=\"rtl\"" : "");
+                if (options.headingId) {
+                    const std::string id = options.headingId(level, ConcatenateRunText(block.runs));
+                    if (!id.empty()) html << " id=\"" << EscapeHtml(id) << "\"";
+                }
                 if (const char* alignCss = AlignCss(block.align)) html << " style=\"text-align:" << alignCss << "\"";
                 html << ">" << runsHtml(block.runs) << "</h" << level << ">\n";
                 break;
@@ -1703,7 +1716,20 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
                     && listOrderedStack.back() != block.orderedList) {
                     closeListsTo(block.listLevel - 1);
                 }
+                // The item open at this level ends where this one begins.
+                if (openListLevel == block.listLevel && itemOpen.back()) {
+                    html << "</li>\n";
+                    itemOpen.back() = false;
+                }
                 while (openListLevel < block.listLevel) {
+                    // A deeper list goes inside the item above it; a level
+                    // with no item of its own (a list that starts deeper)
+                    // gets an empty one to hold it.
+                    if (openListLevel >= 0) {
+                        if (!itemOpen.back()) html << "<li>";
+                        itemOpen.back() = true;
+                        html << "\n";
+                    }
                     if (!block.orderedList) {
                         html << "<ul>\n";
                     } else {
@@ -1715,6 +1741,7 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
                         html << (type ? std::string("<ol type=\"") + type + "\">\n" : std::string("<ol>\n"));
                     }
                     listOrderedStack.push_back(block.orderedList);
+                    itemOpen.push_back(false);
                     ++openListLevel;
                 }
                 // <li value> carries a number the item holds itself, which
@@ -1728,10 +1755,15 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
                     html << (block.checked ? "<input type=\"checkbox\" disabled checked> "
                                            : "<input type=\"checkbox\" disabled> ");
                 }
-                html << runsHtml(block.runs) << "</li>\n";
+                html << runsHtml(block.runs);
+                itemOpen.back() = true;
                 break;
             }
             case RichBlockType::CodeBlock:
+                if (options.codeBlock) {
+                    html << options.codeBlock(block.codeLanguage, ConcatenateRunText(block.runs)) << "\n";
+                    break;
+                }
                 html << "<pre><code>" << EscapeHtml(ConcatenateRunText(block.runs))
                      << "</code></pre>\n";
                 break;

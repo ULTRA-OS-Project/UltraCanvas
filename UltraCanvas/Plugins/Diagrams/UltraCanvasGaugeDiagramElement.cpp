@@ -1,8 +1,10 @@
 // Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
 // Implementation of comprehensive gauge element with 17 visual modes
+// Version: 2.12.0 - SetRingCompact / SetRingValueText: CircularRing as a small inline marker (the ring
+//                  fills the element, no padding or minimum radius; the centre value can be left out)
 // Version: 2.11.0 - the analog clock's hands, ticks, rim and numbers in settable colours
 // Version: 2.10.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 // V2.10.0 changelog: LinearBar low-value fixes and warnings:
 //   - The fill pill keeps the bar's full corner radius at every value: it
@@ -313,6 +315,16 @@ void UltraCanvasGaugeDiagramElement::SetTickPosition(GaugeTickPosition p) { tick
 void UltraCanvasGaugeDiagramElement::SetOrientation(GaugeOrientation o) { orientation = o; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetBatteryStyle(GaugeBatteryStyle s) { batteryStyle = s; RequestRedraw(); }
 
+void UltraCanvasGaugeDiagramElement::SetRingCompact(bool compact) {
+    ringCompact = compact;
+    RequestRedraw();
+}
+
+void UltraCanvasGaugeDiagramElement::SetRingValueText(bool show) {
+    ringValueText = show;
+    RequestRedraw();
+}
+
 void UltraCanvasGaugeDiagramElement::SetRingThickness(float t) { ringThickness = std::max(1.0f, t); RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingStyle(GaugeRingStyle s) { ringStyle = s; RequestRedraw(); }
 void UltraCanvasGaugeDiagramElement::SetRingSegmentStyle(GaugeRingSegmentStyle s) { ringSegmentStyle = s; RequestRedraw(); }
@@ -445,6 +457,10 @@ Point2Df UltraCanvasGaugeDiagramElement::AngleToPoint(
 //             in the actually-available space (between title-zone and value-zone).
 Point2Df UltraCanvasGaugeDiagramElement::GetGaugeCenter() const {
     const auto b = GetLocalBounds();
+    // A compact ring sits in the middle of the element (SetRingCompact).
+    if (mode == GaugeMode::CircularRing && ringCompact)
+        return Point2Df(static_cast<float>(b.x) + static_cast<float>(b.width) / 2.0f,
+                        static_cast<float>(b.y) + static_cast<float>(b.height) / 2.0f);
     float titleSpace = title.empty() ? 0.0f : kTitleHeight;
     // V2.7.1: CircularRing draws the value in the centre of the ring, not in a
     // separate zone below it, so it must not reserve bottomSpace — doing so was
@@ -483,6 +499,14 @@ Point2Df UltraCanvasGaugeDiagramElement::GetGaugeCenter() const {
 //           outward from the radius by ~18px, so we need to shrink radius accordingly
 float UltraCanvasGaugeDiagramElement::GetGaugeRadius() const {
     const auto b = GetLocalBounds();
+    // A compact ring fills the element: half the shorter side, less half the
+    // stroke, the outline a SegmentedRing draws round it, and a pixel for
+    // the antialiasing - so nothing is drawn past the element's edge.
+    if (mode == GaugeMode::CircularRing && ringCompact) {
+        const float outline = ringBorder ? std::max(1.5f, ringThickness * 0.16f) : 0.0f;
+        const float half = static_cast<float>(std::min(b.width, b.height)) / 2.0f;
+        return std::max(1.0f, half - ringThickness / 2.0f - outline - 1.0f);
+    }
     float titleSpace = title.empty() ? 0.0f : kTitleHeight;
     // V2.7.1: CircularRing centres its value inside the ring, so it reserves no
     // bottom value/unit zone — this lets the ring grow to fill the card.
@@ -2310,6 +2334,21 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
 
     DrawRingTrackAndValue(ctx, center, radius);
 
+    // The ring alone (SetRingValueText(false)): a centre label or icon,
+    // when one is set, sits in the middle by itself.
+    if (!ringValueText) {
+        if (ringCenterContent == GaugeRingCenterContent::TextLabel && !ringCenterLabel.empty()) {
+            const float innerR = std::max(4.0f, radius - ringThickness);
+            ctx->SetFontFamily("Sans");
+            ctx->SetFontWeight(FontWeight::Bold);
+            ctx->SetTextPaint(textColor);
+            ctx->SetFontSize(std::min(13.0f, std::max(7.0f, innerR * 0.7f)));
+            const Size2Di ld = ctx->GetTextLineDimensions(ringCenterLabel);
+            ctx->DrawText(ringCenterLabel, Point2Df(center.x - ld.width / 2.0f, center.y - ld.height / 2.0f));
+        } else if (ringCenterContent == GaugeRingCenterContent::Icon) {
+            DrawRingCenterIcon(ctx, center, std::min(13.0f, std::max(4.0f, radius - ringThickness)));
+        }
+    } else
     // Centre value text. When a liquid fill covers the disc the configured
     // textColor is used as-is (the demo picks a contrasting colour per card).
     {
@@ -2353,7 +2392,8 @@ void UltraCanvasGaugeDiagramElement::RenderCircularRing(
         }
     }
 
-    if (!title.empty()) {
+    // A compact ring has no room for a title.
+    if (!title.empty() && !ringCompact) {
         DrawTitleText(ctx, Point2Df(center.x, static_cast<float>(b.y) + kPaddingTop - kTitleRaise));
     }
 }
