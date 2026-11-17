@@ -1,11 +1,9 @@
 # The ChatCube relay (Server/ChatCubeRelay): its tests, on every change
-# to it. Pure Python, no system packages. Started by hand on main (Actions >
-# ChatCube relay > Run workflow), the tested relay is then put on the live
-# server (deploy/update.sh: database backed up, code installed, restarted,
-# rolled back when it does not answer with its new version). A merge to main
-# only tests it: the relay's operator deploys when they choose - a new
-# version can migrate the live database. The deploy job does nothing until
-# the server's secrets are set (README: Deploying from CI).
+# to it. Pure Python, no system packages. On main - and when started by hand
+# (Run workflow) - the tested relay is then put on the live server
+# (deploy/update.sh: database backed up, code installed, restarted, rolled
+# back when it does not answer with its new version). The deploy job does
+# nothing until the server's secrets are set (README: Deploying from CI).
 name: ChatCube relay
 
 on:
@@ -32,7 +30,7 @@ jobs:
 
   deploy:
     needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-22.04
     # An environment of its own: a required reviewer can be set on it in
     # Settings > Environments, so a deploy waits for a click.

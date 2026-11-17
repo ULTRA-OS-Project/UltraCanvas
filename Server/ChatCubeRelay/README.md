@@ -284,11 +284,9 @@ sudo Server/ChatCubeRelay/deploy/update.sh /path/to/Server/ChatCubeRelay
 
 ### Deploying from CI
 
-The `ChatCube relay` workflow tests every change to this directory. A merge
-to `main` deploys nothing: the operator deploys when they choose - a new
-version can migrate the live database - by starting it by hand on `main`,
-*Actions > ChatCube relay > Run workflow*, which puts the tested relay on the
-live server: it copies this directory to the server
+The `ChatCube relay` workflow tests every change to this directory, and on
+`main` - or started by hand, *Actions > ChatCube relay > Run workflow* - puts
+the tested relay on the live server: it copies this directory to the server
 over SSH, runs `update.sh` there and then asks the public address
 (`vars.CHATCUBE_RELAY_URL`, default `https://relay-chatcube.ultraos.eu`)
 for the version this commit carries. Until the secrets below are set the
