@@ -20,3 +20,8 @@
   desktop as notifications (UltraMessage) and are shown in the window; an
   alarm also asks to be acknowledged. `--background` keeps them running
   without the window.
+- **Follows the theme, dialogs included.** The task dialog takes the
+  theme's surface, its buttons are coloured by role (*Save* / *Add task* the
+  primary one, round in every look), its captions use the theme's muted and
+  faint inks, and it changes with the look while it is open. The round **+**
+  and the panels' buttons follow the same roles.

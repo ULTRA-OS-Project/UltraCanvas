@@ -1,5 +1,6 @@
 // Apps/UltraToDo/ui/TaskDialog.cpp
 // See TaskDialog.h.
+// Version: 0.2.0 - follows the theme: its surface, buttons by role and texts by ink, also while open
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "TaskDialog.h"
@@ -18,6 +19,7 @@
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTheme.h"
 #include "UltraCanvasTimePicker.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -47,7 +49,7 @@ std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id, float heigh
 }
 
 std::shared_ptr<UltraCanvasLabel> MakeCaption(const std::string& id, const std::string& text) {
-    auto caption = Theme::MakeLine(id, text, Theme::kControlHeight, Theme::SizeBody(), Theme::InkMuted());
+    auto caption = Theme::MakeRoleLine(id, text, Theme::kControlHeight, Theme::SizeBody(), LabelVariant::Muted);
     caption->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
     caption->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
     return caption;
@@ -63,7 +65,7 @@ void FillAttachmentList(UltraCanvasContainer* list, const std::shared_ptr<Attach
     list->ClearChildren();
     auto addRow = [list, &edits](const std::string& id, const std::string& name, std::function<void()> remove) {
         auto row = MakeRow(id, Theme::kControlHeight);
-        auto label = Theme::MakeLine(id + ".name", name, Theme::kControlHeight, Theme::SizeBody(), Theme::Ink());
+        auto label = Theme::MakeRoleLine(id + ".name", name, Theme::kControlHeight, Theme::SizeBody());
         label->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         row->AddChild(label);
         auto button = Theme::MakePill(id + ".remove", Tr("Remove"), 72);
@@ -95,8 +97,8 @@ void FillAttachmentList(UltraCanvasContainer* list, const std::shared_ptr<Attach
         });
     }
     if (edits->kept.empty() && edits->added.empty()) {
-        list->AddChild(Theme::MakeLine("tdNoAttachments", Tr("No files attached"), Theme::kControlHeight,
-                                       Theme::SizeBody(), Theme::InkFaint()));
+        list->AddChild(Theme::MakeRoleLine("tdNoAttachments", Tr("No files attached"), Theme::kControlHeight,
+                                           Theme::SizeBody(), LabelVariant::Faint));
     }
 }
 } // namespace
@@ -129,7 +131,6 @@ void TaskDialog::Show(UltraCanvasWindowBase* parent, const ToDoTask& task,
     auto* dlg = dialog.get();
     dialog->layout.SetFlexColumn().SetFlexGap(Theme::kGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(20);
-    dialog->SetBackgroundColor(Theme::Pastel(Theme::Lavender()));
 
     auto form = CreateContainer("tdForm", 0, 0, 0, 0);
     form->layout.SetFlexColumn().SetFlexGap(Theme::kInnerGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -206,11 +207,11 @@ void TaskDialog::Show(UltraCanvasWindowBase* parent, const ToDoTask& task,
         auto row = MakeRow("tdEstimateRow", Theme::kControlHeight);
         row->AddChild(MakeCaption("tdEstimateLabel", Tr("Estimated time")));
         row->AddChild(days);
-        row->AddChild(Theme::MakeLine("tdDaysUnit", Tr("d"), Theme::kControlHeight, Theme::SizeBody(), Theme::InkMuted()));
+        row->AddChild(Theme::MakeRoleLine("tdDaysUnit", Tr("d"), Theme::kControlHeight, Theme::SizeBody(), LabelVariant::Muted));
         row->AddChild(hours);
-        row->AddChild(Theme::MakeLine("tdHoursUnit", Tr("h"), Theme::kControlHeight, Theme::SizeBody(), Theme::InkMuted()));
+        row->AddChild(Theme::MakeRoleLine("tdHoursUnit", Tr("h"), Theme::kControlHeight, Theme::SizeBody(), LabelVariant::Muted));
         row->AddChild(minutes);
-        row->AddChild(Theme::MakeLine("tdMinutesUnit", Tr("min"), Theme::kControlHeight, Theme::SizeBody(), Theme::InkMuted()));
+        row->AddChild(Theme::MakeRoleLine("tdMinutesUnit", Tr("min"), Theme::kControlHeight, Theme::SizeBody(), LabelVariant::Muted));
         form->AddChild(row);
     }
 
@@ -241,7 +242,7 @@ void TaskDialog::Show(UltraCanvasWindowBase* parent, const ToDoTask& task,
     }
 
     // What the schedule comes to, as it is being set.
-    auto summary = Theme::MakeWrapped("tdSummary", "", Theme::SizeSmall(), Theme::InkMuted());
+    auto summary = Theme::MakeRoleWrapped("tdSummary", "", Theme::SizeSmall(), LabelVariant::Muted);
     form->AddChild(summary);
 
     // ----- attachments -----
@@ -280,7 +281,10 @@ void TaskDialog::Show(UltraCanvasWindowBase* parent, const ToDoTask& task,
 
     dialog->AddChild(form);
 
-    auto error = Theme::MakeLine("tdError", "", 18, Theme::SizeBody(), Theme::Danger());
+    // The theme's danger colour, set again when the look changes (a colour
+    // set on a label is the theme's ink again after a change).
+    auto error = Theme::MakeRoleLine("tdError", "", 18, Theme::SizeBody());
+    error->SetTextColor(Theme::Danger());
     error->layoutItem.SetFlexShrink(0);
     dialog->AddChild(error);
 
@@ -367,9 +371,17 @@ void TaskDialog::Show(UltraCanvasWindowBase* parent, const ToDoTask& task,
         dlg->CloseDialog(DialogResult::OK);
     };
 
+    // The dialog's surface, its sections and everything in it by the theme's
+    // roles, and with the theme while it is open: the elements follow on
+    // their own, the error line's danger colour is set again here.
+    dialog->SetFollowTheme(true);
+    const int themeHandler = UltraCanvasTheme::AddChangeHandler(
+        [error = error.get()](const UltraCanvasTheme&) { error->SetTextColor(Theme::Danger()); });
+
     UltraCanvasDialogManager::ShowDialog(
         dialog,
-        [result, onSave](DialogResult r) {
+        [result, onSave, themeHandler](DialogResult r) {
+            UltraCanvasTheme::RemoveChangeHandler(themeHandler);
             if (r == DialogResult::OK && onSave) onSave(*result);
         },
         parent);

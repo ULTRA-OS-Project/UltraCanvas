@@ -9,6 +9,7 @@
 // the theme's panel colour, which keeps the hue and the theme's ink readable
 // on it; the inks, the lines and the sizes are the theme's roles
 // (UltraCanvasTheme.h) throughout.
+// Version: 0.2.0 - buttons and dialog texts by their role in the theme, following it
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -113,46 +114,26 @@ inline void ApplyPanel(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>&
     panel->SetBorders(1.0f, PastelLine(pastel), radius);
 }
 
-// A pill: a button with fully round ends, in the panel colour of the look.
-inline UltraCanvas::ButtonStyle PillStyle() {
-    UltraCanvas::ButtonStyle s;
-    s.normalColor       = Dark() ? Roles().raised : UltraCanvas::Color(255, 255, 255, 255);
-    s.hoverColor        = Roles().hover;
-    s.pressedColor      = Roles().pressed;
-    s.disabledColor     = Roles().well;
-    s.normalTextColor   = Ink();
-    s.hoverTextColor    = Ink();
-    s.pressedTextColor  = Ink();
-    s.disabledTextColor = InkFaint();
-    s.borderWidth       = 1.0f;
-    s.borderColor       = Roles().line;
-    s.cornerRadius      = kControlHeight / 2.0f;
-    s.fontSize          = SizeBody();
-    return s;
+// A button with fully round ends, coloured by its role in the theme
+// (UltraCanvasTheme: Standard, or Primary for the main action) and following
+// it: the radius is set first, and FromTheme keeps it while the colours
+// change with the look.
+inline void MakeRound(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& button, float height,
+                      UltraCanvas::ButtonVariant variant) {
+    UltraCanvas::ButtonStyle style = button->GetStyle();
+    style.cornerRadius = height / 2.0f;
+    button->SetStyle(style);
+    button->SetThemeVariant(variant);
+    button->SetFollowTheme(true);
 }
 
-// The pill that carries the dialog's main action, in the lavender of the
-// round "add" button.
-inline UltraCanvas::ButtonStyle MainPillStyle() {
-    UltraCanvas::ButtonStyle s = PillStyle();
-    const UltraCanvas::Color fill = Dark() ? Mix(Roles().panel, Lavender(), 0.55f) : Shade(Lavender(), -48);
-    s.normalColor  = fill;
-    s.hoverColor   = Shade(fill, Dark() ? 14 : -14);
-    s.pressedColor = Shade(fill, Dark() ? 28 : -28);
-    s.borderColor  = Shade(fill, Dark() ? 20 : -24);
-    s.normalTextColor = s.hoverTextColor = s.pressedTextColor =
-        Dark() ? Ink() : UltraCanvas::Color(40, 30, 80, 255);
-    s.fontWeight   = UltraCanvas::FontWeight::Bold;
-    return s;
-}
-
-// The round button that adds a task: a circle, with a plus.
-inline UltraCanvas::ButtonStyle AddButtonStyle() {
-    UltraCanvas::ButtonStyle s = MainPillStyle();
-    s.cornerRadius = kAddButtonSize / 2.0f;
-    s.fontSize     = 26.0f;
-    s.fontWeight   = UltraCanvas::FontWeight::Normal;
-    return s;
+// The round button that adds a task: a circle with a plus, the theme's
+// primary colour.
+inline std::shared_ptr<UltraCanvas::UltraCanvasButton> MakeAddButton(const std::string& id) {
+    auto button = UltraCanvas::CreateButton(id, 0, 0, kAddButtonSize, kAddButtonSize, "+");
+    MakeRound(button, kAddButtonSize, UltraCanvas::ButtonVariant::Primary);
+    button->SetFontSize(26.0f);   // kept through every change of theme
+    return button;
 }
 
 // A button as wide as its text, never narrower than `minWidth`.
@@ -165,8 +146,32 @@ MakePill(const std::string& id, const std::string& text, float minWidth = 64.0f,
     limits.minWidth = UltraCanvas::CSSLayout::Dimension::Px(minWidth);
     button->boxConstraints = limits;
     button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    button->SetStyle(main ? MainPillStyle() : PillStyle());
+    MakeRound(button, kControlHeight, main ? UltraCanvas::ButtonVariant::Primary : UltraCanvas::ButtonVariant::Standard);
     return button;
+}
+
+// One line of text in one of the theme's inks (Body, Muted, Faint, Heading),
+// following it. The size is the label's own and is kept.
+inline std::shared_ptr<UltraCanvas::UltraCanvasLabel>
+MakeRoleLine(const std::string& id, const std::string& text, float height, float size,
+             UltraCanvas::LabelVariant variant = UltraCanvas::LabelVariant::Body,
+             UltraCanvas::FontWeight weight = UltraCanvas::FontWeight::Normal) {
+    auto label = UltraCanvas::CreateLabel(id, 0, 0, 0, height, text);
+    label->SetFontSize(size);
+    label->SetFontWeight(weight);
+    label->SetThemeVariant(variant);
+    label->SetFollowTheme(true);
+    return label;
+}
+
+// The same, wrapping, as tall as it needs to be.
+inline std::shared_ptr<UltraCanvas::UltraCanvasLabel>
+MakeRoleWrapped(const std::string& id, const std::string& text, float size,
+                UltraCanvas::LabelVariant variant = UltraCanvas::LabelVariant::Body) {
+    auto label = MakeRoleLine(id, text, 20, size, variant);
+    label->SetWrap(UltraCanvas::TextWrap::WrapWord);
+    label->size.height = UltraCanvas::CSSLayout::Dimension::Auto();
+    return label;
 }
 
 // One line of text at a fixed height.

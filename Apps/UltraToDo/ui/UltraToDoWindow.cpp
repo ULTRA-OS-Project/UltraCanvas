@@ -187,7 +187,7 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildTopBar() {
     bar->layout.SetFlexGap(14);
 
     // The round button that writes a new task, at the top left.
-    addButton_ = CreateButton("todo.add", 0, 0, Theme::kAddButtonSize, Theme::kAddButtonSize, "+");
+    addButton_ = Theme::MakeAddButton("todo.add");
     addButton_->layoutItem.SetFlexShrink(0);
     addButton_->SetTooltip(Tr("New task (Ctrl+N)"));
     addButton_->onClick = [this]() { NewTask(); };
@@ -379,8 +379,6 @@ void UltraToDoWindow::UpdateSummary(int64_t now) {
 
 void UltraToDoWindow::ApplyLook() {
     if (window_) window_->SetBackgroundColor(Theme::PageBackground());
-    if (addButton_) addButton_->SetStyle(Theme::AddButtonStyle());
-    if (quit_) quit_->SetStyle(Theme::PillStyle());
     if (heading_) heading_->SetTextColor(Theme::Ink());
     if (summary_) summary_->SetTextColor(Theme::InkMuted());
     if (notice_) {
