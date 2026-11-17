@@ -3019,8 +3019,26 @@ people by username or phone number. Provider: Mastodon
 direct messages of a Mastodon server over its REST API - browser sign-in
 (OAuth with PKCE, `UltraIMAuthStep::Browser`), a chat per set of people
 over all their threads, polled; replies, edits, deletes, read marks,
-pictures, videos and sound. Tests in `Tests/UltraIM`. See
-`Docs/Modules/UltraIM/README.md`.
+pictures, videos and sound. Provider: Mattermost
+(`UltraCanvas/Plugins/UltraIM/mattermost/`, module `ultraim_mattermost`):
+channels, direct and group messages of a Mattermost server over its REST
+API - password with an MFA code, or a personal access token; polled;
+thread replies, files, edits, deletes. Provider: Zulip
+(`UltraCanvas/Plugins/UltraIM/zulip/`, module `ultraim_zulip`): direct and
+group messages and stream topics of a Zulip organization - password or API
+key; the event queue; uploads, edits, deletes. Provider: Signal
+(`UltraCanvas/Plugins/UltraIM/signal/`, module `ultraim_signal`): through a
+signal-cli daemon (the user's, or one it starts) - linked to the phone by
+QR code; 1:1 chats and groups, quotes, edits, deletes, receipts, typing,
+attachments. Provider: XMPP (`UltraCanvas/Plugins/UltraIM/xmpp/`, module
+`ultraim_xmpp`): any XMPP server over TCP (STARTTLS or direct TLS, found by
+SRV) or WebSocket (RFC 7395) - SCRAM sign-in
+with the keys kept, not the password; roster, rooms, the archive, receipts,
+markers, edits, retractions, replies, carbons, HTTP upload. Provider: IRC
+(`UltraCanvas/Plugins/UltraIM/irc/`, module `ultraim_irc`): IRC with IRCv3
+over TCP and TLS - SASL, channels and private chats, CHATHISTORY, a server
+conversation for raw commands. Tests in `Tests/UltraIM`.
+See `Docs/Modules/UltraIM/README.md`.
 
 ---
 

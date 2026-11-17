@@ -2,6 +2,12 @@
 // Raw TCP/UDP sockets: POSIX on Linux/macOS, Winsock on Windows. Tracks each
 // open file descriptor in a process-wide registry keyed by UltraNetHandle so
 // callers operate on the handle rather than the OS fd.
+// Version: 0.5.1 - a TCP connection tries every address the name resolves to, in order
+//                  ("localhost" as ::1 then 127.0.0.1; a server's IPv6 address unreachable)
+// Version: 0.5.0 - no SIGPIPE on a write to a closed connection (MSG_NOSIGNAL, SO_NOSIGPIPE);
+//                  a receive that waited out its time answers Timeout, a broken connection
+//                  ConnectionReset / ReceiveFailed, a closed one Ok with no bytes
+// Last Modified: 2026-11-17
 // Version: 0.4.0 - a TCP connection through a proxy: SOCKS 5, SOCKS 4 / 4a and an HTTP
 //                  CONNECT tunnel (UltraNet_TcpOpen); UltraNet_SocketDetach
 // Version: 0.3.0 (Stage 3)
@@ -61,6 +67,15 @@
   static const char* SocketErrorString(int err) { return std::strerror(err); }
 #endif
 
+// send() flags: a write to a connection the peer closed fails with EPIPE
+// instead of raising SIGPIPE, which would end the program. Where there is no
+// MSG_NOSIGNAL (macOS), every socket carries SO_NOSIGPIPE instead.
+#if defined(MSG_NOSIGNAL)
+  static constexpr int kSendFlags = MSG_NOSIGNAL;
+#else
+  static constexpr int kSendFlags = 0;
+#endif
+
 namespace {
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -111,7 +126,36 @@ void Unregister(UltraNetHandle h) {
     g_sockets.erase(h);
 }
 
+// Every socket of ours: no SIGPIPE from it (where the platform has the option).
+void NoSigPipe(SocketFd fd) {
+#if defined(SO_NOSIGPIPE)
+    int on = 1;
+    ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
+#else
+    (void)fd;
+#endif
+}
+
+// What a failed receive means: Timeout when the receive timeout passed with
+// nothing to read (the connection is still there), ConnectionReset when the
+// peer reset it, ReceiveFailed otherwise.
+UltraNetResult ReceiveError(int err) {
+#if defined(_WIN32) || defined(_WIN64)
+    if (err == WSAETIMEDOUT || err == WSAEWOULDBLOCK)
+        return UltraNetResult::Error(UltraNetResultCode::Timeout, "nothing received within the timeout");
+    if (err == WSAECONNRESET || err == WSAECONNABORTED)
+        return UltraNetResult::Error(UltraNetResultCode::ConnectionReset, SocketErrorString(err));
+#else
+    if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR)
+        return UltraNetResult::Error(UltraNetResultCode::Timeout, "nothing received within the timeout");
+    if (err == ECONNRESET || err == EPIPE || err == ECONNABORTED)
+        return UltraNetResult::Error(UltraNetResultCode::ConnectionReset, SocketErrorString(err));
+#endif
+    return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed, SocketErrorString(err));
+}
+
 void ApplyOptions(SocketFd fd, const UltraNetSocketOptions& opt) {
+    NoSigPipe(fd);
     int on = 1;
     if (opt.reuseAddress) {
         ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR,
@@ -241,6 +285,40 @@ UltraNetResult Resolve(const std::string& host, int port, bool preferIpv6,
     return UltraNetResult::Ok();
 }
 
+// Every address `host` resolves to, in the resolver's order (RFC 6724: the one
+// most likely to work first), for a TCP connection to try one after another.
+struct ResolvedAddress {
+    sockaddr_storage storage{};
+    socklen_t        len = 0;
+    bool             isIpv6 = false;
+};
+
+UltraNetResult ResolveAll(const std::string& host, int port, bool onlyIpv6, std::vector<ResolvedAddress>& out) {
+    out.clear();
+    addrinfo hints{};
+    hints.ai_family   = onlyIpv6 ? AF_INET6 : AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    addrinfo* res = nullptr;
+    const std::string portStr = std::to_string(port);
+    const int rc = ::getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res);
+    if (rc != 0 || !res) {
+        if (res) ::freeaddrinfo(res);
+        return UltraNetResult::Error(UltraNetResultCode::HostNotFound, gai_strerror(rc));
+    }
+    for (addrinfo* a = res; a; a = a->ai_next) {
+        if (a->ai_family != AF_INET && a->ai_family != AF_INET6) continue;
+        if (a->ai_addrlen > sizeof(sockaddr_storage)) continue;
+        ResolvedAddress r;
+        std::memcpy(&r.storage, a->ai_addr, a->ai_addrlen);
+        r.len    = static_cast<socklen_t>(a->ai_addrlen);
+        r.isIpv6 = a->ai_family == AF_INET6;
+        out.push_back(r);
+    }
+    ::freeaddrinfo(res);
+    if (out.empty()) return UltraNetResult::Error(UltraNetResultCode::HostNotFound, "no IPv4 or IPv6 address");
+    return UltraNetResult::Ok();
+}
+
 // ---- Through a proxy ---------------------------------------------------------
 
 // The send and receive timeouts as given, 0 included (no limit) -
@@ -273,7 +351,7 @@ bool SendAll(SocketFd fd, const std::string& data) {
 #if defined(_WIN32) || defined(_WIN64)
         const int n = ::send(fd, data.data() + sent, static_cast<int>(data.size() - sent), 0);
 #else
-        const ssize_t n = ::send(fd, data.data() + sent, data.size() - sent, 0);
+        const ssize_t n = ::send(fd, data.data() + sent, data.size() - sent, kSendFlags);
 #endif
         if (n <= 0) return false;
         sent += static_cast<std::size_t>(n);
@@ -534,22 +612,34 @@ UltraNetResult UltraNet_TcpOpen(const std::string& host, int port,
 
     const std::string connectHost = viaProxy ? proxy.host : host;
     const int connectPort = viaProxy ? proxy.port : port;
-    sockaddr_storage ss{};
-    socklen_t        sl = 0;
-    bool             v6 = false;
-    auto r = Resolve(connectHost, connectPort, opt.useIpv6 && !viaProxy, ss, sl, v6);
+    std::vector<ResolvedAddress> addresses;
+    auto r = ResolveAll(connectHost, connectPort, opt.useIpv6 && !viaProxy, addresses);
     if (!r) return viaProxy ? ProxyError(UltraNetResultCode::HostNotFound, proxy, r.message) : r;
 
-    SocketFd fd = ::socket(ss.ss_family, SOCK_STREAM, IPPROTO_TCP);
-    if (fd == kInvalidFd)
-        return UltraNetResult::Error(UltraNetResultCode::Unknown, SocketErrorString(LastSocketError()));
-    ApplyOptions(fd, opt);
-    if (viaProxy) SetTimeouts(fd, opt.connectTimeoutMs, opt.connectTimeoutMs);
-    else ApplyTimeout(fd, opt.sendTimeoutMs, opt.recvTimeoutMs);
-
-    if (::connect(fd, reinterpret_cast<sockaddr*>(&ss), sl) != 0) {
-        const std::string why = SocketErrorString(LastSocketError());
-        CloseFd(fd);
+    // Each address in turn until one takes the connection: a name with an
+    // IPv6 and an IPv4 address ("localhost" as ::1 and 127.0.0.1, a server
+    // whose IPv6 is not reachable from here) is reached on whichever answers.
+    SocketFd fd = kInvalidFd;
+    bool v6 = false;
+    std::string why;
+    for (const ResolvedAddress& address : addresses) {
+        SocketFd attempt = ::socket(address.storage.ss_family, SOCK_STREAM, IPPROTO_TCP);
+        if (attempt == kInvalidFd) {
+            why = SocketErrorString(LastSocketError());
+            continue;
+        }
+        ApplyOptions(attempt, opt);
+        if (viaProxy) SetTimeouts(attempt, opt.connectTimeoutMs, opt.connectTimeoutMs);
+        else ApplyTimeout(attempt, opt.sendTimeoutMs, opt.recvTimeoutMs);
+        if (::connect(attempt, reinterpret_cast<const sockaddr*>(&address.storage), address.len) == 0) {
+            fd = attempt;
+            v6 = address.isIpv6;
+            break;
+        }
+        why = SocketErrorString(LastSocketError());
+        CloseFd(attempt);
+    }
+    if (fd == kInvalidFd) {
         return viaProxy ? ProxyError(UltraNetResultCode::ConnectionRefused, proxy, why)
                         : UltraNetResult::Error(UltraNetResultCode::ConnectionRefused,
                                                 host + ":" + std::to_string(port) + ": " + why);
@@ -634,6 +724,7 @@ UltraNetHandle UltraNet_TcpAccept(UltraNetHandle listener,
     socklen_t sl = sizeof ss;
     SocketFd fd = ::accept(e->fd, reinterpret_cast<sockaddr*>(&ss), &sl);
     if (fd == kInvalidFd) return UltraNetInvalidHandle;
+    NoSigPipe(fd);
 
     EndpointFromSockaddr(reinterpret_cast<sockaddr*>(&ss), sl, outRemote);
     auto child = std::make_shared<Entry>();
@@ -670,11 +761,17 @@ UltraNetResult UltraNet_TcpSend(UltraNetHandle handle,
     int n = ::send(e->fd, reinterpret_cast<const char*>(data.data()),
                    static_cast<int>(data.size()), 0);
 #else
-    ssize_t n = ::send(e->fd, data.data(), data.size(), 0);
+    ssize_t n = ::send(e->fd, data.data(), data.size(), kSendFlags);
 #endif
     if (n < 0) {
-        return UltraNetResult::Error(UltraNetResultCode::SendFailed,
-                                     SocketErrorString(LastSocketError()));
+        const int err = LastSocketError();
+#if defined(_WIN32) || defined(_WIN64)
+        const bool reset = err == WSAECONNRESET || err == WSAECONNABORTED;
+#else
+        const bool reset = err == EPIPE || err == ECONNRESET;
+#endif
+        return UltraNetResult::Error(reset ? UltraNetResultCode::ConnectionReset : UltraNetResultCode::SendFailed,
+                                     SocketErrorString(err));
     }
     outBytesSent = static_cast<int>(n);
     return UltraNetResult::Ok();
@@ -698,6 +795,10 @@ UltraNetResult UltraNet_TcpReceive(UltraNetHandle handle,
         int n = e->tlsRead(e->tlsCtx,
                            reinterpret_cast<char*>(outData.data()),
                            outData.size(), timeoutMs);
+        if (n == ultranet_internal::kTlsReadTimedOut) {
+            outData.clear();
+            return UltraNetResult::Error(UltraNetResultCode::Timeout, "nothing received within the timeout");
+        }
         if (n < 0) {
             outData.clear();
             return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
@@ -714,9 +815,9 @@ UltraNetResult UltraNet_TcpReceive(UltraNetHandle handle,
     ssize_t n = ::recv(e->fd, outData.data(), outData.size(), 0);
 #endif
     if (n < 0) {
+        const int err = LastSocketError();
         outData.clear();
-        return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
-                                     SocketErrorString(LastSocketError()));
+        return ReceiveError(err);
     }
     outData.resize(static_cast<std::size_t>(n));
     return UltraNetResult::Ok();
@@ -805,9 +906,9 @@ UltraNetResult UltraNet_UdpReceive(UltraNetHandle handle,
                            reinterpret_cast<sockaddr*>(&ss), &sl);
 #endif
     if (n < 0) {
+        const int err = LastSocketError();
         outData.clear();
-        return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
-                                     SocketErrorString(LastSocketError()));
+        return ReceiveError(err);
     }
     outData.resize(static_cast<std::size_t>(n));
     EndpointFromSockaddr(reinterpret_cast<sockaddr*>(&ss), sl, outRemote);

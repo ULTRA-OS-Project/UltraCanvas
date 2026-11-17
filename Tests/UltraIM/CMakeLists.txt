@@ -80,6 +80,61 @@ if(TARGET UltraIMMastodonCore)
     set_tests_properties(MastodonProviderTests PROPERTIES TIMEOUT 300)
 endif()
 
+# Mattermost: against mattermost_fake_server.py, a small Mattermost in memory
+# (standard-library python3); skips without python3.
+if(TARGET UltraIMMattermostCore)
+    add_executable(MattermostProviderTests MattermostProviderTests.cpp)
+    target_compile_features(MattermostProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(MattermostProviderTests PRIVATE UltraIMMattermostCore)
+    target_compile_definitions(MattermostProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME MattermostProviderTests COMMAND MattermostProviderTests)
+    set_tests_properties(MattermostProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
+# Zulip: against zulip_fake_server.py, a small Zulip in memory
+# (standard-library python3); skips without python3.
+if(TARGET UltraIMZulipCore)
+    add_executable(ZulipProviderTests ZulipProviderTests.cpp)
+    target_compile_features(ZulipProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(ZulipProviderTests PRIVATE UltraIMZulipCore)
+    target_compile_definitions(ZulipProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME ZulipProviderTests COMMAND ZulipProviderTests)
+    set_tests_properties(ZulipProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
+# Signal: against signal_fake_daemon.py, a stand-in for signal-cli's HTTP
+# JSON-RPC daemon (standard-library python3); skips without python3.
+if(TARGET UltraIMSignalCore)
+    add_executable(SignalProviderTests SignalProviderTests.cpp)
+    target_compile_features(SignalProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(SignalProviderTests PRIVATE UltraIMSignalCore)
+    target_compile_definitions(SignalProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME SignalProviderTests COMMAND SignalProviderTests)
+    set_tests_properties(SignalProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
+# XMPP: against xmpp_fake_server.py, a small XMPP server over WebSocket
+# (standard-library python3); skips without python3.
+if(TARGET UltraIMXmppCore)
+    add_executable(XmppProviderTests XmppProviderTests.cpp)
+    target_compile_features(XmppProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(XmppProviderTests PRIVATE UltraIMXmppCore)
+    target_compile_definitions(XmppProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME XmppProviderTests COMMAND XmppProviderTests)
+    set_tests_properties(XmppProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
+# IRC: against irc_fake_server.py, a small IRCv3 server (standard-library
+# python3, plain and TLS); skips without python3.
+if(TARGET UltraIMIrcCore)
+    add_executable(IrcProviderTests IrcProviderTests.cpp)
+    target_compile_features(IrcProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(IrcProviderTests PRIVATE UltraIMIrcCore)
+    target_compile_definitions(IrcProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME IrcProviderTests COMMAND IrcProviderTests)
+    set_tests_properties(IrcProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
 # Telegram: the provider against FakeTdJson (a libtdjson stand-in holding a
 # small Telegram in memory, built here), and its requests against the real
 # TDLib - the one the configure step fetched into Plugins/UltraIM/tdlib, or

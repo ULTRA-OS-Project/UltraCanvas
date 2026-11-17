@@ -4780,6 +4780,144 @@ else()
     message(STATUS "  [−] UltraIM provider Mastodon - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
+# ----- UltraIM provider: Mattermost ----------------------------------------------------
+# The channels and direct messages of a Mattermost server over its REST API
+# (Plugins/UltraIM/mattermost/): password (with an MFA code) or a personal
+# access token, channels and DMs polled, threads as replies, files, edits,
+# deletes. An archive the tests link, and the module loaded from
+# <build>/Plugins/UltraIM.
+set(_ultraim_mattermost_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/mattermost)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_mattermost_dir}/MattermostModule.cpp)
+    add_library(UltraIMMattermostCore STATIC ${_ultraim_mattermost_dir}/MattermostProvider.cpp)
+    set_target_properties(UltraIMMattermostCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMMattermostCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMMattermostCore PUBLIC ${_ultraim_mattermost_dir})
+    target_link_libraries(UltraIMMattermostCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMMattermostPlugin MODULE ${_ultraim_mattermost_dir}/MattermostModule.cpp)
+    set_target_properties(UltraIMMattermostPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_mattermost"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMMattermostPlugin PRIVATE UltraIMMattermostCore)
+    message(STATUS "  [✓] UltraIM provider Mattermost - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider Mattermost - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: Zulip ---------------------------------------------------------
+# The streams and direct messages of a Zulip server over its REST API
+# (Plugins/UltraIM/zulip/): password or API key, the event queue for news,
+# streams by topic, direct and group messages, uploads, edits, deletes. An
+# archive the tests link, and the module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_zulip_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/zulip)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_zulip_dir}/ZulipModule.cpp)
+    add_library(UltraIMZulipCore STATIC ${_ultraim_zulip_dir}/ZulipProvider.cpp)
+    set_target_properties(UltraIMZulipCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMZulipCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMZulipCore PUBLIC ${_ultraim_zulip_dir})
+    target_link_libraries(UltraIMZulipCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMZulipPlugin MODULE ${_ultraim_zulip_dir}/ZulipModule.cpp)
+    set_target_properties(UltraIMZulipPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_zulip"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMZulipPlugin PRIVATE UltraIMZulipCore)
+    message(STATUS "  [✓] UltraIM provider Zulip - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider Zulip - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: Signal ------------------------------------------------
+# Signal through signal-cli's JSON-RPC daemon (Plugins/UltraIM/signal/): this
+# device linked to the phone's Signal account by a QR code, direct messages
+# and groups, attachments, replies, edits, deletes. signal-cli (GPL-3.0, a
+# separate program on Signal's own libsignal) is not linked: the provider
+# talks HTTP to a daemon the user runs, or starts one it finds. An archive the
+# tests link, and the module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_signal_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/signal)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_signal_dir}/SignalModule.cpp)
+    file(GLOB _ultraim_signal_sources ${_ultraim_signal_dir}/Signal*.cpp)
+    list(REMOVE_ITEM _ultraim_signal_sources ${_ultraim_signal_dir}/SignalModule.cpp)
+    add_library(UltraIMSignalCore STATIC ${_ultraim_signal_sources})
+    set_target_properties(UltraIMSignalCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMSignalCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMSignalCore PUBLIC ${_ultraim_signal_dir})
+    target_link_libraries(UltraIMSignalCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMSignalPlugin MODULE ${_ultraim_signal_dir}/SignalModule.cpp)
+    set_target_properties(UltraIMSignalPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_signal"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMSignalPlugin PRIVATE UltraIMSignalCore)
+    message(STATUS "  [✓] UltraIM provider Signal - ENABLED (needs signal-cli at run time)")
+else()
+    message(STATUS "  [−] UltraIM provider Signal - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: XMPP --------------------------------------------------
+# XMPP (Jabber) over TCP (STARTTLS / direct TLS) or WebSocket (RFC 7395) through
+# UltraNet (Plugins/UltraIM/xmpp/): the server found from the address's domain (SRV, XEP-0156), SCRAM sign-in, the
+# roster, chats, group rooms (MUC), history (MAM), receipts and markers,
+# typing, corrections, retractions, replies, HTTP upload. Stanzas parsed with
+# tinyxml2 (the core's own dependency). An archive the tests link, and the
+# module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_xmpp_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/xmpp)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_xmpp_dir}/XmppModule.cpp)
+    file(GLOB _ultraim_xmpp_sources ${_ultraim_xmpp_dir}/Xmpp*.cpp)
+    list(REMOVE_ITEM _ultraim_xmpp_sources ${_ultraim_xmpp_dir}/XmppModule.cpp)
+    add_library(UltraIMXmppCore STATIC ${_ultraim_xmpp_sources})
+    set_target_properties(UltraIMXmppCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMXmppCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMXmppCore PUBLIC ${_ultraim_xmpp_dir} PRIVATE ${TINYXML2_INCLUDE_DIRS})
+    target_link_libraries(UltraIMXmppCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt
+                          PRIVATE ${TINYXML2_LIBRARIES})
+    target_link_directories(UltraIMXmppCore PRIVATE ${TINYXML2_LIBRARY_DIRS})
+
+    add_library(UltraIMXmppPlugin MODULE ${_ultraim_xmpp_dir}/XmppModule.cpp)
+    set_target_properties(UltraIMXmppPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_xmpp"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMXmppPlugin PRIVATE UltraIMXmppCore)
+    message(STATUS "  [✓] UltraIM provider XMPP - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider XMPP - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
+# ----- UltraIM provider: IRC ---------------------------------------------------
+# IRC with IRCv3 (Plugins/UltraIM/irc/): TLS on 6697 through UltraNet's TCP and
+# TLS, SASL sign-in, channels as groups and private messages as chats,
+# server-time, echo-message, chathistory where the server has it. An archive
+# the tests link, and the module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_irc_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/irc)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_irc_dir}/IrcModule.cpp)
+    file(GLOB _ultraim_irc_sources ${_ultraim_irc_dir}/Irc*.cpp)
+    list(REMOVE_ITEM _ultraim_irc_sources ${_ultraim_irc_dir}/IrcModule.cpp)
+    add_library(UltraIMIrcCore STATIC ${_ultraim_irc_sources})
+    set_target_properties(UltraIMIrcCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMIrcCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMIrcCore PUBLIC ${_ultraim_irc_dir})
+    target_link_libraries(UltraIMIrcCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMIrcPlugin MODULE ${_ultraim_irc_dir}/IrcModule.cpp)
+    set_target_properties(UltraIMIrcPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_irc"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMIrcPlugin PRIVATE UltraIMIrcCore)
+    message(STATUS "  [✓] UltraIM provider IRC - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider IRC - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
 # ----- UltraIM provider: Telegram ----------------------------------------------
 # On TDLib through its JSON interface (Plugins/UltraIM/telegram/), loaded at
 # run time: nothing of TDLib is linked, so the provider builds everywhere and

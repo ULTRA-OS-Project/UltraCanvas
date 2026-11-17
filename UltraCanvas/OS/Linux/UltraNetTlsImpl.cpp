@@ -6,6 +6,8 @@
 // UltraNet build reuses this file rather than a copy that would drift. The one
 // place the two genuinely differ is where the trust roots come from - see
 // LoadPlatformTrustRoots below.
+// Version: 0.4.0 - Read answers -2 for a read that timed out; no SIGPIPE from a write
+// Last Modified: 2026-11-17
 // Version: 0.3.2 (Android platform trust roots)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -21,6 +23,9 @@
 #include <openssl/x509.h>
 
 #include <cerrno>
+#include <csignal>
+#include <pthread.h>
+#include <ctime>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -324,13 +329,53 @@ UltraNetResult Wrap(std::intptr_t fd,
     return UltraNetResult::Ok();
 }
 
+namespace {
+
+// OpenSSL writes to the socket with plain write(): to a connection the peer
+// closed that raises SIGPIPE, which ends the program. While one of ours
+// writes, SIGPIPE is held back on that thread, and one it raised is taken
+// away before the thread's mask is put back.
+class SigPipeHeld {
+public:
+    SigPipeHeld() {
+        sigemptyset(&pipe_);
+        sigaddset(&pipe_, SIGPIPE);
+        sigset_t pending;
+        sigemptyset(&pending);
+        pendingBefore_ = sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE);
+        pthread_sigmask(SIG_BLOCK, &pipe_, &old_);
+    }
+    ~SigPipeHeld() {
+        sigset_t pending;
+        sigemptyset(&pending);
+        if (!pendingBefore_ && sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE)) {
+            timespec none{0, 0};
+            while (sigtimedwait(&pipe_, nullptr, &none) < 0 && errno == EINTR) {}
+        }
+        pthread_sigmask(SIG_SETMASK, &old_, nullptr);
+    }
+    SigPipeHeld(const SigPipeHeld&) = delete;
+    SigPipeHeld& operator=(const SigPipeHeld&) = delete;
+
+private:
+    sigset_t pipe_;
+    sigset_t old_;
+    bool pendingBefore_ = false;
+};
+
+} // namespace
+
 UltraNetResult Handshake(void* ctx) {
     auto* c = static_cast<Ctx*>(ctx);
     if (!c || !c->ssl) {
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                      "no SSL context");
     }
-    int rc = SSL_connect(c->ssl);
+    int rc = 0;
+    {
+        SigPipeHeld held;
+        rc = SSL_connect(c->ssl);
+    }
     if (rc == 1) return UltraNetResult::Ok();
 
     int err = SSL_get_error(c->ssl, rc);
@@ -370,19 +415,27 @@ UltraNetTlsInfo GetInfo(void* ctx) {
     return info;
 }
 
+
 int Read(void* ctx, char* buf, std::size_t len, int /*timeoutMs*/) {
     auto* c = static_cast<Ctx*>(ctx);
     if (!c || !c->ssl) return -1;
+    errno = 0;
+    SigPipeHeld held;       // a read may write too (a key update, an alert)
     int n = SSL_read(c->ssl, buf, static_cast<int>(len));
     if (n > 0) return n;
+    const int saved = errno;
     int err = SSL_get_error(c->ssl, n);
     if (err == SSL_ERROR_ZERO_RETURN) return 0;          // clean shutdown
+    // The socket's receive timeout passed: OpenSSL asks to be called again.
+    if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) return -2;
+    if (err == SSL_ERROR_SYSCALL && (saved == EAGAIN || saved == EWOULDBLOCK || saved == EINTR)) return -2;
     return -1;
 }
 
 int Write(void* ctx, const char* buf, std::size_t len) {
     auto* c = static_cast<Ctx*>(ctx);
     if (!c || !c->ssl) return -1;
+    SigPipeHeld held;
     int n = SSL_write(c->ssl, buf, static_cast<int>(len));
     if (n > 0) return n;
     return -1;
@@ -393,8 +446,11 @@ void Close(void* ctx) {
     if (!c) return;
     if (c->ssl) {
         // Best-effort close-notify. Ignore failures — the fd may already be
-        // half-closed by the peer.
-        SSL_shutdown(c->ssl);
+        // half-closed by the peer (no SIGPIPE for it).
+        {
+            SigPipeHeld held;
+            SSL_shutdown(c->ssl);
+        }
         SSL_free(c->ssl);
     }
     if (c->sslCtx) SSL_CTX_free(c->sslCtx);
