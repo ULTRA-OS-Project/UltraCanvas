@@ -511,6 +511,22 @@ about a window under Xvfb catch people out:
   claimed. A text input shows its caret only while nothing is selected, so
   measure the caret before making a selection.
 
+A skip passes, so a window test that only ever skips in CI checks nothing:
+`FileDialogTest` failed on every display from 0.9.541 until 2026-11-15
+while CI's plain `ctest` reported it green. So a new window test does two
+things. It joins one of the *Run ... on a virtual display (Linux)* steps in
+`.github/workflows/build.yml`: the framework's own go in *Run the framework
+window tests*, whose list is checked against what ctest registers. And it
+fails rather than skips when `ULTRACANVAS_TEST_DISPLAY_REQUIRED` is set,
+which those steps do: its skip asks `DisplayTest::DisplayRequired()`
+(`Tests/DisplayRequired.h`, which includes nothing of the framework's and
+which `DisplayTestSupport.h` brings along) first.
+`scripts/check_window_tests.py` enforces both in CI (`window-tests.yml`) for
+every test source that reads `DISPLAY` or calls `XOpenDisplay`. A source
+that is no window test says so with `// window-test-exempt: <why>`, and one
+ctest entry of several built from a source - a mode of the binary that opens
+no window - with `// window-test-exempt(<ctest name>): <why>`.
+
 A program's start-up and shut-down under Xvfb need no X client to send the
 close: `ULTRACANVAS_CLOSE_AFTER_MS=2000 xvfb-run -a ./build/bin/ultrapress`
 opens the window, runs two seconds, closes it the way the window manager's

@@ -112,6 +112,7 @@
 #include <utility>
 #include <vector>
 #include "UltraCanvasPathUtf8.h"
+#include "DisplayRequired.h"
 
 #if defined(_WIN32)
 // Shell_NotifyIconGetRect and NOTIFYICONDATAW's newest fields are declared
@@ -1578,6 +1579,7 @@ int main(int argc, char** argv) {
 #if defined(DESKTOPSHELLTEST_X11) && defined(DESKTOPSHELLTEST_HAVE_GIO)
     // The notification area, under a session bus of its own (CTest's
     // DesktopShellTrayTest runs it through dbus-run-session).
+    // window-test-exempt(DesktopShellTrayTest): D-Bus only, it returns before the X display is opened
     if (argc == 2 && std::strcmp(argv[1], "--tray") == 0) return TrayTest();
 #endif
 #if defined(DESKTOPSHELLTEST_WAYLAND)
@@ -1596,6 +1598,7 @@ int main(int argc, char** argv) {
     // The portals, under a session bus of their own (CTest's
     // DesktopShellPortalTest runs it through dbus-run-session), and the
     // fake portal that section starts.
+    // window-test-exempt(DesktopShellPortalTest): D-Bus only, run by wayland-build.yml under a bus of its own
     if (argc == 2 && std::strcmp(argv[1], "--portals") == 0) return PortalTest();
     if (argc == 3 && std::strcmp(argv[1], "--fake-portal") == 0) return FakePortalMain(PathFromUtf8(argv[2]));
 #endif
@@ -1954,8 +1957,7 @@ int main(int argc, char** argv) {
 #if defined(DESKTOPSHELLTEST_X11)
     // ===== X11: THE BACKEND ON A REAL DISPLAY =====
     {
-        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
-        const bool displayRequired = required && std::strcmp(required, "1") == 0;
+        const bool displayRequired = UltraCanvas::DisplayTest::DisplayRequired();
         Display* display = UltraCanvasDesktopShell::IsAvailable() ? XOpenDisplay(nullptr) : nullptr;
         if (!display) {
             Check(!displayRequired, "a display was required (ULTRACANVAS_TEST_DISPLAY_REQUIRED=1), and there is none");
@@ -2404,8 +2406,7 @@ int main(int argc, char** argv) {
     // ===== WAYLAND: THE BACKEND ON A COMPOSITOR =====
     {
         if (!sessionRuntime.empty()) SetEnv("XDG_RUNTIME_DIR", sessionRuntime);
-        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED");
-        const bool displayRequired = required && std::strcmp(required, "1") == 0;
+        const bool displayRequired = UltraCanvas::DisplayTest::DisplayRequired();
         const bool available = std::getenv("WAYLAND_DISPLAY") && UltraCanvasDesktopShell::IsAvailable();
         if (!available) {
             Check(!displayRequired, "a display was required (ULTRACANVAS_TEST_DISPLAY_REQUIRED=1), and there is none");

@@ -1730,7 +1730,8 @@ endif()
 # the dialog itself: the Up arrow and view glyphs centred in their buttons,
 # the listing without the Filer's hover icon menu, Save's naming and its
 # "Replace it?" question. That part reads the composited window pixels back
-# and skips itself without a DISPLAY.
+# and skips itself without a DISPLAY (CI's virtual-display step sets
+# ULTRACANVAS_TEST_DISPLAY_REQUIRED=1, where a skip fails instead).
 if(TARGET UltraCanvas)
     message(STATUS "  Building FileDialogTest...")
     add_executable(FileDialogTest

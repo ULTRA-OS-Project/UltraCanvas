@@ -50,6 +50,7 @@
 # current for any branch, and the branch the session starts on has its copy
 # fetched here - both hooks then see the branch as it is on origin.
 #
+# Version: 1.7.0 - xvfb, xauth and xclip, for the window tests CI runs on a virtual display
 # Version: 1.6.0 - Tesseract, Leptonica and the English OCR data (the OCR plugin)
 # Version: 1.5.0 - the fetch refspec widened to every branch and the session's
 #                  branch copy fetched, for the Stop hooks on a shallow clone
@@ -103,6 +104,9 @@ PACKAGES=(
     libhunspell-dev hunspell-en-us
     # the OCR plugin (Tesseract, Leptonica) and the English data its test reads with
     libtesseract-dev libleptonica-dev tesseract-ocr-eng
+    # the window tests CI runs on a virtual display (xvfb-run), and xclip, the
+    # other program ClipboardIncrTest copies to and from when it is installed
+    xvfb xauth xclip
 )
 
 # The comma-decimal locale the locale tests run under.

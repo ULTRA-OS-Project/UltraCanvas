@@ -3,7 +3,8 @@
 // copy from the last such test: activating the window, focusing an element,
 // driving a frame without an event loop, waiting for the shared caret, and
 // reading back whether a part of the window shows a colour (a selection's
-// fill, a focus ring along a row's edges).
+// fill, a focus ring along a row's edges), and - from DisplayRequired.h -
+// whether the run asked for a display, where a skip has to fail instead.
 //
 // Under Xvfb there is no window manager, so nothing ever activates the
 // window - and a window that is never activated draws no caret and reports no
@@ -13,6 +14,7 @@
 // frames are driven by hand.
 //
 // Header-only. Include it from a test that links UltraCanvas.
+// Version: 1.2.0 - includes DisplayRequired.h, for a skip that must not read as a pass
 // Version: 1.1.0 - RowShows / RingSides, from TreeViewKeyboardTest, for every focus-ring test
 // Version: 1.0.0
 // Last Modified: 2026-11-15
@@ -20,6 +22,7 @@
 
 #pragma once
 
+#include "DisplayRequired.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasCaret.h"
 #include "UltraCanvasUIElement.h"
