@@ -107,6 +107,20 @@ int main(int argc, char** argv) {
             for (const RichTableCell& cell : row.cells) {
                 std::cerr << " [" << cell.columnSpan << "x" << cell.rowSpan << "]";
                 dumpRuns(cell.runs, "a cell of block " + std::to_string(i));
+                if (verbose) {
+                    // The cell's lines as the reader made them.
+                    std::cerr << "\n      cell pad " << cell.paddingTopPt << "/" << cell.paddingBottomPt
+                              << " line " << cell.lineHeightPt << (cell.lineHeightAtLeast ? "+" : "")
+                              << " x" << cell.lineSpacing << ":";
+                    for (const RichTextRun& run : cell.runs) {
+                        std::cerr << "\n        " << (run.lineBreakBefore ? "| " : "  ") << run.fontSizePt << "pt ";
+                        if (run.emptyLineHeightPt > 0.0f) std::cerr << "(space " << run.emptyLineHeightPt << ") ";
+                        if (run.IsTextFrame()) std::cerr << "[frame " << run.imageWidthPt << "x" << run.imageHeightPt << "]";
+                        else if (run.IsInlineImage()) std::cerr << "[picture " << run.imageWidthPt << "x" << run.imageHeightPt << "]";
+                        else std::cerr << "\"" << run.text.substr(0, 28) << "\"";
+                    }
+                    std::cerr << "\n     ";
+                }
             }
             std::cerr << std::endl;
         }

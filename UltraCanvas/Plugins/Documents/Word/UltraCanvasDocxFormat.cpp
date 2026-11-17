@@ -2687,7 +2687,14 @@ private:
                 run.text = "-";
                 ctx.runs.push_back(std::move(run));
             } else if (tag == "w:drawing" || tag == "w:pict") {
+                const size_t before = ctx.runs.size();
                 ParseDrawing(child, ctx);
+                // A picture in the line stands in a line of its run's font.
+                for (size_t r = before; r < ctx.runs.size(); ++r) {
+                    if (!ctx.runs[r].IsInlineImage()) continue;
+                    ctx.runs[r].fontSizePt = props.fontSizePt;
+                    ctx.runs[r].fontFamily = props.fontFamily;
+                }
             } else if (tag == "mc:AlternateContent") {
                 // A shape in a run: Word's DrawingML (wps) when it is the
                 // choice, else its VML fallback - never both.
@@ -3213,6 +3220,9 @@ private:
                         if (spacing.lineHeightPt >= 4.0f) {
                             cell.lineHeightPt = spacing.lineHeightPt;
                             cell.lineHeightAtLeast = spacing.lineHeightAtLeast;
+                        } else if (spacing.lineHeightPt <= 0.0f && spacing.lineSpacing > 0.0f
+                                   && std::abs(spacing.lineSpacing - 1.0f) > 0.01f) {
+                            cell.lineSpacing = spacing.lineSpacing;
                         }
                         RichDocBlock paragraph;
                         ApplyGeometry(paragraph, p->FirstChildElement("w:pPr"));
@@ -3234,8 +3244,9 @@ private:
                     }
                     emptyLine.fontSizePt = styled.paragraphFontSizePt;
                     emptyLine.fontFamily = styled.paragraphFontFamily;
-                    // An empty paragraph's line is its mark's font.
-                    if (ctx.runs.size() == runsBefore) {
+                    // An empty paragraph's line is its mark's font - and so
+                    // is the empty line a break at a paragraph's end leaves.
+                    if (ctx.runs.size() == runsBefore || ctx.pendingLineBreak) {
                         auto* pPr = p->FirstChildElement("w:pPr");
                         Geometry mark;
                         ReadStyleFont(pPr ? pPr->FirstChildElement("w:rPr") : nullptr, mark);
@@ -4580,6 +4591,8 @@ private:
                     if (cell.lineHeightPt > 0.0f) {
                         xml << " w:line=\"" << std::lround(cell.lineHeightPt * 20.0f) << "\" w:lineRule=\""
                             << (cell.lineHeightAtLeast ? "atLeast" : "exact") << "\"";
+                    } else if (cell.lineSpacing > 0.0f) {
+                        xml << " w:line=\"" << std::lround(cell.lineSpacing * 240.0f) << "\" w:lineRule=\"auto\"";
                     }
                     xml << "/>";
                     if (const char* jc = JustificationFor(cell.align)) xml << "<w:jc w:val=\"" << jc << "\"/>";

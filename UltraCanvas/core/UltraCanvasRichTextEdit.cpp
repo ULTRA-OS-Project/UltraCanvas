@@ -1280,7 +1280,7 @@ void UltraCanvasRichTextEdit::DrawPlacedFloat(IRenderContext* ctx, const PlacedF
         box = Rect2Dd(-target.width * 0.5, -target.height * 0.5, target.width, target.height);
     }
     if (placed.image) {
-        ctx->DrawImage(*placed.image, box, turned ? ImageFitMode::Fill : ImageFitMode::Contain);
+        ctx->DrawImage(*placed.image, box, ImageFitMode::Fill);
     } else {
         ctx->DrawFilledRectangle(box, Colors::Transparent, 1.0f, style.imagePlaceholderColor);
     }
@@ -2110,8 +2110,10 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             // line of its own font. The line break that ends it carries
             // that (an empty line is measured where it starts).
             // (The first run too: an empty first line.)
-            const bool emptyLine = (run.lineBreakBefore || runIndex == 0) && runIndex + 1 < runs.size()
-                && runs[runIndex + 1].lineBreakBefore;
+            // (And the last: an empty last line, measured at the text's end.)
+            const bool emptyLine = ((run.lineBreakBefore || runIndex == 0) && runIndex + 1 < runs.size()
+                                    && runs[runIndex + 1].lineBreakBefore)
+                                || (run.lineBreakBefore && runIndex + 1 == runs.size());
             if (emptyLine) {
                 auto onBreak = [&](std::unique_ptr<ITextAttribute> attr) {
                     if (!attr) return;
@@ -2308,9 +2310,25 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                 }
                 below = words ? 0.0f : emptyLineUnitPx;
             }
+            // A picture lower than a line of its run's font stands in such
+            // a line, on the baseline (Word: a small icon before a phone
+            // number keeps the line of the font its run is set in).
+            float above = height, lineOffsetY = 0.0f;
+            if (!ownLine) {
+                FontStyle font = FontForBlock(block);
+                if (run.fontSizePt > 0.0f) font.fontSize = run.fontSizePt;
+                if (!run.fontFamily.empty()) font.fontFamily = run.fontFamily;
+                const auto known = lineUnitCache.find(font.fontFamily + "|" + std::to_string(font.fontSize)
+                                                      + (layoutLineGap ? "|gap" : ""));
+                if (known != lineUnitCache.end() && height < known->second) {
+                    below = known->second * 0.21f;
+                    above = std::max(height, known->second - below);
+                    lineOffsetY = above - height;
+                }
+            }
             // The picture sits on the baseline, which is where a word processor
             // puts an inline image.
-            add(TextAttributeFactory::CreateShape(boxWidth, height, below));
+            add(TextAttributeFactory::CreateShape(boxWidth, above, below));
             layoutHasBox = true;
             if (ownLine) add(TextAttributeFactory::CreateFallback(false));
             if (outInlineImages) {
@@ -2319,6 +2337,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                 placed.width = width;
                 placed.height = height;
                 placed.lineOffsetX = lineOffsetX;
+                placed.lineOffsetY = lineOffsetY;
                 placed.image = image;
                 placed.altText = run.imageAltText;
                 outInlineImages->push_back(std::move(placed));
@@ -2329,11 +2348,23 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         // A cell's lines of a set height (RichTableCell::lineHeightPt): its
         // words' lines; a picture in the line keeps its own height. "At
         // least" leaves a line of a larger font as it is.
-        if (cellRow >= 0 && block.lineHeightPt > 0.0f) {
-            const float sizePt = run.fontSizePt > 0.0f ? run.fontSizePt : static_cast<float>(FontForBlock(block).fontSize);
-            if (!block.lineHeightAtLeast || sizePt * 1.15f < block.lineHeightPt) {
-                add(TextAttributeFactory::CreateAbsoluteLineHeight(static_cast<double>(Px(block.lineHeightPt))));
+        // A multiple (RichTableCell::lineSpacing) is of the run's own font's
+        // line, measured when the layout was made.
+        if (cellRow >= 0 && (block.lineHeightPt > 0.0f || block.lineSpacing > 0.0f)) {
+            FontStyle font = FontForBlock(block);
+            if (run.fontSizePt > 0.0f) font.fontSize = run.fontSizePt;
+            if (!run.fontFamily.empty()) font.fontFamily = run.fontFamily;
+            const auto known = lineUnitCache.find(font.fontFamily + "|" + std::to_string(font.fontSize)
+                                                  + (layoutLineGap ? "|gap" : ""));
+            const float natural = known != lineUnitCache.end() ? known->second
+                                                               : Px(static_cast<float>(font.fontSize)) * 1.2f;
+            float height = 0.0f;
+            if (block.lineHeightPt > 0.0f) {
+                if (!block.lineHeightAtLeast || natural < Px(block.lineHeightPt)) height = Px(block.lineHeightPt);
+            } else if (std::abs(block.lineSpacing - 1.0f) > 0.01f) {
+                height = natural * block.lineSpacing;
             }
+            if (height > 0.0f) add(TextAttributeFactory::CreateAbsoluteLineHeight(static_cast<double>(height)));
         }
 
         // A formula: typeset, and the run's source hidden behind it - unless
@@ -2629,6 +2660,24 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
         emptyLineUnitPx = known->second;
         break;
     }
+    // A cell's lines of a set height or multiple, and a picture in a line:
+    // each run's own font's line.
+    {
+        const bool cellLines = cellRow >= 0 && (block.lineHeightPt > 0.0f || block.lineSpacing > 0.0f);
+        for (const RichTextRun& run : runs) {
+            if (run.IsTextFrame() || run.text.empty()) continue;
+            if (!run.IsInlineImage() && !cellLines) continue;
+            FontStyle font = FontForBlock(block);
+            if (run.fontSizePt > 0.0f) font.fontSize = run.fontSizePt;
+            if (!run.fontFamily.empty()) font.fontFamily = run.fontFamily;
+            const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize) + (lineGap ? "|gap" : "");
+            if (lineUnitCache.count(key)) continue;
+            auto probe = ctx->CreateDocumentTextLayout("X");
+            probe->SetFontStyle(font);
+            probe->SetLineSpacing(lineGap ? 1.0f : 0.0f);
+            lineUnitCache.emplace(key, static_cast<float>(probe->GetLayoutHeight()));
+        }
+    }
     if (paragraphOriginX >= 0.0f) {
         ApplyParagraphGeometry(layout.get(), block, text, paragraphOriginX, wrapWidth);
     }
@@ -2914,6 +2963,7 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                     cellBlock.align = modelCell.align;
                     cellBlock.lineHeightPt = modelCell.lineHeightPt;
                     cellBlock.lineHeightAtLeast = modelCell.lineHeightAtLeast;
+                    cellBlock.lineSpacing = modelCell.lineSpacing;
                     // A cell without words is a line of the font its (empty)
                     // first run names: a heading row's small type keeps the
                     // row low.
@@ -3322,7 +3372,7 @@ void UltraCanvasRichTextEdit::DrawInlineImages(IRenderContext* ctx, const BlockL
             continue;
         }
         if (placed.image) {
-            ctx->DrawImage(*placed.image, target, ImageFitMode::Contain);
+            ctx->DrawImage(*placed.image, target, ImageFitMode::Fill);
         } else {
             // Undecodable media: the same framed placeholder a block image
             // gets, so the picture's place in the line stays visible.

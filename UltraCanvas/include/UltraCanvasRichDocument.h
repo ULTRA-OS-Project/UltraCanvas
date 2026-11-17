@@ -310,6 +310,9 @@ struct RichTableCell {
     // (lineHeightAtLeast) - Word's w:spacing w:line with "exact" / "atLeast".
     float lineHeightPt = 0.0f;
     bool lineHeightAtLeast = false;
+    // ...or a multiple of each font's own line (0 = single): Word's
+    // w:line with "auto" (276 = 1.15).
+    float lineSpacing = 0.0f;
 
     // Copies borders and background (a new cell next to this one looks
     // like it).
