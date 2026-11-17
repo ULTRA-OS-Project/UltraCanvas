@@ -6326,7 +6326,12 @@ void UltraFilerWindow::SyncTreeSelection(const std::string& path) {
                     AddTreeFolderNode(anchor->data.nodeId, chain[idx], label,
                                       "folder-brown.svg");
                     next = folderTree->FindNode(chain[idx]);
-                    if (next) PlaceTreeRowByName(anchor, next);
+                    if (next) {
+                        // Drawn lighter: a folder the tree only shows because
+                        // the display went there.
+                        next->data.dimmed = true;
+                        PlaceTreeRowByName(anchor, next);
+                    }
                 }
             }
             anchor = next;

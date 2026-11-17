@@ -110,14 +110,6 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::signature differs: `void Add
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'Size2Di': expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'UCPixmap': expected expression
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unexpected type name 'ValueFormatter': expected expression
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'AxisDistribution'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'AxisDistributionKind'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'AxisDistributionSide'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartAxisSpec'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartEngine'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartFrame'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartHit'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::unknown type name 'ChartInteractionState'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Both'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Bottom'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'ChartBackgroundScope'
@@ -129,8 +121,6 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Custom'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Discrete'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'DrawEmptyState'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'EnsureLabelPlan'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'EnsureLayout'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Inside'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'InvalidateLabels'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'LabelPriorityRule'
@@ -139,8 +129,7 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'SelectionMode'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'SizeLegend'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Top'
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'UltraCanvasChartEngine'
-# signature Docs/UltraCanvas/UltraCanvasChartEngineProposal.md: 46b3dda45f24777fd000170132cafc7d33b8919ad720dc99e3abc81c98de8183
+# signature Docs/UltraCanvas/UltraCanvasChartEngineProposal.md: 6fe6f4ee4df617d43712c4919659124e0ed3a0b849ab28fc1a3b91a47af5a010
 Docs/UltraCanvas/UltraCanvasCircularChartProposal.md::too few arguments to function call, expected at least 7, have 5
 # signature Docs/UltraCanvas/UltraCanvasCircularChartProposal.md: 46c0dc48c73fd57eed9df5c6d3ebf67d6ad0e72a494b0429cf6f50522dd56702
 Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::'UMLMember::isOperation' does not exist (no member named 'isOperation' in 'UMLMember')

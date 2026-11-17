@@ -200,6 +200,7 @@
   "Reading the files of {0}…": "Reading the files of {0}…",
   "Recommended": "Recommended",
   "Refresh catalogue": "Refresh catalogue",
+  "Refresh catalogue downloads the lists of the catalogue sources - LocalAI's model gallery to begin with - and Search Hugging Face finds any model there. The engine a model needs is shown above the table when the model is selected, and is downloaded with it.": "Refresh catalogue downloads the lists of the catalogue sources - LocalAI's model gallery to begin with - and Search Hugging Face finds any model there. The engine a model needs is shown above the table when the model is selected, and is downloaded with it.",
   "Remove engine": "Remove engine",
   "Repository": "Repository",
   "Restore default": "Restore default",

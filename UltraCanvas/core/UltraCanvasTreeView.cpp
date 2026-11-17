@@ -2297,6 +2297,7 @@ namespace UltraCanvas {
         hoverColor = r.hover;
         lineColor = r.lineStrong;
         textColor = r.ink;
+        dimmedTextColor = r.inkMuted;
         expandButtonColor = r.raised;
         expandButtonBorderColor = r.lineStrong;
         expandButtonSymbolColor = r.ink;

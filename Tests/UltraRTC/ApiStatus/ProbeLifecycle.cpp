@@ -8,7 +8,9 @@
 #include "UltraRtcApiStatus.h"
 
 #include <atomic>
+#include <chrono>
 #include <memory>
+#include <thread>
 
 using namespace ultrartc_apistatus;
 
@@ -139,7 +141,18 @@ ULTRARTC_PROBE("Lifecycle", UltraRtc_SetEventDispatcher) {
     // Without a dispatcher again: a second peer's events run on an engine
     // thread, past the counter above.
     UltraRtc_SetEventDispatcher(nullptr);
-    const int dispatchedBefore = dispatched->load();
+    // An engine thread that took the dispatcher for an event just before it
+    // was removed still hands it that one event (the first peer goes on
+    // gathering candidates). Those land within moments: counted only once
+    // the counter has stood still, or the probe fails one run in many on a
+    // busy machine with "the removed dispatcher was still called".
+    int dispatchedBefore = dispatched->load();
+    for (int quiet = 0, tries = 0; quiet < 5 && tries < 150; ++tries) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        const int now = dispatched->load();
+        quiet = now == dispatchedBefore ? quiet + 1 : 0;
+        dispatchedBefore = now;
+    }
     const int deliveredBefore = delivered->load();
     UltraRtcHandle secondPeer = UltraRtcInvalidHandle;
     UltraRtcHandle secondChannel = UltraRtcInvalidHandle;

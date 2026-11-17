@@ -23,6 +23,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
+#include "DisplayRequired.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -45,8 +46,7 @@ static int failCount = 0;
 // Without a display the suite skips; where one was promised it fails.
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
-        const char* required = std::getenv("ULTRACANVAS_TEST_DISPLAY_REQUIRED"); \
-        if (required && *required && std::string(required) != "0") {         \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                   \
             std::cerr << "FAIL: a display was required (" << reason << ")" << std::endl; \
             return 1;                                                         \
         }                                                                     \

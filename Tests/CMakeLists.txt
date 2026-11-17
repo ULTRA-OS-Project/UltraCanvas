@@ -743,6 +743,21 @@ else()
     message(STATUS "  RichTextEditElementTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== DOCUMENT RENDER PROBE =====
+# Not a test: loads a word-processing document and writes what the rich text
+# edit draws of it as a PDF, to compare with its own program's export.
+if(TARGET UltraCanvas)
+    add_executable(DocumentRenderProbe
+        ${CMAKE_CURRENT_SOURCE_DIR}/DocumentRenderProbe.cpp
+    )
+    target_include_directories(DocumentRenderProbe PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DocumentRenderProbe PRIVATE cxx_std_20)
+    target_link_libraries(DocumentRenderProbe PRIVATE UltraCanvas)
+    set_target_properties(DocumentRenderProbe PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+endif()
+
 # ===== AT-SPI BRIDGE TEST =====
 # The Linux screen-reader bridge end to end: a libatspi client (as Orca uses
 # it) finds AtspiBridgeTestApp on a private accessibility bus, reads its
@@ -970,6 +985,24 @@ if(TARGET UltraCanvas)
     add_test(NAME OneCharacterCentringTest COMMAND OneCharacterCentringTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: OneCharacterCentringTest")
+endif()
+
+# ===== TIMELINE DIAGRAM WAVE TEST =====
+# The timeline diagram's Wave design: rings that chain into one wave, text
+# clear of the rings and of each other at every axis angle, colours, clicks.
+if(TARGET UltraCanvas)
+    add_executable(TimelineDiagramWaveTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TimelineDiagramWaveTest.cpp
+    )
+    target_include_directories(TimelineDiagramWaveTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TimelineDiagramWaveTest PRIVATE cxx_std_20)
+    target_link_libraries(TimelineDiagramWaveTest PRIVATE UltraCanvas)
+    set_target_properties(TimelineDiagramWaveTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TimelineDiagramWaveTest COMMAND TimelineDiagramWaveTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TimelineDiagramWaveTest")
 endif()
 
 # ===== GAUGE LINEAR MODES TEST =====
@@ -1749,7 +1782,8 @@ endif()
 # the dialog itself: the Up arrow and view glyphs centred in their buttons,
 # the listing without the Filer's hover icon menu, Save's naming and its
 # "Replace it?" question. That part reads the composited window pixels back
-# and skips itself without a DISPLAY.
+# and skips itself without a DISPLAY (CI's virtual-display step sets
+# ULTRACANVAS_TEST_DISPLAY_REQUIRED=1, where a skip fails instead).
 if(TARGET UltraCanvas)
     message(STATUS "  Building FileDialogTest...")
     add_executable(FileDialogTest
@@ -4558,6 +4592,7 @@ add_executable(ChartEngineTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartTheme.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartAnalysis.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartDistribution.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasParallelAxisModel.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/UltraCanvasColormap.cpp
     ${ULTRACANVAS_CORE_DIR}/UltraCanvasLabelPlacement.cpp
@@ -6550,6 +6585,30 @@ if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
     message(STATUS "    Test registered: ImportancePerformanceChartRenderTest")
 else()
     message(STATUS "  ImportancePerformanceChartRenderTest skipped (UltraCanvas or charts not present)")
+endif()
+
+# ===== AXIS DISTRIBUTION RENDER TEST =====
+# The chart engine's axis distribution layer drawn offscreen: Outside bands
+# beyond the plot's opposite edge with the legend kept clear, Near inside the
+# plot, both sides of an in-plot rule clear of its neighbour, nothing under
+# Polar. With ULTRACANVAS_SCREENSHOT_DIR set, each case is written there as a
+# PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building AxisDistributionRenderTest...")
+    add_executable(AxisDistributionRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/AxisDistributionRenderTest.cpp
+    )
+    target_include_directories(AxisDistributionRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(AxisDistributionRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(AxisDistributionRenderTest PRIVATE UltraCanvas)
+    set_target_properties(AxisDistributionRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME AxisDistributionRenderTest COMMAND AxisDistributionRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: AxisDistributionRenderTest")
+else()
+    message(STATUS "  AxisDistributionRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== TERNARY CHART RENDER TEST =====

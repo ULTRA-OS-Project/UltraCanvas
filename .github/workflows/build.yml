@@ -27,6 +27,22 @@ on:
     # starts a run with those rows (the gate reads the labels), without a
     # push to carry it.
     types: [opened, synchronize, reopened, labeled]
+  # Every night, all six rows on main's head, whether or not anything merged.
+  # A full build otherwise runs only when something lands (the release
+  # dispatch from changelog-fold.yml), so a change in a runner image or in a
+  # library the runners install fresh each time - MSYS2's, Homebrew's, apt's -
+  # showed up first on somebody's unrelated pull request: on 2026-11-16 the
+  # Windows row's OpenSSL stopped naming the signer of a failed CMS signature
+  # and #1280, a Word reader change, went red on it. A scheduled run is a
+  # validation run: not a release (RELEASE_BUILD and the gate's `release` are
+  # push / release-dispatch only), nothing is signed or published, and the
+  # gate's matrix step gives it every row (it is not a pull request).
+  # GitHub runs a schedule on the default branch only and mails a failure
+  # to whoever last changed this cron line. 02:23 UTC: away from the hour,
+  # when scheduled runs pile up, and outside the working day of the people
+  # merging here.
+  schedule:
+    - cron: '23 2 * * *'
   workflow_dispatch:
     inputs:
       # Set only by changelog-fold.yml. Its "Changelog: x.y.z" commit is pushed
@@ -56,9 +72,11 @@ on:
 #
 # A release dispatch is keyed by its commit as well: GitHub keeps only ONE
 # pending run per group, so with a shared key a third release dispatched while
-# one builds and one waits would silently replace the waiting one.
+# one builds and one waits would silently replace the waiting one. The nightly
+# run has a group of its own for the same reason: sharing main's, it would
+# replace a push's release build that was waiting behind another.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}${{ inputs.sha && format('-{0}', inputs.sha) || '' }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}${{ inputs.sha && format('-{0}', inputs.sha) || '' }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -830,9 +848,12 @@ jobs:
           # stated where they are met. "Run unit tests" forbids its skip too,
           # as "Run the device TLS test" does on macOS and Windows.
           scripts/ci-apt.sh install python3 openssl
-          # A virtual X display for DesktopShellTest's X11 half (see "Run
-          # DesktopShellTest on a virtual display" below).
-          scripts/ci-apt.sh install xvfb xauth
+          # A virtual X display for the window tests: every "Run ... on a
+          # virtual display (Linux)" step below runs its tests under
+          # xvfb-run, and so does the demo's layout audit. xclip is the other
+          # program ClipboardIncrTest copies a large picture to and from;
+          # without it that half skips.
+          scripts/ci-apt.sh install xvfb xauth xclip
           # A comma-decimal locale for the tests that hold file formats to
           # dot-decimal numbers (HTMLReaderTest, HTMLRichImportTest,
           # ModelLocaleDecimalTest, MindMapIOTest, Model3DSTest, ModelMS3DTest,
@@ -2429,6 +2450,66 @@ jobs:
         run: >-
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^WindowShutdownTest$"
+
+      # The framework file dialog and the save-settings dialog are checked on
+      # real windows read back from the screen: the centred glyphs, the Save
+      # name taking the type's extension, the Settings button, the Size row,
+      # the settings dialog's rows. "Run unit tests" has no display, so there
+      # only the naming rule and the settings store run and the dialogs skip -
+      # which is how "its rows scaled down with the type" failed on every
+      # display from 0.9.541 (#1206) to 2026-11-15 with nothing in CI saying
+      # so. Here the dialogs have to run.
+      - name: Run the file dialog test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^FileDialogTest$"
+
+      # The rest of the framework's window tests: each opens a real window
+      # and reads it back - the caret's place in the stacking order, the
+      # clipboard's large copies, popups and tooltips in windows of their own,
+      # dialogs closed by Escape and all at once, the colour picker, the text
+      # area's spelling, search and autocomplete, the timeline's keyboard.
+      # Each skips itself without a display, so under "Run unit tests" they
+      # all passed by checking nothing, as FileDialogTest did while a check
+      # of it failed on every display. The list is checked against what ctest
+      # has registered, so a test renamed or left unbuilt fails here instead
+      # of dropping out of the run.
+      - name: Run the framework window tests on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        shell: bash
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: |
+          set -eu
+          tests=(
+            CaretStackingTest ClipboardIncrTest ClipboardTargetsTest
+            ColorPaletteManagerTest ColorPickerAutoHeightTest
+            ColorPickerDesignSelectorTest ColorPickerDragTest
+            ColorPickerModelDropdownTest DialogCloseAllTest DialogEscapeTest
+            DialogStackingTest ElementPressTakenTest FilerPaneDragTest
+            ImageFileWatchDisplayTest LabelNaturalTextWidthTest
+            LabelSelectionTest MediaViewerLoadingTest MouseClickBubblingTest
+            PopupOwnWindowTest RichTextEditElementTest SessionLockTest
+            TabPillStyleScreenshotTest TagInputGrowTest
+            TextAreaAutoCompleteTest TextAreaDetachedTest
+            TextAreaSearchHighlightTest TextAreaSpellCheckTest
+            TextAreaSyntaxStateTest TextMetricsScreenshotTest
+            TimecodeFieldElementTest ToolGroupButtonTest TooltipOwnWindowTest
+            VideoTimelineElementTest
+          )
+          regex="^($(IFS='|'; echo "${tests[*]}"))\$"
+          registered=$(ctest -N -R "$regex" | grep -cE '^ *Test +#' || true)
+          if [ "$registered" -ne "${#tests[@]}" ]; then
+            echo "::error::${#tests[@]} window tests listed, $registered registered with ctest"
+            exit 1
+          fi
+          xvfb-run -a -s "-screen 0 1280x800x24" \
+            ctest --output-on-failure --no-tests=error --timeout 300 -R "$regex"
 
       # The demo's layout audit (Apps/DemoApp/UltraCanvasDemoLayoutAudit.cpp)
       # opens every page and fails on a label or button narrower than its

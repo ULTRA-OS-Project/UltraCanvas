@@ -436,6 +436,13 @@ user asks for a "distro build" with a pull request. A left-out row reports
 under its own name, so a required check never waits on it - and it reports
 **success** after a few seconds, with a notice that it was not built: a
 green row is not a build unless it ran for minutes.
+Every night at 02:23 UTC the same workflow builds all six rows on `main`'s
+head (`schedule` in `build.yml`), as a validation run - nothing signed or
+published. It catches a change in a runner image or in the libraries the
+runners install fresh (MSYS2, Homebrew, apt) on a day nothing merged, before
+it turns somebody's unrelated pull request red; a red nightly run on a commit
+whose own build was green is that, not the last merge. Its result becomes that
+commit's "Build result" status (`build-result.yml` follows the newest run).
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. With `-DULTRAAI_ADAPTER_LLAMACPP=ON` the
 llama.cpp adapter is built (the engine is fetched from GitHub, or taken from
@@ -467,7 +474,10 @@ every credential-vault test failed here while passing in CI, and VideoFX, the
 PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
 were not built at all. A cold container takes about a minute, a warm one a
 fraction of a second; it never blocks the session, and when an install fails
-it says so in one line in the session's context. It also generates the
+it says so in one line in the session's context. It also unpacks libc++'s headers into a private folder for
+`scripts/check_libcxx_syntax.py` (`--fetch-libcxx`), rather than installing
+`libc++-dev`: on 24.04 that removes the `libunwind-dev` GStreamer's dev
+package needs, and the build silently loses its media backends. It also generates the
 comma-decimal locale `de_DE.UTF-8`, as CI's Linux rows do: the tests that hold
 file formats to dot-decimal numbers (`HTMLReaderTest`, `ModelLocaleDecimalTest`,
 `DiagramJsonLocaleTest` and the rest) skip without one, and the image has none.
@@ -503,6 +513,22 @@ about a window under Xvfb catch people out:
   once, and `DisplayTest::WaitForCaret` drives frames until the shared caret is
   claimed. A text input shows its caret only while nothing is selected, so
   measure the caret before making a selection.
+
+A skip passes, so a window test that only ever skips in CI checks nothing:
+`FileDialogTest` failed on every display from 0.9.541 until 2026-11-15
+while CI's plain `ctest` reported it green. So a new window test does two
+things. It joins one of the *Run ... on a virtual display (Linux)* steps in
+`.github/workflows/build.yml`: the framework's own go in *Run the framework
+window tests*, whose list is checked against what ctest registers. And it
+fails rather than skips when `ULTRACANVAS_TEST_DISPLAY_REQUIRED` is set,
+which those steps do: its skip asks `DisplayTest::DisplayRequired()`
+(`Tests/DisplayRequired.h`, which includes nothing of the framework's and
+which `DisplayTestSupport.h` brings along) first.
+`scripts/check_window_tests.py` enforces both in CI (`window-tests.yml`) for
+every test source that reads `DISPLAY` or calls `XOpenDisplay`. A source
+that is no window test says so with `// window-test-exempt: <why>`, and one
+ctest entry of several built from a source - a mode of the binary that opens
+no window - with `// window-test-exempt(<ctest name>): <why>`.
 
 A program's start-up and shut-down under Xvfb need no X client to send the
 close: `ULTRACANVAS_CLOSE_AFTER_MS=2000 xvfb-run -a ./build/bin/ultrapress`

@@ -300,6 +300,7 @@ if (!IsFontFamilyAvailable("Georgia")) {
     std::string where = FontDownloadUrl("Georgia");   // a search on Google Fonts
 }
 std::string family = FirstInstalledFontFamily({"Helvetica Neue", "Arial", "sans-serif"});
+std::string standIn = FontFamilySubstitute("Helvetica");   // "Arial" on Windows, "" where Helvetica is installed
 ```
 
 | | |
@@ -309,6 +310,8 @@ std::string family = FirstInstalledFontFamily({"Helvetica Neue", "Arial", "sans-
 | `std::string FontDownloadUrl(family)` | A search for the family on Google Fonts. |
 | `bool IsFontFamilyAvailable(family)` | Whether the text engine knows the family, ignoring case. A family it doesn't know is drawn in a substitute. The installed families are listed once per font set and kept, so calling it for every run of a page is cheap. |
 | `std::string FirstInstalledFontFamily(families)` | The entry of a CSS `font-family` list to draw in, as a browser picks it: the first the text engine has, or an entry that needs no font of that name (`""` for the interface font, or `"sans-serif"`, `"serif"`, `"monospace"`). `""` when nothing in the list is installed. `{"Helvetica Neue", "Arial"}` is `"Arial"` on Windows. The HTML reader draws a page's text in it. |
+| `std::string FontFamilySubstitute(family)` | The installed family that stands in for one nobody has installed, by name: the first of its known substitutes the text engine has, ignoring case. `"Helvetica"` is `"Arial"` on Windows and `"Liberation Sans"` on most Linux systems. `""` when none is installed, and when the family is installed itself. `UltraCanvasRichTextEdit`'s font report leaves such a family out: it is drawn as every other program on that computer draws it. |
+| `const std::vector<FontFamilySubstitutes>& GetFontFamilySubstitutes()` | The families with stand-ins, each with its substitutes in the order they are tried: the names Windows maps itself (Helvetica and Helv onto Arial, Times and Tms Rmn onto Times New Roman, Courier onto Courier New) and the metric-compatible pairs fontconfig maps on Linux (Arial and Liberation Sans, Calibri and Carlito, Cambria and Caladea). Where the framework makes the fontconfig set itself (Windows, Android) it carries them as aliases, so the text is drawn by them. |
 
 The character counts ask afresh on each call. `IsFontFamilyAvailable` reads
 its list again whenever the font set changes (`GetFontSetGeneration`), so a

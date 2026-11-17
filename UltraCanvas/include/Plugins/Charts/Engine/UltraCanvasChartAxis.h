@@ -7,6 +7,7 @@
 // and leaves screen geometry to the projection, so it can be unit tested
 // without a window.
 //
+// Version: 1.6.0 - Samples(): the observed values, for the axis distribution layer
 // Version: 1.5.0 - rangePadding
 // Version: 1.4.0 - one nice-number rounding for auto ranges and tick steps;
 //   the minus sign leads the unit prefix (-$25K)
@@ -15,7 +16,7 @@
 // Version: 1.1.0 - axis roles (polar furniture), sub-bands (stacked panes),
 //   symmetric ranges (diverging charts)
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -157,6 +158,9 @@ public:
     double Max() const { return effectiveMax; }
     bool IsDegenerate() const { return degenerate; }
     size_t SampleCount() const { return samples.size(); }
+    // Every finite value observed, in the order observed - what an axis
+    // distribution summarises when it is given no values of its own.
+    const std::vector<double>& Samples() const { return samples; }
 
     // ---- mapping ---------------------------------------------------------
     // Value -> [0,1], honouring scale, inversion and the sub-band. Out-of-range

@@ -1,5 +1,6 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
+// Version: 1.2.0 - a layout with glyph positions left unrounded (a document's text); CreateFontFeatures
 // Version: 1.1.8 - CreateLetterSpacing takes fractional pixels
 // Version: 1.1.7 - GetCapHeight measures the font the text starts in, font
 //                  attributes included, not the layout's own font alone
@@ -329,6 +330,10 @@ namespace UltraCanvas {
         std::unique_ptr<ITextAttribute> CreateAbsoluteLineHeight(double lineHeight) {
             return std::make_unique<UCTextAttribute>(pango_attr_line_height_new_absolute(static_cast<int>(lineHeight * PANGO_SCALE)));
         }
+
+        std::unique_ptr<ITextAttribute> CreateFontFeatures(const std::string& features) {
+            return std::make_unique<UCTextAttribute>(pango_attr_font_features_new(features.c_str()));
+        }
     }
 
     // =========================================================================
@@ -426,8 +431,27 @@ namespace UltraCanvas {
     // UCTextLayout
     // =========================================================================
 
-    UCTextLayout::UCTextLayout(PangoContext *pangoCtx) {
-        if (pangoCtx) {
+    UCTextLayout::UCTextLayout(PangoContext *pangoCtx, bool exactGlyphPositions) {
+        if (pangoCtx && exactGlyphPositions) {
+            // A context like the given one - its fonts, options, resolution
+            // and transform - that does not round glyph positions. The
+            // layout keeps it alive.
+            PangoContext* exact = pango_font_map_create_context(pango_context_get_font_map(pangoCtx));
+            if (exact) {
+                pango_cairo_context_set_font_options(exact, pango_cairo_context_get_font_options(pangoCtx));
+                pango_cairo_context_set_resolution(exact, pango_cairo_context_get_resolution(pangoCtx));
+                pango_context_set_matrix(exact, pango_context_get_matrix(pangoCtx));
+                pango_context_set_language(exact, pango_context_get_language(pangoCtx));
+                pango_context_set_base_dir(exact, pango_context_get_base_dir(pangoCtx));
+                pango_context_set_base_gravity(exact, pango_context_get_base_gravity(pangoCtx));
+                if (const PangoFontDescription* description = pango_context_get_font_description(pangoCtx)) {
+                    pango_context_set_font_description(exact, description);
+                }
+                pango_context_set_round_glyph_positions(exact, FALSE);
+                layout = pango_layout_new(exact);
+                g_object_unref(exact);
+            }
+        } else if (pangoCtx) {
             layout = pango_layout_new(pangoCtx);
         }
         if (!layout) {

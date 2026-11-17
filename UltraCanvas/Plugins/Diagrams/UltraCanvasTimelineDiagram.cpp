@@ -1,8 +1,9 @@
 // Plugins/Diagrams/UltraCanvasTimelineDiagram.cpp
-// Narrative timeline infographic with nine design presets
+// Narrative timeline infographic with ten design presets
+// Version: 1.1.0 - the Wave design (half-rings bending alternately along an axis at any angle)
 // Version: 1.0.1 - InvalidateLayout() overrides the layout engine's and calls it; the cache alone is DropLayoutCache()
 // Version: 1.0.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasTimelineDiagram.h"
@@ -124,6 +125,7 @@ namespace UltraCanvas {
             style.cardBorderColor = Color(66, 71, 82, 255);
             style.spineColor = Color(70, 76, 88, 255);
             style.connectorColor = Color(88, 95, 108, 255);
+            style.waveInsideColor = Color(40, 44, 53, 255);
         } else {
             TimelineDiagramStyle preset = TimelineDiagramStyles::CreateForDesign(design);
             backgroundColor = Color(252, 252, 253, 255);
@@ -133,6 +135,7 @@ namespace UltraCanvas {
             style.cardBorderColor = preset.cardBorderColor;
             style.spineColor = preset.spineColor;
             style.connectorColor = preset.connectorColor;
+            style.waveInsideColor = preset.waveInsideColor;
         }
         RequestRedraw();
     }
@@ -342,6 +345,17 @@ namespace UltraCanvas {
         return true;
     }
 
+    bool UltraCanvasTimelineDiagram::GetItemArc(size_t index, Point2Dd& outCenter, double& outRadius,
+                                                double& outStartAngle) const {
+        if (!layout.valid || index >= layout.itemLayouts.size()) return false;
+        const ItemLayout& il = layout.itemLayouts[index];
+        if (!il.hasArc) return false;
+        outCenter = il.arcCenter;
+        outRadius = il.arcRadius;
+        outStartAngle = il.arcStartAngle;
+        return true;
+    }
+
 // =============================================================================
 // LAYOUT - SHARED
 // =============================================================================
@@ -431,6 +445,7 @@ namespace UltraCanvas {
         layout.spinePoints.clear();
         layout.spineRect = Rect2Dd(0, 0, 0, 0);
         layout.contentScale = 1.0;
+        layout.hasPathEnd = false;
 
         const double top = TitleBandHeight() + 10.0;
         layout.diagramArea = Rect2Dd(
@@ -456,6 +471,7 @@ namespace UltraCanvas {
                 case TimelineDesign::Hanging:     LayoutHanging(ctx); break;
                 case TimelineDesign::Chevron:     LayoutChevron(ctx); break;
                 case TimelineDesign::Steps:       LayoutSteps(ctx); break;
+                case TimelineDesign::Wave:        LayoutWave(ctx); break;
             }
         }
 
@@ -934,6 +950,466 @@ namespace UltraCanvas {
     }
 
 // =============================================================================
+// LAYOUT - WAVE (half-rings bending alternately along an axis)
+// =============================================================================
+
+    namespace {
+        // Text sits beside the rings (x) on an axis this steep or steeper,
+        // above and below them (y) on a flatter one.
+        constexpr double kWaveBesideAngle = 40.0;
+
+        // A box as two corners indexed 0 = x, 1 = y, so the wave layout can
+        // treat "across the axis" and "along it" alike whichever of x and y
+        // they are.
+        struct WaveBox {
+            double lo[2] = {0.0, 0.0};
+            double hi[2] = {0.0, 0.0};
+            double Size(int a) const { return hi[a] - lo[a]; }
+            double Mid(int a) const { return (lo[a] + hi[a]) / 2.0; }
+        };
+
+        struct WaveRing {
+            double center[2] = {0.0, 0.0};
+            double radius = 0.0;
+            double bulge[2] = {0.0, 0.0};   // Unit vector to the side it bulges to
+            double startAngle = 0.0;        // Sweeps pi clockwise from here
+            double start[2] = {0.0, 0.0};   // Chord ends, on the axis
+            double end[2] = {0.0, 0.0};
+            WaveBox box;                    // The half-disc, grown by stroke and node
+            int dir = 1;                    // Which way across the axis its text sits
+        };
+
+        struct WavePlan {
+            std::vector<WaveRing> rings;
+            std::vector<WaveBox> slots;     // The room each item's text may take
+            double length = 0.0;            // Of the axis
+            int across = 0;                 // 0: text beside the rings, 1: above / below
+            bool ringsFit = false;          // The rings alone fit the area
+            double score = 0.0;             // The tightest text slot over its minimum room
+            bool fits = false;              // Both: rings inside, every text its room
+        };
+
+        // Bounding box of the half-disc swept from startAngle through pi
+        WaveBox HalfDiscBox(const double c[2], double r, double startAngle, double pad) {
+            WaveBox b;
+            bool first = true;
+            auto add = [&](double angle) {
+                const double x = c[0] + r * std::cos(angle);
+                const double y = c[1] + r * std::sin(angle);
+                if (first) {
+                    b.lo[0] = b.hi[0] = x;
+                    b.lo[1] = b.hi[1] = y;
+                    first = false;
+                    return;
+                }
+                b.lo[0] = std::min(b.lo[0], x); b.hi[0] = std::max(b.hi[0], x);
+                b.lo[1] = std::min(b.lo[1], y); b.hi[1] = std::max(b.hi[1], y);
+            };
+            add(startAngle);
+            add(startAngle + M_PI);
+            // Every quarter-turn direction inside the sweep is an extreme
+            for (int k = -4; k <= 8; ++k) {
+                const double a = k * M_PI / 2.0;
+                if (a > startAngle && a < startAngle + M_PI) add(a);
+            }
+            for (int a = 0; a < 2; ++a) {
+                b.lo[a] -= pad;
+                b.hi[a] += pad;
+            }
+            return b;
+        }
+
+        struct WaveParams {
+            WaveBox area;
+            std::vector<double> bounds;     // 0..1 along the axis; item i spans [i, i+1]
+            std::vector<int> sides;         // -1 bulges "above", +1 "below"
+            double angleDeg = 45.0;
+            bool reverse = false;
+            double pad = 8.0;               // Half the stroke, or a node, whichever is larger
+            double gap = 12.0;              // Between a ring and its text
+            // The least room a text block needs: beside a ring (a steep
+            // axis) and above or below it (a flat one)
+            double besideW = 90.0, besideH = 40.0;
+            double aboveW = 70.0, aboveH = 60.0;
+        };
+
+        // The wave with an axis of the given length, placed in the area, and
+        // whether every item's text then has its minimum room.
+        WavePlan PlanWave(const WaveParams& p, double length) {
+            WavePlan plan;
+            plan.length = length;
+            const size_t n = p.sides.size();
+            const double theta = p.angleDeg * M_PI / 180.0;
+            plan.across = (std::abs(p.angleDeg) >= kWaveBesideAngle) ? 0 : 1;
+            const int across = plan.across;
+            const int along = 1 - across;
+            const double minAcross = (across == 0) ? p.besideW : p.aboveH;
+            const double minAlong = (across == 0) ? p.besideH : p.aboveW;
+
+            double u[2] = {std::cos(theta), std::sin(theta)};
+            if (p.reverse) { u[0] = -u[0]; u[1] = -u[1]; }
+            // "Above" is the perpendicular with the upward component; it does
+            // not turn over when the wave runs the other way
+            const double above[2] = {std::sin(theta), -std::cos(theta)};
+
+            // Rings relative to the start of the axis
+            WaveBox all;
+            plan.rings.resize(n);
+            for (size_t i = 0; i < n; ++i) {
+                WaveRing& r = plan.rings[i];
+                const double s = p.bounds[i] * length;
+                const double e = p.bounds[i + 1] * length;
+                for (int a = 0; a < 2; ++a) {
+                    r.start[a] = u[a] * s;
+                    r.end[a] = u[a] * e;
+                    r.center[a] = (r.start[a] + r.end[a]) / 2.0;
+                    r.bulge[a] = (p.sides[i] < 0) ? above[a] : -above[a];
+                }
+                r.radius = std::max(1.0, (e - s) / 2.0);
+                r.startAngle = std::atan2(r.bulge[1], r.bulge[0]) - M_PI / 2.0;
+                r.box = HalfDiscBox(r.center, r.radius, r.startAngle, p.pad);
+                r.dir = (r.bulge[across] >= 0.0) ? 1 : -1;
+                if (i == 0) {
+                    all = r.box;
+                } else {
+                    for (int a = 0; a < 2; ++a) {
+                        all.lo[a] = std::min(all.lo[a], r.box.lo[a]);
+                        all.hi[a] = std::max(all.hi[a], r.box.hi[a]);
+                    }
+                }
+            }
+
+            // Where the start of the axis may go: the rings inside the area,
+            // and every item's text its minimum room across
+            double lo[2], hi[2];
+            for (int a = 0; a < 2; ++a) {
+                lo[a] = p.area.lo[a] - all.lo[a];
+                hi[a] = p.area.hi[a] - all.hi[a];
+            }
+            for (const WaveRing& r : plan.rings) {
+                if (r.dir > 0) {
+                    hi[across] = std::min(hi[across], p.area.hi[across] - minAcross - p.gap - r.box.hi[across]);
+                } else {
+                    lo[across] = std::max(lo[across], p.area.lo[across] + minAcross + p.gap - r.box.lo[across]);
+                }
+            }
+            plan.ringsFit = (p.area.lo[0] - all.lo[0] <= p.area.hi[0] - all.hi[0] &&
+                             p.area.lo[1] - all.lo[1] <= p.area.hi[1] - all.hi[1]);
+            if (!plan.ringsFit) {
+                for (int a = 0; a < 2; ++a) {
+                    lo[a] = p.area.lo[a] - all.lo[a];
+                    hi[a] = p.area.hi[a] - all.hi[a];
+                }
+            }
+            double origin[2];
+            for (int a = 0; a < 2; ++a) origin[a] = (lo[a] + hi[a]) / 2.0;
+
+            for (WaveRing& r : plan.rings) {
+                for (int a = 0; a < 2; ++a) {
+                    r.center[a] += origin[a];
+                    r.start[a] += origin[a];
+                    r.end[a] += origin[a];
+                    r.box.lo[a] += origin[a];
+                    r.box.hi[a] += origin[a];
+                }
+            }
+
+            // Each item's text: from its ring out to the edge of the area,
+            // cut back where another ring stands in the way, and shared with
+            // the nearest items on the same side half-way between their apexes
+            auto apex = [&](size_t i, int a) {
+                const WaveRing& r = plan.rings[i];
+                return r.center[a] + r.bulge[a] * r.radius;
+            };
+            plan.slots.resize(n);
+            for (size_t i = 0; i < n; ++i) {
+                const WaveRing& r = plan.rings[i];
+                WaveBox& s = plan.slots[i];
+                if (r.dir > 0) {
+                    s.lo[across] = r.box.hi[across] + p.gap;
+                    s.hi[across] = p.area.hi[across];
+                } else {
+                    s.lo[across] = p.area.lo[across];
+                    s.hi[across] = r.box.lo[across] - p.gap;
+                }
+                s.lo[along] = p.area.lo[along];
+                s.hi[along] = p.area.hi[along];
+
+                for (size_t j = 0; j < n; ++j) {
+                    if (j == i) continue;
+                    const WaveBox& o = plan.rings[j].box;
+                    if (o.hi[across] <= s.lo[across] || o.lo[across] >= s.hi[across]) continue;
+                    if (o.Mid(along) < r.center[along]) {
+                        s.lo[along] = std::max(s.lo[along], o.hi[along] + p.gap / 2.0);
+                    } else {
+                        s.hi[along] = std::min(s.hi[along], o.lo[along] - p.gap / 2.0);
+                    }
+                }
+
+                const double own = apex(i, along);
+                auto shareWith = [&](size_t j) {
+                    const double other = apex(j, along);
+                    const double mid = (own + other) / 2.0;
+                    if (other < own) s.lo[along] = std::max(s.lo[along], mid + p.gap / 2.0);
+                    else s.hi[along] = std::min(s.hi[along], mid - p.gap / 2.0);
+                };
+                for (size_t j = i; j-- > 0;) {
+                    if (plan.rings[j].dir == r.dir) { shareWith(j); break; }
+                }
+                for (size_t j = i + 1; j < n; ++j) {
+                    if (plan.rings[j].dir == r.dir) { shareWith(j); break; }
+                }
+
+            }
+
+            plan.score = 1e9;
+            for (const WaveBox& s : plan.slots) {
+                plan.score = std::min(plan.score, std::min(s.Size(along) / minAlong,
+                                                           s.Size(across) / minAcross));
+            }
+            plan.fits = plan.ringsFit && plan.score >= 0.999;
+            return plan;
+        }
+
+        // Which of two plans to take: one that fits over one that does not,
+        // then the larger wave; of two that do not, rings inside the area
+        // first, then the most room for the tightest text.
+        bool BetterWave(const WavePlan& a, const WavePlan& b) {
+            if (a.fits != b.fits) return a.fits;
+            if (a.fits) return a.length > b.length;
+            if (a.ringsFit != b.ringsFit) return a.ringsFit;
+            return a.score > b.score;
+        }
+
+        // The longest axis whose wave fits, or the closest to fitting. Fit
+        // is lost at both ends - long rings leave no room beside them, short
+        // ones crowd their neighbours' text together - so the lengths are
+        // scanned from the longest down, and the first that fits is refined
+        // against the longer one before it.
+        WavePlan LargestWave(const WaveParams& p, double shortest, double longest) {
+            const int steps = 48;
+            WavePlan best;
+            bool haveBest = false;
+            double previous = longest;
+            for (int k = 0; k <= steps; ++k) {
+                const double length = longest * std::pow(shortest / longest, static_cast<double>(k) / steps);
+                WavePlan candidate = PlanWave(p, length);
+                if (candidate.fits) {
+                    double lo = length, hi = previous;
+                    best = std::move(candidate);
+                    for (int iteration = 0; iteration < 20 && k > 0; ++iteration) {
+                        const double mid = (lo + hi) / 2.0;
+                        WavePlan longer = PlanWave(p, mid);
+                        if (longer.fits) {
+                            best = std::move(longer);
+                            lo = mid;
+                        } else {
+                            hi = mid;
+                        }
+                    }
+                    return best;
+                }
+                if (!haveBest || BetterWave(candidate, best)) {
+                    best = std::move(candidate);
+                    haveBest = true;
+                }
+                previous = length;
+            }
+            return best;
+        }
+    } // namespace
+
+    void UltraCanvasTimelineDiagram::LayoutWave(IRenderContext* ctx) {
+        const Rect2Dd& area = layout.diagramArea;
+        const size_t n = items.size();
+        const double halfT = style.showSpine ? style.spineThickness / 2.0 : 0.0;
+        const bool connectors = (style.connectorStyle != TimelineConnectorStyle::Hidden);
+
+        WaveParams p;
+        p.area.lo[0] = area.x;
+        p.area.lo[1] = area.y;
+        p.area.hi[0] = area.x + area.width;
+        p.area.hi[1] = area.y + area.height;
+        p.reverse = reverseOrder;
+        p.gap = connectors ? std::max(12.0, style.connectorLength) : 14.0;
+        p.besideW = std::clamp(area.width * 0.2, 80.0, 240.0);
+        p.besideH = std::clamp(area.height * 0.1, 34.0, 80.0);
+        p.aboveW = std::clamp(area.width * 0.1, 60.0, 150.0);
+        p.aboveH = std::clamp(area.height * 0.24, 56.0, 180.0);
+
+        double nodePad = 0.0;
+        for (const auto& il : layout.itemLayouts) {
+            nodePad = std::max(nodePad, il.nodeRadius + style.nodeBorderWidth);
+        }
+        p.pad = std::max(halfT, style.showNodes ? nodePad : 0.0);
+
+        // Item i's ring runs between the boundaries half-way to its
+        // neighbours' positions, so proportional placement gives rings of
+        // different sizes. The axis is turned round for a reversed order.
+        std::vector<double> pos = ItemPositions();
+        if (reverseOrder) {
+            for (double& v : pos) v = 1.0 - v;
+        }
+        p.bounds.assign(n + 1, 0.0);
+        p.bounds[n] = 1.0;
+        for (size_t i = 1; i < n; ++i) {
+            p.bounds[i] = std::clamp((pos[i - 1] + pos[i]) / 2.0, p.bounds[i - 1], 1.0);
+        }
+        p.sides.resize(n);
+        for (size_t i = 0; i < n; ++i) p.sides[i] = layout.itemLayouts[i].side;
+
+        const double shortest = static_cast<double>(n) * 12.0;
+        const double longest = 2.0 * (area.width + area.height);
+        p.angleDeg = std::clamp(style.waveAxisAngle, -90.0, 90.0);
+        WavePlan plan = LargestWave(p, shortest, longest);
+        if (style.waveAutoAngle) {
+            for (double angle = 0.0; angle <= 90.0; angle += 15.0) {
+                WaveParams q = p;
+                q.angleDeg = angle;
+                WavePlan candidate = LargestWave(q, shortest, longest);
+                if (BetterWave(candidate, plan)) plan = std::move(candidate);
+            }
+        }
+
+        const int across = plan.across;
+        const bool boxed = (style.contentContainer == TimelineContentContainer::Card ||
+                            style.contentContainer == TimelineContentContainer::OutlinedCard);
+        const double pad = boxed ? style.contentPadding : 0.0;
+        const double maxTextW = std::max(p.besideW, area.width * 0.34);
+
+        // Fonts follow the narrowest text column
+        double narrowest = maxTextW;
+        for (const WaveBox& s : plan.slots) {
+            narrowest = std::min(narrowest, std::max(0.0, s.Size(0)));
+        }
+        layout.contentScale = std::clamp(narrowest / 170.0, 0.62, 1.0);
+        std::vector<std::string> capLines, titleLines, bodyLines;
+        for (size_t i = 0; i < n; ++i) {
+            ItemLayout& il = layout.itemLayouts[i];
+            const WaveRing& r = plan.rings[i];
+            const WaveBox& s = plan.slots[i];
+            const Point2Dd center(r.center[0], r.center[1]);
+            const Point2Dd bulge(r.bulge[0], r.bulge[1]);
+
+            il.hasArc = true;
+            il.arcCenter = center;
+            il.arcRadius = r.radius;
+            il.arcStartAngle = r.startAngle;
+            il.nodeCenter = Point2Dd(r.start[0], r.start[1]);
+
+            il.captionRect = Rect2Dd(0, 0, 0, 0);
+            il.captionSize = 0.0f;
+
+            // The text block, sized to its text inside its slot
+            const double slotW = std::max(0.0, s.Size(0));
+            const double slotH = std::max(0.0, s.Size(1));
+            const double boxW = std::max(40.0, std::min(slotW, maxTextW));
+            const double textW = std::max(30.0, boxW - pad * 2.0);
+            const double room = std::max(12.0, slotH - pad * 2.0);
+            const double textH = std::min(room, BuildContentLines(ctx, i, textW, room, false,
+                                                                  capLines, titleLines, bodyLines));
+            const double boxH = std::max(16.0, textH + pad * 2.0);
+            const Point2Dd apex(center.x + bulge.x * r.radius, center.y + bulge.y * r.radius);
+            auto place = [](double want, double lo, double hi) {
+                return (hi < lo) ? lo : std::clamp(want, lo, hi);
+            };
+
+            double bx, by;
+            if (across == 0) {   // beside the ring, level with its apex
+                bx = (r.dir > 0) ? s.lo[0] : s.hi[0] - boxW;
+                by = place(apex.y - boxH / 2.0, s.lo[1], s.hi[1] - boxH);
+                il.textAlign = (r.dir > 0) ? -1 : 1;
+            } else {             // above or below it, centred on its apex
+                by = (r.dir > 0) ? s.lo[1] : s.hi[1] - boxH;
+                bx = place(apex.x - boxW / 2.0, s.lo[0], s.hi[0] - boxW);
+                il.textAlign = 0;
+            }
+            il.blockRect = Rect2Dd(bx, by, boxW, boxH);
+            il.contentRect = Rect2Dd(bx + pad, by + pad, textW, std::max(10.0, textH));
+            il.hasBlock = boxed;
+
+            // An optional stem from the outside of the ring to the text
+            il.hasConnector = connectors;
+            if (connectors) {
+                il.connectorFrom = Point2Dd(center.x + bulge.x * (r.radius + halfT),
+                                            center.y + bulge.y * (r.radius + halfT));
+                if (across == 0) {
+                    il.connectorTo = Point2Dd((r.dir > 0) ? bx : bx + boxW,
+                                              place(il.connectorFrom.y, by, by + boxH));
+                } else {
+                    il.connectorTo = Point2Dd(place(il.connectorFrom.x, bx, bx + boxW),
+                                              (r.dir > 0) ? by : by + boxH);
+                }
+            }
+        }
+
+
+        // The captions, once every text block is in place: the largest size
+        // up to the style's at which the caption fits inside its ring, clear
+        // of the band, of the ring's two nodes and of every text block. It
+        // may reach a little past the chord onto the open side, which no
+        // neighbouring ring reaches, and is placed half-way between the
+        // shallowest and the deepest place it fits.
+        const double nodeClear = style.showNodes ? style.nodeRadius + style.nodeBorderWidth + 3.0 : 3.0;
+        for (size_t i = 0; i < n && style.showCaptions; ++i) {
+            ItemLayout& il = layout.itemLayouts[i];
+            const WaveRing& r = plan.rings[i];
+            if (items[i].caption.empty()) continue;
+            const Point2Dd center(r.center[0], r.center[1]);
+            const Point2Dd bulge(r.bulge[0], r.bulge[1]);
+            const Point2Dd ends[2] = {Point2Dd(r.start[0], r.start[1]), Point2Dd(r.end[0], r.end[1])};
+            const double inner = r.radius - halfT - 3.0;
+            if (inner <= 4.0) continue;
+
+            ctx->SetFontWeight(FontWeight::Normal);
+            for (float size = ScaledFont(style.captionFontSize); size >= style.minFontSize - 0.01f; size -= 1.0f) {
+                ctx->SetFontSize(size);
+                const Size2Di ts = ctx->GetTextLineDimensions(items[i].caption);
+                const double w = ts.width, h = ts.height;
+                auto fitsAt = [&](double depth) {
+                    const Rect2Dd box(center.x + bulge.x * depth - w / 2.0,
+                                      center.y + bulge.y * depth - h / 2.0, w, h);
+                    for (int corner = 0; corner < 4; ++corner) {
+                        const double x = box.x + ((corner & 1) ? w : 0.0) - center.x;
+                        const double y = box.y + ((corner & 2) ? h : 0.0) - center.y;
+                        if (x * bulge.x + y * bulge.y < -0.45 * inner || std::hypot(x, y) > inner) return false;
+                    }
+                    for (const Point2Dd& e : ends) {
+                        const double dx = std::max({box.x - e.x, 0.0, e.x - box.x - w});
+                        const double dy = std::max({box.y - e.y, 0.0, e.y - box.y - h});
+                        if (std::hypot(dx, dy) < nodeClear) return false;
+                    }
+                    for (const ItemLayout& other : layout.itemLayouts) {
+                        const Rect2Dd& t = other.hasBlock ? other.blockRect : other.contentRect;
+                        if (t.width > 0.0 && box.x < t.x + t.width && t.x < box.x + w &&
+                            box.y < t.y + t.height && t.y < box.y + h) return false;
+                    }
+                    return true;
+                };
+                double shallowest = 1e9, deepest = -1e9;
+                for (int k = -18; k <= 40; ++k) {
+                    const double depth = inner * k / 40.0;
+                    if (!fitsAt(depth)) continue;
+                    shallowest = std::min(shallowest, depth);
+                    deepest = std::max(deepest, depth);
+                }
+                if (deepest < shallowest) continue;
+                double depth = (shallowest + deepest) / 2.0;
+                if (!fitsAt(depth)) depth = deepest;
+                il.captionRect = Rect2Dd(center.x + bulge.x * depth - w / 2.0,
+                                         center.y + bulge.y * depth - h / 2.0, w, h);
+                il.captionSize = size;
+                break;
+            }
+        }
+
+        if (!plan.rings.empty()) {
+            layout.pathEnd = Point2Dd(plan.rings.back().end[0], plan.rings.back().end[1]);
+            layout.hasPathEnd = true;
+        }
+    }
+
+// =============================================================================
 // TEXT HELPERS
 // =============================================================================
 
@@ -1129,6 +1605,10 @@ namespace UltraCanvas {
             DrawSerpentineRibbon(ctx);
             return;
         }
+        if (design == TimelineDesign::Wave) {
+            DrawWave(ctx);
+            return;
+        }
         if (design == TimelineDesign::Cards || design == TimelineDesign::Chevron ||
             design == TimelineDesign::Steps) {
             return;   // These designs have no spine
@@ -1234,6 +1714,82 @@ namespace UltraCanvas {
         ctx->SetLineJoin(LineJoin::Miter);
     }
 
+    void UltraCanvasTimelineDiagram::DrawWave(IRenderContext* ctx) {
+        const size_t n = layout.itemLayouts.size();
+        const double thickness = style.spineThickness;
+        if (n == 0 || thickness <= 0.0) return;
+
+        auto ringPath = [ctx](const ItemLayout& il, double dx, double dy) {
+            ctx->ClearPath();
+            ctx->Arc(il.arcCenter.x + dx, il.arcCenter.y + dy, il.arcRadius,
+                     il.arcStartAngle, il.arcStartAngle + M_PI);
+        };
+
+        // Three passes, so no ring's fill or shadow covers its neighbour's band
+        if (style.waveFillInside) {
+            ctx->SetFillPaint(style.waveInsideColor);
+            for (const ItemLayout& il : layout.itemLayouts) {
+                if (!il.hasArc) continue;
+                ringPath(il, 0.0, 0.0);
+                ctx->ClosePath();
+                ctx->Fill();
+            }
+        }
+
+        ctx->SetLineCap(LineCap::Butt);
+        ctx->SetStrokeWidth(thickness);
+        if (style.showShadows) {
+            ctx->SetStrokePaint(Color(0, 0, 0, static_cast<uint8_t>(std::clamp(style.shadowAlpha, 0, 255))));
+            for (const ItemLayout& il : layout.itemLayouts) {
+                if (!il.hasArc) continue;
+                ringPath(il, style.shadowOffset, style.shadowOffset);
+                ctx->Stroke();
+            }
+        }
+
+        for (size_t i = 0; i < n; ++i) {
+            const ItemLayout& il = layout.itemLayouts[i];
+            if (!il.hasArc) continue;
+            const bool pending = IsPending(i);
+            if (colorMode == TimelineColorMode::GradientAlongPath && n > 1) {
+                // Each ring fades from its own colour into the next one's
+                const Color from = il.color;
+                const Color to = layout.itemLayouts[std::min(i + 1, n - 1)].color;
+                const double a0 = il.arcStartAngle, a1 = il.arcStartAngle + M_PI;
+                const Point2Dd p0(il.arcCenter.x + il.arcRadius * std::cos(a0),
+                                  il.arcCenter.y + il.arcRadius * std::sin(a0));
+                const Point2Dd p1(il.arcCenter.x + il.arcRadius * std::cos(a1),
+                                  il.arcCenter.y + il.arcRadius * std::sin(a1));
+                // The ring is drawn from p0 to p1 clockwise; its item's node
+                // sits at whichever end comes first along the wave
+                const bool startsAtP0 = std::hypot(p0.x - il.nodeCenter.x, p0.y - il.nodeCenter.y) <
+                                        std::hypot(p1.x - il.nodeCenter.x, p1.y - il.nodeCenter.y);
+                std::vector<GradientStop> stops;
+                stops.emplace_back(0.0, pending ? LightenColor(from, 0.62f) : from);
+                stops.emplace_back(1.0, IsPending(std::min(i + 1, n - 1)) ? LightenColor(to, 0.62f) : to);
+                auto pattern = startsAtP0
+                        ? ctx->CreateLinearGradientPattern(p0.x, p0.y, p1.x, p1.y, stops)
+                        : ctx->CreateLinearGradientPattern(p1.x, p1.y, p0.x, p0.y, stops);
+                ctx->SetStrokePaint(pattern);
+            } else {
+                ctx->SetStrokePaint(pending ? LightenColor(il.color, 0.62f) : il.color);
+            }
+            ringPath(il, 0.0, 0.0);
+            ctx->Stroke();
+        }
+
+        // A plain dot where the last ring ends closes the path
+        if (layout.hasPathEnd && style.showNodes && style.nodeShape != TimelineNodeShape::Hidden) {
+            const double r = std::max(3.0, style.nodeRadius * 0.85);
+            if (style.nodeBorderWidth > 0.0) {
+                ctx->SetFillPaint(backgroundColor);
+                ctx->FillCircle(layout.pathEnd, r + style.nodeBorderWidth);
+            }
+            ctx->SetFillPaint(style.spineColor);
+            ctx->FillCircle(layout.pathEnd, r);
+        }
+    }
+
     void UltraCanvasTimelineDiagram::DrawScaleRow(IRenderContext* ctx) {
         const Rect2Dd& area = layout.diagramArea;
         const size_t n = scaleLabels.size();
@@ -1282,6 +1838,30 @@ namespace UltraCanvas {
         const bool isSelected = (selectedItem.index == static_cast<int>(index));
         const bool isHovered = (hoveredItem.index == static_cast<int>(index));
         if (!isSelected && !isHovered && !items[index].highlighted) return;
+
+        if (design == TimelineDesign::Wave) {
+            // The ring and the text sit apart, so each is marked on its own:
+            // a halo over the band and a box round the text
+            if (il.hasArc) {
+                ctx->SetLineCap(LineCap::Butt);
+                ctx->SetStrokeWidth(style.spineThickness + 10.0);
+                ctx->SetStrokePaint(WithAlpha(il.color, isSelected ? 70 : 40));
+                ctx->ClearPath();
+                ctx->Arc(il.arcCenter.x, il.arcCenter.y, il.arcRadius,
+                         il.arcStartAngle, il.arcStartAngle + M_PI);
+                ctx->Stroke();
+            }
+            const Rect2Dd& text = il.hasBlock ? il.blockRect : il.contentRect;
+            Rect2Dd rect(text.x - 6.0, text.y - 6.0, text.width + 12.0, text.height + 12.0);
+            ctx->SetFillPaint(WithAlpha(il.color, isSelected ? 40 : (isHovered ? 22 : 16)));
+            ctx->FillRoundedRectangle(rect, style.cornerRadius);
+            if (isSelected) {
+                ctx->SetStrokePaint(il.color);
+                ctx->SetStrokeWidth(1.5);
+                ctx->DrawRoundedRectangle(rect, style.cornerRadius);
+            }
+            return;
+        }
         if (il.hitRect.width <= 0.0 || il.hitRect.height <= 0.0) return;
 
         Rect2Dd rect(il.hitRect.x - 4.0, il.hitRect.y - 4.0,
@@ -1492,6 +2072,19 @@ namespace UltraCanvas {
         const std::string& caption = items[index].caption;
         if (caption.empty()) return;
 
+        if (design == TimelineDesign::Wave) {
+            // Inside the ring, in the muted colour, at the size the layout
+            // found it fits there at
+            if (il.captionSize <= 0.0f) return;
+            ctx->SetFontWeight(FontWeight::Normal);
+            ctx->SetFontSize(il.captionSize);
+            const Size2Di s = ctx->GetTextLineDimensions(caption);
+            ctx->SetTextPaint(IsPending(index) ? WithAlpha(MutedTextColor(), 150) : MutedTextColor());
+            ctx->DrawText(caption, Point2Dd(il.captionRect.x + il.captionRect.width / 2.0 - s.width / 2.0,
+                                            il.captionRect.y + il.captionRect.height / 2.0 - s.height / 2.0));
+            return;
+        }
+
         const bool onFilledBlock = (design == TimelineDesign::Chevron ||
                                     design == TimelineDesign::Steps);
         ctx->SetFontSize(ScaledFont(style.captionFontSize));
@@ -1551,12 +2144,15 @@ namespace UltraCanvas {
             y = (il.side < 0) ? rect.y + rect.height - totalH : rect.y;
         }
 
+        // -1 left, 0 centred, +1 right; the wave lays its text flush to its ring
+        const int align = (design == TimelineDesign::Wave) ? il.textAlign : (centered ? 0 : -1);
         auto drawLines = [&](const std::vector<std::string>& lines, double lineHeight) {
             for (const auto& line : lines) {
                 double x = rect.x;
-                if (centered) {
+                if (align >= 0) {
                     Size2Di s = ctx->GetTextLineDimensions(line);
-                    x = rect.x + rect.width / 2.0 - s.width / 2.0;
+                    x = (align == 0) ? rect.x + rect.width / 2.0 - s.width / 2.0
+                                     : rect.x + rect.width - s.width;
                 }
                 ctx->DrawText(line, Point2Dd(x, y));
                 y += lineHeight;
@@ -1573,8 +2169,10 @@ namespace UltraCanvas {
         if (!titleLines.empty()) {
             ctx->SetFontSize(titleSize);
             ctx->SetFontWeight(FontWeight::Bold);
+            // The wave heads each text in its ring's colour
+            const Color titleColor = (design == TimelineDesign::Wave) ? il.color : TextColor();
             ctx->SetTextPaint(onFilledBlock ? ContrastText(il.color)
-                                            : (pending ? MutedTextColor() : TextColor()));
+                                            : (pending ? MutedTextColor() : titleColor));
             drawLines(titleLines, titleLine);
             ctx->SetFontWeight(FontWeight::Normal);
         }
@@ -1644,6 +2242,28 @@ namespace UltraCanvas {
 
     TimelineItemRef UltraCanvasTimelineDiagram::FindItemAt(const Point2Di& pos) const {
         Point2Dd p(pos.x, pos.y);
+        if (design == TimelineDesign::Wave) {
+            // The text block, or the half-disc inside the ring and its band:
+            // the union of the two would reach over the neighbouring rings
+            const double halfT = style.spineThickness / 2.0;
+            for (size_t i = layout.itemLayouts.size(); i-- > 0;) {
+                const ItemLayout& il = layout.itemLayouts[i];
+                const Rect2Dd& text = il.hasBlock ? il.blockRect : il.contentRect;
+                bool hit = text.width > 0.0 && text.height > 0.0 && text.Contains(p);
+                if (!hit && il.hasArc) {
+                    const double dx = p.x - il.arcCenter.x, dy = p.y - il.arcCenter.y;
+                    const double mid = il.arcStartAngle + M_PI / 2.0;
+                    hit = std::hypot(dx, dy) <= il.arcRadius + halfT &&
+                          dx * std::cos(mid) + dy * std::sin(mid) >= 0.0;
+                }
+                if (hit) {
+                    TimelineItemRef ref;
+                    ref.index = static_cast<int>(i);
+                    return ref;
+                }
+            }
+            return TimelineItemRef();
+        }
         // Iterate backwards so the item drawn last wins on overlap
         for (size_t i = layout.itemLayouts.size(); i-- > 0;) {
             const Rect2Dd& rect = layout.itemLayouts[i].hitRect;
@@ -1864,6 +2484,23 @@ namespace UltraCanvas {
                     s.cornerRadius = 6.0;
                     s.itemGap = 8.0;
                     s.showShadows = true;
+                    break;
+
+                case TimelineDesign::Wave:
+                    s.spineThickness = 16.0;
+                    s.nodeRadius = 8.0;
+                    s.nodeBorderWidth = 4.0;
+                    s.connectorStyle = TimelineConnectorStyle::Hidden;
+                    s.connectorLength = 22.0;
+                    s.contentContainer = TimelineContentContainer::Plain;
+                    s.captionFontSize = 22.0f;
+                    s.itemTitleFontSize = 14.0f;
+                    s.bodyFontSize = 10.0f;
+                    s.showShadows = true;
+                    s.shadowAlpha = 26;
+                    s.shadowOffset = 3.0;
+                    s.spineColor = Color(196, 200, 207, 255);
+                    s.waveAxisAngle = 45.0;
                     break;
             }
             return s;

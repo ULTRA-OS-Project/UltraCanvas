@@ -1,7 +1,9 @@
 // include/UltraCanvasVideoPlayer.h
 // Non-visual cross-platform video playback engine
+// Version: 0.1.1 - LoadFromFile refuses no path, a missing file, a folder, an empty
+//                  or unreadable file (false, the reason in GetLastError / onError)
 // Version: 0.1.0
-// Last Modified: 2026-06-15
+// Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASVIDEOPLAYER_H
@@ -56,6 +58,11 @@ public:
     UltraCanvasVideoPlayer& operator=(const UltraCanvasVideoPlayer&) = delete;
 
     // ===== SOURCE =====
+    // Opens a video file (a UTF-8 path). False - with the reason in
+    // GetLastError and onError, and nothing loaded - for no path, a file that
+    // does not exist, a folder, or an empty or unreadable file. True means
+    // the source was handed to the backend: a damaged file is still accepted
+    // and reported later through onError, as the backend finds out.
     bool LoadFromFile(const std::string& filePath);
     bool LoadFromUrl(const std::string& url);
     void Unload();

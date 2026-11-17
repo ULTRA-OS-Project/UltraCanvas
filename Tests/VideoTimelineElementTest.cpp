@@ -43,6 +43,11 @@ static int failCount = 0;
 
 #define SKIP_ALL(reason)                                                      \
     do {                                                                      \
+        if (UltraCanvas::DisplayTest::DisplayRequired()) {                    \
+            std::cerr << "FAIL: a display was required, and " << reason       \
+                      << std::endl;                                           \
+            return 1;                                                         \
+        }                                                                     \
         std::cerr << "SKIP: whole suite (" << reason << ")" << std::endl;     \
         return 0;                                                             \
     } while (0)
@@ -478,6 +483,8 @@ int main() {
         timeline->OnEvent(KeyEvent(UCKeys::B));
         TEST("B picks the blade", timeline->GetTool() == TimelineTool::Blade);
         timeline->OnEvent(KeyEvent(UCKeys::V));
+    } else if (DisplayTest::DisplayRequired()) {
+        TEST("keyboard: a display was required, and the window could not be focused", false);
     } else {
         std::cerr << "SKIP: keyboard (the window could not be focused)" << std::endl;
     }

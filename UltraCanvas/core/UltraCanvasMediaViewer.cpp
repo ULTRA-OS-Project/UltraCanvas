@@ -1,6 +1,7 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.27.1 - an empty video is left to the player, which refuses it now
 // Version: 1.27.0 - Save as for a video the player opened: every type FileLoader's
 //                  ConvertVideoFile writes, converted on a worker thread behind a progress
 //                  ring with Cancel (ShowVideoSaveDialog, VideoSaveJob)
@@ -3165,14 +3166,11 @@ bool UltraCanvasMediaViewer::CanSaveVideoFile(const std::string& path) {
            !UltraCanvasFileLoader::GetVideoSaveExtensions().empty();
 }
 
-// The player taking a file does not make it a film: the backend opens it
-// asynchronously, so an empty or damaged file "loads" and fails later. What
-// the headers say settles it for the containers ReadVideoFileInfo reads; for
-// any other the player's word stands, as long as there is something to save.
+// The player taking a file does not make it a film. It refuses an empty or
+// missing one itself, but a damaged file is handed to the backend, which opens
+// it asynchronously and fails later. What the headers say settles it for the
+// containers ReadVideoFileInfo reads; for any other the player's word stands.
 static bool ShownVideoHasTracks(const std::string& path) {
-    std::error_code ec;
-    const uintmax_t size = fs::file_size(PathFromUtf8(path), ec);
-    if (ec || size == 0) return false;
     VideoFileInfo info;
     if (ReadVideoFileInfo(path, info)) return info.hasVideo || info.hasAudio;
     static const char* const readByHeaders[] = { "mp4", "m4v", "mov", "3gp", "3g2", "mkv", "webm", "avi" };
