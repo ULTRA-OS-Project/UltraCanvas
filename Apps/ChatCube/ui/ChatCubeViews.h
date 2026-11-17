@@ -4,6 +4,7 @@
 // separators, delivery ticks). Models adapt UltraIM data to
 // UltraCanvasListView; delegates paint one row's content - the list view
 // paints selection, hover and scrolling.
+// Version: 0.2.7 - the conversation list says who is typing (SetTyping), in place of the last message
 // Version: 0.2.6 - a file on its way shows its progress (SetTransfer); a sound file is played as audio
 //                  (IsAudioMessage), with a note; the file name measured as drawn (bold)
 // Version: 0.2.5 - a reply's quote in its bubble (filled from the rows shown when the provider gave
@@ -16,7 +17,7 @@
 //                  a sender's avatar beside their bubble in a group, files as their name and size
 // Version: 0.2.0 - avatars, a rounded selection, the theme's colours
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -179,6 +180,10 @@ public:
     int Upsert(const UltraIMConversation& conversation);
     bool Remove(const std::string& conversationId);
     void SetPresence(const std::string& contactId, UltraIMPresence presence);
+    // Who is typing in a conversation, in words ("typing…", "Anna is
+    // typing…"), shown in its row in place of the last message; "" clears it.
+    void SetTyping(const std::string& conversationId, const std::string& text);
+    std::string TypingText(const std::string& conversationId) const;
     int  FindRow(const std::string& conversationId) const;
     const UltraIMConversation* Find(const std::string& conversationId) const;
     const std::vector<UltraIMConversation>& Conversations() const { return list_; }
@@ -195,6 +200,7 @@ private:
     std::vector<UltraIMConversation> list_;
     std::set<std::string> pinned_;
     std::set<std::string> markedUnread_;
+    std::map<std::string, std::string> typing_;     // conversation id -> who is typing, in words
 };
 
 // One row: the avatar (initials on the person's colour, a presence dot at
