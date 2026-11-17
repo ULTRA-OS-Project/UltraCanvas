@@ -376,6 +376,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
     set(BUILD_ULTRANOTIFICATIONS OFF CACHE BOOL "Build the UltraNotifications application")
     set(BUILD_ULTRASNIP OFF CACHE BOOL "Build the UltraSnip application")
+    set(BUILD_ULTRATODO OFF CACHE BOOL "Build the UltraToDo application")
     set(BUILD_ULTRAVIDEO OFF CACHE BOOL "Build the UltraVideo application")
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
     set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
@@ -842,6 +843,15 @@ endif()
 option(BUILD_ULTRANOTIFICATIONS "Build the UltraNotifications application" ON)
 if(BUILD_ULTRANOTIFICATIONS)
     add_subdirectory(Apps/UltraNotifications)
+endif()
+
+# ===== ULTRATODO =====
+# The task list of ULTRA OS: tasks with a planned end, an estimated time, a
+# description and attached files, the most urgent first, a reminder before a
+# task has to be started and an alarm at its planned end.
+option(BUILD_ULTRATODO "Build the UltraToDo application" ON)
+if(BUILD_ULTRATODO)
+    add_subdirectory(Apps/UltraToDo)
 endif()
 
 # ===== ULTRASNIP =====
@@ -2717,6 +2727,19 @@ if (BUILD_TESTS)
     # UltraCrypt unit tests (Tests/CryptTests.cmake, shared with
     # the ULTRACANVAS_BUILD_CRYPT_TESTS option).
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/CryptTests.cmake)
+
+    # UltraToDo's task model and store: the latest start, the order by
+    # urgency, reminders and alarms given once, the task file and the
+    # attachments under a Thai-and-emoji folder. Headless.
+    if(TARGET UltraToDoCore)
+        add_executable(UltraToDoTests Tests/UltraToDoTests.cpp)
+        target_link_libraries(UltraToDoTests PRIVATE UltraToDoCore)
+        set_target_properties(UltraToDoTests PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        )
+        add_test(NAME UltraToDoTests COMMAND UltraToDoTests
+                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
 
     # Authenticator vault: confidentiality on disk, wrong-password refusal,
     # tamper detection over the whole container, and durability of each

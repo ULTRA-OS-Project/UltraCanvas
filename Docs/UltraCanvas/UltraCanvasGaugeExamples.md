@@ -228,6 +228,8 @@ void SetClockTickColor(const Color& c);   // AnalogClock: ticks, rim, hour numbe
 
 ```cpp
 void SetRingThickness(float t);                    // indicator width in px
+void SetRingCompact(bool compact);                 // the ring fills the element: a 12-40 px marker
+void SetRingValueText(bool show);                  // the value in the centre (on by default)
 void SetRingStyle(GaugeRingStyle s);               // SolidArc / Segmented / Dashed / SegmentedRing
 void SetRingSegmentStyle(GaugeRingSegmentStyle s); // Bars / Dots / Blocks
 void SetRingSegmentCount(int count);               // number of chunks/ticks/dots
@@ -592,6 +594,26 @@ ring->SetRingSegmentCount(8);
 ring->SetRingSegmentRounded(true);
 ring->SetRingCenterIcon(GaugeRingIcon::Battery);
 ring->SetRingCenterContent(GaugeRingCenterContent::Icon);
+```
+
+**A small marker in a row of text or buttons** (12 to 40 px): compact, the
+ring fills the element - no title, no padding, no minimum radius - and
+without the number it is a ring whose colour and fill say how far along a
+value is. Without `SetRingCompact` the ring keeps the card layout, which
+needs about 60 px; below that it drew a corner of a ring and its value.
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
+using namespace UltraCanvas;
+
+auto marker = CreateGaugeDiagramElement("task.marker", 0, 0, 26, 26);
+marker->SetMode(GaugeMode::CircularRing);
+marker->SetRingCompact(true);
+marker->SetRingValueText(false);
+marker->SetRingThickness(5.0f);
+marker->SetValue(60.0);
+marker->SetGaugeColor(Color(240, 135, 20));       // orange: urgent
+marker->SetTrackColor(Color(226, 226, 230));
 ```
 
 ### 11. Battery
