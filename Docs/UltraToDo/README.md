@@ -27,7 +27,7 @@ says what it does.
 |---|---|
 | The round **+** (top left, Ctrl+N) | writes a new task |
 | *To do* / *History* (top right, Ctrl+H) | the tasks to do, or the history of the finished ones, with their counts |
-| The marker (left of the buttons) | the time left ("55 min", "4 h late"), in a colour from green (time to spare) through orange (the latest start has come) to red (past the planned end); beside it when the task is due |
+| The marker (left of the buttons) | a small ring that fills and changes colour as the task grows urgent: a green sliver with time to spare, half and orange at the latest start, full and red at the planned end, empty without a date; beside it the time left and when the task is due ("1 h 30 min left · Due Today, 11:46", "2 h late · Was due Today, 08:16") |
 | *Start* / *Pause* (with task supervision) | tells UltraToDo you have started working on the task: it says *In progress since ...*, stops the blinking ring and the reminder to start; *Pause* takes it back |
 | *Done* | marks the task done and moves it to the history |
 | *Reopen* (in the history) | moves the task back to the list of tasks to do |

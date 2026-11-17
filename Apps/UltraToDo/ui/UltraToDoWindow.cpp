@@ -1,5 +1,6 @@
 // Apps/UltraToDo/ui/UltraToDoWindow.cpp
 // See UltraToDoWindow.h.
+// Version: 0.8.0 - the marker is a small ring gauge (compact CircularRing); the time left beside it
 // Version: 0.7.0 - the settings page (Ctrl+,): Simple, or with task supervision (Start, the blinking)
 // Version: 0.6.0 - the urgency marker and time left in the button line; blinking; Start / Pause
 // Version: 0.5.0 - the columns filled one after the other; Attach, Edit and Delete as icons with tooltips
@@ -25,6 +26,7 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasNativeFileIcons.h"    // NativeFileIconThreadScope
 #include "UltraCanvasNotificationActivation.h"
@@ -296,27 +298,33 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildPanel(const ToDoTask
     foot->size.height = CSSLayout::Dimension::Auto();
     if (!task.done) {
         const double level = UrgencyLevel(task, now);
-        // The marker: a pill in the urgency colour (green, orange, red and
-        // the shades between) with the time left, in a round frame whose
-        // ring blinks orange when the task should be started now.
+        // The marker: a small ring gauge in the urgency colour (green,
+        // orange, red and the shades between), filling as the task grows
+        // urgent - a sliver with time to spare, half at the latest start,
+        // full at the planned end, empty without a date - in a round frame
+        // that blinks orange when the task should be started now. The time
+        // left is the text beside it.
         auto ring = CreateContainer(id + ".ring", 0, 0, 0, 0);
         ring->SetPadding(2);
         ring->size.width = CSSLayout::Dimension::Auto();
         ring->size.height = CSSLayout::Dimension::Auto();
-        ring->SetBorders(2.0f, Theme::PanelFill(pastel), 14.0f);
+        ring->SetBorders(2.0f, Theme::PanelFill(pastel), Theme::kMarkerSize / 2.0f + 4.0f);
         ring->layoutItem.SetFlexShrink(0);
-        auto marker = CreateBadge(id + ".marker", 0, 0, CountdownText(task, now));
-        BadgeStyle markerStyle = marker->GetStyle();
-        markerStyle.height = 20.0f;
-        markerStyle.paddingH = 8.0f;
-        markerStyle.fontSize = 11.0f;
-        markerStyle.textColor = Colors::White;
-        marker->SetStyle(markerStyle);
-        marker->SetColor(Theme::UrgencyColor(level));
+        auto marker = CreateGaugeDiagramElement(id + ".marker", 0, 0, Theme::kMarkerSize, Theme::kMarkerSize);
+        marker->SetMode(GaugeMode::CircularRing);
+        marker->SetRingCompact(true);
+        marker->SetRingValueText(false);
+        marker->SetRingThickness(4.5f);
+        marker->SetMinValue(0);
+        marker->SetMaxValue(100);
+        marker->SetValue(level < 0 ? 0.0 : std::max(8.0, level * 50.0));
+        marker->SetGaugeColor(Theme::UrgencyColor(level));
+        marker->SetTrackColor(Theme::Roles().line);
+        marker->SetBackgroundColor(Theme::PanelFill(pastel));
         marker->SetTooltip(level < 0 ? Tr("No planned end") : UrgencyText(task, now));
         ring->AddChild(marker);
         foot->AddChild(ring);
-        auto left = Theme::MakeRoleWrapped(id + ".left", TimeLeftText(task, now), Theme::SizeSmall(),
+        auto left = Theme::MakeRoleWrapped(id + ".left", MarkerText(task, now), Theme::SizeSmall(),
                                            LabelVariant::Muted);
         if (level >= 2.0) left->SetTextColor(Theme::MarkerRed());
         left->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));

@@ -134,6 +134,13 @@ std::string TimeLeftText(const ToDoTask& task, int64_t now) {
     return text;
 }
 
+std::string MarkerText(const ToDoTask& task, int64_t now) {
+    if (!task.HasDue()) return TimeLeftText(task, now);
+    const std::string countdown = now >= task.due ? CountdownText(task, now)
+                                                  : TrF("{0} left", CountdownText(task, now));
+    return countdown + "  \u00B7  " + TimeLeftText(task, now);
+}
+
 std::string NoticeText(const ToDoTask& task, ToDoNoticeKind kind, int64_t now) {
     if (kind == ToDoNoticeKind::Alarm) {
         return TrF("\"{0}\" has reached its planned end ({1}).", task.title,

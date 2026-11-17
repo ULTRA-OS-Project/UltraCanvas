@@ -25,13 +25,16 @@ std::string UrgencyText(const ToDoTask& task, int64_t now);
 // The details under a task's title: its planned end, the time it needs and
 // when it has to be started. "" for a task with neither date nor estimate.
 std::string ScheduleText(const ToDoTask& task, int64_t now);
-// The marker's text: the time left ("3 h 20 min"), how late ("2 h late"),
-// "No date".
+// The time left ("3 h 20 min"), how late ("2 h late"), "No date".
 std::string CountdownText(const ToDoTask& task, int64_t now);
 // The line beside the marker in a panel's buttons: "Due today, 17:00",
 // "Was due today, 03:45", "No due date"; a started task adds "In progress
 // since 10:30".
 std::string TimeLeftText(const ToDoTask& task, int64_t now);
+// The line beside the ring marker: the time left or how late, then when it
+// is due - "1 h 30 min left · Due Today, 11:46", "2 h late · Was due Today,
+// 08:16", "No due date"; a started task adds "In progress since 10:30".
+std::string MarkerText(const ToDoTask& task, int64_t now);
 // What a reminder or an alarm says about its task.
 std::string NoticeText(const ToDoTask& task, ToDoNoticeKind kind, int64_t now);
 

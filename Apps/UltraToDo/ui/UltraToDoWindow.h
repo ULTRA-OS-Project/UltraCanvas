@@ -10,9 +10,10 @@
 // columns - up to four, sharing the width - filled one after the other: the
 // most urgent tasks down the first column, then on at the top of the next.
 //
-// Each panel's button line starts with a ring marker - its colour and fill
-// running from green (time to spare) through orange (the latest start has
-// come) to red (past the planned end) - and the time left. A task to start
+// Each panel's button line starts with a ring marker - a small ring gauge
+// whose colour and fill run from green (time to spare) through orange (the
+// latest start has come) to red (past the planned end) - and the time left
+// and when the task is due beside it. A task to start
 // now that is not started has the marker's ring blink orange; an overdue
 // one has its panel's border blink red (steady where the desktop asks for
 // reduced motion). Start tells the program work on the task has begun: the
@@ -34,6 +35,7 @@
 // Started with --background the window can be closed: the program stays,
 // keeps the reminders going, and comes forward at the next start; Quit ends
 // it.
+// Version: 0.6.0 - the marker is a small ring gauge
 // Version: 0.5.0 - the settings page: Simple, or with task supervision
 // Version: 0.4.0 - the urgency marker and time left in the button line, blinking, Start / Pause
 // Version: 0.3.0 - the list in columns when the window is wide enough

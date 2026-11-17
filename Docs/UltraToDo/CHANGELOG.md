@@ -11,11 +11,13 @@
   clip, pencil, bin) with a tooltip, in the theme's colours; *Done* keeps
   its word.
 - **The urgency marker and the time left** in each task's button line: a
-  pill with the time left ("55 min", "4 h late") whose colour runs from green
-  through orange to red as the task grows urgent, and when it is due beside
-  it. A task to start now has an orange ring blinking round its marker; an
-  overdue one a red border blinking round its panel (steady where the desktop
-  asks for reduced motion).
+  small ring gauge that fills and changes colour as the task grows urgent -
+  a green sliver with time to spare, half and orange at the latest start,
+  full and red at the planned end - and beside it the time left and when
+  the task is due ("1 h 30 min left · Due Today, 11:46"). A task to start
+  now has an orange ring blinking round its marker; an overdue one a red
+  border blinking round its panel (steady where the desktop asks for
+  reduced motion).
 - **Start / Pause**: tells UltraToDo work on a task has begun - it shows
   *In progress since ...*, its orange blink and its reminder to start stop -
   or has stopped.
