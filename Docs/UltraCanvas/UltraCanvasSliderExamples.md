@@ -533,6 +533,5 @@ Required headers:
 
 ## See Also
 
-- [UltraCanvasAdvancedSlider](UltraCanvasAdvancedSlider.md) - Extended slider with advanced features
-- [UltraCanvasSpinBox](UltraCanvasSpinBox.md) - Numeric input with increment/decrement
-- [UltraCanvasProgressBar](UltraCanvasProgressBar.md) - Progress indication control
+- [UltraCanvasSpinner](../../UltraCanvas/include/UltraCanvasSpinner.h) - Numeric input with increment/decrement
+- [UltraCanvasGaugeDiagramElement](../../UltraCanvas/include/Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h) - Progress indication control

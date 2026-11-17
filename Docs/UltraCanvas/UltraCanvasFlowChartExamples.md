@@ -25,9 +25,9 @@
   - [Enumerations](#enumerations)
 - [Usage Examples](#usage-examples)
   - [Pre-built Order Processing Chart](#pre-built-order-processing-chart)
-  - [Toolbar — Switching Edit Mode and Zoom](#toolbar-—-switching-edit-mode-and-zoom)
+  - [Toolbar — Switching Edit Mode and Zoom](#toolbar--switching-edit-mode-and-zoom)
   - [Grid + Snap-to-Grid Checkboxes](#grid--snap-to-grid-checkboxes)
-  - [Shape Palette — Click to Place](#shape-palette-—-click-to-place)
+  - [Shape Palette — Click to Place](#shape-palette--click-to-place)
   - [Live Editing of the Selected Node](#live-editing-of-the-selected-node)
   - [Live Editing of the Selected Connection](#live-editing-of-the-selected-connection)
   - [Adding a Sticky Note at Runtime](#adding-a-sticky-note-at-runtime)
@@ -536,5 +536,5 @@ btnClear->SetOnClick([chart, showNoSelection]() {
 - [UltraCanvasTreeMapExamples](UltraCanvasTreeMapExamples.md) — hierarchical area visualization
 - [UltraCanvasDendrogramExamples](UltraCanvasDendrogramExamples.md) — hierarchical clustering trees
 - [UltraCanvasButtonExamples](UltraCanvasButtonExamples.md) — toolbar buttons used by the demo
-- [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — used to host the demo tabs
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base class
+- [UltraCanvasTabbedContainer](../../UltraCanvas/include/UltraCanvasTabbedContainer.h) — used to host the demo tabs
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base class

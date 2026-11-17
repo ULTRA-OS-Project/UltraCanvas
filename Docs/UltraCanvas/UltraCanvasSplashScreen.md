@@ -111,5 +111,5 @@ if (!splash.IsVisible()) {
 ## See also
 
 - `Apps/Texter/main.cpp` — the canonical two-phase startup shown above.
-- [`Docs/Ladybird/SplashScreen.md`](../Ladybird/SplashScreen.md) — the
-  Ladybird port's splash, and the assets it ships.
+- The Ladybird port's own `Docs/Ladybird/SplashScreen.md`, in its
+  repository rather than this one: its splash and the assets it ships.

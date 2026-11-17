@@ -31,7 +31,7 @@ built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-ap
 
 ## Contents
 
-- [Library links — websites & source code](#library-links-—-websites--source-code)
+- [Library links — websites & source code](#library-links--websites--source-code)
 - [UltraCanvas (core)](#ultracanvas-core)
   - [Spell checking (all optional)](#spell-checking-all-optional)
 - [Optional plugins](#optional-plugins)

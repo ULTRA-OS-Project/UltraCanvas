@@ -10,8 +10,8 @@
   - [Factory Functions](#factory-functions)
   - [Segment Management](#segment-management)
   - [Segment Properties](#segment-properties)
-  - [Selection — Single Mode](#selection-—-single-mode)
-  - [Selection — Multiple / Toggle Modes](#selection-—-multiple--toggle-modes)
+  - [Selection — Single Mode](#selection--single-mode)
+  - [Selection — Multiple / Toggle Modes](#selection--multiple--toggle-modes)
   - [Selection Mode](#selection-mode)
   - [Styling](#styling)
 - [Enumerations](#enumerations)
@@ -470,7 +470,7 @@ When the control has focus:
 
 ## See Also
 
-- [UltraCanvasButton](UltraCanvasButton.md) - Single-purpose clickable button
-- [UltraCanvasMenu](UltraCanvasMenu.md) - Menus with checkable/radio items
-- [UltraCanvasToolbar](UltraCanvasToolbar.md) - Toolbar of actions
-- [UltraCanvasLabel](UltraCanvasLabel.md) - Companion text element
+- [UltraCanvasButton](UltraCanvasButtonExamples.md) - Single-purpose clickable button
+- [UltraCanvasMenu](UltraCanvasMenuExamples.md) - Menus with checkable/radio items
+- [UltraCanvasToolbar](UltraCanvasToolbarExamples.md) - Toolbar of actions
+- [UltraCanvasLabel](UltraCanvasLabelExamples.md) - Companion text element
