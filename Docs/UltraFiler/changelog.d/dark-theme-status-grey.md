@@ -8,3 +8,11 @@
   runs. The scroll bars, the hidden-items notice's gear and the copy / move
   dialogs' list caption and note follow the theme too, through the
   framework's file display.
+- **The right-hand display of the split view is dark under a dark theme.**
+  It was built at start-up, still under the light look, and stays out of
+  the window until the split view is turned on - and a theme change only
+  reaches what is in a window, so it kept the light colours. The right-hand
+  pane now takes the current theme each time it joins the window, and the
+  preview's viewers do the same when the preview pane is put up again. The
+  folder preview (a folder selected with the preview on) follows the theme
+  too: its own sizes set by hand had switched the following off.

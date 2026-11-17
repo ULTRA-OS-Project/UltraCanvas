@@ -65,6 +65,11 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.45.3 - split view under a dark theme: the right-hand pane takes the current theme when
+//                  it joins the window (it was built at start-up, under the light look, and out of
+//                  the window missed every change since); the preview's viewers likewise when the
+//                  pane is put up again; the folder preview follows the theme (its style set by
+//                  hand had stopped it)
 // Version: 1.45.2 - the status line's quieter half ("3 drives, 424.5 GB free ...") takes the
 //                  look's statusQuiet (a fixed #6b6b73 before, near unreadable on the dark well),
 //                  and is written again on a theme change
@@ -201,6 +206,17 @@ namespace fs = std::filesystem;
 namespace UltraCanvas {
 
 namespace {
+
+    // A theme change reaches only what is in a window at the time (the
+    // application hands it to each window's tree). A part the filer keeps
+    // out of the window while hidden - the split view's right-hand pane, the
+    // preview pane's viewers - missed every change made meanwhile, and the
+    // one it was built under may be the light look of start-up. Put back, it
+    // takes the current theme: an element that follows re-styles, any other
+    // ignores it.
+    void CatchUpTheme(const std::shared_ptr<UltraCanvasUIElement>& part) {
+        if (part) part->OnThemeChanged(UltraCanvasTheme::Current());
+    }
 
     // Suffix marking the lazy placeholder child of an unexpanded folder node.
     constexpr const char* kPlaceholderSuffix = "\n#placeholder";
@@ -1456,6 +1472,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     folderPreviewStyle.smallFontSize = UiFontSize();
     folderPreviewStyle.folderIconScale = 0.7f;
     folderPreview->SetStyle(folderPreviewStyle);
+    // The theme's colours over this shape, as the tabs' displays: the style
+    // set by hand had stopped the following, so the pane kept the light look
+    folderPreview->SetFollowTheme(true);
     folderPreview->SetViewType(FilerViewType::ThumbnailsSmall);
     folderPreview->SetHoverIconMenuEnabled(false);
     // The pane is narrow; prefetching every subfolder of a merely previewed
@@ -9274,6 +9293,8 @@ void UltraFilerWindow::AttachFolderPreview() {
     // renders over the preview and is hit before it.
     if (folderPreviewPromoteButton)
         previewPane->AddChild(folderPreviewPromoteButton);
+    CatchUpTheme(folderPreview);
+    CatchUpTheme(folderPreviewPromoteButton);
 }
 
 void UltraFilerWindow::DetachFolderPreview() {
@@ -9414,7 +9435,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             previewPane->layout.SetFlexColumn()
                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
             if (wantFolder) AttachFolderPreview();
-            else            previewPane->AddChild(preview);
+            else            { previewPane->AddChild(preview); CatchUpTheme(preview); }
             ApplySplitPaneMinSizes();
             BalanceSplitPanes();
             if (filer) filer->EnsureSelectionVisible();
@@ -9439,7 +9460,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             previewPane->layout.SetFlexColumn()
                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
             if (wantFolder) AttachFolderPreview();
-            else            previewPane->AddChild(preview);
+            else            { previewPane->AddChild(preview); CatchUpTheme(preview); }
 
             if (arranged && !sizes.empty()) {
                 // The new split line takes its thickness from the donors
@@ -9483,6 +9504,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             } else {
                 DetachFolderPreview();
                 previewPane->AddChild(preview);
+                CatchUpTheme(preview);
             }
             previewShowsFolder = wantFolder;
         }
@@ -9709,6 +9731,9 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         rightPane->layout.SetFlexColumn()
                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         rightPane->AddChild(rightPaneBox);
+        // Built at start-up and out of the window until now: its display,
+        // path bar and tree button take the theme as it is
+        CatchUpTheme(rightPaneBox);
         leftPaneHeader->SetVisible(true);
         // Each pane has a path bar of its own now; the navigation row's,
         // which only ever said where the active one is, gives way.
