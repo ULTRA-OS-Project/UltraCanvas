@@ -12,3 +12,12 @@
   Save.") took one line and widened the whole form past the page, so every
   field ran under the page's edge and *Delete* was cut off. The status
   wraps between the two buttons instead.
+- **The Local models page has its room back.** To fit 800 px without
+  scrolling it had given up its usual spacing, the note on *Refresh
+  catalogue* and *Search Hugging Face*, and the line saying what each
+  catalogue source holds whenever an action's result was shown. Now that
+  the page scrolls, all three are back.
+- **The Model topics table shows its State column whole.** Its columns
+  added up to 476 px in a 480 px table, so once the list showed its own
+  scrollbar (seven topics in six rows) the table scrolled sideways and
+  *State* read "Not installe". The columns now fit beside the scrollbar.
