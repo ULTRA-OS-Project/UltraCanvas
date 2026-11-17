@@ -3787,6 +3787,58 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== A .DOC'S FOOTNOTES AND ENDNOTES =====
+    // word-notes.doc is word-notes.fodt saved as Word 97 by LibreOffice: two
+    // footnotes (the second of two paragraphs) and an endnote.
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        UCRichDocument doc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(std::string(WORDTEST_FIXTURE_DIR) + "/word-notes.doc", doc, err), err);
+        CHECK_MSG(doc.notes.size() == 3, "doc: two footnotes and an endnote are read");
+        if (doc.notes.size() == 3) {
+            auto words = [](const RichNote& note) {
+                std::string text;
+                for (const RichDocBlock& block : note.blocks) text += UCRichDocument::ConcatenateRunText(block.runs) + "|";
+                return text;
+            };
+            CHECK_MSG(doc.notes[0].kind == RichNote::Kind::Footnote && words(doc.notes[0]) == "Source of the first claim.|",
+                      "doc: the first footnote's words (" + words(doc.notes[0]) + ")");
+            CHECK_MSG(doc.notes[1].kind == RichNote::Kind::Footnote
+                          && words(doc.notes[1]) == "Second source, first paragraph.|Second source, second paragraph.|",
+                      "doc: a footnote of two paragraphs (" + words(doc.notes[1]) + ")");
+            CHECK_MSG(doc.notes[2].kind == RichNote::Kind::Endnote && words(doc.notes[2]) == "Kept for the end of the document.|",
+                      "doc: the endnote's words (" + words(doc.notes[2]) + ")");
+        }
+        // The references stand where the body refers to them, numbered.
+        std::string marks;
+        std::vector<int> referred;
+        for (const RichDocBlock& block : doc.blocks) {
+            for (const RichTextRun& run : block.runs) {
+                if (run.noteIndex < 0) continue;
+                referred.push_back(run.noteIndex);
+                marks += run.text + (run.superscript ? "^" : "") + " ";
+            }
+        }
+        CHECK_MSG(referred == std::vector<int>({0, 1, 2}), "doc: one reference to each note, in the body's order");
+        CHECK_MSG(marks == "1^ 2^ i^ ", "doc: the references are numbered and set high (" + marks + ")");
+        CHECK_MSG(doc.blocks.size() == 2
+                      && UCRichDocument::ConcatenateRunText(doc.blocks[0].runs) == "The first claim1 stands here, and a second2 follows it.",
+                  "doc: the body's words round the references are whole");
+
+        // Saved as DOCX and ODT the notes go along.
+        for (const char* ext : {".docx", ".odt"}) {
+            const std::string path = UltraCanvas::PathToUtf8(std::filesystem::temp_directory_path() / (std::string("uc_doc_notes") + ext));
+            UCRichDocument again;
+            CHECK_MSG(UCWordDocumentIO::Save(path, doc, err) && UCWordDocumentIO::Load(path, again, err), err);
+            CHECK_MSG(again.notes.size() == 3 && again.notes[1].blocks.size() == 2
+                          && again.notes[2].kind == RichNote::Kind::Endnote,
+                      std::string("saved as ") + ext + ": the .doc's notes are kept");
+            std::remove(path.c_str());
+        }
+    }
+#endif
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;

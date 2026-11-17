@@ -113,7 +113,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Headers and footers | yes | yes | yes | yes | yes | 2026-09. `pageFurniture` and `firstPageFurniture` (another first page: ODF `style:header-first` or a first master page with a next style, DOCX `w:titlePg`, DOC first-page stories). Drawn on every page in page view, and above and below the body otherwise. Both writers save them. Even/odd headers are not read. |
 | Page number and page count fields | yes | yes | yes | yes | yes | 2026-09. `RichTextRun::field`: ODF `text:page-number` / `text:page-count`, DOCX `PAGE` / `NUMPAGES` / `SECTIONPAGES` (complex and simple fields), DOC field codes. Page view fills in each page's numbers in headers and footers. |
 | Dates and other fields | *partial* | *partial* | *partial* | no | — | Their last displayed value is kept as text. Captions and cross-references are real fields (see below). |
-| Footnotes / endnotes | yes | yes | no | yes | yes | `UCRichDocument::notes` with numbered reference runs; footnotes at the foot of their page in page view, endnotes after the body. DOC: the note text is not read yet. |
+| Footnotes / endnotes | yes | yes | yes | yes | yes | `UCRichDocument::notes` with numbered reference runs; footnotes at the foot of their page in page view, endnotes after the body. DOC: references from `PlcffndRef` / `PlcfendRef`, each note's words from its story after the main text; an author's own mark is kept as text beside the number. |
 | Table of contents and indexes | yes | yes | *partial* | yes | yes | Contents entries are `RichDocBlock::tocLevel` paragraphs whose page numbers are `PageReference` fields; `UpdateTableOfContents` rebuilds them. ODT: the generated text (`text:index-body`) of every index is read; only a table of contents gets `tocLevel`. DOCX: "TOC 1-9" paragraphs, also inside `w:sdt`. DOC shows the field result. Both writers save a table of contents. Alphabetical and other indexes are plain text. |
 | Sections, multiple columns | yes | yes | no | yes | *partial* | `RichSectionSetup` (columns, gap, new page) in `UCRichDocument::firstSection` and `RichDocBlock::sectionStart` / `section`; ODF `text:section` with `style:columns`, DOCX `w:sectPr` with `w:cols` / `w:type`. Page view flows a section column by column; the continuous view draws one column. Unequal column widths become equal, and a section's own page size is not read. Hidden ODT sections are dropped. Both writers save them. |
 | Comments, tracked changes | yes | yes | no | yes | yes | Comments: `UCRichDocument::comments` (`RichComment`), anchored by `RichTextRun::commentIds`; ODF `office:annotation`, DOCX `comments.xml`. Tracked changes: `RichTextRun::change` / `revision` into `UCRichDocument::revisions`; ODF `text:tracked-changes`, DOCX `w:ins` / `w:del` / `w:moveTo` / `w:moveFrom`. The view shades commented text with a comment pane beside it, underlines insertions and strikes through deletions. Both writers save them. Format changes are not kept. DOC does not read comments or revision marks. |
@@ -168,9 +168,7 @@ zoom to the page's width or the whole page
 (`UltraCanvasRichTextEdit::SetZoomFit`), and drawn shapes and groups from
 all three formats.
 
-1. **The DOC reader's remaining gaps**: merged cells, footnotes and endnotes
-   (their text lies after the main text in the piece table: `ccpFtn`,
-   `ccpEdn`), comments and revision marks, sections and their columns,
+1. **The DOC reader's remaining gaps**: merged cells, comments and revision marks, sections and their columns,
    bookmarks and caption / cross-reference fields. ODT and DOCX read all of
    these.
 2. Charts: read-only display first.
