@@ -14,6 +14,7 @@
 // through, ULTRA OS's own by default), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
+// Version: 0.4.7 - a note on the IRC account
 // Version: 0.4.6 - a note on the XMPP account
 // Version: 0.4.5 - a note on the Signal account (signal-cli)
 // Version: 0.4.4 - a note on the Mattermost and Zulip accounts
@@ -562,6 +563,10 @@ std::shared_ptr<UltraCanvasContainer> BuildAccountsPage(State* d) {
     AddNote(parts, "cc-set-accounts-note-xmpp",
             Tr("XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your "
             "server from the address. Your server must offer XMPP over WebSocket, as most do."));
+    AddNote(parts, "cc-set-accounts-note-irc",
+            Tr("IRC, in the last row, connects to a server with your nickname - over TLS unless the address "
+            "starts with irc:// - and signs in with your password when the nickname is registered. Type a "
+            "#channel in Add to join it."));
     AddNote(parts, "cc-set-accounts-note2",
             Tr("Your ChatCube ID is a key made on this computer and has no password; there is nothing to sign "
             "out of. Send the ID to the people who should reach you."));

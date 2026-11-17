@@ -571,6 +571,13 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     sidebar->AddChild(moreDoors);
     sidebar->AddChild(lastDoors);
     sidebar->AddChild(signalDoors);
+    // A fifth row: IRC.
+    auto ircDoors = MakeRow("cc-doors-5", 6);
+    irc_.toggle = MakeIconButton("cc-irc", "irc", irc_.name, doorWidth, false, false);
+    irc_.toggle->SetTooltip(TrF("{0} account", irc_.name));
+    irc_.toggle->SetOnClick([this]() { ToggleAccountForm(irc_); });
+    ircDoors->AddChild(irc_.toggle);
+    sidebar->AddChild(ircDoors);
 
     // A Matrix account next to ChatCube Direct.
     matrixForm_ = std::make_shared<UltraCanvasContainer>("cc-matrix-form");
@@ -646,6 +653,8 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     BuildAccountForm(zulip_, *sidebar, Tr("Organization, e.g. chat.zulip.org"), Tr("E-mail address"));
     BuildAccountForm(xmpp_, *sidebar, Tr("Server (empty: found from your address)"),
                      Tr("Your address, e.g. erin@example.org"));
+    BuildAccountForm(irc_, *sidebar, Tr("Server, e.g. irc.libera.chat"), Tr("Nickname"));
+    irc_.password->SetPlaceholder(Tr("Password (only for a registered nickname)"));
 
     // A Telegram account: the phone number, then the code, then the
     // two-step password if there is one - one field at a time; or a QR code
@@ -1301,7 +1310,7 @@ void ChatCubeWindow::RenderStatus() {
     const std::pair<std::string, const char*> networks[] = {
         {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
         {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"},
-        {signalProviderId_, "Signal"}, {xmpp_.providerId, "XMPP"}};
+        {signalProviderId_, "Signal"}, {xmpp_.providerId, "XMPP"}, {irc_.providerId, "IRC"}};
     for (const auto& network : networks) {
         auto it = providerStatus_.find(network.first);
         if (it == providerStatus_.end()) continue;
@@ -1530,7 +1539,7 @@ void ChatCubeWindow::SignIn() {
         if (UltraIM_GetProviderInfo(signalProviderId_, signalInfo) && signalInfo.hasStoredSession &&
             signalInfo.connectionState == UltraIMConnectionState::Disconnected)
             SignInToSignal(true);
-        for (AccountForm* f : {&mattermost_, &zulip_, &xmpp_}) {
+        for (AccountForm* f : {&mattermost_, &zulip_, &xmpp_, &irc_}) {
             UltraIMProviderInfo stored;
             if (UltraIM_GetProviderInfo(f->providerId, stored) && stored.hasStoredSession &&
                 stored.connectionState == UltraIMConnectionState::Disconnected)
@@ -2032,7 +2041,9 @@ void ChatCubeWindow::AddContactById(const std::string& id) {
 
 void ChatCubeWindow::AddContactOn(const std::string& provider, const std::string& address) {
     // An xmpp: link is the address after it.
-    const std::string id = address.rfind("xmpp:", 0) == 0 ? address.substr(5) : address;
+    const std::string id = address.rfind("xmpp:", 0) == 0  ? address.substr(5)
+                           : address.rfind("irc:", 0) == 0 ? address.substr(4)
+                                                           : address;
     SetStatus(Tr("Adding contact\xE2\x80\xA6"));
     UltraIM_AddContact(provider, id, [this](const UltraIMResult& r, const UltraIMConversation& c) {
         if (!r) {
@@ -2430,6 +2441,7 @@ ChatCubeWindow::AccountForm* ChatCubeWindow::AccountFormOf(const std::string& pr
     if (providerId == mattermost_.providerId) return &mattermost_;
     if (providerId == zulip_.providerId) return &zulip_;
     if (providerId == xmpp_.providerId) return &xmpp_;
+    if (providerId == irc_.providerId) return &irc_;
     return nullptr;
 }
 
@@ -2470,7 +2482,7 @@ void ChatCubeWindow::SignInToAccount(AccountForm& f, bool stored) {
             credentials.username = Trim(f.user->GetText());
             credentials.password = f.password->GetText();
             if ((credentials.server.empty() && !f.serverOptional) || credentials.username.empty() ||
-                credentials.password.empty()) {
+                (credentials.password.empty() && !f.passwordOptional)) {
                 SetStatus(f.serverOptional ? TrF("{0}: enter your address and your password.", f.name)
                                            : TrF("{0}: enter the server, your account and your password.", f.name));
                 return;
@@ -2712,6 +2724,8 @@ std::vector<std::string> ChatCubeWindow::ProvidersOfAddress(const std::string& a
             return {signalProviderId_};
     }
     if (address.rfind("xmpp:", 0) == 0) return {xmpp_.providerId};
+    // IRC: a channel (#name), or irc:nick.
+    if (address[0] == '#' || address.rfind("irc:", 0) == 0) return {irc_.providerId};
     // An address name@domain: a Zulip or Mattermost account's e-mail, or an
     // XMPP address (a room's too).
     const size_t at = address.find('@');
@@ -4289,7 +4303,7 @@ std::vector<ChatCubeSettingsWindow::Account> ChatCubeWindow::Accounts() const {
     const std::pair<std::string, const char*> networks[] = {
         {providerId_, "ChatCube Direct"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
         {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"},
-        {signalProviderId_, "Signal"}, {xmpp_.providerId, "XMPP"}};
+        {signalProviderId_, "Signal"}, {xmpp_.providerId, "XMPP"}, {irc_.providerId, "IRC"}};
     for (const auto& [id, name] : networks) {
         ChatCubeSettingsWindow::Account account;
         account.providerId = id;

@@ -33,6 +33,7 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.12 - the chat list a row lower again (a fifth row: IRC)
 # Version: 0.1.11 - the chat list a row lower again (a fourth row: Signal)
 # Version: 0.1.10 - the chat list a row lower again (a third row of network buttons: Mattermost, Zulip)
 # Version: 0.1.9 - Members a row lower in the group's menu (Group settings... above it)
@@ -142,7 +143,7 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     # The sidebar: the add-a-contact pill, then the first conversation row,
     # then the composer at the bottom of the window.
     "$XINPUT" click 120 69 type "$BOB" key Return sleep 3000
-    "$XINPUT" click 160 300 sleep 1500
+    "$XINPUT" click 160 342 sleep 1500
     "$XINPUT" click 600 625 type "Hi Bob, is the new look on your side too?" key Return sleep 3500
     "$XINPUT" type "It has avatars and a dark theme now." key Return sleep 3500
     import -window root "$OUT/chat.png"
@@ -166,14 +167,14 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     import -window root "$OUT/search.png"
     "$XINPUT" click 967 77 sleep 1500
     # The chat with Bob right-clicked in the list: its menu (Escape closes it).
-    "$XINPUT" rclick 160 294 sleep 1200
+    "$XINPUT" rclick 160 336 sleep 1200
     import -window root "$OUT/menu.png"
     "$XINPUT" key Escape sleep 600
     # A group with Bob (the Group button, its name and members, Enter), then
     # its menu with Members and the items for Bob open by hovering.
-    "$XINPUT" click 57 111 sleep 800 click 158 274 type "ULTRA OS questions" \
-        click 158 312 type "$BOB" key Return sleep 3000
-    "$XINPUT" rclick 160 360 sleep 1200 move 230 471 sleep 1200 move 420 471 move 470 499 sleep 1200
+    "$XINPUT" click 57 111 sleep 800 click 158 316 type "ULTRA OS questions" \
+        click 158 354 type "$BOB" key Return sleep 3000
+    "$XINPUT" rclick 160 402 sleep 1200 move 230 513 sleep 1200 move 420 513 move 470 541 sleep 1200
     import -window root "$OUT/group-menu.png"
     "$XINPUT" key Escape sleep 300 key Escape sleep 300 key Escape sleep 600
     # The person button beside the ID: the Edit profile window.
