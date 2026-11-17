@@ -65,6 +65,9 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.45.4 - the path bars under Dark: dark grey segments, the current folder's segment in the
+//                  arrow's strong blue with white, the seams in the ground; set again by ApplyLook on
+//                  every theme change instead of following the theme themselves
 // Version: 1.45.3 - split view under a dark theme: the right-hand pane takes the current theme when
 //                  it joins the window (it was built at start-up, under the light look, and out of
 //                  the window missed every change since); the preview's viewers likewise when the
@@ -1014,8 +1017,21 @@ namespace {
 
     BreadcrumbStyle MakePathBreadcrumbStyle() {
         // The arrow shape with the theme's colours (Arrow() alone is the
-        // light look); the bar follows the theme from there (SetFollowTheme)
-        BreadcrumbStyle s = BreadcrumbStyle::FromTheme(UltraCanvasTheme::Current(), BreadcrumbStyle::Arrow());
+        // light look: light grey segments, which glare on a dark row).
+        // ApplyLook sets it again on a theme change - the bar does not
+        // follow the theme by itself, which would put the theme's soft
+        // accent back on the current segment.
+        const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+        BreadcrumbStyle s = BreadcrumbStyle::FromTheme(theme, BreadcrumbStyle::Arrow());
+        if (theme.dark && !theme.highContrast) {
+            // Under Dark the folder you are in keeps the arrow's strong blue
+            // with white on it (4.6:1), the segments before it the raised
+            // dark grey, and the seam between two segments is the row's
+            // ground rather than a light grey line.
+            s.currentItemBackgroundColor = Color(0, 120, 215, 255);
+            s.currentItemTextColor = Colors::White;
+            s.separatorColor = theme.roles.ground;
+        }
         s.overflowMode = BreadcrumbOverflowMode::Collapse;
         s.keepFirstItemOnCollapse = true;
         s.minVisibleAfterCollapse = 2;
@@ -1690,6 +1706,10 @@ void UltraFilerWindow::ApplyLook() {
         folderTree->SetBackgroundColor(look.ground);
     }
     if (statusRow) statusRow->SetBackgroundColor(look.statusBar);
+    // The path bars: the window's, and the split view's two (styled while
+    // the right one is out of the window too)
+    for (const auto& crumb : {breadcrumb, leftPaneBreadcrumb, rightPaneBreadcrumb})
+        if (crumb) crumb->SetStyle(MakePathBreadcrumbStyle());
     if (statusInfoLabel) statusInfoLabel->SetTextColor(look.inkMuted);
     if (statusSelectionLabel) statusSelectionLabel->SetTextColor(look.inkFaint);
     if (statusLabel) statusLabel->SetTextColor(statusNoteIsError ? look.danger : look.inkMuted);
@@ -2829,7 +2849,6 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
     breadcrumb->SetStyle(MakePathBreadcrumbStyle());
-    breadcrumb->SetFollowTheme(true);
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
     row->AddChild(breadcrumb);
@@ -9627,7 +9646,6 @@ void UltraFilerWindow::BuildSplitViewPanes() {
         crumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-pane-breadcrumb-" + suffix,
                                                         0, 0, 0, 28);
         crumb->SetStyle(MakePathBreadcrumbStyle());
-        crumb->SetFollowTheme(true);
         crumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Center);
         header->AddChild(crumb);

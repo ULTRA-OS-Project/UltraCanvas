@@ -16,3 +16,11 @@
   preview's viewers do the same when the preview pane is put up again. The
   folder preview (a folder selected with the preview on) follows the theme
   too: its own sizes set by hand had switched the following off.
+- **The path bars are dark under a dark theme.** Their segments were the
+  arrow style's light grey (228, 230, 233), which glared on the dark rows.
+  Under Dark they are the theme's raised dark grey now, with the theme's
+  hover and pressed shades, and the seam between two segments is the row's
+  ground. The segment of the folder you are in keeps its strong blue with
+  white text. The window's path bar and the split view's two are styled
+  again on every theme change; the light and high-contrast looks are as
+  before.
