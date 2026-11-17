@@ -818,7 +818,11 @@ What the build found:
   Writing a `<source type="image/avif">` for files that would never exist
   would break the page. So `Picture` tries each format once, on a 16-pixel
   copy of the first picture, lists only what it can write, and says what
-  it left out. CI's runners will tell whether theirs write AVIF.
+  it left out. CI's Linux rows link an AV1 encoder into the libheif they
+  build. The cloud session's image now installs `libheif-plugin-aomenc`
+  (`.claude/hooks/session-start.sh`), and with it the example's 1000-pixel
+  photograph is 33 / 52 / 69 KB as AVIF against 36 / 59 / 79 KB as WebP
+  at 480 / 800 / 1000 pixels.
 - **A file time's zero is not "long ago".** `ultrapress serve` first
   compared modification times against a zero `file_time_type`, but
   libstdc++'s file clock counts from 2174, so every real time is negative
