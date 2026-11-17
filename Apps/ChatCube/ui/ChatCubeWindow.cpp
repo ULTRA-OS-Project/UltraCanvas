@@ -555,9 +555,16 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
         f->toggle->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         lastDoors->AddChild(f->toggle);
     }
+    // A fourth row: Signal.
+    auto signalDoors = MakeRow("cc-doors-4", 6);
+    signalToggle_ = MakeIconButton("cc-signal", "signal", "Signal", doorWidth, false, false);
+    signalToggle_->SetTooltip(TrF("{0} account", std::string("Signal")));
+    signalToggle_->SetOnClick([this]() { ToggleSignalForm(); });
+    signalDoors->AddChild(signalToggle_);
     sidebar->AddChild(doors);
     sidebar->AddChild(moreDoors);
     sidebar->AddChild(lastDoors);
+    sidebar->AddChild(signalDoors);
 
     // A Matrix account next to ChatCube Direct.
     matrixForm_ = std::make_shared<UltraCanvasContainer>("cc-matrix-form");
@@ -600,6 +607,34 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     mastodonForm_->AddChild(mastodonSignIn_);
     mastodonForm_->SetVisible(false);
     sidebar->AddChild(mastodonForm_);
+
+    // Signal: this computer becomes a linked device of the phone's account -
+    // a QR code the phone's Signal scans, through signal-cli.
+    signalForm_ = std::make_shared<UltraCanvasContainer>("cc-signal-form");
+    signalForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    signalForm_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    signalDaemon_ = MakeInput("cc-signal-daemon", Tr("signal-cli daemon (empty: ChatCube starts one)"), kSidebarWidth - 16);
+    signalForm_->AddChild(signalDaemon_);
+    signalLink_ = MakeButton("cc-signal-go", Tr("Link with my phone"), kSidebarWidth - 16, true);
+    signalLink_->SetOnClick([this]() { SignInToSignal(false); });
+    signalForm_->AddChild(signalLink_);
+    signalHint_ = MakeLabel("cc-signal-hint", "", 9.0f, &Look::inkMuted);
+    signalHint_->SetWrap(TextWrap::WrapWord);
+    signalHint_->size.width = CSSLayout::Dimension::Px(static_cast<float>(kSidebarWidth - 16));
+    signalHint_->SetVisible(false);
+    signalForm_->AddChild(signalHint_);
+    constexpr int signalQrSide = 200;
+    signalQr_ = std::make_shared<UltraCanvasQRCode>("cc-signal-qr", 0, 0, signalQrSide, signalQrSide);
+    signalQr_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Center);
+    signalQr_->size.width = CSSLayout::Dimension::Px(static_cast<float>(signalQrSide));
+    signalQr_->size.height = CSSLayout::Dimension::Px(static_cast<float>(signalQrSide));
+    signalQr_->SetForegroundColor(Colors::Black);
+    signalQr_->SetBackgroundColor(Colors::White);
+    signalQr_->SetQuietZoneModules(2);
+    signalQr_->SetVisible(false);
+    signalForm_->AddChild(signalQr_);
+    signalForm_->SetVisible(false);
+    sidebar->AddChild(signalForm_);
 
     BuildAccountForm(mattermost_, *sidebar, Tr("Server, e.g. chat.example.org"), Tr("User name or e-mail address"));
     BuildAccountForm(zulip_, *sidebar, Tr("Organization, e.g. chat.zulip.org"), Tr("E-mail address"));
@@ -1257,7 +1292,8 @@ void ChatCubeWindow::RenderStatus() {
     // The networks in a fixed order, each under the name the sidebar uses.
     const std::pair<std::string, const char*> networks[] = {
         {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
-        {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"}};
+        {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"},
+        {signalProviderId_, "Signal"}};
     for (const auto& network : networks) {
         auto it = providerStatus_.find(network.first);
         if (it == providerStatus_.end()) continue;
@@ -1482,6 +1518,10 @@ void ChatCubeWindow::SignIn() {
         if (UltraIM_GetProviderInfo(mastodonProviderId_, mastodonInfo) && mastodonInfo.hasStoredSession &&
             mastodonInfo.connectionState == UltraIMConnectionState::Disconnected)
             SignInToMastodon(true);
+        UltraIMProviderInfo signalInfo;
+        if (UltraIM_GetProviderInfo(signalProviderId_, signalInfo) && signalInfo.hasStoredSession &&
+            signalInfo.connectionState == UltraIMConnectionState::Disconnected)
+            SignInToSignal(true);
         for (AccountForm* f : {&mattermost_, &zulip_}) {
             UltraIMProviderInfo stored;
             if (UltraIM_GetProviderInfo(f->providerId, stored) && stored.hasStoredSession &&
@@ -2262,6 +2302,92 @@ void ChatCubeWindow::SignInToMastodon(bool stored) {
     });
 }
 
+void ChatCubeWindow::ToggleSignalForm() {
+    UltraIMProviderInfo info;
+    if (!UltraIM_GetProviderInfo(signalProviderId_, info)) {
+        SetStatus(TrF("The {0} module was not found (Plugins/UltraIM).", std::string("Signal")));
+        return;
+    }
+    if (info.connectionState == UltraIMConnectionState::Connected) {
+        signalForm_->SetVisible(false);
+        SetStatus(TrF("{0}: signed in as {1}", std::string("Signal"), info.localUserId));
+    } else {
+        signalForm_->SetVisible(!signalForm_->IsVisible());
+    }
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::SignInToSignal(bool stored) {
+    UltraIMCredentials credentials;
+    credentials.loginType = UltraIMLoginType::QRCode;
+    if (!stored) {
+        credentials.server = Trim(signalDaemon_->GetText());
+        signalLink_->SetDisabled(true);
+    }
+    SetProviderStatus(signalProviderId_, Tr("starting signal-cli\xE2\x80\xA6"));
+    UltraIM_SignIn(signalProviderId_, credentials, [this, stored](const UltraIMResult& r) {
+        if (!stored) signalLink_->SetDisabled(false);
+        // The QR code to scan: shown by the AuthStepChange that comes with it.
+        if (r.code == UltraIMResultCode::NeedsInput) return;
+        if (!r) {
+            SetProviderStatus(signalProviderId_, r.message);
+            signalHint_->SetText(r.message);
+            signalHint_->SetVisible(true);
+            return;
+        }
+        signalForm_->SetVisible(false);
+        RefreshConversations();
+    });
+}
+
+bool ChatCubeWindow::OnSignalEvent(const UltraIMEvent& e) {
+    if (e.providerId != signalProviderId_) return false;
+    switch (e.type) {
+        case UltraIMEventType::ConnectionStateChange:
+            if (settingsWindow_) settingsWindow_->RefreshAccounts();
+            if (e.connectionState == UltraIMConnectionState::Connected) {
+                UltraIMProviderInfo info;
+                UltraIM_GetProviderInfo(signalProviderId_, info);
+                SetProviderStatus(signalProviderId_, TrF("signed in as {0}", info.localUserId));
+                SetNetworkButton(signalToggle_, "Signal", TrF("{0}: signed in as {1}", std::string("Signal"), info.localUserId));
+                signalQr_->SetVisible(false);
+                signalQr_->SetContent(std::string());
+                signalHint_->SetVisible(false);
+                signalForm_->SetVisible(false);
+                RefreshConversations();
+            } else if (e.connectionState == UltraIMConnectionState::Error) {
+                SetProviderStatus(signalProviderId_, e.errorText);
+                signalLink_->SetDisabled(false);
+            } else if (e.connectionState == UltraIMConnectionState::Reconnecting) {
+                SetProviderStatus(signalProviderId_, Tr("connection lost - reconnecting\xE2\x80\xA6"));
+            } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
+                SetProviderStatus(signalProviderId_, Tr("signed out"));
+                SetNetworkButton(signalToggle_, "Signal", TrF("{0} account", std::string("Signal")));
+            }
+            return true;
+        case UltraIMEventType::AuthStepChange:
+            if (e.authStep == UltraIMAuthStep::OtherDevice && !e.errorText.empty()) {
+                // The link for the phone to scan (sgnl://linkdevice?...).
+                signalQr_->SetContent(e.errorText);
+                signalQr_->SetVisible(true);
+                signalHint_->SetText(Tr("On your phone, open Signal: Settings > Linked devices > Link new device, "
+                                        "and scan this code."));
+                signalHint_->SetVisible(true);
+                signalForm_->SetVisible(true);
+                SetProviderStatus(signalProviderId_, Tr("scan the code with Signal on your phone"));
+                if (window_) window_->RequestRedraw();
+            }
+            return true;
+        case UltraIMEventType::AuthRequire:
+            SetProviderStatus(signalProviderId_, Tr("this computer was unlinked - link it again"));
+            signalForm_->SetVisible(true);
+            SetNetworkButton(signalToggle_, "Signal", TrF("{0} account", std::string("Signal")));
+            return true;
+        default:
+            return false;
+    }
+}
+
 void ChatCubeWindow::BuildAccountForm(AccountForm& f, UltraCanvasContainer& sidebar, const std::string& serverHint,
                                       const std::string& userHint) {
     const std::string id = "cc-" + f.providerId;
@@ -2562,8 +2688,16 @@ std::vector<std::string> ChatCubeWindow::ProvidersOfAddress(const std::string& a
         if (address.find(':') != std::string::npos) return {matrixProviderId_};
         return {telegramProviderId_, mattermost_.providerId};
     }
-    if (address[0] == '+' || address.rfind("t.me/", 0) == 0 || address.rfind("https://t.me/", 0) == 0)
-        return {telegramProviderId_};
+    if (address[0] == '+') return {telegramProviderId_, signalProviderId_};
+    if (address.rfind("t.me/", 0) == 0 || address.rfind("https://t.me/", 0) == 0) return {telegramProviderId_};
+    // A Signal username: a name, a dot and two or more digits ("erin.42").
+    {
+        const size_t dot = address.rfind('.');
+        if (dot != std::string::npos && dot > 0 && address.size() - dot >= 3 && address.find('@') == std::string::npos &&
+            std::all_of(address.begin() + static_cast<std::ptrdiff_t>(dot) + 1, address.end(),
+                        [](char c) { return c >= '0' && c <= '9'; }))
+            return {signalProviderId_};
+    }
     // An e-mail address: a Zulip account, or a Mattermost one.
     const size_t at = address.find('@');
     if (at != std::string::npos && at > 0 && address.find('.', at) != std::string::npos &&
@@ -4136,7 +4270,8 @@ std::vector<ChatCubeSettingsWindow::Account> ChatCubeWindow::Accounts() const {
     std::vector<ChatCubeSettingsWindow::Account> accounts;
     const std::pair<std::string, const char*> networks[] = {
         {providerId_, "ChatCube Direct"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
-        {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"}};
+        {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"},
+        {signalProviderId_, "Signal"}};
     for (const auto& [id, name] : networks) {
         ChatCubeSettingsWindow::Account account;
         account.providerId = id;
@@ -4197,6 +4332,10 @@ void ChatCubeWindow::SignOutOf(const std::string& providerId) {
         SetNetworkButton(mastodonToggle_, "Mastodon", Tr("Mastodon account"));
         mastodonForm_->SetVisible(false);
         SetProviderStatus(mastodonProviderId_, Tr("signed out"));
+    } else if (providerId == signalProviderId_) {
+        SetNetworkButton(signalToggle_, "Signal", TrF("{0} account", std::string("Signal")));
+        signalForm_->SetVisible(false);
+        SetProviderStatus(signalProviderId_, Tr("signed out"));
     } else if (AccountForm* f = AccountFormOf(providerId)) {
         SetNetworkButton(f->toggle, f->name, TrF("{0} account", f->name));
         f->form->SetVisible(false);
@@ -4210,9 +4349,9 @@ void ChatCubeWindow::SignOutOf(const std::string& providerId) {
 
 void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
     if (e.providerId != providerId_ && e.providerId != matrixProviderId_ && e.providerId != telegramProviderId_ &&
-        e.providerId != mastodonProviderId_ && !AccountFormOf(e.providerId))
+        e.providerId != mastodonProviderId_ && e.providerId != signalProviderId_ && !AccountFormOf(e.providerId))
         return;
-    if (OnAccountEvent(e)) return;
+    if (OnAccountEvent(e) || OnSignalEvent(e)) return;
     const bool matrix = e.providerId == matrixProviderId_;
     const bool mastodon = e.providerId == mastodonProviderId_;
     const bool telegram = e.providerId == telegramProviderId_;

@@ -71,6 +71,7 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.9 - Signal: linked to the phone by a QR code (signal-cli); +phone asks Telegram or Signal
 // Version: 0.3.8 - Mattermost and Zulip accounts (AccountForm); an address more than one signed-in
 //                  network takes asks which (ProvidersOfAddress)
 // Version: 0.3.7 - the group editor (Group settings): a description, members removed, blocked, messaged
@@ -234,6 +235,11 @@ private:
     void ToggleAccountForm(AccountForm& f);
     void SignInToAccount(AccountForm& f, bool stored);
     AccountForm* AccountFormOf(const std::string& providerId);
+    // Signal: this computer linked to the phone's Signal account by a QR
+    // code, through signal-cli (a daemon address, or one ChatCube starts).
+    void ToggleSignalForm();
+    void SignInToSignal(bool stored);
+    bool OnSignalEvent(const UltraIMEvent& e);
     // A network's sign-in and connection events: true when they were one of these forms'.
     bool OnAccountEvent(const UltraIMEvent& e);
     // The keys to encrypted Matrix rooms to a passphrase-protected file (the
@@ -523,6 +529,13 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> mastodonServer_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    mastodonSignIn_;
     std::string mastodonProviderId_ = "mastodon";
+    std::string signalProviderId_ = "signal";
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    signalToggle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> signalForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> signalDaemon_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    signalLink_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     signalHint_;
+    std::shared_ptr<UltraCanvas::UltraCanvasQRCode>    signalQr_;
     AccountForm mattermost_{"mattermost", "Mattermost", {}, {}, {}, {}, {}, {}, {}};
     AccountForm zulip_{"zulip", "Zulip", {}, {}, {}, {}, {}, {}, {}};
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> networkMenu_;   // "Add on which network?"
