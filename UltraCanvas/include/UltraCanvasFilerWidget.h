@@ -104,6 +104,9 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.51.0 - FilerStyle: toolGlyphColor / toolHoverColor / toolPressedColor (the hidden-items
+//                  notice's gear) and scrollbarTrackColor / scrollbarThumbColor /
+//                  scrollbarThumbHeldColor, from the theme in FromTheme
 // Version: 1.50.0 - SetTransferDialogStyle: the move / copy question as a summary with the entry's icon
 //          and breadcrumb paths (the default) or as two cards, source and destination
 // Version: 1.49.1 - a text file's preview page is paper in either look: its text dark ink, not the theme's
@@ -163,7 +166,7 @@
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -722,6 +725,15 @@ namespace UltraCanvas {
         Color extensionBarBackground  = Color(190, 190, 196, 235);
         Color extensionTagBackground  = Color(80, 80, 86, 235);
         Color extensionTagTextColor   = Color(255, 255, 255, 240);
+        // The small tool button beside the hidden-items notice (its gear):
+        // the glyph, and the button's fill under the pointer and held down.
+        Color toolGlyphColor       = Color(85, 85, 92, 255);
+        Color toolHoverColor       = Color(232, 232, 236, 255);
+        Color toolPressedColor     = Color(218, 218, 224, 255);
+        // The scroll bars: the track, the thumb, and the thumb while dragged.
+        Color scrollbarTrackColor     = Color(0, 0, 0, 30);
+        Color scrollbarThumbColor     = Color(90, 90, 96, 180);
+        Color scrollbarThumbHeldColor = Color(70, 70, 78, 220);
 
         std::string fontFamily;          // empty = system default
         float fontSize        = 12.0f;   // Windows standard UI size (9pt @ 96dpi)
@@ -751,7 +763,10 @@ namespace UltraCanvas {
         // bar and a bar's background with ink on it, hairlines for the
         // grid, the hover fill, the soft accent for the selection with the
         // accent round it, the accent for the bars, the well with the accent
-        // for the rename editor; the interface font at the body size, the
+        // for the rename editor; muted ink for the notice's gear on the hover
+        // and pressed fills; the scroll bars as a veil over the well (a shade
+        // off it for the track, the muted ink for the thumb, the ink while it
+        // is dragged); the interface font at the body size, the
         // small text at the caption size. The hover icon menu and the
         // extension tag keep their own dark overlays unless a theme names
         // "filer.icon-menu", "filer.on-icon-menu", "filer.icon-menu-done",
@@ -3247,6 +3262,9 @@ namespace UltraCanvas {
         std::string HiddenNoticeText() const;
         // Create / show / hide the strip's button for the current listing.
         void UpdateHiddenNoticeButton();
+        // The notice's gear in the style's tool colours; again on SetStyle,
+        // so a theme change reaches it
+        void StyleHiddenNoticeSettingsButton();
         void PositionHiddenNoticeButton(IRenderContext* ctx);
         void DrawHiddenItemsNotice(IRenderContext* ctx);
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
