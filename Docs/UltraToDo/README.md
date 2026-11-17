@@ -18,6 +18,9 @@ reminder before it has to be started and an alarm at its planned end.
 
 ## Using it
 
+Attach, Edit and Delete are round icon buttons; resting the pointer on one
+says what it does.
+
 | Part | What it does |
 |---|---|
 | The round **+** (top left, Ctrl+N) | writes a new task |
@@ -25,15 +28,15 @@ reminder before it has to be started and an alarm at its planned end.
 | *Done* | marks the task done and moves it to the history |
 | *Reopen* (in the history) | moves the task back to the list of tasks to do |
 | A panel's mark (top right) | how urgent it is: *Overdue by 2 h*, *Start now*, *Start in 30 min*, *No date*; *Done* in the history |
-| *Attach* | adds documents, pictures or any other file to the task (open tasks) |
-| *Edit* | everything about the task, in the task dialog (open tasks) |
-| *Delete* | deletes the task and the files attached to it, after asking |
+| Paper clip (*Attach*) | adds documents, pictures or any other file to the task (open tasks) |
+| Pencil (*Edit*) | everything about the task, in the task dialog (open tasks) |
+| Bin (*Delete*) | deletes the task and the files attached to it, after asking |
 
 **Columns.** A window wide enough for two panels side by side shows the
-list in columns - one below about 900 px, then two, three, up to four, the
-panels sharing the width. The order reads row by row, left to right, the most
-urgent first, so it is the same in any width; a row is as tall as its
-tallest panel.
+list in columns - one below about 900 px, then two, three, up to four,
+sharing the width. The columns are filled one after the other: the most
+urgent tasks down the first column, then on at the top of the next, each
+column holding the same number (the last ones one fewer at most).
 
 The task dialog has the title, the description, the planned end (a day, and
 a time of day if it has one; a day alone means the end of that day), the

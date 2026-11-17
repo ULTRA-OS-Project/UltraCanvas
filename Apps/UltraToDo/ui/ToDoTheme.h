@@ -11,6 +11,7 @@
 // readable on it; under a dark theme the border is mixed into the panel
 // colour too; the inks, the lines and the sizes are the theme's roles
 // (UltraCanvasTheme.h) throughout.
+// Version: 0.4.0 - MakeIconButton: a round button with an icon alone, following the theme
 // Version: 0.3.0 - the pastel is the panel's border; the fill a faint tint of it
 // Version: 0.2.0 - buttons and dialog texts by their role in the theme, following it
 // Version: 0.1.0
@@ -24,6 +25,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTheme.h"
+#include "UltraCanvasUtils.h"   // GetResourcesDir, NormalizePath
 
 #include <algorithm>
 #include <cstdint>
@@ -159,6 +161,22 @@ MakePill(const std::string& id, const std::string& text, float minWidth = 64.0f,
     button->boxConstraints = limits;
     button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     MakeRound(button, kControlHeight, main ? UltraCanvas::ButtonVariant::Primary : UltraCanvas::ButtonVariant::Standard);
+    return button;
+}
+
+// A round button showing an icon alone (media/icons/<iconFile>), what it
+// does in its tooltip. The icon is drawn as a mask in the button's text
+// colour, so it follows the theme like a label would.
+inline std::shared_ptr<UltraCanvas::UltraCanvasButton>
+MakeIconButton(const std::string& id, const std::string& iconFile, const std::string& tooltip) {
+    auto button = UltraCanvas::CreateButton(id, 0, 0, kControlHeight, kControlHeight, "");
+    button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    button->SetIcon(UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/icons/" + iconFile));
+    button->SetIconPosition(UltraCanvas::ButtonIconPosition::Center);
+    button->SetIconSize(16, 16);
+    button->SetUseIconAsMask(true);
+    button->SetTooltip(tooltip);
+    MakeRound(button, kControlHeight, UltraCanvas::ButtonVariant::Standard);
     return button;
 }
 

@@ -1,5 +1,6 @@
 // Apps/UltraToDo/ui/UltraToDoWindow.cpp
 // See UltraToDoWindow.h.
+// Version: 0.5.0 - the columns filled one after the other; Attach, Edit and Delete as icons with tooltips
 // Version: 0.4.0 - the list in columns when the window is wide enough (LayoutColumns)
 // Version: 0.3.0 - Done on every task moves it to the history (To do | History); Reopen brings it back
 // Version: 0.2.0 - the panels' pastel is their border, their fill a faint tint of it
@@ -283,15 +284,16 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildPanel(const ToDoTask
     auto foot = MakeRow(id + ".foot", Theme::kControlHeight);
     foot->AddStretchSpacer(1);
     if (!task.done) {
-        auto attach = Theme::MakePill(id + ".attach", Tr("Attach"), 72);
-        attach->SetTooltip(Tr("Attach documents or pictures to the task"));
+        auto attach = Theme::MakeIconButton(id + ".attach", "paperclip.svg",
+                                            Tr("Attach documents or pictures to the task"));
         attach->onClick = [this, taskId]() { AttachTo(taskId); };
         foot->AddChild(attach);
-        auto edit = Theme::MakePill(id + ".edit", Tr("Edit"), 64);
+        auto edit = Theme::MakeIconButton(id + ".edit", "edit.svg", Tr("Edit the task"));
         edit->onClick = [this, taskId]() { EditTask(taskId); };
         foot->AddChild(edit);
     }
-    auto remove = Theme::MakePill(id + ".delete", Tr("Delete"), 64);
+    auto remove = Theme::MakeIconButton(id + ".delete", "delete.svg",
+                                        Tr("Delete the task and the files attached to it"));
     remove->onClick = [this, taskId]() { ConfirmDelete(taskId); };
     foot->AddChild(remove);
     // The list - with this button in it - is rebuilt after the click.
@@ -360,24 +362,28 @@ void UltraToDoWindow::Rebuild() {
         if (task.done != history_) continue;
         panels.push_back(BuildPanel(task, now));
     }
-    // Row by row, columns_ to a row, so the order reads left to right; a
-    // row is as tall as its tallest panel, and the last row's free places
-    // are filled with empty space so its panels are as wide as the others.
-    for (size_t first = 0; first < panels.size(); first += static_cast<size_t>(columns_)) {
-        auto row = CreateContainer("todo.row" + std::to_string(first), 0, 0, 0, 0);
-        row->layout.SetFlexRow().SetFlexGap(Theme::kGap).SetFlexAlignItems(CSSLayout::AlignItems::Start);
-        row->size.height = CSSLayout::Dimension::Auto();
-        row->layoutItem.SetFlexShrink(0);
+    // Column by column: the first column is filled from the top with the
+    // most urgent tasks, then the next, each holding the same number (the
+    // last ones one fewer at most), so the order reads down the first
+    // column and on at the top of the next. A column is as tall as its own
+    // panels; the columns share the width equally.
+    if (!panels.empty()) {
+        const size_t perColumn = (panels.size() + static_cast<size_t>(columns_) - 1) / static_cast<size_t>(columns_);
+        auto columns = CreateContainer("todo.columns", 0, 0, 0, 0);
+        columns->layout.SetFlexRow().SetFlexGap(Theme::kGap).SetFlexAlignItems(CSSLayout::AlignItems::Start);
+        columns->size.height = CSSLayout::Dimension::Auto();
+        columns->layoutItem.SetFlexShrink(0);
         for (int column = 0; column < columns_; ++column) {
-            const size_t index = first + static_cast<size_t>(column);
-            std::shared_ptr<UltraCanvasContainer> cell =
-                index < panels.size() ? panels[index]
-                                      : CreateContainer("todo.row" + std::to_string(first) + ".free" +
-                                                            std::to_string(column), 0, 0, 0, 1);
-            cell->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
-            row->AddChild(cell);
+            auto stack = CreateContainer("todo.column" + std::to_string(column), 0, 0, 0, 0);
+            stack->layout.SetFlexColumn().SetFlexGap(Theme::kGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            stack->size.height = CSSLayout::Dimension::Auto();
+            stack->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
+            const size_t first = static_cast<size_t>(column) * perColumn;
+            for (size_t index = first; index < first + perColumn && index < panels.size(); ++index)
+                stack->AddChild(panels[index]);
+            columns->AddChild(stack);
         }
-        list_->AddChild(row);
+        list_->AddChild(columns);
     }
     const size_t shown = panels.size();
     if (shown == 0) {

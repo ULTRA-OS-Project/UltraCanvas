@@ -4,8 +4,12 @@
   or a day and a time), the time it is estimated to take, a reminder and an
   alarm, and files attached to it as to a mail.
 - **Columns in a wide window**: one below about 900 px, then two, three,
-  up to four panels side by side, read row by row so the most urgent stays
-  first; the window changes them as it is resized.
+  up to four side by side, filled one after the other - the most urgent
+  tasks down the first column, then on at the top of the next; the window
+  changes them as it is resized.
+- **Icon buttons**: Attach, Edit and Delete are round icon buttons (paper
+  clip, pencil, bin) with a tooltip, in the theme's colours; *Done* keeps
+  its word.
 - **Done and the history.** Every task has a *Done* button that moves it
   to the history (*To do* / *History* at the top right, with their counts,
   Ctrl+H); there it is listed, the latest finished first, with *Reopen* to

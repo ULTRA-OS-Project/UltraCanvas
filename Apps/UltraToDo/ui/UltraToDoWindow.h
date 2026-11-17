@@ -7,8 +7,8 @@
 // time and the latest start, the description, and the attached files as
 // thumbnails - a click opens one in the program the system opens it with.
 // A window wide enough for two panels side by side shows the list in
-// columns - up to four, the panels sharing the width - read row by row, the
-// most urgent first, so the order stays the same in any width.
+// columns - up to four, sharing the width - filled one after the other: the
+// most urgent tasks down the first column, then on at the top of the next.
 //
 // Done on a panel moves the task to the history (To do | History at the
 // top), where Reopen brings it back.
