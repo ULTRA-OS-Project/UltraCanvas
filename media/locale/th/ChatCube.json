@@ -330,6 +330,7 @@
   "Sign in": "ลงชื่อเข้าใช้",
   "Sign in in the browser": "ลงชื่อเข้าใช้ในเบราว์เซอร์",
   "Sign in to Matrix": "ลงชื่อเข้าใช้ Matrix",
+  "Sign in to one of these first: {0}": "ลงชื่อเข้าใช้หนึ่งในนี้ก่อน: {0}",
   "Sign in to Telegram": "ลงชื่อเข้าใช้ Telegram",
   "Sign in to {0}": "ลงชื่อเข้าใช้ {0}",
   "Sign in with a QR code instead": "ลงชื่อเข้าใช้ด้วย QR โค้ดแทน",

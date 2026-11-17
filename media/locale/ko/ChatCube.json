@@ -330,6 +330,7 @@
   "Sign in": "로그인",
   "Sign in in the browser": "브라우저에서 로그인",
   "Sign in to Matrix": "Matrix에 로그인",
+  "Sign in to one of these first: {0}": "먼저 다음 중 하나에 로그인하세요: {0}",
   "Sign in to Telegram": "Telegram에 로그인",
   "Sign in to {0}": "{0}에 로그인",
   "Sign in with a QR code instead": "대신 QR 코드로 로그인",

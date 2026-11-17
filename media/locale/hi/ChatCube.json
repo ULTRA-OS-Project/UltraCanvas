@@ -332,6 +332,7 @@
   "Sign in": "साइन इन करें",
   "Sign in in the browser": "ब्राउज़र में साइन इन करें",
   "Sign in to Matrix": "Matrix में साइन इन करें",
+  "Sign in to one of these first: {0}": "पहले इनमें से किसी एक में साइन इन करें: {0}",
   "Sign in to Telegram": "Telegram में साइन इन करें",
   "Sign in to {0}": "{0} में साइन इन करें",
   "Sign in with a QR code instead": "इसके बजाय QR कोड से साइन इन करें",

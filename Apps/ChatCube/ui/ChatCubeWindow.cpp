@@ -2036,6 +2036,18 @@ void ChatCubeWindow::AddContactById(const std::string& id) {
         networkMenu_->OpenMenu(Point2Di(16, 88), *window_, settings);
         return;
     }
+    // Several networks could take it and none is signed in: say which.
+    const std::vector<std::string> candidates = ProvidersOfAddress(id);
+    if (connected.empty() && candidates.size() > 1) {
+        std::string names;
+        for (const std::string& provider : candidates) {
+            UltraIMProviderInfo info;
+            if (!UltraIM_GetProviderInfo(provider, info)) continue;
+            names += (names.empty() ? "" : ", ") + (info.displayName.empty() ? provider : info.displayName);
+        }
+        SetStatus(TrF("Sign in to one of these first: {0}", names));
+        return;
+    }
     AddContactOn(ProviderOfAddress(id), id);
 }
 

@@ -332,6 +332,7 @@
   "Sign in": "Se connecter",
   "Sign in in the browser": "Se connecter dans le navigateur",
   "Sign in to Matrix": "Se connecter à Matrix",
+  "Sign in to one of these first: {0}": "Connectez-vous d'abord à l'un d'eux : {0}",
   "Sign in to Telegram": "Se connecter à Telegram",
   "Sign in to {0}": "Se connecter à {0}",
   "Sign in with a QR code instead": "Se connecter plutôt avec un code QR",

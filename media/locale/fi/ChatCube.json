@@ -332,6 +332,7 @@
   "Sign in": "Kirjaudu sisään",
   "Sign in in the browser": "Kirjaudu selaimessa",
   "Sign in to Matrix": "Kirjaudu Matrixiin",
+  "Sign in to one of these first: {0}": "Kirjaudu ensin johonkin näistä: {0}",
   "Sign in to Telegram": "Kirjaudu Telegramiin",
   "Sign in to {0}": "Kirjaudu {0}iin",
   "Sign in with a QR code instead": "Kirjaudu sen sijaan QR-koodilla",

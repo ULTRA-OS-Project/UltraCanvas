@@ -330,6 +330,7 @@
   "Sign in": "登入",
   "Sign in in the browser": "在瀏覽器中登入",
   "Sign in to Matrix": "登入 Matrix",
+  "Sign in to one of these first: {0}": "請先登入其中一個：{0}",
   "Sign in to Telegram": "登入 Telegram",
   "Sign in to {0}": "登入 {0}",
   "Sign in with a QR code instead": "改用 QR 碼登入",

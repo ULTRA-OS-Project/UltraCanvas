@@ -330,6 +330,7 @@
   "Sign in": "サインイン",
   "Sign in in the browser": "ブラウザーでサインイン",
   "Sign in to Matrix": "Matrix にサインイン",
+  "Sign in to one of these first: {0}": "先にいずれかにサインインしてください: {0}",
   "Sign in to Telegram": "Telegram にサインイン",
   "Sign in to {0}": "{0} にサインイン",
   "Sign in with a QR code instead": "代わりに QR コードでサインイン",

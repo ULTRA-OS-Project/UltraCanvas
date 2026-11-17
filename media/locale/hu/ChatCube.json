@@ -332,6 +332,7 @@
   "Sign in": "Bejelentkezés",
   "Sign in in the browser": "Bejelentkezés a böngészőben",
   "Sign in to Matrix": "Bejelentkezés a Matrixba",
+  "Sign in to one of these first: {0}": "Előbb jelentkezzen be ezek egyikébe: {0}",
   "Sign in to Telegram": "Bejelentkezés a Telegramba",
   "Sign in to {0}": "Bejelentkezés a {0}ba",
   "Sign in with a QR code instead": "Inkább bejelentkezés QR-kóddal",
