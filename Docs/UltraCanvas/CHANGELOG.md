@@ -1,3 +1,70 @@
+#### 2026-11-17 *0.9.570*
+- **Chart engine: axis distributions.** `AddAxisDistribution` draws the
+  distribution of an axis's values along that axis, at the axis's own scale:
+  a histogram, a kernel density curve, a box summary (quartiles, median,
+  Tukey whiskers, outliers), a strip of ticks, or a violin. It is the layer
+  the engine reserved slot 550 for and never drew - the joint plot's
+  histograms above and to the right of a scatter field, or a histogram on
+  every axis of a parallel coordinate chart. An `Outside` band takes its
+  depth beyond the plot's opposite edge in the layout, and the axes and the
+  legend on that edge move out by as much, so nothing is drawn over it;
+  `Near`, `Far` and `Both` draw inside the plot or on either side of an
+  in-plot rule, stopping short of the next rule and never leaving the plot:
+  the first and last rules of a parallel coordinate chart, which stand on
+  the plot's edges, draw theirs inward rather than over the margin's tick
+  labels or the legend. A subset - a brushed
+  selection, one series - can be drawn over the whole on the same bins. The
+  statistics (`ComputeHistogram` with Freedman-Diaconis bins,
+  `ComputeKernelDensity` with Silverman's bandwidth, `ComputeBoxSummary`)
+  are UI-free and unit-tested in `Engine/UltraCanvasChartDistribution.h`,
+  `ChartAxis::Samples()` returns what an axis observed, and the demo's
+  Chart Engine page shows every kind and side on its Annotations tab.
+- **The chart engine documents match the code.** `UltraCanvasChartEngine.md`
+  no longer calls the highlight layer "not yet implemented" beside its own
+  section on it, and the engine proposal shows the contract that was built
+  (`RenderChartContent`, `ChartEngineFrame`, `AddHitRegion`, axes added in
+  `DescribeAxes`, no engine singleton) instead of eight types no header
+  declares, with a table from the names it first used to the shipped ones.
+- **Every module archive is now held to carrying its own dependencies.** With
+  a static core a module's public name resolves to its archive alone, so a
+  symbol that archive forgot to ask for has to come from somewhere - and in an
+  ordinary build it does, because every application links several archives at
+  once and they cover for each other. The gap shows only in a program whose
+  link line is short enough to miss it. That is how `uc-net` reached a clean
+  build with `UltraNetMime` calling `Trim()` and `Base64Encode()` from an
+  archive it had never named, and `ultradbadmin-relay` failed to link months
+  later. The new `ultracanvas-module-link-probes` target builds one probe per
+  archive: an empty `main`, that archive forced in whole, nothing else of
+  UltraCanvas on the line. Every object's undefined symbols then have to
+  resolve from the archive's own declared dependencies, so a gap fails in CI -
+  the static row of the Element modules workflow - rather than in somebody's
+  application. Twelve archives pass today. `uc-rtc` is left out, because its
+  engine really does call the device glue compiled into the core, and a shared
+  core gets no probes at all: there every archive is absorbed into
+  `libultracanvas` and is *meant* to leave its shared home to supply what it
+  uses. Backing the `uc-net` fix out again reports `UltraCanvas::Trim`,
+  `Base64Encode` **and** `Base64Decode` - one more than the relay had got far
+  enough to meet.
+- **CI builds all six platform rows on `main` every night** (02:23 UTC, a
+  `schedule` in `build.yml`). A full build otherwise ran only when something
+  merged, so a change in a runner image or in a library the runners install
+  fresh - MSYS2's OpenSSL on 2026-11-16 - first turned an unrelated pull
+  request red. The nightly run is a validation run: nothing is signed or
+  published, and it has its own concurrency group so it never replaces a
+  release build waiting on `main`.
+- **The video player refuses a file it cannot open, at once.**
+  `UltraCanvasVideoPlayer::LoadFromFile` (and the player element's) returned
+  true for an empty file, a file that did not exist and a folder: the
+  backends - GStreamer, Media Foundation, AVFoundation, Android - accept any
+  path and report what they cannot play only later, on their own threads, so
+  the caller showed a player that never played. It now returns false with
+  the reason in `GetLastError()` and `onError` (state `Error`, nothing loaded)
+  for no path, a missing file, a folder, an empty or unreadable file, before
+  any backend or registered codec sees it. A damaged file is still accepted
+  and reported later, as before. The media viewer's video *Save as* check
+  leaves an empty file to the player. Test: `VideoCodecPluginTest`
+  (`TestPlayerRefusesNoFile`). Docs: `UltraCanvasVideo.md`.
+
 #### 2026-11-16 *0.9.569*
 - **A BMP opens at once: the framework reads it itself, not through
   ImageMagick.** libvips has no BMP loader, so a `.bmp` went to `magickload`,
