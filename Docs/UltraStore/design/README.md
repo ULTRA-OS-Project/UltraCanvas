@@ -28,6 +28,10 @@ over these.
 | `SuperReview.dc.html` | app review and release: the queue, the automatic checks, the reviewer's checklist, the store card, the decision | page |
 | `SuperReports.dc.html` | reports from users and merchants about apps and merchants, one opened with findings and actions | page |
 | `SuperTerms.dc.html` | the merchant terms by version and who accepted, the enforcement policy, warnings by clause, notices sent, send a notice | page |
+| `GamesHome.dc.html` | the games shop variant's Discover: game of the week, the genre tiles, Editor's picks with covers, New releases, Learning games by age, Retro corner and Board games, Free to play, why play from UltraStore | page |
+| `GamesDetail.dc.html` | one game's page (Skyline Siege): genre and PEGI badges, players and controller, Play the demo / Buy, trailer and screenshots, About, the rating explained, What's new, System requirements, What it installs, information, more tactics games | page |
+| `GamesGenres.dc.html` | Browse games by genre: the genre chips, the price, the age rating, the players filter work (state in the script); covers carry the PEGI mark | page |
+| `GamesPhoneHome.dc.html` | the games shop's Discover on a phone: game of the week, genre chips, Editor's picks, Learning games, the bottom tab bar | 390 × 844 |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -110,6 +114,22 @@ for the layout. The store shows no star ratings because the catalog has no
 rating field. VAT by country and the statements archive on the Finance
 page are proposals beyond the admin backend's README; the rest of the admin
 pages follow its *The window* table.
+
+The `Games*` pages are the **games shop variant** of the same design: the
+shop's chrome, type and shapes with the accent violet `#7C3AED` (the
+`accent` prop; UltraStore blue is one of its options), covers in the
+genre's gradient with a two-letter mark where the apps have icons, and the
+genres Action, 3D, Simulation, Tactics, Adventure, Learning (education, by
+age band), Retro, Board games, Puzzle, Racing, Role-playing and Sports.
+The game page adds what a game needs beyond an app: the PEGI rating with
+its content descriptors, players and local co-op, controller support, a
+trailer, system requirements (minimum and recommended), a demo as the
+free action, and the campaign content as a layer bought after the demo.
+The repository holds no games-shop proposal: the catalog's fixed category
+list has `games` (`Docs/UltraStore/README.md`) and nothing more, so
+genre, age rating and descriptors, players, input and requirements are
+proposed catalog fields. Every game, studio, count, date and `[PRICE]` on
+those pages is invented sample data; none of them exists.
 
 The `Super*` pages are a **proposal** for a third tier, later: the operator
 of UltraStore running a marketplace in which other publishers (merchants)

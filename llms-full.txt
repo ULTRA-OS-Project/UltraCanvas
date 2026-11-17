@@ -82050,7 +82050,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTimelineDiagram.md
 # UltraCanvasTimelineDiagram
 
 A **narrative timeline infographic**: an ordered list of events laid out along a
-decorative path, with nine design presets. Items carry a period caption, a
+decorative path, with ten design presets. Items carry a period caption, a
 title, a paragraph and an icon; they are evenly spaced by default, so this is
 the presentation timeline rather than a date-accurate schedule.
 
@@ -82069,8 +82069,8 @@ the presentation timeline rather than a date-accurate schedule.
 **Source:** `Plugins/Diagrams/UltraCanvasTimelineDiagram.cpp`
 **Base class:** `UltraCanvasChartElementBase`
 **Demo:** `Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp` (Info Graphics > Timeline Diagram)
-**Version:** 1.0.0
-**Last Modified:** 2026-07-30
+**Version:** 1.1.0
+**Last Modified:** 2026-11-17
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -82080,6 +82080,7 @@ the presentation timeline rather than a date-accurate schedule.
 - [Data model](#data-model)
   - [Managing items](#managing-items)
 - [Designs](#designs)
+  - [The wave](#the-wave)
 - [Layout options](#layout-options)
   - [Even vs. proportional placement](#even-vs-proportional-placement)
 - [Palettes and color](#palettes-and-color)
@@ -82183,9 +82184,43 @@ current style. This is the same contract as `UltraCanvasGanttChart`.
 | `Hanging` | Axis on top, stems dropping to bubbles of varying size, text wrapped to the circle |
 | `Chevron` | Arrow blocks pointing forward — process/phase presentation |
 | `Steps` | Ascending staircase blocks for growth narratives |
+| `Wave` | A chain of thick half-rings bending to alternate sides, a node where two meet, the caption inside each ring and the text beside it |
 
 Cards, boxes and bubbles **size themselves to their text**; anything that still
 does not fit is ellipsized (`style.maxBodyLines` caps the body).
+
+### The wave
+
+`Wave` threads one half-ring per item on a straight axis. Each ring bends the
+other way from the one before, so together they make one smooth wave; the
+item's node sits where its ring begins, a plain dot closes the path where the
+last one ends. The caption (a year, a phase) is drawn inside the ring, as
+large as fits there, over a pale half-disc; the title, in the ring's colour,
+and the body sit beside the ring on the side it bulges to - flush to it.
+
+```cpp
+auto wave = CreateTimelineDiagramElement("history", 0, 0, 900, 640, TimelineDesign::Wave);
+wave->SetItems(TimelineDiagramSamples::CompanyHistory());
+
+wave->EditStyle().waveAxisAngle = 0.0;    // 45 falls diagonally (default), 90 runs top-down,
+                                          // -45 rises from the bottom left
+wave->EditStyle().waveAutoAngle = false;  // true: the angle that gives the largest rings
+wave->EditStyle().waveFillInside = true;  // the pale half-disc behind the caption
+wave->StyleChanged();
+```
+
+The rings are made as large as the frame allows while every item's text keeps
+room of its own: on an axis of 40 degrees or steeper the text sits beside the
+rings, alternately right and left; on a flatter one it sits above and below.
+No text block covers a ring or another block. The other options apply as
+elsewhere: `SetSidePolicy` decides which way each ring bends (*above* is the
+side up from the axis - up and to the right on the default diagonal, right on
+a top-down wave), `SetReverseOrder` runs the wave from the other end,
+`TimelinePlacement::Proportional` gives rings of different sizes by date,
+`GradientAlongPath` fades each ring into the next one's colour, and
+`SetCurrentIndex` draws the rings after the current item lighter.
+`style.spineThickness` is the width of the band, `style.connectorStyle`
+(hidden by default) adds a stem from each ring to its text.
 
 ## Layout options
 
@@ -82297,6 +82332,13 @@ Point2Dd center;
 Rect2Dd rect;
 if (timeline->GetItemNodeCenter(0, center)) { /* node position, element-local */ }
 if (timeline->GetItemContentRect(0, rect))  { /* text block of item 0 */ }
+
+// Wave design: the half-ring item 0 is drawn on - an icon beside the ring
+double radius = 0.0, startAngle = 0.0;
+if (timeline->GetItemArc(0, center, radius, startAngle)) {
+    // The ring sweeps pi radians clockwise from startAngle; it bulges towards
+    // startAngle + pi / 2
+}
 ```
 
 ## Sample data
@@ -84827,6 +84869,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
   - [File Explorer Example](#file-explorer-example)
   - [Event Handling](#event-handling)
   - [Rows still loading](#rows-still-loading)
+  - [Dimmed rows](#dimmed-rows)
   - [Using TreeViewBuilder](#using-treeviewbuilder)
 - [Keyboard Navigation](#keyboard-navigation)
 - [Mouse Interaction](#mouse-interaction)
@@ -84974,6 +85017,7 @@ struct TreeNodeData {
 
     uint64_t accessSequence = 0;           // Sort key for TreeSortMode::LastAccess
     bool loading = false;                  // children being fetched: a bar slides along the row's foot
+    bool dimmed = false;                   // label in the muted text colour (SetDimmedTextColor)
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText);
@@ -85675,6 +85719,7 @@ void SetFocusRingColor(const Color& color);
 void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
+void SetDimmedTextColor(const Color& color);   // a dimmed row's label; the theme's inkMuted
 void SetExpandButtonColor(const Color& color);
 void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol);
 void SetExpanderArrowColor(const Color& color);
@@ -85885,6 +85930,21 @@ treeView->onNodeRightClicked = [](TreeNode* node, const UCEvent& event) {
     // Show a context menu at event.pointerWindow
     ShowContextMenu(node, event);
 };
+```
+
+### Dimmed rows
+
+A row the tree normally leaves out but shows for now - a hidden folder the
+user went to, an entry that is only there because a search found it - can
+read as secondary with `TreeNodeData::dimmed`. Its label is drawn in the
+tree's dimmed text colour (`SetDimmedTextColor`; under a theme its muted ink,
+so it follows a switch to dark), not the text colour. A `textColor` of the
+node's own and the selection text on a selected row still take precedence.
+
+```cpp
+TreeNodeData config("/home/me/.config", ".config");
+config.dimmed = true;                      // drawn lighter than its siblings
+treeView->AddNode("/home/me", config);
 ```
 
 ### Using TreeViewBuilder
@@ -86131,6 +86191,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 | 1.2.0 | 2026-10-02 | `GetRequiredWidth` - the width the widest row on show needs |
 | 1.2.1 | 2026-10-07 | Docs: columns API (`SetColumns`, `TreeViewColumn`, `data.cells`), real constructors and builder calls |
 | 1.3.0 | 2026-10-22 | `SetExpanderStyle`: the expand button as an arrow (`TreeExpanderStyle::Chevron`), `SetExpanderArrowColor` |
+| 1.4.0 | 2026-11-16 | `TreeNodeData::dimmed` and `SetDimmedTextColor`: a row drawn in the muted text colour |
 
 ## See Also
 

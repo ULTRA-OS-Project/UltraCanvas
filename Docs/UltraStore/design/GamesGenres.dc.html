@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Games - Genres</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#6d28d9}a:hover{color:#5b21b6}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="border-bottom: 1px solid #e2e8f0; background: #ffffff">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 24px; flex-wrap: wrap">
+<a href="GamesHome.dc.html" aria-label="UltraStore Games home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Games</span>
+</a>
+<nav aria-label="Store sections" style="display: flex; gap: 4px; flex-wrap: wrap">
+<a href="GamesHome.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Discover</a>
+<a href="GamesGenres.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 600; color: #6d28d9; background: #ede9fe">Genres</a>
+<a href="#library" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Library</a>
+<a href="#updates" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Updates <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #0f172a; color: #ffffff; font-size: 12px; font-weight: 700">2</span></a>
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #64748b">Apps <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"></path><path d="M9 7h8v8"></path></svg></a>
+</nav>
+<form role="search" style="flex: 1 1 240px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9; border: 1px solid transparent">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-genres" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search games</label>
+<input id="search-genres" type="search" placeholder="Search games, studios, genres" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+</form>
+<button type="button" style="height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; cursor: pointer">Sign in</button>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 32px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 36px; font-weight: 800; letter-spacing: -0.03em">Browse games</h1>
+<p style="margin: 0; color: #64748b">Every game in the signed catalog, by genre. Pick a genre, a price, an age rating and how many play to narrow the list.</p>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start">
+
+<aside style="flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+<nav aria-label="Genres" style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Genre</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{genres}}" as="g" hint-placeholder-count="13">
+<button type="button" onClick="{{g.pick}}" aria-pressed="{{g.selected}}" style="{{g.chipStyle}}">{{g.label}} <span style="{{g.countStyle}}">{{g.count}}</span></button>
+</sc-for>
+</div>
+</nav>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Price</h2>
+<div role="group" aria-label="Price" style="display: flex; padding: 4px; border-radius: 999px; background: #f1f5f9">
+<sc-for list="{{prices}}" as="p" hint-placeholder-count="3">
+<button type="button" onClick="{{p.pick}}" aria-pressed="{{p.selected}}" style="{{p.style}}">{{p.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Age rating up to</h2>
+<div role="group" aria-label="Age rating" style="display: flex; gap: 6px">
+<sc-for list="{{ages}}" as="a" hint-placeholder-count="5">
+<button type="button" onClick="{{a.pick}}" aria-pressed="{{a.selected}}" aria-label="{{a.label}}" style="{{a.style}}">{{a.short}}</button>
+</sc-for>
+</div>
+<p style="margin: 0; font-size: 12px; color: #64748b">{{ageHint}}</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Players</h2>
+<div role="group" aria-label="Players" style="display: flex; padding: 4px; border-radius: 999px; background: #f1f5f9">
+<sc-for list="{{players}}" as="p" hint-placeholder-count="3">
+<button type="button" onClick="{{p.pick}}" aria-pressed="{{p.selected}}" style="{{p.style}}">{{p.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Input</h2>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #7c3aed">Controller supported</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #7c3aed">Touch screen</label>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0 0 4px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Runs on</h2>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #7c3aed">Linux</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #7c3aed">macOS</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #7c3aed">Windows</label>
+<label style="display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #7c3aed">Raspberry Pi</label>
+</div>
+</aside>
+
+<section aria-live="polite" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">{{heading}} <span style="color: #64748b; font-weight: 600; font-size: 16px">· {{count}} games</span></h2>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #475569">Sort by
+<select style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a">
+<option>Newest release</option>
+<option>Name A to Z</option>
+<option>Price, low to high</option>
+<option>Most played this month</option>
+</select>
+</label>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 18px">
+<sc-for list="{{games}}" as="game" hint-placeholder-count="12">
+<article style="flex: 1 1 250px; max-width: 420px; min-width: 0; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0; background: #ffffff; overflow: hidden">
+<div aria-hidden="true" style="{{game.coverStyle}}">
+<span style="position: absolute; left: 16px; top: 10px; font-family: Manrope, Inter, sans-serif; font-size: 40px; font-weight: 800; color: rgba(255,255,255,0.18); letter-spacing: -0.04em">{{game.mark}}</span>
+<span style="position: absolute; left: 12px; bottom: 12px; height: 24px; padding: 0 8px; border-radius: 6px; background: rgba(15,23,42,0.7); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center">{{game.genreLabel}}</span>
+<span style="{{game.ageStyle}}">{{game.age}}</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 2px 18px 18px">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="{{game.href}}" style="font-family: Manrope, Inter, sans-serif; font-weight: 700; font-size: 17px; color: #0f172a; text-decoration: none">{{game.name}}</a>
+<span style="color: #64748b; font-size: 13px">{{game.meta}}</span>
+</div>
+<p style="margin: 0; color: #334155; font-size: 14px; min-height: 42px">{{game.summary}}</p>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: auto">
+<span style="{{game.priceStyle}}">{{game.price}}</span>
+<button type="button" style="{{game.buttonStyle}}">{{game.action}}</button>
+</div>
+</div>
+</article>
+</sc-for>
+</div>
+
+<sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+<div style="padding: 48px 24px; border-radius: 20px; background: #f8fafc; text-align: center; color: #64748b">No games match these filters yet.</div>
+</sc-if>
+</section>
+
+</div>
+
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px">
+<span style="font-weight: 600; color: #0f172a">UltraStore Games</span>
+<span>· the ULTRA OS games shop</span>
+</div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="#studios" style="color: #475569; text-decoration: none; font-weight: 500">For studios</a>
+<a href="#ratings" style="color: #475569; text-decoration: none; font-weight: 500">Age ratings</a>
+<a href="#support" style="color: #475569; text-decoration: none; font-weight: 500">Support</a>
+<a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a>
+<a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a>
+<a href="#language" style="color: #475569; text-decoration: none; font-weight: 500">English</a>
+</nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#7c3aed","options":["#7c3aed","#2563eb","#0f172a","#0f766e"]},"$preview":{"width":1440,"height":2160}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { genre: 'all', price: 'all', age: 18, players: 'any' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#7c3aed';
+    const GENRES = [
+      { id: 'all', label: 'All games' },
+      { id: 'action', label: 'Action', grad: 'linear-gradient(135deg, #ef4444, #7c2d12)' },
+      { id: '3d', label: '3D', grad: 'linear-gradient(135deg, #0ea5e9, #1e3a8a)' },
+      { id: 'simulation', label: 'Simulation', grad: 'linear-gradient(135deg, #22c55e, #14532d)' },
+      { id: 'tactics', label: 'Tactics', grad: 'linear-gradient(135deg, #f59e0b, #78350f)' },
+      { id: 'adventure', label: 'Adventure', grad: 'linear-gradient(135deg, #8b5cf6, #312e81)' },
+      { id: 'learning', label: 'Learning', grad: 'linear-gradient(135deg, #14b8a6, #134e4a)' },
+      { id: 'retro', label: 'Retro', grad: 'linear-gradient(135deg, #ec4899, #581c87)' },
+      { id: 'board', label: 'Board games', grad: 'linear-gradient(135deg, #a16207, #422006)' },
+      { id: 'puzzle', label: 'Puzzle', grad: 'linear-gradient(135deg, #06b6d4, #164e63)' },
+      { id: 'racing', label: 'Racing', grad: 'linear-gradient(135deg, #f97316, #7c2d12)' },
+      { id: 'rpg', label: 'Role-playing', grad: 'linear-gradient(135deg, #6366f1, #1e1b4b)' },
+      { id: 'sports', label: 'Sports', grad: 'linear-gradient(135deg, #84cc16, #365314)' }
+    ];
+    // age: PEGI rating; players: the most at one screen; sample data, see the note on the canvas
+    const GAMES = [
+      { id: 'skyline-siege', name: 'Skyline Siege', genre: 'tactics', studio: 'Northwind Studio', ver: '1.2.0', age: 12, players: 2, paid: true, demo: true, summary: 'Turn-based tactics on the rooftops of a flooded city; local co-op for two.', href: 'GamesDetail.dc.html' },
+      { id: 'orbit-runner', name: 'Orbit Runner', genre: '3d', studio: 'Lumen Forge', ver: '2.0.3', age: 7, players: 1, paid: true, demo: true, summary: 'Sprint, jump and glide through zero-gravity stations at 120 frames a second.' },
+      { id: 'harbour-tycoon', name: 'Harbour Tycoon', genre: 'simulation', studio: 'Saltmarsh Games', ver: '1.4.0', age: 3, players: 1, paid: true, demo: true, summary: 'Build a port from one jetty to a container terminal. Tides and storms included.' },
+      { id: 'lantern-road', name: 'The Lantern Road', genre: 'adventure', studio: 'Two Herons', ver: '1.1.2', age: 7, players: 1, paid: true, demo: true, summary: 'A hand-drawn point-and-click journey along a river of lights. Eight chapters.' },
+      { id: 'pixel-cadet', name: 'Pixel Cadet', genre: 'retro', studio: '8-Bit Harbour', ver: '3.2.0', age: 3, players: 2, summary: 'A 16-colour platformer in the spirit of 1989, with a two-player race mode.' },
+      { id: 'number-forest', name: 'Number Forest', genre: 'learning', studio: 'Kleine Schule', ver: '3.1.0', age: 3, players: 1, summary: 'Counting and first sums for ages 3 to 5. Feed the animals by counting.' },
+      { id: 'little-letters', name: 'Little Letters', genre: 'learning', studio: 'Kleine Schule', ver: '2.8.0', age: 3, players: 1, paid: true, summary: 'Trace, hear and build words in 12 languages. School licence available.' },
+      { id: 'planet-lab', name: 'Planet Lab', genre: 'learning', studio: 'Orbital Chalk', ver: '1.0.5', age: 7, players: 1, paid: true, demo: true, summary: 'Sixty science experiments for ages 9 to 12, with the real numbers behind them.' },
+      { id: 'tabletop-club', name: 'Tabletop Club', genre: 'board', studio: 'Woodgrain', ver: '1.6.2', age: 3, players: 4, installed: true, summary: 'Chess, Go, backgammon and draughts at one screen, against the machine or online.' },
+      { id: 'cardhouse', name: 'Cardhouse', genre: 'board', studio: 'Woodgrain', ver: '1.2.0', age: 3, players: 4, summary: 'Skat, Doppelkopf, rummy and bridge, with the rules explained as you play.' },
+      { id: 'dunes-and-dice', name: 'Dunes and Dice', genre: 'board', studio: 'Caravan Works', ver: '1.0.1', age: 7, players: 4, paid: true, summary: 'A strategy board game of trade routes across the desert, 2 to 4 players.' },
+      { id: 'wordgrid', name: 'Wordgrid', genre: 'board', studio: 'Woodgrain', ver: '2.1.0', age: 3, players: 4, summary: 'Word tiles on a grid, 1 to 4 players, dictionaries in nine languages.' },
+      { id: 'hexa-mind', name: 'Hexa Mind', genre: 'puzzle', studio: 'Quiet Loop', ver: '2.3.1', age: 3, players: 1, summary: 'Hexagonal logic puzzles, 400 levels, a new one every day.' },
+      { id: 'drift-alley', name: 'Drift Alley', genre: 'racing', studio: 'Redline Studio', ver: '1.0.0', age: 3, players: 2, paid: true, demo: true, summary: 'Top-down arcade racing with split-screen for two and a track editor.' },
+      { id: 'dungeon-echoes', name: 'Dungeon of Echoes', genre: 'rpg', studio: 'Hollow Lantern', ver: '0.9.4', age: 12, players: 1, paid: true, demo: true, beta: true, summary: 'A turn-based role-playing game where sound reveals the map. Early access.' },
+      { id: 'goal-kings', name: 'Goal Kings', genre: 'sports', studio: 'Redline Studio', ver: '1.3.0', age: 3, players: 4, summary: 'Four-player football on one screen, two buttons, no account.' },
+      { id: 'cave-courier', name: 'Cave Courier', genre: 'retro', studio: '8-Bit Harbour', ver: '1.1.0', age: 3, players: 1, paid: true, summary: 'Deliver parcels through 80 cavern screens, one life at a time.' },
+      { id: 'vector-patrol', name: 'Vector Patrol', genre: 'retro', studio: 'Phosphor Lab', ver: '1.0.2', age: 7, players: 2, summary: 'Wireframe space combat with a real vector look; two ships at one screen.' },
+      { id: 'frontline-ledger', name: 'Frontline Ledger', genre: 'tactics', studio: 'Northwind Studio', ver: '2.2.0', age: 12, players: 2, paid: true, summary: 'A hex wargame with supply lines and weather; hot-seat for two.' },
+      { id: 'storm-crossing', name: 'Storm Crossing', genre: 'action', studio: 'Lumen Forge', ver: '1.5.0', age: 16, players: 1, paid: true, demo: true, summary: 'Side-scrolling action across a storm-wrecked coast; fast, hard, fair.' },
+      { id: 'brick-foundry', name: 'Brick Foundry', genre: 'action', studio: 'Quiet Loop', ver: '1.0.0', age: 7, players: 2, summary: 'Break the wall, catch the ball, build the next level together.' },
+      { id: 'glider-fields', name: 'Glider Fields', genre: 'simulation', studio: 'Saltmarsh Games', ver: '0.8.0', age: 3, players: 1, paid: true, beta: true, summary: 'Soaring flight over real terrain data; thermals, ridge lift, a logbook.' },
+      { id: 'cathedral-3d', name: 'Cathedral', genre: '3d', studio: 'Two Herons', ver: '1.0.0', age: 7, players: 1, paid: true, summary: 'Walk, climb and solve your way through one vast building, in first person.' }
+    ];
+    const sel = this.state.genre;
+    const priceSel = this.state.price;
+    const ageSel = this.state.age;
+    const playersSel = this.state.players;
+    const matchPrice = (g) => priceSel === 'all' || (priceSel === 'free' ? !g.paid : !!g.paid);
+    const matchAge = (g) => g.age <= ageSel;
+    const matchPlayers = (g) => playersSel === 'any' || (playersSel === 'solo' ? g.players === 1 : g.players >= 2);
+    const matchRest = (g) => matchPrice(g) && matchAge(g) && matchPlayers(g);
+    const chipBase = 'display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: 14px; cursor: pointer; ';
+    const genres = GENRES.map((c) => {
+      const selected = c.id === sel;
+      const count = GAMES.filter((g) => (c.id === 'all' || g.genre === c.id) && matchRest(g)).length;
+      return {
+        ...c,
+        selected,
+        count,
+        chipStyle: chipBase + (selected
+          ? 'border: 1px solid ' + accent + '; background: ' + accent + '; color: #ffffff; font-weight: 700'
+          : 'border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; font-weight: 600'),
+        countStyle: 'font-size: 12px; font-weight: 700; ' + (selected ? 'color: #ddd6fe' : 'color: #64748b'),
+        pick: () => this.setState({ genre: c.id })
+      };
+    });
+    const segBase = 'flex: 1 1 0; height: 36px; border-radius: 999px; border: 0; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; ';
+    const segStyle = (on) => segBase + (on ? 'background: #ffffff; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,0.12)' : 'background: transparent; color: #475569');
+    const prices = [
+      { id: 'all', label: 'All' },
+      { id: 'free', label: 'Free' },
+      { id: 'paid', label: 'Paid' }
+    ].map((p) => ({ ...p, selected: p.id === priceSel, style: segStyle(p.id === priceSel), pick: () => this.setState({ price: p.id }) }));
+    const players = [
+      { id: 'any', label: 'Any' },
+      { id: 'solo', label: 'Solo' },
+      { id: 'together', label: '2 or more' }
+    ].map((p) => ({ ...p, selected: p.id === playersSel, style: segStyle(p.id === playersSel), pick: () => this.setState({ players: p.id }) }));
+    const PEGI = { 3: '#16a34a', 7: '#16a34a', 12: '#f59e0b', 16: '#ea580c', 18: '#dc2626' };
+    const ages = [3, 7, 12, 16, 18].map((a) => {
+      const selected = a === ageSel;
+      return {
+        id: a,
+        short: String(a),
+        label: 'PEGI ' + a + ' and below',
+        selected,
+        style: 'flex: 1 1 0; height: 40px; border-radius: 10px; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; ' + (selected
+          ? 'border: 2px solid ' + PEGI[a] + '; background: ' + PEGI[a] + '; color: #ffffff'
+          : (a < ageSel ? 'border: 2px solid ' + PEGI[a] + '; background: #ffffff; color: ' + PEGI[a] : 'border: 2px solid #e2e8f0; background: #ffffff; color: #94a3b8')),
+        pick: () => this.setState({ age: a })
+      };
+    });
+    const genreLabel = (id) => (GENRES.find((c) => c.id === id) || GENRES[0]).label;
+    const genreGrad = (id) => (GENRES.find((c) => c.id === id) || GENRES[1]).grad;
+    const games = GAMES.filter((g) => (sel === 'all' || g.genre === sel) && matchRest(g)).map((g) => {
+      const price = g.installed ? 'Installed' : (g.paid ? '[PRICE] EUR' : 'Free');
+      const action = g.installed ? 'Play' : (g.paid ? (g.demo ? 'Demo' : 'Buy') : 'Install');
+      return {
+        ...g,
+        href: g.href || ('#' + g.id),
+        mark: g.name.split(/\s+/).filter((w) => /^[A-Za-z0-9]/.test(w)).slice(0, 2).map((w) => w[0].toUpperCase()).join(''),
+        genreLabel: genreLabel(g.genre) + (g.beta ? ' · Early access' : ''),
+        coverStyle: 'position: relative; height: 140px; background: ' + genreGrad(g.genre),
+        age: String(g.age),
+        ageStyle: 'position: absolute; right: 12px; top: 12px; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 24px; border-radius: 5px; color: #ffffff; font-size: 12px; font-weight: 800; background: ' + PEGI[g.age],
+        meta: g.studio + ' · ' + g.ver + ' · ' + (g.players === 1 ? '1 player' : '1 to ' + g.players + ' players'),
+        price,
+        priceStyle: 'font-weight: 700; ' + (g.paid && !g.installed ? 'color: #0f172a' : 'color: #15803d'),
+        action,
+        buttonStyle: 'height: 40px; padding: 0 18px; border-radius: 999px; font: inherit; font-weight: 700; cursor: pointer; ' + (g.installed ? 'border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a' : 'border: 0; background: #ede9fe; color: #6d28d9')
+      };
+    });
+    return {
+      accent,
+      genres,
+      prices,
+      ages,
+      players,
+      games,
+      count: games.length,
+      empty: games.length === 0,
+      heading: sel === 'all' ? 'All games' : genreLabel(sel),
+      ageHint: ageSel === 18 ? 'Every rating is shown.' : 'Rated PEGI ' + ageSel + ' or lower.'
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1357,10 +1357,37 @@ UltraIMConversation DirectProvider::EnsureDirectConversation(const std::string& 
     return conversation;
 }
 
-void DirectProvider::UpsertGroup(const JSONValue& group) {
+UltraIMConversation DirectProvider::UpsertGroup(const JSONValue& group) {
     const std::string id = group["conversation"].GetString();
-    if (!IsGroupId(id)) return;
-    if (group["removed"].GetBoolean(false)) {
+    if (!IsGroupId(id)) return {};
+    const bool removed = group["removed"].GetBoolean(false);
+    // The relay's pushes (the socket's thread) and its replies to our own
+    // requests (UltraNet's request thread) arrive in no set order. From
+    // relay 1.6 each record carries the group's revision, one more with
+    // every change: one older than the newest we applied is dropped, and so
+    // is a record at the revision of our removal from the group, which the
+    // others' record of that same change would otherwise undo. A relay
+    // before 1.6 sends none (0), and every record is applied as it comes.
+    // The check and the write are one step under groupOrderMutex_, or two
+    // records could both pass the check and the older be written last.
+    std::unique_lock<std::mutex> order(groupOrderMutex_);
+    const int64_t revision = group["revision"].GetInteger(0);
+    if (revision > 0) {
+        GroupRevision& newest = groupRevisions_[id];
+        const bool stale = revision < newest.revision ||
+                           (revision == newest.revision && newest.removed && !removed);
+        if (stale) {
+            order.unlock();
+            // What we hold is newer: the caller is told that.
+            UltraIMConversation current;
+            if (!store_.GetConversation(id, current)) return {};
+            FillGroupDetails(current);
+            return current;
+        }
+        newest.revision = revision;
+        newest.removed = removed;
+    }
+    if (removed) {
         store_.RemoveConversation(id);
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1368,8 +1395,9 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
             publicGroups_.erase(id);
             groupDescriptions_.erase(id);
         }
+        order.unlock();
         EmitRemoved(id);
-        return;
+        return {};
     }
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -1388,7 +1416,20 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
     for (const auto& m : group["members"].GetElements()) conversation.memberIds.push_back(m.GetString());
     store_.UpsertConversation(conversation);
     store_.GetConversation(id, conversation);
+    order.unlock();
+    // What this record says wins over the re-read: with a relay before 1.6
+    // nothing orders the records, and an older one applied after our write
+    // would otherwise be read back - a rename's caller then told the old
+    // title. (The store ends right either way: the relay pushes the new
+    // state too, in order on the socket.)
+    conversation.title = group["title"].GetString();
+    conversation.isGroup = true;
+    conversation.memberIds.clear();
+    for (const auto& m : group["members"].GetElements()) conversation.memberIds.push_back(m.GetString());
     FillGroupDetails(conversation);
+    conversation.ownerId = group["owner"].GetString();
+    conversation.isPublic = group["public"].GetBoolean(false);
+    conversation.description = group["description"].GetString();
     // A member we have no key for yet: fetched, and the group told again
     // with their name once it is here.
     for (const auto& member : conversation.memberIds) {
@@ -1403,6 +1444,7 @@ void DirectProvider::UpsertGroup(const JSONValue& group) {
     event.conversationId = id;
     event.conversation = conversation;
     Emit(event);
+    return conversation;
 }
 
 void DirectProvider::RefreshGroups() {
@@ -1567,11 +1609,7 @@ void DirectProvider::CreateGroup(const std::string& title, const std::vector<std
     body.Set("members", members);
     relay->Request("POST", "/v1/groups", &body, [this, onResult](const RelayResponse& r) {
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
-        UpsertGroup(r.body);
-        UltraIMConversation conversation;
-        store_.GetConversation(r.body["conversation"].GetString(), conversation);
-        FillGroupDetails(conversation);
-        onResult(UltraIMResult::Ok(), conversation);
+        onResult(UltraIMResult::Ok(), UpsertGroup(r.body));
     });
 }
 
@@ -1635,18 +1673,14 @@ void DirectProvider::RenameGroup(const std::string& conversationId, const std::s
     if (!target) return onResult(target, {});
     JSONValue body = JSONValue::MakeObject();
     body.Set("title", JSONValue(title));
-    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, conversationId, onResult](const RelayResponse& r) {
+    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, onResult](const RelayResponse& r) {
         // A relay before 1.3.0 has the group's address for GET alone.
         if (r.status == 405)
             return onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
                                                  "This relay cannot rename groups yet - it needs ChatCube relay 1.3.0 "
                                                  "or later (its operator updates it)"), {});
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
-        UpsertGroup(r.body);
-        UltraIMConversation conversation;
-        store_.GetConversation(conversationId, conversation);
-        FillGroupDetails(conversation);
-        onResult(UltraIMResult::Ok(), conversation);
+        onResult(UltraIMResult::Ok(), UpsertGroup(r.body));
     });
 }
 
@@ -1682,7 +1716,10 @@ void DirectProvider::AddMembersFrom(std::shared_ptr<RelayClient> relay, std::str
     relay->Request("POST", "/v1/groups/" + groupId + "/members", &body,
                    [this, relay, groupId, conversationId, ids, index, onResult](const RelayResponse& r) {
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
-        UpsertGroup(r.body);
+        const UltraIMConversation conversation = UpsertGroup(r.body);
+        // The last member's reply is the group as it now is: reported as
+        // the relay gave it, not read back from the store (see UpsertGroup).
+        if (index + 1 >= ids.size()) return onResult(UltraIMResult::Ok(), conversation);
         AddMembersFrom(relay, groupId, conversationId, ids, index + 1, onResult);
     });
 }
@@ -1783,7 +1820,7 @@ void DirectProvider::JoinGroup(const std::string& conversationId, UltraIMConvers
     const UltraIMResult target = GroupRequestTarget(conversationId, relay, groupId);
     if (!target) return onResult(target, {});
     relay->Request("POST", "/v1/groups/" + groupId + "/join", nullptr,
-                   [this, conversationId, onResult](const RelayResponse& r) {
+                   [this, onResult](const RelayResponse& r) {
         if (r.status == 405) return onResult(NoPublicGroupsYet(), {});
         if (r.status == 403)
             return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
@@ -1793,11 +1830,7 @@ void DirectProvider::JoinGroup(const std::string& conversationId, UltraIMConvers
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
         // The members' keys come with UpsertGroup (fetched when missing):
         // what we send there is sealed for each of them.
-        UpsertGroup(r.body);
-        UltraIMConversation conversation;
-        store_.GetConversation(conversationId, conversation);
-        FillGroupDetails(conversation);
-        onResult(UltraIMResult::Ok(), conversation);
+        onResult(UltraIMResult::Ok(), UpsertGroup(r.body));
     });
 }
 
@@ -1812,7 +1845,7 @@ void DirectProvider::SetGroupDescription(const std::string& conversationId, cons
                                              "A description holds at most 500 characters"), {});
     JSONValue body = JSONValue::MakeObject();
     body.Set("description", JSONValue(description));
-    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, conversationId, onResult](const RelayResponse& r) {
+    relay->Request("PATCH", "/v1/groups/" + groupId, &body, [this, onResult](const RelayResponse& r) {
         if (r.status == 405 || r.status == 422)
             return onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
                                                  "This relay keeps no group descriptions yet - it needs ChatCube "
@@ -1821,11 +1854,7 @@ void DirectProvider::SetGroupDescription(const std::string& conversationId, cons
             return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
                                                  "Only the owner changes a public group's description"), {});
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
-        UpsertGroup(r.body);
-        UltraIMConversation conversation;
-        store_.GetConversation(conversationId, conversation);
-        FillGroupDetails(conversation);
-        onResult(UltraIMResult::Ok(), conversation);
+        onResult(UltraIMResult::Ok(), UpsertGroup(r.body));
     });
 }
 
@@ -1894,17 +1923,13 @@ void DirectProvider::SetGroupPublic(const std::string& conversationId, bool isPu
     JSONValue body = JSONValue::MakeObject();
     body.Set("public", JSONValue(isPublic));
     relay->Request("PUT", "/v1/groups/" + groupId + "/public", &body,
-                   [this, conversationId, onResult](const RelayResponse& r) {
+                   [this, onResult](const RelayResponse& r) {
         if (r.status == 405) return onResult(NoPublicGroupsYet(), {});
         if (r.status == 403)
             return onResult(UltraIMResult::Error(UltraIMResultCode::PermissionDenied,
                                                  "Only the group's owner makes it public or private"), {});
         if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), {});
-        UpsertGroup(r.body);
-        UltraIMConversation conversation;
-        store_.GetConversation(conversationId, conversation);
-        FillGroupDetails(conversation);
-        onResult(UltraIMResult::Ok(), conversation);
+        onResult(UltraIMResult::Ok(), UpsertGroup(r.body));
     });
 }
 
