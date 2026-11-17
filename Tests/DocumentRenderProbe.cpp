@@ -9,6 +9,7 @@
 //   pdftoppm -r 60 -png letter.pdf letter
 //
 // Needs a display, as the element does. Exit code 0 when the PDF was written.
+// Version: 1.1.0 - DOCUMENT_PROBE_VERBOSE lists each table cell's lines
 // Version: 1.0.0
 // Last Modified: 2026-11-16
 // Author: UltraCanvas Framework

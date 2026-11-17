@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.16.0 - tables nested in cells and drawings in a body line stand in the line; PlaceCellFloats
+//                   (headers and footers too); a print is on white paper
 // Version: 1.15.0 - a table cell floats what its text ignores (PlacedFloat::inCell, a turned picture's
 //                   rotationDeg) and keeps a frame or drawing in its line (InlineImage::frameContent)
 // Version: 1.14.0 - a section's own header, footer and page margins are laid out and edited
@@ -706,6 +708,9 @@ private:
         struct InlineImage {
             int byteOffset = 0;                   // the placeholder, in layout text
             float rotationDeg = 0.0f;             // turned about its centre, clockwise
+            // A turned picture in the line: its own size (width and height
+            // are then those of the box round it).
+            float pictureWidth = 0.0f, pictureHeight = 0.0f;
             float width = 0.0f;
             float height = 0.0f;
             // A picture on a line of its own, centred or at the right: how
@@ -872,6 +877,10 @@ private:
     // beside a square one - relaying it out when that changes). Returns the
     // block's top.
     float FlowAroundFloats(IRenderContext* ctx, int index, float top, std::vector<PlacedFloat>& pageFloats);
+    struct PageFrame;
+    // Places what the cells of the table `bl` float (its top at `top`), each handed to `take`.
+    void PlaceCellFloats(IRenderContext* ctx, const BlockLayout& bl, float top, const PageFrame* page,
+                         int pageNumber, int pageCount, const std::function<void(PlacedFloat)>& take);
     void SplitBesideFloat(IRenderContext* ctx, const RichDocBlock& block, int blockIndex, BlockLayout& bl,
                           float fullIndent);
     void DrawFloats(IRenderContext* ctx, bool behindText);
@@ -1209,6 +1218,7 @@ private:
         Rect2Df visibleArea{0, 0, 0, 0};
     };
     OutputViewState savedOutputView;
+    RichTextEditStyle savedScreenStyle;           // the screen's style while a print or an export is laid out
     bool selecting = false;           // mouse drag in progress
     // Drag and drop of the selection: a press inside it arms a drag, which
     // starts once the pointer has moved a few pixels (a press and release

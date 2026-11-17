@@ -6,6 +6,8 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.11.0 - RichDocBlock::columnBreakBefore; RichTextFrame::nestedTable; RichTableCell::lineHeightPt,
+//                   lineHeightAtLeast, lineSpacing; imageRotationDeg for a picture in the line too
 // Version: 1.10.0 - RichTextRun::imageRotationDeg: a floating picture turned about its centre
 // Version: 1.9.0 - RichTextRun::emptyLineHeightPt; UCRichDocument::letterKerning, fontLineGap, paragraphSpacingInCells
 // Version: 1.8.0 - Pattern fills (RichShape::fillPattern, patternBackColor, PatternBit)

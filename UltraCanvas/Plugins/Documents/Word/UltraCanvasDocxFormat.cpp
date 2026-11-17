@@ -2,6 +2,8 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.11.0 - tables nested in cells, column breaks, a cell's line height and multiple, negative w:tblInd,
+//                   a cell's lines written as paragraphs, shapes and turned pictures in the line
 // Version: 1.10.0 - theme fonts (asciiTheme / hAnsiTheme), capitals (w:caps) from a run or its paragraph's
 //                   style, a turned picture (a:xfrm rot) read and written, round2SameRect's outline
 // Version: 1.9.0 - paragraph spacing in cells read and written; w:kern as the document's kerning
@@ -2092,7 +2094,7 @@ private:
         }
         frame.shapes.push_back(std::move(shape));
         if (drawing->FirstChildElement("wp:inline")) {
-            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;   // in the line: on lines of its own
+            run.imageWrap = RichTextRun::ImageWrap::Inline;         // a drawing standing in the line
         } else {
             ApplyAnchorPlacement(drawing->FirstChildElement("wp:anchor"), run);
         }
@@ -2574,6 +2576,12 @@ private:
             run.imageWidthPt = widthPt;
             run.imageHeightPt = heightPt;
             run.imageAltText = altText;
+            // Turned in the line too.
+            if (auto* spPr = FindDescendant(drawing, "pic:spPr")) {
+                if (auto* xfrm = spPr->FirstChildElement("a:xfrm")) {
+                    run.imageRotationDeg = static_cast<float>(xfrm->IntAttribute("rot", 0)) / 60000.0f;
+                }
+            }
             run.lineBreakBefore = ctx.pendingLineBreak;
             ctx.pendingLineBreak = false;
             ctx.runs.push_back(std::move(run));
@@ -3180,6 +3188,11 @@ private:
                         continue;
                     }
                     if (childTag != "w:p") continue;
+                    // The trailer this writer puts after a table is no line.
+                    if (afterNestedTable && IsTrailerParagraph(p->FirstChildElement("w:pPr"))) {
+                        afterNestedTable = false;
+                        continue;
+                    }
                     // The room between two paragraphs - the one's space after
                     // and the other's before - is a line of that height
                     // between them; above the first and below the last it
@@ -3869,7 +3882,13 @@ private:
                 if (run.lineBreakBefore) xml << "<w:br/>";
                 WriteTextBox(xml, run);
             } else if (run.IsInlineImage()) {
+                // The font its line is measured with (a small icon in 4 pt
+                // text keeps a low line).
+                if (run.fontSizePt > 0.0f) {
+                    xml << "<w:rPr><w:sz w:val=\"" << std::lround(run.fontSizePt * 2.0f) << "\"/></w:rPr>";
+                }
                 if (run.lineBreakBefore) xml << "<w:br/>";
+                pictureRotationDeg_ = run.imageRotationDeg;
                 WriteDrawing(xml, run.mediaIndex, run.imageWidthPt, run.imageHeightPt,
                              run.imageAltText, ++inlineDrawingId_,
                              run.IsFloatingImage() ? &run : nullptr);
@@ -4065,6 +4084,12 @@ private:
         using Origin = RichTextRun::FloatOrigin;
         using VAlign = RichTextRun::FloatVerticalAlign;
         const Wrap wrap = floating.imageWrap;
+        if (wrap == Wrap::Inline) {
+            // Standing in the line: no place of its own.
+            xml << "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"" << cx
+                << "\" cy=\"" << cy << "\"/><wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>";
+            return;
+        }
         const long long gap = static_cast<long long>(9.0f * kEmuPerPoint);      // Word's 0.32 cm
         const char* across = floating.floatHorizontalFrom == Origin::Page ? "page"
                            : floating.floatVerticalFrom == Origin::Paragraph ? "column" : "margin";
@@ -4145,7 +4170,8 @@ private:
             << "\" bIns=\"" << inset << "\" anchor=\"" << BodyAnchor(frame->textAnchor) << "\">"
             // A box with a height keeps it; one without grows to its text.
             << (run.imageHeightPt > 0.0f ? "<a:noAutofit/>" : "<a:spAutoFit/>") << "</wps:bodyPr></wps:wsp>"
-            << "</a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice></mc:AlternateContent>";
+            << "</a:graphicData></a:graphic>" << (run.imageWrap == RichTextRun::ImageWrap::Inline ? "</wp:inline>" : "</wp:anchor>")
+            << "</w:drawing></mc:Choice></mc:AlternateContent>";
     }
 
     // ===== DRAWN SHAPES =====
@@ -4385,9 +4411,11 @@ private:
             for (const RichShape& shape : only ? only->children : frame.shapes) WriteGroupMember(xml, shape, 0.0f, 0.0f, 0);
             xml << "</wpg:wgp>";
         }
-        xml << "</a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice></mc:AlternateContent>";
+        xml << "</a:graphicData></a:graphic>" << (run.imageWrap == RichTextRun::ImageWrap::Inline ? "</wp:inline>" : "</wp:anchor>")
+            << "</w:drawing></mc:Choice></mc:AlternateContent>";
     }
 
+    float pictureRotationDeg_ = 0.0f;             // of the in-line picture about to be written
     void WriteDrawingElement(std::ostringstream& xml, const RichDocBlock& block, int drawingId,
                              const RichTextRun* floating = nullptr) {
         float widthPt = block.imageWidthPt;
@@ -4423,9 +4451,9 @@ private:
             << "<pic:blipFill><a:blip r:embed=\"rIdImg" << (block.mediaIndex + 1)
             << "\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>"
             << "<pic:spPr><a:xfrm";
-        if (floating && floating->imageRotationDeg != 0.0f) {
-            xml << " rot=\"" << std::lround(static_cast<double>(floating->imageRotationDeg) * 60000.0) << "\"";
-        }
+        const float turned = floating ? floating->imageRotationDeg : pictureRotationDeg_;
+        pictureRotationDeg_ = 0.0f;
+        if (turned != 0.0f) xml << " rot=\"" << std::lround(static_cast<double>(turned) * 60000.0) << "\"";
         xml << "><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" << cx
             << "\" cy=\"" << cy << "\"/></a:xfrm>"
             << "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>"
@@ -4614,18 +4642,39 @@ private:
                     WriteRuns(xml, piece);
                     xml << "</w:p>";
                     piece.clear();
+                    above = 0.0f;
                 };
+                // Every line of the cell is a paragraph (an empty one keeps
+                // its font in its mark); a table nested in the cell is
+                // written as that table, between them.
+                bool open = true;                 // a paragraph is begun: a line break ends it
+                bool written = false;
                 for (const RichTextRun& run : runs) {
                     if (run.lineBreakBefore && run.text.empty() && run.emptyLineHeightPt > 0.0f) {
-                        flush();
+                        if (open) { flush(); written = true; }
                         above = run.emptyLineHeightPt;
+                        open = false;             // the break after a spacer is the new paragraph's start
                         continue;
                     }
+                    const RichTextFrame* nested = run.IsTextFrame() ? doc_->FrameFor(run) : nullptr;
+                    if (nested && nested->nestedTable) {
+                        if (open && (!piece.empty() || (run.lineBreakBefore && written))) { flush(); written = true; }
+                        piece.clear();
+                        for (const RichDocBlock& inner : nested->blocks) {
+                            if (inner.type == RichBlockType::Table) WriteTable(xml, inner);
+                            else WriteParagraph(xml, inner);
+                        }
+                        paragraphBase_ = ParagraphBase(RichDocBlock{});
+                        written = true;
+                        open = false;
+                        continue;
+                    }
+                    if (run.lineBreakBefore && open) { flush(); written = true; }
                     piece.push_back(run);
-                    // The break after a spacer is the new paragraph's start.
-                    if (piece.size() == 1 && above > 0.0f) piece.front().lineBreakBefore = false;
+                    piece.back().lineBreakBefore = false;
+                    open = true;
                 }
-                flush();
+                if (open || !written) flush();
                 xml << "</w:tc>";
             }
             xml << "</w:tr>\n";

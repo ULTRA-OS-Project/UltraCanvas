@@ -5,6 +5,8 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.11.0 - fo:break-before="column" read and written; a table nested in a cell written as a table;
+//                   as-char drawings stand in the line
 // Version: 1.10.0 - a turned picture (draw:transform) read and written; drawn shapes in table cells
 //                   read, and written in the line (as-char) where text stops above and below them
 // Version: 1.9.0 - paragraph spacing in cells, the kerning, line-gap and cell-spacing settings read and written
@@ -2002,7 +2004,7 @@ private:
         shape.yPt -= boxY;
         frame.shapes.push_back(std::move(shape));
         if (std::string(Attr(element, "text:anchor-type")) == "as-char") {
-            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            run.imageWrap = RichTextRun::ImageWrap::Inline;         // a drawing standing in the line
         } else {
             ApplyFloatPlacement(element, run);
             // The box, not the element's svg:x / svg:y (a line, a group and
@@ -3488,7 +3490,8 @@ private:
         // In a table cell a drawing text stops above and goes on below
         // stands in the line (so every view sets it): anchored as a
         // character, on the baseline.
-        const bool inLine = writingCell_ && run.imageWrap == RichTextRun::ImageWrap::TopAndBottom;
+        const bool inLine = run.imageWrap == RichTextRun::ImageWrap::Inline
+                         || (writingCell_ && run.imageWrap == RichTextRun::ImageWrap::TopAndBottom);
         const float x = inLine ? 0.0f : run.imageFloatAlign == RichTextAlign::Default ? run.imageOffsetXPt : 0.0f;
         const float y = inLine ? 0.0f
                       : run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top ? run.imageOffsetYPt : 0.0f;
@@ -4043,6 +4046,7 @@ private:
                 writingCell_ = true;
                 std::vector<RichTextRun> piece;
                 float above = 0.0f;
+                bool afterTable = false;          // a nested table was the last thing written
                 auto flush = [&]() {
                     xml << "<text:p text:style-name=\"" << CellParagraphStyle(cell.align, above) << "\">";
                     WriteRuns(xml, piece);
@@ -4055,11 +4059,25 @@ private:
                         above = run.emptyLineHeightPt;
                         continue;
                     }
+                    // A table nested in the cell: written as that table,
+                    // between the cell's paragraphs.
+                    const RichTextFrame* nested = run.IsTextFrame() ? doc_->FrameFor(run) : nullptr;
+                    if (nested && nested->nestedTable) {
+                        if (!piece.empty()) flush();
+                        for (const RichDocBlock& inner : nested->blocks) {
+                            if (inner.type == RichBlockType::Table) WriteTable(xml, inner, ++tableCount_);
+                        }
+                        writingCell_ = true;
+                        afterTable = true;
+                        continue;
+                    }
                     piece.push_back(run);
-                    // The break after a spacer is the new paragraph's start.
-                    if (piece.size() == 1 && above > 0.0f) piece.front().lineBreakBefore = false;
+                    // The break after a spacer, or after a table, is the new
+                    // paragraph's start.
+                    if (piece.size() == 1 && (above > 0.0f || afterTable)) piece.front().lineBreakBefore = false;
+                    afterTable = false;
                 }
-                flush();
+                if (!piece.empty() || !afterTable) flush();
                 writingCell_ = false;
                 xml << "</table:table-cell>";
                 for (int s = 1; s < columnSpan; ++s) {

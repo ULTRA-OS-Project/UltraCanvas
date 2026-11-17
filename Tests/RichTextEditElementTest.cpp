@@ -1557,6 +1557,108 @@ int main() {
             const float lineWithPicture = secondTop(pictured);
             TEST("A picture in a line makes the line as tall as it is: the next paragraph " + std::to_string(lineWithPicture - lineOnly)
                  + " lower", lineWithPicture - lineOnly > 100.0f);
+
+            // Turned a quarter in the line, the line is as tall as the
+            // picture is wide.
+            RichTextRun wide = tall;
+            wide.imageWidthPt = 120.0f;
+            wide.imageHeightPt = 20.0f;
+            RichDocBlock lying, standing;
+            lying.runs = {words, wide};
+            wide.imageRotationDeg = 90.0f;
+            standing.runs = {words, wide};
+            const float lyingTop = secondTop(lying), standingTop = secondTop(standing);
+            TEST("A picture turned a quarter in its line stands tall: the next paragraph "
+                 + std::to_string(standingTop - lyingTop) + " lower", standingTop - lyingTop > 100.0f);
+
+            // A drawing set in the line of a body paragraph (wrap Inline)
+            // takes its room there and is no float.
+            RichTextRun inLine = drawing(1, 120.0f, 90.0f);
+            inLine.imageWrap = RichTextRun::ImageWrap::Inline;
+            RichDocBlock withDrawing;
+            withDrawing.runs = {words, inLine};
+            const float drawingTop = secondTop(withDrawing);
+            TEST("A drawing in the line of a paragraph takes its room: the next paragraph "
+                 + std::to_string(drawingTop - lineOnly) + " lower", drawingTop - lineOnly > 85.0f
+                 && edit->GetFloatRectForTest(0).width == 0.0f);
+
+            // A table nested in a table cell (a frame of its own standing
+            // in the cell's line) takes its rows' room.
+            RichTextFrame inner;
+            inner.nestedTable = true;
+            {
+                RichDocBlock innerTable;
+                innerTable.type = RichBlockType::Table;
+                RichTextRun innerWords;
+                innerWords.text = "inner";
+                for (int r = 0; r < 3; r++) {
+                    RichTableCell innerCell;
+                    innerCell.runs = {innerWords};
+                    RichTableRow innerRow;
+                    innerRow.cells = {innerCell, innerCell};
+                    innerTable.tableRows.push_back(innerRow);
+                }
+                inner.blocks = {innerTable};
+            }
+            card->frames.push_back(inner);
+            RichTextRun nestedRun;
+            nestedRun.text = RichTextRun::kObjectReplacement;
+            nestedRun.frameIndex = static_cast<int>(card->frames.size()) - 1;
+            nestedRun.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            nestedRun.lineBreakBefore = true;
+            const float plainTable = afterTop({label});
+            const float nestedTable = afterTop({label, nestedRun});
+            TEST("A table nested in a cell takes its rows' room: the text after " + std::to_string(nestedTable - plainTable)
+                 + " lower", nestedTable - plainTable > 40.0f);
+            TEST("...and its words are part of the plain text", card->ToPlainText().find("inner") != std::string::npos);
+
+            // A cell's lines of a set height: at least 30 pt each.
+            {
+                RichDocBlock table = tableOf({label});
+                RichTextRun second = label;
+                second.lineBreakBefore = true;
+                table.tableRows[0].cells[0].runs = {label, second, second};
+                auto top = [&](float lineHeight) {
+                    table.tableRows[0].cells[0].lineHeightPt = lineHeight;
+                    table.tableRows[0].cells[0].lineHeightAtLeast = true;
+                    card->blocks = {table, after};
+                    edit->SetDocument(card);
+                    window->UpdateAndRender();
+                    window->UpdateAndRender();
+                    edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                    window->UpdateAndRender();
+                    return edit->GetCaretRectForTest().y;
+                };
+                const float natural = top(0.0f), spaced = top(30.0f);
+                TEST("A cell's lines are at least as tall as it says: three lines " + std::to_string(spaced - natural)
+                     + " taller", spaced - natural > 30.0f && spaced - natural < 90.0f);
+            }
+
+            // A column break: the paragraph starts the section's next
+            // column, at the height the first began at.
+            {
+                auto columns = std::make_shared<UCRichDocument>();
+                columns->firstSection.columns = 2;
+                RichDocBlock one, two;
+                one.runs = {words};
+                two.runs = {words};
+                two.columnBreakBefore = true;
+                columns->blocks = {one, two};
+                edit->SetDocument(columns);
+                edit->SetPageView(true);
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                edit->GetEditor().SetCaret(RichDocPosition(0, 0));
+                window->UpdateAndRender();
+                const Rect2Df first = edit->GetCaretRectForTest();
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                const Rect2Df second = edit->GetCaretRectForTest();
+                TEST("A column break starts the next column: " + std::to_string(second.x - first.x) + " right, "
+                     + std::to_string(second.y - first.y) + " down", second.x - first.x > 100.0f
+                     && std::abs(second.y - first.y) < 2.0f);
+                edit->SetPageView(false);
+            }
             edit->SetDocument(document);
             window->UpdateAndRender();
         }

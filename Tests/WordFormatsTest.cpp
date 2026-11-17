@@ -3385,6 +3385,166 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== Signatures in tables, in two columns, the way Word writes them =====
+    // A table nested in a table cell, a column break, a cell's lines of a
+    // set height and of a multiple, a table left of its column, a cell's
+    // empty first paragraph in a 2 pt font, a break at a paragraph's end, a
+    // turned picture and a drawn shape standing in a line.
+    {
+        std::cout << "\n--- Signatures: nested tables, column breaks, cell line heights ---\n";
+        const std::string wml = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"";
+        const std::string inlinePicture =
+            "<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"1270000\" cy=\"254000\"/>"
+            "<wp:docPr id=\"1\" name=\"Turned\"/><a:graphic><a:graphicData "
+            "uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic><pic:nvPicPr>"
+            "<pic:cNvPr id=\"1\" name=\"Turned\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rId1\"/>"
+            "<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm rot=\"5400000\"><a:off x=\"0\" y=\"0\"/>"
+            "<a:ext cx=\"1270000\" cy=\"254000\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>"
+            "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>";
+        const std::string inlineShape =
+            "<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"635000\" cy=\"635000\"/>"
+            "<wp:docPr id=\"2\" name=\"Dot\"/><a:graphic><a:graphicData "
+            "uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><wps:wsp><wps:cNvSpPr/><wps:spPr>"
+            "<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"635000\" cy=\"635000\"/></a:xfrm>"
+            "<a:prstGeom prst=\"ellipse\"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val=\"C8005F\"/></a:solidFill>"
+            "</wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing>";
+        const std::string documentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<w:document " + wml + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+            "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" "
+            "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+            "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" "
+            "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><w:body>"
+            "<w:p><w:r><w:t>First column</w:t></w:r></w:p>"
+            "<w:tbl><w:tblPr><w:tblW w:w=\"4000\" w:type=\"dxa\"/><w:tblInd w:w=\"-255\" w:type=\"dxa\"/></w:tblPr>"
+            "<w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr>"
+            "<w:p><w:pPr><w:rPr><w:sz w:val=\"4\"/></w:rPr></w:pPr></w:p>"
+            "<w:p><w:pPr><w:spacing w:line=\"300\" w:lineRule=\"atLeast\"/><w:rPr><w:sz w:val=\"6\"/></w:rPr></w:pPr>"
+            "<w:r><w:rPr><w:sz w:val=\"16\"/></w:rPr><w:t>Outer line</w:t></w:r><w:r><w:br/></w:r></w:p>"
+            "<w:tbl><w:tblPr><w:tblW w:w=\"2000\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"1000\"/>"
+            "<w:gridCol w:w=\"1000\"/></w:tblGrid><w:tr><w:tc><w:p><w:r><w:t>inner one</w:t></w:r></w:p></w:tc>"
+            "<w:tc><w:p><w:r><w:t>inner two</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/></w:tc></w:tr>"
+            "<w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr>"
+            "<w:p><w:pPr><w:spacing w:line=\"276\" w:lineRule=\"auto\"/></w:pPr><w:r><w:t>Spaced</w:t></w:r></w:p>"
+            "</w:tc></w:tr></w:tbl>"
+            "<w:p><w:r><w:br w:type=\"column\"/></w:r><w:r><w:t>Second column</w:t></w:r></w:p>"
+            "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:rPr><w:sz w:val=\"8\"/></w:rPr>" + inlinePicture + "</w:r>"
+            "<w:r>" + inlineShape + "</w:r></w:p>"
+            "<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"720\" w:right=\"720\" w:bottom=\"720\" "
+            "w:left=\"720\"/><w:cols w:num=\"2\" w:space=\"720\"/></w:sectPr></w:body></w:document>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("signatures.docx")));
+            zip.AddEntry("[Content_Types].xml", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                "<Default Extension=\"png\" ContentType=\"image/png\"/>"
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document.main+xml\"/></Types>"));
+            zip.AddEntry("_rels/.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "officeDocument\" Target=\"word/document.xml\"/></Relationships>"));
+            zip.AddEntry("word/_rels/document.xml.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "image\" Target=\"media/image1.png\"/></Relationships>"));
+            zip.AddEntry("word/document.xml", documentXml);
+            zip.AddEntry("word/media/image1.png", kTinyPng, sizeof(kTinyPng));
+            CHECK(zip.Finalize());
+        }
+        auto checkSignatures = [&](const std::string& path, const std::string& label, bool docx) {
+            UCRichDocument read;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(path, read, err), label + ": " + err);
+            const RichDocBlock* table = nullptr;
+            const RichDocBlock* broken = nullptr;
+            const RichDocBlock* pictured = nullptr;
+            for (const RichDocBlock& block : read.blocks) {
+                if (block.type == RichBlockType::Table && !table) table = &block;
+                if (block.columnBreakBefore) broken = &block;
+                for (const RichTextRun& run : block.runs) {
+                    if (run.IsInlineImage() || run.IsTextFrame()) pictured = &block;
+                }
+            }
+            CHECK_MSG(broken && UCRichDocument::ConcatenateRunText(broken->runs) == "Second column",
+                      label + ": the column break is its paragraph's, not a line break");
+            CHECK_MSG(read.ToPlainText().find("inner two") != std::string::npos,
+                      label + ": the nested table's words are in the plain text");
+            if (!docx) return;                    // the rest is what the DOCX writer keeps
+            CHECK_MSG(table && table->tableRows.size() == 2, label + ": the outer table's two rows");
+            if (!table || table->tableRows.size() != 2) return;
+            CHECK_MSG(Near(table->tableIndentPt, -12.75f), label + ": the table starts left of its column, got "
+                      + std::to_string(table->tableIndentPt));
+            const RichTableCell& first = table->tableRows[0].cells[0];
+            CHECK_MSG(first.runs.size() == 4, label + ": an empty line, a line, the break's line, the table: "
+                      + std::to_string(first.runs.size()) + " runs");
+            if (first.runs.size() == 4) {
+                CHECK_MSG(first.runs[0].text.empty() && !first.runs[0].lineBreakBefore && Near(first.runs[0].fontSizePt, 2.0f),
+                          label + ": the empty first paragraph is a 2 pt line, got "
+                          + std::to_string(first.runs[0].fontSizePt));
+                CHECK_MSG(first.runs[2].text.empty() && first.runs[2].lineBreakBefore && Near(first.runs[2].fontSizePt, 3.0f),
+                          label + ": the line a break at the paragraph's end leaves is its mark's (3 pt), got "
+                          + std::to_string(first.runs[2].fontSizePt));
+                const RichTextFrame* nested = read.FrameFor(first.runs[3]);
+                CHECK_MSG(nested && nested->nestedTable && nested->blocks.size() == 1
+                          && nested->blocks[0].type == RichBlockType::Table && nested->blocks[0].tableRows.size() == 1
+                          && nested->blocks[0].tableRows[0].cells.size() == 2,
+                          label + ": the nested table is a table of its own, one row of two cells");
+                CHECK_MSG(first.runs[3].lineBreakBefore && Near(first.runs[3].imageWidthPt, 100.0f),
+                          label + ": ...on a line of its own, 100 pt wide");
+            }
+            CHECK_MSG(first.lineHeightPt <= 0.0f, label + ": the first paragraph sets no line height");
+            const RichTableCell& second = table->tableRows[1].cells[0];
+            CHECK_MSG(std::abs(second.lineSpacing - 1.15f) < 0.01f, label + ": lines 1.15 times their font's, got "
+                      + std::to_string(second.lineSpacing));
+            CHECK_MSG(pictured != nullptr, label + ": the picture and the shape are in a paragraph's line");
+            if (pictured) {
+                const RichTextRun* picture = nullptr;
+                const RichTextRun* shape = nullptr;
+                for (const RichTextRun& run : pictured->runs) {
+                    if (run.IsInlineImage()) picture = &run;
+                    if (run.IsTextFrame()) shape = &run;
+                }
+                CHECK_MSG(picture && Near(picture->imageRotationDeg, 90.0f) && !picture->IsFloatingObject(),
+                          label + ": the picture in the line is turned a quarter");
+                CHECK_MSG(picture && Near(picture->fontSizePt, 4.0f), label + ": ...in its run's 4 pt font");
+                CHECK_MSG(shape && shape->imageWrap == RichTextRun::ImageWrap::Inline,
+                          label + ": the shape stands in the line, it does not float");
+            }
+        };
+        checkSignatures(TmpPath("signatures.docx"), "docx", true);
+        UCRichDocument signatures;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("signatures.docx"), signatures, err), err);
+        // A cell's line height, set on its first paragraph.
+        for (RichDocBlock& block : signatures.blocks) {
+            if (block.type != RichBlockType::Table) continue;
+            block.tableRows[0].cells[0].lineHeightPt = 15.0f;
+            block.tableRows[0].cells[0].lineHeightAtLeast = true;
+        }
+        CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-saved.docx"), signatures, err), err);
+        {
+            UCRichDocument again;
+            CHECK_MSG(UCWordDocumentIO::Load(TmpPath("signatures-saved.docx"), again, err), err);
+            for (RichDocBlock& block : again.blocks) {
+                if (block.type != RichBlockType::Table) continue;
+                CHECK_MSG(Near(block.tableRows[0].cells[0].lineHeightPt, 15.0f) && block.tableRows[0].cells[0].lineHeightAtLeast,
+                          "saved as docx: a cell's lines at least 15 pt");
+                block.tableRows[0].cells[0].lineHeightPt = 0.0f;
+                block.tableRows[0].cells[0].lineHeightAtLeast = false;
+            }
+            CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-saved2.docx"), again, err), err);
+        }
+        checkSignatures(TmpPath("signatures-saved2.docx"), "saved as docx", true);
+        CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-saved.odt"), signatures, err), err);
+        checkSignatures(TmpPath("signatures-saved.odt"), "saved as odt", false);
+    }
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;

@@ -2,6 +2,7 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.7.0 - WithFramesInline: a frame's or nested table's words in a table cell's lines
 // Version: 1.6.0 - RichShape::PatternBit: Word's preset pattern tiles
 // Version: 1.5.0 - Drawn shapes: RichShape presets; plain text, Markdown and HTML
 //                  spell a drawing's group members' words

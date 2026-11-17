@@ -635,8 +635,22 @@ least as tall as its words; a drawing with room for its outline) - a photo
 drawn as the fill of a shape. (Square and
 top-and-bottom *pictures* in a cell stay in the line as before.)
 
-**Turned.** `RichTextRun::imageRotationDeg` turns a floating picture clockwise
-about its centre; its size and offsets are those of the box before the turn
+A **table nested in a table cell** is such a frame: its blocks are the inner
+table and `RichTextFrame::nestedTable` is set, so it has no box, padding or
+guide line of its own and is as wide as the cell's text where its run names no
+width. Its words are part of `ToPlainText()`. The DOCX reader makes one for
+every `w:tbl` inside a `w:tc`; the DOCX and ODT writers write it back as a
+table in the cell. (It is shown, not edited in place; the ODT reader still
+flattens a nested table into the cell's lines.)
+
+A **drawing set in a paragraph's line** (wrap `Inline`: Word's `wp:inline`
+shape, ODF's `as-char` one) stands in that line in the body too, where the
+paragraph's alignment puts it; it is no float.
+
+**Turned.** `RichTextRun::imageRotationDeg` turns a picture clockwise about
+its centre - a floating one where it is placed, one in the line in a line as
+tall as the turned picture. A floating picture's size and offsets are those of
+the box before the turn
 (Word's `a:xfrm rot`, ODF's `draw:transform`), so a 150 x 389 pt picture
 turned three quarters covers 389 x 150 pt round the same centre.
 
@@ -1230,7 +1244,16 @@ exactly that height (`RichTextRun::emptyLineHeightPt`); above the first and
 below the last it is part of the cell's padding. Lines are a font's own
 height apart, its line gap included, and letters are pair-kerned - unless the
 document says otherwise (`UCRichDocument::fontLineGap`, `letterKerning`:
-Word's files are unkerned, older Writer files have no line gap). A table
+Word's files are unkerned, older Writer files have no line gap). A cell's
+lines can have a set height (`RichTableCell::lineHeightPt`, exactly or - with
+`lineHeightAtLeast` - at least that) or be a multiple of each font's own line
+(`RichTableCell::lineSpacing`, Word's 1.15); a picture in such a line keeps
+its own height. An empty first or last line of a cell is a line of its own
+font (Word's 2 pt paragraphs that set a signature's parts a hair apart), and a
+picture lower than a line of its run's font stands in such a line. A table can
+start left of its column (a negative `tableIndentPt`, Word's `w:tblInd`), and
+a column whose width the document states is kept however narrow. A picture is
+stretched to the size its document gives it. A table
 continues between rows - never through a cell spanning rows - and its
 leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
 ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at
@@ -1246,6 +1269,19 @@ otherwise), with page number and page count fields
 (`RichTextRun::field`) filled in for that page. The body starts below the
 top margin, or below the header when the header is taller than the margin
 leaves room for; the footer likewise.
+
+**Column breaks.** `RichDocBlock::columnBreakBefore` starts the block in its
+section's next column, at the height the columns began at - or on the next
+page, from the last column or in a section of one column. It is Word's
+`w:br w:type="column"` and ODF's `fo:break-before="column"`, read and written
+by both formats.
+
+```cpp
+RichDocBlock heading;
+heading.runs = {title};
+heading.columnBreakBefore = true;       // top of the next column
+document->blocks.push_back(heading);
+```
 
 **Sections and columns.** `InsertSectionBreak(newPage)` starts a new section
 at the caret (`RichDocBlock::sectionStart`, its setup in
@@ -1332,6 +1368,10 @@ send the same pages along for them to draw:
 PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window,
                         CreateRichDocumentPrintPages(*editor));
 ```
+
+A print and an export are on white paper, whatever colour the screen's theme
+gives the page; under a dark theme, whose inks are light, they take the light
+style's inks.
 
 `CreateRichDocumentPrintPages` copies the document into an element of its own
 (the one on screen keeps its view) and returns an `IPrintPageSource`: the pages

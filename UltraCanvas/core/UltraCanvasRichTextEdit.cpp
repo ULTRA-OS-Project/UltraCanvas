@@ -7,6 +7,9 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.13.0 - column breaks; tables nested in cells; a cell's line heights; empty first and last lines of
+//                   a cell; turned pictures and drawings in a line; pictures stretched to their size; white
+//                   paper for print and export
 // Version: 1.12.0 - in a table cell: a picture or drawing behind or in front of the text floats from the
 //                   cell (turned when it says so), a frame or drawing stands in the line; a box in a
 //                   line makes its line as tall as it is where lines keep their fonts' gap
@@ -1096,10 +1099,54 @@ void UltraCanvasRichTextEdit::PlaceFurnitureFloats(IRenderContext* ctx, PageFram
                 placed.inFooter = footer;
                 frame.furnitureFloats.push_back(std::move(placed));
             }
+            // ...and those its tables' cells float.
+            PlaceCellFloats(ctx, bl, top + bl.bounds.y, page, pageNumber, pageCount, [&](PlacedFloat placed) {
+                placed.blockIndex = -1;
+                placed.inFooter = footer;
+                frame.furnitureFloats.push_back(std::move(placed));
+            });
         }
     };
     place(frame.header, pageView ? frame.headerTop : 0.0f, false);
     place(frame.footer, frame.footerTop, true);
+}
+
+// A table's: what its cells float (behind or in front of the text) is
+// placed from the cell's text - across from its left edge, down from the
+// line the anchor stands in - and may reach over the whole table. `top` is
+// the table's.
+void UltraCanvasRichTextEdit::PlaceCellFloats(IRenderContext* ctx, const BlockLayout& bl, float top,
+                                              const PageFrame* page, int pageNumber, int pageCount,
+                                              const std::function<void(PlacedFloat)>& take) {
+    for (const auto& cell : bl.cells) {
+        if (!cell || !cell->layout) continue;
+        for (const BlockLayout::InlineImage& image : cell->inlineImages) {
+            if (!image.floating) continue;
+            // The top of the anchor's line (its own place is on the baseline).
+            Rect2Di anchor = cell->layout->IndexToPos(image.byteOffset);
+            for (const LayoutLineExtent& line : cell->layout->GetLineExtents()) {
+                if (image.byteOffset >= line.startByte && image.byteOffset <= line.startByte + line.lengthBytes) {
+                    anchor.y = static_cast<int>(std::lround(line.top));
+                    break;
+                }
+            }
+            const float cellLeft = bl.columnX + cell->bounds.x + cell->textLeft;
+            const float cellWidth = std::max(1.0f, cell->bounds.width - 2.0f * cell->textLeft);
+            const float lineTop = top + cell->bounds.y + cell->textTop + static_cast<float>(anchor.y);
+            PlacedFloat placed = PlaceFloat(ctx, image, lineTop, 0.0f, page, pageNumber, pageCount);
+            if (image.horizontalFrom != RichTextRun::FloatOrigin::Page) {
+                switch (image.floatAlign) {
+                    case RichTextAlign::Right:  placed.rect.x = cellLeft + cellWidth - image.width; break;
+                    case RichTextAlign::Center: placed.rect.x = cellLeft + (cellWidth - image.width) * 0.5f; break;
+                    case RichTextAlign::Default: placed.rect.x = cellLeft + image.offsetX; break;
+                    default: placed.rect.x = cellLeft; break;
+                }
+                placed.areaLeft = cellLeft;
+            }
+            placed.inCell = true;
+            take(std::move(placed));
+        }
+    }
 }
 
 float UltraCanvasRichTextEdit::FlowAroundFloats(IRenderContext* ctx, int index, float top,
@@ -1146,39 +1193,10 @@ float UltraCanvasRichTextEdit::FlowAroundFloats(IRenderContext* ctx, int index, 
         }
         pageFloats.push_back(std::move(placed));
     }
-    // A table's: what its cells float (behind or in front of the text) is
-    // placed from the cell's text - across from its left edge, down from the
-    // line the anchor stands in - and may reach over the whole table.
-    for (const auto& cell : bl.cells) {
-        if (!cell || !cell->layout) continue;
-        for (const BlockLayout::InlineImage& image : cell->inlineImages) {
-            if (!image.floating) continue;
-            // The top of the anchor's line (its own place is on the baseline).
-            Rect2Di anchor = cell->layout->IndexToPos(image.byteOffset);
-            for (const LayoutLineExtent& line : cell->layout->GetLineExtents()) {
-                if (image.byteOffset >= line.startByte && image.byteOffset <= line.startByte + line.lengthBytes) {
-                    anchor.y = static_cast<int>(std::lround(line.top));
-                    break;
-                }
-            }
-            const float cellLeft = BlockLeft(bl) - ColumnLeft() + cell->bounds.x + cell->textLeft;
-            const float cellWidth = std::max(1.0f, cell->bounds.width - 2.0f * cell->textLeft);
-            const float lineTop = top + cell->bounds.y + cell->textTop + static_cast<float>(anchor.y);
-            PlacedFloat placed = PlaceFloat(ctx, image, lineTop, 0.0f, onPage);
-            if (image.horizontalFrom != RichTextRun::FloatOrigin::Page) {
-                switch (image.floatAlign) {
-                    case RichTextAlign::Right:  placed.rect.x = cellLeft + cellWidth - image.width; break;
-                    case RichTextAlign::Center: placed.rect.x = cellLeft + (cellWidth - image.width) * 0.5f; break;
-                    case RichTextAlign::Default: placed.rect.x = cellLeft + image.offsetX; break;
-                    default: placed.rect.x = cellLeft; break;
-                }
-                placed.areaLeft = cellLeft;
-            }
-            placed.blockIndex = index;
-            placed.inCell = true;
-            pageFloats.push_back(std::move(placed));
-        }
-    }
+    PlaceCellFloats(ctx, bl, top, onPage, 0, 0, [&](PlacedFloat placed) {
+        placed.blockIndex = index;
+        pageFloats.push_back(std::move(placed));
+    });
     // Its text goes on below its own top-and-bottom picture: the lines that
     // fit above the picture stay there (a picture set lower down in its
     // paragraph), the rest continue below it; with no room above, all of it
@@ -2151,7 +2169,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         // A body table's cell floats what the text ignores (behind it or in
         // front of it): a card's background picture, anchored in its first
         // cell, lies under the whole card.
-        const bool floatsInCell = cellRow >= 0 && blockIndex >= 0 && !layingOutFurniture
+        const bool floatsInCell = cellRow >= 0 && (blockIndex >= 0 || layingOutFurniture)
             && (run.imageWrap == RichTextRun::ImageWrap::BehindText
                 || run.imageWrap == RichTextRun::ImageWrap::InFrontOfText);
         const bool floats = run.IsFloatingObject() && (cellRow < 0 || floatsInCell)
@@ -2212,7 +2230,10 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         // A frame or drawing in a body table's cell stands in the line, as
         // big as it says (a frame at least as tall as its words): a badge's
         // photo drawn in a shape, a boxed note.
-        if (run.IsTextFrame() && cellRow >= 0 && blockIndex >= 0 && !layingOutFurniture && !inEditedFrame
+        // So does a drawing set in the line of a body paragraph (wrap
+        // Inline: Word's wp:inline shape, ODF's as-char one).
+        if (run.IsTextFrame() && (cellRow >= 0 || run.imageWrap == RichTextRun::ImageWrap::Inline)
+            && blockIndex >= 0 && !layingOutFurniture && !inEditedFrame
             && outInlineImages && run.frameIndex < static_cast<int>(editor.GetDocument()->frames.size())) {
             const RichTextFrame& frame = editor.GetDocument()->frames[static_cast<size_t>(run.frameIndex)];
             const double lineWidth = layout->GetExplicitWidth();
@@ -2299,6 +2320,15 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             // A picture alone in its line stands on the line's foot: Word
             // keeps no descent under it (measured: a row of 14.4 pt icons is
             // a 14.4 pt line).
+            // Turned (RichTextRun::imageRotationDeg): the line makes room
+            // for the box round the turned picture.
+            const float pictureWidth = width, pictureHeight = height;
+            if (run.imageRotationDeg != 0.0f) {
+                const float turn = run.imageRotationDeg * 3.14159265f / 180.0f;
+                const float c = std::abs(std::cos(turn)), s = std::abs(std::sin(turn));
+                width = pictureWidth * c + pictureHeight * s;
+                height = pictureWidth * s + pictureHeight * c;
+            }
             float boxWidth = width, below = 0.0f, lineOffsetX = 0.0f;
             if (ownLine) {
                 boxWidth = std::max(width, maxWidth - 0.5f);
@@ -2338,6 +2368,9 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                 placed.height = height;
                 placed.lineOffsetX = lineOffsetX;
                 placed.lineOffsetY = lineOffsetY;
+                placed.rotationDeg = run.imageRotationDeg;
+                placed.pictureWidth = pictureWidth;
+                placed.pictureHeight = pictureHeight;
                 placed.image = image;
                 placed.altText = run.imageAltText;
                 outInlineImages->push_back(std::move(placed));
@@ -2359,9 +2392,11 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             const float natural = known != lineUnitCache.end() ? known->second
                                                                : Px(static_cast<float>(font.fontSize)) * 1.2f;
             float height = 0.0f;
+            // (Every line states its height: such a cell's lines are not
+            // spaced by their fonts' heights - see MakeRunsLayout.)
             if (block.lineHeightPt > 0.0f) {
-                if (!block.lineHeightAtLeast || natural < Px(block.lineHeightPt)) height = Px(block.lineHeightPt);
-            } else if (std::abs(block.lineSpacing - 1.0f) > 0.01f) {
+                height = block.lineHeightAtLeast ? std::max(natural, Px(block.lineHeightPt)) : Px(block.lineHeightPt);
+            } else {
                 height = natural * block.lineSpacing;
             }
             if (height > 0.0f) add(TextAttributeFactory::CreateAbsoluteLineHeight(static_cast<double>(height)));
@@ -2694,7 +2729,10 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     // its line as tall as it is - which Pango forgets when lines are spaced
     // by their fonts' heights: the box's line then is a line of text, and
     // the box lies over its neighbours. Such a paragraph is set without.
-    if (lineGap && layoutHasBox) layout->SetLineSpacing(0.0f);
+    // So is a cell whose lines have a set height or multiple: a height in
+    // points is the whole line.
+    const bool statedLines = cellRow >= 0 && (block.lineHeightPt > 0.0f || block.lineSpacing > 0.0f);
+    if (lineGap && (layoutHasBox || statedLines)) layout->SetLineSpacing(0.0f);
     return layout;
 }
 
@@ -3086,6 +3124,18 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                     break;
                 }
             }
+            // Drawings standing in its lines: their words first, so the
+            // lines know how tall each is.
+            if (blockIndex >= 0 && !layingOutFurniture) {
+                for (const RichTextRun& run : block.runs) {
+                    if (!run.IsTextFrame() || run.imageWrap != RichTextRun::ImageWrap::Inline) continue;
+                    const float frameWidth = std::min(std::max(16.0f, wrapWidth), run.imageWidthPt > 0.0f
+                        ? Px(run.imageWidthPt) : wrapWidth * 0.5f);
+                    const float inset = TextFrameInset(run.frameIndex);
+                    cellFrameContent[run.frameIndex]
+                        = LayoutTextFrame(ctx, run.frameIndex, std::max(8.0f, frameWidth - 2.0f * inset));
+                }
+            }
             bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth,
                                        blockIndex >= 0 ? &bl.hitRects : nullptr, blockIndex,
                                        &bl.inlineImages, bl.textLeft);
@@ -3371,7 +3421,15 @@ void UltraCanvasRichTextEdit::DrawInlineImages(IRenderContext* ctx, const BlockL
             DrawTextFrame(ctx, frame, target);
             continue;
         }
-        if (placed.image) {
+        if (placed.image && placed.rotationDeg != 0.0f) {
+            // Turned about the middle of its place in the line.
+            ctx->PushState();
+            ctx->Translate(target.x + target.width * 0.5, target.y + target.height * 0.5);
+            ctx->Rotate(static_cast<double>(placed.rotationDeg) * 3.14159265358979323846 / 180.0);
+            ctx->DrawImage(*placed.image, Rect2Dd(-placed.pictureWidth * 0.5, -placed.pictureHeight * 0.5,
+                                                  placed.pictureWidth, placed.pictureHeight), ImageFitMode::Fill);
+            ctx->PopState();
+        } else if (placed.image) {
             ctx->DrawImage(*placed.image, target, ImageFitMode::Fill);
         } else {
             // Undecodable media: the same framed placeholder a block image
@@ -7108,6 +7166,30 @@ int UltraCanvasRichTextEdit::BeginPrintLayout(IRenderContext* ctx) {
         savedOutputView.scrollOffset = scrollOffset;
         savedOutputView.hScrollOffset = hScrollOffset;
         savedOutputView.visibleArea = visibleArea;
+        // Paper is white whatever the screen's theme paints the page with
+        // (a grey well, a dark sheet): and on a dark theme, whose inks are
+        // light, the output takes the light style's inks.
+        savedScreenStyle = style;
+        const RichTextEditStyle paper;
+        style.pageColor = paper.pageColor;
+        style.backgroundColor = paper.backgroundColor;
+        const int ink = (style.textColor.r * 299 + style.textColor.g * 587 + style.textColor.b * 114) / 1000;
+        if (ink > 128) {
+            style.textColor = paper.textColor;
+            style.linkColor = paper.linkColor;
+            style.quoteBarColor = paper.quoteBarColor;
+            style.quoteTextColor = paper.quoteTextColor;
+            style.codeTextColor = paper.codeTextColor;
+            style.codeBackgroundColor = paper.codeBackgroundColor;
+            style.codeBorderColor = paper.codeBorderColor;
+            style.ruleColor = paper.ruleColor;
+            style.pageBreakColor = paper.pageBreakColor;
+            style.listMarkerColor = paper.listMarkerColor;
+            style.tableBorderColor = paper.tableBorderColor;
+            style.tableGuideColor = paper.tableGuideColor;
+            style.imagePlaceholderColor = paper.imagePlaceholderColor;
+            style.borderColor = paper.borderColor;
+        }
     }
 
     printing = true;
@@ -7159,6 +7241,7 @@ void UltraCanvasRichTextEdit::RenderPrintPage(IRenderContext* ctx, int pageIndex
 void UltraCanvasRichTextEdit::EndPrintLayout() {
     if (!printing) return;
     printing = false;
+    style = savedScreenStyle;
     pageView = savedOutputView.pageView;
     zoom = savedOutputView.zoom;
     scrollOffset = savedOutputView.scrollOffset;
