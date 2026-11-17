@@ -282,6 +282,18 @@ version, it puts the previous code and database back and starts that again
 sudo Server/ChatCubeRelay/deploy/update.sh /path/to/Server/ChatCubeRelay
 ```
 
+Another layout than `deploy/chatcube-relay.service`'s is given through its
+settings, each named with a `CHATCUBE_` prefix: `CHATCUBE_RELAY_HOME` (the
+installed code, `/opt/chatcube-relay`), `CHATCUBE_RELAY_USER`,
+`CHATCUBE_RELAY_SERVICE`, `CHATCUBE_RELAY_ENV_FILE`, `CHATCUBE_RELAY_BACKUPS`,
+`CHATCUBE_KEEP_BACKUPS`, `CHATCUBE_SYSTEMCTL`, `CHATCUBE_RUN_AS` and
+`CHATCUBE_FORCE=1` (install even the version that runs) - the defaults and
+what each is for are at the top of the script. sudo clears the environment,
+so they go on its command line:
+`sudo CHATCUBE_RELAY_HOME=/srv/relay Server/ChatCubeRelay/deploy/update.sh ...`.
+Before update.sh 0.2.0 they had no prefix (`RELAY_HOME`, `KEEP_BACKUPS`, ...);
+an old name is still read when the new one is not set, and the script warns.
+
 ### Deploying from CI
 
 The `ChatCube relay` workflow tests every change to this directory, and on

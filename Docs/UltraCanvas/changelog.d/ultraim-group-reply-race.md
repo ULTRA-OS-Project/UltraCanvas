@@ -27,3 +27,12 @@
   `DirectProviderTests` now checks Bob's stored record keeps the new name
   right after a rename; the relay's tests cover every change raising the
   revision and the migration.
+- **The ChatCube relay's `deploy/update.sh` names its settings with a
+  `CHATCUBE_` prefix** (0.2.0): `CHATCUBE_RELAY_HOME`, `CHATCUBE_RELAY_USER`,
+  `CHATCUBE_RELAY_SERVICE`, `CHATCUBE_RELAY_ENV_FILE`,
+  `CHATCUBE_RELAY_BACKUPS`, `CHATCUBE_KEEP_BACKUPS`, `CHATCUBE_SYSTEMCTL`,
+  `CHATCUBE_RUN_AS` and `CHATCUBE_FORCE`, in line with the relay's own
+  `CHATCUBE_RELAY_*` settings. The unprefixed names of 0.1 are still read
+  when the new one is unset, with a warning. The installed copy on a server
+  (`/usr/local/sbin/chatcube-relay-update`) changes only when it is
+  installed again (README: Deploying from CI).
