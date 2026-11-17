@@ -41,6 +41,9 @@ Test-only endpoints (POST, JSON):
                                            sentMessage) to the sender's linked
                                            device here
     /_test/state       {}                  the accounts, groups and links
+    /_test/send_delay  {seconds}           "send" answers that much later (the
+                                           message delivered at once), so the
+                                           recipient's receipt comes first
 
 Runs until it is killed.
 """
@@ -335,9 +338,16 @@ def m_receive(params):
     return out
 
 
+SEND_DELAY = {"seconds": 0.0}     # /_test/send_delay: "send" answers this much later
+
+
 def m_send(params):
     number, _ = account_of(params)
-    return send_from(number, params)
+    result = send_from(number, params)
+    # Delivered already; the answer late - the recipient's receipt can come first.
+    if SEND_DELAY["seconds"] > 0:
+        time.sleep(SEND_DELAY["seconds"])
+    return result
 
 
 def m_remoteDelete(params):
@@ -541,6 +551,11 @@ def t_phone_send(body):
         return 400, {"error": str(e)}
 
 
+def t_send_delay(body):
+    SEND_DELAY["seconds"] = float(body.get("seconds") or 0)
+    return 200, {}
+
+
 def t_state(body):
     return 200, {
         "accounts": {n: {"uuid": a["uuid"], "linked": a["linked"], "queued": len(a["queue"])}
@@ -551,7 +566,7 @@ def t_state(body):
 
 
 TEST = {"/_test/scan": t_scan, "/_test/expire": t_expire, "/_test/phone_send": t_phone_send,
-        "/_test/state": t_state}
+        "/_test/state": t_state, "/_test/send_delay": t_send_delay}
 
 
 class Handler(BaseHTTPRequestHandler):
