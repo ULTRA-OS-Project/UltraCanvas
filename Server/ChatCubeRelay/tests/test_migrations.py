@@ -76,7 +76,7 @@ def test_a_relay_1_0_database_keeps_its_data(tmp_path):
     path = tmp_path / "r10.sqlite3"
     made_by(path, RELAY_1_0)
     store = Store(str(path))
-    assert store.migrations_applied == [2, 3, 4]
+    assert store.migrations_applied == [2, 3, 4, 5]
     assert store.get_user("u1").display_name == "Erin"
     assert store.pending("u1", 0)[0]["envelope"] == "sealed"
     contacts = store.get_contacts("u1")
@@ -89,7 +89,7 @@ def test_a_relay_1_1_database_starts_unconfirmed(tmp_path):
     path = tmp_path / "r11.sqlite3"
     made_by(path, RELAY_1_1)
     store = Store(str(path))
-    assert store.migrations_applied == [3, 4]
+    assert store.migrations_applied == [3, 4, 5]
     contacts = store.get_contacts("u1")
     # What 1.1 kept is kept - and not confirmed: nobody had confirmed it.
     assert contacts.email == "erin@example.org" and contacts.phone == "+4915123456789"
@@ -108,7 +108,7 @@ CREATE TABLE recoveries (recovery_id TEXT PRIMARY KEY, user_id TEXT, email_diges
                          attempts INTEGER NOT NULL DEFAULT 0);
 """)
     store = Store(str(path))
-    assert store.migrations_applied == [3, 4]
+    assert store.migrations_applied == [3, 4, 5]
     assert "poll_digest" in columns(store, "recoveries")
     store.close()
 
@@ -125,6 +125,19 @@ INSERT INTO group_members VALUES ('g1', 'u1');
     assert group.description == ""
     assert store.public_groups() == []
     assert "group_bans" in {r[0] for r in store._db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    store.close()
+
+
+def test_groups_from_before_1_6_start_at_revision_1(tmp_path):
+    path = tmp_path / "r15.sqlite3"
+    made_by(path, RELAY_1_1 + """
+INSERT INTO groups VALUES ('g1', 'Team', 'u1', 1);
+INSERT INTO group_members VALUES ('g1', 'u1');
+""")
+    store = Store(str(path))
+    assert store.get_group("g1").revision == 1
+    store.rename_group("g1", "Crew")
+    assert store.get_group("g1").revision == 2
     store.close()
 
 
