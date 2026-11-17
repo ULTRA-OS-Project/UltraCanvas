@@ -175,8 +175,23 @@ bool ReadWordDocument(const std::string& path, UCRichDocument& document) {
 constexpr size_t kFirstPageBlockCap = 200;
 constexpr double kPixelsPerPoint = 96.0 / 72.0;
 
+// A document's pictures are decoded by libvips, which knows its loaders only
+// once it has been initialised. An application has done that long before a
+// thumbnail is asked for; a headless caller (a test, a command-line tool) may
+// not have, and an uninitialised libvips crashes on the first picture. Same
+// gate the format inventory and the vector rasterizer use.
+bool EnsureImageSubsystem() {
+#ifdef HAS_LIBVIPS
+    static const bool ok = UCImageRaster::InitializeImageSubsysterm(nullptr);
+    return ok;
+#else
+    return true;
+#endif
+}
+
 std::shared_ptr<UCPixmap> RenderWordFirstPage(const std::string& path, const FileThumbnailRequest& r) {
     if (r.width <= 0 || r.height <= 0) return nullptr;
+    if (!EnsureImageSubsystem()) return nullptr;
     auto document = std::make_shared<UCRichDocument>();
     std::string error;
     if (!UCWordDocumentIO::Load(path, *document, error)) return nullptr;
