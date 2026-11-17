@@ -45,6 +45,9 @@ jobs:
       SSH_HOST: ${{ secrets.CHATCUBE_RELAY_SSH_HOST }}
       SSH_USER: ${{ secrets.CHATCUBE_RELAY_SSH_USER }}
       SSH_KNOWN_HOSTS: ${{ secrets.CHATCUBE_RELAY_SSH_KNOWN_HOSTS }}
+      # The server's SSH port, when not 22: a secret or a variable (a port
+      # is no secret), the secret first.
+      SSH_PORT: ${{ secrets.CHATCUBE_RELAY_SSH_PORT || vars.CHATCUBE_RELAY_SSH_PORT || '22' }}
       RELAY_URL: ${{ vars.CHATCUBE_RELAY_URL || 'https://relay-chatcube.ultraos.eu' }}
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +59,9 @@ jobs:
           [ -n "$SSH_HOST" ] || missing="$missing CHATCUBE_RELAY_SSH_HOST"
           [ -n "$SSH_USER" ] || missing="$missing CHATCUBE_RELAY_SSH_USER"
           [ -n "$SSH_KNOWN_HOSTS" ] || missing="$missing CHATCUBE_RELAY_SSH_KNOWN_HOSTS"
+          case "$SSH_PORT" in
+            ''|*[!0-9]*) echo "::error::CHATCUBE_RELAY_SSH_PORT is '$SSH_PORT', not a port number"; exit 1 ;;
+          esac
           if [ -z "$missing" ]; then
             echo "ok=1" >> "$GITHUB_OUTPUT"
             exit 0
@@ -74,12 +80,12 @@ jobs:
           # The server's key pinned: never trust on first use.
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           tar -C Server/ChatCubeRelay --exclude=__pycache__ -czf - . |
-            ssh -i ~/.ssh/relay_deploy -o BatchMode=yes "$SSH_USER@$SSH_HOST" \
+            ssh -i ~/.ssh/relay_deploy -o BatchMode=yes -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
               'rm -rf ~/chatcube-relay-src && mkdir -p ~/chatcube-relay-src && tar -C ~/chatcube-relay-src -xzf -'
       - name: Update the running relay
         if: steps.ready.outputs.ok == '1'
         run: |
-          ssh -i ~/.ssh/relay_deploy -o BatchMode=yes "$SSH_USER@$SSH_HOST" \
+          ssh -i ~/.ssh/relay_deploy -o BatchMode=yes -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
             'sudo -n /usr/local/sbin/chatcube-relay-update "$HOME/chatcube-relay-src"'
       - name: Ask the public address
         if: steps.ready.outputs.ok == '1'
