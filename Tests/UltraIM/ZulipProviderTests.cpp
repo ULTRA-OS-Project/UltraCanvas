@@ -7,8 +7,13 @@
 // by the other side, a picture and a file uploaded (progress) and fetched
 // back byte for byte, read, search, the event queue lost and registered
 // again without losing a message, leaving, and a shutdown that does not
-// wait for the long-poll.
+// wait for the long-poll; typing both ways (start and stop) in a direct chat,
+// a group direct message and a stream topic, nothing for one's own, a stop
+// sent only after a start; a typist's start told again while they type (no
+// new start sent), stopped by their expiry, by their message (just before
+// it), by their stop, and by signing out.
 // Skips without python3, unless ULTRAIM_TEST_ZULIP_REQUIRED is set.
+// Version: 0.2.0 - typing indicators both ways; the typist's start told again until stop, message or expiry
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -92,6 +97,14 @@ struct Events {
             if (e.type == type) out.push_back(e);
         }
         return out;
+    }
+    // Where the first match is in the list (-1: none).
+    int IndexOf(const std::function<bool(const UltraIMEvent&)>& match) {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (size_t i = 0; i < list.size(); ++i) {
+            if (match(list[i])) return static_cast<int>(i);
+        }
+        return -1;
     }
     int Count(const std::function<bool(const UltraIMEvent&)>& match) {
         std::lock_guard<std::mutex> lock(mutex);
@@ -274,6 +287,20 @@ std::string Call(const std::string& url, const std::string& method, const std::s
     UltraNetResponse response;
     UltraNet_HttpRequest(request, response);
     return response.GetBodyAsString();
+}
+
+// How many typing notifications the server has had from this user.
+int TypingSent(const std::string& url, const std::string& userId) {
+    UltraCanvas::JSONParseResult parsed;
+    const UltraCanvas::JSONValue answer = UltraCanvas::JSON::Parse(Call(url, "POST", "/_test/typing_counts"), &parsed);
+    return static_cast<int>(answer["counts"][userId].GetInteger(0));
+}
+
+std::function<bool(const UltraIMEvent&)> IsTyping(const std::string& conversationId, const std::string& who, bool on) {
+    return [=](const UltraIMEvent& x) {
+        return x.type == UltraIMEventType::TypingChange && x.conversationId == conversationId && x.contactId == who &&
+               x.isTyping == on;
+    };
 }
 
 #if !defined(_WIN32)
@@ -478,6 +505,66 @@ void TestEndToEnd(const std::string& url, const fs::path& base) {
             CHECK(messages[1].text == "Hi from Bob");
         }
     }
+
+    // ---- typing, both ways ----------------------------------------------------
+    CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::TypingIndicator));
+    // A direct chat.
+    CHECK(alice->SetTyping("dm:11", true));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:10", "10", true)));
+    CHECK(alice->SetTyping("dm:11", false));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:10", "10", false)));
+    CHECK(bob->SetTyping("dm:10", true));
+    CHECK(aliceEvents.WaitFor(IsTyping("dm:11", "11", true)));
+    CHECK(bob->SetTyping("dm:10", false));
+    CHECK(aliceEvents.WaitFor(IsTyping("dm:11", "11", false)));
+    // A group direct message: the same conversation as each side names it.
+    CHECK(carol->SetTyping("dm:10,11", true));
+    CHECK(aliceEvents.WaitFor(IsTyping("dm:11,12", "12", true)));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:10,12", "12", true)));
+    CHECK(carol->SetTyping("dm:10,11", false));
+    CHECK(aliceEvents.WaitFor(IsTyping("dm:11,12", "12", false)));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:10,12", "12", false)));
+    // A stream topic: everyone subscribed hears it.
+    CHECK(bob->SetTyping(topic, true));
+    CHECK(aliceEvents.WaitFor(IsTyping(topic, "11", true)));
+    CHECK(carolEvents.WaitFor(IsTyping(topic, "11", true)));
+    CHECK(alice->SetTyping(topic, true));
+    CHECK(bobEvents.WaitFor(IsTyping(topic, "10", true)));
+    CHECK(bob->SetTyping(topic, false));
+    CHECK(aliceEvents.WaitFor(IsTyping(topic, "11", false)));
+    CHECK(carolEvents.WaitFor(IsTyping(topic, "11", false)));
+    CHECK(alice->SetTyping(topic, false));
+    CHECK(bobEvents.WaitFor(IsTyping(topic, "10", false)));
+    CHECK(carolEvents.WaitFor(IsTyping(topic, "10", false)));
+    // A stop with no start before it, and the notes to oneself: not sent.
+    const int carolSent = TypingSent(url, "12");
+    CHECK(carolSent == 2);
+    CHECK(carol->SetTyping("dm:10", false));
+    CHECK(carol->SetTyping("dm:12", true));
+    CHECK(!carol->SetTyping("not-a-chat", true));
+    // (Sent after them, on the same worker: when it is through, so are they.)
+    CHECK(carol->SetTyping("dm:11", true));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:12", "12", true)));
+    CHECK(TypingSent(url, "12") == carolSent + 1);
+    CHECK(carol->SetTyping("dm:11", false));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:12", "12", false)));
+    // Nothing for one's own typing (the server hands it back to the typist's queues too).
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    CHECK(aliceEvents.Count([](const UltraIMEvent& x) {
+        return x.type == UltraIMEventType::TypingChange && x.contactId == "10";
+    }) == 0);
+    CHECK(bobEvents.Count([](const UltraIMEvent& x) {
+        return x.type == UltraIMEventType::TypingChange && x.contactId == "11";
+    }) == 0);
+    CHECK(carolEvents.Count([](const UltraIMEvent& x) {
+        return x.type == UltraIMEventType::TypingChange && x.contactId == "12";
+    }) == 0);
+    // Exactly one start and one stop each, in the direct chat.
+    CHECK(bobEvents.Count(IsTyping("dm:10", "10", true)) == 1);
+    CHECK(bobEvents.Count(IsTyping("dm:10", "10", false)) == 1);
+    CHECK(aliceEvents.Count([](const UltraIMEvent& x) {
+        return x.type == UltraIMEventType::TypingChange && x.providerId != "zulip";
+    }) == 0);
 
     // ---- edit: by its client id, as the window knows it ------------------------
     CHECK(!bob->EditMessage("dm:10", helloId, "mine now"));        // not Bob's
@@ -684,6 +771,95 @@ void TestEndToEnd(const std::string& url, const fs::path& base) {
     carol->Shutdown();
 }
 
+// The typists, as the provider keeps them: told again, expired, stopped.
+void TestTypingRefresh(const std::string& url, const fs::path& base) {
+    using Clock = std::chrono::steady_clock;
+    const auto msSince = [](Clock::time_point t) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - t).count();
+    };
+    ZulipTimings fast;
+    fast.longPollMs = 30000;
+    fast.retryMinMs = 200;
+    fast.retryMaxMs = 1000;
+    fast.typingRefreshMs = 300;
+    fast.typingExpireMs = 1500;
+    Events aliceEvents, bobEvents;
+    auto alice = std::make_unique<ZulipProvider>();
+    auto bob = std::make_unique<ZulipProvider>();
+    alice->SetTimings(fast);
+    bob->SetTimings(fast);
+    UltraIMConfig aliceConfig, bobConfig;
+    aliceConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "refresh-alice");
+    bobConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "refresh-bob");
+    CHECK(alice->Initialize(aliceConfig, aliceEvents.Sink()));
+    CHECK(bob->Initialize(bobConfig, bobEvents.Sink()));
+    UltraIMResult r;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice->SignIn(ApiKey(url, "alice"), cb); }, r));
+    CHECK(r.success);
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { bob->SignIn(ApiKey(url, "bob"), cb); }, r));
+    CHECK(r.success);
+    const auto starts = [&bobEvents]() { return bobEvents.Count(IsTyping("dm:10", "10", true)); };
+
+    // ---- told again while Alice types, with no new start from her; then expired ----
+    const int sent = TypingSent(url, "10");
+    auto started = Clock::now();
+    CHECK(alice->SetTyping("dm:11", true));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:10", "10", true)));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:10", "10", false)));
+    const auto expiredAfter = msSince(started);
+    std::printf("  typing expired after %lld ms, told %d times\n", static_cast<long long>(expiredAfter), starts());
+    CHECK(expiredAfter >= 1300 && expiredAfter < 4000);
+    CHECK(starts() >= 3);                                   // the start, and the refreshes
+    CHECK(TypingSent(url, "10") == sent + 1);               // one start only from Alice
+    {
+        // Nothing after the stop.
+        const int startsAtStop = starts();
+        std::this_thread::sleep_for(std::chrono::milliseconds(700));
+        CHECK(starts() == startsAtStop);
+        CHECK(bobEvents.Count(IsTyping("dm:10", "10", false)) == 1);
+        bobEvents.Clear();
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    CHECK(bobEvents.Count([](const UltraIMEvent& x) { return x.type == UltraIMEventType::TypingChange; }) == 0);
+
+    // ---- her message stops it: just before the message, long before the expiry ----
+    started = Clock::now();
+    CHECK(alice->SetTyping("dm:11", true));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:10", "10", true)));
+    CHECK(alice->SendText("dm:11", "Typed it", UltraIMSendOptions()));
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& x) { return IsReceived(x, "Typed it"); }));
+    CHECK(msSince(started) < 1300);
+    {
+        const int stopAt = bobEvents.IndexOf(IsTyping("dm:10", "10", false));
+        const int postAt = bobEvents.IndexOf([](const UltraIMEvent& x) { return IsReceived(x, "Typed it"); });
+        CHECK(stopAt >= 0 && stopAt == postAt - 1);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(700));
+    CHECK(bobEvents.Count(IsTyping("dm:10", "10", false)) == 1);   // not expired a second time
+    bobEvents.Clear();
+
+    // ---- her stop ends the refreshes ------------------------------------------------
+    CHECK(alice->SetTyping("dm:11", true));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:10", "10", true)));
+    CHECK(alice->SetTyping("dm:11", false));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:10", "10", false)));
+    const int startsAtStop = starts();
+    std::this_thread::sleep_for(std::chrono::milliseconds(700));
+    CHECK(starts() == startsAtStop);
+    CHECK(bobEvents.Count(IsTyping("dm:10", "10", false)) == 1);
+    bobEvents.Clear();
+
+    // ---- signing out stops whoever was typing --------------------------------------
+    CHECK(alice->SetTyping("dm:11", true));
+    CHECK(bobEvents.WaitFor(IsTyping("dm:10", "10", true)));
+    bob->SignOut();
+    CHECK(bobEvents.Count(IsTyping("dm:10", "10", false)) == 1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    CHECK(bobEvents.Count(IsTyping("dm:10", "10", false)) == 1);
+    alice->Shutdown();
+    bob->Shutdown();
+}
+
 void TestNoServer(const fs::path& base) {
     Events none;
     auto nobody = std::make_unique<ZulipProvider>();
@@ -723,6 +899,7 @@ int main() {
     }
     std::printf("  server %s\n", server.url.c_str());
     TestEndToEnd(server.url, base);
+    TestTypingRefresh(server.url, base);
     TestNoServer(base);
     server.Stop();
     fs::remove_all(base, ec);

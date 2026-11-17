@@ -9,7 +9,13 @@
 // delete, a picture, a file and a voice note uploaded (progress) and fetched
 // back byte for byte; pages of history, search, read, a group message,
 // leaving a channel and hiding a direct or group message (back with its next
-// post). Skips without python3, unless ULTRAIM_TEST_MATTERMOST_REQUIRED is set.
+// post); typing both ways in a direct message and a team channel (the
+// others' over the WebSocket), its stop said by the provider (after
+// typingStopMs, at once with their post, for everyone when the socket
+// drops), nothing for one's own, the socket dropped and connected again, and
+// a shutdown that does not wait. Skips without python3, unless
+// ULTRAIM_TEST_MATTERMOST_REQUIRED is set.
+// Version: 0.2.0 - typing indicators both ways (POST .../typing, the WebSocket)
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -85,6 +91,20 @@ struct Events {
             }
             return false;
         });
+    }
+    int Count(const std::function<bool(const UltraIMEvent&)>& match) {
+        std::lock_guard<std::mutex> lock(mutex);
+        int n = 0;
+        for (const auto& e : list) n += match(e) ? 1 : 0;
+        return n;
+    }
+    // Where the first match is in the list (-1: none).
+    int IndexOf(const std::function<bool(const UltraIMEvent&)>& match) {
+        std::lock_guard<std::mutex> lock(mutex);
+        for (size_t i = 0; i < list.size(); ++i) {
+            if (match(list[i])) return static_cast<int>(i);
+        }
+        return -1;
     }
     std::vector<UltraIMEvent> All(UltraIMEventType type) {
         std::lock_guard<std::mutex> lock(mutex);
@@ -733,6 +753,171 @@ void TestEndToEnd(const std::string& url, const fs::path& base) {
     carol->Shutdown();
 }
 
+std::string Get(const std::string& url, const std::string& path) {
+    UltraNetHttpRequest get;
+    get.url = url + path;
+    get.method = UltraNetHttpMethod::Get;
+    UltraNetResponse answer;
+    UltraNet_HttpRequest(get, answer);
+    return answer.GetBodyAsString();
+}
+
+// The user's WebSockets the server has signed in: open now, and ever.
+std::pair<int, int> Sockets(const std::string& url, const std::string& user) {
+    UltraCanvas::JSONParseResult parsed;
+    const UltraCanvas::JSONValue all = UltraCanvas::JSON::Parse(Get(url, "/_test/sockets"), &parsed);
+    return {static_cast<int>(all[user]["open"].GetInteger(0)), static_cast<int>(all[user]["opened"].GetInteger(0))};
+}
+
+bool WaitSockets(const std::string& url, const std::string& user, int open, int openedAtLeast) {
+    for (int i = 0; i < 200; ++i) {
+        const auto now = Sockets(url, user);
+        if (now.first == open && now.second >= openedAtLeast) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return false;
+}
+
+int TypingSent(const std::string& url, const std::string& user) {
+    UltraCanvas::JSONParseResult parsed;
+    const UltraCanvas::JSONValue all = UltraCanvas::JSON::Parse(Get(url, "/_test/typing_counts"), &parsed);
+    return static_cast<int>(all[user].GetInteger(0));
+}
+
+std::function<bool(const UltraIMEvent&)> IsTyping(const std::string& conversationId, const std::string& who, bool on) {
+    return [=](const UltraIMEvent& x) {
+        return x.type == UltraIMEventType::TypingChange && x.conversationId == conversationId && x.contactId == who &&
+               x.isTyping == on;
+    };
+}
+
+void TestTyping(const std::string& url, const fs::path& base) {
+    using Clock = std::chrono::steady_clock;
+    const auto msSince = [](Clock::time_point t) {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - t).count();
+    };
+    MattermostTimings fast;
+    fast.pollMs = 300;
+    fast.typingStopMs = 3000;
+    fast.socketRetryMinMs = 200;
+    fast.socketRetryMaxMs = 1000;
+    Events carolEvents, daveEvents, aliceEvents;
+    auto carol = std::make_unique<MattermostProvider>();
+    auto dave = std::make_unique<MattermostProvider>();
+    auto alice = std::make_unique<MattermostProvider>();
+    UltraIMConfig carolConfig, daveConfig, aliceConfig;
+    carolConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "typing-carol");
+    daveConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "typing-dave");
+    aliceConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "typing-alice");
+    for (auto* p : {carol.get(), dave.get(), alice.get()}) p->SetTimings(fast);
+    CHECK(carol->Initialize(carolConfig, carolEvents.Sink()));
+    CHECK(dave->Initialize(daveConfig, daveEvents.Sink()));
+    CHECK(alice->Initialize(aliceConfig, aliceEvents.Sink()));
+    CHECK(UltraIM_HasCapability(carol->GetCapabilities(), UltraIMCapabilityFlags::TypingIndicator));
+    UltraIMResult r;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { carol->SignIn(Pat(url, "carol"), cb); }, r));
+    CHECK(r.success);
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { dave->SignIn(Pat(url, "dave"), cb); }, r));
+    CHECK(r.success);
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { alice->SignIn(Pat(url, "alice"), cb); }, r));
+    CHECK(r.success);
+    const std::string carolId = carol->GetLocalUserId();
+    const std::string daveId = dave->GetLocalUserId();
+    // Each has its WebSocket, signed in.
+    CHECK(WaitSockets(url, "carol", 1, 1));
+    CHECK(WaitSockets(url, "dave", 1, 1));
+    CHECK(WaitSockets(url, "alice", 1, 1));
+
+    // ---- a direct message ---------------------------------------------------------
+    UltraIMConversation chat;
+    CHECK(WaitConversation([&](UltraIMConversationCallback cb) { carol->AddContact("@dave", cb); }, chat));
+    const std::string dm = chat.conversationId;
+    CHECK(daveEvents.WaitFor([&](const UltraIMEvent& x) {
+        return x.type == UltraIMEventType::ConversationUpdate && x.conversationId == dm;
+    }));
+    CHECK(!dave->SetTyping("no-such-channel-at-all-here", true));
+    // Carol types: Dave sees it, and its end - Mattermost says none - after typingStopMs.
+    auto started = Clock::now();
+    CHECK(carol->SetTyping(dm, true));
+    CHECK(daveEvents.WaitFor(IsTyping(dm, carolId, true)));
+    CHECK(msSince(started) < 2000);
+    started = Clock::now();
+    CHECK(daveEvents.WaitFor(IsTyping(dm, carolId, false)));
+    const auto quiet = msSince(started);
+    std::printf("  typing stopped by itself after %lld ms\n", static_cast<long long>(quiet));
+    CHECK(quiet >= 2000 && quiet < 6000);
+    // "Stopped" sends nothing: Mattermost has no word for it.
+    const int carolSent = TypingSent(url, "carol");
+    CHECK(carolSent == 1);
+    CHECK(carol->SetTyping(dm, false));
+    // Dave types, then posts: the stop comes with the post, before typingStopMs.
+    started = Clock::now();
+    CHECK(dave->SetTyping(dm, true));
+    CHECK(carolEvents.WaitFor(IsTyping(dm, daveId, true)));
+    CHECK(dave->SendText(dm, "typed it", UltraIMSendOptions()));
+    CHECK(carolEvents.WaitFor(IsTyping(dm, daveId, false)));
+    CHECK(msSince(started) < 2500);
+    CHECK(carolEvents.WaitFor([](const UltraIMEvent& x) { return IsReceived(x, "typed it"); }));
+    const int stopAt = carolEvents.IndexOf(IsTyping(dm, daveId, false));
+    const int postAt = carolEvents.IndexOf([](const UltraIMEvent& x) { return IsReceived(x, "typed it"); });
+    CHECK(stopAt >= 0 && stopAt < postAt);
+    CHECK(TypingSent(url, "carol") == carolSent);
+
+    // ---- a team channel: everyone in it -------------------------------------------
+    const std::string townSquare = IdByTitle(Conversations(*carol), "Town Square (Team A)");
+    CHECK(!townSquare.empty());
+    CHECK(carol->SetTyping(townSquare, true));
+    CHECK(daveEvents.WaitFor(IsTyping(townSquare, carolId, true)));
+    CHECK(aliceEvents.WaitFor(IsTyping(townSquare, carolId, true)));
+    CHECK(aliceEvents.WaitFor(IsTyping(townSquare, carolId, false)));
+
+    // ---- nothing for one's own (the server sends it to the typist's socket too) ----
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    CHECK(carolEvents.Count([&](const UltraIMEvent& x) {
+        return x.type == UltraIMEventType::TypingChange && x.contactId == carolId;
+    }) == 0);
+    CHECK(daveEvents.Count([&](const UltraIMEvent& x) {
+        return x.type == UltraIMEventType::TypingChange && x.contactId == daveId;
+    }) == 0);
+
+    // ---- the socket dropped: the typists stop at once, and it connects again -------
+    CHECK(daveEvents.WaitFor(IsTyping(townSquare, carolId, false)));
+    daveEvents.Clear();
+    CHECK(carol->SetTyping(townSquare, true));
+    CHECK(daveEvents.WaitFor(IsTyping(townSquare, carolId, true)));
+    const int daveOpened = Sockets(url, "dave").second;
+    UltraNetHttpRequest drop;
+    drop.url = url + "/_test/drop_sockets";
+    drop.method = UltraNetHttpMethod::Post;
+    drop.headers.Set("Content-Type", "application/json");
+    const std::string who = "{\"user\": \"dave\"}";
+    drop.body.assign(who.begin(), who.end());
+    UltraNetResponse dropped;
+    started = Clock::now();
+    UltraNet_HttpRequest(drop, dropped);
+    CHECK(dropped.statusCode == 200);
+    CHECK(daveEvents.WaitFor(IsTyping(townSquare, carolId, false)));
+    CHECK(msSince(started) < 2500);
+    CHECK(WaitSockets(url, "dave", 1, daveOpened + 1));
+    CHECK(dave->GetConnectionState() == UltraIMConnectionState::Connected);
+    daveEvents.Clear();
+    CHECK(carol->SetTyping(dm, true));
+    CHECK(daveEvents.WaitFor(IsTyping(dm, carolId, true)));
+
+    // ---- signing out closes it; a shutdown does not wait --------------------------
+    dave->SignOut();
+    CHECK(WaitSockets(url, "dave", 0, 0));
+    started = Clock::now();
+    carol->Shutdown();
+    alice->Shutdown();
+    dave->Shutdown();
+    const auto took = msSince(started);
+    std::printf("  shutdown with the typing socket open: %lld ms\n", static_cast<long long>(took));
+    CHECK(took < 3000);
+    CHECK(WaitSockets(url, "carol", 0, 0));
+    CHECK(WaitSockets(url, "alice", 0, 0));
+}
+
 void TestMultiFactor(const std::string& url, const fs::path& base) {
     MattermostTimings fast;
     fast.pollMs = 300;
@@ -823,6 +1008,7 @@ int main() {
     std::printf("  server %s\n", server.url.c_str());
     TestEndToEnd(server.url, base);
     TestMultiFactor(server.url, base);
+    TestTyping(server.url, base);
     server.Stop();
     fs::remove_all(base, ec);
 #endif

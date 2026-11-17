@@ -26,7 +26,17 @@
 //     (POST /api/v1/user_uploads) and sent as a link to it;
 //   - edit and delete one's own (for everyone), read (the "read" flag),
 //     leave (a topic muted and taken off the list, a direct chat taken off
-//     the list until its next message); no reply, typing, presence or calls.
+//     the list until its next message); no reply, presence or calls;
+//   - typing both ways: SetTyping posts POST /api/v1/typing ("direct" to the
+//     chat's people, Zulip 7.0+ - "private" before; a stream topic by
+//     stream_id and topic, Zulip 8.0+: a server that refuses it is not asked
+//     again), and the queue's "typing" events (start / stop) are
+//     TypingChange, the typist's user id the contactId. Zulip's clients say
+//     "start" again only every ~10 s: a typist's start is told again every
+//     ZulipTimings::typingRefreshMs (a window lets it go after a few
+//     seconds) until their stop, their message in that conversation (the
+//     stop told just before it) or typingExpireMs after their last start (as
+//     Zulip's own clients give up); a sign-out or a queue lost stops them all.
 //
 // Sign-in (UltraIMLoginType::UsernamePassword): credentials.server is the
 // organization's address ("chat.zulip.org" or a full https:// address),
@@ -36,6 +46,8 @@
 // "e-mail:API key". The address, e-mail and key are kept in UltraVault; a
 // SignIn with nothing in it resumes them.
 //
+// Version: 0.2.0 - typing indicators both ways (POST /api/v1/typing, the queue's "typing" events); a
+//                  typist's start told again every typingRefreshMs until their stop, message or expiry
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -46,6 +58,7 @@
 #include "DataFormats/UltraCanvasJSON.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -65,6 +78,8 @@ struct ZulipTimings {
     int retryMinMs = 1000;          // the first wait after the event queue could not be reached
     int retryMaxMs = 30000;         // the longest
     int topicsPerStream = 30;       // the newest topics of each stream listed
+    int typingRefreshMs = 4000;     // a typist's start told again this often (Zulip repeats it every ~10 s)
+    int typingExpireMs = 15000;     // ... until this long after their last start with no stop: stopped
 };
 
 // The answer of one request: the status and the body as JSON.
@@ -84,7 +99,7 @@ public:
 
     std::string GetProviderId() const override { return providerId_; }
     std::string GetDisplayName() const override { return "Zulip"; }
-    std::string GetVersion() const override { return "0.1.0"; }
+    std::string GetVersion() const override { return "0.2.0"; }
     UltraIMCapabilityFlags GetCapabilities() const override;
     UltraIMLoginType GetLoginType() const override { return UltraIMLoginType::UsernamePassword; }
 
@@ -151,6 +166,9 @@ public:
     UltraIMDeleteChoices GetDeleteChoices(const std::string& conversationId,
                                           const std::string& messageId) const override;
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
+    // POST /api/v1/typing, on the worker: start, and stop when a start was
+    // sent. Notes to oneself: nothing to tell.
+    UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
     void SetTimings(const ZulipTimings& timings) { timings_ = timings; }
     std::string GetServerUrl() const;
@@ -201,6 +219,11 @@ private:
     void WaitEvents(int ms);
     void HandleEvent(const UltraCanvas::JSONValue& event);
     void CatchUp();
+    void Typing(const UltraCanvas::JSONValue& event);
+    // The typists: told again, expired, stopped (each with emitMutex_ taken first).
+    void TypingTimerLoop();
+    void TypingStopped(const std::string& conversationId, const std::string& userId);
+    void StopAllTyping();
     void Received(const UltraCanvas::JSONValue& message, const std::vector<UltraCanvas::JSONValue>& flags,
                   const std::string& localId);
 
@@ -243,6 +266,7 @@ private:
     std::map<std::string, Chat> chats_;                  // conversation id -> chat
     std::set<std::string> hidden_;                       // conversations left (kept in the vault)
     std::map<int64_t, UltraIMMessage> byId_;             // message id -> message (for edit, delete, download)
+    std::set<int64_t> deletedIds_;                       // message ids whose delete was told
     std::map<int64_t, std::string> linkLines_;           // message id -> the upload's link line left out of its text
     std::map<std::string, std::string> clientOfMessage_; // our message id -> the client id it was sent under
     std::map<std::string, std::string> pendingLocal_;    // local id sent -> its content, the echo not met yet
@@ -250,6 +274,9 @@ private:
     std::string queueId_;
     int64_t     lastEventId_ = -1;
     bool        authLost_ = false;
+    std::set<std::string> typingTo_;                     // conversations told "start" and not "stop" yet
+    bool        streamTypingRefused_ = false;            // the server takes no typing in a topic (before Zulip 8)
+    bool        directTypingOld_ = false;                // the server wants type=private (before Zulip 7)
 
     // The worker.
     std::mutex workMutex_;
@@ -264,6 +291,17 @@ private:
     std::condition_variable eventsWake_;
     std::atomic<bool> stopEvents_{false};
     std::thread events_;
+
+    // Who types where: (conversation, user) -> their last start, and when it was last told.
+    struct Typist {
+        std::chrono::steady_clock::time_point lastStart;
+        std::chrono::steady_clock::time_point lastTold;
+    };
+    std::mutex typingMutex_;
+    std::condition_variable typingWake_;
+    bool typingTimerStop_ = false;
+    std::map<std::pair<std::string, std::string>, Typist> typists_;
+    std::thread typingTimer_;
 };
 
 } // namespace UltraIMZulip
