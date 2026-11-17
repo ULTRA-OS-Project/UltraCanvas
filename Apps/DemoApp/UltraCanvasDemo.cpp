@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.27 - Info Graphics: the "Waves info graphic" placeholder removed (Timeline Diagram > Wave)
 // Version: 1.0.26 - Charts > Ridgeline Chart (UltraCanvasRidgelineChart)
 // Version: 1.0.25 - Modules > Theme (UltraCanvasThemeExamples.cpp)
 // Version: 1.0.24 - Android: the tree filter's place and text are logged for the emulator test
@@ -1864,12 +1865,8 @@ namespace UltraCanvas {
                 .AddVariant("circlediagram", Tr("Node Count Sweep"))
                 .AddVariant("circlediagram", Tr("Outside Labels"));
 
-        // Nothing is built for this one: no element, no plugin, no renderer —
-        // the demo page is the placeholder text itself. "Planned", like the
-        // specification-only modules below: there is nothing partial to show.
-        infoBuilder.AddItem("wavesinfo", Tr("Waves info graphic"), Tr("Waves info graphic"),
-                            ImplementationStatus::Planned,
-                            [this]() { return CreatePartiallyImplementedExamples(Tr("Waves info graphic is not ready yet")); });
+        // ("wavesinfo" placeholder removed: the wave infographic is the
+        // Timeline Diagram's Wave design, registered above as its "Wave" variant.)
 
         // ("matrix" placeholder removed: the matrix diagram is implemented and
         // registered in the Diagrams section as "matrixdiagram".)

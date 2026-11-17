@@ -17,3 +17,6 @@
   demo's Timeline Diagram page has a Wave tab and a Wave Axis control, and
   `Tests/TimelineDiagramWaveTest.cpp` holds the layout to its promises at six
   axis angles, 1 to 12 items, reversed, by date and all on one side.
+- **Demo: the "Waves info graphic" placeholder is gone** from Info Graphics.
+  It was a Planned entry that only said it was not ready; the wave
+  infographic is now Timeline Diagram's Wave variant.
