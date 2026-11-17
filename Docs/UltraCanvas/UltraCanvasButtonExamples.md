@@ -601,10 +601,33 @@ instead of being resampled across two pixels. For a line icon to be sharp it
 also has to be shown at the size of the grid it was drawn on (a 24-unit
 icon at 24 px, not 22).
 
+The label is centred by default, and a label of one character is centred on
+its ink. A word is centred on its line box, which puts its capitals in the
+middle and keeps a row of buttons level. A lone symbol - `"+"`, `"×"`, `"‹"`,
+a check mark - has no capitals, and the font puts it anywhere in that box:
+a `"+"` of 26 px sat 2.5 px low in a round 48 px button. So a one-character
+label, centred (the default `textAlign`), has its drawn shape put in the
+middle of the button, across and down, on whole pixels. Nothing needs to be
+set for it, and an icon instead of the character is not needed either:
+
+```cpp
+#include "UltraCanvasButton.h"
+using namespace UltraCanvas;
+
+auto add = CreateButton("add", 0, 0, 48, 48, "+");
+ButtonStyle round = add->GetStyle();
+round.cornerRadius = 24.0f;
+round.fontSize = 26.0f;
+add->SetStyle(round);
+```
+
+`Tests/ButtonTextCentringTest.cpp` measures it from the drawn pixels.
+
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.5.0 | 2026-11-17 | A one-character label is centred on its ink (Rendering) |
 | 1.4.0 | 2026-11-14 | `SetColors` / `SetTextColors` with fewer colours derive the other states for the look (a dark theme's disabled button sinks toward the ground); a font size set by hand survives a theme change (Style Configuration, The theme and the button's variant) |
 | 1.3.1 | 2026-11-11 | A container sized to its content grows with its buttons: one more layout pass, run at the next frame (A Fixed Width Is a Minimum) |
 | 1.3.0 | 2026-11-01 | `ButtonStyle::wrap` / `SetWrap()`: the text on several lines (A Tile: an Icon over a Wrapped Name) |

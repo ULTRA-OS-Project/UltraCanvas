@@ -157,7 +157,8 @@ inline void MakeRound(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& but
 }
 
 // The round button that adds a task: a circle with a plus, the theme's
-// primary colour.
+// primary colour. The framework centres a one-character label on its ink,
+// so the "+" sits in the middle of the circle.
 inline std::shared_ptr<UltraCanvas::UltraCanvasButton> MakeAddButton(const std::string& id) {
     auto button = UltraCanvas::CreateButton(id, 0, 0, kAddButtonSize, kAddButtonSize, "+");
     MakeRound(button, kAddButtonSize, UltraCanvas::ButtonVariant::Primary);
