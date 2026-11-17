@@ -37,6 +37,11 @@ over these.
 | `MarketSearch.dc.html` | search and browse: the department chips with counts, the price, the customer rating, the delivery and the condition filters work and show as removable active filters (state in the script); listings with the seller, the delivery and a sponsored mark | page |
 | `MarketBasket.dc.html` | the basket grouped by seller with the quantity, Save for later and the delivery choice per seller, the free-delivery threshold, Saved for later, the order summary with the voucher, the payment methods and Proceed to checkout; the checkout steps in the header | page |
 | `MarketPhoneHome.dc.html` | the marketplace's home on a phone: delivery address and basket, search, department chips, the sale, Today's deals, Best sellers, Buy again, the bottom tab bar | 390 × 844 |
+| `VideoHome.dc.html` | the video portal variant's home: the sections rail with subscriptions and Explore, topic chips, the video grid with durations, the watched bar and a live viewer count, Shorts, From your subscriptions, why watch here | page |
+| `VideoWatch.dc.html` | the watch page: the player with chapters on the seek bar, captions, quality, speed, picture in picture and theatre, the channel row with Subscribe and Support, like, share, download and save, the description with chapters and the licence, comments with a pinned one and the creator's reply, up next with autoplay, the transcript | page |
+| `VideoChannel.dc.html` | a channel (ULTRA OS Project): banner, avatar, handle and counts, Subscribe and Support, the tabs, search in the channel; the sort (Latest, Popular, Oldest) and the kind (All, Videos, Live, Shorts) filters work (state in the script); an upcoming stream and a short in the grid | page |
+| `VideoStudio.dc.html` | the creator's Studio: the channel figures, an upload in progress with the format check, chapters from UltraVideo's markers and captions from the subtitle track, the details form (title, description, thumbnail, playlist, language, visibility, audience, licence), the videos table with visibility, views, comments, likes and a copyright claim | page |
+| `VideoPhoneWatch.dc.html` | the watch page on a phone: the player on top, title, channel and Subscribe, the action chips, the current chapter, comments, up next, the bottom tab bar with Upload | 390 × 844 |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -146,13 +151,32 @@ accent is orange `#EA580C` (the `accent` prop). The words are the standard
 string set's `media/locale/en/base/Shopping.json` (Basket, Add to basket,
 Proceed to checkout, Free shipping, Estimated delivery, Deal, Best
 sellers, Guest checkout, Voucher code, Compare, In stock, Low stock);
-payment follows
-[`Docs/Research/UltraPressDesignProposal.md`](../../Research/UltraPressDesignProposal.md)
-§7.5: hosted checkout pages by redirect, card data never in the
-marketplace, invoices as PDF and XRechnung through UltraFIBU. Nothing of
+payment is the store's own, as [the store's README](../README.md)
+*Payment* decides it: the payment service `Server/UltraStorePay` and
+Skrill Quick Checkout's hosted page (cards, the Skrill wallet, local
+methods), card data never in the marketplace, with the seller's invoice
+on every order. These variants are UltraStore's own business, not
+UltraPress's shop module. Nothing of
 this exists in the catalog or the services yet: products, sellers,
 prices, ratings, stock, delivery and every figure are invented sample
 data, and the pictures are drawn `[PHOTO]` placeholders.
+
+The `Video*` pages are the **video portal variant**: the shop's chrome as
+a portal in the manner of YouTube or Vimeo, with channels, subscriptions,
+uploads, live streams, Shorts and comments, the accent red `#DC2626` (the
+`accent` prop). What exists in the repository: the UltraCanvas video
+element plays a file or a URL through GStreamer, Media Foundation or
+AVFoundation, with poster frames and the codec registry that says what a
+build decodes ([`UltraCanvasVideo.md`](../../UltraCanvas/UltraCanvasVideo.md),
+[`UltraCanvasMediaCodecRegistry.md`](../../UltraCanvas/UltraCanvasMediaCodecRegistry.md)),
+and UltraVideo exports MP4 and WebM, which the Studio's upload builds on
+(chapters from the timeline's markers, captions from the subtitle track).
+What does not exist: a portal service with channels, uploads, renditions,
+comments, subscriptions and support payments, which would go through the
+store's own payment service. The portal is UltraStore's own business, not
+UltraPress's. Every channel, video, count and figure is invented sample
+data; the ULTRA OS Project channel is the team's own, its videos invented;
+the pictures are drawn `[THUMBNAIL]` placeholders.
 
 The `Super*` pages are a **proposal** for a third tier, later: the operator
 of UltraStore running a marketplace in which other publishers (merchants)
