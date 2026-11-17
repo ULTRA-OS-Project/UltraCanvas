@@ -1,7 +1,7 @@
 # UltraToDo
 
 The task list of ULTRA OS. A round **+** at the top left writes a task; below
-it every task is a pastel panel with round corners, the most urgent first.
+it every task is a panel with round corners and a pastel border, the most urgent first.
 A task can have a planned end, an estimate of the time it takes, a
 description, files attached to it as to a mail (shown as thumbnails), a
 reminder before it has to be started and an alarm at its planned end.
@@ -56,9 +56,9 @@ list, from the top:
 | sky | without a planned end, in the order they were written |
 | mist | done, the latest finished first |
 
-Within each group the earliest latest start comes first. Under a dark look
-the pastels are mixed into the theme's panel colour, so the text stays
-readable.
+Within each group the earliest latest start comes first. The pastel is the
+panel's border; the fill is a faint tint of it over the theme's panel
+colour, so the text stays readable in either look.
 
 ## Reminders and alarms
 

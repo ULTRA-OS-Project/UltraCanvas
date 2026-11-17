@@ -7,10 +7,12 @@
   can be started and still be finished by its planned end (planned end minus
   estimated time), not by the planned end alone; tasks without a date follow,
   finished ones last.
-- **Pastel panels with round corners**, one per task, coloured by urgency:
-  rose overdue, peach "start now", butter within a day, mint later, sky
-  without a date, mist done. Under a dark look the pastels are mixed into the
-  theme's panel colour.
+- **Panels with round corners**, one per task, coloured by urgency: rose
+  overdue, peach "start now", butter within a day, mint later, sky without a
+  date, mist done. The pastel is the panel's border; its fill is a faint tint
+  of the same pastel over the theme's panel colour, so the text sits on an
+  almost plain ground. Under a dark look the border is mixed into the panel
+  colour too.
 - **Attachments with thumbnails**: documents, pictures and any other file are
   copied into the task's folder and shown as thumbnails (a photo itself, a
   PDF's first page, a document's first lines, else the type's icon); a click

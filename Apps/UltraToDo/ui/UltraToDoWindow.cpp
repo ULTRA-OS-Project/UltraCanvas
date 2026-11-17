@@ -1,5 +1,6 @@
 // Apps/UltraToDo/ui/UltraToDoWindow.cpp
 // See UltraToDoWindow.h.
+// Version: 0.2.0 - the panels' pastel is their border, their fill a faint tint of it
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraToDoWindow.h"
@@ -224,7 +225,10 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildPanel(const ToDoTask
 
     auto panel = CreateContainer(id, 0, 0, 0, 0);
     Theme::ApplyPanel(panel, pastel);
-    if (task.id == markedTask_) panel->SetBorders(3.0f, Theme::PastelMark(Theme::Lavender()), Theme::kPanelRadius);
+    // The task a notification was clicked for: its border in the strong
+    // lavender of a mark instead of its pastel.
+    if (task.id == markedTask_)
+        panel->SetBorders(Theme::kPanelBorder, Theme::PastelMark(Theme::Lavender()), Theme::kPanelRadius);
     panel->SetPadding(14, 16, 12, 16);
     panel->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     panel->size.height = CSSLayout::Dimension::Auto();
@@ -382,8 +386,7 @@ void UltraToDoWindow::ApplyLook() {
     if (heading_) heading_->SetTextColor(Theme::Ink());
     if (summary_) summary_->SetTextColor(Theme::InkMuted());
     if (notice_) {
-        notice_->SetBackgroundColor(Theme::Pastel(Theme::Peach()));
-        notice_->SetBorders(1.0f, Theme::PastelLine(Theme::Peach()), Theme::kPanelRadius);
+        Theme::ApplyPanel(notice_, Theme::Peach());
         notice_->SetTextColor(Theme::Ink());
     }
     Rebuild();
@@ -534,8 +537,7 @@ void UltraToDoWindow::Announce(const std::vector<std::pair<ToDoTask, ToDoNotice>
     if (notice_) {
         notice_->SetText(text);
         const Color pastel = alarm ? Theme::Rose() : Theme::Peach();
-        notice_->SetBackgroundColor(Theme::Pastel(pastel));
-        notice_->SetBorders(1.0f, Theme::PastelLine(pastel), Theme::kPanelRadius);
+        Theme::ApplyPanel(notice_, pastel);
         notice_->SetVisible(true);
     }
     markedTask_ = notices.front().second.taskId;

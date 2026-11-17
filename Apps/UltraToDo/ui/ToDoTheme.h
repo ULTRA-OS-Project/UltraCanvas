@@ -1,14 +1,17 @@
 // Apps/UltraToDo/ui/ToDoTheme.h
-// UltraToDo's look: pastel panels with round corners. A task's panel takes
-// its colour from how urgent the task is - rose for overdue, peach for "start
+// UltraToDo's look: panels with round corners, a pastel border round a
+// faint tint of the same pastel. A task's panel takes its colour from how
+// urgent the task is - rose for overdue, peach for "start
 // now", butter for the next day, mint for later, sky for a task without a
 // date, mist for a finished one - so the list reads at a glance before a
 // word of it is read.
 //
-// The pastels are the light look's. Under a dark theme each is mixed into
-// the theme's panel colour, which keeps the hue and the theme's ink readable
-// on it; the inks, the lines and the sizes are the theme's roles
+// The pastels are the light look's. The fill is always the theme's panel
+// colour with a little of the pastel in it, which keeps the theme's ink
+// readable on it; under a dark theme the border is mixed into the panel
+// colour too; the inks, the lines and the sizes are the theme's roles
 // (UltraCanvasTheme.h) throughout.
+// Version: 0.3.0 - the pastel is the panel's border; the fill a faint tint of it
 // Version: 0.2.0 - buttons and dialog texts by their role in the theme, following it
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -47,13 +50,17 @@ inline UltraCanvas::Color Shade(const UltraCanvas::Color& c, int by) {
     return UltraCanvas::Color(step(c.r), step(c.g), step(c.b), c.a);
 }
 
-// A pastel as it is under the light look, mixed into the panel under a dark one.
-inline UltraCanvas::Color Pastel(const UltraCanvas::Color& light) {
-    return Dark() ? Mix(Roles().panel, light, 0.26f) : light;
+// A panel's border: the pastel itself - its main colour - under the light
+// look; under a dark one the pastel mixed into the panel colour, still
+// clearly that hue.
+inline UltraCanvas::Color PanelBorder(const UltraCanvas::Color& light) {
+    return Dark() ? Mix(Roles().panel, light, 0.62f) : light;
 }
-// The line around a pastel panel: the same hue, a step stronger.
-inline UltraCanvas::Color PastelLine(const UltraCanvas::Color& light) {
-    return Dark() ? Mix(Roles().panel, light, 0.48f) : Shade(light, -30);
+// A panel's fill: a faint tint of the same hue over the theme's panel
+// colour, so the text sits on an almost plain ground and the border carries
+// the colour.
+inline UltraCanvas::Color PanelFill(const UltraCanvas::Color& light) {
+    return Mix(Roles().panel, light, Dark() ? 0.12f : 0.30f);
 }
 // A full-strength mark in a pastel's hue (the urgency pill).
 inline UltraCanvas::Color PastelMark(const UltraCanvas::Color& light) {
@@ -101,17 +108,19 @@ constexpr float kPagePadding   = 18.0f;
 constexpr float kGap           = 12.0f;
 constexpr float kInnerGap      = 8.0f;
 constexpr float kPanelRadius   = 16.0f;
+constexpr float kPanelBorder   = 3.0f;    // wide enough for a pastel to read as a colour
 constexpr float kControlHeight = 28.0f;
 constexpr float kAddButtonSize = 48.0f;
 constexpr float kThumbWidth    = 96.0f;
 constexpr float kThumbHeight   = 68.0f;
 
-// A pastel panel with round corners.
-inline void ApplyPanel(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>& panel,
+// A panel with round corners: the pastel as its border, a faint tint of it
+// as its fill. Any element - a container, the reminder line's label.
+inline void ApplyPanel(const std::shared_ptr<UltraCanvas::UltraCanvasUIElement>& panel,
                        const UltraCanvas::Color& pastel, float radius = kPanelRadius) {
     if (!panel) return;
-    panel->SetBackgroundColor(Pastel(pastel));
-    panel->SetBorders(1.0f, PastelLine(pastel), radius);
+    panel->SetBackgroundColor(PanelFill(pastel));
+    panel->SetBorders(kPanelBorder, PanelBorder(pastel), radius);
 }
 
 // A button with fully round ends, coloured by its role in the theme
