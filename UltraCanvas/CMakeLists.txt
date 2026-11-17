@@ -4831,6 +4831,35 @@ else()
     message(STATUS "  [−] UltraIM provider Zulip - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
+# ----- UltraIM provider: Signal ------------------------------------------------
+# Signal through signal-cli's JSON-RPC daemon (Plugins/UltraIM/signal/): this
+# device linked to the phone's Signal account by a QR code, direct messages
+# and groups, attachments, replies, edits, deletes. signal-cli (GPL-3.0, a
+# separate program on Signal's own libsignal) is not linked: the provider
+# talks HTTP to a daemon the user runs, or starts one it finds. An archive the
+# tests link, and the module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_signal_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/signal)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_signal_dir}/SignalModule.cpp)
+    file(GLOB _ultraim_signal_sources ${_ultraim_signal_dir}/Signal*.cpp)
+    list(REMOVE_ITEM _ultraim_signal_sources ${_ultraim_signal_dir}/SignalModule.cpp)
+    add_library(UltraIMSignalCore STATIC ${_ultraim_signal_sources})
+    set_target_properties(UltraIMSignalCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMSignalCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMSignalCore PUBLIC ${_ultraim_signal_dir})
+    target_link_libraries(UltraIMSignalCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    add_library(UltraIMSignalPlugin MODULE ${_ultraim_signal_dir}/SignalModule.cpp)
+    set_target_properties(UltraIMSignalPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_signal"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMSignalPlugin PRIVATE UltraIMSignalCore)
+    message(STATUS "  [✓] UltraIM provider Signal - ENABLED (needs signal-cli at run time)")
+else()
+    message(STATUS "  [−] UltraIM provider Signal - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
 # ----- UltraIM provider: Telegram ----------------------------------------------
 # On TDLib through its JSON interface (Plugins/UltraIM/telegram/), loaded at
 # run time: nothing of TDLib is linked, so the provider builds everywhere and

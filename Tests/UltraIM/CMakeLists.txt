@@ -102,6 +102,17 @@ if(TARGET UltraIMZulipCore)
     set_tests_properties(ZulipProviderTests PROPERTIES TIMEOUT 300)
 endif()
 
+# Signal: against signal_fake_daemon.py, a stand-in for signal-cli's HTTP
+# JSON-RPC daemon (standard-library python3); skips without python3.
+if(TARGET UltraIMSignalCore)
+    add_executable(SignalProviderTests SignalProviderTests.cpp)
+    target_compile_features(SignalProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(SignalProviderTests PRIVATE UltraIMSignalCore)
+    target_compile_definitions(SignalProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME SignalProviderTests COMMAND SignalProviderTests)
+    set_tests_properties(SignalProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
 # Telegram: the provider against FakeTdJson (a libtdjson stand-in holding a
 # small Telegram in memory, built here), and its requests against the real
 # TDLib - the one the configure step fetched into Plugins/UltraIM/tdlib, or
