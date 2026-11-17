@@ -2834,8 +2834,11 @@ void ChatCubeWindow::UpdateHeader() {
         subtitle_->SetText(PresenceText(c->presence));
     } else {
         // Not ChatCube Direct: no relay to wait on.
-        subtitle_->SetText((c->presence == UltraIMPresence::Offline ? Tr("offline") : PresenceText(c->presence)) +
-                           (c->isEncrypted ? " \xC2\xB7 " + Tr("end-to-end encrypted") : std::string()));
+        // A network with no presence (Signal) leaves only the encryption: no dot before it.
+        const std::string presence = c->presence == UltraIMPresence::Offline ? Tr("offline") : PresenceText(c->presence);
+        std::string line = presence;
+        if (c->isEncrypted) line += (line.empty() ? std::string() : std::string(" \xC2\xB7 ")) + Tr("end-to-end encrypted");
+        subtitle_->SetText(line);
     }
     // Calls need UltraRTC media; the provider says when they are possible.
     // One call at a time.
