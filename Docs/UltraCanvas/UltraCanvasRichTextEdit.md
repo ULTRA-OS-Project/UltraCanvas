@@ -639,9 +639,13 @@ A **table nested in a table cell** is such a frame: its blocks are the inner
 table and `RichTextFrame::nestedTable` is set, so it has no box, padding or
 guide line of its own and is as wide as the cell's text where its run names no
 width. Its words are part of `ToPlainText()`. The DOCX reader makes one for
-every `w:tbl` inside a `w:tc`; the DOCX and ODT writers write it back as a
-table in the cell. (It is shown, not edited in place; the ODT reader still
-flattens a nested table into the cell's lines.)
+every `w:tbl` inside a `w:tc`, the ODT reader for every `table:table` inside
+a `table:table-cell`; both writers write it back as a table in the cell. A
+double-click on it - or `EditFrame(frameIndex)` - opens it for editing in
+place, as a text frame's words are: the caret moves through its cells, rows
+and columns are added and removed as in any table, and the cell around it
+grows and shrinks with what is typed. A click outside, or
+`FinishHeaderFooterEditing()`, ends it.
 
 A **drawing set in a paragraph's line** (wrap `Inline`: Word's `wp:inline`
 shape, ODF's `as-char` one) stands in that line in the body too, where the
@@ -1253,7 +1257,29 @@ font (Word's 2 pt paragraphs that set a signature's parts a hair apart), and a
 picture lower than a line of its run's font stands in such a line. A table can
 start left of its column (a negative `tableIndentPt`, Word's `w:tblInd`), and
 a column whose width the document states is kept however narrow. A picture is
-stretched to the size its document gives it. A table
+stretched to the size its document gives it.
+
+**Columns that give way to their content.** With `RichDocBlock::tableAutoFit`
+(Word's "autofit" table layout, its default; `w:tblLayout w:type="fixed"`
+turns it off) a column narrower than the longest word or the widest picture in
+it is widened to hold it. The room comes from the columns that have some to
+spare, each by its share, and then from the room beside the table; a table
+without it keeps its stated widths, and a word too long for its column is
+broken. A table's width in points is kept where it is a little wider than its
+column (it reaches into the margin, as in Word). Spaces a line ends with take
+no room, and - where `UCRichDocument::breakAfterSlash` is false, as for Word's
+documents - a line is not broken after a slash inside a word ("she/her/hers"
+stays whole).
+
+```cpp
+RichDocBlock table;
+table.type = RichBlockType::Table;    // ...its rows and cells
+table.tableColumnWidths = {60.0f, 400.0f};
+table.tableWidthPt = 460.0f;
+table.tableAutoFit = true;       // a long word in the first column widens it
+```
+
+A table
 continues between rows - never through a cell spanning rows - and its
 leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
 ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at

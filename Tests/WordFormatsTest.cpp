@@ -3475,8 +3475,9 @@ int main(int argc, char** argv) {
                       label + ": the column break is its paragraph's, not a line break");
             CHECK_MSG(read.ToPlainText().find("inner two") != std::string::npos,
                       label + ": the nested table's words are in the plain text");
-            if (!docx) return;                    // the rest is what the DOCX writer keeps
+            CHECK_MSG(!read.breakAfterSlash, label + ": no line break after a slash, as in Word");
             CHECK_MSG(table && table->tableRows.size() == 2, label + ": the outer table's two rows");
+            if (docx && table) CHECK_MSG(table->tableAutoFit, label + ": the table's columns give way to their content");
             if (!table || table->tableRows.size() != 2) return;
             CHECK_MSG(Near(table->tableIndentPt, -12.75f), label + ": the table starts left of its column, got "
                       + std::to_string(table->tableIndentPt));
@@ -3498,7 +3499,8 @@ int main(int argc, char** argv) {
                 CHECK_MSG(first.runs[3].lineBreakBefore && Near(first.runs[3].imageWidthPt, 100.0f),
                           label + ": ...on a line of its own, 100 pt wide");
             }
-            CHECK_MSG(first.lineHeightPt <= 0.0f, label + ": the first paragraph sets no line height");
+            if (docx) CHECK_MSG(first.lineHeightPt <= 0.0f, label + ": the first paragraph sets no line height");
+            else CHECK_MSG(Near(first.lineHeightPt, 15.0f) && first.lineHeightAtLeast, label + ": a cell's lines at least 15 pt");
             const RichTableCell& second = table->tableRows[1].cells[0];
             CHECK_MSG(std::abs(second.lineSpacing - 1.15f) < 0.01f, label + ": lines 1.15 times their font's, got "
                       + std::to_string(second.lineSpacing));
@@ -3510,8 +3512,10 @@ int main(int argc, char** argv) {
                     if (run.IsInlineImage()) picture = &run;
                     if (run.IsTextFrame()) shape = &run;
                 }
-                CHECK_MSG(picture && Near(picture->imageRotationDeg, 90.0f) && !picture->IsFloatingObject(),
-                          label + ": the picture in the line is turned a quarter");
+                if (docx) {                       // ODF's as-char picture carries no turn
+                    CHECK_MSG(picture && Near(picture->imageRotationDeg, 90.0f) && !picture->IsFloatingObject(),
+                              label + ": the picture in the line is turned a quarter");
+                }
                 CHECK_MSG(picture && Near(picture->fontSizePt, 4.0f), label + ": ...in its run's 4 pt font");
                 CHECK_MSG(shape && shape->imageWrap == RichTextRun::ImageWrap::Inline,
                           label + ": the shape stands in the line, it does not float");
@@ -3543,6 +3547,29 @@ int main(int argc, char** argv) {
         checkSignatures(TmpPath("signatures-saved2.docx"), "saved as docx", true);
         CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-saved.odt"), signatures, err), err);
         checkSignatures(TmpPath("signatures-saved.odt"), "saved as odt", false);
+        // ...and an ODT of an ODT is still the same.
+        {
+            UCRichDocument fromOdt;
+            CHECK_MSG(UCWordDocumentIO::Load(TmpPath("signatures-saved.odt"), fromOdt, err), err);
+            CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-saved2.odt"), fromOdt, err), err);
+            checkSignatures(TmpPath("signatures-saved2.odt"), "saved as odt twice", false);
+        }
+        // A fixed table layout is kept: its columns stay as stated.
+        {
+            for (RichDocBlock& block : signatures.blocks) {
+                if (block.type == RichBlockType::Table) block.tableAutoFit = false;
+            }
+            CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-fixed.docx"), signatures, err), err);
+            UCRichDocument fixed;
+            CHECK_MSG(UCWordDocumentIO::Load(TmpPath("signatures-fixed.docx"), fixed, err), err);
+            bool any = false, allFixed = true;
+            for (const RichDocBlock& block : fixed.blocks) {
+                if (block.type != RichBlockType::Table) continue;
+                any = true;
+                allFixed = allFixed && !block.tableAutoFit;
+            }
+            CHECK_MSG(any && allFixed, "docx: a fixed table layout is written and read back");
+        }
     }
 
     if (failures == 0) {

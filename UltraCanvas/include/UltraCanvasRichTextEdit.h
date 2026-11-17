@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.17.0 - a frame standing in a line (a table nested in a cell) is edited in place
+//                   (InlineFrameRect, FurnitureEditState::frameHostBlock)
 // Version: 1.16.0 - tables nested in cells and drawings in a body line stand in the line; PlaceCellFloats
 //                   (headers and footers too); a print is on white paper
 // Version: 1.15.0 - a table cell floats what its text ignores (PlacedFloat::inCell, a turned picture's
@@ -895,6 +897,9 @@ private:
         int noteIndex = -1;                   // >= 0: a note is edited, not a header
         int frameIndex = -1;                  // >= 0: a text frame's words are edited
         float frameInnerWidth = 0.0f;         // ...laid out this wide (pixels)
+        // The body block whose line the edited frame stands in (a table
+        // nested in a cell, a frame in a cell's line); -1: it floats.
+        int frameHostBlock = -1;
         UCRichDocumentEditor bodyEditor;
         float bodyContentHeight = 0.0f;
     };
@@ -902,6 +907,13 @@ private:
     bool BeginFurnitureEditing(int pageIndex, bool footer);
     // The body's placed float of the frame being edited, or null.
     const PlacedFloat* EditedFramePlacement() const;
+    // Where the frame `frameIndex` stands in a line of `layouts` (a cell's
+    // or a paragraph's): x from the column's left edge, y in content
+    // pixels, and the block it is in. False when it stands in none.
+    bool InlineFrameRect(const std::vector<BlockLayout>& layouts, int frameIndex, Rect2Df& outRect, int* outBlock) const;
+    // The frame standing in a line under a point of the element, or -1.
+    int InlineFrameAt(const Point2Df& documentPoint) const;
+    PlacedFloat editedInlineFrame;                // the place of the frame edited in a line (frameHostBlock)
     // Parks the body and hands `editor` a document of `part`'s blocks.
     void StartEditingPart(std::shared_ptr<UCRichDocument> part, std::unique_ptr<FurnitureEditState> state);
     // Writes the furniture being edited into the document.

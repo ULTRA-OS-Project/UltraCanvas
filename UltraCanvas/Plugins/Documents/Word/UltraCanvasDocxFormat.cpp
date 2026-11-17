@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.12.0 - w:tblLayout (autofit or fixed) read and written
 // Version: 1.11.0 - tables nested in cells, column breaks, a cell's line height and multiple, negative w:tblInd,
 //                   a cell's lines written as paragraphs, shapes and turned pictures in the line
 // Version: 1.10.0 - theme fonts (asciiTheme / hAnsiTheme), capitals (w:caps) from a run or its paragraph's
@@ -261,6 +262,7 @@ public:
     bool Load(const std::string& filePath, const std::string& password, UCRichDocument& doc,
               std::string& error) {
         doc_ = &doc;
+        doc_->breakAfterSlash = false;             // Word keeps "a/b" whole
         // A password-protected document is a compound file holding the
         // package encrypted (UltraCanvasOfficeEncryption.h), not a ZIP.
         std::vector<uint8_t> package;
@@ -764,7 +766,6 @@ private:
         // font's line gap.
         auto* compat = root ? root->FirstChildElement("w:compat") : nullptr;
         if (compat && compat->FirstChildElement("w:noLeading")) doc_->fontLineGap = false;
-        doc_->breakAfterSlash = false;             // Word keeps "a/b" whole
     }
 
 

@@ -5,6 +5,9 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.12.0 - table cells: a paragraph per line, line heights, nested tables read as tables, the font a
+//                   picture in a line stands in, a negative table indent; Writer's proportional line
+//                   height in cells; settings items of our own
 // Version: 1.11.0 - fo:break-before="column" read and written; a table nested in a cell written as a table;
 //                   as-char drawings stand in the line
 // Version: 1.10.0 - a turned picture (draw:transform) read and written; drawn shapes in table cells

@@ -1612,6 +1612,87 @@ int main() {
                  + " lower", nestedTable - plainTable > 40.0f);
             TEST("...and its words are part of the plain text", card->ToPlainText().find("inner") != std::string::npos);
 
+            // It is edited in place: opened like a text frame, typed into,
+            // and the cell around it grows with it.
+            {
+                const int nestedIndex = nestedRun.frameIndex;
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                const float afterBefore = edit->GetCaretRectForTest().y;
+                TEST("A table nested in a cell opens for editing", edit->EditFrame(nestedIndex) && edit->IsEditingFrame());
+                window->UpdateAndRender();
+                edit->GetEditor().SetCaret(RichDocPosition(0, 0, 0, 0));
+                window->UpdateAndRender();
+                const Rect2Df inCell = edit->GetCaretRectForTest();
+                TEST("...its caret stands in the nested table, under the outer cell's first line: y "
+                     + std::to_string(inCell.y) + " of " + std::to_string(plainTable) + " .. " + std::to_string(afterBefore),
+                     inCell.y > plainTable - 60.0f && inCell.y < afterBefore);
+                edit->InsertText("typed ");
+                // Three more lines in its first cell.
+                edit->InsertText("one\ntwo\nthree\n");
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                edit->FinishHeaderFooterEditing();
+                window->UpdateAndRender();
+                window->UpdateAndRender();
+                const auto& frames = edit->GetEditor().GetDocument()->frames;
+                const std::string cellText = nestedIndex < static_cast<int>(frames.size()) && !frames[static_cast<size_t>(nestedIndex)].blocks.empty()
+                    && !frames[static_cast<size_t>(nestedIndex)].blocks[0].tableRows.empty()
+                    ? UCRichDocument::ConcatenateRunText(frames[static_cast<size_t>(nestedIndex)].blocks[0].tableRows[0].cells[0].runs)
+                    : std::string();
+                TEST("...what is typed is in the nested table's cell: \"" + cellText + "\"", cellText.rfind("typed one", 0) == 0);
+                edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                window->UpdateAndRender();
+                const float afterAfter = edit->GetCaretRectForTest().y;
+                TEST("...and the outer table grew with it: the text after " + std::to_string(afterAfter - afterBefore)
+                     + " lower", afterAfter - afterBefore > 20.0f);
+            }
+
+            // Columns that give way to their content: a long word in a
+            // narrow column is not broken, the column takes the room from
+            // its neighbour.
+            {
+                RichTextRun longWord;
+                longWord.text = "christian@bellowscollege.example";
+                RichDocBlock table = tableOf({longWord});
+                table.tableColumnWidths = {60.0f, 400.0f};
+                table.tableWidthPt = 460.0f;
+                auto top = [&](bool autoFit, bool slashBreaks, const std::string& text) {
+                    table.tableAutoFit = autoFit;
+                    table.tableRows[0].cells[0].runs[0].text = text;
+                    card->breakAfterSlash = slashBreaks;
+                    card->blocks = {table, after};
+                    edit->SetDocument(card);
+                    window->UpdateAndRender();
+                    window->UpdateAndRender();
+                    edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                    window->UpdateAndRender();
+                    return edit->GetCaretRectForTest().y;
+                };
+                const float fixedTop = top(false, true, longWord.text), fittedTop = top(true, true, longWord.text);
+                TEST("A column gives way to a word longer than it: the row is " + std::to_string(fixedTop - fittedTop)
+                     + " lower with the widths fixed", fixedTop - fittedTop > 10.0f);
+                // "aaaa bbbb/cccc" in a column that holds ten letters: broken
+                // after the slash, "bbbb/" stays on the first line; kept
+                // whole (Word's way), "bbbb/cccc" starts the second.
+                // (At some width between five letters and fourteen.)
+                auto wordTop = [&](bool slashBreaks) {
+                    top(false, slashBreaks, "aaaa bbbb/cccc");
+                    edit->GetEditor().SetCaret(RichDocPosition(0, 0, 0, 6));
+                    window->UpdateAndRender();
+                    return edit->GetCaretRectForTest().y;
+                };
+                float lower = 0.0f, atWidth = 0.0f;
+                for (float width = 40.0f; width <= 130.0f && lower <= 8.0f; width += 3.0f) {
+                    table.tableColumnWidths = {width, 460.0f - width};
+                    lower = wordTop(false) - wordTop(true);
+                    atWidth = width;
+                }
+                TEST("A word with a slash is kept whole where the document's program does not break there: \"bbbb/cccc\" "
+                     + std::to_string(lower) + " lower in a " + std::to_string(atWidth) + " pt column", lower > 8.0f);
+                card->breakAfterSlash = true;
+            }
+
             // A cell's lines of a set height: at least 30 pt each.
             {
                 RichDocBlock table = tableOf({label});

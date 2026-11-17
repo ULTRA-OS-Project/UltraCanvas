@@ -7,6 +7,8 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.14.0 - columns that give way to their content; a table nested in a cell edited in place; spaces a
+//                   line ends with take no room; no break after a slash where the document says so
 // Version: 1.13.0 - column breaks; tables nested in cells; a cell's line heights; empty first and last lines of
 //                   a cell; turned pictures and drawings in a line; pictures stretched to their size; white
 //                   paper for print and export
@@ -3516,6 +3518,8 @@ void UltraCanvasRichTextEdit::DrawInlineImages(IRenderContext* ctx, const BlockL
         Rect2Dd target(originX + static_cast<double>(box.x) + placed.lineOffsetX,
                        originY + static_cast<double>(box.y) + placed.lineOffsetY,
                        placed.width, placed.height);
+        // The frame whose words are being edited is drawn where it is edited.
+        if (placed.frameIndex >= 0 && IsEditingFrame() && placed.frameIndex == furnitureEdit->frameIndex) continue;
         if (placed.frameIndex >= 0) {
             // A frame or drawing standing in the line.
             PlacedFloat frame;
@@ -5460,6 +5464,14 @@ bool UltraCanvasRichTextEdit::HandleDoubleClick(const UCEvent& event) {
                     return true;
                 }
             }
+            // ...and so does a table nested in a cell, or a frame standing
+            // in a line.
+            const int inLine = InlineFrameAt(ToDocument(event.pointer));
+            if (inLine >= 0 && EditFrame(inLine)) {
+                editor.SetCaret(PositionFromPoint(ToDocument(event.pointer)), false);
+                AfterSelectionChange();
+                return true;
+            }
         }
         if (IsEditingFrame()) {
             editor.SelectWordAt(PositionFromPoint(ToDocument(event.pointer)));
@@ -6247,7 +6259,16 @@ float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
     std::swap(editor, furnitureEdit->bodyEditor);
     std::swap(blockLayouts, parkedLayouts);
     placingParkedBody = true;
+    // A frame edited in a line of the body (a table nested in a cell): the
+    // block it stands in is laid out again with the frame as it now is - it
+    // grows and shrinks with what is typed.
+    const int hostBlock = furnitureEdit->frameHostBlock;
+    if (hostBlock >= 0 && hostBlock < static_cast<int>(blockLayouts.size())) {
+        furnitureCache.clear();
+        BuildBlockLayoutFor(ctx, hostBlock);
+    }
     const float bodyHeight = PlaceBody(ctx);
+    if (hostBlock >= 0) InlineFrameRect(blockLayouts, furnitureEdit->frameIndex, editedInlineFrame.rect, nullptr);
     placingParkedBody = false;
     parkedPages = pages;
     parkedFloats = placedFloats;
@@ -6267,10 +6288,12 @@ float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
         const PlacedFloat* placed = EditedFramePlacement();
         if (placed) {
             const float inset = TextFrameInset(furnitureEdit->frameIndex);
-            PlacedFloat box = *placed;
-            box.frameContent.reset();
-            box.blockIndex = -1;                  // its box, not something to pick up
-            placedFloats.push_back(std::move(box));
+            if (furnitureEdit->frameHostBlock < 0) {
+                PlacedFloat box = *placed;
+                box.frameContent.reset();
+                box.blockIndex = -1;              // its box, not something to pick up
+                placedFloats.push_back(std::move(box));
+            }
             y = placed->rect.y + inset;
             const float left = placed->rect.x + inset;
             for (int i = 0; i < count; i++) {
@@ -6455,10 +6478,50 @@ bool UltraCanvasRichTextEdit::EditNote(int noteIndex) { return BeginNoteEditing(
 
 const UltraCanvasRichTextEdit::PlacedFloat* UltraCanvasRichTextEdit::EditedFramePlacement() const {
     if (!furnitureEdit || furnitureEdit->frameIndex < 0) return nullptr;
+    if (furnitureEdit->frameHostBlock >= 0) return &editedInlineFrame;
     for (const PlacedFloat& placed : parkedFloats) {
         if (placed.blockIndex >= 0 && placed.frameIndex == furnitureEdit->frameIndex) return &placed;
     }
     return nullptr;
+}
+
+bool UltraCanvasRichTextEdit::InlineFrameRect(const std::vector<BlockLayout>& layouts, int frameIndex,
+                                              Rect2Df& outRect, int* outBlock) const {
+    for (size_t i = 0; i < layouts.size(); i++) {
+        const BlockLayout& bl = layouts[i];
+        if (!bl.valid) continue;
+        auto find = [&](const BlockLayout& layout, float originX, float originY) {
+            if (!layout.layout) return false;
+            for (const BlockLayout::InlineImage& placed : layout.inlineImages) {
+                if (placed.floating || placed.frameIndex != frameIndex) continue;
+                const Rect2Di box = layout.layout->IndexToPos(placed.byteOffset);
+                outRect = Rect2Df(bl.columnX + originX + static_cast<float>(box.x) + placed.lineOffsetX,
+                                  BlockToContentY(bl, originY + static_cast<float>(box.y)) + placed.lineOffsetY,
+                                  placed.width, placed.height);
+                if (outBlock) *outBlock = static_cast<int>(i);
+                return true;
+            }
+            return false;
+        };
+        if (find(bl, bl.textLeft, 0.0f)) return true;
+        for (const auto& cell : bl.cells) {
+            if (cell && find(*cell, cell->bounds.x + cell->textLeft, cell->bounds.y + cell->textTop)) return true;
+        }
+    }
+    return false;
+}
+
+int UltraCanvasRichTextEdit::InlineFrameAt(const Point2Df& documentPoint) const {
+    const UCRichDocument& document = *editor.GetDocument();
+    for (size_t f = 0; f < document.frames.size(); f++) {
+        if (document.frames[f].blocks.empty()) continue;      // nothing to edit in it
+        Rect2Df rect;
+        if (!InlineFrameRect(blockLayouts, static_cast<int>(f), rect, nullptr)) continue;
+        const float x = ColumnLeft() + rect.x, y = visibleArea.y + rect.y - scrollOffset;
+        if (documentPoint.x >= x && documentPoint.x <= x + rect.width
+            && documentPoint.y >= y && documentPoint.y <= y + rect.height) return static_cast<int>(f);
+    }
+    return -1;
 }
 
 bool UltraCanvasRichTextEdit::EditFrame(int frameIndex) {
@@ -6469,12 +6532,22 @@ bool UltraCanvasRichTextEdit::EditFrame(int frameIndex) {
     }
     const std::shared_ptr<UCRichDocument> body = editor.GetDocument();
     if (!body || frameIndex < 0 || frameIndex >= static_cast<int>(body->frames.size())) return false;
-    // Only a frame placed in the body (it has a place to be edited at).
+    // Only a frame placed in the body (it has a place to be edited at):
+    // floating, or standing in a line - a table nested in a cell.
     const PlacedFloat* placed = nullptr;
     for (const PlacedFloat& candidate : placedFloats) {
         if (candidate.blockIndex >= 0 && !candidate.inCell && candidate.frameIndex == frameIndex) placed = &candidate;
     }
-    if (!placed) return false;
+    int hostBlock = -1;
+    if (!placed) {
+        Rect2Df rect;
+        if (!InlineFrameRect(blockLayouts, frameIndex, rect, &hostBlock)) return false;
+        editedInlineFrame = PlacedFloat{};
+        editedInlineFrame.frameIndex = frameIndex;
+        editedInlineFrame.blockIndex = hostBlock;
+        editedInlineFrame.rect = rect;
+        placed = &editedInlineFrame;
+    }
     auto frameDoc = std::make_shared<UCRichDocument>();
     frameDoc->blocks = body->frames[static_cast<size_t>(frameIndex)].blocks;
     if (frameDoc->blocks.empty()) frameDoc->blocks.emplace_back();
@@ -6484,10 +6557,12 @@ bool UltraCanvasRichTextEdit::EditFrame(int frameIndex) {
     frameDoc->defaultTabStopPt = body->defaultTabStopPt;
     frameDoc->letterKerning = body->letterKerning;
     frameDoc->fontLineGap = body->fontLineGap;
+    frameDoc->breakAfterSlash = body->breakAfterSlash;
     frameDoc->styles = body->styles;
 
     auto state = std::make_unique<FurnitureEditState>();
     state->frameIndex = frameIndex;
+    state->frameHostBlock = hostBlock;
     state->frameInnerWidth = std::max(8.0f, placed->rect.width - 2.0f * TextFrameInset(frameIndex));
     StartEditingPart(std::move(frameDoc), std::move(state));
     return true;

@@ -18,6 +18,7 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.8.0 - UCRichDocument::breakAfterSlash is false for Word's documents
 // Version: 2.7.0 - the sections after the first: their header, footer and margins; shapes' shadows
 // Version: 2.6.0 - paragraph spacing in cells; text unkerned
 // Version: 2.5.0 - documents of several sections (page size), row heights, merged cells, a cell's empty
