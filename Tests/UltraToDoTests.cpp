@@ -114,6 +114,29 @@ static void TestNotices() {
     Check(due.size() == 1 && due[0].kind == ToDoNoticeKind::Reminder, "a task moved a day is reminded of again");
 }
 
+static void TestUrgencyLevelAndStart() {
+    std::printf("The marker's level runs from green to red; a started task is not reminded to start\n");
+    ToDoTask t = Task("t", kNow + 10 * kHour, 120);              // latest start in 8 h
+    Check(UrgencyLevel(Task("u", 0, 0), kNow) < 0, "no planned end: no level");
+    Check(UrgencyLevel(Task("far", kNow + 100 * kHour, 0), kNow) == 0.0, "more than the horizon away: green");
+    const double eightHours = UrgencyLevel(t, kNow);
+    Check(eightHours > 0.0 && eightHours < 1.0, "8 h before the latest start: between green and orange");
+    Check(UrgencyLevel(t, kNow + 8 * kHour) == 1.0, "at the latest start: orange");
+    Check(UrgencyLevel(t, kNow + 9 * kHour) == 1.5, "half way to the planned end");
+    Check(UrgencyLevel(t, kNow + 10 * kHour) == 2.0, "at the planned end: red");
+    t.done = true;
+    Check(UrgencyLevel(t, kNow) < 0, "finished: no level");
+
+    ToDoTask r = Task("r", kNow + 4 * kHour, 60);
+    r.reminderMinutes = 30;
+    r.started = kNow;
+    std::vector<ToDoTask> tasks = {r};
+    Check(DueNotices(tasks, kNow + 2 * kHour + 45 * 60).empty(), "started: no reminder to start");
+    tasks[0].alarm = true;
+    const auto due = DueNotices(tasks, kNow + 4 * kHour);
+    Check(due.size() == 1 && due[0].kind == ToDoNoticeKind::Alarm, "started: the alarm still comes");
+}
+
 static void TestDayWithoutTime() {
     std::printf("A planned end without a time of day is the end of that day\n");
     const int64_t end = EndOfLocalDay(2026, 11, 20);
@@ -179,6 +202,12 @@ static void TestStore() {
         const std::string copy = again.AttachmentPath(id, file);
         Check(again.RemoveAttachment(id, file) && !fs::exists(PathFromUtf8(copy), ec), "an attachment taken off");
     }
+    Check(again.SetStarted(id, true, kNow + 5) && again.Find(id)->started == kNow + 5, "started");
+    Check(again.Save(error), "saved with the start: " + error);
+    {
+        ToDoStore third(folder);
+        Check(third.Load(error) && third.Find(id) && third.Find(id)->started == kNow + 5, "the start is kept");
+    }
     Check(again.SetDone(id, true, kNow + 1) && again.Find(id)->done, "marked done");
     Check(again.Remove(id) && !again.Find(id), "removed");
     Check(!fs::exists(root / "UltraToDo" / "attachments" / PathFromUtf8(id), ec), "with its files");
@@ -189,6 +218,7 @@ int main() {
     TestLatestStartAndUrgency();
     TestOrder();
     TestNotices();
+    TestUrgencyLevelAndStart();
     TestDayWithoutTime();
     TestStore();
     std::printf("\n%d checks, %d failed\n", g_checks, g_failures);

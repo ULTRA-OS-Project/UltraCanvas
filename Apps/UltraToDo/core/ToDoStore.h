@@ -47,6 +47,8 @@ public:
     // Removes a task and the files attached to it.
     bool Remove(const std::string& id);
     bool SetDone(const std::string& id, bool done, int64_t now);
+    // Start / Pause: records `now` as the moment work began, or clears it.
+    bool SetStarted(const std::string& id, bool started, int64_t now);
     // Records a reminder or an alarm as given (MarkNoticeGiven).
     bool MarkGiven(const ToDoNotice& notice);
 

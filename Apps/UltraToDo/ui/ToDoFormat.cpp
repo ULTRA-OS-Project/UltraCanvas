@@ -87,9 +87,10 @@ std::string UrgencyText(const ToDoTask& task, int64_t now) {
             return late > 0 ? TrF("Overdue by {0}", FormatDuration(late)) : Tr("Overdue");
         }
         case ToDoUrgency::StartNow:
-            return Tr("Start now");
+            return task.started > 0 ? Tr("In progress") : Tr("Start now");
         case ToDoUrgency::Soon:
         case ToDoUrgency::Later: {
+            if (task.started > 0) return Tr("In progress");
             const int64_t left = (LatestStartOf(task) - now + 59) / 60;
             if (task.estimateMinutes > 0) return TrF("Start in {0}", FormatDuration(left));
             return TrF("Due in {0}", FormatDuration(left));
@@ -111,6 +112,25 @@ std::string ScheduleText(const ToDoTask& task, int64_t now) {
         add(TrF("Latest start: {0}", FormatMoment(LatestStartOf(task), true, now)));
     if (task.done && task.completed > 0)
         add(TrF("Finished {0}", FormatMoment(task.completed, true, now)));
+    return text;
+}
+
+std::string CountdownText(const ToDoTask& task, int64_t now) {
+    if (!task.HasDue()) return Tr("No date");
+    if (now >= task.due) {
+        const int64_t late = (now - task.due) / 60;
+        return late > 0 ? TrF("{0} late", FormatDuration(late)) : Tr("Due now");
+    }
+    return FormatDuration((task.due - now + 59) / 60);
+}
+
+std::string TimeLeftText(const ToDoTask& task, int64_t now) {
+    std::string text;
+    if (!task.HasDue()) text = Tr("No due date");
+    else if (now >= task.due) text = TrF("Was due {0}", FormatMoment(task.due, task.dueHasTime, now));
+    else text = TrF("Due {0}", FormatMoment(task.due, task.dueHasTime, now));
+    if (task.started > 0 && !task.done)
+        text += "\n" + TrF("In progress since {0}", FormatMoment(task.started, true, now));
     return text;
 }
 

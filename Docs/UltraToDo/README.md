@@ -25,6 +25,8 @@ says what it does.
 |---|---|
 | The round **+** (top left, Ctrl+N) | writes a new task |
 | *To do* / *History* (top right, Ctrl+H) | the tasks to do, or the history of the finished ones, with their counts |
+| The marker (left of the buttons) | the time left ("55 min", "4 h late"), in a colour from green (time to spare) through orange (the latest start has come) to red (past the planned end); beside it when the task is due |
+| *Start* / *Pause* | tells UltraToDo you have started working on the task: it says *In progress since ...*, stops the blinking ring and the reminder to start; *Pause* takes it back |
 | *Done* | marks the task done and moves it to the history |
 | *Reopen* (in the history) | moves the task back to the list of tasks to do |
 | A panel's mark (top right) | how urgent it is: *Overdue by 2 h*, *Start now*, *Start in 30 min*, *No date*; *Done* in the history |
@@ -71,8 +73,21 @@ grey, the latest finished first, with the time each was finished. The pastel is 
 panel's border; the fill is a faint tint of it over the theme's panel
 colour, so the text stays readable in either look.
 
+## Blinking
+
+Two things blink, so an urgent task is seen from across the room:
+
+- **an orange ring** round the marker of a task whose latest start has come
+  and that is not started - until *Start* is pressed;
+- **a red border** round the panel of a task past its planned end - until
+  it is *Done*.
+
+Where the desktop asks for reduced motion both are drawn steady instead.
+
 ## Reminders and alarms
 
+- A task already started (*Start*) gets no reminder to start; its alarm
+  still comes.
 - **Reminder**: from two days before the latest start to the latest start
   itself (*No reminder*, *At the latest start*, 5 / 15 / 30 min, 1 / 2 h,
   1 / 2 days before).

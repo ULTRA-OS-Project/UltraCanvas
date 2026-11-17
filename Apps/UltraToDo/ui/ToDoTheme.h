@@ -11,6 +11,7 @@
 // readable on it; under a dark theme the border is mixed into the panel
 // colour too; the inks, the lines and the sizes are the theme's roles
 // (UltraCanvasTheme.h) throughout.
+// Version: 0.5.0 - UrgencyColor: the marker from green to orange to red
 // Version: 0.4.0 - MakeIconButton: a round button with an icon alone, following the theme
 // Version: 0.3.0 - the pastel is the panel's border; the fill a faint tint of it
 // Version: 0.2.0 - buttons and dialog texts by their role in the theme, following it
@@ -90,6 +91,18 @@ inline UltraCanvas::Color UrgencyPastel(ToDoUrgency urgency) {
     return Sky();
 }
 
+// The marker's colour for an UrgencyLevel: green at 0, orange at 1, red at
+// 2, blended in between. The three are strong enough to read on any panel
+// in either look.
+inline UltraCanvas::Color MarkerGreen()  { return Dark() ? UltraCanvas::Color(74, 200, 120) : UltraCanvas::Color(34, 160, 84); }
+inline UltraCanvas::Color MarkerOrange() { return Dark() ? UltraCanvas::Color(255, 170, 70) : UltraCanvas::Color(240, 135, 20); }
+inline UltraCanvas::Color MarkerRed()    { return Dark() ? UltraCanvas::Color(255, 95, 95) : UltraCanvas::Color(214, 45, 45); }
+inline UltraCanvas::Color UrgencyColor(double level) {
+    if (level < 0) return Roles().inkFaint;
+    if (level <= 1.0) return Mix(MarkerGreen(), MarkerOrange(), static_cast<float>(level));
+    return Mix(MarkerOrange(), MarkerRed(), static_cast<float>(std::min(1.0, level - 1.0)));
+}
+
 inline UltraCanvas::Color PageBackground() {
     return Dark() ? Roles().ground : UltraCanvas::Color(250, 248, 253);
 }
@@ -116,6 +129,8 @@ constexpr float kAddButtonSize = 48.0f;
 constexpr float kColumnMinWidth = 440.0f;   // a panel is never narrower than this in a second column
 constexpr int   kMaxColumns    = 4;
 constexpr float kListPaddingX  = 18.0f;    // the list's padding: 2 left, 16 right (the scrollbar)
+constexpr float kMarkerSize    = 26.0f;    // the urgency ring in a panel's button line
+constexpr unsigned kBlinkMs    = 600;      // one half of a blink
 constexpr float kThumbWidth    = 96.0f;
 constexpr float kThumbHeight   = 68.0f;
 

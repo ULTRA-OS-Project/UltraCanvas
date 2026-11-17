@@ -58,6 +58,7 @@ JSONValue ToJson(const ToDoTask& task) {
     o.Set("reminderMinutes", task.reminderMinutes);
     o.Set("alarm", task.alarm);
     o.Set("done", task.done);
+    o.Set("started", task.started);
     o.Set("created", task.created);
     o.Set("completed", task.completed);
     o.Set("remindedFor", task.remindedFor);
@@ -84,6 +85,7 @@ ToDoTask FromJson(const JSONValue& o) {
     task.reminderMinutes = static_cast<int>(o.Get("reminderMinutes").GetInteger(kNoReminder));
     task.alarm = o.Get("alarm").GetBoolean();
     task.done = o.Get("done").GetBoolean();
+    task.started = o.Get("started").GetInteger();
     task.created = o.Get("created").GetInteger();
     task.completed = o.Get("completed").GetInteger();
     task.remindedFor = o.Get("remindedFor").GetInteger();
@@ -234,6 +236,13 @@ bool ToDoStore::SetDone(const std::string& id, bool done, int64_t now) {
     if (!task) return false;
     task->done = done;
     task->completed = done ? now : 0;
+    return true;
+}
+
+bool ToDoStore::SetStarted(const std::string& id, bool started, int64_t now) {
+    ToDoTask* task = FindMutable(id);
+    if (!task) return false;
+    task->started = started ? now : 0;
     return true;
 }
 

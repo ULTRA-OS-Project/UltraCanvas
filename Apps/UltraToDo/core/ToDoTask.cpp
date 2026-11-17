@@ -1,5 +1,6 @@
 // Apps/UltraToDo/core/ToDoTask.cpp
 // See ToDoTask.h.
+// Version: 0.2.0 - UrgencyLevel; no reminder to start a task already started
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ToDoTask.h"
@@ -52,6 +53,18 @@ ToDoUrgency UrgencyOf(const ToDoTask& task, int64_t now) {
     return ToDoUrgency::Later;
 }
 
+double UrgencyLevel(const ToDoTask& task, int64_t now) {
+    if (task.done || !task.HasDue()) return -1.0;
+    if (now >= task.due) return 2.0;
+    const int64_t start = LatestStartOf(task);
+    if (now >= start) {
+        const int64_t span = task.due - start;
+        return span > 0 ? 1.0 + static_cast<double>(now - start) / static_cast<double>(span) : 2.0;
+    }
+    const double spare = static_cast<double>(start - now) / static_cast<double>(kUrgencyHorizon);
+    return std::clamp(1.0 - spare, 0.0, 1.0);
+}
+
 bool MoreUrgent(const ToDoTask& a, const ToDoTask& b, int64_t now) {
     const int groupA = GroupOf(a, now), groupB = GroupOf(b, now);
     if (groupA != groupB) return groupA < groupB;
@@ -83,7 +96,9 @@ std::vector<ToDoNotice> DueNotices(const std::vector<ToDoTask>& tasks, int64_t n
         const int64_t remindAt = ReminderTimeOf(task);
         // Once the planned end has passed, a reminder to start says nothing
         // the alarm - or the overdue mark - does not.
-        if (remindAt > 0 && now >= remindAt && now < task.due && task.remindedFor != remindAt) {
+        // A task already started needs no reminder to start.
+        if (task.started == 0 && remindAt > 0 && now >= remindAt && now < task.due &&
+            task.remindedFor != remindAt) {
             due.push_back({task.id, ToDoNoticeKind::Reminder, remindAt});
         }
     }

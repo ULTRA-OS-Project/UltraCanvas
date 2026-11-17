@@ -19,6 +19,7 @@
 // Times are seconds since the epoch; a planned end without a time of day is
 // the end of that day (23:59:59, local time). Nothing here reads a clock or
 // touches a file: `now` is always handed in, so the tests run on fixed times.
+// Version: 0.2.0 - started (Start / Pause), UrgencyLevel for the marker; a started task is not reminded to start
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -50,6 +51,10 @@ struct ToDoTask {
     bool alarm = false;           // an alarm at the planned end
 
     bool done = false;
+    // When the user said they started working on it ("Start"); 0: not
+    // started. A started task is not reminded to be started, and does not
+    // blink for it.
+    int64_t started = 0;
     int64_t created = 0;
     int64_t completed = 0;
 
@@ -86,6 +91,16 @@ ToDoUrgency UrgencyOf(const ToDoTask& task, int64_t now);
 // latest start, the earliest first - then open tasks without a planned end in
 // the order they were written, then finished tasks, the latest finished
 // first.
+// How urgent a task is on a continuous scale, for the marker that runs from
+// green to orange to red:
+//   0 .. 1   before the latest start: 0 with kUrgencyHorizon or more to
+//            spare, 1 at the latest start
+//   1 .. 2   between the latest start and the planned end
+//   2        at or past the planned end
+// -1 for a task without a planned end, or a finished one.
+constexpr int64_t kUrgencyHorizon = 48 * 60 * 60;
+double UrgencyLevel(const ToDoTask& task, int64_t now);
+
 bool MoreUrgent(const ToDoTask& a, const ToDoTask& b, int64_t now);
 void SortByUrgency(std::vector<ToDoTask>& tasks, int64_t now);
 

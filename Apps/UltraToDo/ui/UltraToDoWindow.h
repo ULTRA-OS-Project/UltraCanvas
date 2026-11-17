@@ -10,6 +10,14 @@
 // columns - up to four, sharing the width - filled one after the other: the
 // most urgent tasks down the first column, then on at the top of the next.
 //
+// Each panel's button line starts with a ring marker - its colour and fill
+// running from green (time to spare) through orange (the latest start has
+// come) to red (past the planned end) - and the time left. A task to start
+// now that is not started has the marker's ring blink orange; an overdue
+// one has its panel's border blink red (steady where the desktop asks for
+// reduced motion). Start tells the program work on the task has begun: the
+// orange blink and the reminder to start stop; Pause takes it back.
+//
 // Done on a panel moves the task to the history (To do | History at the
 // top), where Reopen brings it back.
 //
@@ -23,6 +31,7 @@
 // Started with --background the window can be closed: the program stays,
 // keeps the reminders going, and comes forward at the next start; Quit ends
 // it.
+// Version: 0.4.0 - the urgency marker and time left in the button line, blinking, Start / Pause
 // Version: 0.3.0 - the list in columns when the window is wide enough
 // Version: 0.2.0 - Done on every task moves it to the history (To do | History)
 // Version: 0.1.0
@@ -89,6 +98,12 @@ private:
     // Done moves a task to the history, Reopen brings it back to the list.
     void SetDone(const std::string& id, bool done);
     void ShowHistory(bool history);
+    // Start / Pause: the user began working on the task, or stopped.
+    void SetStarted(const std::string& id, bool started);
+    // The blinking (see the top of this file): one step, and the timer that
+    // runs while something blinks.
+    void Blink();
+    void UpdateBlinkTimer();
     void AttachTo(const std::string& id);
     void OpenAttachment(const std::string& taskId, const std::string& file);
     bool Save();
@@ -118,6 +133,17 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> view_;
     bool history_ = false;
     int columns_ = 1;             // the panels side by side in the list now
+
+    // What blinks: a panel's border red (overdue), or a marker's ring
+    // orange (to start now and not started). Rebuilt with the list.
+    struct BlinkItem {
+        UltraCanvas::UltraCanvasContainer* element = nullptr;   // the panel (overdue), or the marker's ring
+        UltraCanvas::Color off;                                  // its border between blinks
+        bool ring = false;                                       // the marker's ring: orange; else the panel: red
+    };
+    std::vector<BlinkItem> blinking_;
+    bool blinkOn_ = false;
+    UltraCanvas::TimerId blinkTimer_ = 0;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> quit_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> list_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> notice_;   // the last reminder, in the window

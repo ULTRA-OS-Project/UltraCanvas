@@ -10,6 +10,15 @@
 - **Icon buttons**: Attach, Edit and Delete are round icon buttons (paper
   clip, pencil, bin) with a tooltip, in the theme's colours; *Done* keeps
   its word.
+- **The urgency marker and the time left** in each task's button line: a
+  pill with the time left ("55 min", "4 h late") whose colour runs from green
+  through orange to red as the task grows urgent, and when it is due beside
+  it. A task to start now has an orange ring blinking round its marker; an
+  overdue one a red border blinking round its panel (steady where the desktop
+  asks for reduced motion).
+- **Start / Pause**: tells UltraToDo work on a task has begun - it shows
+  *In progress since ...*, its orange blink and its reminder to start stop -
+  or has stopped.
 - **Done and the history.** Every task has a *Done* button that moves it
   to the history (*To do* / *History* at the top right, with their counts,
   Ctrl+H); there it is listed, the latest finished first, with *Reopen* to
