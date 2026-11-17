@@ -6,6 +6,7 @@
 // nothing sleeps; no UI.
 //
 // Author: UltraCanvas Framework / ULTRA OS
+#include "core/ToDoSettings.h"
 #include "core/ToDoStore.h"
 #include "core/ToDoTask.h"
 
@@ -196,6 +197,12 @@ static void TestStore() {
     }
     const std::string second = again.Put(Task("", 0, 0), kNow);
     Check(second != id, "a second task gets another id");
+
+    Check(!ToDoSettings::Load(folder).Supervised(), "settings: Simple without a file");
+    ToDoSettings settings;
+    settings.management = ManagementLevel::Supervised;
+    Check(settings.Save(folder, error), "settings saved: " + error);
+    Check(ToDoSettings::Load(folder).Supervised(), "settings: With task supervision read back");
 
     if (read && !read->attachments.empty()) {
         const std::string file = read->attachments[0].file;

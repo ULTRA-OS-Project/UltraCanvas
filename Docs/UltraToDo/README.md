@@ -10,6 +10,8 @@ reminder before it has to be started and an alarm at its planned end.
 
 - [Using it](#using-it)
 - [How urgent a task is](#how-urgent-a-task-is)
+- [Settings](#settings)
+- [Blinking](#blinking)
 - [Reminders and alarms](#reminders-and-alarms)
 - [Attachments](#attachments)
 - [Where the tasks are kept](#where-the-tasks-are-kept)
@@ -26,7 +28,7 @@ says what it does.
 | The round **+** (top left, Ctrl+N) | writes a new task |
 | *To do* / *History* (top right, Ctrl+H) | the tasks to do, or the history of the finished ones, with their counts |
 | The marker (left of the buttons) | the time left ("55 min", "4 h late"), in a colour from green (time to spare) through orange (the latest start has come) to red (past the planned end); beside it when the task is due |
-| *Start* / *Pause* | tells UltraToDo you have started working on the task: it says *In progress since ...*, stops the blinking ring and the reminder to start; *Pause* takes it back |
+| *Start* / *Pause* (with task supervision) | tells UltraToDo you have started working on the task: it says *In progress since ...*, stops the blinking ring and the reminder to start; *Pause* takes it back |
 | *Done* | marks the task done and moves it to the history |
 | *Reopen* (in the history) | moves the task back to the list of tasks to do |
 | A panel's mark (top right) | how urgent it is: *Overdue by 2 h*, *Start now*, *Start in 30 min*, *No date*; *Done* in the history |
@@ -73,9 +75,23 @@ grey, the latest finished first, with the time each was finished. The pastel is 
 panel's border; the fill is a faint tint of it over the theme's panel
 colour, so the text stays readable in either look.
 
+## Settings
+
+The gear at the top (Ctrl+,) opens the settings page. Its first entry is
+the **level of management**:
+
+| Level | What it gives |
+|---|---|
+| *Simple* (the default) | tasks with their planned end, the time they need, the marker, reminders and alarms |
+| *With task supervision* | as Simple, and UltraToDo follows the work: the *Start* / *Pause* button and the blinking warnings below |
+
+The choice is kept in `<data>/UltraToDo/settings.json`. A start recorded
+under supervision is kept, but means nothing under Simple: the task shows,
+and is reminded, as one not started.
+
 ## Blinking
 
-Two things blink, so an urgent task is seen from across the room:
+With task supervision two things blink, so an urgent task is seen from across the room:
 
 - **an orange ring** round the marker of a task whose latest start has come
   and that is not started - until *Start* is pressed;

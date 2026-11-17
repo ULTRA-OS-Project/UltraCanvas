@@ -1,5 +1,6 @@
 // Apps/UltraToDo/ui/UltraToDoWindow.cpp
 // See UltraToDoWindow.h.
+// Version: 0.7.0 - the settings page (Ctrl+,): Simple, or with task supervision (Start, the blinking)
 // Version: 0.6.0 - the urgency marker and time left in the button line; blinking; Start / Pause
 // Version: 0.5.0 - the columns filled one after the other; Attach, Edit and Delete as icons with tooltips
 // Version: 0.4.0 - the list in columns when the window is wide enough (LayoutColumns)
@@ -9,6 +10,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraToDoWindow.h"
 
+#include "SettingsDialog.h"
 #include "TaskDialog.h"
 #include "ToDoFormat.h"
 #include "ToDoTheme.h"
@@ -95,6 +97,7 @@ UltraToDoWindow::~UltraToDoWindow() {
 }
 
 bool UltraToDoWindow::Create() {
+    settings_ = ToDoSettings::Load(store_.Folder());
     if (!store_.Load(loadError_))
         std::cerr << "UltraToDo: " << loadError_ << "\n";
 
@@ -213,6 +216,11 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildTopBar() {
 
     // The open tasks, or the history of the finished ones; the counts are
     // set by UpdateSummary.
+    // The settings page (SettingsDialog).
+    auto settings = Theme::MakeIconButton("todo.settings", "settings.svg", Tr("Settings (Ctrl+,)"));
+    settings->onClick = [this]() { OpenSettings(); };
+    bar->AddChild(settings);
+
     view_ = CreateSegmentedControl("todo.view", 0, 0, 240, Theme::kControlHeight);
     view_->AddSegment(Tr("To do"));
     view_->AddSegment(Tr("History"));
@@ -314,8 +322,10 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildPanel(const ToDoTask
         left->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
         foot->AddChild(left);
 
+        // The blinking warnings are task supervision's (Settings).
         const ToDoUrgency urgency = UrgencyOf(task, now);
-        if (urgency == ToDoUrgency::Overdue) {
+        if (!settings_.Supervised()) {
+        } else if (urgency == ToDoUrgency::Overdue) {
             blinking_.push_back({panel.get(), Theme::PanelBorder(pastel)});
         } else if (urgency == ToDoUrgency::StartNow && task.started == 0) {
             blinking_.push_back({ring.get(), Theme::PanelFill(pastel), true});
@@ -343,17 +353,20 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildPanel(const ToDoTask
         reopen->onClick = [this, taskId]() { app_.PostToUIThread([this, taskId]() { SetDone(taskId, false); }); };
         foot->AddChild(reopen);
     } else {
-        // Start / Pause: the work on it began, or stopped.
-        auto start = task.started == 0 ? Theme::MakePill(id + ".start", Tr("Start"), 64)
-                                       : Theme::MakePill(id + ".pause", Tr("Pause"), 64);
-        start->SetTooltip(task.started == 0
-                              ? Tr("I have started working on this task: no more reminders to start it")
-                              : Tr("I am not working on this task now"));
-        const bool starting = task.started == 0;
-        start->onClick = [this, taskId, starting]() {
-            app_.PostToUIThread([this, taskId, starting]() { SetStarted(taskId, starting); });
-        };
-        foot->AddChild(start);
+        // Start / Pause: the work on it began, or stopped - with task
+        // supervision only (Settings).
+        if (settings_.Supervised()) {
+            auto start = task.started == 0 ? Theme::MakePill(id + ".start", Tr("Start"), 64)
+                                           : Theme::MakePill(id + ".pause", Tr("Pause"), 64);
+            start->SetTooltip(task.started == 0
+                                  ? Tr("I have started working on this task: no more reminders to start it")
+                                  : Tr("I am not working on this task now"));
+            const bool starting = task.started == 0;
+            start->onClick = [this, taskId, starting]() {
+                app_.PostToUIThread([this, taskId, starting]() { SetStarted(taskId, starting); });
+            };
+            foot->AddChild(start);
+        }
         auto done = Theme::MakePill(id + ".done", Tr("Done"), 72, /*main=*/true);
         done->SetTooltip(Tr("Mark the task done and move it to the history"));
         done->onClick = [this, taskId]() { app_.PostToUIThread([this, taskId]() { SetDone(taskId, true); }); };
@@ -412,7 +425,7 @@ void UltraToDoWindow::Rebuild() {
     std::vector<std::shared_ptr<UltraCanvasContainer>> panels;
     for (const ToDoTask& task : store_.Sorted(now)) {
         if (task.done != history_) continue;
-        panels.push_back(BuildPanel(task, now));
+        panels.push_back(BuildPanel(Supervision(task), now));
     }
     // Column by column: the first column is filled from the top with the
     // most urgent tasks, then the next, each holding the same number (the
@@ -488,7 +501,7 @@ void UltraToDoWindow::UpdateSummary(int64_t now) {
         ++open;
         const ToDoUrgency urgency = UrgencyOf(task, now);
         if (urgency == ToDoUrgency::Overdue) ++overdue;
-        else if (urgency == ToDoUrgency::StartNow && task.started == 0) ++startNow;
+        else if (urgency == ToDoUrgency::StartNow && Supervision(task).started == 0) ++startNow;
     }
     std::string text = TrN("{n} open task", "{n} open tasks", open);
     if (overdue > 0) text += "   ·   " + TrN("{n} overdue", "{n} overdue", overdue);
@@ -521,6 +534,10 @@ bool UltraToDoWindow::OnKey(const UCEvent& event) {
     };
     if (is('n', UCKeys::N)) {
         NewTask();
+        return true;
+    }
+    if (event.character == ',') {
+        OpenSettings();
         return true;
     }
     if (is('h', UCKeys::H)) {
@@ -642,6 +659,26 @@ void UltraToDoWindow::Blink() {
     if (window_ && !blinking_.empty()) window_->RequestRedraw();
 }
 
+ToDoTask UltraToDoWindow::Supervision(const ToDoTask& task) const {
+    // Without task supervision a start recorded earlier means nothing: the
+    // task shows and is reminded as one not started.
+    if (settings_.Supervised() || task.started == 0) return task;
+    ToDoTask plain = task;
+    plain.started = 0;
+    return plain;
+}
+
+void UltraToDoWindow::OpenSettings() {
+    SettingsDialog::Show(window_.get(), settings_, [this](const ToDoSettings& chosen) {
+        settings_ = chosen;
+        std::string error;
+        if (!settings_.Save(store_.Folder(), error))
+            UltraCanvasDialogManager::ShowError(TrF("The settings could not be saved: {0}", error), Tr("Settings"),
+                                                nullptr, window_.get());
+        Rebuild();
+    });
+}
+
 void UltraToDoWindow::ShowHistory(bool history) {
     if (history_ == history) return;
     history_ = history;
@@ -692,7 +729,9 @@ void UltraToDoWindow::Tick() {
 }
 
 void UltraToDoWindow::CheckNotices(int64_t now) {
-    const std::vector<ToDoNotice> due = DueNotices(store_.Tasks(), now);
+    std::vector<ToDoTask> tasks;
+    for (const ToDoTask& task : store_.Tasks()) tasks.push_back(Supervision(task));
+    const std::vector<ToDoNotice> due = DueNotices(tasks, now);
     if (due.empty()) return;
     std::vector<std::pair<ToDoTask, ToDoNotice>> given;
     for (const ToDoNotice& notice : due) {

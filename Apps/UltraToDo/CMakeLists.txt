@@ -16,6 +16,7 @@ endif()
 add_library(UltraToDoCore STATIC
     core/ToDoTask.cpp
     core/ToDoStore.cpp
+    core/ToDoSettings.cpp
 )
 target_include_directories(UltraToDoCore PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -27,6 +28,7 @@ add_executable(UltraToDo
     main.cpp
     ui/UltraToDoWindow.cpp
     ui/TaskDialog.cpp
+    ui/SettingsDialog.cpp
     ui/ToDoFormat.cpp
 )
 

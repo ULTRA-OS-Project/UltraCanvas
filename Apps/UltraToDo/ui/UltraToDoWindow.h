@@ -16,7 +16,10 @@
 // now that is not started has the marker's ring blink orange; an overdue
 // one has its panel's border blink red (steady where the desktop asks for
 // reduced motion). Start tells the program work on the task has begun: the
-// orange blink and the reminder to start stop; Pause takes it back.
+// orange blink and the reminder to start stop; Pause takes it back. Start
+// and the blinking are task supervision's: the settings page (the gear,
+// Ctrl+,) sets the level of management, Simple (the default) or With task
+// supervision.
 //
 // Done on a panel moves the task to the history (To do | History at the
 // top), where Reopen brings it back.
@@ -31,6 +34,7 @@
 // Started with --background the window can be closed: the program stays,
 // keeps the reminders going, and comes forward at the next start; Quit ends
 // it.
+// Version: 0.5.0 - the settings page: Simple, or with task supervision
 // Version: 0.4.0 - the urgency marker and time left in the button line, blinking, Start / Pause
 // Version: 0.3.0 - the list in columns when the window is wide enough
 // Version: 0.2.0 - Done on every task moves it to the history (To do | History)
@@ -38,6 +42,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "core/ToDoSettings.h"
 #include "core/ToDoStore.h"
 
 #include "UltraCanvasApplication.h"
@@ -91,6 +96,10 @@ private:
     void UpdateSummary(int64_t now);
     void ApplyLook();
     bool OnKey(const UltraCanvas::UCEvent& event);
+    // The settings page; and a task as the level of management shows it
+    // (without task supervision, never started).
+    void OpenSettings();
+    ToDoTask Supervision(const ToDoTask& task) const;
 
     void NewTask();
     void EditTask(const std::string& id);
@@ -122,6 +131,7 @@ private:
 
     UltraCanvas::UltraCanvasApplication& app_;
     ToDoStore store_;
+    ToDoSettings settings_;
     std::string loadError_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;

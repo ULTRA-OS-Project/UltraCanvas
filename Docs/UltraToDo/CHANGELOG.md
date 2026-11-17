@@ -19,6 +19,10 @@
 - **Start / Pause**: tells UltraToDo work on a task has begun - it shows
   *In progress since ...*, its orange blink and its reminder to start stop -
   or has stopped.
+- **Settings page** (the gear, Ctrl+,) with the **level of management**:
+  *Simple* (the default) - dates, the marker, reminders and alarms - or
+  *With task supervision*, which adds *Start* / *Pause* and the blinking
+  warnings for a task to start now and an overdue one.
 - **Done and the history.** Every task has a *Done* button that moves it
   to the history (*To do* / *History* at the top right, with their counts,
   Ctrl+H); there it is listed, the latest finished first, with *Reopen* to
