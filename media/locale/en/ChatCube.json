@@ -489,7 +489,7 @@
   "Where ChatCube keeps what is yours:": "Where ChatCube keeps what is yours:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.",
   "You": "You",
   "You joined {0}.": "You joined {0}.",
   "You left {0}.": "You left {0}.",

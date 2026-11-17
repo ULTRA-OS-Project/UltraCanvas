@@ -456,7 +456,7 @@
   "Where ChatCube keeps what is yours:": "Unde păstrează ChatCube ce este al dumneavoastră:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "Dacă ChatCube caută sau nu persoanele din această rețea se alege la crearea ChatCube ID-ului („Găsește și persoane din această rețea”); fără releu (Rețele > Releu) le caută întotdeauna. Dezactivat aici, ele sunt găsite în continuare - doar nu sunt listate.",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "Oricine poate folosi acest cont de computer poate deschide ChatCube. Cheia ID-ului dumneavoastră rămâne criptată pe disc, cu o cheie păstrată lângă ea.",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "XMPP (Jabber), lângă Signal, se conectează cu adresa și parola dvs.; ChatCube găsește serverul după adresă. Serverul trebuie să ofere XMPP prin WebSocket, cum fac cele mai multe.",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "XMPP (Jabber), lângă Signal, se conectează cu adresa și parola dvs.; ChatCube găsește serverul după adresă și se conectează prin TLS, sau prin WebSocket când serverul oferă doar asta.",
   "You": "Dumneavoastră",
   "You joined {0}.": "V-ați alăturat grupului {0}.",
   "You left {0}.": "Ați părăsit {0}.",

@@ -459,7 +459,7 @@
   "Where ChatCube keeps what is yours:": "Gdzie ChatCube przechowuje to, co Twoje:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "To, czy ChatCube w ogóle szuka osób w tej sieci, wybiera się podczas tworzenia ChatCube ID („Znajduj też osoby w tej sieci”); bez przekaźnika (Sieci > Przekaźnik) robi to zawsze. Wyłączone tutaj – osoby są nadal znajdowane, tylko nie pokazywane na liście.",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "Każdy, kto może korzystać z tego konta na komputerze, może otworzyć ChatCube. Klucz do Twojego ID jest nadal zaszyfrowany na dysku, a obok przechowywany jest klucz.",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "XMPP (Jabber), obok Signal, loguje się twoim adresem i hasłem; ChatCube znajduje serwer na podstawie adresu. Serwer musi oferować XMPP przez WebSocket, jak większość.",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "XMPP (Jabber), obok Signal, loguje się Twoim adresem i hasłem; ChatCube znajduje Twój serwer na podstawie adresu i łączy się przez TLS albo przez WebSocket, gdy serwer oferuje tylko to.",
   "You": "Ty",
   "You joined {0}.": "Dołączono do {0}.",
   "You left {0}.": "Opuszczono {0}.",

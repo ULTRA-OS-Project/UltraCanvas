@@ -453,7 +453,7 @@
   "Where ChatCube keeps what is yours:": "ChatCube आपकी चीज़ें कहाँ रखता है:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "ChatCube इस नेटवर्क पर लोगों को खोजता भी है या नहीं, यह आपकी ChatCube ID बनाते समय चुना जाता है (\"इस नेटवर्क पर लोगों को भी खोजें\"); रिले के बिना (नेटवर्क > रिले) यह हमेशा खोजता है। यहाँ बंद करने पर भी वे मिलते हैं - बस सूचीबद्ध नहीं होते।",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "जो कोई इस कंप्यूटर खाते का उपयोग कर सकता है, वह ChatCube खोल सकता है। आपकी ID की कुंजी अब भी डिस्क पर एन्क्रिप्टेड है, उसके पास रखी एक कुंजी के साथ।",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "Signal के बगल में XMPP (Jabber) आपके पते और पासवर्ड से साइन इन करता है; ChatCube पते से आपका सर्वर खोजता है। आपके सर्वर को WebSocket पर XMPP देना चाहिए, जैसा अधिकांश देते हैं।",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "Signal के साथ XMPP (Jabber) आपके पते और पासवर्ड से साइन इन करता है; ChatCube पते से आपका सर्वर ढूँढता है और TLS से जुड़ता है, या WebSocket से जब सर्वर केवल वही देता है।",
   "You": "आप",
   "You joined {0}.": "आप {0} में शामिल हो गए।",
   "You left {0}.": "आपने {0} छोड़ दिया।",

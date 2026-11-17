@@ -14,9 +14,11 @@
   `Plugins/UltraIM/xmpp`, `Plugins/UltraIM/irc`; modules `ultraim_signal`,
   `ultraim_xmpp`, `ultraim_irc`). Signal through a signal-cli daemon's
   JSON-RPC (the user's, or one the provider starts), linked to the phone by
-  a QR code (`UltraIMLoginType::QRCode`, step `OtherDevice`). XMPP over the
-  WebSocket binding (RFC 7395) with tinyxml2: SCRAM-SHA-256/1 keeping the
-  derived keys rather than the password, roster, MUC rooms from bookmarks,
+  a QR code (`UltraIMLoginType::QRCode`, step `OtherDevice`). XMPP over TCP
+  (STARTTLS on 5222, direct TLS on 5223 - XEP-0368 - by `UltraNet_TlsWrap`;
+  the server found by SRV, then host-meta, then `<domain>:5222`, the endpoint
+  that connected kept) or the WebSocket binding (RFC 7395), with tinyxml2:
+  SCRAM-SHA-256/1 keeping the derived keys rather than the password, roster, MUC rooms from bookmarks,
   MAM history, receipts, markers, chat states, corrections, retractions,
   replies, carbons, HTTP File Upload. IRC with IRCv3 over UltraNet TCP and
   `UltraNet_TlsWrap`: SASL PLAIN or NickServ, CHATHISTORY, server-time,

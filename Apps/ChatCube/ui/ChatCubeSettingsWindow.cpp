@@ -14,6 +14,7 @@
 // through, ULTRA OS's own by default), Extras > Data folder (where ChatCube keeps its identity, its
 // history and its settings, to open or copy) and Extras > About.
 //
+// Version: 0.4.8 - the XMPP note: TLS on its own, WebSocket only where that is all
 // Version: 0.4.7 - a note on the IRC account
 // Version: 0.4.6 - a note on the XMPP account
 // Version: 0.4.5 - a note on the Signal account (signal-cli)
@@ -562,7 +563,7 @@ std::shared_ptr<UltraCanvasContainer> BuildAccountsPage(State* d) {
             "be installed (it needs Java 21), or through a signal-cli daemon whose address you give."));
     AddNote(parts, "cc-set-accounts-note-xmpp",
             Tr("XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your "
-            "server from the address. Your server must offer XMPP over WebSocket, as most do."));
+            "server from the address and connects over TLS, or through WebSocket where the server offers only that."));
     AddNote(parts, "cc-set-accounts-note-irc",
             Tr("IRC, in the last row, connects to a server with your nickname - over TLS unless the address "
             "starts with irc:// - and signs in with your password when the nickname is registered. Type a "

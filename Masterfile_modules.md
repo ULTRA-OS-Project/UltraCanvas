@@ -3031,7 +3031,8 @@ key; the event queue; uploads, edits, deletes. Provider: Signal
 signal-cli daemon (the user's, or one it starts) - linked to the phone by
 QR code; 1:1 chats and groups, quotes, edits, deletes, receipts, typing,
 attachments. Provider: XMPP (`UltraCanvas/Plugins/UltraIM/xmpp/`, module
-`ultraim_xmpp`): any XMPP server over WebSocket (RFC 7395) - SCRAM sign-in
+`ultraim_xmpp`): any XMPP server over TCP (STARTTLS or direct TLS, found by
+SRV) or WebSocket (RFC 7395) - SCRAM sign-in
 with the keys kept, not the password; roster, rooms, the archive, receipts,
 markers, edits, retractions, replies, carbons, HTTP upload. Provider: IRC
 (`UltraCanvas/Plugins/UltraIM/irc/`, module `ultraim_irc`): IRC with IRCv3

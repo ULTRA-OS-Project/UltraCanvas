@@ -456,7 +456,7 @@
   "Where ChatCube keeps what is yours:": "Kde ChatCube uchovává, co je vaše:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "Zda ChatCube vůbec hledá lidi v této síti, se volí při vytváření vašeho ChatCube ID („Vyhledávat lidi i v této síti“); bez relaye (Sítě > Relay) je hledá vždy. Když je to zde vypnuté, jsou stále nalezeni – jen nejsou uvedeni v seznamu.",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "Kdokoli, kdo může používat tento účet počítače, může otevřít ChatCube. Klíč k vašemu ID je na disku stále zašifrován, s klíčem uloženým vedle něj.",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "XMPP (Jabber), vedle Signalu, se přihlašuje vaší adresou a heslem; ChatCube najde váš server podle adresy. Server musí nabízet XMPP přes WebSocket, jako většina.",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "XMPP (Jabber) vedle Signalu se přihlašuje vaší adresou a heslem; ChatCube najde váš server podle adresy a připojí se přes TLS, nebo přes WebSocket, pokud server nabízí jen to.",
   "You": "Vy",
   "You joined {0}.": "Připojili jste se k {0}.",
   "You left {0}.": "Opustili jste {0}.",

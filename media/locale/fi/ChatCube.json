@@ -453,7 +453,7 @@
   "Where ChatCube keeps what is yours:": "Missä ChatCube säilyttää sinun tietosi:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "Se, etsiikö ChatCube tämän verkon ihmisiä lainkaan, valitaan ChatCube ID:täsi luotaessa (”Etsi ihmisiä myös tästä verkosta”); ilman relettä (Verkot > Rele) se etsii aina. Kun tämä on pois päältä, heidät löydetään silti – heitä ei vain näytetä.",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "Kuka tahansa, joka voi käyttää tätä tietokoneen käyttäjätiliä, voi avata ChatCuben. ID:si avain on silti salattu levyllä, ja sen vieressä säilytetään avain.",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "XMPP (Jabber), Signalin vieressä, kirjautuu osoitteellasi ja salasanallasi; ChatCube löytää palvelimesi osoitteen perusteella. Palvelimesi on tarjottava XMPP WebSocketin yli, kuten useimmat tarjoavat.",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "XMPP (Jabber) Signalin vieressä kirjautuu osoitteellasi ja salasanallasi; ChatCube löytää palvelimesi osoitteen perusteella ja yhdistää TLS:n kautta, tai WebSocketin kautta, jos palvelin tarjoaa vain sen.",
   "You": "Sinä",
   "You joined {0}.": "Liityit ryhmään {0}.",
   "You left {0}.": "Poistuit ryhmästä {0}.",

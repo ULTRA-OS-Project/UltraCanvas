@@ -4861,8 +4861,8 @@ else()
 endif()
 
 # ----- UltraIM provider: XMPP --------------------------------------------------
-# XMPP (Jabber) over WebSocket (RFC 7395) through UltraNet (Plugins/UltraIM/xmpp/):
-# the server found from the address's domain (XEP-0156), SCRAM sign-in, the
+# XMPP (Jabber) over TCP (STARTTLS / direct TLS) or WebSocket (RFC 7395) through
+# UltraNet (Plugins/UltraIM/xmpp/): the server found from the address's domain (SRV, XEP-0156), SCRAM sign-in, the
 # roster, chats, group rooms (MUC), history (MAM), receipts and markers,
 # typing, corrections, retractions, replies, HTTP upload. Stanzas parsed with
 # tinyxml2 (the core's own dependency). An archive the tests link, and the

@@ -450,7 +450,7 @@
   "Where ChatCube keeps what is yours:": "ChatCube 保存您数据的位置：",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "ChatCube 是否查找此网络上的用户，在创建 ChatCube ID 时决定（“同时查找此网络上的用户”）；没有中继时（网络 > 中继）总是会查找。在此处关闭后，仍会找到他们 - 只是不列出。",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "任何能使用此计算机账户的人都可以打开 ChatCube。您的 ID 的密钥在磁盘上仍是加密的，其解密密钥保存在旁边。",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "XMPP（Jabber）位于 Signal 旁边，用你的地址和密码登录；ChatCube 根据地址找到你的服务器。你的服务器需要像大多数服务器一样提供基于 WebSocket 的 XMPP。",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "XMPP（Jabber）位于 Signal 旁边，使用你的地址和密码登录；ChatCube 根据地址找到你的服务器并通过 TLS 连接，服务器只提供 WebSocket 时则通过 WebSocket 连接。",
   "You": "您",
   "You joined {0}.": "你已加入 {0}。",
   "You left {0}.": "您已退出 {0}。",

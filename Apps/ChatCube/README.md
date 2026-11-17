@@ -155,8 +155,9 @@ The first ChatCube draft, which this replaces, is kept under
    messages from the moment it is linked. Numbers (`+49 ...`) and Signal
    usernames (`name.01`) can be added.
    **XMPP** takes your address (`erin@example.org`) and password - the server
-   is found from the address, or typed in its own field as a `wss://`
-   address. Your contacts and rooms come along, with the server's history.
+   is found from the address, or typed in its own field (`chat.example.org`,
+   `xmpps://chat.example.org`, or a `wss://` address). ChatCube connects
+   over TLS, or through WebSocket where the server offers only that. Your contacts and rooms come along, with the server's history.
    **IRC** takes the server (`irc.libera.chat`; TLS unless it starts with
    `irc://`), your nickname and, for a registered nickname, the password.
    Add `#channel` to join a channel or a nickname for a private chat; the

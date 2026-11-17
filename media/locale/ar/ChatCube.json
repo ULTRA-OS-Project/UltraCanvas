@@ -465,7 +465,7 @@
   "Where ChatCube keeps what is yours:": "أين يحفظ ChatCube ما يخصك:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "يُختار ما إذا كان ChatCube يبحث عن الأشخاص في هذه الشبكة أصلًا عند إنشاء ChatCube ID الخاص بك (\"العثور أيضًا على الأشخاص في هذه الشبكة\")؛ وبدون خادم ترحيل (الشبكات > خادم الترحيل) يبحث دائمًا. عند الإيقاف هنا، يظل يُعثر عليهم - لكن دون عرضهم.",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "كل من يستطيع استخدام حساب الكمبيوتر هذا يمكنه فتح ChatCube. يبقى مفتاح معرّفك مشفّرًا على القرص، بمفتاح محفوظ بجانبه.",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "يسجّل XMPP (Jabber)، بجانب Signal، الدخول بعنوانك وكلمة المرور؛ ويجد ChatCube خادمك من العنوان. يجب أن يقدّم خادمك XMPP عبر WebSocket، كما تفعل معظم الخوادم.",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "يسجّل XMPP (Jabber)، بجانب Signal، الدخول بعنوانك وكلمة مرورك؛ يجد ChatCube خادمك من العنوان ويتصل عبر TLS، أو عبر WebSocket حين لا يقدّم الخادم غيره.",
   "You": "أنت",
   "You joined {0}.": "انضممت إلى {0}.",
   "You left {0}.": "غادرت {0}.",

@@ -453,7 +453,7 @@
   "Where ChatCube keeps what is yours:": "ChatCube'un size ait olanı sakladığı yer:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "ChatCube'un bu ağdaki kişileri arayıp aramayacağı, ChatCube ID'niz oluşturulurken seçilir (\"Bu ağdaki kişileri de bul\"); aktarıcı olmadan (Ağlar > Aktarıcı) her zaman arar. Burada kapalıysa yine bulunurlar - yalnızca listelenmezler.",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "Bu bilgisayar hesabını kullanabilen herkes ChatCube'u açabilir. Kimliğinizin anahtarı diskte, yanında saklanan bir anahtarla yine şifrelidir.",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "Signal'in yanındaki XMPP (Jabber), adresiniz ve parolanızla oturum açar; ChatCube sunucunuzu adresten bulur. Sunucunuz, çoğu gibi, WebSocket üzerinden XMPP sunmalıdır.",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "Signal'in yanındaki XMPP (Jabber), adresiniz ve parolanızla oturum açar; ChatCube sunucunuzu adresten bulur ve TLS üzerinden, sunucu yalnızca bunu sunuyorsa WebSocket üzerinden bağlanır.",
   "You": "Siz",
   "You joined {0}.": "{0} grubuna katıldınız.",
   "You left {0}.": "{0} grubundan ayrıldınız.",

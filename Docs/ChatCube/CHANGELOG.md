@@ -15,7 +15,8 @@
   the phone: ChatCube becomes a linked device (through signal-cli, which is
   installed separately). Chats and groups, replies, edits, deletes, ticks,
   typing, pictures and files; numbers and Signal usernames in *Add*.
-- **XMPP.** Any XMPP (Jabber) server that offers WebSocket: your address and
+- **XMPP.** Any XMPP (Jabber) server, over TLS (port 5222 or 5223, found from
+  your address) or WebSocket: your address and
   password, your contacts and rooms, the server's history, ticks, typing,
   edits, deletes, replies and file uploads. The password is not kept, only
   keys derived from it.

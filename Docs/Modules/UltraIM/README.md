@@ -1007,14 +1007,24 @@ left, and a daemon the provider starts and stops itself. Skips without python3 u
 ## Provider: XMPP
 
 `UltraCanvas/Plugins/UltraIM/xmpp/` (module `ultraim_xmpp`, provider id
-`xmpp`) is an XMPP (Jabber) client over XMPP's WebSocket binding (RFC 7395)
-through UltraNet; the XML is tinyxml2's.
+`xmpp`) is an XMPP (Jabber) client over XMPP's TCP binding (RFC 6120:
+STARTTLS on 5222, direct TLS on 5223 - XEP-0368) or its WebSocket binding
+(RFC 7395), through UltraNet (`UltraNet_TlsWrap` for TLS); the XML is
+tinyxml2's, cut into elements from the TCP byte stream by `XmppSplitter`.
 
-- **The server** is found from the address's domain (XEP-0156:
-  `/.well-known/host-meta.json`, else host-meta's XML); `credentials.server`
-  overrides it with the WebSocket's address (`wss://...`) or another place
-  to look. Plain `ws://` only to this computer (tests). The classic TCP
-  binding (STARTTLS on 5222, direct TLS on 5223) is not used yet.
+- **The server**, with `credentials.server` empty, is looked for in this
+  order, the first that connects kept: the SRV records
+  `_xmpps-client._tcp` (direct TLS) and `_xmpp-client._tcp` (STARTTLS) of the
+  address's domain, by priority and weight; the WebSocket that host-meta
+  announces (XEP-0156); `<domain>:5222`; last `wss://<domain>/xmpp-websocket`.
+  `credentials.server` names it instead: `xmpp://host[:port]`, `host:port`
+  or a bare host (STARTTLS, 5222), `xmpps://host[:port]` (direct TLS, 5223),
+  `wss://...` (WebSocket), `https://...` (host-meta there). The certificate
+  is checked against the address's domain; a server that offers no STARTTLS,
+  and `ws://`, are refused unless they are on this computer. The endpoint
+  that connected is kept with the keys and tried first next time.
+  `SetTlsOptions` takes a CA bundle (tests). Over TCP a single space keeps a
+  quiet connection open.
 - **Sign-in** (`UltraIMLoginType::UsernamePassword`): the bare JID
   (`username`, `erin@example.org`) and the password, by SASL SCRAM-SHA-256,
   else SCRAM-SHA-1, else PLAIN (only over TLS or to this computer).
@@ -1038,13 +1048,19 @@ through UltraNet; the XML is tinyxml2's.
   connection signs in again).
 
 Tests: `Tests/UltraIM/XmppProviderTests.cpp` against `xmpp_fake_server.py`
-(standard-library python, a WebSocket XMPP server): SCRAM-SHA-256,
+(standard-library python, a WebSocket XMPP server, and with `--cert` a TCP
+one with STARTTLS and a direct-TLS one, sharing users and archives): the
+splitter on awkward reads, server-field forms, SRV ordering, an untrusted
+certificate refused, STARTTLS and WebSocket clients talking both ways,
+direct TLS with the endpoint kept and resumed, a dropped TCP connection;
+SCRAM-SHA-256,
 SCRAM-SHA-1 and PLAIN (nothing kept), plain `ws://` to another computer
 refused, the WebSocket found from host-meta, the kept keys and a changed
 password, 1:1 and room messages both ways, carbons, receipts, markers,
 typing, a correction, a retraction, a reply, the archive paged and searched,
 uploads with progress, a dropped connection reconnecting. Skips without
-python3 unless `ULTRAIM_TEST_XMPP_REQUIRED` is set.
+python3 unless `ULTRAIM_TEST_XMPP_REQUIRED` is set (the TLS parts without
+openssl).
 
 ## Provider: IRC
 

@@ -450,7 +450,7 @@
   "Where ChatCube keeps what is yours:": "Nơi ChatCube giữ những gì của bạn:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "Việc ChatCube có tìm người trong mạng này hay không được chọn khi tạo ChatCube ID (\"Tìm cả những người trong mạng này\"); khi không có máy chủ chuyển tiếp (Mạng > Máy chủ chuyển tiếp) thì luôn tìm. Tắt ở đây, họ vẫn được tìm thấy - chỉ là không được liệt kê.",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "Ai dùng được tài khoản máy tính này đều có thể mở ChatCube. Khóa của ID vẫn được mã hóa trên đĩa, với một khóa được giữ bên cạnh.",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "XMPP (Jabber), bên cạnh Signal, đăng nhập bằng địa chỉ và mật khẩu của bạn; ChatCube tìm máy chủ từ địa chỉ. Máy chủ của bạn phải hỗ trợ XMPP qua WebSocket, như hầu hết máy chủ.",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "XMPP (Jabber), bên cạnh Signal, đăng nhập bằng địa chỉ và mật khẩu của bạn; ChatCube tìm máy chủ của bạn từ địa chỉ và kết nối qua TLS, hoặc qua WebSocket khi máy chủ chỉ cung cấp cách đó.",
   "You": "Bạn",
   "You joined {0}.": "Bạn đã tham gia {0}.",
   "You left {0}.": "Bạn đã rời {0}.",

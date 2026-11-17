@@ -450,7 +450,7 @@
   "Where ChatCube keeps what is yours:": "ChatCube があなたのデータを保存する場所:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "ChatCube がこのネットワーク上のユーザーを探すかどうかは、ChatCube ID の作成時に決まります (「このネットワーク上のユーザーも探す」)。リレーがない場合 (ネットワーク > リレー) は常に探します。ここでオフにしても検出はされ、一覧に表示されないだけです。",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "このコンピューターのアカウントを使える人は誰でも ChatCube を開けます。ID の鍵はディスク上で暗号化されたままですが、その鍵は隣に保存されています。",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "Signal の隣の XMPP (Jabber) は、アドレスとパスワードでサインインします。ChatCube はアドレスからサーバーを見つけます。サーバーは、ほとんどのサーバーと同じく WebSocket 経由の XMPP に対応している必要があります。",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "Signal の隣の XMPP (Jabber) は、アドレスとパスワードでサインインします。ChatCube はアドレスからサーバーを見つけ、TLS で接続します。サーバーが WebSocket しか提供しない場合は WebSocket で接続します。",
   "You": "あなた",
   "You joined {0}.": "{0} に参加しました。",
   "You left {0}.": "{0} から退出しました。",

@@ -453,7 +453,7 @@
   "Where ChatCube keeps what is yours:": "Hvor ChatCube lagrer det som er ditt:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "Om ChatCube i det hele tatt ser etter personene på dette nettverket, velges når ChatCube ID-en din lages («Finn også personer på dette nettverket»); uten et relé (Nettverk > Relé) gjør den det alltid. Slått av her blir de fortsatt funnet – bare ikke vist.",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "Alle som kan bruke denne brukerkontoen på datamaskinen, kan åpne ChatCube. Nøkkelen til ID-en din er fortsatt kryptert på disken, med en nøkkel lagret ved siden av.",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "XMPP (Jabber), ved siden av Signal, logger på med adressen og passordet ditt; ChatCube finner serveren ut fra adressen. Serveren må tilby XMPP over WebSocket, slik de fleste gjør.",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "XMPP (Jabber), ved siden av Signal, logger på med adressen og passordet ditt; ChatCube finner serveren din ut fra adressen og kobler til over TLS, eller over WebSocket når serveren bare tilbyr det.",
   "You": "Du",
   "You joined {0}.": "Du ble med i {0}.",
   "You left {0}.": "Du forlot {0}.",

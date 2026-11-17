@@ -450,7 +450,7 @@
   "Where ChatCube keeps what is yours:": "ChatCube가 내 데이터를 보관하는 위치:",
   "Whether ChatCube looks for the people on this network at all is chosen when your ChatCube ID is made (\"Also find people on this network\"); without a relay (Networks > Relay) it always does. Off here, they are still found - only not listed.": "ChatCube가 이 네트워크의 사용자를 찾을지 여부는 ChatCube ID를 만들 때 정해집니다(\"이 네트워크의 사용자도 찾기\"). 릴레이가 없으면(네트워크 > 릴레이) 항상 찾습니다. 여기에서 끄더라도 찾기는 하며, 목록에 표시하지 않을 뿐입니다.",
   "Whoever can use this computer account can open ChatCube. The key to your ID is still encrypted on disk, with a key kept beside it.": "이 컴퓨터 계정을 사용할 수 있는 사람은 누구나 ChatCube를 열 수 있습니다. ID의 키는 여전히 디스크에서 암호화되어 있으며, 암호화에 쓰인 키는 그 옆에 보관됩니다.",
-  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address. Your server must offer XMPP over WebSocket, as most do.": "Signal 옆의 XMPP(Jabber)는 주소와 비밀번호로 로그인합니다. ChatCube는 주소로 서버를 찾습니다. 서버는 대부분처럼 WebSocket을 통한 XMPP를 지원해야 합니다.",
+  "XMPP (Jabber), beside Signal, signs in with your address and password; ChatCube finds your server from the address and connects over TLS, or through WebSocket where the server offers only that.": "Signal 옆의 XMPP(Jabber)는 주소와 비밀번호로 로그인합니다. ChatCube는 주소로 서버를 찾아 TLS로 연결하며, 서버가 WebSocket만 제공하면 WebSocket으로 연결합니다.",
   "You": "나",
   "You joined {0}.": "{0}에 참여했습니다.",
   "You left {0}.": "{0}에서 나갔습니다.",
