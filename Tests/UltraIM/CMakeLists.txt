@@ -113,6 +113,17 @@ if(TARGET UltraIMSignalCore)
     set_tests_properties(SignalProviderTests PROPERTIES TIMEOUT 300)
 endif()
 
+# XMPP: against xmpp_fake_server.py, a small XMPP server over WebSocket
+# (standard-library python3); skips without python3.
+if(TARGET UltraIMXmppCore)
+    add_executable(XmppProviderTests XmppProviderTests.cpp)
+    target_compile_features(XmppProviderTests PRIVATE cxx_std_20)
+    target_link_libraries(XmppProviderTests PRIVATE UltraIMXmppCore)
+    target_compile_definitions(XmppProviderTests PRIVATE ULTRAIM_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME XmppProviderTests COMMAND XmppProviderTests)
+    set_tests_properties(XmppProviderTests PROPERTIES TIMEOUT 300)
+endif()
+
 # Telegram: the provider against FakeTdJson (a libtdjson stand-in holding a
 # small Telegram in memory, built here), and its requests against the real
 # TDLib - the one the configure step fetched into Plugins/UltraIM/tdlib, or

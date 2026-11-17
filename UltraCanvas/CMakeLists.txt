@@ -4860,6 +4860,37 @@ else()
     message(STATUS "  [−] UltraIM provider Signal - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
+# ----- UltraIM provider: XMPP --------------------------------------------------
+# XMPP (Jabber) over WebSocket (RFC 7395) through UltraNet (Plugins/UltraIM/xmpp/):
+# the server found from the address's domain (XEP-0156), SCRAM sign-in, the
+# roster, chats, group rooms (MUC), history (MAM), receipts and markers,
+# typing, corrections, retractions, replies, HTTP upload. Stanzas parsed with
+# tinyxml2 (the core's own dependency). An archive the tests link, and the
+# module loaded from <build>/Plugins/UltraIM.
+set(_ultraim_xmpp_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/xmpp)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt
+   AND EXISTS ${_ultraim_xmpp_dir}/XmppModule.cpp)
+    file(GLOB _ultraim_xmpp_sources ${_ultraim_xmpp_dir}/Xmpp*.cpp)
+    list(REMOVE_ITEM _ultraim_xmpp_sources ${_ultraim_xmpp_dir}/XmppModule.cpp)
+    add_library(UltraIMXmppCore STATIC ${_ultraim_xmpp_sources})
+    set_target_properties(UltraIMXmppCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMXmppCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMXmppCore PUBLIC ${_ultraim_xmpp_dir} PRIVATE ${TINYXML2_INCLUDE_DIRS})
+    target_link_libraries(UltraIMXmppCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt
+                          PRIVATE ${TINYXML2_LIBRARIES})
+    target_link_directories(UltraIMXmppCore PRIVATE ${TINYXML2_LIBRARY_DIRS})
+
+    add_library(UltraIMXmppPlugin MODULE ${_ultraim_xmpp_dir}/XmppModule.cpp)
+    set_target_properties(UltraIMXmppPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_xmpp"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMXmppPlugin PRIVATE UltraIMXmppCore)
+    message(STATUS "  [✓] UltraIM provider XMPP - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider XMPP - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
+
 # ----- UltraIM provider: Telegram ----------------------------------------------
 # On TDLib through its JSON interface (Plugins/UltraIM/telegram/), loaded at
 # run time: nothing of TDLib is linked, so the provider builds everywhere and
