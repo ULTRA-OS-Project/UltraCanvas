@@ -27,6 +27,8 @@
   to the history (*To do* / *History* at the top right, with their counts,
   Ctrl+H); there it is listed, the latest finished first, with *Reopen* to
   bring it back and *Delete*.
+- **Its icon**: a rounded peach attention sign with a black "!" on a pale
+  mint rounded tile.
 - **The most urgent first.** The list is ordered by the latest moment a task
   can be started and still be finished by its planned end (planned end minus
   estimated time), not by the planned end alone; tasks without a date
