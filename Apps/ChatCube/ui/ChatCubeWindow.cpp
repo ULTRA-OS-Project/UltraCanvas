@@ -2495,8 +2495,9 @@ void ChatCubeWindow::SignInToAccount(AccountForm& f, bool stored) {
             credentials.password = f.password->GetText();
             if ((credentials.server.empty() && !f.serverOptional) || credentials.username.empty() ||
                 (credentials.password.empty() && !f.passwordOptional)) {
-                SetStatus(f.serverOptional ? TrF("{0}: enter your address and your password.", f.name)
-                                           : TrF("{0}: enter the server, your account and your password.", f.name));
+                SetStatus(f.serverOptional    ? TrF("{0}: enter your address and your password.", f.name)
+                          : f.passwordOptional ? TrF("{0}: enter the server and your nickname.", f.name)
+                                               : TrF("{0}: enter the server, your account and your password.", f.name));
                 return;
             }
         }
@@ -2515,6 +2516,8 @@ void ChatCubeWindow::SignInToAccount(AccountForm& f, bool stored) {
             SetProviderStatus(form->providerId, r.message);
             return;
         }
+        // A note from the network (IRC: the nickname was taken, another given).
+        if (!r.message.empty()) SetStatus(TrF("{0}: {1}", form->name, r.message));
         form->password->SetText("");        // not kept: the session token is
         form->code->SetText("");
         form->code->SetVisible(false);

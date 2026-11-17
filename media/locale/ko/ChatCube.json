@@ -492,6 +492,7 @@
   "{0} PM": "오후 {0}",
   "{0} turned the camera off": "{0}님이 카메라를 껐습니다",
   "{0}: enter the code from your authenticator app.": "{0}: 인증 앱의 코드를 입력하세요.",
+  "{0}: enter the server and your nickname.": "{0}: 서버와 닉네임을 입력하세요.",
   "{0}: enter the server, your account and your password.": "{0}: 서버, 계정, 비밀번호를 입력하세요.",
   "{0}: enter your address and your password.": "{0}: 주소와 비밀번호를 입력하세요.",
   "{0}: signed in as {1}": "{0}: {1}(으)로 로그인됨",

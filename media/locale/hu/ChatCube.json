@@ -495,6 +495,7 @@
   "{0} PM": "du. {0}",
   "{0} turned the camera off": "{0} kikapcsolta a kameráját",
   "{0}: enter the code from your authenticator app.": "{0}: adja meg a hitelesítő alkalmazás kódját.",
+  "{0}: enter the server and your nickname.": "{0}: adja meg a szervert és a becenevét.",
   "{0}: enter the server, your account and your password.": "{0}: adja meg a szervert, a fiókját és a jelszavát.",
   "{0}: enter your address and your password.": "{0}: adja meg a címét és a jelszavát.",
   "{0}: signed in as {1}": "{0}: bejelentkezve mint {1}",

@@ -492,6 +492,7 @@
   "{0} PM": "{0} PM",
   "{0} turned the camera off": "{0} mematikan kamera",
   "{0}: enter the code from your authenticator app.": "{0}: masukkan kode dari aplikasi autentikator Anda.",
+  "{0}: enter the server and your nickname.": "{0}: masukkan server dan nama panggilan Anda.",
   "{0}: enter the server, your account and your password.": "{0}: masukkan server, akun, dan kata sandi Anda.",
   "{0}: enter your address and your password.": "{0}: masukkan alamat dan kata sandi Anda.",
   "{0}: signed in as {1}": "{0}: masuk sebagai {1}",

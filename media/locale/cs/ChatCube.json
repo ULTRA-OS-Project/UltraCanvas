@@ -498,6 +498,7 @@
   "{0} PM": "{0} PM",
   "{0} turned the camera off": "{0} vypnul(a) kameru",
   "{0}: enter the code from your authenticator app.": "{0}: zadejte kód z ověřovací aplikace.",
+  "{0}: enter the server and your nickname.": "{0}: zadejte server a svou přezdívku.",
   "{0}: enter the server, your account and your password.": "{0}: zadejte server, svůj účet a heslo.",
   "{0}: enter your address and your password.": "{0}: zadejte svou adresu a heslo.",
   "{0}: signed in as {1}": "{0}: přihlášeno jako {1}",

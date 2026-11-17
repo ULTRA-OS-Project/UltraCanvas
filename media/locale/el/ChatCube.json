@@ -495,6 +495,7 @@
   "{0} PM": "{0} μ.μ.",
   "{0} turned the camera off": "Ο/Η {0} απενεργοποίησε την κάμερα",
   "{0}: enter the code from your authenticator app.": "{0}: εισαγάγετε τον κωδικό από την εφαρμογή επαλήθευσης.",
+  "{0}: enter the server and your nickname.": "{0}: εισαγάγετε τον διακομιστή και το ψευδώνυμό σας.",
   "{0}: enter the server, your account and your password.": "{0}: εισαγάγετε τον διακομιστή, τον λογαριασμό και τον κωδικό πρόσβασης.",
   "{0}: enter your address and your password.": "{0}: εισαγάγετε τη διεύθυνση και τον κωδικό σας.",
   "{0}: signed in as {1}": "{0}: συνδεθήκατε ως {1}",

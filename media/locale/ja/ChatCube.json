@@ -492,6 +492,7 @@
   "{0} PM": "午後 {0}",
   "{0} turned the camera off": "{0} がカメラをオフにしました",
   "{0}: enter the code from your authenticator app.": "{0}: 認証アプリのコードを入力してください。",
+  "{0}: enter the server and your nickname.": "{0}: サーバーとニックネームを入力してください。",
   "{0}: enter the server, your account and your password.": "{0}: サーバー、アカウント、パスワードを入力してください。",
   "{0}: enter your address and your password.": "{0}: アドレスとパスワードを入力してください。",
   "{0}: signed in as {1}": "{0}: {1} としてサインイン済み",

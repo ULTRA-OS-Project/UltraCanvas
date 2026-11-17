@@ -498,6 +498,7 @@
   "{0} PM": "{0} PM",
   "{0} turned the camera off": "{0} a oprit camera",
   "{0}: enter the code from your authenticator app.": "{0}: introduceți codul din aplicația de autentificare.",
+  "{0}: enter the server and your nickname.": "{0}: introduceți serverul și porecla.",
   "{0}: enter the server, your account and your password.": "{0}: introduceți serverul, contul și parola.",
   "{0}: enter your address and your password.": "{0}: introduceți adresa și parola.",
   "{0}: signed in as {1}": "{0}: conectat ca {1}",

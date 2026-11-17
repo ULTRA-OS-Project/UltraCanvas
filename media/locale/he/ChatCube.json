@@ -501,6 +501,7 @@
   "{0} PM": "{0} אחה״צ",
   "{0} turned the camera off": "{0} כיבה את המצלמה",
   "{0}: enter the code from your authenticator app.": "{0}: הזינו את הקוד מאפליקציית האימות.",
+  "{0}: enter the server and your nickname.": "{0}: הזינו את השרת ואת הכינוי שלכם.",
   "{0}: enter the server, your account and your password.": "{0}: הזינו את השרת, החשבון והסיסמה.",
   "{0}: enter your address and your password.": "{0}: הזינו את הכתובת והסיסמה.",
   "{0}: signed in as {1}": "{0}: מחובר בתור {1}",

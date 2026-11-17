@@ -501,6 +501,7 @@
   "{0} PM": "{0} PM",
   "{0} turned the camera off": "{0} вимкнув(-ла) камеру",
   "{0}: enter the code from your authenticator app.": "{0}: введіть код із застосунку-автентифікатора.",
+  "{0}: enter the server and your nickname.": "{0}: введіть сервер і свій нік.",
   "{0}: enter the server, your account and your password.": "{0}: введіть сервер, обліковий запис і пароль.",
   "{0}: enter your address and your password.": "{0}: введіть адресу й пароль.",
   "{0}: signed in as {1}": "{0}: вхід виконано як {1}",

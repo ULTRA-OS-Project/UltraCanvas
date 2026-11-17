@@ -492,6 +492,7 @@
   "{0} PM": "{0} CH",
   "{0} turned the camera off": "{0} đã tắt camera",
   "{0}: enter the code from your authenticator app.": "{0}: nhập mã từ ứng dụng xác thực của bạn.",
+  "{0}: enter the server and your nickname.": "{0}: nhập máy chủ và biệt danh của bạn.",
   "{0}: enter the server, your account and your password.": "{0}: nhập máy chủ, tài khoản và mật khẩu của bạn.",
   "{0}: enter your address and your password.": "{0}: nhập địa chỉ và mật khẩu của bạn.",
   "{0}: signed in as {1}": "{0}: đã đăng nhập là {1}",

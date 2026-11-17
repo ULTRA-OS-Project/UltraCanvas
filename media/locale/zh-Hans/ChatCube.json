@@ -492,6 +492,7 @@
   "{0} PM": "下午 {0}",
   "{0} turned the camera off": "{0} 关闭了摄像头",
   "{0}: enter the code from your authenticator app.": "{0}：请输入身份验证器应用中的验证码。",
+  "{0}: enter the server and your nickname.": "{0}：请输入服务器和昵称。",
   "{0}: enter the server, your account and your password.": "{0}：请输入服务器、账号和密码。",
   "{0}: enter your address and your password.": "{0}：请输入你的地址和密码。",
   "{0}: signed in as {1}": "{0}：已以 {1} 身份登录",

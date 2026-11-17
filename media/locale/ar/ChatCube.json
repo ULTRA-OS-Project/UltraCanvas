@@ -507,6 +507,7 @@
   "{0} PM": "{0} م",
   "{0} turned the camera off": "أوقف {0} الكاميرا",
   "{0}: enter the code from your authenticator app.": "{0}: أدخل الرمز من تطبيق المصادقة.",
+  "{0}: enter the server and your nickname.": "{0}: أدخل الخادم واسمك المستعار.",
   "{0}: enter the server, your account and your password.": "{0}: أدخل الخادم وحسابك وكلمة المرور.",
   "{0}: enter your address and your password.": "{0}: أدخل عنوانك وكلمة المرور.",
   "{0}: signed in as {1}": "{0}: تم تسجيل الدخول باسم {1}",

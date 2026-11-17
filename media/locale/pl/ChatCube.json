@@ -501,6 +501,7 @@
   "{0} PM": "{0} PM",
   "{0} turned the camera off": "{0} wyłącza kamerę",
   "{0}: enter the code from your authenticator app.": "{0}: wpisz kod z aplikacji uwierzytelniającej.",
+  "{0}: enter the server and your nickname.": "{0}: wpisz serwer i swój pseudonim.",
   "{0}: enter the server, your account and your password.": "{0}: wpisz serwer, swoje konto i hasło.",
   "{0}: enter your address and your password.": "{0}: wpisz swój adres i hasło.",
   "{0}: signed in as {1}": "{0}: zalogowano jako {1}",
