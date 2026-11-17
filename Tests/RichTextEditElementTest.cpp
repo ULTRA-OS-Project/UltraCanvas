@@ -1713,6 +1713,50 @@ int main() {
                 const float natural = top(0.0f), spaced = top(30.0f);
                 TEST("A cell's lines are at least as tall as it says: three lines " + std::to_string(spaced - natural)
                      + " taller", spaced - natural > 30.0f && spaced - natural < 90.0f);
+                // "Exactly 30 pt" holds for lines without words too, in a
+                // font of any size: a 1 pt paragraph between two others, a
+                // cell of nothing else, a paragraph of the body.
+                {
+                    RichTextRun hair;
+                    hair.fontSizePt = 1.0f;
+                    hair.lineBreakBefore = true;
+                    RichDocBlock exact = table;
+                    exact.tableRows[0].cells[0].runs = {label, hair, second};
+                    exact.tableRows[0].cells[0].lineHeightAtLeast = false;
+                    auto exactTop = [&](float lineHeight, std::vector<RichTextRun> runs) {
+                        exact.tableRows[0].cells[0].runs = std::move(runs);
+                        exact.tableRows[0].cells[0].lineHeightPt = lineHeight;
+                        card->blocks = {exact, after};
+                        edit->SetDocument(card);
+                        window->UpdateAndRender();
+                        window->UpdateAndRender();
+                        edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                        window->UpdateAndRender();
+                        return edit->GetCaretRectForTest().y;
+                    };
+                    const float three = exactTop(30.0f, {label, hair, second}), two = exactTop(30.0f, {label, second});
+                    TEST("An empty line of a 1 pt font is a line of the cell's exact height: " + std::to_string(three - two)
+                         + " for it", std::abs(three - two - 40.0f) < 3.0f);
+                    RichTextRun only;
+                    only.fontSizePt = 1.0f;
+                    const float emptyCell = exactTop(30.0f, {only}), emptyNatural = exactTop(0.0f, {only});
+                    TEST("...and so is a cell of nothing else: " + std::to_string(emptyCell - emptyNatural) + " taller",
+                         emptyCell - emptyNatural > 15.0f);
+                    RichDocBlock gap;
+                    gap.paragraphFontSizePt = 1.0f;
+                    auto bodyTop = [&](float lineHeight) {
+                        gap.lineHeightPt = lineHeight;
+                        card->blocks = {gap, after};
+                        edit->SetDocument(card);
+                        window->UpdateAndRender();
+                        window->UpdateAndRender();
+                        edit->GetEditor().SetCaret(RichDocPosition(1, 0));
+                        window->UpdateAndRender();
+                        return edit->GetCaretRectForTest().y;
+                    };
+                    TEST("...and a paragraph of the body without words: " + std::to_string(bodyTop(30.0f) - bodyTop(0.0f))
+                         + " taller", bodyTop(30.0f) - bodyTop(0.0f) > 25.0f);
+                }
                 // ...and lines of their own multiple (a heading at 70%).
                 for (RichTextRun& run : table.tableRows[0].cells[0].runs) run.lineSpacing = 0.7f;
                 const float tight = top(0.0f);

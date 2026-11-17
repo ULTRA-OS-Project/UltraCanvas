@@ -7,6 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.14.2 - a line without words has its paragraph's set line height (a cell's, a body paragraph's)
 // Version: 1.14.1 - a cell's runs with a line multiple of their own (RichTextRun::lineSpacing)
 // Version: 1.14.0 - columns that give way to their content; a table nested in a cell edited in place; spaces a
 //                   line ends with take no room; no break after a slash where the document says so
@@ -2141,7 +2142,17 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                     attr->SetRange(end, end + 1);
                     layout->InsertAttribute(std::move(attr));
                 };
-                if (run.emptyLineHeightPt > 0.0f && emptyLineUnitPx > 0.0f && layoutLineGap) {
+                if (run.emptyLineHeightPt <= 0.0f && cellRow >= 0 && block.lineHeightPt > 0.0f && run.lineSpacing <= 0.0f) {
+                    // A cell's lines of a set height: an empty one too,
+                    // whatever its font ("exactly 14 pt" makes a 1 pt
+                    // paragraph 14 pt high); "at least" keeps a larger font's.
+                    const float fontLine = Px(run.fontSizePt > 0.0f ? run.fontSizePt
+                                                                   : static_cast<float>(FontForBlock(block).fontSize)) * 1.2f;
+                    const float height = block.lineHeightAtLeast ? std::max(fontLine, Px(block.lineHeightPt))
+                                                                 : Px(block.lineHeightPt);
+                    onBreak(TextAttributeFactory::CreateFontSize(1.0f));
+                    onBreak(TextAttributeFactory::CreateAbsoluteLineHeight(static_cast<double>(height)));
+                } else if (run.emptyLineHeightPt > 0.0f && emptyLineUnitPx > 0.0f && layoutLineGap) {
                     // Lines a font's height apart: the empty one is the
                     // font scaled to the height wanted.
                     onBreak(TextAttributeFactory::CreateScale(static_cast<double>(Px(run.emptyLineHeightPt) / emptyLineUnitPx)));
@@ -2434,7 +2445,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             float height = 0.0f;
             // (Every line states its height: such a cell's lines are not
             // spaced by their fonts' heights - see MakeRunsLayout.)
-            if (block.lineHeightPt > 0.0f) {
+            if (block.lineHeightPt > 0.0f && run.lineSpacing <= 0.0f) {
                 height = block.lineHeightAtLeast ? std::max(natural, Px(block.lineHeightPt)) : Px(block.lineHeightPt);
             } else {
                 height = natural * (run.lineSpacing > 0.0f ? run.lineSpacing
@@ -3141,7 +3152,13 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                                                   static_cast<int>(r), static_cast<int>(cellIndex));
                     ApplySelectionAttributes(cell->layout.get(), blockIndex,
                                              static_cast<int>(r), static_cast<int>(cellIndex));
-                    const float textHeight = static_cast<float>(cell->layout->GetLayoutHeight());
+                    float textHeight = static_cast<float>(cell->layout->GetLayoutHeight());
+                    // A cell without words whose lines have a set height is
+                    // one such line.
+                    if (modelCell.lineHeightPt > 0.0f && UCRichDocument::ConcatenateRunText(modelCell.runs).empty()) {
+                        textHeight = modelCell.lineHeightAtLeast ? std::max(textHeight, Px(modelCell.lineHeightPt))
+                                                                 : Px(modelCell.lineHeightPt);
+                    }
                     cell->bounds = Rect2Df(indent + tableLeft + columnLeft[gridColumn], y,
                                            cellWidth, textHeight + padTop + padBottom);
                     cell->textLeft = padLeft;
@@ -3288,6 +3305,13 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
         probe->SetLineSpacing((!laidOut || laidOut->fontLineGap) ? 1.0f : 0.0f);
         bl.bounds.height = static_cast<float>(probe->GetLayoutHeight());
         if (bl.bounds.height <= 0.0f) bl.bounds.height = static_cast<float>(style.baseFont.fontSize) * 1.3f;
+    }
+    // A paragraph without words whose lines have a set height is one such
+    // line, whatever its font ("exactly 14 pt" between two tables).
+    if ((block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading) && block.lineHeightPt > 0.0f
+        && UCRichDocument::ConcatenateRunText(block.runs).empty()) {
+        bl.bounds.height = block.lineHeightAtLeast ? std::max(bl.bounds.height, Px(block.lineHeightPt))
+                                                   : Px(block.lineHeightPt);
     }
     bl.valid = true;
 }

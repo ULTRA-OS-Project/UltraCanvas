@@ -3260,7 +3260,8 @@ private:
                     if (spacing.lineHeightPt <= 0.0f) {
                         const float own = spacing.lineSpacing > 0.0f ? spacing.lineSpacing : 1.0f;
                         const float cells = cell.lineSpacing > 0.0f ? cell.lineSpacing : 1.0f;
-                        if (std::abs(own - cells) > 0.01f) {
+                        // (Or not of the height in points the cell's first sets.)
+                        if (std::abs(own - cells) > 0.01f || cell.lineHeightPt > 0.0f) {
                             for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
                                 if (!ctx.runs[r].IsInlineImage() && !ctx.runs[r].IsTextFrame()) ctx.runs[r].lineSpacing = own;
                             }
@@ -3277,6 +3278,10 @@ private:
                         if (run.fontFamily.empty()) run.fontFamily = styled.paragraphFontFamily;
                     }
                     emptyLine.fontSizePt = styled.paragraphFontSizePt;
+                    // An empty paragraph that does not share the cell's line
+                    // height in points is a line of its own font.
+                    emptyLine.lineSpacing = (cell.lineHeightPt > 0.0f && spacing.lineHeightPt <= 0.0f)
+                        ? (spacing.lineSpacing > 0.0f ? spacing.lineSpacing : 1.0f) : 0.0f;
                     emptyLine.fontFamily = styled.paragraphFontFamily;
                     // An empty paragraph's line is its mark's font - and so
                     // is the empty line a break at a paragraph's end leaves.
@@ -4639,18 +4644,19 @@ private:
                 float above = 0.0f;
                 auto flush = [&]() {
                     xml << "<w:p><w:pPr><w:spacing w:before=\"" << std::lround(above * 20.0f) << "\" w:after=\"0\"";
-                    if (cell.lineHeightPt > 0.0f) {
+                    // The line's own multiple goes before the cell's height
+                    // in points, and that before the cell's multiple.
+                    float own = 0.0f;
+                    for (const RichTextRun& run : piece) {
+                        if (run.lineSpacing > 0.0f) { own = run.lineSpacing; break; }
+                    }
+                    if (own > 0.0f) {
+                        xml << " w:line=\"" << std::lround(own * 240.0f) << "\" w:lineRule=\"auto\"";
+                    } else if (cell.lineHeightPt > 0.0f) {
                         xml << " w:line=\"" << std::lround(cell.lineHeightPt * 20.0f) << "\" w:lineRule=\""
                             << (cell.lineHeightAtLeast ? "atLeast" : "exact") << "\"";
-                    } else {
-                        // The line's own multiple, before the cell's.
-                        float multiple = cell.lineSpacing;
-                        for (const RichTextRun& run : piece) {
-                            if (run.lineSpacing > 0.0f) { multiple = run.lineSpacing; break; }
-                        }
-                        if (multiple > 0.0f) {
-                            xml << " w:line=\"" << std::lround(multiple * 240.0f) << "\" w:lineRule=\"auto\"";
-                        }
+                    } else if (cell.lineSpacing > 0.0f) {
+                        xml << " w:line=\"" << std::lround(cell.lineSpacing * 240.0f) << "\" w:lineRule=\"auto\"";
                     }
                     xml << "/>";
                     if (const char* jc = JustificationFor(cell.align)) xml << "<w:jc w:val=\"" << jc << "\"/>";

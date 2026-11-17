@@ -2507,6 +2507,12 @@ private:
                     for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
                         if (!ctx.runs[r].IsInlineImage() && !ctx.runs[r].IsTextFrame()) ctx.runs[r].lineSpacing = paragraph.lineSpacing;
                     }
+                } else if (ctx.cellLineHeightPt > 0.0f && ctx.cellParagraphs > 1
+                           && (std::isnan(paragraph.lineHeightPt) || paragraph.lineHeightPt <= 0.0f)) {
+                    // Not of the height in points the cell's first sets: its own font's lines.
+                    for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                        if (!ctx.runs[r].IsInlineImage() && !ctx.runs[r].IsTextFrame()) ctx.runs[r].lineSpacing = 1.0f;
+                    }
                 }
             } else if (tag == "table:table" && frameDepth_ == 0) {
                 // A table in the cell: a frame of its own standing in the
@@ -2550,6 +2556,11 @@ private:
         RichTextRun run;
         ApplyPropsToRun(run, props);
         run.lineBreakBefore = true;
+        // Not of the height in points the cell's first paragraph sets: a
+        // line of its own font.
+        if (ctx.cellLineHeightPt > 0.0f && (std::isnan(props.lineHeightPt) || props.lineHeightPt <= 0.0f)) {
+            run.lineSpacing = 1.0f;
+        }
         ctx.runs.push_back(std::move(run));
         ctx.pendingLineBreak = false;
     }
@@ -4003,7 +4014,11 @@ private:
         const char* value = AlignValue(cell.align);
         std::string props = (value ? std::string(" fo:text-align=\"") + value + "\"" : std::string())
                           + " fo:margin-top=\"" + Pt(above) + "\" fo:margin-bottom=\"0pt\"";
-        if (cell.lineHeightPt > 0.0f) {
+        if (multiple > 0.0f && cell.lineHeightPt > 0.0f) {
+            // Its own multiple, not the cell's height in points.
+            props += " fo:line-height=\"" + std::to_string(std::lround(multiple * 100.0f)) + "%\"";
+            if (std::abs(multiple - 1.0f) > 0.01f) usesCellLineMultiples_ = true;
+        } else if (cell.lineHeightPt > 0.0f) {
             props += std::string(cell.lineHeightAtLeast ? " style:line-height-at-least=\"" : " fo:line-height=\"")
                    + Pt(cell.lineHeightPt) + "\"";
         } else if (multiple > 0.0f || cell.lineSpacing > 0.0f) {

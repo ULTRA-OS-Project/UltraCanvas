@@ -1254,7 +1254,8 @@ lines can have a set height (`RichTableCell::lineHeightPt`, exactly or - with
 (`RichTableCell::lineSpacing`, Word's 1.15); a picture in such a line keeps
 its own height. A paragraph of the cell set tighter or wider than the others
 - a heading at 70% - says so on its runs (`RichTextRun::lineSpacing`), which
-go before the cell's. An empty first or last line of a cell is a line of its own
+go before the cell's. A set height holds for a line without words too,
+whatever its font: "exactly 14 pt" makes an empty 1 pt paragraph 14 pt high. An empty first or last line of a cell is a line of its own
 font (Word's 2 pt paragraphs that set a signature's parts a hair apart), and a
 picture lower than a line of its run's font stands in such a line. A table can
 start left of its column (a negative `tableIndentPt`, Word's `w:tblInd`), and
