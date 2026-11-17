@@ -899,7 +899,25 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
             } else {
                 std::vector<PlacedFloat> trial = pageFloats;
                 top = FlowAroundFloats(ctx, i, top, trial);
-                if (pageEmpty || top + bl.bounds.height <= pages.back().bodyBottom) pageFloats = std::move(trial);
+                // A picture or frame of its own that text flows round and
+                // that reaches past the page's foot goes to the next page
+                // with its paragraph (it was cut by the page's edge) - if a
+                // page can hold it at all.
+                bool floatOverflows = false;
+                for (const PlacedFloat& placed : trial) {
+                    if (placed.blockIndex != i || placed.inCell) continue;
+                    if (placed.wrap != RichTextRun::ImageWrap::Square && placed.wrap != RichTextRun::ImageWrap::TopAndBottom) continue;
+                    const float bodyHeight = pages.back().bodyBottom - pages.back().bodyTop;
+                    floatOverflows = floatOverflows || (placed.rect.y + placed.rect.height > pages.back().bodyBottom + 0.5f
+                                                        && placed.rect.height <= bodyHeight
+                                                        && placed.rect.y >= pages.back().bodyTop - 0.5f);
+                }
+                if (floatOverflows && !pageEmpty && columns <= 1) {
+                    newPage();
+                    top = FlowAroundFloats(ctx, i, y, pageFloats);
+                } else if (pageEmpty || top + bl.bounds.height <= pages.back().bodyBottom) {
+                    pageFloats = std::move(trial);
+                }
             }
             // A heading keeps with the start of what follows it: alone at the
             // foot of a page it goes to the next one.
@@ -2093,6 +2111,9 @@ FontStyle UltraCanvasRichTextEdit::FontForBlock(const RichDocBlock& block) const
         int level = std::max(1, std::min(block.headingLevel, 6));
         font.fontSize = style.baseFont.fontSize * style.headingSizeMultipliers[static_cast<size_t>(level - 1)];
         if (style.headingsBold) font.fontWeight = FontWeight::Bold;
+        // A document's heading is set in its style's own size and font.
+        if (block.paragraphFontSizePt > 0.0f) font.fontSize = block.paragraphFontSizePt;
+        if (!block.paragraphFontFamily.empty()) font.fontFamily = block.paragraphFontFamily;
     } else if (block.type == RichBlockType::CodeBlock) {
         font.fontFamily = style.codeFontFamily;
     } else {

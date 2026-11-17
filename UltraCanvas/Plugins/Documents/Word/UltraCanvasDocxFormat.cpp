@@ -872,11 +872,19 @@ private:
     std::string themeMajorFont_, themeMinorFont_;
     std::string FontFamilyOf(tinyxml2::XMLElement* fonts) const {
         if (!fonts) return "";
-        std::string family = Attr(fonts, "w:ascii");
+        // Writer names a font with its alternatives ("Liberation Sans;Arial"):
+        // the first is the font.
+        auto first = [](std::string name) {
+            const size_t more = name.find(';');
+            if (more != std::string::npos) name.erase(more);
+            while (!name.empty() && name.back() == ' ') name.pop_back();
+            return name;
+        };
+        std::string family = first(Attr(fonts, "w:ascii"));
         if (!family.empty()) return family;
         std::string theme = Attr(fonts, "w:asciiTheme");
         if (theme.empty()) theme = Attr(fonts, "w:hAnsiTheme");
-        if (theme.empty()) return Attr(fonts, "w:hAnsi");
+        if (theme.empty()) return first(Attr(fonts, "w:hAnsi"));
         return theme.rfind("major", 0) == 0 ? themeMajorFont_ : themeMinorFont_;
     }
 
@@ -2821,7 +2829,9 @@ private:
         ApplyGeometry(block, p->FirstChildElement("w:pPr"));
         if (auto* pPr = p->FirstChildElement("w:pPr")) {
             if (auto* pBdr = pPr->FirstChildElement("w:pBdr")) {
-                hasBottomBorder = pBdr->FirstChildElement("w:bottom") != nullptr;
+                // A line that is drawn: "nil" and "none" are none (Writer
+                // writes them on every paragraph).
+                hasBottomBorder = ReadBorder(pBdr->FirstChildElement("w:bottom")).border.IsVisible();
             }
             if (auto* pStyle = pPr->FirstChildElement("w:pStyle")) {
                 std::string styleId = Attr(pStyle, "w:val");
@@ -2850,7 +2860,23 @@ private:
             if (auto* numPr = pPr->FirstChildElement("w:numPr")) {
                 auto* ilvl = numPr->FirstChildElement("w:ilvl");
                 auto* numId = numPr->FirstChildElement("w:numId");
-                if (numId && std::string(Attr(numId, "w:val")) != "0") {
+                // A level without a number or a bullet (w:numFmt "none" and
+                // an empty w:lvlText - the outline numbering Writer gives
+                // every heading) makes no list item of its paragraph.
+                bool silentLevel = false;
+                if (numId) {
+                    auto abstractOf = numIdToAbstract_.find(Attr(numId, "w:val"));
+                    if (abstractOf != numIdToAbstract_.end()) {
+                        auto labels = abstractLabels_.find(abstractOf->second);
+                        if (labels != abstractLabels_.end()) {
+                            auto label = labels->second.find(ilvl ? std::atoi(Attr(ilvl, "w:val")) : 0);
+                            silentLevel = label != labels->second.end()
+                                && label->second.format == RichNumberFormat::NoNumber
+                                && label->second.numberTemplate.empty() && label->second.bulletText.empty();
+                        }
+                    }
+                }
+                if (numId && std::string(Attr(numId, "w:val")) != "0" && !silentLevel) {
                     block.type = RichBlockType::ListItem;
                     block.listLevel = ilvl ? std::atoi(Attr(ilvl, "w:val")) : 0;
                     block.orderedList = false;
