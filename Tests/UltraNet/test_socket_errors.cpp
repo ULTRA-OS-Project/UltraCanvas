@@ -8,7 +8,7 @@
 //     test program.
 // The TLS half talks to a python3 ssl server with a certificate made by the
 // openssl command; it skips without either.
-// Version: 0.1.0
+// Version: 0.1.1 - <unistd.h> for getpid (macOS)
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -30,6 +30,7 @@
 
 #if !defined(_WIN32)
 #include <csignal>
+#include <unistd.h>      // getpid
 #endif
 
 namespace {
