@@ -1280,6 +1280,8 @@ private:
         OdtTextProps pendingBreakProps;        // the style of the text whose line break is pending
         OdtTextProps lastCellParagraph;
         float cellSpaceAbovePt = 0.0f, cellSpaceBelowPt = 0.0f;   // the first paragraph's space before, the last's after
+        float cellLineHeightPt = 0.0f, cellLineSpacing = 0.0f;    // the first paragraph's line height, or multiple
+        bool cellLineHeightAtLeast = false;
         bool endsInCollapsibleSpace = false;   // last text ended in XML whitespace
         std::vector<std::string> bookmarks;    // text:bookmark(-start) names met
     };
@@ -1520,7 +1522,16 @@ private:
     void ParseFrame(tinyxml2::XMLElement* frame, const OdtTextProps& props,
                     const std::string& linkTarget, InlineContext& ctx) {
         if (ParseFormulaObject(frame, props, linkTarget, ctx)) return;
-        if (ParseImageFrame(frame, ctx)) return;
+        const size_t runsBefore = ctx.runs.size();
+        if (ParseImageFrame(frame, ctx)) {
+            // A picture in the line stands in a line of the font around it.
+            for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                if (!ctx.runs[r].IsInlineImage() || ctx.runs[r].IsFloatingImage()) continue;
+                if (props.fontSizePt > 0.0f) ctx.runs[r].fontSizePt = props.fontSizePt;
+                if (!props.fontFamily.empty()) ctx.runs[r].fontFamily = props.fontFamily;
+            }
+            return;
+        }
         if (auto* textBox = frame->FirstChildElement("draw:text-box")) {
             if (ctx.framesAsRuns && frameDepth_ == 0) ParseTextFrame(frame, textBox, ctx);
             else ctx.textBoxes.push_back(textBox);
@@ -2435,7 +2446,15 @@ private:
                     return (!counts || std::isnan(margin)) ? 0.0f : std::max(0.0f, margin);
                 };
                 if (ctx.cellParagraphs > 0) {
-                    if (ctx.pendingLineBreak) AppendEmptyLine(ctx, ctx.lastCellParagraph);
+                    if (ctx.pendingLineBreak) {
+                        AppendEmptyLine(ctx, ctx.lastCellParagraph);
+                    } else if (ctx.runs.empty()) {
+                        // An empty first paragraph: the cell's first line,
+                        // in its own font.
+                        RichTextRun first;
+                        ApplyPropsToRun(first, ctx.lastCellParagraph);
+                        ctx.runs.push_back(std::move(first));
+                    }
                     const float between = room(ctx.lastCellParagraph.marginBottom) + room(paragraph.marginTop);
                     if (between > 0.5f) {
                         RichTextRun spacer;
@@ -2446,11 +2465,46 @@ private:
                     ctx.pendingLineBreak = true;
                 } else {
                     ctx.cellSpaceAbovePt = room(paragraph.marginTop);
+                    // The cell's lines take its first paragraph's height.
+                    if (!std::isnan(paragraph.lineHeightPt) && paragraph.lineHeightPt > 0.0f) {
+                        ctx.cellLineHeightPt = paragraph.lineHeightPt;
+                        ctx.cellLineHeightAtLeast = paragraph.lineHeightAtLeast;
+                    } else if (!std::isnan(paragraph.lineSpacing) && paragraph.lineSpacing > 0.0f
+                               && std::abs(paragraph.lineSpacing - 1.0f) > 0.01f) {
+                        ctx.cellLineSpacing = paragraph.lineSpacing;
+                    }
                 }
                 ctx.cellSpaceBelowPt = room(paragraph.marginBottom);
                 ctx.cellParagraphs++;
                 ctx.lastCellParagraph = paragraph;
                 ParseInlineNodes(elem, paragraph, "", ctx);
+            } else if (tag == "table:table" && frameDepth_ == 0) {
+                // A table in the cell: a frame of its own standing in the
+                // cell's line, as wide as the table says.
+                RichTextFrame nested;
+                nested.nestedTable = true;
+                const size_t start = doc_->blocks.size();
+                ParseTable(elem);
+                nested.blocks.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                                     std::make_move_iterator(doc_->blocks.end()));
+                doc_->blocks.resize(start);
+                if (nested.blocks.empty()) continue;
+                if (ctx.cellParagraphs > 0) {
+                    if (ctx.pendingLineBreak) AppendEmptyLine(ctx, ctx.lastCellParagraph);
+                    ctx.pendingLineBreak = true;
+                }
+                ctx.cellParagraphs++;
+                ctx.cellSpaceBelowPt = 0.0f;
+                ctx.lastCellParagraph = OdtTextProps{};
+                RichTextRun run;
+                run.text = RichTextRun::kObjectReplacement;
+                run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+                run.imageWidthPt = std::max(0.0f, nested.blocks.front().tableWidthPt);
+                run.frameIndex = static_cast<int>(doc_->frames.size());
+                doc_->frames.push_back(std::move(nested));
+                run.lineBreakBefore = ctx.pendingLineBreak;
+                ctx.pendingLineBreak = false;
+                ctx.runs.push_back(std::move(run));
             } else if (tag == "text:list" || tag == "text:list-item"
                        || tag == "text:list-header" || tag == "table:table"
                        || tag == "table:table-row" || tag == "table:table-cell"
@@ -2585,6 +2639,9 @@ private:
                     }
                 }
                 cell.runs = std::move(ctx.runs);
+                cell.lineHeightPt = ctx.cellLineHeightPt;
+                cell.lineHeightAtLeast = ctx.cellLineHeightAtLeast;
+                cell.lineSpacing = ctx.cellLineSpacing;
                 // The first paragraph's space before and the last one's
                 // after are room inside the cell, as Writer keeps them.
                 if (ctx.cellSpaceAbovePt > 0.0f) cell.paddingTopPt = std::max(0.0f, cell.paddingTopPt) + ctx.cellSpaceAbovePt;
@@ -3066,6 +3123,13 @@ private:
         size_t spaceRun = 0;
         auto flushSpaces = [&]() {
             if (spaceRun == 0) return;
+            // A run of nothing but spaces is all text:s: a plain space
+            // after another run's space, or after a picture, is collapsed away.
+            if (out.empty() && spaceRun == text.size()) {
+                out += "<text:s text:c=\"" + std::to_string(spaceRun) + "\"/>";
+                spaceRun = 0;
+                return;
+            }
             out += ' ';
             if (spaceRun > 1) {
                 out += "<text:s text:c=\"" + std::to_string(spaceRun - 1) + "\"/>";
@@ -3706,6 +3770,16 @@ private:
     void WriteRun(std::ostringstream& xml, const RichTextRun& run) {
         if (run.lineBreakBefore) xml << "<text:line-break/>";
         if (run.IsInlineImage()) {
+            // In the line it stands in a line of its run's font: a span says which.
+            if (!run.IsFloatingImage() && run.fontSizePt > 0.0f) {
+                RichTextRun font;
+                font.fontSizePt = run.fontSizePt;
+                font.fontFamily = run.fontFamily;
+                xml << "<text:span text:style-name=\"" << TextStyleNameFor(font) << "\">";
+                WriteInlineImage(xml, run);
+                xml << "</text:span>";
+                return;
+            }
             WriteInlineImage(xml, run);
             return;
         }
@@ -3892,17 +3966,33 @@ private:
 
     // A cell's paragraph: aligned, `above` points below the one before it,
     // and otherwise without space before or after.
-    std::string CellParagraphStyle(RichTextAlign align, float above) {
-        const char* value = AlignValue(align);
-        const std::string name = std::string("PCell") + (value ? value : "") + (above > 0.0f ? Pt(above) : std::string());
-        if (columnStyles_.find("\"" + name + "\"") == std::string::npos) {
-            columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\""
-                             " style:parent-style-name=\"Standard\"><style:paragraph-properties"
-                           + (value ? std::string(" fo:text-align=\"") + value + "\"" : std::string())
-                           + " fo:margin-top=\"" + Pt(above) + "\" fo:margin-bottom=\"0pt\"/></style:style>\n";
+    // The style of one line of a cell: the cell's alignment and line height,
+    // the room above it, and - for a line without words - the font it is a
+    // line of (`mark`).
+    std::string CellParagraphStyle(const RichTableCell& cell, float above, const RichTextRun* mark) {
+        const char* value = AlignValue(cell.align);
+        std::string props = (value ? std::string(" fo:text-align=\"") + value + "\"" : std::string())
+                          + " fo:margin-top=\"" + Pt(above) + "\" fo:margin-bottom=\"0pt\"";
+        if (cell.lineHeightPt > 0.0f) {
+            props += std::string(cell.lineHeightAtLeast ? " style:line-height-at-least=\"" : " fo:line-height=\"")
+                   + Pt(cell.lineHeightPt) + "\"";
+        } else if (cell.lineSpacing > 0.0f) {
+            props += " fo:line-height=\"" + std::to_string(std::lround(cell.lineSpacing * 100.0f)) + "%\"";
         }
+        std::string text;
+        if (mark && mark->fontSizePt > 0.0f) text += " fo:font-size=\"" + Pt(mark->fontSizePt) + "\"";
+        if (mark && !mark->fontFamily.empty()) text += " fo:font-family=\"" + EscapeXml(mark->fontFamily) + "\"";
+        const std::string key = props + "|" + text;
+        auto known = cellParagraphStyles_.find(key);
+        if (known != cellParagraphStyles_.end()) return known->second;
+        const std::string name = "PCell" + std::to_string(cellParagraphStyles_.size() + 1);
+        cellParagraphStyles_[key] = name;
+        columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\""
+                         " style:parent-style-name=\"Standard\"><style:paragraph-properties" + props + "/>"
+                       + (text.empty() ? std::string() : "<style:text-properties" + text + "/>") + "</style:style>\n";
         return name;
     }
+    std::map<std::string, std::string> cellParagraphStyles_;   // by their properties
 
     static const char* AlignedStyle(RichTextAlign align) {
         switch (align) {
@@ -3968,7 +4058,7 @@ private:
             const char* align = block.tableAlign == RichTextAlign::Center ? "center"
                               : block.tableAlign == RichTextAlign::Right ? "right" : "left";
             props << " table:align=\"" << align << "\"";
-            if (block.tableIndentPt > 0.0f && std::string(align) == "left") {
+            if (block.tableIndentPt != 0.0f && std::string(align) == "left") {
                 props << " fo:margin-left=\"" << Pt(block.tableIndentPt) << "\"";
             }
             if (block.spaceBeforePt >= 0.0f) props << " fo:margin-top=\"" << Pt(block.spaceBeforePt) << "\"";
@@ -4048,36 +4138,49 @@ private:
                 float above = 0.0f;
                 bool afterTable = false;          // a nested table was the last thing written
                 auto flush = [&]() {
-                    xml << "<text:p text:style-name=\"" << CellParagraphStyle(cell.align, above) << "\">";
+                    // A paragraph without words is a line of its font,
+                    // which its style states.
+                    bool words = false;
+                    for (const RichTextRun& run : piece) words = words || !run.text.empty();
+                    const RichTextRun* mark = !words && !piece.empty() ? &piece.front() : nullptr;
+                    xml << "<text:p text:style-name=\"" << CellParagraphStyle(cell, above, mark) << "\">";
                     WriteRuns(xml, piece);
                     xml << "</text:p>";
                     piece.clear();
+                    above = 0.0f;
                 };
+                // Every line of the cell is a paragraph; a table nested in
+                // the cell is written as that table, between them.
+                bool open = true;                 // a paragraph is begun: a line break ends it
+                bool written = false;
                 for (const RichTextRun& run : cell.runs) {
                     if (run.lineBreakBefore && run.text.empty() && run.emptyLineHeightPt > 0.0f) {
-                        flush();
+                        if (open) { flush(); written = true; }
                         above = run.emptyLineHeightPt;
+                        open = false;             // the break after a spacer is the new paragraph's start
                         continue;
                     }
-                    // A table nested in the cell: written as that table,
-                    // between the cell's paragraphs.
                     const RichTextFrame* nested = run.IsTextFrame() ? doc_->FrameFor(run) : nullptr;
                     if (nested && nested->nestedTable) {
-                        if (!piece.empty()) flush();
+                        if (open && (!piece.empty() || (run.lineBreakBefore && written))) { flush(); written = true; }
+                        piece.clear();
                         for (const RichDocBlock& inner : nested->blocks) {
                             if (inner.type == RichBlockType::Table) WriteTable(xml, inner, ++tableCount_);
                         }
                         writingCell_ = true;
+                        written = true;
+                        open = false;
                         afterTable = true;
                         continue;
                     }
+                    if (run.lineBreakBefore && open) { flush(); written = true; }
                     piece.push_back(run);
-                    // The break after a spacer, or after a table, is the new
-                    // paragraph's start.
-                    if (piece.size() == 1 && (above > 0.0f || afterTable)) piece.front().lineBreakBefore = false;
+                    piece.back().lineBreakBefore = false;
+                    open = true;
                     afterTable = false;
                 }
-                if (!piece.empty() || !afterTable) flush();
+                if (open || !written) flush();
+                (void)afterTable;
                 writingCell_ = false;
                 xml << "</table:table-cell>";
                 for (int s = 1; s < columnSpan; ++s) {
