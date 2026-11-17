@@ -4,6 +4,7 @@
 // a renderer can refuse what it does not know. The predefined blocks of the
 // brief are the sections of the ultraos.eu front page generalised
 // (Docs/Research/UltraPressDesignProposal.md §5.1, §7.3).
+// Version: 0.9.0 - BlockType::htmlOutput / wasmOutput: which outputs show the block; ValidateSite checks the site's
 // Version: 0.8.0 - ValidateSite: the site's url has to be an address (IsSiteAddress)
 // Version: 0.1.0
 // Last Modified: 2026-10-13
@@ -44,6 +45,12 @@ struct BlockType {
     std::string description;
     std::vector<BlockProperty> properties;
     bool acceptsChildren = false;
+    // Which of the two outputs can show the block: the HTML + JavaScript
+    // output (UltraPressHtml.cpp's writer) and the WebAssembly one (the
+    // element renderer). Every built-in block has both; a block registered
+    // with one only is refused by ValidateSite on a site of the other.
+    bool htmlOutput = true;
+    bool wasmOutput = true;
 
     const BlockProperty* FindProperty(const std::string& name) const;
 };

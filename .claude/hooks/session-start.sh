@@ -73,6 +73,14 @@ PACKAGES=(
     cmake pkg-config build-essential
     libcairo2-dev libpango1.0-dev libharfbuzz-dev libvips-dev libglib2.0-dev libfreetype-dev dbus
     libtinyxml2-dev libfmt-dev
+    # libheif's plug-ins: the HEVC and AV1 decoders CI installs (HEIC and
+    # AVIF open; ImageFormatsTest insists), and the AV1 encoder, which CI's
+    # libheif built from source links in - without it this image writes no
+    # AVIF, and the store's and UltraSite's picture variants go untested
+    libheif-plugin-libde265 libheif-plugin-aomdec libheif-plugin-aomenc
+    # Brotli's encoder: UltraSite's .br copies (BuildOptions::precompress),
+    # as CI installs libbrotli-dev for JPEG XL
+    libbrotli-dev
     libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
     # CorelDRAW import, colour management, Unicode, barcodes
     libcdr-dev librevenge-dev zlib1g-dev libboost-dev liblcms2-dev libicu-dev libzbar-dev

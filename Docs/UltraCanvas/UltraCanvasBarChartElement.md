@@ -471,4 +471,4 @@ barChart->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t index
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) - Line chart component
 - [UltraCanvasScatterPlotElement](UltraCanvasScatterPlotElement.md) - Scatter plot component
 - [UltraCanvasAreaChartElement](UltraCanvasAreaChartElement.md) - Area chart component
-- [UltraCanvasChartElementBase](UltraCanvasChartElementBase.md) - Base chart class
+- [UltraCanvasChartElementBase](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h) - Base chart class

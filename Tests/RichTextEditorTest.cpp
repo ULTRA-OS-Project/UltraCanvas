@@ -1871,6 +1871,14 @@ static void TestLeadingLineBreak() {
           && UCRichDocumentEditor::RunsText(fromHtml.blocks[0].runs) == "\nint a;\nreturn a;");
     CHECK(fromHtml.ToHTML().find("<pre><code>\nint a;\nreturn a;</code></pre>") != std::string::npos);
 
+    // A nested list is written inside its parent item, the only place HTML
+    // allows it; a flat list as it always was.
+    UCRichDocument lists = UCRichDocument::FromMarkdown("- one\n- two\n  - nested\n- three\n");
+    CHECK_EQ(lists.ToHTML(), std::string("<ul>\n<li>one</li>\n<li>two\n<ul>\n<li>nested</li>\n</ul>\n</li>\n<li>three</li>\n</ul>\n"));
+    CHECK_EQ(UCRichDocument::FromMarkdown("1. a\n2. b\n").ToHTML(), std::string("<ol>\n<li>a</li>\n<li>b</li>\n</ol>\n"));
+    // A list that starts deeper gets an empty item to hold it.
+    CHECK(UCRichDocument::FromMarkdown("  - deep\n- top\n").ToHTML().find("<ul>\n<li>\n<ul>\n<li>deep</li>\n</ul>\n</li>\n<li>top</li>") != std::string::npos);
+
     // A table cell's copied text is the text the cell shows.
     RichDocBlock table;
     table.type = RichBlockType::Table;

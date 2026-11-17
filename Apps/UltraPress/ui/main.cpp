@@ -79,7 +79,7 @@ int Usage() {
 // Whether the first argument is a command word rather than a site folder.
 // A folder that happens to be called `check` is opened as `./check`.
 bool IsCommand(const std::string& word) {
-    static const char* const kCommands[] = {"new", "check", "page", "publish", "import", "hosts", "media",
+    static const char* const kCommands[] = {"new", "check", "page", "publish", "docs", "serve", "import", "hosts", "media",
                                             "help", "--help", "-h"};
     for (const char* command : kCommands) {
         if (word == command) return true;

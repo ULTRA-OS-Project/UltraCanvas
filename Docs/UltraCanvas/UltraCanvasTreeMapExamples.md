@@ -365,4 +365,4 @@ btnReset->SetOnClick([treeMap]() {
 - [UltraCanvasFlowChartExamples](UltraCanvasFlowChartExamples.md) — interactive flow chart editor
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — line charts
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — alternative hierarchical view
-- [UltraCanvasChartElementBase](UltraCanvasChartElementBase.md) — common chart base
+- [UltraCanvasChartElementBase](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h) — common chart base

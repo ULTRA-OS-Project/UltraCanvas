@@ -48,7 +48,7 @@
   - [Mermaid](#mermaid)
   - [CSV](#csv)
   - [ReqIF](#reqif)
-- [Complete example — HybridSUV requirement tree](#complete-example-—-hybridsuv-requirement-tree)
+- [Complete example — HybridSUV requirement tree](#complete-example--hybridsuv-requirement-tree)
 - [Live demo](#live-demo)
 - [Notes and limitations](#notes-and-limitations)
 - [Related Documentation](#related-documentation)

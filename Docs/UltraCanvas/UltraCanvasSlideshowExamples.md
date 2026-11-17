@@ -593,6 +593,6 @@ show->SetFollowTheme(true);
 
 - [Apps/DemoApp/UltraCanvasSlideshowExamples.cpp](../../Apps/DemoApp/UltraCanvasSlideshowExamples.cpp) - Full interactive demo of every indicator style, layout, fade, and fit
 - [UltraCanvasSlideshow.h](../../UltraCanvas/include/UltraCanvasSlideshow.h) - Public API header
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Base class
-- [UltraCanvasButton](UltraCanvasButton.md) - For playback / navigation controls
-- [UltraCanvasLabel](UltraCanvasLabel.md) - Companion text element
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) - Base class
+- [UltraCanvasButton](UltraCanvasButtonExamples.md) - For playback / navigation controls
+- [UltraCanvasLabel](UltraCanvasLabelExamples.md) - Companion text element

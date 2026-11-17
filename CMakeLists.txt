@@ -695,9 +695,20 @@ if(BUILD_ULTRAFIBU AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraFIBU)
 endif()
 
+# ===== ULTRASITE =====
+# The HTML + JavaScript output of a website: routes in, a folder of styled
+# pages, a hashed stylesheet and hashed script modules out
+# (Docs/Modules/UltraSite/README.md). UltraPress and the UltraStore admin
+# backend publish through it. Headless; links the core library.
+option(BUILD_ULTRASITE "Build the UltraSite module" ON)
+if(BUILD_ULTRASITE AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_subdirectory(UltraSite)
+endif()
+
 # ===== ULTRAPRESS =====
-# The website and shop builder that publishes WebAssembly
-# (Docs/Research/UltraPressDesignProposal.md). Phase 1 begins with the
+# The website and shop builder that publishes WebAssembly or HTML +
+# JavaScript (Docs/Research/UltraPressDesignProposal.md, the HTML output
+# through UltraSite). Phase 1 begins with the
 # headless engine and the `ultrapress` command line; the editor and the
 # renderer follow. The engine links the core for UltraCanvasJSON and the
 # HTMLReader, so it is built wherever the core is.
@@ -1860,6 +1871,17 @@ if(ULTRACANVAS_BUILD_ULTRAPRESS_TESTS AND TARGET UltraPressEngine)
     add_subdirectory(Tests/UltraPress)
     message(STATUS "")
     message(STATUS "── UltraPress engine test suite enabled (target: UltraPressEngineTests) ──")
+endif()
+
+# ===== ULTRASITE TESTS =====
+# The builder on fixture sites: the pages, the hashed assets, the behaviour
+# modules, the link and anchor check, the budgets, the stale files.
+option(ULTRACANVAS_BUILD_ULTRASITE_TESTS "Build the UltraSite test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASITE_TESTS AND TARGET UltraSite)
+    enable_testing()
+    add_subdirectory(Tests/UltraSite)
+    message(STATUS "")
+    message(STATUS "── UltraSite test suite enabled (target: UltraSiteTests) ──")
 endif()
 
 # ===== ULTRACLEANER ENGINE TESTS =====

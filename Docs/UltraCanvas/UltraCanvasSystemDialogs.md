@@ -9,9 +9,9 @@ them all live under *ULTRA OS modules → System dialogs*
 ## Contents
 
 - [Two implementations, one call](#two-implementations-one-call)
-- [File dialogs — `UltraCanvasFileLoader`](#file-dialogs-—-ultracanvasfileloader)
-- [Print dialog — `UltraCanvasNativeDialogs` + IODeviceManager](#print-dialog-—-ultracanvasnativedialogs--iodevicemanager)
-- [Message and input dialogs — `UltraCanvasDialogManager`](#message-and-input-dialogs-—-ultracanvasdialogmanager)
+- [File dialogs — `UltraCanvasFileLoader`](#file-dialogs--ultracanvasfileloader)
+- [Print dialog — `UltraCanvasNativeDialogs` + IODeviceManager](#print-dialog--ultracanvasnativedialogs--iodevicemanager)
+- [Message and input dialogs — `UltraCanvasDialogManager`](#message-and-input-dialogs--ultracanvasdialogmanager)
 - [See also](#see-also)
 
 ## Two implementations, one call

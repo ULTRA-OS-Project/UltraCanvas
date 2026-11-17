@@ -6,6 +6,7 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.11.0 - RichDocumentHTMLOptions::headingId and codeBlock: anchors and highlighted code for a web page
 // Version: 1.10.0 - RichTextRun::imageRotationDeg: a floating picture turned about its centre
 // Version: 1.9.0 - RichTextRun::emptyLineHeightPt; UCRichDocument::letterKerning, fontLineGap, paragraphSpacingInCells
 // Version: 1.8.0 - Pattern fills (RichShape::fillPattern, patternBackColor, PatternBit)
@@ -810,6 +811,14 @@ struct RichDocumentHTMLOptions {
     // client returns "cid:<id>" instead and sends the bytes as a part of the
     // message, which is how mail programs expect to find them.
     std::function<std::string(int mediaIndex)> imageSource;
+    // The id a heading carries (<h2 id="...">), given its level and its
+    // text: what a page's table of contents and a link's #anchor need.
+    // Unset, or an empty answer: no id.
+    std::function<std::string(int level, const std::string& text)> headingId;
+    // The whole HTML of a code block, given its fence language (empty when
+    // none) and its text: a web page highlights it here. Unset: the
+    // <pre><code> it always was.
+    std::function<std::string(const std::string& language, const std::string& code)> codeBlock;
 };
 
 // Options for UCRichDocument::ToMarkdown. When imageDirectory is set, the

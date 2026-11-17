@@ -610,11 +610,20 @@ How the window and the web shop look is drawn in
 [`design/README.md`](design/README.md): the Discover page, an app's page,
 the category browser and the phone views, with every colour, size and font.
 
+**The web store as HTML + JavaScript** is the other output: the same shop
+as complete, styled pages written by the admin backend's publish through
+UltraSite (`web.output` `html`, the default for a store without
+`web.site_dir`; `Apps/UltraStoreAdmin/core/WebStoreHtml.h`). The pages
+come from the catalog the same publish has just signed, so the browser
+fetches no catalog and verifies nothing; *Install*, *Try* and *Buy* open
+the native store, which verifies everything before it installs. Discover
+is about 11 KB compressed on a first visit, its pictures aside.
+
 **The web store** (`Apps/UltraStore/web/`, its [README](../../Apps/UltraStore/web/README.md))
 is the same shop in a browser: Discover, the categories and an app's page
 as an UltraCanvas application compiled to WebAssembly, a side module on
 the UltraCanvas runtime, served from the catalog base by the admin
-backend's publish (the setting `web.site_dir`), with an HTML shadow of
+backend's publish (the settings `web.output` `wasm` and `web.site_dir`), with an HTML shadow of
 every page for search engines and the moment before the module paints.
 It fetches `catalog.json` and `catalog.json.sig` from its own origin and
 verifies the signature in the browser - through the runtime's UltraCrypt

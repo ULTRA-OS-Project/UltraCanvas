@@ -23,7 +23,8 @@ target_link_libraries(UltraPressEngineTests PRIVATE UltraPressEngine ${ULTRACANV
 target_include_directories(UltraPressEngineTests PRIVATE ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
 target_compile_definitions(UltraPressEngineTests PRIVATE
     ULTRAPRESS_EXAMPLE_DIR="${CMAKE_SOURCE_DIR}/Apps/UltraPress/examples/ultraos"
-    ULTRAPRESS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+    ULTRAPRESS_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
+    ULTRAPRESS_TEST_PICTURE="${CMAKE_SOURCE_DIR}/media/images/landscape.jpg")
 set_target_properties(UltraPressEngineTests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${_UPT_BIN_DIR})
 include(CTest)
