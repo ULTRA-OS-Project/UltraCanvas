@@ -1647,6 +1647,15 @@ package_if_built "UltraNotifications" build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Package UltraToDo, the task list with reminders and alarms
+package_if_built "UltraToDo" build_app_bundle \
+    "UltraToDo" \
+    "UltraToDo" \
+    "com.cloverleaf.UltraToDo" \
+    "media/appicon/UltraToDo.png" \
+    "public.app-category.productivity" \
+    ""
+
 # Package UltraSnip, the screenshot and screen-recording tool (libVideoFX and
 # FFmpeg go to the shared Frameworks/ with the rest)
 package_if_built "UltraSnip" build_app_bundle \

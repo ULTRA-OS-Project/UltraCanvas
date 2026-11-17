@@ -454,7 +454,7 @@ The WaterfallChartElement integrates seamlessly with:
 
 ## See Also
 
-- [UltraCanvasChartElementBase](./UltraCanvasChartElementBase.md)
-- [UltraCanvasBarChart](./UltraCanvasBarChart.md)
-- [UltraCanvasLineChart](./UltraCanvasLineChart.md)
-- [UltraCanvas Charts Overview](./ChartsOverview.md)
+- [UltraCanvasChartElementBase](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h)
+- [UltraCanvasBarChart](UltraCanvasBarChartElement.md)
+- [UltraCanvasLineChart](UltraCanvasLineChartElement.md)
+- [UltraCanvas Charts Overview](UltraCanvasChartEngine.md)

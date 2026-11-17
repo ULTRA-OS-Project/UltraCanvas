@@ -1,5 +1,6 @@
 // core/UltraCanvasSegmentedControl.cpp
 // Implementation of segmented control component
+// Version: 1.8.0 - a one-character caption alone in its segment is centred on its ink (DrawTextCentredOnInk)
 // Version: 1.7.0 - SetSegmentTooltip: the tooltip follows the segment under the pointer
 // Version: 1.6.1 - a caption stays on one line, shortened with an ellipsis when the segment
 //                 is too narrow, instead of wrapping out of the segment
@@ -391,6 +392,20 @@ namespace UltraCanvas {
         auto fitHeight = [&rect](ITextLayout* layout) {
             if (layout->GetExplicitHeight() != rect.height) layout->SetExplicitHeight(rect.height);
         };
+        // One character alone in its segment - a pager's "<" and ">", a
+        // "+" - centred on its ink (DrawTextCentredOnInk): centred on its
+        // capitals' line, such a mark sat 1.5 to 2 px low.
+        if (!segment.HasIcon() && segment.alignment == TextAlignment::Center && IsSingleCharacterText(segment.text)) {
+            FontStyle font;
+            font.fontFamily = style.fontFamily;
+            font.fontSize = style.fontSize;
+            font.fontWeight = style.fontWeight;
+            ctx->SetTextPaint(textColor);
+            if (DrawTextCentredOnInk(ctx, segment.inkLayout, segment.text, font,
+                                     Rect2Dd(rect.x, rect.y, rect.width, rect.height))) {
+                return;
+            }
+        }
         if (centredText) {
             centredText->ChangeAttribute(TextAttributeFactory::CreateForeground(textColor));
             fitHeight(centredText);

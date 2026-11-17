@@ -1232,7 +1232,7 @@ tree->onNodeDragDrop = [](TreeNode* dragged, TreeNode* target) {
 - **Mouse Wheel**: Scroll vertically
 - **Scrollbar Drag**: Direct scrolling control
 - **Scroll-to-Top Button**: Click the floating arrow in the bottom-right corner
-  to jump back to the first row (see [Scroll-to-Top Button](#scroll-to-top-button))
+  to jump back to the first row (see [Scroll-to-Top Button](#scroll-to-top-and-scroll-to-selection-buttons))
 
 ## Rendering Details
 
@@ -1360,7 +1360,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 
 ## See Also
 
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) - Base class documentation
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Container for tree views
-- [UltraCanvasEvent](UltraCanvasEvent.md) - Event system documentation
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) - Base class documentation
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) - Container for tree views
+- [UltraCanvasEvent](../../UltraCanvas/include/UltraCanvasEvent.h) - Event system documentation
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) - Rendering system

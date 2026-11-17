@@ -146,6 +146,9 @@ count->SetFollowTheme(true);
 
 ## Notes
 
+- **One character** - "+", "!", a check mark - is centred in the badge by
+  its drawn shape, not by the font's line: a "+" sat 1.5 px low that way.
+
 - **Anchoring** requires the badge and its anchor to be siblings in the same
   container (so their bounds share a coordinate space). `AnchorTo()` takes the
   badge **out of flow** (`PositionType::AbsoluteUI`) so the parent's layout

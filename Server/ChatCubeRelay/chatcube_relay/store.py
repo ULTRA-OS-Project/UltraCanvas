@@ -60,6 +60,9 @@ class Group:
     members: list[str]
     public: bool = False
     description: str = ""
+    # One more with every change to the group (relay 1.6): a client keeps
+    # the highest it has seen and drops an older record that arrives late.
+    revision: int = 1
 
 
 class Store:
@@ -365,13 +368,15 @@ class Store:
 
     def get_group(self, group_id: str) -> Group | None:
         with self._lock:
-            row = self._db.execute("SELECT group_id, title, owner, public, description FROM groups WHERE group_id=?",
-                                   (group_id,)).fetchone()
+            row = self._db.execute(
+                "SELECT group_id, title, owner, public, description, revision FROM groups WHERE group_id=?",
+                (group_id,)).fetchone()
             if not row:
                 return None
             members = [r["user_id"] for r in self._db.execute(
                 "SELECT user_id FROM group_members WHERE group_id=? ORDER BY rowid", (group_id,))]
-        return Group(row["group_id"], row["title"], row["owner"], members, bool(row["public"]), row["description"])
+        return Group(row["group_id"], row["title"], row["owner"], members, bool(row["public"]), row["description"],
+                     row["revision"])
 
     def groups_of(self, user_id: str) -> list[Group]:
         with self._lock:
@@ -379,26 +384,41 @@ class Store:
                 "SELECT group_id FROM group_members WHERE user_id=?", (user_id,))]
         return [g for g in (self.get_group(i) for i in ids) if g]
 
+    # Every change below bumps the group's revision in the same statement or
+    # transaction as the change itself, so no two states share a revision.
+    # One that changes nothing (a member added twice) leaves it as it is.
+
     def rename_group(self, group_id: str, title: str) -> None:
         with self._lock:
-            self._db.execute("UPDATE groups SET title=? WHERE group_id=?", (title, group_id))
+            self._db.execute("UPDATE groups SET title=?, revision=revision+1 WHERE group_id=?", (title, group_id))
 
     def describe_group(self, group_id: str, description: str) -> None:
         with self._lock:
-            self._db.execute("UPDATE groups SET description=? WHERE group_id=?", (description, group_id))
+            self._db.execute("UPDATE groups SET description=?, revision=revision+1 WHERE group_id=?",
+                             (description, group_id))
+
+    def _change_members(self, group_id: str, statement: str, user_id: str) -> None:
+        with self._lock:
+            self._db.execute("BEGIN")
+            try:
+                if self._db.execute(statement, (group_id, user_id)).rowcount:
+                    self._db.execute("UPDATE groups SET revision=revision+1 WHERE group_id=?", (group_id,))
+                self._db.execute("COMMIT")
+            except Exception:
+                self._db.execute("ROLLBACK")
+                raise
 
     def add_member(self, group_id: str, user_id: str) -> None:
-        with self._lock:
-            self._db.execute("INSERT OR IGNORE INTO group_members(group_id, user_id) VALUES (?,?)",
-                             (group_id, user_id))
+        self._change_members(group_id, "INSERT OR IGNORE INTO group_members(group_id, user_id) VALUES (?,?)",
+                             user_id)
 
     def remove_member(self, group_id: str, user_id: str) -> None:
-        with self._lock:
-            self._db.execute("DELETE FROM group_members WHERE group_id=? AND user_id=?", (group_id, user_id))
+        self._change_members(group_id, "DELETE FROM group_members WHERE group_id=? AND user_id=?", user_id)
 
     def set_group_public(self, group_id: str, public: bool) -> None:
         with self._lock:
-            self._db.execute("UPDATE groups SET public=? WHERE group_id=?", (1 if public else 0, group_id))
+            self._db.execute("UPDATE groups SET public=?, revision=revision+1 WHERE group_id=?",
+                             (1 if public else 0, group_id))
 
     def public_groups(self, query: str = "", limit: int = 100) -> list[dict]:
         """The public groups, the biggest first: id, title, owner, how many

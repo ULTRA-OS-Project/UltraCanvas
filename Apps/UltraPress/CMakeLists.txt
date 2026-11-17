@@ -1,10 +1,12 @@
 # Apps/UltraPress/CMakeLists.txt
-# UltraPress - a website and shop builder that publishes WebAssembly
-# (Docs/Research/UltraPressDesignProposal.md). Phase 1 begins with the
+# UltraPress - a website and shop builder that publishes WebAssembly or
+# HTML + JavaScript (Docs/Research/UltraPressDesignProposal.md,
+# Docs/Research/UltraSiteStaticSitesProposal.md). Phase 1 begins with the
 # headless engine - the content model, the block registry, the HTML shadow
 # emitter and the static publisher - and `ultrapress` on top of it: the
 # commands and, given a site folder, the editor window on the element
 # renderer.
+# Version: 0.9.0 - the HTML + JavaScript output (engine/UltraPressSite.cpp, on UltraSite)
 # Version: 0.8.4 - the settings file (ui/UltraPressSettings.cpp), the start window on the framework's page
 # Version: 0.8.2 - the recent sites (ui/UltraPressRecent.cpp)
 # Version: 0.8.1 - the start window (ui/UltraPressStart.cpp)
@@ -23,6 +25,7 @@ set(ULTRAPRESS_ENGINE_SOURCES
     engine/UltraPressImport.cpp
     engine/UltraPressDeploy.cpp
     engine/UltraPressMedia.cpp
+    engine/UltraPressSite.cpp
 )
 
 add_library(UltraPressEngine STATIC ${ULTRAPRESS_ENGINE_SOURCES})
@@ -44,6 +47,14 @@ if(TINYXML2_FOUND)
     if(TINYXML2_LIBRARY_DIRS)
         target_link_directories(UltraPressEngine PUBLIC ${TINYXML2_LIBRARY_DIRS})
     endif()
+endif()
+
+# The HTML + JavaScript output (engine/UltraPressSite.cpp) is UltraSite's,
+# built wherever the core is; without it Publish offers the WebAssembly
+# output alone and says so.
+if(TARGET UltraSite)
+    target_link_libraries(UltraPressEngine PUBLIC UltraSite)
+    target_compile_definitions(UltraPressEngine PUBLIC ULTRAPRESS_HAS_ULTRASITE=1)
 endif()
 
 # The version comes from the first line of Docs/UltraPress/CHANGELOG.md

@@ -1122,6 +1122,6 @@ gets them when nothing focused takes them).
 
 - DemoApp → *List View*, section 5 (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`) — the custom-delegate example above, complete
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — Hierarchical equivalent of ListView
-- [UltraCanvasScrollbar](UltraCanvasScrollbar.md) — Scrollbar used internally
+- [UltraCanvasScrollbar](UltraCanvasScrollbarExamples.md) — Scrollbar used internally
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Static text display
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — Base class documentation
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — Base class documentation

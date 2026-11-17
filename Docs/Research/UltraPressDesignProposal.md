@@ -23,6 +23,8 @@ guessed. One thing was measured, on this date, by the `wasm-build.yml`
 workflow's new *Demo sizes* step: what a visitor downloads for the front
 page demo (§4.3). Time to first paint, and the leaner builds, are Phase 0.
 
+**Two outputs (decided 2026-11-17).** UltraPress offers two published outputs: (a) WebAssembly, as this document describes, and (b) HTML + JavaScript, written by the shared library proposed in [`UltraSiteStaticSitesProposal.md`](UltraSiteStaticSitesProposal.md). The site owner chooses per site.
+
 ---
 
 ## 1. Recommendation

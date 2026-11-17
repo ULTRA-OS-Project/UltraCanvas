@@ -23,6 +23,7 @@
 
 #include "UltraPressBlocks.h"
 #include "UltraPressPublish.h"
+#include "UltraPressSite.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -293,6 +294,7 @@ bool EditorWindow::SetSiteProperty(const std::string& name, const std::string& v
         site.url = url;
     } else if (name == "language") site.language = value;
     else if (name == "owner") site.owner = value;
+    else if (name == "output") site.output = value == kOutputWasm ? kOutputWasm : kOutputHtml;
     else return false;
     dirty = true;
     RenderPreview();
@@ -399,7 +401,7 @@ bool EditorWindow::Publish() {
         return false;
     }
     const std::string out = PathToUtf8(PathFromUtf8(siteDir) / ".ultrapress" / "publish");
-    const PublishResult written = PublishStatic(site, siteDir, out);
+    const PublishResult written = UltraPress::Publish(site, siteDir, out);   // the site's output: HTML + JavaScript or WebAssembly
     for (const std::string& line : written.errors) std::fprintf(stderr, "%s\n", line.c_str());
     if (!written.ok) {
         SetStatus("Not published: " + (written.errors.empty() ? std::string("cannot write the site") : written.errors.front()));
@@ -1005,6 +1007,22 @@ void EditorWindow::RebuildProperties() {
         }
         siteInput("SiteLanguage", "Language (two letters, en or de)", "language", site.language);
         siteInput("SiteOwner", "Owner (the organisation named in the feed and the structured data)", "owner", site.owner);
+        // The two outputs Publish writes (Docs/Research/UltraSiteStaticSitesProposal.md §2).
+        field("SiteOutput", "Publish as");
+        {
+            auto outputPick = CreateDropdown("SiteOutput", 0, 0, 0, 30);
+            outputPick->SetElementSize(CSSLayout::Dimension::Pct(100), CSSLayout::Dimension::Px(30));
+            outputPick->SetFollowTheme(true);
+            outputPick->AddItem("HTML + JavaScript - styled pages, fast on any host and in search", kOutputHtml);
+            outputPick->AddItem("WebAssembly - drawn by UltraCanvas, as in this editor", kOutputWasm);
+            outputPick->SetSelectedIndex(site.output == kOutputWasm ? 1 : 0, false);
+            outputPick->onSelectionChanged = [this](int, const DropdownItem& item) {
+                const std::string value = item.value;
+                Later([this, value]() { SetSiteProperty("output", value); });
+            };
+            properties->AddChild(outputPick);
+            properties->AddChild(Gap(10));
+        }
         properties->AddChild(Gap(6));
         properties->AddChild(Caption("PropsSiteHint", "The host the site publishes to is set with Host\xE2\x80\xA6 in the side column.",
                                      LabelVariant::Muted, 13, false));

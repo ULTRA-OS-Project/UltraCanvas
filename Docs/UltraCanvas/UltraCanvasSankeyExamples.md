@@ -395,5 +395,5 @@ generateBtn->onClick = [perfSankey, nodesSlider, linksSlider]() {
 - [UltraCanvasTreeMapExamples](UltraCanvasTreeMapExamples.md) — hierarchical area visualization
 - [UltraCanvasFlowChartExamples](UltraCanvasFlowChartExamples.md) — node/edge flow chart editor
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — line/curve charts
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
-- [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — used by the demo to host examples
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
+- [UltraCanvasTabbedContainer](../../UltraCanvas/include/UltraCanvasTabbedContainer.h) — used by the demo to host examples

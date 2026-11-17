@@ -9,6 +9,7 @@
 // variants (Neutral / Primary / Success / Warning / Danger / Info). The badge
 // auto-sizes to its content and, when anchored, follows its anchor.
 //
+// Version: 1.4.0 - a one-character text is centred on its ink: a "+" sat 1.5 px low and right in a round badge
 // Version: 1.3.0 - SetGrowInward: an anchored pill wider than it is tall grows
 //                 away from its corner, so "100" stays inside a bar's edge
 // Version: 1.2.0 - BadgeStyle::FromTheme, ApplyTheme: the badge follows the theme (BadgeStyle::primaryColor is the
@@ -20,6 +21,7 @@
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTextLayoutCache.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include <string>
@@ -177,6 +179,9 @@ namespace UltraCanvas {
         std::function<void()> onClick;
 
     private:
+        // A one-character text ("+", a check mark) centred on its ink
+        // (DrawTextCentredOnInk).
+        UltraCanvasTextLayoutCache inkLayout;
         std::string DisplayText() const;
         Color VariantColor() const;
         Color CurrentTextColor() const;

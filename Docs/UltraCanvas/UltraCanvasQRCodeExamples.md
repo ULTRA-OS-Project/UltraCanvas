@@ -14,7 +14,7 @@
   - [Logo](#logo)
   - [State & Inspection](#state--inspection)
   - [Export](#export)
-  - [Free Functions — `QRCodeUtils`](#free-functions-—-qrcodeutils)
+  - [Free Functions — `QRCodeUtils`](#free-functions--qrcodeutils)
 - [Examples](#examples)
   - [1. Basic QR Code from a URL](#1-basic-qr-code-from-a-url)
   - [2. Choosing an Error-Correction Level](#2-choosing-an-error-correction-level)

@@ -89,7 +89,7 @@ of the last action, red when it failed.
 | What | Where |
 |---|---|
 | the admin store: `admin.sqlite`, `packages/`, `media/<id>/<file>` | `UltraCanvasDataFolderRoot() / "UltraStoreAdmin"` (`~/.local/share/UltraStoreAdmin`, `~/Library/Application Support/UltraStoreAdmin`, `%APPDATA%\UltraStoreAdmin`), or `--store <dir>` |
-| the publish folder | wherever `publish <outdir>` says: `catalog.json`, `catalog.json.sig`, `media/`, `packages/`, `restricted/`, `go/`, `join/`, and with `web.site_dir` the web store: `index.html`, `categories/`, `category/<id>/`, `app/<id>/`, `ultrastore-web.wasm`, `ultracanvas-loader.js`, `runtime/<hash>/`, `ultrastore.png` |
+| the publish folder | wherever `publish <outdir>` says: `catalog.json`, `catalog.json.sig`, `media/`, `packages/`, `restricted/`, `go/`, `join/`, and the web store in its output (`web.output`). As HTML + JavaScript: `index.html`, `categories/` (with `free/` and `paid/`), `category/<id>/`, `app/<id>/`, `<language>/...`, `search/`, `assets/`, `404.html`, `sitemap.xml`, `robots.txt`, `.htaccess`, `_headers`. As WebAssembly: the shadow pages and `ultrastore-web.wasm`, `ultracanvas-loader.js`, `runtime/<hash>/`, `ultrastore.png` |
 
 The media paths in the catalog (`media/<id>/<file>`) are relative to the
 catalog's URL, as the store expects, and to the admin store folder on this
@@ -114,7 +114,8 @@ The settings in `admin.sqlite`:
 | `catalog.base_url` | where `catalog.json` will be served: `https://store.example/v1` |
 | `packages.base_url` | where `packages/` and `restricted/` are served; the catalog's URL when unset |
 | `store.contact` | how a future partner reaches the store's team to sign up (an address, a page); printed on the partners' join pages and the web store's |
-| `web.site_dir` | the web store build's `site/` folder (`Apps/UltraStore/web`, built under emcmake - or `site/` of a `wasm-build.yml` run's `ultrastore-web-dynamic` artifact): set, `publish` lays the web store beside the catalog - the HTML shadow pages, the module, the loader, the runtime under `runtime/<hash>/`; unset, nothing of the site is written |
+| `web.output` | which web store `publish` lays beside the catalog. `html` is the store as HTML + JavaScript (`WebStoreHtml.h`). `wasm` is the WebAssembly store from `web.site_dir`. `off` writes none. Unset, a store with `web.site_dir` keeps the WebAssembly store and any other gets the HTML one |
+| `web.site_dir` | the web store build's `site/` folder (`Apps/UltraStore/web`, built under emcmake - or `site/` of a `wasm-build.yml` run's `ultrastore-web-dynamic` artifact): the WebAssembly store's module, loader and runtime, which `web.output` `wasm` lays beside the catalog with the HTML shadow pages |
 | `web.store_download_url` | where the native store is downloaded; the web store's *Get UltraStore* |
 | `texts.languages` | the languages `translate` fills, codes separated by spaces; set by `init` to the official list |
 | `ai.provider`, `ai.base_url`, `ai.model` | the UltraAI translator's provider, server and model |
@@ -273,7 +274,24 @@ Hello.
 - A picture variant over its budget (`MediaBudget`, `PackageStore.h`) is
   listed: a heavy picture is the usual reason a web store page is over its
   own budget.
-- With `web.site_dir` set, the web store (`WebSite.h`,
+- With `web.output` `html` - the default where `web.site_dir` is not set -
+  the web store is laid beside the catalog as HTML + JavaScript
+  (`WebStoreHtml.h`, written by UltraSite):
+  - **Pages.** Discover, the categories (and `free/`, `paid/`), each
+    category and each app that is not hidden. Each is complete and styled,
+    with the store's design, a dark look, a search box and *Install* /
+    *Try* / *Buy* as `ultrastore://app/<id>` links with the store's
+    download beside them.
+  - **Languages.** The same pages are written in every language of the
+    apps' texts, under `<language>/`. Their words come from the store's
+    own translations (`media/locale/<language>/UltraStore.json` and
+    `Standard.json`), and the pages are joined by `hreflang` and a
+    language switcher.
+  - **Addresses.** They carry the catalog base's path (`/v1/`).
+  - **The rest of the folder** is left alone. A missing picture or a
+    page over its budget is a warning in the report, never a failed
+    publish.
+- With `web.output` `wasm` (the default where `web.site_dir` is set), the web store (`WebSite.h`,
   `Docs/UltraStore/WebstoreBrief.md`) is laid beside the catalog: a page
   for Discover, the categories, each category and each app that is not
   hidden (`index.html`, `categories/`, `category/<id>/`, `app/<id>/`, each

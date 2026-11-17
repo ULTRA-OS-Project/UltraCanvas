@@ -657,3 +657,22 @@ real_time_communication:
       vcpkg: "opus"
       brew: "opus"
       msys2: "mingw-w64-x86_64-opus"
+
+# ===== WEB PUBLISHING (UltraSite) =====
+#
+# UltraSite (the HTML + JavaScript output of UltraPress and the UltraStore web
+# store) writes a site's .gz copies with zlib, a core dependency, and its .br
+# copies with Brotli's encoder where the build finds it. Absence is tolerated:
+# the .br copies are left out and nothing else changes.
+web_publishing:
+  core:
+    brotli:
+      min_version: "1.0.9"            # Ubuntu 22.04 LTS ships 1.0.9
+      purpose: "The .br copies of a site's pages, stylesheet and scripts (UltraSite, BuildOptions::precompress)"
+      required: false
+      platforms: ["all"]
+      pkg_config: "libbrotlienc"
+      apt: "libbrotli-dev"
+      brew: "brotli"
+      msys2: "mingw-w64-x86_64-brotli"
+      vcpkg: "brotli"

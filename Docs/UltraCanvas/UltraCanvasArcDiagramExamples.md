@@ -20,10 +20,10 @@
   - [Style & Selection](#style--selection)
   - [Callbacks](#callbacks)
 - [Usage Examples](#usage-examples)
-  - [Character co-occurrence — degree-sized nodes, vertical labels, semicircles](#character-co-occurrence-—-degree-sized-nodes-vertical-labels-semicircles)
-  - [Canonical reference — axis arrow + color legend](#canonical-reference-—-axis-arrow--color-legend)
-  - [Directed flow — mid-arc arrowheads and self-loops](#directed-flow-—-mid-arc-arrowheads-and-self-loops)
-  - [Genomics — parallel bundles above and below](#genomics-—-parallel-bundles-above-and-below)
+  - [Character co-occurrence — degree-sized nodes, vertical labels, semicircles](#character-co-occurrence--degree-sized-nodes-vertical-labels-semicircles)
+  - [Canonical reference — axis arrow + color legend](#canonical-reference--axis-arrow--color-legend)
+  - [Directed flow — mid-arc arrowheads and self-loops](#directed-flow--mid-arc-arrowheads-and-self-loops)
+  - [Genomics — parallel bundles above and below](#genomics--parallel-bundles-above-and-below)
   - [Reporting node and edge selection](#reporting-node-and-edge-selection)
 - [Render Order](#render-order)
 - [Encoding Cheat Sheet](#encoding-cheat-sheet)
@@ -590,5 +590,5 @@ Each frame the arc diagram draws:
 - [UltraCanvasNodeDiagramExamples](UltraCanvasNodeDiagramExamples.md) — interactive graph editor with handles
 - [UltraCanvasGourceTreeExamples](UltraCanvasGourceTreeExamples.md) — radial filesystem tree
 - [UltraCanvasAdjacencyDiagramExamples](UltraCanvasAdjacencyDiagramExamples.md) — architectural room adjacency
-- [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demo
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
+- [UltraCanvasTabbedContainer](../../UltraCanvas/include/UltraCanvasTabbedContainer.h) — tab control used by the demo
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
