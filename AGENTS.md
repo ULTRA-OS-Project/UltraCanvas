@@ -474,7 +474,10 @@ every credential-vault test failed here while passing in CI, and VideoFX, the
 PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
 were not built at all. A cold container takes about a minute, a warm one a
 fraction of a second; it never blocks the session, and when an install fails
-it says so in one line in the session's context. It also generates the
+it says so in one line in the session's context. It also unpacks libc++'s headers into a private folder for
+`scripts/check_libcxx_syntax.py` (`--fetch-libcxx`), rather than installing
+`libc++-dev`: on 24.04 that removes the `libunwind-dev` GStreamer's dev
+package needs, and the build silently loses its media backends. It also generates the
 comma-decimal locale `de_DE.UTF-8`, as CI's Linux rows do: the tests that hold
 file formats to dot-decimal numbers (`HTMLReaderTest`, `ModelLocaleDecimalTest`,
 `DiagramJsonLocaleTest` and the rest) skip without one, and the image has none.

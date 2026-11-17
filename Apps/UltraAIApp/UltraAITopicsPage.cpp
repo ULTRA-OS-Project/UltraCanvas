@@ -1,9 +1,10 @@
 // Apps/UltraAIApp/UltraAITopicsPage.cpp
 // The settings window's "Model topics" page (UltraAITopicsPage.h).
+// Version: 0.1.2 - the topic table's columns fit beside its scrollbar (State was cut off)
 // Version: 0.1.1 - no default gallery address: Refresh needs a model server; a catalogue
 //                  source's models are offered for a topic once installed
 // Version: 0.1.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-17
 // Author: UltraAI Module
 
 #include "UltraAITopicsPage.h"
@@ -178,10 +179,16 @@ void UltraAITopicsPage::BuildServerRow(UltraCanvasContainer& body) {
 
 void UltraAITopicsPage::BuildTopicTable(UltraCanvasContainer& body) {
     topicTable_ = MakeTable("uai-tp-topics", kTopicRows, topicModel_);
-    topicModel_->AddColumn(ListColumnDef(Tr("Topic"), 140, TextAlignment::Left, Tr("What the model is used for")));
+    // The columns fit beside the list's own scrollbar: the table is 480 wide,
+    // and with more topics than rows (seven, in six) the bar takes 12 and
+    // the border 2. At 476 they did not, so the table scrolled sideways and
+    // State showed "Not installe". State is the one read at a glance, and
+    // has room for a longer word than the English; a name too long for its
+    // column ends in an ellipsis and is whole in the selected topic's line.
+    topicModel_->AddColumn(ListColumnDef(Tr("Topic"), 120, TextAlignment::Left, Tr("What the model is used for")));
     topicModel_->AddColumn(ListColumnDef(Tr("Service"), 76, TextAlignment::Left, Tr("The kind of model the topic needs")));
-    topicModel_->AddColumn(ListColumnDef(Tr("Model used"), 170, TextAlignment::Left, Tr("The model this computer uses for the topic")));
-    topicModel_->AddColumn(ListColumnDef(Tr("State"), 90, TextAlignment::Left, Tr("Installed, or downloaded when first used")));
+    topicModel_->AddColumn(ListColumnDef(Tr("Model used"), 154, TextAlignment::Left, Tr("The model this computer uses for the topic")));
+    topicModel_->AddColumn(ListColumnDef(Tr("State"), 100, TextAlignment::Left, Tr("Installed, or downloaded when first used")));
     topicTable_->onSelectionChanged = [this](const std::vector<int>&) { RefreshTopicControls(); };
     body.AddChild(topicTable_);
 }
