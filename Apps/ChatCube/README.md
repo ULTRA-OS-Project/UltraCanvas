@@ -10,9 +10,9 @@ ChatCube is the window; the networks are UltraIM providers
 ([`Docs/Modules/UltraIM`](../../Docs/Modules/UltraIM/README.md)). This release
 uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`), Matrix
 (`.../matrix`), Telegram (`.../telegram`), the direct messages of
-Mastodon (`.../mastodon`), and the team chats Mattermost (`.../mattermost`)
-and Zulip (`.../zulip`); XMPP and other messengers with an open API come
-later as further providers.
+Mastodon (`.../mastodon`), the team chats Mattermost (`.../mattermost`)
+and Zulip (`.../zulip`), Signal (`.../signal`, through signal-cli), XMPP
+(`.../xmpp`) and IRC (`.../irc`).
 Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/ChatCubeDirectPlan.md).
 The first ChatCube draft, which this replaces, is kept under
 [`Docs/ChatCube/v1-draft`](../../Docs/ChatCube/v1-draft/README.md).
@@ -146,7 +146,22 @@ The first ChatCube draft, which this replaces, is kept under
    of your streams (`#general > greetings`) as a chat of its own, news the
    moment it is sent. Files of any kind go both ways. An address in *Add*
    that more than one signed-in network takes - `@user` on Telegram and
-   Mattermost, an e-mail address on Zulip and Mattermost - asks which.
+   Mattermost, an e-mail address on Zulip and Mattermost - asks which; when
+   none of them is signed in it names them.
+   **Signal** shows a QR code: scan it with the Signal app on your phone
+   (*Settings > Linked devices*) and ChatCube becomes a linked device, as
+   Signal Desktop is. It needs [signal-cli](https://github.com/AsamK/signal-cli)
+   installed (or the address of a signal-cli daemon you run); ChatCube sees
+   messages from the moment it is linked. Numbers (`+49 ...`) and Signal
+   usernames (`name.01`) can be added.
+   **XMPP** takes your address (`erin@example.org`) and password - the server
+   is found from the address, or typed in its own field as a `wss://`
+   address. Your contacts and rooms come along, with the server's history.
+   **IRC** takes the server (`irc.libera.chat`; TLS unless it starts with
+   `irc://`), your nickname and, for a registered nickname, the password.
+   Add `#channel` to join a channel or a nickname for a private chat; the
+   network's own conversation shows its notices and takes IRC commands.
+   IRC has no files - share a link.
 5. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
    *Settings* below). A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,

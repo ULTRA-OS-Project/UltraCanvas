@@ -10,6 +10,21 @@
   `FetchAccountProfile` with the account's name, and are tested against a
   stand-in server in standard-library python (`MattermostProviderTests`,
   `ZulipProviderTests`). No plug-in ABI change.
+- **UltraIM: Signal, XMPP and IRC providers** (`Plugins/UltraIM/signal`,
+  `Plugins/UltraIM/xmpp`, `Plugins/UltraIM/irc`; modules `ultraim_signal`,
+  `ultraim_xmpp`, `ultraim_irc`). Signal through a signal-cli daemon's
+  JSON-RPC (the user's, or one the provider starts), linked to the phone by
+  a QR code (`UltraIMLoginType::QRCode`, step `OtherDevice`). XMPP over the
+  WebSocket binding (RFC 7395) with tinyxml2: SCRAM-SHA-256/1 keeping the
+  derived keys rather than the password, roster, MUC rooms from bookmarks,
+  MAM history, receipts, markers, chat states, corrections, retractions,
+  replies, carbons, HTTP File Upload. IRC with IRCv3 over UltraNet TCP and
+  `UltraNet_TlsWrap`: SASL PLAIN or NickServ, CHATHISTORY, server-time,
+  msgid, echo-message, labeled-response, typing, replies, a `*server`
+  conversation for notices and raw commands, reconnecting with backoff.
+  Each tested against a stand-in in standard-library python
+  (`SignalProviderTests`, `XmppProviderTests`, `IrcProviderTests`). No
+  plug-in ABI change.
 - **`UltraNetTls.h`: header comment corrected.** It still described TLS on
   a TCP handle as Stage-3 stubs deferred to UltraNet v1.1; `UltraNet_TlsWrap`
   and `UltraNet_TlsHandshake` have long been implemented (OpenSSL, Schannel,

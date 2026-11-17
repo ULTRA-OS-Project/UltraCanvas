@@ -1,8 +1,8 @@
 // Plugins/UltraIM/xmpp/XmppProvider.h
 // XMPP (Jabber) - an UltraIM provider for any XMPP server, over XMPP's
 // WebSocket binding (RFC 7395) through UltraNet: wss://, where libcurl
-// carries the TLS (UltraNet's own TLS over a raw socket - what STARTTLS on
-// port 5222 would need - is not there).
+// carries the TLS. The classic TCP binding (STARTTLS on port 5222, or
+// direct TLS on 5223, through UltraNet_TlsWrap) is not used yet.
 //
 // Here:
 //

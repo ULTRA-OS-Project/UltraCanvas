@@ -9,7 +9,20 @@
   start signs in by itself. The status line shows the account's name.
 - **Which network?** An address more than one signed-in network takes
   (`@user`: Telegram and Mattermost; an e-mail: Zulip and Mattermost) asks
-  which one when added.
+  which one when added; when none of them is signed in, the status line
+  names them.
+- **Signal.** A Signal button shows a QR code to scan with the Signal app on
+  the phone: ChatCube becomes a linked device (through signal-cli, which is
+  installed separately). Chats and groups, replies, edits, deletes, ticks,
+  typing, pictures and files; numbers and Signal usernames in *Add*.
+- **XMPP.** Any XMPP (Jabber) server that offers WebSocket: your address and
+  password, your contacts and rooms, the server's history, ticks, typing,
+  edits, deletes, replies and file uploads. The password is not kept, only
+  keys derived from it.
+- **IRC.** Server, nickname and (for a registered one) password; `#channel`
+  joins, a nickname opens a private chat, the network's own chat shows its
+  notices and takes commands. Over TLS unless the server starts with
+  `irc://`. A nickname in use is changed and the status line says to what.
 
 #### 2026-11-16 *0.1.28*
 - **Mastodon.** A Mastodon button beside Telegram signs in to any Mastodon
