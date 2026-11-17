@@ -27,3 +27,9 @@
   `DirectProviderTests` now checks Bob's stored record keeps the new name
   right after a rename; the relay's tests cover every change raising the
   revision and the migration.
+- **A merge no longer deploys the ChatCube relay.** The `ChatCube relay`
+  workflow put every change to `Server/ChatCubeRelay` that reached `main` on
+  the live server - a new version can migrate its database. It now only
+  tests on a merge; the operator deploys when they choose, by starting the
+  workflow by hand on `main` (Actions > ChatCube relay > Run workflow), as
+  before. Relay 1.6.0 goes live that way, not with its merge.
