@@ -3521,10 +3521,11 @@ int main(int argc, char** argv) {
                     if (run.IsInlineImage()) picture = &run;
                     if (run.IsTextFrame()) shape = &run;
                 }
-                if (docx) {                       // ODF's as-char picture carries no turn
-                    CHECK_MSG(picture && Near(picture->imageRotationDeg, 90.0f) && !picture->IsFloatingObject(),
-                              label + ": the picture in the line is turned a quarter");
-                }
+                CHECK_MSG(picture && Near(std::fmod(picture->imageRotationDeg + 360.0f, 360.0f), 90.0f)
+                          && !picture->IsFloatingObject(), label + ": the picture in the line is turned a quarter");
+                CHECK_MSG(picture && Near(picture->imageWidthPt, 100.0f) && Near(picture->imageHeightPt, 20.0f),
+                          label + ": ...its size as before the turn: " + std::to_string(picture ? picture->imageWidthPt : 0.0f)
+                          + " x " + std::to_string(picture ? picture->imageHeightPt : 0.0f));
                 CHECK_MSG(picture && Near(picture->fontSizePt, 4.0f), label + ": ...in its run's 4 pt font");
                 CHECK_MSG(shape && shape->imageWrap == RichTextRun::ImageWrap::Inline,
                           label + ": the shape stands in the line, it does not float");

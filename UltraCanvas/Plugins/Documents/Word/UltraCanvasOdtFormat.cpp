@@ -5,6 +5,7 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.12.2 - a turned picture in the line (as-char with draw:transform) read and written
 // Version: 1.12.1 - a cell paragraph's own proportional line height (70%); a file by Word sets it on every line
 // Version: 1.12.0 - table cells: a paragraph per line, line heights, nested tables read as tables, the font a
 //                   picture in a line stands in, a negative table indent; Writer's proportional line
@@ -1514,6 +1515,11 @@ private:
                         if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) run.imageOffsetYPt = box.yPt;
                     }
                 }
+            } else if (frame->Attribute("draw:transform")) {
+                // Turned in the line: the turn alone (its place is the line's).
+                RichShape box;
+                ReadShapeBox(frame, box);
+                run.imageRotationDeg = box.rotationDeg;
             }
             run.lineBreakBefore = ctx.pendingLineBreak;
             ctx.pendingLineBreak = false;
@@ -3232,6 +3238,31 @@ private:
             }
         } else {
             xml << " text:anchor-type=\"as-char\"";
+            if (std::fmod(static_cast<double>(run.imageRotationDeg), 360.0) != 0.0) {
+                // Turned in the line: its size as before the turn and a
+                // draw:transform, as a turned shape. Anchored as a character
+                // it stands on the baseline - down counts from there, so the
+                // top of the box round the turned picture is its height
+                // above. (Writer turns it only as a drawing object, which a
+                // graphic style with a stroke and fill makes it; as a plain
+                // picture it clips the turned picture to its old box.)
+                RichShape box;
+                box.widthPt = widthPt;
+                box.heightPt = heightPt;
+                box.rotationDeg = run.imageRotationDeg;
+                constexpr double kRad = 3.14159265358979323846 / 180.0;
+                const double c = std::abs(std::cos(run.imageRotationDeg * kRad)), sn = std::abs(std::sin(run.imageRotationDeg * kRad));
+                const float boundWidth = static_cast<float>(widthPt * c + heightPt * sn);
+                const float boundHeight = static_cast<float>(widthPt * sn + heightPt * c);
+                if (graphicStylesXml_.find("\"grTurned\"") == std::string::npos) {
+                    graphicStylesXml_ += "<style:style style:name=\"grTurned\" style:family=\"graphic\">"
+                                         "<style:graphic-properties draw:stroke=\"none\" draw:fill=\"none\""
+                                         " style:vertical-pos=\"top\" style:vertical-rel=\"baseline\"/></style:style>\n";
+                }
+                xml << " draw:style-name=\"grTurned\""
+                    << ShapeBoxAttributes(box, (boundWidth - widthPt) * 0.5f, (boundHeight - heightPt) * 0.5f - boundHeight) << ">";
+                turned = true;
+            }
         }
         if (!turned) xml << " svg:width=\"" << Pt(widthPt) << "\" svg:height=\"" << Pt(heightPt) << "\">";
         xml

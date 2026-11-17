@@ -653,8 +653,8 @@ paragraph's alignment puts it; it is no float.
 
 **Turned.** `RichTextRun::imageRotationDeg` turns a picture clockwise about
 its centre - a floating one where it is placed, one in the line in a line as
-tall as the turned picture. A floating picture's size and offsets are those of
-the box before the turn
+tall as the turned picture (read and written by DOCX and ODT alike). A
+floating picture's size and offsets are those of the box before the turn
 (Word's `a:xfrm rot`, ODF's `draw:transform`), so a 150 x 389 pt picture
 turned three quarters covers 389 x 150 pt round the same centre.
 
