@@ -50,8 +50,9 @@
 // a thumbnail already on disk - the vector previews drawn "at the fit
 // squared" before 2026-09-26 stayed specks in a corner for as long as the
 // tile kept being shown, at exactly the sizes cached back then.
+// Version: 1.3.0 - renderer generation 4: a PDF's first page on white paper
 // Version: 1.2.0
-// Last Modified: 2026-10-09
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -90,7 +91,10 @@ namespace UltraCanvas {
         //      decode, and the image cache served a file's previous content
         //      after it was saved over - so an older entry may be the old
         //      picture recorded as the answer for the new file
-        constexpr uint32_t kRendererGeneration = 3;
+        //   4  a PDF's first page on white paper: the paper the page left
+        //      transparent showed the tile under it (a dark page on a dark
+        //      tile)
+        constexpr uint32_t kRendererGeneration = 4;
 
         // The generation Load() and Store() use - kRendererGeneration unless
         // a test overrode it. Pass 0 to go back to the built-in one.

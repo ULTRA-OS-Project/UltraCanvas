@@ -9,8 +9,10 @@
 // and a format that moves into a runtime module takes its provider with it
 // and registers it from the module's init.
 //
+// Version: 1.1.0 - a PDF's first page on white paper: the page the engine left transparent showed
+//                  the tile under it (a dark page with white patches on a dark tile)
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilePreviews.h"
@@ -75,12 +77,30 @@ std::shared_ptr<UCPixmap> PixmapFromRGBA(const uint8_t* rgba, int w, int h, int 
     return pm;
 }
 
+// The page on paper: the engine leaves what a PDF does not paint transparent
+// - the paper of nearly every page - so a thumbnail drawn on a dark tile
+// showed a dark page with the page's own white boxes as light patches. A
+// page is paper: what it leaves transparent is white, what it paints keeps
+// its colour, and the picture is opaque.
+void LayOnWhitePaper(std::vector<uint8_t>& rgba, int w, int h, int stride) {
+    for (int y = 0; y < h; ++y) {
+        uint8_t* px = rgba.data() + static_cast<size_t>(y) * stride;
+        for (int x = 0; x < w; ++x, px += 4) {
+            const unsigned a = px[3];
+            if (a == 255) continue;
+            for (int c = 0; c < 3; ++c) px[c] = static_cast<uint8_t>((px[c] * a + 255u * (255u - a) + 127u) / 255u);
+            px[3] = 255;
+        }
+    }
+}
+
 std::shared_ptr<UCPixmap> RenderPdfFirstPage(const std::string& path, const FileThumbnailRequest& r) {
     const int maxDim = std::max(16, DeviceEdge(std::max(r.width, r.height), r.scale));
     std::unique_ptr<IPDFDocument> doc = OpenPDF(path);
     if (!doc || doc->GetPageCount() < 1) return nullptr;
     PDFRenderedPage page = doc->RenderThumbnail(1, maxDim);
     if (!page.IsValid() || page.colorMode != PDFColorMode::RGBA) return nullptr;
+    LayOnWhitePaper(page.pixels, page.width, page.height, page.stride);
     return PixmapFromRGBA(page.pixels.data(), page.width, page.height, page.stride);
 }
 #endif
