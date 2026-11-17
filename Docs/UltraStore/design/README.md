@@ -32,6 +32,11 @@ over these.
 | `GamesDetail.dc.html` | one game's page (Skyline Siege): genre and PEGI badges, players and controller, Play the demo / Buy, trailer and screenshots, About, the rating explained, What's new, System requirements, What it installs, information, more tactics games | page |
 | `GamesGenres.dc.html` | Browse games by genre: the genre chips, the price, the age rating, the players filter work (state in the script); covers carry the PEGI mark | page |
 | `GamesPhoneHome.dc.html` | the games shop's Discover on a phone: game of the week, genre chips, Editor's picks, Learning games, the bottom tab bar | 390 × 844 |
+| `MarketHome.dc.html` | the marketplace variant's home: the search-first header with the department select, the delivery address and the basket, the department strip, the sale banner, Today's deals with the countdown and the claimed bar, Shop by department, Best sellers with ratings, Top sellers, New arrivals, why buy here | page |
+| `MarketProduct.dc.html` | one product's page (Nordlicht Aura 2): the gallery, the rating, the price with the regular price, colour variants, the buy box with delivery and the seller, other offers, product details, Compare with similar items, customer reviews with the distribution and a seller's reply, questions and answers, Customers also bought | page |
+| `MarketSearch.dc.html` | search and browse: the department chips with counts, the price, the customer rating, the delivery and the condition filters work and show as removable active filters (state in the script); listings with the seller, the delivery and a sponsored mark | page |
+| `MarketBasket.dc.html` | the basket grouped by seller with the quantity, Save for later and the delivery choice per seller, the free-delivery threshold, Saved for later, the order summary with the voucher, the payment methods and Proceed to checkout; the checkout steps in the header | page |
+| `MarketPhoneHome.dc.html` | the marketplace's home on a phone: delivery address and basket, search, department chips, the sale, Today's deals, Best sellers, Buy again, the bottom tab bar | 390 × 844 |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -130,6 +135,24 @@ list has `games` (`Docs/UltraStore/README.md`) and nothing more, so
 genre, age rating and descriptors, players, input and requirements are
 proposed catalog fields. Every game, studio, count, date and `[PRICE]` on
 those pages is invented sample data; none of them exists.
+
+The `Market*` pages are the **marketplace variant**: the shop as a general
+marketplace in the manner of Amazon, eBay or Temu, with many verified
+sellers (the merchants of the store README's marketplace tier) in one
+basket, physical goods with delivery and returns, star ratings from
+delivered orders, deals with a countdown, departments instead of
+categories, and a basket grouped by seller with the checkout steps. The
+accent is orange `#EA580C` (the `accent` prop). The words are the standard
+string set's `media/locale/en/base/Shopping.json` (Basket, Add to basket,
+Proceed to checkout, Free shipping, Estimated delivery, Deal, Best
+sellers, Guest checkout, Voucher code, Compare, In stock, Low stock);
+payment follows
+[`Docs/Research/UltraPressDesignProposal.md`](../../Research/UltraPressDesignProposal.md)
+§7.5: hosted checkout pages by redirect, card data never in the
+marketplace, invoices as PDF and XRechnung through UltraFIBU. Nothing of
+this exists in the catalog or the services yet: products, sellers,
+prices, ratings, stock, delivery and every figure are invented sample
+data, and the pictures are drawn `[PHOTO]` placeholders.
 
 The `Super*` pages are a **proposal** for a third tier, later: the operator
 of UltraStore running a marketplace in which other publishers (merchants)

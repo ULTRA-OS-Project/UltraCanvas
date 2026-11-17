@@ -195,6 +195,50 @@
       "h": 844,
       "title": "Games phone: Discover",
       "radius": 44
+    },
+    "MarketHome.dc.html": {
+      "x": 0,
+      "y": 17600,
+      "w": 1440,
+      "h": 2760,
+      "title": "Market: Home",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MarketProduct.dc.html": {
+      "x": 1520,
+      "y": 17600,
+      "w": 1440,
+      "h": 2760,
+      "title": "Market: Product page (Nordlicht Aura 2)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MarketSearch.dc.html": {
+      "x": 3040,
+      "y": 17600,
+      "w": 1440,
+      "h": 2200,
+      "title": "Market: Search and browse",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MarketBasket.dc.html": {
+      "x": 0,
+      "y": 20760,
+      "w": 1440,
+      "h": 1720,
+      "title": "Market: Basket and checkout",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MarketPhoneHome.dc.html": {
+      "x": 1520,
+      "y": 20760,
+      "w": 390,
+      "h": 844,
+      "title": "Market phone: Home",
+      "radius": 44
     }
   },
   "order": [
@@ -218,7 +262,12 @@
     "GamesHome.dc.html",
     "GamesDetail.dc.html",
     "GamesGenres.dc.html",
-    "GamesPhoneHome.dc.html"
+    "GamesPhoneHome.dc.html",
+    "MarketHome.dc.html",
+    "MarketProduct.dc.html",
+    "MarketSearch.dc.html",
+    "MarketBasket.dc.html",
+    "MarketPhoneHome.dc.html"
   ],
   "notes": {
     "desk": {
@@ -297,6 +346,20 @@
       "w": 420,
       "text": "A variant of the shop for computer games: the same chrome, type and shapes, the accent violet #7C3AED (a prop; blue is one click away), covers instead of icons, and the genres Action, 3D, Simulation, Tactics, Adventure, Learning (education, by age), Retro, Board games, Puzzle, Racing, Role-playing, Sports. The game page adds the PEGI rating with descriptors, players and co-op, controller support, system requirements and a demo. The repository has no games proposal: the catalog knows the category 'games' only; genre, age rating, players, input and requirements are proposed fields. Every game, studio, count and [PRICE] is invented sample data.",
       "fill": "green"
+    },
+    "market": {
+      "x": 0,
+      "y": 17300,
+      "text": "UltraStore - marketplace variant (many sellers, physical goods)",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "marketnote": {
+      "x": 4560,
+      "y": 17600,
+      "w": 420,
+      "text": "A variant of the shop as a general marketplace in the manner of Amazon, eBay or Temu: many verified sellers (the merchants of the store README's marketplace tier) in one basket, physical goods with delivery, returns, star ratings from delivered orders, deals with a countdown, departments instead of categories, and a basket grouped by seller with the checkout steps. The accent is orange #EA580C (a prop). The words are the standard string set's Shopping.json (Basket, Add to basket, Proceed to checkout, Free shipping, Estimated delivery, Deal, Best sellers, Guest checkout, Voucher code, Compare, In stock, Low stock); payment follows the UltraPress proposal: hosted checkout pages by redirect, card data never in the marketplace, invoices as PDF and XRechnung through UltraFIBU. Nothing of this exists in the catalog or the services yet: products, sellers, prices, ratings, stock, delivery and every figure are invented sample data; the pictures are [PHOTO] placeholders.",
+      "fill": "orange"
     }
   },
   "designSystems": []
