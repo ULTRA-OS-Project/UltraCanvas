@@ -2724,6 +2724,667 @@ int main(int argc, char** argv) {
         CHECK_MSG(!state.letterSpacingPt && !state.letterSpacingMixed, "an unset delta gives the words back to the view's spacing");
     }
 
+    // ===== A LETTER LAID OUT IN A TABLE =====
+    // What a letter template needs of a table and of the pictures round it:
+    // rows as tall as the document says, the empty paragraphs that space a
+    // cell's text, a banner that starts above its paragraph and left of the
+    // margin - written and read back by both formats.
+    {
+        UCRichDocument letter;
+        RichDocBlock anchor;
+        RichTextRun banner;
+        banner.text = RichTextRun::kObjectReplacement;
+        banner.mediaIndex = letter.AddMedia("dot.png", "image/png",
+                                            std::vector<uint8_t>(kTinyPng, kTinyPng + sizeof(kTinyPng)));
+        banner.imageWidthPt = 612.0f;
+        banner.imageHeightPt = 52.0f;
+        banner.imageWrap = RichTextRun::ImageWrap::BehindText;
+        banner.imageFloatAlign = RichTextAlign::Default;
+        banner.floatHorizontalFrom = RichTextRun::FloatOrigin::Page;
+        banner.floatVerticalFrom = RichTextRun::FloatOrigin::Paragraph;
+        banner.imageOffsetXPt = 0.0f;
+        banner.imageOffsetYPt = -42.5f;
+        anchor.runs = {banner};
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        table.tableBordersFromDocument = true;
+        auto line = [](const std::string& text, bool breakBefore) {
+            RichTextRun run;
+            run.text = text;
+            run.lineBreakBefore = breakBefore;
+            return run;
+        };
+        RichTableCell address;
+        address.runs = {line("Name", false), line("", true), line("Date", true), line("", true)};
+        RichTableRow tall, exact;
+        tall.cells = {address};
+        tall.heightPt = 561.6f;
+        RichTableCell logo;
+        logo.runs = {line("NP", false)};
+        exact.cells = {logo};
+        exact.heightPt = 50.4f;
+        exact.heightExact = true;
+        table.tableRows = {tall, exact};
+        letter.blocks = {anchor, table};
+
+        for (const char* format : {"odt", "docx"}) {
+            const std::string label = std::string("letter table (") + format + ")";
+            const std::string path = TmpPath(std::string("letter.") + format);
+            std::string err;
+            const bool saved = std::string(format) == "odt" ? UCWordDocumentIO::SaveOdt(path, letter, err)
+                                                            : UCWordDocumentIO::SaveDocx(path, letter, err);
+            CHECK_MSG(saved, label + ": " + err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), label + ": " + err);
+            const RichDocBlock* read = nullptr;
+            const RichTextRun* floating = nullptr;
+            for (const RichDocBlock& block : back.blocks) {
+                if (block.type == RichBlockType::Table) read = &block;
+                for (const RichTextRun& run : block.runs) if (run.IsFloatingObject()) floating = &run;
+            }
+            CHECK_MSG(read && read->tableRows.size() == 2, label + ": the table");
+            if (read && read->tableRows.size() == 2) {
+                CHECK_MSG(Near(read->tableRows[0].heightPt, 561.6f) && !read->tableRows[0].heightExact,
+                          label + ": a row at least so tall");
+                CHECK_MSG(Near(read->tableRows[1].heightPt, 50.4f) && read->tableRows[1].heightExact,
+                          label + ": a row exactly so tall");
+                CHECK_MSG(UCRichDocument::ConcatenateRunText(read->tableRows[0].cells[0].runs) == "Name\n\nDate\n",
+                          label + ": the cell's empty lines, got \""
+                          + UCRichDocument::ConcatenateRunText(read->tableRows[0].cells[0].runs) + "\"");
+            }
+            CHECK_MSG(floating != nullptr, label + ": the banner still floats");
+            if (floating) {
+                CHECK_MSG(Near(floating->imageOffsetYPt, -42.5f), label + ": it starts above its paragraph");
+                CHECK_MSG(Near(floating->imageWidthPt, 612.0f), label + ": it keeps its width");
+            }
+        }
+    }
+
+    // ===== PARAGRAPH SPACING IN A CELL, KERNING AND THE LINE GAP =====
+    // The room between two paragraphs of a cell is a line of that height
+    // (RichTextRun::emptyLineHeightPt); written as the next paragraph's space
+    // before and read back the same, however often. The document's kerning
+    // and line-gap settings travel too.
+    {
+        UCRichDocument spaced;
+        spaced.letterKerning = false;
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        table.tableBordersFromDocument = true;
+        RichTextRun first, spacer, second;
+        first.text = "Date";
+        spacer.lineBreakBefore = true;
+        spacer.emptyLineHeightPt = 18.0f;
+        second.text = "Name";
+        second.lineBreakBefore = true;
+        RichTableCell cell;
+        cell.runs = {first, spacer, second};
+        cell.paddingTopPt = 24.0f;
+        cell.paddingBottomPt = 6.0f;
+        cell.paddingLeftPt = cell.paddingRightPt = 0.0f;
+        RichTableRow row;
+        row.cells = {cell};
+        table.tableRows = {row};
+        spaced.blocks = {table};
+        for (const char* format : {"odt", "docx"}) {
+            const std::string label = std::string("cell spacing (") + format + ")";
+            UCRichDocument current = spaced;
+            for (int pass = 0; pass < 2; ++pass) {
+                const std::string path = TmpPath(std::string("cellspacing") + std::to_string(pass) + "." + format);
+                std::string err;
+                const bool saved = std::string(format) == "odt" ? UCWordDocumentIO::SaveOdt(path, current, err)
+                                                                : UCWordDocumentIO::SaveDocx(path, current, err);
+                CHECK_MSG(saved, label + ": " + err);
+                UCRichDocument back;
+                CHECK_MSG(UCWordDocumentIO::Load(path, back, err), label + ": " + err);
+                const RichTableCell* read = FindCell(back, "Date\n\nName", nullptr);
+                CHECK_MSG(read != nullptr, label + ": the cell");
+                if (read) {
+                    float gap = 0.0f;
+                    for (const RichTextRun& run : read->runs) gap = std::max(gap, run.emptyLineHeightPt);
+                    CHECK_MSG(UCRichDocument::ConcatenateRunText(read->runs) == "Date\n\nName" && Near(gap, 18.0f),
+                              label + ": the room between its paragraphs, pass " + std::to_string(pass) + ": "
+                              + std::to_string(gap));
+                    CHECK_MSG(Near(read->paddingTopPt, 24.0f) && Near(read->paddingBottomPt, 6.0f),
+                              label + ": its padding stays as it was, pass " + std::to_string(pass) + ": "
+                              + std::to_string(read->paddingTopPt) + " / " + std::to_string(read->paddingBottomPt));
+                }
+                CHECK_MSG(!back.letterKerning, label + ": the text stays unkerned");
+                current = back;
+            }
+        }
+        // Writer's compatibility options: no line gap, no paragraph spacing in cells.
+        UCRichDocument old = spaced;
+        old.fontLineGap = false;
+        old.paragraphSpacingInCells = false;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::SaveOdt(TmpPath("oldwriter.odt"), old, err), err);
+        UCRichDocument back;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("oldwriter.odt"), back, err), err);
+        CHECK_MSG(!back.fontLineGap && !back.paragraphSpacingInCells,
+                  "odt: the line-gap and cell-spacing options are kept (settings.xml)");
+    }
+
+    // ===== A .DOC'S LATER SECTIONS AND ITS SHAPES' SHADOWS =====
+    // word-sections.doc is word-sections.fodt saved as Word 97 by LibreOffice:
+    // a cover with the document's header and a shadowed rectangle, a chapter
+    // with a header and footer of its own and a wider top margin, and an
+    // appendix back under the document's header.
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        UCRichDocument doc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(std::string(WORDTEST_FIXTURE_DIR) + "/word-sections.doc", doc, err), err);
+        auto headerText = [](const RichPageFurniture& furniture) {
+            std::string text;
+            for (const RichDocBlock& block : furniture.header) text += UCRichDocument::ConcatenateRunText(block.runs);
+            return text;
+        };
+        int chapterAt = -1, appendixAt = -1;
+        const RichShape* box = nullptr;
+        for (size_t i = 0; i < doc.blocks.size(); ++i) {
+            const std::string text = UCRichDocument::ConcatenateRunText(doc.blocks[i].runs);
+            if (text == "Chapter words") chapterAt = static_cast<int>(i);
+            if (text == "Appendix words") appendixAt = static_cast<int>(i);
+        }
+        for (const RichTextFrame& frame : doc.frames) {
+            if (!frame.shapes.empty()) box = &frame.shapes.front();
+        }
+        CHECK_MSG(headerText(doc.pageFurniture) == "Document header", "doc: the first section's header is the document's");
+        CHECK_MSG(chapterAt > 0 && appendixAt > chapterAt, "doc: the three sections' words");
+        if (chapterAt > 0 && appendixAt > chapterAt) {
+            const RichSectionSetup& chapter = doc.SectionFor(chapterAt);
+            const RichSectionSetup& appendix = doc.SectionFor(appendixAt);
+            CHECK_MSG(doc.blocks[static_cast<size_t>(chapterAt)].sectionStart && chapter.newPage,
+                      "doc: the second section starts at its paragraph, on a new page");
+            const RichPageFurniture& chapterPages = doc.FurnitureFor(chapter, false, 1);
+            CHECK_MSG(headerText(chapterPages) == "Chapter header", "doc: ...with its own header, got \""
+                      + headerText(chapterPages) + "\"");
+            CHECK_MSG(!chapterPages.footer.empty()
+                      && UCRichDocument::ConcatenateRunText(chapterPages.footer[0].runs) == "Chapter footer",
+                      "doc: ...and its own footer");
+            CHECK_MSG(chapter.marginTopPt > doc.page.marginTopPt + 20.0f, "doc: ...and its wider top margin: "
+                      + std::to_string(chapter.marginTopPt) + " against " + std::to_string(doc.page.marginTopPt));
+            const RichPageFurniture& appendixPages = doc.FurnitureFor(appendix, false, 2);
+            CHECK_MSG(headerText(appendixPages) == "Document header" && appendixPages.footer.empty(),
+                      "doc: the third is back under the document's header, without a footer");
+        }
+        CHECK_MSG(box != nullptr, "doc: the rectangle");
+        if (box) {
+            CHECK_MSG(box->HasShadow() && Lower(box->shadowColor) == "#5e5e5e", "doc: its shadow's colour, got \""
+                      + box->shadowColor + "\"");
+            CHECK_MSG(Near(box->shadowOffsetXPt, 2.83f) && Near(box->shadowOffsetYPt, 5.67f),
+                      "doc: where it falls (0.1 cm right, 0.2 cm down): " + std::to_string(box->shadowOffsetXPt)
+                      + ", " + std::to_string(box->shadowOffsetYPt));
+            CHECK_MSG(std::abs(box->shadowOpacity - 0.65f) < 0.03f, "doc: how much of it shows: "
+                      + std::to_string(box->shadowOpacity));
+        }
+    }
+#endif
+
+    // ===== A SHAPE'S DROP SHADOW =====
+    // A page frame drawn as a rectangle throws a shadow: its colour, where it
+    // falls and how much of it shows, through both formats.
+    {
+        UCRichDocument shadowed;
+        RichShape box;
+        box.widthPt = 200.0f;
+        box.heightPt = 100.0f;
+        box.fillColor = "#FFFFFF";
+        box.lineColor = "#395398";
+        box.shadowColor = "#5E5E5E";
+        box.shadowOffsetXPt = 0.0f;
+        box.shadowOffsetYPt = 4.0f;
+        box.shadowOpacity = 0.65f;
+        RichTextFrame drawing;
+        drawing.shapes = {box};
+        drawing.drawingWidthPt = 200.0f;
+        drawing.drawingHeightPt = 100.0f;
+        shadowed.frames = {drawing};
+        RichTextRun anchor;
+        anchor.text = RichTextRun::kObjectReplacement;
+        anchor.frameIndex = 0;
+        anchor.imageWidthPt = 200.0f;
+        anchor.imageHeightPt = 100.0f;
+        anchor.imageWrap = RichTextRun::ImageWrap::BehindText;
+        RichDocBlock paragraph;
+        paragraph.runs = {anchor};
+        shadowed.blocks = {paragraph};
+        for (const char* format : {"odt", "docx"}) {
+            const std::string label = std::string("shape shadow (") + format + ")";
+            const std::string path = TmpPath(std::string("shadow.") + format);
+            std::string err;
+            const bool saved = std::string(format) == "odt" ? UCWordDocumentIO::SaveOdt(path, shadowed, err)
+                                                            : UCWordDocumentIO::SaveDocx(path, shadowed, err);
+            CHECK_MSG(saved, label + ": " + err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), label + ": " + err);
+            const RichShape* read = nullptr;
+            for (const RichTextFrame& frame : back.frames) {
+                if (!frame.shapes.empty()) read = &frame.shapes.front();
+            }
+            CHECK_MSG(read != nullptr, label + ": the shape");
+            if (!read) continue;
+            CHECK_MSG(read->HasShadow() && Lower(read->shadowColor) == "#5e5e5e", label + ": its shadow's colour, got \""
+                      + read->shadowColor + "\"");
+            CHECK_MSG(Near(read->shadowOffsetXPt, 0.0f) && Near(read->shadowOffsetYPt, 4.0f),
+                      label + ": where it falls: " + std::to_string(read->shadowOffsetXPt) + ", "
+                      + std::to_string(read->shadowOffsetYPt));
+            CHECK_MSG(std::abs(read->shadowOpacity - 0.65f) < 0.02f, label + ": how much of it shows: "
+                      + std::to_string(read->shadowOpacity));
+        }
+    }
+
+    // ===== A DOCX KEEPS NO PARAGRAPH OF THE WRITER'S OWN =====
+    // Word wants a paragraph after a table and one to carry a section break;
+    // the writer's are a point high and the reader takes them out again, so
+    // a document converted to DOCX has the blocks it had - however often -
+    // with a table's room below it, one page break where a section starts a
+    // page, and its lines without the font's line gap where it had none.
+    {
+        auto paragraphOf = [](const std::string& text) {
+            RichDocBlock block;
+            RichTextRun run;
+            run.text = text;
+            block.runs = {run};
+            return block;
+        };
+        auto tableOf = [](const std::string& text) {
+            RichDocBlock table;
+            table.type = RichBlockType::Table;
+            table.tableBordersFromDocument = true;
+            RichTextRun run;
+            run.text = text;
+            RichTableCell cell;
+            cell.runs = {run};
+            RichTableRow row;
+            row.cells = {cell};
+            table.tableRows = {row};
+            return table;
+        };
+        UCRichDocument converted;
+        converted.fontLineGap = false;
+        RichDocBlock address = tableOf("Address");
+        address.spaceAfterPt = 17.0f;
+        RichDocBlock pageBreak;
+        pageBreak.type = RichBlockType::PageBreak;
+        RichDocBlock second = paragraphOf("Second page");
+        second.sectionStart = true;
+        second.section.newPage = true;
+        converted.blocks = {address, tableOf("Reference"), paragraphOf("Body"), pageBreak, second};
+        UCRichDocument current = converted;
+        for (int pass = 0; pass < 2; ++pass) {
+            const std::string label = "docx conversion, pass " + std::to_string(pass);
+            const std::string path = TmpPath("converted" + std::to_string(pass) + ".docx");
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::SaveDocx(path, current, err), label + ": " + err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), label + ": " + err);
+            std::string kinds;
+            for (const RichDocBlock& block : back.blocks) {
+                kinds += block.type == RichBlockType::Table ? 'T' : block.type == RichBlockType::PageBreak ? 'B'
+                       : block.runs.empty() ? 'e' : 'P';
+            }
+            CHECK_MSG(kinds == "TTPP", label + ": two tables and two paragraphs, nothing between: " + kinds);
+            if (kinds == "TTPP") {
+                CHECK_MSG(Near(back.blocks[0].spaceAfterPt, 17.0f), label + ": the first table's room below: "
+                          + std::to_string(back.blocks[0].spaceAfterPt));
+                CHECK_MSG(back.blocks[1].spaceAfterPt < 0.0f, label + ": the second states none");
+                CHECK_MSG(back.blocks[3].sectionStart && back.blocks[3].section.newPage,
+                          label + ": the section starts its page (once)");
+            }
+            CHECK_MSG(!back.fontLineGap, label + ": lines stay without the font's line gap");
+            current = back;
+        }
+    }
+
+    // ===== SECTIONS WITH THEIR OWN HEADER AND FOOTER =====
+    // A cover without a header, pages with one, an appendix back to the
+    // document's: each a section, written and read back by both formats.
+    {
+        auto paragraphOf = [](const std::string& text) {
+            RichDocBlock block;
+            RichTextRun run;
+            run.text = text;
+            block.runs = {run};
+            return block;
+        };
+        auto headerText = [](const RichPageFurniture& furniture) {
+            std::string text;
+            for (const RichDocBlock& block : furniture.header) text += UCRichDocument::ConcatenateRunText(block.runs);
+            return text;
+        };
+        UCRichDocument sectioned;
+        sectioned.page.widthPt = 595.0f;
+        sectioned.page.heightPt = 842.0f;
+        sectioned.page.marginTopPt = sectioned.page.marginBottomPt = 72.0f;
+        sectioned.page.marginLeftPt = sectioned.page.marginRightPt = 72.0f;
+        sectioned.page.headerTopPt = sectioned.page.footerBottomPt = 36.0f;
+        sectioned.pageFurniture.header = {paragraphOf("Document header")};
+        RichSectionFurniture own;
+        own.pages.header = {paragraphOf("Chapter header")};
+        own.pages.footer = {paragraphOf("Chapter footer")};
+        own.firstPage.header = {paragraphOf("Chapter opening")};
+        own.firstPageDiffers = true;
+        sectioned.sectionFurniture = {own};
+        RichDocBlock cover = paragraphOf("Cover words");
+        RichDocBlock chapter = paragraphOf("Chapter words");
+        chapter.sectionStart = true;
+        chapter.section.newPage = true;
+        chapter.section.furniture = 0;
+        chapter.section.marginTopPt = 108.0f;
+        RichDocBlock appendix = paragraphOf("Appendix words");
+        appendix.sectionStart = true;
+        appendix.section.newPage = true;
+        sectioned.blocks = {cover, chapter, appendix};
+
+        for (const char* format : {"odt", "docx"}) {
+            const std::string label = std::string("section furniture (") + format + ")";
+            const std::string path = TmpPath(std::string("sections.") + format);
+            std::string err;
+            const bool saved = std::string(format) == "odt" ? UCWordDocumentIO::SaveOdt(path, sectioned, err)
+                                                            : UCWordDocumentIO::SaveDocx(path, sectioned, err);
+            CHECK_MSG(saved, label + ": " + err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), label + ": " + err);
+            int coverAt = -1, chapterAt = -1, appendixAt = -1;
+            for (size_t i = 0; i < back.blocks.size(); ++i) {
+                const std::string text = UCRichDocument::ConcatenateRunText(back.blocks[i].runs);
+                if (text == "Cover words") coverAt = static_cast<int>(i);
+                if (text == "Chapter words") chapterAt = static_cast<int>(i);
+                if (text == "Appendix words") appendixAt = static_cast<int>(i);
+            }
+            CHECK_MSG(coverAt >= 0 && chapterAt > coverAt && appendixAt > chapterAt, label + ": the three sections' words");
+            if (coverAt < 0 || chapterAt < 0 || appendixAt < 0) continue;
+            const RichSectionSetup& first = back.SectionFor(coverAt);
+            const RichSectionSetup& second = back.SectionFor(chapterAt);
+            const RichSectionSetup& third = back.SectionFor(appendixAt);
+            CHECK_MSG(headerText(back.FurnitureFor(first, true, 0)) == "Document header",
+                      label + ": the first section has the document's header");
+            CHECK_MSG(second.furniture >= 0, label + ": the second has a header and footer of its own");
+            CHECK_MSG(headerText(back.FurnitureFor(second, false, 2)) == "Chapter header",
+                      label + ": ...its pages' header, got \"" + headerText(back.FurnitureFor(second, false, 2)) + "\"");
+            CHECK_MSG(headerText(back.FurnitureFor(second, true, 1)) == "Chapter opening",
+                      label + ": ...and its first page's, got \"" + headerText(back.FurnitureFor(second, true, 1)) + "\"");
+            const RichPageFurniture& secondPages = back.FurnitureFor(second, false, 2);
+            CHECK_MSG(!secondPages.footer.empty()
+                      && UCRichDocument::ConcatenateRunText(secondPages.footer[0].runs) == "Chapter footer",
+                      label + ": ...and its footer");
+            CHECK_MSG(Near(second.marginTopPt, 108.0f), label + ": ...and its own room above the text: "
+                      + std::to_string(second.marginTopPt));
+            CHECK_MSG(headerText(back.FurnitureFor(third, false, 3)) == "Document header",
+                      label + ": the third is back to the document's header, got \""
+                      + headerText(back.FurnitureFor(third, false, 3)) + "\"");
+            CHECK_MSG(back.FurnitureFor(third, false, 3).footer.empty(), label + ": ...and has no footer");
+            CHECK_MSG(third.marginTopPt < 0.0f || Near(third.marginTopPt, 72.0f), label + ": ...and the document's margin");
+        }
+    }
+
+    // ===== AN ODT AS WORD WRITES ONE =====
+    // Word's ODT export: the font and size in the default paragraph style
+    // only, a cell's spacing done with empty paragraphs, and a picture turned
+    // about its centre ("translate rotate translate") in a group.
+    {
+        const std::string styles =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-styles xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\""
+            " xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\""
+            " xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\""
+            " xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\">"
+            "<office:font-face-decls><style:font-face style:name=\"Posterama\" svg:font-family=\"Posterama\"/>"
+            "</office:font-face-decls><office:styles>"
+            "<style:default-style style:family=\"paragraph\"><style:paragraph-properties fo:margin-bottom=\"0.1527in\"/>"
+            "<style:text-properties style:font-name=\"Posterama\" fo:font-size=\"11pt\" fo:color=\"#000000\"/>"
+            "</style:default-style>"
+            "<style:style style:name=\"Normal\" style:family=\"paragraph\">"
+            "<style:paragraph-properties fo:margin-bottom=\"0in\"/></style:style>"
+            "<style:style style:name=\"Loose\" style:family=\"paragraph\"/>"
+            "<style:style style:name=\"Small\" style:family=\"paragraph\" style:parent-style-name=\"Normal\">"
+            "<style:text-properties fo:font-size=\"10pt\"/></style:style>"
+            "</office:styles></office:document-styles>";
+        const std::string content =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+            "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\""
+            " xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\""
+            " xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\""
+            " xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\""
+            " xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\""
+            " xmlns:xlink=\"http://www.w3.org/1999/xlink\""
+            " xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\""
+            " xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\">"
+            "<office:automatic-styles>"
+            "<style:style style:name=\"R1\" style:family=\"table-row\">"
+            "<style:table-row-properties style:min-row-height=\"7.8in\"/></style:style>"
+            "<style:style style:name=\"g\" style:family=\"graphic\"><style:graphic-properties style:wrap=\"run-through\""
+            " style:run-through=\"background\" style:horizontal-rel=\"page-content\" style:vertical-rel=\"paragraph\""
+            " style:horizontal-pos=\"from-left\" style:vertical-pos=\"from-top\"/></style:style>"
+            "</office:automatic-styles><office:body><office:text>"
+            "<text:p text:style-name=\"Normal\">Body words</text:p>"
+            "<text:p text:style-name=\"Loose\">Loose words</text:p>"
+            "<text:p text:style-name=\"Small\">Small words</text:p>"
+            "<text:p text:style-name=\"Normal\"><draw:g draw:style-name=\"g\" text:anchor-type=\"paragraph\">"
+            "<draw:frame draw:transform=\"translate(-4in -0.36in) rotate(-1.5708) translate(0in 2.74in)\""
+            " svg:width=\"8in\" svg:height=\"0.72in\"><draw:image xlink:href=\"media/dot.png\"/></draw:frame>"
+            "</draw:g></text:p>"
+            "<table:table><table:table-column/>"
+            "<table:table-row table:style-name=\"R1\"><table:table-cell>"
+            "<text:p text:style-name=\"Normal\">Name</text:p><text:p text:style-name=\"Normal\"/>"
+            "<text:p text:style-name=\"Normal\"/><text:p text:style-name=\"Normal\">Date</text:p>"
+            "<text:p text:style-name=\"Normal\"/></table:table-cell></table:table-row></table:table>"
+            "</office:text></office:body></office:document-content>";
+        const std::string path = TmpPath("word-export.odt");
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(path));
+            zip.AddEntry("mimetype", std::string("application/vnd.oasis.opendocument.text"), false);
+            zip.AddEntry("styles.xml", styles);
+            zip.AddEntry("content.xml", content);
+            zip.AddEntry("media/dot.png", kTinyPng, sizeof(kTinyPng));
+            CHECK(zip.Finalize());
+        }
+        UCRichDocument doc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(path, doc, err), err);
+        const RichDocBlock* body = FindBlock(doc, "Body words");
+        const RichDocBlock* loose = FindBlock(doc, "Loose words");
+        const RichDocBlock* small = FindBlock(doc, "Small words");
+        CHECK_MSG(body && body->paragraphFontFamily == "Posterama" && Near(body->paragraphFontSizePt, 11.0f),
+                  "odt: a style based on nothing takes the default paragraph style's font and size");
+        CHECK_MSG(body && Near(body->spaceAfterPt, 0.0f), "odt: ...and keeps the spacing it states itself");
+        CHECK_MSG(loose && Near(loose->spaceAfterPt, 0.1527f * 72.0f), "odt: ...or the default's when it states none");
+        CHECK_MSG(small && small->paragraphFontFamily == "Posterama" && Near(small->paragraphFontSizePt, 10.0f),
+                  "odt: a style based on another gets the default's font through it");
+        if (body && !body->runs.empty()) {
+            CHECK_MSG(body->runs[0].color.empty(), "odt: the default style's colour is the view's ink, not the runs'");
+        }
+        const RichDocBlock* table = nullptr;
+        const RichTextRun* group = nullptr;
+        for (const RichDocBlock& block : doc.blocks) {
+            if (block.type == RichBlockType::Table) table = &block;
+            for (const RichTextRun& run : block.runs) if (run.IsTextFrame()) group = &run;
+        }
+        CHECK_MSG(table && table->tableRows.size() == 1 && Near(table->tableRows[0].heightPt, 7.8f * 72.0f)
+                  && !table->tableRows[0].heightExact, "odt: a row's least height");
+        if (table && !table->tableRows.empty() && !table->tableRows[0].cells.empty()) {
+            const std::string text = UCRichDocument::ConcatenateRunText(table->tableRows[0].cells[0].runs);
+            CHECK_MSG(text == "Name\n\n\nDate\n", "odt: a cell's empty paragraphs are empty lines, got \"" + text + "\"");
+        }
+        // Turned a quarter about its centre at (0, 2.74in): 0.72in wide and
+        // 8in tall, from 0.36in left of the text area and 1.26in above the
+        // paragraph.
+        CHECK_MSG(group != nullptr, "odt: the group is a drawing");
+        if (group) {
+            CHECK_MSG(Near(group->imageWidthPt, 0.72f * 72.0f) && Near(group->imageHeightPt, 8.0f * 72.0f),
+                      "odt: a member turned a quarter stands tall: " + std::to_string(group->imageWidthPt)
+                      + " x " + std::to_string(group->imageHeightPt));
+            CHECK_MSG(Near(group->imageOffsetXPt, -0.36f * 72.0f) && Near(group->imageOffsetYPt, (2.74f - 4.0f) * 72.0f),
+                      "odt: ...where its transforms put it: " + std::to_string(group->imageOffsetXPt)
+                      + ", " + std::to_string(group->imageOffsetYPt));
+        }
+    }
+
+    // ===== A name badge the way Word writes it =====
+    // One table row: a picture on its side behind the whole card, anchored
+    // in the first cell; a photo as the fill of a shape with rounded top
+    // corners, standing in the line; a name in the theme's heading font, in
+    // capitals by its style.
+    {
+        std::cout << "\n--- A card: theme fonts, capitals, a turned picture, a shape in a cell ---\n";
+        const std::string wml = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"";
+        const std::string documentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<w:document " + wml + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+            "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" "
+            "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+            "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" "
+            "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">"
+            "<w:body><w:tbl><w:tblPr><w:tblW w:w=\"7776\" w:type=\"dxa\"/></w:tblPr>"
+            "<w:tblGrid><w:gridCol w:w=\"3060\"/><w:gridCol w:w=\"4716\"/></w:tblGrid>"
+            "<w:tr><w:trPr><w:trHeight w:val=\"3024\"/></w:trPr>"
+            "<w:tc><w:tcPr><w:tcW w:w=\"3060\" w:type=\"dxa\"/></w:tcPr>"
+            "<w:p><w:r><w:drawing><wp:anchor behindDoc=\"1\" layoutInCell=\"1\" simplePos=\"0\" relativeHeight=\"1\" "
+            "locked=\"0\" allowOverlap=\"1\" distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:simplePos x=\"0\" y=\"0\"/>"
+            "<wp:positionH relativeFrom=\"column\"><wp:posOffset>1438275</wp:posOffset></wp:positionH>"
+            "<wp:positionV relativeFrom=\"paragraph\"><wp:posOffset>-1501140</wp:posOffset></wp:positionV>"
+            "<wp:extent cx=\"1910715\" cy=\"4937760\"/><wp:wrapNone/><wp:docPr id=\"1\" name=\"Back\"/>"
+            "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
+            "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"1\" name=\"Back\"/><pic:cNvPicPr/></pic:nvPicPr>"
+            "<pic:blipFill><a:blip r:embed=\"rId1\"/><a:stretch/></pic:blipFill>"
+            "<pic:spPr><a:xfrm rot=\"16200000\"><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1910715\" cy=\"4937760\"/></a:xfrm>"
+            "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>"
+            "</a:graphicData></a:graphic></wp:anchor></w:drawing></w:r><w:r><w:t>3</w:t></w:r></w:p>"
+            "<w:p><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
+            "<wp:extent cx=\"1270000\" cy=\"1905000\"/><wp:docPr id=\"2\" name=\"Photo\"/>"
+            "<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\">"
+            "<wps:wsp><wps:cNvSpPr/><wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1270000\" cy=\"1905000\"/></a:xfrm>"
+            "<a:prstGeom prst=\"round2SameRect\"><a:avLst><a:gd name=\"adj1\" fmla=\"val 50000\"/>"
+            "<a:gd name=\"adj2\" fmla=\"val 0\"/></a:avLst></a:prstGeom>"
+            "<a:blipFill><a:blip r:embed=\"rId1\"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>"
+            "<a:ln w=\"28575\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill></a:ln></wps:spPr>"
+            "<wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p></w:tc>"
+            "<w:tc><w:tcPr><w:tcW w:w=\"4716\" w:type=\"dxa\"/></w:tcPr>"
+            "<w:p><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr><w:r><w:t>Ana Bowman</w:t></w:r></w:p>"
+            "<w:p><w:r><w:t>(she/her)</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+            "<w:sectPr><w:pgSz w:w=\"8640\" w:h=\"5760\"/>"
+            "<w:pgMar w:top=\"360\" w:right=\"360\" w:bottom=\"360\" w:left=\"360\"/></w:sectPr></w:body></w:document>";
+        const std::string stylesXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:styles " + wml + ">"
+            "<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:asciiTheme=\"minorHAnsi\" w:hAnsiTheme=\"minorHAnsi\"/>"
+            "<w:sz w:val=\"22\"/></w:rPr></w:rPrDefault></w:docDefaults>"
+            "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/></w:style>"
+            "<w:style w:type=\"paragraph\" w:styleId=\"Heading1\"><w:name w:val=\"heading 1\"/><w:basedOn w:val=\"Normal\"/>"
+            "<w:rPr><w:rFonts w:asciiTheme=\"majorHAnsi\" w:hAnsiTheme=\"majorHAnsi\"/><w:caps/><w:sz w:val=\"60\"/></w:rPr>"
+            "</w:style></w:styles>";
+        const std::string themeXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<a:theme xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" name=\"Card\"><a:themeElements>"
+            "<a:fontScheme name=\"Card\"><a:majorFont><a:latin typeface=\"Heading Face\"/></a:majorFont>"
+            "<a:minorFont><a:latin typeface=\"Body Face\"/></a:minorFont></a:fontScheme>"
+            "</a:themeElements></a:theme>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("card.docx")));
+            zip.AddEntry("[Content_Types].xml", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                "<Default Extension=\"png\" ContentType=\"image/png\"/>"
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document.main+xml\"/></Types>"));
+            zip.AddEntry("_rels/.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "officeDocument\" Target=\"word/document.xml\"/></Relationships>"));
+            zip.AddEntry("word/_rels/document.xml.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "image\" Target=\"media/image1.png\"/></Relationships>"));
+            zip.AddEntry("word/document.xml", documentXml);
+            zip.AddEntry("word/styles.xml", stylesXml);
+            zip.AddEntry("word/theme/theme1.xml", themeXml);
+            zip.AddEntry("word/media/image1.png", kTinyPng, sizeof(kTinyPng));
+            CHECK(zip.Finalize());
+        }
+        // The card's facts, as read from `path`.
+        auto checkCard = [&](const std::string& path, const std::string& label, bool original) {
+            UCRichDocument card;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(path, card, err), label + ": " + err);
+            const RichDocBlock* table = nullptr;
+            for (const RichDocBlock& block : card.blocks) {
+                if (block.type == RichBlockType::Table && !table) table = &block;
+            }
+            CHECK_MSG(table && table->tableRows.size() == 1 && table->tableRows[0].cells.size() == 2,
+                      label + ": one row of two cells");
+            if (!table || table->tableRows.empty() || table->tableRows[0].cells.size() < 2) return;
+            const RichTableCell& left = table->tableRows[0].cells[0];
+            const RichTableCell& right = table->tableRows[0].cells[1];
+            const RichTextRun* back = nullptr;
+            const RichTextRun* photo = nullptr;
+            for (const RichTextRun& run : left.runs) {
+                if (run.IsInlineImage()) back = &run;
+                if (run.IsTextFrame()) photo = &run;
+            }
+            CHECK_MSG(back != nullptr, label + ": the picture behind the card is in the first cell");
+            if (back) {
+                CHECK_MSG(back->imageWrap == RichTextRun::ImageWrap::BehindText, label + ": ...behind the text");
+                CHECK_MSG(Near(std::fmod(back->imageRotationDeg + 360.0f, 360.0f), 270.0f),
+                          label + ": ...turned three quarters, got " + std::to_string(back->imageRotationDeg));
+                CHECK_MSG(Near(back->imageWidthPt, 150.45f) && Near(back->imageHeightPt, 388.8f),
+                          label + ": ...its size as before the turn: " + std::to_string(back->imageWidthPt) + " x "
+                          + std::to_string(back->imageHeightPt));
+                CHECK_MSG(Near(back->imageOffsetXPt, 113.25f) && Near(back->imageOffsetYPt, -118.2f),
+                          label + ": ...and its place: " + std::to_string(back->imageOffsetXPt) + ", "
+                          + std::to_string(back->imageOffsetYPt));
+            }
+            CHECK_MSG(photo != nullptr, label + ": the shape stays in the first cell");
+            if (photo && photo->frameIndex < static_cast<int>(card.frames.size())) {
+                const RichTextFrame& frame = card.frames[static_cast<size_t>(photo->frameIndex)];
+                CHECK_MSG(frame.shapes.size() == 1 && frame.shapes[0].kind == RichShape::Kind::Path
+                          && frame.shapes[0].HasPictureFill(), label + ": an outline filled with the photo");
+                CHECK_MSG(Near(photo->imageWidthPt, 100.0f) && Near(photo->imageHeightPt, 150.0f),
+                          label + ": ...100 x 150 pt, got " + std::to_string(photo->imageWidthPt) + " x "
+                          + std::to_string(photo->imageHeightPt));
+                if (frame.shapes.size() == 1 && frame.shapes[0].kind == RichShape::Kind::Path) {
+                    // Both top corners rounded by half the width: the outline
+                    // reaches the top only at its middle, and the sides
+                    // start a third of the way down (50 of 150 pt).
+                    float topLeft = 1.0f, topRight = 0.0f, sideTop = 1.0f;
+                    for (const RichShape::PathPoint& point : frame.shapes[0].path) {
+                        if (point.op == RichShape::PathPoint::Op::Close) continue;
+                        if (point.y < 0.01f) { topLeft = std::min(topLeft, point.x); topRight = std::max(topRight, point.x); }
+                        if (point.x < 0.01f) sideTop = std::min(sideTop, point.y);
+                    }
+                    CHECK_MSG(std::abs(topLeft - 0.5f) < 0.02f && std::abs(topRight - 0.5f) < 0.02f
+                              && std::abs(sideTop - 1.0f / 3.0f) < 0.02f,
+                              label + ": ...an arch: top from " + std::to_string(topLeft) + " to " + std::to_string(topRight)
+                              + ", sides from " + std::to_string(sideTop));
+                }
+            }
+            const std::string name = UCRichDocument::ConcatenateRunText(right.runs);
+            CHECK_MSG(name.rfind("ANA BOWMAN", 0) == 0 && name.find("(she/her)") != std::string::npos,
+                      label + ": capitals by the heading's style only, got \"" + name + "\"");
+            if (original && right.runs.size() >= 2) {
+                CHECK_MSG(right.runs.front().fontFamily == "Heading Face",
+                          label + ": the theme's heading font, got \"" + right.runs.front().fontFamily + "\"");
+                CHECK_MSG(right.runs.back().fontFamily == "Body Face",
+                          label + ": the theme's body font, got \"" + right.runs.back().fontFamily + "\"");
+            }
+        };
+        checkCard(TmpPath("card.docx"), "docx", true);
+        UCRichDocument card;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("card.docx"), card, err), err);
+        for (const char* ext : {"docx", "odt"}) {
+            const std::string path = TmpPath(std::string("card-saved.") + ext);
+            CHECK_MSG(UCWordDocumentIO::Save(path, card, err), err);
+            checkCard(path, std::string("saved as ") + ext, false);
+        }
+    }
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;

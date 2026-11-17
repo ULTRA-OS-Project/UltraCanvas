@@ -13,6 +13,8 @@
 
 #include "UltraCanvasFontCoverage.h"
 
+#include <cctype>
+
 #include <iostream>
 #include <string>
 
@@ -56,6 +58,29 @@ int main() {
     TEST("...with its name escaped", FontDownloadUrl("A&B") == "https://fonts.google.com/?query=A%26B");
     TEST("no family is always available", IsFontFamilyAvailable(""));
     TEST("a family nobody has is not", !IsFontFamilyAvailable("No Such Family 12345"));
+
+    // A family another font stands in for by name (Helvetica in Arial on
+    // Windows, in Liberation Sans on most Linux systems).
+    TEST("a family nobody has has no stand-in", FontFamilySubstitute("No Such Family 12345").empty());
+    TEST("no family needs none", FontFamilySubstitute("").empty());
+    for (const FontFamilySubstitutes& known : GetFontFamilySubstitutes()) {
+        std::string expected;
+        if (!IsFontFamilyAvailable(known.family)) {
+            for (const char* substitute : known.substitutes) {
+                if (IsFontFamilyAvailable(substitute)) { expected = substitute; break; }
+            }
+        }
+        const std::string found = FontFamilySubstitute(known.family);
+        std::cerr << "  " << known.family << ": " << (IsFontFamilyAvailable(known.family) ? "installed"
+                     : found.empty() ? "no stand-in installed" : "drawn in " + found) << std::endl;
+        TEST(std::string(known.family) + " has its first installed stand-in", found == expected);
+        std::string lowered = known.family;
+        for (char& c : lowered) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        TEST("...whatever its case", FontFamilySubstitute(lowered) == expected);
+    }
+    const bool helveticaDrawn = IsFontFamilyAvailable("Helvetica") || !FontFamilySubstitute("Helvetica").empty();
+    const bool hasStandIn = IsFontFamilyAvailable("Arial") || IsFontFamilyAvailable("Liberation Sans");
+    TEST("Helvetica is drawn where Arial or Liberation Sans is installed", !hasStandIn || helveticaDrawn);
 
     std::cerr << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;

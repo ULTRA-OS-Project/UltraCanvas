@@ -1,5 +1,6 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
+// Version: 2.13.0 - CreateDocumentTextLayout (glyphs where the font puts them) and TextAttributeFactory::CreateFontFeatures
 // Version: 2.12.0 - TextAttributeFactory::CreateLetterSpacing takes fractional pixels
 // Version: 2.11.0 - GetFontStyle: the font DrawText draws in now; TextTopCentredOnCaps(row) in it;
 //                   ITextLayout::GetCapHeight measures the font the text starts in, font attributes included
@@ -509,6 +510,12 @@ namespace UltraCanvas {
         // declaration, which Clang (unlike GCC) rejects.
         std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup);
         std::unique_ptr<ITextLayout> CreateTextLayout();
+        // A layout for a document's text: every glyph stays where its font
+        // puts it, to a fraction of a pixel, where an interface's text has
+        // them on whole pixels. Whole pixels make a word a per cent or two
+        // narrower than the font says, and a paragraph then breaks its lines
+        // elsewhere than in the program that wrote the document.
+        std::unique_ptr<ITextLayout> CreateDocumentTextLayout(const std::string& text);
         // How many layouts CreateTextLayout made on this context: a test's
         // measure of an element's layout cache (UltraCanvasTextLayoutCache) -
         // "ten draws, one layout".
@@ -680,6 +687,11 @@ namespace UltraCanvas {
     protected:
         // The backend's layout for `text`; CreateTextLayout counts and calls it.
         virtual std::unique_ptr<ITextLayout> MakeTextLayout(const std::string& text, bool isMarkup) = 0;
+        // CreateDocumentTextLayout's layout; a backend without one of its
+        // own gives its ordinary layout.
+        virtual std::unique_ptr<ITextLayout> MakeDocumentTextLayout(const std::string& text) {
+            return MakeTextLayout(text, false);
+        }
 
     private:
         unsigned long textLayoutsCreated = 0;
@@ -1005,6 +1017,11 @@ namespace UltraCanvas {
 
         // absolute line height, may be used with CreateShapeSpacer to preserve space
         std::unique_ptr<ITextAttribute> CreateAbsoluteLineHeight(double lineHeight);
+
+        // OpenType features for the range, as CSS font-feature-settings spells
+        // them: "kern=0" sets the letters without pair kerning (as Word does
+        // unless a document turns kerning on), "liga=0" without ligatures.
+        std::unique_ptr<ITextAttribute> CreateFontFeatures(const std::string& features);
     };
 
     // ===== UCTextAttributeList =====
@@ -1149,6 +1166,12 @@ namespace UltraCanvas {
     {
         ++textLayoutsCreated;
         return MakeTextLayout(text, isMarkup);
+    }
+
+    inline std::unique_ptr<ITextLayout> IRenderContext::CreateDocumentTextLayout(const std::string& text)
+    {
+        ++textLayoutsCreated;
+        return MakeDocumentTextLayout(text);
     }
 
     inline std::unique_ptr<ITextLayout> IRenderContext::CreateTextLayout()

@@ -34,6 +34,10 @@ UltraRtcCapabilities UltraRtc_GetCapabilities();
 // after UltraRtc_Initialize. The engine's own version is in
 // UltraRtc_GetCapabilities().engine.
 std::string          UltraRtc_GetVersion();
+// Replaces the dispatcher (nullptr: events run on an engine thread again).
+// An event an engine thread had already taken the old dispatcher for is
+// still handed to it, so the old one may be called once more just after
+// this returns; events raised from then on go to the new one.
 void                 UltraRtc_SetEventDispatcher(UltraRtcDispatcher dispatcher);
 
 // ---- Peers -------------------------------------------------------------------
