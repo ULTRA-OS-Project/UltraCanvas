@@ -8,6 +8,7 @@
 //     test program.
 // The TLS half talks to a python3 ssl server with a certificate made by the
 // openssl command; it skips without either.
+// Version: 0.1.3 - the certificate says serverAuth (macOS refuses one without)
 // Version: 0.1.2 - "localhost" reached on 127.0.0.1 whatever it resolves to first
 // Version: 0.1.1 - <unistd.h> for getpid (macOS)
 // Last Modified: 2026-11-17
@@ -184,6 +185,8 @@ TEST(tls_receive_tells_timeout_closed_and_data_apart) {
     const std::string script = PathToUtf8(dir / "server.py");
     const std::string make = "openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 2"
                              " -subj /CN=localhost -addext subjectAltName=DNS:localhost"
+                             // macOS trusts a TLS server's certificate only with these.
+                             " -addext extendedKeyUsage=serverAuth -addext keyUsage=digitalSignature"
                              " -keyout '" + key + "' -out '" + cert + "' > /dev/null 2>&1";
     if (std::system(make.c_str()) != 0) {
         fs::remove_all(dir);
@@ -226,6 +229,7 @@ TEST(tls_receive_tells_timeout_closed_and_data_apart) {
     tls.sniHostname = "localhost";
     REQUIRE(UltraNet_TlsWrap(h, "localhost", tls) == h);
     const UltraNetResult shaken = UltraNet_TlsHandshake(h);
+    if (!shaken.success) std::fprintf(stderr, "\n    handshake: %s", shaken.message.c_str());
     REQUIRE(shaken.success);
 
     std::vector<uint8_t> got;
