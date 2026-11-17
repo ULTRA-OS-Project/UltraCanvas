@@ -14,6 +14,7 @@
 // PublishOptions::output for one run): this one, or the HTML shadow with
 // the WebAssembly renderer (PublishStatic, UltraPressPublish.h).
 // Design: Docs/Research/UltraSiteStaticSitesProposal.md §6.
+// Version: 0.2.0 - documentation: a site's docs/ folder (and i18n/<lang>/docs) as doc pages with search; PublishDocsFolder
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
@@ -49,5 +50,30 @@ std::vector<std::pair<std::string, std::string>> ThemeTokens(const Theme& theme,
 
 // The stylesheet of the built-in blocks, in the HTML + JavaScript output.
 const char* BlockStylesheet();
+
+// A site's documentation, in the HTML + JavaScript output: Markdown files
+// under <site>/docs are published at /docs/ in the doc layout - a sidebar
+// after the folders, a table of contents, previous and next - and the site
+// gets a search box (UltraSite's AddDocs). A translation is the same files
+// under <site>/i18n/<language>/docs, at /<language>/docs/, joined page by
+// page. The WebAssembly output does not show them.
+constexpr const char* kDocsFolder = "docs";
+
+// A folder of Markdown alone published as a documentation site, the way
+// Docusaurus publishes one: `ultrapress docs`.
+struct DocsSiteOptions {
+    std::string folder;                    // the Markdown
+    std::string name = "Documentation";
+    std::string url = "https://example.org";
+    std::string language = "en";
+    std::string editUrl;                   // + a file's path: its "Edit this page" link
+    std::string sourceRoot;                // a link out of the folder: sourceUrl + its path under sourceRoot
+    std::string sourceUrl;
+    std::vector<std::string> exclude;      // names left out wherever they are
+    bool enforceBudgets = true;
+    bool brokenLinksWarn = false;          // a broken link a warning, not an error
+    bool removeStale = true;
+};
+PublishResult PublishDocsFolder(const DocsSiteOptions& options, const std::string& outputDirectory);
 
 } // namespace UltraPress

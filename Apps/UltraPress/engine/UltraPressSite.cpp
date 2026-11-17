@@ -1,6 +1,7 @@
 // Apps/UltraPress/engine/UltraPressSite.cpp
 // The HTML + JavaScript output: a site's pages, menus and theme handed to
 // UltraSite, and the choice between the two outputs.
+// Version: 0.2.0 - the site's docs/ (and its translations) through AddDocs, with search; PublishDocsFolder
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
@@ -199,6 +200,7 @@ PublishResult PublishHtml(const Site& site, const std::string& siteDirectory,
     PublishResult result;
     result.issues = ValidateSite(site);
 #if ULTRAPRESS_HAS_ULTRASITE
+    std::error_code ec;
     UltraSite::SiteConfig config;
     config.url = site.url;
     config.name = site.name;
@@ -215,6 +217,8 @@ PublishResult PublishHtml(const Site& site, const std::string& siteDirectory,
     config.noPrefetch = {"/media/", "/api/"};
     // An HTML block may embed a video or a map from another site.
     config.cspAdditions = {{"frame-src", "https:"}, {"media-src", "https:"}};
+    // A site with documentation can be searched.
+    config.search = fs::is_directory(UltraCanvas::PathFromUtf8(siteDirectory) / kDocsFolder, ec);
 
     HtmlOptions html = options.html;
     html.styled = true;
@@ -253,26 +257,86 @@ PublishResult PublishHtml(const Site& site, const std::string& siteDirectory,
         builder.AddRoute(std::move(route));
     }
     builder.AddFile("feed.xml", emitter.Feed());
-    std::error_code ec;
     const fs::path media = UltraCanvas::PathFromUtf8(siteDirectory) / "media";
     if (options.copyMedia && fs::is_directory(media, ec)) builder.AddDirectory(UltraCanvas::PathToUtf8(media), "media");
+
+    // The documentation, and its translations.
+    const fs::path docs = UltraCanvas::PathFromUtf8(siteDirectory) / kDocsFolder;
+    if (fs::is_directory(docs, ec)) {
+        UltraSite::DocsOptions docsOptions;
+        docsOptions.folder = UltraCanvas::PathToUtf8(docs);
+        docsOptions.routePrefix = "/docs/";
+        for (const std::string& language : site.languages) {
+            const fs::path translated = UltraCanvas::PathFromUtf8(siteDirectory) / "i18n" / UltraCanvas::PathFromUtf8(language) / kDocsFolder;
+            if (language != site.language && fs::is_directory(translated, ec)) {
+                docsOptions.translations.push_back({language, UltraCanvas::PathToUtf8(translated), "/" + language + "/docs/"});
+            }
+        }
+        const UltraSite::DocsReport docsReport = builder.AddDocs(docsOptions);
+        result.errors.insert(result.errors.end(), docsReport.errors.begin(), docsReport.errors.end());
+        result.warnings.insert(result.warnings.end(), docsReport.warnings.begin(), docsReport.warnings.end());
+    }
 
     UltraSite::BuildOptions build;
     build.removeStale = options.removeStale;
     build.keep = {".ultrapress-deploy.json"};
     build.enforceBudgets = options.enforceBudgets;
     const UltraSite::BuildResult built = builder.Build(outputDirectory, build);
-    result.ok = built.ok;
+    result.ok = built.ok && result.errors.empty();
     result.files = built.files;
     result.removed = built.removed;
-    result.errors = built.errors;
-    result.warnings = built.warnings;
+    result.errors.insert(result.errors.end(), built.errors.begin(), built.errors.end());
+    result.warnings.insert(result.warnings.end(), built.warnings.begin(), built.warnings.end());
     result.sizeReport = built.SizeReport();
 #else
     (void)siteDirectory;
     (void)outputDirectory;
     (void)options;
     result.errors.push_back("this build has no UltraSite, so no HTML + JavaScript output: publish the WebAssembly output (--output wasm)");
+#endif
+    return result;
+}
+
+PublishResult PublishDocsFolder(const DocsSiteOptions& options, const std::string& outputDirectory) {
+    PublishResult result;
+#if ULTRAPRESS_HAS_ULTRASITE
+    UltraSite::SiteConfig config;
+    config.url = options.url;
+    while (!config.url.empty() && config.url.back() == '/') config.url.pop_back();
+    config.name = options.name;
+    config.language = options.language;
+    config.search = true;
+    config.generator = "UltraPress";
+    // UltraSite's own light look, and a dark one.
+    config.tokens.dark = {{"bg", "#101218"}, {"fg", "#e6e7eb"}, {"muted", "#9aa0ab"}, {"accent", "#7aa7ff"},
+                          {"accent-fg", "#0b1020"}, {"surface", "#1a1d26"}, {"border", "#2b2f3a"}};
+    UltraSite::Builder builder(config);
+    UltraSite::DocsOptions docs;
+    docs.folder = options.folder;
+    docs.routePrefix = "/";
+    docs.editUrl = options.editUrl;
+    docs.sourceRoot = options.sourceRoot;
+    docs.sourceUrl = options.sourceUrl;
+    docs.exclude = options.exclude;
+    const UltraSite::DocsReport report = builder.AddDocs(docs);
+    result.errors = report.errors;
+    result.warnings = report.warnings;
+    UltraSite::BuildOptions build;
+    build.removeStale = options.removeStale;
+    build.keep = {".ultrapress-deploy.json"};
+    build.enforceBudgets = options.enforceBudgets;
+    build.brokenLinksWarn = options.brokenLinksWarn;
+    const UltraSite::BuildResult built = builder.Build(outputDirectory, build);
+    result.ok = built.ok && result.errors.empty();
+    result.files = built.files;
+    result.removed = built.removed;
+    result.errors.insert(result.errors.end(), built.errors.begin(), built.errors.end());
+    result.warnings.insert(result.warnings.end(), built.warnings.begin(), built.warnings.end());
+    result.sizeReport = built.SizeReport();
+#else
+    (void)options;
+    (void)outputDirectory;
+    result.errors.push_back("this build has no UltraSite, so no documentation sites");
 #endif
     return result;
 }

@@ -21,6 +21,9 @@
 // Headless: links the core library (JSON, HTMLReader, UltraCrypt) and zlib,
 // opens no window.
 //
+// Version: 0.2.0 - Phase B: the doc layout (sidebar, table of contents, breadcrumbs, previous/next),
+//                  AddDocs (a Markdown folder, translations), search, the toc / tabs / copy / search
+//                  modules, the language switcher, Labels
 // Version: 0.1.0 - Phase A: routes, page and post layouts, tokens, hashed assets,
 //                  the core script, behaviour modules, link check, budgets
 // Last Modified: 2026-11-17
@@ -69,6 +72,41 @@ struct Budgets {
     size_t behaviourScript = 3 * 1024;
     size_t pageScripts = 15 * 1024;     // all script one page loads
     size_t inlineScripts = 1024;        // raw: the theme script and the speculation rules, which block nothing but are in every page
+    size_t searchIndex = 150 * 1024;    // one language's search index, fetched when the visitor first searches
+};
+
+// The words the site's frame says, in the site's language: an app writing
+// a German site sets them in German.
+struct Labels {
+    std::string skipLink = "Skip to the content";
+    std::string mainNav = "Main";                    // the navbar's <nav aria-label>
+    std::string footerNav = "Footer";
+    std::string themeToggle = "Switch between the dark and the light look";
+    std::string notFoundTitle = "Page not found";    // the 404 page, when no route has the path "/404.html"
+    std::string notFoundText = "There is nothing at this address.";
+    std::string search = "Search";                   // the search box's label, the search page's title
+    std::string searchNoScript = "Searching needs JavaScript. Every page of the site is listed below.";
+    std::string searchNothing = "Nothing found for";
+    std::string toc = "On this page";
+    std::string docsNav = "Pages";                   // the doc layout's sidebar <nav aria-label>
+    std::string menu = "Menu";                       // opens the sidebar on a phone
+    std::string close = "Close";
+    std::string breadcrumbs = "Breadcrumbs";
+    std::string pagination = "More pages";
+    std::string previous = "Previous";
+    std::string next = "Next";
+    std::string edit = "Edit this page";
+    std::string lastUpdated = "Last updated";
+    std::string copy = "Copy";                       // a code block's copy button
+    std::string copied = "Copied";
+    std::string languages = "Languages";             // the language switcher's <nav aria-label>
+};
+
+// A heading of a page, for its table of contents.
+struct Heading {
+    int level = 2;
+    std::string text;
+    std::string id;
 };
 
 struct SiteConfig {
@@ -90,13 +128,13 @@ struct SiteConfig {
     // Sources added to the Content-Security-Policy, per directive
     // ({"frame-src", "https://www.youtube-nocookie.com"}).
     std::vector<std::pair<std::string, std::string>> cspAdditions;
-    // The 404 page, when no route has the path "/404.html".
-    std::string notFoundTitle = "Page not found";
-    std::string notFoundText = "There is nothing at this address.";
-    std::string themeToggleLabel = "Switch between the dark and the light look";
-    std::string skipLinkLabel = "Skip to the content";
-    std::string mainNavLabel = "Main";           // the navbar's <nav aria-label>
-    std::string footerNavLabel = "Footer";
+    Labels labels;
+    // A search box in the navbar, an index per language and a /search/
+    // page that lists every page (what a visitor without script gets).
+    bool search = false;
+    // The language switcher's names: "de" -> "Deutsch". A language not
+    // named shows its code.
+    std::map<std::string, std::string> languageNames;
 };
 
 struct Route {
@@ -116,7 +154,48 @@ struct Route {
     std::vector<std::string> jsonLd;         // each a JSON object, written as <script type="application/ld+json">
     std::map<std::string, std::string> alternates;   // language -> path of this page in that language (hreflang)
     std::string extraHead;                   // more <head> lines, written as they are (a feed's <link>)
-    bool noindex = false;                    // <meta name="robots" content="noindex">, left out of the sitemap
+    bool noindex = false;                    // <meta name="robots" content="noindex">, left out of the sitemap and the search
+    // The doc layout's: the sidebar it shows (AddSidebar), its table of
+    // contents (empty: the body's h2 and h3 that carry an id), the "Edit
+    // this page" link.
+    std::string sidebar;
+    std::vector<Heading> toc;
+    std::string editUrl;
+    bool searchable = true;                  // in the search index
+};
+
+// A Markdown folder as doc pages (Builder::AddDocs), the way Docusaurus
+// reads its docs/: a file is a page at routePrefix + its path without
+// ".md" ("guide/install.md" -> "/docs/guide/install/"), a folder's index.md
+// or README.md is the folder's page, and the sidebar follows the folders,
+// ordered by `sidebar_position` and then by name. Front matter between
+// "---" lines sets title, description, slug, sidebar_label,
+// sidebar_position and draft (true: left out). A folder's _category_.json
+// gives its label and position. A link to another .md file becomes that
+// page's address; a link to another file in the folder publishes it as an
+// asset; a link out of the folder goes to sourceUrl when one is set.
+struct DocsTranslation {
+    std::string language;                    // "de"
+    std::string folder;                      // the same files, translated
+    std::string routePrefix;                 // "/de/docs/"
+};
+
+struct DocsOptions {
+    std::string folder;
+    std::string routePrefix = "/docs/";
+    std::string language;                    // the pages' language; empty: the site's
+    std::string sidebar = "docs";            // the sidebar's id; a translation's is "<sidebar>-<language>"
+    std::string editUrl;                     // + a file's path in the folder: its "Edit this page" link
+    std::string sourceRoot;                  // a link to a file outside the folder: sourceUrl + its path under sourceRoot
+    std::string sourceUrl;
+    std::vector<std::string> exclude;        // file and folder names left out wherever they are ("CHANGELOG.md")
+    std::vector<DocsTranslation> translations;
+};
+
+struct DocsReport {
+    size_t pages = 0;
+    std::vector<std::string> errors;         // a file that cannot be read, two files for one address
+    std::vector<std::string> warnings;       // a link that leads nowhere the site knows
 };
 
 // What a layout writes into <main>, given the route.
@@ -126,6 +205,7 @@ struct BuildOptions {
     bool removeStale = true;                 // delete what an earlier build wrote and this one did not
     std::vector<std::string> keep;           // relative paths removeStale leaves alone (a deploy manifest)
     bool checkLinks = true;                  // a broken internal link or anchor is an error
+    bool brokenLinksWarn = false;            // ... or only a warning (Docusaurus's onBrokenLinks: 'warn')
     bool enforceBudgets = true;              // over budget is an error; off, a warning
 };
 
@@ -150,6 +230,8 @@ struct BuildResult {
 class Builder {
 public:
     explicit Builder(SiteConfig config);
+    Builder(const Builder&) = delete;                // the built-in layouts hold the builder
+    Builder& operator=(const Builder&) = delete;
 
     // A file published under its content hash: "assets/<stem>.<hash10>.<ext>",
     // cached for a year. Returns its URL ("/assets/logo.3f9a1c2b7e.png"), or
@@ -175,6 +257,12 @@ public:
 
     void AddRoute(Route route);
 
+    // A sidebar the doc layout shows on the routes that name it.
+    void AddSidebar(const std::string& id, std::vector<NavItem> items);
+    // A Markdown folder (and its translations) as doc pages with their
+    // sidebars (DocsOptions).
+    DocsReport AddDocs(const DocsOptions& options);
+
     // Writes the site into `outputDirectory`, created when missing.
     BuildResult Build(const std::string& outputDirectory, const BuildOptions& options = {});
 
@@ -184,16 +272,23 @@ public:
 
     const SiteConfig& Config() const { return config; }
 
+    struct PageFacts;      // what reading a page back finds (the build's own)
+
 private:
     struct Prepared;
     void Prepare(Prepared& prepared, std::vector<std::string>& errors);
-    std::string Page(const Route& route, const Prepared& prepared, std::vector<std::string>& errors) const;
+    std::string Page(const Route& route, const Prepared& prepared, std::vector<std::string>& errors,
+                     PageFacts* facts = nullptr) const;
     std::string Head(const Route& route, const Prepared& prepared, const std::vector<std::string>& behaviours) const;
+    std::string DocLayout(const Route& route) const;
+    std::string SearchForm(const Route& route, const Prepared& prepared, bool large) const;
+    Route SearchPage(const Prepared& prepared) const;
 
     SiteConfig config;
     std::vector<Route> routes;
     std::map<std::string, LayoutFunction> layouts;
     std::map<std::string, std::string> scripts;                     // behaviour -> source
+    std::map<std::string, std::vector<NavItem>> sidebars;
     struct PendingAsset { std::string sourcePath, content, url; bool fromFile = true; };
     std::vector<PendingAsset> assets;
     std::vector<std::pair<std::string, std::string>> directories;   // source, prefix

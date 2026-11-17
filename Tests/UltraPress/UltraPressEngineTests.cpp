@@ -1031,6 +1031,21 @@ static void TestTwoOutputs() {
         Check(Contains(plan, "<h1>The development plan</h1>") && Contains(plan, "aria-current=\"page\">The development plan</a>"),
               "a page without a hero states its title; the navbar marks it");
         Check(!result.sizeReport.empty() && result.removed.empty(), "the size report is given");
+        std::string framework;
+        ReadTextFile(UltraCanvas::PathToUtf8(out / "docs" / "build" / "framework" / "index.html"), framework);
+        Check(fs::exists(out / "docs" / "index.html") && fs::exists(out / "docs" / "build" / "application" / "index.html") &&
+                  Contains(framework, "<div class=\"us-doc\">") && Contains(framework, "data-us=\"tabs\"") &&
+                  Contains(framework, "us-admonition-tip") && Contains(home, "data-us=\"search\""),
+              "the site's docs/ are doc pages with tabs and admonitions, and the site can be searched");
+
+        // A folder of Markdown alone, as `ultrapress docs` publishes it.
+        DocsSiteOptions docs;
+        docs.folder = std::string(ULTRAPRESS_EXAMPLE_DIR) + "/docs";
+        docs.name = "Docs";
+        const PublishResult docsOnly = PublishDocsFolder(docs, UltraCanvas::PathToUtf8(dir / "docs-only"));
+        for (const std::string& error : docsOnly.errors) std::printf("  error: %s\n", error.c_str());
+        Check(docsOnly.ok && fs::exists(dir / "docs-only" / "index.html") && fs::exists(dir / "docs-only" / "build" / "framework" / "index.html"),
+              "a Markdown folder alone publishes as a documentation site, its index at /");
 
         // A page linking to one the site does not have fails the publish.
         Site broken = site;
@@ -1049,8 +1064,8 @@ static void TestTwoOutputs() {
     const PublishResult shadow = Publish(site, ULTRAPRESS_EXAMPLE_DIR, UltraCanvas::PathToUtf8(dir / "wasm"), wasm);
     std::string shadowHome;
     ReadTextFile(UltraCanvas::PathToUtf8(dir / "wasm" / "index.html"), shadowHome);
-    Check(shadow.ok && Contains(shadowHome, "<style>") && !fs::exists(dir / "wasm" / "assets"),
-          "--output wasm writes the shadow, as PublishStatic does");
+    Check(shadow.ok && Contains(shadowHome, "<style>") && !fs::exists(dir / "wasm" / "assets") && !fs::exists(dir / "wasm" / "docs"),
+          "--output wasm writes the shadow, as PublishStatic does, without the docs");
     PublishOptions unknown;
     unknown.output = "pdf";
     Check(!Publish(site, ULTRAPRESS_EXAMPLE_DIR, UltraCanvas::PathToUtf8(dir / "pdf"), unknown).ok, "an unknown output is refused");

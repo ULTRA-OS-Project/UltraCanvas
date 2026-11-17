@@ -19,17 +19,24 @@ UltraPress and the UltraStore web store each have two outputs:
 UltraSite is (b). The design and the plan are in
 [`Docs/Research/UltraSiteStaticSitesProposal.md`](../../Research/UltraSiteStaticSitesProposal.md).
 
-> **Status (2026-11, v0.1, Phase A of the proposal):**
-> - **Done:** routes; the `page` and `post` layouts, plus layouts an app
->   adds; design tokens with a light and an optional dark look; hashed
+> **Status (2026-11, v0.2, Phases A and B of the proposal):**
+> - **Phase A:** routes; the `page` and `post` layouts, plus layouts an
+>   app adds; design tokens with a light and an optional dark look; hashed
 >   assets; `core.js`; behaviour modules an app registers; the link and
 >   anchor check; budgets; the stale-file sweep; `.htaccess`, `_headers`
->   and a Content-Security-Policy. UltraPress publishes through it
->   (`Apps/UltraPress/engine/UltraPressSite.h`).
-> - **Next:** the `doc` layout with its sidebar and table of contents,
->   Markdown docs, search and the library's own behaviours (Phase B); the
->   UltraStore web store (Phase C); responsive picture variants,
->   precompressed files and a preview server (Phase D).
+>   and a Content-Security-Policy.
+> - **Phase B:** documentation sites. A Markdown folder becomes doc pages
+>   (`AddDocs`, with front matter, categories and translations). The `doc`
+>   layout has a sidebar, a table of contents, breadcrumbs and
+>   previous/next. Code is highlighted when the site is built. There are
+>   admonitions and tabs, a search index per language with a search page,
+>   the `search`, `toc`, `tabs` and `copy` modules, a language switcher,
+>   and the frame's words in `Labels`.
+> - **Users:** UltraPress publishes through it
+>   (`Apps/UltraPress/engine/UltraPressSite.h`), including a site's
+>   `docs/` folder and `ultrapress docs`.
+> - **Next:** the UltraStore web store (Phase C); responsive picture
+>   variants, precompressed files and a preview server (Phase D).
 >
 > Sources are under `UltraSite/{include,core,resources}`. The target is
 > `UltraSite`, the header `<UltraSite/UltraSite.h>`, and the namespace
@@ -147,14 +154,16 @@ std::fputs(result.SizeReport().c_str(), stdout);
 
 | Call | What it does |
 |---|---|
-| `Builder(SiteConfig)` | The site: URL, name, language, tokens, navbar, footer, `extraCss`, budgets, the labels of the skip link, the toggle and the 404 page |
-| `AddRoute(Route)` | One page: `path` (`/`, `/a/b/`, `/x.html`), `layout`, `title`, `documentTitle`, `description`, `image` (+ size), `bodyHtml`, `date`, `kind` (`og:type`), `jsonLd`, `alternates` (language → path), `extraHead`, `noindex` |
+| `Builder(SiteConfig)` | The site: URL, name, language, tokens, navbar, footer, `extraCss`, budgets, `labels`, `search`, `languageNames` |
+| `AddRoute(Route)` | One page: `path` (`/`, `/a/b/`, `/x.html`), `layout` (`page`, `post`, `doc`), `title`, `documentTitle`, `description`, `image` (+ size), `bodyHtml`, `date`, `kind` (`og:type`), `jsonLd`, `alternates` (language → path), `extraHead`, `noindex`, `searchable`; for `doc`: `sidebar`, `toc`, `editUrl` |
 | `AddLayout(name, fn)` | A layout of the app's own: `fn(route)` returns what goes into `<main>` |
 | `AddScript(behaviour, source)` | A behaviour module (below) |
 | `Asset(path)`, `AssetFromText(name, text)` | A file under its hash in `assets/`; returns its URL |
 | `AddDirectory(source, prefix)` | A folder copied under `prefix`, not hashed (a media library) |
 | `AddFile(path, text)` | A file written as it is (`feed.xml`) |
-| `Build(out, BuildOptions)` | Writes the folder; `removeStale`, `keep` (files a sweep leaves, such as a deploy manifest), `checkLinks`, `enforceBudgets` |
+| `AddSidebar(id, items)` | A sidebar the `doc` layout shows on the routes that name it (`Route::sidebar`) |
+| `AddDocs(DocsOptions)` | A Markdown folder as doc pages with their sidebar (below) |
+| `Build(out, BuildOptions)` | Writes the folder; `removeStale`, `keep` (files a sweep leaves, such as a deploy manifest), `checkLinks`, `brokenLinksWarn`, `enforceBudgets` |
 | `RenderPage(route)` | One page as Build would write it, for previews and tests |
 
 The helpers `RouteFile`, `ContentHash`, `CompressedSize`, `TokensCss`,
@@ -223,6 +232,7 @@ than Brotli, so passing here means passing on a Brotli host):
 | One behaviour module | 3 KB |
 | All script one page loads | 15 KB |
 | The two inline scripts together (raw) | 1 KB |
+| One language's search index | 150 KB |
 
 A build without zlib measures raw sizes, which is stricter. Over budget is
 an error, or a warning with `enforceBudgets = false`. `SizeReport()` prints
@@ -239,6 +249,120 @@ folder, and `/about` finds `/about/`. Links to another origin, `mailto:`,
 
 ---
 
+## Documentation sites
+
+`Builder::AddDocs(DocsOptions)` reads a folder of Markdown the way
+Docusaurus reads its `docs/`:
+
+| In the folder | On the site |
+|---|---|
+| `guide/install.md` | the page `routePrefix` + `guide/install/` |
+| `guide/index.md` or `guide/README.md` | the folder's own page, `guide/` |
+| a folder without one | a generated page listing what it holds, as cards |
+| front matter (`---` lines): `title`, `description`, `slug`, `sidebar_label`, `sidebar_position`, `draft`, `last_update` | the page's title (else its first `# heading`, else its file name), description (else its first paragraph), address, sidebar entry and order, whether it is published, its "Last updated" |
+| `guide/_category_.json`: `{"label": ..., "position": ...}` | the folder's sidebar entry |
+| `[text](other.md#part)` | the other page's address, the anchor kept |
+| `[text](files/notes.txt)` inside the folder | the file as a hashed asset |
+| `[text](../../src/main.cpp)` outside it | `sourceUrl` + its path under `sourceRoot` (a repository's file view) |
+| a link that leads nowhere | a warning when the docs load, and a broken link at the build |
+| `DocsOptions::translations` (`language`, `folder`, `routePrefix`) | the same files in another language, joined page by page (`hreflang`, the language switcher) |
+| `exclude` | file and folder names left out wherever they are (`CHANGELOG.md`) |
+
+The sidebar follows the folders, ordered by `sidebar_position` and then by
+name. On a page, only the categories that lead to it are expanded; the
+others are links to their own pages, as collapsed categories are in
+Docusaurus. That way the sidebar adds a few kilobytes to a page however
+large the site grows.
+
+### Markdown
+
+`UltraSiteMarkdown.h` turns one page's Markdown into its HTML:
+
+```cpp
+#include "UltraSite/UltraSiteMarkdown.h"
+
+UltraSite::MarkdownOptions options;
+options.link = [](const std::string& target) { return "/docs/" + target; };   // other.md -> ...
+options.copyLabel = "Copy";
+const UltraSite::MarkdownResult page = UltraSite::MarkdownToHtml(markdown, options);
+// page.html, page.toc (the h2 and h3 with their ids), page.title (the first h1)
+```
+
+<!-- doc-check: std::string markdown; -->
+
+- **Reading and writing.** The framework reads the Markdown and writes it
+  (`UCRichDocument::FromMarkdown` and `ToHTML`, through the latter's
+  `headingId` and `codeBlock` hooks). That reader takes a line as a
+  paragraph, as an editor does. A site's Markdown wraps its paragraphs,
+  so the lines of a paragraph, a list item and a quote are joined first,
+  as CommonMark joins them.
+- **Heading ids.** Every heading gets an id spelled as GitHub spells it
+  (`Slugify`): lower case, punctuation and dashes dropped, each space a
+  `-`, and a repeated heading `-1`, `-2`. So the `other.md#some-heading`
+  links a repository already has keep working.
+- **Code.** Code is highlighted when the site is built
+  (`HighlightCode`, on `UltraCanvasSyntaxTokenizer`: `<span
+  class="tok-k">` for a keyword, and so on). The browser runs no
+  highlighter.
+- **Admonitions.** `:::note Title` … `:::`, and `tip`, `info`, `warning`
+  and `danger`. GitHub's `> [!NOTE]` alerts work too.
+- **Tabs.** `:::tabs`, then one `::tab[Label]` line per tab, then `:::`.
+  Each tab is a `<section>` under its label, readable without script.
+
+### Search
+
+`SiteConfig::search` puts a search box in the navbar. The build writes:
+
+- one index per language, `search/<language>.<hash>.json`, holding each
+  page's title, address and description and its sections' anchors,
+  headings and text;
+- a `/search/` page. Without script it lists every page; with script it
+  shows the results for `?q=`.
+
+The `search` module fetches the index the first time the box takes the
+focus. It ranks titles above headings above text, lists at most three
+hits per page, and is worked with the arrow keys, Enter and Escape. `/`
+moves the cursor into the box.
+
+An index over its budget (150 KB compressed) is written again without the
+section texts: titles, headings and descriptions only. The build warns
+when it does. This repository's own `Docs/` (418 pages, 7 156 sections) is
+such a site: 906 KB with the texts, 125 KB without.
+
+### The built-in behaviours
+
+| Module | On | Without it | With it |
+|---|---|---|---|
+| `search` | every page of a site with search | the box submits to `/search/`, which lists every page | results as you type, keyboard-driven |
+| `toc` | doc pages with a table of contents | plain links | marks the heading being read |
+| `tabs` | `:::tabs` | the tabs stacked under their labels | a tab list; the choice remembered for every box with the same labels |
+| `copy` | code blocks (`MarkdownOptions::copyLabel`) | selectable text | a copy button |
+
+An app's `AddScript` with one of these names replaces it.
+
+### The doc layout
+
+On a wide screen the layout has three columns: the sidebar (sticky), the
+page, and the table of contents (sticky). Below 75 rem the table of
+contents moves to an *On this page* `<details>` above the text. Below
+62 rem the sidebar becomes a panel that the *Menu* link opens with
+`#us-sidebar:target`, so no script is needed. The page has breadcrumbs
+from the sidebar, then its body, then *Edit this page* (`Route::editUrl`)
+and *Last updated* (`Route::date`), then previous and next in the
+sidebar's order. A page without a `<h1>` gets its title as one.
+
+### Labels
+
+Every word the frame says is in `SiteConfig::labels` (`Labels`): the skip
+link, the navigation landmarks, the theme toggle, the 404 page, the search
+box and page, the table of contents, the sidebar's *Menu* and *Close*, the
+breadcrumbs, *Previous* and *Next*, *Edit this page*, *Last updated*,
+*Copy* and *Copied*, and the language switcher. A site in another language
+sets them in it. `SiteConfig::languageNames` names the switcher's
+languages (`{"de", "Deutsch"}`).
+
+---
+
 ## Tests
 
 `Tests/UltraSite` (ctest `UltraSite`, `-DULTRACANVAS_BUILD_ULTRASITE_TESTS=ON`)
@@ -252,6 +376,17 @@ folder and a dark look, and reads it back:
 - JSON-LD that cannot close its `<script>`;
 - the sitemap and the 404 page;
 - broken links and anchors, unknown behaviours and budgets as errors;
-- the stale-file sweep.
+- the stale-file sweep;
+- Markdown: front matter, ids (GitHub's spelling, letters beyond ASCII,
+  repeats), wrapped lines, highlighting, admonitions and alerts, tabs, and
+  links through the caller;
+- `AddDocs`: pages from files and folders, drafts and excluded files left
+  out, generated index pages, `_category_.json`, `sidebar_position` and
+  `sidebar_label`, links to pages, assets and source, a translation;
+- the doc layout's sidebar, breadcrumbs, previous and next, table of
+  contents and edit link;
+- the search index and page, an index over budget trimmed, and a broken
+  link as an error or, with `brokenLinksWarn`, a warning.
 
-UltraPress's engine tests publish its example site through it.
+UltraPress's engine tests publish its example site through it, `docs/`
+included.

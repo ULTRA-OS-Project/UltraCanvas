@@ -3160,7 +3160,14 @@ page. The build reads every page back through the HTMLReader and fails on
 a broken internal link or anchor, an unknown behaviour, or a page, the
 stylesheet or a script over its compressed-size budget; it removes what an
 earlier build wrote and this one did not. The site works with JavaScript
-off. UltraPress publishes its HTML + JavaScript output through it
+off. Documentation sites too: `AddDocs` reads a Markdown folder as
+Docusaurus reads its `docs/` (front matter, `_category_.json`, links
+between the files, translations), into the `doc` layout (sidebar, table
+of contents, breadcrumbs, previous / next), with code highlighted at build
+time, admonitions and tabs (`UltraSiteMarkdown.h`), a search index per
+language, a search page and the `search`, `toc`, `tabs` and `copy`
+modules. UltraPress publishes its HTML + JavaScript output, a site's
+`docs/` and `ultrapress docs` through it
 (`Apps/UltraPress/engine/UltraPressSite.h`); the UltraStore web store is
 next. Headless: links the core library (JSON, HTMLReader, UltraCrypt) and
 zlib. Sources under `UltraSite/{include,core,resources}`, target

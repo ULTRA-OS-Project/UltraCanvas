@@ -2,6 +2,7 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.7.0 - ToHTML: the headingId and codeBlock hooks of RichDocumentHTMLOptions
 // Version: 1.6.0 - RichShape::PatternBit: Word's preset pattern tiles
 // Version: 1.5.0 - Drawn shapes: RichShape presets; plain text, Markdown and HTML
 //                  spell a drawing's group members' words
@@ -1692,6 +1693,10 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
             case RichBlockType::Heading: {
                 int level = std::clamp(block.headingLevel, 1, 6);
                 html << "<h" << level << (block.rightToLeft ? " dir=\"rtl\"" : "");
+                if (options.headingId) {
+                    const std::string id = options.headingId(level, ConcatenateRunText(block.runs));
+                    if (!id.empty()) html << " id=\"" << EscapeHtml(id) << "\"";
+                }
                 if (const char* alignCss = AlignCss(block.align)) html << " style=\"text-align:" << alignCss << "\"";
                 html << ">" << runsHtml(block.runs) << "</h" << level << ">\n";
                 break;
@@ -1732,6 +1737,10 @@ std::string UCRichDocument::ToHTML(const RichDocumentHTMLOptions& options) const
                 break;
             }
             case RichBlockType::CodeBlock:
+                if (options.codeBlock) {
+                    html << options.codeBlock(block.codeLanguage, ConcatenateRunText(block.runs)) << "\n";
+                    break;
+                }
                 html << "<pre><code>" << EscapeHtml(ConcatenateRunText(block.runs))
                      << "</code></pre>\n";
                 break;

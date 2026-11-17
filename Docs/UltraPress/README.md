@@ -148,6 +148,40 @@ A block type says which outputs show it (`BlockType::htmlOutput`,
 `wasmOutput`); every built-in block has both, and `check` reports a block
 the site's output cannot show.
 
+### Documentation
+
+A site's `docs/` folder holds Markdown, which the HTML + JavaScript output
+publishes at `/docs/` the way Docusaurus publishes its docs:
+
+- **Pages.** A page per file. A folder's `index.md` is the folder's page,
+  and a folder without one gets a generated page listing what it holds.
+  The sidebar follows the folders (`_category_.json`, `sidebar_position`
+  in a file's front matter).
+- **The page.** A table of contents, breadcrumbs, previous and next, code
+  highlighted when the site is built, and `:::note` / `:::tip` /
+  `:::warning` admonitions. `:::tabs` with one `::tab[Label]` line per tab
+  gives tabs.
+- **Search.** A site with docs gets a search box and a search page.
+- **Translations.** `i18n/<language>/docs` holds a translation for every
+  language in `site.json`'s `languages`, published at `/<language>/docs/`
+  with a language switcher.
+
+Link to it from a menu with `{"title": "Docs", "url": "/docs/"}`, as the
+example site does. The WebAssembly output leaves the docs out. The
+reference is `Docs/Modules/UltraSite/README.md`, *Documentation sites*.
+
+`ultrapress docs` publishes a folder of Markdown on its own, with no
+UltraPress site around it. A link out of the folder goes to
+`--source-url` plus its path under `--source-root`, which is a
+repository's file view. This repository's own `Docs/` builds this way:
+
+```bash
+ultrapress docs Docs out --name "UltraCanvas docs" --url https://docs.example.org \
+    --source-root . --source-url https://github.com/<owner>/<repo>/blob/main/ \
+    --edit-url https://github.com/<owner>/<repo>/edit/main/Docs/ \
+    --exclude CHANGELOG.md --exclude changelog.d --sizes
+```
+
 ## The command line
 
 ```bash
@@ -156,6 +190,7 @@ ultrapress check mysite                                           # every proble
 ultrapress page mysite home                                       # the front page's HTML shadow, to stdout
 ultrapress publish mysite out                                     # the site's output, into out/
 ultrapress publish mysite out --sizes                             # and what every page and asset weighs
+ultrapress docs Docs out --name "My docs" --url https://docs.my.example   # a Markdown folder as a documentation site
 ultrapress publish mysite out --output wasm --renderer ultrapress-0.1.0.js   # the WebAssembly output, the renderer referenced (later)
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
 ultrapress hosts                                                  # the hosts a site can be published to
@@ -198,7 +233,9 @@ mysite/
 ├── theme.json       name, colors (name → #rrggbb), dark (the same names, the dark look), fontFamily
 ├── menus.json       {"main": [...], "footer": [...]}; an item has title and page (a slug) or url, and items
 ├── pages/<slug>.json
-└── media/           pictures and downloads; a block names them by path
+├── media/           pictures and downloads; a block names them by path
+├── docs/            Markdown documentation (the HTML + JavaScript output), _category_.json per folder
+└── i18n/<lang>/docs the same documentation translated
 ```
 
 A page:
@@ -265,7 +302,8 @@ against it.
   Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
   blocks are the owner's own HTML and pass through.
 - `UltraPressSite.h` - the HTML + JavaScript output: `PublishHtml` through
-  UltraSite, `Publish` (the site's output, or `PublishOptions::output`),
+  UltraSite (with the site's `docs/`), `Publish` (the site's output, or
+  `PublishOptions::output`), `PublishDocsFolder` (`ultrapress docs`),
   `ThemeTokens`, `BlockStylesheet`, `HasHtmlOutput`. `HtmlEmitter::Parts`
   gives it each page's body, title, description, social picture and
   structured data.

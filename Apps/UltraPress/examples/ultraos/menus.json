@@ -5,6 +5,7 @@
       {"title": "The development plan", "page": "the-plan"},
       {"title": "Open Source", "url": "https://ultraos.eu/open-source/"}
     ]},
+    {"title": "Docs", "url": "/docs/"},
     {"title": "ULTRA OS Github", "url": "https://github.com/ULTRA-OS-Project"},
     {"title": "Contact", "page": "home"}
   ],

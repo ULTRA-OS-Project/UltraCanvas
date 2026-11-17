@@ -10,6 +10,7 @@
 #include "UltraSite/UltraSite.h"
 #include "UltraSiteInternal.h"
 #include "UltraSiteResources.h"
+#include "UltraSite/UltraSiteMarkdown.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "HTMLReader/HTMLDocument.h"
@@ -61,15 +62,6 @@ bool IsBehaviourName(const std::string& name) {
     return true;
 }
 
-bool ReadFile(const std::string& path, std::string& out) {
-    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
-    if (!in) return false;
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    out = buffer.str();
-    return true;
-}
-
 bool WriteFile(const fs::path& path, const std::string& content) {
     std::error_code ec;
     fs::create_directories(path.parent_path(), ec);
@@ -77,16 +69,6 @@ bool WriteFile(const fs::path& path, const std::string& content) {
     if (!out) return false;
     out << content;
     return static_cast<bool>(out);
-}
-
-// A relative path as the output names it: '/'-separated. A '\\' is a
-// separator on Windows only; elsewhere it is a character of the name.
-std::string OutputPath(const fs::path& relative) {
-    std::string text = UltraCanvas::PathToUtf8(relative);
-#ifdef _WIN32
-    std::replace(text.begin(), text.end(), '\\', '/');
-#endif
-    return text;
 }
 
 // "/a/b/../c/./" -> "/a/c/"; the query and the fragment are the caller's.
@@ -148,59 +130,103 @@ std::string FormatSize(size_t bytes) {
     return buffer;
 }
 
-// Every value of data-us in an HTML fragment, through the HTMLReader.
-std::vector<std::string> Behaviours(const std::string& html) {
-    std::set<std::string> found;
-    if (html.find("data-us") == std::string::npos) return {};
-    UltraCanvas::HTML::Parser parser;
-    UltraCanvas::HTML::Document document = parser.Parse(html);
-    if (document.root) {
-        document.root->ForEachElement([&](UltraCanvas::HTML::Node& node) {
-            const std::string value = node.GetAttribute("data-us");
-            std::istringstream words(value);
-            std::string word;
-            while (words >> word) found.insert(word);
-            return true;
-        });
-    }
-    return std::vector<std::string>(found.begin(), found.end());
-}
-
-// The links and ids of a written page, read back through the HTMLReader.
-struct PageLinks {
-    std::set<std::string> ids;
-    std::vector<std::string> references;
+// The search records of a page: one per part between its h2 / h3
+// headings, the part before the first heading the page's own.
+struct SearchRecord {
+    std::string heading, anchor, text;
 };
 
-PageLinks ReadLinks(const std::string& html) {
-    PageLinks links;
+std::string Collapse(const std::string& text) {
+    std::string out;
+    for (char c : text) {
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            if (!out.empty() && out.back() != ' ') out += ' ';
+        } else {
+            out += c;
+        }
+    }
+    while (!out.empty() && out.back() == ' ') out.pop_back();
+    return out;
+}
+
+// At most `limit` bytes, cut before a character, not inside one.
+std::string Cut(const std::string& text, size_t limit) {
+    if (text.size() <= limit) return text;
+    size_t cut = limit;
+    while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0) == 0x80) --cut;
+    return text.substr(0, cut);
+}
+
+std::vector<SearchRecord> SearchSections(const std::string& html) {
+    constexpr size_t kLimit = 360;
+    std::vector<SearchRecord> records(1);
     UltraCanvas::HTML::Parser parser;
     UltraCanvas::HTML::Document document = parser.Parse(html);
-    if (!document.root) return links;
-    document.root->ForEachElement([&](UltraCanvas::HTML::Node& node) {
-        const std::string id = node.GetId();
-        if (!id.empty()) links.ids.insert(id);
-        const std::string name = node.GetAttribute("name");
-        if (node.tag == "a" && !name.empty()) links.ids.insert(name);
-        if (node.tag == "a" || node.tag == "area") {
-            if (node.HasAttribute("href")) links.references.push_back(node.GetAttribute("href"));
-        } else if (node.tag == "link") {
-            const std::string rel = node.GetAttribute("rel");
-            if (rel == "stylesheet" || rel == "icon" || rel == "preload" || rel == "modulepreload") {
-                links.references.push_back(node.GetAttribute("href"));
+    std::function<void(const UltraCanvas::HTML::Node&)> walk = [&](const UltraCanvas::HTML::Node& node) {
+        for (const UltraCanvas::HTML::NodePtr& child : node.children) {
+            if (child->IsText()) {
+                if (records.back().text.size() < kLimit) records.back().text += child->text + " ";
+                continue;
             }
-        } else if (node.tag == "img" || node.tag == "script" || node.tag == "source" || node.tag == "video" ||
-                   node.tag == "audio" || node.tag == "iframe" || node.tag == "track") {
-            if (node.HasAttribute("src")) links.references.push_back(node.GetAttribute("src"));
+            if (!child->IsElement() || child->tag == "script" || child->tag == "style" || child->tag == "template") continue;
+            if ((child->tag == "h2" || child->tag == "h3") && !child->GetId().empty()) {
+                // A heading a link can reach starts the next record.
+                records.push_back({Collapse(child->TextContent()), child->GetId(), std::string()});
+                continue;
+            }
+            walk(*child);
         }
-        return true;
-    });
-    return links;
+    };
+    if (document.root) walk(*document.root);
+    for (SearchRecord& record : records) record.text = Cut(Collapse(record.text), kLimit);
+    return records;
+}
+
+bool ContainsPath(const NavItem& item, const std::string& path) {
+    if (item.href == path) return true;
+    for (const NavItem& child : item.children) {
+        if (ContainsPath(child, path)) return true;
+    }
+    return false;
+}
+
+// The items from the top of the tree down to the one at `path`.
+bool TrailTo(const std::vector<NavItem>& items, const std::string& path, std::vector<const NavItem*>& trail) {
+    for (const NavItem& item : items) {
+        trail.push_back(&item);
+        if (item.href == path || TrailTo(item.children, path, trail)) return true;
+        trail.pop_back();
+    }
+    return false;
+}
+
+void Flatten(const std::vector<NavItem>& items, std::vector<const NavItem*>& out, std::set<std::string>& seen) {
+    for (const NavItem& item : items) {
+        if (!item.href.empty() && item.href[0] == '/' && seen.insert(item.href).second) out.push_back(&item);
+        Flatten(item.children, out, seen);
+    }
 }
 
 } // namespace
 
 // ----- Helpers ---------------------------------------------------------------------
+
+bool ReadFile(const std::string& path, std::string& out) {
+    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
+    if (!in) return false;
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    out = buffer.str();
+    return true;
+}
+
+std::string OutputPath(const fs::path& relative) {
+    std::string text = UltraCanvas::PathToUtf8(relative);
+#ifdef _WIN32
+    std::replace(text.begin(), text.end(), '\\', '/');
+#endif
+    return text;
+}
 
 std::string RouteFile(const std::string& path) {
     if (path.empty() || path == "/") return "index.html";
@@ -224,6 +250,51 @@ std::string BuildResult::SizeReport() const {
 
 // ----- The builder -------------------------------------------------------------------
 
+// What one reading of a page's body finds: the behaviours it asks for, the
+// ids its anchors can name, the links and sources it holds.
+struct Builder::PageFacts {
+    std::vector<std::string> behaviours;
+    std::set<std::string> ids;
+    std::vector<std::string> references;
+};
+
+namespace {
+
+void ReadPage(const std::string& html, Builder::PageFacts& facts) {
+    std::set<std::string> behaviours;
+    UltraCanvas::HTML::Parser parser;
+    UltraCanvas::HTML::Document document = parser.Parse(html);
+    if (document.root) {
+        document.root->ForEachElement([&](UltraCanvas::HTML::Node& node) {
+            const std::string id = node.GetId();
+            if (!id.empty()) facts.ids.insert(id);
+            const std::string value = node.GetAttribute("data-us");
+            if (!value.empty()) {
+                std::istringstream words(value);
+                std::string word;
+                while (words >> word) behaviours.insert(word);
+            }
+            if (node.tag == "a" || node.tag == "area") {
+                const std::string name = node.GetAttribute("name");
+                if (!name.empty()) facts.ids.insert(name);
+                if (node.HasAttribute("href")) facts.references.push_back(node.GetAttribute("href"));
+            } else if (node.tag == "link") {
+                const std::string rel = node.GetAttribute("rel");
+                if (rel == "stylesheet" || rel == "icon" || rel == "preload" || rel == "modulepreload") {
+                    facts.references.push_back(node.GetAttribute("href"));
+                }
+            } else if (node.tag == "img" || node.tag == "script" || node.tag == "source" || node.tag == "video" ||
+                       node.tag == "audio" || node.tag == "iframe" || node.tag == "track") {
+                if (node.HasAttribute("src")) facts.references.push_back(node.GetAttribute("src"));
+            }
+            return true;
+        });
+    }
+    facts.behaviours.assign(behaviours.begin(), behaviours.end());
+}
+
+} // namespace
+
 struct Builder::Prepared {
     std::string css, cssFile, cssUrl;
     std::string core, coreFile, coreUrl;
@@ -232,6 +303,8 @@ struct Builder::Prepared {
     std::string themeScript;
     std::string speculationRules;
     std::string csp;           // the policy; empty when the inline scripts cannot be hashed
+    std::map<std::string, std::pair<std::string, std::string>> searchIndex;   // language -> file, content
+    std::vector<std::string> notes;                                            // warnings for the build
 };
 
 Builder::Builder(SiteConfig siteConfig) : config(std::move(siteConfig)) {
@@ -243,7 +316,10 @@ Builder::Builder(SiteConfig siteConfig) : config(std::move(siteConfig)) {
         }
         return out + route.bodyHtml + "</article>\n";
     };
+    layouts["doc"] = [this](const Route& route) { return DocLayout(route); };
 }
+
+void Builder::AddSidebar(const std::string& id, std::vector<NavItem> items) { sidebars[id] = std::move(items); }
 
 std::string Builder::AssetFromText(const std::string& fileName, const std::string& content) {
     std::string extension;
@@ -297,7 +373,15 @@ void Builder::Prepare(Prepared& prepared, std::vector<std::string>& errors) {
     prepared.coreFile = "assets/js/core." + ContentHash(prepared.core) + ".js";
     prepared.coreUrl = "/" + prepared.coreFile;
 
-    for (const auto& [name, source] : scripts) {
+    // The library's behaviours, then the app's (which may replace one).
+    std::map<std::string, std::string> all = {
+        {"search", Resource(Resources::kSearchJs, Resources::kSearchJsSize)},
+        {"toc", Resource(Resources::kTocJs, Resources::kTocJsSize)},
+        {"tabs", Resource(Resources::kTabsJs, Resources::kTabsJsSize)},
+        {"copy", Resource(Resources::kCopyJs, Resources::kCopyJsSize)},
+    };
+    for (const auto& [name, source] : scripts) all[name] = source;
+    for (const auto& [name, source] : all) {
         if (!IsBehaviourName(name) || name == "core") {
             errors.push_back("behaviour name '" + name + "' is not [a-z0-9-], or is 'core'");
             continue;
@@ -309,6 +393,53 @@ void Builder::Prepare(Prepared& prepared, std::vector<std::string>& errors) {
     if (!config.logo.empty() && prepared.logoUrl.empty()) prepared.logoUrl = Asset(config.logo);
 
     if (!config.tokens.dark.empty()) prepared.themeScript = kThemeScript;
+
+    // One search index per language, a page to an entry: [title, address,
+    // description, [[anchor, heading, text], ...]] - the first section, the
+    // part before any heading, with an empty anchor and heading. A site
+    // whose texts would make the index too large to fetch gets its titles,
+    // headings and descriptions only.
+    if (config.search) {
+        struct Entry {
+            const Route* route;
+            std::vector<SearchRecord> sections;
+        };
+        std::map<std::string, std::vector<Entry>> pages;
+        for (const Route& route : routes) {
+            if (route.noindex || !route.searchable) continue;
+            pages[route.language.empty() ? config.language : route.language].push_back({&route, SearchSections(route.bodyHtml)});
+        }
+        if (!pages.count(config.language)) pages[config.language];
+        auto write = [](const std::vector<Entry>& entries, bool texts) {
+            std::string index = "[";
+            for (const Entry& entry : entries) {
+                if (index.size() > 1) index += ",\n";
+                index += "[" + UltraCanvas::JSON::EscapeString(entry.route->title) + "," + UltraCanvas::JSON::EscapeString(entry.route->path) +
+                         "," + UltraCanvas::JSON::EscapeString(entry.route->description) + ",[";
+                bool first = true;
+                for (const SearchRecord& section : entry.sections) {
+                    const std::string text = texts ? section.text : std::string();
+                    if (section.anchor.empty() && text.empty()) continue;
+                    index += std::string(first ? "" : ",") + "[" + UltraCanvas::JSON::EscapeString(section.anchor) + "," +
+                             UltraCanvas::JSON::EscapeString(section.heading) +
+                             (text.empty() ? std::string() : "," + UltraCanvas::JSON::EscapeString(text)) + "]";
+                    first = false;
+                }
+                index += "]]";
+            }
+            return index + "]";
+        };
+        for (const auto& [language, entries] : pages) {
+            std::string index = write(entries, true);
+            if (config.budgets.searchIndex && CompressedSize(index) > config.budgets.searchIndex) {
+                index = write(entries, false);
+                prepared.notes.push_back("search/" + language + ": the site's text would make the index too large to fetch, so it "
+                                         "searches the titles, headings and descriptions only");
+            }
+            const std::string file = "search/" + SafeStem(language) + "." + ContentHash(index) + ".json";
+            prepared.searchIndex[language] = {file, index};
+        }
+    }
 
     // Prerender a page of the site when the pointer rests on its link
     // (Chromium); never an asset, a download or a path the app excludes.
@@ -421,7 +552,162 @@ std::string Builder::Head(const Route& route, const Prepared& prepared, const st
     return out;
 }
 
-std::string Builder::Page(const Route& route, const Prepared& prepared, std::vector<std::string>& errors) const {
+std::string Builder::SearchForm(const Route& route, const Prepared& prepared, bool large) const {
+    const std::string language = route.language.empty() ? config.language : route.language;
+    auto index = prepared.searchIndex.find(language);
+    if (index == prepared.searchIndex.end()) index = prepared.searchIndex.find(config.language);
+    if (index == prepared.searchIndex.end()) return std::string();
+    const Labels& labels = config.labels;
+    std::string out = std::string("<form class=\"us-search") + (large ? " us-search-large" : "") +
+                      "\" role=\"search\" action=\"/search/\" method=\"get\" data-us=\"search\" data-index=\"/" + index->second.first +
+                      "\" data-nothing=\"" + Attr(labels.searchNothing) + "\"" + (large ? " data-results=\"us-search-results\"" : "") + ">";
+    out += "<input type=\"search\" name=\"q\" placeholder=\"" + Attr(labels.search) + "\" aria-label=\"" + Attr(labels.search) +
+           "\" autocomplete=\"off\" spellcheck=\"false\">";
+    return out + "</form>";
+}
+
+Route Builder::SearchPage(const Prepared& prepared) const {
+    const Labels& labels = config.labels;
+    Route page;
+    page.path = "/search/";
+    page.title = labels.search;
+    page.noindex = true;
+    page.searchable = false;
+    page.bodyHtml = "<h1>" + EscapeText(labels.search) + "</h1>\n" + SearchForm(page, prepared, true) +
+                    "\n<div id=\"us-search-results\" class=\"us-search-page-results\" aria-live=\"polite\"></div>\n" +
+                    "<p class=\"us-search-noscript\">" + EscapeText(labels.searchNoScript) + "</p>\n<ul class=\"us-site-index\">\n";
+    // Every page, so a visitor without script finds them too.
+    for (const Route& route : routes) {
+        if (route.noindex || !route.searchable) continue;
+        page.bodyHtml += "<li><a href=\"" + Attr(route.path) + "\"" +
+                         (route.language.empty() ? std::string() : " hreflang=\"" + Attr(route.language) + "\"") + ">" +
+                         EscapeText(route.title.empty() ? route.path : route.title) + "</a></li>\n";
+    }
+    page.bodyHtml += "</ul>\n";
+    return page;
+}
+
+std::string Builder::DocLayout(const Route& route) const {
+    const Labels& labels = config.labels;
+    static const std::vector<NavItem> kNone;
+    auto sidebar = sidebars.find(route.sidebar);
+    const std::vector<NavItem>& items = sidebar == sidebars.end() ? kNone : sidebar->second;
+
+    std::function<void(const std::vector<NavItem>&, std::string&)> tree = [&](const std::vector<NavItem>& list, std::string& out) {
+        out += "<ul>";
+        for (const NavItem& item : list) {
+            std::string link = item.href.empty()
+                                   ? "<span>" + EscapeText(item.label) + "</span>"
+                                   : "<a href=\"" + Attr(item.href) + "\"" + (item.href == route.path ? " aria-current=\"page\"" : "") +
+                                         ">" + EscapeText(item.label) + "</a>";
+            if (item.children.empty()) {
+                out += "<li>" + link + "</li>";
+                continue;
+            }
+            // A category away from this page is its link alone, as a
+            // collapsed one in Docusaurus: its page lists what it holds,
+            // and the sidebar stays small however large the site grows.
+            const bool here = ContainsPath(item, route.path);
+            if (!here && !item.href.empty()) {
+                out += "<li class=\"us-category us-category-closed\">" + link + "</li>";
+                continue;
+            }
+            out += std::string("<li class=\"us-category\"><details") + (here ? " open" : "") + "><summary>" + link + "</summary>";
+            tree(item.children, out);
+            out += "</details></li>";
+        }
+        out += "</ul>";
+    };
+
+    // The table of contents: the route's, or the body's h2 / h3 with an id.
+    std::vector<Heading> toc = route.toc;
+    if (toc.empty() && route.bodyHtml.find("<h") != std::string::npos) {
+        UltraCanvas::HTML::Parser parser;
+        UltraCanvas::HTML::Document document = parser.Parse(route.bodyHtml);
+        if (document.root) {
+            document.root->ForEachElement([&](UltraCanvas::HTML::Node& node) {
+                if ((node.tag == "h2" || node.tag == "h3") && !node.GetId().empty()) {
+                    toc.push_back({node.tag == "h2" ? 2 : 3, Collapse(node.TextContent()), node.GetId()});
+                }
+                return true;
+            });
+        }
+    }
+    std::string tocList;
+    if (!toc.empty()) {
+        tocList = "<ul>";
+        for (const Heading& heading : toc) {
+            tocList += std::string("<li") + (heading.level > 2 ? " class=\"us-toc-sub\"" : "") + "><a href=\"#" + Attr(heading.id) + "\">" +
+                       EscapeText(heading.text) + "</a></li>";
+        }
+        tocList += "</ul>";
+    }
+
+    std::string out = "<div class=\"us-doc\">\n";
+    out += "<aside class=\"us-sidebar\" id=\"us-sidebar\">\n<a class=\"us-sidebar-close\" href=\"#main\">" + EscapeText(labels.close) +
+           "</a>\n<nav aria-label=\"" + Attr(labels.docsNav) + "\">";
+    tree(items, out);
+    out += "</nav>\n</aside>\n<div class=\"us-doc-main\">\n";
+    if (!items.empty()) out += "<a class=\"us-sidebar-open\" href=\"#us-sidebar\">" + EscapeText(labels.menu) + "</a>\n";
+
+    std::vector<const NavItem*> trail;
+    if (TrailTo(items, route.path, trail) && trail.size() > 1) {
+        out += "<nav class=\"us-breadcrumbs\" aria-label=\"" + Attr(labels.breadcrumbs) + "\"><ol>";
+        for (size_t i = 0; i < trail.size(); ++i) {
+            const NavItem& step = *trail[i];
+            if (i + 1 == trail.size()) out += "<li><span aria-current=\"page\">" + EscapeText(step.label) + "</span></li>";
+            else if (step.href.empty()) out += "<li><span>" + EscapeText(step.label) + "</span></li>";
+            else out += "<li><a href=\"" + Attr(step.href) + "\">" + EscapeText(step.label) + "</a></li>";
+        }
+        out += "</ol></nav>\n";
+    }
+    if (!tocList.empty()) {
+        out += "<details class=\"us-toc-mobile\"><summary>" + EscapeText(labels.toc) + "</summary>" + tocList + "</details>\n";
+    }
+    out += "<article class=\"us-doc-content\">\n";
+    if (route.bodyHtml.find("<h1") == std::string::npos) out += "<h1>" + EscapeText(route.title) + "</h1>\n";
+    out += route.bodyHtml;
+    if (!route.bodyHtml.empty() && route.bodyHtml.back() != '\n') out += "\n";
+    out += "</article>\n";
+    if (!route.editUrl.empty() || !route.date.empty()) {
+        out += "<footer class=\"us-doc-footer\">";
+        if (!route.editUrl.empty()) {
+            out += "<a href=\"" + Attr(route.editUrl) + "\" rel=\"noopener\">" + EscapeText(labels.edit) + "</a>";
+        }
+        if (!route.date.empty()) {
+            out += "<p>" + EscapeText(labels.lastUpdated) + " <time datetime=\"" + Attr(route.date) + "\">" + EscapeText(route.date) +
+                   "</time></p>";
+        }
+        out += "</footer>\n";
+    }
+    std::vector<const NavItem*> order;
+    std::set<std::string> seen;
+    Flatten(items, order, seen);
+    auto here = std::find_if(order.begin(), order.end(), [&](const NavItem* item) { return item->href == route.path; });
+    if (here != order.end() && order.size() > 1) {
+        out += "<nav class=\"us-pagination\" aria-label=\"" + Attr(labels.pagination) + "\">";
+        if (here != order.begin()) {
+            const NavItem& previous = **(here - 1);
+            out += "<a class=\"us-prev\" href=\"" + Attr(previous.href) + "\" rel=\"prev\"><small>" + EscapeText(labels.previous) +
+                   "</small><span>" + EscapeText(previous.label) + "</span></a>";
+        }
+        if (here + 1 != order.end()) {
+            const NavItem& next = **(here + 1);
+            out += "<a class=\"us-next\" href=\"" + Attr(next.href) + "\" rel=\"next\"><small>" + EscapeText(labels.next) +
+                   "</small><span>" + EscapeText(next.label) + "</span></a>";
+        }
+        out += "</nav>\n";
+    }
+    out += "</div>\n";
+    if (!tocList.empty()) {
+        out += "<nav class=\"us-toc\" aria-label=\"" + Attr(labels.toc) + "\" data-us=\"toc\"><p class=\"us-toc-title\">" +
+               EscapeText(labels.toc) + "</p>" + tocList + "</nav>\n";
+    }
+    out += "</div>\n";
+    return out;
+}
+
+std::string Builder::Page(const Route& route, const Prepared& prepared, std::vector<std::string>& errors, PageFacts* facts) const {
     auto layout = layouts.find(route.layout);
     std::string main;
     if (layout == layouts.end()) {
@@ -430,12 +716,8 @@ std::string Builder::Page(const Route& route, const Prepared& prepared, std::vec
     } else {
         main = layout->second(route);
     }
-    std::vector<std::string> behaviours = Behaviours(main);
-    for (const std::string& name : behaviours) {
-        if (!prepared.behaviours.count(name)) {
-            errors.push_back(route.path + ": data-us=\"" + name + "\" names a behaviour no module provides (Builder::AddScript)");
-        }
-    }
+    const Labels& labels = config.labels;
+    const std::string language = route.language.empty() ? config.language : route.language;
 
     std::function<void(const std::vector<NavItem>&, std::string&)> list = [&](const std::vector<NavItem>& items, std::string& out) {
         out += "<ul>";
@@ -455,33 +737,59 @@ std::string Builder::Page(const Route& route, const Prepared& prepared, std::vec
         out += "</ul>";
     };
 
-    std::string out = Head(route, prepared, behaviours);
-    out += "<body>\n<a class=\"us-skip\" href=\"#main\">" + EscapeText(config.skipLinkLabel) + "</a>\n";
-    out += "<header class=\"us-navbar\">\n<div class=\"us-container\">\n<a class=\"us-brand\" href=\"/\">";
-    if (!prepared.logoUrl.empty()) out += "<img src=\"" + prepared.logoUrl + "\" alt=\"\" width=\"32\" height=\"32\">";
-    out += "<span>" + EscapeText(config.name) + "</span></a>\n";
+    std::string body = "<body>\n<a class=\"us-skip\" href=\"#main\">" + EscapeText(labels.skipLink) + "</a>\n";
+    body += "<header class=\"us-navbar\">\n<div class=\"us-container\">\n<a class=\"us-brand\" href=\"/\">";
+    if (!prepared.logoUrl.empty()) body += "<img src=\"" + prepared.logoUrl + "\" alt=\"\" width=\"32\" height=\"32\">";
+    body += "<span>" + EscapeText(config.name) + "</span></a>\n";
     if (!config.navbar.empty()) {
-        out += "<nav class=\"us-nav\" aria-label=\"" + Attr(config.mainNavLabel) + "\">";
-        list(config.navbar, out);
-        out += "</nav>\n";
+        body += "<nav class=\"us-nav\" aria-label=\"" + Attr(labels.mainNav) + "\">";
+        list(config.navbar, body);
+        body += "</nav>\n";
+    }
+    if (config.search) body += SearchForm(route, prepared, false) + "\n";
+    if (!route.alternates.empty()) {
+        // The same page in the site's other languages.
+        std::map<std::string, std::string> languages = route.alternates;
+        languages.emplace(language, route.path);
+        body += "<nav class=\"us-langs\" aria-label=\"" + Attr(labels.languages) + "\"><ul>";
+        for (const auto& [code, path] : languages) {
+            auto name = config.languageNames.find(code);
+            std::string label = name == config.languageNames.end() ? code : name->second;
+            if (name == config.languageNames.end()) {
+                std::transform(label.begin(), label.end(), label.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+            }
+            body += "<li><a href=\"" + Attr(path) + "\" hreflang=\"" + Attr(code) + "\" lang=\"" + Attr(code) + "\"" +
+                    (code == language ? " aria-current=\"page\"" : "") + ">" + EscapeText(label) + "</a></li>";
+        }
+        body += "</ul></nav>\n";
     }
     if (!prepared.themeScript.empty()) {
-        out += "<button type=\"button\" class=\"us-theme-toggle\" data-us-theme-toggle hidden aria-pressed=\"false\" aria-label=\"" +
-               Attr(config.themeToggleLabel) + "\" title=\"" + Attr(config.themeToggleLabel) + "\">" + kSunIcon + kMoonIcon +
-               "</button>\n";
+        body += "<button type=\"button\" class=\"us-theme-toggle\" data-us-theme-toggle hidden aria-pressed=\"false\" aria-label=\"" +
+                Attr(labels.themeToggle) + "\" title=\"" + Attr(labels.themeToggle) + "\">" + kSunIcon + kMoonIcon + "</button>\n";
     }
-    out += "</div>\n</header>\n<main id=\"main\" class=\"us-main\" tabindex=\"-1\">\n";
-    out += main;
-    if (!main.empty() && main.back() != '\n') out += "\n";
-    out += "</main>\n<footer class=\"us-footer\">\n<div class=\"us-container\">\n";
+    body += "</div>\n</header>\n<main id=\"main\" class=\"us-main\" tabindex=\"-1\">\n";
+    body += main;
+    if (!main.empty() && main.back() != '\n') body += "\n";
+    body += "</main>\n<footer class=\"us-footer\">\n<div class=\"us-container\">\n";
     if (!config.footer.empty()) {
-        out += "<nav aria-label=\"" + Attr(config.footerNavLabel) + "\">";
-        list(config.footer, out);
-        out += "</nav>\n";
+        body += "<nav aria-label=\"" + Attr(labels.footerNav) + "\">";
+        list(config.footer, body);
+        body += "</nav>\n";
     }
-    if (!config.footerText.empty()) out += "<p>" + EscapeText(config.footerText) + "</p>\n";
-    out += "</div>\n</footer>\n</body>\n</html>\n";
-    return out;
+    if (!config.footerText.empty()) body += "<p>" + EscapeText(config.footerText) + "</p>\n";
+    body += "</div>\n</footer>\n</body>\n</html>\n";
+
+    // One reading of the body: the behaviours it asks for (the frame's
+    // too), and for the build its ids and links.
+    PageFacts local;
+    PageFacts& read = facts ? *facts : local;
+    ReadPage(body, read);
+    for (const std::string& name : read.behaviours) {
+        if (!prepared.behaviours.count(name)) {
+            errors.push_back(route.path + ": data-us=\"" + name + "\" names a behaviour no module provides (Builder::AddScript)");
+        }
+    }
+    return Head(route, prepared, read.behaviours) + body;
 }
 
 std::string Builder::RenderPage(const Route& route) {
@@ -497,6 +805,7 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
     Prepared prepared;
     Prepare(prepared, errors);
     errors.insert(errors.end(), assetErrors.begin(), assetErrors.end());
+    result.warnings.insert(result.warnings.end(), prepared.notes.begin(), prepared.notes.end());
     if (!HashAvailable()) {
         result.warnings.push_back("no SHA-256 in this build (UltraCrypt without libsodium): asset names carry an FNV-1a hash "
                                   "and the pages carry no Content-Security-Policy");
@@ -508,11 +817,15 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
     if (std::none_of(all.begin(), all.end(), [](const Route& r) { return r.path == "/404.html"; })) {
         Route notFound;
         notFound.path = "/404.html";
-        notFound.title = config.notFoundTitle;
+        notFound.title = config.labels.notFoundTitle;
         notFound.noindex = true;
-        notFound.bodyHtml = "<h1>" + EscapeText(config.notFoundTitle) + "</h1>\n<p>" + EscapeText(config.notFoundText) +
+        notFound.searchable = false;
+        notFound.bodyHtml = "<h1>" + EscapeText(config.labels.notFoundTitle) + "</h1>\n<p>" + EscapeText(config.labels.notFoundText) +
                             "</p>\n<p><a href=\"/\">" + EscapeText(config.name) + "</a></p>\n";
         all.push_back(notFound);
+    }
+    if (config.search && std::none_of(all.begin(), all.end(), [](const Route& r) { return r.path == "/search/"; })) {
+        all.push_back(SearchPage(prepared));
     }
 
     // What the folder will hold: relative path -> content (pages and
@@ -539,11 +852,16 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
     }
 
     std::map<std::string, std::vector<std::string>> behavioursOfPage;
+    std::map<std::string, std::set<std::string>> idsOfFile;
+    std::map<std::string, std::vector<std::string>> referencesOfFile;
     for (const Route& route : all) {
         auto file = fileOfRoute.find(route.path);
         if (file == fileOfRoute.end()) continue;
-        output[file->second] = Page(route, prepared, errors);
-        behavioursOfPage[file->second] = Behaviours(output[file->second]);
+        PageFacts facts;
+        output[file->second] = Page(route, prepared, errors, &facts);
+        behavioursOfPage[file->second] = std::move(facts.behaviours);
+        idsOfFile[file->second] = std::move(facts.ids);
+        referencesOfFile[file->second] = std::move(facts.references);
     }
 
     output[prepared.cssFile] = prepared.css;
@@ -554,6 +872,7 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
         if (usedBehaviours.count(name)) output[script.first] = script.second;
     }
     for (const PendingAsset& asset : assets) output[asset.url.substr(1)] = asset.content;
+    for (const auto& [language, index] : prepared.searchIndex) output[index.first] = index.second;
     for (const auto& [relative, content] : files) output[relative] = content;
 
     // sitemap.xml and robots.txt.
@@ -612,13 +931,6 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
 
     // Every internal link and anchor resolves.
     if (options.checkLinks) {
-        std::map<std::string, std::set<std::string>> idsOfFile;
-        std::map<std::string, std::vector<std::string>> referencesOfFile;
-        for (const auto& [path, file] : fileOfRoute) {
-            PageLinks links = ReadLinks(output[file]);
-            idsOfFile[file] = std::move(links.ids);
-            referencesOfFile[file] = std::move(links.references);
-        }
         for (const auto& [routePath, file] : fileOfRoute) {
             for (const std::string& reference : referencesOfFile[file]) {
                 if (reference.empty() || IsAbsoluteUrl(reference) || reference.rfind("//", 0) == 0 ||
@@ -646,11 +958,11 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
                 } else {
                     const std::string relative = target.substr(1);
                     if (output.count(relative) || copied.count(relative)) continue;   // a file: no anchors to check
-                    errors.push_back(routePath + ": broken link to " + reference);
+                    (options.brokenLinksWarn ? result.warnings : errors).push_back(routePath + ": broken link to " + reference);
                     continue;
                 }
                 if (!fragment.empty() && !idsOfFile[targetFile].count(fragment)) {
-                    errors.push_back(routePath + ": broken anchor " + reference);
+                    (options.brokenLinksWarn ? result.warnings : errors).push_back(routePath + ": broken anchor " + reference);
                 }
             }
         }
@@ -684,6 +996,7 @@ BuildResult Builder::Build(const std::string& outputDirectory, const BuildOption
             (options.enforceBudgets ? errors : result.warnings).push_back(message);
         }
     }
+    for (const auto& [language, index] : prepared.searchIndex) measure(index.first, index.second, budgets.searchIndex);
     const size_t inlineSize = prepared.themeScript.size() + prepared.speculationRules.size();
     if (budgets.inlineScripts && inlineSize > budgets.inlineScripts) {
         const std::string message = "the inline scripts are " + FormatSize(inlineSize) + ", over their budget of " +

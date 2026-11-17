@@ -1,8 +1,9 @@
 # UltraSite — the HTML + JavaScript output of UltraPress and UltraStore (Investigation and Proposal)
 
 **Date:** 2026-11-17
-**Status:** Phase A built (2026-11-17): `UltraSite/` 0.1 and UltraPress's
-HTML + JavaScript output (§13). Phases B to D are a proposal.
+**Status:** Phases A and B built (2026-11-17): `UltraSite/` 0.2,
+UltraPress's HTML + JavaScript output, its documentation and `ultrapress
+docs` (§13, §14). Phases C and D are a proposal.
 **Scope:** `UltraSite`, one shared headless library that writes the **HTML +
 JavaScript** output of UltraPress (`Apps/UltraPress`) and of the UltraStore
 web store (`Apps/UltraStoreAdmin`). It writes it the way
@@ -634,4 +635,81 @@ Where the build differs from the plan above:
 - **The editor's *Preview in browser* button and `ultrapress check`
   running the link check are not built.** A publish reports both. The
   button belongs with `ultrapress serve` in Phase D.
+
+---
+
+## 14. What Phase B built, and what it found different
+
+Built on 2026-11-17:
+
+- **The library.** Documentation sites in UltraSite 0.2: `AddDocs`, the
+  `doc` layout, `UltraSiteMarkdown.h`, the search index and page, the
+  `search`, `toc`, `tabs` and `copy` modules, the language switcher, and
+  `Labels`. See the *Documentation sites* section of the module README.
+- **The framework.** The `headingId` and `codeBlock` hooks of
+  `RichDocumentHTMLOptions`.
+- **UltraPress.** A site's `docs/` and `i18n/<language>/docs`, and the
+  `ultrapress docs` command.
+
+This repository's own `Docs/` was the acceptance site. It was published
+with `ultrapress docs`, leaving out the changelogs:
+
+| What | Result |
+|---|---|
+| Pages | 418, plus generated index pages for the folders without one |
+| Build time | 18 s in a debug build on four cores |
+| The stylesheet | 3.7 KB compressed |
+| `core.js` | 0.8 KB compressed |
+| `search.js` | 2.0 KB compressed |
+| The largest other module | 0.8 KB compressed |
+| A typical page | 3 KB to 15 KB compressed |
+| The search index | 125 KB compressed (titles, headings and descriptions of 7 156 sections) |
+
+Checked in Chromium (Playwright), with no console errors:
+
+- searching by keyboard finds *UltraClipboard* first for "Clipboard";
+- arrow and Enter open the result;
+- the table of contents follows the scroll;
+- the *Menu* link opens the sidebar on a phone;
+- without JavaScript the search page lists all 418 pages.
+
+What the acceptance site showed, and what was done about it:
+
+- **The framework's Markdown reader takes a line as a paragraph.** It is
+  the editor's format. A web page's Markdown wraps paragraphs, as
+  CommonMark does. UltraSite joins the wrapped lines of paragraphs, list
+  items and quotes before handing the text over, and leaves the reader
+  alone, since Texter's round trip depends on it.
+- **Heading ids must be GitHub's.** The `.md` links a repository already
+  has name anchors the way GitHub spells them. GitHub drops punctuation,
+  dashes included, and keeps letters in any script. `Slugify` does the
+  same.
+- **The full search index was 906 KB compressed**, six times its budget,
+  and the section texts made up 2.1 MB of its 3.1 MB. An index over budget
+  is now written again with titles, headings and descriptions only, and
+  the build says so. A small site, which every UltraPress site so far is,
+  keeps full-text search.
+- **The whole sidebar on every page made long pages heavy.** With 470
+  entries it cost about 7 KB compressed per page. Now only the categories
+  on the way to the page are expanded, as Docusaurus does with collapsed
+  ones, and the others link to their generated pages.
+- **Parsing every page three times cost two thirds of the build.** Each
+  page is now read back once, which finds its behaviours, its ids and its
+  links in one pass. The build went from 32 s to 18 s.
+- **Over budget, and correctly so.** Ten of the repository's documents
+  are larger than 30 KB compressed on their own, `UltraCanvasFilerWidget.md`
+  86 KB. The budget reports them, and `--no-budgets` publishes anyway.
+- **Real broken links.** The repository's docs have 68 links to `.md`
+  files that do not exist (`UltraCanvasUIElement.md`,
+  `UltraCanvasButton.md` and others) and 55 anchors that no heading has,
+  most of them spelled with an em dash that GitHub's ids leave out. The build fails on them, as Docusaurus
+  does; `--broken-links warn` publishes anyway.
+
+Not built, and left for later:
+
+- versioned docs (Phase D, as planned);
+- Markdown's lists inside quotes, which the framework's reader does not
+  read;
+- reference-style links (`[text][ref]`);
+- the WebAssembly output showing the docs.
 

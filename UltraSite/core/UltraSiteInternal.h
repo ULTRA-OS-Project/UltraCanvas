@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -21,5 +22,11 @@ bool HashAvailable();
 std::string CspHash(const std::string& inlineScript);
 // Whether CompressedSize compresses (zlib) or returns the raw size.
 bool CompressionAvailable();
+
+// A whole file; false when it cannot be read.
+bool ReadFile(const std::string& path, std::string& out);
+// A relative path as the output names it: '/'-separated. A '\' is a
+// separator on Windows only; elsewhere it is a character of the name.
+std::string OutputPath(const std::filesystem::path& relative);
 
 } // namespace UltraSite

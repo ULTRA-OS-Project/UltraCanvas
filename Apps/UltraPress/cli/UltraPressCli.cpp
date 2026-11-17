@@ -69,6 +69,12 @@ void PrintHelp() {
         "      --to uploads it onto a host (what changed since the last upload),\n"
         "      `--to site` onto the host site.json names; --force uploads everything;\n"
         "      --prune deletes on the host what an earlier publish put there and the site no longer has\n"
+        "  ultrapress docs <markdown-dir> <out-dir> [--name <name>] [--url <url>] [--language <code>]\n"
+        "                  [--edit-url <base>] [--source-root <dir> --source-url <base>] [--exclude <name>]...\n"
+        "                  [--sizes] [--no-budgets] [--broken-links warn] [--quiet]\n"
+        "      a folder of Markdown as a documentation site, the way Docusaurus publishes one: a page\n"
+        "      per file, the sidebar after the folders, a table of contents, search, links between the\n"
+        "      files kept; a link out of the folder goes to --source-url + its path under --source-root\n"
         "  ultrapress hosts\n"
         "      the hosts a site can be published to: FTP, FTPS, SFTP, WebDAV, Nextcloud\n"
         "  ultrapress hosts add <ftp|webdav|nextcloud> --server <url> --user <name> [--password <p>]\n"
@@ -217,6 +223,35 @@ int CommandPage(const std::vector<std::string>& args) {
     HtmlEmitter emitter(site, html);
     std::fputs(emitter.Page(*page).c_str(), stdout);
     return 0;
+}
+
+// A folder of Markdown as a documentation site: `ultrapress docs`.
+int CommandDocs(const std::vector<std::string>& args) {
+    if (args.size() < 2) { PrintHelp(); return 2; }
+    DocsSiteOptions options;
+    options.folder = args[0];
+    options.name = Option(args, "--name", options.name);
+    options.url = Option(args, "--url", options.url);
+    options.language = Option(args, "--language", options.language);
+    options.editUrl = Option(args, "--edit-url", "");
+    options.sourceRoot = Option(args, "--source-root", "");
+    options.sourceUrl = Option(args, "--source-url", "");
+    for (size_t i = 0; i + 1 < args.size(); ++i) {
+        if (args[i] == "--exclude") options.exclude.push_back(args[i + 1]);
+    }
+    options.enforceBudgets = !HasFlag(args, "--no-budgets");
+    options.brokenLinksWarn = Option(args, "--broken-links", "error") == "warn";
+    const PublishResult result = PublishDocsFolder(options, args[1]);
+    const bool quiet = HasFlag(args, "--quiet");
+    if (!quiet) {
+        for (const std::string& warning : result.warnings) std::fprintf(stderr, "warning: %s\n", warning.c_str());
+    } else if (!result.warnings.empty()) {
+        std::fprintf(stderr, "%zu warnings (without --quiet they are listed)\n", result.warnings.size());
+    }
+    for (const std::string& error : result.errors) std::fprintf(stderr, "%s\n", error.c_str());
+    if (HasFlag(args, "--sizes") && !result.sizeReport.empty()) std::fputs(result.sizeReport.c_str(), stdout);
+    std::printf("%s: %zu files written to %s\n", options.name.c_str(), result.files.size(), args[1].c_str());
+    return result.ok ? 0 : 1;
 }
 
 int CommandPublish(const std::vector<std::string>& args) {
@@ -459,6 +494,7 @@ int CommandLine(int argc, char** argv) {
     if (command == "check") return CommandCheck(args);
     if (command == "page") return CommandPage(args);
     if (command == "publish") return CommandPublish(args);
+    if (command == "docs") return CommandDocs(args);
     if (command == "import") return CommandImport(args);
     if (command == "hosts") return CommandHosts(args);
     if (command == "media") return CommandMedia(args);

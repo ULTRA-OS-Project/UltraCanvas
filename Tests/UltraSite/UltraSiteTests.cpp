@@ -5,10 +5,13 @@
 // hash and change name only when their content does; a behaviour module
 // reaches exactly the pages that ask for it; a broken link or anchor and a
 // page over budget fail the build; what an earlier build left is removed.
+// Version: 0.2.0 - Markdown (front matter, ids, admonitions, tabs, wrapped lines, highlighting), AddDocs
+//                  (folders, categories, links, translations), the doc layout, the search index
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSite/UltraSite.h"
+#include "UltraSite/UltraSiteMarkdown.h"
 
 #include "HTMLReader/HTMLDocument.h"
 #include "HTMLReader/HTMLParser.h"
@@ -315,10 +318,182 @@ static void TestChecks() {
     fs::remove_all(dir, ec);
 }
 
+static void TestMarkdown() {
+    std::printf("Markdown\n");
+    const FrontMatter matter = ParseFrontMatter("---\ntitle: \"Hello: world\"\nsidebar_position: 3\n---\n# Body\n");
+    Check(matter.present && matter.values.at("title") == "Hello: world" && matter.values.at("sidebar_position") == "3" &&
+              matter.body == "# Body\n",
+          "front matter is read, its quotes removed");
+    Check(!ParseFrontMatter("---\nno end\n").present && ParseFrontMatter("Plain").body == "Plain", "text without front matter is the body");
+
+    Check(Slugify("Second: one & two") == "second-one--two", "a heading's id as GitHub spells it");
+    Check(Slugify("Library links \xE2\x80\x94 websites") == "library-links--websites", "a dash is dropped, as GitHub drops it");
+    Check(Slugify("\xC3\x9C" "ber \xC3\xA4hnliche Dinge") == "\xC3\xBC" "ber-\xC3\xA4hnliche-dinge", "letters beyond ASCII are kept, in lower case");
+    HeadingIds ids;
+    Check(ids.Next("Usage") == "usage" && ids.Next("Usage") == "usage-1" && ids.Next("Usage") == "usage-2", "a repeated heading is numbered");
+
+    const std::string code = HighlightCode("cpp", "int main() { return 0; } // done\n", "Copy", "Copied");
+    Check(Contains(code, "<pre class=\"us-code\" data-us=\"copy\" data-copy-label=\"Copy\" data-copied-label=\"Copied\" data-language=\"cpp\">") &&
+              Contains(code, "<code class=\"language-cpp\">") && Contains(code, "<span class=\"tok-k\">return</span>") &&
+              Contains(code, "<span class=\"tok-c\">// done</span>"),
+          "code is highlighted when the site is built, with a copy button");
+    Check(Contains(HighlightCode("no-such-language", "a < b"), "<code class=\"language-no-such-language\">a &lt; b</code>"),
+          "an unknown language is plain, escaped");
+
+    MarkdownOptions options;
+    std::vector<std::string> linked;
+    options.link = [&](const std::string& target) {
+        linked.push_back(target);
+        return "/docs/" + target.substr(0, target.find('.')) + "/";
+    };
+    const MarkdownResult result = MarkdownToHtml(
+        "# The title\n\nA paragraph\nwrapped over\nthree lines.\n\n## First part\n\nSee [the other](other.md) and "
+        "[outside](https://example.org) and [here](#first-part).\n\n:::warning Mind this\nIt **matters**.\n:::\n\n"
+        "> [!TIP]\n> A hint\n> on two lines.\n\n:::tabs\n::tab[One]\nFirst.\n::tab[Two]\n```js\nconst a = 1;\n```\n:::\n\n"
+        "### Deeper\n\n- an item\n  that wraps\n- another\n",
+        options);
+    Check(result.title == "The title", "the first h1 is the title");
+    Check(Contains(result.html, "<p>A paragraph wrapped over three lines.</p>"), "wrapped lines are one paragraph");
+    Check(Contains(result.html, "<li>an item that wraps</li>"), "a wrapped list item is one item");
+    Check(Contains(result.html, "<h2 id=\"first-part\">First part</h2>") && Contains(result.html, "<h3 id=\"deeper\">"),
+          "headings carry their ids");
+    Check(result.toc.size() == 2 && result.toc[0].id == "first-part" && result.toc[1].level == 3, "the h2 and h3 are the table of contents");
+    Check(linked.size() == 1 && linked[0] == "other.md" && Contains(result.html, "href=\"/docs/other/\"") &&
+              Contains(result.html, "href=\"https://example.org\"") && Contains(result.html, "href=\"#first-part\""),
+          "a relative link goes through the caller; an outside link and an anchor stay");
+    Check(Contains(result.html, "<div class=\"us-admonition us-admonition-warning\" role=\"note\">\n<p class=\"us-admonition-title\">Mind this</p>") &&
+              Contains(result.html, "<b>matters</b>"),
+          "an admonition with its title and its Markdown");
+    Check(Contains(result.html, "us-admonition-tip") && Contains(result.html, "A hint on two lines."), "GitHub's alert is an admonition");
+    Check(Contains(result.html, "<div class=\"us-tabs\" data-us=\"tabs\">") && Contains(result.html, "<section class=\"us-tab\" data-label=\"Two\">") &&
+              Contains(result.html, "<p class=\"us-tab-label\">One</p>") && Contains(result.html, "<span class=\"tok-k\">const</span>"),
+          "tabs: one section per tab, labelled, readable without script");
+}
+
+static void TestDocs() {
+    std::printf("Docs\n");
+    const fs::path dir = TempDir("docs");
+    const fs::path docs = dir / "docs";
+    Write(docs / "index.md", "# Welcome\n\nThe start. Read [the guide](guide/install.md#before-you-start).\n");
+    Write(docs / "guide" / "_category_.json", "{\"label\": \"The guide\", \"position\": 1}");
+    Write(docs / "guide" / "install.md",
+          "---\nsidebar_position: 2\n---\n# Install\n\n## Before you start\n\nSee [usage](usage.md), "
+          "[the source](../../src/main.cpp) and [a file](files/notes.txt).\n\n## Steps\n\nRun it.\n");
+    Write(docs / "guide" / "usage.md", "---\nsidebar_position: 1\nsidebar_label: Use it\n---\n# Usage\n\nUse it. Back [home](../index.md).\n");
+    Write(docs / "guide" / "files" / "notes.txt", "notes");
+    Write(docs / "reference" / "api.md", "# API\n\nThe calls.\n");
+    Write(docs / "draft.md", "---\ndraft: true\n---\n# Not yet\n");
+    Write(docs / "CHANGELOG.md", "# Changes\n");
+    Write(dir / "src" / "main.cpp", "int main() {}");
+    Write(dir / "de" / "index.md", "# Willkommen\n\nDer Anfang.\n");
+
+    SiteConfig config = FixtureConfig();
+    config.search = true;
+    config.languageNames = {{"de", "Deutsch"}, {"en", "English"}};
+    config.navbar = {{"Docs", "/docs/", {}}};
+    config.footer.clear();
+    Route front;
+    front.path = "/";
+    front.title = "Example";
+    front.bodyHtml = "<h1>Example</h1>\n<p><a href=\"/docs/\">The docs</a></p>\n";
+    Builder builder(config);
+    builder.AddRoute(front);
+    DocsOptions options;
+    options.folder = UltraCanvas::PathToUtf8(docs);
+    options.editUrl = "https://example.com/edit/docs/";
+    options.sourceRoot = UltraCanvas::PathToUtf8(dir);
+    options.sourceUrl = "https://example.com/blob/";
+    options.exclude = {"CHANGELOG.md"};
+    options.translations = {{"de", UltraCanvas::PathToUtf8(dir / "de"), "/de/docs/"}};
+    const DocsReport report = builder.AddDocs(options);
+    for (const std::string& warning : report.warnings) std::printf("  warning: %s\n", warning.c_str());
+    Check(report.errors.empty() && report.warnings.empty() && report.pages == 5, "the docs load: four pages and one translation");
+
+    const fs::path out = dir / "out";
+    const BuildResult result = builder.Build(UltraCanvas::PathToUtf8(out));
+    PrintErrors(result);
+    Check(result.ok, "the docs site builds, every link between the files resolved");
+    Check(fs::exists(out / "docs" / "index.html") && fs::exists(out / "docs" / "guide" / "install" / "index.html") &&
+              fs::exists(out / "docs" / "guide" / "usage" / "index.html") && fs::exists(out / "docs" / "reference" / "api" / "index.html") &&
+              fs::exists(out / "de" / "docs" / "index.html"),
+          "a page per file, at its path without .md");
+    Check(!fs::exists(out / "docs" / "draft") && !fs::exists(out / "docs" / "CHANGELOG"), "drafts and excluded files are left out");
+    Check(fs::exists(out / "docs" / "guide" / "index.html") && fs::exists(out / "docs" / "reference" / "index.html"),
+          "a folder without an index page gets one");
+
+    const std::string install = Read(out / "docs" / "guide" / "install" / "index.html");
+    Check(Contains(install, "<div class=\"us-doc\">") && Contains(install, "<aside class=\"us-sidebar\" id=\"us-sidebar\">"),
+          "the doc layout: a sidebar beside the page");
+    Check(Contains(install, "href=\"/docs/guide/usage/\"") && Contains(install, "href=\"https://example.com/blob/src/main.cpp\"") &&
+              Contains(install, "href=\"/assets/notes."),
+          "links: another doc to its page, the source to sourceUrl, a file in the folder to an asset");
+    Check(Contains(install, "<a href=\"/docs/guide/install/\" aria-current=\"page\">Install</a>"), "the sidebar marks the page");
+    const size_t use = install.find(">Use it</a>"), inst = install.find("aria-current=\"page\">Install</a>");
+    Check(use != std::string::npos && inst != std::string::npos && use < inst, "the sidebar follows sidebar_position and sidebar_label");
+    Check(Contains(install, "<nav class=\"us-breadcrumbs\"") && Contains(install, "<a href=\"/docs/guide/\">The guide</a>"),
+          "the breadcrumbs name the category from _category_.json");
+    Check(Contains(install, "rel=\"prev\"><small>Previous</small><span>Use it</span>") && Contains(install, "rel=\"next\""),
+          "previous and next follow the sidebar");
+    Check(Contains(install, "data-us=\"toc\"") && Contains(install, "<a href=\"#before-you-start\">Before you start</a>") &&
+              Contains(install, "/assets/js/toc."),
+          "the table of contents, with its module");
+    Check(Contains(install, "href=\"https://example.com/edit/docs/guide/install.md\""), "the edit link");
+    Check(Contains(install, "data-us=\"search\"") && Contains(install, "/assets/js/search."), "the search box on every page");
+
+    const std::string home = Read(out / "docs" / "index.html");
+    Check(Contains(home, "href=\"/docs/guide/install/#before-you-start\""), "a link with an anchor keeps it");
+    Check(Contains(home, "<nav class=\"us-langs\"") && Contains(home, "hreflang=\"de\" lang=\"de\">Deutsch</a>") &&
+              Contains(Read(out / "de" / "docs" / "index.html"), "<html lang=\"de\">"),
+          "a translated page: the language switcher, the page in its language");
+    const std::string reference = Read(out / "docs" / "reference" / "index.html");
+    Check(Contains(reference, "<ul class=\"us-cards\">") && Contains(reference, "href=\"/docs/reference/api/\""),
+          "the generated index lists the folder's pages");
+
+    // The search: an index per language, a page that lists every page.
+    std::string index;
+    for (const fs::directory_entry& entry : fs::directory_iterator(out / "search")) {
+        const std::string name = entry.path().filename().string();
+        if (name.rfind("en.", 0) == 0) index = Read(entry.path());
+    }
+    Check(Contains(index, "[\"Install\",\"/docs/guide/install/\",") && Contains(index, "[\"before-you-start\",\"Before you start\""),
+          "the index holds the pages, their sections and their text");
+    Check(fs::exists(out / "search" / "index.html") && Contains(Read(out / "search" / "index.html"), "<ul class=\"us-site-index\">"),
+          "the search page lists every page for a browser without script");
+
+    // An index over budget keeps titles and headings only.
+    SiteConfig small = config;
+    small.budgets.searchIndex = 60;
+    Builder tight(small);
+    tight.AddRoute(front);
+    tight.AddDocs(options);
+    BuildOptions lenient;
+    lenient.enforceBudgets = false;
+    const BuildResult trimmed = tight.Build(UltraCanvas::PathToUtf8(dir / "tight"), lenient);
+    Check(std::any_of(trimmed.warnings.begin(), trimmed.warnings.end(),
+                      [](const std::string& w) { return Contains(w, "titles, headings and descriptions only"); }),
+          "a search index too large drops the texts and says so");
+
+    // A link to a file that is not there is reported and fails the build;
+    // as a warning it does not.
+    Write(docs / "reference" / "broken.md", "# Broken\n\nSee [nothing](missing.md).\n");
+    Builder broken(config);
+    broken.AddRoute(front);
+    const DocsReport brokenReport = broken.AddDocs(options);
+    Check(!brokenReport.warnings.empty(), "a link to a missing file is reported when the docs load");
+    Check(!broken.Build(UltraCanvas::PathToUtf8(dir / "broken")).ok, "and fails the build");
+    BuildOptions warn;
+    warn.brokenLinksWarn = true;
+    Check(broken.Build(UltraCanvas::PathToUtf8(dir / "broken"), warn).ok, "brokenLinksWarn makes it a warning");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     TestHelpers();
     TestBuild();
     TestChecks();
+    TestMarkdown();
+    TestDocs();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
