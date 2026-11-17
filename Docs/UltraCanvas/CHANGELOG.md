@@ -1,3 +1,16 @@
+#### 2026-11-17 *0.9.571*
+- **UltraIM: Mattermost and Zulip providers** (`Plugins/UltraIM/mattermost`,
+  `Plugins/UltraIM/zulip`; modules `ultraim_mattermost`, `ultraim_zulip`).
+  Mattermost over its REST API v4: password with an MFA code
+  (`UltraIMAuthStep::Code`) or a personal access token, direct and group
+  messages and team channels, polled, thread replies, files, edits,
+  deletes, read marks. Zulip over its REST API: password or API key, direct
+  and group messages and stream topics, news from the event queue, uploads,
+  edits, deletes, read flags. Both keep their session in UltraVault, answer
+  `FetchAccountProfile` with the account's name, and are tested against a
+  stand-in server in standard-library python (`MattermostProviderTests`,
+  `ZulipProviderTests`). No plug-in ABI change.
+
 #### 2026-11-17 *0.9.570*
 - **Chart engine: axis distributions.** `AddAxisDistribution` draws the
   distribution of an axis's values along that axis, at the axis's own scale:

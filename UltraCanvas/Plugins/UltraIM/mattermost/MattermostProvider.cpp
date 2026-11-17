@@ -238,6 +238,22 @@ void MattermostProvider::SetState(UltraIMConnectionState state, const std::strin
     Emit(event);
 }
 
+void MattermostProvider::FetchAccountProfile(UltraIMAccountProfileCallback onResult) {
+    UltraIMAccountProfile profile;
+    UltraIMResult result = UltraIMResult::Ok();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (me_.id.empty()) {
+            result = UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Mattermost");
+        } else {
+            // "Erin Smith (@erin)": the name others see, and the one to type.
+            profile.displayName = me_.name == me_.username || me_.username.empty()
+                                      ? me_.name : me_.name + " (@" + me_.username + ")";
+        }
+    }
+    if (onResult) onResult(result, profile);
+}
+
 std::string MattermostProvider::GetLocalUserId() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return me_.id;

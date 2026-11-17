@@ -1,3 +1,16 @@
+#### 2026-11-17 *0.1.29*
+- **Mattermost and Zulip.** Two team chats join ChatCube, with buttons in a
+  third row: your server, your user name or e-mail and your password (and,
+  for a Mattermost account with two-factor sign-in, the code from your
+  authenticator app). Mattermost brings your direct and group messages and
+  your teams' channels, with thread replies; Zulip your direct and group
+  messages and each topic of your streams as a chat. Texts, files of any
+  kind with the progress bar, edits, deletes, read marks, search; the next
+  start signs in by itself. The status line shows the account's name.
+- **Which network?** An address more than one signed-in network takes
+  (`@user`: Telegram and Mattermost; an e-mail: Zulip and Mattermost) asks
+  which one when added.
+
 #### 2026-11-16 *0.1.28*
 - **Mastodon.** A Mastodon button beside Telegram signs in to any Mastodon
   server (or one that speaks its language: GoToSocial, Akkoma, Pleroma) on

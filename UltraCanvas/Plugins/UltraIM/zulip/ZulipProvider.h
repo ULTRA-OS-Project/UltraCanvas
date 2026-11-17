@@ -102,6 +102,9 @@ public:
     UltraIMConnectionState GetConnectionState() const override { return state_.load(); }
     // The account's Zulip user id, as text ("12").
     std::string GetLocalUserId() const override;
+    // The signed-in account as people see it (its name; the e-mail where the
+    // service shows it): read-only - the profile is edited on the server.
+    void FetchAccountProfile(UltraIMAccountProfileCallback onResult) override;
     bool HasStoredSession() const override;
 
     // The subscribed streams' newest topics and the direct conversations of

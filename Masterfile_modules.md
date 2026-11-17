@@ -3019,8 +3019,15 @@ people by username or phone number. Provider: Mastodon
 direct messages of a Mastodon server over its REST API - browser sign-in
 (OAuth with PKCE, `UltraIMAuthStep::Browser`), a chat per set of people
 over all their threads, polled; replies, edits, deletes, read marks,
-pictures, videos and sound. Tests in `Tests/UltraIM`. See
-`Docs/Modules/UltraIM/README.md`.
+pictures, videos and sound. Provider: Mattermost
+(`UltraCanvas/Plugins/UltraIM/mattermost/`, module `ultraim_mattermost`):
+channels, direct and group messages of a Mattermost server over its REST
+API - password with an MFA code, or a personal access token; polled;
+thread replies, files, edits, deletes. Provider: Zulip
+(`UltraCanvas/Plugins/UltraIM/zulip/`, module `ultraim_zulip`): direct and
+group messages and stream topics of a Zulip organization - password or API
+key; the event queue; uploads, edits, deletes. Tests in `Tests/UltraIM`.
+See `Docs/Modules/UltraIM/README.md`.
 
 ---
 

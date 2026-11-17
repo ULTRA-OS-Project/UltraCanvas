@@ -2304,7 +2304,11 @@ void ChatCubeWindow::ToggleAccountForm(AccountForm& f) {
     }
     if (info.connectionState == UltraIMConnectionState::Connected) {
         f.form->SetVisible(false);
-        SetStatus(TrF("{0}: signed in as {1}", f.name, info.localUserId));
+        AccountForm* form = &f;
+        UltraIM_FetchAccountProfile(f.providerId, [this, form, id = info.localUserId](const UltraIMResult& r,
+                                                                                    const UltraIMAccountProfile& p) {
+            SetStatus(TrF("{0}: signed in as {1}", form->name, r && !p.displayName.empty() ? p.displayName : id));
+        });
     } else {
         f.form->SetVisible(!f.form->IsVisible());
     }
@@ -2367,6 +2371,13 @@ bool ChatCubeWindow::OnAccountEvent(const UltraIMEvent& e) {
                 UltraIM_GetProviderInfo(f->providerId, info);
                 SetProviderStatus(f->providerId, TrF("signed in as {0}", info.localUserId));
                 SetNetworkButton(f->toggle, f->name, TrF("{0}: signed in as {1}", f->name, info.localUserId));
+                // The account's name rather than its id, which means nothing to a person.
+                UltraIM_FetchAccountProfile(f->providerId, [this, f](const UltraIMResult& r,
+                                                                     const UltraIMAccountProfile& profile) {
+                    if (!r || profile.displayName.empty()) return;
+                    SetProviderStatus(f->providerId, TrF("signed in as {0}", profile.displayName));
+                    SetNetworkButton(f->toggle, f->name, TrF("{0}: signed in as {1}", f->name, profile.displayName));
+                });
                 RefreshConversations();
                 // The next sign-in starts at the server again, not at a code.
                 f->server->SetVisible(true);

@@ -348,6 +348,21 @@ void ZulipProvider::AuthLost(const std::string& why) {
     Emit(event);
 }
 
+void ZulipProvider::FetchAccountProfile(UltraIMAccountProfileCallback onResult) {
+    UltraIMAccountProfile profile;
+    UltraIMResult result = UltraIMResult::Ok();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (me_.id.empty()) {
+            result = UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Zulip");
+        } else {
+            profile.displayName = me_.name;
+            profile.email = me_.email;
+        }
+    }
+    if (onResult) onResult(result, profile);
+}
+
 std::string ZulipProvider::GetLocalUserId() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return me_.id;

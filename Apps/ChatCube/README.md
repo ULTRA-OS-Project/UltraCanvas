@@ -9,8 +9,9 @@ protect it when you want them to.
 ChatCube is the window; the networks are UltraIM providers
 ([`Docs/Modules/UltraIM`](../../Docs/Modules/UltraIM/README.md)). This release
 uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`), Matrix
-(`.../matrix`), Telegram (`.../telegram`) and the direct messages of
-Mastodon (`.../mastodon`); XMPP and other messengers with an open API come
+(`.../matrix`), Telegram (`.../telegram`), the direct messages of
+Mastodon (`.../mastodon`), and the team chats Mattermost (`.../mattermost`)
+and Zulip (`.../zulip`); XMPP and other messengers with an open API come
 later as further providers.
 Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/ChatCubeDirectPlan.md).
 The first ChatCube draft, which this replaces, is kept under
@@ -136,6 +137,16 @@ The first ChatCube draft, which this replaces, is kept under
    Messages are text, pictures, videos and sound - Mastodon takes no other
    file - and come every few seconds (ChatCube asks the server; Mastodon
    has no typing, read ticks or calls).
+   **Mattermost** and **Zulip**, the team chats, have the third row of
+   buttons: your server, your user name or e-mail (Zulip: the e-mail) and
+   your password; a Mattermost account with two-factor sign-in then asks
+   for the code from your authenticator app. Mattermost brings your direct
+   and group messages and your teams' channels (`Town Square (Team A)`),
+   replies as threads; Zulip your direct and group messages and every topic
+   of your streams (`#general > greetings`) as a chat of its own, news the
+   moment it is sent. Files of any kind go both ways. An address in *Add*
+   that more than one signed-in network takes - `@user` on Telegram and
+   Mattermost, an e-mail address on Zulip and Mattermost - asks which.
 5. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
    *Settings* below). A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,

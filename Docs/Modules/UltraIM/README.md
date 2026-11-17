@@ -868,8 +868,99 @@ statuses between two looks in order, a reply, an edit, a delete seen by both
 sides, a picture and a video byte for byte, a file refused, search, read, a
 group, a second thread in the same chat, leaving. Skips without python3.
 
+## Provider: Mattermost
+
+`UltraCanvas/Plugins/UltraIM/mattermost/` (module `ultraim_mattermost`,
+provider id `mattermost`) is a client of a Mattermost server's REST API
+(v4) over UltraNet; like Mastodon it links only UltraNet, UltraVault and
+UltraCrypt.
+
+- **Sign-in** (`UltraIMLoginType::UsernamePassword`): `credentials.server`
+  (a bare host is taken as https), `username` (the user name or the e-mail)
+  and `password` (`POST /api/v4/users/login`; the session token comes in
+  the `Token` header). An account with multi-factor authentication answers
+  `NeedsInput` with the step `Code` (`authHint`: what to type) and an
+  `AuthStepChange`; the next `SignIn` needs only `otpCode` - a wrong code
+  answers `AuthFailed` and stays on the step. `accessToken` (a personal
+  access token) signs in directly. The session is kept in UltraVault and
+  resumed by `SignIn` with no credentials; a token the server no longer
+  takes drops it (`AuthFailed` at the start, `AuthRequire` while connected).
+  `FetchAccountProfile` answers the account's name (`Erin Smith (@erin)`).
+- **Conversations** are channels, the id the channel's: a direct message
+  (1:1, `directContactId` the other user), a group message (2-7 others), and
+  the public and private channels of the user's teams as groups titled
+  `Channel (Team)`, their creator as `ownerId`. Unread counts are the
+  channel's messages minus those read.
+- **News by polling** every few seconds (`MattermostTimings::pollMs`, 3 s):
+  a channel whose last post moved, one open in the window, or one busy in
+  the last 15 minutes is read with `posts?since=` - new posts in order
+  (`MessageReceive`), edits (`MessageUpdate`), deletes (`MessageDelete`); a
+  real server does not move a channel's time on an edit or a delete, hence
+  the open and busy ones. System posts are left out.
+- **Messages**: the post's markdown as it is; a thread reply has `replyTo`
+  its root post (a reply to a reply goes into the root's thread). Files of
+  any type, uploaded with `TransferProgress` and fetched with the token;
+  pictures come by themselves. The client id goes as `pending_post_id`, so
+  our own post is not received back.
+- **Edit, delete** (one's own, for everyone), **read**, **people** -
+  `AddContact` takes `@user`, `user`, an e-mail or a user id; `CreateGroup`
+  2-7 people (a group message, its title the members') - **leave** (a
+  channel; a direct or group message is hidden as Mattermost hides it and
+  comes back with its next post), **search** one conversation at a time.
+- **Not here**: typing, presence, read receipts, calls, reactions; only a
+  post's first file is its attachment.
+
+Tests: `Tests/UltraIM/MattermostProviderTests.cpp` against
+`mattermost_fake_server.py` (standard-library python: a team with two
+channels, passwords, personal access tokens, an MFA user): every sign-in
+path including MFA and a session the server ended, channels and direct
+messages, several posts between two looks in order, thread replies, edit and
+delete seen by the other side, a picture, a PDF and a voice note byte for
+byte, search, unread and read, group messages, hiding and leaving. Skips
+without python3 unless `ULTRAIM_TEST_MATTERMOST_REQUIRED` is set.
+
+## Provider: Zulip
+
+`UltraCanvas/Plugins/UltraIM/zulip/` (module `ultraim_zulip`, provider id
+`zulip`) is a client of a Zulip organization's REST API over UltraNet.
+
+- **Sign-in** (`UltraIMLoginType::UsernamePassword`): `credentials.server`
+  (the organization, `chat.zulip.org`), `username` (the account's e-mail)
+  and `password` (`POST /api/v1/fetch_api_key`), or `accessToken` = the
+  account's API key with the e-mail in `username`; then HTTP Basic with the
+  e-mail and the key. Kept in UltraVault and resumed by `SignIn` with no
+  credentials. `FetchAccountProfile` answers the name and the e-mail.
+- **Conversations**: a direct message `dm:<id>`, a group direct message
+  `dm:<id>,<id>` (the others' user ids in order), and every topic of a
+  subscribed stream as a group `stream:<stream id>:<topic>`, titled
+  `#stream > topic`. The list is the streams' newest topics and the newest
+  direct messages; unread counts those without the `read` flag.
+- **News from the event queue** (`/api/v1/register`, then `/events`
+  long-polled on a thread of its own): new messages, edits and deletes at
+  once; a queue the server forgot is registered again, and a network error
+  shows as Reconnecting.
+- **Messages**: the raw markdown (`apply_markdown=false`). An upload's link
+  (`/user_uploads/...`) is the attachment - of any type, sent with
+  `TransferProgress`, fetched with the key; pictures come by themselves.
+- **Edit, delete** (one's own, for everyone), **read** (the `read` flag),
+  **people** (`AddContact` an e-mail or a user id, `CreateGroup` a group
+  direct message), **leave** (a topic muted, a direct message hidden on this
+  device), **search** one conversation at a time.
+- **Not here**: replies to a message (Zulip quotes instead), typing,
+  presence, read receipts, calls; moved or renamed topics. Needs Zulip 7.0
+  or later.
+
+Tests: `Tests/UltraIM/ZulipProviderTests.cpp` against `zulip_fake_server.py`
+(standard-library python, with a real long-poll): password and API-key
+sign-in and the session kept, direct, group direct and stream-topic
+messages both ways, edit and delete seen by the other side, uploads byte
+for byte, read, search, a lost event queue registered again without losing
+a message, leaving, and a shutdown that does not wait for an open long-poll.
+Skips without python3 unless `ULTRAIM_TEST_ZULIP_REQUIRED` is set.
+
 ## Status
 
 Implemented: the registry, the module loader, the event bus and dispatcher,
 the merged conversation fetch and every forwarding call; the ChatCube
-Direct, Matrix, Telegram and Mastodon providers (above). Next: XMPP and others.
+Direct, Matrix, Telegram, Mastodon, Mattermost and Zulip providers (above).
+Next: XMPP and others.

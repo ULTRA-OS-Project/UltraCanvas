@@ -101,6 +101,9 @@ public:
     void SignOut() override;
     UltraIMConnectionState GetConnectionState() const override { return state_.load(); }
     std::string GetLocalUserId() const override;
+    // The signed-in account as people see it (its name; the e-mail where the
+    // service shows it): read-only - the profile is edited on the server.
+    void FetchAccountProfile(UltraIMAccountProfileCallback onResult) override;
     bool HasStoredSession() const override;
     UltraIMAuthStep GetAuthStep() const override;
     std::string GetAuthHint() const override;
