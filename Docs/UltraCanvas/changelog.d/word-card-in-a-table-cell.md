@@ -28,5 +28,4 @@
   round it** in documents whose lines keep their fonts' line gap
   (`UCRichDocument::fontLineGap`, the default): Pango forgets a box's height
   when lines are spaced by their fonts' heights. A paragraph with such a box
-  is now set without that spacing, and the line keeps its font's descent under
-  the box, as Word and Writer set it.
+  is now set without that spacing.

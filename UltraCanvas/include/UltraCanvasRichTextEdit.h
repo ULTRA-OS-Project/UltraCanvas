@@ -983,8 +983,6 @@ private:
     // (RichTextRun::emptyLineHeightPt) is scaled from.
     mutable std::map<std::string, float> lineUnitCache;
     mutable float emptyLineUnitPx = 0.0f;
-    mutable float lineDescentPx = 0.0f;           // of that line, what lies under its baseline
-    mutable std::map<std::string, float> lineDescentCache;
     mutable bool layoutHasBox = false;            // the layout being made has a box standing in a line
     // The paragraphs of the frames standing in a table cell's lines, by
     // frame: laid out by the table's layout just before the cell's.

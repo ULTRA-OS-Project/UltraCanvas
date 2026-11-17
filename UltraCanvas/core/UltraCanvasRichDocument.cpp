@@ -733,10 +733,57 @@ namespace {
 // WithFramesInlineIn's work; `depth` stops a frame that (in a damaged file)
 // contains itself.
 std::vector<RichDocBlock> FramesInline(const UCRichDocument& document, const std::vector<RichDocBlock>& in,
+                                       int depth);
+
+// `blocks` as the runs of one table cell: a paragraph a line, a table's row
+// a line with a tab between its cells.
+void AppendAsCellRuns(const UCRichDocument& document, const std::vector<RichDocBlock>& blocks,
+                      std::vector<RichTextRun>& out, int depth) {
+    auto append = [&](const std::vector<RichTextRun>& runs, bool newLine) {
+        bool first = true;
+        for (const RichTextRun& run : runs) {
+            out.push_back(run);
+            if (first) out.back().lineBreakBefore = newLine && out.size() > 1;
+            first = false;
+        }
+        if (first && newLine && !out.empty()) {
+            RichTextRun empty;
+            empty.lineBreakBefore = true;
+            out.push_back(std::move(empty));
+        }
+    };
+    for (const RichDocBlock& block : FramesInline(document, blocks, depth + 1)) {
+        if (block.type != RichBlockType::Table) {
+            append(block.runs, true);
+            continue;
+        }
+        for (const RichTableRow& row : block.tableRows) {
+            bool firstCell = true;
+            for (const RichTableCell& cell : row.cells) {
+                if (firstCell) {
+                    append(cell.runs, true);
+                } else {
+                    RichTextRun tab;
+                    tab.text = "\t";
+                    out.push_back(std::move(tab));
+                    append(cell.runs, false);
+                }
+                firstCell = false;
+            }
+        }
+    }
+}
+
+std::vector<RichDocBlock> FramesInline(const UCRichDocument& document, const std::vector<RichDocBlock>& in,
                                        int depth) {
     bool any = false;
     for (const RichDocBlock& block : in) {
         for (const RichTextRun& run : block.runs) any = any || run.IsTextFrame();
+        for (const RichTableRow& row : block.tableRows) {
+            for (const RichTableCell& cell : row.cells) {
+                for (const RichTextRun& run : cell.runs) any = any || run.IsTextFrame();
+            }
+        }
     }
     if (!any) return in;
     std::vector<RichDocBlock> out;
@@ -779,6 +826,27 @@ std::vector<RichDocBlock> FramesInline(const UCRichDocument& document, const std
         if (hadFrame && kept.empty() && block.type == RichBlockType::Paragraph) continue;
         RichDocBlock copy = block;
         if (hadFrame) copy.runs = std::move(kept);
+        // A table's cells: a frame's or nested table's words in the cell's
+        // own lines.
+        for (RichTableRow& row : copy.tableRows) {
+            for (RichTableCell& cell : row.cells) {
+                bool framed = false;
+                for (const RichTextRun& run : cell.runs) framed = framed || run.IsTextFrame();
+                if (!framed) continue;
+                std::vector<RichTextRun> runs;
+                for (const RichTextRun& run : cell.runs) {
+                    const RichTextFrame* frame = run.IsTextFrame() ? document.FrameFor(run) : nullptr;
+                    if (!run.IsTextFrame()) {
+                        runs.push_back(run);
+                    } else if (frame && depth < 8) {
+                        const size_t before = runs.size();
+                        AppendAsCellRuns(document, frame->blocks, runs, depth);
+                        if (runs.size() > before) runs[before].lineBreakBefore = run.lineBreakBefore && before > 0;
+                    }
+                }
+                cell.runs = std::move(runs);
+            }
+        }
         out.push_back(std::move(copy));
     }
     return out;

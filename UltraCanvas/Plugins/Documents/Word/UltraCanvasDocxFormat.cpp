@@ -1180,6 +1180,7 @@ private:
         std::vector<RichTextRun> runs;
         std::vector<RichDocBlock> trailingImages;
         bool pendingLineBreak = false;
+        bool columnBreak = false;              // a column break (w:br w:type="column") was read
         RichTextRun pendingBreakFormat;        // the format of the run whose break is pending
         bool paragraphCaps = false;            // the paragraph's style sets its text in capitals (w:caps)
         // Complex field (w:fldChar begin / w:instrText / separate / end): the
@@ -2646,6 +2647,8 @@ private:
             } else if (tag == "w:br") {
                 if (std::string(Attr(child, "w:type")) == "page") {
                     pendingPageBreak_ = true;
+                } else if (std::string(Attr(child, "w:type")) == "column") {
+                    ctx.columnBreak = true;        // its paragraph starts the next column
                 } else {
                     // A second break in a row is an empty line - in the font
                     // of the break that began it, not of the one that ends
@@ -2931,6 +2934,7 @@ private:
             if (!name.empty() && name != "_GoBack") block.bookmarks.push_back(name);
         }
         ParseInlineContainer(p, "", ctx);
+        block.columnBreakBefore = ctx.columnBreak;
         // A field's result may come in several runs ("Figure " "3"); the
         // model's field is one run, whose text an update replaces whole.
         for (size_t r = 1; r < ctx.runs.size();) {
@@ -3126,8 +3130,49 @@ private:
                 emptyLine.lineBreakBefore = true;
                 int paragraphCount = 0;
                 float spaceAboveFirst = 0.0f, spaceAfterLast = 0.0f;
-                for (auto* p = tc->FirstChildElement("w:p"); p;
-                     p = p->NextSiblingElement("w:p")) {
+                // The empty paragraph a cell must end with after a table in
+                // it is no line: Word gives the cell's end mark no height there.
+                bool afterNestedTable = false, emptyAfterTable = false;
+                for (auto* p = tc->FirstChildElement(); p; p = p->NextSiblingElement()) {
+                    const std::string childTag = p->Name() ? p->Name() : "";
+                    if (childTag == "w:tbl") {
+                        // A table in the cell: a frame of its own standing
+                        // in the cell's line, as wide as the table says.
+                        RichTextFrame nested;
+                        nested.nestedTable = true;
+                        const size_t start = doc_->blocks.size();
+                        ParseTable(p);
+                        nested.blocks.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                                             std::make_move_iterator(doc_->blocks.end()));
+                        doc_->blocks.resize(start);
+                        if (nested.blocks.empty()) continue;
+                        if (!firstParagraph) {
+                            if (ctx.pendingLineBreak) ctx.runs.push_back(emptyLine);
+                            if (spaceAfterLast > 0.5f) {
+                                RichTextRun spacer;
+                                spacer.lineBreakBefore = true;
+                                spacer.emptyLineHeightPt = spaceAfterLast;
+                                ctx.runs.push_back(std::move(spacer));
+                            }
+                            ctx.pendingLineBreak = true;
+                        }
+                        firstParagraph = false;
+                        spaceAfterLast = 0.0f;
+                        paragraphCount++;
+                        afterNestedTable = true;
+                        emptyAfterTable = false;
+                        RichTextRun run;
+                        run.text = RichTextRun::kObjectReplacement;
+                        run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+                        run.imageWidthPt = std::max(0.0f, nested.blocks.front().tableWidthPt);
+                        run.frameIndex = static_cast<int>(doc_->frames.size());
+                        doc_->frames.push_back(std::move(nested));
+                        run.lineBreakBefore = ctx.pendingLineBreak;
+                        ctx.pendingLineBreak = false;
+                        ctx.runs.push_back(std::move(run));
+                        continue;
+                    }
+                    if (childTag != "w:p") continue;
                     // The room between two paragraphs - the one's space after
                     // and the other's before - is a line of that height
                     // between them; above the first and below the last it
@@ -3136,7 +3181,16 @@ private:
                     ApplyGeometry(spacing, p->FirstChildElement("w:pPr"));
                     const float before = std::max(0.0f, spacing.spaceBeforePt);
                     if (!firstParagraph) {
-                        if (ctx.pendingLineBreak) ctx.runs.push_back(emptyLine);
+                        if (ctx.pendingLineBreak) {
+                            ctx.runs.push_back(emptyLine);
+                        } else if (ctx.runs.empty()) {
+                            // An empty first paragraph: the cell's first
+                            // line, in its mark's font (a 2 pt one is a
+                            // hair of room above the text).
+                            RichTextRun first = emptyLine;
+                            first.lineBreakBefore = false;
+                            ctx.runs.push_back(std::move(first));
+                        }
                         if (spaceAfterLast + before > 0.5f) {
                             RichTextRun spacer;
                             spacer.lineBreakBefore = true;
@@ -3155,6 +3209,11 @@ private:
                     // first paragraph's, and its frame where the cell has none.
                     if (firstParagraph) {
                         cell.align = ParagraphAlignment(p);
+                        // Lines of a set height (not a trailer's hair of one).
+                        if (spacing.lineHeightPt >= 4.0f) {
+                            cell.lineHeightPt = spacing.lineHeightPt;
+                            cell.lineHeightAtLeast = spacing.lineHeightAtLeast;
+                        }
                         RichDocBlock paragraph;
                         ApplyGeometry(paragraph, p->FirstChildElement("w:pPr"));
                         if (paragraph.HasParagraphFrame()) paragraphFrames[{rowIndex, row.cells.size()}] = paragraph;
@@ -3162,6 +3221,8 @@ private:
                     firstParagraph = false;
                     const size_t runsBefore = ctx.runs.size();
                     ParseInlineContainer(p, "", ctx);
+                    emptyAfterTable = afterNestedTable && ctx.runs.size() == runsBefore;
+                    afterNestedTable = false;
                     // A cell keeps runs, not paragraphs: text without a size
                     // or font of its own takes its paragraph style's here.
                     RichDocBlock styled;
@@ -3183,7 +3244,7 @@ private:
                     }
                 }
                 if (ctx.pendingLineBreak) {
-                    ctx.runs.push_back(emptyLine);
+                    if (!emptyAfterTable) ctx.runs.push_back(emptyLine);
                     ctx.pendingLineBreak = false;
                 }
                 // An empty cell is as tall as a line of its paragraph's
@@ -3933,6 +3994,7 @@ private:
         pendingSectPr_.clear();
         std::string pPrStr = pPr.str();
         if (!pPrStr.empty()) xml << "<w:pPr>" << pPrStr << "</w:pPr>";
+        if (block.columnBreakBefore) xml << "<w:r><w:br w:type=\"column\"/></w:r>";
         for (const std::string& name : block.bookmarks) {
             const int id = ++bookmarkId_;
             xml << "<w:bookmarkStart w:id=\"" << id << "\" w:name=\"" << EscapeXml(name)
@@ -4433,7 +4495,7 @@ private:
         }
         if (block.tableAlign == RichTextAlign::Center) xml << "<w:jc w:val=\"center\"/>";
         else if (block.tableAlign == RichTextAlign::Right) xml << "<w:jc w:val=\"right\"/>";
-        if (block.tableIndentPt > 0.0f) xml << "<w:tblInd w:w=\"" << Twips(block.tableIndentPt) << "\" w:type=\"dxa\"/>";
+        if (block.tableIndentPt != 0.0f) xml << "<w:tblInd w:w=\"" << Twips(block.tableIndentPt) << "\" w:type=\"dxa\"/>";
         xml << "<w:tblBorders>";
         for (const char* side : {"top", "left", "bottom", "right", "insideH", "insideV"}) {
             xml << "<w:" << side << " " << tableLine;
@@ -4514,7 +4576,12 @@ private:
                 std::vector<RichTextRun> piece;
                 float above = 0.0f;
                 auto flush = [&]() {
-                    xml << "<w:p><w:pPr><w:spacing w:before=\"" << std::lround(above * 20.0f) << "\" w:after=\"0\"/>";
+                    xml << "<w:p><w:pPr><w:spacing w:before=\"" << std::lround(above * 20.0f) << "\" w:after=\"0\"";
+                    if (cell.lineHeightPt > 0.0f) {
+                        xml << " w:line=\"" << std::lround(cell.lineHeightPt * 20.0f) << "\" w:lineRule=\""
+                            << (cell.lineHeightAtLeast ? "atLeast" : "exact") << "\"";
+                    }
+                    xml << "/>";
                     if (const char* jc = JustificationFor(cell.align)) xml << "<w:jc w:val=\"" << jc << "\"/>";
                     // A paragraph without words is a line of its mark's font.
                     bool words = false;

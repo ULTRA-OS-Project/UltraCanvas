@@ -631,8 +631,8 @@ table if it is bigger than the cell - a card's background picture, anchored in
 the first cell, lies under the whole card. It takes no room, and it is drawn
 but not picked up, moved or resized from the page. Any other frame or drawing
 in a cell stands in the cell's line, as wide and tall as it says (a frame at
-least as tall as its words; a drawing with room for its outline), with the
-line's descent under it - a photo drawn as the fill of a shape. (Square and
+least as tall as its words; a drawing with room for its outline) - a photo
+drawn as the fill of a shape. (Square and
 top-and-bottom *pictures* in a cell stay in the line as before.)
 
 **Turned.** `RichTextRun::imageRotationDeg` turns a floating picture clockwise
@@ -653,9 +653,9 @@ banner.imageOffsetYPt = -118.0f;
 banner.imageRotationDeg = 270.0f;                   // lies on its side
 ```
 
-A picture or drawn shape standing in a line makes that line as tall as it is
-and keeps the line's descent under it, with words beside it or alone in its
-paragraph.
+A picture or drawn shape standing in a line makes that line as tall as it is;
+alone in its line it stands on the line's foot, with no descent under it (a
+row of 14.4 pt icons is a 14.4 pt line, as in Word).
 
 **Placed from the page.** By default a float counts across from the text
 column and down from its paragraph. `floatHorizontalFrom` and

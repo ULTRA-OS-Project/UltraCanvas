@@ -305,6 +305,11 @@ struct RichTableCell {
     // text and the cell's edges (points; < 0 = the view's default).
     RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
     float paddingTopPt = -1.0f, paddingBottomPt = -1.0f, paddingLeftPt = -1.0f, paddingRightPt = -1.0f;
+    // The height of the cell's lines of text where its paragraphs set one
+    // (points; 0 = each font's own): exactly that, or at least that
+    // (lineHeightAtLeast) - Word's w:spacing w:line with "exact" / "atLeast".
+    float lineHeightPt = 0.0f;
+    bool lineHeightAtLeast = false;
 
     // Copies borders and background (a new cell next to this one looks
     // like it).
@@ -373,6 +378,10 @@ struct RichDocBlock {
     // setup is UCRichDocument::firstSection.
     bool sectionStart = false;
     RichSectionSetup section;
+    // This block starts the next column of its section (Word's column
+    // break, ODF's fo:break-before="column"); the next page where the
+    // section has one column, or it was in the last.
+    bool columnBreakBefore = false;
 
     // An entry of the table of contents, for a heading of this level (1..9);
     // 0 = an ordinary block. UCRichDocument::UpdateTableOfContents rebuilds
@@ -692,6 +701,10 @@ struct RichTextFrame {
     // A text frame used only for a group member's text (RichShape::textFrame):
     // no run refers to it.
     bool shapeText = false;
+    // A table nested in a table cell (its blocks are that table): it stands
+    // in the cell's line with no box, padding or guide line of its own, as
+    // wide as the cell's text where its run names no width.
+    bool nestedTable = false;
 };
 
 // ===== COMMENTS =====

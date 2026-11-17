@@ -874,6 +874,12 @@ float UltraCanvasRichTextEdit::PlaceBlocksOnPages(IRenderContext* ctx) {
                     sectionFresh = true;
                 }
             }
+            // A column break: on in the next column - or on the next page,
+            // from the last column or where there is only one.
+            if (sourceBlock.columnBreakBefore && !pageEmpty && !breakPending) {
+                if (column + 1 < columns) nextColumn();
+                else breakPending = true;
+            }
             const float before = (!pageEmpty && !sectionFresh && i > 0) ? GapAfterBlock(i - 1) : 0.0f;
             sectionFresh = false;
             // Fitted round this page's pictures first: that can change its
@@ -1311,7 +1317,7 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
         ctx->DrawFilledRectangle(Rect2Dd(target.x + half, target.y + half, target.width - width, target.height - width),
                                  Colors::Transparent, static_cast<float>(width),
                                  ParseHexColor(frame->border.color, style.textColor));
-    } else if (!readOnly && !printing && !frame->IsDrawing()) {
+    } else if (!readOnly && !printing && !frame->IsDrawing() && !frame->nestedTable) {
         // An editable view shows where a borderless frame is, as Writer does
         // (on the screen: a print or a PDF has no such line).
         ctx->DrawFilledRectangle(target, Colors::Transparent, 1.0f, style.tableGuideColor);
@@ -2103,7 +2109,9 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             // the next run breaks the line again: as tall as it says, or a
             // line of its own font. The line break that ends it carries
             // that (an empty line is measured where it starts).
-            const bool emptyLine = run.lineBreakBefore && runIndex + 1 < runs.size() && runs[runIndex + 1].lineBreakBefore;
+            // (The first run too: an empty first line.)
+            const bool emptyLine = (run.lineBreakBefore || runIndex == 0) && runIndex + 1 < runs.size()
+                && runs[runIndex + 1].lineBreakBefore;
             if (emptyLine) {
                 auto onBreak = [&](std::unique_ptr<ITextAttribute> attr) {
                     if (!attr) return;
@@ -2207,7 +2215,8 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             const RichTextFrame& frame = editor.GetDocument()->frames[static_cast<size_t>(run.frameIndex)];
             const double lineWidth = layout->GetExplicitWidth();
             const float maxWidth = std::max(16.0f, lineWidth > 0.0 ? static_cast<float>(lineWidth) : ColumnWidth());
-            float width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt) : maxWidth * 0.5f;
+            float width = run.imageWidthPt > 0.0f ? Px(run.imageWidthPt)
+                        : frame.nestedTable ? maxWidth : maxWidth * 0.5f;
             float height = Px(std::max(0.0f, run.imageHeightPt));
             if (width > maxWidth) {
                 if (frame.IsDrawing()) height *= maxWidth / width;
@@ -2221,14 +2230,15 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                 content = found->second;
             }
             if (content) height = std::max(height, content->height + 2.0f * inset);
-            if (!frame.IsDrawing() || content) height = std::max(height, 2.0f * inset + 8.0f);
+            if (frame.nestedTable) height = content ? content->height : 0.0f;
+            else if (!frame.IsDrawing() || content) height = std::max(height, 2.0f * inset + 8.0f);
             // A drawing's outline lies half outside its box: the line makes
             // room for it (Word's wp:effectExtent), the drawing keeps its size.
             float outline = 0.0f;
             for (const RichShape& shape : frame.shapes) {
                 if (!shape.lineColor.empty()) outline = std::max(outline, Px(shape.lineWidthPt) * 0.5f);
             }
-            add(TextAttributeFactory::CreateShape(width + 2.0f * outline, height + 2.0f * outline, lineDescentPx));
+            add(TextAttributeFactory::CreateShape(width + 2.0f * outline, height + 2.0f * outline, 0.0));
             layoutHasBox = true;
             add(TextAttributeFactory::CreateFallback(false));
             BlockLayout::InlineImage placed;
@@ -2284,9 +2294,10 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             const bool ownLine = run.IsFloatingObject()
                 && (run.imageWrap == RichTextRun::ImageWrap::TopAndBottom
                     || (run.imageWrap == RichTextRun::ImageWrap::Square && run.imageFloatAlign == RichTextAlign::Center));
-            // Under a picture in a line the line keeps its descent, words
-            // beside it or not (a picture alone in its paragraph too).
-            float boxWidth = width, below = lineDescentPx, lineOffsetX = 0.0f;
+            // A picture alone in its line stands on the line's foot: Word
+            // keeps no descent under it (measured: a row of 14.4 pt icons is
+            // a 14.4 pt line).
+            float boxWidth = width, below = 0.0f, lineOffsetX = 0.0f;
             if (ownLine) {
                 boxWidth = std::max(width, maxWidth - 0.5f);
                 if (run.imageFloatAlign == RichTextAlign::Center) lineOffsetX = (boxWidth - width) * 0.5f;
@@ -2313,6 +2324,16 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
                 outInlineImages->push_back(std::move(placed));
             }
             continue;       // a picture carries no text formatting
+        }
+
+        // A cell's lines of a set height (RichTableCell::lineHeightPt): its
+        // words' lines; a picture in the line keeps its own height. "At
+        // least" leaves a line of a larger font as it is.
+        if (cellRow >= 0 && block.lineHeightPt > 0.0f) {
+            const float sizePt = run.fontSizePt > 0.0f ? run.fontSizePt : static_cast<float>(FontForBlock(block).fontSize);
+            if (!block.lineHeightAtLeast || sizePt * 1.15f < block.lineHeightPt) {
+                add(TextAttributeFactory::CreateAbsoluteLineHeight(static_cast<double>(Px(block.lineHeightPt))));
+            }
         }
 
         // A formula: typeset, and the run's source hidden behind it - unless
@@ -2589,13 +2610,13 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     // multiple of the font's own line: how tall that is, measured once per font.
     // The same unit is the line a paragraph keeps below a picture that
     // stands on a line of its own.
-    // And what of that line lies under the baseline is what a line keeps
-    // under a picture or a drawn shape standing in it.
     emptyLineUnitPx = 0.0f;
-    lineDescentPx = 0.0f;
     layoutLineGap = lineGap;
     for (const RichTextRun& run : runs) {
-        if (run.emptyLineHeightPt <= 0.0f && !run.IsInlineImage() && !run.IsTextFrame()) continue;
+        const bool ownLinePicture = run.IsInlineImage()
+            && (run.imageWrap == RichTextRun::ImageWrap::TopAndBottom
+                || (run.imageWrap == RichTextRun::ImageWrap::Square && run.imageFloatAlign == RichTextAlign::Center));
+        if (run.emptyLineHeightPt <= 0.0f && !ownLinePicture) continue;
         const FontStyle font = FontForBlock(block);
         const std::string key = font.fontFamily + "|" + std::to_string(font.fontSize) + (lineGap ? "|gap" : "");
         auto known = lineUnitCache.find(key);
@@ -2604,10 +2625,8 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
             probe->SetFontStyle(font);
             probe->SetLineSpacing(lineGap ? 1.0f : 0.0f);
             known = lineUnitCache.emplace(key, static_cast<float>(probe->GetLayoutHeight())).first;
-            lineDescentCache[key] = std::max(0.0f, known->second - static_cast<float>(probe->IndexToBaseline(0)));
         }
         emptyLineUnitPx = known->second;
-        lineDescentPx = lineDescentCache[key];
         break;
     }
     if (paragraphOriginX >= 0.0f) {
@@ -2808,7 +2827,10 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
             switch (block.tableAlign) {
                 case RichTextAlign::Center: tableLeft = (columnSpace - tableWidth) * 0.5f; break;
                 case RichTextAlign::Right: tableLeft = columnSpace - tableWidth; break;
-                default: tableLeft = std::clamp(Px(block.tableIndentPt), 0.0f, std::max(0.0f, columnSpace - tableWidth)); break;
+                // Left of the column too (Word's negative w:tblInd), as
+                // far as the page's margin reaches.
+                default: tableLeft = std::clamp(Px(block.tableIndentPt), -Px(EffectivePageSetup().marginLeftPt),
+                                                std::max(0.0f, columnSpace - tableWidth)); break;
             }
             float columnWidth = tableWidth / static_cast<float>(columnCount);
             // Column geometry: the document's own relative widths when it has
@@ -2827,7 +2849,9 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                 }
                 for (size_t c = 0; c < columnCount; c++) {
                     float share = usable ? tableWidth * widths[c] / total : columnWidth;
-                    columnLeft[c + 1] = columnLeft[c] + std::max(24.0f, share);
+                    // A width the document states is kept, however narrow
+                    // (a hair of a column that only sets another off).
+                    columnLeft[c + 1] = columnLeft[c] + std::max(usable ? 1.0f : 24.0f, share);
                 }
             }
 
@@ -2888,6 +2912,8 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                     RichDocBlock cellBlock;
                     cellBlock.type = RichBlockType::Paragraph;
                     cellBlock.align = modelCell.align;
+                    cellBlock.lineHeightPt = modelCell.lineHeightPt;
+                    cellBlock.lineHeightAtLeast = modelCell.lineHeightAtLeast;
                     // A cell without words is a line of the font its (empty)
                     // first run names: a heading row's small type keeps the
                     // row low.
@@ -2901,8 +2927,9 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, const std::v
                         const float lineWidth = std::max(16.0f, cellWidth - padLeft - padRight);
                         for (const RichTextRun& run : modelCell.runs) {
                             if (!run.IsTextFrame()) continue;
+                            const RichTextFrame* nested = editor.GetDocument()->FrameFor(run);
                             const float frameWidth = std::min(lineWidth, run.imageWidthPt > 0.0f
-                                ? Px(run.imageWidthPt) : lineWidth * 0.5f);
+                                ? Px(run.imageWidthPt) : nested && nested->nestedTable ? lineWidth : lineWidth * 0.5f);
                             const float inset = TextFrameInset(run.frameIndex);
                             cellFrameContent[run.frameIndex]
                                 = LayoutTextFrame(ctx, run.frameIndex, std::max(8.0f, frameWidth - 2.0f * inset));

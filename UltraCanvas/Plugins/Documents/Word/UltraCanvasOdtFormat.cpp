@@ -79,6 +79,7 @@ struct OdtTextProps {
     int rightToLeft = -1;                           // style:writing-mode rl-*: 1, lr-*: 0, unset: -1
     bool bottomBorder = false;                      // paragraph styles only
     bool pageBreakBefore = false;                   // paragraph styles only
+    bool columnBreakBefore = false;                 // fo:break-before="column", the style's own
     int headingLevel = 0;                           // derived from heading style names
     std::string characterStyle;                     // the named text style a span has (model id)
     // Paragraph geometry (paragraph styles only). NaN = not set by this style.
@@ -972,6 +973,7 @@ private:
             std::string border = Attr(pp, "fo:border-bottom");
             props.bottomBorder = !border.empty() && border != "none";
             props.pageBreakBefore = std::string(Attr(pp, "fo:break-before")) == "page";
+            props.columnBreakBefore = std::string(Attr(pp, "fo:break-before")) == "column";
         }
     }
 
@@ -2275,6 +2277,7 @@ private:
         if (inTableOfContents_ && block.type == RichBlockType::Paragraph) MakeContentsEntry(block, styleName);
 
         bool pageBreak = inMainFlow_ && paraProps.pageBreakBefore;
+        block.columnBreakBefore = inMainFlow_ && frameDepth_ == 0 && paraProps.columnBreakBefore;
         // One break, not two, where a page break is followed by the empty
         // paragraph that starts another page style (as the writer spells a
         // section of its own header and footer after a page break).
@@ -3746,6 +3749,7 @@ private:
             && (block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading)) {
             const std::string parent = StyleIdToOdfName(block.styleId);
             if (block.HasParagraphGeometry() || block.align != RichTextAlign::Default || block.rightToLeft
+                || block.columnBreakBefore
                 || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
                 return GeometryStyleFor(block, parent);
             }
@@ -3757,7 +3761,7 @@ private:
             default: break;
         }
         if (block.HasParagraphGeometry() || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()
-            || block.rightToLeft) {
+            || block.rightToLeft || block.columnBreakBefore) {
             return GeometryStyleFor(block);
         }
         return AlignedStyle(block.align);
@@ -3777,6 +3781,7 @@ private:
         std::ostringstream props;
         if (const char* align = AlignValue(block.align)) props << " fo:text-align=\"" << align << "\"";
         if (block.rightToLeft) props << " style:writing-mode=\"rl-tb\"";
+        if (block.columnBreakBefore) props << " fo:break-before=\"column\"";
         if (block.leftIndentPt != 0.0f) props << " fo:margin-left=\"" << Pt(block.leftIndentPt) << "\"";
         if (block.rightIndentPt != 0.0f) props << " fo:margin-right=\"" << Pt(block.rightIndentPt) << "\"";
         if (block.firstLineIndentPt != 0.0f) props << " fo:text-indent=\"" << Pt(block.firstLineIndentPt) << "\"";
