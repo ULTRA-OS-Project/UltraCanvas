@@ -2,6 +2,8 @@
 // Raw TCP/UDP sockets: POSIX on Linux/macOS, Winsock on Windows. Tracks each
 // open file descriptor in a process-wide registry keyed by UltraNetHandle so
 // callers operate on the handle rather than the OS fd.
+// Version: 0.5.1 - a TCP connection tries every address the name resolves to, in order
+//                  ("localhost" as ::1 then 127.0.0.1; a server's IPv6 address unreachable)
 // Version: 0.5.0 - no SIGPIPE on a write to a closed connection (MSG_NOSIGNAL, SO_NOSIGPIPE);
 //                  a receive that waited out its time answers Timeout, a broken connection
 //                  ConnectionReset / ReceiveFailed, a closed one Ok with no bytes
@@ -280,6 +282,40 @@ UltraNetResult Resolve(const std::string& host, int port, bool preferIpv6,
     outLen    = static_cast<socklen_t>(res->ai_addrlen);
     outIsIpv6 = (res->ai_family == AF_INET6);
     ::freeaddrinfo(res);
+    return UltraNetResult::Ok();
+}
+
+// Every address `host` resolves to, in the resolver's order (RFC 6724: the one
+// most likely to work first), for a TCP connection to try one after another.
+struct ResolvedAddress {
+    sockaddr_storage storage{};
+    socklen_t        len = 0;
+    bool             isIpv6 = false;
+};
+
+UltraNetResult ResolveAll(const std::string& host, int port, bool onlyIpv6, std::vector<ResolvedAddress>& out) {
+    out.clear();
+    addrinfo hints{};
+    hints.ai_family   = onlyIpv6 ? AF_INET6 : AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    addrinfo* res = nullptr;
+    const std::string portStr = std::to_string(port);
+    const int rc = ::getaddrinfo(host.c_str(), portStr.c_str(), &hints, &res);
+    if (rc != 0 || !res) {
+        if (res) ::freeaddrinfo(res);
+        return UltraNetResult::Error(UltraNetResultCode::HostNotFound, gai_strerror(rc));
+    }
+    for (addrinfo* a = res; a; a = a->ai_next) {
+        if (a->ai_family != AF_INET && a->ai_family != AF_INET6) continue;
+        if (a->ai_addrlen > sizeof(sockaddr_storage)) continue;
+        ResolvedAddress r;
+        std::memcpy(&r.storage, a->ai_addr, a->ai_addrlen);
+        r.len    = static_cast<socklen_t>(a->ai_addrlen);
+        r.isIpv6 = a->ai_family == AF_INET6;
+        out.push_back(r);
+    }
+    ::freeaddrinfo(res);
+    if (out.empty()) return UltraNetResult::Error(UltraNetResultCode::HostNotFound, "no IPv4 or IPv6 address");
     return UltraNetResult::Ok();
 }
 
@@ -576,22 +612,34 @@ UltraNetResult UltraNet_TcpOpen(const std::string& host, int port,
 
     const std::string connectHost = viaProxy ? proxy.host : host;
     const int connectPort = viaProxy ? proxy.port : port;
-    sockaddr_storage ss{};
-    socklen_t        sl = 0;
-    bool             v6 = false;
-    auto r = Resolve(connectHost, connectPort, opt.useIpv6 && !viaProxy, ss, sl, v6);
+    std::vector<ResolvedAddress> addresses;
+    auto r = ResolveAll(connectHost, connectPort, opt.useIpv6 && !viaProxy, addresses);
     if (!r) return viaProxy ? ProxyError(UltraNetResultCode::HostNotFound, proxy, r.message) : r;
 
-    SocketFd fd = ::socket(ss.ss_family, SOCK_STREAM, IPPROTO_TCP);
-    if (fd == kInvalidFd)
-        return UltraNetResult::Error(UltraNetResultCode::Unknown, SocketErrorString(LastSocketError()));
-    ApplyOptions(fd, opt);
-    if (viaProxy) SetTimeouts(fd, opt.connectTimeoutMs, opt.connectTimeoutMs);
-    else ApplyTimeout(fd, opt.sendTimeoutMs, opt.recvTimeoutMs);
-
-    if (::connect(fd, reinterpret_cast<sockaddr*>(&ss), sl) != 0) {
-        const std::string why = SocketErrorString(LastSocketError());
-        CloseFd(fd);
+    // Each address in turn until one takes the connection: a name with an
+    // IPv6 and an IPv4 address ("localhost" as ::1 and 127.0.0.1, a server
+    // whose IPv6 is not reachable from here) is reached on whichever answers.
+    SocketFd fd = kInvalidFd;
+    bool v6 = false;
+    std::string why;
+    for (const ResolvedAddress& address : addresses) {
+        SocketFd attempt = ::socket(address.storage.ss_family, SOCK_STREAM, IPPROTO_TCP);
+        if (attempt == kInvalidFd) {
+            why = SocketErrorString(LastSocketError());
+            continue;
+        }
+        ApplyOptions(attempt, opt);
+        if (viaProxy) SetTimeouts(attempt, opt.connectTimeoutMs, opt.connectTimeoutMs);
+        else ApplyTimeout(attempt, opt.sendTimeoutMs, opt.recvTimeoutMs);
+        if (::connect(attempt, reinterpret_cast<const sockaddr*>(&address.storage), address.len) == 0) {
+            fd = attempt;
+            v6 = address.isIpv6;
+            break;
+        }
+        why = SocketErrorString(LastSocketError());
+        CloseFd(attempt);
+    }
+    if (fd == kInvalidFd) {
         return viaProxy ? ProxyError(UltraNetResultCode::ConnectionRefused, proxy, why)
                         : UltraNetResult::Error(UltraNetResultCode::ConnectionRefused,
                                                 host + ":" + std::to_string(port) + ": " + why);

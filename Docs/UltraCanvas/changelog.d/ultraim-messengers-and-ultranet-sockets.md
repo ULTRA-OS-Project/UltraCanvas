@@ -40,7 +40,11 @@
   bytes), so callers timed their reads to tell them apart. A broken one is
   `ConnectionReset` or `ReceiveFailed`; `UltraNet_UdpReceive` answers
   `Timeout` too. The IRC provider and ChatCube Direct's LAN link go by the
-  code now. Tests: `test_socket_errors.cpp` in `UltraNetTests` (plain TCP,
+  code now. `UltraNet_TcpOpen` / `UltraNet_TcpConnect` try every address
+  the name resolves to, in order, until one connects: before, only the first
+  was tried, so `localhost` resolving to `::1` first missed a server on
+  `127.0.0.1` (the IRC tests on the Ubuntu 22.04 ARM runner), as a server's
+  unreachable IPv6 address would. Tests: `test_socket_errors.cpp` in `UltraNetTests` (plain TCP,
   UDP, and TLS against a python3 ssl server, with SIGPIPE at its default
   action).
 - **`UltraNetTls.h`: header comment corrected.** It still described TLS on
