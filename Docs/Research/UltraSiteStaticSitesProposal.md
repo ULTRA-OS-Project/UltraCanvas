@@ -1,7 +1,8 @@
 # UltraSite — the HTML + JavaScript output of UltraPress and UltraStore (Investigation and Proposal)
 
 **Date:** 2026-11-17
-**Status:** Proposal — investigation only, no implementation yet
+**Status:** Phase A built (2026-11-17): `UltraSite/` 0.1 and UltraPress's
+HTML + JavaScript output (§13). Phases B to D are a proposal.
 **Scope:** `UltraSite`, one shared headless library that writes the **HTML +
 JavaScript** output of UltraPress (`Apps/UltraPress`) and of the UltraStore
 web store (`Apps/UltraStoreAdmin`). It writes it the way
@@ -511,15 +512,16 @@ are HTML today.
 
 ## 9. Open questions for the user
 
-1. **The default for a new site.** HTML + JavaScript (recommended: it is
-   what most sites need, and it works on any host) or WebAssembly? The
-   store's operator setting defaults the same way.
+Questions 1 and 3 were settled by the go-ahead for Phase A (2026-11-17), on
+the recommended answers: HTML + JavaScript is the default output, and the
+library is the top-level module `UltraSite/`.
+
+1. ~~**The default for a new site.**~~ HTML + JavaScript (settled).
 2. **Documentation sites in the first phase?** Markdown docs (the
    docs.onramp.ltd use case) with this repository's `Docs/` as the
    acceptance site in Phase B, or block pages and the store first?
-3. **Where the library lives.** A top-level module `UltraSite/`
-   (proposed), or inside `Apps/UltraPress/engine` with the admin backend
-   linking the UltraPress engine?
+3. ~~**Where the library lives.**~~ The top-level module `UltraSite/`
+   (settled).
 4. **Brotli copies.** `.gz` copies need nothing new (zlib). `.br` copies
    need the Brotli library as a new dependency (`Docs/Dependencies.md`,
    `master_dependencies.yaml`, `THIRD_PARTY_LICENSES.md`). Most hosts
@@ -588,3 +590,48 @@ documentation sites and a styled HTML output beside its WebAssembly one.
 The web store gains an HTML output whose first visit is the page itself
 rather than the runtime. The five questions in §9 decide the defaults and
 the order.
+
+---
+
+## 13. What Phase A built, and what it found different
+
+Built on 2026-11-17:
+- **The library:** `UltraSite/`, reference in
+  [`../Modules/UltraSite/README.md`](../Modules/UltraSite/README.md),
+  tests in `Tests/UltraSite`.
+- **UltraPress's side:** `Apps/UltraPress/engine/UltraPressSite.h`, plus the
+  `output` setting in `site.json`, *Publish as*, and `--output`.
+
+The example site `Apps/UltraPress/examples/ultraos`, published as HTML +
+JavaScript and measured by the build (gzip -9):
+
+| File | Compressed | Raw |
+|---|---|---|
+| The front page | 2.3 KB | 6.2 KB |
+| The stylesheet (base, tokens, blocks) | 3.0 KB | 10.2 KB |
+| `core.js` | 0.8 KB | 1.8 KB |
+
+Checked in Chromium (Playwright) at 1280 px and 390 px, light and dark,
+and with JavaScript off. There were no console errors under the page's
+Content-Security-Policy, and the theme choice carried to the next page.
+
+Where the build differs from the plan above:
+
+- **Budgets are measured with gzip -9, not Brotli.** zlib is already a
+  dependency and Brotli is not (question 4). gzip output is larger than
+  Brotli's, so a page under budget here is under it on a Brotli host too.
+- **The `shadow` layout is not built.** The WebAssembly output keeps
+  writing its shadow through `PublishStatic`, unchanged. Its head, sitemap
+  and feed moving onto UltraSite is left for when the renderer is released.
+- **No behaviour module ships with the library yet.** The mechanism
+  (`AddScript`, `data-us`, one hashed module per page that uses it) is
+  built and tested. `search`, `toc`, `tabs`, `carousel`, `lightbox`,
+  `filter`, `form` and `copy` come with Phases B to D, where their first
+  users are. The UltraPress blocks need none: the FAQ is a `<details name>`
+  accordion and the forms post without script.
+- **Fonts are not downloaded.** The theme's family is named first in the
+  stack, then the system's (question 5's recommendation for UltraPress).
+- **The editor's *Preview in browser* button and `ultrapress check`
+  running the link check are not built.** A publish reports both. The
+  button belongs with `ultrapress serve` in Phase D.
+

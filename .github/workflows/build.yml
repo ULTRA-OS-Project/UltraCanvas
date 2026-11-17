@@ -1377,6 +1377,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRADBADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASITE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
@@ -1421,6 +1422,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRADBADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASITE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
@@ -2105,10 +2107,10 @@ jobs:
       # two, so a path or locale difference is caught where it lives. Every
       # one is headless. The multi-user UltraFIBU tests stay on Linux, where
       # the PostgreSQL server is.
-      - name: Run UltraPress, UltraFIBU and start page tests (macOS/Windows)
+      - name: Run UltraSite, UltraPress, UltraFIBU and start page tests (macOS/Windows)
         if: runner.os != 'Linux'
         working-directory: build
-        run: ctest --output-on-failure --no-tests=error -R "^(UltraPressEngine|UltraPressRender|UltraFIBUEngine|UltraFIBUStart|StartPageTest|AppSettingsTest)$"
+        run: ctest --output-on-failure --no-tests=error -R "^(UltraSite|UltraPressEngine|UltraPressRender|UltraFIBUEngine|UltraFIBUStart|StartPageTest|AppSettingsTest)$"
 
       # Trusting a device's self-signed certificate on first use rests on
       # libcurl pinning a public key and handing back the server's

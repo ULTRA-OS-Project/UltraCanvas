@@ -1,5 +1,6 @@
 // Apps/UltraPress/engine/UltraPressBlocks.cpp
 // The built-in block types and the site validator.
+// Version: 0.9.0 - ValidateSite: the site's output, and a block that output cannot show
 // Version: 0.8.0 - ValidateSite: the site's url has to be an address (IsSiteAddress)
 // Version: 0.1.0
 // Last Modified: 2026-10-13
@@ -149,6 +150,9 @@ void ValidateBlock(const Site& site, const Page& page, const Block& block, const
         issues.push_back({page.slug, path, "unknown block type '" + block.type + "'"});
         return;
     }
+    if (site.output == kOutputWasm ? !type->wasmOutput : !type->htmlOutput) {
+        issues.push_back({page.slug, path, block.type + " cannot be shown by the site's output (" + site.output + ")"});
+    }
     for (const BlockProperty& property : type->properties) {
         const JSONValue& value = block.props[property.name];
         if (value.IsNull()) {
@@ -214,6 +218,9 @@ std::vector<ValidationIssue> ValidateSite(const Site& site, const BlockRegistry&
     std::vector<ValidationIssue> issues;
     if (site.url.empty()) issues.push_back({"", "site", "no url"});
     else if (!IsSiteAddress(site.url)) issues.push_back({"", "site", "url is not an address (https://host, no trailing slash): " + site.url});
+    if (site.output != kOutputHtml && site.output != kOutputWasm) {
+        issues.push_back({"", "site", "output is neither html nor wasm: " + site.output});
+    }
     std::set<std::string> slugs;
     for (const Page& page : site.pages) {
         if (page.slug.empty()) issues.push_back({page.slug, "page", "a page without a slug"});

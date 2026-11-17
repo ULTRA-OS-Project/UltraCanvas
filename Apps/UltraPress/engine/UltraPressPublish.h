@@ -1,8 +1,10 @@
 // Apps/UltraPress/engine/UltraPressPublish.h
-// The static tier of publishing: the site folder becomes a folder of files
+// The WebAssembly output's static tier (option (a); UltraPressSite.h is
+// option (b), HTML + JavaScript): the site folder becomes a folder of files
 // any web host serves - one shadow page per published page, sitemap.xml,
 // robots.txt, feed.xml, the media, an .htaccess with the cache rules - and
 // the starter site a new site begins from.
+// Version: 0.9.0 - PublishOptions::output and enforceBudgets, PublishResult::warnings and sizeReport (UltraPressSite.h)
 // Version: 0.5.1 - the output mirrors the site: stale files removed
 // Version: 0.1.0
 // Last Modified: 2026-10-13
@@ -28,6 +30,12 @@ struct PublishOptions {
     // in media/ - is deleted, and the folders left empty with it. Only the
     // deploy's manifest (UltraPressDeploy.h) stays. Off, nothing is removed.
     bool removeStale = true;
+    // Publish() only: "html" or "wasm" for this run; empty, the site's
+    // own (Site::output). PublishStatic always writes the WebAssembly one.
+    std::string output;
+    // The HTML + JavaScript output: a page or asset over its budget fails
+    // the publish; off, it is a warning.
+    bool enforceBudgets = true;
 };
 
 struct PublishResult {
@@ -36,6 +44,8 @@ struct PublishResult {
     std::vector<std::string> removed;           // what an earlier publish wrote and this one did not
     std::vector<std::string> errors;
     std::vector<ValidationIssue> issues;        // the validator's findings; publishing goes on past them
+    std::vector<std::string> warnings;          // the HTML + JavaScript output's: a budget not enforced, no SHA-256
+    std::string sizeReport;                     // the HTML + JavaScript output's: what every page and asset weighs
 };
 
 // Writes the site into `outputDirectory` (created when missing; existing

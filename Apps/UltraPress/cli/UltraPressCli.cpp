@@ -18,6 +18,7 @@
 #include "UltraPressMedia.h"
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
+#include "UltraPressSite.h"
 #include "UltraPressDeploy.h"
 #if ULTRAPRESS_HAS_ULTRACLOUD
 #include "UltraPressHosting.h"
@@ -46,7 +47,7 @@ namespace {
 
 void PrintHelp() {
     std::printf(
-        "UltraPress %s - a website and shop builder that publishes WebAssembly\n"
+        "UltraPress %s - a website and shop builder that publishes HTML + JavaScript or WebAssembly\n"
         "\n"
         "  ultrapress new <site-dir> [--name <name>] [--url <url>] [--language <code>]\n"
         "      a starter site: site.json, theme.json, menus.json, pages/\n"
@@ -58,10 +59,13 @@ void PrintHelp() {
         "      add copies files in under a clean name, remove deletes unused ones, prune every unused one\n"
         "  ultrapress page <site-dir> <slug>\n"
         "      print the page's HTML shadow\n"
-        "  ultrapress publish <site-dir> <out-dir> [--renderer <script.js>] [--drafts]\n"
+        "  ultrapress publish <site-dir> <out-dir> [--output html|wasm] [--renderer <script.js>] [--drafts] [--sizes]\n"
         "                                          [--to <host>|--to site [--path <remote-folder>] [--force] [--prune]]\n"
-        "      the static tier: one HTML page per published page, sitemap.xml,\n"
-        "      robots.txt, feed.xml, .htaccess and the media, into <out-dir>;\n"
+        "      the site's output (\"output\" in site.json; --output for this run) into <out-dir>:\n"
+        "      html - every page styled, with small script modules, a hashed stylesheet,\n"
+        "      sitemap.xml, robots.txt, feed.xml, 404.html, .htaccess, _headers and the media;\n"
+        "      a broken link or a page over its size budget fails it; --sizes lists the sizes;\n"
+        "      wasm - the HTML shadow of every page for the WebAssembly renderer (--renderer);\n"
         "      --to uploads it onto a host (what changed since the last upload),\n"
         "      `--to site` onto the host site.json names; --force uploads everything;\n"
         "      --prune deletes on the host what an earlier publish put there and the site no longer has\n"
@@ -222,9 +226,12 @@ int CommandPublish(const std::vector<std::string>& args) {
     PublishOptions options;
     options.html.rendererScript = Option(args, "--renderer", "");
     options.includeDrafts = HasFlag(args, "--drafts");
-    const PublishResult result = PublishStatic(site, args[0], args[1], options);
+    options.output = Option(args, "--output", "");
+    const PublishResult result = Publish(site, args[0], args[1], options);
     PrintIssues(result.issues);
+    for (const std::string& warning : result.warnings) std::fprintf(stderr, "warning: %s\n", warning.c_str());
     for (const std::string& error : result.errors) std::fprintf(stderr, "%s\n", error.c_str());
+    if (HasFlag(args, "--sizes") && !result.sizeReport.empty()) std::fputs(result.sizeReport.c_str(), stdout);
     std::printf("%s: %zu files written to %s\n", site.name.c_str(), result.files.size(), args[1].c_str());
     if (!result.ok) return 1;
 

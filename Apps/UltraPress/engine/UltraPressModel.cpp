@@ -1,5 +1,6 @@
 // Apps/UltraPress/engine/UltraPressModel.cpp
 // The content model: JSON in and out, the site folder, addresses, the page list.
+// Version: 0.9.0 - "output" in site.json, "dark" in theme.json
 // Version: 0.8.3 - IsSiteAddress
 // Version: 0.8.2 - SitePathText
 // Version: 0.7.0 - text in a block: paragraphs, locations, block paths
@@ -291,6 +292,11 @@ JSONValue ThemeToJson(const Theme& theme) {
     JSONValue colors = JSONValue::MakeObject();
     for (const auto& [name, value] : theme.colors) colors.Set(name, value);
     json.Set("colors", colors);
+    if (!theme.darkColors.empty()) {
+        JSONValue dark = JSONValue::MakeObject();
+        for (const auto& [name, value] : theme.darkColors) dark.Set(name, value);
+        json.Set("dark", dark);
+    }
     json.Set("fontFamily", theme.fontFamily);
     return json;
 }
@@ -300,6 +306,9 @@ Theme ThemeFromJson(const JSONValue& json) {
     theme.name = json["name"].GetString("default");
     for (const auto& [name, value] : json["colors"].GetMembers()) {
         theme.colors.emplace_back(name, value.GetString());
+    }
+    for (const auto& [name, value] : json["dark"].GetMembers()) {
+        theme.darkColors.emplace_back(name, value.GetString());
     }
     theme.fontFamily = json["fontFamily"].GetString("Ubuntu");
     return theme;
@@ -315,6 +324,7 @@ JSONValue SiteToJson(const Site& site) {
     for (const std::string& language : site.languages) languages.Append(language);
     json.Set("languages", languages);
     json.Set("owner", site.owner);
+    json.Set("output", site.output);
     if (!site.hosting.account.empty()) {
         json.Set("hosting", JSONValue::MakeObject().Set("account", site.hosting.account).Set("path", site.hosting.path));
     }
@@ -333,6 +343,9 @@ void SiteFromJson(const JSONValue& json, Site& site) {
     }
     site.owner = json["owner"].GetString();
     site.hosting = Hosting();
+    // A site from before the two outputs, or with a value this version does
+    // not know, publishes HTML + JavaScript.
+    site.output = json["output"].GetString(kOutputHtml) == kOutputWasm ? kOutputWasm : kOutputHtml;
     if (json.Contains("hosting")) {
         site.hosting.account = json["hosting"]["account"].GetString();
         site.hosting.path = json["hosting"]["path"].GetString("/");

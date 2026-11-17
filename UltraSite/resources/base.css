@@ -1,0 +1,135 @@
+/* UltraSite base stylesheet: the tokens' defaults, the page frame (skip
+   link, navbar, main, footer) and the two built-in layouts (page, post).
+   An app's extraCss follows it in the same file. Every colour, font and
+   length is a token (--us-*), so a site's tokens restyle all of it. */
+
+:root {
+  --us-bg: #ffffff;
+  --us-fg: #1c1e21;
+  --us-muted: #5c6370;
+  --us-accent: #2563eb;
+  --us-accent-fg: #ffffff;
+  --us-surface: #f3f4f6;
+  --us-border: #e2e5ea;
+  --us-font: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Noto Sans", sans-serif;
+  --us-font-heading: var(--us-font);
+  --us-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --us-radius: 8px;
+  --us-width: 72rem;
+  --us-navbar-height: 3.75rem;
+  color-scheme: light;
+}
+
+@view-transition { navigation: auto; }
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-padding-top: calc(var(--us-navbar-height) + 1rem); }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font: 1rem/1.65 var(--us-font);
+  color: var(--us-fg);
+  background: var(--us-bg);
+  overflow-x: clip;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 { font-family: var(--us-font-heading); line-height: 1.25; margin: 1.6em 0 .5em; }
+h1 { font-size: clamp(2rem, 1.5rem + 2vw, 3rem); margin-top: .4em; }
+h2 { font-size: clamp(1.5rem, 1.3rem + 1vw, 2rem); }
+h3 { font-size: 1.25rem; }
+p, ul, ol, figure, blockquote, pre, table { margin: 0 0 1.1em; }
+a { color: var(--us-accent); text-underline-offset: .15em; }
+a:hover { text-decoration-thickness: 2px; }
+img, video, svg { max-width: 100%; height: auto; }
+code, kbd, pre { font-family: var(--us-font-mono); font-size: .9em; }
+:not(pre) > code { background: var(--us-surface); border: 1px solid var(--us-border); border-radius: 4px; padding: .1em .3em; }
+pre { background: var(--us-surface); border: 1px solid var(--us-border); border-radius: var(--us-radius); padding: 1rem; overflow-x: auto; }
+table { border-collapse: collapse; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--us-border); padding: .5rem .75rem; text-align: start; }
+hr { border: 0; border-top: 1px solid var(--us-border); margin: 2rem 0; }
+:focus-visible { outline: 2px solid var(--us-accent); outline-offset: 2px; }
+
+.us-skip {
+  position: absolute; left: 1rem; top: -4rem; z-index: 100;
+  background: var(--us-accent); color: var(--us-accent-fg);
+  padding: .5rem 1rem; border-radius: var(--us-radius);
+}
+.us-skip:focus { top: .5rem; }
+
+.us-container { width: 100%; max-width: var(--us-width); margin: 0 auto; padding: 0 1.25rem; }
+
+/* The navbar: the brand, the links, the theme toggle. It wraps on a phone;
+   a submenu opens on hover or focus and is laid out inline when narrow. */
+.us-navbar {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--us-bg) 92%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(8px);
+  backdrop-filter: saturate(180%) blur(8px);
+  border-bottom: 1px solid var(--us-border);
+  view-transition-name: us-navbar;
+}
+.us-navbar .us-container { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem 1.25rem; min-height: var(--us-navbar-height); }
+.us-brand { display: inline-flex; align-items: center; gap: .5rem; font-weight: 700; font-size: 1.1rem; color: var(--us-fg); text-decoration: none; margin-right: auto; }
+.us-brand img { height: 2rem; width: auto; }
+.us-nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
+.us-nav li { position: relative; }
+.us-nav a, .us-nav span { display: inline-block; padding: .4rem 0; color: var(--us-fg); text-decoration: none; font-weight: 500; }
+.us-nav a:hover, .us-nav a[aria-current="page"] { color: var(--us-accent); }
+.us-nav li ul {
+  display: none; position: absolute; top: 100%; left: -.75rem; min-width: 12rem;
+  flex-direction: column; gap: 0; padding: .5rem .75rem;
+  background: var(--us-bg); border: 1px solid var(--us-border); border-radius: var(--us-radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / .12);
+}
+.us-nav li:hover > ul, .us-nav li:focus-within > ul { display: flex; }
+@media (max-width: 40rem) {
+  /* The brand and the toggle share the first row; the links wrap below. */
+  .us-nav { order: 3; width: 100%; padding-bottom: .5rem; }
+  .us-nav li ul {
+    display: flex; flex-direction: row; flex-wrap: wrap; gap: 0 1rem; position: static;
+    min-width: 0; padding: 0 0 0 .75rem; border: 0; border-left: 2px solid var(--us-border); border-radius: 0;
+    box-shadow: none; background: none;
+  }
+  .us-nav li:has(> ul) { display: flex; flex-wrap: wrap; align-items: center; gap: 0 .75rem; width: 100%; }
+}
+
+.us-theme-toggle {
+  display: inline-grid; place-items: center; width: 2.5rem; height: 2.5rem;
+  border: 1px solid var(--us-border); border-radius: 50%;
+  background: transparent; color: var(--us-fg); cursor: pointer;
+}
+.us-theme-toggle:hover { background: var(--us-surface); }
+.us-theme-toggle[hidden] { display: none; }
+.us-theme-toggle .us-moon { display: none; }
+.us-theme-toggle[aria-pressed="true"] .us-sun { display: none; }
+.us-theme-toggle[aria-pressed="true"] .us-moon { display: block; }
+
+.us-main { flex: 1 0 auto; width: 100%; max-width: var(--us-width); margin: 0 auto; padding: 2rem 1.25rem 3rem; }
+.us-main > :first-child { margin-top: 0; }
+
+.us-post { max-width: 46rem; margin: 0 auto; }
+.us-post-date { color: var(--us-muted); margin-top: -.25rem; }
+
+.us-footer { border-top: 1px solid var(--us-border); background: var(--us-surface); color: var(--us-muted); font-size: .925rem; padding: 2rem 0; }
+.us-footer ul { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; }
+.us-footer li ul { display: block; margin: .25rem 0 0; }
+.us-footer a { color: inherit; }
+.us-footer p { margin: 0; }
+
+.us-visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  @view-transition { navigation: none; }
+}
+
+@media print {
+  .us-navbar, .us-footer, .us-skip, .us-theme-toggle { display: none; }
+  .us-main { max-width: none; padding: 0; }
+  a { color: inherit; }
+}

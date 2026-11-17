@@ -3138,3 +3138,32 @@ each, and the catalogue files of the three layers. See
 `Docs/Modules/UltraLocalisation/README.md` and
 `Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`.
 
+
+---
+
+### **21. UltraSite**
+
+The HTML + JavaScript output of a website: a list of routes in, a folder
+any static host serves out, written the way Docusaurus writes a site. Every
+route becomes a complete, styled HTML page (head, skip link, navbar, the
+route's layout - `page`, `post` or one an app adds - and footer); one
+stylesheet (the base, the site's design tokens as `--us-*` custom
+properties in a light and an optional dark look, the app's own rules) and
+the script modules are written under their content hash and cached for a
+year. `core.js` (prefetch on intent, the theme toggle) is on every page; a
+behaviour module an app registers (`Builder::AddScript`) is loaded only by
+the pages whose body asks for it with `data-us="<behaviour>"`. Beside the
+pages: sitemap.xml, robots.txt, 404.html, `.htaccess` and `_headers` with
+the cache rules and a Content-Security-Policy that admits no script from
+another origin, plus speculation rules that let Chromium prerender the next
+page. The build reads every page back through the HTMLReader and fails on
+a broken internal link or anchor, an unknown behaviour, or a page, the
+stylesheet or a script over its compressed-size budget; it removes what an
+earlier build wrote and this one did not. The site works with JavaScript
+off. UltraPress publishes its HTML + JavaScript output through it
+(`Apps/UltraPress/engine/UltraPressSite.h`); the UltraStore web store is
+next. Headless: links the core library (JSON, HTMLReader, UltraCrypt) and
+zlib. Sources under `UltraSite/{include,core,resources}`, target
+`UltraSite`, header `<UltraSite/UltraSite.h>`, `namespace UltraSite`;
+see `Docs/Modules/UltraSite/README.md` and
+`Docs/Research/UltraSiteStaticSitesProposal.md`.

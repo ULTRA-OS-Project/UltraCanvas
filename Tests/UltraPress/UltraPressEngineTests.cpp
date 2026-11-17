@@ -7,6 +7,7 @@
 // is loaded as a real site. The deploy sends a published folder through a
 // recording uploader and, where UltraCloud is built, through the hosts onto
 // the in-memory provider.
+// Version: 0.9.0 - the two outputs: HTML + JavaScript through UltraSite, WebAssembly's shadow; output and dark in the files
 // Version: 0.8.2 - a '\' in a file name off Windows: deployed, listed and named as itself
 // Version: 0.7.2 - the shadow's picture sizes
 // Version: 0.7.0 - text in a block: paragraphs, locations, block paths
@@ -22,6 +23,7 @@
 #include "UltraPressMedia.h"
 #include "UltraPressModel.h"
 #include "UltraPressPublish.h"
+#include "UltraPressSite.h"
 #if ULTRAPRESS_HAS_ULTRACLOUD
 #include "UltraPressHosting.h"
 #endif
@@ -976,6 +978,102 @@ static void TestBackslashInNames() {
 #endif
 }
 
+static void TestTwoOutputs() {
+    std::printf("The two outputs\n");
+    Site site;
+    std::vector<std::string> errors;
+    Check(LoadSite(ULTRAPRESS_EXAMPLE_DIR, site, errors), "the example site loads");
+    Check(site.output == kOutputHtml, "a site.json without \"output\" publishes HTML + JavaScript");
+    Check(!site.theme.darkColors.empty() && site.theme.darkColors.front().first == "accent", "theme.json's dark look is read");
+
+    // The files carry the choice and the dark look.
+    const fs::path dir = TempDir("outputs");
+    Site saved = site;
+    saved.output = kOutputWasm;
+    Check(SaveSite(UltraCanvas::PathToUtf8(dir / "site"), saved, errors), "the site saves");
+    Site loaded;
+    Check(LoadSite(UltraCanvas::PathToUtf8(dir / "site"), loaded, errors) && loaded.output == kOutputWasm &&
+              loaded.theme.darkColors == site.theme.darkColors,
+          "output and the dark look round-trip through the files");
+    Check(CreateStarterSite("New", "https://new.example").output == kOutputHtml, "a new site publishes HTML + JavaScript");
+
+    // The tokens: theme.json's names over the renderer's defaults.
+    const auto light = ThemeTokens(site.theme, false);
+    auto token = [&](const std::vector<std::pair<std::string, std::string>>& tokens, const std::string& name) {
+        for (const auto& [key, value] : tokens) if (key == name) return value;
+        return std::string();
+    };
+    Check(token(light, "accent") == "#a90707" && token(light, "bg") == "#ffffff" && token(light, "muted") == "#5a5a62" &&
+              Contains(token(light, "font"), "\"Ubuntu\""),
+          "the light tokens come from the theme, the defaults fill the rest");
+    Check(token(ThemeTokens(site.theme, true), "bg") == "#0f0f1a", "the dark tokens come from the dark look");
+
+    // Option (b): styled pages through UltraSite.
+    if (HasHtmlOutput()) {
+        const fs::path out = dir / "html";
+        const PublishResult result = Publish(site, ULTRAPRESS_EXAMPLE_DIR, UltraCanvas::PathToUtf8(out));
+        for (const std::string& error : result.errors) std::printf("  error: %s\n", error.c_str());
+        Check(result.ok, "the example site publishes as HTML + JavaScript, its links and budgets checked");
+        Check(fs::exists(out / "index.html") && fs::exists(out / "the-plan" / "index.html") && fs::exists(out / "404.html") &&
+                  fs::exists(out / "feed.xml") && fs::exists(out / "sitemap.xml") && fs::exists(out / "_headers") &&
+                  fs::is_directory(out / "assets"),
+              "the pages, the feed, the 404 page and the hashed assets are written");
+        std::string home, plan;
+        ReadTextFile(UltraCanvas::PathToUtf8(out / "index.html"), home);
+        ReadTextFile(UltraCanvas::PathToUtf8(out / "the-plan" / "index.html"), plan);
+        Check(Contains(home, "<link rel=\"stylesheet\" href=\"/assets/site.") && Contains(home, "<section class=\"hero\">") &&
+                  Contains(home, "Introducing ULTRA OS") && Contains(home, "<a href=\"/the-plan/\"") &&
+                  !Contains(home, "<style>"),
+              "the front page is the blocks on the hashed stylesheet, not the shadow's inline style");
+        Check(Contains(home, "<details name=\"faq-1\">") && Contains(home, "\"@type\":\"FAQPage\"") &&
+                  Contains(home, "href=\"/feed.xml\"") && Contains(home, "data-us-theme-toggle"),
+              "the FAQ is an accordion with its structured data; the feed and the dark look are offered");
+        Check(Contains(plan, "<h1>The development plan</h1>") && Contains(plan, "aria-current=\"page\">The development plan</a>"),
+              "a page without a hero states its title; the navbar marks it");
+        Check(!result.sizeReport.empty() && result.removed.empty(), "the size report is given");
+
+        // A page linking to one the site does not have fails the publish.
+        Site broken = site;
+        Block text{"html"};
+        text.Set("html", "<p><a href=\"/nowhere/\">gone</a></p>");
+        broken.pages[0].blocks.push_back(text);
+        const PublishResult refused = Publish(broken, ULTRAPRESS_EXAMPLE_DIR, UltraCanvas::PathToUtf8(dir / "broken"));
+        Check(!refused.ok && std::any_of(refused.errors.begin(), refused.errors.end(),
+                                         [](const std::string& e) { return Contains(e, "broken link to /nowhere/"); }),
+              "a broken link fails the HTML publish");
+    }
+
+    // Option (a): the shadow, chosen per run.
+    PublishOptions wasm;
+    wasm.output = kOutputWasm;
+    const PublishResult shadow = Publish(site, ULTRAPRESS_EXAMPLE_DIR, UltraCanvas::PathToUtf8(dir / "wasm"), wasm);
+    std::string shadowHome;
+    ReadTextFile(UltraCanvas::PathToUtf8(dir / "wasm" / "index.html"), shadowHome);
+    Check(shadow.ok && Contains(shadowHome, "<style>") && !fs::exists(dir / "wasm" / "assets"),
+          "--output wasm writes the shadow, as PublishStatic does");
+    PublishOptions unknown;
+    unknown.output = "pdf";
+    Check(!Publish(site, ULTRAPRESS_EXAMPLE_DIR, UltraCanvas::PathToUtf8(dir / "pdf"), unknown).ok, "an unknown output is refused");
+
+    // A block one output cannot show.
+    BlockRegistry registry = BlockRegistry::BuiltIn();
+    BlockType canvasOnly{"canvas", "Canvas", "Drawn by the renderer alone.", {}};
+    canvasOnly.htmlOutput = false;
+    registry.Register(canvasOnly);
+    Site withCanvas = site;
+    withCanvas.pages[0].blocks.push_back(Block{"canvas"});
+    auto mentionsCanvas = [](const std::vector<ValidationIssue>& issues) {
+        return std::any_of(issues.begin(), issues.end(), [](const ValidationIssue& i) { return Contains(i.message, "cannot be shown"); });
+    };
+    Check(mentionsCanvas(ValidateSite(withCanvas, registry)), "a block the HTML output cannot show is reported");
+    withCanvas.output = kOutputWasm;
+    Check(!mentionsCanvas(ValidateSite(withCanvas, registry)), "and is fine on a WebAssembly site");
+    withCanvas.output = "pdf";
+    Check(!ValidateSite(withCanvas, registry).empty(), "an unknown output is reported");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     TestStarterRoundTrip();
     TestValidation();
@@ -989,6 +1087,7 @@ int main() {
     TestTextInBlocks();
     TestShadowImageSizes();
     TestBackslashInNames();
+    TestTwoOutputs();
     std::printf("%d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

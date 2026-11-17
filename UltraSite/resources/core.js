@@ -1,0 +1,68 @@
+// UltraSite core module: on every page of an UltraSite site, deferred.
+// It only adds behaviour to HTML that already works without it:
+// - prefetch: the page behind a same-origin link is fetched while the
+//   pointer rests on it, on touch, or on keyboard focus, so the click
+//   finds it in the cache. Browsers that run the page's speculation rules
+//   (Chromium) prerender on their own; this covers the others.
+// - theme: the toggle button (hidden without script) switches between the
+//   dark and the light look and remembers the choice; the inline script in
+//   <head> applies a remembered choice before the first paint.
+// Rule for every UltraSite module: a // comment stands on a line of its
+// own, never after code (the build strips whole comment lines only).
+const doc = document;
+const root = doc.documentElement;
+const seen = new Set([location.href.split('#')[0]]);
+const connection = navigator.connection;
+const saveData = !!(connection && (connection.saveData || /(^|-)2g$/.test(connection.effectiveType || '')));
+const prerenders = typeof HTMLScriptElement.supports === 'function' && HTMLScriptElement.supports('speculationrules');
+
+// A page of the site: same origin, a path ending in "/" or ".html", not a
+// download and not marked data-no-prefetch.
+function isPage(link) {
+  if (link.origin !== location.origin || link.hasAttribute('download') || link.hasAttribute('data-no-prefetch')) return false;
+  if (link.target && link.target !== '_self') return false;
+  const path = link.pathname;
+  if (path.startsWith('/assets/')) return false;
+  return path.endsWith('/') || path.endsWith('.html');
+}
+
+function prefetch(link) {
+  if (saveData || prerenders || !isPage(link)) return;
+  const url = link.href.split('#')[0];
+  if (seen.has(url)) return;
+  seen.add(url);
+  const hint = doc.createElement('link');
+  hint.rel = 'prefetch';
+  hint.href = url;
+  doc.head.appendChild(hint);
+}
+
+function onIntent(event) {
+  const target = event.target;
+  const link = target && target.closest ? target.closest('a[href]') : null;
+  if (link) prefetch(link);
+}
+
+doc.addEventListener('pointerover', onIntent, { passive: true });
+doc.addEventListener('touchstart', onIntent, { passive: true });
+doc.addEventListener('focusin', onIntent);
+
+const toggle = doc.querySelector('[data-us-theme-toggle]');
+if (toggle) {
+  const scheme = matchMedia('(prefers-color-scheme: dark)');
+  const current = () => root.dataset.theme || (scheme.matches ? 'dark' : 'light');
+  const show = () => toggle.setAttribute('aria-pressed', String(current() === 'dark'));
+  toggle.hidden = false;
+  show();
+  scheme.addEventListener('change', show);
+  toggle.addEventListener('click', () => {
+    const next = current() === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    show();
+    try {
+      localStorage.setItem('us-theme', next);
+    } catch (error) {
+      // Storage refused (private mode): the choice lasts for this page.
+    }
+  });
+}

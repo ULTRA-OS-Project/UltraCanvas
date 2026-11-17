@@ -10,15 +10,22 @@ with the page re-rendered live, a WordPress export read into a site, the
 published folder uploaded onto an FTP, SFTP, WebDAV or Nextcloud host
 through UltraCloud, only what changed, pictures and downloads brought
 into the site's media folder and picked from it, and text edited where it
-stands on the page. The WebAssembly output follows
-([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
-**Last Modified:** 2026-10-13
+stands on the page. A site publishes in one of two outputs: HTML +
+JavaScript, through UltraSite (styled pages, the default), or WebAssembly,
+whose renderer release follows
+([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md),
+[`UltraSiteStaticSitesProposal.md`](../Research/UltraSiteStaticSitesProposal.md)).
+**Last Modified:** 2026-11-17
 **Author:** UltraCanvas Framework / ULTRA OS
 
 UltraPress is the website and shop builder of ULTRA OS: a WordPress-class
-system built on UltraCanvas whose published pages are rendered by the
-framework itself, compiled to WebAssembly, with a plain HTML shadow of every
-page for search engines, link previews, mail clients and screen readers.
+system built on UltraCanvas. A site is published in one of two outputs,
+chosen per site: **HTML + JavaScript** - every page complete and styled,
+one hashed stylesheet, a few kilobytes of script, the way Docusaurus
+publishes a site - or **WebAssembly** - the pages rendered by the framework
+itself, compiled to WebAssembly, with a plain HTML shadow of every page for
+search engines, link previews, mail clients and screen readers. See *The
+two outputs* below.
 
 This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -107,14 +114,49 @@ colours (`accent`, `ink`, `inkSoft`, `paper`, `paperSoft`, `rule`,
 `PaletteFromTheme`. Under Emscripten the same renderer is the published
 page; on the desktop it is the editor's preview, pixel for pixel.
 
+## The two outputs
+
+`"output"` in `site.json` - or *Publish as* in *Site settings…*, or
+`--output` for one `publish` run - says what *Publish* writes:
+
+| | `html` (the default) | `wasm` |
+|---|---|---|
+| What a visitor gets | Every page as complete, styled HTML; the 4 KB core script (prefetch, the theme toggle) | The HTML shadow of every page, which the WebAssembly renderer replaces |
+| Written by | UltraSite (`UltraSite/`, `Docs/Modules/UltraSite/README.md`) through `UltraPressSite.h` | `PublishStatic` (`UltraPressPublish.h`) |
+| Looks like the editor | Close: the same theme colours as CSS | Exactly: the same elements draw both |
+| First visit | The page itself: the example site's front page is 2.3 KB, its stylesheet 3.0 KB and its script 0.8 KB, compressed | The renderer and the page |
+| Without JavaScript | The whole site | The shadow |
+
+The HTML + JavaScript output writes the blocks as the shadow's writer does
+(`HtmlEmitter` with `HtmlOptions::styled`: the hero's picture fetched first,
+every other one lazily, the FAQ an accordion), styled by the blocks'
+stylesheet (`BlockStylesheet()`) on the theme's colours as UltraSite tokens
+(`ThemeTokens`: `paper`, `ink`, `inkSoft`, `accent`, `paperSoft`, `rule`,
+`night`, `nightSoft`, `onDark`, `tile` over the element renderer's
+defaults). `"dark"` in `theme.json` is the same names for the dark look:
+with it the site follows the visitor's system and offers a toggle that
+remembers the choice; without it the site is light only. The font is the
+theme's family where the visitor has it, else the system's: nothing is
+downloaded. The main and footer menus become the navbar and the footer.
+Beside the pages: the hashed stylesheet and script, `feed.xml`,
+`sitemap.xml`, `robots.txt`, `404.html`, `.htaccess`, `_headers` and the
+media folder. A link to a page or a picture the site does not have, an
+anchor that is not there, or a page over its size budget fails the publish
+and names the page; `--sizes` lists what every page and asset weighs.
+
+A block type says which outputs show it (`BlockType::htmlOutput`,
+`wasmOutput`); every built-in block has both, and `check` reports a block
+the site's output cannot show.
+
 ## The command line
 
 ```bash
 ultrapress new mysite --name "My site" --url https://my.example   # a starter site
 ultrapress check mysite                                           # every problem, exit 1 when there is one
 ultrapress page mysite home                                       # the front page's HTML shadow, to stdout
-ultrapress publish mysite out                                     # the static tier, into out/
-ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the renderer referenced (later)
+ultrapress publish mysite out                                     # the site's output, into out/
+ultrapress publish mysite out --sizes                             # and what every page and asset weighs
+ultrapress publish mysite out --output wasm --renderer ultrapress-0.1.0.js   # the WebAssembly output, the renderer referenced (later)
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
 ultrapress hosts                                                  # the hosts a site can be published to
 ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
@@ -152,8 +194,8 @@ takes. Drafts are left out unless `--drafts` is given.
 
 ```
 mysite/
-├── site.json        name, tagline, url, language, languages, owner
-├── theme.json       name, colors (name → #rrggbb), fontFamily
+├── site.json        name, tagline, url, language, languages, owner, output ("html" or "wasm")
+├── theme.json       name, colors (name → #rrggbb), dark (the same names, the dark look), fontFamily
 ├── menus.json       {"main": [...], "footer": [...]}; an item has title and page (a slug) or url, and items
 ├── pages/<slug>.json
 └── media/           pictures and downloads; a block names them by path
@@ -215,13 +257,19 @@ against it.
   `MakeSlug`; text in a block: `SplitParagraphs`, `TextLocation` /
   `SetBlockText` (a property, an item, an item's key, one paragraph) and
   `ResolveBlockPath`.
-- `UltraPressBlocks.h` - the registry and `ValidateSite`.
+- `UltraPressBlocks.h` - the registry (with each type's outputs) and
+  `ValidateSite`.
 - `UltraPressHtml.h` - `HtmlEmitter`: `Page`, `Sitemap`, `Robots`, `Feed`,
   `Block`; `HtmlOptions` names the renderer script, the UltraWeb app and
   the site folder, with which every `<img>` carries its width and height.
   Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
   blocks are the owner's own HTML and pass through.
-- `UltraPressPublish.h` - `PublishStatic` (the output mirrors the site:
+- `UltraPressSite.h` - the HTML + JavaScript output: `PublishHtml` through
+  UltraSite, `Publish` (the site's output, or `PublishOptions::output`),
+  `ThemeTokens`, `BlockStylesheet`, `HasHtmlOutput`. `HtmlEmitter::Parts`
+  gives it each page's body, title, description, social picture and
+  structured data.
+- `UltraPressPublish.h` - `PublishStatic`, the WebAssembly output (the output mirrors the site:
   what an earlier publish wrote and this one does not is removed, the
   deploy manifest excepted; `removeStale` turns it off) and
   `CreateStarterSite`.
@@ -245,10 +293,11 @@ against it.
   markup. TinyXML2 reads the export, privately.
 
 It links the core library for `UltraCanvasJSON` and the HTMLReader's
-`EscapeText`, and opens no window. Tests: `Tests/UltraPress/UltraPressEngineTests.cpp`,
+`EscapeText`, and UltraSite for the HTML + JavaScript output, and opens no
+window. Tests: `Tests/UltraPress/UltraPressEngineTests.cpp`,
 built with `-DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON`; they save and reload a
 site, validate a broken one, parse the shadow back with `HTML::Parser`,
-publish the example site into a temporary folder, and deploy a folder
+publish the example site into a temporary folder in both outputs, and deploy a folder
 through a recording uploader and through the hosts onto UltraCloud's
 in-memory provider.
 
