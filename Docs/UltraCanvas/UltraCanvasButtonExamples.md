@@ -621,7 +621,9 @@ round.fontSize = 26.0f;
 add->SetStyle(round);
 ```
 
-`Tests/ButtonTextCentringTest.cpp` measures it from the drawn pixels.
+`Tests/OneCharacterCentringTest.cpp` measures it from the drawn pixels. The
+label, the badge and the segmented control centre one character the same way
+(`DrawTextCentredOnInk`, `UltraCanvasTextLayoutCache.h`).
 
 ## Version History
 

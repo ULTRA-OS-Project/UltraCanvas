@@ -1,6 +1,6 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
-// Version: 2.15.0 - a one-character label ("+", a check mark) is centred on its ink (IsSingleCharacter)
+// Version: 2.15.0 - a one-character label ("+", a check mark) is centred on its ink (DrawTextCentredOnInk)
 // Version: 2.14.0 - the two- and one-colour SetColors / SetTextColors derive the other states for the look
 //                  (a dark theme's disabled button sinks toward the ground, not to light grey); a font
 //                  size or family set by hand (SetFontSize, SetFont) survives a theme change
@@ -213,7 +213,6 @@ namespace UltraCanvas {
         // own). Built on the first draw that needs it; a button shortened at
         // the end has none.
         UltraCanvasTextLayoutCache shortenedLayout;   // also the one-character label's (centred on its ink)
-        static bool IsSingleCharacter(const std::string& label);
         Rect2Df secondaryTextRect;  // For split button secondary section
         Rect2Df secondaryIconRect;  // For split button secondary icon (new)
         Rect2Df primarySectionRect;  // Primary section bounds

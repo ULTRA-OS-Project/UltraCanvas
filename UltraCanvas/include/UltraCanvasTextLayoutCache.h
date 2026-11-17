@@ -24,6 +24,8 @@
 //   UltraCanvas::UltraCanvasTextLayoutCache cache;
 //   if (UltraCanvas::ITextLayout* layout = cache.Get(nullptr, key)) ctx->DrawTextLayout(*layout, UltraCanvas::Point2Dd(0, 0));
 //
+// Version: 1.2.0 - IsSingleCharacterText / DrawTextCentredOnInk: a one-character text centred on what
+//                  it draws (the button, the label, the badge, the segmented control)
 // Version: 1.1.1 - a key that names no ellipsize leaves the wrap mode's: a WrapNone label
 //                  stays one line cut at the end, not wrapped at a narrow width
 // Version: 1.1.0 - an explicit height in the key; the text input, the dropdown and the menu on the cache
@@ -33,6 +35,7 @@
 
 #include "UltraCanvasRenderContext.h"
 
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <string>
@@ -100,5 +103,46 @@ namespace UltraCanvas {
         TextLayoutKey key_;
         unsigned long builds_ = 0;
     };
+
+    // ===== ONE CHARACTER, CENTRED ON ITS INK =====
+    // A text is centred on its line box, which holds the font's ascender and
+    // descender room: right for a word, whose capitals then sit in the
+    // middle and line up with the words beside it. A lone character - "+",
+    // "×", "‹", a check mark - has no capitals to line up, and sits wherever
+    // the font puts it in that box: a 26 px "+" came out 2.5 px low in a
+    // round 48 px button, an "×" 2 px low in a 32 px label. Elements that
+    // centre their text therefore put a one-character text where its drawn
+    // shape - its ink - is in the middle instead.
+
+    // One code point of UTF-8 (the bytes that start one, not the ones that
+    // continue it): a single symbol or letter.
+    inline bool IsSingleCharacterText(const std::string& text) {
+        int starts = 0;
+        for (const char c : text)
+            if ((static_cast<unsigned char>(c) & 0xC0) != 0x80) ++starts;
+        return starts == 1;
+    }
+
+    // Draws one line of `text` in `font`, in the context's current text
+    // paint, with its ink box centred in `box`, on whole pixels so its
+    // strokes stay sharp; the layout is kept in `cache` between draws. False,
+    // having drawn nothing, when the text has no ink (a space): the caller
+    // then draws it as it always did.
+    inline bool DrawTextCentredOnInk(IRenderContext* ctx, UltraCanvasTextLayoutCache& cache,
+                                     const std::string& text, const FontStyle& font, const Rect2Dd& box) {
+        TextLayoutKey key;
+        key.text = text;
+        key.font = font;
+        key.wrap = TextWrap::WrapNone;
+        key.align = TextAlignment::Left;
+        ITextLayout* layout = cache.Get(ctx, key);
+        if (!layout) return false;
+        const Rect2Dd ink = layout->GetLayoutExtents().ink;
+        if (ink.width <= 0 || ink.height <= 0) return false;
+        const double x = box.x + box.width / 2.0 - (ink.x + ink.width / 2.0);
+        const double y = box.y + box.height / 2.0 - (ink.y + ink.height / 2.0);
+        ctx->DrawTextLayout(*layout, Point2Dd(std::round(x), std::round(y)));
+        return true;
+    }
 
 } // namespace UltraCanvas

@@ -953,22 +953,23 @@ else()
     message(STATUS "  ChartElementBehaviourTest skipped (UltraCanvas target not present)")
 endif()
 
-# ===== BUTTON TEXT CENTRING TEST =====
-# A button's label in its middle: a one-character label ("+", "×") centred
-# on its ink, a word on its capitals, measured from the drawn pixels.
+# ===== ONE CHARACTER CENTRING TEST =====
+# A centred one-character text ("+", "×", "‹") in the middle of a button, a
+# label, a badge and a segment, by its ink; a button's word on its capitals.
+# Measured from the drawn pixels.
 if(TARGET UltraCanvas)
-    add_executable(ButtonTextCentringTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/ButtonTextCentringTest.cpp
+    add_executable(OneCharacterCentringTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/OneCharacterCentringTest.cpp
     )
-    target_include_directories(ButtonTextCentringTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(ButtonTextCentringTest PRIVATE cxx_std_20)
-    target_link_libraries(ButtonTextCentringTest PRIVATE UltraCanvas)
-    set_target_properties(ButtonTextCentringTest PROPERTIES
+    target_include_directories(OneCharacterCentringTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OneCharacterCentringTest PRIVATE cxx_std_20)
+    target_link_libraries(OneCharacterCentringTest PRIVATE UltraCanvas)
+    set_target_properties(OneCharacterCentringTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
-    add_test(NAME ButtonTextCentringTest COMMAND ButtonTextCentringTest
+    add_test(NAME OneCharacterCentringTest COMMAND OneCharacterCentringTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: ButtonTextCentringTest")
+    message(STATUS "    Test registered: OneCharacterCentringTest")
 endif()
 
 # ===== GAUGE LINEAR MODES TEST =====

@@ -1,5 +1,6 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.15.1 - the one-character centring is the shared DrawTextCentredOnInk
 // Version: 2.15.0 - a one-character label ("+", "x", a check mark) is centred on its ink, across and down:
 //                  centred on its line box, a "+" sat 2.5 px low in a round 48 px button
 // Version: 2.14.0 - SetColors / SetTextColors with fewer than four colours derive the others for the look:
@@ -962,15 +963,6 @@ namespace UltraCanvas {
                EscapeMarkup(text.substr(i + 1));
     }
 
-    // One code point of UTF-8 (the bytes that start one, not the ones that
-    // continue it): a label that is a single symbol or letter.
-    bool UltraCanvasButton::IsSingleCharacter(const std::string& label) {
-        int starts = 0;
-        for (const char c : label)
-            if ((static_cast<unsigned char>(c) & 0xC0) != 0x80) ++starts;
-        return starts == 1;
-    }
-
     void UltraCanvasButton::DrawText(IRenderContext* ctx) {
         if (text.empty() || textRect.width <= 0) return;
 
@@ -1029,29 +1021,15 @@ namespace UltraCanvas {
             ctx->DrawTextLayout(*layout, Point2Dd(rect.x, rect.y + (rect.height - height) / 2));
             return;
         }
-        // One character - "+", "x", "<", a check mark - centred on its ink.
-        // A word is centred on its line box, which puts its capitals in the
-        // middle; a lone symbol has no capitals and sits where the font puts
-        // it in that box: a "+" of 26 px came out 2.5 px low in a round 48 px
-        // button. Its ink box is in the middle instead, across and down,
-        // on whole pixels so its strokes stay sharp.
-        if (!useMarkup && style.textAlign == TextAlignment::Center && IsSingleCharacter(text)) {
-            TextLayoutKey key;
-            key.text = text;
-            key.font.fontFamily = style.fontFamily;
-            key.font.fontSize = style.fontSize;
-            key.font.fontWeight = style.fontWeight;
-            key.wrap = TextWrap::WrapNone;
-            key.align = TextAlignment::Left;
-            ITextLayout* layout = shortenedLayout.Get(ctx, key);
-            if (!layout) return;
-            const Rect2Dd ink = layout->GetLayoutExtents().ink;
-            if (ink.width > 0 && ink.height > 0) {
-                const double x = rect.x + rect.width / 2.0 - (ink.x + ink.width / 2.0);
-                const double y = rect.y + rect.height / 2.0 - (ink.y + ink.height / 2.0);
-                ctx->DrawTextLayout(*layout, Point2Dd(std::round(x), std::round(y)));
-                return;
-            }
+        // One character - "+", "x", "<", a check mark - centred on its ink
+        // (DrawTextCentredOnInk, UltraCanvasTextLayoutCache.h): centred on
+        // its line box, a 26 px "+" sat 2.5 px low in a round 48 px button.
+        if (!useMarkup && style.textAlign == TextAlignment::Center && IsSingleCharacterText(text)) {
+            FontStyle font;
+            font.fontFamily = style.fontFamily;
+            font.fontSize = style.fontSize;
+            font.fontWeight = style.fontWeight;
+            if (DrawTextCentredOnInk(ctx, shortenedLayout, text, font, rect)) return;
         }
         shortenedLayout.Reset();   // shortened at the end again: nothing to keep
 

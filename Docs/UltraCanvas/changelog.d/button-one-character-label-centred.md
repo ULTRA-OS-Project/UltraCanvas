@@ -6,4 +6,4 @@
   1.5 to 2.5 px low. A label of one character (a symbol, a check mark, a
   single letter), centred, now has its drawn shape put in the middle of the
   button, across and down, on whole pixels; a word stays where it was.
-  `Tests/ButtonTextCentringTest.cpp` measures it from the drawn pixels.
+  `Tests/OneCharacterCentringTest.cpp` measures it from the drawn pixels.
