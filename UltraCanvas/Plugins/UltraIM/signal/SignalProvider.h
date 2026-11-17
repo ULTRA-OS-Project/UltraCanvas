@@ -57,6 +57,7 @@
 //     LeaveConversation leaves a group (quitGroup), or hides a 1:1 one on
 //     this device until its next message. No calls, stickers or reactions.
 //
+// Version: 0.1.1 - a receipt that comes before the send is recorded is kept and applied, not lost
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -284,6 +285,10 @@ private:
     std::map<std::string, std::deque<UltraIMMessage>> history_;  // conversation id -> its messages, oldest first
     std::map<std::string, std::string> conversationOf_;     // message id -> conversation id
     std::map<std::string, std::string> clientOf_;           // our message id -> the client id it was sent under
+    // A receipt for one of our messages that came before the send was
+    // recorded (the other side answered while "send" was still returning):
+    // applied when it is. Our message id -> what the receipt said.
+    std::map<std::string, UltraIMDeliveryStatus> earlyReceipts_;
     std::set<std::string> receipted_;                       // received message ids whose read receipt went
 
     // The worker: every call but receive and finishLink, in order.
