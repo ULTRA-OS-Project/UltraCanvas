@@ -1,5 +1,7 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.11 - providers on demand: UltraIM_LoadProvider, UltraIM_ListProviderModules, the
+//                   networks in use kept (ultraim-providers.txt) and loaded by UltraIM_LoadUsedProviders
 // Version: 0.1.10 - UltraIM_SetGroupDescription, _BlockGroupMember, _UnblockGroupMember, _FetchBlockedMembers
 // Version: 0.1.9 - UltraIM_FetchPublicGroups, _JoinGroup, _SetGroupPublic
 // Version: 0.1.8 - UltraIM_MakePreview makes a file's preview once: the window and the provider ask for
@@ -15,7 +17,7 @@
 // Version: 0.1.2 - the account's profile and its sign-in protection
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-11-16
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 
 #include "UltraIM/UltraIMCore.h"
@@ -26,6 +28,7 @@
 #include <atomic>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <mutex>
 #include <random>
@@ -67,6 +70,10 @@ struct ManagerState {
     std::map<UltraIMSubscriptionId, std::shared_ptr<UltraIMEventCallback>> subscribers;
     UltraIMSubscriptionId nextSubscriptionId = 1;
     std::set<std::string> loadedModules;     // canonical UTF-8 paths
+    std::map<std::string, UltraIM_PluginInitFn> moduleInits;   // a loaded module's entry point (canonical path)
+    std::set<std::string> usedProviders;     // the networks in use (ultraim-providers.txt)
+    bool usedRead = false;                   // read from the file yet
+    bool hadData = false;                    // the data folder held something when UltraIM started
     // Bumped by Shutdown: a task queued in the dispatcher before it drops out.
     uint64_t generation = 1;
 };
@@ -100,7 +107,13 @@ bool IsGeneration(uint64_t generation) {
     return State().initialized && State().generation == generation;
 }
 
+void NoteProviderUsed(const std::string& providerId, bool used);
+
 void DeliverEvent(const UltraIMEvent& event) {
+    // A network that connects is one in use: loaded at the next start.
+    if (event.type == UltraIMEventType::ConnectionStateChange &&
+        event.connectionState == UltraIMConnectionState::Connected && !event.providerId.empty())
+        NoteProviderUsed(event.providerId, true);
     const uint64_t generation = CurrentGeneration();
     Dispatch([event, generation]() {
         std::vector<std::shared_ptr<UltraIMEventCallback>> targets;
@@ -211,13 +224,13 @@ bool AcceptModuleVersion(const fs::path& path, int moduleVersion) {
 // built for this host's version. Modules are never unloaded: a provider's
 // code (its vtable, the callbacks it handed out) must outlive every task
 // still queued in the dispatcher.
-void LoadModule(const fs::path& path) {
+UltraIM_PluginInitFn LoadModule(const fs::path& path) {
 #if defined(_WIN32)
     HMODULE module = LoadLibraryW(path.c_str());   // path-string-ok: wide path
     if (!module) {
         std::fprintf(stderr, "[UltraIM] Cannot load %s (error %lu)\n",
                      UltraCanvas::PathToUtf8(path).c_str(), GetLastError());
-        return;
+        return nullptr;
     }
     auto version = reinterpret_cast<UltraIM_PluginAbiVersionFn>(
         reinterpret_cast<void*>(GetProcAddress(module, "UltraIM_PluginAbiVersion")));
@@ -228,18 +241,150 @@ void LoadModule(const fs::path& path) {
     if (!module) {
         std::fprintf(stderr, "[UltraIM] Cannot load %s: %s\n",
                      UltraCanvas::PathToUtf8(path).c_str(), dlerror());
-        return;
+        return nullptr;
     }
     auto version = reinterpret_cast<UltraIM_PluginAbiVersionFn>(dlsym(module, "UltraIM_PluginAbiVersion"));
     auto init = reinterpret_cast<UltraIM_PluginInitFn>(dlsym(module, "UltraIM_PluginInit"));
 #endif
-    if (!AcceptModuleVersion(path, version ? version() : -1)) return;
+    if (!AcceptModuleVersion(path, version ? version() : -1)) return nullptr;
     if (!init) {
         std::fprintf(stderr, "[UltraIM] %s has no UltraIM_PluginInit; skipped\n",
                      UltraCanvas::PathToUtf8(path).c_str());
-        return;
+        return nullptr;
     }
     init(&g_pluginHost);
+    return init;
+}
+
+// ---- The networks in use ------------------------------------------------------
+// <dataDirectory>/ultraim-providers.txt: one provider id a line ('#' starts a
+// comment). The modules named there are the ones UltraIM_LoadUsedProviders
+// loads; a network is added when it connects and taken out when it is signed
+// out of. A person may edit it (a network listed is loaded, one taken out is
+// loaded when it is next asked for).
+
+constexpr const char* kUsedProvidersFile = "ultraim-providers.txt";
+
+bool IsProviderId(const std::string& id) {
+    if (id.empty() || id.size() > 64) return false;
+    for (char c : id) {
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) return false;
+    }
+    return true;
+}
+
+fs::path UsedProvidersPath(const UltraIMConfig& config) {
+    if (config.dataDirectory.empty()) return fs::path();
+    return UltraCanvas::PathFromUtf8(config.dataDirectory) / kUsedProvidersFile;
+}
+
+// Whether the file is there; what it lists goes into `out`. Under the lock.
+bool ReadUsedProvidersLocked() {
+    ManagerState& s = State();
+    if (s.usedRead) return true;
+    const fs::path path = UsedProvidersPath(s.config);
+    std::error_code ec;
+    if (path.empty() || !fs::is_regular_file(path, ec)) return false;
+    std::ifstream in(path);
+    std::string line;
+    while (std::getline(in, line)) {
+        const size_t hash = line.find('#');
+        if (hash != std::string::npos) line.erase(hash);
+        while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r')) line.pop_back();
+        size_t start = 0;
+        while (start < line.size() && (line[start] == ' ' || line[start] == '\t')) ++start;
+        line.erase(0, start);
+        if (IsProviderId(line)) s.usedProviders.insert(line);
+    }
+    s.usedRead = true;
+    return true;
+}
+
+// Written whole, through a temporary file (a crash never leaves half a list). Under the lock.
+void WriteUsedProvidersLocked() {
+    ManagerState& s = State();
+    const fs::path path = UsedProvidersPath(s.config);
+    if (path.empty()) return;
+    std::error_code ec;
+    fs::create_directories(path.parent_path(), ec);
+    fs::path temporary = path;
+    temporary += ".new";
+    {
+        std::ofstream out(temporary, std::ios::trunc);
+        if (!out) return;
+        out << "# The networks this application uses: their UltraIM modules are loaded at start.\n"
+               "# Written by UltraIM; one provider id a line.\n";
+        for (const std::string& id : s.usedProviders) out << id << "\n";
+        if (!out) return;
+    }
+    fs::rename(temporary, path, ec);
+    if (ec) fs::remove(temporary, ec);
+    s.usedRead = true;
+}
+
+void NoteProviderUsed(const std::string& providerId, bool used) {
+    if (!IsProviderId(providerId)) return;
+    std::lock_guard<std::mutex> lock(State().mutex);
+    if (!State().initialized || State().config.dataDirectory.empty()) return;
+    ReadUsedProvidersLocked();
+    const bool changed = used ? State().usedProviders.insert(providerId).second
+                              : State().usedProviders.erase(providerId) > 0;
+    if (changed) WriteUsedProvidersLocked();
+}
+
+// The module file of `providerId` in `directory` (ultraim_<id> with the
+// platform's extension), or "" when there is none.
+fs::path ModuleFileFor(const fs::path& directory, const std::string& providerId) {
+#if defined(_WIN32)
+    const char* extensions[] = {".dll"};
+#elif defined(__APPLE__)
+    const char* extensions[] = {".dylib", ".so"};
+#else
+    const char* extensions[] = {".so"};
+#endif
+    std::error_code ec;
+    for (const char* ext : extensions) {
+        const fs::path candidate = directory / UltraCanvas::PathFromUtf8("ultraim_" + providerId + ext);
+        if (fs::is_regular_file(candidate, ec)) return candidate;
+    }
+    return fs::path();
+}
+
+// The provider id a module file is for ("ultraim_xmpp.so" -> "xmpp"), or "".
+std::string ProviderIdOfModule(const fs::path& path) {
+    const std::string stem = UltraCanvas::PathToUtf8(path.stem());
+    const std::string prefix = "ultraim_";
+    if (stem.rfind(prefix, 0) != 0) return std::string();
+    const std::string id = stem.substr(prefix.size());
+    return IsProviderId(id) ? id : std::string();
+}
+
+// Loads one module file unless it was loaded before. Whether it was new.
+bool LoadModuleOnce(const fs::path& path) {
+    std::error_code ec;
+    const std::string key = UltraCanvas::PathToUtf8(fs::weakly_canonical(path, ec));
+    {
+        std::lock_guard<std::mutex> lock(State().mutex);
+        if (!State().loadedModules.insert(key).second) return false;
+    }
+    UltraIM_PluginInitFn init = LoadModule(path);
+    std::lock_guard<std::mutex> lock(State().mutex);
+    if (init) State().moduleInits[key] = init;
+    return true;
+}
+
+// A module loaded before - in an UltraIM since shut down, whose registry went
+// with it - asked to register its provider again (modules are never unloaded).
+void ReinitModule(const fs::path& path) {
+    std::error_code ec;
+    const std::string key = UltraCanvas::PathToUtf8(fs::weakly_canonical(path, ec));
+    UltraIM_PluginInitFn init = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(State().mutex);
+        auto it = State().moduleInits.find(key);
+        if (it != State().moduleInits.end()) init = it->second;
+    }
+    if (init) init(&g_pluginHost);
 }
 
 std::string FallbackUuid() {
@@ -276,6 +421,15 @@ UltraIMResult UltraIM_Initialize(const UltraIMConfig& config) {
     if (State().initialized) return UltraIMResult::Ok();
     State().config = config;
     State().initialized = true;
+    State().usedProviders.clear();      // read again from this configuration's data folder
+    State().usedRead = false;
+    // Whether this application ran before (its data folder is not empty):
+    // with no list of networks yet, only then are they looked for.
+    {
+        std::error_code ec;
+        const fs::path data = config.dataDirectory.empty() ? fs::path() : UltraCanvas::PathFromUtf8(config.dataDirectory);
+        State().hadData = !data.empty() && fs::is_directory(data, ec) && !fs::is_empty(data, ec);
+    }
     return UltraIMResult::Ok();
 }
 
@@ -435,14 +589,107 @@ int UltraIM_RefreshProviders() {
 
     g_modulesRegistered = 0;
     for (const auto& candidate : candidates) {
-        const std::string key = UltraCanvas::PathToUtf8(fs::weakly_canonical(candidate, ec));
-        {
-            std::lock_guard<std::mutex> lock(State().mutex);
-            if (!State().loadedModules.insert(key).second) continue;
-        }
-        LoadModule(candidate);
+        if (LoadModuleOnce(candidate)) continue;
+        // Loaded in an UltraIM since shut down: its provider registered again
+        // (a module whose provider is here already is left alone).
+        const std::string id = ProviderIdOfModule(candidate);
+        if (id.empty() || !FindProvider(id)) ReinitModule(candidate);
     }
     return g_modulesRegistered;
+}
+
+std::vector<std::string> UltraIM_ListProviderModules() {
+    std::string directory;
+    {
+        std::lock_guard<std::mutex> lock(State().mutex);
+        if (!State().initialized) return {};
+        directory = State().config.pluginDirectory;
+    }
+    std::vector<std::string> ids;
+    if (directory.empty()) return ids;
+    std::error_code ec;
+    const fs::path base = UltraCanvas::PathFromUtf8(directory);
+    for (fs::directory_iterator it(base, ec), end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file(ec) || !IsModuleFile(it->path())) continue;
+        const std::string id = ProviderIdOfModule(it->path());
+        if (!id.empty()) ids.push_back(id);
+    }
+    std::sort(ids.begin(), ids.end());
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+    return ids;
+}
+
+UltraIMResult UltraIM_LoadProvider(const std::string& providerId) {
+    std::string directory;
+    {
+        std::lock_guard<std::mutex> lock(State().mutex);
+        if (!State().initialized)
+            return UltraIMResult::Error(UltraIMResultCode::NotInitialized, "UltraIM is not initialized");
+        if (State().providers.count(providerId)) return UltraIMResult::Ok();
+        directory = State().config.pluginDirectory;
+    }
+    if (!IsProviderId(providerId))
+        return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "Not a provider id: '" + providerId + "'");
+    const fs::path module = directory.empty() ? fs::path() : ModuleFileFor(UltraCanvas::PathFromUtf8(directory), providerId);
+    if (module.empty())
+        return UltraIMResult::Error(UltraIMResultCode::ProviderNotFound,
+                                    "No module for '" + providerId + "' (ultraim_" + providerId + ")");
+    if (!LoadModuleOnce(module)) ReinitModule(module);
+    if (FindProvider(providerId)) return UltraIMResult::Ok();
+    return UltraIMResult::Error(UltraIMResultCode::ProviderNotFound,
+                                "The module ultraim_" + providerId + " did not register '" + providerId + "'");
+}
+
+std::vector<std::string> UltraIM_GetUsedProviders() {
+    std::lock_guard<std::mutex> lock(State().mutex);
+    if (!State().initialized) return {};
+    ReadUsedProvidersLocked();
+    return std::vector<std::string>(State().usedProviders.begin(), State().usedProviders.end());
+}
+
+int UltraIM_LoadUsedProviders() {
+    bool listed = false;
+    std::vector<std::string> ids;
+    {
+        std::lock_guard<std::mutex> lock(State().mutex);
+        if (!State().initialized) return 0;
+        if (State().config.dataDirectory.empty()) return 0;
+        listed = ReadUsedProvidersLocked();
+        ids.assign(State().usedProviders.begin(), State().usedProviders.end());
+    }
+    int loaded = 0;
+    if (!listed) {
+        // A first start: nothing in use, nothing to look for - the list
+        // begins empty.
+        std::lock_guard<std::mutex> lock(State().mutex);
+        if (!State().hadData) {
+            WriteUsedProvidersLocked();
+            return 0;
+        }
+    }
+    if (listed) {
+        for (const std::string& id : ids) {
+            if (FindProvider(id)) continue;
+            if (UltraIM_LoadProvider(id)) ++loaded;
+        }
+        return loaded;
+    }
+    // No list yet, in a data folder used before (the first start since UltraIM
+    // kept one): every module once,
+    // and the networks with a sign-in kept are the ones in use from now on -
+    // an update signs no one out.
+    loaded = UltraIM_RefreshProviders();
+    // (Asked outside the lock: a provider may call back into UltraIM.)
+    std::vector<std::string> kept;
+    for (const auto& provider : AllProviders()) {
+        if (provider->HasStoredSession()) kept.push_back(provider->GetProviderId());
+    }
+    std::lock_guard<std::mutex> lock(State().mutex);
+    for (const std::string& id : kept) {
+        if (IsProviderId(id)) State().usedProviders.insert(id);
+    }
+    WriteUsedProvidersLocked();
+    return loaded;
 }
 
 std::vector<UltraIMProviderInfo> UltraIM_ListProviders() {
@@ -509,6 +756,8 @@ void UltraIM_ResendAuthCode(const std::string& providerId, UltraIMResultCallback
 
 void UltraIM_SignOut(const std::string& providerId) {
     if (ProviderPtr provider = FindProvider(providerId)) provider->SignOut();
+    // Signed out of on purpose: no longer loaded at start.
+    NoteProviderUsed(providerId, false);
 }
 
 UltraIMConnectionState UltraIM_GetConnectionState(const std::string& providerId) {

@@ -25,9 +25,10 @@
 // worker, which may wait). An iq result or error a waiter asked for is the
 // waiter's alone.
 //
+// Version: 0.3.0 - StartPinging: TCP asks a silent server (XEP-0199)
+// Last Modified: 2026-11-17
 // Version: 0.2.0 - the TCP binding (RFC 6120): ConnectTcp, STARTTLS, direct TLS, OpenStream
 // Version: 0.1.0
-// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -80,6 +81,11 @@ public:
     bool IsTcp() const;
     // TLS under the stream: wss://, direct TLS, or STARTTLS done.
     bool IsTls() const;
+    // TCP, once signed in: after keepaliveMs with nothing from the server, a
+    // ping (XEP-0199) to `to`; no answer - nor anything else - within
+    // timeoutMs ends the stream (onDropped). Its answers are not handed on.
+    // Nothing on WebSocket, which has its own pings.
+    void StartPinging(const std::string& to, int timeoutMs);
     bool Send(const XmlElement& element);
     // Sends `element` and waits for the first element `match` accepts; false
     // on a timeout or the stream's end.

@@ -276,7 +276,11 @@ The first ChatCube draft, which this replaces, is kept under
 
 ChatCube builds with the framework (`BUILD_CHATCUBE`, on by default) and needs
 UltraIM, UltraRTC (OpenSSL) and UltraNet; the provider modules are built next
-to it in `<build>/Plugins/UltraIM/`. Matrix encryption needs a Rust toolchain
+to it in `<build>/Plugins/UltraIM/`. Only the modules in use are loaded:
+ChatCube Direct, and the networks signed in to (UltraIM keeps them in
+`ultraim-providers.txt` in ChatCube's data folder); another network's module
+is loaded when its button is pressed, and one signed out of is not loaded at
+the next start. Matrix encryption needs a Rust toolchain
 (cargo) at build time; without one the Matrix module cannot open encrypted
 rooms. Telegram needs `libtdjson` from TDLib (Telegram Database Library) at
 run time, not at build time: the configure step fetches TDLib 1.8.69 prebuilt into

@@ -71,7 +71,8 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
-// Version: 0.3.12 - who is typing, per conversation: in its row of the list and, named in a group, in the header
+// Version: 0.3.13 - who is typing, per conversation: in its row of the list and, named in a group, in the header
+// Version: 0.3.12 - a network's module loaded when its button is pressed (LoadNetwork); NetworkName
 // Version: 0.3.11 - an IRC account (server, nickname, the password of a registered nick); #channel goes to IRC
 // Version: 0.3.10 - an XMPP account (the address and password; the server found from its domain)
 // Version: 0.3.9 - Signal: linked to the phone by a QR code (signal-cli); +phone asks Telegram or Signal
@@ -381,6 +382,11 @@ private:
     void SetStatus(const std::string& text);                                      // the action's part
     void SetProviderStatus(const std::string& providerId, const std::string& text);   // "" removes the entry
     void RenderStatus();
+    // The networks of the sidebar, in its order, under the names it shows.
+    std::vector<std::pair<std::string, const char*>> Networks() const;
+    std::string NetworkName(const std::string& providerId) const;
+    // The network's module loaded if it is not yet (on demand); its info.
+    bool LoadNetwork(const std::string& providerId, UltraIMProviderInfo& info);
     void SetSignInStatus(const std::string& text);
     void RefreshConversations();
     void ScrollToEnd();

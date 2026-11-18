@@ -1,6 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
-// Version: 0.3.6 - who is typing: per conversation, in the list's row and the header, named in a group
+// Version: 0.3.7 - who is typing: per conversation, in the list's row and the header, named in a group
+// Version: 0.3.6 - a network's module loaded on demand, from its button; names of networks not loaded
 // Version: 0.3.5 - a Mastodon account (the server, then its sign-in page in the browser); the network
 //                  buttons in two rows; @user@server and https://server/@user go to Mastodon
 // Version: 0.3.4 - sending in the background, a file's progress in its bubble, a video's preview picture
@@ -1304,15 +1305,39 @@ void ChatCubeWindow::SetProviderStatus(const std::string& providerId, const std:
     RenderStatus();
 }
 
+std::vector<std::pair<std::string, const char*>> ChatCubeWindow::Networks() const {
+    return {{providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
+            {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"},
+            {signalProviderId_, "Signal"}, {xmpp_.providerId, "XMPP"}, {irc_.providerId, "IRC"}};
+}
+
+std::string ChatCubeWindow::NetworkName(const std::string& providerId) const {
+    for (const auto& network : Networks()) {
+        if (network.first == providerId) return network.second;
+    }
+    UltraIMProviderInfo info;
+    if (UltraIM_GetProviderInfo(providerId, info) && !info.displayName.empty()) return info.displayName;
+    return providerId;
+}
+
+bool ChatCubeWindow::LoadNetwork(const std::string& providerId, UltraIMProviderInfo& info) {
+    // A network's module is loaded the first time it is asked for (UltraIM
+    // loads at start only those in use): its button opens its form.
+    const bool wasLoaded = UltraIM_GetProviderInfo(providerId, info);
+    if (!wasLoaded && !UltraIM_LoadProvider(providerId)) return false;
+    if (!UltraIM_GetProviderInfo(providerId, info)) return false;
+    // Telegram's keys come from the relay, asked for at start when Telegram
+    // was loaded then: now, when it is loaded only now.
+    if (!wasLoaded && providerId == telegramProviderId_ && telegramRelayApiId_.empty())
+        FetchTelegramCredentials([this]() { UpdateTelegramForm(); });
+    return true;
+}
+
 void ChatCubeWindow::RenderStatus() {
     if (!status_) return;
     std::string line = actionStatus_;
     // The networks in a fixed order, each under the name the sidebar uses.
-    const std::pair<std::string, const char*> networks[] = {
-        {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
-        {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"},
-        {signalProviderId_, "Signal"}, {xmpp_.providerId, "XMPP"}, {irc_.providerId, "IRC"}};
-    for (const auto& network : networks) {
+    for (const auto& network : Networks()) {
         auto it = providerStatus_.find(network.first);
         if (it == providerStatus_.end()) continue;
         if (!line.empty()) line += " \xC2\xB7 ";       // a middle dot
@@ -2099,9 +2124,7 @@ void ChatCubeWindow::AddContactById(const std::string& id) {
     if (connected.empty() && candidates.size() > 1) {
         std::string names;
         for (const std::string& provider : candidates) {
-            UltraIMProviderInfo info;
-            if (!UltraIM_GetProviderInfo(provider, info)) continue;
-            names += (names.empty() ? "" : ", ") + (info.displayName.empty() ? provider : info.displayName);
+            names += (names.empty() ? "" : ", ") + NetworkName(provider);
         }
         SetStatus(TrF("Sign in to one of these first: {0}", names));
         return;
@@ -2130,7 +2153,7 @@ void ChatCubeWindow::AddContactOn(const std::string& provider, const std::string
 
 void ChatCubeWindow::ToggleMatrixForm() {
     UltraIMProviderInfo info;
-    if (!UltraIM_GetProviderInfo(matrixProviderId_, info)) {
+    if (!LoadNetwork(matrixProviderId_, info)) {
         SetStatus(Tr("The Matrix module was not found (Plugins/UltraIM)."));
         return;
     }
@@ -2149,7 +2172,7 @@ void ChatCubeWindow::ToggleMatrixForm() {
 
 void ChatCubeWindow::ToggleTelegramForm() {
     UltraIMProviderInfo info;
-    if (!UltraIM_GetProviderInfo(telegramProviderId_, info)) {
+    if (!LoadNetwork(telegramProviderId_, info)) {
         SetStatus(Tr("The Telegram module was not found (Plugins/UltraIM)."));
         return;
     }
@@ -2357,7 +2380,7 @@ void ChatCubeWindow::SignInToMatrix(bool stored) {
 
 void ChatCubeWindow::ToggleMastodonForm() {
     UltraIMProviderInfo info;
-    if (!UltraIM_GetProviderInfo(mastodonProviderId_, info)) {
+    if (!LoadNetwork(mastodonProviderId_, info)) {
         SetStatus(Tr("The Mastodon module was not found (Plugins/UltraIM)."));
         return;
     }
@@ -2395,7 +2418,7 @@ void ChatCubeWindow::SignInToMastodon(bool stored) {
 
 void ChatCubeWindow::ToggleSignalForm() {
     UltraIMProviderInfo info;
-    if (!UltraIM_GetProviderInfo(signalProviderId_, info)) {
+    if (!LoadNetwork(signalProviderId_, info)) {
         SetStatus(TrF("The {0} module was not found (Plugins/UltraIM).", std::string("Signal")));
         return;
     }
@@ -2517,7 +2540,7 @@ ChatCubeWindow::AccountForm* ChatCubeWindow::AccountFormOf(const std::string& pr
 
 void ChatCubeWindow::ToggleAccountForm(AccountForm& f) {
     UltraIMProviderInfo info;
-    if (!UltraIM_GetProviderInfo(f.providerId, info)) {
+    if (!LoadNetwork(f.providerId, info)) {
         SetStatus(TrF("The {0} module was not found (Plugins/UltraIM).", f.name));
         return;
     }

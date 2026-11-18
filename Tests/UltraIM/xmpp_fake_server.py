@@ -32,6 +32,8 @@ a goodbye; POST /_test/mechanisms {"mechanisms": [...]} sets the SASL
 mechanisms offered; POST /_test/password {"user": ..., "password": ...}
 changes a password (a new salt); POST /_test/starttls {"offer": false}
 stops offering STARTTLS on the plain TCP port.
+POST /_test/silence {"user": "alice"} makes alice's TCP connections say
+nothing more (pings unanswered too) while they stay open.
 """
 
 import argparse
@@ -522,10 +524,11 @@ class TcpConn(Conn):
         self.depth = 0
         self.root = None
         self.restart = False
+        self.silent = False     # /_test/silence: nothing written any more
 
     def write(self, data):
         with self.send_lock:
-            if not self.alive:
+            if not self.alive or self.silent:
                 return
             view = memoryview(data)
             try:
@@ -1292,6 +1295,13 @@ class Handler(BaseHTTPRequestHandler):
                 MECHANISMS[:] = body["mechanisms"]
             elif path == "/_test/password":
                 set_password(body["user"] + "@" + DOMAIN, body["password"])
+            elif path == "/_test/silence":
+                # alice's TCP connections stay open and say nothing more -
+                # pings not answered either (a server that hangs).
+                jid = body["user"] + "@" + DOMAIN
+                for c in list(SESSIONS.get(jid, {}).values()):
+                    if isinstance(c, TcpConn):
+                        c.silent = True
             elif path == "/_test/starttls":
                 TLS["starttls"] = bool(body.get("offer", True))
             else:
