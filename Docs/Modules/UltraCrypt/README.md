@@ -1052,13 +1052,24 @@ UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
                                           const void* ciphertext, size_t size,
                                           UltraCryptSecureBuffer& outPlaintext);
 
-// SHA256 or SHA512 (SHA1 is refused); iterations >= 1; salt may be empty.
+// SHA256 or SHA512; SHA1 only with options.allowLegacy (OpenDocument's
+// password key); iterations >= 1; salt may be empty.
 UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm algorithm,
                                             const UltraCryptSecureBuffer& password,
                                             const std::vector<uint8_t>& salt,
                                             uint32_t iterations,
                                             size_t outputLength,
-                                            UltraCryptSecureBuffer& outKey);
+                                            UltraCryptSecureBuffer& outKey,
+                                            const UltraCryptHashOptions& options =
+                                                UltraCryptHashOptions());
+
+// AES-GCM decryption (interop only): the module's own AES and GHASH, every
+// CPU. The ciphertext ends with the 16-byte tag, checked before anything is
+// released (AuthenticationFailed, output empty).
+UltraCryptResult UltraCrypt_AesGcmDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptGcmParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
 ```
 
 The IV is the first counter block, and each next block adds one to it as a
