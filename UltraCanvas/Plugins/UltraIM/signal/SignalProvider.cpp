@@ -2,7 +2,8 @@
 // Signal - signal-cli's accounts, contacts and groups as UltraIM conversations
 // Version: 0.2.0 - the provider's own daemon is started for the shared proxy setting (Java's proxy options in
 //                  its environment) and started again when the setting changes; a proxy signal-cli cannot
-//                  use, or a signal-cli that reads no Java options, is not left to connect directly
+//                  use, or a signal-cli that would not send everything through one (no Java runtime, older
+//                  than 0.13.13), is not left to connect directly
 // Version: 0.1.1 - a receipt that comes before the send is recorded is kept and applied, not lost
 // Version: 0.1.0
 // Last Modified: 2026-11-18
@@ -490,23 +491,17 @@ UltraIMResult SignalProvider::EnsureDaemon(const std::string& server) {
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
                                     "Signal needs signal-cli (which needs Java 21): install it, or give the address "
                                     "of a running signal-cli daemon (signal-cli daemon --http 127.0.0.1:7583)");
-    // The proxy reaches signal-cli as Java options. For a signal-cli that no
-    // Java runtime starts (its native build) nothing shows they are read: it
-    // is taken to connect directly, and not used for a proxy.
-    const UltraIMResult notJava = UltraIMResult::Error(
-        UltraIMResultCode::Unsupported,
-        "Signal cannot connect through the proxy " + proxy.text + ": this signal-cli (" + program +
-            ") is not run by Java, which is where it takes a proxy from. Install signal-cli's Java distribution, or "
-            "run the daemon yourself and give its address.");
+    // A signal-cli found unfit for a proxy before (below) is not started
+    // again for one: every retry would start and stop it.
     if (proxy.kind == DaemonProxy::Kind::Through) {
-        bool known = false;
+        std::string why;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            known = notJava_ == program;
+            if (unfitProgram_ == program) why = unfitWhy_;
         }
-        if (known) {
+        if (!why.empty()) {
             daemon_.Stop();
-            return notJava;
+            return UltraIMResult::Error(UltraIMResultCode::Unsupported, why);
         }
     }
     const int port = FreeLoopbackPort();
@@ -540,18 +535,36 @@ UltraIMResult SignalProvider::EnsureDaemon(const std::string& server) {
                                             (tail.empty() ? std::string() : ": " + tail));
         }
         if (DaemonAnswers(url2, 1000)) {
-            if (proxy.kind == DaemonProxy::Kind::Through && !JvmTookOptions(logPath, logStart)) {
-                // It answers, but no Java runtime said it read the options:
-                // it would reach Signal directly.
-                daemon_.Stop();
+            {
                 std::lock_guard<std::mutex> lock(mutex_);
-                notJava_ = program;
-                return notJava;
+                daemonUrl_ = url2;
+                ownDaemon_ = true;
             }
+            if (proxy.kind != DaemonProxy::Kind::Through) return UltraIMResult::Ok();
+            // It answers - but will all of it go through the proxy? The proxy
+            // reaches signal-cli as Java options: for one no Java runtime
+            // starts (its native build) nothing shows they are read, and one
+            // older than 0.13.13 tells its network library nothing of them.
+            // Either would reach Signal directly, so it is stopped instead.
+            std::string why;
+            if (!JvmTookOptions(logPath, logStart)) {
+                why = "this signal-cli (" + program + ") is not run by Java, which is where it takes a proxy from. "
+                      "Install signal-cli's Java distribution";
+            } else {
+                const std::string version = Rpc("version", JSONValue(), 10000).result["version"].GetString();
+                if (!SignalCliTakesProxy(version))
+                    why = "signal-cli " + (version.empty() ? std::string("(of a version it does not tell)") : version) +
+                          " sends only part of what it does through a proxy. Install signal-cli 0.13.13 or later";
+            }
+            if (why.empty()) return UltraIMResult::Ok();
+            why = "Signal cannot connect through the proxy " + proxy.text + ": " + why +
+                  ", or run the daemon yourself and give its address.";
+            daemon_.Stop();
             std::lock_guard<std::mutex> lock(mutex_);
-            daemonUrl_ = url2;
-            ownDaemon_ = true;
-            return UltraIMResult::Ok();
+            daemonUrl_.clear();
+            unfitProgram_ = program;
+            unfitWhy_ = why;
+            return UltraIMResult::Error(UltraIMResultCode::Unsupported, why);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
@@ -642,7 +655,8 @@ void SignalProvider::SignInOnWorker(UltraIMCredentials credentials, UltraIMResul
     {
         // A sign-in asked for tries the signal-cli there is now afresh.
         std::lock_guard<std::mutex> lock(mutex_);
-        notJava_.clear();
+        unfitProgram_.clear();
+        unfitWhy_.clear();
     }
     const UltraIMResult daemon = EnsureDaemon(credentials.server);
     if (!daemon) return fail(daemon);

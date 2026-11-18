@@ -22,11 +22,13 @@
 // SignalDaemon.h), and started again when the setting changes while signed
 // in - the link and the account stay. A proxy signal-cli has no means for
 // (one that asks for a user name and password, SOCKS 4, one reached over
-// TLS), or a signal-cli that no Java runtime starts (its native build:
-// nothing shows it reads the options), is not left to connect directly: SignIn answers
-// Unsupported, saying why, and while signed in the daemon is stopped and the
-// state is Error until the setting changes. A daemon the user runs
-// (credentials.server) connects as the user started it.
+// TLS), or a signal-cli that would not send everything through one - no Java
+// runtime starts it (its native build: nothing shows it reads the options),
+// or it is older than 0.13.13 (its network library was told of no proxy) -
+// is not left to connect directly: SignIn answers Unsupported, saying why,
+// and while signed in the daemon is stopped and the state is Error until the
+// setting changes. A daemon the user runs (credentials.server) connects as
+// the user started it.
 //
 // Sign-in links this device to the phone (UltraIMLoginType::QRCode): when
 // the account linked before (UltraVault: its number, and the daemon's
@@ -290,7 +292,9 @@ private:
     std::string daemonUrl_;             // "http://127.0.0.1:7583"
     bool        ownDaemon_ = false;     // daemonUrl_ is daemon_'s
     DaemonProxy daemonProxy_;           // what daemon_ was last started for (or not started, when unusable)
-    std::string notJava_;               // a signal-cli found to read no Java options: not started again for a proxy
+    // A signal-cli found unfit for a proxy (no Java runtime, too old), and
+    // why: not started again for one until a sign-in is asked for.
+    std::string unfitProgram_, unfitWhy_;
     std::string account_;               // the number, else the ACI: every call's "account"
     std::string number_, aci_;
     UltraIMAuthStep authStep_ = UltraIMAuthStep::Idle;

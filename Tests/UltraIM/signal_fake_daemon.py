@@ -66,7 +66,7 @@ ACCOUNTS = {}          # number -> {"uuid", "name", "username", "linked", "queue
 GROUPS = {}            # group id (base64) -> {"name", "members": [numbers], "admins": set, "revision"}
 LINKS = {}             # device link uri -> {"number": None | str, "expired": bool}
 ATTACHMENTS = {}       # attachment id -> path on disk
-CONFIG = {"dir": None, "attachments": None}
+CONFIG = {"dir": None, "attachments": None, "version": "0.13.24"}
 _LAST_MS = [0]
 
 
@@ -280,6 +280,11 @@ def send_from(sender, params, sync_copy=False):
 # ---------------------------------------------------------------------------
 # The JSON-RPC methods
 # ---------------------------------------------------------------------------
+
+def m_version(params):
+    # signal-cli's own number (--fake-version plays another one).
+    return {"version": CONFIG["version"]}
+
 
 def m_listAccounts(params):
     return [{"number": n, "aci": a["uuid"]} for n, a in ACCOUNTS.items() if a["linked"]]
@@ -626,7 +631,10 @@ def main():
     parser.add_argument("command", nargs="?", default=None)
     parser.add_argument("--http", default=None)
     parser.add_argument("--receive-mode", default=None)
+    parser.add_argument("--fake-version", default=None)
     args, _ = parser.parse_known_args()
+    if args.fake_version:
+        CONFIG["version"] = args.fake_version
 
     numbers = [n.strip() for n in args.accounts.split(",") if n.strip()]
     names = [n.strip() for n in args.names.split(",") if n.strip()]

@@ -16,8 +16,9 @@
 // every kind of setting), the daemon started again when the setting changes
 // while signed in - another proxy, none - with the account kept, stopped with
 // the reason as the state for a proxy signal-cli cannot use, and a signal-cli
-// that is no Java program refused for a proxy rather than left to connect
-// directly. Skips without python3, unless ULTRAIM_TEST_SIGNAL_REQUIRED is set.
+// that is no Java program, or older than 0.13.13, refused for a proxy rather
+// than left to connect directly. Skips without python3, unless
+// ULTRAIM_TEST_SIGNAL_REQUIRED is set.
 // Version: 0.1.2 - the proxy setting and the provider's own daemon
 // Version: 0.1.1 - a receipt quicker than the send's answer (/_test/send_delay) still gives the tick
 // Version: 0.1.0
@@ -716,8 +717,9 @@ bool ProcessGone(pid_t pid) {
 // A stand-in for signal-cli: a wrapper that runs the fake with the arguments
 // signal-cli gets. `java`: as signal-cli's Java distribution, whose runtime
 // says on standard error that it read JAVA_TOOL_OPTIONS; without it, as the
-// native build, which says nothing and reads none.
-fs::path WriteWrapper(const fs::path& path, bool java) {
+// native build, which says nothing and reads none. `version`: the number it
+// tells ("" = the fake's own, a current one).
+fs::path WriteWrapper(const fs::path& path, bool java, const std::string& version = std::string()) {
     std::FILE* f = UltraCanvas::OpenFileUtf8(UltraCanvas::PathToUtf8(path), "wb");
     if (!f) {
         CHECK(false);
@@ -727,7 +729,8 @@ fs::path WriteWrapper(const fs::path& path, bool java) {
     if (java)
         script += "if [ -n \"$JAVA_TOOL_OPTIONS\" ]; then echo \"Picked up JAVA_TOOL_OPTIONS: $JAVA_TOOL_OPTIONS\" >&2; fi\n";
     script += std::string("exec python3 '") + ULTRAIM_TEST_DIR + "/signal_fake_daemon.py' --accounts " + kDave + "," +
-              kErin + " --names 'Dave Dunn,Erin Ernst' \"$@\"\n";
+              kErin + " --names 'Dave Dunn,Erin Ernst'" + (version.empty() ? "" : " --fake-version " + version) +
+              " \"$@\"\n";
     std::fwrite(script.data(), 1, script.size(), f);
     std::fclose(f);
     chmod(path.c_str(), 0755);
@@ -862,6 +865,12 @@ void TestDaemonProxyOptions() {
     const UltraNetProxyConfig odd = proxy(UltraNetProxyType::Http, "proxy.example -Dx=y", 3128);
     d = DaemonProxyFor(odd, odd);
     CHECK(d.kind == DaemonProxy::Kind::Unusable && d.jvmOptions.empty());
+
+    // The signal-cli versions that send everything through the proxy.
+    CHECK(SignalCliTakesProxy("0.13.13") && SignalCliTakesProxy("0.13.24") && SignalCliTakesProxy("0.14.10"));
+    CHECK(SignalCliTakesProxy("1.0.0") && SignalCliTakesProxy("0.14.11-SNAPSHOT"));
+    CHECK(!SignalCliTakesProxy("0.13.12") && !SignalCliTakesProxy("0.12.8") && !SignalCliTakesProxy("0.9.0"));
+    CHECK(!SignalCliTakesProxy("") && !SignalCliTakesProxy("unknown") && !SignalCliTakesProxy("0.13"));
 }
 
 bool Eventually(const std::function<bool()>& holds, int seconds = 30) {
@@ -1015,6 +1024,27 @@ void TestOwnDaemonProxy(const fs::path& base) {
     CHECK(r.code == UltraIMResultCode::NeedsInput);
     CHECK(grace->GetDaemonProcessId() > 0);
     grace->Shutdown();
+
+    // A signal-cli older than 0.13.13 tells its network library nothing of
+    // the proxy: refused for one as well, by the version it tells.
+    const fs::path old = WriteWrapper(base / "signal-cli-old.sh", true, "0.13.12");
+    setenv("ULTRAIM_SIGNAL_CLI", UltraCanvas::PathToUtf8(old).c_str(), 1);
+    SetProxy(UltraNetProxyType::Socks5, "127.0.0.1", 10808);
+    Events heidiEvents;
+    auto heidi = std::make_unique<SignalProvider>();
+    heidi->SetTimings(Fast());
+    UltraIMConfig heidiConfig;
+    heidiConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "heidi");
+    CHECK(heidi->Initialize(heidiConfig, heidiEvents.Sink()));
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { heidi->SignIn(own, cb); }, r));
+    CHECK(!r.success && r.code == UltraIMResultCode::Unsupported);
+    CHECK(r.message.find("signal-cli 0.13.12") != std::string::npos);
+    CHECK(r.message.find("0.13.13 or later") != std::string::npos);
+    CHECK(heidi->GetDaemonProcessId() == 0 && heidi->GetDaemonUrl().empty());
+    UltraNet_DisableProxy();
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { heidi->SignIn(own, cb); }, r));
+    CHECK(r.code == UltraIMResultCode::NeedsInput);
+    heidi->Shutdown();
 
     unsetenv("JAVA_TOOL_OPTIONS");
     unsetenv("ULTRAIM_SIGNAL_CLI");

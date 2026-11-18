@@ -1,7 +1,8 @@
 // Plugins/UltraIM/signal/SignalDaemon.cpp
 // signal-cli found, started as the provider's child process and stopped again
 // Version: 0.2.0 - the proxy setting as Java options (DaemonProxyFor, ChooseDaemonProxy,
-//                  JavaToolOptionsWith, JvmTookOptions); Start sets variables in the child's environment
+//                  JavaToolOptionsWith, JvmTookOptions, SignalCliTakesProxy); Start sets variables in
+//                  the child's environment
 // Version: 0.1.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -139,6 +140,27 @@ bool JvmTookOptions(const std::string& logPath, uint64_t from) {
     log.read(text.data(), static_cast<std::streamsize>(text.size()));
     text.resize(static_cast<size_t>(std::max<std::streamsize>(0, log.gcount())));
     return text.find("Picked up JAVA_TOOL_OPTIONS") != std::string::npos;
+}
+
+bool SignalCliTakesProxy(const std::string& version) {
+    // "0.13.24", "0.14.11-SNAPSHOT": the three numbers it starts with.
+    int numbers[3] = {0, 0, 0};
+    size_t at = 0;
+    for (int& n : numbers) {
+        const size_t start = at;
+        while (at < version.size() && std::isdigit(static_cast<unsigned char>(version[at])) && at - start < 6)
+            n = n * 10 + (version[at++] - '0');
+        if (at == start) return false;
+        if (&n != &numbers[2]) {
+            if (at >= version.size() || version[at] != '.') return false;
+            ++at;
+        }
+    }
+    const int need[3] = {0, 13, 13};
+    for (int i = 0; i < 3; ++i) {
+        if (numbers[i] != need[i]) return numbers[i] > need[i];
+    }
+    return true;
 }
 
 std::string FindSignalCli(const std::string& pluginDirectory) {

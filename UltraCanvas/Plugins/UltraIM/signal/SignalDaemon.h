@@ -11,12 +11,12 @@
 // is between it and Signal's servers - so the proxy every UltraCanvas
 // application connects through (UltraCanvasProxySettings.h) is handed to it
 // where it reads one: the Java runtime's proxy properties, which signal-cli
-// (0.13.13 and later) passes on to its network library as well. They go in
+// (0.13.13 and later - SignalCliTakesProxy) passes on to its network library as well. They go in
 // JAVA_TOOL_OPTIONS in the daemon's environment, after what that variable
 // already holds, so the setting wins over a proxy named there. See
 // DaemonProxy below.
 // Version: 0.2.0 - DaemonProxy: the shared proxy setting as the Java options signal-cli reads;
-//                  Start takes variables for the child's environment; JvmTookOptions
+//                  Start takes variables for the child's environment; JvmTookOptions, SignalCliTakesProxy
 // Version: 0.1.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -66,6 +66,13 @@ std::string JavaToolOptionsWith(const std::string& options);
 // is no Java program - its native build - writes no such line, and nothing
 // says it reads the options.
 bool JvmTookOptions(const std::string& logPath, uint64_t from);
+// Whether a signal-cli of this version ("0.13.24", as its `version` call
+// says it) sends everything through the proxy Java names: 0.13.13 and later
+// do. Before that its network library was told nothing of the proxy, and
+// what went by it - asking Signal which numbers are registered, for one
+// (signal-cli's changelog for 0.13.13) - connected directly. False for a
+// version that cannot be read.
+bool SignalCliTakesProxy(const std::string& version);
 
 // The signal-cli program to start (UTF-8), or "" when there is none:
 // ULTRAIM_SIGNAL_CLI when set (a file), else <pluginDirectory>/signal-cli/

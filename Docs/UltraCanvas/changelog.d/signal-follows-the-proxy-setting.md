@@ -12,11 +12,13 @@
   takes variables for it, on POSIX and on Windows). When the setting changes
   while signed in the daemon is started again for it, on the link it kept.
   A proxy signal-cli has no means for (one that asks for a user name and
-  password, SOCKS 4, one reached over TLS) and a signal-cli that no Java
-  runtime starts (its native build: the runtime's acknowledgement of the
-  options is missing from the daemon's log) fail the sign-in with
-  `Unsupported`, or stop the daemon with the reason as the `Error` state,
-  rather than connect directly. A daemon the user runs is not touched.
+  password, SOCKS 4, one reached over TLS) and a signal-cli that would
+  not send everything through one - no Java runtime starts it (its native
+  build: the runtime's acknowledgement of the options is missing from the
+  daemon's log), or it says it is older than 0.13.13 - fail the sign-in
+  with `Unsupported`, or stop the daemon with the reason as the `Error`
+  state, rather than connect directly. A daemon the user runs is not
+  touched.
   Tested in `SignalProviderTests` with the stand-in daemon, and by a Java
   runtime started through the same path selecting the proxy; signal-cli
   itself against Signal's servers was not run. See

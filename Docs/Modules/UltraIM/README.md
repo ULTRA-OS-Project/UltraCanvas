@@ -1058,11 +1058,14 @@ signal-cli is not bundled.
   account are signal-cli's files and stay. Nothing is left to connect
   directly: a proxy signal-cli has no means for - one that asks for a user
   name and password (signal-cli passes none on), SOCKS 4, one reached over
-  TLS - and a signal-cli that no Java runtime starts (its native build:
-  the runtime's `Picked up JAVA_TOOL_OPTIONS` line is missing from the
-  daemon's log, so nothing shows the options were read), answer a sign-in
-  with `Unsupported`, saying why, and while signed in stop the daemon with
-  that as its `Error` state until the setting changes. A daemon the user
+  TLS - and a signal-cli that would not send everything through one - no
+  Java runtime starts it (its native build: the runtime's `Picked up
+  JAVA_TOOL_OPTIONS` line is missing from the daemon's log, so nothing
+  shows the options were read), or its `version` call names one older than
+  0.13.13 (`SignalCliTakesProxy`) - answer a sign-in with `Unsupported`,
+  saying why, and while signed in stop the daemon with that as its `Error`
+  state until the setting changes. With no proxy to use, either is started
+  as before. A daemon the user
   runs (`credentials.server`) connects as the user started it - with a
   proxy, by the same Java options.
 - **Sign-in** (`UltraIMLoginType::QRCode`): an account linked before and
@@ -1095,8 +1098,9 @@ file and a voice note byte for byte, history and search, a group made and
 left, and a daemon the provider starts and stops itself; the proxy setting
 as Java options for every kind of setting, the daemon started again when
 the setting changes while signed in (another proxy, none) with the account
-kept, stopped with the reason for a proxy signal-cli cannot use, and a
-stand-in for the native build refused for a proxy. Skips without python3 unless
+kept, stopped with the reason for a proxy signal-cli cannot use, and
+stand-ins for the native build and for signal-cli 0.13.12 refused for a
+proxy. Skips without python3 unless
 `ULTRAIM_TEST_SIGNAL_REQUIRED` is set. The real signal-cli is not part of
 the tests: that it takes its proxy from Java's properties is its own source
 (`Utils.getHttpsProxy`, `SignalDependencies.setSignalNetworkProxy`).
