@@ -839,7 +839,7 @@ same charts an application uses as elements
 | `Column`, `Bar` (side by side, `stacked`, `percent`) | `UltraCanvasEngineBarChart` |
 | `Line`, `Area` | `UltraCanvasEngineLineChart` |
 | `Pie`, `Doughnut` | `UltraCanvasEnginePieChart` |
-| `Scatter` | `UltraCanvasEngineScatterChart`; the line chart over numeric x where the points are joined and the series share their x |
+| `Scatter` | `UltraCanvasEngineScatterChart`, each series over its own x values; a series with a line is a joined group |
 
 The chart is laid out for the frame's own size and scaled into its place, so
 it prints and exports as vectors and keeps its proportions under zoom. It is

@@ -3,12 +3,13 @@
 // as a chart of the chart engine: columns and bars (UltraCanvasEngineBarChart),
 // lines and areas (UltraCanvasEngineLineChart), pies and doughnuts
 // (UltraCanvasEnginePieChart) and scatter charts (UltraCanvasEngineScatterChart,
-// or the line chart over numeric x where the points are joined).
+// its groups joined where the series have lines).
 //
 // The document model and its file formats stay free of the UI stack: they
 // carry the chart's data. This is the bridge the view draws it with - and
 // any application can use to show a document's chart as a live element.
 //
+// Version: 1.2.0 - a scatter chart is always the engine's scatter chart
 // Version: 1.1.0 - `ink`: the chart's furniture on a dark page
 // Version: 1.0.0
 // Last Modified: 2026-11-18

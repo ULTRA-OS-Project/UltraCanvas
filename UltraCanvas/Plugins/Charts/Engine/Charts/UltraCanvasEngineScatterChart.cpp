@@ -1,5 +1,6 @@
 // Plugins/Charts/Engine/Charts/UltraCanvasEngineScatterChart.cpp
 // Scatter and bubble charts on the chart engine.
+// Version: 1.2.0 - joined groups: a line through a group's points in the order given
 // Version: 1.1.0 - RebuildHighlights() asks AddChartHighlights() first
 // Version: 1.0.0
 // Last Modified: 2026-10-24
@@ -363,6 +364,31 @@ void UltraCanvasEngineScatterChart::ApplyFormat(ChartAxis& axis, const AxisForma
     if (format.explicitRange) axis.SetRange(format.lo, format.hi);
 }
 
+void UltraCanvasEngineScatterChart::SetJoinLineWidth(float width) {
+    joinLineWidth = std::max(0.5f, width);
+    MarkEngineDirty(ChartDirty::Style);
+}
+
+// A joined group's points in the order given, through the frame's axes and
+// projection; straight segments, broken at a point that is not finite.
+std::vector<ChartLineRun> UltraCanvasEngineScatterChart::GroupLineRuns(size_t group) const {
+    const ChartEngineFrame& frame = Frame();
+    if (group >= groups.size() || !groups[group].joined || !Visible(group)
+        || !frame.axes || frame.axes->Count() < 2 || !frame.projection) {
+        return {};
+    }
+    const ChartAxis& y = frame.axes->At(0);
+    const ChartAxis& x = frame.axes->At(1);
+    std::vector<ChartNormalizedPoint> points;
+    points.reserve(groups[group].points.size());
+    for (const EngineScatterPoint& p : groups[group].points) {
+        points.emplace_back(Finite(p.x) ? x.Normalize(p.x) : std::nan(""), Finite(p.y) ? y.Normalize(p.y) : std::nan(""));
+    }
+    ChartLineOptions options;
+    options.samplesPerSegment = GetProjectionKind() == ChartProjectionKind::Polar ? 16 : 1;
+    return BuildLineRuns(*frame.projection, points, options);
+}
+
 void UltraCanvasEngineScatterChart::RefreshLegend() {
     // The size key, then the colour bar, then the group list - one legend,
     // the most informative key for what the chart shows.
@@ -402,7 +428,8 @@ void UltraCanvasEngineScatterChart::RefreshLegend() {
     }
     std::vector<ChartLegendEntry> entries;
     for (size_t g = 0; g < groups.size(); ++g) {
-        ChartLegendEntry entry(groups[g].name, GroupColor(g), SwatchFor(groups[g].marker));
+        ChartLegendEntry entry(groups[g].name, GroupColor(g),
+                               groups[g].joined && !groups[g].showMarkers ? LegendSwatch::Line : SwatchFor(groups[g].marker));
         entry.enabled = Visible(g);
         entries.push_back(entry);
     }
@@ -524,6 +551,20 @@ void UltraCanvasEngineScatterChart::RenderChartContent(IRenderContext* ctx,
         }
     }
 
+    // ---- joined groups: each line under the marks it joins ------------------
+    for (size_t g = 0; g < groups.size(); ++g) {
+        const std::vector<ChartLineRun> runs = GroupLineRuns(g);
+        if (runs.empty()) continue;
+        ctx->PushState();
+        ctx->SetStrokePaint(GroupColor(g));
+        ctx->SetStrokeWidth(groups[g].lineWidth > 0.0f ? groups[g].lineWidth : joinLineWidth);
+        ctx->SetLineJoin(LineJoin::Round);
+        for (const ChartLineRun& run : runs) {
+            if (run.points.size() >= 2) ctx->DrawLinePath(run.points, false);
+        }
+        ctx->PopState();
+    }
+
     // ---- marks: the largest first, so small bubbles stay on top -------------
     struct Mark { size_t group; size_t index; double radius; };
     std::vector<Mark> marks;
@@ -550,8 +591,11 @@ void UltraCanvasEngineScatterChart::RenderChartContent(IRenderContext* ctx,
         const Color fill = isHovered ? base : base.WithAlpha(static_cast<uint8_t>(255 * markerOpacity));
         const Color outline = outlineColor.a > 0 ? outlineColor
                                                  : (isHovered ? base.Darken(0.4f) : Color(0, 0, 0, 0));
-        DrawChartMarker(ctx, groups[mark.group].marker, p, radius, fill, outline,
-                        isHovered ? 2.0f : outlineWidth);
+        // (A group drawn as its line alone shows a mark only under the pointer.)
+        if (groups[mark.group].showMarkers || isHovered) {
+            DrawChartMarker(ctx, groups[mark.group].marker, p, radius, fill, outline,
+                            isHovered ? 2.0f : outlineWidth);
+        }
 
         if (insideLabels && !point.label.empty() && progress >= 1.0) {
             const Size2Di size = ctx->GetTextLineDimensions(point.label);

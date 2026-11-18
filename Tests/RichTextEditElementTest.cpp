@@ -2967,6 +2967,21 @@ int main() {
         TEST("A scatter chart of unjoined points is the engine's scatter chart",
              std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(CreateRichDocumentChart(points, 300, 200)) != nullptr);
         TEST("A frame without a chart has none to make", CreateRichDocumentChart(RichChart(), 300, 200) == nullptr);
+        // Joined points whose series have different x values: still the
+        // scatter chart, each series a joined group in the order of its points.
+        RichChart paths = chart;
+        paths.kind = RichChart::Kind::Scatter;
+        paths.series[0].xValues = {1.0, 10.0};
+        paths.series[1].xValues = {4.0, 2.0};           // turns back
+        paths.series[0].joined = paths.series[1].joined = true;
+        paths.series[0].marked = true;
+        paths.series[1].marked = false;
+        auto joinedChart = std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(CreateRichDocumentChart(paths, 300, 200));
+        TEST("Joined points over different x values are the scatter chart, its groups joined",
+             joinedChart && joinedChart->GetGroups().size() == 2 && joinedChart->GetGroups()[0].joined
+             && joinedChart->GetGroups()[0].showMarkers && joinedChart->GetGroups()[1].joined
+             && !joinedChart->GetGroups()[1].showMarkers);
+        TEST("...and no line is laid out before a paint", joinedChart && joinedChart->GroupLineRuns(0).empty());
 
         // In the view: the frame's chart is drawn by an engine chart of the
         // frame's size, and takes its room in the line.
@@ -3019,6 +3034,25 @@ int main() {
         TEST("A second paint draws with the same chart", chartEdit->GetChartElementForTest(0) == drawn && drawn != nullptr);
         chartEdit->SetDocument(document);
         TEST("A document set anew makes its charts anew", chartEdit->GetChartElementForTest(0) == nullptr);
+
+        // Painted, a joined scatter group's line runs through its points in
+        // the order given - also where x turns back.
+        document->frames[0].chart = paths;
+        chartEdit->SetDocument(document);
+        window->UpdateAndRender();
+        auto painted = std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(chartEdit->GetChartElementForTest(0));
+        TEST("The view draws a joined scatter chart with the engine's scatter chart", painted != nullptr);
+        if (painted) {
+            const std::vector<ChartLineRun> forward = painted->GroupLineRuns(0), back = painted->GroupLineRuns(1);
+            TEST("...one unbroken line through each group's two points", forward.size() == 1 && back.size() == 1
+                 && forward[0].knots.size() == 2 && back[0].knots.size() == 2);
+            if (forward.size() == 1 && back.size() == 1 && forward[0].knots.size() == 2 && back[0].knots.size() == 2) {
+                TEST("...left to right where x rises, right to left where it turns back",
+                     forward[0].knots[1].x > forward[0].knots[0].x + 20.0 && back[0].knots[1].x < back[0].knots[0].x - 5.0);
+                // (9.1 at x 1 then 2.4 at x 10: the first group's line falls.)
+                TEST("...and through the values' heights", forward[0].knots[1].y > forward[0].knots[0].y + 20.0);
+            }
+        }
         window->RemoveChild(chartEdit);
     }
 

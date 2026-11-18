@@ -1,5 +1,6 @@
 // core/UltraCanvasRichDocumentChart.cpp
 // A document's chart as a chart of the chart engine - see the header.
+// Version: 1.3.0 - a scatter chart is always the engine's scatter chart (joined groups)
 // Version: 1.2.0 - a chart's stated axis ranges (bars, scatter)
 // Version: 1.1.0 - `ink`: the chart's furniture on a dark page
 // Version: 1.0.0
@@ -52,23 +53,14 @@ ChartTheme PageTheme(const Color& ink) {
     return theme;
 }
 
-// Every series' x values alike (and stated): the points can ride one domain.
-bool SharedX(const RichChart& chart) {
-    for (const RichChartSeries& one : chart.series) {
-        if (one.xValues.size() != one.values.size() || one.xValues != chart.series.front().xValues) return false;
-    }
-    return !chart.series.empty();
-}
-
 } // namespace
 
 std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const RichChart& chart, int width, int height,
                                                                        const Color& ink) {
     if (!chart.IsChart() || chart.series.empty()) return nullptr;
     std::shared_ptr<UltraCanvasChartEngineElement> element;
-    bool anyJoined = false, anyMarked = false;
+    bool anyMarked = false;
     for (const RichChartSeries& one : chart.series) {
-        anyJoined = anyJoined || one.joined;
         anyMarked = anyMarked || one.marked;
     }
 
@@ -116,37 +108,38 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
             element = pie;
             break;
         }
-        case RichChart::Kind::Scatter:
-            if (!(anyJoined && SharedX(chart))) {
-                // Points over two value axes.
-                auto scatter = CreateEngineScatterChart("DocumentChart", 0, 0, width, height);
-                scatter->SetAnimateOnDataChange(false);     // a page shows the chart as it is
-                std::vector<EngineScatterGroup> groups;
-                for (const RichChartSeries& one : chart.series) {
-                    EngineScatterGroup group;
-                    group.name = one.name;
-                    group.color = ChartColor(one.color);
-                    for (size_t i = 0; i < one.values.size(); i++) {
-                        group.points.emplace_back(i < one.xValues.size() ? one.xValues[i] : static_cast<double>(i + 1),
-                                                  one.values[i]);
-                    }
-                    groups.push_back(std::move(group));
+        case RichChart::Kind::Scatter: {
+            // Points over two value axes, each series over its own x; a
+            // series with a line is joined in the order of its points.
+            auto scatter = CreateEngineScatterChart("DocumentChart", 0, 0, width, height);
+            scatter->SetAnimateOnDataChange(false);     // a page shows the chart as it is
+            std::vector<EngineScatterGroup> groups;
+            for (const RichChartSeries& one : chart.series) {
+                EngineScatterGroup group;
+                group.name = one.name;
+                group.color = ChartColor(one.color);
+                group.joined = one.joined;
+                group.showMarkers = one.marked || !one.joined;
+                for (size_t i = 0; i < one.values.size(); i++) {
+                    group.points.emplace_back(i < one.xValues.size() ? one.xValues[i] : static_cast<double>(i + 1),
+                                              one.values[i]);
                 }
-                scatter->SetGroups(groups);
-                scatter->SetMarkerRadius(3.0f);
-                scatter->SetMarkerOpacity(1.0f);
-                if (std::isfinite(chart.xMin) && std::isfinite(chart.xMax)) scatter->SetXRange(chart.xMin, chart.xMax);
-                if (std::isfinite(chart.valueMin) && std::isfinite(chart.valueMax)) scatter->SetYRange(chart.valueMin, chart.valueMax);
-                element = scatter;
-                break;
+                groups.push_back(std::move(group));
             }
-            [[fallthrough]];        // joined points sharing their x: lines over a numeric domain
+            scatter->SetGroups(groups);
+            scatter->SetMarkerRadius(3.0f);
+            scatter->SetMarkerOpacity(1.0f);
+            scatter->SetJoinLineWidth(2.0f);
+            if (std::isfinite(chart.xMin) && std::isfinite(chart.xMax)) scatter->SetXRange(chart.xMin, chart.xMax);
+            if (std::isfinite(chart.valueMin) && std::isfinite(chart.valueMax)) scatter->SetYRange(chart.valueMin, chart.valueMax);
+            element = scatter;
+            break;
+        }
         case RichChart::Kind::Line:
         case RichChart::Kind::Area: {
             auto lines = CreateEngineLineChart("DocumentChart", 0, 0, width, height);
             lines->SetAnimateOnDataChange(false);     // a page shows the chart as it is
-            if (chart.kind == RichChart::Kind::Scatter) lines->SetXValues(chart.series.front().xValues);
-            else lines->SetCategories(chart.categories);
+            lines->SetCategories(chart.categories);
             std::vector<EngineLineSeries> list;
             for (const RichChartSeries& one : chart.series) {
                 EngineLineSeries series;

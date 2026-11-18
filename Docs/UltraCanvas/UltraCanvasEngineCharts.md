@@ -50,7 +50,7 @@ compared before the switch.
   usual `(id, x, y, w, h)` constructor (position and size default to 0, for a
   chart sized by its layout).
 
-**Version:** 1.2.0 (`UltraCanvasEngineBarChart`)
+**Version:** 1.3.0 (joined groups in the scatter chart)
 **Last Modified:** 2026-11-18
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
@@ -275,6 +275,24 @@ they are not wiped. It calls `RefreshHighlights()` when only its own
 highlights changed. The importance–performance chart
 ([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md))
 draws its zones this way.
+
+A group with `joined = true` gets a straight line through its points **in the
+order they are given** - an office scatter chart "with lines", where every
+series has its own x values and they need not rise (a loop, a path, a curve
+that turns back). A point that is not finite breaks the line.
+`showMarkers = false` leaves the line alone (a mark still shows under the
+pointer); `lineWidth` sets the group's line, `SetJoinLineWidth` the chart's;
+`GroupLineRuns(group)` gives the line as laid out.
+
+```cpp
+EngineScatterGroup path;
+path.name = "Trial 1";
+path.points = {{1.0, 2.0}, {4.0, 6.5}, {3.0, 8.0}, {0.5, 5.0}};   // x turns back
+path.joined = true;
+path.lineWidth = 1.5f;
+chart->AddGroup(path);
+chart->SetJoinLineWidth(2.0f);
+```
 
 A point with a finite `size` turns the chart into a bubble chart: radii are
 area-proportional (`SetSizeScale(EngineBubbleScale::Diameter)` for the other
