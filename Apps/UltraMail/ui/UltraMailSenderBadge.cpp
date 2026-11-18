@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailSenderBadge.cpp
+// Version: 0.5.0 - the verdict's finding codes reach ClassifySender (SenderIdentity::findings)
 // Version: 0.4.0 - the reading pane's badge follows a change of the look
 // Version: 0.3.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
 // Version: 0.2.0 - website icons, iconKey, no icon on a spam or scam badge; the
@@ -85,6 +86,7 @@ SenderStatus SenderBadgeResolver::Classify(const MessageEnvelope& message,
     who.junkFolder  = junkFolder;
     who.level       = security.level;
     who.bulk        = security.bulk;
+    who.findings    = security.findings;
     return ClassifySender(who, contacts_);
 }
 

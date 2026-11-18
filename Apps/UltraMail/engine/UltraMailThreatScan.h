@@ -14,6 +14,16 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.13.0 - unsolicited SEO offers (seo-solicitation; its own switch, seoOffers),
+//                   stronger as a "Re:" with no In-Reply-To / References; "seo" only
+//                   in capitals, "SEO" (in lower case it is a name: Seo-yeon)
+//                   (ScanInput::inReplyTo, references); FindingOnlyFromStrangers;
+//                   kThreatRulesRevision 2026-11-18 03:00
+// Version: 0.12.0 - links written "https:////host" or "https:\\host" are read the way
+//                   the browser reads them (the host was lost, and every link rule
+//                   with it), and told (link-disguised-address); counterfeit luxury
+//                   goods - a Rolex for $250, "replica" bags (counterfeit-goods; its
+//                   own switch, counterfeits); kThreatRulesRevision 2026-11-18
 // Version: 0.11.0 - fake invoices: a web page attached (attachment-web-page), one that
 //                   loads a script, sends a form or moves the browser on
 //                   (attachment-active-page; ScanInput::attachedPages), and a
@@ -98,6 +108,8 @@ struct ThreatScanOptions {
     bool attachments   = true;   // attachment-*: programs, disguised documents,
                                  // web pages
     bool spamFlag      = true;   // spam-flag: the receiving server's own verdict
+    bool counterfeits  = true;   // counterfeit-goods: a Rolex for $250, "replica" bags
+    bool seoOffers     = true;   // seo-solicitation: "an SEO issue on your website"
     bool operator==(const ThreatScanOptions&) const = default;
 };
 
@@ -142,6 +154,12 @@ SenderLists GetSenderLists();
 // guessed kinds - romance, advance-fee, crypto caution, spam markers, a
 // brand's name in a domain - are the reader's call, and they made it.
 bool FindingKeptForTrustedSender(const std::string& code);
+
+// Whether a finding only counts when the sender is a stranger: an offer of
+// services (seo-solicitation) is spam from an unknown address and ordinary
+// business from one in the address book. The scan does not know the book;
+// ClassifySender, which does, leaves these out for a contact.
+bool FindingOnlyFromStrangers(const std::string& code);
 
 struct ThreatReport {
     ThreatLevel                level = ThreatLevel::Unscanned;
@@ -200,6 +218,8 @@ struct ScanInput {
     std::string listUnsubscribe; // List-Unsubscribe header value
     std::string precedence;      // Precedence header value
     std::string autoSubmitted;   // Auto-Submitted header value
+    std::string inReplyTo;       // In-Reply-To header value
+    std::string references;      // References header value
     std::string spamFlag;        // X-Spam-Flag value
     std::string spamStatus;      // X-Spam-Status / SpamAssassin summary
     std::string authResults;     // the topmost Authentication-Results header's value:
@@ -231,7 +251,7 @@ struct ScanInput {
 // and the sync re-scans the stored bodies a batch at a time
 // (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
 // through is caught, and a genuine one it flagged is cleared.
-constexpr long long kThreatRulesRevision = 1793059200;   // 2026-10-27 00:00 UTC
+constexpr long long kThreatRulesRevision = 1794970800;   // 2026-11-18 03:00 UTC
 
 // ---------------------------------------------------------------------------
 // Mail authentication

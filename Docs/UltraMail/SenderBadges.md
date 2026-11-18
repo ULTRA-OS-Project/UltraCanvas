@@ -280,6 +280,9 @@ cascade. The rules, with their weights:
 | `attachment-active-page` | 50 | An attached web page (or SVG picture) that, once opened, loads a script from a website, has a form, sends the browser on (`<meta http-equiv="refresh">`, `location=…`), shows another site in a frame, or runs a script that decodes or writes a hidden page (`atob(`, `eval(`, `document.write`) — read from the page itself, as it would run in the browser |
 | `attachment-web-page` | 25 / 40 | An `.html` / `.htm` / `.xhtml` / `.mht` file attached: it opens in the browser, outside the mail program. 40 when the mail or the file name speaks of an invoice, a reminder or a payment ("Mahnung", "Rechnung", "invoice", "overdue", `Rg-2608144.html`) — the fake invoice; real invoices come as PDFs |
 | `sender-company-mismatch` | 25 (12 from a proven domain) | The display name names a company whose own domain the message itself gives — `Luka Deveric \| BUG Rohrreinigung <no-reply@danpetersonmusic.net>` writing "questions to fibu@bug-rohrreinigung.de" — and the mail came from an unrelated domain. Matched when the domain's name is the display name's words (`bug-rohrreinigung`, `bugrohrreinigung`, or one long word of it); not from a free mailbox, not "… via …", not when the sender's domain carries the company's name; from a domain DKIM or DMARC proves (an invoicing service sending in a customer's name) only 12 |
+| `counterfeit-goods` | 30 / 40 / 45 (15) | A luxury watch or bag offered below what any genuine one costs ("Rolex Watches Starting at Just $250": Rolex from 2,000, Patek Philippe and Audemars Piguet from 5,000, Cartier and Breitling from 1,000, Louis Vuitton from 500 ...) – 30; called a replica ("1:1 replica", "AAA quality", "super clone") – 40; both – 45. Brands count by names nothing else has ("Omega Seamaster", not "Omega"; a "Birkin" or "Hermès bag", not the parcel service). Not from the brand's own domain; from a domain proven to be the sender's own, in its bulk mail, a low price alone is 15 |
+| `seo-solicitation` | 35 / 30 / 22 (10), +10, at most 40 | An offer of search engine services to the reader's own website – an SEO term ("SEO" – in capitals, since "Seo" is also a name –, "first page of Google", "backlinks", "organic traffic"), "your website" and a pitch ("audit", "report", "would you like", "following up"): 35 from a free mailbox, 30 from a domain nothing proved, 22 from a proven one, 10 in a proven domain's bulk mail; +10 for a "Re:" with no `In-Reply-To` or `References` (a reply to a mail never sent). Not from a proven registry brand. **Only from strangers**: the badge does not call a contact's mail spam when this is all the scan found (`FindingOnlyFromStrangers`) |
+| `link-disguised-address` | 25 | A link written `https:////shop.example.ru/` or `https:\\shop.example.ru`: the browser opens `shop.example.ru` all the same, but a filter reading the address as written finds no site. The link keeps its host for every other link rule |
 | `link-punycode`, `link-nonascii-host` | 25 | Hosts drawn to look like familiar names |
 | `insecure-login-link` | 20 | A sign-in link over plain `http://` |
 | `link-brand-mismatch` | 20 | A button labelled with a brand that goes somewhere else |
@@ -428,6 +431,8 @@ from a domain of its own. Where the brand table already reported the claim
 | Any mail about cryptocurrency | `crypto-content` (the caution strip) |
 | Dangerous attachments | `attachment-*` |
 | Spam, as the server marked it | `spam-flag` |
+| Fake designer goods | `counterfeit-goods` |
+| SEO offers from strangers | `seo-solicitation` |
 
 A kind switched off is not reported: its findings are dropped and add
 nothing to the score, so a message is labelled as if those rules did not

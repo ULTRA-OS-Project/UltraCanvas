@@ -9,6 +9,8 @@
 // bulk, but a message whose links lie about where they go is called a scam
 // even if the address book knows the sender — an address book entry is not
 // evidence that *this* message is genuinely from them.
+// Version: 0.2.0 - SenderIdentity::findings: a contact's mail is not called spam for
+//                  what only counts from strangers (FindingOnlyFromStrangers)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -70,6 +72,7 @@ struct SenderIdentity {
     bool        junkFolder = false;          // it is sitting in Junk/Spam
     ThreatLevel level = ThreatLevel::Unscanned;   // the stored content-scan verdict
     bool        bulk  = false;               // the scan saw bulk/marketing markers
+    std::string findings;                    // the verdict's codes (ThreatReport::Codes)
 };
 
 // The badge's content.
