@@ -792,6 +792,28 @@ settles where its data lives, so the pages are not drawn against nothing.
 | What is the audit log? | **Append-only, hash-chained, never edited**: every operator action - verify, release, request changes, reject, warn, suspend, reinstate, withdraw, dismiss, resolve, a policy or terms change - is one row with the actor, the target, the clause, what was before and after, the row it acted on, and the hash of the row before it, so a gap or an edit shows. The dashboard's *Operator actions* and a merchant's *History* are views of it. |
 | Which terms did a merchant accept? | **A versions table and an acceptances table.** A terms version has its text, what changed, and the date it comes into force; an acceptance names the merchant, the version, the person who accepted and when. A merchant not on the version in force by its date is paused by the publish, the way a suspension is, until an acceptance arrives. The merchant backend's *Terms* page reads both through the service. |
 | Does the store binary change? | **Little.** It reads the same signed catalog; it gains the report form on the app page and, with an account, the reporter's identity; a withdrawn or suspended app is simply absent from the next catalog, and an installed copy keeps updating or not as the catalog says (`visibility: hidden` already covers "served for updates only"). |
+| How do the ULTRA OS Project's own apps reach the store? | **Through the marketplace, like every merchant's** (decided 2026-11-18). The project is a merchant (`ultra-os-project`, the publisher id its components already carry), registered by the operator with the public half of its admin backend's key; its `UltraStoreAdmin` keeps the apps and submits each release (`market submit`); the review releases it and `POST /v1/publish` writes it into the one public catalog. So the public catalog has **one writer**, the marketplace's publish, and two publishes never overwrite each other at one address. The merchant backend's `publish` and `upload` stay for a private or test catalog only. The packages come from `scripts/package-store-app.sh` (*Packaging an application for the store*). |
+
+What follows from the last decision, for the handover from today's public
+catalog (signed by the admin backend with `Apps/UltraStore/keys/publish.pub`)
+to the marketplace's:
+
+- **The operator's key must be trusted before its first catalog.** Its
+  public half (`ultrastoreop key`, `GET /v1/publish/key`) is committed as
+  `Apps/UltraStore/keys/market.pub`, so every store built afterwards trusts
+  it. A store already installed trusts only the compiled-in keys and what an
+  accepted catalog announced, so the last catalog signed with
+  `publish.pub` must list the operator's key in `trusted_keys` (*Keys*). The
+  admin backend lists only its own active keys there today: announcing a
+  public key it holds no seed for is still to be built. Until then the
+  marketplace does not publish to the public address.
+- **The sequence goes on from the public catalog's.** A store refuses a
+  catalog below the sequence it accepted, and the marketplace counts from
+  its own last publish: the first release is given a sequence above the
+  public catalog's (`ultrastoreop review release <submission> --sequence <n>`).
+- **The project's codes leave the public catalog.** The marketplace's
+  catalog carries no `codes` (they are a merchant's own store's); the
+  project's partners keep their links only through a store of its own.
 
 What the operator never holds: a merchant's sales ledger and partners (those
 stay in the merchant's `admin.sqlite`, fed by the payment service as today),
@@ -827,6 +849,47 @@ review with its decisions and the publish, the reports with the reporter
 the operator alone sees, the notices, the terms and the policy, the audit
 log verified. Still to come: the packages uploaded with a submission, the
 review pipeline behind the checks marked *not run*.
+
+## Packaging an application for the store
+
+A store package is one archive per operating system and processor that the
+store unpacks into `<root>/apps/<id>/<version>/` and starts by its `entry`.
+The store puts nothing on the library path when it starts it - no runtime
+layer of *Decisions*, *What is the unit the store installs?* - so until it
+does, a package carries every library it loads.
+`scripts/package-store-app.sh <App>` makes that archive out of the suite
+package `package-linux.sh` or `package-win.sh` has made: the executable and
+its launcher, the plug-in families it loads (every one but UltraIM, which
+goes with ChatCube alone), the closure of libraries the loader resolves
+inside the suite (with libvips', libheif's and ImageMagick's run-time
+modules where those libraries are in it), the media the framework loads
+(fonts, icons, app icons, `media/lib`, the translations, the emoji fonts)
+and the application's own data folder. It checks the package from inside -
+every library of the executable and the plug-ins resolves within it, and an
+application that answers `--version` runs from it - and ends with the
+`ultrastoreadmin package add` line, the entry spelled out (on Linux the
+admin backend would otherwise suggest `bin/<App>`, the executable without
+the launcher that puts `lib/` on the path) and the newest glibc the files
+ask for as the variant:
+
+```
+./package-linux.sh
+scripts/package-store-app.sh UltraMail
+# dist-store/org.ultraos.ultramail-<version>-linux-x86_64.tar.xz, then:
+ultrastoreadmin release add org.ultraos.ultramail <version>
+ultrastoreadmin package add org.ultraos.ultramail <version> dist-store/org.ultraos.ultramail-<version>-linux-x86_64.tar.xz \
+    --os linux --arch x86_64 --entry UltraMail/UltraMail --variant glibc-<x.y>
+ultrastoreadmin market submit org.ultraos.ultramail
+```
+
+The version is line 1 of the application's changelog and the id
+`org.ultraos.<app in lower case>`; `--version`, `--id`, `--plugins` and
+`--media` say otherwise. CI's Linux and Windows builds make UltraMail's
+package this way on every run and upload it (`UltraMail-store-<os>-<arch>`).
+macOS is not done yet: the suite there shares one `Frameworks/` between
+its applications, and one on its own needs the rewrite `package-macos.sh
+--start-app` makes for UltraCanvasStart - and the macOS suite does not
+build UltraMail at all.
 
 ## Milestones
 
@@ -871,3 +934,9 @@ review pipeline behind the checks marked *not run*.
    operator's window and command line (`Apps/UltraStoreOperator`). Next:
    the packages uploaded with a submission into the operator's package
    store; the review pipeline behind the checks marked *not run*.
+   Decided 2026-11-18: the ULTRA OS Project's own apps go through the
+   marketplace too (*The operator tier*), packaged by
+   `scripts/package-store-app.sh` (*Packaging an application for the
+   store*). Next for that: the handover of the public catalog - the
+   operator's key announced by a last catalog signed with `publish.pub`,
+   which the admin backend cannot do yet - and the macOS package.
