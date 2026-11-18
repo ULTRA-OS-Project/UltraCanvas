@@ -233,8 +233,9 @@ private:
     // ---- the proxy ------------------------------------------------------------------
     // TDLib connects by itself, past UltraNet: left alone it reaches Telegram
     // directly whatever the proxy settings say. So what the setting says for
-    // Telegram (UltraNet_ResolveProxy - the proxy chosen, the operating
-    // system's, or none) is told to TDLib before its parameters, which is
+    // Telegram (UltraNet_ResolveTunnelProxy - the proxy chosen, the operating
+    // system's SOCKS proxy or else its web proxy, or none) is told to TDLib
+    // before its parameters, which is
     // before its first connection, and again whenever the setting has
     // changed: the watchdog thread looks every proxyCheckMs_. TDLib keeps the
     // proxy in its database (encrypted, the password with it); every other

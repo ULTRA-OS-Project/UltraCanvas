@@ -4,8 +4,9 @@
   ChatCube everything went through the proxy but Telegram, whose messages
   then stayed undelivered where Telegram is only reachable through one. The
   provider now tells TDLib what the shared setting says for Telegram
-  (`UltraNet_ResolveProxy` for `https://telegram.org:443/`: the proxy
-  chosen, the operating system's, or none): a SOCKS 5 or an HTTP proxy as
+  (`UltraNet_ResolveTunnelProxy` for `telegram.org` on port 443: the proxy
+  chosen, the operating system's SOCKS proxy or else its web proxy, or
+  none): a SOCKS 5 or an HTTP proxy as
   `addProxy` with its sign-in, none as `disableProxy`, both before
   `setTdlibParameters`, so the first connection is already the right one. It
   looks at the setting again every three seconds while a session is open and

@@ -1879,7 +1879,9 @@ future.
   challenge and collects the code, and the exchange and the refresh go
   through the service, which adds the secret. UltraMail signs in through
   `https://oauth-callback.ultraos.eu` this way
-- `UltraNet_ResolveProxy`, `UltraNet_DetectSystemProxy`,
+- `UltraNet_ResolveProxy`, `UltraNet_ResolveTunnelProxy` (a connection that
+  is not the web's: the system's SOCKS proxy, else its web proxy as a
+  tunnel - IRC, XMPP, Telegram), `UltraNet_DetectSystemProxy`,
   `UltraNet_DetectSystemProxyFor`, `UltraNet_CanEvaluateProxyScript`,
   `UltraNet_SetGlobalProxy`, `UltraNet_GetGlobalProxy`, `UltraNet_DisableProxy`,
   `UltraNet_SetGlobalProxySource`, `UltraNet_ForgetSystemProxy`,

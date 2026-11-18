@@ -17,8 +17,11 @@
 // while signed in - another proxy, none - with the account kept, stopped with
 // the reason as the state for a proxy signal-cli cannot use, and a signal-cli
 // that is no Java program, or older than 0.13.13, refused for a proxy rather
-// than left to connect directly. Skips without python3, unless
-// ULTRAIM_TEST_SIGNAL_REQUIRED is set.
+// than left to connect directly. The provider's own daemon gone and not to
+// be started again (no Java any more): the state says why, once, while the
+// tries go on, and it is back once it can be started. Skips without python3,
+// unless ULTRAIM_TEST_SIGNAL_REQUIRED is set.
+// Version: 0.1.3 - a daemon that cannot be started again
 // Version: 0.1.2 - the proxy setting and the provider's own daemon
 // Version: 0.1.1 - a receipt quicker than the send's answer (/_test/send_delay) still gives the tick
 // Version: 0.1.0
@@ -1049,6 +1052,77 @@ void TestOwnDaemonProxy(const fs::path& base) {
     unsetenv("JAVA_TOOL_OPTIONS");
     unsetenv("ULTRAIM_SIGNAL_CLI");
 }
+
+// Our own daemon gone while signed in, and signal-cli no longer starting:
+// the state says why instead of "reconnecting" for ever.
+void TestOwnDaemonGone(const fs::path& base) {
+    const fs::path wrapper = WriteWrapper(base / "signal-cli-gone.sh", true);
+    setenv("ULTRAIM_SIGNAL_CLI", UltraCanvas::PathToUtf8(wrapper).c_str(), 1);
+    Events events;
+    auto ivan = std::make_unique<SignalProvider>();
+    ivan->SetTimings(Fast());
+    UltraIMConfig config;
+    config.dataDirectory = UltraCanvas::PathToUtf8(base / "ivan");
+    CHECK(ivan->Initialize(config, events.Sink()));
+    UltraIMResult r;
+    UltraIMCredentials own;
+    own.loginType = UltraIMLoginType::QRCode;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { ivan->SignIn(own, cb); }, r));
+    CHECK(r.code == UltraIMResultCode::NeedsInput);
+    int status = 0;
+    PostTest(ivan->GetDaemonUrl(), "/_test/scan", Object({{"uri", ivan->GetAuthHint()}, {"number", kDave}}), &status);
+    CHECK(status == 200);
+    auto isState = [](UltraIMConnectionState state, const std::string& text) {
+        return [state, text](const UltraIMEvent& x) {
+            return x.type == UltraIMEventType::ConnectionStateChange && x.connectionState == state &&
+                   x.errorText.find(text) != std::string::npos;
+        };
+    };
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Connected, "")));
+    const pid_t first = static_cast<pid_t>(ivan->GetDaemonProcessId());
+    CHECK(first > 0);
+
+    // signal-cli stops starting (Java taken off the machine), and the daemon ends.
+    {
+        std::FILE* f = UltraCanvas::OpenFileUtf8(UltraCanvas::PathToUtf8(wrapper), "wb");
+        const std::string broken = "#!/bin/sh\necho 'java: command not found' >&2\nexit 127\n";
+        if (f) {
+            std::fwrite(broken.data(), 1, broken.size(), f);
+            std::fclose(f);
+        }
+        CHECK(f != nullptr);
+    }
+    events.Clear();
+    kill(first, SIGKILL);
+    UltraIMEvent told;
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Error, "signal-cli did not start"), &told));
+    // What that start wrote, not the log of the starts before it.
+    CHECK(told.errorText.find("java: command not found") != std::string::npos);
+    CHECK(told.errorText.find("fake") == std::string::npos && told.errorText.find("url") == std::string::npos);
+    // Told once, while the tries go on behind it - less and less often.
+    std::this_thread::sleep_for(std::chrono::milliseconds(4000));
+    size_t errors = 0, reconnecting = 0;
+    for (const UltraIMEvent& x : events.All(UltraIMEventType::ConnectionStateChange)) {
+        errors += x.connectionState == UltraIMConnectionState::Error ? 1 : 0;
+        reconnecting += x.connectionState == UltraIMConnectionState::Reconnecting ? 1 : 0;
+    }
+    CHECK(errors == 1);
+    CHECK(reconnecting <= 1);
+    CHECK(ivan->GetConnectionState() == UltraIMConnectionState::Error);
+    CHECK(ivan->GetDaemonProcessId() == 0);
+
+    // signal-cli starts again: the daemon is back by itself, on the link it kept.
+    WriteWrapper(wrapper, true);
+    CHECK(Eventually([&]() { return ivan->GetDaemonProcessId() > 0; }, 60));
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Connected, ""), nullptr, 60));
+    CHECK(ivan->GetLocalUserId() == kDave);
+    CHECK(events.All(UltraIMEventType::AuthStepChange).empty());
+    const pid_t again = static_cast<pid_t>(ivan->GetDaemonProcessId());
+    CHECK(again > 0 && again != first);
+    ivan->Shutdown();
+    CHECK(ProcessGone(again));
+    unsetenv("ULTRAIM_SIGNAL_CLI");
+}
 #endif
 
 } // namespace
@@ -1077,6 +1151,7 @@ int main() {
     TestOwnDaemon(base);
     TestDaemonProxyOptions();
     TestOwnDaemonProxy(base);
+    TestOwnDaemonGone(base);
     fs::remove_all(base, ec);
 #endif
     UltraNet_Shutdown();

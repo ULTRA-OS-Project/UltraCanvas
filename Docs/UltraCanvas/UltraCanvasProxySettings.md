@@ -18,7 +18,10 @@ passes it to the `claude` CLI in its environment, and two UltraIM providers
 hand it to the program that connects for them: Telegram tells it to TDLib,
 Signal starts signal-cli with it as Java's proxy options
 (`Docs/Modules/UltraIM/README.md`, *Provider: Telegram* and *Provider:
-Signal*). How UltraNet
+Signal*). IRC and XMPP over TCP go through it as well - and, like
+Telegram, through the system's web proxy where it names no SOCKS proxy
+(`UltraNet_ResolveTunnelProxy`), so that with "the system's proxy" chosen
+every network of ChatCube takes the same way out. How UltraNet
 decides, and what "the operating system's proxy" is on each platform, is
 the UltraNet module's *Proxies* section (`Docs/Modules/UltraNet/README.md`).
 

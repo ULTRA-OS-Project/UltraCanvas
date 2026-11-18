@@ -423,6 +423,25 @@ only would otherwise cut off a mail server that was reached directly. A
 proxy set explicitly (`Http`, `Socks5`, ...) carries everything, the HTTP
 kind as a CONNECT tunnel.
 
+A program that is to follow the proxy setting in everything it does asks
+`UltraNet_ResolveTunnelProxy(host, port)` for its connections that are not
+the web's: the proxy `tcp://host:port` resolves to (the one chosen, the
+system's SOCKS proxy), and where that is none the one `https://host:port`
+resolves to - the web's proxy, as a tunnel. With nothing but a web proxy set
+in the system such a connection then goes through it and not past it, and a
+proxy that will not tunnel to that port fails it by name
+(`UltraNet_TcpOpen`'s error) - the caller's choice of "through the proxy or
+not at all" over "directly where the proxy is the web's". ChatCube's
+networks do: IRC and XMPP over TCP hand the answer to
+`UltraNetSocketOptions::proxy`, Telegram tells it to TDLib.
+
+```cpp
+UltraNetSocketOptions options;
+options.proxy = UltraNet_ResolveTunnelProxy("irc.libera.chat", 6697);   // NoProxy: directly
+UltraNetHandle connection = UltraNetInvalidHandle;
+UltraNetResult opened = UltraNet_TcpOpen("irc.libera.chat", 6697, options, connection);
+```
+
 `UltraNetProxyConfig::autoConfigUrl` names a PAC script to run instead of
 the system's settings, where this build can (`UltraNet_CanEvaluateProxyScript`:
 Windows and macOS).

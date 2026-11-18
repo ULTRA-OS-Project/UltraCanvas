@@ -29,7 +29,7 @@
 #include "UltraCrypt/UltraCryptCore.h"
 #include "UltraIM/UltraIMCore.h"
 #ifdef ULTRACANVAS_HAS_NET
-#include "UltraNet/UltraNetCore.h"      // the proxy setting (UltraNet_ResolveProxy)
+#include "UltraNet/UltraNetCore.h"      // the proxy setting (UltraNet_ResolveTunnelProxy)
 #endif
 
 #include <algorithm>
@@ -427,12 +427,13 @@ void TelegramProvider::ResendAuthCode(UltraIMResultCallback onResult) {
 TelegramProvider::ProxyChoice TelegramProvider::ChooseProxy() {
     ProxyChoice choice;
 #ifdef ULTRACANVAS_HAS_NET
-    // Telegram's servers are reached on port 443, as an https address is: the
-    // proxy such an address takes carries them - the web proxy, by CONNECT,
-    // where the system names no SOCKS proxy (what Telegram's own desktop
-    // application does with the system's settings). A name of Telegram's
-    // stands for all of them in the exceptions and in a PAC script.
-    const UltraNetProxyConfig found = UltraNet_ResolveProxy("https://telegram.org:443/");
+    // As IRC and XMPP take theirs (UltraNet_ResolveTunnelProxy): the proxy
+    // chosen, the system's SOCKS proxy, or - where it names no other - its
+    // web proxy, which tunnels to Telegram's servers on port 443 (CONNECT;
+    // what Telegram's own desktop application does with the system's
+    // settings). A name of Telegram's stands for all of them in the
+    // exceptions and in a PAC script.
+    const UltraNetProxyConfig found = UltraNet_ResolveTunnelProxy("telegram.org", 443);
     if (!found.IsEnabled() || found.host.empty()) return choice;
     choice.text = UltraNet_DescribeProxy(found);
     if (found.type != UltraNetProxyType::Socks5 && found.type != UltraNetProxyType::Http) {

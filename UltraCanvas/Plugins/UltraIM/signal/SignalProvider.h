@@ -30,6 +30,11 @@
 // setting changes. A daemon the user runs (credentials.server) connects as
 // the user started it.
 //
+// Our own daemon gone while signed in (it ended, it was killed) is started
+// again; when that fails - no Java any more, say - the state is Error with
+// what the start said, told once, and the tries go on behind it, each
+// failure in a row doubling the wait before the next (up to a minute).
+//
 // Sign-in links this device to the phone (UltraIMLoginType::QRCode): when
 // the account linked before (UltraVault: its number, and the daemon's
 // address when it was given) is still in the daemon's listAccounts, SignIn
@@ -71,6 +76,7 @@
 //     LeaveConversation leaves a group (quitGroup), or hides a 1:1 one on
 //     this device until its next message. No calls, stickers or reactions.
 //
+// Version: 0.2.1 - a daemon that cannot be started again says why (Error, once) and is tried less often
 // Version: 0.2.0 - the provider's own daemon follows the shared proxy setting
 // Version: 0.1.1 - a receipt that comes before the send is recorded is kept and applied, not lost
 // Version: 0.1.0
@@ -85,6 +91,7 @@
 #include "DataFormats/UltraCanvasJSON.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -235,6 +242,13 @@ private:
     UltraIMResult EnsureDaemon(const std::string& server);
     // Our own daemon was started for another proxy than the setting names now.
     bool DaemonProxyChanged() const;
+    // The worker: our own daemon started again - `forProxy`, for a setting
+    // that changed; else because it is gone. A failure reaches the state
+    // (Error, with what EnsureDaemon said), once for one reason.
+    void RestartDaemon(uint64_t generation, bool forProxy);
+    // How long after a try to start the gone daemon the next may follow:
+    // nothing after a success, then retryMs doubled per failure in a row.
+    int RestartDelayMs() const;
     std::string DataPath(const std::string& name) const;
     std::string ConfigDirectory() const;
 
@@ -287,6 +301,8 @@ private:
 
     SignalDaemon daemon_;               // the provider's own signal-cli, when it started one
     std::atomic<uint64_t> rpcId_{0};
+    std::atomic<int> daemonFailures_{0};                        // restarts failed in a row
+    std::chrono::steady_clock::time_point lastRestartAt_;       // the listener's: when it last asked for one
 
     mutable std::mutex mutex_;          // everything below
     std::string daemonUrl_;             // "http://127.0.0.1:7583"
@@ -295,6 +311,7 @@ private:
     // A signal-cli found unfit for a proxy (no Java runtime, too old), and
     // why: not started again for one until a sign-in is asked for.
     std::string unfitProgram_, unfitWhy_;
+    std::string daemonError_;           // why the last restart failed, as the state told it; "" = it did not
     std::string account_;               // the number, else the ACI: every call's "account"
     std::string number_, aci_;
     UltraIMAuthStep authStep_ = UltraIMAuthStep::Idle;

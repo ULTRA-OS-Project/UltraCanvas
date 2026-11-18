@@ -756,11 +756,12 @@ process.
 - **The proxy:** TDLib connects by itself - nothing of UltraNet's is
   between it and Telegram - so the provider tells it the proxy every
   application shares (`UltraCanvasProxySettings.h`; what
-  `UltraNet_ResolveProxy` answers for `https://telegram.org:443/`, Telegram's
-  servers being reached on port 443): the proxy chosen in the settings, the
-  operating system's (its web proxy, by CONNECT, where it names no SOCKS
-  proxy), or none - and none for Telegram when the exceptions name
-  `telegram.org`. A SOCKS 5 or an HTTP proxy goes to TDLib as `addProxy`
+  `UltraNet_ResolveTunnelProxy` answers for `telegram.org` on port 443,
+  where Telegram's servers are reached - the rule IRC and XMPP follow too):
+  the proxy chosen in the settings, the operating system's SOCKS proxy or,
+  where it names no other, its web proxy (by CONNECT), or none - and none
+  for Telegram when the exceptions name `telegram.org`. A SOCKS 5 or an
+  HTTP proxy goes to TDLib as `addProxy`
   with its sign-in, no proxy as `disableProxy`, and both **before**
   `setTdlibParameters`: TDLib holds them until the parameters are in, so its
   first connection is already the right one. While the session is open the
@@ -1038,6 +1039,12 @@ signal-cli is not bundled.
   `signal-cli/bin/signal-cli` beside the provider modules, or the `PATH`,
   started with its data under `<dataDirectory>/signal/signal-cli` on a free
   loopback port, and stopped at `Shutdown`. Neither: `CapabilityMissing`.
+  The provider's own daemon gone while signed in (it ended, it was killed)
+  is started again. When that fails - Java no longer there, say - the state
+  is `Error` with what the start said (signal-cli's own lines of that
+  start), told once for one reason; the tries go on behind it, each failure
+  in a row doubling the wait before the next (`SignalTimings::retryMs`, up
+  to a minute), and the state is `Connected` again once one works.
 - **The proxy**: signal-cli connects to Signal by itself - nothing of
   UltraNet's is between it and Signal's servers - so the provider's own
   daemon is started for the proxy every application shares
@@ -1137,6 +1144,13 @@ tinyxml2's, cut into elements from the TCP byte stream by `XmppSplitter`.
   iteration count - not the password - and `SignIn` with no credentials
   uses them; a server with PLAIN alone keeps nothing. A changed password:
   `AuthRequire`.
+- **The proxy**: the TCP connection goes through the proxy the applications
+  share (`UltraNet_ResolveTunnelProxy`): the one chosen in the settings,
+  the operating system's SOCKS proxy, or - where it names no other - its
+  web proxy, as a CONNECT tunnel with STARTTLS or TLS inside it; a proxy
+  that refuses the tunnel fails the sign-in naming the proxy, it is not
+  gone around. Never for this computer or an exception. The WebSocket
+  binding takes the web's proxy as any web address does.
 - **Conversations**: a 1:1 chat's id is the contact's bare JID, the
   contacts the roster (RFC 6121) with their presence; a group is a
   multi-user chat room (XEP-0045), its id the room's JID, the rooms the
@@ -1185,7 +1199,14 @@ openssl).
   password, channels and open private chats are kept in UltraVault;
   `SignIn` with no credentials joins them again. Silence pings after 90 s;
   a lost connection reconnects with a doubling delay (2 s to 120 s).
-  `SetTlsOptions` takes a CA bundle or a client certificate.
+  `SetTlsOptions` takes a CA bundle or a client certificate. The connection
+  goes through the proxy the applications share
+  (`UltraNet_ResolveTunnelProxy`): the one chosen in the settings, the
+  operating system's SOCKS proxy, or - where it names no other - its web
+  proxy, as a CONNECT tunnel; a proxy that refuses the tunnel (one that
+  lets only port 443 through, say) fails the sign-in naming the proxy, it
+  is not gone around - an exception for the server in the proxy settings
+  connects directly.
 - **Conversations**: a channel's id is its name folded by the server's
   CASEMAPPING (`#ultracanvas`), its topic the `description`, its members
   nicks; a private chat's id the folded nick; `*server`, titled by the

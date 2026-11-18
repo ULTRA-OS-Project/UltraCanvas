@@ -4,8 +4,9 @@
 // a minute per scheme and host - the exceptions, and the machine itself, which
 // is always reached directly. Portable; the operating system is asked through
 // UltraNet_DetectSystemProxyFor in OS/<Platform>/UltraNetSupport.
+// Version: 0.1.1 - UltraNet_ResolveTunnelProxy
 // Version: 0.1.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetCore.h"
@@ -279,6 +280,16 @@ UltraNetProxyConfig UltraNet_ResolveProxy(const std::string& url, const UltraNet
         }
     }
     return choice;
+}
+
+UltraNetProxyConfig UltraNet_ResolveTunnelProxy(const std::string& host, int port) {
+    const bool bare6 = host.find(':') != std::string::npos && host[0] != '[';
+    const std::string authority = (bare6 ? "[" + host + "]" : host) + ":" + std::to_string(port);
+    // What carries anything first: a proxy the person chose, the system's
+    // SOCKS proxy. Else the web's, as a tunnel.
+    UltraNetProxyConfig proxy = UltraNet_ResolveProxy("tcp://" + authority);
+    if (!proxy.IsEnabled()) proxy = UltraNet_ResolveProxy("https://" + authority);
+    return proxy;
 }
 
 void UltraNet_ForgetSystemProxy() {

@@ -1,8 +1,10 @@
 // Plugins/UltraIM/irc/IrcConnection.cpp
 // A TCP (and TLS) connection to an IRC server, read and written by lines.
+// Version: 0.1.2 - the proxy by UltraNet_ResolveTunnelProxy: the system's web proxy carries the
+//                  connection where there is no SOCKS proxy, as it does Telegram's
 // Version: 0.1.1 - goes by UltraNet's answer (Timeout: quiet, an error: gone); no
 //                  SIGPIPE handling of its own (UltraNet raises none)
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "IrcConnection.h"
@@ -37,8 +39,10 @@ bool IrcConnection::Open(const std::string& host, int port, bool tls, const Ultr
     options.connectTimeoutMs = timeoutMs;
     options.noDelay = true;
     options.keepAlive = true;
-    // The system's SOCKS proxy where one is set (never for this machine).
-    options.useProxySetting = true;
+    // Through the proxy the applications share: the one chosen, the system's
+    // SOCKS proxy, or - where there is no other - its web proxy, as a tunnel
+    // (never for this machine, nor for an exception).
+    options.proxy = UltraNet_ResolveTunnelProxy(host, port);
     UltraNetHandle handle = UltraNetInvalidHandle;
     const UltraNetResult opened = UltraNet_TcpOpen(host, port, options, handle);
     if (!opened || handle == UltraNetInvalidHandle) {
