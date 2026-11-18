@@ -8,3 +8,8 @@
   tabs, copy, search, the theme toggle) start again on every swapped page
   (the `us:page` event); an app's own module says it does with
   `AddScript(name, source, true)`.
+- **UltraSite: the files it writes into a site begin with `uc-`.** The
+  stylesheet (`assets/uc-site.<hash>.css`), the script modules
+  (`assets/js/uc-core.<hash>.js`, `uc-search…`, `uc-toc…`) and the search
+  index (`search/uc-en.<hash>.json`), so a host or a visitor can see they
+  come from UltraCanvas. The next build of a site replaces the old names.

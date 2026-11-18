@@ -1021,7 +1021,7 @@ static void TestTwoOutputs() {
         std::string home, plan;
         ReadTextFile(UltraCanvas::PathToUtf8(out / "index.html"), home);
         ReadTextFile(UltraCanvas::PathToUtf8(out / "the-plan" / "index.html"), plan);
-        Check(Contains(home, "<link rel=\"stylesheet\" href=\"/assets/site.") && Contains(home, "<section class=\"hero\">") &&
+        Check(Contains(home, "<link rel=\"stylesheet\" href=\"/assets/uc-site.") && Contains(home, "<section class=\"hero\">") &&
                   Contains(home, "Introducing ULTRA OS") && Contains(home, "<a href=\"/the-plan/\"") &&
                   !Contains(home, "<style>"),
               "the front page is the blocks on the hashed stylesheet, not the shadow's inline style");

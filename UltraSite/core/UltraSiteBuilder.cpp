@@ -4,6 +4,7 @@
 // by reading every page back through the HTMLReader, the budgets measured,
 // and the folder written - with what an earlier build left and this one did
 // not removed.
+// Version: 0.1.2 - the stylesheet, the modules and the search index named uc-...
 // Version: 0.1.1 - the swap navigation: data-us-nav, data-us-swap, the swap module
 // Version: 0.1.0
 // Last Modified: 2026-11-17
@@ -307,6 +308,12 @@ void ReadPage(const std::string& html, Builder::PageFacts& facts) {
 
 } // namespace
 
+// The files UltraCanvas writes into every site - the stylesheet, the
+// script modules, the search index - begin with "uc-", so a host or a
+// visitor sees where they come from (assets/uc-site.<hash>.css,
+// assets/js/uc-core.<hash>.js). The site's own pictures keep their names.
+constexpr const char* kFramePrefix = "uc-";
+
 struct Builder::Prepared {
     std::string css, cssFile, cssUrl;
     std::string core, coreFile, coreUrl;
@@ -476,15 +483,15 @@ void Builder::Prepare(Prepared& prepared, std::vector<std::string>& errors) {
                             TokensCss(config.tokens, tokenErrors) + "\n" + config.extraCss;
     errors.insert(errors.end(), tokenErrors.begin(), tokenErrors.end());
     prepared.css = MinifyCss(css);
-    prepared.cssFile = "assets/site." + ContentHash(prepared.css) + ".css";
+    prepared.cssFile = "assets/" + std::string(kFramePrefix) + "site." + ContentHash(prepared.css) + ".css";
     prepared.cssUrl = Url("/" + prepared.cssFile);
 
     prepared.core = StripScript(Resource(Resources::kCoreJs, Resources::kCoreJsSize));
-    prepared.coreFile = "assets/js/core." + ContentHash(prepared.core) + ".js";
+    prepared.coreFile = "assets/js/" + std::string(kFramePrefix) + "core." + ContentHash(prepared.core) + ".js";
     prepared.coreUrl = Url("/" + prepared.coreFile);
     if (config.navigation == Navigation::Swap) {
         prepared.swap = StripScript(Resource(Resources::kSwapJs, Resources::kSwapJsSize));
-        prepared.swapFile = "assets/js/swap." + ContentHash(prepared.swap) + ".js";
+        prepared.swapFile = "assets/js/" + std::string(kFramePrefix) + "swap." + ContentHash(prepared.swap) + ".js";
         prepared.swapUrl = Url("/" + prepared.swapFile);
     }
 
@@ -506,7 +513,7 @@ void Builder::Prepare(Prepared& prepared, std::vector<std::string>& errors) {
             continue;
         }
         const std::string stripped = StripScript(source);
-        prepared.behaviours[name] = {"assets/js/" + name + "." + ContentHash(stripped) + ".js", stripped};
+        prepared.behaviours[name] = {"assets/js/" + std::string(kFramePrefix) + name + "." + ContentHash(stripped) + ".js", stripped};
     }
 
     if (!config.logo.empty() && prepared.logoUrl.empty()) prepared.logoUrl = Asset(config.logo);
@@ -555,7 +562,7 @@ void Builder::Prepare(Prepared& prepared, std::vector<std::string>& errors) {
                 prepared.notes.push_back("search/" + language + ": the site's text would make the index too large to fetch, so it "
                                          "searches the titles, headings and descriptions only");
             }
-            const std::string file = "search/" + SafeStem(language) + "." + ContentHash(index) + ".json";
+            const std::string file = "search/" + std::string(kFramePrefix) + SafeStem(language) + "." + ContentHash(index) + ".json";
             prepared.searchIndex[language] = {file, index};
         }
     }

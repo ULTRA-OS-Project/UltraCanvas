@@ -57,14 +57,21 @@ UltraSite is (b). The design and the plan are in
 out/
   index.html, about/index.html, ...  every route, complete and styled
   404.html                           the app's route "/404.html", or a default one
-  assets/site.<hash>.css             the base stylesheet, the tokens, the app's extraCss
-  assets/js/core.<hash>.js           on every page: prefetch on intent, the theme toggle
-  assets/js/<behaviour>.<hash>.js    only where a page uses it
+  assets/uc-site.<hash>.css          the base stylesheet, the tokens, the app's extraCss
+  assets/js/uc-core.<hash>.js        on every page: prefetch on intent, the theme toggle
+  assets/js/uc-swap.<hash>.js        on every page of a site with the swap navigation
+  assets/js/uc-<behaviour>.<hash>.js only where a page uses it
+  search/uc-<language>.<hash>.json   the search index of a site with search
   assets/<name>.<hash>.<ext>         what Builder::Asset was given
   <prefix>/...                       folders given to AddDirectory, as they are
   sitemap.xml, robots.txt            the indexable routes, with their dates
   .htaccess, _headers                cache rules, the 404 page, the security policy
 ```
+
+The files UltraCanvas writes into every site - the stylesheet, the
+script modules and the search index - begin with `uc-`, so a host or a
+visitor can see where they come from. The site's own pictures and files
+keep their names.
 
 `<hash>` is the first ten hex digits of the file's SHA-256. A changed file
 gets a new name, the pages point at the new name, and the old file is
@@ -494,7 +501,7 @@ named `currentVersion`:
 
 `SiteConfig::search` puts a search box in the navbar. The build writes:
 
-- one index per language, `search/<language>.<hash>.json`, holding each
+- one index per language, `search/uc-<language>.<hash>.json`, holding each
   page's title, address and description and its sections' anchors,
   headings and text;
 - a `/search/` page. Without script it lists every page; with script it

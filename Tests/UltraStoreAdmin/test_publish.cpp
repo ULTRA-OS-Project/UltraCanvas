@@ -239,7 +239,7 @@ TEST(publish_lays_the_web_store_beside_the_catalog) {
         REQUIRE_EQ(html.Value().webOutput, std::string("html"));
         REQUIRE(html.Value().webLanguages.size() == 2 && html.Value().webLanguages[1] == "de");
         const std::string home = ReadFile(Join(options.outDirUtf8, "index.html"));
-        REQUIRE(home.find("<link rel=\"stylesheet\" href=\"/assets/site.") != std::string::npos);
+        REQUIRE(home.find("<link rel=\"stylesheet\" href=\"/assets/uc-site.") != std::string::npos);
         REQUIRE(home.find("Featured app") != std::string::npos && home.find("Says hello") != std::string::npos);
         REQUIRE(home.find("Secret") == std::string::npos);
         REQUIRE(home.find("data-us=\"search\"") != std::string::npos);
@@ -361,7 +361,7 @@ TEST(the_fixture_store_as_html_within_its_budget) {
     }
     // Under the catalog's path: every address carries /v1/.
     const std::string home = ReadFile(Join(out, "index.html"));
-    REQUIRE(home.find("href=\"/v1/assets/site.") != std::string::npos);
+    REQUIRE(home.find("href=\"/v1/assets/uc-site.") != std::string::npos);
     REQUIRE(home.find("href=\"/v1/categories/\"") != std::string::npos);
     if (std::find(report.languages.begin(), report.languages.end(), "de") != report.languages.end()) {
         const std::string german = ReadFile(Join(out, "de/index.html"));
@@ -371,12 +371,15 @@ TEST(the_fixture_store_as_html_within_its_budget) {
     // Discover's first visit without its pictures: the page, the stylesheet
     // and the scripts it loads, compressed as the build measures them.
     size_t total = UltraSite::CompressedSize(home);
+    int measured = 0;
     for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(UltraCanvas::PathFromUtf8(Join(out, "assets")))) {
         const std::string name = UltraCanvas::PathToUtf8(entry.path().filename());
-        if (name.rfind("site.", 0) == 0 || name.rfind("core.", 0) == 0 || name.rfind("install.", 0) == 0 || name.rfind("search.", 0) == 0) {
+        if (name.rfind("uc-site.", 0) == 0 || name.rfind("uc-core.", 0) == 0 || name.rfind("uc-install.", 0) == 0 || name.rfind("uc-search.", 0) == 0) {
             total += UltraSite::CompressedSize(ReadFile(UltraCanvas::PathToUtf8(entry.path())));
+            ++measured;
         }
     }
+    REQUIRE(measured == 4);   // the stylesheet and the three modules, under their uc- names
     std::printf("         %zu languages; Discover without its pictures: %zu bytes compressed\n", report.languages.size(), total);
     REQUIRE(total > 0 && total <= 60 * 1024);
     // ULTRASTORE_HTML_FIXTURE_OUT=<folder> keeps the store there, to look at in a browser.

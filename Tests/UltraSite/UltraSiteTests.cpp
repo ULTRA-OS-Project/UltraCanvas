@@ -192,7 +192,7 @@ static void TestBuild() {
         document.root->ForEachElement([&](UltraCanvas::HTML::Node& node) {
             if (node.tag == "h1") ++h1;
             if (node.tag == "link" && node.GetAttribute("rel") == "stylesheet") cssHref = node.GetAttribute("href");
-            if (node.tag == "script" && node.GetAttribute("type") == "module" && Contains(node.GetAttribute("src"), "/core.")) {
+            if (node.tag == "script" && node.GetAttribute("type") == "module" && Contains(node.GetAttribute("src"), "/uc-core.")) {
                 coreSrc = node.GetAttribute("src");
             }
             if (node.tag == "script" && !node.HasAttribute("type") && !node.HasAttribute("src")) themeScript = true;
@@ -205,7 +205,7 @@ static void TestBuild() {
               Contains(home, "<link rel=\"canonical\" href=\"https://example.org/\">") &&
               Contains(home, "hreflang=\"de\" href=\"https://example.org/de/\"") && Contains(home, "hreflang=\"en\" href=\"https://example.org/\""),
           "the head carries the description, the canonical link and both languages");
-    Check(!cssHref.empty() && cssHref.rfind("/assets/site.", 0) == 0 && fs::exists(out / cssHref.substr(1)), "the stylesheet is hashed and written");
+    Check(!cssHref.empty() && cssHref.rfind("/assets/uc-site.", 0) == 0 && fs::exists(out / cssHref.substr(1)), "the stylesheet is hashed and written");
     Check(!coreSrc.empty() && fs::exists(out / coreSrc.substr(1)), "the core module is linked and written");
     Check(themeScript && rules && Contains(home, "data-us-theme-toggle hidden"), "a site with a dark look has the theme script and a hidden toggle");
     Check(Contains(home, "http-equiv=\"Content-Security-Policy\"") == Contains(Read(out / "_headers"), "Content-Security-Policy"),
@@ -221,12 +221,12 @@ static void TestBuild() {
           "the stylesheet holds the base, the tokens and the app's rules, minified");
 
     const std::string about = Read(out / "about" / "index.html");
-    Check(Contains(about, "/assets/js/tabs.") && !Contains(home, "/assets/js/tabs."), "a behaviour module is linked only where it is used");
+    Check(Contains(about, "/assets/js/uc-tabs.") && !Contains(home, "/assets/js/uc-tabs."), "a behaviour module is linked only where it is used");
     bool tabsWritten = false, unusedWritten = false;
     for (const fs::directory_entry& entry : fs::recursive_directory_iterator(out / "assets")) {
         const std::string name = entry.path().filename().string();
-        if (name.rfind("tabs.", 0) == 0) tabsWritten = true;
-        if (name.rfind("unused.", 0) == 0) unusedWritten = true;
+        if (name.rfind("uc-tabs.", 0) == 0) tabsWritten = true;
+        if (name.rfind("uc-unused.", 0) == 0) unusedWritten = true;
     }
     Check(tabsWritten && !unusedWritten, "only the modules some page uses are written");
 
@@ -440,10 +440,10 @@ static void TestDocs() {
     Check(Contains(install, "rel=\"prev\"><small>Previous</small><span>Use it</span>") && Contains(install, "rel=\"next\""),
           "previous and next follow the sidebar");
     Check(Contains(install, "data-us=\"toc\"") && Contains(install, "<a href=\"#before-you-start\">Before you start</a>") &&
-              Contains(install, "/assets/js/toc."),
+              Contains(install, "/assets/js/uc-toc."),
           "the table of contents, with its module");
     Check(Contains(install, "href=\"https://example.com/edit/docs/guide/install.md\""), "the edit link");
-    Check(Contains(install, "data-us=\"search\"") && Contains(install, "/assets/js/search."), "the search box on every page");
+    Check(Contains(install, "data-us=\"search\"") && Contains(install, "/assets/js/uc-search."), "the search box on every page");
 
     const std::string home = Read(out / "docs" / "index.html");
     Check(Contains(home, "href=\"/docs/guide/install/#before-you-start\""), "a link with an anchor keeps it");
@@ -458,7 +458,7 @@ static void TestDocs() {
     std::string index;
     for (const fs::directory_entry& entry : fs::directory_iterator(out / "search")) {
         const std::string name = entry.path().filename().string();
-        if (name.rfind("en.", 0) == 0) index = Read(entry.path());
+        if (name.rfind("uc-en.", 0) == 0) index = Read(entry.path());
     }
     Check(Contains(index, "[\"Install\",\"/docs/guide/install/\",") && Contains(index, "[\"before-you-start\",\"Before you start\""),
           "the index holds the pages, their sections and their text");
@@ -524,10 +524,10 @@ static void TestBasePath() {
     PrintErrors(result);
     Check(result.ok, "a site under a path builds, its links resolved in that path");
     const std::string page = Read(out / "about" / "index.html");
-    Check(fs::exists(out / "index.html") && Contains(page, "<link rel=\"stylesheet\" href=\"/v1/assets/site.") &&
+    Check(fs::exists(out / "index.html") && Contains(page, "<link rel=\"stylesheet\" href=\"/v1/assets/uc-site.") &&
               Contains(page, "<a class=\"us-brand\" href=\"/v1/\">") && Contains(page, "<a href=\"/v1/about/\" aria-current=\"page\">About</a>") &&
               Contains(page, "<link rel=\"canonical\" href=\"https://example.org/v1/about/\">") &&
-              Contains(page, "action=\"/v1/search/\"") && Contains(page, "data-index=\"/v1/search/en."),
+              Contains(page, "action=\"/v1/search/\"") && Contains(page, "data-index=\"/v1/search/uc-en."),
           "every address the builder writes carries the path; the files stay at the folder's root");
     Check(Contains(Read(out / "sitemap.xml"), "<loc>https://example.org/v1/about/</loc>") &&
               Contains(Read(out / ".htaccess"), "ErrorDocument 404 /v1/404.html") && Contains(Read(out / "_headers"), "/v1/assets/*"),
@@ -621,7 +621,7 @@ static void TestPhaseD() {
     bool immutable = false;
     for (const fs::directory_entry& entry : fs::directory_iterator(out / "assets")) {
         const std::string name = entry.path().filename().string();
-        if (name.rfind("site.", 0) == 0 && name.size() > 4 && name.compare(name.size() - 4, 4, ".css") == 0) {
+        if (name.rfind("uc-site.", 0) == 0 && name.size() > 4 && name.compare(name.size() - 4, 4, ".css") == 0) {
             immutable = Respond(folder, "/v1/", "GET", "/v1/assets/" + name, "").cacheControl == "public, max-age=31536000, immutable";
         }
     }
@@ -727,7 +727,7 @@ static void TestSwap() {
     auto swapFile = [](const fs::path& out) {
         std::error_code ec;
         for (const auto& entry : fs::directory_iterator(out / "assets" / "js", ec)) {
-            if (entry.path().filename().string().rfind("swap.", 0) == 0) return entry.path().filename().string();
+            if (entry.path().filename().string().rfind("uc-swap.", 0) == 0) return entry.path().filename().string();
         }
         return std::string();
     };
@@ -741,9 +741,9 @@ static void TestSwap() {
     Check(!file.empty() && Contains(home, "/assets/js/" + file + "\" data-us-swap></script>") &&
               Contains(Read(swapped / "assets" / "js" / file), "us:page"),
           "the swap module is written and linked on every page");
-    Check(Contains(home, "/assets/js/core.") && Contains(home, ".js\" data-us-swap></script>\n<script type=\"module\" src=\"/assets/js/swap."),
+    Check(Contains(home, "/assets/js/uc-core.") && Contains(home, ".js\" data-us-swap></script>\n<script type=\"module\" src=\"/assets/js/uc-swap."),
           "the core module is marked as starting again");
-    Check(Contains(about, "/assets/js/tabs.") && !Contains(about, "\" data-us-swap></script>\n<script type=\"speculationrules\">"),
+    Check(Contains(about, "/assets/js/uc-tabs.") && !Contains(about, "\" data-us-swap></script>\n<script type=\"speculationrules\">"),
           "an app's module the app did not mark is not marked: a page with it is loaded the ordinary way");
 
     const fs::path ready = dir / "ready";
@@ -754,7 +754,7 @@ static void TestSwap() {
     const fs::path loaded = dir / "load";
     Check(build(Navigation::Load, true, loaded), "a site that loads pages builds");
     const std::string plain = Read(loaded / "index.html");
-    Check(Contains(plain, "<html lang=\"en\">") && !Contains(plain, "data-us-swap") && !Contains(plain, "/swap.") && swapFile(loaded).empty(),
+    Check(Contains(plain, "<html lang=\"en\">") && !Contains(plain, "data-us-swap") && !Contains(plain, "/uc-swap.") && swapFile(loaded).empty(),
           "a site that loads pages has no swap module and no marks");
 
     SiteConfig config = FixtureConfig();

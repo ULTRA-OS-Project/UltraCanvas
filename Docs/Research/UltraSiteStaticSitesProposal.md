@@ -100,12 +100,12 @@ out/
   app/org.ultraos.ultravideo/index.html
   de/…                                one tree per further language, hreflang between them
   404.html
-  assets/site.3f9a1c2b7e.css          one stylesheet: tokens, layouts, blocks; hashed, immutable
-  assets/js/core.8d2e4f0193.js        navigation, prefetch, theme; on every page
-  assets/js/search.1f0a9b8c7d.js      loaded on the first focus of the search box
-  assets/js/tabs.5e4d3c2b1a.js        one module per behaviour, on the pages that use it
+  assets/uc-site.3f9a1c2b7e.css       one stylesheet: tokens, layouts, blocks; hashed, immutable
+  assets/js/uc-core.8d2e4f0193.js     navigation, prefetch, theme; on every page
+  assets/js/uc-search.1f0a9b8c7d.js   loaded on the first focus of the search box
+  assets/js/uc-tabs.5e4d3c2b1a.js     one module per behaviour, on the pages that use it
   assets/img/hero.1a2b3c4d5e.1200.avif   pictures: AVIF + WebP + JPEG/PNG, widths for srcset
-  search/en.5c6d7e8f90.json           the search index of one language
+  search/uc-en.5c6d7e8f90.json        the search index of one language
   sitemap.xml  robots.txt  feed.xml
   .htaccess  _headers                 Apache and Netlify/Cloudflare-style cache and type rules
   *.gz  (*.br)                        precompressed copies beside the text files (optional)
