@@ -2,7 +2,8 @@
 // Complete text editor implementation with multi-file tabs and autosave
 // Version: 2.9.0 - closing with unsaved files lists them (name, folder) in the question, as the file
 //                  display lists the files of a delete; saving them shows each file's tab before its
-//                  Save dialog, and a save that fails shows its tab before saying so
+//                  Save dialog (painted before the dialog opens), and a save that fails shows its tab
+//                  before saying so
 // Version: 2.8.0 - a window started dark has dark chrome (the theme was only laid over it on a change);
 //                  View > Dark Mode: Document Background (dark / light grey / white text tabs under a dark look)
 // Version: 2.7.0 - the status bar shows which dictionary the active document is spell checked against; a click opens the Spelling menu
@@ -5177,8 +5178,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                                                         const std::string& failedPath,
                                                         std::function<void(bool)> onDone) {
         // The file that failed is the one on show while it is asked about.
-        if (auto it = std::find(documents.begin(), documents.end(), doc); it != documents.end())
-            SwitchToDocument(static_cast<int>(it - documents.begin()));
+        if (auto it = std::find(documents.begin(), documents.end(), doc); it != documents.end()) {
+            const int index = static_cast<int>(it - documents.begin());
+            if (index != activeDocumentIndex) {
+                SwitchToDocument(index);
+                AfterRepaint([this, doc, failedPath, onDone]() { OfferSaveAsAfterFailure(doc, failedPath, onDone); });
+                return;
+            }
+        }
         const std::string reason = lastSaveError.empty() ? Tr("The file could not be written.") : lastSaveError;
         const std::string message = "\"" + failedPath + "\" could not be saved.\n\n" + reason +
                                     "\n\nChoose another name or folder to save it.";
@@ -5255,7 +5262,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                           static_cast<long long>(modifiedDocs.size()));
         cfg.buttons = DialogButtons::YesNoCancel;
         cfg.defaultButton = DialogButton::Yes;
-        cfg.width = 520;
+        cfg.width = 580;
         // A starting height; the dialog fits itself to the message and to the
         // list (which carries its own height).
         cfg.height = 190 + (list ? listHeight + 8 : 0);
@@ -5313,24 +5320,30 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                                 return;
                             }
 
-                            FileDialogOptions opts;
-                            opts.title = Tr("Save File");
-                            opts.filters = DialogFileFilters(true);
-                            opts.defaultFileName = doc->fileName;
-                            opts.parentWindow = GetWindow();
+                            AfterRepaint([this, idx, savedFlag, saveNext]() {
+                                if (idx >= static_cast<int>(documents.size())) {
+                                    (*saveNext)();
+                                    return;
+                                }
+                                FileDialogOptions opts;
+                                opts.title = Tr("Save File");
+                                opts.filters = DialogFileFilters(true);
+                                opts.defaultFileName = documents[idx]->fileName;
+                                opts.parentWindow = GetWindow();
 
-                            UltraCanvasFileLoader::SaveFileDialog(
-                                    opts,
-                                    [this, idx, remaining, savedFlag, onComplete, saveNext](DialogResult saveResult, const std::string& filePath) {
-                                        if (saveResult == DialogResult::OK && !filePath.empty()) {
-                                            if (!SaveDocumentAs(idx, filePath)) {
-                                                *savedFlag = false;
+                                UltraCanvasFileLoader::SaveFileDialog(
+                                        opts,
+                                        [this, idx, savedFlag, saveNext](DialogResult saveResult, const std::string& filePath) {
+                                            if (saveResult == DialogResult::OK && !filePath.empty()) {
+                                                if (!SaveDocumentAs(idx, filePath)) {
+                                                    *savedFlag = false;
+                                                }
                                             }
+                                            // Continue to next unsaved document (skip if user cancelled this one)
+                                            (*saveNext)();
                                         }
-                                        // Continue to next unsaved document (skip if user cancelled this one)
-                                        (*saveNext)();
-                                    }
-                            );
+                                );
+                            });
                         };
                         (*saveNext)();
                     } else if (result == DialogResult::No) {
@@ -5347,6 +5360,22 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         );
     }
 
+    void UltraCanvasTextEditor::AfterRepaint(std::function<void()> task) {
+        // The event loop runs posted tasks before it paints its windows, so a
+        // task posted from a posted task runs after one paint: the window
+        // shows the tab just switched to before a dialog covers it. Opened at
+        // once, a native file dialog held the loop with the old tab on screen.
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) {
+            task();
+            return;
+        }
+        RequestRedraw();
+        app->PostToUIThread([app, task = std::move(task)]() mutable {
+            app->PostToUIThread(std::move(task));
+        });
+    }
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasTextEditor::BuildUnsavedFileList(
             const std::vector<std::shared_ptr<DocumentTab>>& listed, int& outHeight) {
         outHeight = 0;
@@ -5359,14 +5388,22 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         const int rows = static_cast<int>(std::min<size_t>(listed.size(), 8));
         outHeight = kHeaderHeight + rows * kRowHeight + 2;
 
+        // The two columns fit the dialog's width (cfg.width in
+        // ConfirmCloseWithUnsavedChanges): wider, and a horizontal scroll bar
+        // covered the last row. A folder too long for its column keeps its
+        // end - the folders nearest the file - after a "…"; the row's tooltip
+        // has the whole path.
+        constexpr int kFolderChars = 34;
         auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
-        model->AddColumn(ListColumnDef(Tr("Name"), 190));
-        model->AddColumn(ListColumnDef(Tr("Folder"), 280));
+        model->AddColumn(ListColumnDef(Tr("Name"), 160));
+        model->AddColumn(ListColumnDef(Tr("Folder"), 300));
         for (const auto& doc : listed) {
             const bool onDisk = !doc->filePath.empty();
-            const std::string folder = onDisk
+            std::string folder = onDisk
                     ? PathToUtf8(PathFromUtf8(doc->filePath).parent_path())
                     : Tr("Not saved yet");
+            if (const int length = utf8_length(folder); onDisk && length > kFolderChars)
+                folder = "\xE2\x80\xA6" + folder.substr(utf8_cp_to_byte(folder, length - kFolderChars + 1));
             MultiColumnListItem item({doc->fileName, folder});
             item.tooltip = onDisk ? doc->filePath : doc->fileName;
             model->AddItem(item);

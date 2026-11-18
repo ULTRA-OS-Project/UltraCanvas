@@ -611,6 +611,9 @@ namespace UltraCanvas {
         // The list of files under that question: name and folder (or "Not
         // saved yet"), in the shape of the file display's operation lists.
         // Null for no files; outHeight is the list's height.
+        // Runs `task` once the window has painted what changed (a tab just
+        // switched to), so a dialog opened from it does not cover a stale one.
+        void AfterRepaint(std::function<void()> task);
         std::shared_ptr<UltraCanvasUIElement> BuildUnsavedFileList(
                 const std::vector<std::shared_ptr<DocumentTab>>& listed, int& outHeight);
 
