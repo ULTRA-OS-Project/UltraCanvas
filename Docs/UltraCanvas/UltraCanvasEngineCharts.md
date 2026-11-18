@@ -285,13 +285,14 @@ pointer); `lineWidth` sets the group's line, `SetJoinLineWidth` the chart's;
 `GroupLineRuns(group)` gives the line as laid out.
 
 ```cpp
+auto trials = CreateEngineScatterChart("Trials", 0, 0, 640, 400);
 EngineScatterGroup path;
 path.name = "Trial 1";
 path.points = {{1.0, 2.0}, {4.0, 6.5}, {3.0, 8.0}, {0.5, 5.0}};   // x turns back
 path.joined = true;
 path.lineWidth = 1.5f;
-chart->AddGroup(path);
-chart->SetJoinLineWidth(2.0f);
+trials->AddGroup(path);
+trials->SetJoinLineWidth(2.0f);
 ```
 
 A point with a finite `size` turns the chart into a bubble chart: radii are
