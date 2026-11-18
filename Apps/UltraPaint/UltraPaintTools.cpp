@@ -4,6 +4,8 @@
 // airbrush, eraser, clone, smudge, dodge, burn), fill, gradient, the lines
 // (line, polyline, arrow, curve), shapes (rectangle, ellipse), text, zoom
 // and pan.
+// Version: 1.3.2 - every text a person reads goes through Tr / TrF: tool names and hints,
+//                  option labels and their items, status messages and undo labels
 // Version: 1.3.1 - no UltraCanvasApplication.h: its font list went with the Text tool's options
 // Version: 1.3.0 - the Text tool's options moved to the window's text bar
 // Version: 1.2.1 - the Text tool's Font and Align lists give the keyboard back to the text
@@ -13,7 +15,7 @@
 // Version: 1.1.1 - AddCaption: the hints under a tool's options are quiet grey, not bold
 // Version: 1.1.0 - Polyline, Arrow and Curve
 // Version: 1.0.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraPaintTools.h"
@@ -142,25 +144,25 @@ void AddCaption(UltraCanvasContainer& panel, const std::string& id, const std::s
 
 void AddBrushOptions(UltraCanvasContainer& panel, const std::string& p, UCBrushSettings& s,
                      bool showHardness, bool showFlow, const std::function<void()>& changed) {
-    AddSliderRow(panel, p + "-size", "Size", 1, 300, s.size, 1, true,
+    AddSliderRow(panel, p + "-size", Tr("Size"), 1, 300, s.size, 1, true,
                  [&s, changed](float v) { s.size = v; if (changed) changed(); });
     if (showHardness)
-        AddSliderRow(panel, p + "-hard", "Hardness", 0, 1, s.hardness, 0.05f, false,
+        AddSliderRow(panel, p + "-hard", Tr("Hardness"), 0, 1, s.hardness, 0.05f, false,
                      [&s, changed](float v) { s.hardness = v; if (changed) changed(); });
-    AddSliderRow(panel, p + "-opacity", "Opacity", 0, 1, s.opacity, 0.05f, false,
+    AddSliderRow(panel, p + "-opacity", Tr("Opacity"), 0, 1, s.opacity, 0.05f, false,
                  [&s, changed](float v) { s.opacity = v; if (changed) changed(); });
     if (showFlow)
-        AddSliderRow(panel, p + "-flow", "Flow", 0.01f, 1, s.flow, 0.01f, false,
+        AddSliderRow(panel, p + "-flow", Tr("Flow"), 0.01f, 1, s.flow, 0.01f, false,
                      [&s, changed](float v) { s.flow = v; if (changed) changed(); });
-    AddSliderRow(panel, p + "-spacing", "Spacing", 0.02f, 1, s.spacing, 0.02f, false,
+    AddSliderRow(panel, p + "-spacing", Tr("Spacing"), 0.02f, 1, s.spacing, 0.02f, false,
                  [&s, changed](float v) { s.spacing = v; if (changed) changed(); });
-    AddDropdown(panel, p + "-shape", "Shape", { "Round", "Square" }, s.shape == BrushShape::Square ? 1 : 0,
+    AddDropdown(panel, p + "-shape", Tr("Shape"), { Tr("Round"), Tr("Square") }, s.shape == BrushShape::Square ? 1 : 0,
                 [&s, changed](int i) { s.shape = i == 1 ? BrushShape::Square : BrushShape::Round; if (changed) changed(); });
-    AddCheckbox(panel, p + "-aa", "Anti-aliased edge", s.antialias,
+    AddCheckbox(panel, p + "-aa", Tr("Anti-aliased edge"), s.antialias,
                 [&s, changed](bool v) { s.antialias = v; if (changed) changed(); });
-    AddCheckbox(panel, p + "-psize", "Pressure controls size", s.pressureSize,
+    AddCheckbox(panel, p + "-psize", Tr("Pressure controls size"), s.pressureSize,
                 [&s](bool v) { s.pressureSize = v; });
-    AddCheckbox(panel, p + "-popacity", "Pressure controls opacity", s.pressureOpacity,
+    AddCheckbox(panel, p + "-popacity", Tr("Pressure controls opacity"), s.pressureOpacity,
                 [&s](bool v) { s.pressureOpacity = v; });
 }
 
@@ -256,11 +258,11 @@ std::shared_ptr<UCRasterLayer> PaintableLayer(PaintToolContext& ctx, std::shared
     if (!doc || !doc->IsValid()) return nullptr;
     auto layer = doc->GetActiveLayer();
     if (!layer) return nullptr;
-    if (layer->locked) { if (ctx.setStatus) ctx.setStatus("The active layer is locked"); return nullptr; }
-    if (!layer->visible) { if (ctx.setStatus) ctx.setStatus("The active layer is hidden"); return nullptr; }
+    if (layer->locked) { if (ctx.setStatus) ctx.setStatus(Tr("The active layer is locked")); return nullptr; }
+    if (!layer->visible) { if (ctx.setStatus) ctx.setStatus(Tr("The active layer is hidden")); return nullptr; }
     if (layer->IsTextLayer()) {
         if (ctx.askRasterize) ctx.askRasterize(action);
-        else if (ctx.setStatus) ctx.setStatus("The active layer is a text layer: rasterize it to paint on it");
+        else if (ctx.setStatus) ctx.setStatus(Tr("The active layer is a text layer: rasterize it to paint on it"));
         return nullptr;
     }
     return layer;
@@ -285,7 +287,7 @@ class MarqueeTool : public PaintTool {
 public:
     MarqueeTool(PaintToolId id, const std::string& name, const std::string& icon, char key, bool ellipse)
         : PaintTool(id, name, icon, key,
-                    "Drag to select. Shift adds, Alt subtracts, Shift+Alt intersects; Ctrl for a square"),
+                    Tr("Drag to select. Shift adds, Alt subtracts, Shift+Alt intersects; Ctrl for a square")),
           isEllipse(ellipse) {}
 
     void OnPress(PaintToolContext&, const PaintPointerEvent& e) override {
@@ -295,7 +297,7 @@ public:
         if (!dragging) return;
         x1 = e.x; y1 = e.y; square = e.ctrl;
         const Rect2Di r = NormalizedRect(x0, y0, x1, y1, square);
-        if (ctx.setStatus) ctx.setStatus("Selection: " + std::to_string(r.width) + " x " + std::to_string(r.height));
+        if (ctx.setStatus) ctx.setStatus(TrF("Selection: {0} x {1}", r.width, r.height));
         ctx.surface->Refresh();
     }
     void OnRelease(PaintToolContext& ctx, const PaintPointerEvent& e) override {
@@ -306,14 +308,14 @@ public:
         const Rect2Di r = NormalizedRect(x0, y0, e.x, e.y, square);
         UCRasterSelection& sel = doc->GetSelection();
         if (r.width < 1 || r.height < 1) {
-            if (ModeFromModifiers(e) == RasterSelectionMode::Replace) { sel.SelectNone(); doc->CommitSelectionChange("Deselect"); }
+            if (ModeFromModifiers(e) == RasterSelectionMode::Replace) { sel.SelectNone(); doc->CommitSelectionChange(Tr("Deselect")); }
             ctx.surface->Refresh();
             return;
         }
         if (isEllipse) sel.SetEllipse(r, ModeFromModifiers(e), ctx.options->selectionAntialias);
         else sel.SetRectangle(r, ModeFromModifiers(e));
         if (ctx.options->selectionFeather > 0) sel.Feather(ctx.options->selectionFeather);
-        doc->CommitSelectionChange(isEllipse ? "Ellipse Select" : "Rectangle Select");
+        doc->CommitSelectionChange(isEllipse ? Tr("Ellipse Select") : Tr("Rectangle Select"));
         ctx.surface->Refresh();
     }
     void DrawOverlay(PaintToolContext&, IRenderContext* ctx, const PaintViewTransform& v) override {
@@ -337,12 +339,12 @@ public:
     // the magnifying glass is for.
     bool WantsMagnifier() const override { return !isEllipse; }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
-        AddSliderRow(panel, "sel-feather", "Feather", 0, 50, static_cast<float>(ctx.options->selectionFeather), 1, true,
+        AddSliderRow(panel, "sel-feather", Tr("Feather"), 0, 50, static_cast<float>(ctx.options->selectionFeather), 1, true,
                      [o = ctx.options](float v) { o->selectionFeather = static_cast<int>(v); });
         if (isEllipse)
-            AddCheckbox(panel, "sel-aa", "Anti-aliased", ctx.options->selectionAntialias,
+            AddCheckbox(panel, "sel-aa", Tr("Anti-aliased"), ctx.options->selectionAntialias,
                         [o = ctx.options](bool v) { o->selectionAntialias = v; });
-        AddCaption(panel, "sel-hint", "Shift: add   Alt: subtract   Ctrl: square");
+        AddCaption(panel, "sel-hint", Tr("Shift: add   Alt: subtract   Ctrl: square"));
     }
 private:
     bool isEllipse;
@@ -352,8 +354,8 @@ private:
 
 class LassoTool : public PaintTool {
 public:
-    LassoTool() : PaintTool(PaintToolId::Lasso, "Lasso", "lasso.svg", 'L',
-                            "Drag a free-hand outline. Shift adds, Alt subtracts") {}
+    LassoTool() : PaintTool(PaintToolId::Lasso, Tr("Lasso"), "lasso.svg", 'L',
+                            Tr("Drag a free-hand outline. Shift adds, Alt subtracts")) {}
     void OnPress(PaintToolContext&, const PaintPointerEvent& e) override {
         points.clear(); points.emplace_back(static_cast<float>(e.x), static_cast<float>(e.y)); dragging = true;
     }
@@ -369,13 +371,13 @@ public:
         auto doc = ctx.getDocument();
         if (!doc) return;
         if (points.size() < 3) {
-            if (ModeFromModifiers(e) == RasterSelectionMode::Replace) { doc->GetSelection().SelectNone(); doc->CommitSelectionChange("Deselect"); }
+            if (ModeFromModifiers(e) == RasterSelectionMode::Replace) { doc->GetSelection().SelectNone(); doc->CommitSelectionChange(Tr("Deselect")); }
             points.clear(); ctx.surface->Refresh();
             return;
         }
         doc->GetSelection().SetPolygon(points, ModeFromModifiers(e), ctx.options->selectionAntialias);
         if (ctx.options->selectionFeather > 0) doc->GetSelection().Feather(ctx.options->selectionFeather);
-        doc->CommitSelectionChange("Lasso Select");
+        doc->CommitSelectionChange(Tr("Lasso Select"));
         points.clear();
         ctx.surface->Refresh();
     }
@@ -394,9 +396,9 @@ public:
         ctx->SetLineDash(UCDashPattern());
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
-        AddSliderRow(panel, "lasso-feather", "Feather", 0, 50, static_cast<float>(ctx.options->selectionFeather), 1, true,
+        AddSliderRow(panel, "lasso-feather", Tr("Feather"), 0, 50, static_cast<float>(ctx.options->selectionFeather), 1, true,
                      [o = ctx.options](float v) { o->selectionFeather = static_cast<int>(v); });
-        AddCheckbox(panel, "lasso-aa", "Anti-aliased", ctx.options->selectionAntialias,
+        AddCheckbox(panel, "lasso-aa", Tr("Anti-aliased"), ctx.options->selectionAntialias,
                     [o = ctx.options](bool v) { o->selectionAntialias = v; });
     }
 private:
@@ -406,8 +408,8 @@ private:
 
 class MagicWandTool : public PaintTool {
 public:
-    MagicWandTool() : PaintTool(PaintToolId::MagicWand, "Magic Wand", "wand.svg", 'W',
-                                "Click a colour to select the region of similar colour") {}
+    MagicWandTool() : PaintTool(PaintToolId::MagicWand, Tr("Magic Wand"), "wand.svg", 'W',
+                                Tr("Click a colour to select the region of similar colour")) {}
     void OnPress(PaintToolContext& ctx, const PaintPointerEvent& e) override {
         auto doc = ctx.getDocument();
         if (!doc || !e.insideImage) return;
@@ -417,16 +419,16 @@ public:
                                                                ctx.options->wandTolerance, ctx.options->wandContiguous);
         doc->GetSelection().SetMask(mask, ModeFromModifiers(e));
         if (ctx.options->selectionFeather > 0) doc->GetSelection().Feather(ctx.options->selectionFeather);
-        doc->CommitSelectionChange("Magic Wand");
+        doc->CommitSelectionChange(Tr("Magic Wand"));
         ctx.surface->Refresh();
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
-        AddSliderRow(panel, "wand-tol", "Tolerance", 0, 255, static_cast<float>(o->wandTolerance), 1, true,
+        AddSliderRow(panel, "wand-tol", Tr("Tolerance"), 0, 255, static_cast<float>(o->wandTolerance), 1, true,
                      [o](float v) { o->wandTolerance = static_cast<int>(v); });
-        AddCheckbox(panel, "wand-contig", "Contiguous", o->wandContiguous, [o](bool v) { o->wandContiguous = v; });
-        AddCheckbox(panel, "wand-merged", "Sample merged", o->wandSampleMerged, [o](bool v) { o->wandSampleMerged = v; });
-        AddSliderRow(panel, "wand-feather", "Feather", 0, 50, static_cast<float>(o->selectionFeather), 1, true,
+        AddCheckbox(panel, "wand-contig", Tr("Contiguous"), o->wandContiguous, [o](bool v) { o->wandContiguous = v; });
+        AddCheckbox(panel, "wand-merged", Tr("Sample merged"), o->wandSampleMerged, [o](bool v) { o->wandSampleMerged = v; });
+        AddSliderRow(panel, "wand-feather", Tr("Feather"), 0, 50, static_cast<float>(o->selectionFeather), 1, true,
                      [o](float v) { o->selectionFeather = static_cast<int>(v); });
     }
 };
@@ -437,8 +439,8 @@ public:
 
 class MoveTool : public PaintTool {
 public:
-    MoveTool() : PaintTool(PaintToolId::Move, "Move", "move.svg", 'M',
-                           "Drag to move the selection (or the whole layer)") {}
+    MoveTool() : PaintTool(PaintToolId::Move, Tr("Move"), "move.svg", 'M',
+                           Tr("Drag to move the selection (or the whole layer)")) {}
     UCMouseCursor Cursor() const override { return UCMouseCursor::SizeAll; }
     void OnPress(PaintToolContext& ctx, const PaintPointerEvent& e) override {
         // A text layer moved whole stays text: its box moves, and the text is
@@ -476,7 +478,7 @@ public:
         dx = static_cast<int>(std::lround(e.x - startX));
         dy = static_cast<int>(std::lround(e.y - startY));
         Apply(ctx);
-        if (ctx.setStatus) ctx.setStatus("Move: " + std::to_string(dx) + ", " + std::to_string(dy));
+        if (ctx.setStatus) ctx.setStatus(TrF("Move: {0}, {1}", dx, dy));
     }
     void OnRelease(PaintToolContext& ctx, const PaintPointerEvent& e) override {
         if (!active) return;
@@ -490,18 +492,18 @@ public:
         Apply(ctx);
         auto layer = doc->GetActiveLayer();
         if (layer && snapshot && (dx != 0 || dy != 0)) {
-            doc->RecordEdit("Move", doc->GetActiveLayerIndex(), layer->GetRect(), *snapshot);
+            doc->RecordEdit(Tr("Move"), doc->GetActiveLayerIndex(), layer->GetRect(), *snapshot);
             if (movingSelection) {
                 doc->GetSelection().Translate(dx, dy);
-                doc->CommitSelectionChange("Move Selection");
+                doc->CommitSelectionChange(Tr("Move Selection"));
             }
         }
         snapshot.reset(); floating.reset();
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
-        AddCheckbox(panel, "move-sel", "Move selected pixels only", ctx.options->moveSelectionOnly,
+        AddCheckbox(panel, "move-sel", Tr("Move selected pixels only"), ctx.options->moveSelectionOnly,
                     [o = ctx.options](bool v) { o->moveSelectionOnly = v; });
-        AddCaption(panel, "move-hint", "Without a selection the whole layer moves");
+        AddCaption(panel, "move-hint", Tr("Without a selection the whole layer moves"));
     }
 private:
     void FinishTextMove(PaintToolContext& ctx) {
@@ -515,8 +517,8 @@ private:
         if ((dx != 0 || dy != 0) && layer->text) {
             std::string error;
             auto moved = RenderTextLayerLike(*layer, *layer->text->MovedBy(dx, dy), error);
-            if (moved) doc->ReplaceLayer(doc->GetActiveLayerIndex(), moved, "Move Text");
-            else if (ctx.setStatus) ctx.setStatus("Could not move the text: " + error);
+            if (moved) doc->ReplaceLayer(doc->GetActiveLayerIndex(), moved, Tr("Move Text"));
+            else if (ctx.setStatus) ctx.setStatus(TrF("Could not move the text: {0}", error));
         }
         snapshot.reset();
     }
@@ -558,8 +560,8 @@ private:
 
 class CropTool : public PaintTool {
 public:
-    CropTool() : PaintTool(PaintToolId::Crop, "Crop", "crop.svg", 'C',
-                           "Drag the area to keep, then press Enter (Escape cancels)") {}
+    CropTool() : PaintTool(PaintToolId::Crop, Tr("Crop"), "crop.svg", 'C',
+                           Tr("Drag the area to keep, then press Enter (Escape cancels)")) {}
     void OnPress(PaintToolContext&, const PaintPointerEvent& e) override {
         // The rectangle already dragged survives the press: the first click
         // of a double-click is a press, and dropping it here left nothing for
@@ -571,7 +573,7 @@ public:
         x1 = e.x; y1 = e.y;
         rect = NormalizedRect(x0, y0, x1, y1, e.ctrl);
         hasRect = rect.width > 0 && rect.height > 0;
-        if (ctx.setStatus) ctx.setStatus("Crop: " + std::to_string(rect.width) + " x " + std::to_string(rect.height) + "  (Enter to apply)");
+        if (ctx.setStatus) ctx.setStatus(TrF("Crop: {0} x {1}  (Enter to apply)", rect.width, rect.height));
         ctx.surface->Refresh();
     }
     void OnRelease(PaintToolContext& ctx, const PaintPointerEvent&) override {
@@ -614,7 +616,7 @@ private:
         doc->CropTo(rect);
         hasRect = false;
         ctx.surface->ZoomToFit();
-        if (ctx.setStatus) ctx.setStatus("Cropped to " + std::to_string(doc->GetWidth()) + " x " + std::to_string(doc->GetHeight()));
+        if (ctx.setStatus) ctx.setStatus(TrF("Cropped to {0} x {1}", doc->GetWidth(), doc->GetHeight()));
     }
     bool dragging = false, hasRect = false;
     double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
@@ -627,16 +629,16 @@ private:
 
 class EyedropperTool : public PaintTool {
 public:
-    EyedropperTool() : PaintTool(PaintToolId::Eyedropper, "Eyedropper", "eyedropper.svg", 'I',
-                                 "Click to pick the foreground colour; right-click for the background") {}
+    EyedropperTool() : PaintTool(PaintToolId::Eyedropper, Tr("Eyedropper"), "eyedropper.svg", 'I',
+                                 Tr("Click to pick the foreground colour; right-click for the background")) {}
     void OnPress(PaintToolContext& ctx, const PaintPointerEvent& e) override { Pick(ctx, e); }
     void OnDrag(PaintToolContext& ctx, const PaintPointerEvent& e) override { Pick(ctx, e); }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
-        AddDropdown(panel, "eye-size", "Sample", { "Point", "3 x 3 average", "5 x 5 average", "11 x 11 average" },
+        AddDropdown(panel, "eye-size", Tr("Sample"), { Tr("Point"), Tr("3 x 3 average"), Tr("5 x 5 average"), Tr("11 x 11 average") },
                     o->eyedropperRadius == 0 ? 0 : o->eyedropperRadius == 1 ? 1 : o->eyedropperRadius == 2 ? 2 : 3,
                     [o](int i) { o->eyedropperRadius = i == 0 ? 0 : i == 1 ? 1 : i == 2 ? 2 : 5; });
-        AddCheckbox(panel, "eye-merged", "Sample merged", o->eyedropperMerged, [o](bool v) { o->eyedropperMerged = v; });
+        AddCheckbox(panel, "eye-merged", Tr("Sample merged"), o->eyedropperMerged, [o](bool v) { o->eyedropperMerged = v; });
     }
 private:
     void Pick(PaintToolContext& ctx, const PaintPointerEvent& e) {
@@ -648,9 +650,9 @@ private:
         if (e.button == UCMouseButton::Right) { if (ctx.setBackground) ctx.setBackground(p); }
         else if (ctx.setForeground) ctx.setForeground(p);
         if (ctx.setStatus) {
-            char buf[64];
-            std::snprintf(buf, sizeof(buf), "Picked #%02X%02X%02X  alpha %d", p.r, p.g, p.b, p.a);
-            ctx.setStatus(buf);
+            char hex[16];
+            std::snprintf(hex, sizeof(hex), "#%02X%02X%02X", p.r, p.g, p.b);
+            ctx.setStatus(TrF("Picked {0}  alpha {1}", hex, static_cast<int>(p.a)));
         }
     }
 };
@@ -674,14 +676,14 @@ public:
     void OnPress(PaintToolContext& ctx, const PaintPointerEvent& e) override {
         if (mode == BrushMode::Clone && e.ctrl) {
             cloneSourceSet = true; cloneSrcX = e.x; cloneSrcY = e.y; cloneOffsetKnown = false;
-            if (ctx.setStatus) ctx.setStatus("Clone source set — paint to clone from it");
+            if (ctx.setStatus) ctx.setStatus(Tr("Clone source set — paint to clone from it"));
             ctx.surface->Refresh();
             return;
         }
         auto layer = PaintableLayer(ctx, doc, name);
         if (!layer) return;
         if (mode == BrushMode::Clone) {
-            if (!cloneSourceSet) { if (ctx.setStatus) ctx.setStatus("Ctrl+click to set the clone source first"); return; }
+            if (!cloneSourceSet) { if (ctx.setStatus) ctx.setStatus(Tr("Ctrl+click to set the clone source first")); return; }
             if (!cloneOffsetKnown) {
                 cloneDx = static_cast<int>(std::lround(cloneSrcX - e.x));
                 cloneDy = static_cast<int>(std::lround(cloneSrcY - e.y));
@@ -738,8 +740,8 @@ public:
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>& changed) override {
         AddBrushOptions(panel, "brush-" + std::to_string(static_cast<int>(id)), Settings(ctx), showHardness, showFlow, changed);
-        if (mode == BrushMode::Clone) AddCaption(panel, "clone-hint", "Ctrl+click sets the source point");
-        AddCaption(panel, "brush-keys", "[ and ] change the size");
+        if (mode == BrushMode::Clone) AddCaption(panel, "clone-hint", Tr("Ctrl+click sets the source point"));
+        AddCaption(panel, "brush-keys", Tr("[ and ] change the size"));
     }
     void Deactivate(PaintToolContext& ctx) override { cloneOffsetKnown = false; ctx.surface->Refresh(); }
 
@@ -761,8 +763,8 @@ private:
 
 class FillTool : public PaintTool {
 public:
-    FillTool() : PaintTool(PaintToolId::Fill, "Fill", "fill.svg", 'F',
-                           "Click to flood-fill with the foreground colour (right-click: background)") {}
+    FillTool() : PaintTool(PaintToolId::Fill, Tr("Fill"), "fill.svg", 'F',
+                           Tr("Click to flood-fill with the foreground colour (right-click: background)")) {}
     void OnPress(PaintToolContext& ctx, const PaintPointerEvent& e) override {
         if (!e.insideImage) return;
         const RasterPixel colour = e.button == UCMouseButton::Right ? ctx.background() : ctx.foreground();
@@ -771,12 +773,12 @@ public:
         // were - say so, rather than let the click look ignored.
         if (compositing == RasterPaint::FillCompositing::Blend && colour.a == 0) {
             if (ctx.setStatus)
-                ctx.setStatus("Nothing filled: the colour is fully transparent. Set Mode to Replace to make the area transparent");
+                ctx.setStatus(Tr("Nothing filled: the colour is fully transparent. Set Mode to Replace to make the area transparent"));
             return;
         }
         // Take that message down again once a fill does something.
-        if (ctx.setStatus) ctx.setStatus(name + ": " + hint);
-        EditActiveLayer(ctx, "Fill", [&](UCRasterDocument& doc, UCRasterLayer& layer, const UCRasterSelection* sel) {
+        if (ctx.setStatus) ctx.setStatus(TrF("{0}: {1}", name, hint));
+        EditActiveLayer(ctx, Tr("Fill"), [&](UCRasterDocument& doc, UCRasterLayer& layer, const UCRasterSelection* sel) {
             std::shared_ptr<UCRasterLayer> merged = ctx.options->fillSampleMerged ? doc.Flatten() : nullptr;
             return RasterPaint::FloodFill(layer, sel, static_cast<int>(e.x), static_cast<int>(e.y), colour,
                                           ctx.options->fillTolerance, ctx.options->fillContiguous, merged.get(),
@@ -785,17 +787,17 @@ public:
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
-        AddDropdown(panel, "fill-mode", "Mode", { "Normal", "Replace" },
+        AddDropdown(panel, "fill-mode", Tr("Mode"), { Tr("Normal"), Tr("Replace") },
                     o->fillCompositing == RasterPaint::FillCompositing::Replace ? 1 : 0,
                     [o](int i) {
                         o->fillCompositing = i == 1 ? RasterPaint::FillCompositing::Replace
                                                     : RasterPaint::FillCompositing::Blend;
                     });
-        AddSliderRow(panel, "fill-tol", "Tolerance", 0, 255, static_cast<float>(o->fillTolerance), 1, true,
+        AddSliderRow(panel, "fill-tol", Tr("Tolerance"), 0, 255, static_cast<float>(o->fillTolerance), 1, true,
                      [o](float v) { o->fillTolerance = static_cast<int>(v); });
-        AddSliderRow(panel, "fill-opacity", "Opacity", 0, 1, o->fillOpacity, 0.05f, false, [o](float v) { o->fillOpacity = v; });
-        AddCheckbox(panel, "fill-contig", "Contiguous", o->fillContiguous, [o](bool v) { o->fillContiguous = v; });
-        AddCheckbox(panel, "fill-merged", "Sample merged", o->fillSampleMerged, [o](bool v) { o->fillSampleMerged = v; });
+        AddSliderRow(panel, "fill-opacity", Tr("Opacity"), 0, 1, o->fillOpacity, 0.05f, false, [o](float v) { o->fillOpacity = v; });
+        AddCheckbox(panel, "fill-contig", Tr("Contiguous"), o->fillContiguous, [o](bool v) { o->fillContiguous = v; });
+        AddCheckbox(panel, "fill-merged", Tr("Sample merged"), o->fillSampleMerged, [o](bool v) { o->fillSampleMerged = v; });
     }
 };
 
@@ -805,8 +807,8 @@ public:
 
 class GradientTool : public PaintTool {
 public:
-    GradientTool() : PaintTool(PaintToolId::Gradient, "Gradient", "gradient.svg", 'G',
-                               "Drag from the foreground colour to the background colour") {}
+    GradientTool() : PaintTool(PaintToolId::Gradient, Tr("Gradient"), "gradient.svg", 'G',
+                               Tr("Drag from the foreground colour to the background colour")) {}
     void OnPress(PaintToolContext&, const PaintPointerEvent& e) override { dragging = true; x0 = x1 = e.x; y0 = y1 = e.y; }
     void OnDrag(PaintToolContext& ctx, const PaintPointerEvent& e) override { if (dragging) { x1 = e.x; y1 = e.y; ctx.surface->Refresh(); } }
     void OnRelease(PaintToolContext& ctx, const PaintPointerEvent& e) override {
@@ -814,7 +816,7 @@ public:
         dragging = false;
         x1 = e.x; y1 = e.y;
         if (std::fabs(x1 - x0) + std::fabs(y1 - y0) < 1.0) { ctx.surface->Refresh(); return; }
-        EditActiveLayer(ctx, "Gradient", [&](UCRasterDocument&, UCRasterLayer& layer, const UCRasterSelection* sel) {
+        EditActiveLayer(ctx, Tr("Gradient"), [&](UCRasterDocument&, UCRasterLayer& layer, const UCRasterSelection* sel) {
             return RasterPaint::FillGradient(layer, sel, Point2Df(static_cast<float>(x0), static_cast<float>(y0)),
                                              Point2Df(static_cast<float>(x1), static_cast<float>(y1)),
                                              ctx.foreground(), ctx.background(), ctx.options->gradientKind,
@@ -838,9 +840,9 @@ public:
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
-        AddDropdown(panel, "grad-kind", "Type", { "Linear", "Radial", "Reflected" }, static_cast<int>(o->gradientKind),
+        AddDropdown(panel, "grad-kind", Tr("Type"), { Tr("Linear"), Tr("Radial"), Tr("Reflected") }, static_cast<int>(o->gradientKind),
                     [o](int i) { o->gradientKind = static_cast<RasterPaint::GradientKind>(i); });
-        AddSliderRow(panel, "grad-opacity", "Opacity", 0, 1, o->gradientOpacity, 0.05f, false, [o](float v) { o->gradientOpacity = v; });
+        AddSliderRow(panel, "grad-opacity", Tr("Opacity"), 0, 1, o->gradientOpacity, 0.05f, false, [o](float v) { o->gradientOpacity = v; });
     }
 private:
     bool dragging = false;
@@ -856,8 +858,8 @@ public:
     enum class Kind { Line, Rectangle, Ellipse };
     ShapeTool(PaintToolId id, const std::string& name, const std::string& icon, char key, Kind k)
         : PaintTool(id, name, icon, key,
-                    k == Kind::Line ? "Drag to draw a line (Shift constrains the angle)"
-                                    : "Drag to draw; Shift constrains to a square / circle. Foreground = outline, background = fill"),
+                    k == Kind::Line ? Tr("Drag to draw a line (Shift constrains the angle)")
+                                    : Tr("Drag to draw; Shift constrains to a square / circle. Foreground = outline, background = fill")),
           kind(k) {}
     void OnPress(PaintToolContext&, const PaintPointerEvent& e) override { dragging = true; x0 = x1 = e.x; y0 = y1 = e.y; constrain = e.shift; }
     void OnDrag(PaintToolContext& ctx, const PaintPointerEvent& e) override {
@@ -917,12 +919,12 @@ public:
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
-        AddSliderRow(panel, "shape-width", "Line width", 1, 100, o->shapeStrokeWidth, 1, true, [o](float v) { o->shapeStrokeWidth = v; });
+        AddSliderRow(panel, "shape-width", Tr("Line width"), 1, 100, o->shapeStrokeWidth, 1, true, [o](float v) { o->shapeStrokeWidth = v; });
         if (kind != Kind::Line) {
-            AddCheckbox(panel, "shape-stroke", "Outline (foreground)", o->shapeStroke, [o](bool v) { o->shapeStroke = v; });
-            AddCheckbox(panel, "shape-fill", "Fill (background)", o->shapeFill, [o](bool v) { o->shapeFill = v; });
+            AddCheckbox(panel, "shape-stroke", Tr("Outline (foreground)"), o->shapeStroke, [o](bool v) { o->shapeStroke = v; });
+            AddCheckbox(panel, "shape-fill", Tr("Fill (background)"), o->shapeFill, [o](bool v) { o->shapeFill = v; });
         }
-        AddCheckbox(panel, "shape-aa", "Anti-aliased", o->shapeAntialias, [o](bool v) { o->shapeAntialias = v; });
+        AddCheckbox(panel, "shape-aa", Tr("Anti-aliased"), o->shapeAntialias, [o](bool v) { o->shapeAntialias = v; });
     }
 private:
     Point2Df ConstrainedEnd() const {
@@ -944,10 +946,10 @@ private:
 // press can be dragged to place its corner.
 class PolylineTool : public PaintTool {
 public:
-    PolylineTool() : PaintTool(PaintToolId::Polyline, "Polyline", "polyline.svg", 'Y',
-                               "Click to add corners; double-click or Enter ends the line, a click on the first "
-                               "corner closes it. Backspace takes the last corner back, Escape cancels; Shift "
-                               "constrains the angle") {}
+    PolylineTool() : PaintTool(PaintToolId::Polyline, Tr("Polyline"), "polyline.svg", 'Y',
+                               Tr("Click to add corners; double-click or Enter ends the line, a click on the first "
+                                  "corner closes it. Backspace takes the last corner back, Escape cancels; Shift "
+                                  "constrains the angle")) {}
 
     void OnPress(PaintToolContext& ctx, const PaintPointerEvent& e) override {
         Point2Df p(static_cast<float>(e.x), static_cast<float>(e.y));
@@ -1031,9 +1033,9 @@ public:
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
-        AddSliderRow(panel, "shape-width", "Line width", 1, 100, o->shapeStrokeWidth, 1, true, [o](float v) { o->shapeStrokeWidth = v; });
-        AddCheckbox(panel, "polyline-fill", "Fill a closed shape (background)", o->shapeFill, [o](bool v) { o->shapeFill = v; });
-        AddCheckbox(panel, "shape-aa", "Anti-aliased", o->shapeAntialias, [o](bool v) { o->shapeAntialias = v; });
+        AddSliderRow(panel, "shape-width", Tr("Line width"), 1, 100, o->shapeStrokeWidth, 1, true, [o](float v) { o->shapeStrokeWidth = v; });
+        AddCheckbox(panel, "polyline-fill", Tr("Fill a closed shape (background)"), o->shapeFill, [o](bool v) { o->shapeFill = v; });
+        AddCheckbox(panel, "shape-aa", Tr("Anti-aliased"), o->shapeAntialias, [o](bool v) { o->shapeAntialias = v; });
     }
 
 private:
@@ -1073,8 +1075,8 @@ private:
 // A line with a filled head at its tip - and at its tail too, if asked.
 class ArrowTool : public PaintTool {
 public:
-    ArrowTool() : PaintTool(PaintToolId::Arrow, "Arrow", "arrow.svg", 'V',
-                            "Drag from the tail to the tip (Shift constrains the angle)") {}
+    ArrowTool() : PaintTool(PaintToolId::Arrow, Tr("Arrow"), "arrow.svg", 'V',
+                            Tr("Drag from the tail to the tip (Shift constrains the angle)")) {}
 
     void OnPress(PaintToolContext&, const PaintPointerEvent& e) override {
         dragging = true;
@@ -1115,10 +1117,10 @@ public:
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
-        AddSliderRow(panel, "shape-width", "Line width", 1, 100, o->shapeStrokeWidth, 1, true, [o](float v) { o->shapeStrokeWidth = v; });
-        AddSliderRow(panel, "arrow-head", "Head size", 4, 200, o->arrowHeadSize, 1, true, [o](float v) { o->arrowHeadSize = v; });
-        AddCheckbox(panel, "arrow-both", "Head at both ends", o->arrowBothEnds, [o](bool v) { o->arrowBothEnds = v; });
-        AddCheckbox(panel, "shape-aa", "Anti-aliased", o->shapeAntialias, [o](bool v) { o->shapeAntialias = v; });
+        AddSliderRow(panel, "shape-width", Tr("Line width"), 1, 100, o->shapeStrokeWidth, 1, true, [o](float v) { o->shapeStrokeWidth = v; });
+        AddSliderRow(panel, "arrow-head", Tr("Head size"), 4, 200, o->arrowHeadSize, 1, true, [o](float v) { o->arrowHeadSize = v; });
+        AddCheckbox(panel, "arrow-both", Tr("Head at both ends"), o->arrowBothEnds, [o](bool v) { o->arrowBothEnds = v; });
+        AddCheckbox(panel, "shape-aa", Tr("Anti-aliased"), o->shapeAntialias, [o](bool v) { o->shapeAntialias = v; });
     }
 
 private:
@@ -1140,9 +1142,9 @@ private:
 // curve, the second its far half. Enter keeps it as it is, Escape drops it.
 class CurveTool : public PaintTool {
 public:
-    CurveTool() : PaintTool(PaintToolId::Curve, "Curve", "curve.svg", 'J',
-                            "Drag a line, then drag or click twice to bend it; Enter keeps it as it is, "
-                            "Escape cancels (Shift constrains the line's angle)") {}
+    CurveTool() : PaintTool(PaintToolId::Curve, Tr("Curve"), "curve.svg", 'J',
+                            Tr("Drag a line, then drag or click twice to bend it; Enter keeps it as it is, "
+                               "Escape cancels (Shift constrains the line's angle)")) {}
 
     void OnPress(PaintToolContext&, const PaintPointerEvent& e) override {
         const Point2Df p(static_cast<float>(e.x), static_cast<float>(e.y));
@@ -1168,12 +1170,12 @@ public:
                 if (std::sqrt(dx * dx + dy * dy) * ctx.surface->GetZoom() < 2.0) break;   // a click, not a line
                 c1 = c2 = Point2Df((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f);
                 stage = Stage::Bend1;
-                if (ctx.setStatus) ctx.setStatus("Curve: drag or click to bend it (Enter keeps it straight)");
+                if (ctx.setStatus) ctx.setStatus(Tr("Curve: drag or click to bend it (Enter keeps it straight)"));
                 break;
             }
             case Stage::Bend1:
                 stage = Stage::Bend2;
-                if (ctx.setStatus) ctx.setStatus("Curve: drag or click to bend the far half (Enter keeps it as it is)");
+                if (ctx.setStatus) ctx.setStatus(Tr("Curve: drag or click to bend the far half (Enter keeps it as it is)"));
                 break;
             case Stage::Bend2:
                 Commit(ctx);
@@ -1203,8 +1205,8 @@ public:
     }
     void BuildOptions(PaintToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         auto o = ctx.options;
-        AddSliderRow(panel, "shape-width", "Line width", 1, 100, o->shapeStrokeWidth, 1, true, [o](float v) { o->shapeStrokeWidth = v; });
-        AddCheckbox(panel, "shape-aa", "Anti-aliased", o->shapeAntialias, [o](bool v) { o->shapeAntialias = v; });
+        AddSliderRow(panel, "shape-width", Tr("Line width"), 1, 100, o->shapeStrokeWidth, 1, true, [o](float v) { o->shapeStrokeWidth = v; });
+        AddCheckbox(panel, "shape-aa", Tr("Anti-aliased"), o->shapeAntialias, [o](bool v) { o->shapeAntialias = v; });
     }
 
 private:
@@ -1230,7 +1232,7 @@ private:
     void Reset(PaintToolContext& ctx) {
         stage = Stage::Idle;
         pressing = false;
-        if (ctx.setStatus) ctx.setStatus(name + ": " + hint);
+        if (ctx.setStatus) ctx.setStatus(TrF("{0}: {1}", name, hint));
         ctx.surface->Refresh();
     }
 
@@ -1249,7 +1251,7 @@ private:
 // puts what was typed into a text layer; the tool only says where.
 class TextTool : public PaintTool {
 public:
-    TextTool() : PaintTool(PaintToolId::Text, "Text", "text.svg", 'T',
+    TextTool() : PaintTool(PaintToolId::Text, Tr("Text"), "text.svg", 'T',
                            Tr("Click and type, or drag a box for the lines to wrap in; click a text to edit it. "
                               "The bar above sets font, size, style, alignment and spacing; the colour is the "
                               "foreground colour. Escape or a click outside finishes")) {}
@@ -1304,7 +1306,8 @@ private:
 
 class ZoomTool : public PaintTool {
 public:
-    ZoomTool() : PaintTool(PaintToolId::Zoom, "Zoom", "zoom.svg", 'Z', "Click to zoom in; Alt or right-click to zoom out") {}
+    ZoomTool() : PaintTool(PaintToolId::Zoom, Tr("Zoom"), "zoom.svg", 'Z',
+                           Tr("Click to zoom in; Alt or right-click to zoom out")) {}
     UCMouseCursor Cursor() const override { return UCMouseCursor::LookingGlass; }
     void OnPress(PaintToolContext& ctx, const PaintPointerEvent& e) override {
         const bool out = e.alt || e.button == UCMouseButton::Right;
@@ -1314,7 +1317,8 @@ public:
 
 class PanTool : public PaintTool {
 public:
-    PanTool() : PaintTool(PaintToolId::Pan, "Pan", "pan.svg", 'H', "Drag to scroll the view (Space+drag works with any tool)") {}
+    PanTool() : PaintTool(PaintToolId::Pan, Tr("Pan"), "pan.svg", 'H',
+                          Tr("Drag to scroll the view (Space+drag works with any tool)")) {}
     UCMouseCursor Cursor() const override { return UCMouseCursor::Hand; }
     void Activate(PaintToolContext& ctx) override { ctx.surface->SetPanMode(true); }
     void Deactivate(PaintToolContext& ctx) override { ctx.surface->SetPanMode(false); }
@@ -1329,37 +1333,37 @@ public:
 std::vector<std::unique_ptr<PaintTool>> CreatePaintTools() {
     std::vector<std::unique_ptr<PaintTool>> tools;
     tools.push_back(std::make_unique<MoveTool>());
-    tools.push_back(std::make_unique<MarqueeTool>(PaintToolId::RectSelect, "Rectangle Select", "select-rect.svg", 'R', false));
-    tools.push_back(std::make_unique<MarqueeTool>(PaintToolId::EllipseSelect, "Ellipse Select", "select-ellipse.svg", 'E', true));
+    tools.push_back(std::make_unique<MarqueeTool>(PaintToolId::RectSelect, Tr("Rectangle Select"), "select-rect.svg", 'R', false));
+    tools.push_back(std::make_unique<MarqueeTool>(PaintToolId::EllipseSelect, Tr("Ellipse Select"), "select-ellipse.svg", 'E', true));
     tools.push_back(std::make_unique<LassoTool>());
     tools.push_back(std::make_unique<MagicWandTool>());
     tools.push_back(std::make_unique<CropTool>());
     tools.push_back(std::make_unique<EyedropperTool>());
-    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Pencil, "Pencil", "pencil.svg", 'N',
-                    "Hard-edged pixel drawing", BrushMode::Paint, &PaintToolOptions::pencil, false, false));
-    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Brush, "Paintbrush", "brush.svg", 'B',
-                    "Paint with the foreground colour (right button: background)", BrushMode::Paint, &PaintToolOptions::brush, true, true));
-    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Airbrush, "Airbrush", "airbrush.svg", 'A',
-                    "Soft, low-flow spray", BrushMode::Paint, &PaintToolOptions::airbrush, true, true));
-    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Eraser, "Eraser", "eraser.svg", 'X',
-                    "Erase to transparency", BrushMode::Erase, &PaintToolOptions::eraser, true, true,
+    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Pencil, Tr("Pencil"), "pencil.svg", 'N',
+                    Tr("Hard-edged pixel drawing"), BrushMode::Paint, &PaintToolOptions::pencil, false, false));
+    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Brush, Tr("Paintbrush"), "brush.svg", 'B',
+                    Tr("Paint with the foreground colour (right button: background)"), BrushMode::Paint, &PaintToolOptions::brush, true, true));
+    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Airbrush, Tr("Airbrush"), "airbrush.svg", 'A',
+                    Tr("Soft, low-flow spray"), BrushMode::Paint, &PaintToolOptions::airbrush, true, true));
+    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Eraser, Tr("Eraser"), "eraser.svg", 'X',
+                    Tr("Erase to transparency"), BrushMode::Erase, &PaintToolOptions::eraser, true, true,
                     /*shiftKey*/ true));   // Shift+X: plain X swaps the colours
-    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Clone, "Clone Stamp", "clone.svg", 'S',
-                    "Ctrl+click the source, then paint", BrushMode::Clone, &PaintToolOptions::clone, true, true));
-    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Smudge, "Smudge", "smudge.svg", 'U',
-                    "Drag colour along the stroke", BrushMode::Smudge, &PaintToolOptions::smudge, true, true));
-    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Dodge, "Dodge", "dodge.svg", 'O',
-                    "Lighten", BrushMode::Dodge, &PaintToolOptions::dodgeBurn, true, true));
-    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Burn, "Burn", "burn.svg", 'K',
-                    "Darken", BrushMode::Burn, &PaintToolOptions::dodgeBurn, true, true));
+    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Clone, Tr("Clone Stamp"), "clone.svg", 'S',
+                    Tr("Ctrl+click the source, then paint"), BrushMode::Clone, &PaintToolOptions::clone, true, true));
+    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Smudge, Tr("Smudge"), "smudge.svg", 'U',
+                    Tr("Drag colour along the stroke"), BrushMode::Smudge, &PaintToolOptions::smudge, true, true));
+    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Dodge, Tr("Dodge"), "dodge.svg", 'O',
+                    Tr("Lighten"), BrushMode::Dodge, &PaintToolOptions::dodgeBurn, true, true));
+    tools.push_back(std::make_unique<BrushTool>(PaintToolId::Burn, Tr("Burn"), "burn.svg", 'K',
+                    Tr("Darken"), BrushMode::Burn, &PaintToolOptions::dodgeBurn, true, true));
     tools.push_back(std::make_unique<FillTool>());
     tools.push_back(std::make_unique<GradientTool>());
-    tools.push_back(std::make_unique<ShapeTool>(PaintToolId::Line, "Line", "line.svg", 'D', ShapeTool::Kind::Line));
+    tools.push_back(std::make_unique<ShapeTool>(PaintToolId::Line, Tr("Line"), "line.svg", 'D', ShapeTool::Kind::Line));
     tools.push_back(std::make_unique<PolylineTool>());
     tools.push_back(std::make_unique<ArrowTool>());
     tools.push_back(std::make_unique<CurveTool>());
-    tools.push_back(std::make_unique<ShapeTool>(PaintToolId::Rectangle, "Rectangle", "rect.svg", 'Q', ShapeTool::Kind::Rectangle));
-    tools.push_back(std::make_unique<ShapeTool>(PaintToolId::Ellipse, "Ellipse", "ellipse.svg", 'P', ShapeTool::Kind::Ellipse));
+    tools.push_back(std::make_unique<ShapeTool>(PaintToolId::Rectangle, Tr("Rectangle"), "rect.svg", 'Q', ShapeTool::Kind::Rectangle));
+    tools.push_back(std::make_unique<ShapeTool>(PaintToolId::Ellipse, Tr("Ellipse"), "ellipse.svg", 'P', ShapeTool::Kind::Ellipse));
     tools.push_back(std::make_unique<TextTool>());
     tools.push_back(std::make_unique<ZoomTool>());
     tools.push_back(std::make_unique<PanTool>());
