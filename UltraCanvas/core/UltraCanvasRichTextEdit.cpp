@@ -2510,11 +2510,11 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             while (spaces < static_cast<int>(run.text.size())
                    && run.text[run.text.size() - 1 - static_cast<size_t>(spaces)] == ' ') spaces++;
             const int from = end - spaces;
-            auto near = [&](const RichDocPosition& p) {
+            auto beside = [&](const RichDocPosition& p) {
                 return p.blockIndex == blockIndex && p.cellRow == cellRow && p.cellColumn == cellColumn
                     && p.byteOffset >= from && p.byteOffset <= end;
             };
-            const bool editing = !printing && blockIndex >= 0 && (near(editor.GetCaret()) || near(editor.GetAnchor()));
+            const bool editing = !printing && blockIndex >= 0 && (beside(editor.GetCaret()) || beside(editor.GetAnchor()));
             if (!editing) {
                 auto hidden = TextAttributeFactory::CreateShape(0.0, 0.0, 0.0);
                 hidden->SetRange(from, end);

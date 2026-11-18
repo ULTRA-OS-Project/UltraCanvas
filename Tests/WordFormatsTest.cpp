@@ -3825,9 +3825,9 @@ int main(int argc, char** argv) {
                 // Along a value axis the third point is eight times as far
                 // from the second as the second from the first (over
                 // categories they would be evenly spaced).
-                const float near = markX[1] - markX[0], far = markX[2] - markX[1];
-                CHECK_MSG(near > 1.0f && std::abs(far / near - 8.0f) < 0.1f,
-                          "docx: ...each over its own x: " + std::to_string(near) + " and " + std::to_string(far));
+                const float firstGap = markX[1] - markX[0], secondGap = markX[2] - markX[1];
+                CHECK_MSG(firstGap > 1.0f && std::abs(secondGap / firstGap - 8.0f) < 0.1f,
+                          "docx: ...each over its own x: " + std::to_string(firstGap) + " and " + std::to_string(secondGap));
                 CHECK_MSG(std::abs((markY[0] - markY[1]) / (markY[1] - markY[2]) - 0.5f) < 0.02f, "docx: ...and at its value's height");
             }
         }

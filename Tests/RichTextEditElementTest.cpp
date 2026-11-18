@@ -1818,12 +1818,12 @@ int main() {
                 };
                 heading.paragraphFontSizePt = 10.0f;
                 paged->blocks = {heading, body};
-                const Rect2Df small = bodyTop();
+                const Rect2Df smallTop = bodyTop();
                 heading.paragraphFontSizePt = 40.0f;
                 paged->blocks = {heading, body};
                 const Rect2Df large = bodyTop();
                 TEST("A heading is set in the size its document gives it: the text after a 40 pt one "
-                     + std::to_string(large.y - small.y) + " lower than after a 10 pt one", large.y - small.y > 30.0f);
+                     + std::to_string(large.y - smallTop.y) + " lower than after a 10 pt one", large.y - smallTop.y > 30.0f);
                 heading.spaceBeforePt = 30.0f;
                 paged->blocks = {heading, body};
                 const Rect2Df spaced = bodyTop();
