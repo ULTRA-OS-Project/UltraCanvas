@@ -4,7 +4,7 @@
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
 // Version: 1.16.0 - the dialog's destructive outline answer and the Filer's operation list under a
-//                  dark theme
+//                  dark theme; a dialog given type sizes keeps following the theme and its sizes
 // Version: 1.15.0 - the dark split pane handle, section card, clipboard rows and scrollbar thumb; the button's
 //                   derived states for the look; a size set by hand through ApplyTheme; a late delegate
 // Version: 1.14.0 - TakeHostFonts: the host's fonts onto an own theme
@@ -845,6 +845,28 @@ int main() {
               "the list: the dark well and header, its own row height kept");
         CHECK(Same(rows->GetTextColor(), dark.roles.ink) && Near(rows->GetFontSize(), 11.0, 1e-6),
               "its rows in the theme's ink, at the size the list set");
+
+        // A host that sets the dialog's type sizes (the Filer at 9) keeps it
+        // following the theme, and a theme change keeps those sizes: setting
+        // them stopped the following, so a dialog opened before a switch
+        // kept the old look.
+        auto dlg = std::make_shared<UltraCanvasModalDialog>();
+        ModalDialogStyle sized = dlg->GetStyle();
+        sized.messageFontSize = 9.0f;
+        sized.detailsFontSize = 8.0f;
+        sized.buttonFontSize = 9.0f;
+        dlg->SetStyle(sized);
+        CHECK(dlg->GetFollowTheme(), "a dialog given type sizes only keeps following the theme");
+        UltraCanvasTheme::SetCurrent(light);
+        dlg->OnThemeChanged(light);
+        CHECK(Same(dlg->GetStyle().messageTextColor, light.roles.ink) && Same(dlg->GetStyle().detailsTextColor, light.roles.inkMuted),
+              "a theme change re-colours its message and details");
+        CHECK(Near(dlg->GetStyle().messageFontSize, 9.0, 1e-6) && Near(dlg->GetStyle().detailsFontSize, 8.0, 1e-6)
+              && Near(dlg->GetStyle().buttonFontSize, 9.0, 1e-6), "and keeps the sizes the host set");
+        ModalDialogStyle inked = dlg->GetStyle();
+        inked.messageTextColor = Color(10, 20, 200);
+        dlg->SetStyle(inked);
+        CHECK(!dlg->GetFollowTheme(), "a style that changes the colours stops the following, as any SetStyle by hand");
         UltraCanvasUIElement::SetFollowThemeByDefault(false);
         UltraCanvasTheme::SetCurrent(light);
     }

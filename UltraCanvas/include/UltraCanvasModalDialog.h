@@ -1,6 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.13.0 - SetStyle: a change of type sizes only keeps the dialog following the theme, and
+//                  ApplyTheme keeps the sizes set; OnThemeChanged keeps the message on the panel
 // Version: 3.12.0 - DestructiveOutlineStyle: a destructive answer beside the default one follows the
 //                  theme (its button surface, the danger colour)
 // Version: 3.11.0 - SetMessageVisible: a dialog whose elements say what its message says keeps the
@@ -321,6 +323,9 @@ namespace UltraCanvas {
     protected:
         DialogConfig dialogConfig;
         ModalDialogStyle style;
+        // Type sizes a host set (SetStyle): ApplyTheme keeps them.
+        bool messageFontSizeByHand = false;
+        bool detailsFontSizeByHand = false;
         DialogResult result = DialogResult::NoResult;
 
         // ===== SECTION CONTAINERS =====
@@ -395,6 +400,11 @@ namespace UltraCanvas {
         bool IsMessageVisible() const;
         void SetDialogButtons(DialogButtons buttons);
         void SetDefaultButton(DialogButton button);
+        // The dialog's sizes and colours. A style that changes the colours
+        // stops the dialog following the theme, as any element's SetStyle
+        // does; one that changes only sizes (the type sizes an application
+        // runs its UI at) keeps it following, and the message and details
+        // sizes it sets are kept through every theme change.
         void SetStyle(const ModalDialogStyle& dialogStyle);
         // The theme over the dialog: the panel role behind its sections, the
         // message in ink, the footer buttons by their role (the default
@@ -404,6 +414,10 @@ namespace UltraCanvas {
         // and keeps the dialog with the theme while it is open; the
         // elements the host added follow on their own.
         void ApplyTheme(const UltraCanvasTheme& theme) override;
+        // The theme over the dialog and then its children: the message area
+        // re-themes itself to the theme's well after the dialog, so it is put
+        // back on the dialog's panel last.
+        void OnThemeChanged(const UltraCanvasTheme& theme) override;
         // A destructive answer beside the default one: the theme's ordinary
         // button outlined and lettered in its danger colour.
         static ButtonStyle DestructiveOutlineStyle(const UltraCanvasTheme& theme,

@@ -1,6 +1,12 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.10.0 - a SetStyle that changes only the type sizes keeps the dialog following the theme
+//                  (the Filer's and the Save settings' dialogs stopped following when they set
+//                  their fonts), and a theme change keeps the sizes set: the message and details
+//                  sizes by hand, the buttons' buttonFontSize over ButtonStyle::FromTheme's; the
+//                  message stays on the dialog's panel through a theme change (it took the
+//                  theme's well, a box behind the text)
 // Version: 3.9.4 - a destructive answer beside the default one (Delete permanently) is the theme's
 //                  button outlined in the theme's danger colour: it was a fixed light pink fill
 //                  with dark red text in a dark dialog too
@@ -523,7 +529,20 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::SetStyle(const ModalDialogStyle& dialogStyle) {
-        StyleSetByHand();
+        if (!IsApplyingTheme()) {
+            // A host that sets the dialog's type sizes (the Filer's 9, the
+            // Save settings at the Save dialog's size) keeps the theme's
+            // colours: only a style that changes the colours stops the
+            // following, as every element's SetStyle does. The sizes given
+            // are kept through every theme change after (ApplyTheme), as a
+            // label keeps the size set with SetFontSize.
+            if (dialogStyle.messageTextColor != style.messageTextColor ||
+                dialogStyle.detailsTextColor != style.detailsTextColor) {
+                StyleSetByHand();
+            }
+            if (dialogStyle.messageFontSize != style.messageFontSize) messageFontSizeByHand = true;
+            if (dialogStyle.detailsFontSize != style.detailsFontSize) detailsFontSizeByHand = true;
+        }
         style = dialogStyle;
 
         // Apply style to components
@@ -1053,11 +1072,8 @@ namespace UltraCanvas {
             case DialogButtonRole::Destructive:
                 // The theme's button surface with a red outline and red ink:
                 // a fixed light-look pink fill and dark red text before,
-                // which glared from a dark dialog. Asked of the policy as
-                // well as of the dialog: a host that sets the dialog's fonts
-                // (SetStyle) before adding its answers has stopped the
-                // dialog's own following, not the theme being in force.
-                if (GetFollowTheme() || FollowThemeByDefault()) {
+                // which glared from a dark dialog.
+                if (GetFollowTheme()) {
                     button->SetStyle(DestructiveOutlineStyle(UltraCanvasTheme::Current(),
                                                              button->GetStyle()));
                 } else {
@@ -3372,7 +3388,10 @@ namespace UltraCanvas {
         SetBackgroundColor(panel);
         for (auto& section : {contentSection, footerSection, messageContainer}) if (section) section->SetBackgroundColor(panel);
         if (messageArea) messageArea->SetBackgroundColor(panel);
-        SetStyle(ModalDialogStyle::FromTheme(theme, style));
+        ModalDialogStyle themed = ModalDialogStyle::FromTheme(theme, style);
+        if (messageFontSizeByHand) themed.messageFontSize = style.messageFontSize;
+        if (detailsFontSizeByHand) themed.detailsFontSize = style.detailsFontSize;
+        SetStyle(themed);
         for (auto& entry : dialogButtons) {
             if (!entry.button) continue;
             switch (entry.role) {
@@ -3389,8 +3408,20 @@ namespace UltraCanvas {
                 default:
                     break;   // a destructive default keeps its red fill and white text
             }
+            // ButtonStyle::FromTheme sets the theme's body size: the
+            // dialog's own button size (buttonFontSize) goes back on.
+            ApplyButtonFont(entry.button);
         }
         RequestRedraw();
+    }
+
+    void UltraCanvasModalDialog::OnThemeChanged(const UltraCanvasTheme& theme) {
+        UltraCanvasWindow::OnThemeChanged(theme);
+        // The message area follows the theme too, and as a text field its
+        // ground is the theme's well: re-themed after the dialog, it stood
+        // out as a lighter box behind the message once the theme changed
+        // with the dialog open. The message sits on the dialog's panel.
+        if (GetFollowTheme() && messageArea) messageArea->SetBackgroundColor(dialogConfig.backgroundColor);
     }
 
     // A destructive answer beside the default one: the theme's ordinary

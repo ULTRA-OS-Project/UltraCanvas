@@ -11,5 +11,14 @@
   a dark red on a light button in a light look, a light red on a dark one in a
   dark look, filled red while pressed, and it changes with the theme. A
   dialog whose host set its fonts by hand before adding the answers (the file
-  display's) gets it too, wherever the application has its elements follow
-  the theme. `UltraCanvasThemeTest` checks both looks and the list.
+  display's) gets it too. `UltraCanvasThemeTest` checks both looks and the
+  list.
+- **A dialog given its own type sizes follows the theme.** Setting the sizes
+  through `UltraCanvasModalDialog::SetStyle` - which the file display's
+  delete, copy, move and problem dialogs and the Save dialog's Settings do -
+  stopped the dialog following the theme, so one left open while the theme
+  changed kept the old look. A style that changes only sizes now keeps the
+  dialog following, and a theme change keeps the message, details and button
+  sizes it set; a style that changes the colours still stops the following.
+  The message also stays on the dialog's surface through a change (it took
+  the text field's ground, a lighter or darker box behind the text).

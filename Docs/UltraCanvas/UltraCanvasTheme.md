@@ -207,7 +207,7 @@ Whether a new element follows is the application-wide default,
 (`FollowHost`, `Light`, `Dark`) in `Initialize`, so every element built
 after it takes the theme at the end of its constructor; an `Own`
 application turns it on itself when its theme is in place. A style **set by
-hand** (`SetStyle`, a dialog's too; `SetConfig` on an album, `SetAppearance`
+hand** (`SetStyle`; `SetConfig` on an album, `SetAppearance`
 on a toolbar, `SetVisualStyle` on a switch) stops the following for that
 element, so it keeps its look through every change, as before; an element
 that should keep both calls `SetStyle` and then `SetFollowTheme(true)`,
@@ -223,7 +223,15 @@ a caption with a size of its own no longer jumps to the body size when the
 look changes, and needs no `SetFollowTheme(false)` for it. A list hands the
 theme on to its delegate (`IItemDelegate::ApplyTheme`), also to one set
 with `SetDelegate` after the list was made; the default delegate keeps a
-text colour or size the application set on it.
+text colour or size the application set on it. A modal dialog's `SetStyle`
+follows the same rule for its type sizes: a style that changes only sizes
+(the message, details and button sizes an application runs its UI at, as
+the file display's and the Save settings' dialogs set) keeps the dialog
+following, and every theme change after keeps those sizes; a style that
+changes the message or details colour stops the following, as any
+`SetStyle` by hand does. A dialog left open while the theme changes is
+re-styled whole - its surface, message, buttons by their role and the
+elements added to it.
 
 ```cpp
 UltraCanvasUIElement::SetFollowThemeByDefault(true);        // what the policy does; an Own application's own call
