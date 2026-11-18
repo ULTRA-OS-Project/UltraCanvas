@@ -69,7 +69,6 @@
   "Could not export {0}": "{0} nu a putut fi exportat",
   "Could not move the text: {0}": "Textul nu a putut fi mutat: {0}",
   "Could not open another UltraPaint window": "Nu s-a putut deschide altă fereastră UltraPaint",
-  "Could not open {0}": "{0} nu a putut fi deschis",
   "Could not rasterize {0}": "{0} nu a putut fi rasterizat",
   "Could not render {0}": "{0} nu a putut fi randat",
   "Crop to Selection": "Trunchiere la selecție",

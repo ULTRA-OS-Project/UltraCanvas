@@ -106,7 +106,6 @@
   "Could not leave {0}: {1}": "{0} छोड़ा नहीं जा सका: {1}",
   "Could not load the messages: {0}": "संदेश लोड नहीं किए जा सके: {0}",
   "Could not open the chat: {0}": "चैट खोली नहीं जा सकी: {0}",
-  "Could not open {0}": "{0} खोला नहीं जा सका",
   "Could not remove {0}: {1}": "{0} को हटाया नहीं जा सका: {1}",
   "Could not rename the group: {0}": "समूह का नाम नहीं बदला जा सका: {0}",
   "Could not save the description: {0}": "विवरण सहेजा नहीं जा सका: {0}",

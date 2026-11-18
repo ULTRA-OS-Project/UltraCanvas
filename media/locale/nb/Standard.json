@@ -181,6 +181,7 @@
   "Copy: the name is already taken": "Kopier: navnet er allerede i bruk",
   "Could not connect: {0}": "Kunne ikke koble til: {0}",
   "Could not delete as administrator: {0}": "Kunne ikke slette som administrator: {0}",
+  "Could not open {0}": "Kunne ikke åpne {0}",
   "Could not read {0}": "Kunne ikke lese {0}",
   "Could not save {0}": "Kunne ikke lagre {0}",
   "Could not write {0}": "Kunne ikke skrive {0}",

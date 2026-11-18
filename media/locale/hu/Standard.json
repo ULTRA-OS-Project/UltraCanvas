@@ -181,6 +181,7 @@
   "Copy: the name is already taken": "Másolás: a név már foglalt",
   "Could not connect: {0}": "Nem sikerült csatlakozni: {0}",
   "Could not delete as administrator: {0}": "Nem sikerült a törlés rendszergazdaként: {0}",
+  "Could not open {0}": "Nem sikerült megnyitni: {0}",
   "Could not read {0}": "Nem sikerült beolvasni: {0}",
   "Could not save {0}": "Nem sikerült menteni: {0}",
   "Could not write {0}": "Nem sikerült írni: {0}",

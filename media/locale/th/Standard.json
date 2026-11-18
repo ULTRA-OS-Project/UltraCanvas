@@ -173,6 +173,7 @@
   "Copy: the name is already taken": "คัดลอก: ชื่อนี้ถูกใช้แล้ว",
   "Could not connect: {0}": "ไม่สามารถเชื่อมต่อได้: {0}",
   "Could not delete as administrator: {0}": "ไม่สามารถลบในฐานะผู้ดูแลระบบ: {0}",
+  "Could not open {0}": "เปิด {0} ไม่ได้",
   "Could not read {0}": "ไม่สามารถอ่าน {0}",
   "Could not save {0}": "ไม่สามารถบันทึก {0}",
   "Could not write {0}": "ไม่สามารถเขียน {0}",

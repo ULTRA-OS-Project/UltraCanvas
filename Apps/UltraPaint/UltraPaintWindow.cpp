@@ -3,6 +3,7 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 2.3.1 - the pasted layers' names in the person's language
 // Version: 2.3.0 - the blend mode on a row of its own beside "Blend mode", the list as wide as the panel
 // Version: 2.2.0 - every text a person reads goes through Tr / TrF / TrN (UltraLocalisation): whole
 //                  sentences with placeholders, the undo labels too; the filters' DisplayName /
@@ -3172,7 +3173,7 @@ void UltraPaintWindow::CmdPaste() {
     CommitTextEdit();
     if (!document) return;
     PasteSource source = ReadPasteSource();
-    std::string layerName = "Pasted";
+    std::string layerName = TrC("layer name", "Pasted");
     if (!source.file.empty()) {
         // A copied file comes in whole, flattened, at its natural size -
         // drawings and models included, rendered the way a drop renders the
@@ -3188,7 +3189,7 @@ void UltraPaintWindow::CmdPaste() {
     auto img = source.image;
     if (!img || !img->IsValid()) {
         OfferLastCopiedImage([this](std::shared_ptr<UCRasterLayer> last) {
-            PasteAsLayer(std::move(last), "Last copied image", false, PastedFrom::LastCopied);
+            PasteAsLayer(std::move(last), TrC("layer name", "Last copied image"), false, PastedFrom::LastCopied);
         });
         return;
     }
@@ -3222,7 +3223,7 @@ void UltraPaintWindow::CmdPasteLastImage() {
         if (statusHint) statusHint->SetText(Tr("There is no image in the clipboard history"));
         return;
     }
-    PasteAsLayer(img, "Last copied image", false, PastedFrom::CopiedWhen, when);
+    PasteAsLayer(img, TrC("layer name", "Last copied image"), false, PastedFrom::CopiedWhen, when);
 }
 
 // Paste found nothing - text was copied after the picture, say, or nothing

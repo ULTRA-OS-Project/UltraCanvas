@@ -69,7 +69,6 @@
   "Could not export {0}": "{0}을(를) 내보낼 수 없습니다",
   "Could not move the text: {0}": "텍스트를 이동할 수 없습니다: {0}",
   "Could not open another UltraPaint window": "UltraPaint 창을 하나 더 열 수 없습니다",
-  "Could not open {0}": "{0}을(를) 열 수 없습니다",
   "Could not rasterize {0}": "{0}을(를) 래스터화할 수 없습니다",
   "Could not render {0}": "{0}을(를) 렌더링할 수 없습니다",
   "Crop to Selection": "선택 영역으로 자르기",

@@ -69,7 +69,6 @@
   "Could not export {0}": "{0} dışa aktarılamadı",
   "Could not move the text: {0}": "Metin taşınamadı: {0}",
   "Could not open another UltraPaint window": "Başka bir UltraPaint penceresi açılamadı",
-  "Could not open {0}": "{0} açılamadı",
   "Could not rasterize {0}": "{0} pikselleştirilemedi",
   "Could not render {0}": "{0} işlenemedi",
   "Crop to Selection": "Seçime göre kırp",

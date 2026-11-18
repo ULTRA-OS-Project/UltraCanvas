@@ -173,6 +173,7 @@
   "Copy: the name is already taken": "복사: 이름이 이미 사용 중입니다",
   "Could not connect: {0}": "연결할 수 없습니다: {0}",
   "Could not delete as administrator: {0}": "관리자 권한으로 삭제할 수 없습니다: {0}",
+  "Could not open {0}": "{0}을(를) 열 수 없습니다",
   "Could not read {0}": "{0}을(를) 읽을 수 없습니다",
   "Could not save {0}": "{0}을(를) 저장할 수 없습니다",
   "Could not write {0}": "{0}에 쓸 수 없습니다",

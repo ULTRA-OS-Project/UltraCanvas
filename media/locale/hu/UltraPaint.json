@@ -69,7 +69,6 @@
   "Could not export {0}": "Nem sikerült exportálni: {0}",
   "Could not move the text: {0}": "Nem sikerült áthelyezni a szöveget: {0}",
   "Could not open another UltraPaint window": "Nem sikerült újabb UltraPaint-ablakot nyitni",
-  "Could not open {0}": "Nem sikerült megnyitni: {0}",
   "Could not rasterize {0}": "Nem sikerült raszterizálni: {0}",
   "Could not render {0}": "Nem sikerült renderelni: {0}",
   "Crop to Selection": "Körbevágás a kijelölésre",

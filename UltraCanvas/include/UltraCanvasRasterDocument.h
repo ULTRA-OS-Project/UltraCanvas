@@ -23,6 +23,8 @@
 // and rotating. Rendering the text is not the document's job: a host renders
 // a text layer with RenderTextLayer (UltraCanvasRasterText.h) and puts it in
 // with AddLayer or ReplaceLayer.
+// Version: 1.7.0 - the default layer names (Background, Layer N, Flattened) and the load / save
+//                  errors in the person's language (Tr)
 // Version: 1.6.0 - the undo entries are named in the person's language (Tr); an empty label
 //                  on AddLayer / CommitSelectionChange means "Add Layer" / "Selection"
 // Version: 1.5.0 - ScaleImage takes UCScaleImageOptions: the resampling method

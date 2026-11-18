@@ -173,6 +173,7 @@
   "Copy: the name is already taken": "Sao chép: tên đã được sử dụng",
   "Could not connect: {0}": "Không thể kết nối: {0}",
   "Could not delete as administrator: {0}": "Không thể xóa với quyền quản trị viên: {0}",
+  "Could not open {0}": "Không thể mở {0}",
   "Could not read {0}": "Không thể đọc {0}",
   "Could not save {0}": "Không thể lưu {0}",
   "Could not write {0}": "Không thể ghi {0}",

@@ -181,6 +181,7 @@
   "Copy: the name is already taken": "कॉपी करें: नाम पहले से लिया हुआ है",
   "Could not connect: {0}": "कनेक्ट नहीं हो सका: {0}",
   "Could not delete as administrator: {0}": "व्यवस्थापक के रूप में हटाया नहीं जा सका: {0}",
+  "Could not open {0}": "{0} नहीं खोला जा सका",
   "Could not read {0}": "{0} पढ़ा नहीं जा सका",
   "Could not save {0}": "{0} सहेजा नहीं जा सका",
   "Could not write {0}": "{0} लिखा नहीं जा सका",

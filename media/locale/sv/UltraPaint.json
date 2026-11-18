@@ -69,7 +69,6 @@
   "Could not export {0}": "{0} kunde inte exporteras",
   "Could not move the text: {0}": "Texten kunde inte flyttas: {0}",
   "Could not open another UltraPaint window": "Det gick inte att öppna ytterligare ett UltraPaint-fönster",
-  "Could not open {0}": "{0} kunde inte öppnas",
   "Could not rasterize {0}": "{0} kunde inte rastreras",
   "Could not render {0}": "{0} kunde inte renderas",
   "Crop to Selection": "Beskär till markering",

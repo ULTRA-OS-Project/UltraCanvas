@@ -69,7 +69,6 @@
   "Could not export {0}": "{0} निर्यात नहीं किया जा सका",
   "Could not move the text: {0}": "टेक्स्ट नहीं खिसकाया जा सका: {0}",
   "Could not open another UltraPaint window": "एक और UltraPaint विंडो नहीं खोली जा सकी",
-  "Could not open {0}": "{0} नहीं खोला जा सका",
   "Could not rasterize {0}": "{0} रास्टराइज़ नहीं किया जा सका",
   "Could not render {0}": "{0} रेंडर नहीं किया जा सका",
   "Crop to Selection": "चयन तक क्रॉप करें",

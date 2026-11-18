@@ -173,6 +173,7 @@
   "Copy: the name is already taken": "複製：名稱已被使用",
   "Could not connect: {0}": "無法連線：{0}",
   "Could not delete as administrator: {0}": "無法以管理員身分刪除：{0}",
+  "Could not open {0}": "無法開啟 {0}",
   "Could not read {0}": "無法讀取 {0}",
   "Could not save {0}": "無法儲存 {0}",
   "Could not write {0}": "無法寫入 {0}",

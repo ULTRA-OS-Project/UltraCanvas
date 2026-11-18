@@ -69,7 +69,6 @@
   "Could not export {0}": "ส่งออก {0} ไม่ได้",
   "Could not move the text: {0}": "ย้ายข้อความไม่ได้: {0}",
   "Could not open another UltraPaint window": "เปิดหน้าต่าง UltraPaint อีกหน้าต่างไม่ได้",
-  "Could not open {0}": "เปิด {0} ไม่ได้",
   "Could not rasterize {0}": "แปลง {0} เป็นแรสเตอร์ไม่ได้",
   "Could not render {0}": "เรนเดอร์ {0} ไม่ได้",
   "Crop to Selection": "ครอบตัดตามส่วนที่เลือก",

@@ -20,3 +20,12 @@
   its models and channels go through `Tr`; the channel letters (H, S, V, R,
   G, B, A) and the model names (HSV, HSL, RGB) stay as they are.
 - All of these texts are in the standard set, translated in every language.
+- **The bitmap document's layer names and errors are translated.** A new
+  image's "Background", "Layer N", the flattened layer and a layer whose
+  project names none take the person's language when they are made (a layer
+  keeps the name it was saved with). Every load and save error
+  `UCRasterDocument` reports - a missing or corrupt project, a damaged
+  UltraCanvas document, a file name without a type, a build without libvips -
+  is a whole sentence through `Tr` / `TrF`. The reason
+  `FileWriteFailureReason` adds (`UltraCanvasFileError.h`) is still English:
+  that header is dependency-free by design.

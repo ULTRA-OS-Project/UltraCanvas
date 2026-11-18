@@ -69,7 +69,6 @@
   "Could not export {0}": "{0} kunne ikke eksporteres",
   "Could not move the text: {0}": "Teksten kunne ikke flyttes: {0}",
   "Could not open another UltraPaint window": "Der kunne ikke åbnes endnu et UltraPaint-vindue",
-  "Could not open {0}": "{0} kunne ikke åbnes",
   "Could not rasterize {0}": "{0} kunne ikke rasteriseres",
   "Could not render {0}": "{0} kunne ikke renderes",
   "Crop to Selection": "Beskær til markering",

@@ -105,7 +105,6 @@
   "Could not leave {0}: {1}": "無法退出 {0}：{1}",
   "Could not load the messages: {0}": "無法載入訊息：{0}",
   "Could not open the chat: {0}": "無法開啟聊天：{0}",
-  "Could not open {0}": "無法開啟 {0}",
   "Could not remove {0}: {1}": "無法移除 {0}：{1}",
   "Could not rename the group: {0}": "無法重新命名群組：{0}",
   "Could not save the description: {0}": "無法儲存描述：{0}",

@@ -88,7 +88,7 @@ namespace {
             std::ifstream in(file, std::ios::binary);
             bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
             ok = !bytes.empty();
-            if (!ok) error = "Could not read the text back";
+            if (!ok) error = Tr("Could not read the text back");
         }
         std::filesystem::remove(file, ec);
         return ok;
@@ -136,7 +136,7 @@ size_t RasterUndoEntry::Bytes() const {
 
 UCRasterDocument::UCRasterDocument(int w, int h, const RasterPixel& background)
     : width(std::max(1, w)), height(std::max(1, h)), selection(std::max(1, w), std::max(1, h)) {
-    layers.push_back(std::make_shared<UCRasterLayer>(width, height, background, "Background"));
+    layers.push_back(std::make_shared<UCRasterLayer>(width, height, background, TrC("layer name", "Background")));
     activeLayer = 0;
 }
 
@@ -272,7 +272,7 @@ void UCRasterDocument::ApplyStructural(const RasterUndoEntry& e, bool toAfter) {
 
 int UCRasterDocument::AddLayer(const std::string& name, const RasterPixel& fill) {
     std::string n = name;
-    if (n.empty()) n = "Layer " + std::to_string(layers.size() + 1);
+    if (n.empty()) n = TrF("Layer {0}", layers.size() + 1);
     return AddLayer(std::make_shared<UCRasterLayer>(width, height, fill, n), -1);
 }
 
@@ -353,7 +353,7 @@ bool UCRasterDocument::FlattenImage() {
     if (layers.size() <= 1) return false;
     BeginStructuralUndo(Tr("Flatten Image"));
     auto flat = Flatten();
-    flat->name = "Background";
+    flat->name = TrC("layer name", "Background");
     layers.clear();
     layers.push_back(flat);
     activeLayer = 0;
@@ -956,7 +956,7 @@ std::shared_ptr<UCPixmap> UCRasterDocument::GetCompositePixmap() {
 }
 
 std::shared_ptr<UCRasterLayer> UCRasterDocument::Flatten() const {
-    auto out = std::make_shared<UCRasterLayer>(width, height, "Flattened");
+    auto out = std::make_shared<UCRasterLayer>(width, height, TrC("layer name", "Flattened"));
     for (const auto& l : layers) {
         if (!l || !l->visible || l->opacity <= 0.0f) continue;
         out->BlendFrom(*l, 0, 0, l->opacity, l->blendMode);
@@ -1015,8 +1015,8 @@ bool UCRasterDocument::LoadFromFile(const std::string& path, std::string& error)
         // write / system error: Invalid argument" (ERROR_USER_MAPPED_FILE,
         // which the C runtime reports as EINVAL).
         PixelFX::ReleaseCachedFiles();
-        if (!decoded) { error = "Could not decode " + path; return false; }
-        layer->name = "Background";
+        if (!decoded) { error = TrF("Could not decode {0}", path); return false; }
+        layer->name = TrC("layer name", "Background");
         width = layer->GetWidth(); height = layer->GetHeight();
         layers.clear();
         layers.push_back(layer);
@@ -1037,7 +1037,7 @@ bool UCRasterDocument::LoadFromFile(const std::string& path, std::string& error)
     }
 #else
     (void)path;
-    error = "Image loading needs libvips (HAS_LIBVIPS)";
+    error = Tr("Image loading needs libvips (HAS_LIBVIPS)");
     return false;
 #endif
 }
@@ -1050,8 +1050,8 @@ bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
     // "All files") has none to pick; libvips would only say it is "not a
     // known file format".
     if (LowerExt(path).empty()) {
-        error = "The file name has no extension, so there is no format to save it in. "
-                "Add one, such as .png, or choose the file type.";
+        error = Tr("The file name has no extension, so there is no format to save it in. "
+                   "Add one, such as .png, or choose the file type.");
         return false;
     }
 #ifdef HAS_LIBVIPS
@@ -1098,7 +1098,7 @@ bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
     }
 #else
     (void)path; (void)options;
-    error = "Image saving needs libvips (HAS_LIBVIPS)";
+    error = Tr("Image saving needs libvips (HAS_LIBVIPS)");
     return false;
 #endif
 }
@@ -1107,7 +1107,7 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
 #ifdef HAS_LIBVIPS
     UCZipPackageWriter zip;
     errno = 0;
-    if (!zip.Open(path)) { error = "Could not create the file. " + FileWriteFailureReason(path, errno); return false; }
+    if (!zip.Open(path)) { error = TrF("Could not create the file. {0}", FileWriteFailureReason(path, errno)); return false; }
     JSONValue doc = JSONValue::MakeObject();
     doc.Set("format", "ucraster");
     doc.Set("version", 1);
@@ -1146,8 +1146,8 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
             std::string odtError;
             if (!RichDocumentToOdt(*t.document, odt, odtError) ||
                 !zip.AddEntry(textFile, odt.data(), odt.size(), false)) {
-                error = "Could not write the text of layer " + l->name +
-                        (odtError.empty() ? std::string() : ": " + odtError);
+                error = odtError.empty() ? TrF("Could not write the text of layer {0}", l->name)
+                                         : TrF("Could not write the text of layer {0}: {1}", l->name, odtError);
                 return false;
             }
         }
@@ -1155,7 +1155,7 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
         try {
             std::vector<uint8_t> png = PixelFX::FileIO::SaveToBuffer(l->ToPixelFX(), ".png");
             if (png.empty() || !zip.AddEntry("layers/" + std::to_string(i) + ".png", png.data(), png.size(), false)) {
-                error = "Could not encode layer " + l->name;
+                error = TrF("Could not encode layer {0}", l->name);
                 return false;
             }
         } catch (const std::exception& e) {
@@ -1166,7 +1166,7 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
     doc.Set("layers", arr);
     errno = 0;
     if (!zip.AddEntry("document.json", JSON::Serialize(doc)) || !zip.Finalize()) {
-        error = "Could not write the file. " + FileWriteFailureReason(path, errno);
+        error = TrF("Could not write the file. {0}", FileWriteFailureReason(path, errno));
         return false;
     }
     filePath = path;
@@ -1174,7 +1174,7 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
     return true;
 #else
     (void)path;
-    error = "Project saving needs libvips (HAS_LIBVIPS)";
+    error = Tr("Project saving needs libvips (HAS_LIBVIPS)");
     return false;
 #endif
 }
@@ -1182,29 +1182,29 @@ bool UCRasterDocument::SaveProject(const std::string& path, std::string& error) 
 bool UCRasterDocument::LoadProject(const std::string& path, std::string& error) {
 #ifdef HAS_LIBVIPS
     UCZipPackageReader zip;
-    if (!zip.Open(path)) { error = "Could not open " + path; return false; }
+    if (!zip.Open(path)) { error = TrF("Could not open {0}", path); return false; }
     std::string text;
-    if (!zip.ReadEntry("document.json", text)) { error = "Not an UltraPaint project: " + path; return false; }
+    if (!zip.ReadEntry("document.json", text)) { error = TrF("Not an UltraPaint project: {0}", path); return false; }
     JSONParseResult pr;
     JSONValue doc = JSON::Parse(text, &pr);
-    if (!pr.success) { error = "Corrupt project: " + pr.errorMessage; return false; }
+    if (!pr.success) { error = TrF("Corrupt project: {0}", pr.errorMessage); return false; }
     const int w = static_cast<int>(doc.Get("width").GetInteger());
     const int h = static_cast<int>(doc.Get("height").GetInteger());
-    if (w <= 0 || h <= 0) { error = "Corrupt project: bad canvas size"; return false; }
+    if (w <= 0 || h <= 0) { error = Tr("Corrupt project: bad canvas size"); return false; }
     std::vector<std::shared_ptr<UCRasterLayer>> loaded;
     const JSONValue& arr = doc.Get("layers");
     for (size_t i = 0; i < arr.GetSize(); ++i) {
         const JSONValue& jl = arr.At(i);
         std::vector<uint8_t> png;
-        if (!zip.ReadEntry(jl.Get("file").GetString(), png)) { error = "Corrupt project: missing layer data"; return false; }
+        if (!zip.ReadEntry(jl.Get("file").GetString(), png)) { error = Tr("Corrupt project: missing layer data"); return false; }
         auto layer = std::make_shared<UCRasterLayer>();
         try {
             if (!layer->FromPixelFX(PixelFX::FileIO::LoadFromMemory(png, ""))) {
-                error = "Corrupt project: undecodable layer"; return false;
+                error = Tr("Corrupt project: undecodable layer"); return false;
             }
         } catch (const std::exception& e) { error = e.what(); return false; }
         if (layer->GetWidth() != w || layer->GetHeight() != h) layer->ResizeCanvas(w, h, 0, 0);
-        layer->name = jl.Get("name").GetString("Layer");
+        layer->name = jl.Get("name").GetString(TrC("layer name", "Layer"));
         layer->visible = jl.Get("visible").GetBoolean(true);
         layer->locked = jl.Get("locked").GetBoolean(false);
         layer->opacity = static_cast<float>(jl.Get("opacity").GetNumber(1.0));
@@ -1240,7 +1240,7 @@ bool UCRasterDocument::LoadProject(const std::string& path, std::string& error) 
         }
         loaded.push_back(layer);
     }
-    if (loaded.empty()) { error = "Project has no layers"; return false; }
+    if (loaded.empty()) { error = Tr("Project has no layers"); return false; }
     width = w; height = h;
     layers.swap(loaded);
     SetUCDPassword(std::string());
@@ -1256,7 +1256,7 @@ bool UCRasterDocument::LoadProject(const std::string& path, std::string& error) 
     return true;
 #else
     (void)path;
-    error = "Project loading needs libvips (HAS_LIBVIPS)";
+    error = Tr("Project loading needs libvips (HAS_LIBVIPS)");
     return false;
 #endif
 }
@@ -1336,19 +1336,19 @@ namespace {
     std::shared_ptr<UCRasterLayer> BitmapFromPayload(const std::vector<uint8_t>& payload, std::string& error) {
         std::string fourcc;
         uint8_t version = 0;
-        if (!UCD::ReadPreamble(payload, fourcc, version)) { error = "a bitmap section is empty"; return nullptr; }
+        if (!UCD::ReadPreamble(payload, fourcc, version)) { error = Tr("a bitmap section is empty"); return nullptr; }
         if (fourcc == "UCRW") {
             UCD::ByteReader r(payload.data() + UCD::kPreambleSize, payload.size() - UCD::kPreambleSize);
             uint16_t w = 0, h = 0;
             uint8_t format = 0;
             if (!r.U16(w) || !r.U16(h) || !r.U8(format) || !r.Skip(3) || w == 0 || h == 0) {
-                error = "a bitmap section is damaged";
+                error = Tr("a bitmap section is damaged");
                 return nullptr;
             }
             static const size_t kBytesPerPixel[] = { 4, 3, 1, 8 };
-            if (format > 3) { error = "a bitmap uses a pixel format this program does not read"; return nullptr; }
+            if (format > 3) { error = Tr("a bitmap uses a pixel format this program does not read"); return nullptr; }
             const size_t pixels = static_cast<size_t>(w) * h;
-            if (r.Remaining() != pixels * kBytesPerPixel[format]) { error = "a bitmap section is damaged"; return nullptr; }
+            if (r.Remaining() != pixels * kBytesPerPixel[format]) { error = Tr("a bitmap section is damaged"); return nullptr; }
             auto layer = std::make_shared<UCRasterLayer>(w, h);
             const uint8_t* src = r.Here();
             uint8_t* dst = layer->Data();
@@ -1371,9 +1371,9 @@ namespace {
             auto layer = std::make_shared<UCRasterLayer>();
             if (layer->FromPixelFX(PixelFX::FileIO::LoadFromMemory(file, ""))) return layer;
         } catch (const std::exception&) {}
-        error = "a bitmap (" + fourcc + ") could not be decoded";
+        error = TrF("a bitmap ({0}) could not be decoded", fourcc);
 #else
-        error = "a bitmap (" + fourcc + ") needs an image decoder this build does not have";
+        error = TrF("a bitmap ({0}) needs an image decoder this build does not have", fourcc);
 #endif
         return nullptr;
     }
@@ -1439,7 +1439,7 @@ namespace {
 
 bool UCRasterDocument::SaveUCD(const std::string& path, std::string& error) {
     if (width > kMaxUCDSide || height > kMaxUCDSide) {
-        error = "An UltraCanvas document holds images up to 65535 pixels on a side";
+        error = Tr("An UltraCanvas document holds images up to 65535 pixels on a side");
         return false;
     }
     // Every text layer's words first: a text that cannot be written fails
@@ -1451,8 +1451,8 @@ bool UCRasterDocument::SaveUCD(const std::string& path, std::string& error) {
         std::vector<uint8_t> odt;
         std::string odtError;
         if (!RichDocumentToOdt(*l->text->document, odt, odtError)) {
-            error = "Could not write the text of layer " + l->name +
-                    (odtError.empty() ? std::string() : ": " + odtError);
+            error = odtError.empty() ? TrF("Could not write the text of layer {0}", l->name)
+                                     : TrF("Could not write the text of layer {0}: {1}", l->name, odtError);
             return false;
         }
         frames[i] = TextFramePayload(*l->text, odt);
@@ -1510,7 +1510,7 @@ bool UCRasterDocument::LoadUCD(const std::string& path, std::string& error, cons
     const bool isProtected = reader.GetHeader().IsEncrypted();
     if (isProtected) {
         if (password.empty()) {
-            error = "This UltraCanvas document is password-protected: it opens with its password";
+            error = Tr("This UltraCanvas document is password-protected: it opens with its password");
             return false;
         }
         if (!reader.Unlock(password, error)) return false;
@@ -1519,16 +1519,16 @@ bool UCRasterDocument::LoadUCD(const std::string& path, std::string& error, cons
     const auto frames = reader.FindSections("VECT");
     const auto stacks = reader.FindSections("LAYR");
     if (bitmaps.empty()) {
-        error = "This UltraCanvas document (" + reader.GetHeader().descriptor + ") holds no image";
+        error = TrF("This UltraCanvas document ({0}) holds no image", reader.GetHeader().descriptor);
         return false;
     }
     auto decodeBitmap = [&](uint32_t index) -> std::shared_ptr<UCRasterLayer> {
-        if (index >= bitmaps.size()) { error = "The document is damaged: a layer names a missing bitmap"; return nullptr; }
+        if (index >= bitmaps.size()) { error = Tr("The document is damaged: a layer names a missing bitmap"); return nullptr; }
         std::vector<uint8_t> payload;
         if (!reader.Decode(*bitmaps[index], payload, error)) return nullptr;
         std::string why;
         auto layer = BitmapFromPayload(payload, why);
-        if (!layer) error = "The document is damaged: " + why;
+        if (!layer) error = TrF("The document is damaged: {0}", why);
         return layer;
     };
 
@@ -1538,7 +1538,7 @@ bool UCRasterDocument::LoadUCD(const std::string& path, std::string& error, cons
         // A single image (a UCBitmap without a layer stack): its first BMAP.
         auto layer = decodeBitmap(0);
         if (!layer) return false;
-        layer->name = "Background";
+        layer->name = TrC("layer name", "Background");
         w = layer->GetWidth();
         h = layer->GetHeight();
         loaded.push_back(layer);
@@ -1552,7 +1552,7 @@ bool UCRasterDocument::LoadUCD(const std::string& path, std::string& error, cons
         if (!r.U8(version) || !r.Skip(3) || !r.U32(cw) || !r.U32(ch) || !r.I32(activeIndex) || !r.U32(count) ||
             version < 1 || cw == 0 || ch == 0 || cw > static_cast<uint32_t>(kMaxUCDSide) ||
             ch > static_cast<uint32_t>(kMaxUCDSide) || count == 0) {
-            error = "The document's layer stack is damaged or of a later kind";
+            error = Tr("The document's layer stack is damaged or of a later kind");
             return false;
         }
         w = static_cast<int>(cw);
@@ -1561,7 +1561,7 @@ bool UCRasterDocument::LoadUCD(const std::string& path, std::string& error, cons
         for (uint32_t i = 0; i < count; ++i) {
             uint32_t length = 0;
             if (!r.U32(length) || length > r.Remaining()) {
-                error = "The document's layer stack is damaged";
+                error = Tr("The document's layer stack is damaged");
                 return false;
             }
             UCD::ByteReader rec(r.Here(), length);
@@ -1574,7 +1574,7 @@ bool UCRasterDocument::LoadUCD(const std::string& path, std::string& error, cons
             std::string name;
             if (!rec.U8(flags) || !rec.U8(blend) || !rec.U16(reserved) || !rec.F32(opacity) || !rec.I32(x) ||
                 !rec.I32(y) || !rec.U32(bitmap) || !rec.U32(frame) || !rec.String16(name)) {
-                error = "The document's layer stack is damaged";
+                error = Tr("The document's layer stack is damaged");
                 return false;
             }
             auto layer = std::make_shared<UCRasterLayer>(w, h, name);

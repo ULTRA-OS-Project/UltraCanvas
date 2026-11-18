@@ -189,6 +189,7 @@
   "Copy: the name is already taken": "Copiere: numele este deja folosit",
   "Could not connect: {0}": "Nu s-a putut conecta: {0}",
   "Could not delete as administrator: {0}": "Nu s-a putut efectua ștergerea ca administrator: {0}",
+  "Could not open {0}": "{0} nu a putut fi deschis",
   "Could not read {0}": "Nu s-a putut citi {0}",
   "Could not save {0}": "Nu s-a putut salva {0}",
   "Could not write {0}": "Nu s-a putut scrie {0}",

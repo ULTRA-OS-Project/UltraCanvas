@@ -173,6 +173,7 @@
   "Copy: the name is already taken": "Salin: nama sudah dipakai",
   "Could not connect: {0}": "Tidak dapat terhubung: {0}",
   "Could not delete as administrator: {0}": "Tidak dapat menghapus sebagai administrator: {0}",
+  "Could not open {0}": "Tidak dapat membuka {0}",
   "Could not read {0}": "Tidak dapat membaca {0}",
   "Could not save {0}": "Tidak dapat menyimpan {0}",
   "Could not write {0}": "Tidak dapat menulis {0}",

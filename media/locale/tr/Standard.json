@@ -181,6 +181,7 @@
   "Copy: the name is already taken": "Kopyalama: ad zaten kullanılıyor",
   "Could not connect: {0}": "Bağlanılamadı: {0}",
   "Could not delete as administrator: {0}": "Yönetici olarak silinemedi: {0}",
+  "Could not open {0}": "{0} açılamadı",
   "Could not read {0}": "{0} okunamadı",
   "Could not save {0}": "{0} kaydedilemedi",
   "Could not write {0}": "{0} yazılamadı",

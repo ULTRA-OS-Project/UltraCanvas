@@ -69,7 +69,6 @@
   "Could not export {0}": "Vienti epäonnistui: {0}",
   "Could not move the text: {0}": "Tekstin siirtäminen epäonnistui: {0}",
   "Could not open another UltraPaint window": "Toista UltraPaint-ikkunaa ei voitu avata",
-  "Could not open {0}": "Kohdetta {0} ei voitu avata",
   "Could not rasterize {0}": "Rasterointi epäonnistui: {0}",
   "Could not render {0}": "Hahmontaminen epäonnistui: {0}",
   "Crop to Selection": "Rajaa valintaan",

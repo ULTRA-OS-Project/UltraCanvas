@@ -14,3 +14,7 @@
   script correctly: it goes through the framework's native error dialog
   (Unicode), not the ANSI message box. An error before the translations are
   loaded still reads in English.
+- **Layer names and file errors in your language.** A new image's
+  background layer, new layers ("Ebene 2"), a pasted layer and the last
+  copied image are named in your language, and so are the messages when an
+  image or a project cannot be opened or saved.

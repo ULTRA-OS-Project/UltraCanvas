@@ -69,7 +69,6 @@
   "Could not export {0}": "{0} konnte nicht exportiert werden",
   "Could not move the text: {0}": "Der Text konnte nicht verschoben werden: {0}",
   "Could not open another UltraPaint window": "Es konnte kein weiteres UltraPaint-Fenster geöffnet werden",
-  "Could not open {0}": "{0} konnte nicht geöffnet werden",
   "Could not rasterize {0}": "{0} konnte nicht gerastert werden",
   "Could not render {0}": "{0} konnte nicht gerendert werden",
   "Crop to Selection": "Auf Auswahl zuschneiden",

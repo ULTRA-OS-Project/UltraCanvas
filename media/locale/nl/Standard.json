@@ -181,6 +181,7 @@
   "Copy: the name is already taken": "Kopiëren: de naam is al in gebruik",
   "Could not connect: {0}": "Kan geen verbinding maken: {0}",
   "Could not delete as administrator: {0}": "Verwijderen als beheerder is mislukt: {0}",
+  "Could not open {0}": "Kan {0} niet openen",
   "Could not read {0}": "Kan {0} niet lezen",
   "Could not save {0}": "Kan {0} niet opslaan",
   "Could not write {0}": "Kan {0} niet schrijven",

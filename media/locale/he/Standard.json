@@ -197,6 +197,7 @@
   "Copy: the name is already taken": "העתקה: השם כבר תפוס",
   "Could not connect: {0}": "לא ניתן להתחבר: {0}",
   "Could not delete as administrator: {0}": "לא ניתן היה למחוק כמנהל מערכת: {0}",
+  "Could not open {0}": "לא ניתן היה לפתוח את {0}",
   "Could not read {0}": "לא ניתן היה לקרוא את {0}",
   "Could not save {0}": "לא ניתן היה לשמור את {0}",
   "Could not write {0}": "לא ניתן היה לכתוב את {0}",

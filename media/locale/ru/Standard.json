@@ -189,6 +189,7 @@
   "Copy: the name is already taken": "Копирование: это имя уже занято",
   "Could not connect: {0}": "Не удалось подключиться: {0}",
   "Could not delete as administrator: {0}": "Не удалось удалить от имени администратора: {0}",
+  "Could not open {0}": "Не удалось открыть {0}",
   "Could not read {0}": "Не удалось прочитать {0}",
   "Could not save {0}": "Не удалось сохранить {0}",
   "Could not write {0}": "Не удалось записать {0}",

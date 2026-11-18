@@ -189,6 +189,7 @@
   "Copy: the name is already taken": "Kopiowanie: nazwa jest już zajęta",
   "Could not connect: {0}": "Nie można połączyć: {0}",
   "Could not delete as administrator: {0}": "Nie można usunąć jako administrator: {0}",
+  "Could not open {0}": "Nie można otworzyć {0}",
   "Could not read {0}": "Nie można odczytać {0}",
   "Could not save {0}": "Nie udało się zapisać {0}",
   "Could not write {0}": "Nie można zapisać pliku {0}",

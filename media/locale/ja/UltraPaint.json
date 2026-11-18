@@ -69,7 +69,6 @@
   "Could not export {0}": "{0} をエクスポートできませんでした",
   "Could not move the text: {0}": "テキストを移動できませんでした: {0}",
   "Could not open another UltraPaint window": "UltraPaint のウィンドウをもう 1 つ開けませんでした",
-  "Could not open {0}": "{0} を開けませんでした",
   "Could not rasterize {0}": "{0} をラスタライズできませんでした",
   "Could not render {0}": "{0} をレンダリングできませんでした",
   "Crop to Selection": "選択範囲で切り抜き",

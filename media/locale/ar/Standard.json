@@ -213,6 +213,7 @@
   "Copy: the name is already taken": "نسخ: الاسم مستخدم بالفعل",
   "Could not connect: {0}": "تعذّر الاتصال: {0}",
   "Could not delete as administrator: {0}": "تعذّر الحذف كمسؤول: {0}",
+  "Could not open {0}": "تعذّر فتح {0}",
   "Could not read {0}": "تعذّرت قراءة {0}",
   "Could not save {0}": "تعذّر حفظ {0}",
   "Could not write {0}": "تعذّرت كتابة {0}",

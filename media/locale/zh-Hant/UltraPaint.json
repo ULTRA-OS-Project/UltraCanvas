@@ -69,7 +69,6 @@
   "Could not export {0}": "無法匯出 {0}",
   "Could not move the text: {0}": "無法移動文字：{0}",
   "Could not open another UltraPaint window": "無法再開啟一個 UltraPaint 視窗",
-  "Could not open {0}": "無法開啟 {0}",
   "Could not rasterize {0}": "無法點陣化 {0}",
   "Could not render {0}": "無法轉譯 {0}",
   "Crop to Selection": "裁切至選取範圍",

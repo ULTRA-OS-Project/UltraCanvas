@@ -181,6 +181,7 @@
   "Copy: the name is already taken": "Kopiointi: nimi on jo käytössä",
   "Could not connect: {0}": "Yhteyden muodostaminen epäonnistui: {0}",
   "Could not delete as administrator: {0}": "Poistaminen järjestelmänvalvojana epäonnistui: {0}",
+  "Could not open {0}": "Kohdetta {0} ei voitu avata",
   "Could not read {0}": "Kohteen {0} lukeminen epäonnistui",
   "Could not save {0}": "Kohteen {0} tallentaminen epäonnistui",
   "Could not write {0}": "Kohteen {0} kirjoittaminen epäonnistui",

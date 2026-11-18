@@ -54,6 +54,7 @@
   "Copy skipped items again": "Copiar novamente os itens pulados",
   "Copy: a file could not be copied": "Copiar: não foi possível copiar um arquivo",
   "Could not delete as administrator: {0}": "Não foi possível excluir como administrador: {0}",
+  "Could not open {0}": "Não foi possível abrir {0}",
   "Could not save {0}": "Não foi possível salvar {0}",
   "Could not write {0}": "Não foi possível gravar {0}",
   "counting…": "contando…",

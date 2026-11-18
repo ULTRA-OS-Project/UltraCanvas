@@ -181,6 +181,7 @@
   "Copy: the name is already taken": "Copiar: el nombre ya está en uso",
   "Could not connect: {0}": "No se pudo conectar: {0}",
   "Could not delete as administrator: {0}": "No se pudo eliminar como administrador: {0}",
+  "Could not open {0}": "No se pudo abrir {0}",
   "Could not read {0}": "No se pudo leer {0}",
   "Could not save {0}": "No se pudo guardar {0}",
   "Could not write {0}": "No se pudo escribir {0}",

@@ -173,6 +173,7 @@
   "Copy: the name is already taken": "コピー: 名前はすでに使われています",
   "Could not connect: {0}": "接続できませんでした: {0}",
   "Could not delete as administrator: {0}": "管理者として削除できませんでした: {0}",
+  "Could not open {0}": "{0} を開けませんでした",
   "Could not read {0}": "{0} を読み込めませんでした",
   "Could not save {0}": "{0} を保存できませんでした",
   "Could not write {0}": "{0} を書き込めませんでした",
