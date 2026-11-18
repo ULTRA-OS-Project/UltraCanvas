@@ -769,6 +769,12 @@ Notes:
   the Details and List rows keeps the type glyph, so a folder listing does not
   read every document in it, and a font specimen squeezed into an icon slot is
   not shown as a smear of ink.
+- The *Menu label* column is the kind's English name,
+  `UltraCanvasFilerWidget::PreviewTypeLabel(kind)` - a stable name for tests,
+  logs and element identifiers. What a person reads is
+  `UltraCanvasFilerWidget::PreviewTypeText(kind)`, the same name through `Tr`:
+  the Display submenus show it, and an application listing the kinds (UltraFiler's
+  Settings > Display > Thumbnails / Detail view) shows it too.
 - `FilerPreviewType` values are a bitmask; `GetThumbnailKinds()` /
   `GetDetailViewKinds()` return the current sets and `kFilerAllPreviewTypes` is
   the default of both. The preview kinds do not map one to one onto

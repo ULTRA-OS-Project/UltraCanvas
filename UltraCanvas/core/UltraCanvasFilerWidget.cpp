@@ -51,6 +51,12 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.50.0 - PreviewTypeText: a preview kind's translated name, shared by
+//                  the Display submenus and an application's settings; the
+//                  extract-conflict dialog is translated whole (captions,
+//                  note, apply-to-all and its four buttons), and so is the
+//                  progress window of a pack, an unpack or an administrator
+//                  delete (titles and captions)
 // Version: 1.49.3 - the context menu is translated whole (every entry, the Display
 //                  submenu's sort fields, view types, file kinds, dataset fields,
 //                  badges, icon styles and switches - the public *Label functions
@@ -1912,7 +1918,8 @@ namespace UltraCanvas {
         // The context menu's entries, in the reader's language. The public
         // *Label functions (PreviewTypeLabel, ExtensionBadgeLabel,
         // FileIconStyleLabel) stay English: tests and applications use them
-        // as names and identifiers.
+        // as names and identifiers; a preview kind's translated name is the
+        // public PreviewTypeText, which an application's settings share.
         std::string SortFieldMenuText(FilerSortField f) {
             switch (f) {
                 case FilerSortField::Name:         return Tr("Name");
@@ -1938,22 +1945,6 @@ namespace UltraCanvas {
                 case FilerViewType::View3D:              return Tr("3D");
             }
             return std::string();
-        }
-
-        std::string PreviewTypeMenuText(FilerPreviewType type) {
-            switch (type) {
-                case FilerPreviewType::Bitmaps:        return Tr("Bitmaps");
-                case FilerPreviewType::VectorGraphics: return Tr("Vector graphics");
-                case FilerPreviewType::Models3D:       return Tr("3D");
-                case FilerPreviewType::PDF:            return "PDF";
-                case FilerPreviewType::Text:           return Tr("Text");
-                case FilerPreviewType::Docs:           return Tr("Docs");
-                case FilerPreviewType::Spreadsheets:   return Tr("Spreadsheets");
-                case FilerPreviewType::Videos:         return Tr("Videos");
-                case FilerPreviewType::Audio:          return Tr("Audio");
-                case FilerPreviewType::Fonts:          return Tr("Fonts");
-                default:                               return std::string();
-            }
         }
 
         std::string ExtensionBadgeMenuText(FilerExtensionBadge badge) {
@@ -4382,6 +4373,22 @@ namespace UltraCanvas {
             case FilerPreviewType::Audio:          return "Audio";
             case FilerPreviewType::Fonts:          return "Fonts";
             default:                               return "";
+        }
+    }
+
+    std::string UltraCanvasFilerWidget::PreviewTypeText(FilerPreviewType type) {
+        switch (type) {
+            case FilerPreviewType::Bitmaps:        return Tr("Bitmaps");
+            case FilerPreviewType::VectorGraphics: return Tr("Vector graphics");
+            case FilerPreviewType::Models3D:       return Tr("3D");
+            case FilerPreviewType::PDF:            return "PDF";
+            case FilerPreviewType::Text:           return Tr("Text");
+            case FilerPreviewType::Docs:           return Tr("Docs");
+            case FilerPreviewType::Spreadsheets:   return Tr("Spreadsheets");
+            case FilerPreviewType::Videos:         return Tr("Videos");
+            case FilerPreviewType::Audio:          return Tr("Audio");
+            case FilerPreviewType::Fonts:          return Tr("Fonts");
+            default:                               return std::string();
         }
     }
 
@@ -7846,10 +7853,11 @@ namespace UltraCanvas {
         for (const FilerEntry& v : pd.elevatedVictims) paths.push_back(v.path);
 
         const std::string caption = paths.size() == 1
-                ? "Windows is asking for permission to delete \""
-                          + pd.elevatedVictims.front().name + "\"."
-                : "Windows is asking for permission to delete "
-                          + std::to_string(paths.size()) + " items.";
+                ? TrF("Windows is asking for permission to delete \"{0}\".",
+                      pd.elevatedVictims.front().name)
+                : TrN("Windows is asking for permission to delete {n} item.",
+                      "Windows is asking for permission to delete {n} items.",
+                      static_cast<long long>(paths.size()));
         auto result = std::make_shared<ElevatedFileOperations::ElevatedDeleteResult>();
         auto work = [paths, result](const ArchiveProgressReporter&) {
             // Blocks for the consent prompt and the helper; that is why it
@@ -7868,7 +7876,7 @@ namespace UltraCanvas {
             FinishElevatedDeletes(*result);
             return;
         }
-        StartArchiveJob("Deleting as Administrator", caption, "", false,
+        StartArchiveJob(Tr("Deleting as Administrator"), caption, "", false,
                         std::move(work),
                         [this, result](bool, bool) { FinishElevatedDeletes(*result); });
     }
@@ -9567,7 +9575,7 @@ namespace UltraCanvas {
         UCVFSBridge::Initialize();
         const std::string archiveName = PathToUtf8(PathFromUtf8(dest).filename());
         const UCVFSCompressionOptions options = CompressOptionsFor(ext, tarSettings);
-        StartArchiveJob("Compressing", "Creating \"" + archiveName + "\"",
+        StartArchiveJob(Tr("Compressing"), TrF("Creating \"{0}\"", archiveName),
                         dest, /*packing=*/true,
                         [dest, paths, options](const ArchiveProgressReporter& report) {
             return UCVFSBridge::CreateArchive(dest, paths, options,
@@ -9657,7 +9665,7 @@ namespace UltraCanvas {
         // Written by the worker, read by the completion callback once the job
         // is over: what went wrong, in the extractor's words.
         auto detail = std::make_shared<std::string>();
-        StartArchiveJob("Extracting", "Unpacking \"" + archiveName + "\"",
+        StartArchiveJob(Tr("Extracting"), TrF("Unpacking \"{0}\"", archiveName),
                         destDir, /*packing=*/false,
                         [archivePath, destDir, detail](const ArchiveProgressReporter& report) {
             return UCVFSBridge::ExtractArchive(archivePath, destDir,
@@ -9697,18 +9705,18 @@ namespace UltraCanvas {
         spec.title = Tr("Extract: the folder name is already taken");
         spec.type = DialogType::Question;
         spec.question = cfg.message;
-        spec.facts = "**Archive:** " + FactPath(archive.path)
-                   + "\n\n**Folder:** " + FactPath(PathToUtf8(
+        spec.facts = "**" + Tr("Archive:") + "** " + FactPath(archive.path)
+                   + "\n\n**" + Tr("Folder:") + "** " + FactPath(PathToUtf8(
                              PathFromUtf8(archive.path).parent_path() / folderName));
-        spec.note = "Keep both extracts into a renamed folder; Extract into existing "
-                    "adds the archive's entries to the folder that is there.";
+        spec.note = Tr("Keep both extracts into a renamed folder; Extract into existing "
+                       "adds the archive's entries to the folder that is there.");
         if (pendingExtract->archives.size() > pendingExtract->next + 1)
-            spec.applyToAllLabel = "Apply to all remaining archives";
+            spec.applyToAllLabel = Tr("Apply to all remaining archives");
         spec.applyToAllChecked = pendingExtract->applyToAll;
-        spec.buttons = {{"Keep both", DialogButtonRole::Default},
-                        {"Extract into existing", DialogButtonRole::Normal},
-                        {"Skip", DialogButtonRole::Normal},
-                        {"Stop", DialogButtonRole::Cancel}};
+        spec.buttons = {{Tr("Keep both"), DialogButtonRole::Default},
+                        {Tr("Extract into existing"), DialogButtonRole::Normal},
+                        {Tr("Skip"), DialogButtonRole::Normal},
+                        {Tr("Stop"), DialogButtonRole::Cancel}};
         spec.width = 640;
         const bool shown = ShowOperationDialog(spec,
                 [self](size_t button, bool all) {
@@ -9989,12 +9997,12 @@ namespace UltraCanvas {
         const std::string src = jobs[index].first;
         const std::string dest = jobs[index].second;
         const std::string caption = jobs.size() > 1
-                ? "Unpacking \"" + PathToUtf8(PathFromUtf8(src).filename()) + "\" (" +
-                  std::to_string(index + 1) + " of " + std::to_string(jobs.size()) + ")"
-                : "Unpacking \"" + PathToUtf8(PathFromUtf8(src).filename()) + "\"";
+                ? TrF("Unpacking \"{0}\" ({1} of {2})", PathToUtf8(PathFromUtf8(src).filename()),
+                      index + 1, jobs.size())
+                : TrF("Unpacking \"{0}\"", PathToUtf8(PathFromUtf8(src).filename()));
         UCVFSBridge::Initialize();
         auto detail = std::make_shared<std::string>();   // see ExtractCurrentAndAdvance
-        StartArchiveJob("Extracting", caption, dest, /*packing=*/false,
+        StartArchiveJob(Tr("Extracting"), caption, dest, /*packing=*/false,
                         [src, dest, detail](const ArchiveProgressReporter& report) {
             return UCVFSBridge::ExtractArchive(src, dest,
                     [&report](uint64_t done, uint64_t total,
@@ -10091,8 +10099,8 @@ namespace UltraCanvas {
         UCVFSBridge::Initialize();
         const std::vector<std::string> sources = d.sourcePaths;
         const UCVFSCompressionOptions options = CompressOptionsFor(ext, tarSettings);
-        StartArchiveJob("Compressing",
-                        "Creating \"" + PathToUtf8(candidate.filename()) + "\"",
+        StartArchiveJob(Tr("Compressing"),
+                        TrF("Creating \"{0}\"", PathToUtf8(candidate.filename())),
                         dest, /*packing=*/true,
                         [dest, sources, options](const ArchiveProgressReporter& report) {
             return UCVFSBridge::CreateArchive(dest, sources, options,
@@ -10652,8 +10660,8 @@ namespace UltraCanvas {
         const std::string programName = e.name;
         auto detail = std::make_shared<std::string>();   // see ReportExtractionProblem
 
-        StartArchiveJob("Extract and Run",
-                        "Unpacking \"" + archiveName + "\" to run \"" + programName + "\"",
+        StartArchiveJob(Tr("Extract and Run"),
+                        TrF("Unpacking \"{0}\" to run \"{1}\"", archiveName, programName),
                         folder, /*packing=*/false,
                         [archive, folder, root, downloaded, detail](
                                 const ArchiveProgressReporter& report) {
@@ -16668,10 +16676,10 @@ namespace UltraCanvas {
             std::vector<MenuItemData> detailViewItems;
             for (FilerPreviewType t : AllPreviewTypes()) {
                 thumbnailItems.push_back(MenuItemData::Checkbox(
-                        PreviewTypeMenuText(t), IsThumbnailKindEnabled(t),
+                        PreviewTypeText(t), IsThumbnailKindEnabled(t),
                         [this, t](bool on) { SetThumbnailKind(t, on); }));
                 detailViewItems.push_back(MenuItemData::Checkbox(
-                        PreviewTypeMenuText(t), IsDetailViewKindEnabled(t),
+                        PreviewTypeText(t), IsDetailViewKindEnabled(t),
                         [this, t](bool on) { SetDetailViewKind(t, on); }));
             }
             // The host's own entry point into the per-format lists, appended

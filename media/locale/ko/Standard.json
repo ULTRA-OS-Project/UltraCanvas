@@ -74,6 +74,7 @@
   "Apply to all later failures": "이후의 모든 실패에 적용",
   "Apply to all later files in use": "이후 사용 중인 모든 파일에 적용",
   "Apply to all later permission failures": "이후의 모든 권한 실패에 적용",
+  "Apply to all remaining archives": "남은 모든 아카이브에 적용",
   "Apply to all remaining write-protected items": "나머지 모든 쓰기 금지 항목에 적용",
   "Apply to the {n} remaining conflict": {
     "other": "나머지 충돌 {n}개 모두에 적용"
@@ -159,6 +160,7 @@
   "Compare ({0})": "비교 ({0})",
   "Compare with": "비교 대상",
   "Compress": "압축",
+  "Compressing": "압축하는 중",
   "Compressing into {0} failed": "{0}(으)로 압축하지 못했습니다",
   "Compressing needs the VirtualFS module, which this program was built without.": "압축하려면 VirtualFS 모듈이 필요하지만, 이 프로그램은 해당 모듈 없이 빌드되었습니다.",
   "Computer": "컴퓨터",
@@ -200,6 +202,7 @@
   "counting…": "계산 중…",
   "Create": "만들기",
   "Created": "만든 날짜",
+  "Creating \"{0}\"": "\"{0}\" 만드는 중",
   "Creating link for {0}…": "{0}에 대한 링크를 만드는 중…",
   "Creating the document failed: {0}": "문서 만들기 실패: {0}",
   "Creating the document {0} failed": "문서 {0}을(를) 만들지 못했습니다",
@@ -242,6 +245,7 @@
   "Deleted {0} of {n} item.": {
     "other": "항목 {n}개 중 {0}개를 삭제했습니다."
   },
+  "Deleting as Administrator": "관리자 권한으로 삭제하는 중",
   "Deleting as administrator is not available: {0}": "관리자 권한으로 삭제를 사용할 수 없습니다: {0}",
   "Deleting inside {0} failed: {1}": "{0} 내부 삭제 실패: {1}",
   "Deleting {0} failed: {1}": "{0} 삭제 실패: {1}",
@@ -302,7 +306,9 @@
   "Extract": "압축 풀기",
   "Extract and Run": "압축 풀고 실행",
   "Extract and Run needs the VirtualFS module, which this program was built without.": "압축을 풀고 실행하려면 VirtualFS 모듈이 필요하지만, 이 프로그램은 해당 모듈 없이 빌드되었습니다.",
+  "Extract into existing": "기존 폴더에 압축 풀기",
   "Extract: the folder name is already taken": "압축 풀기: 폴더 이름이 이미 사용 중입니다",
+  "Extracting": "압축 푸는 중",
   "Extracting failed: the folder {0} cannot be created": "압축 풀기 실패: {0} 폴더를 만들 수 없습니다",
   "Extracting needs the VirtualFS module, which this program was built without.": "압축을 풀려면 VirtualFS 모듈이 필요하지만, 이 프로그램은 해당 모듈 없이 빌드되었습니다.",
   "Extracting {0} failed": "{0}의 압축을 풀지 못했습니다",
@@ -408,6 +414,7 @@
   "Justify": "양쪽 맞춤",
   "KB": "KB",
   "Keep both": "모두 유지",
+  "Keep both extracts into a renamed folder; Extract into existing adds the archive's entries to the folder that is there.": "\"모두 유지\"는 이름을 바꾼 폴더에 압축을 풀고, \"기존 폴더에 압축 풀기\"는 아카이브 내용을 이미 있는 폴더에 추가합니다.",
   "Keep both renames the pasted file to \"{0}\".": "\"모두 유지\"를 선택하면 붙여넣는 파일의 이름이 \"{0}\"(으)로 바뀝니다.",
   "Keep proportions": "비율 유지",
   "Keep the password, encrypted, for the next start and for the other applications. Otherwise only this application uses it, until it ends.": "암호를 암호화하여 다음 시작 시와 다른 애플리케이션에서 사용할 수 있도록 보관합니다. 그렇지 않으면 이 애플리케이션이 종료될 때까지 이 애플리케이션만 사용합니다.",
@@ -779,6 +786,9 @@
   "unknown error": "알 수 없는 오류",
   "Unlock": "잠금 해제",
   "Unlock: show this password-protected file (Enter)": "잠금 해제: 암호로 보호된 이 파일 표시(Enter)",
+  "Unpacking \"{0}\"": "\"{0}\" 압축 푸는 중",
+  "Unpacking \"{0}\" ({1} of {2})": "\"{0}\" 압축 푸는 중({1}/{2})",
+  "Unpacking \"{0}\" to run \"{1}\"": "\"{1}\"을(를) 실행하기 위해 \"{0}\" 압축 푸는 중",
   "Unpin": "고정 해제",
   "Unread": "읽지 않음",
   "Unsaved changes": "저장되지 않은 변경 내용",
@@ -819,6 +829,10 @@
   "Width": "너비",
   "Window": "창",
   "Windows asks you to confirm once, at the end, for every item handed to the administrator.": "관리자에게 넘겨진 모든 항목에 대해 Windows에서 마지막에 한 번만 확인을 요청합니다.",
+  "Windows is asking for permission to delete \"{0}\".": "Windows에서 \"{0}\"을(를) 삭제할 권한을 요청하고 있습니다.",
+  "Windows is asking for permission to delete {n} item.": {
+    "other": "Windows에서 항목 {n}개를 삭제할 권한을 요청하고 있습니다."
+  },
   "Working": "작업 중",
   "wrong number of results": "결과 수가 맞지 않음",
   "Yellow": "노랑",

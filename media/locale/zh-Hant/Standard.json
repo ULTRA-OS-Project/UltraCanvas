@@ -74,6 +74,7 @@
   "Apply to all later failures": "套用至之後所有失敗的項目",
   "Apply to all later files in use": "套用至之後所有使用中的檔案",
   "Apply to all later permission failures": "套用至之後所有權限不足的項目",
+  "Apply to all remaining archives": "套用至其餘所有壓縮檔",
   "Apply to all remaining write-protected items": "套用至其餘所有已防寫的項目",
   "Apply to the {n} remaining conflict": {
     "other": "套用至其餘全部 {n} 個衝突"
@@ -159,6 +160,7 @@
   "Compare ({0})": "比較（{0}）",
   "Compare with": "比較對象",
   "Compress": "壓縮",
+  "Compressing": "正在壓縮",
   "Compressing into {0} failed": "壓縮至 {0} 失敗",
   "Compressing needs the VirtualFS module, which this program was built without.": "壓縮需要 VirtualFS 模組，但此程式建置時未包含該模組。",
   "Computer": "電腦",
@@ -200,6 +202,7 @@
   "counting…": "正在計算…",
   "Create": "建立",
   "Created": "建立日期",
+  "Creating \"{0}\"": "正在建立「{0}」",
   "Creating link for {0}…": "正在為 {0} 建立連結…",
   "Creating the document failed: {0}": "建立文件失敗：{0}",
   "Creating the document {0} failed": "建立文件 {0} 失敗",
@@ -242,6 +245,7 @@
   "Deleted {0} of {n} item.": {
     "other": "已刪除 {n} 個項目中的 {0} 個。"
   },
+  "Deleting as Administrator": "正在以系統管理員身分刪除",
   "Deleting as administrator is not available: {0}": "無法使用以管理員身分刪除功能：{0}",
   "Deleting inside {0} failed: {1}": "刪除 {0} 中的內容失敗：{1}",
   "Deleting {0} failed: {1}": "刪除 {0} 失敗：{1}",
@@ -302,7 +306,9 @@
   "Extract": "解壓縮",
   "Extract and Run": "解壓縮並執行",
   "Extract and Run needs the VirtualFS module, which this program was built without.": "解壓縮並執行需要 VirtualFS 模組，但此程式建置時未包含該模組。",
+  "Extract into existing": "解壓縮至現有資料夾",
   "Extract: the folder name is already taken": "解壓縮：資料夾名稱已被使用",
+  "Extracting": "正在解壓縮",
   "Extracting failed: the folder {0} cannot be created": "解壓縮失敗：無法建立資料夾 {0}",
   "Extracting needs the VirtualFS module, which this program was built without.": "解壓縮需要 VirtualFS 模組，但此程式建置時未包含該模組。",
   "Extracting {0} failed": "解壓縮 {0} 失敗",
@@ -408,6 +414,7 @@
   "Justify": "左右對齊",
   "KB": "KB",
   "Keep both": "保留兩者",
+  "Keep both extracts into a renamed folder; Extract into existing adds the archive's entries to the folder that is there.": "「保留兩者」會解壓縮至重新命名的資料夾；「解壓縮至現有資料夾」會將壓縮檔的內容加入已存在的資料夾。",
   "Keep both renames the pasted file to \"{0}\".": "「保留兩者」會將貼上的檔案重新命名為「{0}」。",
   "Keep proportions": "維持比例",
   "Keep the password, encrypted, for the next start and for the other applications. Otherwise only this application uses it, until it ends.": "以加密形式保留密碼，供下次啟動及其他應用程式使用。否則僅由此應用程式使用，直到其結束。",
@@ -779,6 +786,9 @@
   "unknown error": "未知的錯誤",
   "Unlock": "解鎖",
   "Unlock: show this password-protected file (Enter)": "解鎖：顯示這個受密碼保護的檔案（Enter）",
+  "Unpacking \"{0}\"": "正在解壓縮「{0}」",
+  "Unpacking \"{0}\" ({1} of {2})": "正在解壓縮「{0}」（{1}/{2}）",
+  "Unpacking \"{0}\" to run \"{1}\"": "正在解壓縮「{0}」以執行「{1}」",
   "Unpin": "取消釘選",
   "Unread": "未讀",
   "Unsaved changes": "未儲存的變更",
@@ -819,6 +829,10 @@
   "Width": "寬度",
   "Window": "視窗",
   "Windows asks you to confirm once, at the end, for every item handed to the administrator.": "對於所有交由管理員處理的項目，Windows 只會在最後要求確認一次。",
+  "Windows is asking for permission to delete \"{0}\".": "Windows 正在要求刪除「{0}」的權限。",
+  "Windows is asking for permission to delete {n} item.": {
+    "other": "Windows 正在要求刪除 {n} 個項目的權限。"
+  },
   "Working": "處理中",
   "wrong number of results": "結果數量不符",
   "Yellow": "黃色",

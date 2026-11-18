@@ -74,6 +74,7 @@
   "Apply to all later failures": "应用于后续所有失败",
   "Apply to all later files in use": "应用于后续所有正在使用的文件",
   "Apply to all later permission failures": "应用于后续所有权限失败",
+  "Apply to all remaining archives": "应用于其余所有压缩包",
   "Apply to all remaining write-protected items": "应用于其余所有受写保护的项目",
   "Apply to the {n} remaining conflict": {
     "other": "应用于其余全部 {n} 个冲突"
@@ -159,6 +160,7 @@
   "Compare ({0})": "比较（{0}）",
   "Compare with": "比较对象",
   "Compress": "压缩",
+  "Compressing": "正在压缩",
   "Compressing into {0} failed": "压缩到 {0} 失败",
   "Compressing needs the VirtualFS module, which this program was built without.": "压缩需要 VirtualFS 模块，但此程序在构建时未包含该模块。",
   "Computer": "计算机",
@@ -200,6 +202,7 @@
   "counting…": "正在计算…",
   "Create": "创建",
   "Created": "创建时间",
+  "Creating \"{0}\"": "正在创建“{0}”",
   "Creating link for {0}…": "正在为 {0} 创建链接…",
   "Creating the document failed: {0}": "创建文档失败：{0}",
   "Creating the document {0} failed": "创建文档 {0} 失败",
@@ -242,6 +245,7 @@
   "Deleted {0} of {n} item.": {
     "other": "已删除 {n} 个项目中的 {0} 个。"
   },
+  "Deleting as Administrator": "正在以管理员身份删除",
   "Deleting as administrator is not available: {0}": "以管理员身份删除不可用：{0}",
   "Deleting inside {0} failed: {1}": "删除 {0} 中的内容失败：{1}",
   "Deleting {0} failed: {1}": "删除 {0} 失败：{1}",
@@ -302,7 +306,9 @@
   "Extract": "解压",
   "Extract and Run": "解压并运行",
   "Extract and Run needs the VirtualFS module, which this program was built without.": "解压并运行需要 VirtualFS 模块，但此程序在构建时未包含该模块。",
+  "Extract into existing": "解压到现有文件夹",
   "Extract: the folder name is already taken": "解压：该文件夹名称已被使用",
+  "Extracting": "正在解压",
   "Extracting failed: the folder {0} cannot be created": "解压失败：无法创建文件夹 {0}",
   "Extracting needs the VirtualFS module, which this program was built without.": "解压需要 VirtualFS 模块，但此程序在构建时未包含该模块。",
   "Extracting {0} failed": "解压 {0} 失败",
@@ -408,6 +414,7 @@
   "Justify": "两端对齐",
   "KB": "KB",
   "Keep both": "保留两者",
+  "Keep both extracts into a renamed folder; Extract into existing adds the archive's entries to the folder that is there.": "“保留两者”会解压到重命名的文件夹；“解压到现有文件夹”会把压缩包的内容添加到已有的文件夹中。",
   "Keep both renames the pasted file to \"{0}\".": "“保留两者”会将粘贴的文件重命名为“{0}”。",
   "Keep proportions": "保持比例",
   "Keep the password, encrypted, for the next start and for the other applications. Otherwise only this application uses it, until it ends.": "以加密形式保存密码，供下次启动及其他应用程序使用。否则仅由此应用程序使用，直至其退出。",
@@ -779,6 +786,9 @@
   "unknown error": "未知错误",
   "Unlock": "解锁",
   "Unlock: show this password-protected file (Enter)": "解锁：显示此受密码保护的文件（回车）",
+  "Unpacking \"{0}\"": "正在解压“{0}”",
+  "Unpacking \"{0}\" ({1} of {2})": "正在解压“{0}”（{1}/{2}）",
+  "Unpacking \"{0}\" to run \"{1}\"": "正在解压“{0}”以运行“{1}”",
   "Unpin": "取消固定",
   "Unread": "未读",
   "Unsaved changes": "未保存的更改",
@@ -819,6 +829,10 @@
   "Width": "宽度",
   "Window": "窗口",
   "Windows asks you to confirm once, at the end, for every item handed to the administrator.": "对于所有交由管理员处理的项目，Windows 只会在最后请求确认一次。",
+  "Windows is asking for permission to delete \"{0}\".": "Windows 正在请求删除“{0}”的权限。",
+  "Windows is asking for permission to delete {n} item.": {
+    "other": "Windows 正在请求删除 {n} 个项目的权限。"
+  },
   "Working": "正在处理",
   "wrong number of results": "结果数量不符",
   "Yellow": "黄色",

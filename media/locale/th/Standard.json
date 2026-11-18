@@ -74,6 +74,7 @@
   "Apply to all later failures": "ใช้กับความล้มเหลวทั้งหมดหลังจากนี้",
   "Apply to all later files in use": "ใช้กับไฟล์ที่กำลังถูกใช้งานทั้งหมดหลังจากนี้",
   "Apply to all later permission failures": "ใช้กับความล้มเหลวด้านสิทธิ์ทั้งหมดหลังจากนี้",
+  "Apply to all remaining archives": "ใช้กับไฟล์บีบอัดที่เหลือทั้งหมด",
   "Apply to all remaining write-protected items": "ใช้กับรายการที่ได้รับการป้องกันการเขียนที่เหลือทั้งหมด",
   "Apply to the {n} remaining conflict": {
     "other": "ใช้กับความขัดแย้งที่เหลือทั้งหมด {n} รายการ"
@@ -159,6 +160,7 @@
   "Compare ({0})": "เปรียบเทียบ ({0})",
   "Compare with": "เปรียบเทียบกับ",
   "Compress": "บีบอัด",
+  "Compressing": "กำลังบีบอัด",
   "Compressing into {0} failed": "การบีบอัดเป็น {0} ล้มเหลว",
   "Compressing needs the VirtualFS module, which this program was built without.": "การบีบอัดต้องใช้โมดูล VirtualFS แต่โปรแกรมนี้ถูกบิลด์โดยไม่มีโมดูลดังกล่าว",
   "Computer": "คอมพิวเตอร์",
@@ -200,6 +202,7 @@
   "counting…": "กำลังนับ…",
   "Create": "สร้าง",
   "Created": "วันที่สร้าง",
+  "Creating \"{0}\"": "กำลังสร้าง “{0}”",
   "Creating link for {0}…": "กำลังสร้างลิงก์สำหรับ {0}…",
   "Creating the document failed: {0}": "การสร้างเอกสารล้มเหลว: {0}",
   "Creating the document {0} failed": "การสร้างเอกสาร {0} ล้มเหลว",
@@ -242,6 +245,7 @@
   "Deleted {0} of {n} item.": {
     "other": "ลบแล้ว {0} จาก {n} รายการ"
   },
+  "Deleting as Administrator": "กำลังลบในฐานะผู้ดูแลระบบ",
   "Deleting as administrator is not available: {0}": "ไม่สามารถใช้การลบในฐานะผู้ดูแลระบบได้: {0}",
   "Deleting inside {0} failed: {1}": "การลบภายใน {0} ล้มเหลว: {1}",
   "Deleting {0} failed: {1}": "การลบ {0} ล้มเหลว: {1}",
@@ -302,7 +306,9 @@
   "Extract": "แตกไฟล์",
   "Extract and Run": "แตกไฟล์และเรียกใช้",
   "Extract and Run needs the VirtualFS module, which this program was built without.": "การแตกไฟล์และเรียกใช้ต้องใช้โมดูล VirtualFS แต่โปรแกรมนี้ถูกบิลด์โดยไม่มีโมดูลดังกล่าว",
+  "Extract into existing": "แตกไฟล์ลงในโฟลเดอร์ที่มีอยู่",
   "Extract: the folder name is already taken": "แตกไฟล์: มีชื่อโฟลเดอร์นี้อยู่แล้ว",
+  "Extracting": "กำลังแตกไฟล์",
   "Extracting failed: the folder {0} cannot be created": "การแตกไฟล์ล้มเหลว: ไม่สามารถสร้างโฟลเดอร์ {0}",
   "Extracting needs the VirtualFS module, which this program was built without.": "การแตกไฟล์ต้องใช้โมดูล VirtualFS แต่โปรแกรมนี้ถูกบิลด์โดยไม่มีโมดูลดังกล่าว",
   "Extracting {0} failed": "การแตกไฟล์ {0} ล้มเหลว",
@@ -408,6 +414,7 @@
   "Justify": "จัดชิดขอบ",
   "KB": "KB",
   "Keep both": "เก็บทั้งสอง",
+  "Keep both extracts into a renamed folder; Extract into existing adds the archive's entries to the folder that is there.": "“เก็บทั้งสอง” จะแตกไฟล์ลงในโฟลเดอร์ที่เปลี่ยนชื่อ ส่วน “แตกไฟล์ลงในโฟลเดอร์ที่มีอยู่” จะเพิ่มเนื้อหาของไฟล์บีบอัดลงในโฟลเดอร์ที่มีอยู่แล้ว",
   "Keep both renames the pasted file to \"{0}\".": "“เก็บทั้งสอง” จะเปลี่ยนชื่อไฟล์ที่วางเป็น “{0}”",
   "Keep proportions": "คงสัดส่วน",
   "Keep the password, encrypted, for the next start and for the other applications. Otherwise only this application uses it, until it ends.": "เก็บรหัสผ่านแบบเข้ารหัสไว้สำหรับการเริ่มครั้งถัดไปและสำหรับแอปพลิเคชันอื่น มิฉะนั้นจะมีเพียงแอปพลิเคชันนี้ที่ใช้รหัสผ่านจนกว่าจะปิดลง",
@@ -779,6 +786,9 @@
   "unknown error": "ข้อผิดพลาดที่ไม่รู้จัก",
   "Unlock": "ปลดล็อก",
   "Unlock: show this password-protected file (Enter)": "ปลดล็อก: แสดงไฟล์ที่ป้องกันด้วยรหัสผ่านนี้ (Enter)",
+  "Unpacking \"{0}\"": "กำลังแตก “{0}”",
+  "Unpacking \"{0}\" ({1} of {2})": "กำลังแตก “{0}” ({1} จาก {2})",
+  "Unpacking \"{0}\" to run \"{1}\"": "กำลังแตก “{0}” เพื่อเรียกใช้ “{1}”",
   "Unpin": "เลิกปักหมุด",
   "Unread": "ยังไม่ได้อ่าน",
   "Unsaved changes": "การเปลี่ยนแปลงที่ยังไม่ได้บันทึก",
@@ -819,6 +829,10 @@
   "Width": "ความกว้าง",
   "Window": "หน้าต่าง",
   "Windows asks you to confirm once, at the end, for every item handed to the administrator.": "Windows จะขอให้คุณยืนยันเพียงครั้งเดียวในตอนท้าย สำหรับทุกรายการที่ส่งต่อให้ผู้ดูแลระบบ",
+  "Windows is asking for permission to delete \"{0}\".": "Windows กำลังขอสิทธิ์ในการลบ “{0}”",
+  "Windows is asking for permission to delete {n} item.": {
+    "other": "Windows กำลังขอสิทธิ์ในการลบ {n} รายการ"
+  },
   "Working": "กำลังดำเนินการ",
   "wrong number of results": "จำนวนผลลัพธ์ไม่ถูกต้อง",
   "Yellow": "เหลือง",

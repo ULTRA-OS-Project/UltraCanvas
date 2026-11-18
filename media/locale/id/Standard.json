@@ -74,6 +74,7 @@
   "Apply to all later failures": "Terapkan ke semua kegagalan berikutnya",
   "Apply to all later files in use": "Terapkan ke semua file berikutnya yang sedang digunakan",
   "Apply to all later permission failures": "Terapkan ke semua kegagalan izin berikutnya",
+  "Apply to all remaining archives": "Terapkan ke semua arsip yang tersisa",
   "Apply to all remaining write-protected items": "Terapkan ke semua item tersisa yang dilindungi dari penulisan",
   "Apply to the {n} remaining conflict": {
     "other": "Terapkan ke semua {n} konflik yang tersisa"
@@ -159,6 +160,7 @@
   "Compare ({0})": "Perbandingan ({0})",
   "Compare with": "Bandingkan dengan",
   "Compress": "Kompres",
+  "Compressing": "Mengompresi",
   "Compressing into {0} failed": "Kompresi ke {0} gagal",
   "Compressing needs the VirtualFS module, which this program was built without.": "Kompresi memerlukan modul VirtualFS, tetapi program ini dibuat tanpa modul tersebut.",
   "Computer": "Komputer",
@@ -200,6 +202,7 @@
   "counting…": "menghitung…",
   "Create": "Buat",
   "Created": "Dibuat",
+  "Creating \"{0}\"": "Membuat \"{0}\"",
   "Creating link for {0}…": "Membuat tautan untuk {0}…",
   "Creating the document failed: {0}": "Pembuatan dokumen gagal: {0}",
   "Creating the document {0} failed": "Pembuatan dokumen {0} gagal",
@@ -242,6 +245,7 @@
   "Deleted {0} of {n} item.": {
     "other": "{0} dari {n} item dihapus."
   },
+  "Deleting as Administrator": "Menghapus sebagai Administrator",
   "Deleting as administrator is not available: {0}": "Penghapusan sebagai administrator tidak tersedia: {0}",
   "Deleting inside {0} failed: {1}": "Menghapus di dalam {0} gagal: {1}",
   "Deleting {0} failed: {1}": "Menghapus {0} gagal: {1}",
@@ -302,7 +306,9 @@
   "Extract": "Ekstrak",
   "Extract and Run": "Ekstrak dan Jalankan",
   "Extract and Run needs the VirtualFS module, which this program was built without.": "Ekstrak dan Jalankan memerlukan modul VirtualFS, tetapi program ini dibuat tanpa modul tersebut.",
+  "Extract into existing": "Ekstrak ke yang ada",
   "Extract: the folder name is already taken": "Ekstrak: nama folder sudah digunakan",
+  "Extracting": "Mengekstrak",
   "Extracting failed: the folder {0} cannot be created": "Ekstraksi gagal: folder {0} tidak dapat dibuat",
   "Extracting needs the VirtualFS module, which this program was built without.": "Ekstraksi memerlukan modul VirtualFS, tetapi program ini dibuat tanpa modul tersebut.",
   "Extracting {0} failed": "Ekstraksi {0} gagal",
@@ -408,6 +414,7 @@
   "Justify": "Rata kanan-kiri",
   "KB": "KB",
   "Keep both": "Simpan keduanya",
+  "Keep both extracts into a renamed folder; Extract into existing adds the archive's entries to the folder that is there.": "Simpan keduanya mengekstrak ke folder dengan nama baru; Ekstrak ke yang ada menambahkan isi arsip ke folder yang sudah ada.",
   "Keep both renames the pasted file to \"{0}\".": "\"Simpan keduanya\" mengganti nama file yang ditempel menjadi \"{0}\".",
   "Keep proportions": "Pertahankan proporsi",
   "Keep the password, encrypted, for the next start and for the other applications. Otherwise only this application uses it, until it ends.": "Simpan kata sandi dalam bentuk terenkripsi untuk mulai berikutnya dan untuk aplikasi lain. Jika tidak, hanya aplikasi ini yang menggunakannya, hingga aplikasi ini ditutup.",
@@ -779,6 +786,9 @@
   "unknown error": "kesalahan tidak diketahui",
   "Unlock": "Buka kunci",
   "Unlock: show this password-protected file (Enter)": "Buka kunci: tampilkan file yang dilindungi kata sandi ini (Enter)",
+  "Unpacking \"{0}\"": "Membongkar \"{0}\"",
+  "Unpacking \"{0}\" ({1} of {2})": "Membongkar \"{0}\" ({1} dari {2})",
+  "Unpacking \"{0}\" to run \"{1}\"": "Membongkar \"{0}\" untuk menjalankan \"{1}\"",
   "Unpin": "Lepas sematan",
   "Unread": "Belum dibaca",
   "Unsaved changes": "Perubahan belum disimpan",
@@ -819,6 +829,10 @@
   "Width": "Lebar",
   "Window": "Jendela",
   "Windows asks you to confirm once, at the end, for every item handed to the administrator.": "Windows meminta Anda mengonfirmasi satu kali, di akhir, untuk semua item yang diserahkan ke administrator.",
+  "Windows is asking for permission to delete \"{0}\".": "Windows meminta izin untuk menghapus \"{0}\".",
+  "Windows is asking for permission to delete {n} item.": {
+    "other": "Windows meminta izin untuk menghapus {n} item."
+  },
   "Working": "Sedang bekerja",
   "wrong number of results": "jumlah hasil salah",
   "Yellow": "Kuning",

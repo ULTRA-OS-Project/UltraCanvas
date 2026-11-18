@@ -21,3 +21,11 @@
     "Audio", "3D", "Docs", "Spreadsheets", "Bar size" and "Hidden files"
     move up from the UltraFiler / UltraDesktop / ChatCube / demo catalogues
     and the Computer base set, keeping their translations.
+  - **`UltraCanvasFilerWidget::PreviewTypeText(kind)`** (new): a preview kind's
+    name in the reader's language, shared by the Display submenus and an
+    application's settings; `PreviewTypeLabel` stays the English name.
+  - The extract-conflict dialog (captions, note, "Apply to all remaining
+    archives", Keep both / Extract into existing / Skip / Stop) and the
+    progress window of a pack, an unpack, Extract and Run and an
+    administrator delete (titles, "Unpacking \"{0}\" (1 of 3)" captions,
+    the Windows permission line) are translated too.

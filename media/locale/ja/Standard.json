@@ -74,6 +74,7 @@
   "Apply to all later failures": "以降のすべてのエラーに適用",
   "Apply to all later files in use": "以降の使用中のすべてのファイルに適用",
   "Apply to all later permission failures": "以降のすべての権限エラーに適用",
+  "Apply to all remaining archives": "残りのすべてのアーカイブに適用",
   "Apply to all remaining write-protected items": "残りの書き込み禁止の項目すべてに適用",
   "Apply to the {n} remaining conflict": {
     "other": "残りの {n} 件の競合すべてに適用"
@@ -159,6 +160,7 @@
   "Compare ({0})": "比較 ({0})",
   "Compare with": "比較対象",
   "Compress": "圧縮",
+  "Compressing": "圧縮中",
   "Compressing into {0} failed": "{0} への圧縮に失敗しました",
   "Compressing needs the VirtualFS module, which this program was built without.": "圧縮には VirtualFS モジュールが必要ですが、このプログラムはこのモジュールなしでビルドされています。",
   "Computer": "コンピューター",
@@ -200,6 +202,7 @@
   "counting…": "計算中…",
   "Create": "作成",
   "Created": "作成日時",
+  "Creating \"{0}\"": "「{0}」を作成中",
   "Creating link for {0}…": "{0} のリンクを作成しています…",
   "Creating the document failed: {0}": "ドキュメントの作成に失敗しました: {0}",
   "Creating the document {0} failed": "ドキュメント {0} の作成に失敗しました",
@@ -242,6 +245,7 @@
   "Deleted {0} of {n} item.": {
     "other": "{n} 個の項目のうち {0} 個を削除しました。"
   },
+  "Deleting as Administrator": "管理者として削除中",
   "Deleting as administrator is not available: {0}": "管理者として削除する機能は使用できません: {0}",
   "Deleting inside {0} failed: {1}": "{0} 内の削除に失敗しました: {1}",
   "Deleting {0} failed: {1}": "{0} の削除に失敗しました: {1}",
@@ -302,7 +306,9 @@
   "Extract": "展開",
   "Extract and Run": "展開して実行",
   "Extract and Run needs the VirtualFS module, which this program was built without.": "展開して実行するには VirtualFS モジュールが必要ですが、このプログラムはこのモジュールなしでビルドされています。",
+  "Extract into existing": "既存のフォルダーに展開",
   "Extract: the folder name is already taken": "展開: そのフォルダー名はすでに使われています",
+  "Extracting": "展開中",
   "Extracting failed: the folder {0} cannot be created": "展開に失敗しました: フォルダー {0} を作成できません",
   "Extracting needs the VirtualFS module, which this program was built without.": "展開には VirtualFS モジュールが必要ですが、このプログラムはこのモジュールなしでビルドされています。",
   "Extracting {0} failed": "{0} の展開に失敗しました",
@@ -408,6 +414,7 @@
   "Justify": "両端揃え",
   "KB": "KB",
   "Keep both": "両方を保持",
+  "Keep both extracts into a renamed folder; Extract into existing adds the archive's entries to the folder that is there.": "「両方を保持」は名前を変えたフォルダーに展開し、「既存のフォルダーに展開」はアーカイブの内容をすでにあるフォルダーに追加します。",
   "Keep both renames the pasted file to \"{0}\".": "「両方を保持」では、貼り付けるファイルの名前が「{0}」に変更されます。",
   "Keep proportions": "縦横比を保持",
   "Keep the password, encrypted, for the next start and for the other applications. Otherwise only this application uses it, until it ends.": "パスワードを暗号化して保持し、次回の起動時とほかのアプリケーションでも使用します。保持しない場合は、このアプリケーションが終了するまでこのアプリケーションだけが使用します。",
@@ -779,6 +786,9 @@
   "unknown error": "不明なエラー",
   "Unlock": "ロック解除",
   "Unlock: show this password-protected file (Enter)": "ロック解除: このパスワード保護されたファイルを表示 (Enter)",
+  "Unpacking \"{0}\"": "「{0}」を展開中",
+  "Unpacking \"{0}\" ({1} of {2})": "「{0}」を展開中 ({1}/{2})",
+  "Unpacking \"{0}\" to run \"{1}\"": "「{1}」を実行するために「{0}」を展開中",
   "Unpin": "ピン留めを外す",
   "Unread": "未読",
   "Unsaved changes": "未保存の変更",
@@ -819,6 +829,10 @@
   "Width": "幅",
   "Window": "ウィンドウ",
   "Windows asks you to confirm once, at the end, for every item handed to the administrator.": "管理者に渡されたすべての項目について、Windows は最後に 1 回だけ確認を求めます。",
+  "Windows is asking for permission to delete \"{0}\".": "Windows が「{0}」を削除する許可を求めています。",
+  "Windows is asking for permission to delete {n} item.": {
+    "other": "Windows が {n} 個の項目を削除する許可を求めています。"
+  },
   "Working": "処理中",
   "wrong number of results": "結果の数が一致しません",
   "Yellow": "黄",

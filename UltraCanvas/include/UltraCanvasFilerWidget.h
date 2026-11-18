@@ -1577,9 +1577,12 @@ namespace UltraCanvas {
         std::vector<std::string> GetDisabledDetailViewFormats() const;
         void SetDisabledDetailViewFormats(const std::vector<std::string>& exts);
 
-        // The menu label of a preview kind ("Vector graphics"), shared by the
-        // Display submenus and by an application listing the formats.
+        // The English name of a preview kind ("Vector graphics"): a stable
+        // name for tests, logs and identifiers - never shown as it is.
         static const char* PreviewTypeLabel(FilerPreviewType type);
+        // The same name in the reader's language (Tr), as the Display
+        // submenus show it - what an application listing the formats shows.
+        static std::string PreviewTypeText(FilerPreviewType type);
         // The eight kinds in the order the menus and lists show them.
         static const std::vector<FilerPreviewType>& AllPreviewTypes();
 
