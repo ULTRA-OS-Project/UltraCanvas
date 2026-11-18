@@ -1,5 +1,9 @@
 // Plugins/UltraIM/telegram/TelegramProvider.cpp
 // Telegram as an UltraIM provider, on TDLib's JSON interface
+// Version: 0.2.0 - the shared proxy setting reaches TDLib: told before its parameters (addProxy /
+//                  disableProxy), followed while the session is open, the proxies it no longer uses
+//                  taken out of its database; a proxy it cannot use fails the sign-in, or takes
+//                  Telegram off the network until the setting changes; "connecting to the proxy" names it
 // Version: 0.1.10 - TransferProgress while a photo, video, file or voice note goes out or comes in
 // Version: 0.1.9 - SendVoiceNote: an Ogg Opus recording as Telegram's own voice message, with its length
 // Version: 0.1.8 - a supergroup's members (the first 200), its creator and its member count
@@ -13,7 +17,7 @@
 // Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
 //                  answer times out instead of hanging; TDLib's own log in the data folder
 // Version: 0.1.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "TelegramProvider.h"
@@ -24,6 +28,9 @@
 #include "UltraCanvasTextUtils.h"
 #include "UltraCrypt/UltraCryptCore.h"
 #include "UltraIM/UltraIMCore.h"
+#ifdef ULTRACANVAS_HAS_NET
+#include "UltraNet/UltraNetCore.h"      // the proxy setting (UltraNet_ResolveProxy)
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -260,31 +267,48 @@ void TelegramProvider::DisarmStep() {
     watchCv_.notify_all();
 }
 
+// The thread also looks at the proxy setting while a session is open
+// (FollowProxy): whichever of the two is due next wakes it.
 void TelegramProvider::WatchdogLoop() {
     std::unique_lock<std::mutex> lock(watchMutex_);
     while (!watchStop_) {
-        if (!watchArmed_) {
-            watchCv_.wait(lock, [this]() { return watchStop_ || watchArmed_; });
+        const auto now = std::chrono::steady_clock::now();
+        if (watchArmed_ && now >= watchDeadline_) {
+            // Still armed and the deadline has passed.
+            const std::string what = watchWhat_;
+            watchArmed_ = false;
+            lock.unlock();
+            OnStepTimeout(what);
+            lock.lock();
             continue;
         }
-        if (watchCv_.wait_until(lock, watchDeadline_, [this]() { return watchStop_ || !watchArmed_; })) continue;
-        // Still armed and the deadline has passed.
-        const std::string what = watchWhat_;
-        watchArmed_ = false;
-        lock.unlock();
-        OnStepTimeout(what);
-        lock.lock();
+        if (watchProxy_ && now >= proxyCheckAt_) {
+            proxyCheckAt_ = now + std::chrono::milliseconds(proxyCheckMs_);
+            lock.unlock();
+            FollowProxy();
+            lock.lock();
+            continue;
+        }
+        if (!watchArmed_ && !watchProxy_) {
+            watchCv_.wait(lock);
+            continue;
+        }
+        auto next = watchArmed_ ? watchDeadline_ : proxyCheckAt_;
+        if (watchArmed_ && watchProxy_ && proxyCheckAt_ < next) next = proxyCheckAt_;
+        watchCv_.wait_until(lock, next);
     }
 }
 
 std::string TelegramProvider::ConnectionText() const {
-    std::string connection;
+    std::string connection, proxy;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         connection = connection_;
+        if (proxy_.kind == ProxyChoice::Kind::Through) proxy = proxy_.text;
     }
     if (connection == "connectionStateWaitingForNetwork") return "TDLib is waiting for the network";
-    if (connection == "connectionStateConnectingToProxy") return "TDLib is connecting to the proxy";
+    if (connection == "connectionStateConnectingToProxy")
+        return "TDLib is connecting to the proxy" + (proxy.empty() ? std::string() : " " + proxy);
     if (connection == "connectionStateConnecting") return "TDLib is still connecting to Telegram's servers";
     if (connection == "connectionStateUpdating") return "TDLib is fetching updates";
     if (connection == "connectionStateReady") return "TDLib is connected to Telegram";
@@ -391,6 +415,174 @@ void TelegramProvider::ResendAuthCode(UltraIMResultCallback onResult) {
         if (IsError(answer)) finish(UltraIMResult::Error(UltraIMResultCode::AuthFailed, ErrorText(answer)));
         else finish(UltraIMResult::Ok());
     });
+}
+
+// ============================================================================
+// THE PROXY
+// TDLib connects by itself: nothing of UltraNet's is between it and Telegram,
+// so the proxy the applications share reached everything in ChatCube but
+// this. It is told to TDLib here - see TelegramProvider.h.
+// ============================================================================
+
+TelegramProvider::ProxyChoice TelegramProvider::ChooseProxy() {
+    ProxyChoice choice;
+#ifdef ULTRACANVAS_HAS_NET
+    // Telegram's servers are reached on port 443, as an https address is: the
+    // proxy such an address takes carries them - the web proxy, by CONNECT,
+    // where the system names no SOCKS proxy (what Telegram's own desktop
+    // application does with the system's settings). A name of Telegram's
+    // stands for all of them in the exceptions and in a PAC script.
+    const UltraNetProxyConfig found = UltraNet_ResolveProxy("https://telegram.org:443/");
+    if (!found.IsEnabled() || found.host.empty()) return choice;
+    choice.text = UltraNet_DescribeProxy(found);
+    if (found.type != UltraNetProxyType::Socks5 && found.type != UltraNetProxyType::Http) {
+        choice.kind = ProxyChoice::Kind::Unusable;
+        choice.text = "Telegram cannot connect through the proxy " + choice.text +
+                      ": it takes a SOCKS 5 or an HTTP proxy. Choose one of those in the proxy settings.";
+        return choice;
+    }
+    choice.kind = ProxyChoice::Kind::Through;
+    choice.proxy.kind = found.type == UltraNetProxyType::Http ? Request::Proxy::Kind::Http : Request::Proxy::Kind::Socks5;
+    choice.proxy.server = found.host;
+    choice.proxy.port = static_cast<int32_t>(found.port);
+    choice.proxy.username = found.credentials.username;
+    choice.proxy.password = found.credentials.password;
+#endif
+    return choice;
+}
+
+bool TelegramProvider::StartProxy() {
+    const ProxyChoice choice = ChooseProxy();
+    if (choice.kind == ProxyChoice::Kind::Unusable) {
+        debugOutput << "[Telegram] " << choice.text << std::endl;
+        Finish(UltraIMResult::Error(UltraIMResultCode::Unsupported, choice.text));
+        SetState(UltraIMConnectionState::Error, choice.text);
+        return false;
+    }
+    {
+        std::lock_guard<std::recursive_mutex> order(proxyOrder_);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            proxyTold_ = true;
+            proxyTrouble_.clear();
+        }
+        TellProxy(choice);
+    }
+    WatchProxy(true);
+    return true;
+}
+
+void TelegramProvider::FollowProxy() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!proxyTold_) return;
+    }
+    const ProxyChoice choice = ChooseProxy();      // may ask the operating system: no lock held
+    std::string trouble;
+    {
+        std::lock_guard<std::recursive_mutex> order(proxyOrder_);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!proxyTold_ || choice == proxy_) return;
+        }
+        trouble = TellProxy(choice);
+    }
+    if (!trouble.empty()) SetState(UltraIMConnectionState::Error, trouble);
+}
+
+void TelegramProvider::WatchProxy(bool on) {
+    {
+        std::lock_guard<std::mutex> lock(watchMutex_);
+        watchProxy_ = on;
+        proxyCheckAt_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(proxyCheckMs_);
+    }
+    watchCv_.notify_all();
+}
+
+std::string TelegramProvider::TellProxy(const ProxyChoice& choice) {
+    uint64_t serial = 0;
+    bool wasOff = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        proxy_ = choice;
+        serial = ++proxySerial_;
+        wasOff = !proxyTrouble_.empty();
+        proxyTrouble_ = choice.kind == ProxyChoice::Kind::Unusable ? choice.text : std::string();
+    }
+    const std::shared_ptr<TdClient> client = Client();
+    if (choice.kind == ProxyChoice::Kind::Unusable) {
+        // Not directly instead: off the network until the setting names a
+        // proxy TDLib can use.
+        debugOutput << "[Telegram] off the network: " << choice.text << std::endl;
+        client->Send(Request::SetNetworkAvailable(false));
+        return choice.text;
+    }
+    debugOutput << "[Telegram] proxy: "
+                << (choice.kind == ProxyChoice::Kind::Through ? choice.text : std::string("none, connecting directly"))
+                << std::endl;
+    auto answered = [this, serial](const TdObject& answer) { OnProxyAnswer(serial, answer); };
+    if (choice.kind == ProxyChoice::Kind::Through) client->Send(Request::AddProxy(choice.proxy), answered);
+    else client->Send(Request::DisableProxy(), answered);
+    if (wasOff) client->Send(Request::SetNetworkAvailable(true));
+    return std::string();
+}
+
+void TelegramProvider::OnProxyAnswer(uint64_t serial, const TdObject& answer) {
+    std::string trouble;
+    {
+        std::lock_guard<std::recursive_mutex> order(proxyOrder_);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!proxyTold_ || serial != proxySerial_) return;     // a newer telling stands, or the session ended
+            if (IsError(answer)) {
+                // TDLib would go on as it was - directly, or through a proxy
+                // it kept - so it is taken off the network instead.
+                trouble = "Telegram's library did not take the proxy" +
+                          (proxy_.kind == ProxyChoice::Kind::Through ? " " + proxy_.text : std::string()) + ": " +
+                          ErrorText(answer);
+                proxyTrouble_ = trouble;
+            }
+        }
+        if (trouble.empty()) {
+            // The one in use (0: none, after disableProxy) stays in TDLib's
+            // database; the rest go. An added one without an id cannot be
+            // told from the rest: then they all stay.
+            const bool added = TdType(answer) != "ok";
+            const int64_t keepId = added ? TdInt(answer["id"]) : 0;
+            if (added && !keepId) return;
+            Client()->Send(Request::GetProxies(),
+                           [this, serial, keepId](const TdObject& list) { OnProxyList(serial, keepId, list); });
+            return;
+        }
+        debugOutput << "[Telegram] off the network: " << trouble << std::endl;
+        Client()->Send(Request::SetNetworkAvailable(false));
+    }
+    Finish(UltraIMResult::Error(UltraIMResultCode::NetworkError, trouble));
+    SetState(UltraIMConnectionState::Error, trouble);
+}
+
+void TelegramProvider::OnProxyList(uint64_t serial, int64_t keepId, const TdObject& list) {
+    std::lock_guard<std::recursive_mutex> order(proxyOrder_);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!proxyTold_ || serial != proxySerial_) return;
+    }
+    const std::shared_ptr<TdClient> client = Client();
+    for (const auto& entry : list["proxies"].GetElements()) {
+        const int64_t id = TdInt(entry["id"]);
+        if (id && id != keepId) client->Send(Request::RemoveProxy(static_cast<int32_t>(id)));
+    }
+}
+
+std::string TelegramProvider::ProxyTrouble() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return proxyTrouble_;
+}
+
+void TelegramProvider::SetOnline() {
+    const std::string trouble = ProxyTrouble();
+    if (trouble.empty()) SetState(UltraIMConnectionState::Connected);
+    else SetState(UltraIMConnectionState::Error, trouble);
 }
 
 // ============================================================================
@@ -587,10 +779,15 @@ void TelegramProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResu
 
 void TelegramProvider::SignOut() {
     DisarmStep();
+    WatchProxy(false);
     std::shared_ptr<TdClient> client;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         closing_ = true;
+        // The next session is told the proxy afresh; this one's answers are let go.
+        proxyTold_ = false;
+        ++proxySerial_;
+        proxyTrouble_.clear();
     }
     {
         std::lock_guard<std::mutex> lock(clientMutex_);
@@ -667,6 +864,9 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
             SetState(UltraIMConnectionState::Error, "The vault does not keep Telegram's key");
             return;
         }
+        // The proxy first: TDLib keeps it until the parameters are in and
+        // applies it with them, so its first connection is already through it.
+        if (!StartProxy()) return;
         debugOutput << "[Telegram] setTdlibParameters: database " << p.databaseDirectory
                     << (p.useTestDc ? " (test servers)" : "") << std::endl;
         ArmStep("setTdlibParameters");
@@ -788,7 +988,7 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
                 if (!u.phone.empty() && phone_.empty()) phone_ = "+" + u.phone;
             }
             SaveSession(id);
-            SetState(UltraIMConnectionState::Connected);
+            SetOnline();
             Finish(UltraIMResult::Ok());
             // The main list: loadChats until TDLib says it has all (404).
             auto more = std::make_shared<std::function<void()>>();
@@ -838,10 +1038,13 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
     if (type == "updateConnectionState") {
         const std::string s = TdType(update["state"]);
         bool ready = false;
+        std::string trouble, proxy;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             ready = ready_ && myId_ != 0;
             connection_ = s;
+            trouble = proxyTrouble_;
+            if (proxy_.kind == ProxyChoice::Kind::Through) proxy = proxy_.text;
         }
         if (!ready) {
             // Still signing in: say what TDLib is doing, so a sign-in that
@@ -850,7 +1053,10 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
             return;
         }
         if (s == "connectionStateReady") SetState(UltraIMConnectionState::Connected);
+        else if (!trouble.empty()) SetState(UltraIMConnectionState::Error, trouble);    // off the network, and why
         else if (s == "connectionStateWaitingForNetwork") SetState(UltraIMConnectionState::Reconnecting, "Waiting for the network");
+        else if (s == "connectionStateConnectingToProxy")
+            SetState(UltraIMConnectionState::Reconnecting, "Connecting to the proxy" + (proxy.empty() ? std::string() : " " + proxy));
         else SetState(UltraIMConnectionState::Reconnecting);
         return;
     }

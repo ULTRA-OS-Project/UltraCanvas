@@ -753,6 +753,33 @@ process.
   answer within 45 s (`SetStepTimeout` for tests) fails with `Timeout`
   saying what TDLib was doing, instead of leaving the application waiting;
   the step's state change still arrives as an event if it completes later.
+- **The proxy:** TDLib connects by itself - nothing of UltraNet's is
+  between it and Telegram - so the provider tells it the proxy every
+  application shares (`UltraCanvasProxySettings.h`; what
+  `UltraNet_ResolveProxy` answers for `https://telegram.org:443/`, Telegram's
+  servers being reached on port 443): the proxy chosen in the settings, the
+  operating system's (its web proxy, by CONNECT, where it names no SOCKS
+  proxy), or none - and none for Telegram when the exceptions name
+  `telegram.org`. A SOCKS 5 or an HTTP proxy goes to TDLib as `addProxy`
+  with its sign-in, no proxy as `disableProxy`, and both **before**
+  `setTdlibParameters`: TDLib holds them until the parameters are in, so its
+  first connection is already the right one. While the session is open the
+  setting is looked at again every three seconds (`SetProxyCheckInterval`
+  for tests) and TDLib told when it has changed - it reconnects by itself,
+  and the state reads `Reconnecting` with "Connecting to the proxy
+  socks5h://127.0.0.1:10808" until it is through. TDLib keeps the proxy it
+  uses in its own database (encrypted with the vault's key), password
+  included, also one the proxy settings were told not to remember; every
+  other proxy it kept is removed (`getProxies`, `removeProxy`) each time it
+  is told one. TDLib has no SOCKS 4 and no proxy reached over TLS: with
+  such a setting a sign-in fails at once with `Unsupported`, naming the
+  proxy, and nothing is started; set while signed in - or when TDLib
+  refuses the proxy it is given - Telegram is taken off the network
+  (`setNetworkType` none, state `Error` saying why) rather than left to
+  connect directly, and comes back by itself once the setting names a proxy
+  it can use. `addProxy` is written in both forms it has had (`proxy` as an
+  object, which TDLib 1.8.69 takes, and its fields beside `enable`, as
+  before), since TDLib ignores the fields it does not know.
 - **Diagnostics:** the provider writes what it sends and receives (object
   types and TDLib's errors, never a phone number, code, password or message)
   to the framework's debug stream (`ULTRACANVAS_DEBUG_LOG`, ChatCube
@@ -816,10 +843,14 @@ libtdjson stand-in that keeps a small Telegram in memory (several providers
 in one process talk through it; files - profile photos, photos, videos and
 documents sent, `downloadFile` - as paths, nothing read or written;
 `FAKE_TDJSON_ACCOUNTS` and an `echobot`
-account for trying ChatCube on it); `Tests/UltraIM/TelegramTdlibTests.cpp`
+account for trying ChatCube on it; the proxy requests kept per database
+directory, `fakeProxyState` to read them); `Tests/UltraIM/TelegramTdlibTests.cpp`
 hands every request the provider builds to the real TDLib, offline - it
 answers a request it cannot parse at once, so anything else means TDLib's
-names and fields are right. The library is the one the configure step
+names and fields are right - and holds the proxy requests to more than
+that, since a wrongly shaped `addProxy` parses and adds nothing: a proxy
+told before the parameters is the one in use after them, and is listed,
+replaced, turned off and removed. The library is the one the configure step
 fetched, or the one `ULTRAIM_TDJSON_PATH` names; CI sets
 `ULTRAIM_TEST_TDLIB_REQUIRED`, so no library there is a failure.
 

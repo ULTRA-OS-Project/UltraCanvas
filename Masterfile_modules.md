@@ -3014,7 +3014,10 @@ Telegram (`UltraCanvas/Plugins/UltraIM/telegram/`, module `ultraim_telegram`)
 on TDLib's JSON interface, loaded at run time (not linked): sign-in in steps
 (`UltraIMAuthStep`, result `NeedsInput`), the main chat list, private chats
 and groups, replies, edits, deletion, read marks, typing, presence, history,
-people by username or phone number. Provider: Mastodon
+people by username or phone number; TDLib connects by itself, so the
+provider tells it the proxy the applications share (`addProxy` /
+`disableProxy` before its parameters, and again when the setting changes).
+Provider: Mastodon
 (`UltraCanvas/Plugins/UltraIM/mastodon/`, module `ultraim_mastodon`): the
 direct messages of a Mastodon server over its REST API - browser sign-in
 (OAuth with PKCE, `UltraIMAuthStep::Browser`), a chat per set of people

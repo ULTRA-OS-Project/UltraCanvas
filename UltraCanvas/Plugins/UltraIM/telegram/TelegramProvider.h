@@ -8,7 +8,12 @@
 // for the session, the chats and the history. Chats of
 // the main list, private chats and groups, text with replies, edits,
 // deletion, read receipts, typing, presence, history, finding people by
-// username or phone number, new groups.
+// username or phone number, new groups. TDLib's networking is its own, so
+// the proxy every UltraCanvas application connects through
+// (UltraCanvasProxySettings.h) is handed to it, and again when it changes.
+// Version: 0.2.0 - the shared proxy setting followed: TDLib told the proxy before it connects (addProxy /
+//                  disableProxy) and when the setting changes; off the network while the setting names
+//                  a proxy TDLib cannot use
 // Version: 0.1.9 - TransferProgress from updateFile (remote.uploaded_size, local.downloaded_size)
 // Version: 0.1.8 - SendVoiceNote (inputMessageVoiceNote); the VoiceNotes capability
 // Version: 0.1.7 - a supergroup's members too: the first 200 (getSupergroupMembers), its creator, and how many
@@ -23,11 +28,12 @@
 // Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
 //                  answer times out instead of hanging; TDLib's own log in the data folder
 // Version: 0.1.0
-// Last Modified: 2026-11-13
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "TdJson.h"
+#include "TelegramRequests.h"
 
 #include "UltraIM/UltraIMPlugins.h"
 #include "UltraVault/UltraVaultDeviceKeyVault.h"
@@ -145,6 +151,8 @@ public:
     // How long a sign-in step waits for TDLib's answer before it fails with
     // Timeout (the network is down, say, and TDLib keeps trying in silence).
     void SetStepTimeout(int ms) { stepTimeoutMs_ = ms; }
+    // How often the proxy setting is looked at again while a session is open.
+    void SetProxyCheckInterval(int ms) { proxyCheckMs_ = ms; }
 
 private:
     enum class ChatKind { Private, BasicGroup, Supergroup, Channel, Secret };
@@ -221,6 +229,44 @@ private:
     void DisarmStep();
     void WatchdogLoop();
     void OnStepTimeout(const std::string& what);
+
+    // ---- the proxy ------------------------------------------------------------------
+    // TDLib connects by itself, past UltraNet: left alone it reaches Telegram
+    // directly whatever the proxy settings say. So what the setting says for
+    // Telegram (UltraNet_ResolveProxy - the proxy chosen, the operating
+    // system's, or none) is told to TDLib before its parameters, which is
+    // before its first connection, and again whenever the setting has
+    // changed: the watchdog thread looks every proxyCheckMs_. TDLib keeps the
+    // proxy in its database (encrypted, the password with it); every other
+    // one it kept is taken out.
+    struct ProxyChoice {
+        enum class Kind { Direct, Through, Unusable };
+        Kind           kind = Kind::Direct;
+        Request::Proxy proxy;      // Through: what TDLib is given
+        std::string    text;       // "socks5h://127.0.0.1:10808"; Unusable: why, for the person
+
+        bool operator==(const ProxyChoice&) const = default;
+    };
+    static ProxyChoice ChooseProxy();
+    // Receive thread, before setTdlibParameters. False - the sign-in failed,
+    // saying why - when the setting names a proxy TDLib cannot use (it takes
+    // SOCKS 5 and HTTP): nothing is started rather than connected directly.
+    bool StartProxy();
+    // Watchdog thread: the setting again, and TDLib told when it differs. A
+    // proxy TDLib cannot use takes Telegram off the network (state Error,
+    // saying why) until the setting names one it can.
+    void FollowProxy();
+    void WatchProxy(bool on);
+    // proxyOrder_ held: `choice` becomes what TDLib is told. The text to
+    // report as an Error state once the lock is let go, "" for none.
+    std::string TellProxy(const ProxyChoice& choice);
+    // The answers to what TellProxy sent (`serial`: which telling).
+    void OnProxyAnswer(uint64_t serial, const TdObject& answer);
+    void OnProxyList(uint64_t serial, int64_t keepId, const TdObject& list);
+    // Why the proxy setting keeps Telegram off the network; "" when it does not.
+    std::string ProxyTrouble() const;
+    // Connected - or Error with ProxyTrouble() while that lasts.
+    void SetOnline();
     // TDLib's connection, in words for the status line.
     std::string ConnectionText() const;
     bool SaveSession(int64_t userId);
@@ -275,6 +321,7 @@ private:
     std::string     libraryPath_;
     std::atomic<UltraIMConnectionState> state_{UltraIMConnectionState::Disconnected};
     int             stepTimeoutMs_ = 45000;
+    int             proxyCheckMs_ = 3000;
 
     std::thread     watchdog_;
     std::mutex      watchMutex_;
@@ -283,6 +330,16 @@ private:
     bool            watchArmed_ = false;
     std::chrono::steady_clock::time_point watchDeadline_;
     std::string     watchWhat_;
+    bool            watchProxy_ = false;     // a session is open: FollowProxy at proxyCheckAt_
+    std::chrono::steady_clock::time_point proxyCheckAt_;
+
+    // Held while TDLib is told a proxy and while what an answer calls for is
+    // sent (the other proxies removed, the network taken away), so that
+    // neither goes out between a newer telling and its own requests - a
+    // proxy removed after the telling that put it back would leave TDLib
+    // connecting directly. Recursive: a closed client answers inside Send.
+    // Taken before mutex_, never with it held; no event is raised under it.
+    std::recursive_mutex proxyOrder_;
 
     mutable UltraVault::DeviceKeyVault vault_;
     bool            vaultReady_ = false;
@@ -302,6 +359,10 @@ private:
     bool            ready_ = false;
     bool            closing_ = false;
     std::string     connection_;     // TDLib's connectionState* while not ready, "" = none yet
+    bool            proxyTold_ = false;      // this session's TDLib has been told the proxy; FollowProxy keeps it so
+    ProxyChoice     proxy_;                  // what it was told
+    uint64_t        proxySerial_ = 0;        // counts the tellings: an answer to an earlier one is let go
+    std::string     proxyTrouble_;           // TDLib is off the network for this; "" = it is not
     std::string     phone_;
     int32_t         apiId_ = 0;
     std::string     apiHash_;

@@ -4929,7 +4929,8 @@ endif()
 # ULTRAIM_FETCH_TDLIB, ULTRAIM_TDJSON_FILE), so a build ships with it where
 # a prebuilt one exists. The application's API credentials from
 # my.telegram.org can be built in; otherwise the relay hands them out
-# (ChatCube), or the user gives them.
+# (ChatCube), or the user gives them. TDLib's networking is its own: the
+# provider hands it the proxy the applications share (UltraNet_ResolveProxy).
 # Not in WebAssembly: there is no libtdjson to load there, and no loadable
 # provider module either.
 set(ULTRAIM_TELEGRAM_API_ID "" CACHE STRING "Telegram API ID (my.telegram.org) built into the Telegram provider")
@@ -4946,6 +4947,12 @@ elseif(TARGET UltraIM AND TARGET UltraVault AND TARGET UltraCrypt)
     target_compile_features(UltraIMTelegramCore PUBLIC cxx_std_20)
     target_include_directories(UltraIMTelegramCore PUBLIC ${_ultraim_telegram_dir})
     target_link_libraries(UltraIMTelegramCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraVault UltraCrypt)
+    # UltraNet for the proxy setting alone (UltraNet_ResolveProxy): TDLib
+    # connects by itself and has to be told which proxy the applications
+    # share. Without UltraNet there is no such setting, and none is told.
+    if(TARGET UltraNet)
+        target_link_libraries(UltraIMTelegramCore PUBLIC UltraNet)
+    endif()
     if(UNIX)
         target_link_libraries(UltraIMTelegramCore PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
     endif()
