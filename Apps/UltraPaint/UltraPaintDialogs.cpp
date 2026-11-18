@@ -463,8 +463,11 @@ UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& re
     layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     const std::string heading = req.extraFiles > 0
-            ? LocalisationDetail::Substitute(TrN("{0} and {n} more file", "{0} and {n} more files", req.extraFiles),
-                                             {FileNameOnly(req.path)})
+            // One more file has a sentence of its own; TrN's forms all carry the count
+            ? (req.extraFiles == 1
+                   ? TrF("{0} and one more file", FileNameOnly(req.path))
+                   : LocalisationDetail::Substitute(TrN("{0} and {n} more file", "{0} and {n} more files", req.extraFiles),
+                                                    {FileNameOnly(req.path)}))
             : FileNameOnly(req.path);
     auto name = CreateLabel("upi-name", 0, 0, 0, 22, heading);
     name->SetFontWeight(FontWeight::Bold);

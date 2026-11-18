@@ -28,10 +28,8 @@
   "Again:": "Nogmaals:",
   "Airbrush": "Airbrush",
   "Amount": "Hoeveelheid",
-  "An image has unsaved changes. Quit anyway?": {
-    "one": "Een afbeelding heeft niet-opgeslagen wijzigingen. Toch afsluiten?",
-    "other": "{n} afbeeldingen hebben niet-opgeslagen wijzigingen. Toch afsluiten?"
-  },
+  "An image has unsaved changes. Quit anyway?": "Een afbeelding heeft niet-opgeslagen wijzigingen. Toch afsluiten?",
+  "An image in this window has unsaved changes. Close anyway?": "Eén afbeelding in dit venster heeft niet-opgeslagen wijzigingen. Toch sluiten?",
   "An unsharp mask after the scale, to win back some of the crispness an enlargement loses": "Een onscherpmasker na het schalen, om iets van de scherpte terug te winnen die een vergroting kost",
   "Anchor:": "Anker:",
   "Anti-aliased": "Anti-aliasing",
@@ -206,6 +204,10 @@
   "New {0} x {1} image": "Nieuwe afbeelding van {0} x {1}",
   "Next Tab": "Volgend tabblad",
   "No options for this tool": "Geen opties voor dit gereedschap",
+  "None of the {n} password given before opens this one.": {
+    "one": "Geen van de {n} eerder opgegeven wachtwoorden opent dit bestand.",
+    "other": "Geen van de {n} eerder opgegeven wachtwoorden opent dit bestand."
+  },
   "Nothing filled: the colour is fully transparent. Set Mode to Replace to make the area transparent": "Niets gevuld: de kleur is volledig transparant. Zet Modus op Vervangen om het gebied transparant te maken",
   "Nothing is selected": "Er is niets geselecteerd",
   "Nothing is selected: drag an area with a selection tool, or with the Crop tool, first": "Er is niets geselecteerd: sleep eerst een gebied met een selectiegereedschap of met het bijsnijgereedschap",
@@ -335,10 +337,7 @@
   "The eyedropper samples it off the canvas.": "De pipet neemt haar van het canvas op.",
   "The glass sits in a corner of the canvas and moves to another one when the pointer comes near it, so it never covers the spot being selected. Its crosshair leaves the centre pixel clear: that pixel is the one under the pointer.": "Het vergrootglas staat in een hoek van het canvas en springt naar een andere hoek als de aanwijzer in de buurt komt, zodat het nooit de plek bedekt die wordt geselecteerd. Het dradenkruis laat de middelste pixel vrij: dat is de pixel onder de aanwijzer.",
   "The last layer cannot be deleted": "De laatste laag kan niet worden verwijderd",
-  "The password given before does not open this one.": {
-    "one": "Het eerder opgegeven wachtwoord opent dit bestand niet.",
-    "other": "Geen van de {n} eerder opgegeven wachtwoorden opent dit bestand."
-  },
+  "The password given before does not open this one.": "Het eerder opgegeven wachtwoord opent dit bestand niet.",
   "The pixel grid appears in the glass from 8x, so at 4x it shows the pixel edges whenever the view itself is at 200 % or more.": "Het pixelraster verschijnt in het vergrootglas vanaf 8x, dus bij 4x toont het de pixelranden zodra de weergave zelf op 200 % of meer staat.",
   "The text is unchanged": "De tekst is ongewijzigd",
   "The text layer is locked": "De tekstlaag is vergrendeld",
@@ -376,16 +375,21 @@
   "Zoom in (+)": "Inzoomen (+)",
   "Zoom out (-)": "Uitzoomen (-)",
   "{0}  [locked]": "{0}  [vergrendeld]",
+  "{0} and one more file": "{0} en nog één bestand",
   "{0} and {n} more file": {
-    "one": "{0} en nog één bestand",
+    "one": "{0} en nog {n} bestanden",
     "other": "{0} en nog {n} bestanden"
   },
   "{0} could not be applied": "{0} kon niet worden toegepast",
   "{0} has unsaved changes. Close it anyway?": "{0} heeft niet-opgeslagen wijzigingen. Toch sluiten?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
+  "{n} image has unsaved changes. Quit anyway?": {
+    "one": "{n} afbeeldingen hebben niet-opgeslagen wijzigingen. Toch afsluiten?",
+    "other": "{n} afbeeldingen hebben niet-opgeslagen wijzigingen. Toch afsluiten?"
+  },
   "{n} image in this window has unsaved changes. Close anyway?": {
-    "one": "Eén afbeelding in dit venster heeft niet-opgeslagen wijzigingen. Toch sluiten?",
+    "one": "{n} afbeeldingen in dit venster hebben niet-opgeslagen wijzigingen. Toch sluiten?",
     "other": "{n} afbeeldingen in dit venster hebben niet-opgeslagen wijzigingen. Toch sluiten?"
   },
   "{n} layer": {

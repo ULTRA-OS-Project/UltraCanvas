@@ -387,8 +387,11 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
             if (auto dlg = settingsDialog.lock()) dlg->Close();
             return true;
         }
-        ConfirmDiscard(TrN("{n} image in this window has unsaved changes. Close anyway?",
-                           "{n} images in this window have unsaved changes. Close anyway?", unsaved),
+        // One image has a sentence of its own; TrN's forms all carry the count
+        ConfirmDiscard(unsaved == 1
+                           ? Tr("An image in this window has unsaved changes. Close anyway?")
+                           : TrN("{n} image in this window has unsaved changes. Close anyway?",
+                                 "{n} images in this window have unsaved changes. Close anyway?", unsaved),
                        [this]() {
             for (const auto& tab : documentTabs) if (tab->document) tab->document->SetModified(false);
             window->Close();   // comes back through here, and closes the settings window
@@ -1854,9 +1857,12 @@ void UltraPaintWindow::LoadDocumentAsking(const std::string& path, const UltraPa
                 return;
             }
         }
-        note = TrN("The password given before does not open this one.",
-                   "None of the {n} passwords given before opens this one.",
-                   static_cast<long long>(before.size()));
+        // One password has a sentence of its own; TrN's forms all carry the count
+        note = before.size() == 1
+                   ? Tr("The password given before does not open this one.")
+                   : TrN("None of the {n} password given before opens this one.",
+                         "None of the {n} passwords given before opens this one.",
+                         static_cast<long long>(before.size()));
     }
     // Its password first. The answer is tried in the question's own
     // callback; the document comes back on the next turn of the loop, once
@@ -3015,8 +3021,11 @@ void UltraPaintWindow::CmdQuit() {
     }
     auto go = []() { if (auto* app = UltraCanvasApplication::GetInstance()) app->RequestExit(); };
     if (unsaved == 0) { go(); return; }
-    ConfirmDiscard(TrN("An image has unsaved changes. Quit anyway?",
-                       "{n} images have unsaved changes. Quit anyway?", unsaved),
+    // One image has a sentence of its own; TrN's forms all carry the count
+    ConfirmDiscard(unsaved == 1
+                       ? Tr("An image has unsaved changes. Quit anyway?")
+                       : TrN("{n} image has unsaved changes. Quit anyway?",
+                             "{n} images have unsaved changes. Quit anyway?", unsaved),
                    go);
 }
 
