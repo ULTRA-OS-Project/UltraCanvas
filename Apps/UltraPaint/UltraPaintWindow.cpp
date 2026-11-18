@@ -4,7 +4,8 @@
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
 // Version: 2.2.0 - every text a person reads goes through Tr / TrF / TrN (UltraLocalisation): whole
-//                  sentences with placeholders, the filters' DisplayName / DisplayCategory
+//                  sentences with placeholders, the undo labels too; the filters' DisplayName /
+//                  DisplayCategory / DisplayTitle and the dialogs' BlendModeDisplayName
 // Version: 2.1.0 - Scale Image: the resampling method and Sharpen after scaling, remembered for next time
 // Version: 2.0.1 - Curves counts its histogram backdrop with UltraCanvasHistogramModel, as the
 //                  image viewer's Curves dialog does; the RGB backdrop adds the three channels
