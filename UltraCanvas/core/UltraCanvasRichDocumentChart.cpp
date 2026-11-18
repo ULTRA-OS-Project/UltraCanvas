@@ -1,5 +1,6 @@
 // core/UltraCanvasRichDocumentChart.cpp
 // A document's chart as a chart of the chart engine - see the header.
+// Version: 1.2.0 - a chart's stated axis ranges (bars, scatter)
 // Version: 1.1.0 - `ink`: the chart's furniture on a dark page
 // Version: 1.0.0
 // Last Modified: 2026-11-18
@@ -89,6 +90,7 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
             bars->SetArrangement(chart.percent ? ChartBarArrangement::PercentStacked
                                  : chart.stacked ? ChartBarArrangement::Stacked : ChartBarArrangement::Grouped);
             bars->SetHorizontal(chart.kind == RichChart::Kind::Bar);
+            if (std::isfinite(chart.valueMin) && std::isfinite(chart.valueMax)) bars->SetValueRange(chart.valueMin, chart.valueMax);
             element = bars;
             break;
         }
@@ -133,6 +135,8 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
                 scatter->SetGroups(groups);
                 scatter->SetMarkerRadius(3.0f);
                 scatter->SetMarkerOpacity(1.0f);
+                if (std::isfinite(chart.xMin) && std::isfinite(chart.xMax)) scatter->SetXRange(chart.xMin, chart.xMax);
+                if (std::isfinite(chart.valueMin) && std::isfinite(chart.valueMax)) scatter->SetYRange(chart.valueMin, chart.valueMax);
                 element = scatter;
                 break;
             }

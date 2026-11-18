@@ -857,10 +857,12 @@ if (frame.chart.IsChart()) {
 ```
 
 The DOCX reader fills the data from the chart part (`c:chartSpace`) and the
-writer writes it back as one, so the chart is still a chart in Word. The
-frame also holds the chart as drawn shapes (`RichTextFrame::shapes`): what a
-consumer without the UI stack has, and what ODT - where a chart is an
-embedded object the writer does not make yet - is given.
+writer writes it back as one; the ODT reader fills it from the chart object
+(`Object N/content.xml`, a `chart:chart` over its own table - Writer's
+charts) and the writer writes one back. So the chart is still a chart in
+Word and in Writer, and through a conversion between the two formats. The
+frame also holds the chart as drawn shapes (`RichTextFrame::shapes`, made by
+`UCRichDocument::ChartAsShapes`): what a consumer without the UI stack has.
 
 ### Structure
 

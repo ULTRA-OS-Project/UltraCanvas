@@ -3795,13 +3795,15 @@ int main(int argc, char** argv) {
                 if (shape.kind == RichShape::Kind::Path && Lower(shape.lineColor) == "#004586") joins += static_cast<int>(shape.path.size());
             }
             {
-                // Every kind keeps its data through a DOCX of our own.
-                struct Case { const char* name; RichChart::Kind kind; bool stacked; };
-                for (const Case& one : {Case{"bar", RichChart::Kind::Bar, false}, Case{"stacked", RichChart::Kind::Column, true},
-                                        Case{"pie", RichChart::Kind::Pie, false}, Case{"scatter", RichChart::Kind::Scatter, false}}) {
+                // Every kind keeps its data through a DOCX and an ODT of our own.
+                struct Case { const char* name; RichChart::Kind kind; bool stacked; const char* ext; };
+                for (const Case& one : {Case{"bar", RichChart::Kind::Bar, false, ".docx"}, Case{"stacked", RichChart::Kind::Column, true, ".docx"},
+                                        Case{"pie", RichChart::Kind::Pie, false, ".docx"}, Case{"scatter", RichChart::Kind::Scatter, false, ".docx"},
+                                        Case{"bar", RichChart::Kind::Bar, false, ".odt"}, Case{"stacked", RichChart::Kind::Column, true, ".odt"},
+                                        Case{"pie", RichChart::Kind::Pie, false, ".odt"}, Case{"scatter", RichChart::Kind::Scatter, false, ".odt"}}) {
                     UCRichDocument read, again;
                     std::string error;
-                    const std::string saved = TmpPath(std::string("writer-") + one.name + "-saved.docx");
+                    const std::string saved = TmpPath(std::string("writer-") + one.name + "-saved" + one.ext);
                     CHECK_MSG(UCWordDocumentIO::Load(TmpPath(std::string("writer-") + one.name + ".docx"), read, error)
                                   && UCWordDocumentIO::Save(saved, read, error) && UCWordDocumentIO::Load(saved, again, error), error);
                     const RichChart* before = nullptr;
@@ -3816,7 +3818,16 @@ int main(int argc, char** argv) {
                             && before->series[s].joined == after->series[s].joined
                             && before->series[s].marked == after->series[s].marked;
                     }
-                    CHECK_MSG(same, std::string("docx: a ") + one.name + " chart keeps its kind and data when saved");
+                    same = same && before->categories == after->categories && before->legend == after->legend;
+                    for (size_t s = 0; same && s < before->series.size(); s++) {
+                        same = before->series[s].name == after->series[s].name
+                            && Lower(before->series[s].color) == Lower(after->series[s].color);
+                    }
+                    CHECK_MSG(same, std::string("a ") + one.name + " chart keeps its kind and data when saved as " + one.ext);
+                    // ...and is still drawn shapes too, for whoever has no chart engine.
+                    bool shapes = false;
+                    for (const RichTextFrame& frame : again.frames) shapes = shapes || (frame.chart.IsChart() && frame.IsDrawing());
+                    CHECK_MSG(shapes, std::string("...and is held as shapes beside it (") + one.name + one.ext + ")");
                 }
             }
             CHECK_MSG(markX.size() == 3 && joins == 3, "docx: a scatter chart's three points, marked and joined: "
@@ -3842,8 +3853,8 @@ int main(int argc, char** argv) {
                           && data.series[1].values == std::vector<double>({3.2, 8.8}), "docx: ...its series' names, colours and values");
         }
 
-        // Saved and read again, the chart is still there: as a chart in
-        // DOCX (a chart part of its own), as the drawing it also is in ODT.
+        // Saved and read again, the chart is still a chart: a chart part of
+        // its own in DOCX, a chart object of its own in ODT.
         for (const char* ext : {"docx", "odt"}) {
             const std::string path = TmpPath(std::string("writer-saved.") + ext);
             CHECK_MSG(UCWordDocumentIO::Save(path, writer, err), err);
@@ -3859,18 +3870,50 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-            if (std::string(ext) == "docx") {
+            {
                 CHECK_MSG(kept && kept->kind == RichChart::Kind::Column && kept->legend && kept->series.size() == 2
                               && kept->categories.size() == 2 && kept->series[1].name == "Column 2"
                               && kept->series[0].values == std::vector<double>({9.1, 2.4})
-                              && Lower(kept->series[1].color) == "#ff420e", "saved as docx: the chart is a chart, with its data");
-            } else {
-                CHECK_MSG(!kept, "saved as odt: the chart is the drawing");
+                              && Lower(kept->series[1].color) == "#ff420e", std::string("saved as ") + ext + ": the chart is a chart, with its data");
             }
             CHECK_MSG(drawing, std::string("saved as ") + ext + ": the chart is kept as a drawing");
             CHECK_MSG(again.ToPlainText().find("Row 2") != std::string::npos, std::string("saved as ") + ext + ": ...with its words");
         }
     }
+
+    // ===== WRITER'S OWN CHART OBJECT =====
+    // word-chart.odt is a document with a column chart saved by LibreOffice
+    // Writer: the chart is an object of its own in the package ("Object
+    // 2/content.xml"), with a replacement picture beside it.
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        UCRichDocument doc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(std::string(WORDTEST_FIXTURE_DIR) + "/word-chart.odt", doc, err), err);
+        const RichChart* chart = nullptr;
+        const RichTextRun* at = nullptr;
+        int pictures = 0;
+        for (const RichDocBlock& block : doc.blocks) {
+            pictures += block.type == RichBlockType::Image ? 1 : 0;
+            for (const RichTextRun& run : block.runs) {
+                pictures += run.IsInlineImage() && !run.IsTextFrame() ? 1 : 0;
+                const RichTextFrame* frame = run.IsTextFrame() ? doc.FrameFor(run) : nullptr;
+                if (frame && frame->chart.IsChart()) { chart = &frame->chart; at = &run; }
+            }
+        }
+        CHECK_MSG(chart && chart->kind == RichChart::Kind::Column && chart->legend, "odt: Writer's chart object is read as a chart");
+        CHECK_MSG(pictures == 0, "odt: ...not as its replacement picture");
+        if (chart) {
+            CHECK_MSG(chart->categories == std::vector<std::string>({"Row 1", "Row 2"}), "odt: ...its categories, from the chart's table");
+            CHECK_MSG(chart->series.size() == 2 && chart->series[0].name == "Column 1" && chart->series[1].name == "Column 2"
+                          && chart->series[0].values == std::vector<double>({9.1, 2.4})
+                          && chart->series[1].values == std::vector<double>({3.2, 8.8}), "odt: ...its series' names and values");
+            CHECK_MSG(Lower(chart->series[0].color) == "#004586" && Lower(chart->series[1].color) == "#ff420e",
+                      "odt: ...and their colours (" + chart->series[0].color + ", " + chart->series[1].color + ")");
+            CHECK_MSG(at && at->imageWidthPt > 100.0f && at->imageHeightPt > 50.0f, "odt: ...in a frame of the object's size");
+        }
+    }
+#endif
 
     // ===== A .DOC'S FOOTNOTES AND ENDNOTES =====
     // word-notes.doc is word-notes.fodt saved as Word 97 by LibreOffice: two

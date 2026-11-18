@@ -6,6 +6,7 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.16.0 - UCRichDocument::ChartAsShapes; RichChart's stated axis ranges
 // Version: 1.15.0 - RichChart: a chart's data in its frame (RichTextFrame::chart)
 // Version: 1.14.0 - RichTextRun::lineSpacing: a cell paragraph's own line multiple
 // Version: 1.13.0 - RichDocBlock::tableAutoFit; UCRichDocument::breakAfterSlash
@@ -34,6 +35,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -726,6 +728,10 @@ struct RichChart {
     std::vector<std::string> categories;
     std::vector<std::string> pointColors; // Pie / Doughnut: a slice's own colour ("" = from the palette)
     std::vector<RichChartSeries> series;
+    // What the file states for the value axis, and for a scatter chart's x
+    // axis (NaN = fitted to the data).
+    double valueMin = std::numeric_limits<double>::quiet_NaN(), valueMax = std::numeric_limits<double>::quiet_NaN();
+    double xMin = std::numeric_limits<double>::quiet_NaN(), xMax = std::numeric_limits<double>::quiet_NaN();
     bool IsChart() const { return kind != Kind::NoChart; }
 };
 
@@ -1107,6 +1113,14 @@ public:
     static std::string FileExtensionForMimeType(const std::string& mimeType);
     // Reads PNG/GIF/JPEG pixel dimensions from raw bytes (0 on failure).
     static bool SniffImagePixelSize(const std::vector<uint8_t>& data, int& width, int& height);
+    // A chart as drawn shapes, `width` x `height` points: one group of its
+    // bars, lines or slices, its axes' rules and values, and its legend -
+    // what a frame holds beside the chart's data (RichTextFrame::shapes), for
+    // a consumer without the chart engine. The words are text frames added to
+    // `frames` (pass the document's). False, and no shapes, for a chart with
+    // nothing to show or a box under 40 points.
+    static bool ChartAsShapes(const RichChart& chart, float width, float height,
+                              std::vector<RichTextFrame>& frames, RichShape& group);
     // The runs' text as one string: each run's text, preceded by a '\n' for
     // every run carrying lineBreakBefore - the first run's too, so a block
     // that starts with an empty line keeps it. The concatenation the
