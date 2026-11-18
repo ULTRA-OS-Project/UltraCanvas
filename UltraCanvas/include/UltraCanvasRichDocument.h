@@ -6,6 +6,7 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.17.0 - RichChart: Radar, Bubble and Stock; RichChartSeries::sizes, smooth; RichChart::filled
 // Version: 1.16.0 - UCRichDocument::ChartAsShapes; RichChart's stated axis ranges
 // Version: 1.15.0 - RichChart: a chart's data in its frame (RichTextFrame::chart)
 // Version: 1.14.0 - RichTextRun::lineSpacing: a cell paragraph's own line multiple
@@ -712,18 +713,24 @@ struct RichChartSeries {
     std::string name;
     std::string color;                    // "#RRGGBB"; empty = from the palette
     std::vector<double> values;           // one per category (a scatter point's y)
-    std::vector<double> xValues;          // Scatter: each point's x
+    std::vector<double> xValues;          // Scatter / Bubble: each point's x
+    std::vector<double> sizes;            // Bubble: each point's size
+    bool smooth = false;                  // Line / Scatter: a curve through its points, not straight lines
     bool joined = true;                   // Line / Scatter: its points are joined by a line
     bool marked = false;                  // Line / Scatter: ...and marked
 };
 
 struct RichChart {
     // (NoChart, not None: X11's Xlib.h #defines None.)
-    enum class Kind { NoChart, Column, Bar, Line, Area, Pie, Doughnut, Scatter };
+    // Radar: the series round the categories' spokes. Bubble: a Scatter
+    // whose points have sizes. Stock: per category a high, a low and a
+    // close - series in that order, an open before them where there are four.
+    enum class Kind { NoChart, Column, Bar, Line, Area, Pie, Doughnut, Scatter, Radar, Bubble, Stock };
     Kind kind = Kind::NoChart;
     bool stacked = false;                 // Column / Bar / Area: one on the other
     bool percent = false;                 // ...as shares of 100%
     bool legend = false;
+    bool filled = false;                  // Radar: the series' shapes are filled
     std::string title;
     std::vector<std::string> categories;
     std::vector<std::string> pointColors; // Pie / Doughnut: a slice's own colour ("" = from the palette)

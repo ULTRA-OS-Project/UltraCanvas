@@ -2,6 +2,7 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.9.1 - ChartAsShapes: bubble, radar and stock charts
 // Version: 1.9.0 - ChartAsShapes: a chart's data as drawn shapes (moved from the DOCX reader)
 // Version: 1.8.0 - WithFramesInline: a frame's or nested table's words in a table cell's lines
 // Version: 1.7.1 - ToHTML: a nested list inside its parent item (<li>one<ul>...</ul></li>), not beside it
@@ -714,8 +715,11 @@ bool UCRichDocument::ChartAsShapes(const RichChart& chart, float width, float he
     const std::vector<std::string>& categories = chart.categories;
     const std::vector<std::string>& pointColors = chart.pointColors;
     const bool pie = chart.kind == Kind::Pie || chart.kind == Kind::Doughnut;
-    const bool scatter = chart.kind == Kind::Scatter;
-    const bool lines = chart.kind == Kind::Line || chart.kind == Kind::Area || scatter;
+    // (As shapes a bubble chart is its points, a radar or stock chart its
+    // series as lines over the categories.)
+    const bool scatter = chart.kind == Kind::Scatter || chart.kind == Kind::Bubble;
+    const bool lines = chart.kind == Kind::Line || chart.kind == Kind::Area || scatter
+                    || chart.kind == Kind::Radar || chart.kind == Kind::Stock;
     const bool horizontal = chart.kind == Kind::Bar;
     const bool percent = chart.percent;
     const bool stacked = chart.stacked && chart.kind != Kind::Line && !scatter;
