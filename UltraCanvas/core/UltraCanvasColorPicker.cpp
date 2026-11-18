@@ -1198,7 +1198,7 @@ namespace UltraCanvas {
         SetFont(ctx, true);
         ctx->SetTextAlignment(TextAlignment::Left);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(slidersExpanded ? Tr("Channels")
+        ctx->DrawTextInRect(slidersExpanded ? TrC("colour channels", "Channels")
                                             : TrF("Channels  ({0})", GetColor().ToHexStringWithAlpha()),
                             Rect2Dd(hr.x + Scaled(18.0f), hr.y,
                                     hr.width - Scaled(20.0f), hr.height));
