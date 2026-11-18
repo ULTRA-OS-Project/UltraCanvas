@@ -1,6 +1,7 @@
 // core/UltraCanvasEmbeddedPreview.cpp
 // Extracts the preview bitmap a vector document stores inside itself - see
 // UltraCanvasEmbeddedPreview.h for what this is for.
+// Version: 1.3.0 - OpenDocument drawings (.odg / .otg): Thumbnails/thumbnail.png
 // Version: 1.2.0 - UltraCanvas Documents (*.ucd): the thumbnail after the header
 // Version: 1.1.0
 // Last Modified: 2026-10-16
@@ -45,6 +46,12 @@ namespace UltraCanvas {
 
         bool IsCorelDrawExtension(const std::string& ext) {
             return ext == "cdr" || ext == "cdt";
+        }
+
+        // OpenDocument drawings in their package form. The flat-XML .fodg
+        // has no place for a thumbnail, so it is not listed.
+        bool IsOpenDocumentDrawingExtension(const std::string& ext) {
+            return ext == "odg" || ext == "otg";
         }
 
         // PostScript documents. ".ai" is here because every Illustrator file
@@ -121,6 +128,22 @@ namespace UltraCanvas {
                 if (zip.HasEntry(entry) && zip.ReadEntry(entry, bytes) && !bytes.empty())
                     return bytes;
             }
+            return {};
+        }
+
+        // ===== OPENDOCUMENT DRAWING (.odg / .otg) =====
+        // An ODF package keeps a PNG of its first page as
+        // "Thumbnails/thumbnail.png" (ODF 1.2 part 3, section 3.15).
+        // LibreOffice writes one 512 pixels on its long side (362 x 512 for an
+        // A4 page). It is optional: a package without one, or a file that is
+        // no ZIP, reads as "no preview".
+        std::vector<uint8_t> ExtractOpenDocumentPreview(const std::string& path) {
+            UCZipPackageReader zip;
+            if (!zip.Open(path)) return {};
+            std::vector<uint8_t> bytes;
+            if (zip.HasEntry("Thumbnails/thumbnail.png") &&
+                zip.ReadEntry("Thumbnails/thumbnail.png", bytes))
+                return bytes;
             return {};
         }
 
@@ -289,6 +312,7 @@ namespace UltraCanvas {
     bool FormatCarriesEmbeddedPreview(const std::string& pathOrExtension) {
         const std::string ext = LowerExtensionOf(pathOrExtension);
         return IsXaraExtension(ext) || IsCorelDrawExtension(ext) ||
+               IsOpenDocumentDrawingExtension(ext) ||
                IsPostScriptExtension(ext) || IsUCDExtension(ext);
     }
 
@@ -298,6 +322,7 @@ namespace UltraCanvas {
         try {
             if (IsXaraExtension(ext)) return ExtractXaraPreview(filePath);
             if (IsCorelDrawExtension(ext)) return ExtractCorelDrawPreview(filePath);
+            if (IsOpenDocumentDrawingExtension(ext)) return ExtractOpenDocumentPreview(filePath);
             if (IsPostScriptExtension(ext)) return ExtractPostScriptPreview(filePath);
             if (IsUCDExtension(ext)) {
                 UCD::Header header;

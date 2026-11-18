@@ -43,7 +43,11 @@
 // keeps a draw:transform), shapes as draw:rect / draw:ellipse / draw:line /
 // draw:polyline / draw:polygon / draw:path, text as text boxes, pictures
 // embedded under Pictures/, gradients, dashes and arrowheads as named
-// styles. A .fodg path is written as flat XML with the pictures inline.
+// styles, and the page drawn 256 pixels on its long side as
+// Thumbnails/thumbnail.png - what a file manager shows without a reader
+// (UltraCanvasEmbeddedPreview.h). A .fodg path is written as flat XML with
+// the pictures inline (and no thumbnail, which flat XML has no place for).
+// Version: 1.1.0 - the package carries a thumbnail of the page
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework

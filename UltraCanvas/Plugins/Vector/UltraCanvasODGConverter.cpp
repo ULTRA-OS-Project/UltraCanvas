@@ -10,6 +10,7 @@
 // picture that is rotated keeps a draw:transform as LibreOffice writes one.
 // Numbers go through FormatFixedClassic: centimetres to four places (a
 // micrometre) for lengths, path data in 1/100 mm like LibreOffice's own.
+// Version: 1.1.0 - the package carries Thumbnails/thumbnail.png, the page at 256 pixels
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -19,6 +20,9 @@
 #include "UltraCanvasZipPackage.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasVectorRaster.h"      // the page drawn for the package's thumbnail
+#include "UltraCanvasClipboardDib.h"      // ... and encoded as PNG
+#include "UltraCanvasImage.h"             // libvips started for the pictures it draws
 
 #include <algorithm>
 #include <cmath>
@@ -960,6 +964,37 @@ private:
         return m + "</office:meta>";
     }
 
+    // The page drawn at `longSide` pixels on its longer edge, over white,
+    // as a PNG - the package's Thumbnails/thumbnail.png, which a file
+    // manager shows without a reader for the drawing (LibreOffice's file
+    // dialogs, desktop thumbnailers, the Filer: UltraCanvasEmbeddedPreview).
+    // Empty when the page cannot be drawn; the thumbnail is optional.
+    std::vector<uint8_t> Thumbnail(double pageW, double pageH, int longSide) const {
+        if (pageW <= 0 || pageH <= 0) return {};
+        // The pictures in the drawing decode through libvips, which wants its
+        // start-up call; a no-op once the application has made it.
+        UCImage::InitializeImageSubsysterm(nullptr);
+        VectorRasterOptions options;
+        if (pageW >= pageH) options.width = longSide;
+        else options.height = longSide;
+        options.background = RasterPixel(255, 255, 255, 255);
+        std::string error;
+        auto layer = RasterizeVectorDocument(doc_, options, error);
+        if (!layer || layer->GetWidth() <= 0 || layer->GetHeight() <= 0) return {};
+        ClipboardDib::RgbaImage image;
+        image.width = layer->GetWidth();
+        image.height = layer->GetHeight();
+        image.pixels.reserve(static_cast<size_t>(image.width) * static_cast<size_t>(image.height) * 4);
+        for (int y = 0; y < image.height; ++y)
+            for (int x = 0; x < image.width; ++x) {
+                const RasterPixel p = layer->GetPixel(x, y);
+                image.pixels.insert(image.pixels.end(), {p.r, p.g, p.b, p.a});
+            }
+        std::vector<uint8_t> png;
+        if (!ClipboardDib::EncodePng(image, png)) return {};
+        return png;
+    }
+
     std::string FontDecls() const {
         std::string f = "<office:font-face-decls>";
         for (const auto& name : fonts_)
@@ -1071,6 +1106,10 @@ std::string OdgWriter::Run(bool templateType) {
         " <manifest:file-entry manifest:full-path=\"meta.xml\" manifest:media-type=\"text/xml\"/>\n";
     for (const auto& p : pictures_)
         manifest += " <manifest:file-entry manifest:full-path=\"" + p.Path + "\" manifest:media-type=\"" + p.Mime + "\"/>\n";
+    // 256 pixels on the long side: a file manager's tile, at a few kilobytes.
+    const std::vector<uint8_t> thumbnail = Thumbnail(pageW, pageH, 256);
+    if (!thumbnail.empty())
+        manifest += " <manifest:file-entry manifest:full-path=\"Thumbnails/thumbnail.png\" manifest:media-type=\"image/png\"/>\n";
     manifest += "</manifest:manifest>\n";
 
     UCZipPackageWriter zip;
@@ -1079,6 +1118,7 @@ std::string OdgWriter::Run(bool templateType) {
               zip.AddEntry("content.xml", contentXml) && zip.AddEntry("styles.xml", stylesXml) &&
               zip.AddEntry("meta.xml", metaXml);
     for (const auto& p : pictures_) ok = ok && zip.AddEntry(p.Path, p.Bytes.data(), p.Bytes.size(), false);
+    if (!thumbnail.empty()) ok = ok && zip.AddEntry("Thumbnails/thumbnail.png", thumbnail.data(), thumbnail.size(), false);
     ok = ok && zip.AddEntry("META-INF/manifest.xml", manifest) && zip.Finalize();
     if (!ok) {
         if (options_.WarningCallback) options_.WarningCallback("ODG: could not build the package: " + zip.GetLastError());

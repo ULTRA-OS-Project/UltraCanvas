@@ -10,6 +10,8 @@
 //    even-odd fill and shading;
 //  - hand-written geometry: the enhanced path's arcs, quadrants, equations,
 //    modifiers and stretch points, draw:transform's order and direction;
+//  - a written package carries a thumbnail of the page, which the Filer's
+//    embedded-preview extractor finds;
 //  - the converter is reachable through the plugin's extension dispatch.
 //
 // Usage: ODGConverterTest                      run the checks
@@ -19,6 +21,7 @@
 //        ODGConverterTest --convert in out     read one vector format, write
 //                                              another (by extension)
 // Exit code is the number of failed checks.
+// Version: 1.1.0 - the package's thumbnail
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -28,11 +31,15 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasRasterLayer.h"
 #include "UltraCanvasImage.h"
+#include "UltraCanvasEmbeddedPreview.h"
+#include "UltraCanvasClipboardDib.h"
+#include "UltraCanvasPathUtf8.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <string>
@@ -306,6 +313,35 @@ void TestRoundTrip() {
     auto back = odg.ImportFromString(package, options);
     Check(back != nullptr, "the package reads back");
     if (back) CheckRoundTrip(*back, ".odg");
+
+    // The package's thumbnail: what the Filer shows without a reader for the
+    // drawing, found by the same extractor, the page at 256 pixels on its
+    // long side, and the drawing on it (the red box at 40..160 x 40..100 of
+    // the 500 x 400 page).
+    {
+        const std::string path = PathToUtf8(std::filesystem::temp_directory_path() / "uc-odg-thumbnail-test.odg");
+        Check(odg.Export(*doc, path, options), "the package is written to a file");
+        const std::vector<uint8_t> thumb = ExtractEmbeddedPreviewBytes(path);
+        ClipboardDib::RgbaImage image;
+        const bool decoded = !thumb.empty() && ClipboardDib::DecodePng(thumb.data(), thumb.size(), image);
+        Check(decoded && image.width == 256 && image.height == 205,
+              "it carries a 256 x 205 thumbnail of the page (" + std::to_string(image.width) + " x " +
+                  std::to_string(image.height) + ")");
+        if (decoded && image.IsValid()) {
+            auto at = [&](double x, double y) {
+                const size_t i = (static_cast<size_t>(y * 205 / 400) * 256 + static_cast<size_t>(x * 256 / 500)) * 4;
+                return Color(image.pixels[i], image.pixels[i + 1], image.pixels[i + 2], image.pixels[i + 3]);
+            };
+            const Color box = at(100, 70), page = at(220, 250);
+            Check(box.r > 180 && box.g < 80 && box.b < 80, "the red box is on it");
+            Check(page.r > 230 && page.g > 230 && page.b > 200, "on the page's light background");
+        }
+        Check(package.find("Thumbnails/thumbnail.png") != std::string::npos &&
+                  odg.ExportFlatXml(*doc, options).find("thumbnail") == std::string::npos,
+              "the package lists it; the flat form has none");
+        std::error_code ec;
+        std::filesystem::remove(PathFromUtf8(path), ec);
+    }
 
     const std::string flat = odg.ExportFlatXml(*doc, options);
     Check(flat.find("office:mimetype=\"application/vnd.oasis.opendocument.graphics\"") != std::string::npos,

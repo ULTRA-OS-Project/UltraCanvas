@@ -35,3 +35,11 @@
 - `.odg`, `.otg` and `.fodg` are vector files in the graphics plugin
   system's format table, the Filer's type names and the Save dialog's type
   names.
+- **The Filer and the media viewer show an `.odg` / `.otg` from the
+  thumbnail it carries** (`Thumbnails/thumbnail.png`, which LibreOffice
+  writes) where no Vector plugin is registered to draw it - the same
+  embedded-preview path as Xara, CorelDRAW and EPS files
+  (`UltraCanvasEmbeddedPreview.h`). The ODG writer stores one as well: the
+  page drawn 256 pixels on its long side, so a drawing saved here has a
+  preview in LibreOffice's dialogs, desktop file managers and every
+  application that has no reader for it.
