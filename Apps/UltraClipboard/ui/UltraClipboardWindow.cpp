@@ -1,5 +1,7 @@
 // Apps/UltraClipboard/ui/UltraClipboardWindow.cpp
 // UltraClipboard's main window. See UltraClipboardWindow.h.
+// Version: 0.2.6 - while the preview is open, the selected and the previewed row show their
+//                  icons just left of it, not under it (SetCoveredFrom)
 // Version: 0.2.5 - the look from the theme (UltraCanvasTheme roles): the bars, the
 //                  list and its rows, the icon buttons, the filter, the status line
 //                  and the preview frame follow a dark look, and a change while it
@@ -1465,6 +1467,7 @@ void UltraClipboardWindow::HidePreview() {
     if (list_) list_->SetShowItemTooltips(true);
     if (previewViewer_) previewViewer_->StopPlayback();
     if (preview_) preview_->SetVisible(false);
+    if (rows_ && rows_->SetCoveredFrom(0, 0) && list_) list_->RequestRedraw();
     if (window_) window_->RequestRedraw();
 }
 
@@ -1496,6 +1499,8 @@ void UltraClipboardWindow::PlacePreview() {
     at.top = CSSLayout::Dimension::Px(top);
     preview_->layoutItem.SetPositionInsets(at);
     preview_->SetElementSize(CSSLayout::Dimension::Px(width), CSSLayout::Dimension::Px(height));
+    // The selected row's icons and the previewed row's stand left of the frame, where they can be reached.
+    if (rows_ && rows_->SetCoveredFrom(static_cast<int>(left - list.x), previewId_)) list_->RequestRedraw();
 }
 
 std::string UltraClipboardWindow::PreviewFileFor(const ClipboardHistoryEntry& entry) {
