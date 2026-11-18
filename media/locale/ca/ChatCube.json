@@ -47,7 +47,6 @@
   "asking Telegram for a QR code…": "s'està demanant un codi QR a Telegram…",
   "asking Telegram for the code another way…": "s'està demanant el codi a Telegram d'una altra manera…",
   "Asking the relay…": "S'està consultant el retransmissor…",
-  "Audio": "Àudio",
   "away": "absent",
   "Block": "Bloqueja",
   "Block {0}? They are taken out of {1} and cannot join it again until you unblock them.": "Vols bloquejar {0}? Surt de {1} i no s'hi pot tornar a unir fins que el desbloquegis.",

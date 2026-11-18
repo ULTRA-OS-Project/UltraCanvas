@@ -47,7 +47,6 @@
   "asking Telegram for a QR code…": "ζητείται κωδικός QR από το Telegram…",
   "asking Telegram for the code another way…": "ζητείται ο κωδικός από το Telegram με άλλο τρόπο…",
   "Asking the relay…": "Ερώτηση στον αναμεταδότη…",
-  "Audio": "Ήχος",
   "away": "εκτός",
   "Block": "Αποκλεισμός",
   "Block {0}? They are taken out of {1} and cannot join it again until you unblock them.": "Αποκλεισμός του {0}; Αφαιρείται από το {1} και δεν μπορεί να ξαναμπεί μέχρι να άρετε τον αποκλεισμό.",

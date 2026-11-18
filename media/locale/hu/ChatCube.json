@@ -47,7 +47,6 @@
   "asking Telegram for a QR code…": "QR-kód kérése a Telegramtól…",
   "asking Telegram for the code another way…": "a kód kérése a Telegramtól más módon…",
   "Asking the relay…": "Lekérdezés a továbbítótól…",
-  "Audio": "Hang",
   "away": "nincs a gépnél",
   "Block": "Letiltás",
   "Block {0}? They are taken out of {1} and cannot join it again until you unblock them.": "Letiltja: {0}? Kikerül innen: {1}, és nem csatlakozhat újra, amíg fel nem oldja a tiltást.",

@@ -47,7 +47,6 @@
   "asking Telegram for a QR code…": "Telegram wird nach einem QR-Code gefragt …",
   "asking Telegram for the code another way…": "Telegram wird gebeten, den Code auf andere Weise zu senden …",
   "Asking the relay…": "Relay wird gefragt …",
-  "Audio": "Audio",
   "away": "abwesend",
   "Block": "Blockieren",
   "Block {0}? They are taken out of {1} and cannot join it again until you unblock them.": "{0} blockieren? {0} wird aus {1} entfernt und kann erst wieder beitreten, wenn Sie die Blockierung aufheben.",

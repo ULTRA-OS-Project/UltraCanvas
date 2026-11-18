@@ -46,7 +46,6 @@
   "asking Telegram for a QR code…": "Telegram に QR コードを要求しています…",
   "asking Telegram for the code another way…": "Telegram に別の方法でコードを要求しています…",
   "Asking the relay…": "リレーに問い合わせています…",
-  "Audio": "オーディオ",
   "away": "離席中",
   "Block": "ブロック",
   "Block {0}? They are taken out of {1} and cannot join it again until you unblock them.": "{0} をブロックしますか? {1} から外され、ブロックを解除するまで再参加できません。",

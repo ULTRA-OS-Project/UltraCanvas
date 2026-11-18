@@ -46,7 +46,6 @@
   "asking Telegram for a QR code…": "正在向 Telegram 要求 QR 碼…",
   "asking Telegram for the code another way…": "正在請 Telegram 以其他方式傳送驗證碼…",
   "Asking the relay…": "正在詢問中繼…",
-  "Audio": "音訊",
   "away": "離開",
   "Block": "封鎖",
   "Block {0}? They are taken out of {1} and cannot join it again until you unblock them.": "封鎖 {0}？對方會被移出 {1}，在你解除封鎖前無法再次加入。",
