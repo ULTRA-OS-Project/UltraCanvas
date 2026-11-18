@@ -3,6 +3,7 @@
 // the error report's headings, tables and code blocks out, and being real
 // text areas they scroll, select and copy without any of that written here.
 // Built the way UltraCanvasMetadataDialog is.
+// Version: 1.1.1 - Close is the theme's Primary button, not ButtonStyles::PrimaryStyle's fixed blue
 // Version: 1.1.0 - the colours are the theme's (UltraFilerLook.h)
 // Version: 1.0.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.0.0
@@ -121,7 +122,9 @@ UltraFilerConnectionLogWindow::UltraFilerConnectionLogWindow() : UltraCanvasWind
 
     closeButton = std::make_shared<UltraCanvasButton>("ConnectionLogClose", 0, 0, 96, 30);
     closeButton->SetText(Tr("Close"));
-    closeButton->SetStyle(ButtonStyles::PrimaryStyle());
+    // The theme's main-action part (the accent, its text on it), not the
+    // fixed light-look blue of ButtonStyles::PrimaryStyle.
+    closeButton->SetThemeVariant(ButtonVariant::Primary);
     closeButton->onClick = [this]() { PerformClose(); };
     SizeButtonToLabel(closeButton);
     footer->AddChild(closeButton);

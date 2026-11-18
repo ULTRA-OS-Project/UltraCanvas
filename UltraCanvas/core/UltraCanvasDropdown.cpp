@@ -2,6 +2,7 @@
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
 // The history is in the header (include/UltraCanvasDropdown.h).
+// Version: 1.4.1 - the open list's scroll bar follows the theme (DropdownStyle::FromTheme)
 // Version: 1.4.0 - icons as masks in the item's text colour (DropdownItem::iconAsMask, SetIconsAsMask)
 // Version: 1.3.0 - DropdownItem::fontFamily, prepared in idle slices before the list opens
 // Version: 1.2.0 - SetPlaceholderText
@@ -1198,6 +1199,9 @@ namespace UltraCanvas {
         s.checkboxBorderColor = r.lineStrong;
         s.checkboxCheckedColor = r.accent;
         s.checkmarkColor = r.onAccent;
+        // the open list's scroll bar (handed to its list view): the light
+        // look's bar down a dark list otherwise
+        s.scrollbarStyle = ScrollbarStyle::FromTheme(theme, base.scrollbarStyle);
         return s;
     }
 } // namespace UltraCanvas
