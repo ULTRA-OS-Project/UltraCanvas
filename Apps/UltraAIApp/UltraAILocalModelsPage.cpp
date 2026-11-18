@@ -1,10 +1,13 @@
 // Apps/UltraAIApp/UltraAILocalModelsPage.cpp
 // The settings window's "Local models" page (UltraAILocalModelsPage.h).
+// Version: 0.2.1 - the settings window scrolls its pages, so the page no longer squeezes itself into
+//                  800 px: the usual spacing, the note on the catalogue and the search, and the
+//                  catalogue's line beside an action's
 // Version: 0.2.0 - the engine line and Acceleration follow the selected model, per engine;
 //                  catalogue sources, search and filters; Hugging Face search
 // Version: 0.1.1 - speech-to-text models: labelled, added as a whisper .bin
 // Version: 0.1.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-17
 // Author: UltraAI Module
 
 #include "UltraAILocalModelsPage.h"
@@ -112,9 +115,6 @@ std::shared_ptr<UltraCanvasContainer> UltraAILocalModelsPage::Build(UltraCanvasW
             Tr("Models that run on this computer. Nothing to install by hand: the "
             "engine and a model are downloaded when a service first needs them, "
             "or from here."));
-    // This page holds more rows than the others: a little less air between
-    // them keeps it inside the window.
-    parts.body->layout.SetFlexGap(6);
 
     BuildHardwareLine(*parts.body);
     BuildEngineRow(*parts.body);
@@ -138,6 +138,11 @@ std::shared_ptr<UltraCanvasContainer> UltraAILocalModelsPage::Build(UltraCanvasW
             Tr("A running engine is shared by every UltraCanvas application that "
             "wants the same model and stopped when nothing has used it for the "
             "idle time."));
+    AddNote(parts, "uai-lm-note4",
+            Tr("Refresh catalogue downloads the lists of the catalogue sources - "
+            "LocalAI's model gallery to begin with - and Search Hugging Face finds "
+            "any model there. The engine a model needs is shown above the table "
+            "when the model is selected, and is downloaded with it."));
 
     Refresh();
     return parts.page;
@@ -759,12 +764,6 @@ void UltraAILocalModelsPage::SetStatus(const std::string& text) {
         statusLabel_->SetText(text);
         statusLabel_->SetVisible(!text.empty());
         statusLabel_->RequestRedraw();
-    }
-    // One line of words at a time: what the last action did, or else what
-    // the catalogue holds. The page has no room for both.
-    if (sourcesLabel_) {
-        sourcesLabel_->SetVisible(text.empty());
-        sourcesLabel_->RequestRedraw();
     }
 }
 

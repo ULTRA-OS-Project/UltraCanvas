@@ -402,8 +402,8 @@ elements. Internally:
 
 ## See Also
 
-- [`UltraCanvasChartElementBase`](UltraCanvasChartElementBase.md) - Base class documentation
+- [`UltraCanvasChartElementBase`](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h) - Base class documentation
 - [`UltraCanvasLineChartElement`](UltraCanvasLineChartElement.md) - Line chart component
 - [`UltraCanvasBarChartElement`](UltraCanvasBarChartElement.md) - Bar chart component
 - [`UltraCanvasPieChartExamples`](UltraCanvasPieChartExamples.md) - Pie chart component
-- [`IRenderContext`](IRenderContext.md) - Rendering interface
+- [`IRenderContext`](../../UltraCanvas/include/UltraCanvasRenderContext.h) - Rendering interface

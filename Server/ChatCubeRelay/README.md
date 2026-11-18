@@ -72,7 +72,7 @@ too, in its upgrade request).
 | `GET /v1/users/{id}` | `{user_id, public_key, display_name}` — contact discovery by id |
 | `GET /v1/contacts` | `{contacts: [{user_id, public_key, display_name, presence}]}` |
 | `PUT` / `DELETE /v1/contacts/{id}` | add / remove; an add puts you in their list too, when you were not, and tells them (`contact.added`, 1.4.0) |
-| `POST /v1/groups` | `{title, members}` → `{group_id, conversation: "group:<id>", title, owner, members}` |
+| `POST /v1/groups` | `{title, members}` → `{group_id, conversation: "group:<id>", title, owner, members, public, description, revision}` — every answer and push that carries a group has this shape |
 | `GET /v1/groups`, `GET /v1/groups/{id}` | the caller's groups |
 | `PATCH /v1/groups/{id}` | `{title?, description?}` — what is given changes: any member of a private group (1.3.0; the description 1.5.0, up to 500 characters), the owner alone of a public one |
 | `POST /v1/groups/{id}/members` | `{user_id}` — any member adds |
@@ -96,7 +96,7 @@ WebSocket `/v1/ws`, JSON frames:
 | server → | `hello {user_id}` on connect |
 | server → | `presence {from, status: online\|offline}` — for your contacts and fellow group members |
 | server → | `message.new {message}` — a queued copy for you, as `GET /v1/messages` returns it |
-| server → | `group.update {group}` (`removed: true` when you left or were removed) |
+| server → | `group.update {group}` (`removed: true` when you left or were removed, at the revision the removal made) |
 | server → | `contact.added {contact: {user_id, public_key, display_name, presence}}` — someone added you; their chat appears before their first message (1.4.0) |
 | ↔ | `typing {to, conversation, typing}` (arrives with `from`) |
 | ↔ | `signal {to, kind, session, payload}` — `kind` is `offer`, `answer`, `ice`, `hangup`, `call-invite`, `call-accept`, `call-reject` or `call-update` (a call's camera on or off); `payload` is forwarded untouched (arrives with `from`). Not online: `signal.undeliverable {to, session}` comes back |
@@ -193,6 +193,20 @@ description, and one member may post
 copies of one message and a file's parts count once) - more is refused with
 429 `slow_down`, and ChatCube sends it a little later.
 
+## A group's revision
+
+Every group carries a `revision` (1.6.0): 1 when it is made, one more with
+every change - a new name or description, a member added or taken out, made
+public or private (a change that changes nothing, such as adding someone
+already in, leaves it). A client hears of a group on two connections, the
+answers to its own requests and the pushes on its socket, in no set order,
+so it keeps the highest revision it has applied and drops a record older
+than that: without it, the group as it was just made could arrive after the
+answer to renaming it, and put the old name back. The member taken out is
+told at the revision the removal made, so a late record from before it does
+not put the group back either. A relay before 1.6.0 sends no revision, and a
+client then applies every record as it comes.
+
 ## The database and its migrations
 
 One SQLite file (`CHATCUBE_RELAY_DB`). Its schema has a version - SQLite's
@@ -208,6 +222,7 @@ relay, or a newer one.
 | 1 | 1.0 | accounts, sessions, contacts, groups, the offline queue |
 | 2 | 1.1 | the owner's e-mail address and phone number |
 | 4 | 1.5 | public groups and descriptions: the `public` mark on a group (every existing group stays private), its `description` (empty), and `group_bans`, whom an owner blocked |
+| 5 | 1.6 | a group's `revision` (every existing group starts at 1) |
 | 3 | 1.2 | whether each is confirmed (`email_verified`, `phone_verified`, both starting unconfirmed - also what 1.1 kept), the confirmation and recovery links, the phone's codes, the recovery copies, recoveries under way, and the send counts behind the rate limits |
 
 Relays before 1.2 did not record a version: their databases are recognised
@@ -234,7 +249,8 @@ WebSocket upgrade in front of it), `deploy/turnserver.conf` (coturn, sharing
 
 A ChatCube newer than its relay works, but what needs the newer relay says
 so instead of happening: renaming a group needs 1.3.0 (and, with an older
-relay than 1.4.0, the person added sees the chat only once the adder writes; public groups need 1.5.0), and an older relay
+relay than 1.4.0, the person added sees the chat only once the adder writes; public groups need 1.5.0; before 1.6.0 a group carries no revision, and a
+name just changed can show its old value for a moment), and an older relay
 answers ChatCube with `405 Method Not Allowed`, which ChatCube shows as "This
 relay cannot rename groups yet - it needs ChatCube relay 1.3.0 or later". On
 the server, with the layout of `deploy/chatcube-relay.service`:
@@ -248,7 +264,7 @@ sudo cp /var/lib/chatcube-relay/relay.sqlite3 /var/lib/chatcube-relay/relay.sqli
 # a copy: rsync -a --exclude .venv Server/ChatCubeRelay/ /opt/chatcube-relay/)
 sudo -u chatcube-relay /opt/chatcube-relay/.venv/bin/pip install -e /opt/chatcube-relay
 sudo systemctl start chatcube-relay
-curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.5.0"}
+curl -s https://relay.example.org/healthz          # {"status":"ok","version":"1.6.0"}
 ```
 
 (The database's file is whatever `CHATCUBE_RELAY_DB` names in
@@ -266,18 +282,38 @@ version, it puts the previous code and database back and starts that again
 sudo Server/ChatCubeRelay/deploy/update.sh /path/to/Server/ChatCubeRelay
 ```
 
+Another layout than `deploy/chatcube-relay.service`'s is given through its
+settings, each named with a `CHATCUBE_` prefix: `CHATCUBE_RELAY_HOME` (the
+installed code, `/opt/chatcube-relay`), `CHATCUBE_RELAY_USER`,
+`CHATCUBE_RELAY_SERVICE`, `CHATCUBE_RELAY_ENV_FILE`, `CHATCUBE_RELAY_BACKUPS`,
+`CHATCUBE_KEEP_BACKUPS`, `CHATCUBE_SYSTEMCTL`, `CHATCUBE_RUN_AS` and
+`CHATCUBE_FORCE=1` (install even the version that runs) - the defaults and
+what each is for are at the top of the script. sudo clears the environment,
+so they go on its command line:
+`sudo CHATCUBE_RELAY_HOME=/srv/relay Server/ChatCubeRelay/deploy/update.sh ...`.
+Before update.sh 0.2.0 they had no prefix (`RELAY_HOME`, `KEEP_BACKUPS`, ...);
+an old name is still read when the new one is not set, and the script warns.
+
 ### Deploying from CI
 
 The `ChatCube relay` workflow tests every change to this directory, and on
-`main` - or started by hand, *Actions > ChatCube relay > Run workflow* - puts
-the tested relay on the live server: it copies this directory to the server
-over SSH, runs `update.sh` there and then asks the public address
-(`vars.CHATCUBE_RELAY_URL`, default `https://relay-chatcube.ultraos.eu`)
-for the version this commit carries. Until the secrets below are set the
-deploy job fails at its first step, naming the secrets it cannot see, and
-nothing is touched (in a fork, which has no server, it only says so). Its GitHub environment,
-`chatcube-relay`, can be given a required reviewer (*Settings >
-Environments*) so a deploy waits for a click.
+`main` - or started by hand, *Actions > ChatCube relay > Run workflow* -
+copies the tested sources to the live server over SSH, into
+`~/chatcube-relay-src` of the deploy user (the previous copy replaced whole),
+and does nothing more. Installing them is the operator's: logged in on the
+server, they run the copy's own `update.sh` with their own rights,
+
+```bash
+src=/home/relay-deploy/chatcube-relay-src
+sudo "$src/deploy/update.sh" "$src"
+```
+
+and the job's summary says which version it copied. So the deploy user
+needs no root rights and no sudo rule. Until the secrets below are set the
+job fails at its first step, naming the secrets it cannot see, and nothing
+is touched (in a fork, which has no server, it only says so). Its GitHub
+environment, `chatcube-relay`, can be given a required reviewer (*Settings >
+Environments*) so a copy waits for a click.
 
 Once, on the server:
 
@@ -286,11 +322,10 @@ sudo useradd --create-home --shell /bin/bash relay-deploy
 sudo -u relay-deploy mkdir -m 700 /home/relay-deploy/.ssh
 # The public half of a key made for this alone (ssh-keygen -t ed25519 -N "" -f relay_deploy):
 echo 'ssh-ed25519 AAAA... relay-deploy' | sudo -u relay-deploy tee /home/relay-deploy/.ssh/authorized_keys
-# update.sh where the deploy user cannot change it, and the one command it may run as root:
-sudo install -m 755 Server/ChatCubeRelay/deploy/update.sh /usr/local/sbin/chatcube-relay-update
-echo 'relay-deploy ALL=(root) NOPASSWD: /usr/local/sbin/chatcube-relay-update *' | sudo tee /etc/sudoers.d/chatcube-relay-deploy
-sudo chmod 440 /etc/sudoers.d/chatcube-relay-deploy
 ```
+
+The deploy user can change what lands in its folder, `update.sh` included,
+so read what you are about to run as root.
 
 In the repository's *Settings > Secrets and variables > Actions* (or the
 `chatcube-relay` environment's secrets):
@@ -300,10 +335,8 @@ In the repository's *Settings > Secrets and variables > Actions* (or the
 | `CHATCUBE_RELAY_SSH_HOST` | the server's host name |
 | `CHATCUBE_RELAY_SSH_USER` | `relay-deploy` |
 | `CHATCUBE_RELAY_SSH_KEY` | the private half of that key |
-| `CHATCUBE_RELAY_SSH_KNOWN_HOSTS` | `ssh-keyscan <host>` - checked against the server's own key first; the job never trusts a host key it has not been given |
-
-`update.sh` itself is installed by hand, so a change to it reaches the server
-when it is installed again (the command above).
+| `CHATCUBE_RELAY_SSH_KNOWN_HOSTS` | `ssh-keyscan <host>` - checked against the server's own key first; the job never trusts a host key it has not been given. With SSH on another port, `ssh-keyscan -p <port> <host>`: its lines name the host as `[host]:port`, which is what ssh looks for there |
+| `CHATCUBE_RELAY_SSH_PORT` | optional: the server's SSH port, when it is not 22. A port is no secret, so it may be an Actions variable instead (the secret wins when both are set) |
 
 Give ChatCube the relay's `https://` address. A bare host is taken as
 `https://`, and an `http://` address that the server redirects to `https://`

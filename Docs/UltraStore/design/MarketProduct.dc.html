@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Market - Nordlicht Aura 2</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#c2410c}a:hover{color:#9a3412}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 20px; flex-wrap: wrap">
+<a href="MarketHome.dc.html" aria-label="UltraStore Market home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Market</span>
+</a>
+<a href="#deliver" style="display: flex; align-items: center; gap: 8px; text-decoration: none; color: #0f172a; min-height: 44px"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg><span style="display: flex; flex-direction: column; line-height: 1.2"><span style="font-size: 12px; color: #64748b">Deliver to</span><span style="font-weight: 700; font-size: 14px">Berlin 10115</span></span></a>
+<form role="search" style="flex: 1 1 360px; display: flex; align-items: stretch; height: 46px; border-radius: 999px; border: 2px solid {{accent}}; overflow: hidden; background: #ffffff">
+<label for="dept-p" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Department</label>
+<select id="dept-p" style="border: 0; border-right: 1px solid #e2e8f0; background: #f8fafc; padding: 0 12px; font: inherit; font-size: 13px; font-weight: 600; color: #334155; outline: none"><option>Electronics</option><option>All</option></select>
+<label for="search-p" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search products</label>
+<input id="search-p" type="search" value="wireless headphones" style="flex: 1 1 auto; min-width: 0; border: 0; padding: 0 16px; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+<button type="submit" aria-label="Search" style="width: 56px; border: 0; background: {{accent}}; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></button>
+</form>
+<nav aria-label="Account" style="display: flex; gap: 4px; align-items: center">
+<a href="#account" style="display: flex; flex-direction: column; justify-content: center; height: 44px; padding: 0 12px; border-radius: 12px; text-decoration: none; color: #0f172a; line-height: 1.2"><span style="font-size: 12px; color: #64748b">Hello, Anna</span><span style="font-weight: 700; font-size: 14px">Account</span></a>
+<a href="#orders" style="display: flex; flex-direction: column; justify-content: center; height: 44px; padding: 0 12px; border-radius: 12px; text-decoration: none; color: #0f172a; line-height: 1.2"><span style="font-size: 12px; color: #64748b">Returns &amp;</span><span style="font-weight: 700; font-size: 14px">Orders</span></a>
+<a href="MarketBasket.dc.html" aria-label="Basket, 3 items" style="position: relative; display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; background: #0f172a; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.5L21 8H6"></path><circle cx="10" cy="20" r="1.3"></circle><circle cx="17" cy="20" r="1.3"></circle></svg>Basket<span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-size: 12px; font-weight: 800">3</span></a>
+</nav>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 24px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 40px">
+
+<nav aria-label="Breadcrumb" style="font-size: 13px; color: #64748b; display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+<a href="MarketHome.dc.html" style="color: #475569; text-decoration: none; font-weight: 500">Market</a>
+<span aria-hidden="true">/</span>
+<a href="MarketSearch.dc.html" style="color: #475569; text-decoration: none; font-weight: 500">Electronics</a>
+<span aria-hidden="true">/</span>
+<a href="MarketSearch.dc.html" style="color: #475569; text-decoration: none; font-weight: 500">Headphones</a>
+<span aria-hidden="true">/</span>
+<span style="color: #0f172a; font-weight: 600">Nordlicht Aura 2</span>
+</nav>
+
+<section aria-labelledby="product-title" style="display: grid; grid-template-columns: 520px minmax(0, 1fr) 320px; gap: 32px; align-items: flex-start">
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div aria-hidden="true" style="height: 520px; border-radius: 24px; background: #f1f5f9; display: flex; align-items: center; justify-content: center; position: relative">
+<svg width="260" height="260" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-3a8 8 0 0 1 16 0v3"></path><rect x="3" y="13" width="4" height="6" rx="1.5"></rect><rect x="17" y="13" width="4" height="6" rx="1.5"></rect></svg>
+<span style="position: absolute; left: 16px; top: 16px; height: 26px; padding: 0 10px; border-radius: 6px; background: #dc2626; color: #ffffff; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center">-24 % · Today's deal</span>
+<span style="position: absolute; right: 16px; bottom: 16px; font-size: 12px; color: #64748b">[PHOTO 1 of 5]</span>
+</div>
+<div style="display: flex; gap: 10px">
+<span aria-hidden="true" style="width: 92px; height: 92px; border-radius: 14px; background: #f1f5f9; border: 2px solid #0f172a; box-sizing: border-box"></span>
+<span aria-hidden="true" style="width: 92px; height: 92px; border-radius: 14px; background: #f1f5f9; border: 1px solid #e2e8f0; box-sizing: border-box"></span>
+<span aria-hidden="true" style="width: 92px; height: 92px; border-radius: 14px; background: #f1f5f9; border: 1px solid #e2e8f0; box-sizing: border-box"></span>
+<span aria-hidden="true" style="width: 92px; height: 92px; border-radius: 14px; background: #f1f5f9; border: 1px solid #e2e8f0; box-sizing: border-box"></span>
+<span aria-hidden="true" style="width: 92px; height: 92px; border-radius: 14px; background: #0f172a; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700">Video</span>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<a href="#nordlicht" style="font-size: 13px; font-weight: 600; text-decoration: none">Nordlicht Audio · official brand shop</a>
+<h1 id="product-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15">Nordlicht Aura 2 wireless headphones, active noise cancelling, 40-hour battery, Bluetooth 5.3</h1>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px">
+<span aria-label="4.6 out of 5 stars" style="color: #f59e0b; letter-spacing: 1px; font-size: 16px">★★★★★</span>
+<a href="#reviews" style="font-weight: 600; text-decoration: none">4.6 · 1,284 ratings</a>
+<span style="color: #cbd5e1">|</span>
+<a href="#qa" style="font-weight: 600; text-decoration: none">86 answered questions</a>
+<span style="color: #cbd5e1">|</span>
+<span style="color: #64748b">3,000+ bought last month</span>
+</div>
+</div>
+
+<div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 16px 0; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 36px; letter-spacing: -0.02em">129.00 EUR</span>
+<span style="font-size: 15px; color: #64748b">Regular price <span style="text-decoration: line-through">169.00 EUR</span></span>
+<span style="height: 26px; padding: 0 10px; border-radius: 6px; background: #fee2e2; color: #991b1b; font-size: 13px; font-weight: 700; display: inline-flex; align-items: center">Save 40.00 EUR</span>
+<span style="flex-basis: 100%; font-size: 13px; color: #64748b">VAT included · delivery costs shown in the basket</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 14px; color: #334155">Colour: <strong>Graphite</strong></span>
+<div role="group" aria-label="Colour" style="display: flex; gap: 10px">
+<button type="button" aria-pressed="true" aria-label="Graphite" style="width: 44px; height: 44px; border-radius: 999px; border: 2px solid #0f172a; background: #334155; cursor: pointer; box-shadow: inset 0 0 0 3px #ffffff"></button>
+<button type="button" aria-label="Sand" style="width: 44px; height: 44px; border-radius: 999px; border: 1px solid #e2e8f0; background: #e7d8c4; cursor: pointer"></button>
+<button type="button" aria-label="Forest" style="width: 44px; height: 44px; border-radius: 999px; border: 1px solid #e2e8f0; background: #14532d; cursor: pointer"></button>
+<button type="button" aria-label="Snow" style="width: 44px; height: 44px; border-radius: 999px; border: 1px solid #e2e8f0; background: #f8fafc; cursor: pointer"></button>
+</div>
+</div>
+
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #334155">
+<li style="display: flex; gap: 10px"><span style="color: #15803d; font-weight: 800">✓</span>Adaptive noise cancelling with a transparency mode; six microphones for calls.</li>
+<li style="display: flex; gap: 10px"><span style="color: #15803d; font-weight: 800">✓</span>40 hours on a charge, 5 hours from 10 minutes of USB-C charging.</li>
+<li style="display: flex; gap: 10px"><span style="color: #15803d; font-weight: 800">✓</span>Multipoint: two devices at once; Bluetooth 5.3, LDAC and AAC; 3.5 mm cable included.</li>
+<li style="display: flex; gap: 10px"><span style="color: #15803d; font-weight: 800">✓</span>Folds into the included case; 254 g; replaceable ear cushions.</li>
+<li style="display: flex; gap: 10px"><span style="color: #15803d; font-weight: 800">✓</span>2-year warranty from the manufacturer, repairs in Germany.</li>
+</ul>
+
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0">
+<div style="display: flex; justify-content: space-between; gap: 12px; align-items: baseline"><span style="font-weight: 700; font-size: 14px">3 other offers from 119.00 EUR</span><a href="#offers" style="font-size: 13px; font-weight: 600; text-decoration: none">All offers</a></div>
+<div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #334155"><span>Refurb Depot · refurbished, like new · 12-month warranty</span><span style="font-weight: 700; color: #0f172a">119.00 EUR</span></div>
+<div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #334155"><span>Klangwerk · new · delivery 3 to 5 days</span><span style="font-weight: 700; color: #0f172a">126.50 EUR</span></div>
+</div>
+</div>
+
+<aside aria-label="Buy" style="display: flex; flex-direction: column; gap: 14px; padding: 22px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0; background: #ffffff; box-shadow: 0 12px 32px rgba(15,23,42,0.08)">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 28px; letter-spacing: -0.02em">129.00 EUR</span>
+<div style="display: flex; flex-direction: column; gap: 4px; font-size: 14px">
+<span style="color: #15803d; font-weight: 700">Free delivery tomorrow, 18 Nov</span>
+<span style="color: #334155">Order within <strong>3 h 12 min</strong>. Deliver to Berlin 10115.</span>
+<span style="color: #15803d; font-weight: 700; margin-top: 4px">In stock · 14 left</span>
+</div>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #334155">Quantity
+<select style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; color: #0f172a"><option>1</option><option>2</option><option>3</option></select>
+</label>
+<button type="button" style="height: 52px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">Add to basket</button>
+<button type="button" style="height: 52px; border-radius: 999px; border: 1px solid #0f172a; background: #0f172a; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">Buy now</button>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; padding-top: 10px; border-top: 1px solid #e2e8f0">
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Sold by</dt><dd style="margin: 0; font-weight: 600"><a href="#nordlicht" style="text-decoration: none">Nordlicht Audio</a></dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Shipped by</dt><dd style="margin: 0; font-weight: 600">UltraStore</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Returns</dt><dd style="margin: 0; font-weight: 600">30 days, free</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Payment</dt><dd style="margin: 0; font-weight: 600">Cards, Skrill wallet, local methods</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Protection</dt><dd style="margin: 0; font-weight: 600; color: #15803d">Buyer protection</dd></div>
+</dl>
+<div style="display: flex; gap: 8px; padding-top: 6px">
+<button type="button" style="flex: 1 1 0; height: 40px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer">Add to wishlist</button>
+<button type="button" style="flex: 1 1 0; height: 40px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer">Compare</button>
+</div>
+</aside>
+</section>
+
+<section aria-labelledby="specs-title" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: flex-start">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<h2 id="specs-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Product details</h2>
+<table style="border-collapse: separate; border-spacing: 0; width: 100%; font-size: 14px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden">
+<tbody>
+<tr><th scope="row" style="text-align: left; padding: 11px 18px; font-weight: 600; color: #64748b; background: #f8fafc; width: 40%; border-bottom: 1px solid #f1f5f9">Brand</th><td style="padding: 11px 18px; border-bottom: 1px solid #f1f5f9">Nordlicht</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 11px 18px; font-weight: 600; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9">Model</th><td style="padding: 11px 18px; border-bottom: 1px solid #f1f5f9">Aura 2 (NL-A2-GR)</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 11px 18px; font-weight: 600; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9">Form factor</th><td style="padding: 11px 18px; border-bottom: 1px solid #f1f5f9">Over-ear, closed, foldable</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 11px 18px; font-weight: 600; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9">Connectivity</th><td style="padding: 11px 18px; border-bottom: 1px solid #f1f5f9">Bluetooth 5.3, multipoint; USB-C audio; 3.5 mm</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 11px 18px; font-weight: 600; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9">Battery</th><td style="padding: 11px 18px; border-bottom: 1px solid #f1f5f9">40 h with ANC, 55 h without; 2 h to full</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 11px 18px; font-weight: 600; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9">Weight</th><td style="padding: 11px 18px; border-bottom: 1px solid #f1f5f9">254 g</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 11px 18px; font-weight: 600; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9">In the box</th><td style="padding: 11px 18px; border-bottom: 1px solid #f1f5f9">Headphones, case, USB-C cable, 3.5 mm cable, flight adapter</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 11px 18px; font-weight: 600; color: #64748b; background: #f8fafc; border-bottom: 1px solid #f1f5f9">SKU · EAN</th><td style="padding: 11px 18px; border-bottom: 1px solid #f1f5f9">NL-A2-GR · 4012345678901</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 11px 18px; font-weight: 600; color: #64748b; background: #f8fafc">Energy and safety</th><td style="padding: 11px 18px">CE, WEEE registered; battery not user-replaceable, service by the manufacturer</td></tr>
+</tbody>
+</table>
+</div>
+<div style="display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Compare with similar items</h2>
+<table style="border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden">
+<thead>
+<tr style="background: #f8fafc">
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 600; color: #64748b; border-bottom: 1px solid #e2e8f0"> </th>
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #e2e8f0; background: #fff7ed">Aura 2 (this)</th>
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #e2e8f0">Aura Lite</th>
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #e2e8f0">Klangwerk K7</th>
+</tr>
+</thead>
+<tbody>
+<tr><th scope="row" style="text-align: left; padding: 10px 14px; font-weight: 600; color: #64748b; border-bottom: 1px solid #f1f5f9">Price</th><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; background: #fff7ed; font-weight: 700">129.00 EUR</td><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9">79.00 EUR</td><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9">149.00 EUR</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 10px 14px; font-weight: 600; color: #64748b; border-bottom: 1px solid #f1f5f9">Rating</th><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; background: #fff7ed">4.6 · 1,284</td><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9">4.2 · 610</td><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9">4.5 · 2,030</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 10px 14px; font-weight: 600; color: #64748b; border-bottom: 1px solid #f1f5f9">Noise cancelling</th><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; background: #fff7ed">Adaptive</td><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9">No</td><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9">Fixed</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 10px 14px; font-weight: 600; color: #64748b; border-bottom: 1px solid #f1f5f9">Battery</th><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; background: #fff7ed">40 h</td><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9">30 h</td><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9">35 h</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 10px 14px; font-weight: 600; color: #64748b; border-bottom: 1px solid #f1f5f9">Weight</th><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9; background: #fff7ed">254 g</td><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9">210 g</td><td style="padding: 10px 14px; border-bottom: 1px solid #f1f5f9">290 g</td></tr>
+<tr><th scope="row" style="text-align: left; padding: 10px 14px; font-weight: 600; color: #64748b">Delivery</th><td style="padding: 10px 14px; background: #fff7ed; color: #15803d; font-weight: 600">Free, tomorrow</td><td style="padding: 10px 14px; color: #15803d; font-weight: 600">Free, tomorrow</td><td style="padding: 10px 14px">3 to 5 days</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="reviews" aria-labelledby="reviews-title" style="display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 40px; align-items: flex-start">
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 20px; border: 1px solid #e2e8f0">
+<h2 id="reviews-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Customer reviews</h2>
+<div style="display: flex; align-items: center; gap: 10px"><span aria-label="4.6 out of 5 stars" style="color: #f59e0b; letter-spacing: 1px; font-size: 20px">★★★★★</span><span style="font-weight: 700; font-size: 18px">4.6 out of 5</span></div>
+<span style="font-size: 13px; color: #64748b">1,284 ratings, 412 with text. Only delivered orders can rate.</span>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+<li style="display: flex; align-items: center; gap: 10px"><span style="width: 44px; color: #334155">5 star</span><span style="flex: 1 1 auto; height: 10px; border-radius: 999px; background: #f1f5f9; overflow: hidden"><span style="display: block; width: 72%; height: 100%; background: #f59e0b"></span></span><span style="width: 36px; text-align: right; color: #64748b">72 %</span></li>
+<li style="display: flex; align-items: center; gap: 10px"><span style="width: 44px; color: #334155">4 star</span><span style="flex: 1 1 auto; height: 10px; border-radius: 999px; background: #f1f5f9; overflow: hidden"><span style="display: block; width: 18%; height: 100%; background: #f59e0b"></span></span><span style="width: 36px; text-align: right; color: #64748b">18 %</span></li>
+<li style="display: flex; align-items: center; gap: 10px"><span style="width: 44px; color: #334155">3 star</span><span style="flex: 1 1 auto; height: 10px; border-radius: 999px; background: #f1f5f9; overflow: hidden"><span style="display: block; width: 6%; height: 100%; background: #f59e0b"></span></span><span style="width: 36px; text-align: right; color: #64748b">6 %</span></li>
+<li style="display: flex; align-items: center; gap: 10px"><span style="width: 44px; color: #334155">2 star</span><span style="flex: 1 1 auto; height: 10px; border-radius: 999px; background: #f1f5f9; overflow: hidden"><span style="display: block; width: 2%; height: 100%; background: #f59e0b"></span></span><span style="width: 36px; text-align: right; color: #64748b">2 %</span></li>
+<li style="display: flex; align-items: center; gap: 10px"><span style="width: 44px; color: #334155">1 star</span><span style="flex: 1 1 auto; height: 10px; border-radius: 999px; background: #f1f5f9; overflow: hidden"><span style="display: block; width: 2%; height: 100%; background: #f59e0b"></span></span><span style="width: 36px; text-align: right; color: #64748b">2 %</span></li>
+</ul>
+<button type="button" style="height: 44px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; cursor: pointer">Write a review</button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<button type="button" aria-pressed="true" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #0f172a; background: #0f172a; color: #ffffff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Most helpful</button>
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Newest</button>
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">With photos</button>
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Critical</button>
+</div>
+<article style="display: flex; flex-direction: column; gap: 8px; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px">JM</span><span style="font-weight: 600">Jonas M.</span><span style="color: #15803d; font-weight: 600">Verified purchase</span><span style="color: #64748b">· 9 Nov 2026</span></div>
+<div style="display: flex; align-items: center; gap: 8px"><span aria-label="5 out of 5 stars" style="color: #f59e0b; letter-spacing: 1px">★★★★★</span><span style="font-weight: 700">Quiet train rides at last</span></div>
+<p style="margin: 0; color: #334155; font-size: 14px; max-width: 70ch">The noise cancelling takes the rumble out of the regional train and the transparency mode is natural enough to order a coffee without taking them off. Battery lasted my whole week of commuting. The case is bigger than I expected.</p>
+<div style="display: flex; gap: 12px; font-size: 13px; color: #64748b"><span>214 found this helpful</span><button type="button" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; font-size: 13px; cursor: pointer">Helpful</button><a href="#report" style="color: #64748b; text-decoration: none; display: inline-flex; align-items: center">Report</a></div>
+</article>
+<article style="display: flex; flex-direction: column; gap: 8px; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 999px; background: #fce7f3; color: #be185d; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px">SK</span><span style="font-weight: 600">Sofia K.</span><span style="color: #15803d; font-weight: 600">Verified purchase</span><span style="color: #64748b">· 2 Nov 2026 · Colour: Sand</span></div>
+<div style="display: flex; align-items: center; gap: 8px"><span aria-label="4 out of 5 stars" style="color: #f59e0b; letter-spacing: 1px">★★★★☆</span><span style="font-weight: 700">Great sound, app is optional</span></div>
+<p style="margin: 0; color: #334155; font-size: 14px; max-width: 70ch">Warm sound with plenty of bass, and they work fully without installing anything, which is why I bought them. One star off because the touch controls on the right cup are easy to trigger when adjusting them.</p>
+<div aria-hidden="true" style="display: flex; gap: 8px"><span style="width: 72px; height: 72px; border-radius: 10px; background: #f1f5f9"></span><span style="width: 72px; height: 72px; border-radius: 10px; background: #f1f5f9"></span></div>
+<div style="display: flex; gap: 12px; font-size: 13px; color: #64748b"><span>88 found this helpful</span><button type="button" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; font-size: 13px; cursor: pointer">Helpful</button><a href="#report" style="color: #64748b; text-decoration: none; display: inline-flex; align-items: center">Report</a></div>
+</article>
+<article style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 999px; background: #fef3c7; color: #b45309; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px">TR</span><span style="font-weight: 600">Tomás R.</span><span style="color: #15803d; font-weight: 600">Verified purchase</span><span style="color: #64748b">· 28 Oct 2026</span></div>
+<div style="display: flex; align-items: center; gap: 8px"><span aria-label="2 out of 5 stars" style="color: #f59e0b; letter-spacing: 1px">★★☆☆☆</span><span style="font-weight: 700">Left cup crackled after a month</span></div>
+<p style="margin: 0; color: #334155; font-size: 14px; max-width: 70ch">Sound was fine until the left side started crackling at high volume. The return through the order page took two minutes and the replacement came in three days, so the process worked, the unit did not.</p>
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 12px; background: #f8fafc; font-size: 13px; color: #334155"><span style="font-weight: 700">Nordlicht Audio replied · 30 Oct 2026</span><span>Sorry about that, Tomás. A batch of early units had a loose driver cable; every one sold now is from the corrected run. Thank you for giving the replacement a chance.</span></div>
+<div style="display: flex; gap: 12px; font-size: 13px; color: #64748b"><span>61 found this helpful</span><button type="button" style="height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; font: inherit; font-size: 13px; cursor: pointer">Helpful</button><a href="#report" style="color: #64748b; text-decoration: none; display: inline-flex; align-items: center">Report</a></div>
+</article>
+<a href="#all-reviews" style="font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; height: 44px">See all 412 reviews</a>
+</div>
+</section>
+
+<section id="qa" aria-labelledby="qa-title" style="display: flex; flex-direction: column; gap: 14px">
+<h2 id="qa-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Questions and answers</h2>
+<form role="search" style="display: flex; align-items: center; gap: 10px; height: 46px; max-width: 640px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="qa-search" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search questions</label>
+<input id="qa-search" type="search" placeholder="Have a question? Search 86 answered questions" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+</form>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 40px; font-size: 14px">
+<div style="display: flex; flex-direction: column; gap: 4px"><dt style="font-weight: 700">Does it work with a Linux laptop without an app?</dt><dd style="margin: 0; color: #334155">Yes: it is standard Bluetooth audio. The app only changes the EQ and firmware. <span style="color: #64748b">· Nordlicht Audio, seller</span></dd></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><dt style="font-weight: 700">Can the ear cushions be replaced?</dt><dd style="margin: 0; color: #334155">They click off; the replacement pair is 14.90 EUR in the same shop. <span style="color: #64748b">· Jonas M., customer</span></dd></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><dt style="font-weight: 700">Is the refurbished offer the same model?</dt><dd style="margin: 0; color: #334155">Same model, returned units tested by Refurb Depot, 12-month warranty from them rather than 2 years from Nordlicht. <span style="color: #64748b">· Refurb Depot, seller</span></dd></div>
+<div style="display: flex; flex-direction: column; gap: 4px"><dt style="font-weight: 700">What is the delivery charge outside Germany?</dt><dd style="margin: 0; color: #334155">Free in the EU from 49 EUR, otherwise 5.90 EUR; shown in the basket once the address is set. <span style="color: #64748b">· UltraStore</span></dd></div>
+</dl>
+</section>
+
+<section aria-labelledby="also-title" style="display: flex; flex-direction: column; gap: 16px">
+<h2 id="also-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Customers also bought</h2>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px">
+<a href="#cushions" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: #f8fafc; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="height: 100px; border-radius: 12px; background: #f1f5f9"></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">Aura 2 ear cushions, pair</span><span style="font-size: 14px; font-weight: 800; font-family: Manrope, Inter, sans-serif">14.90 EUR</span></a>
+<a href="#stand" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: #f8fafc; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="height: 100px; border-radius: 12px; background: #f1f5f9"></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">Headphone stand, walnut</span><span style="font-size: 14px; font-weight: 800; font-family: Manrope, Inter, sans-serif">22.00 EUR</span></a>
+<a href="#cable" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: #f8fafc; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="height: 100px; border-radius: 12px; background: #f1f5f9"></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">USB-C cable, 2 m, braided</span><span style="font-size: 14px; font-weight: 800; font-family: Manrope, Inter, sans-serif">7.90 EUR</span></a>
+<a href="#adapter" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: #f8fafc; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="height: 100px; border-radius: 12px; background: #f1f5f9"></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">Bluetooth transmitter for TV</span><span style="font-size: 14px; font-weight: 800; font-family: Manrope, Inter, sans-serif">29.00 EUR</span></a>
+<a href="#orbit" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: #f8fafc; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="height: 100px; border-radius: 12px; background: #f1f5f9"></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">Orbit S smart watch</span><span style="font-size: 14px; font-weight: 800; font-family: Manrope, Inter, sans-serif">89.00 EUR</span></a>
+<a href="#case" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: #f8fafc; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="height: 100px; border-radius: 12px; background: #f1f5f9"></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">Hard case, Aura series</span><span style="font-size: 14px; font-weight: 800; font-family: Manrope, Inter, sans-serif">19.90 EUR</span></a>
+</div>
+</section>
+
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px">
+<span style="font-weight: 600; color: #0f172a">UltraStore Market</span>
+<span>· the ULTRA OS marketplace</span>
+</div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="#sell" style="color: #475569; text-decoration: none; font-weight: 500">Sell on UltraStore</a>
+<a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a>
+<a href="#returns" style="color: #475569; text-decoration: none; font-weight: 500">Returns</a>
+<a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a>
+<a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a>
+<a href="#imprint" style="color: #475569; text-decoration: none; font-weight: 500">Imprint</a>
+<a href="#language" style="color: #475569; text-decoration: none; font-weight: 500">English · EUR</a>
+</nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#ea580c","options":["#ea580c","#2563eb","#0f172a","#0f766e"]},"$preview":{"width":1440,"height":2760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#ea580c' };
+  }
+}
+</script>
+</body>
+</html>

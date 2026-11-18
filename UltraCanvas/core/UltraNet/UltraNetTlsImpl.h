@@ -8,7 +8,8 @@
 // raw int for Read/Write (so they can plug straight into the socket layer's
 // TlsReadFn / TlsWriteFn / TlsCloseFn vtable). `outCtx` from Wrap is opaque
 // — it is owned by the platform impl and freed by Close.
-// Version: 0.3.1 (Stage 3 hardening)
+// Version: 0.4.0 - Read tells a timeout (-2) from a broken connection (-1); Write raises no SIGPIPE
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -29,7 +30,10 @@ namespace ultranet_tls_platform {
     UltraNetResult  Handshake(void* ctx);
     UltraNetTlsInfo GetInfo(void* ctx);
 
-    // Match TlsReadFn / TlsWriteFn / TlsCloseFn from UltraNetSocketInternal.h
+    // Match TlsReadFn / TlsWriteFn / TlsCloseFn from UltraNetSocketInternal.h.
+    // Read: > 0 bytes, 0 the peer closed, -2 (kTlsReadTimedOut) nothing within
+    // the socket's receive timeout, -1 broken. Write: bytes or -1, without
+    // SIGPIPE on a connection the peer closed.
     int  Read(void* ctx, char* buf, std::size_t len, int timeoutMs);
     int  Write(void* ctx, const char* buf, std::size_t len);
     void Close(void* ctx);

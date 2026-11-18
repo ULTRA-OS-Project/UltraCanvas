@@ -603,7 +603,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, UltraNotifications, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraNotifications, UltraSnip, UltraToDo, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -3019,8 +3019,26 @@ people by username or phone number. Provider: Mastodon
 direct messages of a Mastodon server over its REST API - browser sign-in
 (OAuth with PKCE, `UltraIMAuthStep::Browser`), a chat per set of people
 over all their threads, polled; replies, edits, deletes, read marks,
-pictures, videos and sound. Tests in `Tests/UltraIM`. See
-`Docs/Modules/UltraIM/README.md`.
+pictures, videos and sound. Provider: Mattermost
+(`UltraCanvas/Plugins/UltraIM/mattermost/`, module `ultraim_mattermost`):
+channels, direct and group messages of a Mattermost server over its REST
+API - password with an MFA code, or a personal access token; polled;
+thread replies, files, edits, deletes. Provider: Zulip
+(`UltraCanvas/Plugins/UltraIM/zulip/`, module `ultraim_zulip`): direct and
+group messages and stream topics of a Zulip organization - password or API
+key; the event queue; uploads, edits, deletes. Provider: Signal
+(`UltraCanvas/Plugins/UltraIM/signal/`, module `ultraim_signal`): through a
+signal-cli daemon (the user's, or one it starts) - linked to the phone by
+QR code; 1:1 chats and groups, quotes, edits, deletes, receipts, typing,
+attachments. Provider: XMPP (`UltraCanvas/Plugins/UltraIM/xmpp/`, module
+`ultraim_xmpp`): any XMPP server over TCP (STARTTLS or direct TLS, found by
+SRV) or WebSocket (RFC 7395) - SCRAM sign-in
+with the keys kept, not the password; roster, rooms, the archive, receipts,
+markers, edits, retractions, replies, carbons, HTTP upload. Provider: IRC
+(`UltraCanvas/Plugins/UltraIM/irc/`, module `ultraim_irc`): IRC with IRCv3
+over TCP and TLS - SASL, channels and private chats, CHATHISTORY, a server
+conversation for raw commands. Tests in `Tests/UltraIM`.
+See `Docs/Modules/UltraIM/README.md`.
 
 ---
 
@@ -3138,3 +3156,46 @@ each, and the catalogue files of the three layers. See
 `Docs/Modules/UltraLocalisation/README.md` and
 `Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`.
 
+
+---
+
+### **21. UltraSite**
+
+The HTML + JavaScript output of a website: a list of routes in, a folder
+any static host serves out, written the way Docusaurus writes a site. Every
+route becomes a complete, styled HTML page (head, skip link, navbar, the
+route's layout - `page`, `post` or one an app adds - and footer); one
+stylesheet (the base, the site's design tokens as `--us-*` custom
+properties in a light and an optional dark look, the app's own rules) and
+the script modules are written under their content hash and cached for a
+year. `core.js` (prefetch on intent, the theme toggle) is on every page; a
+behaviour module an app registers (`Builder::AddScript`) is loaded only by
+the pages whose body asks for it with `data-us="<behaviour>"`. Beside the
+pages: sitemap.xml, robots.txt, 404.html, `.htaccess` and `_headers` with
+the cache rules and a Content-Security-Policy that admits no script from
+another origin, plus speculation rules that let Chromium prerender the next
+page. The build reads every page back through the HTMLReader and fails on
+a broken internal link or anchor, an unknown behaviour, or a page, the
+stylesheet or a script over its compressed-size budget; it removes what an
+earlier build wrote and this one did not. The site works with JavaScript
+off. Documentation sites too: `AddDocs` reads a Markdown folder as
+Docusaurus reads its `docs/` (front matter, `_category_.json`, links
+between the files, translations), into the `doc` layout (sidebar, table
+of contents, breadcrumbs, previous / next), with code highlighted at build
+time, admonitions and tabs (`UltraSiteMarkdown.h`), a search index per
+language, a search page and the `search`, `toc`, `tabs` and `copy`
+modules. UltraPress publishes its HTML + JavaScript output, a site's
+`docs/` and `ultrapress docs` through it
+(`Apps/UltraPress/engine/UltraPressSite.h`); the UltraStore admin backend
+writes the web store through it (`Apps/UltraStoreAdmin/core/WebStoreHtml.h`),
+under the catalog's path (a site's `url` with a path is served from it:
+`Builder::Url`) and in every catalog language (`SiteConfig::frames`).
+Responsive pictures (`Builder::Picture`: AVIF / WebP variants by content
+hash), `.gz` / `.br` copies (`BuildOptions::precompress`; Brotli
+optional), versioned docs (`DocsOptions::versions`), and a loopback preview
+server over UltraNet (`UltraSiteServer.h`: `Respond`, `Serve`) behind
+`ultrapress serve`. Headless: links the core library (JSON, HTMLReader, UltraCrypt) and
+zlib. Sources under `UltraSite/{include,core,resources}`, target
+`UltraSite`, header `<UltraSite/UltraSite.h>`, `namespace UltraSite`;
+see `Docs/Modules/UltraSite/README.md` and
+`Docs/Research/UltraSiteStaticSitesProposal.md`.

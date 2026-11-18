@@ -284,5 +284,5 @@ The setters are not thread-safe. Call them only from the UI thread.
 ## See Also
 
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Text display widget that consumes these settings
-- [UltraCanvasDropdown](UltraCanvasDropdown.md) — Used in the demo for live selection
+- [UltraCanvasDropdown](../../UltraCanvas/include/UltraCanvasDropdown.h) — Used in the demo for live selection
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) — General 2D rendering pipeline

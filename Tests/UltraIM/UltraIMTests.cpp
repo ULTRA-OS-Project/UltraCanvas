@@ -1,14 +1,19 @@
 // Tests/UltraIM/UltraIMTests.cpp
 // UltraIM manager: registry, dispatcher, merge, sending, calls, modules
+// Version: 0.1.2 - providers on demand: one module by its name, the networks in use kept and loaded
 // Version: 0.1.1 - searching: the shared matcher, links, case folding, a search by reading history
 // Version: 0.1.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 
 #include "FakeProvider.h"
 #include "UltraIM/UltraIMCore.h"
+#include "UltraCanvasPathUtf8.h"
 
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -255,6 +260,98 @@ void TestModuleLoading() {
     UltraIM_Shutdown();
 }
 
+// Providers on demand: a module found by its file name and loaded alone, the
+// networks in use written down and loaded at the next start.
+std::string ReadFile(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    std::stringstream text;
+    text << in.rdbuf();
+    return text.str();
+}
+
+void TestProvidersOnDemand() {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path data = fs::temp_directory_path() / ("ultraim-on-demand-" + UltraIM_NewClientMessageId());
+    fs::create_directories(data, ec);
+    const fs::path list = data / "ultraim-providers.txt";
+    UltraIMConfig config;
+    config.pluginDirectory = ULTRAIM_TEST_MODULE_DIR;
+    config.dataDirectory = UltraCanvas::PathToUtf8(data);
+
+    // A first start (the data folder empty): nothing loaded, the list begun.
+    UltraIM_Initialize(config);
+    CHECK(UltraIM_LoadUsedProviders() == 0);
+    CHECK(fs::is_regular_file(list));
+    UltraIM_Shutdown();
+    fs::remove(list, ec);
+    {
+        std::ofstream other(data / "something-else");      // the folder in use before
+        other << "x";
+    }
+
+    // The modules there, known by their names alone.
+    UltraIM_Initialize(config);
+    const std::vector<std::string> modules = UltraIM_ListProviderModules();
+    CHECK(modules.size() == 3);
+    CHECK(modules.size() == 3 && modules[0] == "moduletest" && modules[1] == "stale_other" && modules[2] == "stale_v1");
+    UltraIMProviderInfo info;
+    CHECK(!UltraIM_GetProviderInfo("moduletest", info));             // nothing loaded yet
+
+    // No list yet: every module once (the stale ones refused), and the list
+    // written - empty: no provider has a sign-in kept.
+    CHECK(!fs::exists(list));
+    CHECK(UltraIM_LoadUsedProviders() == 1);
+    CHECK(UltraIM_GetProviderInfo("moduletest", info));
+    CHECK(fs::is_regular_file(list));
+    CHECK(UltraIM_GetUsedProviders().empty());
+
+    // A provider that connects is one in use; signed out of, it is not.
+    auto a = std::make_shared<FakeProvider>("chat-a");
+    CHECK(UltraIM_RegisterProvider(a));
+    UltraIMEvent connected;
+    connected.type = UltraIMEventType::ConnectionStateChange;
+    connected.providerId = "chat-a";
+    connected.connectionState = UltraIMConnectionState::Connected;
+    a->Raise(connected);
+    CHECK(UltraIM_GetUsedProviders() == std::vector<std::string>{"chat-a"});
+    CHECK(ReadFile(list).find("\nchat-a\n") != std::string::npos);
+    UltraIM_SignOut("chat-a");
+    CHECK(UltraIM_GetUsedProviders().empty());
+    CHECK(ReadFile(list).find("chat-a") == std::string::npos);
+    UltraIM_Shutdown();
+
+    // The next start: only what the list names (a comment and a line that is
+    // no provider id ignored) - the module loaded in an UltraIM since shut
+    // down registers its provider again.
+    {
+        std::ofstream out(list, std::ios::trunc);
+        out << "# by hand\n  moduletest   # the test's module\n../../evil\n\n";
+    }
+    UltraIM_Initialize(config);
+    CHECK(UltraIM_GetUsedProviders() == std::vector<std::string>{"moduletest"});
+    CHECK(UltraIM_LoadUsedProviders() == 1);
+    CHECK(UltraIM_GetProviderInfo("moduletest", info));
+    CHECK(UltraIM_LoadUsedProviders() == 0);                          // loaded already
+    CHECK(UltraIM_LoadProvider("moduletest").success);               // ... and asked again: fine
+    UltraIMResult r = UltraIM_LoadProvider("nothere");
+    CHECK(!r.success && r.code == UltraIMResultCode::ProviderNotFound);
+    r = UltraIM_LoadProvider("../moduletest");
+    CHECK(!r.success && r.code == UltraIMResultCode::InvalidArgument);
+    r = UltraIM_LoadProvider("stale_v1");                             // there, but refused
+    CHECK(!r.success && r.code == UltraIMResultCode::ProviderNotFound);
+    UltraIM_Shutdown();
+
+    // Without a data folder nothing is written, and nothing listed is loaded.
+    UltraIMConfig bare;
+    bare.pluginDirectory = ULTRAIM_TEST_MODULE_DIR;
+    UltraIM_Initialize(bare);
+    CHECK(UltraIM_LoadUsedProviders() == 0);
+    CHECK(UltraIM_LoadProvider("moduletest").success);               // on demand all the same
+    UltraIM_Shutdown();
+    fs::remove_all(data, ec);
+}
+
 UltraIMMessage TextMessage(const std::string& id, const std::string& text,
                            UltraIMMessageType type = UltraIMMessageType::Text, const std::string& fileName = "") {
     UltraIMMessage m;
@@ -490,6 +587,7 @@ int main() {
     TestFetchConversationsMerges();
     TestSendingAndCalls();
     TestModuleLoading();
+    TestProvidersOnDemand();
     TestSearchMatching();
     TestSearchByFetching();
     TestSearchThroughManager();

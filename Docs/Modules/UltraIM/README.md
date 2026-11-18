@@ -48,7 +48,8 @@ UltraIMConfig config;
 config.pluginDirectory = "<exe dir>/Plugins/UltraIM";
 config.dataDirectory   = "<user data dir>/ChatCube";
 UltraIM_Initialize(config);
-UltraIM_RefreshProviders();                 // load the provider modules
+UltraIM_LoadUsedProviders();                // the networks in use (signed in to before)
+UltraIM_LoadProvider("telegram");           // another one, when it is asked for
 
 UltraIM_Subscribe([](const UltraIMEvent& e) {
     if (e.type == UltraIMEventType::MessageReceive) { /* append e.message */ }
@@ -357,9 +358,29 @@ extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost
 }
 ```
 
-`UltraIM_RefreshProviders` loads each module in `pluginDirectory` once and
-never unloads it (queued callbacks may still point into it). A provider
-compiled into the application uses `UltraIM_RegisterProvider` instead.
+A module is named `ultraim_<provider id>` (`.so`, `.dll`, `.dylib`) - the
+build's `OUTPUT_NAME` with no prefix - so a provider is found by its id
+without loading anything. Modules are loaded **on demand**:
+
+- `UltraIM_ListProviderModules()` - the ids of the modules in
+  `pluginDirectory`, loaded or not (to offer them);
+- `UltraIM_LoadProvider(id)` - that one module, when its network is asked
+  for (a button, a sign-in); `ProviderNotFound` when there is none;
+- `UltraIM_LoadUsedProviders()` - at start, the networks in use: those
+  listed in `<dataDirectory>/ultraim-providers.txt`, one provider id a line
+  (`#` a comment). UltraIM adds a provider there when it connects
+  (`ConnectionStateChange` to `Connected`) and takes it out on
+  `UltraIM_SignOut`; `UltraIM_GetUsedProviders()` reads it. With no list
+  yet, a first start (the data folder empty) begins an empty one; a data
+  folder used before - an application that loaded every module until now -
+  has every module loaded once and those with a sign-in kept written down,
+  so an update signs no one out;
+- `UltraIM_RefreshProviders` - every module, as before.
+
+A module is loaded once and never unloaded (queued callbacks may still point
+into it); after `UltraIM_Shutdown` and a new `UltraIM_Initialize` it is asked
+to register its provider again. A provider compiled into the application
+uses `UltraIM_RegisterProvider` instead.
 
 **The module ABI.** `ULTRAIM_PLUGIN_HOST_ABI_VERSION` covers everything a
 module and the host share in binary form: the host table, the
@@ -868,8 +889,255 @@ statuses between two looks in order, a reply, an edit, a delete seen by both
 sides, a picture and a video byte for byte, a file refused, search, read, a
 group, a second thread in the same chat, leaving. Skips without python3.
 
+## Provider: Mattermost
+
+`UltraCanvas/Plugins/UltraIM/mattermost/` (module `ultraim_mattermost`,
+provider id `mattermost`) is a client of a Mattermost server's REST API
+(v4) over UltraNet; like Mastodon it links only UltraNet, UltraVault and
+UltraCrypt.
+
+- **Sign-in** (`UltraIMLoginType::UsernamePassword`): `credentials.server`
+  (a bare host is taken as https), `username` (the user name or the e-mail)
+  and `password` (`POST /api/v4/users/login`; the session token comes in
+  the `Token` header). An account with multi-factor authentication answers
+  `NeedsInput` with the step `Code` (`authHint`: what to type) and an
+  `AuthStepChange`; the next `SignIn` needs only `otpCode` - a wrong code
+  answers `AuthFailed` and stays on the step. `accessToken` (a personal
+  access token) signs in directly. The session is kept in UltraVault and
+  resumed by `SignIn` with no credentials; a token the server no longer
+  takes drops it (`AuthFailed` at the start, `AuthRequire` while connected).
+  `FetchAccountProfile` answers the account's name (`Erin Smith (@erin)`).
+- **Conversations** are channels, the id the channel's: a direct message
+  (1:1, `directContactId` the other user), a group message (2-7 others), and
+  the public and private channels of the user's teams as groups titled
+  `Channel (Team)`, their creator as `ownerId`. Unread counts are the
+  channel's messages minus those read.
+- **News by polling** every few seconds (`MattermostTimings::pollMs`, 3 s):
+  a channel whose last post moved, one open in the window, or one busy in
+  the last 15 minutes is read with `posts?since=` - new posts in order
+  (`MessageReceive`), edits (`MessageUpdate`), deletes (`MessageDelete`); a
+  real server does not move a channel's time on an edit or a delete, hence
+  the open and busy ones. System posts are left out.
+- **Messages**: the post's markdown as it is; a thread reply has `replyTo`
+  its root post (a reply to a reply goes into the root's thread). Files of
+  any type, uploaded with `TransferProgress` and fetched with the token;
+  pictures come by themselves. The client id goes as `pending_post_id`, so
+  our own post is not received back.
+- **Edit, delete** (one's own, for everyone), **read**, **people** -
+  `AddContact` takes `@user`, `user`, an e-mail or a user id; `CreateGroup`
+  2-7 people (a group message, its title the members') - **leave** (a
+  channel; a direct or group message is hidden as Mattermost hides it and
+  comes back with its next post), **search** one conversation at a time.
+- **Not here**: typing, presence, read receipts, calls, reactions; only a
+  post's first file is its attachment.
+
+Tests: `Tests/UltraIM/MattermostProviderTests.cpp` against
+`mattermost_fake_server.py` (standard-library python: a team with two
+channels, passwords, personal access tokens, an MFA user): every sign-in
+path including MFA and a session the server ended, channels and direct
+messages, several posts between two looks in order, thread replies, edit and
+delete seen by the other side, a picture, a PDF and a voice note byte for
+byte, search, unread and read, group messages, hiding and leaving. Skips
+without python3 unless `ULTRAIM_TEST_MATTERMOST_REQUIRED` is set.
+
+## Provider: Zulip
+
+`UltraCanvas/Plugins/UltraIM/zulip/` (module `ultraim_zulip`, provider id
+`zulip`) is a client of a Zulip organization's REST API over UltraNet.
+
+- **Sign-in** (`UltraIMLoginType::UsernamePassword`): `credentials.server`
+  (the organization, `chat.zulip.org`), `username` (the account's e-mail)
+  and `password` (`POST /api/v1/fetch_api_key`), or `accessToken` = the
+  account's API key with the e-mail in `username`; then HTTP Basic with the
+  e-mail and the key. Kept in UltraVault and resumed by `SignIn` with no
+  credentials. `FetchAccountProfile` answers the name and the e-mail.
+- **Conversations**: a direct message `dm:<id>`, a group direct message
+  `dm:<id>,<id>` (the others' user ids in order), and every topic of a
+  subscribed stream as a group `stream:<stream id>:<topic>`, titled
+  `#stream > topic`. The list is the streams' newest topics and the newest
+  direct messages; unread counts those without the `read` flag.
+- **News from the event queue** (`/api/v1/register`, then `/events`
+  long-polled on a thread of its own): new messages, edits and deletes at
+  once; a queue the server forgot is registered again, and a network error
+  shows as Reconnecting.
+- **Messages**: the raw markdown (`apply_markdown=false`). An upload's link
+  (`/user_uploads/...`) is the attachment - of any type, sent with
+  `TransferProgress`, fetched with the key; pictures come by themselves.
+- **Edit, delete** (one's own, for everyone), **read** (the `read` flag),
+  **people** (`AddContact` an e-mail or a user id, `CreateGroup` a group
+  direct message), **leave** (a topic muted, a direct message hidden on this
+  device), **search** one conversation at a time.
+- **Not here**: replies to a message (Zulip quotes instead), typing,
+  presence, read receipts, calls; moved or renamed topics. Needs Zulip 7.0
+  or later.
+
+Tests: `Tests/UltraIM/ZulipProviderTests.cpp` against `zulip_fake_server.py`
+(standard-library python, with a real long-poll): password and API-key
+sign-in and the session kept, direct, group direct and stream-topic
+messages both ways, edit and delete seen by the other side, uploads byte
+for byte, read, search, a lost event queue registered again without losing
+a message, leaving, and a shutdown that does not wait for an open long-poll.
+Skips without python3 unless `ULTRAIM_TEST_ZULIP_REQUIRED` is set.
+
+## Provider: Signal
+
+`UltraCanvas/Plugins/UltraIM/signal/` (module `ultraim_signal`, provider id
+`signal`) talks to [signal-cli](https://github.com/AsamK/signal-cli)
+(GPL-3.0, built on Signal's own libsignal) running as a daemon with its HTTP
+JSON-RPC interface: Signal has no API for other applications, and
+signal-cli is a linked device of the user's phone, as Signal Desktop is.
+signal-cli is not bundled.
+
+- **The daemon**: `credentials.server` names one the user runs
+  (`http://127.0.0.1:7583`; `signal-cli daemon --http 127.0.0.1:7583
+  --receive-mode=manual`, no `-a`). Without one the provider starts its own
+  (`SignalDaemon`): signal-cli is found from `ULTRAIM_SIGNAL_CLI`,
+  `signal-cli/bin/signal-cli` beside the provider modules, or the `PATH`,
+  started with its data under `<dataDirectory>/signal/signal-cli` on a free
+  loopback port, and stopped at `Shutdown`. Neither: `CapabilityMissing`.
+- **Sign-in** (`UltraIMLoginType::QRCode`): an account linked before and
+  still in the daemon signs in at once. Otherwise `startLink` makes a
+  `sgnl://linkdevice?...` link: `SignIn` answers `NeedsInput`, the step is
+  `OtherDevice` and `GetAuthHint()` the link, shown as a QR code for the
+  phone's Signal app (*Settings > Linked devices*). Once scanned the
+  provider is Connected (`ConnectionStateChange`); a link that times out is
+  replaced by a new one. `SignOut` keeps the link.
+- **Conversations**: a 1:1 chat's id is the other person's number
+  (`+4915112345678`), or their ACI when Signal gives none; a group's is
+  `group:` + its id. A message's id is `<author>|<timestamp>`.
+- **News by polling** `receive`: texts, attachments, replies (quotes),
+  edits, remote deletes, delivery and read receipts, typing, and what the
+  phone sends (sync copies, `isOwn`).
+- **History**: signal-cli keeps none - `FetchMessages` and `SearchMessages`
+  cover what this session received and sent.
+- **People**: `AddContact` takes an international number or a Signal
+  username (`name.01`); `CreateGroup` makes a group; `LeaveConversation`
+  leaves a group or hides a 1:1 chat until its next message.
+- **Not here**: calls, stickers, reactions; no upload progress (signal-cli
+  tells none).
+
+Tests: `Tests/UltraIM/SignalProviderTests.cpp` against
+`signal_fake_daemon.py` (standard-library python speaking signal-cli's
+JSON-RPC): no signal-cli (`CapabilityMissing`), linking by QR (a link that
+expires and a new one), the link kept, texts both ways and one typed on the
+phone, a reply, an edit, a remote delete, receipts, typing, a picture, a
+file and a voice note byte for byte, history and search, a group made and
+left, and a daemon the provider starts and stops itself. Skips without python3 unless
+`ULTRAIM_TEST_SIGNAL_REQUIRED` is set.
+
+## Provider: XMPP
+
+`UltraCanvas/Plugins/UltraIM/xmpp/` (module `ultraim_xmpp`, provider id
+`xmpp`) is an XMPP (Jabber) client over XMPP's TCP binding (RFC 6120:
+STARTTLS on 5222, direct TLS on 5223 - XEP-0368) or its WebSocket binding
+(RFC 7395), through UltraNet (`UltraNet_TlsWrap` for TLS); the XML is
+tinyxml2's, cut into elements from the TCP byte stream by `XmppSplitter`.
+
+- **The server**, with `credentials.server` empty, is looked for in this
+  order, the first that connects kept: the SRV records
+  `_xmpps-client._tcp` (direct TLS) and `_xmpp-client._tcp` (STARTTLS) of the
+  address's domain, by priority and weight; the WebSocket that host-meta
+  announces (XEP-0156); `<domain>:5222`; last `wss://<domain>/xmpp-websocket`.
+  `credentials.server` names it instead: `xmpp://host[:port]`, `host:port`
+  or a bare host (STARTTLS, 5222), `xmpps://host[:port]` (direct TLS, 5223),
+  `wss://...` (WebSocket), `https://...` (host-meta there). The certificate
+  is checked against the address's domain; a server that offers no STARTTLS,
+  and `ws://`, are refused unless they are on this computer. The endpoint
+  that connected is kept with the keys and tried first next time.
+  `SetTlsOptions` takes a CA bundle (tests). Over TCP a single space keeps a
+  quiet connection open, and a server that has said nothing for
+  `XmppTimings::pingIntervalMs` is pinged (XEP-0199): no answer, nor anything
+  else, within `pingTimeoutMs` and the connection counts as gone and is made
+  again - a server that hangs, or a path that drops packets without a word,
+  is found this way, where a write never fails.
+- **Sign-in** (`UltraIMLoginType::UsernamePassword`): the bare JID
+  (`username`, `erin@example.org`) and the password, by SASL SCRAM-SHA-256,
+  else SCRAM-SHA-1, else PLAIN (only over TLS or to this computer).
+  UltraVault keeps SCRAM's ClientKey and ServerKey with their salt and
+  iteration count - not the password - and `SignIn` with no credentials
+  uses them; a server with PLAIN alone keeps nothing. A changed password:
+  `AuthRequire`.
+- **Conversations**: a 1:1 chat's id is the contact's bare JID, the
+  contacts the roster (RFC 6121) with their presence; a group is a
+  multi-user chat room (XEP-0045), its id the room's JID, the rooms the
+  account's bookmarks (XEP-0402, else XEP-0048), joined at sign-in.
+- **Messages**: ids by origin-id (XEP-0359), history from the server's
+  archive (XEP-0313 MAM, paged with RSM); receipts (XEP-0184), displayed
+  markers (XEP-0333, sent by `MarkRead`), chat states (XEP-0085), edits
+  (XEP-0308), retractions (XEP-0424), replies (XEP-0461), carbons
+  (XEP-0280), files by HTTP File Upload (XEP-0363).
+- **Kept simple**: a subscription request is approved and asked back; a
+  room invitation is accepted and bookmarked.
+- **Not here**: OMEMO (messages are protected between each client and its
+  server, not end to end), Jingle calls, stream management (a dropped
+  connection signs in again).
+
+Tests: `Tests/UltraIM/XmppProviderTests.cpp` against `xmpp_fake_server.py`
+(standard-library python, a WebSocket XMPP server, and with `--cert` a TCP
+one with STARTTLS and a direct-TLS one, sharing users and archives): the
+splitter on awkward reads, server-field forms, SRV ordering, an untrusted
+certificate refused, STARTTLS and WebSocket clients talking both ways,
+direct TLS with the endpoint kept and resumed, a dropped TCP connection, a
+quiet server pinged and kept, one fallen silent with its socket open found
+by the unanswered ping;
+SCRAM-SHA-256,
+SCRAM-SHA-1 and PLAIN (nothing kept), plain `ws://` to another computer
+refused, the WebSocket found from host-meta, the kept keys and a changed
+password, 1:1 and room messages both ways, carbons, receipts, markers,
+typing, a correction, a retraction, a reply, the archive paged and searched,
+uploads with progress, a dropped connection reconnecting. Skips without
+python3 unless `ULTRAIM_TEST_XMPP_REQUIRED` is set (the TLS parts without
+openssl).
+
+## Provider: IRC
+
+`UltraCanvas/Plugins/UltraIM/irc/` (module `ultraim_irc`, provider id
+`irc`) is an IRC client with IRCv3 over UltraNet TCP, with TLS by
+`UltraNet_TlsWrap`.
+
+- **Sign-in** (`UltraIMLoginType::UsernamePassword`): `credentials.server`
+  (`irc.libera.chat`, `host:port` and `ircs://` are TLS, port 6697;
+  `irc://host[:port]` plain, 6667), `username` the nickname, `password`
+  optional - by SASL PLAIN (the account `displayName`, else the nick), only
+  over TLS or to this computer; a server without SASL gets NickServ
+  IDENTIFY, its echo kept out of the chats. A nickname in use becomes
+  `nick_`, then `nick__` - `SignIn`'s `message` says so. Server, nick,
+  password, channels and open private chats are kept in UltraVault;
+  `SignIn` with no credentials joins them again. Silence pings after 90 s;
+  a lost connection reconnects with a doubling delay (2 s to 120 s).
+  `SetTlsOptions` takes a CA bundle or a client certificate.
+- **Conversations**: a channel's id is its name folded by the server's
+  CASEMAPPING (`#ultracanvas`), its topic the `description`, its members
+  nicks; a private chat's id the folded nick; `*server`, titled by the
+  network's name, holds server and services notices and invitations, and
+  text sent to it is a raw IRC command.
+- **Messages**: the server's `msgid`, history by `CHATHISTORY` (else what
+  this session saw); mIRC formatting removed, Latin-1 read when it is not
+  UTF-8; `/me` as an ACTION; long messages split at 512 bytes (one
+  `MessageUpdate` once every part has echoed); replies by `+draft/reply`,
+  typing by `+typing`, echo-message and labeled-response matched; CTCP
+  VERSION, PING, TIME, CLIENTINFO answered.
+- **People**: `AddContact` takes `#chan` (with a key), `irc:`/`irc://`
+  forms, or a nick (checked by WHOIS); `CreateGroup` joins
+  `#<title>` and invites; `LeaveConversation` parts a channel or hides a
+  private chat until its next message.
+- **Not here**: files (`CapabilityMissing`: share a link), edits, deletes,
+  read marks on the server, draft/multiline, regaining the wanted nick.
+
+Tests: `Tests/UltraIM/IrcProviderTests.cpp` against `irc_fake_server.py`
+(standard-library asyncio: a plain IRCv3 listener, a TLS one and a basic
+one with no IRCv3): line parsing, case folding and splitting, TLS with the
+test's CA file and an untrusted certificate refused, SASL, a wrong password,
+anonymous sign-in, nicks in use, channels and private chats both ways,
+echo-message, server-time, formatting, Latin-1, ACTION, a long message
+split, a reply, typing, away, CHATHISTORY and paging, WHOIS, an invite-only
+channel refused, the stored session resumed, a dropped connection rejoined
+with what came meanwhile. Skips without python3 and openssl
+unless `ULTRAIM_TEST_IRC_REQUIRED` is set.
+
 ## Status
 
 Implemented: the registry, the module loader, the event bus and dispatcher,
 the merged conversation fetch and every forwarding call; the ChatCube
-Direct, Matrix, Telegram and Mastodon providers (above). Next: XMPP and others.
+Direct, Matrix, Telegram, Mastodon, Mattermost, Zulip, Signal, XMPP and IRC
+providers (above).

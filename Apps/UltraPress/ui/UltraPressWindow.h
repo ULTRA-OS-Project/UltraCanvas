@@ -3,8 +3,9 @@
 // the left, the page rendered on real elements in the middle, the selected
 // block's properties on the right. Every change goes into the content
 // model and re-renders the preview; Save writes the site folder; Publish
-// writes the static site and uploads it onto the site's host (an UltraCloud
+// writes the site in its output (UltraPressSite.h) and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.9.1 - Publish writes the site's output (HTML + JavaScript or WebAssembly), chosen in the site's settings
 // Version: 0.9.0 - the look is the policy's theme; the toggle asks the program through onLookChosen
 // Version: 0.8.6 - SetDark writes no file: the look is saved with the window's size on close
 // Version: 0.8.3 - the address checked as typed (IsSiteAddress), said under the field
@@ -99,7 +100,8 @@ public:
     // The site's own settings - name, tagline, address, language, owner -
     // in the property pane, with no block selected: ShowSiteSettings puts
     // them there (Site settings... in the side column), SetSiteProperty
-    // writes one ("name", "tagline", "url", "language", "owner"; the
+    // writes one ("name", "tagline", "url", "language", "owner", "output":
+    // "html" or "wasm", what Publish writes; the
     // address without its trailing slash, and said under the field when it
     // is not an address - IsSiteAddress - so a slip is seen before the
     // first publish writes it into every page) and re-renders; false for a

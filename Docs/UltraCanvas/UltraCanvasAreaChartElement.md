@@ -298,8 +298,8 @@ The area chart inherits numerous features from its base class:
 
 ## See Also
 
-- [`UltraCanvasChartElementBase`](UltraCanvasChartElementBase.md) - Base class documentation
+- [`UltraCanvasChartElementBase`](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h) - Base class documentation
 - [`UltraCanvasLineChartElement`](UltraCanvasLineChartElement.md) - Line chart component
 - [`UltraCanvasBarChartElement`](UltraCanvasBarChartElement.md) - Bar chart component
-- [`ChartDataVector`](ChartDataVector.md) - Data source implementation
-- [`IRenderContext`](IRenderContext.md) - Rendering interface
+- [`ChartDataVector`](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartDataStructures.h) - Data source implementation
+- [`IRenderContext`](../../UltraCanvas/include/UltraCanvasRenderContext.h) - Rendering interface

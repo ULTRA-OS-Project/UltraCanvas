@@ -189,6 +189,32 @@ int main() {
               "an encrypted .pptx has no preview");
     }
 
+    std::printf("A PDF's first page\n");
+    if (CanRenderFileThumbnail("pdf")) {
+        // The page paints a blue square and leaves its paper alone, as
+        // nearly every PDF does: the engine hands that paper back
+        // transparent, and on a dark tile the thumbnail was a dark page.
+        FileThumbnailRequest request;
+        request.width = 96;
+        request.height = 96;
+        auto page = RenderFileThumbnailFromProvider(fixtures + "/pdf-blue-square.pdf", request);
+        Check(page != nullptr, "a PDF's first page as its thumbnail");
+        if (page) {
+            const int w = page->GetWidth(), h = page->GetHeight();
+            int seeThrough = 0;
+            for (int y = 0; y < h; ++y)
+                for (int x = 0; x < w; ++x)
+                    if ((page->GetPixel(x, y) >> 24) != 255) ++seeThrough;
+            Check(seeThrough == 0, "the page is opaque: " + std::to_string(seeThrough) + " pixels see through");
+            Check((page->GetPixel(2, 2) & 0xFFFFFF) == 0xFFFFFF, "the paper the page leaves alone is white");
+            const uint32_t middle = page->GetPixel(w / 2, h / 2);
+            const int r = (middle >> 16) & 0xFF, b = middle & 0xFF;
+            Check(b > 180 && r < 90, "what the page paints keeps its colour (the blue square)");
+        }
+    } else {
+        std::printf("  (no PDF engine in this build: the page checks skipped)\n");
+    }
+
     std::printf(failures ? "%d check(s) failed\n" : "all checks passed\n", failures);
     return failures ? 1 : 0;
 }

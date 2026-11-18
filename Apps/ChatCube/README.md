@@ -9,9 +9,10 @@ protect it when you want them to.
 ChatCube is the window; the networks are UltraIM providers
 ([`Docs/Modules/UltraIM`](../../Docs/Modules/UltraIM/README.md)). This release
 uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`), Matrix
-(`.../matrix`), Telegram (`.../telegram`) and the direct messages of
-Mastodon (`.../mastodon`); XMPP and other messengers with an open API come
-later as further providers.
+(`.../matrix`), Telegram (`.../telegram`), the direct messages of
+Mastodon (`.../mastodon`), the team chats Mattermost (`.../mattermost`)
+and Zulip (`.../zulip`), Signal (`.../signal`, through signal-cli), XMPP
+(`.../xmpp`) and IRC (`.../irc`).
 Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/ChatCubeDirectPlan.md).
 The first ChatCube draft, which this replaces, is kept under
 [`Docs/ChatCube/v1-draft`](../../Docs/ChatCube/v1-draft/README.md).
@@ -136,6 +137,32 @@ The first ChatCube draft, which this replaces, is kept under
    Messages are text, pictures, videos and sound - Mastodon takes no other
    file - and come every few seconds (ChatCube asks the server; Mastodon
    has no typing, read ticks or calls).
+   **Mattermost** and **Zulip**, the team chats, have the third row of
+   buttons: your server, your user name or e-mail (Zulip: the e-mail) and
+   your password; a Mattermost account with two-factor sign-in then asks
+   for the code from your authenticator app. Mattermost brings your direct
+   and group messages and your teams' channels (`Town Square (Team A)`),
+   replies as threads; Zulip your direct and group messages and every topic
+   of your streams (`#general > greetings`) as a chat of its own, news the
+   moment it is sent. Files of any kind go both ways. An address in *Add*
+   that more than one signed-in network takes - `@user` on Telegram and
+   Mattermost, an e-mail address on Zulip and Mattermost - asks which; when
+   none of them is signed in it names them.
+   **Signal** shows a QR code: scan it with the Signal app on your phone
+   (*Settings > Linked devices*) and ChatCube becomes a linked device, as
+   Signal Desktop is. It needs [signal-cli](https://github.com/AsamK/signal-cli)
+   installed (or the address of a signal-cli daemon you run); ChatCube sees
+   messages from the moment it is linked. Numbers (`+49 ...`) and Signal
+   usernames (`name.01`) can be added.
+   **XMPP** takes your address (`erin@example.org`) and password - the server
+   is found from the address, or typed in its own field (`chat.example.org`,
+   `xmpps://chat.example.org`, or a `wss://` address). ChatCube connects
+   over TLS, or through WebSocket where the server offers only that. Your contacts and rooms come along, with the server's history.
+   **IRC** takes the server (`irc.libera.chat`; TLS unless it starts with
+   `irc://`), your nickname and, for a registered nickname, the password.
+   Add `#channel` to join a channel or a nickname for a private chat; the
+   network's own conversation shows its notices and takes IRC commands.
+   IRC has no files - share a link.
 5. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
    *Settings* below). A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
@@ -246,7 +273,11 @@ The first ChatCube draft, which this replaces, is kept under
 
 ChatCube builds with the framework (`BUILD_CHATCUBE`, on by default) and needs
 UltraIM, UltraRTC (OpenSSL) and UltraNet; the provider modules are built next
-to it in `<build>/Plugins/UltraIM/`. Matrix encryption needs a Rust toolchain
+to it in `<build>/Plugins/UltraIM/`. Only the modules in use are loaded:
+ChatCube Direct, and the networks signed in to (UltraIM keeps them in
+`ultraim-providers.txt` in ChatCube's data folder); another network's module
+is loaded when its button is pressed, and one signed out of is not loaded at
+the next start. Matrix encryption needs a Rust toolchain
 (cargo) at build time; without one the Matrix module cannot open encrypted
 rooms. Telegram needs `libtdjson` from TDLib (Telegram Database Library) at
 run time, not at build time: the configure step fetches TDLib 1.8.69 prebuilt into

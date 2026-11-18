@@ -566,4 +566,4 @@ The Gource tree renders in this order:
 - [UltraCanvasAdjacencyDiagramExamples](UltraCanvasAdjacencyDiagramExamples.md) — architectural room adjacency
 - [UltraCanvasArcDiagramExamples](UltraCanvasArcDiagramExamples.md) — nodes on a baseline with arc edges
 - [UltraCanvasTreeViewExamples](UltraCanvasTreeViewExamples.md) — non-radial hierarchical tree view
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class

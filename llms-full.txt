@@ -806,7 +806,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, UltraNotifications, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraNotifications, UltraSnip, UltraToDo, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -3222,8 +3222,26 @@ people by username or phone number. Provider: Mastodon
 direct messages of a Mastodon server over its REST API - browser sign-in
 (OAuth with PKCE, `UltraIMAuthStep::Browser`), a chat per set of people
 over all their threads, polled; replies, edits, deletes, read marks,
-pictures, videos and sound. Tests in `Tests/UltraIM`. See
-`Docs/Modules/UltraIM/README.md`.
+pictures, videos and sound. Provider: Mattermost
+(`UltraCanvas/Plugins/UltraIM/mattermost/`, module `ultraim_mattermost`):
+channels, direct and group messages of a Mattermost server over its REST
+API - password with an MFA code, or a personal access token; polled;
+thread replies, files, edits, deletes. Provider: Zulip
+(`UltraCanvas/Plugins/UltraIM/zulip/`, module `ultraim_zulip`): direct and
+group messages and stream topics of a Zulip organization - password or API
+key; the event queue; uploads, edits, deletes. Provider: Signal
+(`UltraCanvas/Plugins/UltraIM/signal/`, module `ultraim_signal`): through a
+signal-cli daemon (the user's, or one it starts) - linked to the phone by
+QR code; 1:1 chats and groups, quotes, edits, deletes, receipts, typing,
+attachments. Provider: XMPP (`UltraCanvas/Plugins/UltraIM/xmpp/`, module
+`ultraim_xmpp`): any XMPP server over TCP (STARTTLS or direct TLS, found by
+SRV) or WebSocket (RFC 7395) - SCRAM sign-in
+with the keys kept, not the password; roster, rooms, the archive, receipts,
+markers, edits, retractions, replies, carbons, HTTP upload. Provider: IRC
+(`UltraCanvas/Plugins/UltraIM/irc/`, module `ultraim_irc`): IRC with IRCv3
+over TCP and TLS - SASL, channels and private chats, CHATHISTORY, a server
+conversation for raw commands. Tests in `Tests/UltraIM`.
+See `Docs/Modules/UltraIM/README.md`.
 
 ---
 
@@ -3340,6 +3358,50 @@ the four calls live in a picked language, with the layer that answered
 each, and the catalogue files of the three layers. See
 `Docs/Modules/UltraLocalisation/README.md` and
 `Docs/UltraCanvas/UltraCanvasLocalisationEditor.md`.
+
+
+---
+
+### **21. UltraSite**
+
+The HTML + JavaScript output of a website: a list of routes in, a folder
+any static host serves out, written the way Docusaurus writes a site. Every
+route becomes a complete, styled HTML page (head, skip link, navbar, the
+route's layout - `page`, `post` or one an app adds - and footer); one
+stylesheet (the base, the site's design tokens as `--us-*` custom
+properties in a light and an optional dark look, the app's own rules) and
+the script modules are written under their content hash and cached for a
+year. `core.js` (prefetch on intent, the theme toggle) is on every page; a
+behaviour module an app registers (`Builder::AddScript`) is loaded only by
+the pages whose body asks for it with `data-us="<behaviour>"`. Beside the
+pages: sitemap.xml, robots.txt, 404.html, `.htaccess` and `_headers` with
+the cache rules and a Content-Security-Policy that admits no script from
+another origin, plus speculation rules that let Chromium prerender the next
+page. The build reads every page back through the HTMLReader and fails on
+a broken internal link or anchor, an unknown behaviour, or a page, the
+stylesheet or a script over its compressed-size budget; it removes what an
+earlier build wrote and this one did not. The site works with JavaScript
+off. Documentation sites too: `AddDocs` reads a Markdown folder as
+Docusaurus reads its `docs/` (front matter, `_category_.json`, links
+between the files, translations), into the `doc` layout (sidebar, table
+of contents, breadcrumbs, previous / next), with code highlighted at build
+time, admonitions and tabs (`UltraSiteMarkdown.h`), a search index per
+language, a search page and the `search`, `toc`, `tabs` and `copy`
+modules. UltraPress publishes its HTML + JavaScript output, a site's
+`docs/` and `ultrapress docs` through it
+(`Apps/UltraPress/engine/UltraPressSite.h`); the UltraStore admin backend
+writes the web store through it (`Apps/UltraStoreAdmin/core/WebStoreHtml.h`),
+under the catalog's path (a site's `url` with a path is served from it:
+`Builder::Url`) and in every catalog language (`SiteConfig::frames`).
+Responsive pictures (`Builder::Picture`: AVIF / WebP variants by content
+hash), `.gz` / `.br` copies (`BuildOptions::precompress`; Brotli
+optional), versioned docs (`DocsOptions::versions`), and a loopback preview
+server over UltraNet (`UltraSiteServer.h`: `Respond`, `Serve`) behind
+`ultrapress serve`. Headless: links the core library (JSON, HTMLReader, UltraCrypt) and
+zlib. Sources under `UltraSite/{include,core,resources}`, target
+`UltraSite`, header `<UltraSite/UltraSite.h>`, `namespace UltraSite`;
+see `Docs/Modules/UltraSite/README.md` and
+`Docs/Research/UltraSiteStaticSitesProposal.md`.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
@@ -4081,7 +4143,7 @@ built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-ap
 
 ## Contents
 
-- [Library links — websites & source code](#library-links-—-websites--source-code)
+- [Library links — websites & source code](#library-links--websites--source-code)
 - [UltraCanvas (core)](#ultracanvas-core)
   - [Spell checking (all optional)](#spell-checking-all-optional)
 - [Optional plugins](#optional-plugins)
@@ -4100,6 +4162,7 @@ built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-ap
   - [UltraMail: signed and encrypted mail](#ultramail-signed-and-encrypted-mail)
   - [UltraDatabase module](#ultradatabase-module)
   - [Ultra Net module](#ultra-net-module)
+  - [UltraSite module](#ultrasite-module)
   - [UltraVault module](#ultravault-module)
   - [UltraWin module](#ultrawin-module)
   - [VideoFX module](#videofx-module)
@@ -4603,6 +4666,20 @@ configure time naming what is missing.
 > core and needs only **nlohmann/json** ([json.nlohmann.me](https://json.nlohmann.me/),
 > [github.com/nlohmann/json](https://github.com/nlohmann/json), MIT), vendored
 > as a single header at `UltraCanvas/third_party/nlohmann/json.hpp`.
+
+### UltraSite module
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| Content hashes of the assets, the inline scripts' Content-Security-Policy hashes | libsodium through UltraCrypt (optional; FNV-1a and no policy without it) | the same | the same |
+| Compressed sizes for the budgets, the `.gz` copies | zlib (a core dependency) | zlib | zlib |
+| The `.br` copies (`BuildOptions::precompress`) | Brotli's encoder, `libbrotlienc` (`libbrotli-dev`, optional) | `brotli` (optional) | MSYS2 `brotli` (optional) |
+| Picture variants (`Builder::Picture`: AVIF, WebP) | libvips through the core's image library; AVIF needs libheif with an AV1 encoder | the same | the same |
+| The preview server (`UltraSiteServer.h`) | UltraNet's sockets | the same | the same |
+
+> Without Brotli the `.br` copies are left out and nothing else changes;
+> without an AV1 encoder the pictures get WebP variants only, and the build
+> says so.
 
 ### UltraVault module
 
@@ -6798,6 +6875,25 @@ search, open and dismiss.
 
 **Built on:** UltraMessage, UltraCanvasMessageCenter.
 **Version:** 0.1.0 (2026-11-06).
+
+### UltraToDo
+
+**Purpose:** the task list: tasks with a planned end, an estimated time, a
+description and attached files, the most urgent first.
+
+**Capabilities:**
+- A round + writes a task; each task is a pastel panel with round corners,
+  coloured by how urgent it is.
+- Ordered by the latest start (planned end minus estimated time), overdue
+  tasks first.
+- Files attached as to a mail, copied with the task and shown as
+  thumbnails.
+- A reminder before the latest start and an alarm at the planned end, as
+  desktop notifications and in the window; `--background` keeps them
+  running without the window.
+
+**Built on:** UltraMessage (notifications), FileLoader (the file dialogs).
+**Version:** 0.1.0 (2026-11-17).
 
 ### UltraCleaner
 
@@ -10367,13 +10463,13 @@ FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
   - [Clear / View / Selection](#clear--view--selection)
   - [Callbacks](#callbacks)
 - [Usage Examples](#usage-examples)
-  - [Library branch — single-floor program](#library-branch-—-single-floor-program)
+  - [Library branch — single-floor program](#library-branch--single-floor-program)
   - [Adding direct, secondary, and service links](#adding-direct-secondary-and-service-links)
   - [A floor zone wrapping all rooms](#a-floor-zone-wrapping-all-rooms)
   - [Reporting selection through callbacks](#reporting-selection-through-callbacks)
-  - [Multi-floor villa — directed inter-floor circulation](#multi-floor-villa-—-directed-inter-floor-circulation)
+  - [Multi-floor villa — directed inter-floor circulation](#multi-floor-villa--directed-inter-floor-circulation)
   - [Creating zones with a small helper lambda](#creating-zones-with-a-small-helper-lambda)
-  - [Office program — public and back-of-house zones](#office-program-—-public-and-back-of-house-zones)
+  - [Office program — public and back-of-house zones](#office-program--public-and-back-of-house-zones)
   - [Inspecting links on click](#inspecting-links-on-click)
 - [Render Order](#render-order)
 - [Manual Layout Notes](#manual-layout-notes)
@@ -10820,8 +10916,8 @@ needing to call `UpdateRoom` with a full struct.
 - [UltraCanvasNodeDiagramExamples](UltraCanvasNodeDiagramExamples.md) — interactive graph editor with handles
 - [UltraCanvasGourceTreeExamples](UltraCanvasGourceTreeExamples.md) — radial filesystem tree
 - [UltraCanvasArcDiagramExamples](UltraCanvasArcDiagramExamples.md) — nodes on a baseline with arc edges
-- [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demo
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
+- [UltraCanvasTabbedContainer](../../UltraCanvas/include/UltraCanvasTabbedContainer.h) — tab control used by the demo
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
 
 
 ---
@@ -11879,10 +11975,10 @@ FILE: Docs/UltraCanvas/UltraCanvasArcDiagramExamples.md
   - [Style & Selection](#style--selection)
   - [Callbacks](#callbacks)
 - [Usage Examples](#usage-examples)
-  - [Character co-occurrence — degree-sized nodes, vertical labels, semicircles](#character-co-occurrence-—-degree-sized-nodes-vertical-labels-semicircles)
-  - [Canonical reference — axis arrow + color legend](#canonical-reference-—-axis-arrow--color-legend)
-  - [Directed flow — mid-arc arrowheads and self-loops](#directed-flow-—-mid-arc-arrowheads-and-self-loops)
-  - [Genomics — parallel bundles above and below](#genomics-—-parallel-bundles-above-and-below)
+  - [Character co-occurrence — degree-sized nodes, vertical labels, semicircles](#character-co-occurrence--degree-sized-nodes-vertical-labels-semicircles)
+  - [Canonical reference — axis arrow + color legend](#canonical-reference--axis-arrow--color-legend)
+  - [Directed flow — mid-arc arrowheads and self-loops](#directed-flow--mid-arc-arrowheads-and-self-loops)
+  - [Genomics — parallel bundles above and below](#genomics--parallel-bundles-above-and-below)
   - [Reporting node and edge selection](#reporting-node-and-edge-selection)
 - [Render Order](#render-order)
 - [Encoding Cheat Sheet](#encoding-cheat-sheet)
@@ -12449,8 +12545,8 @@ Each frame the arc diagram draws:
 - [UltraCanvasNodeDiagramExamples](UltraCanvasNodeDiagramExamples.md) — interactive graph editor with handles
 - [UltraCanvasGourceTreeExamples](UltraCanvasGourceTreeExamples.md) — radial filesystem tree
 - [UltraCanvasAdjacencyDiagramExamples](UltraCanvasAdjacencyDiagramExamples.md) — architectural room adjacency
-- [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demo
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
+- [UltraCanvasTabbedContainer](../../UltraCanvas/include/UltraCanvasTabbedContainer.h) — tab control used by the demo
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAreaChartElement.md
@@ -12756,11 +12852,11 @@ The area chart inherits numerous features from its base class:
 
 ## See Also
 
-- [`UltraCanvasChartElementBase`](UltraCanvasChartElementBase.md) - Base class documentation
+- [`UltraCanvasChartElementBase`](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h) - Base class documentation
 - [`UltraCanvasLineChartElement`](UltraCanvasLineChartElement.md) - Line chart component
 - [`UltraCanvasBarChartElement`](UltraCanvasBarChartElement.md) - Bar chart component
-- [`ChartDataVector`](ChartDataVector.md) - Data source implementation
-- [`IRenderContext`](IRenderContext.md) - Rendering interface
+- [`ChartDataVector`](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartDataStructures.h) - Data source implementation
+- [`IRenderContext`](../../UltraCanvas/include/UltraCanvasRenderContext.h) - Rendering interface
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAudio.md
@@ -13659,10 +13755,10 @@ search->SetFollowTheme(true);
 
 ## See Also
 
-- [UltraCanvasTextInput](UltraCanvasTextInput.md) - Base class for text entry
-- [UltraCanvasListView](UltraCanvasListView.md) - Used internally for the suggestion popup
-- [UltraCanvasComboBox](UltraCanvasComboBox.md) - Dropdown selector with fixed list
-- [UltraCanvasLabel](UltraCanvasLabel.md) - Companion text display element
+- [UltraCanvasTextInput](UltraCanvasTextInputExamples.md) - Base class for text entry
+- [UltraCanvasListView](UltraCanvasListViewExamples.md) - Used internally for the suggestion popup
+- [UltraCanvasDropdown](../../UltraCanvas/include/UltraCanvasDropdown.h) - Dropdown selector with fixed list
+- [UltraCanvasLabel](UltraCanvasLabelExamples.md) - Companion text display element
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasBadge.md
@@ -13815,6 +13911,9 @@ count->SetFollowTheme(true);
 ```
 
 ## Notes
+
+- **One character** - "+", "!", a check mark - is centred in the badge by
+  its drawn shape, not by the font's line: a "+" sat 1.5 px low that way.
 
 - **Anchoring** requires the badge and its anchor to be siblings in the same
   container (so their bounds share a coordinate space). `AnchorTo()` takes the
@@ -14321,7 +14420,7 @@ barChart->SetCustomTooltipGenerator([](const ChartDataPoint& point, size_t index
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) - Line chart component
 - [UltraCanvasScatterPlotElement](UltraCanvasScatterPlotElement.md) - Scatter plot component
 - [UltraCanvasAreaChartElement](UltraCanvasAreaChartElement.md) - Area chart component
-- [UltraCanvasChartElementBase](UltraCanvasChartElementBase.md) - Base chart class
+- [UltraCanvasChartElementBase](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h) - Base chart class
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasBarcodeElement.md
@@ -15368,11 +15467,11 @@ The reason for a failed load is passed to `onImageLoadFailed` and returned by `G
 
 ## See Also
 
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) - Base class
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) - Base class
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) - Rendering system
-- [UltraCanvasEvent](UltraCanvasEvent.md) - Event handling
-- [UltraCanvasButton](UltraCanvasButton.md) - Interactive button component
-- [UltraCanvasVideoElement](UltraCanvasVideoElement.md) - Video playback component
+- [UltraCanvasEvent](../../UltraCanvas/include/UltraCanvasEvent.h) - Event handling
+- [UltraCanvasButton](UltraCanvasButtonExamples.md) - Interactive button component
+- [UltraCanvasVideoPlayerElement](../../UltraCanvas/include/UltraCanvasVideoPlayerElement.h) - Video playback component
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasBlockDiagramExamples.md
@@ -15842,7 +15941,7 @@ configured grid spacing during drag.
 - [UltraCanvasGourceTreeExamples](UltraCanvasGourceTreeExamples.md) — radial filesystem visualization
 - [UltraCanvasAdjacencyDiagramExamples](UltraCanvasAdjacencyDiagramExamples.md) — architectural room adjacency
 - [UltraCanvasArcDiagramExamples](UltraCanvasArcDiagramExamples.md) — nodes on a baseline with arc edges
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) — rendering primitives used internally
 
 ==============================================================================
@@ -16493,10 +16592,10 @@ bcStrip->AddItem("Yaml Diagram");
 
 ## See Also
 
-- [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown and overflow menus
-- [UltraCanvasButton](UltraCanvasButton.md) - For "back" / "up" navigation buttons
-- [UltraCanvasLabel](UltraCanvasLabel.md) - Companion text element
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Hosting container
+- [UltraCanvasMenu](UltraCanvasMenuExamples.md) - Used internally for dropdown and overflow menus
+- [UltraCanvasButton](UltraCanvasButtonExamples.md) - For "back" / "up" navigation buttons
+- [UltraCanvasLabel](UltraCanvasLabelExamples.md) - Companion text element
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) - Hosting container
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasBubbleChart.md
@@ -17514,10 +17613,35 @@ instead of being resampled across two pixels. For a line icon to be sharp it
 also has to be shown at the size of the grid it was drawn on (a 24-unit
 icon at 24 px, not 22).
 
+The label is centred by default, and a label of one character is centred on
+its ink. A word is centred on its line box, which puts its capitals in the
+middle and keeps a row of buttons level. A lone symbol - `"+"`, `"×"`, `"‹"`,
+a check mark - has no capitals, and the font puts it anywhere in that box:
+a `"+"` of 26 px sat 2.5 px low in a round 48 px button. So a one-character
+label, centred (the default `textAlign`), has its drawn shape put in the
+middle of the button, across and down, on whole pixels. Nothing needs to be
+set for it, and an icon instead of the character is not needed either:
+
+```cpp
+#include "UltraCanvasButton.h"
+using namespace UltraCanvas;
+
+auto add = CreateButton("add", 0, 0, 48, 48, "+");
+ButtonStyle round = add->GetStyle();
+round.cornerRadius = 24.0f;
+round.fontSize = 26.0f;
+add->SetStyle(round);
+```
+
+`Tests/OneCharacterCentringTest.cpp` measures it from the drawn pixels. The
+label, the badge and the segmented control centre one character the same way
+(`DrawTextCentredOnInk`, `UltraCanvasTextLayoutCache.h`).
+
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.5.0 | 2026-11-17 | A one-character label is centred on its ink (Rendering) |
 | 1.4.0 | 2026-11-14 | `SetColors` / `SetTextColors` with fewer colours derive the other states for the look (a dark theme's disabled button sinks toward the ground); a font size set by hand survives a theme change (Style Configuration, The theme and the button's variant) |
 | 1.3.1 | 2026-11-11 | A container sized to its content grows with its buttons: one more layout pass, run at the next frame (A Fixed Width Is a Minimum) |
 | 1.3.0 | 2026-11-01 | `ButtonStyle::wrap` / `SetWrap()`: the text on several lines (A Tile: an Icon over a Wrapped Name) |
@@ -26538,11 +26662,11 @@ FILE: Docs/UltraCanvas/UltraCanvasDendrogramExamples.md
   - [Data Source Interfaces](#data-source-interfaces)
 - [Usage Examples](#usage-examples)
   - [Building a Tree from a Flat Spec List](#building-a-tree-from-a-flat-spec-list)
-  - [Demo 1 — Top-Down Hierarchical Clustering](#demo-1-—-top-down-hierarchical-clustering)
-  - [Demo 2 — Left-Right Curved Cladogram](#demo-2-—-left-right-curved-cladogram)
-  - [Demo 3 — Radial Tree of Life with Sector Fills](#demo-3-—-radial-tree-of-life-with-sector-fills)
-  - [Demo 7 — Radial Tree with Bundled Relations and Sized Nodes (1.5.0)](#demo-7-—-radial-tree-with-bundled-relations-and-sized-nodes-150)
-  - [Demo 6 — Branch Color By Value Gradient](#demo-6-—-branch-color-by-value-gradient)
+  - [Demo 1 — Top-Down Hierarchical Clustering](#demo-1--top-down-hierarchical-clustering)
+  - [Demo 2 — Left-Right Curved Cladogram](#demo-2--left-right-curved-cladogram)
+  - [Demo 3 — Radial Tree of Life with Sector Fills](#demo-3--radial-tree-of-life-with-sector-fills)
+  - [Demo 7 — Radial Tree with Bundled Relations and Sized Nodes (1.5.0)](#demo-7--radial-tree-with-bundled-relations-and-sized-nodes-150)
+  - [Demo 6 — Branch Color By Value Gradient](#demo-6--branch-color-by-value-gradient)
   - [Control Bar (Zoom, Reset, Collapse, Expand)](#control-bar-zoom-reset-collapse-expand)
 - [Mouse & Keyboard Cheat-Sheet](#mouse--keyboard-cheat-sheet)
 - [See Also](#see-also)
@@ -27237,7 +27361,7 @@ mkBtn("rpos", 120, "Reset Pos",    [d]{ d->ResetNodePositions(); });
 - [UltraCanvasFlowChartExamples](UltraCanvasFlowChartExamples.md) — node/edge editor
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — list-style hierarchical view
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — line charts
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDesktopEntry.md
@@ -33453,8 +33577,8 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [File operations](#file-operations)
   - [Delete: to the Trash, or permanently](#delete-to-the-trash-or-permanently)
   - [Progress window (copy / move / delete)](#progress-window-copy--move--delete)
-  - [Activating files — running applications](#activating-files-—-running-applications)
-  - [Launch feedback — the busy pointer](#launch-feedback-—-the-busy-pointer)
+  - [Activating files — running applications](#activating-files--running-applications)
+  - [Launch feedback — the busy pointer](#launch-feedback--the-busy-pointer)
   - [Delete problems (locked / failing entries)](#delete-problems-locked--failing-entries)
   - [Selection after a delete](#selection-after-a-delete)
 - [Watching the shown folder](#watching-the-shown-folder)
@@ -33788,7 +33912,12 @@ area, ink and muted ink for the names and their details, the panel for the
 header, the info bar and a bar's background with ink on it, hairlines for
 the grid, the hover fill, the soft accent for the selection with the accent
 round it, the accent for the bars and the loading bar, the well with the
-accent for the rename editor; the interface font at the body size, the
+accent for the rename editor; the muted ink on the hover and pressed fills
+for the hidden-items notice's gear (`toolGlyphColor`, `toolHoverColor`,
+`toolPressedColor`); the scroll bars as a veil over the well - the track a
+shade off it, the thumb the muted ink, the ink while it is dragged
+(`scrollbarTrackColor`, `scrollbarThumbColor`, `scrollbarThumbHeldColor`);
+the interface font at the body size, the
 small text at the caption size. The hover icon menu and the extension tag
 keep their dark overlays unless the theme names `filer.icon-menu`,
 `filer.on-icon-menu`, `filer.icon-menu-done`, `filer.extension-bar`,
@@ -37442,9 +37571,9 @@ FILE: Docs/UltraCanvas/UltraCanvasFlowChartExamples.md
   - [Enumerations](#enumerations)
 - [Usage Examples](#usage-examples)
   - [Pre-built Order Processing Chart](#pre-built-order-processing-chart)
-  - [Toolbar — Switching Edit Mode and Zoom](#toolbar-—-switching-edit-mode-and-zoom)
+  - [Toolbar — Switching Edit Mode and Zoom](#toolbar--switching-edit-mode-and-zoom)
   - [Grid + Snap-to-Grid Checkboxes](#grid--snap-to-grid-checkboxes)
-  - [Shape Palette — Click to Place](#shape-palette-—-click-to-place)
+  - [Shape Palette — Click to Place](#shape-palette--click-to-place)
   - [Live Editing of the Selected Node](#live-editing-of-the-selected-node)
   - [Live Editing of the Selected Connection](#live-editing-of-the-selected-connection)
   - [Adding a Sticky Note at Runtime](#adding-a-sticky-note-at-runtime)
@@ -37953,8 +38082,8 @@ btnClear->SetOnClick([chart, showNoSelection]() {
 - [UltraCanvasTreeMapExamples](UltraCanvasTreeMapExamples.md) — hierarchical area visualization
 - [UltraCanvasDendrogramExamples](UltraCanvasDendrogramExamples.md) — hierarchical clustering trees
 - [UltraCanvasButtonExamples](UltraCanvasButtonExamples.md) — toolbar buttons used by the demo
-- [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — used to host the demo tabs
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base class
+- [UltraCanvasTabbedContainer](../../UltraCanvas/include/UltraCanvasTabbedContainer.h) — used to host the demo tabs
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base class
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFolderWatcher.md
@@ -39066,9 +39195,9 @@ unsigned int CreateShaderProgram(); void ClearFrame(const Color& color); void Ma
 - [Usage Examples](#usage-examples)
   - [Application state](#application-state)
   - [Configuring and creating the surface](#configuring-and-creating-the-surface)
-  - [Init callback — create GL resources](#init-callback-—-create-gl-resources)
-  - [Render callback — draw each frame](#render-callback-—-draw-each-frame)
-  - [Cleanup callback — release GL resources](#cleanup-callback-—-release-gl-resources)
+  - [Init callback — create GL resources](#init-callback--create-gl-resources)
+  - [Render callback — draw each frame](#render-callback--draw-each-frame)
+  - [Cleanup callback — release GL resources](#cleanup-callback--release-gl-resources)
   - [Driving rotation from UltraCanvas widgets](#driving-rotation-from-ultracanvas-widgets)
   - [OnDemand rendering pattern](#ondemand-rendering-pattern)
 - [Compositing and Performance Notes](#compositing-and-performance-notes)
@@ -39461,9 +39590,9 @@ surface->RequestRender();
 
 ## See Also
 
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — Base class documentation
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — Base class documentation
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) — 2D rendering pipeline
-- [UltraCanvasContainer](UltraCanvasContainer.md) — Hosting GL surfaces inside layouts
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) — Hosting GL surfaces inside layouts
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasGanttChart.md
@@ -39905,6 +40034,8 @@ void SetClockTickColor(const Color& c);   // AnalogClock: ticks, rim, hour numbe
 
 ```cpp
 void SetRingThickness(float t);                    // indicator width in px
+void SetRingCompact(bool compact);                 // the ring fills the element: a 12-40 px marker
+void SetRingValueText(bool show);                  // the value in the centre (on by default)
 void SetRingStyle(GaugeRingStyle s);               // SolidArc / Segmented / Dashed / SegmentedRing
 void SetRingSegmentStyle(GaugeRingSegmentStyle s); // Bars / Dots / Blocks
 void SetRingSegmentCount(int count);               // number of chunks/ticks/dots
@@ -40269,6 +40400,26 @@ ring->SetRingSegmentCount(8);
 ring->SetRingSegmentRounded(true);
 ring->SetRingCenterIcon(GaugeRingIcon::Battery);
 ring->SetRingCenterContent(GaugeRingCenterContent::Icon);
+```
+
+**A small marker in a row of text or buttons** (12 to 40 px): compact, the
+ring fills the element - no title, no padding, no minimum radius - and
+without the number it is a ring whose colour and fill say how far along a
+value is. Without `SetRingCompact` the ring keeps the card layout, which
+needs about 60 px; below that it drew a corner of a ring and its value.
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
+using namespace UltraCanvas;
+
+auto marker = CreateGaugeDiagramElement("task.marker", 0, 0, 26, 26);
+marker->SetMode(GaugeMode::CircularRing);
+marker->SetRingCompact(true);
+marker->SetRingValueText(false);
+marker->SetRingThickness(5.0f);
+marker->SetValue(60.0);
+marker->SetGaugeColor(Color(240, 135, 20));       // orange: urgent
+marker->SetTrackColor(Color(226, 226, 230));
 ```
 
 ### 11. Battery
@@ -41774,7 +41925,7 @@ The Gource tree renders in this order:
 - [UltraCanvasAdjacencyDiagramExamples](UltraCanvasAdjacencyDiagramExamples.md) — architectural room adjacency
 - [UltraCanvasArcDiagramExamples](UltraCanvasArcDiagramExamples.md) — nodes on a baseline with arc edges
 - [UltraCanvasTreeViewExamples](UltraCanvasTreeViewExamples.md) — non-radial hierarchical tree view
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasGradientEditor.md
@@ -44733,11 +44884,11 @@ Each format is written with its Save settings
 
 ## See Also
 
-- [UltraCanvasImageElement](UltraCanvasImageElement.md) — Image display widget used for the thumbnails
+- [UltraCanvasImageElement](../../UltraCanvas/include/UltraCanvasImageElement.h) — Image display widget used for the thumbnails
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Status/info text labels
 - [UltraCanvasButton](UltraCanvasButtonExamples.md) — "Choose Image..." button
 - [UltraCanvasSwitch](UltraCanvasSwitch.md) — the format switches of the settings dialog
-- [UltraCanvasContainer](UltraCanvasContainer.md) — Layout root for the benchmark
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) — Layout root for the benchmark
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md
@@ -45196,10 +45347,10 @@ FILE: Docs/UltraCanvas/UltraCanvasJitterPlotExamples.md
   - [Overrides](#overrides)
 - [Factory Functions](#factory-functions)
 - [Usage Examples](#usage-examples)
-  - [Example 1: Brazil School Scores — Classic Gaussian Jitter](#example-1-brazil-school-scores-—-classic-gaussian-jitter)
-  - [Example 2: Brazil School Scores — Beeswarm Packing](#example-2-brazil-school-scores-—-beeswarm-packing)
+  - [Example 1: Brazil School Scores — Classic Gaussian Jitter](#example-1-brazil-school-scores--classic-gaussian-jitter)
+  - [Example 2: Brazil School Scores — Beeswarm Packing](#example-2-brazil-school-scores--beeswarm-packing)
   - [Example 3: Continental Population (Simple Jitter)](#example-3-continental-population-simple-jitter)
-  - [Example 4: Market Capitalization — Logarithmic Y-Axis](#example-4-market-capitalization-—-logarithmic-y-axis)
+  - [Example 4: Market Capitalization — Logarithmic Y-Axis](#example-4-market-capitalization--logarithmic-y-axis)
   - [Example 5: Hybrid Jitter + Box Plot Overlay (Interactive)](#example-5-hybrid-jitter--box-plot-overlay-interactive)
   - [Example 6: Scientific Cross-Mean Markers (Publication Style)](#example-6-scientific-cross-mean-markers-publication-style)
   - [Example 7: Raincloud Plot (Half-Violin + Jitter)](#example-7-raincloud-plot-half-violin--jitter)
@@ -45493,7 +45644,7 @@ double GetColorDomainMin() const;
 double GetColorDomainMax() const;
 ```
 
-Palettes come from [`UltraCanvasColormap`](UltraCanvasColormap.md) — sequential
+Palettes come from [`UltraCanvasColormap`](../../UltraCanvas/include/Plugins/Charts/UltraCanvasColormap.h) — sequential
 (`Viridis`, `Inferno`, `Blues`, …), diverging (`RdBu`, `Spectral`, `Coolwarm`, …),
 or `Custom` with your own anchors. With diverging normalization on, `[min, mid]`
 maps to `[0, 0.5]` and `[mid, max]` to `[0.5, 1]`, so the midpoint lands on the
@@ -47287,6 +47438,14 @@ shadowLabel->SetBackgroundColor(Color(100, 100, 100));
 3. With `hasShadow`, the text is drawn once at `shadowOffset` in
    `shadowColor`, then in its own colour; inline images are drawn on their
    placeholders.
+4. A text of one character - "+", "×", "‹", a check mark - in a label
+   centred both ways (`SetAlignment(TextAlignment::Center,
+   VerticalAlignment::Middle)`) is placed by its drawn shape: its ink in the
+   middle of the content box, on whole pixels. A word is centred on its
+   line, which puts its capitals in the middle; a lone symbol has no
+   capitals and sat where the font put it (an "×" 2 px low in a 32 px
+   label). A label with markup, a shadow, inline images or boxes, or
+   selectable text keeps its own layout.
 
 ### Where the text layout comes from
 
@@ -49864,9 +50023,9 @@ gets them when nothing focused takes them).
 
 - DemoApp → *List View*, section 5 (`Apps/DemoApp/UltraCanvasListViewExamples.cpp`) — the custom-delegate example above, complete
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — Hierarchical equivalent of ListView
-- [UltraCanvasScrollbar](UltraCanvasScrollbar.md) — Scrollbar used internally
+- [UltraCanvasScrollbar](UltraCanvasScrollbarExamples.md) — Scrollbar used internally
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Static text display
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — Base class documentation
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — Base class documentation
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasLocalisationEditor.md
@@ -52445,7 +52604,7 @@ for the same reason.
 ## See also
 
 - [UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) — the viewer inside it
-- [UltraCanvasImageViewer](UltraCanvasImageViewer.md) — the zoom/pan lightbox
+- [UltraCanvasImageViewer](../../UltraCanvas/include/UltraCanvasImageViewer.h) — the zoom/pan lightbox
 - [UltraCanvasFontViewer](UltraCanvasFontViewer.md) — what a font opens as
 
 ==============================================================================
@@ -55491,8 +55650,8 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Serialization](#serialization)
   - [Callbacks](#callbacks)
 - [Usage Examples](#usage-examples)
-  - [Simple API — five nodes, six links, one layout](#simple-api-—-five-nodes-six-links-one-layout)
-  - [Verbose API — Workflow editor with handles](#verbose-api-—-workflow-editor-with-handles)
+  - [Simple API — five nodes, six links, one layout](#simple-api--five-nodes-six-links-one-layout)
+  - [Verbose API — Workflow editor with handles](#verbose-api--workflow-editor-with-handles)
   - [Link styles showcase](#link-styles-showcase)
   - [Multi-select with keyboard](#multi-select-with-keyboard)
   - [JSON round-trip](#json-round-trip)
@@ -56810,8 +56969,8 @@ and waypoints are all written by `ToJson()` and read by `FromJson()`.
 - [UltraCanvasGourceTreeExamples](UltraCanvasGourceTreeExamples.md) — radial filesystem tree
 - [UltraCanvasAdjacencyDiagramExamples](UltraCanvasAdjacencyDiagramExamples.md) — architectural room adjacency
 - [UltraCanvasArcDiagramExamples](UltraCanvasArcDiagramExamples.md) — nodes on a baseline with arc edges
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
-- [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — tab control used by the demos
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
+- [UltraCanvasTabbedContainer](../../UltraCanvas/include/UltraCanvasTabbedContainer.h) — tab control used by the demos
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasNotificationActivation.md
@@ -61155,7 +61314,7 @@ FILE: Docs/UltraCanvas/UltraCanvasPolarChart.md
   - [Polar scatter with a numeric angle axis](#polar-scatter-with-a-numeric-angle-axis)
   - [Stacked polar columns (Nightingale rose)](#stacked-polar-columns-nightingale-rose)
   - [Tolerance bands behind a categorical line](#tolerance-bands-behind-a-categorical-line)
-  - [A 270° fan with a donut hole](#a-270°-fan-with-a-donut-hole)
+  - [A 270° fan with a donut hole](#a-270-fan-with-a-donut-hole)
   - [Dual angle axis](#dual-angle-axis)
 - [Rendering Order](#rendering-order)
 - [Interaction Details](#interaction-details)
@@ -63099,7 +63258,7 @@ FILE: Docs/UltraCanvas/UltraCanvasQRCodeExamples.md
   - [Logo](#logo)
   - [State & Inspection](#state--inspection)
   - [Export](#export)
-  - [Free Functions — `QRCodeUtils`](#free-functions-—-qrcodeutils)
+  - [Free Functions — `QRCodeUtils`](#free-functions--qrcodeutils)
 - [Examples](#examples)
   - [1. Basic QR Code from a URL](#1-basic-qr-code-from-a-url)
   - [2. Choosing an Error-Correction Level](#2-choosing-an-error-correction-level)
@@ -64318,11 +64477,11 @@ elements. Internally:
 
 ## See Also
 
-- [`UltraCanvasChartElementBase`](UltraCanvasChartElementBase.md) - Base class documentation
+- [`UltraCanvasChartElementBase`](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h) - Base class documentation
 - [`UltraCanvasLineChartElement`](UltraCanvasLineChartElement.md) - Line chart component
 - [`UltraCanvasBarChartElement`](UltraCanvasBarChartElement.md) - Bar chart component
 - [`UltraCanvasPieChartExamples`](UltraCanvasPieChartExamples.md) - Pie chart component
-- [`IRenderContext`](IRenderContext.md) - Rendering interface
+- [`IRenderContext`](../../UltraCanvas/include/UltraCanvasRenderContext.h) - Rendering interface
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasRadialBarChartExamples.md
@@ -65295,7 +65454,7 @@ FILE: Docs/UltraCanvas/UltraCanvasRequirementDiagramExamples.md
   - [Mermaid](#mermaid)
   - [CSV](#csv)
   - [ReqIF](#reqif)
-- [Complete example — HybridSUV requirement tree](#complete-example-—-hybridsuv-requirement-tree)
+- [Complete example — HybridSUV requirement tree](#complete-example--hybridsuv-requirement-tree)
 - [Live demo](#live-demo)
 - [Notes and limitations](#notes-and-limitations)
 - [Related Documentation](#related-documentation)
@@ -66395,6 +66554,14 @@ RichDocumentHTMLOptions out;
 out.imageSource = [](int mediaIndex) { return "cid:part" + std::to_string(mediaIndex); };
 std::string html = document->ToHTML(out);                // default: data: URIs
 ```
+
+Two more hooks of `RichDocumentHTMLOptions` make the HTML a web page's:
+`headingId` answers the `id` each heading carries, given its level and
+text, so a table of contents and a link's `#anchor` can reach it; and
+`codeBlock` writes a code block's whole HTML itself, given its fence
+language and text - highlighted, say. Unset, the output is unchanged.
+UltraSite's Markdown pages are written through both
+(`Docs/Modules/UltraSite/README.md`).
 
 | HTML | becomes |
 |---|---|
@@ -68801,8 +68968,8 @@ generateBtn->onClick = [perfSankey, nodesSlider, linksSlider]() {
 - [UltraCanvasTreeMapExamples](UltraCanvasTreeMapExamples.md) — hierarchical area visualization
 - [UltraCanvasFlowChartExamples](UltraCanvasFlowChartExamples.md) — node/edge flow chart editor
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — line/curve charts
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
-- [UltraCanvasTabbedContainer](UltraCanvasTabbedContainer.md) — used by the demo to host examples
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) — base element class
+- [UltraCanvasTabbedContainer](../../UltraCanvas/include/UltraCanvasTabbedContainer.h) — used by the demo to host examples
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasScatterPlot3D.md
@@ -70192,8 +70359,8 @@ container->AddChild(sb);
 
 - [`Apps/DemoApp/UltraCanvasScrollbarExamples.cpp`](../../Apps/DemoApp/UltraCanvasScrollbarExamples.cpp) - Full runnable demo of every variant above
 - [`include/UltraCanvasScrollbar.h`](../../UltraCanvas/include/UltraCanvasScrollbar.h) - Public API header
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Hosting container
-- [UltraCanvasLabel](UltraCanvasLabel.md) - Companion text element
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) - Hosting container
+- [UltraCanvasLabel](UltraCanvasLabelExamples.md) - Companion text element
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md
@@ -70211,8 +70378,8 @@ FILE: Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md
   - [Factory Functions](#factory-functions)
   - [Segment Management](#segment-management)
   - [Segment Properties](#segment-properties)
-  - [Selection — Single Mode](#selection-—-single-mode)
-  - [Selection — Multiple / Toggle Modes](#selection-—-multiple--toggle-modes)
+  - [Selection — Single Mode](#selection--single-mode)
+  - [Selection — Multiple / Toggle Modes](#selection--multiple--toggle-modes)
   - [Selection Mode](#selection-mode)
   - [Styling](#styling)
 - [Enumerations](#enumerations)
@@ -70231,6 +70398,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSegmentedControlExamples.md
   - [Disabled Segments](#disabled-segments)
   - [A Segment in Its Own Colour](#a-segment-in-its-own-colour)
   - [A Tooltip for Each Segment](#a-tooltip-for-each-segment)
+  - [One Character per Segment (a Pager)](#one-character-per-segment-a-pager)
   - [Variable-Length Segments with a Custom Theme](#variable-length-segments-with-a-custom-theme)
 - [Keyboard Navigation](#keyboard-navigation)
 - [See Also](#see-also)
@@ -70642,6 +70810,20 @@ shape->SetSegmentTooltip(1, "Window: the window you click");
 shape->SetSegmentTooltip(2, "Full screen: the whole screen");
 ```
 
+### One Character per Segment (a Pager)
+
+A segment whose caption is one character - a pager's "‹" and "›", a "+" -
+has that character's drawn shape put in the middle of the segment. A word
+is centred on its capitals so the captions of a row line up, but a lone
+symbol has no capitals and sat 1.5 to 2 px low that way. No icon is needed
+to get it centred:
+
+```cpp
+auto pager = CreateSegmentedControl("pager", 50, 820, 80, 28);
+pager->AddSegment("\u2039");   // ‹
+pager->AddSegment("\u203A");   // ›
+```
+
 ### Variable-Length Segments with a Custom Theme
 
 ```cpp
@@ -70671,10 +70853,10 @@ When the control has focus:
 
 ## See Also
 
-- [UltraCanvasButton](UltraCanvasButton.md) - Single-purpose clickable button
-- [UltraCanvasMenu](UltraCanvasMenu.md) - Menus with checkable/radio items
-- [UltraCanvasToolbar](UltraCanvasToolbar.md) - Toolbar of actions
-- [UltraCanvasLabel](UltraCanvasLabel.md) - Companion text element
+- [UltraCanvasButton](UltraCanvasButtonExamples.md) - Single-purpose clickable button
+- [UltraCanvasMenu](UltraCanvasMenuExamples.md) - Menus with checkable/radio items
+- [UltraCanvasToolbar](UltraCanvasToolbarExamples.md) - Toolbar of actions
+- [UltraCanvasLabel](UltraCanvasLabelExamples.md) - Companion text element
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSequenceDiagram.md
@@ -72156,9 +72338,8 @@ Required headers:
 
 ## See Also
 
-- [UltraCanvasAdvancedSlider](UltraCanvasAdvancedSlider.md) - Extended slider with advanced features
-- [UltraCanvasSpinBox](UltraCanvasSpinBox.md) - Numeric input with increment/decrement
-- [UltraCanvasProgressBar](UltraCanvasProgressBar.md) - Progress indication control
+- [UltraCanvasSpinner](../../UltraCanvas/include/UltraCanvasSpinner.h) - Numeric input with increment/decrement
+- [UltraCanvasGaugeDiagramElement](../../UltraCanvas/include/Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h) - Progress indication control
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSlideshowExamples.md
@@ -72759,9 +72940,9 @@ show->SetFollowTheme(true);
 
 - [Apps/DemoApp/UltraCanvasSlideshowExamples.cpp](../../Apps/DemoApp/UltraCanvasSlideshowExamples.cpp) - Full interactive demo of every indicator style, layout, fade, and fit
 - [UltraCanvasSlideshow.h](../../UltraCanvas/include/UltraCanvasSlideshow.h) - Public API header
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Base class
-- [UltraCanvasButton](UltraCanvasButton.md) - For playback / navigation controls
-- [UltraCanvasLabel](UltraCanvasLabel.md) - Companion text element
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) - Base class
+- [UltraCanvasButton](UltraCanvasButtonExamples.md) - For playback / navigation controls
+- [UltraCanvasLabel](UltraCanvasLabelExamples.md) - Companion text element
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSmoothScroll.md
@@ -73630,7 +73811,7 @@ xvfb-run -a ./build/bin/TextAreaSpellCheckTest
 ## See also
 
 - [UltraCanvasTextAreaExamples.md](UltraCanvasTextAreaExamples.md) — the element integration
-- [UltraCanvasMenu.md](UltraCanvasMenu.md) — `MenuItemData`, radio groups, lambda-provided submenus
+- [UltraCanvasMenu.md](UltraCanvasMenuExamples.md) — `MenuItemData`, radio groups, lambda-provided submenus
 - [../Dependencies.md](../Dependencies.md) — installing hunspell / enchant and dictionaries
 
 ==============================================================================
@@ -73989,8 +74170,8 @@ if (!splash.IsVisible()) {
 ## See also
 
 - `Apps/Texter/main.cpp` — the canonical two-phase startup shown above.
-- [`Docs/Ladybird/SplashScreen.md`](../Ladybird/SplashScreen.md) — the
-  Ladybird port's splash, and the assets it ships.
+- The Ladybird port's own `Docs/Ladybird/SplashScreen.md`, in its
+  repository rather than this one: its splash and the assets it ships.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSplitPane.md
@@ -76428,9 +76609,9 @@ them all live under *ULTRA OS modules → System dialogs*
 ## Contents
 
 - [Two implementations, one call](#two-implementations-one-call)
-- [File dialogs — `UltraCanvasFileLoader`](#file-dialogs-—-ultracanvasfileloader)
-- [Print dialog — `UltraCanvasNativeDialogs` + IODeviceManager](#print-dialog-—-ultracanvasnativedialogs--iodevicemanager)
-- [Message and input dialogs — `UltraCanvasDialogManager`](#message-and-input-dialogs-—-ultracanvasdialogmanager)
+- [File dialogs — `UltraCanvasFileLoader`](#file-dialogs--ultracanvasfileloader)
+- [Print dialog — `UltraCanvasNativeDialogs` + IODeviceManager](#print-dialog--ultracanvasnativedialogs--iodevicemanager)
+- [Message and input dialogs — `UltraCanvasDialogManager`](#message-and-input-dialogs--ultracanvasdialogmanager)
 - [See also](#see-also)
 
 ## Two implementations, one call
@@ -80578,7 +80759,7 @@ The setters are not thread-safe. Call them only from the UI thread.
 ## See Also
 
 - [UltraCanvasLabel](UltraCanvasLabelExamples.md) — Text display widget that consumes these settings
-- [UltraCanvasDropdown](UltraCanvasDropdown.md) — Used in the demo for live selection
+- [UltraCanvasDropdown](../../UltraCanvas/include/UltraCanvasDropdown.h) — Used in the demo for live selection
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) — General 2D rendering pipeline
 
 ==============================================================================
@@ -82050,7 +82231,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTimelineDiagram.md
 # UltraCanvasTimelineDiagram
 
 A **narrative timeline infographic**: an ordered list of events laid out along a
-decorative path, with nine design presets. Items carry a period caption, a
+decorative path, with ten design presets. Items carry a period caption, a
 title, a paragraph and an icon; they are evenly spaced by default, so this is
 the presentation timeline rather than a date-accurate schedule.
 
@@ -82069,8 +82250,8 @@ the presentation timeline rather than a date-accurate schedule.
 **Source:** `Plugins/Diagrams/UltraCanvasTimelineDiagram.cpp`
 **Base class:** `UltraCanvasChartElementBase`
 **Demo:** `Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp` (Info Graphics > Timeline Diagram)
-**Version:** 1.0.0
-**Last Modified:** 2026-07-30
+**Version:** 1.1.0
+**Last Modified:** 2026-11-17
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -82080,6 +82261,7 @@ the presentation timeline rather than a date-accurate schedule.
 - [Data model](#data-model)
   - [Managing items](#managing-items)
 - [Designs](#designs)
+  - [The wave](#the-wave)
 - [Layout options](#layout-options)
   - [Even vs. proportional placement](#even-vs-proportional-placement)
 - [Palettes and color](#palettes-and-color)
@@ -82183,9 +82365,43 @@ current style. This is the same contract as `UltraCanvasGanttChart`.
 | `Hanging` | Axis on top, stems dropping to bubbles of varying size, text wrapped to the circle |
 | `Chevron` | Arrow blocks pointing forward — process/phase presentation |
 | `Steps` | Ascending staircase blocks for growth narratives |
+| `Wave` | A chain of thick half-rings bending to alternate sides, a node where two meet, the caption inside each ring and the text beside it |
 
 Cards, boxes and bubbles **size themselves to their text**; anything that still
 does not fit is ellipsized (`style.maxBodyLines` caps the body).
+
+### The wave
+
+`Wave` threads one half-ring per item on a straight axis. Each ring bends the
+other way from the one before, so together they make one smooth wave; the
+item's node sits where its ring begins, a plain dot closes the path where the
+last one ends. The caption (a year, a phase) is drawn inside the ring, as
+large as fits there, over a pale half-disc; the title, in the ring's colour,
+and the body sit beside the ring on the side it bulges to - flush to it.
+
+```cpp
+auto wave = CreateTimelineDiagramElement("history", 0, 0, 900, 640, TimelineDesign::Wave);
+wave->SetItems(TimelineDiagramSamples::CompanyHistory());
+
+wave->EditStyle().waveAxisAngle = 0.0;    // 45 falls diagonally (default), 90 runs top-down,
+                                          // -45 rises from the bottom left
+wave->EditStyle().waveAutoAngle = false;  // true: the angle that gives the largest rings
+wave->EditStyle().waveFillInside = true;  // the pale half-disc behind the caption
+wave->StyleChanged();
+```
+
+The rings are made as large as the frame allows while every item's text keeps
+room of its own: on an axis of 40 degrees or steeper the text sits beside the
+rings, alternately right and left; on a flatter one it sits above and below.
+No text block covers a ring or another block. The other options apply as
+elsewhere: `SetSidePolicy` decides which way each ring bends (*above* is the
+side up from the axis - up and to the right on the default diagonal, right on
+a top-down wave), `SetReverseOrder` runs the wave from the other end,
+`TimelinePlacement::Proportional` gives rings of different sizes by date,
+`GradientAlongPath` fades each ring into the next one's colour, and
+`SetCurrentIndex` draws the rings after the current item lighter.
+`style.spineThickness` is the width of the band, `style.connectorStyle`
+(hidden by default) adds a stem from each ring to its text.
 
 ## Layout options
 
@@ -82297,6 +82513,13 @@ Point2Dd center;
 Rect2Dd rect;
 if (timeline->GetItemNodeCenter(0, center)) { /* node position, element-local */ }
 if (timeline->GetItemContentRect(0, rect))  { /* text block of item 0 */ }
+
+// Wave design: the half-ring item 0 is drawn on - an icon beside the ring
+double radius = 0.0, startAngle = 0.0;
+if (timeline->GetItemArc(0, center, radius, startAngle)) {
+    // The ring sweeps pi radians clockwise from startAngle; it bulges towards
+    // startAngle + pi / 2
+}
 ```
 
 ## Sample data
@@ -83146,7 +83369,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
   - [Flat Style Toolbar](#flat-style-toolbar)
   - [Vertical Sidebar Toolbar](#vertical-sidebar-toolbar)
   - [Ribbon-Style Toolbar (Grouped)](#ribbon-style-toolbar-grouped)
-  - [Badges and Reordering — a Taskbar](#badges-and-reordering-—-a-taskbar)
+  - [Badges and Reordering — a Taskbar](#badges-and-reordering--a-taskbar)
 - [Implementation Notes](#implementation-notes)
 - [See Also](#see-also)
 
@@ -83756,13 +83979,13 @@ running->ClearItemBadge("webcam");                                // off again
 
 ## See Also
 
-- [UltraCanvasButton](UltraCanvasButton.md) - Building block for toolbar buttons
+- [UltraCanvasButton](UltraCanvasButtonExamples.md) - Building block for toolbar buttons
 - [UltraCanvasToolGroupButton](UltraCanvasToolGroupButton.md) - Several tools in one slot, with a fold-out bar (`AddToolGroup`)
 - [Toolbar Layout](UltraCanvasToolbarLayout.md) - A toolbar built from groups of commands, kept in the settings (`MaterializeToolbar`)
-- [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown buttons and overflow menus
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Base container class
+- [UltraCanvasMenu](UltraCanvasMenuExamples.md) - Used internally for dropdown buttons and overflow menus
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) - Base container class
 - [UltraCanvasLayoutExamples](UltraCanvasLayoutExamples.md) - Layout managers used internally
-- [UltraCanvasSegmentedControl](UltraCanvasSegmentedControl.md) - Alternative for grouped toggle choices
+- [UltraCanvasSegmentedControl](UltraCanvasSegmentedControlExamples.md) - Alternative for grouped toggle choices
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasToolbarLayout.md
@@ -84785,7 +85008,7 @@ btnReset->SetOnClick([treeMap]() {
 - [UltraCanvasFlowChartExamples](UltraCanvasFlowChartExamples.md) — interactive flow chart editor
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — line charts
 - [UltraCanvasTreeView](UltraCanvasTreeViewExamples.md) — alternative hierarchical view
-- [UltraCanvasChartElementBase](UltraCanvasChartElementBase.md) — common chart base
+- [UltraCanvasChartElementBase](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h) — common chart base
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
@@ -86025,7 +86248,7 @@ tree->onNodeDragDrop = [](TreeNode* dragged, TreeNode* target) {
 - **Mouse Wheel**: Scroll vertically
 - **Scrollbar Drag**: Direct scrolling control
 - **Scroll-to-Top Button**: Click the floating arrow in the bottom-right corner
-  to jump back to the first row (see [Scroll-to-Top Button](#scroll-to-top-button))
+  to jump back to the first row (see [Scroll-to-Top Button](#scroll-to-top-and-scroll-to-selection-buttons))
 
 ## Rendering Details
 
@@ -86153,9 +86376,9 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 
 ## See Also
 
-- [UltraCanvasUIElement](UltraCanvasUIElement.md) - Base class documentation
-- [UltraCanvasContainer](UltraCanvasContainer.md) - Container for tree views
-- [UltraCanvasEvent](UltraCanvasEvent.md) - Event system documentation
+- [UltraCanvasUIElement](../../UltraCanvas/include/UltraCanvasUIElement.h) - Base class documentation
+- [UltraCanvasContainer](../../UltraCanvas/include/UltraCanvasContainer.h) - Container for tree views
+- [UltraCanvasEvent](../../UltraCanvas/include/UltraCanvasEvent.h) - Event system documentation
 - [UltraCanvasRenderContext](UltraCanvasRenderContext.md) - Rendering system
 
 ==============================================================================
@@ -86494,7 +86717,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | A service needs an AI model that is not on this computer: offer the local runtime's models that fit, download the chosen one with its engine, progress, then carry on (the UltraAI module's dialog; link `UltraAI_UI`) | `UltraAI::UltraAILocalModelDialog` (`Show`, `NeedsInstall`) | `UltraAI/ui/include/UltraAILocalModelDialog.h` |
 | "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar, a pulsing circle or a ring of circling dots (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
-| A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
+| A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer; a small ring marker of 12-40 px in a row (`CircularRing` with `SetRingCompact`, `SetRingValueText(false)`) | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
 | Native OS file, message and print dialog | `UltraCanvasNativeDialogs` ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasNativeDialogs.h` |
 | The icon of a file about to be saved, dragged onto a folder of the window to choose where it goes (the RISC OS save box's icon; the Save dialog has a big one left of its name and type, "Drag to Folder" under it) | `UltraCanvasFileDragIcon` (`CreateFileDragIcon`; [doc](UltraCanvasFileDialog.md#the-file-icon)) | `UltraCanvasFileDragIcon.h` |
@@ -88344,7 +88567,7 @@ cloudVenn->SetStyle(VennStyle::Classic);
 - [UltraCanvasFlowChartExamples](UltraCanvasFlowChartExamples.md) — node/edge editors
 - [UltraCanvasDendrogramExamples](UltraCanvasDendrogramExamples.md) — hierarchical clustering trees
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — line charts
-- [UltraCanvasChartElementBase](UltraCanvasChartElementBase.md) — common chart base
+- [UltraCanvasChartElementBase](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h) — common chart base
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVideo.md
@@ -88363,13 +88586,13 @@ and composite UI elements, all behind a pluggable platform backend.
 - [Status](#status)
 - [Architecture](#architecture)
 - [Public API surface](#public-api-surface)
-  - [Frame resource — `UltraCanvasVideo.h`](#frame-resource-—-ultracanvasvideoh)
-  - [Playback (non-visual) — `UltraCanvasVideoPlayer.h`](#playback-non-visual-—-ultracanvasvideoplayerh)
-  - [File facts — `UltraCanvasVideoFileInfo.h`](#file-facts-—-ultracanvasvideofileinfoh)
-  - [Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`](#thumbnails--poster-frames-—-ultracanvasvideothumbnailh)
-  - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual-—-ultracanvasvideorecorderh)
+  - [Frame resource — `UltraCanvasVideo.h`](#frame-resource--ultracanvasvideoh)
+  - [Playback (non-visual) — `UltraCanvasVideoPlayer.h`](#playback-non-visual--ultracanvasvideoplayerh)
+  - [File facts — `UltraCanvasVideoFileInfo.h`](#file-facts--ultracanvasvideofileinfoh)
+  - [Thumbnails / poster frames — `UltraCanvasVideoThumbnail.h`](#thumbnails--poster-frames--ultracanvasvideothumbnailh)
+  - [Recording (non-visual) — `UltraCanvasVideoRecorder.h`](#recording-non-visual--ultracanvasvideorecorderh)
   - [UI elements](#ui-elements)
-  - [Devices — `UltraCanvasVideoDevices.h`](#devices-—-ultracanvasvideodevicesh)
+  - [Devices — `UltraCanvasVideoDevices.h`](#devices--ultracanvasvideodevicesh)
 - [Following the theme](#following-the-theme)
 - [Adding a container or codec](#adding-a-container-or-codec)
 - [Build](#build)
@@ -89983,10 +90206,10 @@ The WaterfallChartElement integrates seamlessly with:
 
 ## See Also
 
-- [UltraCanvasChartElementBase](./UltraCanvasChartElementBase.md)
-- [UltraCanvasBarChart](./UltraCanvasBarChart.md)
-- [UltraCanvasLineChart](./UltraCanvasLineChart.md)
-- [UltraCanvas Charts Overview](./ChartsOverview.md)
+- [UltraCanvasChartElementBase](../../UltraCanvas/include/Plugins/Charts/UltraCanvasChartElementBase.h)
+- [UltraCanvasBarChart](UltraCanvasBarChartElement.md)
+- [UltraCanvasLineChart](UltraCanvasLineChartElement.md)
+- [UltraCanvas Charts Overview](UltraCanvasChartEngine.md)
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasWaveSeparator.md
@@ -102731,7 +102954,8 @@ UltraIMConfig config;
 config.pluginDirectory = "<exe dir>/Plugins/UltraIM";
 config.dataDirectory   = "<user data dir>/ChatCube";
 UltraIM_Initialize(config);
-UltraIM_RefreshProviders();                 // load the provider modules
+UltraIM_LoadUsedProviders();                // the networks in use (signed in to before)
+UltraIM_LoadProvider("telegram");           // another one, when it is asked for
 
 UltraIM_Subscribe([](const UltraIMEvent& e) {
     if (e.type == UltraIMEventType::MessageReceive) { /* append e.message */ }
@@ -103040,9 +103264,29 @@ extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost
 }
 ```
 
-`UltraIM_RefreshProviders` loads each module in `pluginDirectory` once and
-never unloads it (queued callbacks may still point into it). A provider
-compiled into the application uses `UltraIM_RegisterProvider` instead.
+A module is named `ultraim_<provider id>` (`.so`, `.dll`, `.dylib`) - the
+build's `OUTPUT_NAME` with no prefix - so a provider is found by its id
+without loading anything. Modules are loaded **on demand**:
+
+- `UltraIM_ListProviderModules()` - the ids of the modules in
+  `pluginDirectory`, loaded or not (to offer them);
+- `UltraIM_LoadProvider(id)` - that one module, when its network is asked
+  for (a button, a sign-in); `ProviderNotFound` when there is none;
+- `UltraIM_LoadUsedProviders()` - at start, the networks in use: those
+  listed in `<dataDirectory>/ultraim-providers.txt`, one provider id a line
+  (`#` a comment). UltraIM adds a provider there when it connects
+  (`ConnectionStateChange` to `Connected`) and takes it out on
+  `UltraIM_SignOut`; `UltraIM_GetUsedProviders()` reads it. With no list
+  yet, a first start (the data folder empty) begins an empty one; a data
+  folder used before - an application that loaded every module until now -
+  has every module loaded once and those with a sign-in kept written down,
+  so an update signs no one out;
+- `UltraIM_RefreshProviders` - every module, as before.
+
+A module is loaded once and never unloaded (queued callbacks may still point
+into it); after `UltraIM_Shutdown` and a new `UltraIM_Initialize` it is asked
+to register its provider again. A provider compiled into the application
+uses `UltraIM_RegisterProvider` instead.
 
 **The module ABI.** `ULTRAIM_PLUGIN_HOST_ABI_VERSION` covers everything a
 module and the host share in binary form: the host table, the
@@ -103551,11 +103795,258 @@ statuses between two looks in order, a reply, an edit, a delete seen by both
 sides, a picture and a video byte for byte, a file refused, search, read, a
 group, a second thread in the same chat, leaving. Skips without python3.
 
+## Provider: Mattermost
+
+`UltraCanvas/Plugins/UltraIM/mattermost/` (module `ultraim_mattermost`,
+provider id `mattermost`) is a client of a Mattermost server's REST API
+(v4) over UltraNet; like Mastodon it links only UltraNet, UltraVault and
+UltraCrypt.
+
+- **Sign-in** (`UltraIMLoginType::UsernamePassword`): `credentials.server`
+  (a bare host is taken as https), `username` (the user name or the e-mail)
+  and `password` (`POST /api/v4/users/login`; the session token comes in
+  the `Token` header). An account with multi-factor authentication answers
+  `NeedsInput` with the step `Code` (`authHint`: what to type) and an
+  `AuthStepChange`; the next `SignIn` needs only `otpCode` - a wrong code
+  answers `AuthFailed` and stays on the step. `accessToken` (a personal
+  access token) signs in directly. The session is kept in UltraVault and
+  resumed by `SignIn` with no credentials; a token the server no longer
+  takes drops it (`AuthFailed` at the start, `AuthRequire` while connected).
+  `FetchAccountProfile` answers the account's name (`Erin Smith (@erin)`).
+- **Conversations** are channels, the id the channel's: a direct message
+  (1:1, `directContactId` the other user), a group message (2-7 others), and
+  the public and private channels of the user's teams as groups titled
+  `Channel (Team)`, their creator as `ownerId`. Unread counts are the
+  channel's messages minus those read.
+- **News by polling** every few seconds (`MattermostTimings::pollMs`, 3 s):
+  a channel whose last post moved, one open in the window, or one busy in
+  the last 15 minutes is read with `posts?since=` - new posts in order
+  (`MessageReceive`), edits (`MessageUpdate`), deletes (`MessageDelete`); a
+  real server does not move a channel's time on an edit or a delete, hence
+  the open and busy ones. System posts are left out.
+- **Messages**: the post's markdown as it is; a thread reply has `replyTo`
+  its root post (a reply to a reply goes into the root's thread). Files of
+  any type, uploaded with `TransferProgress` and fetched with the token;
+  pictures come by themselves. The client id goes as `pending_post_id`, so
+  our own post is not received back.
+- **Edit, delete** (one's own, for everyone), **read**, **people** -
+  `AddContact` takes `@user`, `user`, an e-mail or a user id; `CreateGroup`
+  2-7 people (a group message, its title the members') - **leave** (a
+  channel; a direct or group message is hidden as Mattermost hides it and
+  comes back with its next post), **search** one conversation at a time.
+- **Not here**: typing, presence, read receipts, calls, reactions; only a
+  post's first file is its attachment.
+
+Tests: `Tests/UltraIM/MattermostProviderTests.cpp` against
+`mattermost_fake_server.py` (standard-library python: a team with two
+channels, passwords, personal access tokens, an MFA user): every sign-in
+path including MFA and a session the server ended, channels and direct
+messages, several posts between two looks in order, thread replies, edit and
+delete seen by the other side, a picture, a PDF and a voice note byte for
+byte, search, unread and read, group messages, hiding and leaving. Skips
+without python3 unless `ULTRAIM_TEST_MATTERMOST_REQUIRED` is set.
+
+## Provider: Zulip
+
+`UltraCanvas/Plugins/UltraIM/zulip/` (module `ultraim_zulip`, provider id
+`zulip`) is a client of a Zulip organization's REST API over UltraNet.
+
+- **Sign-in** (`UltraIMLoginType::UsernamePassword`): `credentials.server`
+  (the organization, `chat.zulip.org`), `username` (the account's e-mail)
+  and `password` (`POST /api/v1/fetch_api_key`), or `accessToken` = the
+  account's API key with the e-mail in `username`; then HTTP Basic with the
+  e-mail and the key. Kept in UltraVault and resumed by `SignIn` with no
+  credentials. `FetchAccountProfile` answers the name and the e-mail.
+- **Conversations**: a direct message `dm:<id>`, a group direct message
+  `dm:<id>,<id>` (the others' user ids in order), and every topic of a
+  subscribed stream as a group `stream:<stream id>:<topic>`, titled
+  `#stream > topic`. The list is the streams' newest topics and the newest
+  direct messages; unread counts those without the `read` flag.
+- **News from the event queue** (`/api/v1/register`, then `/events`
+  long-polled on a thread of its own): new messages, edits and deletes at
+  once; a queue the server forgot is registered again, and a network error
+  shows as Reconnecting.
+- **Messages**: the raw markdown (`apply_markdown=false`). An upload's link
+  (`/user_uploads/...`) is the attachment - of any type, sent with
+  `TransferProgress`, fetched with the key; pictures come by themselves.
+- **Edit, delete** (one's own, for everyone), **read** (the `read` flag),
+  **people** (`AddContact` an e-mail or a user id, `CreateGroup` a group
+  direct message), **leave** (a topic muted, a direct message hidden on this
+  device), **search** one conversation at a time.
+- **Not here**: replies to a message (Zulip quotes instead), typing,
+  presence, read receipts, calls; moved or renamed topics. Needs Zulip 7.0
+  or later.
+
+Tests: `Tests/UltraIM/ZulipProviderTests.cpp` against `zulip_fake_server.py`
+(standard-library python, with a real long-poll): password and API-key
+sign-in and the session kept, direct, group direct and stream-topic
+messages both ways, edit and delete seen by the other side, uploads byte
+for byte, read, search, a lost event queue registered again without losing
+a message, leaving, and a shutdown that does not wait for an open long-poll.
+Skips without python3 unless `ULTRAIM_TEST_ZULIP_REQUIRED` is set.
+
+## Provider: Signal
+
+`UltraCanvas/Plugins/UltraIM/signal/` (module `ultraim_signal`, provider id
+`signal`) talks to [signal-cli](https://github.com/AsamK/signal-cli)
+(GPL-3.0, built on Signal's own libsignal) running as a daemon with its HTTP
+JSON-RPC interface: Signal has no API for other applications, and
+signal-cli is a linked device of the user's phone, as Signal Desktop is.
+signal-cli is not bundled.
+
+- **The daemon**: `credentials.server` names one the user runs
+  (`http://127.0.0.1:7583`; `signal-cli daemon --http 127.0.0.1:7583
+  --receive-mode=manual`, no `-a`). Without one the provider starts its own
+  (`SignalDaemon`): signal-cli is found from `ULTRAIM_SIGNAL_CLI`,
+  `signal-cli/bin/signal-cli` beside the provider modules, or the `PATH`,
+  started with its data under `<dataDirectory>/signal/signal-cli` on a free
+  loopback port, and stopped at `Shutdown`. Neither: `CapabilityMissing`.
+- **Sign-in** (`UltraIMLoginType::QRCode`): an account linked before and
+  still in the daemon signs in at once. Otherwise `startLink` makes a
+  `sgnl://linkdevice?...` link: `SignIn` answers `NeedsInput`, the step is
+  `OtherDevice` and `GetAuthHint()` the link, shown as a QR code for the
+  phone's Signal app (*Settings > Linked devices*). Once scanned the
+  provider is Connected (`ConnectionStateChange`); a link that times out is
+  replaced by a new one. `SignOut` keeps the link.
+- **Conversations**: a 1:1 chat's id is the other person's number
+  (`+4915112345678`), or their ACI when Signal gives none; a group's is
+  `group:` + its id. A message's id is `<author>|<timestamp>`.
+- **News by polling** `receive`: texts, attachments, replies (quotes),
+  edits, remote deletes, delivery and read receipts, typing, and what the
+  phone sends (sync copies, `isOwn`).
+- **History**: signal-cli keeps none - `FetchMessages` and `SearchMessages`
+  cover what this session received and sent.
+- **People**: `AddContact` takes an international number or a Signal
+  username (`name.01`); `CreateGroup` makes a group; `LeaveConversation`
+  leaves a group or hides a 1:1 chat until its next message.
+- **Not here**: calls, stickers, reactions; no upload progress (signal-cli
+  tells none).
+
+Tests: `Tests/UltraIM/SignalProviderTests.cpp` against
+`signal_fake_daemon.py` (standard-library python speaking signal-cli's
+JSON-RPC): no signal-cli (`CapabilityMissing`), linking by QR (a link that
+expires and a new one), the link kept, texts both ways and one typed on the
+phone, a reply, an edit, a remote delete, receipts, typing, a picture, a
+file and a voice note byte for byte, history and search, a group made and
+left, and a daemon the provider starts and stops itself. Skips without python3 unless
+`ULTRAIM_TEST_SIGNAL_REQUIRED` is set.
+
+## Provider: XMPP
+
+`UltraCanvas/Plugins/UltraIM/xmpp/` (module `ultraim_xmpp`, provider id
+`xmpp`) is an XMPP (Jabber) client over XMPP's TCP binding (RFC 6120:
+STARTTLS on 5222, direct TLS on 5223 - XEP-0368) or its WebSocket binding
+(RFC 7395), through UltraNet (`UltraNet_TlsWrap` for TLS); the XML is
+tinyxml2's, cut into elements from the TCP byte stream by `XmppSplitter`.
+
+- **The server**, with `credentials.server` empty, is looked for in this
+  order, the first that connects kept: the SRV records
+  `_xmpps-client._tcp` (direct TLS) and `_xmpp-client._tcp` (STARTTLS) of the
+  address's domain, by priority and weight; the WebSocket that host-meta
+  announces (XEP-0156); `<domain>:5222`; last `wss://<domain>/xmpp-websocket`.
+  `credentials.server` names it instead: `xmpp://host[:port]`, `host:port`
+  or a bare host (STARTTLS, 5222), `xmpps://host[:port]` (direct TLS, 5223),
+  `wss://...` (WebSocket), `https://...` (host-meta there). The certificate
+  is checked against the address's domain; a server that offers no STARTTLS,
+  and `ws://`, are refused unless they are on this computer. The endpoint
+  that connected is kept with the keys and tried first next time.
+  `SetTlsOptions` takes a CA bundle (tests). Over TCP a single space keeps a
+  quiet connection open, and a server that has said nothing for
+  `XmppTimings::pingIntervalMs` is pinged (XEP-0199): no answer, nor anything
+  else, within `pingTimeoutMs` and the connection counts as gone and is made
+  again - a server that hangs, or a path that drops packets without a word,
+  is found this way, where a write never fails.
+- **Sign-in** (`UltraIMLoginType::UsernamePassword`): the bare JID
+  (`username`, `erin@example.org`) and the password, by SASL SCRAM-SHA-256,
+  else SCRAM-SHA-1, else PLAIN (only over TLS or to this computer).
+  UltraVault keeps SCRAM's ClientKey and ServerKey with their salt and
+  iteration count - not the password - and `SignIn` with no credentials
+  uses them; a server with PLAIN alone keeps nothing. A changed password:
+  `AuthRequire`.
+- **Conversations**: a 1:1 chat's id is the contact's bare JID, the
+  contacts the roster (RFC 6121) with their presence; a group is a
+  multi-user chat room (XEP-0045), its id the room's JID, the rooms the
+  account's bookmarks (XEP-0402, else XEP-0048), joined at sign-in.
+- **Messages**: ids by origin-id (XEP-0359), history from the server's
+  archive (XEP-0313 MAM, paged with RSM); receipts (XEP-0184), displayed
+  markers (XEP-0333, sent by `MarkRead`), chat states (XEP-0085), edits
+  (XEP-0308), retractions (XEP-0424), replies (XEP-0461), carbons
+  (XEP-0280), files by HTTP File Upload (XEP-0363).
+- **Kept simple**: a subscription request is approved and asked back; a
+  room invitation is accepted and bookmarked.
+- **Not here**: OMEMO (messages are protected between each client and its
+  server, not end to end), Jingle calls, stream management (a dropped
+  connection signs in again).
+
+Tests: `Tests/UltraIM/XmppProviderTests.cpp` against `xmpp_fake_server.py`
+(standard-library python, a WebSocket XMPP server, and with `--cert` a TCP
+one with STARTTLS and a direct-TLS one, sharing users and archives): the
+splitter on awkward reads, server-field forms, SRV ordering, an untrusted
+certificate refused, STARTTLS and WebSocket clients talking both ways,
+direct TLS with the endpoint kept and resumed, a dropped TCP connection, a
+quiet server pinged and kept, one fallen silent with its socket open found
+by the unanswered ping;
+SCRAM-SHA-256,
+SCRAM-SHA-1 and PLAIN (nothing kept), plain `ws://` to another computer
+refused, the WebSocket found from host-meta, the kept keys and a changed
+password, 1:1 and room messages both ways, carbons, receipts, markers,
+typing, a correction, a retraction, a reply, the archive paged and searched,
+uploads with progress, a dropped connection reconnecting. Skips without
+python3 unless `ULTRAIM_TEST_XMPP_REQUIRED` is set (the TLS parts without
+openssl).
+
+## Provider: IRC
+
+`UltraCanvas/Plugins/UltraIM/irc/` (module `ultraim_irc`, provider id
+`irc`) is an IRC client with IRCv3 over UltraNet TCP, with TLS by
+`UltraNet_TlsWrap`.
+
+- **Sign-in** (`UltraIMLoginType::UsernamePassword`): `credentials.server`
+  (`irc.libera.chat`, `host:port` and `ircs://` are TLS, port 6697;
+  `irc://host[:port]` plain, 6667), `username` the nickname, `password`
+  optional - by SASL PLAIN (the account `displayName`, else the nick), only
+  over TLS or to this computer; a server without SASL gets NickServ
+  IDENTIFY, its echo kept out of the chats. A nickname in use becomes
+  `nick_`, then `nick__` - `SignIn`'s `message` says so. Server, nick,
+  password, channels and open private chats are kept in UltraVault;
+  `SignIn` with no credentials joins them again. Silence pings after 90 s;
+  a lost connection reconnects with a doubling delay (2 s to 120 s).
+  `SetTlsOptions` takes a CA bundle or a client certificate.
+- **Conversations**: a channel's id is its name folded by the server's
+  CASEMAPPING (`#ultracanvas`), its topic the `description`, its members
+  nicks; a private chat's id the folded nick; `*server`, titled by the
+  network's name, holds server and services notices and invitations, and
+  text sent to it is a raw IRC command.
+- **Messages**: the server's `msgid`, history by `CHATHISTORY` (else what
+  this session saw); mIRC formatting removed, Latin-1 read when it is not
+  UTF-8; `/me` as an ACTION; long messages split at 512 bytes (one
+  `MessageUpdate` once every part has echoed); replies by `+draft/reply`,
+  typing by `+typing`, echo-message and labeled-response matched; CTCP
+  VERSION, PING, TIME, CLIENTINFO answered.
+- **People**: `AddContact` takes `#chan` (with a key), `irc:`/`irc://`
+  forms, or a nick (checked by WHOIS); `CreateGroup` joins
+  `#<title>` and invites; `LeaveConversation` parts a channel or hides a
+  private chat until its next message.
+- **Not here**: files (`CapabilityMissing`: share a link), edits, deletes,
+  read marks on the server, draft/multiline, regaining the wanted nick.
+
+Tests: `Tests/UltraIM/IrcProviderTests.cpp` against `irc_fake_server.py`
+(standard-library asyncio: a plain IRCv3 listener, a TLS one and a basic
+one with no IRCv3): line parsing, case folding and splitting, TLS with the
+test's CA file and an untrusted certificate refused, SASL, a wrong password,
+anonymous sign-in, nicks in use, channels and private chats both ways,
+echo-message, server-time, formatting, Latin-1, ACTION, a long message
+split, a reply, typing, away, CHATHISTORY and paging, WHOIS, an invite-only
+channel refused, the stored session resumed, a dropped connection rejoined
+with what came meanwhile. Skips without python3 and openssl
+unless `ULTRAIM_TEST_IRC_REQUIRED` is set.
+
 ## Status
 
 Implemented: the registry, the module loader, the event bus and dispatcher,
 the merged conversation fetch and every forwarding call; the ChatCube
-Direct, Matrix, Telegram and Mastodon providers (above). Next: XMPP and others.
+Direct, Matrix, Telegram, Mastodon, Mattermost, Zulip, Signal, XMPP and IRC
+providers (above).
 
 ==============================================================================
 FILE: Docs/Modules/UltraLocalisation/README.md
@@ -105861,6 +106352,512 @@ recovery after loss; pictures shown with `UltraCanvasVideoTile`. Not yet:
 bandwidth estimation (the bit rate is fixed), NACK retransmission requests
 from the receiving side, simulcast. Known limit: the miniaudio backend
 opens the default devices whatever `deviceId` says.
+
+==============================================================================
+FILE: Docs/Modules/UltraSite/README.md
+==============================================================================
+
+# UltraSite
+
+**The HTML + JavaScript output of a website.** A list of routes goes in;
+out comes a folder any static host serves: complete, styled pages, one
+content-hashed stylesheet, small content-hashed script modules, the
+sitemap, the 404 page and the host's cache and security rules. The build
+fails when a link or an anchor inside the site is broken, or when a page
+or an asset is over its size budget.
+
+It is built the way [Docusaurus](https://docusaurus.io) builds a site:
+every page is already final HTML when it reaches the browser, and the
+shared assets are cached for good. It leaves out what makes Docusaurus
+heavy: React, hydration and a bundler. The scripts are plain ES modules
+that only add behaviour to HTML that already works, so a site written by
+UltraSite reads and navigates with JavaScript turned off.
+
+UltraPress and the UltraStore web store each have two outputs:
+(a) WebAssembly, drawn by UltraCanvas, and (b) HTML + JavaScript.
+UltraSite is (b). The design and the plan are in
+[`Docs/Research/UltraSiteStaticSitesProposal.md`](../../Research/UltraSiteStaticSitesProposal.md).
+
+> **Status (2026-11, v0.4, Phases A to D of the proposal):**
+> - **Phase A:** routes; the `page` and `post` layouts, plus layouts an
+>   app adds; design tokens with a light and an optional dark look; hashed
+>   assets; `core.js`; behaviour modules an app registers; the link and
+>   anchor check; budgets; the stale-file sweep; `.htaccess`, `_headers`
+>   and a Content-Security-Policy.
+> - **Phase B:** documentation sites. A Markdown folder becomes doc pages
+>   (`AddDocs`, with front matter, categories and translations). The `doc`
+>   layout has a sidebar, a table of contents, breadcrumbs and
+>   previous/next. Code is highlighted when the site is built. There are
+>   admonitions and tabs, a search index per language with a search page,
+>   the `search`, `toc`, `tabs` and `copy` modules, a language switcher,
+>   and the frame's words in `Labels`.
+> - **Phase C:** a site under a path, and a frame (navbar, footer, words)
+>   per language.
+> - **Users:** UltraPress publishes through it
+>   (`Apps/UltraPress/engine/UltraPressSite.h`), including a site's
+>   `docs/` folder and `ultrapress docs`. The UltraStore admin backend
+>   publishes the web store through it
+>   (`Apps/UltraStoreAdmin/core/WebStoreHtml.h`).
+> - **Phase D:** responsive pictures (`Builder::Picture`), precompressed
+>   `.gz` and `.br` copies, a preview server (`UltraSiteServer.h`), and
+>   versioned docs.
+> - **Not built:** the `form` module and the `swap` navigation (see the
+>   proposal, §16).
+>
+> Sources are under `UltraSite/{include,core,resources}`. The target is
+> `UltraSite`, the header `<UltraSite/UltraSite.h>`, and the namespace
+> `UltraSite`.
+
+---
+
+## What a build writes
+
+```
+out/
+  index.html, about/index.html, ...  every route, complete and styled
+  404.html                           the app's route "/404.html", or a default one
+  assets/site.<hash>.css             the base stylesheet, the tokens, the app's extraCss
+  assets/js/core.<hash>.js           on every page: prefetch on intent, the theme toggle
+  assets/js/<behaviour>.<hash>.js    only where a page uses it
+  assets/<name>.<hash>.<ext>         what Builder::Asset was given
+  <prefix>/...                       folders given to AddDirectory, as they are
+  sitemap.xml, robots.txt            the indexable routes, with their dates
+  .htaccess, _headers                cache rules, the 404 page, the security policy
+```
+
+`<hash>` is the first ten hex digits of the file's SHA-256. A changed file
+gets a new name, the pages point at the new name, and the old file is
+deleted by the next build. That is why the hashed files can be cached for
+a year (`Cache-Control: public, max-age=31536000, immutable`) while pages
+are checked again on every visit (`no-cache`).
+
+### Every page
+
+The `<head>` contains, in this order:
+
+- the charset, the viewport and the Content-Security-Policy;
+- the title and the description;
+- the generator, `noindex` where asked, and the colour schemes the page
+  supports;
+- the canonical URL and the `hreflang` alternates;
+- the Open Graph and Twitter card tags;
+- the theme script, if the site has a dark look;
+- the stylesheet, the core module and the page's behaviour modules;
+- the speculation rules;
+- the route's `extraHead`;
+- the JSON-LD.
+
+The `<body>` is a skip link, the navbar (the brand, the links with the
+current page marked `aria-current`, and the theme toggle), then
+`<main id="main">` with the layout's output, then the footer.
+
+The theme script is under 200 bytes. It applies a look the visitor chose
+before the first paint, so the page never flashes the wrong colours.
+Without a stored choice the CSS follows `prefers-color-scheme`. The toggle
+is `hidden` until `core.js` shows it, since without script it could not
+work.
+
+### The security policy
+
+`script-src 'self'` plus the hashes of the two inline scripts, the theme
+script and the speculation rules. No script from another origin and no
+inline event handler runs. The policy is in each page as a `<meta>`, and in
+`.htaccess` and `_headers` with `frame-ancestors 'self'` added, which a
+`<meta>` cannot carry. Pictures may come from `https:`, and inline style
+attributes are allowed, because an owner's rich text carries both. An app
+adds sources per directive through `SiteConfig::cspAdditions`. A build
+without SHA-256 (UltraCrypt without libsodium) writes no policy and warns.
+
+### Prefetch and prerender
+
+- **Chromium:** prerenders a page of the site while the pointer rests on
+  its link, through the page's `<script type="speculationrules">`.
+- **Other browsers:** `core.js` adds `<link rel="prefetch">` for the page
+  on pointer-over, touch or keyboard focus.
+
+Both leave alone:
+
+- the assets, and every prefix in `SiteConfig::noPrefetch` (UltraPress
+  passes `/media/` and `/api/`);
+- links with `download`, `data-no-prefetch` or `rel="nofollow"`;
+- anything that is not a page, meaning a path that ends neither in `/`
+  nor in `.html`;
+- a visitor who asked to save data.
+
+---
+
+## Using it
+
+```cpp
+#include "UltraSite/UltraSite.h"
+
+UltraSite::SiteConfig config;
+config.url = "https://example.org";
+config.name = "Example";
+config.tokens.light = {{"accent", "#2563eb"}, {"bg", "#ffffff"}};
+config.tokens.dark = {{"accent", "#60a5fa"}, {"bg", "#0f172a"}, {"fg", "#e2e8f0"}};
+config.navbar = {{"Home", "/", {}}, {"About", "/about/", {}}};
+config.extraCss = ".hero{padding:4rem 0}";
+
+UltraSite::Builder builder(config);
+builder.AddDirectory("site/media", "media");          // copied as it is, links into it checked
+builder.AddFile("feed.xml", feedXml);
+builder.AddScript("tabs", tabsModuleSource);          // used by data-us="tabs"
+
+UltraSite::Route home;
+home.path = "/";
+home.title = "Example";
+home.description = "What Example is.";
+home.bodyHtml = "<section class=\"hero\"><h1>Welcome</h1></section>";
+builder.AddRoute(home);
+
+const UltraSite::BuildResult result = builder.Build("out");
+if (!result.ok) for (const std::string& error : result.errors) std::fprintf(stderr, "%s\n", error.c_str());
+std::fputs(result.SizeReport().c_str(), stdout);
+```
+
+<!-- doc-check: std::string feedXml; std::string tabsModuleSource; -->
+
+| Call | What it does |
+|---|---|
+| `Builder(SiteConfig)` | The site: URL, name, language, tokens, navbar, footer, `extraCss`, budgets, `labels`, `search`, `languageNames` |
+| `AddRoute(Route)` | One page: `path` (`/`, `/a/b/`, `/x.html`), `layout` (`page`, `post`, `doc`), `title`, `documentTitle`, `description`, `image` (+ size), `bodyHtml`, `date`, `kind` (`og:type`), `jsonLd`, `alternates` (language → path), `extraHead`, `noindex`, `searchable`; for `doc`: `sidebar`, `toc`, `editUrl` |
+| `AddLayout(name, fn)` | A layout of the app's own: `fn(route)` returns what goes into `<main>` |
+| `AddScript(behaviour, source)` | A behaviour module (below) |
+| `Asset(path)`, `AssetFromText(name, text)` | A file under its hash in `assets/`; returns its URL |
+| `AddDirectory(source, prefix)` | A folder copied under `prefix`, not hashed (a media library) |
+| `AddFile(path, text)` | A file written as it is (`feed.xml`) |
+| `AddSidebar(id, items)` | A sidebar the `doc` layout shows on the routes that name it (`Route::sidebar`) |
+| `AddDocs(DocsOptions)` | A Markdown folder as doc pages with their sidebar (below) |
+| `Build(out, BuildOptions)` | Writes the folder; `removeStale`, `keep` (files a sweep leaves, such as a deploy manifest), `checkLinks`, `brokenLinksWarn`, `enforceBudgets` |
+| `RenderPage(route)` | One page as Build would write it, for previews and tests |
+
+The helpers `RouteFile`, `ContentHash`, `CompressedSize`, `TokensCss`,
+`MinifyCss` and `StripScript` are public, for apps that write files of
+their own beside the site.
+
+### Pictures
+
+`Builder::Picture(sourcePath, PictureOptions)` writes a picture as a
+`<picture>`:
+
+- **Variants.** AVIF and WebP at the `widths` below the picture's own,
+  plus its own width, under `assets/img/` with the picture's content hash
+  in the name. A later build reuses a variant that is already there.
+  `sizes` says how wide the picture is shown.
+- **The original.** It is the `<img>`, with its width and height so the
+  page does not shift. It is fetched lazily, or first with `first` (the
+  page's large picture). It is published as a hashed asset unless
+  `originalUrl` says where it already is.
+- **What this machine writes.** The build checks once which formats the
+  image library can write. A library without an AV1 encoder writes no
+  AVIF, so the pictures get WebP only and the build warns.
+- **The fallback.** A picture the library cannot read, an SVG or a GIF is
+  a plain `<img>`.
+
+### Compressed copies
+
+`BuildOptions::precompress` writes `.gz` copies (gzip -9) and, where the
+build has Brotli, `.br` copies (its best quality) of every page,
+stylesheet, script, search index, sitemap and feed over 256 bytes. These
+are for a server that sends a file's compressed copy itself, without
+compressing on every request:
+
+```nginx
+gzip_static on;          # ngx_http_gzip_static_module
+brotli_static on;        # ngx_brotli
+```
+
+```text
+file_server {
+    precompressed br gzip    # Caddy
+}
+```
+
+A host that compresses on its own (Apache's `mod_deflate` from the
+`.htaccess`, Netlify, Cloudflare) needs neither.
+
+### The preview server
+
+`UltraSiteServer.h` serves a built folder on 127.0.0.1, the way a host
+would:
+
+- the site's path in front;
+- a folder's `index.html` for its address, and a 301 for an address
+  without its slash;
+- the 404 page with status 404;
+- the `.htaccess` cache rules, and the `.br` or `.gz` copy for a browser
+  that takes it;
+- nothing hidden, and nothing outside the folder.
+
+`Respond` is one request's answer, with no socket (the tests use it).
+`Serve` listens through UltraNet until its `stop` flag is set, and calls
+`beforeRequest` first, which a preview uses to rebuild a site whose files
+changed. It is for looking at a site before it is uploaded, not for the
+internet: one request at a time, GET and HEAD only. A build without
+UltraNet (WebAssembly, or `-DULTRACANVAS_ENABLE_NET=OFF`) still has
+`Respond`, but its `Serve` returns at once with the reason it cannot
+listen.
+
+### A site under a path
+
+A site whose `url` has a path - `https://store.example/v1` - is served
+from that path, as Docusaurus's `baseUrl` is:
+
+- **Routes.** They keep their site paths (`/app/x/`), and the files go at
+  the folder's root (`app/x/index.html`).
+- **Addresses.** Every address the builder writes carries the path:
+  assets, the navbar, the sidebar, the search, the 404 page, `.htaccess`
+  and `_headers`. A body the app writes uses `Builder::Url("/app/x/")`.
+- **The link check** reads addresses back in that path, and reports one
+  that leaves it.
+- `BasePath()` says which path it is.
+
+With `BuildOptions::removeStale` off, a file the folder already holds is
+a target links may name. That is how the store's pages link to the
+catalog's media in the same folder.
+
+### A frame per language
+
+`SiteConfig::frames` holds another language's navbar, footer, footer line
+and `Labels` (`Frame`), so a German page leads into the German pages in
+German. A route takes its language's frame; the site's own language, and
+any language without a frame, take `navbar`, `footer`, `footerText` and
+`labels`.
+
+### Tokens
+
+`Tokens::light` and `Tokens::dark` map names to values, written as
+`--us-<name>`. The base stylesheet reads these names:
+
+| Group | Names |
+|---|---|
+| Colours | `bg`, `fg`, `muted`, `accent`, `accent-fg`, `surface`, `border` |
+| Fonts | `font`, `font-heading`, `font-mono` |
+| Lengths | `radius`, `width` |
+
+An app's `extraCss` reads any further names it defines. UltraPress adds
+`night`, `night-soft`, `on-dark`, `tile` and `accent-hover`.
+
+- **Allowed:** a name is `[a-z0-9-]`. A value with `; { } < >` or a line
+  break is refused, so a theme file cannot inject rules.
+- **No dark set:** the site is light only. It then has no toggle and no
+  theme script, and asks the browser for a light scheme.
+
+### Behaviour modules
+
+A behaviour is an ES module that enhances the elements marked with its
+name. The page's HTML must already work without it.
+
+```html
+<div data-us="tabs"> ... </div>       <!-- several: data-us="tabs lightbox" -->
+```
+
+```js
+// tabs: every [data-us~="tabs"] element gets its tab list.
+for (const element of document.querySelectorAll('[data-us~="tabs"]')) {
+  element.dataset.ready = '1';
+}
+```
+
+The rules for a module:
+
+- **Loading.** The builder finds the `data-us` names in each page through
+  the HTMLReader and links exactly those modules, as
+  `<script type="module">`: deferred, and run once the page is parsed.
+- **Written once.** A module no page uses is not written.
+- **Unknown names.** A name no module provides is an error.
+- **Comments.** A `//` comment stands on a line of its own. The build
+  removes whole comment lines and indentation, and Brotli or gzip does the
+  rest. It does not minify further, since a real minifier would need Node.
+- **What it may do.** Fetch nothing from another origin, never change the
+  page's text, track nobody, and use no `eval` and no inline handler. The
+  security policy enforces the last one.
+
+### Budgets
+
+The default budgets, all in compressed bytes (gzip -9, which is larger
+than Brotli, so passing here means passing on a Brotli host):
+
+| What | Budget |
+|---|---|
+| A page's HTML | 30 KB |
+| The stylesheet | 20 KB |
+| `core.js` | 4 KB |
+| One behaviour module | 3 KB |
+| All script one page loads | 15 KB |
+| The two inline scripts together (raw) | 1 KB |
+| One language's search index | 150 KB |
+
+A build without zlib measures raw sizes, which is stricter. Over budget is
+an error, or a warning with `enforceBudgets = false`. `SizeReport()` prints
+every measured file with its budget.
+
+### Links
+
+The build checks every `href` and `src` that stays on the site: pages,
+assets, files written with `AddFile`, and files under an `AddDirectory`
+folder. It also checks that an anchor (`/about/#team`, `#top`) names an
+`id` on the target page. Relative links are resolved against the page's
+folder, and `/about` finds `/about/`. Links to another origin, `mailto:`,
+`tel:` and `data:` are not checked.
+
+---
+
+## Documentation sites
+
+`Builder::AddDocs(DocsOptions)` reads a folder of Markdown the way
+Docusaurus reads its `docs/`:
+
+| In the folder | On the site |
+|---|---|
+| `guide/install.md` | the page `routePrefix` + `guide/install/` |
+| `guide/index.md` or `guide/README.md` | the folder's own page, `guide/` |
+| a folder without one | a generated page listing what it holds, as cards |
+| front matter (`---` lines): `title`, `description`, `slug`, `sidebar_label`, `sidebar_position`, `draft`, `last_update` | the page's title (else its first `# heading`, else its file name), description (else its first paragraph), address, sidebar entry and order, whether it is published, its "Last updated" |
+| `guide/_category_.json`: `{"label": ..., "position": ...}` | the folder's sidebar entry |
+| `[text](other.md#part)` | the other page's address, the anchor kept |
+| `[text](files/notes.txt)` inside the folder | the file as a hashed asset |
+| `[text](../../src/main.cpp)` outside it | `sourceUrl` + its path under `sourceRoot` (a repository's file view) |
+| a link that leads nowhere | a warning when the docs load, and a broken link at the build |
+| `DocsOptions::translations` (`language`, `folder`, `routePrefix`) | the same files in another language, joined page by page (`hreflang`, the language switcher) |
+| `exclude` | file and folder names left out wherever they are (`CHANGELOG.md`) |
+
+The sidebar follows the folders, ordered by `sidebar_position` and then by
+name. On a page, only the categories that lead to it are expanded; the
+others are links to their own pages, as collapsed categories are in
+Docusaurus. That way the sidebar adds a few kilobytes to a page however
+large the site grows.
+
+### Markdown
+
+`UltraSiteMarkdown.h` turns one page's Markdown into its HTML:
+
+```cpp
+#include "UltraSite/UltraSiteMarkdown.h"
+
+UltraSite::MarkdownOptions options;
+options.link = [](const std::string& target) { return "/docs/" + target; };   // other.md -> ...
+options.copyLabel = "Copy";
+const UltraSite::MarkdownResult page = UltraSite::MarkdownToHtml(markdown, options);
+// page.html, page.toc (the h2 and h3 with their ids), page.title (the first h1)
+```
+
+<!-- doc-check: std::string markdown; -->
+
+- **Reading and writing.** The framework reads the Markdown and writes it
+  (`UCRichDocument::FromMarkdown` and `ToHTML`, through the latter's
+  `headingId` and `codeBlock` hooks). That reader takes a line as a
+  paragraph, as an editor does. A site's Markdown wraps its paragraphs,
+  so the lines of a paragraph, a list item and a quote are joined first,
+  as CommonMark joins them.
+- **Heading ids.** Every heading gets an id spelled as GitHub spells it
+  (`Slugify`): lower case, punctuation and dashes dropped, each space a
+  `-`, and a repeated heading `-1`, `-2`. So the `other.md#some-heading`
+  links a repository already has keep working.
+- **Code.** Code is highlighted when the site is built
+  (`HighlightCode`, on `UltraCanvasSyntaxTokenizer`: `<span
+  class="tok-k">` for a keyword, and so on). The browser runs no
+  highlighter.
+- **Admonitions.** `:::note Title` … `:::`, and `tip`, `info`, `warning`
+  and `danger`. GitHub's `> [!NOTE]` alerts work too.
+- **Tabs.** `:::tabs`, then one `::tab[Label]` line per tab, then `:::`.
+  Each tab is a `<section>` under its label, readable without script.
+
+### Versions
+
+`DocsOptions::versions` lists earlier versions of the docs (`label`,
+`folder`, `routePrefix`), newest first. `folder` is then the latest,
+named `currentVersion`:
+
+- **Sidebars.** Each version has its own (`<sidebar>-v-<label>`).
+- **The switcher.** Above the sidebar, it leads to the same page in every
+  version, or to a version's root where the page is not there.
+- **Earlier versions.** Their pages carry a banner (`Labels::outdated`,
+  `Labels::latest`) naming the latest version, and the search leaves them
+  out, as Docusaurus does.
+
+### Search
+
+`SiteConfig::search` puts a search box in the navbar. The build writes:
+
+- one index per language, `search/<language>.<hash>.json`, holding each
+  page's title, address and description and its sections' anchors,
+  headings and text;
+- a `/search/` page. Without script it lists every page; with script it
+  shows the results for `?q=`.
+
+The `search` module fetches the index the first time the box takes the
+focus. It ranks titles above headings above text, lists at most three
+hits per page, and is worked with the arrow keys, Enter and Escape. `/`
+moves the cursor into the box.
+
+An index over its budget (150 KB compressed) is written again without the
+section texts: titles, headings and descriptions only. The build warns
+when it does. This repository's own `Docs/` (418 pages, 7 156 sections) is
+such a site: 906 KB with the texts, 125 KB without.
+
+### The built-in behaviours
+
+| Module | On | Without it | With it |
+|---|---|---|---|
+| `search` | every page of a site with search | the box submits to `/search/`, which lists every page | results as you type, keyboard-driven |
+| `toc` | doc pages with a table of contents | plain links | marks the heading being read |
+| `tabs` | `:::tabs` | the tabs stacked under their labels | a tab list; the choice remembered for every box with the same labels |
+| `copy` | code blocks (`MarkdownOptions::copyLabel`) | selectable text | a copy button |
+
+An app's `AddScript` with one of these names replaces it.
+
+### The doc layout
+
+On a wide screen the layout has three columns: the sidebar (sticky), the
+page, and the table of contents (sticky). Below 75 rem the table of
+contents moves to an *On this page* `<details>` above the text. Below
+62 rem the sidebar becomes a panel that the *Menu* link opens with
+`#us-sidebar:target`, so no script is needed. The page has breadcrumbs
+from the sidebar, then its body, then *Edit this page* (`Route::editUrl`)
+and *Last updated* (`Route::date`), then previous and next in the
+sidebar's order. A page without a `<h1>` gets its title as one.
+
+### Labels
+
+Every word the frame says is in `SiteConfig::labels` (`Labels`): the skip
+link, the navigation landmarks, the theme toggle, the 404 page, the search
+box and page, the table of contents, the sidebar's *Menu* and *Close*, the
+breadcrumbs, *Previous* and *Next*, *Edit this page*, *Last updated*,
+*Copy* and *Copied*, and the language switcher. A site in another language
+sets them in it. `SiteConfig::languageNames` names the switcher's
+languages (`{"de", "Deutsch"}`).
+
+---
+
+## Tests
+
+`Tests/UltraSite` (ctest `UltraSite`, `-DULTRACANVAS_BUILD_ULTRASITE_TESTS=ON`)
+builds a fixture site with two languages, a post, a behaviour, a media
+folder and a dark look, and reads it back:
+
+- the head, the frame and the layouts;
+- the hashed names, and that they change only with the content;
+- a module on exactly the pages that use it;
+- the policy in both the page and the host's headers;
+- JSON-LD that cannot close its `<script>`;
+- the sitemap and the 404 page;
+- broken links and anchors, unknown behaviours and budgets as errors;
+- the stale-file sweep;
+- Markdown: front matter, ids (GitHub's spelling, letters beyond ASCII,
+  repeats), wrapped lines, highlighting, admonitions and alerts, tabs, and
+  links through the caller;
+- `AddDocs`: pages from files and folders, drafts and excluded files left
+  out, generated index pages, `_category_.json`, `sidebar_position` and
+  `sidebar_label`, links to pages, assets and source, a translation;
+- the doc layout's sidebar, breadcrumbs, previous and next, table of
+  contents and edit link;
+- the search index and page, an index over budget trimmed, and a broken
+  link as an error or, with `brokenLinksWarn`, a warning.
+
+UltraPress's engine tests publish its example site through it, `docs/`
+included.
 
 ==============================================================================
 FILE: Docs/Modules/UltraVault/README.md
@@ -110266,6 +111263,176 @@ change is kept in the settings folder and shows at the next start.
 | `main.cpp` | The command line and the single instance |
 
 ==============================================================================
+FILE: Docs/UltraToDo/README.md
+==============================================================================
+
+# UltraToDo
+
+The task list of ULTRA OS. A round **+** at the top left writes a task; below
+it every task is a panel with round corners and a pastel border, the most urgent first.
+A task can have a planned end, an estimate of the time it takes, a
+description, files attached to it as to a mail (shown as thumbnails), a
+reminder before it has to be started and an alarm at its planned end.
+
+## Contents
+
+- [Using it](#using-it)
+- [How urgent a task is](#how-urgent-a-task-is)
+- [Settings](#settings)
+- [Blinking](#blinking)
+- [Reminders and alarms](#reminders-and-alarms)
+- [Attachments](#attachments)
+- [Where the tasks are kept](#where-the-tasks-are-kept)
+- [Command line](#command-line)
+- [Building](#building)
+
+## Using it
+
+Attach, Edit and Delete are round icon buttons; resting the pointer on one
+says what it does.
+
+| Part | What it does |
+|---|---|
+| The round **+** (top left, Ctrl+N) | writes a new task |
+| *To do* / *History* (top right, Ctrl+H) | the tasks to do, or the history of the finished ones, with their counts |
+| The marker (left of the buttons) | a small ring that fills and changes colour as the task grows urgent: a green sliver with time to spare, half and orange at the latest start, full and red at the planned end, empty without a date; beside it the time left and when the task is due ("1 h 30 min left · Due Today, 11:46", "2 h late · Was due Today, 08:16") |
+| *Start* / *Pause* (with task supervision) | tells UltraToDo you have started working on the task: it says *In progress since ...*, stops the blinking ring and the reminder to start; *Pause* takes it back |
+| *Done* | marks the task done and moves it to the history |
+| *Reopen* (in the history) | moves the task back to the list of tasks to do |
+| A panel's mark (top right) | how urgent it is: *Overdue by 2 h*, *Start now*, *Start in 30 min*, *No date*; *Done* in the history |
+| Paper clip (*Attach*) | adds documents, pictures or any other file to the task (open tasks) |
+| Pencil (*Edit*) | everything about the task, in the task dialog (open tasks) |
+| Bin (*Delete*) | deletes the task and the files attached to it, after asking |
+
+**Columns.** A window wide enough for two panels side by side shows the
+list in columns - one below about 900 px, then two, three, up to four,
+sharing the width. The columns are filled one after the other: the most
+urgent tasks down the first column, then on at the top of the next, each
+column holding the same number (the last ones one fewer at most).
+
+The task dialog has the title, the description, the planned end (a day, and
+a time of day if it has one; a day alone means the end of that day), the
+estimated time (days, hours, minutes), the reminder, the alarm and the
+attachments. The line under the fields says what they come to: the planned
+end, the time needed, the latest start and when the reminder comes.
+
+## How urgent a task is
+
+The order is set by the **latest start** - the latest moment a task can be
+started and still be finished by its planned end:
+
+```
+latest start = planned end - estimated time
+```
+
+A report due on Friday that takes two days is more urgent on Wednesday than
+a call due on Thursday that takes five minutes, so it is listed first. The
+list, from the top:
+
+| Panel | Tasks |
+|---|---|
+| rose | overdue: the planned end has passed |
+| peach | the latest start has passed: every further minute is late |
+| butter | to be started within a day |
+| mint | planned, with more than a day to spare |
+| sky | without a planned end, in the order they were written |
+
+Within each group the earliest latest start comes first. Finished tasks are
+not in the list: *Done* moves them to the history, where they are listed in
+grey, the latest finished first, with the time each was finished. The pastel is the
+panel's border; the fill is a faint tint of it over the theme's panel
+colour, so the text stays readable in either look.
+
+## Settings
+
+The gear at the top (Ctrl+,) opens the settings page. Its first entry is
+the **level of management**:
+
+| Level | What it gives |
+|---|---|
+| *Simple* (the default) | tasks with their planned end, the time they need, the marker, reminders and alarms |
+| *With task supervision* | as Simple, and UltraToDo follows the work: the *Start* / *Pause* button and the blinking warnings below |
+
+The choice is kept in `<data>/UltraToDo/settings.json`. A start recorded
+under supervision is kept, but means nothing under Simple: the task shows,
+and is reminded, as one not started.
+
+## Blinking
+
+With task supervision two things blink, so an urgent task is seen from across the room:
+
+- **an orange ring** round the marker of a task whose latest start has come
+  and that is not started - until *Start* is pressed;
+- **a red border** round the panel of a task past its planned end - until
+  it is *Done*.
+
+Where the desktop asks for reduced motion both are drawn steady instead.
+
+## Reminders and alarms
+
+- A task already started (*Start*) gets no reminder to start; its alarm
+  still comes.
+- **Reminder**: from two days before the latest start to the latest start
+  itself (*No reminder*, *At the latest start*, 5 / 15 / 30 min, 1 / 2 h,
+  1 / 2 days before).
+- **Alarm**: at the planned end, while the task is still open.
+
+Every 15 seconds UltraToDo looks for one that is due. It is put on the
+desktop as a notification (a `system.notification` on UltraMessage - the
+desktop's notification service shows it), and in the window as a line above
+the list; an alarm also opens a dialog that waits to be answered. A click on
+the notification brings the window forward with the task marked. Each one
+is given once: a reminder and an alarm that were both missed while the
+program was not running come as the alarm alone. A task whose planned end,
+estimate or reminder changes is reminded of again.
+
+The reminders run while UltraToDo runs. Start it with `--background` (for
+example with the desktop) to have them without the window: closing the
+window then hides it, and *Quit* ends the program.
+
+## Attachments
+
+A file attached to a task is **copied** into the task's folder, as a mail
+keeps what was attached to it, so the task still has it after the original
+moved or was deleted. The panel shows each one as a thumbnail with its name
+under it - a photo or a drawing itself, a PDF's first page, a document's
+first lines (the pictures UltraFiler makes), else the type's icon - and a
+click opens it in the program the system opens it with. Thumbnails are made
+on worker threads, so a large file never holds the window up.
+
+## Where the tasks are kept
+
+```
+<data>/UltraToDo/tasks.json                    every task
+<data>/UltraToDo/attachments/<task id>/<file>  the files attached to one
+```
+
+`<data>` is the user's application data folder: `~/.local/share` (or
+`$XDG_DATA_HOME`) on Linux, `%APPDATA%` on Windows,
+`~/Library/Application Support` on macOS. The task file is written beside
+itself and renamed into place, so a write that fails leaves the list as it
+was.
+
+## Command line
+
+```
+UltraToDo                the window
+UltraToDo --background   no window: the reminders and alarms run
+UltraToDo --version
+```
+
+One copy runs per user: a second start brings the running one forward.
+
+## Building
+
+Built with the framework (`BUILD_ULTRATODO`, on by default); the
+notifications need the UltraMessage module, without which reminders and
+alarms are shown in the window alone. The task model and the store
+(`Apps/UltraToDo/core`, library `UltraToDoCore`) have no UI;
+`Tests/UltraToDoTests.cpp` (with `BUILD_TESTS`) checks the order, the
+reminders and the store.
+
+==============================================================================
 FILE: Docs/UltraPaint/FeatureGapAnalysis.md
 ==============================================================================
 
@@ -112206,7 +113373,7 @@ For a **Microsoft 365 work or school** mailbox the tenant administrator must
 leave **IMAP** and **Authenticated SMTP** enabled for the mailbox (Exchange
 admin center → the mailbox → *Email apps*); otherwise the sign-in succeeds
 but the mail session is refused. Addresses on a company's own domain are not
-in UltraMail's provider table yet (see [section 5](#5-other-providers)).
+in UltraMail's provider table yet (see [section 5](#5-other-providers-autoconfig-and-manual-settings)).
 
 ### Yahoo Mail (`yahoo.com`, `yahoo.de`, `ymail.com`, `rocketmail.com`, Yahoo's country domains)
 
@@ -114270,15 +115437,22 @@ with the page re-rendered live, a WordPress export read into a site, the
 published folder uploaded onto an FTP, SFTP, WebDAV or Nextcloud host
 through UltraCloud, only what changed, pictures and downloads brought
 into the site's media folder and picked from it, and text edited where it
-stands on the page. The WebAssembly output follows
-([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md)).
-**Last Modified:** 2026-10-13
+stands on the page. A site publishes in one of two outputs: HTML +
+JavaScript, through UltraSite (styled pages, the default), or WebAssembly,
+whose renderer release follows
+([`UltraPressDesignProposal.md`](../Research/UltraPressDesignProposal.md),
+[`UltraSiteStaticSitesProposal.md`](../Research/UltraSiteStaticSitesProposal.md)).
+**Last Modified:** 2026-11-17
 **Author:** UltraCanvas Framework / ULTRA OS
 
 UltraPress is the website and shop builder of ULTRA OS: a WordPress-class
-system built on UltraCanvas whose published pages are rendered by the
-framework itself, compiled to WebAssembly, with a plain HTML shadow of every
-page for search engines, link previews, mail clients and screen readers.
+system built on UltraCanvas. A site is published in one of two outputs,
+chosen per site: **HTML + JavaScript** - every page complete and styled,
+one hashed stylesheet, a few kilobytes of script, the way Docusaurus
+publishes a site - or **WebAssembly** - the pages rendered by the framework
+itself, compiled to WebAssembly, with a plain HTML shadow of every page for
+search engines, link previews, mail clients and screen readers. See *The
+two outputs* below.
 
 This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -114367,14 +115541,103 @@ colours (`accent`, `ink`, `inkSoft`, `paper`, `paperSoft`, `rule`,
 `PaletteFromTheme`. Under Emscripten the same renderer is the published
 page; on the desktop it is the editor's preview, pixel for pixel.
 
+## The two outputs
+
+`"output"` in `site.json` - or *Publish as* in *Site settings…*, or
+`--output` for one `publish` run - says what *Publish* writes:
+
+| | `html` (the default) | `wasm` |
+|---|---|---|
+| What a visitor gets | Every page as complete, styled HTML; the 4 KB core script (prefetch, the theme toggle) | The HTML shadow of every page, which the WebAssembly renderer replaces |
+| Written by | UltraSite (`UltraSite/`, `Docs/Modules/UltraSite/README.md`) through `UltraPressSite.h` | `PublishStatic` (`UltraPressPublish.h`) |
+| Looks like the editor | Close: the same theme colours as CSS | Exactly: the same elements draw both |
+| First visit | The page itself: the example site's front page is 2.3 KB, its stylesheet 3.0 KB and its script 0.8 KB, compressed | The renderer and the page |
+| Without JavaScript | The whole site | The shadow |
+
+The HTML + JavaScript output writes the blocks as the shadow's writer does
+(`HtmlEmitter` with `HtmlOptions::styled`: the hero's picture fetched first,
+every other one lazily, the FAQ an accordion), styled by the blocks'
+stylesheet (`BlockStylesheet()`) on the theme's colours as UltraSite tokens
+(`ThemeTokens`: `paper`, `ink`, `inkSoft`, `accent`, `paperSoft`, `rule`,
+`night`, `nightSoft`, `onDark`, `tile` over the element renderer's
+defaults). `"dark"` in `theme.json` is the same names for the dark look:
+with it the site follows the visitor's system and offers a toggle that
+remembers the choice; without it the site is light only. The font is the
+theme's family where the visitor has it, else the system's: nothing is
+downloaded. The main and footer menus become the navbar and the footer.
+Beside the pages: the hashed stylesheet and script, `feed.xml`,
+`sitemap.xml`, `robots.txt`, `404.html`, `.htaccess`, `_headers` and the
+media folder. A link to a page or a picture the site does not have, an
+anchor that is not there, or a page over its size budget fails the publish
+and names the page; `--sizes` lists what every page and asset weighs.
+
+A block type says which outputs show it (`BlockType::htmlOutput`,
+`wasmOutput`); every built-in block has both, and `check` reports a block
+the site's output cannot show.
+
+### Documentation
+
+A site's `docs/` folder holds Markdown, which the HTML + JavaScript output
+publishes at `/docs/` the way Docusaurus publishes its docs:
+
+- **Pages.** A page per file. A folder's `index.md` is the folder's page,
+  and a folder without one gets a generated page listing what it holds.
+  The sidebar follows the folders (`_category_.json`, `sidebar_position`
+  in a file's front matter).
+- **The page.** A table of contents, breadcrumbs, previous and next, code
+  highlighted when the site is built, and `:::note` / `:::tip` /
+  `:::warning` admonitions. `:::tabs` with one `::tab[Label]` line per tab
+  gives tabs.
+- **Search.** A site with docs gets a search box and a search page.
+- **Translations.** `i18n/<language>/docs` holds a translation for every
+  language in `site.json`'s `languages`, published at `/<language>/docs/`
+  with a language switcher.
+
+Link to it from a menu with `{"title": "Docs", "url": "/docs/"}`, as the
+example site does. The WebAssembly output leaves the docs out. The
+reference is `Docs/Modules/UltraSite/README.md`, *Documentation sites*.
+
+**Earlier versions** of the docs go in `versioned_docs/<label>/`, ordered
+by `versions.json` (`["2.0", "1.0"]`, newest first), else newest first by
+name. Each is published at `/docs/<label>/` with a version switcher, and a
+banner leads to the latest. **A blog** comes with any site that has posts:
+
+- `/blog/` lists them newest first, with their dates, descriptions and
+  tags;
+- `/blog/tags/<tag>/` lists each tag's posts;
+- a post links its tags, which are `"tags"` in its page file.
+
+**Pictures** of the site's media are `<picture>`s:
+
+- the original where `media/` puts it;
+- AVIF and WebP variants, at the widths each role is shown at: the hero's
+  picture fetched first, a card's and a picture block's lazily;
+- WebP alone where the machine's image library writes no AVIF.
+
+`ultrapress docs` publishes a folder of Markdown on its own, with no
+UltraPress site around it. A link out of the folder goes to
+`--source-url` plus its path under `--source-root`, which is a
+repository's file view. This repository's own `Docs/` builds this way:
+
+```bash
+ultrapress docs Docs out --name "UltraCanvas docs" --url https://docs.example.org \
+    --source-root . --source-url https://github.com/<owner>/<repo>/blob/main/ \
+    --edit-url https://github.com/<owner>/<repo>/edit/main/Docs/ \
+    --exclude CHANGELOG.md --exclude changelog.d --sizes
+```
+
 ## The command line
 
 ```bash
 ultrapress new mysite --name "My site" --url https://my.example   # a starter site
 ultrapress check mysite                                           # every problem, exit 1 when there is one
 ultrapress page mysite home                                       # the front page's HTML shadow, to stdout
-ultrapress publish mysite out                                     # the static tier, into out/
-ultrapress publish mysite out --renderer ultrapress-0.1.0.js      # with the renderer referenced (later)
+ultrapress publish mysite out                                     # the site's output, into out/
+ultrapress publish mysite out --sizes                             # and what every page and asset weighs
+ultrapress docs Docs out --name "My docs" --url https://docs.my.example   # a Markdown folder as a documentation site
+ultrapress serve mysite --port 3000                               # look at it on this computer: built, served on 127.0.0.1, rebuilt on a change
+ultrapress publish mysite out --precompress                       # with a .gz (and .br) copy beside every page, stylesheet and script
+ultrapress publish mysite out --output wasm --renderer ultrapress-0.1.0.js   # the WebAssembly output, the renderer referenced (later)
 ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
 ultrapress hosts                                                  # the hosts a site can be published to
 ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
@@ -114412,11 +115675,13 @@ takes. Drafts are left out unless `--drafts` is given.
 
 ```
 mysite/
-├── site.json        name, tagline, url, language, languages, owner
-├── theme.json       name, colors (name → #rrggbb), fontFamily
+├── site.json        name, tagline, url, language, languages, owner, output ("html" or "wasm")
+├── theme.json       name, colors (name → #rrggbb), dark (the same names, the dark look), fontFamily
 ├── menus.json       {"main": [...], "footer": [...]}; an item has title and page (a slug) or url, and items
 ├── pages/<slug>.json
-└── media/           pictures and downloads; a block names them by path
+├── media/           pictures and downloads; a block names them by path
+├── docs/            Markdown documentation (the HTML + JavaScript output), _category_.json per folder
+└── i18n/<lang>/docs the same documentation translated
 ```
 
 A page:
@@ -114475,13 +115740,20 @@ against it.
   `MakeSlug`; text in a block: `SplitParagraphs`, `TextLocation` /
   `SetBlockText` (a property, an item, an item's key, one paragraph) and
   `ResolveBlockPath`.
-- `UltraPressBlocks.h` - the registry and `ValidateSite`.
+- `UltraPressBlocks.h` - the registry (with each type's outputs) and
+  `ValidateSite`.
 - `UltraPressHtml.h` - `HtmlEmitter`: `Page`, `Sitemap`, `Robots`, `Feed`,
   `Block`; `HtmlOptions` names the renderer script, the UltraWeb app and
   the site folder, with which every `<img>` carries its width and height.
   Every piece of text goes through `HTML::EscapeText`; `richtext` and `html`
   blocks are the owner's own HTML and pass through.
-- `UltraPressPublish.h` - `PublishStatic` (the output mirrors the site:
+- `UltraPressSite.h` - the HTML + JavaScript output: `PublishHtml` through
+  UltraSite (with the site's `docs/`), `Publish` (the site's output, or
+  `PublishOptions::output`), `PublishDocsFolder` (`ultrapress docs`),
+  `ThemeTokens`, `BlockStylesheet`, `HasHtmlOutput`. `HtmlEmitter::Parts`
+  gives it each page's body, title, description, social picture and
+  structured data.
+- `UltraPressPublish.h` - `PublishStatic`, the WebAssembly output (the output mirrors the site:
   what an earlier publish wrote and this one does not is removed, the
   deploy manifest excepted; `removeStale` turns it off) and
   `CreateStarterSite`.
@@ -114505,10 +115777,11 @@ against it.
   markup. TinyXML2 reads the export, privately.
 
 It links the core library for `UltraCanvasJSON` and the HTMLReader's
-`EscapeText`, and opens no window. Tests: `Tests/UltraPress/UltraPressEngineTests.cpp`,
+`EscapeText`, and UltraSite for the HTML + JavaScript output, and opens no
+window. Tests: `Tests/UltraPress/UltraPressEngineTests.cpp`,
 built with `-DULTRACANVAS_BUILD_ULTRAPRESS_TESTS=ON`; they save and reload a
 site, validate a broken one, parse the shadow back with `HTML::Parser`,
-publish the example site into a temporary folder, and deploy a folder
+publish the example site into a temporary folder in both outputs, and deploy a folder
 through a recording uploader and through the hosts onto UltraCloud's
 in-memory provider.
 

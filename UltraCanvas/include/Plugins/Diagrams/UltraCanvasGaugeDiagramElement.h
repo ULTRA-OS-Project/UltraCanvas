@@ -1,5 +1,6 @@
 // Plugins/Gauges/UltraCanvasGaugeDiagramElement.h
 // Comprehensive gauge element supporting analog, digital, progress, and specialized gauge modes
+// Version: 2.5.0 - SetRingCompact / SetRingValueText: CircularRing as a small inline marker
 // Version: 2.4.0 - SetClockHandColor / SetClockTickColor: an analog clock on a dark face
 // Version: 2.3.0
 // Last Modified: 2026-10-20
@@ -234,6 +235,18 @@ public:
     // ===== ROUND-GAUGE (CircularRing) STYLE =====
     void SetRingThickness(float t);
     float GetRingThickness() const { return ringThickness; }
+    // CircularRing as an inline marker - a ring of 12 to 40 px in a row of
+    // text or buttons. Compact: the ring fills the element, with no title,
+    // no padding and no minimum radius (the radius is half the shorter side
+    // less half the ring and its outline); off, the ring keeps the card
+    // layout, which needs about 60 px. Off by default.
+    void SetRingCompact(bool compact);
+    bool GetRingCompact() const { return ringCompact; }
+    // Whether CircularRing draws its value in the centre (on by default).
+    // Off: the ring alone, for a marker whose colour and fill say enough;
+    // a centre label or icon, when set, is centred on its own.
+    void SetRingValueText(bool show);
+    bool GetRingValueText() const { return ringValueText; }
     void SetRingStyle(GaugeRingStyle s);
     GaugeRingStyle GetRingStyle() const { return ringStyle; }
     void SetRingSegmentStyle(GaugeRingSegmentStyle s);
@@ -410,6 +423,8 @@ private:
 
     // Round-gauge (CircularRing) styling
     float ringThickness = 6.0f;
+    bool ringCompact = false;      // SetRingCompact: the ring fills the element
+    bool ringValueText = true;     // SetRingValueText: the value in the ring's centre
     GaugeRingStyle ringStyle = GaugeRingStyle::SolidArc;
     GaugeRingSegmentStyle ringSegmentStyle = GaugeRingSegmentStyle::Blocks;
     int ringSegmentCount = 36;

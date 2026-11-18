@@ -202,6 +202,7 @@ INCLUDE_DIRS = [
     # VideoFX and its UltraCanvas bridges (VideoFXUltraCanvasFormats.h: a
     # video's Save as), which the viewer and FileLoader docs show registered
     ROOT / "VideoFX" / "include", ROOT / "VideoFX" / "ultracanvas",
+    ROOT / "UltraSite" / "include",   # the UltraSite module doc (Docs/Modules/UltraSite)
 ]
 
 KEYWORDS = {
@@ -1738,7 +1739,7 @@ SIGNATURE_PREFIX = "# signature "
 # mistakes in a description of an API that exists, not a design document's
 # unwritten one, so they are fixed, never baselined. The FileLoader README had
 # eight broken examples for months because nothing compiled it.
-CHECKED_MODULE_DOCS = ["FileLoader", "UltraLocalisation"]
+CHECKED_MODULE_DOCS = ["FileLoader", "UltraLocalisation", "UltraSite"]
 
 
 def component_docs():

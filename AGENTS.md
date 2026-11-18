@@ -373,11 +373,12 @@ enforces this and runs in CI; a genuine exception opts out with
 ## Building and testing
 
 ```bash
-# Ubuntu/Debian deps (the two libheif plug-ins exist from Ubuntu 24.04 on:
-# HEIC and AVIF decode only with them, and ImageFormatsTest insists)
+# Ubuntu/Debian deps (the libheif plug-ins exist from Ubuntu 24.04 on:
+# HEIC and AVIF decode only with the first two, and ImageFormatsTest
+# insists; AVIF is written - picture variants - only with aomenc)
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
     libfreetype6-dev libvips-dev libharfbuzz-dev clang \
-    libheif-plugin-libde265 libheif-plugin-aomdec libjxl-dev
+    libheif-plugin-libde265 libheif-plugin-aomdec libheif-plugin-aomenc libjxl-dev
 # macOS deps
 brew install cmake cairo pango freetype vips harfbuzz
 
@@ -474,7 +475,10 @@ every credential-vault test failed here while passing in CI, and VideoFX, the
 PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
 were not built at all. A cold container takes about a minute, a warm one a
 fraction of a second; it never blocks the session, and when an install fails
-it says so in one line in the session's context. It also generates the
+it says so in one line in the session's context. It also unpacks libc++'s headers into a private folder for
+`scripts/check_libcxx_syntax.py` (`--fetch-libcxx`), rather than installing
+`libc++-dev`: on 24.04 that removes the `libunwind-dev` GStreamer's dev
+package needs, and the build silently loses its media backends. It also generates the
 comma-decimal locale `de_DE.UTF-8`, as CI's Linux rows do: the tests that hold
 file formats to dot-decimal numbers (`HTMLReaderTest`, `ModelLocaleDecimalTest`,
 `DiagramJsonLocaleTest` and the rest) skip without one, and the image has none.
@@ -533,6 +537,17 @@ opens the window, runs two seconds, closes it the way the window manager's
 close button would (`onWindowClosing` may refuse, `onWindowClosed` runs, the
 settings are written) and ends. `UltraCanvasApplication::CloseAllWindows()`
 is the same from inside a test.
+
+The light or the dark look - or a font, an accent, a text scale, high
+contrast - is chosen for one run with `ULTRACANVAS_HOST_APPEARANCE`, which
+stands in for the desktop's settings
+(`Docs/UltraCanvas/UltraCanvasHostAppearance.md`):
+`ULTRACANVAS_HOST_APPEARANCE=dark xvfb-run -a ./build/UltraToDo` shows the
+dark look with no change to the code, and `=light` the light one. An
+application that follows the host (the default policy) or builds its own
+theme from it (`SetThemeProvider`) takes it; one fixed at
+`ThemePolicy::Light` or `Dark` keeps its look. Screenshot a page in both
+before calling it theme compliant.
 
 `TextMetricsScreenshotTest` doubles as the screenshot fixture for the
 text-metrics and crisp-border rules: with `ULTRACANVAS_SCREENSHOT_DIR=<dir>` it
@@ -681,6 +696,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraClipboard/CHANGELOG.md` | UltraClipboard — the clipboard history |
 | `Docs/UltraNotifications/CHANGELOG.md` | UltraNotifications — the notifications after their pop-up |
 | `Docs/UltraSnip/CHANGELOG.md` | UltraSnip — screenshots and screen recordings |
+| `Docs/UltraToDo/CHANGELOG.md` | UltraToDo — the task list, with reminders and alarms |
 | `Docs/UOSSettings/CHANGELOG.md` | UOS-Settings — the ULTRA OS settings |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |

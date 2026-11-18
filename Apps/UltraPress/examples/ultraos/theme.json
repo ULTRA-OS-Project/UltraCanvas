@@ -8,5 +8,15 @@
     "night": "#0d0c22",
     "nightSoft": "#18193f"
   },
+  "dark": {
+    "accent": "#ff5c5c",
+    "ink": "#e8e8ee",
+    "inkSoft": "#a4a4b0",
+    "paper": "#0f0f1a",
+    "paperSoft": "#181826",
+    "rule": "#2c2c3c",
+    "night": "#08081a",
+    "nightSoft": "#1b1c4a"
+  },
   "fontFamily": "Ubuntu"
 }

@@ -1,5 +1,6 @@
 // core/UltraCanvasBadge.cpp
 // Platform-independent badge (count / status / overlay) implementation.
+// Version: 1.3.0 - a one-character text is centred on its ink (DrawTextCentredOnInk)
 // Version: 1.2.0 - grow-inward anchoring (SetGrowInward)
 // Version: 1.1.0 - honour BadgeStyle::cornerRadius (pill when negative).
 // Last Modified: 2026-11-14
@@ -200,6 +201,14 @@ namespace UltraCanvas {
         // centred in the pill. Manually placing by GetTextDimension centres the
         // logical box instead, and its asymmetric external leading pushed the
         // text off-centre (typically too high).
+        // One character - "+", "!", a check mark - has no capitals to
+        // centre on and sits wherever the font puts it in that band (a "+"
+        // 1.5 px low and right in a 24 px circle): its ink goes in the
+        // middle instead (DrawTextCentredOnInk).
+        if (IsSingleCharacterText(t) &&
+            DrawTextCentredOnInk(ctx, inkLayout, t, fs, Rect2Dd(rect.x, rect.y, rect.width, rect.height))) {
+            return;
+        }
         ctx->SetTextAlignment(TextAlignment::Center);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->DrawTextInRect(t, Rect2Dd(rect.x, rect.y, rect.width, rect.height));

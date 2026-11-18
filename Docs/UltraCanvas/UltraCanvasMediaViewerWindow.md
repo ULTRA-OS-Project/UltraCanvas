@@ -98,5 +98,5 @@ for the same reason.
 ## See also
 
 - [UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) — the viewer inside it
-- [UltraCanvasImageViewer](UltraCanvasImageViewer.md) — the zoom/pan lightbox
+- [UltraCanvasImageViewer](../../UltraCanvas/include/UltraCanvasImageViewer.h) — the zoom/pan lightbox
 - [UltraCanvasFontViewer](UltraCanvasFontViewer.md) — what a font opens as

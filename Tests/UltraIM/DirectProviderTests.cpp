@@ -768,6 +768,17 @@ void TestGroupManagement(DirectProvider& alice, Events& aliceEvents, DirectProvi
     CHECK(renamed.title == "Crew" && renamed.ownerId == aliceId);
     // The members by name: Bob's own and Alice (a contact of his) - not just ids.
     CHECK(renamed.memberNames.count(bobId) && renamed.memberNames.count(aliceId));
+    // Bob's own record of the group says "Crew" as well, and goes on saying
+    // it: the group as it was made, pushed on the socket, can arrive after
+    // the rename's reply - its revision is older, and it is dropped (relay
+    // 1.6). Before revisions it overwrote the new title for a moment.
+    bool crewKept = false;
+    bob.FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& l) {
+        for (const auto& c : l) {
+            if (c.conversationId == groupId) crewKept = c.title == "Crew";
+        }
+    });
+    CHECK(crewKept);
     UltraIMEvent seen;
     CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) { return isUpdate(e) && e.conversation.title == "Crew"; },
                               &seen, 30));

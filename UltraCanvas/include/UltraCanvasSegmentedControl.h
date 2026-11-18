@@ -1,5 +1,6 @@
 // include/UltraCanvasSegmentedControl.h
 // Segmented control component for mutually exclusive selection between options
+// Version: 1.7.0 - a one-character caption ("<", "+") is centred on its ink
 // Version: 1.6.0 - SegmentedControlStyle::FromTheme, ApplyTheme: the control follows the theme;
 //                  a SetStyle by hand stops the following
 // Version: 1.5.0 - SetSegmentTooltip: each segment its own tooltip, switched as the pointer
@@ -15,6 +16,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTextLayoutCache.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -45,6 +47,9 @@ namespace UltraCanvas {
         bool enabled = true;
         TextAlignment alignment;
         std::unique_ptr<ITextLayout> textLayout;
+        // A one-character caption ("<", "+") centred on its ink
+        // (DrawTextCentredOnInk); the segment owns it as it owns textLayout.
+        UltraCanvasTextLayoutCache inkLayout;
         double customWidth = 0.0f;  // Used when SegmentWidthMode::Custom
         // The segment's own text colour while it is not selected; alpha 0
         // (the default) uses the style's normal / hover text colour.

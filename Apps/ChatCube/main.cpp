@@ -15,6 +15,7 @@
 //                                (what UltraDesktop's "start with the desktop" asks)
 //   ChatCube --version / --help
 //
+// Version: 0.2.2 - provider modules on demand: ChatCube Direct and the networks in use at start
 // Version: 0.2.1 - the look decided again at every change (the desktop's, the Settings window's): the
 //                  provider asks ChatCube::DarkLook; the elements follow the theme by default
 // Version: 0.2.0 - the theme under the Own policy: ThemeFor over the settings' look (System follows the desktop) and --dark, the host's fonts
@@ -27,7 +28,7 @@
 // Version: 0.1.2 - --dark
 // Version: 0.1.1 - --debug and --log
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ui/ChatCubeSettings.h"
@@ -285,7 +286,11 @@ int main(int argc, char** argv) {
     UltraIM_SetPreviewMaker(MakePreview);
     // Every UltraIM event and callback reaches the window on the UI thread.
     UltraIM_SetEventDispatcher([&app](std::function<void()> task) { app.PostToUIThread(std::move(task)); });
-    UltraIM_RefreshProviders();
+    // The modules on demand: ChatCube Direct, and the networks in use (those
+    // signed in to - UltraIM keeps them in ultraim-providers.txt in the data
+    // folder); another network's module is loaded when its button is pressed.
+    UltraIM_LoadProvider("direct");
+    UltraIM_LoadUsedProviders();
 
     int exitCode = EXIT_SUCCESS;
     {

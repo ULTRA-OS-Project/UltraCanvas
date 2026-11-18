@@ -2,6 +2,8 @@
 // The HTML shadow, sitemap, robots and feed. Text goes through
 // HTML::EscapeText everywhere; the two blocks that carry HTML (richtext,
 // html) are the owner's own and pass through.
+// Version: 0.9.1 - a media picture through HtmlOptions::picture
+// Version: 0.9.0 - the styled markup and Parts() for the HTML + JavaScript output
 // Version: 0.7.2 - width and height on every <img>
 // Version: 0.7.0 - paragraphs split by the model (SplitParagraphs)
 // Version: 0.1.0
@@ -87,6 +89,7 @@ struct HtmlEmitter::PageContext {
     std::string body;
     std::vector<std::pair<std::string, std::string>> faq;   // for the FAQPage structured data
     const UltraPress::Page* page = nullptr;
+    int faqBlocks = 0;                                       // the styled accordions' names
 };
 
 HtmlEmitter::HtmlEmitter(const Site& siteRef, HtmlOptions emitterOptions, const BlockRegistry& blockRegistry)
@@ -144,6 +147,20 @@ static std::string MediaSrc(const std::string& path) {
     return "/" + path;
 }
 
+// One picture. The shadow writes src, alt and the size; the styled markup
+// also says how to fetch it: the page's first, large picture (the hero's)
+// at once and first, every other one when it comes near the viewport.
+std::string HtmlEmitter::Img(const std::string& src, const std::string& alt, const std::string& role) const {
+    const bool first = role == "hero";
+    if (options.picture && !src.empty() && !IsAbsoluteUrl(src)) {
+        const std::string picture = options.picture(src, alt, role);
+        if (!picture.empty()) return picture;
+    }
+    std::string out = "<img src=\"" + Attr(MediaSrc(src)) + "\" alt=\"" + Attr(alt) + "\"" + ImgSize(options.siteDirectory, src);
+    if (options.styled) out += first ? " fetchpriority=\"high\" decoding=\"async\"" : " loading=\"lazy\" decoding=\"async\"";
+    return out + ">";
+}
+
 void HtmlEmitter::EmitBlock(const UltraPress::Block& block, PageContext& context) const {
     std::string& out = context.body;
     const std::string& type = block.type;
@@ -169,14 +186,12 @@ void HtmlEmitter::EmitBlock(const UltraPress::Block& block, PageContext& context
         out += "<h1>" + EscapeText(block.Text("title")) + "</h1>\n";
         out += Paragraphs(block.Text("text"));
         if (!block.Text("picture").empty()) {
-            out += "<figure><img src=\"" + Attr(MediaSrc(block.Text("picture"))) + "\" alt=\"\"" +
-                   ImgSize(options.siteDirectory, block.Text("picture")) + "></figure>\n";
+            out += "<figure>" + Img(block.Text("picture"), "", "hero") + "</figure>\n";
         }
         EmitLinks(site, block.Items("buttons"), out);
         out += "</section>\n";
     } else if (type == "picture") {
-        out += "<figure><img src=\"" + Attr(MediaSrc(block.Text("src"))) + "\" alt=\"" + Attr(block.Text("alt")) + "\"" +
-               ImgSize(options.siteDirectory, block.Text("src")) + ">";
+        out += "<figure>" + Img(block.Text("src"), block.Text("alt"), "picture");
         if (!block.Text("caption").empty()) out += "<figcaption>" + EscapeText(block.Text("caption")) + "</figcaption>";
         out += "</figure>\n";
     } else if (type == "columns") {
@@ -192,8 +207,7 @@ void HtmlEmitter::EmitBlock(const UltraPress::Block& block, PageContext& context
     } else if (type == "card") {
         out += "<article class=\"card\">\n";
         if (!block.Text("picture").empty()) {
-            out += "<figure><img src=\"" + Attr(MediaSrc(block.Text("picture"))) + "\" alt=\"\"" +
-                   ImgSize(options.siteDirectory, block.Text("picture")) + "></figure>\n";
+            out += "<figure>" + Img(block.Text("picture"), "", "card") + "</figure>\n";
         }
         out += "<h3>" + EscapeText(block.Text("title")) + "</h3>\n";
         out += Paragraphs(block.Text("text"));
@@ -217,12 +231,14 @@ void HtmlEmitter::EmitBlock(const UltraPress::Block& block, PageContext& context
         out += "</section>\n";
     } else if (type == "faq") {
         out += "<section class=\"faq\">\n";
+        const std::string group = "faq-" + std::to_string(++context.faqBlocks);
         if (!block.Text("heading").empty()) out += "<h2>" + EscapeText(block.Text("heading")) + "</h2>\n";
         for (const JSONValue& item : block.Items("items").GetElements()) {
             const std::string q = item["q"].GetString();
             const std::string a = item["a"].GetString();
             if (q.empty()) continue;
-            out += "<details><summary>" + EscapeText(q) + "</summary>\n" + Paragraphs(a) + "</details>\n";
+            out += (options.styled ? "<details name=\"" + group + "\">" : std::string("<details>")) + "<summary>" + EscapeText(q) +
+                   "</summary>\n" + Paragraphs(a) + "</details>\n";
             context.faq.emplace_back(q, a);
         }
         out += "</section>\n";
@@ -293,17 +309,60 @@ std::string HtmlEmitter::Block(const UltraPress::Block& block) const {
     return context.body;
 }
 
+std::string HtmlEmitter::DocumentTitle(const UltraPress::Page& page) const {
+    return page.slug == "home" || page.title == site.name ? site.name + (site.tagline.empty() ? "" : " - " + site.tagline)
+                                                          : page.title + " - " + site.name;
+}
+
+std::string HtmlEmitter::Description(const UltraPress::Page& page) const {
+    return page.seo.description.empty() ? site.tagline : page.seo.description;
+}
+
+std::string HtmlEmitter::SocialImage(const UltraPress::Page& page, int& width, int& height) const {
+    width = height = 0;
+    if (page.seo.image.empty()) return std::string();
+    if (IsAbsoluteUrl(page.seo.image)) return page.seo.image;
+    if (!options.siteDirectory.empty()) {
+        const std::string relative = page.seo.image[0] == '/' ? page.seo.image.substr(1) : page.seo.image;
+        if (!ImageDimensions(options.siteDirectory + "/" + relative, width, height)) width = height = 0;
+    }
+    return site.url + MediaSrc(page.seo.image);
+}
+
+// Structured data: the site on the front page, an article for a post, the
+// FAQ wherever one is.
+std::vector<std::string> HtmlEmitter::StructuredData(const UltraPress::Page& page, const PageContext& context) const {
+    std::vector<std::string> out;
+    if (page.slug == "home") {
+        out.push_back("{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\",\"name\":" + JsonString(site.name) +
+                      ",\"url\":" + JsonString(site.url + "/") +
+                      (site.owner.empty() ? "" : ",\"publisher\":{\"@type\":\"Organization\",\"name\":" + JsonString(site.owner) + "}") +
+                      "}");
+    } else if (page.kind == "post") {
+        out.push_back("{\"@context\":\"https://schema.org\",\"@type\":\"Article\",\"headline\":" + JsonString(page.title) +
+                      (page.date.empty() ? "" : ",\"datePublished\":" + JsonString(page.date)) +
+                      ",\"url\":" + JsonString(PageUrl(site, page)) + "}");
+    }
+    if (!context.faq.empty()) {
+        std::string faq = "{\"@context\":\"https://schema.org\",\"@type\":\"FAQPage\",\"mainEntity\":[";
+        for (size_t i = 0; i < context.faq.size(); ++i) {
+            if (i) faq += ",";
+            faq += "{\"@type\":\"Question\",\"name\":" + JsonString(context.faq[i].first) +
+                   ",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":" + JsonString(context.faq[i].second) + "}}";
+        }
+        out.push_back(faq + "]}");
+    }
+    return out;
+}
+
 std::string HtmlEmitter::Head(const UltraPress::Page& page, const PageContext& context) const {
     std::string out;
     const std::string language = page.language.empty() ? site.language : page.language;
     const std::string url = PageUrl(site, page);
-    const std::string fullTitle = page.slug == "home" || page.title == site.name
-                                      ? site.name + (site.tagline.empty() ? "" : " - " + site.tagline)
-                                      : page.title + " - " + site.name;
-    const std::string description = page.seo.description.empty() ? site.tagline : page.seo.description;
+    const std::string description = Description(page);
     out += "<!doctype html>\n<html lang=\"" + Attr(language) + "\">\n<head>\n<meta charset=\"utf-8\">\n";
     out += "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n";
-    out += "<title>" + EscapeText(fullTitle) + "</title>\n";
+    out += "<title>" + EscapeText(DocumentTitle(page)) + "</title>\n";
     if (!description.empty()) out += "<meta name=\"description\" content=\"" + Attr(description) + "\">\n";
     if (!options.generator.empty()) out += "<meta name=\"generator\" content=\"" + Attr(options.generator) + "\">\n";
     if (page.seo.noindex) out += "<meta name=\"robots\" content=\"noindex\">\n";
@@ -313,12 +372,11 @@ std::string HtmlEmitter::Head(const UltraPress::Page& page, const PageContext& c
     if (!description.empty()) out += "<meta property=\"og:description\" content=\"" + Attr(description) + "\">\n";
     out += "<meta property=\"og:url\" content=\"" + Attr(url) + "\">\n";
     out += "<meta property=\"og:site_name\" content=\"" + Attr(site.name) + "\">\n";
-    if (!page.seo.image.empty()) {
-        const std::string image = IsAbsoluteUrl(page.seo.image) ? page.seo.image : site.url + MediaSrc(page.seo.image);
+    int w = 0, h = 0;
+    const std::string image = SocialImage(page, w, h);
+    if (!image.empty()) {
         out += "<meta property=\"og:image\" content=\"" + Attr(image) + "\">\n";
-        int w = 0, h = 0;
-        if (!options.siteDirectory.empty() && !IsAbsoluteUrl(page.seo.image) &&
-            ImageDimensions(options.siteDirectory + "/" + (page.seo.image[0] == '/' ? page.seo.image.substr(1) : page.seo.image), w, h)) {
+        if (w > 0 && h > 0) {
             out += "<meta property=\"og:image:width\" content=\"" + std::to_string(w) + "\">\n";
             out += "<meta property=\"og:image:height\" content=\"" + std::to_string(h) + "\">\n";
         }
@@ -326,12 +384,9 @@ std::string HtmlEmitter::Head(const UltraPress::Page& page, const PageContext& c
     } else {
         out += "<meta name=\"twitter:card\" content=\"summary\">\n";
     }
-    for (const std::string& other : site.languages) {
-        // One site, one language per page in Phase 1: the alternates are
-        // the same page in the site's other languages once pages carry a
-        // translation; until then only the page's own language is named.
-        (void)other;
-    }
+    // One site, one language per page in Phase 1: the alternates are the
+    // same page in the site's other languages once pages carry a
+    // translation; until then only the page's own language is named.
     if (!site.languages.empty()) out += "<link rel=\"alternate\" hreflang=\"" + Attr(language) + "\" href=\"" + Attr(url) + "\">\n";
     out += "<link rel=\"alternate\" type=\"application/rss+xml\" title=\"" + Attr(site.name) + "\" href=\"/feed.xml\">\n";
     if (!options.ultrawebApp.empty()) out += "<link rel=\"ultraweb-app\" href=\"" + Attr(options.ultrawebApp) + "\">\n";
@@ -340,29 +395,24 @@ std::string HtmlEmitter::Head(const UltraPress::Page& page, const PageContext& c
         out += "<script src=\"" + Attr(options.rendererScript) + "\" async></script>\n";
     }
     if (options.includeStyle) out += "<style>" + std::string(kStyle) + "</style>\n";
-    // Structured data: the site on the front page, an article for a post,
-    // the FAQ wherever one is.
-    if (page.slug == "home") {
-        out += "<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"WebSite\",\"name\":" +
-               JsonString(site.name) + ",\"url\":" + JsonString(site.url + "/") +
-               (site.owner.empty() ? "" : ",\"publisher\":{\"@type\":\"Organization\",\"name\":" + JsonString(site.owner) + "}") +
-               "}</script>\n";
-    } else if (page.kind == "post") {
-        out += "<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"Article\",\"headline\":" +
-               JsonString(page.title) + (page.date.empty() ? "" : ",\"datePublished\":" + JsonString(page.date)) +
-               ",\"url\":" + JsonString(url) + "}</script>\n";
-    }
-    if (!context.faq.empty()) {
-        out += "<script type=\"application/ld+json\">{\"@context\":\"https://schema.org\",\"@type\":\"FAQPage\",\"mainEntity\":[";
-        for (size_t i = 0; i < context.faq.size(); ++i) {
-            if (i) out += ",";
-            out += "{\"@type\":\"Question\",\"name\":" + JsonString(context.faq[i].first) +
-                   ",\"acceptedAnswer\":{\"@type\":\"Answer\",\"text\":" + JsonString(context.faq[i].second) + "}}";
-        }
-        out += "]}</script>\n";
+    for (const std::string& data : StructuredData(page, context)) {
+        out += "<script type=\"application/ld+json\">" + data + "</script>\n";
     }
     out += "</head>\n";
     return out;
+}
+
+PageParts HtmlEmitter::Parts(const UltraPress::Page& page) const {
+    PageContext context;
+    context.page = &page;
+    EmitBlocks(page.blocks, context);
+    PageParts parts;
+    parts.body = context.body;
+    parts.documentTitle = DocumentTitle(page);
+    parts.description = Description(page);
+    parts.image = SocialImage(page, parts.imageWidth, parts.imageHeight);
+    parts.jsonLd = StructuredData(page, context);
+    return parts;
 }
 
 std::string HtmlEmitter::Page(const UltraPress::Page& page) const {

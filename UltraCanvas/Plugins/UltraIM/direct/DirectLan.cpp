@@ -1,7 +1,7 @@
 // Plugins/UltraIM/direct/DirectLan.cpp
 // ChatCube Direct - the local network without a relay
-// Version: 0.1.0
-// Last Modified: 2026-10-21
+// Version: 0.1.1 - a receive's Timeout is quiet, any other failure the connection gone
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 
 #include "DirectLan.h"
@@ -158,7 +158,6 @@ struct LanTransport::Core {
     void ReadLoop(std::shared_ptr<Connection> c) {
         std::vector<uint8_t> pending;
         std::vector<uint8_t> chunk;
-        int fastFailures = 0;
         while (!c->closed) {
             {
                 std::lock_guard<std::mutex> lock(mutex);
@@ -171,15 +170,9 @@ struct LanTransport::Core {
             UltraNetResult r = UltraNet_TcpReceive(c->socket, chunk, 65536, kPollMs);
             if (r.success && chunk.empty()) break;              // the other side closed
             if (!r.success) {
-                // A timeout takes the whole poll; a broken socket fails at once.
-                if (NowMs() - now < kPollMs / 4) {
-                    if (++fastFailures >= 3) break;
-                } else {
-                    fastFailures = 0;
-                }
-                continue;
+                if (r.code == UltraNetResultCode::Timeout) continue;   // quiet
+                break;                                              // broken
             }
-            fastFailures = 0;
             pending.insert(pending.end(), chunk.begin(), chunk.end());
             while (pending.size() >= 4) {
                 const size_t n = (static_cast<size_t>(pending[0]) << 24) | (static_cast<size_t>(pending[1]) << 16) |

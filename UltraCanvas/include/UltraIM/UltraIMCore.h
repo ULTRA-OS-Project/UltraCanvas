@@ -1,5 +1,7 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.14 - providers on demand: UltraIM_ListProviderModules, _LoadProvider, _GetUsedProviders,
+//                   _LoadUsedProviders
 // Version: 0.1.13 - UltraIM_SetGroupDescription, _BlockGroupMember, _UnblockGroupMember, _FetchBlockedMembers
 // Version: 0.1.12 - UltraIM_FetchPublicGroups, _JoinGroup, _SetGroupPublic: public groups
 // Version: 0.1.11 - UltraIM_RenameGroup, _AddGroupMembers, _RemoveGroupMember, _LeaveConversation
@@ -16,7 +18,7 @@
 // Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -47,6 +49,25 @@ UltraIMResult UltraIM_UnregisterProvider(const std::string& providerId);
 // Loads every provider module in config.pluginDirectory that is not loaded
 // yet. Returns how many providers were added.
 int           UltraIM_RefreshProviders();
+// Providers on demand. A module is "ultraim_<id>" (.so / .dll / .dylib) in
+// config.pluginDirectory; nothing has to be loaded to know it is there:
+// the ids of the modules there, loaded or not, sorted.
+std::vector<std::string> UltraIM_ListProviderModules();
+// Loads the module of providerId unless that provider is registered already.
+// ProviderNotFound when there is no such module (or it registered nothing).
+UltraIMResult UltraIM_LoadProvider(const std::string& providerId);
+// The networks in use: <config.dataDirectory>/ultraim-providers.txt, one
+// provider id a line. A provider is added when it connects
+// (ConnectionStateChange to Connected) and taken out by UltraIM_SignOut.
+std::vector<std::string> UltraIM_GetUsedProviders();
+// Loads the providers in use - at start, so that those with a sign-in kept
+// sign in again, while the others' modules stay unloaded until asked for.
+// With no list yet: on a first start (the data folder empty when UltraIM was
+// initialized) the list begins empty; in a data folder used before (an
+// application that loaded every module until now) every module is loaded
+// once and those with a sign-in kept are written down as the ones in use, so
+// an update signs no one out. Returns how many providers were added.
+int           UltraIM_LoadUsedProviders();
 std::vector<UltraIMProviderInfo> UltraIM_ListProviders();
 bool          UltraIM_GetProviderInfo(const std::string& providerId, UltraIMProviderInfo& outInfo);
 

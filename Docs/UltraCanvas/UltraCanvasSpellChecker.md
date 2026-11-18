@@ -531,5 +531,5 @@ xvfb-run -a ./build/bin/TextAreaSpellCheckTest
 ## See also
 
 - [UltraCanvasTextAreaExamples.md](UltraCanvasTextAreaExamples.md) — the element integration
-- [UltraCanvasMenu.md](UltraCanvasMenu.md) — `MenuItemData`, radio groups, lambda-provided submenus
+- [UltraCanvasMenu.md](UltraCanvasMenuExamples.md) — `MenuItemData`, radio groups, lambda-provided submenus
 - [../Dependencies.md](../Dependencies.md) — installing hunspell / enchant and dictionaries

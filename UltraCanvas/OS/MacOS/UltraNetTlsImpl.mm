@@ -6,6 +6,9 @@
 // Network.framework, but it remains functional through macOS 14/15 and
 // matches our "zero extra dependencies" rule. A Network.framework backend
 // can replace this file later without API changes.
+// Version: 0.4.0 - Read answers -2 for a read that timed out (not 0, which is the peer
+//                  closing); the sockets carry SO_NOSIGPIPE (UltraNetSocket.cpp)
+// Last Modified: 2026-11-17
 // Version: 0.3.1 (Stage 3 hardening)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -422,9 +425,10 @@ int Read(void* ctx, char* buf, std::size_t len, int /*timeoutMs*/) {
     if (!c || !c->ssl) return -1;
     size_t processed = 0;
     OSStatus s = SSLRead(c->ssl, buf, len, &processed);
-    if (s == errSecSuccess || s == errSSLWouldBlock) {
+    if (processed > 0 && (s == errSecSuccess || s == errSSLWouldBlock || s == errSSLClosedGraceful))
         return static_cast<int>(processed);
-    }
+    if (s == errSSLWouldBlock) return -2;   // the socket's receive timeout passed
+    if (s == errSecSuccess) return -2;
     if (s == errSSLClosedGraceful) return 0;
     return -1;
 }

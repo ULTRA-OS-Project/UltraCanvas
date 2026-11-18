@@ -25,6 +25,7 @@ mirror. Standard library only.
 """
 
 import re
+import unicodedata
 import sys
 from pathlib import Path
 
@@ -83,7 +84,10 @@ def slug(text):
     out = []
     for ch in text:
         if ord(ch) >= 0x80:
-            out.append(ch)
+            # GitHub keeps letters, marks and digits of any script, and drops
+            # punctuation and symbols: an em dash, a degree sign, quotes.
+            if unicodedata.category(ch)[0] in "LMN":
+                out.append(ch.lower())
         elif ch.isalnum():
             out.append(ch.lower())
         elif ch == " ":

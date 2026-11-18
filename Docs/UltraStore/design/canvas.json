@@ -160,6 +160,129 @@
       "title": "Super admin: Terms and notices",
       "expand": "fill",
       "is_interactive": true
+    },
+    "GamesHome.dc.html": {
+      "x": 0,
+      "y": 14000,
+      "w": 1440,
+      "h": 2860,
+      "title": "Games: Discover (home)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "GamesDetail.dc.html": {
+      "x": 1520,
+      "y": 14000,
+      "w": 1440,
+      "h": 2560,
+      "title": "Games: Game page (Skyline Siege)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "GamesGenres.dc.html": {
+      "x": 3040,
+      "y": 14000,
+      "w": 1440,
+      "h": 2160,
+      "title": "Games: Browse by genre",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "GamesPhoneHome.dc.html": {
+      "x": 4560,
+      "y": 14000,
+      "w": 390,
+      "h": 844,
+      "title": "Games phone: Discover",
+      "radius": 44
+    },
+    "MarketHome.dc.html": {
+      "x": 0,
+      "y": 17600,
+      "w": 1440,
+      "h": 2760,
+      "title": "Market: Home",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MarketProduct.dc.html": {
+      "x": 1520,
+      "y": 17600,
+      "w": 1440,
+      "h": 2760,
+      "title": "Market: Product page (Nordlicht Aura 2)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MarketSearch.dc.html": {
+      "x": 3040,
+      "y": 17600,
+      "w": 1440,
+      "h": 2200,
+      "title": "Market: Search and browse",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MarketBasket.dc.html": {
+      "x": 0,
+      "y": 20760,
+      "w": 1440,
+      "h": 1720,
+      "title": "Market: Basket and checkout",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MarketPhoneHome.dc.html": {
+      "x": 1520,
+      "y": 20760,
+      "w": 390,
+      "h": 844,
+      "title": "Market phone: Home",
+      "radius": 44
+    },
+    "VideoHome.dc.html": {
+      "x": 0,
+      "y": 23200,
+      "w": 1440,
+      "h": 2200,
+      "title": "Video: Home",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "VideoWatch.dc.html": {
+      "x": 1520,
+      "y": 23200,
+      "w": 1440,
+      "h": 2080,
+      "title": "Video: Watch (UltraVideo 0.7)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "VideoChannel.dc.html": {
+      "x": 3040,
+      "y": 23200,
+      "w": 1440,
+      "h": 1900,
+      "title": "Video: Channel (ULTRA OS Project)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "VideoStudio.dc.html": {
+      "x": 0,
+      "y": 25700,
+      "w": 1440,
+      "h": 1900,
+      "title": "Video: Studio, upload and your videos",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "VideoPhoneWatch.dc.html": {
+      "x": 1520,
+      "y": 25700,
+      "w": 390,
+      "h": 844,
+      "title": "Video phone: Watch",
+      "radius": 44
     }
   },
   "order": [
@@ -179,7 +302,21 @@
     "SuperMerchantDetail.dc.html",
     "SuperReview.dc.html",
     "SuperReports.dc.html",
-    "SuperTerms.dc.html"
+    "SuperTerms.dc.html",
+    "GamesHome.dc.html",
+    "GamesDetail.dc.html",
+    "GamesGenres.dc.html",
+    "GamesPhoneHome.dc.html",
+    "MarketHome.dc.html",
+    "MarketProduct.dc.html",
+    "MarketSearch.dc.html",
+    "MarketBasket.dc.html",
+    "MarketPhoneHome.dc.html",
+    "VideoHome.dc.html",
+    "VideoWatch.dc.html",
+    "VideoChannel.dc.html",
+    "VideoStudio.dc.html",
+    "VideoPhoneWatch.dc.html"
   ],
   "notes": {
     "desk": {
@@ -244,6 +381,48 @@
       "w": 420,
       "text": "The operator tier is not in Docs/UltraStore*/README.md yet: it is a proposal for a marketplace where other publishers (merchants) run shops in UltraStore. The operator approves and releases app submissions, handles reports from users and merchants, warns, suspends and reinstates merchants and apps, and keeps every merchant on the current terms of service. Dark sidebar marks the tier. All names, counts and cases are sample data.",
       "fill": "purple"
+    },
+    "games": {
+      "x": 0,
+      "y": 13700,
+      "text": "UltraStore - games shop variant",
+      "kind": "title1",
+      "maxW": 4950
+    },
+    "gamesnote": {
+      "x": 4560,
+      "y": 15000,
+      "w": 420,
+      "text": "A variant of the shop for computer games: the same chrome, type and shapes, the accent violet #7C3AED (a prop; blue is one click away), covers instead of icons, and the genres Action, 3D, Simulation, Tactics, Adventure, Learning (education, by age), Retro, Board games, Puzzle, Racing, Role-playing, Sports. The game page adds the PEGI rating with descriptors, players and co-op, controller support, system requirements and a demo. The repository has no games proposal: the catalog knows the category 'games' only; genre, age rating, players, input and requirements are proposed fields. Every game, studio, count and [PRICE] is invented sample data.",
+      "fill": "green"
+    },
+    "market": {
+      "x": 0,
+      "y": 17300,
+      "text": "UltraStore - marketplace variant (many sellers, physical goods)",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "marketnote": {
+      "x": 4560,
+      "y": 17600,
+      "w": 420,
+      "text": "A variant of the shop as a general marketplace in the manner of Amazon, eBay or Temu: many verified sellers (the merchants of the store README's marketplace tier) in one basket, physical goods with delivery, returns, star ratings from delivered orders, deals with a countdown, departments instead of categories, and a basket grouped by seller with the checkout steps. The accent is orange #EA580C (a prop). The words are the standard string set's Shopping.json (Basket, Add to basket, Proceed to checkout, Free shipping, Estimated delivery, Deal, Best sellers, Guest checkout, Voucher code, Compare, In stock, Low stock); payment is the store's own, as the store README decides it: the payment service and Skrill Quick Checkout's hosted page, card data never in the marketplace. These variants are UltraStore's own business, not UltraPress's shop module. Nothing of this exists in the catalog or the services yet: products, sellers, prices, ratings, stock, delivery and every figure are invented sample data; the pictures are [PHOTO] placeholders.",
+      "fill": "orange"
+    },
+    "video": {
+      "x": 0,
+      "y": 22900,
+      "text": "UltraStore - video portal variant",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "videonote": {
+      "x": 4560,
+      "y": 23200,
+      "w": 420,
+      "text": "A variant as a video portal in the manner of YouTube or Vimeo: the home with the sections rail, topic chips, the video grid with durations and the watched bar, Shorts, live with a viewer count; the watch page on the UltraCanvas video element (chapters on the seek bar, captions, quality, speed, picture in picture, theatre), the channel with subscribe and support, the description with chapters, comments with a creator's reply, up next and the transcript; the channel page with working sort and kind filters; the Studio with the upload (format check, chapters from UltraVideo's markers, captions from the subtitle track, visibility, licence), the channel figures and the videos table with a copyright claim; the phone's watch page. The accent is red #DC2626 (a prop). What exists: the video element plays a file or a URL (GStreamer, Media Foundation, AVFoundation), poster frames, the codec registry; UltraVideo exports MP4 and WebM. What does not: a portal service (channels, uploads, renditions, comments, subscriptions, support payments through the store's payment service). Every channel, video, count and figure is invented sample data; the ULTRA OS Project channel is the team's own, its videos invented; the pictures are [THUMBNAIL] placeholders.",
+      "fill": "blue"
     }
   },
   "designSystems": []

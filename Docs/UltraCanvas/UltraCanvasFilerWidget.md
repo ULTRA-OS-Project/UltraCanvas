@@ -84,8 +84,8 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [File operations](#file-operations)
   - [Delete: to the Trash, or permanently](#delete-to-the-trash-or-permanently)
   - [Progress window (copy / move / delete)](#progress-window-copy--move--delete)
-  - [Activating files — running applications](#activating-files-—-running-applications)
-  - [Launch feedback — the busy pointer](#launch-feedback-—-the-busy-pointer)
+  - [Activating files — running applications](#activating-files--running-applications)
+  - [Launch feedback — the busy pointer](#launch-feedback--the-busy-pointer)
   - [Delete problems (locked / failing entries)](#delete-problems-locked--failing-entries)
   - [Selection after a delete](#selection-after-a-delete)
 - [Watching the shown folder](#watching-the-shown-folder)
@@ -419,7 +419,12 @@ area, ink and muted ink for the names and their details, the panel for the
 header, the info bar and a bar's background with ink on it, hairlines for
 the grid, the hover fill, the soft accent for the selection with the accent
 round it, the accent for the bars and the loading bar, the well with the
-accent for the rename editor; the interface font at the body size, the
+accent for the rename editor; the muted ink on the hover and pressed fills
+for the hidden-items notice's gear (`toolGlyphColor`, `toolHoverColor`,
+`toolPressedColor`); the scroll bars as a veil over the well - the track a
+shade off it, the thumb the muted ink, the ink while it is dragged
+(`scrollbarTrackColor`, `scrollbarThumbColor`, `scrollbarThumbHeldColor`);
+the interface font at the body size, the
 small text at the caption size. The hover icon menu and the extension tag
 keep their dark overlays unless the theme names `filer.icon-menu`,
 `filer.on-icon-menu`, `filer.icon-menu-done`, `filer.extension-bar`,

@@ -17,6 +17,7 @@
 //      key and it rebuilds when one changed, so no setter resets it - only
 //      the inline images, which are not in the key, do (Reset()).
 //
+// Version: 2.21.0 - a one-character text, centred both ways, is centred on its ink (DrawTextCentredOnInk)
 // Version: 2.20.0 - ApplyTheme keeps a font size or family set by hand
 // Version: 2.19.0 - the layout is an UltraCanvasTextLayoutCache keyed on its inputs
 // Version: 2.18.0 - FromTheme by LabelVariant
@@ -1003,6 +1004,22 @@ namespace UltraCanvas {
             // Element-local content rect: ctx is already translated to element origin
             int contentX = GetBorderLeftWidth() + GetPaddingLeft();
             int contentY = GetBorderTopWidth() + GetPaddingTop();
+            // One character - "+", "x", "<", a check mark - centred both
+            // ways: its ink in the middle of the content box
+            // (DrawTextCentredOnInk). Centred on its line box, an "x" sat
+            // 2 px low in a 32 px label, 1.5 px in UltraDesktop's 18 px
+            // close mark. A label that is more than plain text keeps the
+            // layout it is measured, selected and decorated by.
+            if (!isMarkup && !style.hasShadow && inlineImages.empty() && textBoxes.empty() &&
+                !IsSelectable() && style.horizontalAlign == TextAlignment::Center &&
+                style.verticalAlign == VerticalAlignment::Middle && IsSingleCharacterText(text)) {
+                const Rect2Df content = GetLocalContentRect();
+                ctx->SetCurrentPaint(IsDisabled() ? style.disabledTextColor : style.textColor);
+                if (DrawTextCentredOnInk(ctx, inkLayout, text, style.fontStyle,
+                                         Rect2Dd(content.x, content.y, content.width, content.height))) {
+                    return;
+                }
+            }
             RenderTextBoxes(ctx);
             RenderSelection(ctx, contentX, contentY);
             if (style.hasShadow) {

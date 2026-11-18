@@ -50,6 +50,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.48.0 - dark-theme greys: the scroll bars (FilerStyle::scrollbar*), the hidden-items
+//                  notice's gear (FilerStyle::tool*) and the operation dialogs' list caption and
+//                  note (LabelVariant::Muted) follow the theme - fixed light-look greys before,
+//                  near unreadable on a dark well or dialog
 // Version: 1.47.0 - a text file's tile: the white page's text is dark ink in either look (it took the
 //                  theme's ink, near-white on the white page under a dark theme)
 // Version: 1.46.0 - a film's media info (the Length line, the info bar) comes from
@@ -136,7 +140,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -2954,6 +2958,19 @@ namespace UltraCanvas {
                        static_cast<int>(b.width), h);
     }
 
+    void UltraCanvasFilerWidget::StyleHiddenNoticeSettingsButton() {
+        if (!hiddenNoticeSettingsButton) return;
+        ButtonStyle gs;
+        gs.normalColor  = Colors::Transparent;
+        gs.hoverColor   = style.toolHoverColor;
+        gs.pressedColor = style.toolPressedColor;
+        gs.borderWidth = 0.0f;
+        gs.cornerRadius = 4.0f;
+        gs.useIconAsMask = true;
+        gs.iconMaskColor = style.toolGlyphColor;
+        hiddenNoticeSettingsButton->SetStyle(gs);
+    }
+
     std::string UltraCanvasFilerWidget::HiddenNoticeText() const {
         return hiddenItemCount == 1
                 ? std::string("1 item is hidden here")
@@ -2998,15 +3015,7 @@ namespace UltraCanvas {
         if (onHiddenNoticeSettings && !hiddenNoticeSettingsButton) {
             hiddenNoticeSettingsButton = CreateButton(
                     GetIdentifier() + "-hidden-notice-settings", 0, 0, 24, 24, "");
-            ButtonStyle gs;
-            gs.normalColor  = Colors::Transparent;
-            gs.hoverColor   = Color(232, 232, 236, 255);
-            gs.pressedColor = Color(218, 218, 224, 255);
-            gs.borderWidth = 0.0f;
-            gs.cornerRadius = 4.0f;
-            gs.useIconAsMask = true;
-            gs.iconMaskColor = Color(85, 85, 92, 255);
-            hiddenNoticeSettingsButton->SetStyle(gs);
+            StyleHiddenNoticeSettingsButton();
             hiddenNoticeSettingsButton->SetIcon(
                     NormalizePath(GetResourcesDir() + "media/icons/settings.svg"));
             hiddenNoticeSettingsButton->SetIconSize(15, 15);
@@ -4649,6 +4658,7 @@ namespace UltraCanvas {
         StyleSetByHand();
         style = s;
         SetBackgroundColor(style.backgroundColor);
+        StyleHiddenNoticeSettingsButton();
         InvalidateFilerLayout();
         RequestRedraw();
     }
@@ -6265,7 +6275,7 @@ namespace UltraCanvas {
             auto caption = std::make_shared<UltraCanvasLabel>("FilerOpListCaption", 0, 0, 0, 18);
             caption->SetText(spec.listCaption);
             caption->SetFontSize(smallFont);
-            caption->SetTextColor(Color(90, 90, 96, 255));
+            caption->SetThemeVariant(LabelVariant::Muted);   // the theme's muted ink, light or dark
             caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
             dialog->AddDialogElement(caption);
         }
@@ -6278,7 +6288,7 @@ namespace UltraCanvas {
             note->SetFontSize(smallFont);
             note->SetWrap(TextWrap::WrapWord);
             note->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
-            note->SetTextColor(Color(77, 77, 87, 255));
+            note->SetThemeVariant(LabelVariant::Muted);
             note->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
             dialog->AddDialogElement(note);
@@ -14486,14 +14496,14 @@ namespace UltraCanvas {
             ScrollbarGeom g = ScrollbarGeometry(horizontal);
             if (!g.active) continue;
             const bool held = draggingScrollbar && draggingScrollbarHorizontal == horizontal;
-            Color thumbColor = held ? Color(70, 70, 78, 220)
-                                    : Color(90, 90, 96, 180);
+            const Color thumbColor = held ? style.scrollbarThumbHeldColor
+                                          : style.scrollbarThumbColor;
             if (g.horizontal) {
-                ctx->SetFillPaint(Color(0, 0, 0, 30));
+                ctx->SetFillPaint(style.scrollbarTrackColor);
                 ctx->FillRoundedRectangle(Rect2Dd(g.track.x + 2, g.track.y,
                                                   g.track.width - 4, g.track.height), 3);
             } else {
-                ctx->SetFillPaint(Color(0, 0, 0, 30));
+                ctx->SetFillPaint(style.scrollbarTrackColor);
                 ctx->FillRoundedRectangle(Rect2Dd(g.track.x, g.track.y + 2,
                                                   g.track.width, g.track.height - 4), 3);
             }
@@ -17467,6 +17477,12 @@ namespace UltraCanvas {
         s.extensionBarBackground = theme.Role("filer.extension-bar", base.extensionBarBackground);
         s.extensionTagBackground = theme.Role("filer.extension-tag", base.extensionTagBackground);
         s.extensionTagTextColor = theme.Role("filer.on-extension-tag", base.extensionTagTextColor);
+        s.toolGlyphColor = r.inkMuted;
+        s.toolHoverColor = r.hover;
+        s.toolPressedColor = r.pressed;
+        s.scrollbarTrackColor = theme.dark ? Color(255, 255, 255, 30) : Color(0, 0, 0, 30);
+        s.scrollbarThumbColor = Color(r.inkMuted.r, r.inkMuted.g, r.inkMuted.b, 180);
+        s.scrollbarThumbHeldColor = Color(r.ink.r, r.ink.g, r.ink.b, 200);
         return s;
     }
 } // namespace UltraCanvas

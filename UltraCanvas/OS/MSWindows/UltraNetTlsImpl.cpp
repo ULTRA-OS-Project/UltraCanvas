@@ -3,6 +3,8 @@
 // Windows. Implements ultranet_tls_platform:: declared in
 // core/UltraNet/UltraNetTlsImpl.h. No extra DLL dependencies beyond
 // secur32 / crypt32 (linked from CMake).
+// Version: 0.4.0 - Read answers -2 for a read that timed out, 0 only when the peer closed
+// Last Modified: 2026-11-17
 // Version: 0.3.1 (Stage 3 hardening)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -61,12 +63,18 @@ struct Ctx {
     std::vector<char> rxPlain;     // decrypted bytes not yet returned to caller
 };
 
-bool ReadFromSocket(SOCKET fd, std::vector<char>& out) {
+// 1: bytes came; 0: the peer closed; -2: nothing within the socket's
+// receive timeout; -1: the connection broke.
+int ReadFromSocket(SOCKET fd, std::vector<char>& out) {
     char tmp[8192];
     int n = ::recv(fd, tmp, sizeof tmp, 0);
-    if (n <= 0) return false;
+    if (n == 0) return 0;
+    if (n < 0) {
+        const int err = WSAGetLastError();
+        return err == WSAETIMEDOUT || err == WSAEWOULDBLOCK ? -2 : -1;
+    }
     out.insert(out.end(), tmp, tmp + n);
-    return true;
+    return 1;
 }
 
 bool WriteAll(SOCKET fd, const char* p, int len) {
@@ -262,7 +270,7 @@ UltraNetResult Handshake(void* ctx) {
             return UltraNetResult::Ok();
         }
         if (s == SEC_I_CONTINUE_NEEDED || s == SEC_E_INCOMPLETE_MESSAGE) {
-            if (!ReadFromSocket(c->fd, c->rxRaw)) {
+            if (ReadFromSocket(c->fd, c->rxRaw) <= 0) {
                 return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
                                              "socket closed mid-handshake");
             }
@@ -371,7 +379,8 @@ int Read(void* ctx, char* buf, std::size_t len, int /*timeoutMs*/) {
             if (s == SEC_I_CONTEXT_EXPIRED) return 0;
             if (s != SEC_E_INCOMPLETE_MESSAGE) return -1;
         }
-        if (!ReadFromSocket(c->fd, c->rxRaw)) return 0;
+        const int got = ReadFromSocket(c->fd, c->rxRaw);
+        if (got <= 0) return got;
     }
 }
 

@@ -109,6 +109,7 @@ FILE_TYPES = {
 # here, so a click on its toast cannot be lost in the package.
 NOTIFICATION_ACTIVATORS = {
     "UltraMail": "org.ultraos.ultramail",
+    "UltraToDo": "org.ultraos.ultratodo",
 }
 # The argument Windows starts the program with for a click; the program sees
 # it (UltraCanvas::IsNotificationActivationArgument) and opens no file for it.

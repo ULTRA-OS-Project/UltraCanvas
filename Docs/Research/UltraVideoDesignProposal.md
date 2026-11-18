@@ -47,7 +47,7 @@ the spacing and the interaction rules they share.
 | [`EmptyState-light.svg`](../../Apps/UltraVideo/screens/EmptyState-light.svg), [`EmptyState.md`](../../Apps/UltraVideo/screens/EmptyState.md) | The timeline with no clips, idle and during a file drag (§6.9) |
 | [`BrandBook.md`](../../Apps/UltraVideo/screens/BrandBook.md) | Principles, colour tokens, type, spacing, layout, the interaction rules, icons, motion, and the implementation notes for UltraCanvas |
 | [`UltraVideoTokens.h`](../../Apps/UltraVideo/UltraVideoTokens.h) | The tokens as C++: both palettes (dark and light, 41 roles each), shadows, spacing, radii, geometry, opacities, durations and the eight text styles, generated from the design's `tokens.json` (§5.8) |
-| [`Icons/`](../../Apps/UltraVideo/Icons/) | The 46 interface icons the screens use, one path each on a 16 px grid (§5.8) |
+| `Icons/` (in the design hand-off, not yet in the tree) | The 46 interface icons the screens use, one path each on a 16 px grid (§5.8) |
 | [`screens/components/`](../../Apps/UltraVideo/screens/components/) | `index.d.ts`, the design's neutral timeline model as TypeScript types; `bundle.js`, the reference renderer that draws that model as HTML and SVG (a visual specification, not production code); `bundle.css`, its stylesheet (§7.1) |
 | [`screens/components/pages/`](../../Apps/UltraVideo/screens/components/pages/) | The live pages, one per component plus `Cover.html` and an `index.html` that frames them all with a theme toggle. They draw through the renderer with `screens/tokens/tokens.css` (the tokens as CSS custom properties, generated from `screens/tokens/tokens.json`) and `screens/fonts/fonts.css` (IBM Plex from Google Fonts, the framework's Ubuntu as the offline fallback) |
 

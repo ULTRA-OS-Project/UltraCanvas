@@ -1,11 +1,17 @@
 // include/UltraNet/UltraNetTls.h
-// TLS over an UltraNet TCP handle. Public surface only — the per-platform
-// implementation (OpenSSL / Schannel / SecureTransport) is reserved for
-// UltraNet v1.1 because every HTTPS/WSS/FTPS use case is already covered
-// by UltraNet_Http*, UltraNet_WebSocket*, and UltraNet_Ftp* (which carry
-// their own TLS through libcurl). The Stage-3 stubs return Unknown with
-// a clear "deferred" message so callers fail loudly, not silently.
-// Version: 0.3.0 (Stage 3)
+// TLS over an UltraNet TCP handle: UltraNet_TlsWrap a connected TCP handle,
+// UltraNet_TlsHandshake it, then read and write through the TCP calls as
+// usual. Implemented on every platform - OpenSSL on Linux and Android
+// (OS/Linux/UltraNetTlsImpl.cpp), Schannel on Windows
+// (OS/MSWindows/UltraNetTlsImpl.cpp), SecureTransport on macOS
+// (OS/MacOS/UltraNetTlsImpl.mm) - with peer and host-name verification
+// against the system roots, a CA bundle or certificates added at run time,
+// and public-key pinning. Use it for protocols on a raw socket (IRC over
+// TLS, XMPP's direct TLS, SMTPS ...); HTTPS, WSS and FTPS go through
+// UltraNet_Http*, UltraNet_WebSocket* and UltraNet_Ftp*, which carry their
+// own TLS.
+// Version: 0.4.0
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

@@ -2,7 +2,8 @@
 // Internal hook layer that lets the TLS implementation upgrade a TCP socket
 // (created by UltraNet_TcpConnect) into a TLS-wrapped one. Not part of the
 // public include surface — only files inside the UltraNet target use it.
-// Version: 0.3.1 (Stage 3 hardening)
+// Version: 0.4.0 - TlsReadFn answers kTlsReadTimedOut for a read that waited out its time
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -13,9 +14,14 @@
 
 namespace ultranet_internal {
 
-    // Vtable supplied by UltraNetTls. Returns positive byte count on success,
-    // 0 on clean EOF, negative on error. tlsClose is responsible for freeing
+    // Vtable supplied by UltraNetTls. Read returns a positive byte count on
+    // success, 0 when the peer closed the connection, kTlsReadTimedOut when
+    // nothing came within the socket's receive timeout (the connection is
+    // still there), and -1 when it broke. Write returns the bytes written or
+    // -1, and never raises SIGPIPE. tlsClose is responsible for freeing
     // its own ctx (so AttachTlsToSocket caller can stop tracking it).
+    constexpr int kTlsReadTimedOut = -2;
+
     using TlsReadFn  = int  (*)(void* ctx, char* buf, std::size_t len, int timeoutMs);
     using TlsWriteFn = int  (*)(void* ctx, const char* buf, std::size_t len);
     using TlsCloseFn = void (*)(void* ctx);

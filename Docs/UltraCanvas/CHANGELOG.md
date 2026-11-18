@@ -1,3 +1,616 @@
+#### 2026-11-18 *0.9.573*
+- **The ChatCube relay workflow copies the tested sources to the server and
+  installs nothing.** Its deploy job ran `update.sh` over SSH through a sudo
+  rule, which gave the deploy user root for that command. It now only puts
+  this commit's sources in `~/chatcube-relay-src` of the deploy user (the
+  previous copy replaced whole) and says in its summary which version it
+  copied; the operator logs in and runs the copy's `deploy/update.sh`
+  themselves. The step that asked the public address for the new version
+  went with it, and so did `vars.CHATCUBE_RELAY_URL`. The deploy user needs
+  no sudo rule (README: Deploying from CI).
+- **The ChatCube relay deploy reaches a server whose SSH listens on another
+  port.** The `ChatCube relay` workflow always connected on port 22. It now
+  reads `CHATCUBE_RELAY_SSH_PORT` - an Actions secret or variable, 22 when
+  neither is set - for both of its SSH steps, and stops with an error naming
+  it when it is not a number. The README says how to pin that server's key:
+  `ssh-keyscan -p <port> <host>`, whose lines name it `[host]:port`.
+
+#### 2026-11-17 *0.9.572*
+- **A button's one-character label is centred.** A label is centred on its
+  line box, which holds the font's ascender and descender room: right for a
+  word, whose capitals then sit in the middle, but a lone symbol sits
+  wherever the font puts it in that box - a `"+"` of 26 px came out 2.5 px
+  low in a round 48 px button (UltraToDo's add button), a `"×"` and a `"‹"`
+  1.5 to 2.5 px low. A label of one character (a symbol, a check mark, a
+  single letter), centred, now has its drawn shape put in the middle of the
+  button, across and down, on whole pixels; a word stays where it was.
+  `Tests/OneCharacterCentringTest.cpp` measures it from the drawn pixels.
+- **The file display's last fixed greys follow the theme.** Under a dark
+  theme four of them stayed in their light-look shade and were close to
+  unreadable on the dark well or dialog:
+  - the scroll bars' track and thumb: `FilerStyle::scrollbarTrackColor`,
+    `scrollbarThumbColor` and `scrollbarThumbHeldColor`, which `FromTheme`
+    fills with a light veil for the track under a dark theme, the muted ink
+    for the thumb and the ink while it is dragged;
+  - the gear beside the hidden-items notice: `FilerStyle::toolGlyphColor`,
+    `toolHoverColor` and `toolPressedColor`, the muted ink on the theme's
+    hover and pressed fills, applied again on every `SetStyle`;
+  - the caption over the list in the copy / move / conflict dialogs and the
+    note under it, now `LabelVariant::Muted` labels rather than fixed
+    colours.
+
+  The defaults of a `FilerStyle` built by hand are the old colours, so a
+  host that does not follow the theme looks as before.
+- **A round gauge can be a small marker.** `UltraCanvasGaugeDiagramElement`
+  in `CircularRing` mode kept its card layout at every size - 30 px of padding
+  and a 20 px minimum radius - and always drew its value in the middle, so
+  below about 60 px it drew a corner of a ring and a number. Two options,
+  off by default so every gauge looks as before:
+  - `SetRingCompact(true)`: the ring fills the element - no title, no
+    padding, no minimum radius - for a ring of 12 to 40 px in a row of text
+    or buttons; nothing is drawn outside the element.
+  - `SetRingValueText(false)`: the ring without the number; a centre label
+    or icon, when set, is centred on its own.
+  `GaugeLinearModesTest` draws a compact ring at 12, 16, 26 and 40 px.
+- **A one-character text is centred in labels, badges and segmented controls
+  too**, as on the button. Centred on the font's line, a lone "+", "×" or
+  "‹" sat 1.5 to 2 px low - an "×" in a 32 px label, a "+" in a badge, a
+  pager's "‹" in a segment, and UltraDesktop's 18 px window-preview close
+  mark 1.5 px low - so an application had to nudge it with padding tuned to
+  one font and size, or draw an icon instead. The rule is now one helper,
+  `DrawTextCentredOnInk` with `IsSingleCharacterText`
+  (`UltraCanvasTextLayoutCache.h`): the character's ink in the middle, on
+  whole pixels. The button uses it too. A label centres one character so
+  when it is centred both ways and is plain text (no markup, shadow, inline
+  images or boxes, or selection); a badge in its pill; a segment when the
+  character is its only content. Words are drawn as before.
+  `Tests/OneCharacterCentringTest.cpp` (was `ButtonTextCentringTest`)
+  measures all four from the drawn pixels.
+- **A PDF's thumbnail is a white page in the dark look too.** The PDF engine
+  hands a page back with the paper it does not paint transparent - nearly
+  every PDF leaves its paper unpainted - so on a dark tile (UltraFiler,
+  UltraDesktop's boards, UltraToDo's attachments) a PDF showed as a dark page
+  with only its own white boxes light. The first page is now laid on white
+  paper: what the page leaves transparent is white, what it paints keeps its
+  colour, and the thumbnail is opaque. The thumbnail disk cache's renderer
+  generation is 4, so dark thumbnails already cached are drawn again once.
+  `FilePreviewsTest` checks it on a new fixture, `pdf-blue-square.pdf`
+  (`Tests/fixtures/make-pdf-fixtures.py` writes it).
+- **`UCRichDocument::ToHTML` writes a nested list inside its parent item.**
+  It wrote the inner `<ul>` beside the item it belonged to, directly inside
+  the outer list, which HTML does not allow (browsers showed it, a
+  validator and a screen reader's list count did not agree). Each item now
+  stays open until the next item at its level or the end of its list, so
+  the inner list sits in it: `<li>two<ul><li>nested</li></ul></li>`. A
+  list that starts deeper gets an empty item to hold it. A flat list is
+  written byte for byte as before.
+- **UltraIM Signal: a delivery tick that came too early was lost.** When the
+  other side's receipt reached signal-cli before its answer to `send`
+  (a slow machine: the ARM CI runner), the provider had not recorded the
+  message yet and dropped the receipt, so the message never showed as
+  delivered. Such a receipt is now kept and applied once the send is
+  recorded. `SignalProviderTests` forces the order (`/_test/send_delay` in
+  the stand-in daemon).
+- **ChatCube Direct: renaming a group could report the old name.** A group
+  request's reply and the relay's `group.update` pushes arrive on two
+  connections (UltraNet's request thread and the socket's), and every group
+  request - create, rename, add members, join, describe, make public - wrote
+  the relay's reply to the store and then read the conversation back. An
+  older push applied in between (the group as it was just made) was read
+  back instead, so `RenameGroup` could hand its caller the previous title;
+  `DirectProviderTests` failed on it now and then in CI (the check after
+  `RenameGroup(..., "Crew")`). `UpsertGroup` now returns the conversation as
+  the relay's record has it, and the requests report that. The store was
+  never left wrong: the relay pushes the new state as well, in order on the
+  socket.
+- **ChatCube relay 1.6.0: every group carries a revision, and ChatCube
+  Direct drops a record older than the one it holds.** The relay had nothing
+  to order a group's records by, so a client could not tell an old one from
+  a new one: the group as it was made, pushed late on the socket, put the
+  old name back over a rename until the next push. The relay now gives each
+  group a `revision` (1 when made, one more with every change, bumped in the
+  same database write as the change; schema migration 5, existing groups
+  start at 1) in every answer and push that carries a group, and tells a
+  member taken out at the revision the removal made. `DirectProvider` keeps
+  the newest revision applied per group and drops older records - and, for
+  a group it was taken out of, a record from that same change - so a late
+  record can neither revert a group nor bring back one it left. The check
+  and the store write are one step under their own lock. A relay before
+  1.6.0 sends no revision, and records are applied as before.
+  `DirectProviderTests` now checks Bob's stored record keeps the new name
+  right after a rename; the relay's tests cover every change raising the
+  revision and the migration.
+- **The ChatCube relay's `deploy/update.sh` names its settings with a
+  `CHATCUBE_` prefix** (0.2.0): `CHATCUBE_RELAY_HOME`, `CHATCUBE_RELAY_USER`,
+  `CHATCUBE_RELAY_SERVICE`, `CHATCUBE_RELAY_ENV_FILE`,
+  `CHATCUBE_RELAY_BACKUPS`, `CHATCUBE_KEEP_BACKUPS`, `CHATCUBE_SYSTEMCTL`,
+  `CHATCUBE_RUN_AS` and `CHATCUBE_FORCE`, in line with the relay's own
+  `CHATCUBE_RELAY_*` settings. The unprefixed names of 0.1 are still read
+  when the new one is unset, with a warning. The installed copy on a server
+  (`/usr/local/sbin/chatcube-relay-update`) changes only when it is
+  installed again (README: Deploying from CI).
+- **UltraIM: Mattermost and Zulip providers** (`Plugins/UltraIM/mattermost`,
+  `Plugins/UltraIM/zulip`; modules `ultraim_mattermost`, `ultraim_zulip`).
+  Mattermost over its REST API v4: password with an MFA code
+  (`UltraIMAuthStep::Code`) or a personal access token, direct and group
+  messages and team channels, polled, thread replies, files, edits,
+  deletes, read marks. Zulip over its REST API: password or API key, direct
+  and group messages and stream topics, news from the event queue, uploads,
+  edits, deletes, read flags. Both keep their session in UltraVault, answer
+  `FetchAccountProfile` with the account's name, and are tested against a
+  stand-in server in standard-library python (`MattermostProviderTests`,
+  `ZulipProviderTests`). No plug-in ABI change.
+- **UltraIM: Signal, XMPP and IRC providers** (`Plugins/UltraIM/signal`,
+  `Plugins/UltraIM/xmpp`, `Plugins/UltraIM/irc`; modules `ultraim_signal`,
+  `ultraim_xmpp`, `ultraim_irc`). Signal through a signal-cli daemon's
+  JSON-RPC (the user's, or one the provider starts), linked to the phone by
+  a QR code (`UltraIMLoginType::QRCode`, step `OtherDevice`). XMPP over TCP
+  (STARTTLS on 5222, direct TLS on 5223 - XEP-0368 - by `UltraNet_TlsWrap`;
+  the server found by SRV, then host-meta, then `<domain>:5222`, the endpoint
+  that connected kept) or the WebSocket binding (RFC 7395), with tinyxml2:
+  SCRAM-SHA-256/1 keeping the derived keys rather than the password, roster, MUC rooms from bookmarks,
+  MAM history, receipts, markers, chat states, corrections, retractions,
+  replies, carbons, HTTP File Upload. IRC with IRCv3 over UltraNet TCP and
+  `UltraNet_TlsWrap`: SASL PLAIN or NickServ, CHATHISTORY, server-time,
+  msgid, echo-message, labeled-response, typing, replies, a `*server`
+  conversation for notices and raw commands, reconnecting with backoff.
+  Each tested against a stand-in in standard-library python
+  (`SignalProviderTests`, `XmppProviderTests`, `IrcProviderTests`). No
+  plug-in ABI change.
+- **UltraNet sockets: no SIGPIPE, and a timeout told from a broken
+  connection.** `UltraNet_TcpSend` no longer raises SIGPIPE on a connection
+  the peer closed - which ended the program - but fails with
+  `ConnectionReset`: sends pass `MSG_NOSIGNAL`, sockets carry `SO_NOSIGPIPE`
+  where there is no such flag (macOS), and OpenSSL's own writes (handshake,
+  write, close-notify) hold SIGPIPE back on their thread. `UltraNet_TcpReceive`
+  now answers the same three ways on every backend, plain and through
+  `UltraNet_TlsWrap`: bytes; `Ok` with no bytes when the peer closed;
+  `Timeout` when nothing came in time (the connection is still there) - before,
+  OpenSSL and plain sockets answered a timeout like a broken connection
+  (`ReceiveFailed`) and Schannel and Secure Transport like a closed one (no
+  bytes), so callers timed their reads to tell them apart. A broken one is
+  `ConnectionReset` or `ReceiveFailed`; `UltraNet_UdpReceive` answers
+  `Timeout` too. The IRC provider and ChatCube Direct's LAN link go by the
+  code now. `UltraNet_TcpOpen` / `UltraNet_TcpConnect` try every address
+  the name resolves to, in order, until one connects: before, only the first
+  was tried, so `localhost` resolving to `::1` first missed a server on
+  `127.0.0.1` (the IRC tests on the Ubuntu 22.04 ARM runner), as a server's
+  unreachable IPv6 address would. Tests: `test_socket_errors.cpp` in `UltraNetTests` (plain TCP,
+  UDP, and TLS against a python3 ssl server, with SIGPIPE at its default
+  action).
+- **`UltraNetTls.h`: header comment corrected.** It still described TLS on
+  a TCP handle as Stage-3 stubs deferred to UltraNet v1.1; `UltraNet_TlsWrap`
+  and `UltraNet_TlsHandshake` have long been implemented (OpenSSL, Schannel,
+  SecureTransport). The comment now says so and when to use it. No code
+  change.
+- **UltraSite: a site under a path, and a frame per language.**
+  - **A path.** A site whose `url` has a path (`https://store.example/v1`)
+    is served from it, as Docusaurus's `baseUrl` is. Routes keep their
+    site paths, and every address the builder writes carries the path:
+    assets, navigation, search, the 404 page, `.htaccess` and `_headers`.
+    `Builder::Url` does the same for an app's own HTML, and the link check
+    reads the addresses back in that path.
+  - **Shared folders.** With `removeStale` off, the files a folder already
+    holds count as link targets, for a site that shares its folder (a
+    store's catalog and media).
+  - **Frames.** `SiteConfig::frames` gives another language its own
+    navbar, footer and words.
+- **UltraSite publishes documentation sites.** It builds them the way
+  Docusaurus does, without React, hydration or a bundler.
+  - **Loading.** `Builder::AddDocs` reads a folder of Markdown: a page per
+    file, a folder's `index.md` or `README.md` as the folder's page, and a
+    generated page for a folder without one. It reads front matter
+    (`title`, `description`, `slug`, `sidebar_label`, `sidebar_position`,
+    `draft`) and `_category_.json`. A link to another `.md` becomes that
+    page's address, a file in the folder becomes an asset, and a file
+    outside it goes to a repository's file view. Translations are joined
+    page by page.
+  - **The `doc` layout.** A sidebar in which only the categories leading
+    to the page are expanded, a table of contents, breadcrumbs, previous
+    and next, and *Edit this page*. On a phone the sidebar opens without
+    script.
+  - **Markdown** (`UltraSiteMarkdown.h`). Heading ids are spelled as
+    GitHub spells them, so a repository's anchors keep working. Code is
+    highlighted when the site is built. There are `:::note` / `:::tip` /
+    `:::warning` admonitions, GitHub's `> [!NOTE]` alerts, and `:::tabs`.
+    Wrapped lines are joined into paragraphs.
+  - **Search.** An index per language and a search page that lists every
+    page without script. An index over its budget keeps titles, headings
+    and descriptions only.
+  - **New behaviour modules:** `search`, `toc`, `tabs` and `copy`. A
+    language switcher, and the frame's words in `Labels`.
+  - **The build reads each page back once,** not three times.
+    `BuildOptions::brokenLinksWarn` makes a broken link a warning, as
+    Docusaurus's `onBrokenLinks: 'warn'` does.
+- **`UCRichDocument::ToHTML` gains two hooks for web pages** in
+  `RichDocumentHTMLOptions`. `headingId` gives each heading an `id`, and
+  `codeBlock` writes a code block's HTML itself, highlighted, say. Unset,
+  the output is what it was.
+- **UltraSite: a new module that writes a website as HTML + JavaScript.**
+  It works the way Docusaurus builds a site, without React, hydration or a
+  bundler. A list of routes becomes a folder any static host serves:
+  - every route as a complete, styled page: head, skip link, navbar, the
+    `page` or `post` layout or an app's own, and footer;
+  - one stylesheet built from the base, the site's design tokens (a light
+    and an optional dark look, as `--us-*` custom properties, with a toggle
+    that never flashes) and the app's rules;
+  - `core.js` on every page (prefetch on intent, the theme toggle), and
+    behaviour modules an app registers, each loaded only by the pages whose
+    body names it with `data-us`;
+  - the stylesheet and the scripts named by their content hash and cached
+    for a year;
+  - `sitemap.xml`, `robots.txt`, `404.html`, `.htaccess` and `_headers`,
+    with a Content-Security-Policy that runs no script from another origin;
+  - speculation rules, so Chromium prerenders the next page.
+
+  The build reads every page back through the HTMLReader. It fails on a
+  broken internal link or anchor, an unknown behaviour, or a page or asset
+  over its compressed-size budget, and it removes what an earlier build
+  left behind. Pages work with JavaScript turned off.
+  - `UltraSite/` (target `UltraSite`, header `<UltraSite/UltraSite.h>`) and
+    `Docs/Modules/UltraSite/README.md`. The design is
+    `Docs/Research/UltraSiteStaticSitesProposal.md`.
+  - Tests: `Tests/UltraSite` (ctest `UltraSite`, built with
+    `-DULTRACANVAS_BUILD_ULTRASITE_TESTS=ON`), run by the build workflow on
+    every platform.
+  - `scripts/check_doc_examples.py` now compiles the module's README.
+- **UltraSite: responsive pictures, compressed copies, a preview server and
+  versioned docs.**
+  - **Pictures.** `Builder::Picture` writes a picture as a `<picture>`
+    with AVIF and WebP variants at the widths below its own. The variants
+    are named by the picture's content hash, so a later build reuses them.
+    The original is the `<img>`, with its size. A format this machine's
+    image library cannot write is left out, and the build says so.
+  - **Compressed copies.** `BuildOptions::precompress` writes `.gz` copies
+    and, where the build finds Brotli, `.br` copies of the pages,
+    stylesheet, scripts and lists, for nginx's `gzip_static` /
+    `brotli_static` and Caddy's `precompressed`. Brotli is an optional
+    dependency (`libbrotlienc`).
+  - **The preview server.** `UltraSiteServer.h` serves a built folder on
+    127.0.0.1, the way a host would: the site's path, the trailing-slash
+    redirect, the 404 page, the cache rules and the compressed copies.
+    `Respond` answers one request without a socket; `Serve` listens
+    through UltraNet.
+  - **Versioned docs.** `DocsOptions::versions` gives each earlier version
+    its own prefix and sidebar, a version switcher, and a banner leading
+    to the latest. The search finds only the latest.
+  - `BasePathOf(url)` gives the path a site is served from.
+- **UltraIM XMPP: a silent server is found over TCP.** After
+  `XmppTimings::pingIntervalMs` with nothing from the server, the TCP stream
+  sends an XMPP ping (XEP-0199); no answer - nor anything else - within the
+  new `XmppTimings::pingTimeoutMs` (30 s) ends the stream, and the provider
+  reconnects as after any drop. The whitespace keepalive alone found a
+  connection that was gone only when a write failed, which a server that
+  hangs, or a path that drops packets silently, never makes happen. The
+  pings' answers stay inside the stream. Tested in `XmppProviderTests`: a
+  quiet server answering keeps the connection; one made silent with its
+  socket open (`/_test/silence` in `xmpp_fake_server.py`) is found and
+  reconnected to.
+
+#### 2026-11-17 *0.9.571*
+- **CI runs every window test on a display, and a skip there fails.** 33
+  of the framework's window tests open a real window, read it back, and
+  skip themselves without a `DISPLAY`. Among them are `FileDialogTest`, the
+  caret's stacking order, the clipboard's large copies, popups and tooltips
+  in windows of their own, dialogs closed by Escape, the colour picker, and
+  the text area's spelling, search and autocomplete. The Linux row's plain
+  `ctest` has no display, and no virtual-display step selected them, so they
+  passed by checking nothing. That is how `FileDialogTest`'s check *its rows
+  scaled down with the type* failed on every display from 0.9.541 (#1206)
+  until 2026-11-15, and nothing said so. They now run under `xvfb-run` in
+  two new steps: one for `FileDialogTest` and one, *Run the framework window
+  tests*, for the rest. That step checks its list against what ctest has
+  registered, so a renamed or unbuilt test fails it instead of dropping out.
+  All of them pass there.
+  - Every window test now fails rather than skips when
+    `ULTRACANVAS_TEST_DISPLAY_REQUIRED=1`, which the virtual-display steps
+    set. The thirteen suites that already did read the variable two ways,
+    some only `1` and others anything but empty or `0`; they all ask
+    `DisplayTest::DisplayRequired()` (`Tests/DisplayRequired.h`, which
+    includes nothing of the framework's) now.
+    `FileDialogTest`'s skip also no longer hides a failed check of the half
+    that did run.
+  - It stays that way: `scripts/check_window_tests.py`, run by the new
+    `window-tests.yml` on every pull request that touches a test, a CMake
+    file or a workflow, fails a window test that no virtual-display step
+    runs, a step that runs one without the variable, a skip that never asks
+    `DisplayRequired()`, and a name a step lists that nothing registers. A
+    window test is a test source that reads `DISPLAY` or opens the X display
+    itself. A source that is not one says so with
+    `// window-test-exempt: <why>`, and one ctest entry of several with
+    `// window-test-exempt(<name>): <why>`, as `DesktopShellTest`'s
+    D-Bus-only `DesktopShellTrayTest` and `DesktopShellPortalTest` do.
+  - CI installs `xclip` with `xvfb`, so `ClipboardIncrTest` also checks a
+    large picture copied to and from another program. The comment on that
+    install no longer says it is for DesktopShellTest alone.
+- **`echo $HOME` is detected as a shell command, not PHP.** The content
+  language detector gave every line starting `echo $` two points for PHP and
+  only one for shell, so on the lower bar a Markdown code block uses for short
+  snippets, `echo $HOME` was coloured as PHP. A PHP `echo` is a statement that
+  ends in `;`; a shell `echo` almost never does. `echo $x;` still votes PHP,
+  and `echo $HOME` without the semicolon now votes shell.
+- **A .doc's later sections kept the first section's header and footer.**
+  The legacy reader now starts a section of the model at the paragraph each
+  later section begins with, with a header and footer of its own where its
+  stories in the `PlcfHdd` are not empty (an empty story keeps the section
+  before's, as in Word), its first page's when `sprmSFTitlePage` says so, its
+  own top and bottom margins, and whether it starts a page (`sprmSBkc`).
+- **A .doc's shapes throw their shadows**: OfficeArt's `fShadow`,
+  `shadowColor`, `shadowOpacity` and the two offsets, into
+  `RichShape::shadowColor` and its fields.
+- **A picture text stops above and resumes below stood in the line where
+  nothing floats** (a logo at the top of a sender frame, a picture in a
+  cell): the words after it started beside it, a centred one stood at the
+  left, and the frame's text began a line too high. Such a picture now has a
+  line of its own, at the side or in the middle it is aligned to, and a
+  paragraph of nothing else keeps its empty line below it, as Writer sets it.
+  A centred picture text may pass is set the same way, as when it floats.
+  `Tests/fixtures/word-sections.doc` (from `word-sections.fodt`, saved as Word
+  97 by LibreOffice) holds the sections and a shadowed rectangle.
+- **A document's lines broke elsewhere than in Word and Writer, and stood
+  closer together.** Measured on a letter against LibreOffice's rendering of
+  the same file:
+  - **Glyphs on whole pixels made words about 1% narrower** than their font
+    says, so a paragraph of four lines came out in three.
+    `IRenderContext::CreateDocumentTextLayout` gives a layout with the glyphs
+    where the font puts them, and `UltraCanvasRichTextEdit` lays its text out
+    with it; interface text is unchanged.
+  - **The font's line gap was left out**: Arial's lines were 3% closer than a
+    word processor sets them. Lines are now the font's own height apart
+    (`UCRichDocument::fontLineGap`; false for a Writer file whose settings
+    say `AddExternalLeading` false, kept in the ODT's `settings.xml`).
+  - **Paragraph spacing inside a table cell was ignored** (ODT, DOCX, DOC):
+    a cell keeps its paragraphs as lines, and their space before and after
+    was dropped. The room between two paragraphs is now an empty line of
+    exactly that height (`RichTextRun::emptyLineHeightPt`), and above the
+    first and below the last it is part of the cell's padding. The ODT and
+    DOCX writers write a cell's lines as paragraphs with that spacing, so it
+    survives a save. Not counted where a Writer file says so
+    (`AddParaSpacingToTableCells`, `UCRichDocument::paragraphSpacingInCells`).
+  - **Letter kerning follows the document** (`UCRichDocument::letterKerning`):
+    off for Word's files unless `w:kern` turns it on (ODF
+    `style:letter-kerning`), through the new
+    `TextAttributeFactory::CreateFontFeatures`.
+  - An empty line in a cell is as tall as a line of its paragraph's font.
+- **A document saved as DOCX came back with more in it than it had.** Three
+  letters read from ODT, written as DOCX and read again, compared word by word
+  with the rendering of the ODT:
+  - **Every table gained an empty paragraph, on every save.** Word wants a
+    paragraph after a table; the writer's is now a trailer a point high that
+    the reader takes out again, and it carries the table's room below
+    (`spaceAfterPt`, which a DOCX had no place for).
+  - **A section starting a page after a page break turned two extra pages.**
+    The page break and the section break were both written, with a paragraph
+    of its own for the latter; the section break alone is written now, on the
+    table's trailer or a trailer of its own.
+  - **A paragraph that only anchors a picture, and an empty table cell, took
+    the style's font** instead of their own (the paragraph mark's), so a
+    signature's picture pushed the next line 27 pt down and a heading row
+    stood 7 pt taller.
+  - **An empty line took the font of the line after it** (DOCX and ODT): a
+    small blank line before a large name grew with the name. It keeps the
+    font of the break that began it.
+  - **Lines without the font's line gap** (`UCRichDocument::fontLineGap`
+    false) are written as Word's `w:noLeading` compatibility setting and read
+    back.
+  After this the three letters render the same from the DOCX as from the ODT
+  (no word more than 0.1 pt away, fewer than 0.15% of pixels differing), and
+  the same again after a second save. `DocumentRenderProbe` takes a third
+  argument, a file to write the loaded document to.
+- **A picture in a text frame vanished while the frame's words were edited.**
+  A letterhead's sender block is a text frame with the logo anchored in it.
+  Nothing floats inside a frame, so `UltraCanvasRichTextEdit` draws such a
+  picture in the line (`LayoutTextFrame`) - but once a double-click opened the
+  frame (`EditFrame`), its paragraphs were laid out as body paragraphs, the
+  picture's placeholder was squeezed to nothing for a float that no pass
+  places there, and the logo disappeared with the words moving up into its
+  place. A frame being edited now keeps its pictures in the line, where they
+  are drawn, selected and resized as before the double-click.
+  `RichTextEditElementTest` opens such a frame and checks that the words stay
+  below the picture and that a click still finds it.
+- **A frame anchored in a text frame lost its words while the outer frame was
+  edited.** Drawn, the inner frame's paragraphs stand before the paragraph
+  that anchors it (`WithFramesInlineIn`); edited, its placeholder took no room
+  and nothing drew them. They are now shown in the same place for as long as
+  the outer frame is open (`PlacedFloat::wordsOnly`) - shown, not edited: they
+  are the inner frame's, and stay as they were when the editing ends. The
+  words in an inner drawing's shapes (a group member's box of text) are shown
+  with them (`LayoutAnchoredFrameWords`).
+- **A document naming Helvetica was reported as missing a font on the Windows
+  computer it was written on.** Windows has no Helvetica: it maps the name
+  onto Arial for every program (its `FontSubstitutes`), which is why Writer
+  shows nothing amiss. The framework makes its own fontconfig set there, with
+  no such mapping, so the text fell to the interface font and
+  `UltraCanvasRichTextEdit`'s notice said "Not installed, drawn in a
+  substitute: Helvetica".
+  - `GetFontFamilySubstitutes` / `FontFamilySubstitute`
+    (`UltraCanvasFontCoverage.h`): the families with stand-ins of another
+    name - Helvetica, Helv, Times, Tms Rmn and Courier as Windows maps them,
+    and fontconfig's metric-compatible pairs (Arial and Liberation Sans,
+    Calibri and Carlito, Cambria and Caladea) - and the first of them that is
+    installed.
+  - The generated fontconfig aliases (`GenerateFontAliasConfig`, the
+    generated `fonts.conf`) carry them, so Helvetica is drawn in Arial on
+    Windows; an installed family still wins.
+  - The font report leaves out a family with an installed stand-in.
+  - The table is the framework's own: a substitution a user added to the
+    Windows registry by hand is not read.
+- **The font report did not read text frames.** A family named only in a
+  text frame - a letterhead's sender block, the words in a drawing's shapes -
+  was never reported as missing, nor its characters without a font. The report
+  reads `UCRichDocument::frames` now, and stays the whole document's while a
+  header, a note or a frame is being edited (it shrank to the part edited).
+- **A letter laid out in a table read wrong from ODT, DOCX and DOC.** A Word
+  letter template (a banner across the sheet, the address and text in a table
+  whose tall rows hold the logo at the foot of the page, a banner turned on its
+  side) came out with its text run together, the logo halfway up the page and
+  the banners shrunk into the column. Compared page by page with the PDF its
+  own program exports:
+  - **Empty paragraphs in a table cell are empty lines** (ODT, DOCX, DOC). A
+    cell keeps runs, not paragraphs, and an empty paragraph left nothing
+    behind: the blank lines between address, date and text were gone. Two line
+    breaks in a row are an empty line too (they were one break).
+  - **A table row's height** (`RichTableRow::heightPt`, `heightExact`): read
+    from ODF's `style:min-row-height` / `style:row-height`, Word's
+    `w:trHeight` and a .doc's `sprmTDyaRowHeight`, written back by the ODT and
+    DOCX writers, and laid out by `UltraCanvasRichTextEdit`.
+  - **ODT: the default paragraph style** (`style:default-style`) is what a
+    paragraph style based on nothing starts from - its font, size and
+    spacing. Word's ODT export names the font there and nowhere else, so the
+    whole text fell to the view's font, a quarter wider. Its colour is not
+    taken: the view's ink serves, and follows a dark theme.
+  - **Floating pictures and drawings** keep a negative offset (above their
+    paragraph, left of the text area - all three readers clamped it to zero),
+    keep their width when placed from the page, and are cut at the edges of
+    their page instead of showing on the one before.
+  - **ODT: a shape's `draw:transform`** is applied in the order it is listed
+    ("translate rotate translate" turns about the centre; the translations
+    were summed), and a group's box is its members' bounds as they are turned.
+  - **DOC**: the page size and margins of a document of several sections
+    (the section table was read as if it had one, so the page fell back to
+    US Letter); merged cells, from the rows' cell edges and the merge flags
+    (a row of fewer, wider cells lost the column widths for the whole
+    table); a run's character style (`sprmCIstd`) and letter spacing
+    (`sprmCDxaSpace`); a floating picture alone in its paragraph stays
+    floating (it became a picture paragraph at the margin).
+  - `FontFamilySubstitute` knows the Liberation fonts, Carlito and Caladea
+    the other way round too (a Writer document on Windows).
+  - `Tests/DocumentRenderProbe.cpp`: loads a document and writes what the
+    rich text edit draws of it as a PDF, with the reader's page, floats and
+    table grids listed - to put beside the document's own PDF export.
+- **A borderless text frame's guide line was printed.** The thin outline an
+  editable view draws round a frame without a border went into the PDF export
+  and onto paper; it is the screen's only.
+- **A section's own header, footer and page margins.** A document of several
+  page styles - a cover without a header, pages with one - kept one header and
+  footer for all of its pages, and one top margin.
+  - `RichSectionSetup::furniture` names a section's own set in
+    `UCRichDocument::sectionFurniture` (`RichSectionFurniture`: its pages' and
+    its first page's), and `marginTopPt` / `marginBottomPt` / `headerTopPt` /
+    `footerBottomPt` its room for them; `UCRichDocument::FurnitureFor` and
+    `AllFurniture` find them.
+  - `UltraCanvasRichTextEdit` frames each page by the section it begins in,
+    and a double-click on a header edits the one that page shows.
+  - ODT: a paragraph whose style names another master page starts such a
+    section; the writer writes a master page and page layout per page style.
+  - DOCX: each section's `w:headerReference` / `w:footerReference`, `w:titlePg`
+    and `w:pgMar` (a section without a reference keeps the header of the one
+    before it, as in Word); the document's own are its first section's, where
+    they were its last's. The writer says every section's own.
+  - A header or footer of empty paragraphs is still not kept as one, but takes
+    its lines' room (ODT and DOCX): Word gives every page style one, and the
+    text starts a line lower for it.
+  - Not done: a .doc's later sections (its first section's header and footer
+    serve the whole document), and a section's own page size or side margins.
+- **ODT: the room above and below a table** (`fo:margin-top` / `-bottom`, kept
+  as the table block's `spaceBeforePt` / `spaceAfterPt` and written back), an
+  empty cell as tall as a line of its paragraph's font (a heading row's 8 pt,
+  not the view's), and a shape anchored to the page placed from the sheet's
+  edge whatever its style says it counts from (a letter's fold marks stood a
+  margin too far right).
+- **`scripts/check_libcxx_syntax.py` runs in a cloud session.** It
+  type-checks a change against libc++, the standard library the Windows
+  rows compile against, and is the one check of the Windows build a session
+  can run - but it needs libc++'s headers, and the cloud image has none.
+  Installing `libc++-dev` is not the answer on Ubuntu 24.04: it needs LLVM's
+  `libunwind-18-dev`, which conflicts with the `libunwind-dev` that
+  `libgstreamer1.0-dev` needs, so apt removes the one for the other,
+  GStreamer's pkg-config file stops resolving, and the next configure leaves
+  the media backends out without a word (tried on 2026-11-17). The script
+  now uses a private copy of the headers when no libc++ is installed:
+  `--fetch-libcxx` downloads the libc++ and libc++abi dev packages matching
+  clang's version (`apt-get download`) and unpacks them into
+  `~/.cache/ultracanvas/libcxx` (`$ULTRACANVAS_LIBCXX_ROOT`) - no root, and
+  no installed package changes. The session hook
+  (`.claude/hooks/session-start.sh` 1.8.0) fetches it at start: a few
+  seconds the first time, nothing after. The script's messages no longer
+  recommend the install that breaks GStreamer. Checked: the private headers
+  reproduce PR #973's Windows-only error (`call to 'to_string' is
+  ambiguous`), which libstdc++ compiles.
+- **`UltraRtcApiStatus` failed now and then with "the removed dispatcher was
+  still called".** `UltraRtc_SetEventDispatcher` replaces the dispatcher for
+  events raised from then on; an event an engine thread had already taken the
+  old one for is still handed to it. The probe counted the old dispatcher's
+  calls the instant it was removed, while its first peer was still gathering
+  candidates, and failed a CI run on ubuntu-22.04 of a branch that does not
+  touch UltraRTC. It now lets those calls land before counting, and the
+  header says what the function promises.
+- **Drawn shapes throw their drop shadow.** A page frame drawn as a white
+  rectangle had none. `RichShape::shadowColor`, `shadowOffsetXPt` /
+  `shadowOffsetYPt`, `shadowOpacity` and `shadowBlurPt`: read from ODF
+  `draw:shadow` and DrawingML `a:outerShdw`, written back by the ODT and DOCX
+  writers, and drawn under the shape by `UltraCanvasRichTextEdit` (a soft edge
+  as a few faint outlines). A line throws none, and a .doc's shadow is not
+  read.
+- **Text went on 9 pt too low under a picture.** Text that may not pass a
+  picture (wrap "none" / top and bottom) continued a fixed 9 pt below it -
+  Word's distance at a picture's sides, not above and below it, where Word
+  and Writer keep none. And a paragraph starting a hair above such a picture
+  ran through it; one whose first line does not fit above the picture now
+  goes below. A paragraph that only anchors a picture is a line of its own
+  font, not of the view's (it was 2.5 pt too tall in a 10 pt letter).
+- **Timeline diagram: the Wave design.** `TimelineDesign::Wave` threads one
+  thick half-ring per item on a straight axis, each bending the other way from
+  the one before, so together they make one smooth wave - the infographic
+  where a year sits inside every ring and the item's text beside it. The node
+  sits where two rings meet and a plain dot closes the path. The axis runs at
+  any angle (`waveAxisAngle`: 45 falls diagonally by default, 0 is horizontal,
+  90 top-down, -45 rises) or at the angle that gives the largest rings
+  (`waveAutoAngle`); the rings are made as large as the frame allows while
+  every item's text keeps room of its own - beside the rings on a steep axis,
+  above and below them on a flat one - and no text block covers a ring or
+  another block. Each caption is drawn as large as fits inside its ring,
+  clear of the band, the nodes and every text block, reaching a little past
+  the chord as in the printed designs. Side policy, reversed order, placement by date (rings of different
+  sizes), the gradient along the path, the pending rings after
+  `SetCurrentIndex`, shadows, cards and stems all apply. `GetItemArc` returns
+  an item's ring, so an application can set its own icon beside it. The
+  demo's Timeline Diagram page has a Wave tab and a Wave Axis control, and
+  `Tests/TimelineDiagramWaveTest.cpp` holds the layout to its promises at six
+  axis angles, 1 to 12 items, reversed, by date and all on one side.
+- **Demo: the "Waves info graphic" placeholder is gone** from Info Graphics.
+  It was a Planned entry that only said it was not ready; the wave
+  infographic is now Timeline Diagram's Wave variant.
+- **A tree row can be dimmed.** `TreeNodeData::dimmed` draws a row's label
+  in the tree's dimmed text colour (`SetDimmedTextColor`, the theme's muted
+  ink, so it follows a light / dark switch) instead of the text colour - for
+  an entry the tree normally leaves out and shows for now, such as a hidden
+  folder. A `textColor` of the node's own and the selection text on a
+  selected row still win. Documented in `UltraCanvasTreeViewExamples.md`
+  (*Dimmed rows*).
+- **A Word card laid out in a table (a name badge) came out on two pages,
+  without its photo, in the wrong font and in lower case.** Six gaps, each
+  general:
+  - **Theme fonts.** `w:rFonts w:asciiTheme="minorHAnsi"` / `majorHAnsi` (and
+    `hAnsiTheme`) name the theme's body and heading fonts
+    (`word/theme/theme1.xml`, `a:minorFont` / `a:majorFont`); the DOCX reader
+    read only `w:ascii`, so every such document was set in the default font.
+  - **Capitals.** `w:caps` on a run, or on its paragraph's style (a heading
+    style in capitals), now writes the words in capitals (Latin, Greek and
+    Cyrillic letters).
+  - **A picture or drawing behind or in front of the text, anchored in a
+    table cell, floats from that cell** (`UltraCanvasRichTextEdit`): it stood
+    in the cell's line at full size and pushed the row over the page. It is
+    placed across from the left edge of the cell's text and down from its
+    anchor's line, and may cover the whole table.
+  - **A turned picture** (`RichTextRun::imageRotationDeg`, new): Word's
+    `a:xfrm rot` and ODF's `draw:transform` on a picture are read and written;
+    the picture is drawn turned about its centre.
+  - **A frame or drawing in a table cell stands in the cell's line** at its
+    own size (with room for its outline) and is drawn there; it took no room
+    and was not drawn at all. The ODT reader reads drawn shapes inside cells,
+    and the ODT writer anchors such a drawing as a character so Writer sets
+    it in the line too.
+  - **Word's "rectangle: top corners rounded"** (`round2SameRect`, with both
+    of its adjustments) is read as its outline - an arch when the rounding is
+    a half - where it was a plain rectangle.
+- **A picture, drawn shape or formula standing in a line lay over the lines
+  round it** in documents whose lines keep their fonts' line gap
+  (`UCRichDocument::fontLineGap`, the default): Pango forgets a box's height
+  when lines are spaced by their fonts' heights. A paragraph with such a box
+  is now set without that spacing, and the line keeps its font's descent under
+  the box, as Word and Writer set it.
+
 #### 2026-11-17 *0.9.570*
 - **Chart engine: axis distributions.** `AddAxisDistribution` draws the
   distribution of an axis's values along that axis, at the axis's own scale:

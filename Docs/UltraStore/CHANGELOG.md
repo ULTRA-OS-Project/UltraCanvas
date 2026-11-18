@@ -1,3 +1,13 @@
+#### 2026-11-17 *0.1.21*
+- **The video portal variant of the design** (`Docs/UltraStore/design/Video*.dc.html`, on the design canvas): the shop's chrome as a portal with channels - the home with the sections rail, topic chips, the video grid, Shorts and live; the watch page on the UltraCanvas video element with chapters, captions, the channel row, comments, up next and the transcript; a channel page with working sort and kind filters; the creator's Studio with the upload, the details form and the videos table; the phone's watch page. A design only: the video element and UltraVideo's export exist, a portal service does not; every channel, video and figure is sample data.
+- The marketplace variant's write-up names the store's own payment service and Skrill Quick Checkout's hosted page for payment, as the store README decides it, in place of a reference to the UltraPress proposal; the variants are UltraStore's own business.
+
+#### 2026-11-17 *0.1.20*
+- **The marketplace variant of the design** (`Docs/UltraStore/design/Market*.dc.html`, on the design canvas): the shop as a general marketplace with many sellers - the home with deals, departments, best sellers and top sellers, a product page with the buy box, other offers, reviews and questions, search and browse with working department, price, rating, delivery and condition filters, the basket grouped by seller with the checkout steps, and the phone's home. The words are the standard set's `Shopping.json`; payment is the store's own payment service with Skrill Quick Checkout's hosted page, as the store README decides it. A design only: every product, seller, price and rating is sample data.
+
+#### 2026-11-17 *0.1.19*
+- **The games shop variant of the design** (`Docs/UltraStore/design/Games*.dc.html`, on the design canvas): Discover, a game's page, the genre browser with working genre, price, age-rating and players filters, and the phone's Discover - the shop's chrome with a violet accent, covers where the apps have icons, the genres Action, 3D, Simulation, Tactics, Adventure, Learning (by age band), Retro, Board games, Puzzle, Racing, Role-playing and Sports, and on the game page the PEGI rating with its descriptors, players and co-op, controller support, a trailer, system requirements and a demo. A design only: the catalog knows the category `games` and none of those fields yet; every game on the pages is sample data.
+
 #### 2026-11-16 *0.1.18*
 - **The web store's `site/` never carries a test key.** A build configured
   with `-DULTRASTORE_WEB_TEST_KEYS` - every CI build, since the browser

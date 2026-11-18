@@ -26,11 +26,29 @@ A path argument keeps the translation units under that directory or that
 file. --clang names the compiler (default: clang++), --jobs the parallel
 compiles (default: the processor count), --db another compile database.
 
-Needs clang++ with libc++ (Debian/Ubuntu: apt install clang libc++-dev
-libc++abi-dev) and a configured build (the headers the build found).
+Needs clang++, libc++'s headers and a configured build (the headers the
+build found). Only the headers: the units are type-checked, never linked.
+They come from an installed libc++ when there is one, else from a private
+copy that
+
+    python3 scripts/check_libcxx_syntax.py --fetch-libcxx
+
+downloads and unpacks (Debian/Ubuntu: `apt-get download` of the libc++ and
+libc++abi dev packages matching clang's version, unpacked with `dpkg-deb -x`
+into ~/.cache/ultracanvas/libcxx, or $ULTRACANVAS_LIBCXX_ROOT; no root, and
+no installed package changes). Installing libc++-dev is the other way, but
+not on Ubuntu 24.04 with GStreamer's dev package: libc++-18-dev needs LLVM's
+libunwind-18-dev, which conflicts with the libunwind-dev that
+libgstreamer1.0-dev needs - apt removes the one for the other, GStreamer's
+pkg-config file stops resolving, and the next configure leaves the media
+backends out without a word. The cloud session hook
+(.claude/hooks/session-start.sh) fetches the private copy.
 Exit 0: every unit compiles; 1: some do not; 2: the toolchain or the
 database is missing.
 """
+# Version: 2.1.0 - a private copy of libc++'s headers when none is installed
+#                 (--fetch-libcxx): installing libc++-dev on Ubuntu 24.04 removes
+#                 the libunwind-dev that GStreamer's dev package needs
 # Version: 2.0.0 - every translation unit of the compile database, not only
 #                 VideoFX's sources with a flag block of their own; Python
 # Version: 1.0.0 - scripts/check_libcxx_syntax.sh: VideoFX against libc++
@@ -59,21 +77,98 @@ CXX_SUFFIXES = (".cpp", ".cc", ".cxx", ".mm")
 KEPT_PREFIXES = ("-D", "-U", "-I", "-std=", "-f", "-pthread")
 KEPT_WITH_VALUE = ("-isystem", "-iquote", "-include", "-idirafter")
 
+# Where --fetch-libcxx unpacks libc++'s headers when none is installed.
+PRIVATE_LIBCXX = Path(os.environ.get("ULTRACANVAS_LIBCXX_ROOT") or
+                      Path.home() / ".cache" / "ultracanvas" / "libcxx")
+NO_LIBCXX_HINT = ("run python3 scripts/check_libcxx_syntax.py --fetch-libcxx for a private copy of its "
+                  "headers (on Ubuntu 24.04 apt install libc++-dev removes the libunwind-dev that "
+                  "GStreamer's dev package needs)")
 
-def check_toolchain(cxx, work):
-    if shutil.which(cxx) is None:
-        print("check_libcxx_syntax: %s not found (apt install clang libc++-dev libc++abi-dev, "
-              "or pass --clang)" % cxx, file=sys.stderr)
-        return False
+
+def clang_major(cxx):
+    """clang's major version, from its --version line; None when unknown."""
+    r = subprocess.run([cxx, "--version"], capture_output=True, text=True)
+    for word in (r.stdout.splitlines() or [""])[0].split():
+        head = word.split(".")[0]
+        if "." in word and head.isdigit():
+            return int(head)
+    return None
+
+
+def private_flags(cxx):
+    """The flags that point clang at the private copy of libc++'s headers
+    for its version; None when there is none."""
+    major = clang_major(cxx)
+    if major is None:
+        return None
+    llvm = PRIVATE_LIBCXX / "usr" / "lib" / ("llvm-%d" % major) / "include"
+    if not (llvm / "c++" / "v1" / "__config").is_file():
+        return None
+    # -nostdinc++ keeps libstdc++'s headers out; cxxabi.h is beside c++/.
+    return ["-nostdinc++", "-isystem", str(llvm / "c++" / "v1"), "-isystem", str(llvm)]
+
+
+def libcxx_flags(cxx, work):
+    """The flags that compile against libc++: the installed one, else the
+    private copy; None when neither compiles a probe."""
     probe = work / "probe.cpp"
     probe.write_text("#include <__config>\n#include <filesystem>\nint main() { return 0; }\n")
-    r = subprocess.run([cxx, "-std=gnu++20", "-stdlib=libc++", "-fsyntax-only", str(probe)],
-                       capture_output=True, text=True)
-    if r.returncode != 0:
-        print("check_libcxx_syntax: %s cannot compile with -stdlib=libc++ "
-              "(apt install libc++-dev libc++abi-dev)" % cxx, file=sys.stderr)
+    candidates = [["-stdlib=libc++"]]
+    private = private_flags(cxx)
+    if private:
+        candidates.append(["-stdlib=libc++"] + private)
+    for flags in candidates:
+        r = subprocess.run([cxx, "-std=gnu++20"] + flags + ["-fsyntax-only", str(probe)],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            return flags
+    return None
+
+
+def fetch_private_libcxx(cxx):
+    """Download libc++'s and libc++abi's dev packages for clang's version and
+    unpack them into PRIVATE_LIBCXX - not installed: no root, and no package
+    of the system's changes. True when the headers are there afterwards."""
+    major = clang_major(cxx)
+    if major is None:
+        print("check_libcxx_syntax: cannot tell %s's version" % cxx, file=sys.stderr)
+        return False
+    if not (shutil.which("apt-get") and shutil.which("dpkg-deb")):
+        print("check_libcxx_syntax: --fetch-libcxx needs apt-get and dpkg-deb (Debian, Ubuntu); "
+              "elsewhere install libc++ for clang %d" % major, file=sys.stderr)
+        return False
+    packages = ["libc++-%d-dev" % major, "libc++abi-%d-dev" % major]
+    with tempfile.TemporaryDirectory() as tmp:
+        r = subprocess.run(["apt-get", "download"] + packages, cwd=tmp, capture_output=True, text=True)
+        debs = sorted(Path(tmp).glob("*.deb"))
+        if r.returncode != 0 or len(debs) != len(packages):
+            print("check_libcxx_syntax: apt-get download %s failed: %s"
+                  % (" ".join(packages), (r.stderr or r.stdout).strip()[-400:]), file=sys.stderr)
+            return False
+        PRIVATE_LIBCXX.mkdir(parents=True, exist_ok=True)
+        for deb in debs:
+            r = subprocess.run(["dpkg-deb", "-x", str(deb), str(PRIVATE_LIBCXX)], capture_output=True, text=True)
+            if r.returncode != 0:
+                print("check_libcxx_syntax: unpacking %s failed: %s" % (deb.name, r.stderr.strip()),
+                      file=sys.stderr)
+                return False
+    if private_flags(cxx) is None:
+        print("check_libcxx_syntax: %s holds no libc++ headers for clang %d" % (PRIVATE_LIBCXX, major),
+              file=sys.stderr)
         return False
     return True
+
+
+def check_toolchain(cxx, work):
+    """The flags to compile against libc++ with, or None (said why)."""
+    if shutil.which(cxx) is None:
+        print("check_libcxx_syntax: %s not found (install clang, or pass --clang)" % cxx, file=sys.stderr)
+        return None
+    flags = libcxx_flags(cxx, work)
+    if flags is None:
+        print("check_libcxx_syntax: %s cannot compile against libc++ - %s" % (cxx, NO_LIBCXX_HINT),
+              file=sys.stderr)
+    return flags
 
 
 def exports_compile_commands(build):
@@ -154,8 +249,8 @@ def select_units(db, wanted):
     return units
 
 
-def compile_one(cxx, file, entry):
-    cmd = [cxx, "-stdlib=libc++", "-fsyntax-only", "-w"] + kept_flags(entry["command"]) + [str(file)]
+def compile_one(cxx, libcxx, file, entry):
+    cmd = [cxx] + libcxx + ["-fsyntax-only", "-w"] + kept_flags(entry["command"]) + [str(file)]
     r = subprocess.run(cmd, cwd=entry["directory"], capture_output=True, text=True)
     return r.returncode == 0, (r.stdout + r.stderr)
 
@@ -167,10 +262,26 @@ def main():
     parser.add_argument("--clang", default=os.environ.get("CLANGXX", "clang++"))
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 2)
     parser.add_argument("--list", action="store_true", help="print the units that would be checked and exit")
+    parser.add_argument("--fetch-libcxx", action="store_true",
+                        help="when no libc++ compiles, download its headers to a private folder, then exit")
     args = parser.parse_args()
 
+    if args.fetch_libcxx:
+        with tempfile.TemporaryDirectory() as tmp:
+            if shutil.which(args.clang) is None:
+                print("check_libcxx_syntax: %s not found" % args.clang, file=sys.stderr)
+                return 2
+            if libcxx_flags(args.clang, Path(tmp)) is not None:
+                print("check_libcxx_syntax: %s already compiles against libc++" % args.clang)
+                return 0
+            if not fetch_private_libcxx(args.clang) or libcxx_flags(args.clang, Path(tmp)) is None:
+                return 2
+        print("check_libcxx_syntax: libc++'s headers are in %s" % PRIVATE_LIBCXX)
+        return 0
+
     with tempfile.TemporaryDirectory() as tmp:
-        if not check_toolchain(args.clang, Path(tmp)):
+        libcxx = check_toolchain(args.clang, Path(tmp))
+        if libcxx is None:
             return 2
     db = load_database(args.db)
     if db is None:
@@ -186,7 +297,7 @@ def main():
 
     failed = []
     with concurrent.futures.ThreadPoolExecutor(args.jobs) as pool:
-        futures = {pool.submit(compile_one, args.clang, f, e): f for f, e in units}
+        futures = {pool.submit(compile_one, args.clang, libcxx, f, e): f for f, e in units}
         for fut in concurrent.futures.as_completed(futures):
             ok, output = fut.result()
             if not ok:
