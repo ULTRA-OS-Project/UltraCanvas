@@ -1761,3 +1761,136 @@ TEST(a_companys_name_from_its_own_or_a_free_domain_is_not_a_mismatch) {
     REQUIRE(proven.Has("sender-company-mismatch"));
     REQUIRE(proven.level == ThreatLevel::Clean);
 }
+
+// ---------------------------------------------------------------------------
+// Fake luxury goods behind disguised links (a reader's inbox, 2026-11-17)
+// ---------------------------------------------------------------------------
+namespace {
+
+// The mail as it arrived, cut to what the rules read: no List-Unsubscribe, no
+// Authentication-Results, and every link written "https:////host".
+const char* kReplicaWatchMail =
+    "Return-Path: <infospool@wwwpopshoponline.example>\r\n"
+    "Received: from wwwpopshoponline.example (unknown [196.251.102.238])\r\n"
+    "\tby mail.reader.example (Postfix) with ESMTPS id DE4AFC112B1\r\n"
+    "\tfor <info@reader.example>; Tue, 17 Nov 2026 17:54:52 +0100 (CET)\r\n"
+    "Message-ID: <4o.xg0bmjniq.oz6vdlltrpu@4p.7crrlgxl.ti>\r\n"
+    "Date: Tue, 17 Nov 2026 16:55:51 -0300\r\n"
+    "From: Victoria <infospool@wwwpopshoponline.example>\r\n"
+    "To: info <info@reader.example>\r\n"
+    "Subject: [Black Friday] Rolex Watches Starting at Just $250\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: text/html;\r\n\tcharset=\"utf-8\"\r\n"
+    "Content-Transfer-Encoding: Quoted-Printable\r\n"
+    "X-Antivirus-Status: Clean\r\n"
+    "\r\n"
+    "<HTML lang=3Den><BODY><TABLE><TR><TD><A style=3D\"DISPLAY: b=\r\n"
+    "lock\" href=3D\"https:////vv1.popshoponline.example////////1v5wer//////=\r\n"
+    "/vy5.html\" target=3D_blank><IMG alt=3D\"Exclusive Luxury Timepieces Starting =\r\n"
+    "at Only $250\" src=3D\"https:////vv1.popshoponline.example//////qw.jpg\" width=\r\n"
+    "=3D600></A></TD></TR><TR><TD><A href=3D\"https:////vv1.popshoponline.example=\r\n"
+    "////////1v5wer///////vy5.html\"><H1>Timeless Luxury, Crafted For You </H1></A>=\r\n"
+    "<A href=3D\"https:////vv1.popshoponline.example////////1v5wer///////vy5.html\">=\r\n"
+    "<P>Discover our exclusive range of precision luxury watches. Designed for=20\r\n"
+    "distinction and built to last, now available starting from an unbeatable=20\r\n"
+    "<STRONG>$250</STRONG>. </P></A><A href=3D\"https:////vv1.popshoponline.examp=\r\n"
+    "le////////1v5wer///////vy5.html\">SHOP LUXURY WATCHES FROM $250 </A></TD></T=\r\n"
+    "R><TR><TD><P>You received this message because you subscribed to our luxury=\r\n"
+    " arrivals and special promotions. </P><A href=3D\"https:////vv1.popshoponlin=\r\n"
+    "e.example/////return.php?p=3DTUsxP2lu\">Unsubscribe from this mailing list =\r\n"
+    "</A></TD></TR></TABLE></BODY></HTML>\r\n";
+
+} // namespace
+
+TEST(links_with_extra_slashes_keep_their_host) {
+    // A browser reads any run of '/' and '\' after "https:" as the "//".
+    const auto links = ExtractLinks(
+        "<a href=\"https:////shop.example.ru////x.html\">a</a>"
+        "<a href=\"https:\\\\shop.example.ru\\x.html\">b</a>"
+        "<a href=\"http:/shop.example.ru/\">c</a>"
+        "<a href=\"https://shop.example.ru/\">d</a>"
+        "<a href=\"/go?u=https://elsewhere.example\">e</a>"
+        "<a href=\"mailto:x@shop.example.ru\">f</a>", true);
+    REQUIRE(links.size() == 6);
+    REQUIRE(links[0].host == "shop.example.ru");
+    REQUIRE(links[1].host == "shop.example.ru");
+    REQUIRE(links[2].host == "shop.example.ru");
+    REQUIRE(links[3].host == "shop.example.ru");
+    REQUIRE(links[4].host.empty());   // a relative path on the sender's own site
+    REQUIRE(links[5].host.empty());
+    // Pictures loaded the same way are found too.
+    const auto images = ExtractImageHosts("<img src=\"https:////cdn.example.ru//a.jpg\">");
+    REQUIRE(images.size() == 1);
+    REQUIRE(images[0] == "cdn.example.ru");
+}
+
+TEST(a_disguised_link_address_is_told) {
+    const ThreatReport r = ScanMessage(Html("news@shop.example",
+        "<a href=\"https:////vv1.other.example////x.html\">Shop now</a>"));
+    REQUIRE(r.Has("link-disguised-address"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+    // Written as usual, it is not.
+    REQUIRE(!ScanMessage(Html("news@shop.example",
+        "<a href=\"https://vv1.other.example/x.html\">Shop now</a>"))
+                 .Has("link-disguised-address"));
+    // A phishing warning: switched off with them.
+    ScanInput off = Html("news@shop.example",
+        "<a href=\"https:////vv1.other.example////x.html\">Shop now</a>");
+    off.options.phishing = false;
+    REQUIRE(!ScanMessage(off).Has("link-disguised-address"));
+}
+
+TEST(the_250_dollar_rolex_mail_is_flagged) {
+    const ThreatReport r = ScanRawMessage(kReplicaWatchMail);
+    REQUIRE(r.Has("link-disguised-address"));
+    REQUIRE(r.Has("counterfeit-goods"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    // The reading pane can show where the button really goes.
+    const DomainMismatch m = FindDomainMismatchInRaw(kReplicaWatchMail);
+    REQUIRE(m.found);
+    REQUIRE(m.senderDomain == "wwwpopshoponline.example");
+    REQUIRE(m.linkDomain == "vv1.popshoponline.example");
+}
+
+TEST(counterfeit_luxury_goods) {
+    auto scan = [](const std::string& from, const std::string& subject,
+                   const std::string& body) {
+        ScanInput in = Html(from, body);
+        in.subject = subject;
+        return ScanMessage(in);
+    };
+    // A price no genuine one has, an offer.
+    REQUIRE(scan("deals@watch-outlet.example", "Rolex Watches Starting at Just $250", "<p>Shop now</p>")
+                .Has("counterfeit-goods"));
+    REQUIRE(scan("x@bags.example", "Black Friday", "<p>Louis Vuitton bags from 89 EUR</p>")
+                .Has("counterfeit-goods"));
+    REQUIRE(scan("x@bags.example", "Sale", "<p>Rolex Submariner only 1.250,00 \xE2\x82\xAC</p>")
+                .Has("counterfeit-goods"));
+    // Calling itself a replica, at any price.
+    const ThreatReport replica = scan("x@time.example", "New arrivals",
+        "<p>1:1 replica Patek Philippe and Audemars Piguet, AAA quality</p>");
+    REQUIRE(replica.Has("counterfeit-goods"));
+    REQUIRE(replica.level >= ThreatLevel::Suspicious);
+    // A genuine price, the brand's own domain, a word that only sounds like one.
+    REQUIRE(!scan("x@jeweller.example", "New in", "<p>Rolex Submariner Date, $12,950</p>")
+                 .Has("counterfeit-goods"));
+    REQUIRE(!scan("news@rolex.com", "Rolex", "<p>Leather strap from $250</p>")
+                 .Has("counterfeit-goods"));
+    REQUIRE(!scan("x@health.example", "Omega-3 sale", "<p>Omega 3 capsules only $25</p>")
+                 .Has("counterfeit-goods"));
+    REQUIRE(!scan("x@parcel.example", "Hermes delivery", "<p>Send a parcel from 4.99 EUR</p>")
+                 .Has("counterfeit-goods"));
+    // A proven shop's own bulk mail: a low price alone is a hint, not a verdict.
+    ScanInput shop = Html("news@jeweller.example", "<p>Cartier box, only $300</p>");
+    shop.listUnsubscribe = "<https://jeweller.example/u>";
+    shop.authResults = "mx.reader.example; dkim=pass header.d=jeweller.example; dmarc=pass "
+                       "header.from=jeweller.example";
+    const ThreatReport proven = ScanMessage(shop);
+    REQUIRE(proven.Has("counterfeit-goods"));
+    REQUIRE(proven.level < ThreatLevel::Suspicious);
+    // Its own switch.
+    ScanInput off = Html("deals@watch-outlet.example", "<p>Shop now</p>");
+    off.subject = "Rolex Watches Starting at Just $250";
+    off.options.counterfeits = false;
+    REQUIRE(!ScanMessage(off).Has("counterfeit-goods"));
+}

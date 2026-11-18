@@ -89,20 +89,52 @@ bool Contains(const std::string& haystackLower, const std::string& needleLower) 
     return haystackLower.find(needleLower) != std::string::npos;
 }
 
+// The schemes a browser reads the way the URL standard's "special" schemes
+// are read: any run of '/' and '\' after the colon is the "//" ("https:////
+// example.com" and "https:\\example.com" both go to example.com).
+bool IsSpecialScheme(const std::string& schemeLower) {
+    return schemeLower == "http" || schemeLower == "https" || schemeLower == "ftp" ||
+           schemeLower == "ws" || schemeLower == "wss";
+}
+
+// Where the authority of `url` starts, or npos when it has none (mailto:,
+// tel:, #anchor, a relative path). `outSeparators` gets the '/' and '\' the
+// scheme was followed by ("//" when written as usual).
+std::size_t AuthorityStart(const std::string& url, std::string* outSeparators = nullptr) {
+    if (outSeparators) outSeparators->clear();
+    const std::size_t colon = url.find(':');
+    if (colon != std::string::npos && colon > 0) {
+        const std::string scheme = Lower(url.substr(0, colon));
+        bool valid = std::isalpha(static_cast<unsigned char>(scheme[0])) != 0;
+        for (char c : scheme)
+            valid = valid && (std::isalnum(static_cast<unsigned char>(c)) || c == '+' ||
+                              c == '-' || c == '.');
+        if (valid) {
+            std::size_t p = colon + 1;
+            if (IsSpecialScheme(scheme)) {
+                while (p < url.size() && (url[p] == '/' || url[p] == '\\')) ++p;
+                if (p == colon + 1) return std::string::npos;   // "http:page.html": relative
+            } else if (url.compare(colon + 1, 2, "//") == 0) {
+                p = colon + 3;
+            } else {
+                return std::string::npos;
+            }
+            if (outSeparators) *outSeparators = url.substr(colon + 1, p - colon - 1);
+            return p;
+        }
+    }
+    if (Lower(url).compare(0, 4, "www.") == 0) return 0;
+    return std::string::npos;
+}
+
 // The authority of a URL, split into userinfo and host (port dropped).
 void SplitAuthority(const std::string& url, std::string& outUserinfo, std::string& outHost) {
     outUserinfo.clear();
     outHost.clear();
-    std::string rest;
-    const std::size_t scheme = url.find("://");
-    if (scheme != std::string::npos) {
-        rest = url.substr(scheme + 3);
-    } else if (Lower(url).compare(0, 4, "www.") == 0) {
-        rest = url;
-    } else {
-        return;   // mailto:, tel:, #anchor, a relative path — no host
-    }
-    const std::size_t end = rest.find_first_of("/?#");
+    const std::size_t start = AuthorityStart(url);
+    if (start == std::string::npos) return;
+    const std::string rest = url.substr(start);
+    const std::size_t end = rest.find_first_of("/?#\\");
     std::string authority = (end == std::string::npos) ? rest : rest.substr(0, end);
     const std::size_t at = authority.rfind('@');
     if (at != std::string::npos) {
@@ -123,6 +155,17 @@ std::string HostOf(const std::string& url) {
     std::string userinfo, host;
     SplitAuthority(url, userinfo, host);
     return host;
+}
+
+// A web address written so that a filter reading it literally finds no host,
+// while the browser goes there all the same: "https:////example.ru/",
+// "https:\\example.ru", "http:/example.ru". Returns what the scheme is
+// followed by ("////"), or "" when it is written as usual.
+std::string DisguisedSeparators(const std::string& url) {
+    std::string separators;
+    if (AuthorityStart(url, &separators) == std::string::npos || separators.empty()) return "";
+    if (separators == "//" || HostOf(url).empty()) return "";
+    return separators;
 }
 
 bool IsIpLiteral(const std::string& host) {
@@ -937,6 +980,92 @@ bool LabelIsDisplayName(const std::string& label, const std::vector<std::string>
     return false;
 }
 
+// ---------------------------------------------------------------------------
+// Counterfeit luxury goods
+// ---------------------------------------------------------------------------
+// "Rolex Watches Starting at Just $250", "Louis Vuitton bags from 89 EUR",
+// "1:1 replica watches, AAA quality". No genuine Rolex costs $250: what the
+// shop sells is a fake, or nothing at all - it takes the payment and the card
+// details. A brand counts by a name nothing else is called ("omega" alone is
+// a fatty acid, "hermes" a parcel service), with the price below which no
+// genuine article of it is sold.
+struct LuxuryBrand {
+    const char*              name;        // as the reason names it
+    std::vector<std::string> phrases;     // matched as words, lower case
+    const char*              domainWord;  // in its own domains: rolex.com
+    int                      floor;       // no genuine one costs less ($, €, £)
+};
+
+const std::vector<LuxuryBrand>& LuxuryBrands() {
+    static const std::vector<LuxuryBrand> v = {
+        { "Rolex", { "rolex", "rolexes" }, "rolex", 2000 },
+        { "Patek Philippe", { "patek philippe", "patek" }, "patek", 5000 },
+        { "Audemars Piguet", { "audemars piguet", "audemars" }, "audemarspiguet", 5000 },
+        { "Richard Mille", { "richard mille" }, "richardmille", 10000 },
+        { "Vacheron Constantin", { "vacheron constantin", "vacheron" }, "vacheron", 5000 },
+        { "Hublot", { "hublot" }, "hublot", 2000 },
+        { "Omega", { "omega seamaster", "omega speedmaster", "omega constellation",
+                     "omega watch*" }, "omega", 1000 },
+        { "Cartier", { "cartier" }, "cartier", 1000 },
+        { "Breitling", { "breitling" }, "breitling", 1000 },
+        { "Panerai", { "panerai" }, "panerai", 1000 },
+        { "IWC", { "iwc schaffhausen", "iwc watch*", "iwc portugieser" }, "iwc", 1000 },
+        { "Jaeger-LeCoultre", { "jaeger-lecoultre", "jaeger lecoultre" }, "jaeger", 2000 },
+        { "TAG Heuer", { "tag heuer" }, "tagheuer", 500 },
+        { "Louis Vuitton", { "louis vuitton" }, "louisvuitton", 500 },
+        { "Herm\xC3\xA8s", { "birkin", "hermes kelly", "herm\xC3\xA8s kelly", "hermes bag*",
+                             "herm\xC3\xA8s bag*" }, "hermes", 2000 },
+        { "Chanel", { "chanel bag*", "chanel handbag*", "chanel flap*" }, "chanel", 1000 },
+    };
+    return v;
+}
+
+// What only a counterfeit calls itself.
+const std::vector<std::string>& ReplicaPhrases() {
+    static const std::vector<std::string> v = {
+        "replica", "replicas", "1:1 copy", "1:1 copies", "1:1 quality", "aaa quality",
+        "aaa+ quality", "aaa grade", "knockoff", "knockoffs", "knock-off", "knock-offs",
+        "super clone", "superclone", "swiss clone", "clone watch*", "mirror quality",
+        "imitation watch*", "imitation bag*", "fake watch*", "fake bag*",
+        "high quality copies", "high-quality copies", "replik*", "nachbau",
+    };
+    return v;
+}
+
+// Words that sell: the price is an offer, not a news item about one.
+const std::vector<std::string>& SalesPhrases() {
+    static const std::vector<std::string> v = {
+        "starting at", "starting from", "from", "only", "just", "sale", "% off",
+        "discount*", "shop*", "order*", "buy", "price*", "deal*", "offer*", "ab nur", "nur",
+    };
+    return v;
+}
+
+// The lowest price in the text - "$250", "US$ 1,250", "199 €", "89 EUR",
+// "£75.99" - as a whole amount, and the text it was written as; -1 when none.
+long long LowestPrice(const std::string& textLower, std::string* written) {
+    static const std::regex before(
+        R"((?:\$|\xE2\x82\xAC|\xC2\xA3|usd|eur|euro|gbp)\s?(\d+(?:[,.]\d{3})*)(?:[.,]\d{1,2})?(?!\d))");
+    static const std::regex after(
+        R"((\d+(?:[,.]\d{3})*)(?:[.,]\d{1,2})?\s?(?:\$|\xE2\x82\xAC|\xC2\xA3|usd\b|eur\b|euros?\b|gbp\b|dollars?\b))");
+    long long lowest = -1;
+    for (const std::regex* re : { &before, &after }) {
+        for (auto it = std::sregex_iterator(textLower.begin(), textLower.end(), *re);
+             it != std::sregex_iterator(); ++it) {
+            std::string digits;
+            for (char c : (*it)[1].str()) if (std::isdigit(static_cast<unsigned char>(c))) digits += c;
+            if (digits.empty() || digits.size() > 12) continue;
+            const long long value = std::stoll(digits);
+            if (value < 20) continue;   // "$0 shipping", "$5 off"
+            if (lowest < 0 || value < lowest) {
+                lowest = value;
+                if (written) *written = Trim(it->str());
+            }
+        }
+    }
+    return lowest;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -995,12 +1124,13 @@ bool FindingEnabled(const ThreatScanOptions& o, const std::string& code) {
     if (code.compare(0, 7, "crypto-") == 0) return o.cryptoScams;
     if (code.compare(0, 11, "attachment-") == 0) return o.attachments;
     if (code == "spam-flag")                return o.spamFlag;
+    if (code == "counterfeit-goods")        return o.counterfeits;
     static const std::set<std::string> phishing = {
         "auth-failure", "brand-impersonation", "sender-domain-lookalike",
         "borrowed-brand-pictures", "link-userinfo", "link-ip-host", "link-punycode",
         "link-nonascii-host", "link-shortener", "link-target-mismatch",
         "link-brand-mismatch", "link-brand-lookalike", "link-domain-lookalike",
-        "insecure-login-link",
+        "link-disguised-address", "insecure-login-link",
         "many-foreign-domains", "credential-request", "reply-to-mismatch",
         "sender-company-mismatch",
     };
@@ -1078,7 +1208,7 @@ bool FindingKeptForTrustedSender(const std::string& code) {
     static const std::set<std::string> kept = {
         "auth-failure", "link-target-mismatch", "link-userinfo", "link-ip-host",
         "link-punycode", "link-nonascii-host", "link-brand-mismatch",
-        "link-brand-lookalike", "link-domain-lookalike",
+        "link-brand-lookalike", "link-domain-lookalike", "link-disguised-address",
         "attachment-disguised-executable", "attachment-active-page",
         "crypto-wallet-secret",
     };
@@ -1407,6 +1537,19 @@ ThreatReport ScanMessage(const ScanInput& input) {
                 host + ".");
         }
 
+        // "https:////shop.example.ru/": the browser goes to shop.example.ru,
+        // a filter reading the address as written finds no site at all. No
+        // mail program writes an address like that; a spammer hiding one does.
+        const std::string disguised = DisguisedSeparators(link.href);
+        if (!disguised.empty()) {
+            const std::size_t colon = link.href.find(':');
+            Add(report, 25, "link-disguised-address",
+                "A link is written \"" + link.href.substr(0, colon + 1) + disguised + link.host +
+                "\" instead of \"" + link.href.substr(0, colon + 1) + "//" + link.host +
+                "\": the browser still goes to " + link.host +
+                ", but a spam filter reading the address as written finds no site to check.");
+        }
+
         if (IsIpLiteral(link.host)) {
             Add(report, 35, "link-ip-host",
                 "A link points straight at the numeric address " + link.host +
@@ -1583,6 +1726,46 @@ ThreatReport ScanMessage(const ScanInput& input) {
                        "for a processing fee, an insurance or a transfer charge first, and the "
                        "loan never comes.";
                 Add(report, weight, "loan-offer-fraud", why);
+            }
+        }
+    }
+
+    // ---- Counterfeit luxury goods -----------------------------------------
+    // A Rolex for $250, "1:1 replica" Louis Vuitton bags: a fake, or nothing
+    // at all once paid. Not from the brand's own domain. A domain proven to
+    // be the sender's own, sending its bulk mail, is a shop with a name to
+    // lose: a low price alone is only a hint there (an Omega strap, a used
+    // Cartier box), a "replica" never is.
+    {
+        const std::string text = StraightQuotes(Lower(input.subject) + "\n" + bodyLower);
+        const LuxuryBrand* brand = nullptr;
+        for (const LuxuryBrand& b : LuxuryBrands()) {
+            if (FirstWordPhraseIn(text, b.phrases)) { brand = &b; break; }
+        }
+        std::string senderLabel = senderReg.substr(0, senderReg.find('.'));
+        senderLabel.erase(std::remove(senderLabel.begin(), senderLabel.end(), '-'), senderLabel.end());
+        if (brand && !Contains(senderLabel, brand->domainWord)) {
+            const std::string* replica = FirstWordPhraseIn(text, ReplicaPhrases());
+            std::string price;
+            const long long lowest = LowestPrice(text, &price);
+            const bool cheap = lowest >= 0 && lowest < brand->floor &&
+                               FirstWordPhraseIn(text, SalesPhrases()) != nullptr;
+            if (replica || cheap) {
+                int weight = replica && cheap ? 45 : replica ? 40 : 30;
+                if (!replica && authenticated && report.bulk) weight = 15;
+                std::string why = "The message sells " + std::string(brand->name);
+                if (cheap) {
+                    std::string floor = std::to_string(brand->floor);
+                    for (int i = static_cast<int>(floor.size()) - 3; i > 0; i -= 3)
+                        floor.insert(static_cast<std::size_t>(i), ",");
+                    why += " for " + price + ", when a genuine one costs " + floor +
+                           " dollars or euros at the very least";
+                }
+                if (replica) why += std::string(cheap ? ", and" : "") + " calls it \"" +
+                                    *replica + "\"";
+                why += ". Luxury watches and bags sold at such prices are counterfeit, or "
+                       "never arrive: the shop keeps the payment and the card details.";
+                Add(report, weight, "counterfeit-goods", why);
             }
         }
     }

@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.25.0 - fake designer goods (counterfeit-goods) are named in the warning strip,
+//                   with their own advice
 // Version: 0.24.0 - an HTML message sits on its own white page, framed and set in on a dark look; the header, the bars and the warning strip follow a change of the look
 // Version: 0.23.1 - the warning strip's advice, footnotes and crypto caution title go
 //                   through Tr (they were English only)
@@ -1274,6 +1276,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
 
     const bool romance = security.HasFinding("romance-scam");
     const bool loan = security.HasFinding("loan-offer-fraud");
+    const bool counterfeit = security.HasFinding("counterfeit-goods");
     const bool lookalike = security.HasFinding("sender-domain-lookalike") ||
                            security.HasFinding("government-impersonation");
     // An .html "invoice": the page opens in the browser, outside the reader.
@@ -1324,6 +1327,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     // Settings > Display > Email warnings: the strip for the kind told (the
     // same order as the title below) may be switched off. The badge still says.
     const bool kindShown = romance                         ? warningStrip_.romance
+                         : counterfeit                     ? warningStrip_.scam
                          : phishing || lookalike || webPage ? warningStrip_.phishing
                          : cryptoScam                      ? warningStrip_.cryptoScam
                          : loan                            ? warningStrip_.loan
@@ -1342,6 +1346,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     Theme::SetFrame(warning_, 1.0f, scam ? Theme::TrustScam : Theme::TrustSpam, Theme::kControlRadius);
     Theme::SetInk(warningTitle_, scam ? Theme::TrustScam : Theme::TrustSpam);
     const std::string what = romance                ? Tr("romance scam")
+                           : counterfeit            ? Tr("counterfeit goods")
                            : phishing || lookalike || webPage ? Tr("phishing")
                            : cryptoScam ? Tr("cryptocurrency scam")
                            : loan       ? Tr("loan scam")
@@ -1400,6 +1405,10 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     if (onlyBlocked)
         advice = Tr("Right-click the sender to unblock them. \"Mark as spam\" moves the "
                  "message to the junk folder.");
+    else if (counterfeit && !romance)
+        advice = Tr("Do not order or pay: a luxury watch or bag at a fraction of its price is a "
+                 "fake, or never arrives, and the card details you enter go to the seller. "
+                 "Buy from the brand's own shops or its authorised dealers.");
     else if (loan)
         advice = Tr("Do not pay any fee, insurance or charge to receive a loan, and do not "
                  "send copies of your passport or bank details. Ask your own bank if you need "

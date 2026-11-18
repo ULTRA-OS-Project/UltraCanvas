@@ -14,6 +14,11 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.12.0 - links written "https:////host" or "https:\\host" are read the way
+//                   the browser reads them (the host was lost, and every link rule
+//                   with it), and told (link-disguised-address); counterfeit luxury
+//                   goods - a Rolex for $250, "replica" bags (counterfeit-goods; its
+//                   own switch, counterfeits); kThreatRulesRevision 2026-11-18
 // Version: 0.11.0 - fake invoices: a web page attached (attachment-web-page), one that
 //                   loads a script, sends a form or moves the browser on
 //                   (attachment-active-page; ScanInput::attachedPages), and a
@@ -98,6 +103,7 @@ struct ThreatScanOptions {
     bool attachments   = true;   // attachment-*: programs, disguised documents,
                                  // web pages
     bool spamFlag      = true;   // spam-flag: the receiving server's own verdict
+    bool counterfeits  = true;   // counterfeit-goods: a Rolex for $250, "replica" bags
     bool operator==(const ThreatScanOptions&) const = default;
 };
 
@@ -231,7 +237,7 @@ struct ScanInput {
 // and the sync re-scans the stored bodies a batch at a time
 // (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
 // through is caught, and a genuine one it flagged is cleared.
-constexpr long long kThreatRulesRevision = 1793059200;   // 2026-10-27 00:00 UTC
+constexpr long long kThreatRulesRevision = 1794960000;   // 2026-11-18 00:00 UTC
 
 // ---------------------------------------------------------------------------
 // Mail authentication

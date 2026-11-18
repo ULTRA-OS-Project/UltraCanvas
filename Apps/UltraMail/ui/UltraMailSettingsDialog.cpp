@@ -31,6 +31,7 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.22.0 - Spam/scam warnings: fake designer goods (counterfeits)
 // Version: 1.21.0 - the window's colours are the look's and follow a change of it (UltraMailTheme.h
 //                   Follow): a dark desktop gives a dark settings window, the light look
 //                   keeps its colours; the gear button too
@@ -1337,6 +1338,9 @@ namespace {
             { "um-set-warn-crypto-caution",
               "Any mail about cryptocurrency (a word of caution)",
               &ThreatScanOptions::cryptoCaution },
+            { "um-set-warn-counterfeits",
+              "Fake designer goods - a Rolex for $250, \"replica\" bags",
+              &ThreatScanOptions::counterfeits },
             { "um-set-warn-attachments",
               "A dangerous attachment - a program, or one dressed as a document",
               &ThreatScanOptions::attachments },
