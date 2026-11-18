@@ -1,6 +1,9 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.9.4 - a destructive answer beside the default one (Delete permanently) is the theme's
+//                  button outlined in the theme's danger colour: it was a fixed light pink fill
+//                  with dark red text in a dark dialog too
 // Version: 3.9.3 - the Save dialog opens a type's Settings at its own type size
 // Version: 3.9.2 - nor by a popup's own window
 // Version: 3.9.1 - a dialog without a parent is not placed by the tooltip's window
@@ -1047,18 +1050,28 @@ namespace UltraCanvas {
             case DialogButtonRole::DestructiveDefault:
                 button->SetStyle(ButtonStyles::DangerStyle());
                 break;
-            case DialogButtonRole::Destructive: {
-                ButtonStyle red;
-                red.borderColor      = Color(163, 38, 31, 255);
-                red.borderWidth      = 1.5f;
-                red.normalTextColor  = Color(143, 31, 25, 255);
-                red.hoverTextColor   = Color(143, 31, 25, 255);
-                red.pressedTextColor = Colors::White;
-                red.hoverColor       = Color(250, 232, 230, 255);
-                red.pressedColor     = Color(163, 38, 31, 255);
-                button->SetStyle(red);
+            case DialogButtonRole::Destructive:
+                // The theme's button surface with a red outline and red ink:
+                // a fixed light-look pink fill and dark red text before,
+                // which glared from a dark dialog. Asked of the policy as
+                // well as of the dialog: a host that sets the dialog's fonts
+                // (SetStyle) before adding its answers has stopped the
+                // dialog's own following, not the theme being in force.
+                if (GetFollowTheme() || FollowThemeByDefault()) {
+                    button->SetStyle(DestructiveOutlineStyle(UltraCanvasTheme::Current(),
+                                                             button->GetStyle()));
+                } else {
+                    ButtonStyle red;
+                    red.borderColor      = Color(163, 38, 31, 255);
+                    red.borderWidth      = 1.5f;
+                    red.normalTextColor  = Color(143, 31, 25, 255);
+                    red.hoverTextColor   = Color(143, 31, 25, 255);
+                    red.pressedTextColor = Colors::White;
+                    red.hoverColor       = Color(250, 232, 230, 255);
+                    red.pressedColor     = Color(163, 38, 31, 255);
+                    button->SetStyle(red);
+                }
                 break;
-            }
             default:
                 break;
         }
@@ -3370,10 +3383,31 @@ namespace UltraCanvas {
                 case DialogButtonRole::Normal:
                     entry.button->SetStyle(ButtonStyle::FromTheme(theme, entry.button->GetStyle(), ButtonVariant::Standard));
                     break;
+                case DialogButtonRole::Destructive:
+                    entry.button->SetStyle(DestructiveOutlineStyle(theme, entry.button->GetStyle()));
+                    break;
                 default:
-                    break;   // a destructive answer keeps its red
+                    break;   // a destructive default keeps its red fill and white text
             }
         }
         RequestRedraw();
+    }
+
+    // A destructive answer beside the default one: the theme's ordinary
+    // button - its surface, hover and font - outlined and lettered in the
+    // theme's danger colour, filled with it while pressed. The danger colour
+    // is a dark red in a light look and a light one in a dark look, so the
+    // label reads on either surface.
+    ButtonStyle UltraCanvasModalDialog::DestructiveOutlineStyle(const UltraCanvasTheme& theme,
+                                                                const ButtonStyle& base) {
+        ButtonStyle s = ButtonStyle::FromTheme(theme, base, ButtonVariant::Standard);
+        const Color danger = theme.roles.danger;
+        s.borderColor = danger;
+        s.borderWidth = 1.5f;
+        s.normalTextColor = danger;
+        s.hoverTextColor = danger;
+        s.pressedColor = danger;
+        s.pressedTextColor = theme.dark ? theme.roles.ground : Colors::White;
+        return s;
     }
 } // namespace UltraCanvas

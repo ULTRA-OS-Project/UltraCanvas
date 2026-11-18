@@ -1,6 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.12.0 - DestructiveOutlineStyle: a destructive answer beside the default one follows the
+//                  theme (its button surface, the danger colour)
 // Version: 3.11.0 - SetMessageVisible: a dialog whose elements say what its message says keeps the
 //          message and details as text it answers with, without showing them a second time
 // Version: 3.10.2 - An input dialog wraps its prompt and grows to fit it (it was one line with an
@@ -396,11 +398,16 @@ namespace UltraCanvas {
         void SetStyle(const ModalDialogStyle& dialogStyle);
         // The theme over the dialog: the panel role behind its sections, the
         // message in ink, the footer buttons by their role (the default
-        // answer Primary, the others Standard; a destructive one keeps its
-        // red). SetFollowTheme(true) after the buttons are added applies it
+        // answer Primary, the others Standard, a destructive one beside it
+        // DestructiveOutlineStyle; a destructive default keeps its red
+        // fill). SetFollowTheme(true) after the buttons are added applies it
         // and keeps the dialog with the theme while it is open; the
         // elements the host added follow on their own.
         void ApplyTheme(const UltraCanvasTheme& theme) override;
+        // A destructive answer beside the default one: the theme's ordinary
+        // button outlined and lettered in its danger colour.
+        static ButtonStyle DestructiveOutlineStyle(const UltraCanvasTheme& theme,
+                                                   const ButtonStyle& base);
 
         std::string GetDialogTitle() const;
         std::string GetMessage() const;

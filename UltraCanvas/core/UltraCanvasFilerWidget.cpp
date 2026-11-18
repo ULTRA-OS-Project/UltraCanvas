@@ -51,6 +51,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.49.1 - the move / copy / delete dialogs' entry list follows the theme: its rows and
+//                  header were the light look's white and grey under a dark theme (a style
+//                  set by hand had stopped the list following)
 // Version: 1.49.0 - a word-processing document (.odt, .docx, .doc) shows its first page as laid
 //                  out - fonts, pictures, colours, header - drawn on the thumbnail workers by the
 //                  "word-processing" preview provider, not a page of its text lines; the text page
@@ -6223,7 +6226,12 @@ namespace UltraCanvas {
         }
 
         auto list = std::make_shared<UltraCanvasListView>(id, 0, 0, 0, outHeight);
-        ListViewStyle listStyle;
+        // The list's own shape over the theme's colours. Setting a style by
+        // hand stops an element following the theme, which left the rows
+        // white and the header light grey in a dark dialog: a list that was
+        // following picks the theme up again below, once its delegate is in.
+        const bool followTheme = list->GetFollowTheme();
+        ListViewStyle listStyle = list->GetStyle();
         listStyle.showHeader = true;
         listStyle.headerHeight = kOperationListHeaderHeight;
         listStyle.headerFontSize = 10;
@@ -6239,6 +6247,7 @@ namespace UltraCanvas {
         delegate->SetRowHeight(kOperationListRowHeight);
         list->SetModel(model);
         list->SetDelegate(delegate);
+        if (followTheme) list->SetFollowTheme(true);
         list->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         return list;

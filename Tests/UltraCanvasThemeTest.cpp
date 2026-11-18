@@ -3,6 +3,8 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.16.0 - the dialog's destructive outline answer and the Filer's operation list under a
+//                  dark theme
 // Version: 1.15.0 - the dark split pane handle, section card, clipboard rows and scrollbar thumb; the button's
 //                   derived states for the look; a size set by hand through ApplyTheme; a late delegate
 // Version: 1.14.0 - TakeHostFonts: the host's fonts onto an own theme
@@ -804,6 +806,46 @@ int main() {
         UltraCanvasUIElement::SetFollowThemeByDefault(false);
         auto later = std::make_shared<UltraCanvasButton>("later", 0, 0, 80, 24, "Later");
         CHECK(!later->GetFollowTheme() && !Same(later->GetStyle().normalColor, dark.roles.raised), "the default off again: a new element does not follow");
+        UltraCanvasTheme::SetCurrent(light);
+    }
+
+    std::printf("a dialog's destructive answer and an operation list under a dark theme\n");
+    {
+        // "Delete permanently" beside "Move to Trash": the theme's button,
+        // outlined and lettered in the danger colour - it was a fixed light
+        // pink fill with dark red text in a dark dialog too.
+        for (const UltraCanvasTheme* t : {&light, &dark}) {
+            const ButtonStyle red = UltraCanvasModalDialog::DestructiveOutlineStyle(*t, ButtonStyle());
+            const std::string look = t->dark ? "dark" : "light";
+            CHECK(Same(red.normalColor, t->roles.raised) && Same(red.hoverColor, t->roles.hover)
+                  && Same(red.normalTextColor, t->roles.danger) && Same(red.borderColor, t->roles.danger)
+                  && Same(red.pressedColor, t->roles.danger),
+                  (look + ": the theme's button surface, outlined and lettered in its danger colour").c_str());
+            CHECK(Contrast(red.normalTextColor, red.normalColor) >= 4.5 && Contrast(red.pressedTextColor, red.pressedColor) >= 3.0,
+                  (look + ": the label reads at rest (" + std::to_string(Contrast(red.normalTextColor, red.normalColor)) +
+                          ":1) and pressed").c_str());
+        }
+        // The Filer's move / copy / delete list sets its own shape (row and
+        // header heights) and then follows the theme again once its
+        // delegate is in: a style set by hand had left it white in a dark
+        // dialog.
+        UltraCanvasTheme::SetCurrent(dark);
+        UltraCanvasUIElement::SetFollowThemeByDefault(true);
+        auto opList = std::make_shared<UltraCanvasListView>("op-list", 0, 0, 400, 200);
+        ListViewStyle shape = opList->GetStyle();
+        shape.rowHeight = 22;
+        shape.alternateRowColors = true;
+        opList->SetStyle(shape);
+        auto rows = std::make_shared<UltraCanvasDefaultListDelegate>();
+        rows->SetFontSize(11.0f);
+        opList->SetDelegate(rows);
+        opList->SetFollowTheme(true);
+        CHECK(opList->GetFollowTheme() && Same(opList->GetStyle().backgroundColor, dark.roles.well)
+              && Same(opList->GetStyle().headerBackgroundColor, dark.roles.panel) && opList->GetStyle().rowHeight == 22,
+              "the list: the dark well and header, its own row height kept");
+        CHECK(Same(rows->GetTextColor(), dark.roles.ink) && Near(rows->GetFontSize(), 11.0, 1e-6),
+              "its rows in the theme's ink, at the size the list set");
+        UltraCanvasUIElement::SetFollowThemeByDefault(false);
         UltraCanvasTheme::SetCurrent(light);
     }
 
