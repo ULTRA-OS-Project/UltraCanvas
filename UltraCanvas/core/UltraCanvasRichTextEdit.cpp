@@ -7,6 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.17.0 - a document's stated colours follow a dark page (DocumentColor, AdaptDocumentColorToPage)
 // Version: 1.16.0 - a frame's chart (RichTextFrame::chart) is drawn by the chart engine (UltraCanvasRichDocumentChart.h)
 // Version: 1.15.1 - a document's own bullet is drawn in the text's colour, half as large again
 // Version: 1.15.0 - a heading in its style's size and font; the first paragraph's space above; a hanging first
@@ -485,6 +486,55 @@ void UltraCanvasRichTextEdit::SetMarkdown(const std::string& markdown,
 
 void UltraCanvasRichTextEdit::Clear() {
     SetDocument(std::make_shared<UCRichDocument>());
+}
+
+// A colour a document states, as it reads on `page` with the view's `ink`.
+// Documents are written for white paper: on a light page the colour is the
+// document's; on a dark one its lightness is turned over and fitted between
+// the page's and the ink's - black text becomes the ink, a white fill the
+// page, a pale grey cell a dark grey one - and its hue is kept, as word
+// processors' dark modes do.
+Color AdaptDocumentColorToPage(const Color& color, const Color& page, const Color& ink) {
+    auto lightness = [](const Color& c) {
+        return (std::max({c.r, c.g, c.b}) + std::min({c.r, c.g, c.b})) / 510.0;
+    };
+    const double pageL = lightness(page), inkL = lightness(ink);
+    if (pageL >= 0.5 || inkL <= pageL || color.a == 0) return color;
+    const double r = color.r / 255.0, g = color.g / 255.0, b = color.b / 255.0;
+    const double high = std::max({r, g, b}), low = std::min({r, g, b});
+    const double l = (high + low) * 0.5, spread = high - low;
+    double hue = 0.0, saturation = 0.0;
+    if (spread > 1e-9) {
+        saturation = spread / (1.0 - std::abs(2.0 * l - 1.0));
+        if (high == r) hue = std::fmod((g - b) / spread + 6.0, 6.0);
+        else if (high == g) hue = (b - r) / spread + 2.0;
+        else hue = (r - g) / spread + 4.0;
+    }
+    const double turned = pageL + (1.0 - l) * (inkL - pageL);
+    const double chroma = (1.0 - std::abs(2.0 * turned - 1.0)) * std::min(1.0, saturation);
+    const double second = chroma * (1.0 - std::abs(std::fmod(hue, 2.0) - 1.0));
+    const double base = turned - chroma * 0.5;
+    double rr = 0.0, gg = 0.0, bb = 0.0;
+    switch (static_cast<int>(hue) % 6) {
+        case 0: rr = chroma; gg = second; break;
+        case 1: rr = second; gg = chroma; break;
+        case 2: gg = chroma; bb = second; break;
+        case 3: gg = second; bb = chroma; break;
+        case 4: rr = second; bb = chroma; break;
+        default: rr = chroma; bb = second; break;
+    }
+    auto channel = [&](double v) { return static_cast<uint8_t>(std::lround(std::clamp(v + base, 0.0, 1.0) * 255.0)); };
+    return Color(channel(rr), channel(gg), channel(bb), color.a);
+}
+
+// A colour the document states ("#RRGGBB"), as this view shows it: the
+// document's own on a light page, fitted to a dark one.
+Color UltraCanvasRichTextEdit::DocumentColor(const std::string& hex, const Color& fallback) const {
+    const Color unparsed(1, 2, 3, 0);
+    const Color color = ParseHexColor(hex, unparsed);
+    if (color == unparsed) return fallback;
+    if (!style.adaptDocumentColors) return color;
+    return AdaptDocumentColorToPage(color, pageView ? style.pageColor : style.backgroundColor, style.textColor);
 }
 
 void UltraCanvasRichTextEdit::InvalidateDocument() {
@@ -1355,7 +1405,11 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
             // and their words are the same chart as a drawing: not drawn.)
             const Size2Di natural(static_cast<int>(std::lround(drawnWidth > 0.0 ? drawnWidth : target.width)),
                                   static_cast<int>(std::lround(drawnHeight > 0.0 ? drawnHeight : target.height)));
-            if (DrawRichDocumentChart(ctx, frame->chart, target, natural, &chartCache[placed.frameIndex])) return;
+            // (On a dark page its axes and words take the view's ink.)
+            const Color& page = pageView ? style.pageColor : style.backgroundColor;
+            const bool darkPage = page.r + page.g + page.b < 3 * 128;
+            if (DrawRichDocumentChart(ctx, frame->chart, target, natural, &chartCache[placed.frameIndex],
+                                      darkPage ? style.textColor : Color(0, 0, 0, 0))) return;
         }
         const double scaleX = drawnWidth > 0.0 ? target.width / drawnWidth : 1.0;
         const double scaleY = drawnHeight > 0.0 ? target.height / drawnHeight : 1.0;
@@ -1366,7 +1420,7 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
         ctx->PopState();
     }
     if (!placed.wordsOnly && !frame->backgroundColor.empty()) {
-        ctx->DrawFilledRectangle(target, ParseHexColor(frame->backgroundColor, Colors::Transparent),
+        ctx->DrawFilledRectangle(target, DocumentColor(frame->backgroundColor, Colors::Transparent),
                                  0.0f, Colors::Transparent);
     }
     if (placed.wordsOnly) {
@@ -1375,7 +1429,7 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
         const double half = width * 0.5;
         ctx->DrawFilledRectangle(Rect2Dd(target.x + half, target.y + half, target.width - width, target.height - width),
                                  Colors::Transparent, static_cast<float>(width),
-                                 ParseHexColor(frame->border.color, style.textColor));
+                                 DocumentColor(frame->border.color, style.textColor));
     } else if (!readOnly && !printing && !frame->IsDrawing() && !frame->nestedTable) {
         // An editable view shows where a borderless frame is, as Writer does
         // (on the screen: a print or a PDF has no such line).
@@ -1514,7 +1568,7 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
             std::vector<GradientStop> stops;
             for (const RichShape::GradientStop& stop : shape.gradientStops) {
                 stops.emplace_back(std::clamp(static_cast<double>(stop.position), 0.0, 1.0),
-                                   ParseHexColor(stop.color, Colors::Transparent));
+                                   DocumentColor(stop.color, Colors::Transparent));
             }
             std::shared_ptr<IPaintPattern> pattern;
             if (shape.gradientRadial) {
@@ -1533,7 +1587,7 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
                                                            cy + uy * half, stops);
             }
             if (pattern) ctx->SetFillPaint(pattern);
-            else ctx->SetFillPaint(ParseHexColor(shape.gradientStops.front().color, Colors::Transparent));
+            else ctx->SetFillPaint(DocumentColor(shape.gradientStops.front().color, Colors::Transparent));
             ctx->FillPathPreserve();
         } else if (shape.IsClosed() && shape.HasPictureFill() && shape.mediaIndex < 0
                    && shape.fillMediaIndex < static_cast<int>(document.media.size())) {
@@ -1564,15 +1618,15 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
                 ctx->PopState();
                 TraceShape(ctx, shape, x, y, w, h);      // the clip took the outline
             } else if (!shape.fillColor.empty()) {
-                ctx->SetFillPaint(ParseHexColor(shape.fillColor, Colors::Transparent));
+                ctx->SetFillPaint(DocumentColor(shape.fillColor, Colors::Transparent));
                 ctx->FillPathPreserve();
             }
         } else if (shape.IsClosed() && shape.HasPattern() && !shape.fillColor.empty() && shape.mediaIndex < 0) {
             // A pattern: its 8 x 8 tile, one pixel per dot at 100%, repeated
             // from the box's corner.
-            const Color fore = ParseHexColor(shape.fillColor, Colors::Black);
+            const Color fore = DocumentColor(shape.fillColor, Colors::Black);
             const Color back = shape.patternBackColor.empty() ? Colors::Transparent
-                                                              : ParseHexColor(shape.patternBackColor, Colors::White);
+                                                              : DocumentColor(shape.patternBackColor, Colors::White);
             auto argb = [](const Color& c) {
                 return (static_cast<uint32_t>(c.a) << 24) | (static_cast<uint32_t>(c.r) << 16)
                      | (static_cast<uint32_t>(c.g) << 8) | static_cast<uint32_t>(c.b);
@@ -1604,12 +1658,12 @@ void UltraCanvasRichTextEdit::DrawShape(IRenderContext* ctx, const RichShape& sh
             }
             ctx->FillPathPreserve();
         } else if (shape.IsClosed() && !shape.fillColor.empty() && shape.mediaIndex < 0) {
-            ctx->SetFillPaint(ParseHexColor(shape.fillColor, Colors::Transparent));
+            ctx->SetFillPaint(DocumentColor(shape.fillColor, Colors::Transparent));
             ctx->FillPathPreserve();
         }
         if (!shape.lineColor.empty()) {
             const double lineWidth = std::max(1.0, static_cast<double>(Px(shape.lineWidthPt)));
-            const Color color = ParseHexColor(shape.lineColor, style.textColor);
+            const Color color = DocumentColor(shape.lineColor, style.textColor);
             ctx->SetStrokePaint(color);
             ctx->SetStrokeWidth(lineWidth);
             ctx->SetLineJoin(LineJoin::Miter);
@@ -2500,7 +2554,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             && UltraCanvasInlineMath::IsAvailable()) {
             const float sizePt = run.fontSizePt > 0.0f ? run.fontSizePt
                                : static_cast<float>(FontForBlock(block).fontSize);
-            const Color color = run.color.empty() ? style.textColor : ParseHexColor(run.color, style.textColor);
+            const Color color = run.color.empty() ? style.textColor : DocumentColor(run.color, style.textColor);
             std::shared_ptr<UltraCanvasInlineMath> math =
                 UltraCanvasInlineMath::Typeset(run.text, Px(sizePt), color, false);
             if (math) {
@@ -2556,7 +2610,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
         if (run.letterSpacingPt)
             add(TextAttributeFactory::CreateLetterSpacing(static_cast<double>(Px(*run.letterSpacingPt))));
         if (!run.color.empty()) {
-            add(TextAttributeFactory::CreateForeground(ParseHexColor(run.color, style.textColor)));
+            add(TextAttributeFactory::CreateForeground(DocumentColor(run.color, style.textColor)));
         }
         if (run.change == RichTextRun::Change::Inserted) {
             add(TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle));
@@ -2566,7 +2620,7 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             add(TextAttributeFactory::CreateForeground(style.deletionColor));
         }
         if (!run.highlightColor.empty()) {
-            add(TextAttributeFactory::CreateBackground(ParseHexColor(run.highlightColor, Colors::Transparent)));
+            add(TextAttributeFactory::CreateBackground(DocumentColor(run.highlightColor, Colors::Transparent)));
         } else if (!run.commentIds.empty() && showComments && !printing) {
             // Text under a comment that is still open.
             const auto& comments = editor.GetDocument()->comments;
@@ -3898,14 +3952,14 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, const std::vector
 void UltraCanvasRichTextEdit::DrawDocumentCellFrame(IRenderContext* ctx, const RichTableCell& cell,
                                                    const Rect2Dd& rect) const {
     if (!cell.backgroundColor.empty()) {
-        ctx->DrawFilledRectangle(rect, ParseHexColor(cell.backgroundColor, Colors::Transparent),
+        ctx->DrawFilledRectangle(rect, DocumentColor(cell.backgroundColor, Colors::Transparent),
                                  0.0f, Colors::Transparent);
     }
     const double left = rect.x, top = rect.y;
     const double right = rect.x + rect.width, bottom = rect.y + rect.height;
     auto side = [&](const RichBorder& border, const Point2Dd& from, const Point2Dd& to) {
         if (border.IsVisible()) {
-            DrawBorderLine(ctx, border, from, to, ParseHexColor(border.color, style.textColor));
+            DrawBorderLine(ctx, border, from, to, DocumentColor(border.color, style.textColor));
         } else if (ShowsEditingMarks()) {
             ctx->PushState();
             ctx->SetStrokeWidth(1.0);
@@ -3942,12 +3996,12 @@ void UltraCanvasRichTextEdit::DrawParagraphFrame(IRenderContext* ctx, const std:
 
     if (!block.paragraphBackground.empty()) {
         ctx->DrawFilledRectangle(Rect2Dd(left, top, right - left, bottom - top),
-                                 ParseHexColor(block.paragraphBackground, Colors::Transparent),
+                                 DocumentColor(block.paragraphBackground, Colors::Transparent),
                                  0.0f, Colors::Transparent);
     }
     auto line = [&](const RichBorder& border, const Point2Dd& from, const Point2Dd& to) {
         if (!border.IsVisible()) return;
-        DrawBorderLine(ctx, border, from, to, ParseHexColor(border.color, style.textColor));
+        DrawBorderLine(ctx, border, from, to, DocumentColor(border.color, style.textColor));
     };
     if (!withPrevious) line(block.paragraphBorderTop, Point2Dd(left, top), Point2Dd(right, top));
     if (!withNext) line(block.paragraphBorderBottom, Point2Dd(left, bottom), Point2Dd(right, bottom));

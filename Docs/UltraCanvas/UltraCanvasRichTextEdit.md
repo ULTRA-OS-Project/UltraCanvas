@@ -34,6 +34,7 @@ state of the selection** rather than two asterisks in a buffer.
   - [Charts](#charts)
   - [Structure](#structure)
 - [Following the theme](#following-the-theme)
+  - [A document's colours on a dark page](#a-documents-colours-on-a-dark-page)
 - [Keyboard](#keyboard)
 - [Autoformat as you type](#autoformat-as-you-type)
 - [Input methods](#input-methods)
@@ -911,6 +912,30 @@ RichTextEditStyle serif = edit->GetStyle();
 serif.baseFont.fontFamily = "Georgia";
 edit->SetStyle(RichTextEditStyle::FromTheme(UltraCanvasTheme::Current(), serif));   // the roles over the document's font
 edit->SetFollowTheme(true);
+```
+
+### A document's colours on a dark page
+
+A document states its colours for white paper: black text, a pale grey table
+header, a white box. On a dark theme the page is dark and the view's ink
+light, so those colours are fitted to the page
+(`RichTextEditStyle::adaptDocumentColors`, on by default): a colour's
+lightness is turned over and set between the page's and the ink's, its hue
+kept. Black text reads in the ink, a white fill is the page, a pale grey cell
+a dark grey one with its text still readable on it, a dark red a lighter red.
+This covers text colour and highlight, paragraph and cell fills, borders,
+frames, drawn shapes and a chart's axes and words. Pictures are never
+changed, and printing and PDF export are on white paper in the document's own
+colours. The document itself is not touched: saved again, it has the colours
+it came with.
+
+```cpp
+RichTextEditStyle style = edit->GetStyle();
+style.adaptDocumentColors = false;      // always the document's own colours
+edit->SetStyle(style);
+
+// The same rule for an application's own drawing:
+Color shown = AdaptDocumentColorToPage(Color(0, 0, 0), style.pageColor, style.textColor);
 ```
 
 ## Keyboard

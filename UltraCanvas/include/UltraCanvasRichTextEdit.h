@@ -18,6 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.19.0 - RichTextEditStyle::adaptDocumentColors; AdaptDocumentColorToPage
 // Version: 1.18.0 - chartCache: a frame's chart drawn by the chart engine
 // Version: 1.17.1 - layoutStatedLines
 // Version: 1.17.0 - a frame standing in a line (a table nested in a cell) is edited in place
@@ -71,6 +72,11 @@
 namespace UltraCanvas {
 
 class UltraCanvasChartEngineElement;      // Plugins/Charts/Engine: draws a document's charts
+
+// A colour a document states (for white paper) as it reads on `page` with
+// the view's `ink`: unchanged on a light page; on a dark one its lightness
+// is turned over and fitted between the page's and the ink's, its hue kept.
+Color AdaptDocumentColorToPage(const Color& color, const Color& page, const Color& ink);
 
 // ===== STYLE =====
 
@@ -131,6 +137,12 @@ struct RichTextEditStyle {
     float scrollbarWidth = 15.0f;
     float pageGap = 16.0f;            // page view: desk between and around pages
     bool drawBorder = true;
+    // A document states its colours for white paper. On a dark page (a dark
+    // theme) they are fitted to it: lightness turned over, hue kept - black
+    // text reads in the view's ink, a pale cell fill becomes a dark one.
+    // false = always the document's own colours. Pictures are never changed,
+    // and print and PDF export are on white paper with the document's colours.
+    bool adaptDocumentColors = true;
     // Comments: the text they are on, and the pane beside the text.
     Color commentHighlightColor = Color(255, 236, 160);
     Color commentPaneColor = Color(238, 238, 238);
@@ -650,6 +662,9 @@ public:
     Rect2Df GetFloatRectForTest(size_t index) const {
         return index < placedFloats.size() ? placedFloats[index].rect : Rect2Df(0, 0, 0, 0);
     }
+    // A colour the document states, as this view shows it (the fallback,
+    // (1, 1, 1), for one it cannot read).
+    Color DocumentColorForTest(const std::string& hex) const { return DocumentColor(hex, Color(1, 1, 1)); }
     // The engine chart that drew frame `frameIndex`'s chart on the last
     // paint; null when the frame has none or was not painted.
     std::shared_ptr<UltraCanvasChartEngineElement> GetChartElementForTest(int frameIndex) const {
@@ -881,6 +896,7 @@ private:
     void DrawTextFrame(IRenderContext* ctx, const PlacedFloat& placed, const Rect2Dd& target);
     // A drawing's shapes (RichTextFrame::shapes), their boxes from (originX, originY).
     void DrawShape(IRenderContext* ctx, const RichShape& shape, double originX, double originY, int depth);
+    Color DocumentColor(const std::string& hex, const Color& fallback) const;
     static void TraceShape(IRenderContext* ctx, const RichShape& shape, double x, double y, double w, double h);
     std::map<std::pair<const void*, size_t>, std::shared_ptr<UCImage>> shapeImages;   // pictures in groups, by their bytes
     std::vector<PlacedFloat> placedFloats;

@@ -1,5 +1,6 @@
 // core/UltraCanvasRichDocumentChart.cpp
 // A document's chart as a chart of the chart engine - see the header.
+// Version: 1.1.0 - `ink`: the chart's furniture on a dark page
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -29,7 +30,7 @@ Color ChartColor(const std::string& hex) {
 
 // A chart on a page: the page shows through, the series take the office
 // palette where the file states no colour.
-ChartTheme PageTheme() {
+ChartTheme PageTheme(const Color& ink) {
     ChartTheme theme = ChartThemes::Light();
     theme.name = "Document";
     theme.backgroundColor = Color(0, 0, 0, 0);
@@ -38,6 +39,12 @@ ChartTheme PageTheme() {
     theme.axisLineColor = Color(128, 128, 128, 255);
     theme.axisTickColor = Color(128, 128, 128, 255);
     theme.gridColor = Color(208, 208, 208, 255);
+    if (ink.a > 0) {
+        // A dark page: the words in the view's ink, the rules fainter.
+        theme.axisLabelColor = theme.titleTextColor = theme.legendTextColor = ink;
+        theme.axisLineColor = theme.axisTickColor = ink.WithAlpha(150);
+        theme.gridColor = ink.WithAlpha(50);
+    }
     theme.palette = ChartPalette("Office", {Color(0x44, 0x72, 0xC4, 255), Color(0xED, 0x7D, 0x31, 255),
                                             Color(0xA5, 0xA5, 0xA5, 255), Color(0xFF, 0xC0, 0x00, 255),
                                             Color(0x5B, 0x9B, 0xD5, 255), Color(0x70, 0xAD, 0x47, 255)});
@@ -54,7 +61,8 @@ bool SharedX(const RichChart& chart) {
 
 } // namespace
 
-std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const RichChart& chart, int width, int height) {
+std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const RichChart& chart, int width, int height,
+                                                                       const Color& ink) {
     if (!chart.IsChart() || chart.series.empty()) return nullptr;
     std::shared_ptr<UltraCanvasChartEngineElement> element;
     bool anyJoined = false, anyMarked = false;
@@ -163,7 +171,7 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
             return nullptr;
     }
     if (!element) return nullptr;
-    element->SetTheme(PageTheme());
+    element->SetTheme(PageTheme(ink));
     element->SetEnableTooltips(false);
     element->SetShowLegend(chart.legend);
     element->SetLegendPosition(ChartLegendPosition::RightCenter);
@@ -172,12 +180,13 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
 }
 
 bool DrawRichDocumentChart(IRenderContext* ctx, const RichChart& chart, const Rect2Dd& target, const Size2Di& natural,
-                           std::shared_ptr<UltraCanvasChartEngineElement>* cached) {
+                           std::shared_ptr<UltraCanvasChartEngineElement>* cached, const Color& ink) {
     if (!ctx || natural.width < 8 || natural.height < 8 || target.width <= 0.0 || target.height <= 0.0) return false;
     std::shared_ptr<UltraCanvasChartEngineElement> local;
     std::shared_ptr<UltraCanvasChartEngineElement>& element = cached ? *cached : local;
-    if (!element || element->GetWidth() != natural.width || element->GetHeight() != natural.height) {
-        element = CreateRichDocumentChart(chart, natural.width, natural.height);
+    if (!element || element->GetWidth() != natural.width || element->GetHeight() != natural.height
+        || element->GetTheme().axisLabelColor != PageTheme(ink).axisLabelColor) {
+        element = CreateRichDocumentChart(chart, natural.width, natural.height, ink);
     }
     if (!element) return false;
     ctx->PushState();

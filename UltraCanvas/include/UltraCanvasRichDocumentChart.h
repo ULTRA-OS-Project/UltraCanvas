@@ -9,6 +9,7 @@
 // carry the chart's data. This is the bridge the view draws it with - and
 // any application can use to show a document's chart as a live element.
 //
+// Version: 1.1.0 - `ink`: the chart's furniture on a dark page
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -24,7 +25,10 @@ namespace UltraCanvas {
 // look of a chart on a page: no background of its own, the series in the
 // file's colours (the office palette where it gives none), no entrance
 // animation. nullptr when the chart has nothing to show.
-std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const RichChart& chart, int width, int height);
+// `ink` (alpha 0 = a light page's own) is what its axes, grid and words are
+// drawn in on a dark page.
+std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const RichChart& chart, int width, int height,
+                                                                       const Color& ink = Color(0, 0, 0, 0));
 
 // Draws `chart` into `target` of `ctx` (the view's page, a print, a PDF).
 // `natural` is the chart's own size in pixels: it is laid out for that size
@@ -32,6 +36,7 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
 // `cached` (optional) keeps the element between calls; it is rebuilt when
 // null or of another size. Returns false when there is nothing to draw.
 bool DrawRichDocumentChart(IRenderContext* ctx, const RichChart& chart, const Rect2Dd& target, const Size2Di& natural,
-                           std::shared_ptr<UltraCanvasChartEngineElement>* cached = nullptr);
+                           std::shared_ptr<UltraCanvasChartEngineElement>* cached = nullptr,
+                           const Color& ink = Color(0, 0, 0, 0));
 
 } // namespace UltraCanvas

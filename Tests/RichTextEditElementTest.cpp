@@ -2887,6 +2887,45 @@ int main() {
         window->RemoveChild(fontEdit);
     }
 
+    // ===== A DOCUMENT'S COLOURS ON A DARK PAGE =====
+    // A document states its colours for white paper; on a dark theme's page
+    // they are fitted to it.
+    std::cerr << "\n--- A document's colours on a dark page ---" << std::endl;
+    {
+        const Color page(37, 37, 38), ink(232, 232, 232), paper(255, 255, 255), black(20, 20, 20);
+        auto light = [](const Color& c) { return (std::max({c.r, c.g, c.b}) + std::min({c.r, c.g, c.b})) / 2; };
+        TEST("On a light page a document's colour is its own",
+             AdaptDocumentColorToPage(Color(0, 0, 0), paper, black) == Color(0, 0, 0)
+             && AdaptDocumentColorToPage(Color(230, 230, 230), paper, black) == Color(230, 230, 230));
+        const Color text = AdaptDocumentColorToPage(Color(0, 0, 0), page, ink);
+        TEST("On a dark page black text reads in the view's ink: " + std::to_string(light(text)), std::abs(light(text) - light(ink)) <= 1);
+        const Color white = AdaptDocumentColorToPage(Color(255, 255, 255), page, ink);
+        TEST("...a white fill is the page's: " + std::to_string(light(white)), std::abs(light(white) - light(page)) <= 1);
+        const Color cell = AdaptDocumentColorToPage(Color(230, 230, 230), page, ink);
+        TEST("...a pale grey cell is a dark grey one, a little off the page: " + std::to_string(light(cell)),
+             light(cell) > light(page) + 5 && light(cell) < 90);
+        const Color red = AdaptDocumentColorToPage(Color(192, 0, 0), page, ink);
+        TEST("...a dark red stays red, and lighter", red.r > red.g + 60 && red.r > red.b + 60 && light(red) > light(Color(192, 0, 0)));
+        TEST("...and a colour keeps its alpha", AdaptDocumentColorToPage(Color(0, 0, 0, 0), page, ink).a == 0
+             && AdaptDocumentColorToPage(Color(10, 20, 30, 128), page, ink).a == 128);
+
+        // In the view: a cell's fill and its text keep their contrast.
+        auto darkEdit = std::make_shared<UltraCanvasRichTextEdit>("DarkEdit", 0, 0, 600, 300);
+        window->AddChild(darkEdit);
+        RichTextEditStyle dark = darkEdit->GetStyle();
+        dark.textColor = ink;
+        dark.backgroundColor = dark.pageColor = page;
+        darkEdit->SetStyle(dark);
+        const Color fill = darkEdit->DocumentColorForTest("#E6E6E6"), letters = darkEdit->DocumentColorForTest("#000000");
+        TEST("The view fits a document's fill and text to its dark page: " + std::to_string(light(fill)) + " under "
+             + std::to_string(light(letters)), light(letters) - light(fill) > 120);
+        dark.adaptDocumentColors = false;
+        darkEdit->SetStyle(dark);
+        TEST("...unless told to keep the document's own", darkEdit->DocumentColorForTest("#E6E6E6") == Color(230, 230, 230));
+        TEST("...and a colour it cannot read is the fallback", darkEdit->DocumentColorForTest("nonsense") == Color(1, 1, 1));
+        window->RemoveChild(darkEdit);
+    }
+
     // ===== A DOCUMENT'S CHART IS DRAWN BY THE CHART ENGINE =====
     std::cerr << "\n--- A document's chart ---" << std::endl;
     {

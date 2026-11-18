@@ -9,6 +9,7 @@
 //   pdftoppm -r 60 -png letter.pdf letter
 //
 // Needs a display, as the element does. Exit code 0 when the PDF was written.
+// Version: 1.2.0 - DOCUMENT_PROBE_DARK_PNG: the screen view on a dark page, as a picture
 // Version: 1.1.2 - registers the vector readers, so a document's EMF and WMF pictures are drawn
 // Version: 1.1.1 - ...and each cell's side paddings
 // Version: 1.1.0 - DOCUMENT_PROBE_VERBOSE lists each table cell's lines
@@ -16,6 +17,7 @@
 // Last Modified: 2026-11-16
 // Author: UltraCanvas Framework
 
+#include <cairo.h>
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
@@ -146,6 +148,28 @@ int main(int argc, char** argv) {
     if (!edit->ExportToPdf(std::string(argv[2]), error)) {
         std::cerr << "export failed: " << error << std::endl;
         return 1;
+    }
+    // DOCUMENT_PROBE_DARK_PNG=<file>: the view as a dark theme shows it (a
+    // dark page, light ink), to see what the document's own colours - made
+    // for white paper - look like there.
+    if (const char* png = std::getenv("DOCUMENT_PROBE_DARK_PNG")) {
+        RichTextEditStyle dark = edit->GetStyle();
+        dark.textColor = Color(232, 232, 232);
+        dark.backgroundColor = dark.pageColor = Color(37, 37, 38);
+        dark.deskColor = Color(24, 24, 24);
+        dark.cursorColor = dark.textColor;
+        dark.tableBorderColor = Color(110, 110, 110);
+        dark.tableGuideColor = dark.pageMarginGuideColor = Color(70, 70, 70);
+        if (std::getenv("DOCUMENT_PROBE_OWN_COLOURS")) dark.adaptDocumentColors = false;
+        edit->SetStyle(dark);
+        window->UpdateAndRender();
+        auto ctx = CreateRenderContext(Size2Di(980, 780), nullptr);
+        if (ctx) {
+            edit->Render(ctx.get(), Rect2Df(0, 0, 980, 780));
+            cairo_surface_t* surface = cairo_get_target(static_cast<cairo_t*>(ctx->GetNativeContext()));
+            cairo_surface_flush(surface);
+            cairo_surface_write_to_png(surface, png);
+        }
     }
     return 0;
 }
