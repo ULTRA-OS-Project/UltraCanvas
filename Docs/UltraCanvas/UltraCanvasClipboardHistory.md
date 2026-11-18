@@ -251,8 +251,9 @@ listView->tooltipProvider = [rows = rows.get()](int row, int) {
   them for Up / Down; `FindRow(id)` keeps a selection across a reload.
 - **The row**: a thumbnail drawn by kind (an image's own thumbnail, a colour
   swatch, a code tile, a link tile, file sheets with a `+n` badge), the
-  title, a meta line (`DescribeClipboardEntry`: "Text · 2 lines · 29
-  characters · UltraMail · 5 min ago") and Copy, Edit and Delete -
+  title, a meta line (`DescribeClipboardEntry`: "Text · UltraMail", an
+  image's "Image · 1200 × 730 · 147 KB") with the age ("5 min ago") at its
+  right end, and Copy, Edit and Delete -
   `ClipboardRowStyle::saveAction` adds Save as between Edit and Delete
   (UltraClipboard). The actions stand at the row's right edge, or between the
   thumbnail and the text with `actionsLeftOfText` (`SetActionsLeftOfText`
@@ -261,6 +262,10 @@ listView->tooltipProvider = [rows = rows.get()](int row, int) {
   so the text does not move. The light style shows the actions on every row,
   the compact one on the hovered and selected rows only. `ShowCopied(id)` turns Copy into a check with a
   "Copied" pill for a moment; redraw while `IsShowingCopied()`.
+  `SetCoveredFrom(x, entryId)` says something covers the rows from `x`
+  rightwards (UltraClipboard's image preview): the selected row's actions,
+  and those of `entryId`, stand just left of it, where they can be reached;
+  `SetCoveredFrom(0, 0)` puts them back at the edge.
   `IsOverThumbnail(posInCell)` says whether a point of a row is on the
   thumbnail's column (the tile's width, the row's whole height, so a pointer
   resting there keeps its answer while the rows scroll under it); the caller

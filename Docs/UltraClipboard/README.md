@@ -30,7 +30,8 @@ listed in the settings are left out.
 **The list.** Pinned entries come first, then Today, Yesterday and Earlier.
 Every row has a thumbnail by kind (the picture itself for an image, the
 colour for a colour, a sheet with a `+n` badge for several files), the title,
-a line on what it is, which program it came from and when, and four buttons:
+a line on what it is and which program it came from, when at the right end
+of that line, and four buttons:
 
 | Button | Key | |
 |---|---|---|
@@ -42,6 +43,16 @@ a line on what it is, which program it came from and when, and four buttons:
 The buttons stand right of the entry's text, or left of it between the
 thumbnail and the text: Settings, *Display → Icons*. The desktop's quick
 panel follows the same setting.
+
+**The preview.** Rest the pointer on a thumbnail and the entry opens in a
+preview over the right part of the list: an image, or the first of copied
+files - a picture, a PDF, a spreadsheet (.ods, .xlsx, .xls, .csv) you can
+scroll, a word-processing document (.odt, .docx, .doc) as its first page, a
+PowerPoint deck (.pptx) as its slides - PageUp / PageDown, or a click on the
+picture's left or right, turns them - a drawing, a 3D model or a video's
+first frame. The wheel zooms. While it is
+open, the selected row's buttons and the previewed row's stand just left of
+it. Settings, *Display*, chooses how it looks.
 
 Right-click a row for the same, *Pin* / *Unpin* (Ctrl+P) and, on an image
 or copied files with words in them, *Extract text* (Ctrl+T).

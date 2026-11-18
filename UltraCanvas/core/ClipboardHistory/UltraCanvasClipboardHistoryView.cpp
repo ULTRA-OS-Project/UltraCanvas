@@ -1,11 +1,13 @@
 // core/ClipboardHistory/UltraCanvasClipboardHistoryView.cpp
 // The list model and row painter for a clipboard history. See
 // include/UltraCanvasClipboardHistoryView.h.
+// Version: 1.5.0 - the age at the right end of the meta line; a text's lines, characters and size
+//                  gone from it; the selected (and previewed) row's actions left of a cover (SetCoveredFrom)
 // Version: 1.4.0 - the Link tile from the style; a dark theme's selected row in the soft accent with ink
 // Version: 1.3.0 - every text through Tr (UltraLocalisation): sections, sizes, ages, the
 //                  description line, the action tooltips, an image's and files' titles
 // Version: 1.2.0 - the Save as action (ClipboardRowStyle::saveAction)
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboardHistoryView.h"
@@ -54,18 +56,6 @@ std::string ShortMonth(int month) {
         case 10: return TrC("month-short", "Nov");
         default: return TrC("month-short", "Dec");
     }
-}
-
-size_t CountCodePoints(const std::string& text) {
-    size_t count = 0;
-    for (unsigned char c : text) count += (c & 0xC0) != 0x80;
-    return count;
-}
-
-std::string WithThousands(uint64_t value) {
-    std::string digits = std::to_string(value);
-    for (int i = static_cast<int>(digits.size()) - 3; i > 0; i -= 3) digits.insert(static_cast<size_t>(i), ",");
-    return digits;
 }
 
 std::string Host(const std::string& url) {
@@ -370,7 +360,7 @@ std::string ClipboardEntryDisplayTitle(const ClipboardHistoryEntry& entry) {
     return entry.title;
 }
 
-std::string DescribeClipboardEntry(const ClipboardHistoryEntry& entry, int64_t nowMs, bool compact) {
+std::string DescribeClipboardEntry(const ClipboardHistoryEntry& entry, int64_t nowMs, bool compact, bool withAge) {
     const char* dot = " \xC2\xB7 ";   // ·
     std::string meta;
     auto add = [&meta, dot](const std::string& part) {
@@ -400,25 +390,13 @@ std::string DescribeClipboardEntry(const ClipboardHistoryEntry& entry, int64_t n
             }
             break;
         }
-        default: {
+        default:
+            // A text's kind alone: its lines and size said little the title does not.
             add(ClipboardEntryKindLabel(entry.kind));
-            if (!compact) {
-                add(TrN("{n} line", "{n} lines", entry.lineCount));
-                if (entry.sizeBytes <= entry.preview.size()) {
-                    const size_t characters = CountCodePoints(entry.preview);
-                    // TrN counts; the number itself keeps its thousands separators.
-                    add(LocalisationDetail::Substitute(
-                            TrN("{0} character", "{0} characters", static_cast<long long>(characters)),
-                            {WithThousands(characters)}));
-                } else {
-                    add(FormatClipboardSize(entry.sizeBytes));
-                }
-            }
             break;
-        }
     }
     add(entry.sourceApplication);
-    add(FormatClipboardAge(entry.lastUsedAt, nowMs));
+    if (withAge) add(FormatClipboardAge(entry.lastUsedAt, nowMs));
     return meta;
 }
 
@@ -444,15 +422,29 @@ double ClipboardHistoryRowDelegate::ActionsLeft(int width) const {
     return width - (style.compact ? 8 : 12) - static_cast<double>(Actions().size()) * style.actionSize;
 }
 
+double ClipboardHistoryRowDelegate::RowActionsLeft(int row) const {
+    const auto moved = movedActionsLeft.find(row);
+    return moved != movedActionsLeft.end() ? moved->second : ActionsLeft(rowWidth);
+}
+
+bool ClipboardHistoryRowDelegate::SetCoveredFrom(int x, int64_t entryId) {
+    x = std::max(0, x);
+    if (x == 0) entryId = 0;
+    if (x == coveredFrom && entryId == coveredEntryId) return false;
+    coveredFrom = x;
+    coveredEntryId = entryId;
+    if (x == 0) movedActionsLeft.clear();   // the rows repaint with their actions back at the edge
+    return true;
+}
+
 bool ClipboardHistoryRowDelegate::ActionsVisible(const ListItemStyleOption& option) const {
     return !style.compact || option.isHovered || option.isSelected;
 }
 
 ClipboardRowAction ClipboardHistoryRowDelegate::ActionAt(int row, const Point2Di& posInCell) const {
-    (void)row;
     if (rowWidth <= 0) return ClipboardRowAction::NoAction;
     const std::vector<ClipboardRowAction> actions = Actions();
-    const double left = ActionsLeft(rowWidth);
+    const double left = RowActionsLeft(row);
     if (posInCell.x < left || posInCell.x >= left + static_cast<double>(actions.size()) * style.actionSize) {
         return ClipboardRowAction::NoAction;
     }
@@ -493,11 +485,12 @@ std::string ClipboardHistoryRowDelegate::ActionTooltip(ClipboardRowAction action
     }
 }
 
-void ClipboardHistoryRowDelegate::PaintText(IRenderContext* ctx, const std::string& text, const Rect2Dd& rect,
-                                            float size, FontWeight weight, const Color& color, bool monospace) const {
-    if (text.empty() || rect.width <= 4) return;
+double ClipboardHistoryRowDelegate::PaintText(IRenderContext* ctx, const std::string& text, const Rect2Dd& rect,
+                                              float size, FontWeight weight, const Color& color, bool monospace,
+                                              bool alignRight) const {
+    if (text.empty() || rect.width <= 4) return 0;
     auto layout = ctx->CreateTextLayout(text, false);
-    if (!layout) return;
+    if (!layout) return 0;
     FontStyle font;
     font.fontSize = size;
     font.fontWeight = weight;
@@ -508,7 +501,10 @@ void ClipboardHistoryRowDelegate::PaintText(IRenderContext* ctx, const std::stri
     layout->SetExplicitWidth(rect.width);
     ctx->SetTextPaint(color);
     const Size2Dd measured = layout->GetLayoutSize();
-    ctx->DrawTextLayout(*layout, Point2Dd(rect.x, rect.y + (rect.height - measured.height) / 2.0));
+    const double width = std::min(measured.width, rect.width);
+    const double x = alignRight ? rect.x + rect.width - width : rect.x;
+    ctx->DrawTextLayout(*layout, Point2Dd(x, rect.y + (rect.height - measured.height) / 2.0));
+    return width;
 }
 
 void ClipboardHistoryRowDelegate::PaintThumbnail(IRenderContext* ctx, const ClipboardHistoryEntry& entry,
@@ -596,9 +592,10 @@ void ClipboardHistoryRowDelegate::PaintThumbnail(IRenderContext* ctx, const Clip
 }
 
 void ClipboardHistoryRowDelegate::PaintActions(IRenderContext* ctx, const ClipboardHistoryEntry& entry,
-                                               const ListItemStyleOption& option, int row) const {
+                                               const ListItemStyleOption& option, int row,
+                                               double actionsLeft) const {
     const Rect2Di& r = option.rect;
-    const double left = r.x + ActionsLeft(r.width);
+    const double left = r.x + actionsLeft;
     const double glyph = style.actionGlyph;
     const bool selectedLight = option.isSelected && !style.compact;
     const bool copied = entry.id == copiedId && IsShowingCopied();
@@ -663,6 +660,7 @@ void ClipboardHistoryRowDelegate::RenderItem(IRenderContext* ctx, const IListMod
     const Rect2Di& rect = option.rect;
     rowWidth = rect.width;
 
+    movedActionsLeft.erase(row);
     if (r->header) {
         ctx->DrawFilledRectangle(Rect2Dd(rect.x, rect.y, rect.width, rect.height), style.headerBackground, 0.0f,
                                  Colors::Transparent, 0.0f);
@@ -690,9 +688,18 @@ void ClipboardHistoryRowDelegate::RenderItem(IRenderContext* ctx, const IListMod
     // Icons left of the text keep their place while hidden (a compact row
     // shows them on hover), so the text does not jump.
     const double actionsWidth = static_cast<double>(Actions().size()) * style.actionSize;
-    const double textX = style.actionsLeftOfText ? rect.x + ActionsLeft(rect.width) + actionsWidth + 8
+    double actionsLeft = ActionsLeft(rect.width);
+    const double textX = style.actionsLeftOfText ? rect.x + actionsLeft + actionsWidth + 8
                                                  : rect.x + style.padding + t + (style.compact ? 10 : 16);
-    const double textRight = actions && !style.actionsLeftOfText ? rect.x + ActionsLeft(rect.width) - 8
+    if (!style.actionsLeftOfText && coveredFrom > 0 && (option.isSelected || entry.id == coveredEntryId)) {
+        // The cover (a preview) would hide them: just left of it, never over the thumbnail.
+        const double clear = std::max(textX - rect.x, coveredFrom - (style.compact ? 8.0 : 12.0) - actionsWidth);
+        if (clear < actionsLeft) {
+            actionsLeft = clear;
+            movedActionsLeft[row] = clear;
+        }
+    }
+    const double textRight = actions && !style.actionsLeftOfText ? rect.x + actionsLeft - 8
                                                                  : rect.x + rect.width - style.padding;
     double titleX = textX;
     if (entry.pinned) {
@@ -710,11 +717,17 @@ void ClipboardHistoryRowDelegate::RenderItem(IRenderContext* ctx, const IListMod
               Rect2Dd(titleX, rect.y + half - (style.compact ? 18 : 22), textRight - titleX, style.compact ? 18 : 22),
               style.titleSize, FontWeight::Normal, selectedLight ? style.selectedTitleColor : style.titleColor,
               entry.kind == ClipboardEntryKind::Code);
-    PaintText(ctx, DescribeClipboardEntry(entry, NowMs(), style.compact),
-              Rect2Dd(textX, rect.y + half + 1, textRight - textX, style.compact ? 16 : 20), style.metaSize,
-              FontWeight::Normal, selectedLight ? style.selectedMetaColor : style.metaColor, false);
+    // The meta line, its age at the right end.
+    const int64_t now = NowMs();
+    const Color metaColor = selectedLight ? style.selectedMetaColor : style.metaColor;
+    const Rect2Dd metaLine(textX, rect.y + half + 1, textRight - textX, style.compact ? 16 : 20);
+    const double ageWidth = PaintText(ctx, FormatClipboardAge(entry.lastUsedAt, now), metaLine, style.metaSize,
+                                      FontWeight::Normal, metaColor, false, true);
+    PaintText(ctx, DescribeClipboardEntry(entry, now, style.compact, false),
+              Rect2Dd(metaLine.x, metaLine.y, metaLine.width - (ageWidth > 0 ? ageWidth + 12 : 0), metaLine.height),
+              style.metaSize, FontWeight::Normal, metaColor, false);
 
-    if (actions) PaintActions(ctx, entry, option, row);
+    if (actions) PaintActions(ctx, entry, option, row, actionsLeft);
     if (!style.compact && !option.isSelected && !option.isHovered) {
         ctx->DrawFilledRectangle(Rect2Dd(textX, rect.y + rect.height - 1, rect.x + rect.width - textX, 1),
                                  style.divider, 0.0f, Colors::Transparent, 0.0f);

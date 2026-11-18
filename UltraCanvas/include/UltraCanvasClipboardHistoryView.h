@@ -17,6 +17,8 @@
 // The actions are painted into the row, as UltraMail's contact list paints its
 // bin, and hit-tested through onCellClicked; the keyboard reaches them too
 // (Enter copies, F2 edits, Delete deletes - the window handles those keys).
+// Version: 1.6.0 - the age at the right end of the meta line, the text's lines and size gone from it;
+//                  SetCoveredFrom: the selected row's actions stay clear of what covers the rows' right part
 // Version: 1.5.0 - the Link tile's colours in the style (linkTile*, linkGlyph), dark under a dark theme;
 //                  under a dark theme the selected row is the soft accent with ink, and the icons and
 //                  the pin on a selected row take the selected title's colour
@@ -25,7 +27,7 @@
 //                  ClipboardEntryDisplayTitle
 // Version: 1.2.0 - ClipboardRowAction::SaveAs, shown with ClipboardRowStyle::saveAction;
 //                  the icons left of the text (ClipboardRowStyle::actionsLeftOfText)
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -36,6 +38,7 @@
 
 #include <chrono>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace UltraCanvas {
@@ -172,12 +175,22 @@ public:
     const ClipboardRowStyle& Style() const { return style; }
     // ClipboardHistoryPolicy::iconSide, applied: the list wants a redraw after.
     void SetActionsLeftOfText(bool left) { style.actionsLeftOfText = left; }
+    // Something covers the rows from `x` (in the row, as posInCell) to their
+    // right edge - UltraClipboard's preview: the selected row's actions, and
+    // those of entry `entryId` (the one previewed), stand just left of it
+    // instead of under it. 0 uncovers. Only for actions at the right edge;
+    // left of the text they are clear already. Returns true when that
+    // changed (the list wants a redraw).
+    bool SetCoveredFrom(int x, int64_t entryId);
     // Folder of the action glyphs; defaults to <resources>/media/icons/clipboard/.
     std::string iconsDir;
 
 private:
     ClipboardRowStyle style;
     int rowWidth = 0;          // as last painted
+    int coveredFrom = 0;       // SetCoveredFrom
+    int64_t coveredEntryId = 0;
+    std::unordered_map<int, double> movedActionsLeft;   // row -> its actions' x, where they stand clear of the cover
     int hoverRow = -1;
     ClipboardRowAction hoverAction = ClipboardRowAction::NoAction;
     int64_t copiedId = 0;
@@ -186,18 +199,22 @@ private:
     std::vector<ClipboardRowAction> Actions() const;   // left to right
     bool ActionsVisible(const ListItemStyleOption& option) const;
     double ActionsLeft(int width) const;
+    double RowActionsLeft(int row) const;   // ActionsLeft, or where that row's actions were moved to
     void PaintThumbnail(IRenderContext* ctx, const ClipboardHistoryEntry& entry, const Rect2Dd& tile) const;
     void PaintActions(IRenderContext* ctx, const ClipboardHistoryEntry& entry, const ListItemStyleOption& option,
-                      int row) const;
-    void PaintText(IRenderContext* ctx, const std::string& text, const Rect2Dd& rect, float size,
-                   FontWeight weight, const Color& color, bool monospace) const;
+                      int row, double actionsLeft) const;
+    // Returns the width the text takes; alignRight puts it at the rect's right end.
+    double PaintText(IRenderContext* ctx, const std::string& text, const Rect2Dd& rect, float size,
+                     FontWeight weight, const Color& color, bool monospace, bool alignRight = false) const;
 };
 
 // Everything below is in the person's language (Tr): the English shown in
 // the examples is what an untranslated build shows.
 //
-// The meta line under a title: "Text · 2 lines · 29 characters · UltraMail · 5 min ago".
-std::string DescribeClipboardEntry(const ClipboardHistoryEntry& entry, int64_t nowMs, bool compact);
+// The meta line under a title: "Text · UltraMail · 5 min ago", "Image · 1200 × 730 · 147 KB · 5 min ago";
+// withAge false leaves the age out (the row paints it at the line's right end).
+std::string DescribeClipboardEntry(const ClipboardHistoryEntry& entry, int64_t nowMs, bool compact,
+                                   bool withAge = true);
 // A kind's name to show: "Text", "Formatted text", "Image" ... (ClipboardEntryKindName
 // is the English one search matches against).
 std::string ClipboardEntryKindLabel(ClipboardEntryKind kind);
