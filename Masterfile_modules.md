@@ -3031,7 +3031,9 @@ thread replies, files, edits, deletes. Provider: Zulip
 group messages and stream topics of a Zulip organization - password or API
 key; the event queue; uploads, edits, deletes. Provider: Signal
 (`UltraCanvas/Plugins/UltraIM/signal/`, module `ultraim_signal`): through a
-signal-cli daemon (the user's, or one it starts) - linked to the phone by
+signal-cli daemon (the user's, or one it starts - for the proxy the
+applications share, as Java's proxy options, and again when the setting
+changes) - linked to the phone by
 QR code; 1:1 chats and groups, quotes, edits, deletes, receipts, typing,
 attachments. Provider: XMPP (`UltraCanvas/Plugins/UltraIM/xmpp/`, module
 `ultraim_xmpp`): any XMPP server over TCP (STARTTLS or direct TLS, found by

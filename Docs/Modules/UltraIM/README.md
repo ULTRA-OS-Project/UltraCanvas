@@ -1038,6 +1038,33 @@ signal-cli is not bundled.
   `signal-cli/bin/signal-cli` beside the provider modules, or the `PATH`,
   started with its data under `<dataDirectory>/signal/signal-cli` on a free
   loopback port, and stopped at `Shutdown`. Neither: `CapabilityMissing`.
+- **The proxy**: signal-cli connects to Signal by itself - nothing of
+  UltraNet's is between it and Signal's servers - so the provider's own
+  daemon is started for the proxy every application shares
+  (`UltraCanvasProxySettings.h`; what `UltraNet_ResolveProxy` answers for
+  `https://chat.signal.org:443/`), handed to it where signal-cli reads one:
+  Java's proxy properties (`https.proxyHost` / `socksProxyHost` and their
+  ports), which signal-cli 0.13.13 and later passes on to its network
+  library as well. They go in `JAVA_TOOL_OPTIONS` in the daemon's
+  environment, after what that variable already holds, so the setting wins
+  over a proxy named there; options the environment gives signal-cli's own
+  start script (`JAVA_OPTS`, `SIGNAL_CLI_OPTS`) come later still and are
+  left alone. An HTTP proxy (it tunnels) or a SOCKS 5 one is passed, "no
+  proxy" as options that take out one the environment names, and nothing
+  when the setting is the operating system's and it names none for Signal
+  (`DaemonProxy`, `DaemonProxyFor`). When the setting changes while signed
+  in the daemon is started again for it within a receive cycle (seconds;
+  the state reads `Reconnecting`, then `Connected`) - the link and the
+  account are signal-cli's files and stay. Nothing is left to connect
+  directly: a proxy signal-cli has no means for - one that asks for a user
+  name and password (signal-cli passes none on), SOCKS 4, one reached over
+  TLS - and a signal-cli that no Java runtime starts (its native build:
+  the runtime's `Picked up JAVA_TOOL_OPTIONS` line is missing from the
+  daemon's log, so nothing shows the options were read), answer a sign-in
+  with `Unsupported`, saying why, and while signed in stop the daemon with
+  that as its `Error` state until the setting changes. A daemon the user
+  runs (`credentials.server`) connects as the user started it - with a
+  proxy, by the same Java options.
 - **Sign-in** (`UltraIMLoginType::QRCode`): an account linked before and
   still in the daemon signs in at once. Otherwise `startLink` makes a
   `sgnl://linkdevice?...` link: `SignIn` answers `NeedsInput`, the step is
@@ -1065,8 +1092,14 @@ JSON-RPC): no signal-cli (`CapabilityMissing`), linking by QR (a link that
 expires and a new one), the link kept, texts both ways and one typed on the
 phone, a reply, an edit, a remote delete, receipts, typing, a picture, a
 file and a voice note byte for byte, history and search, a group made and
-left, and a daemon the provider starts and stops itself. Skips without python3 unless
-`ULTRAIM_TEST_SIGNAL_REQUIRED` is set.
+left, and a daemon the provider starts and stops itself; the proxy setting
+as Java options for every kind of setting, the daemon started again when
+the setting changes while signed in (another proxy, none) with the account
+kept, stopped with the reason for a proxy signal-cli cannot use, and a
+stand-in for the native build refused for a proxy. Skips without python3 unless
+`ULTRAIM_TEST_SIGNAL_REQUIRED` is set. The real signal-cli is not part of
+the tests: that it takes its proxy from Java's properties is its own source
+(`Utils.getHttpsProxy`, `SignalDependencies.setSignalNetworkProxy`).
 
 ## Provider: XMPP
 

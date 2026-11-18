@@ -16,6 +16,18 @@
 // SignIn answers CapabilityMissing. Every call is a JSON-RPC 2.0 request
 // POSTed to <daemon>/api/v1/rpc naming its "account".
 //
+// The proxy: signal-cli connects to Signal by itself, so the provider's own
+// daemon is started with the proxy every UltraCanvas application shares
+// (UltraCanvasProxySettings.h) as Java's proxy options (DaemonProxy,
+// SignalDaemon.h), and started again when the setting changes while signed
+// in - the link and the account stay. A proxy signal-cli has no means for
+// (one that asks for a user name and password, SOCKS 4, one reached over
+// TLS), or a signal-cli that no Java runtime starts (its native build:
+// nothing shows it reads the options), is not left to connect directly: SignIn answers
+// Unsupported, saying why, and while signed in the daemon is stopped and the
+// state is Error until the setting changes. A daemon the user runs
+// (credentials.server) connects as the user started it.
+//
 // Sign-in links this device to the phone (UltraIMLoginType::QRCode): when
 // the account linked before (UltraVault: its number, and the daemon's
 // address when it was given) is still in the daemon's listAccounts, SignIn
@@ -57,9 +69,10 @@
 //     LeaveConversation leaves a group (quitGroup), or hides a 1:1 one on
 //     this device until its next message. No calls, stickers or reactions.
 //
+// Version: 0.2.0 - the provider's own daemon follows the shared proxy setting
 // Version: 0.1.1 - a receipt that comes before the send is recorded is kept and applied, not lost
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -218,6 +231,8 @@ private:
     SignalResponse Rpc(const std::string& method, const UltraCanvas::JSONValue& params, int timeoutMs = 30000);
     bool DaemonAnswers(const std::string& url, int timeoutMs);
     UltraIMResult EnsureDaemon(const std::string& server);
+    // Our own daemon was started for another proxy than the setting names now.
+    bool DaemonProxyChanged() const;
     std::string DataPath(const std::string& name) const;
     std::string ConfigDirectory() const;
 
@@ -274,6 +289,8 @@ private:
     mutable std::mutex mutex_;          // everything below
     std::string daemonUrl_;             // "http://127.0.0.1:7583"
     bool        ownDaemon_ = false;     // daemonUrl_ is daemon_'s
+    DaemonProxy daemonProxy_;           // what daemon_ was last started for (or not started, when unusable)
+    std::string notJava_;               // a signal-cli found to read no Java options: not started again for a proxy
     std::string account_;               // the number, else the ACI: every call's "account"
     std::string number_, aci_;
     UltraIMAuthStep authStep_ = UltraIMAuthStep::Idle;

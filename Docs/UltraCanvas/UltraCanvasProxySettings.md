@@ -14,9 +14,11 @@ UltraNet follows the setting on every connection it makes through libcurl -
 HTTP and HTTPS (and so every UltraAI provider), WebSocket, FTP / SFTP, the
 IMAP, SMTP, POP3, WebDAV, LDAP, Telnet, RTSP and gRPC plug-ins, and SSH
 (the SSH plug-in is handed a connection made through the proxy); UltraClaude
-passes it to the `claude` CLI in its environment, and UltraIM's Telegram
-provider tells it to TDLib, which connects by itself
-(`Docs/Modules/UltraIM/README.md`, *Provider: Telegram*). How UltraNet
+passes it to the `claude` CLI in its environment, and two UltraIM providers
+hand it to the program that connects for them: Telegram tells it to TDLib,
+Signal starts signal-cli with it as Java's proxy options
+(`Docs/Modules/UltraIM/README.md`, *Provider: Telegram* and *Provider:
+Signal*). How UltraNet
 decides, and what "the operating system's proxy" is on each platform, is
 the UltraNet module's *Proxies* section (`Docs/Modules/UltraNet/README.md`).
 

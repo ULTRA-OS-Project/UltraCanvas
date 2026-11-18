@@ -662,8 +662,11 @@ def main():
     server.daemon_threads = True
     url = "http://127.0.0.1:%d" % server.server_address[1]
     if args.config:
+        # Also what a Java runtime would have been given (JAVA_TOOL_OPTIONS):
+        # the provider passes signal-cli its proxy there.
         with open(os.path.join(args.config, "fake-daemon.json"), "w") as f:
-            json.dump({"url": url, "pid": os.getpid()}, f)
+            json.dump({"url": url, "pid": os.getpid(),
+                       "java_tool_options": os.environ.get("JAVA_TOOL_OPTIONS", "")}, f)
     print(json.dumps({"url": url}), flush=True)
     server.serve_forever()
 

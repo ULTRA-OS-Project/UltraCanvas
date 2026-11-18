@@ -1,7 +1,9 @@
 // Plugins/UltraIM/signal/SignalDaemon.cpp
 // signal-cli found, started as the provider's child process and stopped again
+// Version: 0.2.0 - the proxy setting as Java options (DaemonProxyFor, ChooseDaemonProxy,
+//                  JavaToolOptionsWith, JvmTookOptions); Start sets variables in the child's environment
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "SignalDaemon.h"
@@ -10,8 +12,11 @@
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetSocket.h"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <system_error>
 #include <thread>
 
@@ -30,6 +35,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+// The process environment; macOS' <unistd.h> does not declare it.
+extern "C" char** environ;
 #endif
 
 namespace UltraIMSignal {
@@ -48,7 +56,90 @@ bool IsProgram(const fs::path& p) {
 #endif
 }
 
+// A host as a program's options can carry it: a name or an address, nothing
+// that would end the option or start another.
+bool IsHostText(const std::string& host) {
+    if (host.empty()) return false;
+    for (const unsigned char c : host) {
+        if (!std::isalnum(c) && c != '.' && c != '-' && c != '_' && c != ':') return false;
+    }
+    return true;
+}
+
 } // namespace
+
+// ============================================================================
+// THE PROXY
+// ============================================================================
+
+DaemonProxy DaemonProxyFor(const UltraNetProxyConfig& setting, const UltraNetProxyConfig& resolved) {
+    // Java is not to ask the operating system a second time: what the
+    // setting came to is what is passed.
+    const std::string own = "-Djava.net.useSystemProxies=false";
+    DaemonProxy out;
+    const bool named = !resolved.host.empty() &&
+                       (resolved.type == UltraNetProxyType::Http || resolved.type == UltraNetProxyType::Https ||
+                        resolved.type == UltraNetProxyType::Socks4 || resolved.type == UltraNetProxyType::Socks5);
+    if (!named) {
+        // The operating system's settings naming none: the environment as it
+        // is. Anything else is the person saying "directly".
+        if (setting.type == UltraNetProxyType::System) return out;
+        out.kind = DaemonProxy::Kind::Direct;
+        out.jvmOptions = own + " -Dhttps.proxyHost= -Dhttp.proxyHost= -DsocksProxyHost=";
+        return out;
+    }
+    out.text = UltraNet_DescribeProxy(resolved);
+    const bool http = resolved.type == UltraNetProxyType::Http;
+    const bool socks = resolved.type == UltraNetProxyType::Socks5;
+    std::string why;
+    if (!http && !socks) why = "it takes an HTTP or a SOCKS 5 proxy";
+    else if (!resolved.credentials.username.empty()) why = "it takes no proxy that asks for a user name and password";
+    else if (!IsHostText(resolved.host) || resolved.port <= 0 || resolved.port > 65535)
+        why = "that is not an address it can be given";
+    if (!why.empty()) {
+        out.kind = DaemonProxy::Kind::Unusable;
+        out.text = "Signal cannot connect through the proxy " + out.text + ": signal-cli is what connects, and " + why +
+                   ". Choose another in the proxy settings.";
+        return out;
+    }
+    const std::string port = std::to_string(resolved.port);
+    out.kind = DaemonProxy::Kind::Through;
+    // The other kind is emptied: Java asks https.proxyHost before
+    // socksProxyHost, and the environment's own options may name either.
+    if (http) {
+        out.jvmOptions = own + " -Dhttps.proxyHost=" + resolved.host + " -Dhttps.proxyPort=" + port +
+                         " -Dhttp.proxyHost=" + resolved.host + " -Dhttp.proxyPort=" + port + " -DsocksProxyHost=";
+    } else {
+        out.jvmOptions = own + " -DsocksProxyHost=" + resolved.host + " -DsocksProxyPort=" + port +
+                         " -DsocksProxyVersion=5 -Dhttps.proxyHost= -Dhttp.proxyHost=";
+    }
+    return out;
+}
+
+DaemonProxy ChooseDaemonProxy() {
+    // Signal's servers are names under signal.org, on port 443: its chat
+    // service stands for them in the exceptions and in a PAC script.
+    return DaemonProxyFor(UltraNet_GetGlobalProxy(), UltraNet_ResolveProxy("https://chat.signal.org:443/"));
+}
+
+std::string JavaToolOptionsWith(const std::string& options) {
+    const std::string inherited = UltraCanvas::GetEnvUtf8("JAVA_TOOL_OPTIONS");
+    if (inherited.empty() || options.empty()) return inherited + options;
+    // Ours last: of two options for one property Java keeps the later.
+    return inherited + " " + options;
+}
+
+bool JvmTookOptions(const std::string& logPath, uint64_t from) {
+    std::ifstream log(UltraCanvas::PathFromUtf8(logPath), std::ios::binary);
+    if (!log) return false;
+    log.seekg(static_cast<std::streamoff>(from));
+    if (!log) return false;
+    // The line is the runtime's first; the options it repeats can be long.
+    std::string text(256 * 1024, '\0');
+    log.read(text.data(), static_cast<std::streamsize>(text.size()));
+    text.resize(static_cast<size_t>(std::max<std::streamsize>(0, log.gcount())));
+    return text.find("Picked up JAVA_TOOL_OPTIONS") != std::string::npos;
+}
 
 std::string FindSignalCli(const std::string& pluginDirectory) {
     const std::string fromEnvironment = UltraCanvas::GetEnvUtf8("ULTRAIM_SIGNAL_CLI");
@@ -131,12 +222,61 @@ void AppendQuoted(std::wstring& line, const std::wstring& arg) {
     line += L'"';
 }
 
+// UTF-8 as UTF-16, exactly (Wide goes by way of a path).
+std::wstring WideText(const std::string& utf8) {
+    if (utf8.empty()) return std::wstring();
+    const int n = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
+    if (n <= 0) return std::wstring();
+    std::wstring wide(static_cast<size_t>(n), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), wide.data(), n);
+    return wide;
+}
+
+// The name of an environment entry ("NAME=value"), upper case as Windows
+// compares names; "=C:=C:\\" entries have theirs after the first character.
+std::wstring EntryName(const std::wstring& entry) {
+    const size_t eq = entry.find(L'=', !entry.empty() && entry[0] == L'=' ? 1 : 0);
+    std::wstring name = entry.substr(0, eq);
+    for (wchar_t& c : name) c = static_cast<wchar_t>(towupper(c));
+    return name;
+}
+
+// This process's environment block with `environment` set in it, sorted by
+// name as Windows keeps it. Empty when there is nothing to set: the child
+// then inherits ours.
+std::wstring EnvironmentBlockWith(const std::vector<std::pair<std::string, std::string>>& environment) {
+    std::wstring block;
+    if (environment.empty()) return block;
+    std::vector<std::wstring> entries;
+    for (const auto& variable : environment) entries.push_back(WideText(variable.first) + L"=" + WideText(variable.second));
+    const size_t ours = entries.size();
+    if (wchar_t* current = GetEnvironmentStringsW()) {
+        for (const wchar_t* e = current; *e; e += wcslen(e) + 1) {
+            const std::wstring entry(e);
+            const std::wstring name = EntryName(entry);
+            bool replaced = false;
+            for (size_t i = 0; i < ours; ++i) replaced = replaced || EntryName(entries[i]) == name;
+            if (!replaced) entries.push_back(entry);
+        }
+        FreeEnvironmentStringsW(current);
+    }
+    std::stable_sort(entries.begin(), entries.end(),
+                     [](const std::wstring& a, const std::wstring& b) { return EntryName(a) < EntryName(b); });
+    for (const std::wstring& entry : entries) {
+        block += entry;
+        block.push_back(L'\0');
+    }
+    block.push_back(L'\0');
+    return block;
+}
+
 } // namespace
 
 bool SignalDaemon::Start(const std::string& program, const std::vector<std::string>& args, const std::string& logPath,
-                         std::string& error) {
+                         std::string& error, const std::vector<std::pair<std::string, std::string>>& environment) {
     Stop();
     std::lock_guard<std::mutex> lock(mutex_);
+    std::wstring environmentBlock = EnvironmentBlockWith(environment);
     std::wstring line;
     std::wstring ext = UltraCanvas::PathFromUtf8(program).extension().wstring();   // path-string-ok: wide
     for (wchar_t& c : ext) c = static_cast<wchar_t>(towlower(c));
@@ -176,7 +316,10 @@ bool SignalDaemon::Start(const std::string& program, const std::vector<std::stri
     std::vector<wchar_t> mutableLine(line.begin(), line.end());
     mutableLine.push_back(L'\0');
     const BOOL started = CreateProcessW(nullptr, mutableLine.data(), nullptr, nullptr, log != INVALID_HANDLE_VALUE,
-                                        CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr, nullptr, &si, &pi);
+                                        CREATE_NO_WINDOW | CREATE_SUSPENDED |
+                                            (environmentBlock.empty() ? 0 : CREATE_UNICODE_ENVIRONMENT),
+                                        environmentBlock.empty() ? nullptr : static_cast<LPVOID>(environmentBlock.data()),
+                                        nullptr, &si, &pi);
     if (log != INVALID_HANDLE_VALUE) CloseHandle(log);
     if (!started) {
         if (job) CloseHandle(job);
@@ -220,7 +363,7 @@ int64_t SignalDaemon::ProcessId() const {
 #else
 
 bool SignalDaemon::Start(const std::string& program, const std::vector<std::string>& args, const std::string& logPath,
-                         std::string& error) {
+                         std::string& error, const std::vector<std::pair<std::string, std::string>>& environment) {
     Stop();
     std::lock_guard<std::mutex> lock(mutex_);
     // Everything the child needs is made before the fork: after it, only
@@ -231,6 +374,22 @@ bool SignalDaemon::Start(const std::string& program, const std::vector<std::stri
     std::vector<char*> raw;
     for (std::string& a : argv) raw.push_back(a.data());
     raw.push_back(nullptr);
+    // Its environment: ours, with `environment` set in it. Left empty when
+    // there is nothing to set - the child then keeps ours as it is.
+    std::vector<std::string> entries;
+    std::vector<char*> envp;
+    if (!environment.empty()) {
+        for (char** e = environ; e && *e; ++e) {
+            const std::string entry(*e);
+            const std::string name = entry.substr(0, entry.find('='));
+            bool replaced = false;
+            for (const auto& variable : environment) replaced = replaced || variable.first == name;
+            if (!replaced) entries.push_back(entry);
+        }
+        for (const auto& variable : environment) entries.push_back(variable.first + "=" + variable.second);
+        for (std::string& entry : entries) envp.push_back(entry.data());
+        envp.push_back(nullptr);
+    }
     const int log = ::open(logPath.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
     const int devNull = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
     const pid_t pid = ::fork();
@@ -253,7 +412,8 @@ bool SignalDaemon::Start(const std::string& program, const std::vector<std::stri
         ::signal(SIGPIPE, SIG_DFL);
         ::signal(SIGTERM, SIG_DFL);
         ::signal(SIGINT, SIG_DFL);
-        ::execv(raw[0], raw.data());
+        if (envp.empty()) ::execv(raw[0], raw.data());
+        else ::execve(raw[0], raw.data(), envp.data());
         ::_exit(127);
     }
     ::setpgid(pid, pid);    // (also here, so Stop can never race the child's own call)
