@@ -474,23 +474,73 @@ void UCRasterDocument::CommitSelectionChange(const std::string& label) {
 // WHOLE-IMAGE GEOMETRY
 // ===========================================================================
 
-void UCRasterDocument::ScaleImage(int newWidth, int newHeight) {
+#ifdef HAS_LIBVIPS
+namespace {
+    PixelFX::Kernel KernelFor(UCResampleMethod method) {
+        switch (method) {
+            case UCResampleMethod::Nearest:  return PixelFX::Kernel::Nearest;
+            case UCResampleMethod::Bilinear: return PixelFX::Kernel::Linear;
+            case UCResampleMethod::Bicubic:  return PixelFX::Kernel::Cubic;
+            case UCResampleMethod::Mitchell: return PixelFX::Kernel::Mitchell;
+            case UCResampleMethod::Lanczos2: return PixelFX::Kernel::Lanczos2;
+            case UCResampleMethod::Lanczos3: return PixelFX::Kernel::Lanczos3;
+        }
+        return PixelFX::Kernel::Lanczos3;
+    }
+
+    // An unsharp mask on the colour of a premultiplied RGBA image; the alpha
+    // band is joined back untouched. Premultiplied, a pixel next to a
+    // transparent one is not pulled towards that pixel's meaningless colour.
+    PixelFX::PFXImage SharpenColour(const PixelFX::PFXImage& premultiplied, double sigma, double amount) {
+        if (premultiplied.Bands() != 4) return PixelFX::Convolution::UnsharpMask(premultiplied, sigma, amount);
+        const PixelFX::PFXImage colour = PixelFX::Colour::ExtractBand(premultiplied, 0, 3);
+        const PixelFX::PFXImage alpha = PixelFX::Colour::ExtractBand(premultiplied, 3);
+        return PixelFX::Colour::Bandjoin(PixelFX::Convolution::UnsharpMask(colour, sigma, amount), alpha);
+    }
+}
+#endif
+
+void UCRasterDocument::ScaleImage(int newWidth, int newHeight, const UCScaleImageOptions& options) {
     newWidth = std::max(1, newWidth); newHeight = std::max(1, newHeight);
     if (newWidth == width && newHeight == height) return;
     BeginStructuralUndo("Scale Image");
+    const bool nearest = options.method == UCResampleMethod::Nearest;
+    // Hard pixels have nothing to sharpen: Nearest stays an exact copy
+    const double sharpen = nearest ? 0.0 : std::clamp(options.sharpen, 0.0, 1.0);
     std::vector<std::shared_ptr<UCRasterLayer>> next;
     for (const auto& l : layers) {
         auto copy = l->Clone();
         bool done = false;
+        // Nearest is exact and needs nothing from PixelFX: done here, so it
+        // is the same with and without libvips
+        if (nearest) {
+            copy->ResampleNearest(newWidth, newHeight);
+            done = true;
+        }
 #ifdef HAS_LIBVIPS
-        try {
-            PixelFX::PFXImage img = l->ToPixelFX();
-            img = PixelFX::Colour::Premultiply(img);
-            img = PixelFX::Resample::ResizeTo(img, newWidth, newHeight);
-            img = PixelFX::Colour::Unpremultiply(img);
-            img = PixelFX::Conversion::CastUchar(img);
-            done = copy->FromPixelFX(img) && copy->GetWidth() == newWidth && copy->GetHeight() == newHeight;
-        } catch (...) { done = false; }
+        if (!done) {
+            try {
+                PixelFX::PFXImage img = PixelFX::Colour::Premultiply(l->ToPixelFX());
+                img = PixelFX::Resample::ResizeTo(img, newWidth, newHeight, KernelFor(options.method));
+                if (sharpen > 0.0) {
+                    // The blur an enlargement brings is about half an old
+                    // pixel wide, so the mask's radius follows the factor
+                    const double factor = std::max(static_cast<double>(newWidth) / std::max(1, width),
+                                                   static_cast<double>(newHeight) / std::max(1, height));
+                    const double sigma = std::clamp(0.5 * factor, 0.5, 3.0);
+                    img = SharpenColour(img, sigma, sharpen * 1.5);
+                }
+                img = PixelFX::Colour::Unpremultiply(img);
+                img = PixelFX::Conversion::CastUchar(img);
+                auto out = l->Clone();
+                if (out->FromPixelFX(img) && out->GetWidth() == newWidth && out->GetHeight() == newHeight) {
+                    copy = out;
+                    done = true;
+                }
+            } catch (...) {
+                // the bilinear path below
+            }
+        }
 #endif
         if (!done) copy->ResampleBilinear(newWidth, newHeight);
         next.push_back(copy);

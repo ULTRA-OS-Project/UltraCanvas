@@ -72,7 +72,8 @@ was done (the whole path in its tooltip):
 The picture is shown whole, and never larger than it was taken. The mouse
 wheel zooms it about the cursor; once it is larger than the window, drag it
 to move it - as far as its edges, no further. A double-click shows it whole
-again.
+again. From 200 % on, each pixel is drawn as a sharp square, so a
+snip can be read pixel by pixel.
 
 ## Videos
 

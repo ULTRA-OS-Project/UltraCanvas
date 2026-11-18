@@ -11,6 +11,7 @@
 // second start hands over add a tab rather than a window. The class also
 // holds the registry of open windows - File > New Window still opens one -
 // and the application exits with the last of them.
+// Version: 2.1.0 - lastScaleOptions: Scale Image offers the resampling method and sharpening chosen last
 // Version: 2.0.0 - images in tabs: DocumentTab (document + its own surface), the tab strip
 //                  over the canvas, AddDocumentTab / SwitchToTab / CloseTab, OpenPaths,
 //                  OpenInRunningWindow; New, Open and a new image go to a tab
@@ -294,6 +295,8 @@ private:
     // plain windows) over the whole image. The adjustment dialogs did skip it,
     // which is what made the Adjust menu look as though it did nothing.
     void ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dialog);
+    // The resampling method and sharpening last chosen in Scale Image, offered again
+    UCScaleImageOptions lastScaleOptions;
     void ConfirmDiscard(const std::string& question, const std::function<void()>& proceed);
     // What saving the open image to `path` would lose - its layers (a flat
     // format, when `layers` is asked), its password (anything but a *.ucd) -

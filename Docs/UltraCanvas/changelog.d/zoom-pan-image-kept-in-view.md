@@ -8,3 +8,10 @@
   instead of blowing it up to fill the view. `GetZoom()` reads the zoom. Both
   options are off by default, so the lightbox and the Album keep their
   behaviour. UltraSnip shows its picture with both on.
+- **`UltraCanvasZoomPanImage` can show sharp pixels.**
+  `SetSharpPixelsFrom(2.0)` draws every image pixel as a hard-edged square
+  once it covers two screen pixels or more: the natural-size pixmap scaled by
+  the context with smoothing off, since a pixmap made at the display size is
+  already smoothed. Off (0) by default. While it is on, the cap that keeps a
+  vector source's re-rasterising quick does not stop zooming past that
+  point. UltraSnip turns it on at 200 %.

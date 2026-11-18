@@ -22,6 +22,7 @@
 // rasterized. Anything that changes the pixels another way takes the text
 // off: the geometry here that resamples or mirrors them, and the document's
 // pixel edits (UltraCanvasRasterDocument.h), whose undo puts it back.
+// Version: 1.3.0 - ResampleNearest: each new pixel copies the nearest old one
 // Version: 1.2.0 - RasterTextContent::letterSpacingPx
 // Version: 1.1.0 - text layers (RasterTextContent, UCRasterLayer::text)
 // Last Modified: 2026-11-03
@@ -163,6 +164,11 @@ public:
     // Simple bilinear resample (used when libvips is not available; the
     // document prefers PixelFX for quality). Takes a text layer's text off.
     void ResampleBilinear(int newWidth, int newHeight);
+    // Nearest-neighbour resample: every new pixel is a copy of the old pixel
+    // its centre falls in, so no colour is made up and hard edges stay hard
+    // (pixel art, icons, screenshots at a whole multiple). Takes a text
+    // layer's text off.
+    void ResampleNearest(int newWidth, int newHeight);
 
     // ===== ANALYSIS =====
     // Bounding rectangle of the non-transparent pixels; empty when the layer

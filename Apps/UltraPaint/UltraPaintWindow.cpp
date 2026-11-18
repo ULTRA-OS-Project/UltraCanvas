@@ -3,6 +3,7 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 2.1.0 - Scale Image: the resampling method and Sharpen after scaling, remembered for next time
 // Version: 2.0.1 - Curves counts its histogram backdrop with UltraCanvasHistogramModel, as the
 //                  image viewer's Curves dialog does; the RGB backdrop adds the three channels
 // Version: 2.0.0 - images in tabs: one window holds several, each with its own paint surface
@@ -3266,8 +3267,12 @@ void UltraPaintWindow::PasteAsNewImage(std::shared_ptr<UCRasterLayer> img, const
 void UltraPaintWindow::CmdScaleImage() {
     CommitTextEdit();
     if (!document) return;
-    auto dlg = std::make_shared<UltraPaintResizeDialog>(document->GetWidth(), document->GetHeight(), false);
-    dlg->onAccept = [this](const UltraPaintResizeResult& r) { document->ScaleImage(r.width, r.height); surface->ZoomToFit(); };
+    auto dlg = std::make_shared<UltraPaintResizeDialog>(document->GetWidth(), document->GetHeight(), false, lastScaleOptions);
+    dlg->onAccept = [this](const UltraPaintResizeResult& r) {
+        lastScaleOptions = r.scale;   // offered again next time
+        document->ScaleImage(r.width, r.height, r.scale);
+        surface->ZoomToFit();
+    };
     ShowDialog(dlg);
 }
 

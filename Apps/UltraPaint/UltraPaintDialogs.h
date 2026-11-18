@@ -4,6 +4,7 @@
 // import question a dropped file asks and the password a *.ucd is saved with. Each is an UltraCanvasWindow built
 // out of framework elements (spinners, dropdowns, text input, colour picker,
 // buttons) and reports through callbacks.
+// Version: 1.6.0 - Scale Image: the resampling method and Sharpen after scaling
 // Version: 1.5.0 - the import question offers "Open in new tab" (Action::NewTab) in place of a new window
 // Version: 1.4.0 - Password Protection: the password a *.ucd is saved with
 // Version: 1.3.0 - the Text tool's entry is gone: text is typed on the canvas
@@ -21,6 +22,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasColorPicker.h"
+#include "UltraCanvasRasterDocument.h"   // UCScaleImageOptions
 
 #include <functional>
 #include <memory>
@@ -49,12 +51,15 @@ struct UltraPaintResizeResult {
     int width = 0;
     int height = 0;
     int anchor = 4;   // canvas size only: 0..8, row-major, 4 = centre
+    UCScaleImageOptions scale;   // scale image only: how the pixels are resampled
 };
 
 class UltraPaintResizeDialog : public UltraCanvasWindow {
 public:
     // `canvasMode` true: Canvas Size (no resampling, with anchor); false: Scale Image.
-    UltraPaintResizeDialog(int currentWidth, int currentHeight, bool canvasMode);
+    // `initialScale` (Scale Image): the method and sharpening chosen last time.
+    UltraPaintResizeDialog(int currentWidth, int currentHeight, bool canvasMode,
+                           const UCScaleImageOptions& initialScale = UCScaleImageOptions());
     std::function<void(const UltraPaintResizeResult&)> onAccept;
 private:
     void SyncFromWidth();
@@ -65,6 +70,8 @@ private:
     std::shared_ptr<UltraCanvasSpinner> widthSpin, heightSpin, percentSpin;
     std::shared_ptr<UltraCanvasCheckbox> keepAspect;
     std::shared_ptr<UltraCanvasDropdown> anchorDrop;
+    std::shared_ptr<UltraCanvasDropdown> methodDrop;     // scale image only
+    std::shared_ptr<UltraCanvasCheckbox> sharpenBox;     // scale image only
 };
 
 // ===== LAYER PROPERTIES =====

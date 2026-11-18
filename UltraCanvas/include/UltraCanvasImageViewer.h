@@ -2,6 +2,8 @@
 // Reusable lightbox image viewer: a zoomable / pannable image above a dark
 // info panel, opened in its own window. Shared by the markdown renderer's
 // image-click action and the Album photo viewer.
+// Version: 1.3.0 - ZoomPanImage: SetSharpPixelsFrom (each pixel a hard-edged square once
+//   enlarged that far, as a paint program shows it)
 // Version: 1.2.0 - ZoomPanImage: SetFitEnlarges (a small image starts at its own
 //   size) and SetPanKeptInView (moves only while zoomed past the view, never
 //   off it); GetZoom
@@ -18,6 +20,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageAnimation.h"
+#include <algorithm>
 #include <string>
 #include <memory>
 
@@ -50,6 +53,15 @@ public:
     // image shown whole does not move, a zoomed one moves as far as its
     // edges, and the cursor says which (four arrows only when it can move).
     void SetPanKeptInView(bool keep) { panKeptInView = keep; RequestRedraw(); }
+    // Sharp pixels: drawn at `scale` screen pixels per image pixel or more
+    // (2.0 is the usual choice), every image pixel is a hard-edged square
+    // instead of being blended into its neighbours, so a screenshot can be
+    // read pixel by pixel. 0 (the default) keeps the image smooth at every
+    // zoom. Meant for bitmaps: a vector source (SVG) is then shown as its
+    // natural-size raster, in squares, instead of being drawn sharp at the
+    // zoom. While it is on, the size cap that keeps a vector source's
+    // re-rasterising quick does not limit zooming past `scale`.
+    void SetSharpPixelsFrom(double scale) { sharpPixelsFrom = std::max(0.0, scale); RequestRedraw(); }
     // The zoom now, as a multiple of the starting scale (1.0 == the start)
     double GetZoom() const { return zoom; }
 
@@ -81,6 +93,7 @@ private:
     double panX = 0.0, panY = 0.0;
     bool   fitEnlarges = true;
     bool   panKeptInView = false;
+    double sharpPixelsFrom = 0.0; // screen pixels per image pixel from which they are drawn hard; 0 = never
     bool   canPan = true;         // the image is larger than the view on an axis (panKeptInView)
     bool   dragging = false;
     double lastX = 0.0, lastY = 0.0;

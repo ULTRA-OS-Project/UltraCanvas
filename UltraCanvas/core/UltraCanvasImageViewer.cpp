@@ -1,6 +1,8 @@
 // core/UltraCanvasImageViewer.cpp
 // Implementation of the reusable lightbox image viewer (zoom / pan image +
 // info panel in its own window). Shared by the markdown renderer and Album.
+// Version: 1.3.0 - ZoomPanImage: sharp pixels from SetSharpPixelsFrom on - the natural-size
+//   pixmap drawn with smoothing off, rather than one rasterised at the display size
 // Version: 1.2.0 - ZoomPanImage: SetFitEnlarges, SetPanKeptInView (the pan
 //   clamped to the image's edges, applied after every drag, zoom and resize)
 // Version: 1.1.0
@@ -63,14 +65,26 @@ namespace UltraCanvas {
             KeepPanInView(b, dispW, dispH);
             const double left  = b.width  * 0.5 + panX - dispW * 0.5;
             const double top   = b.height * 0.5 + panY - dispH * 0.5;
+            // Sharp pixels: the image's own pixels, scaled up by the context
+            // with smoothing off. (A pixmap made at the display size would
+            // already be smoothed, whatever the context's setting.)
+            const bool sharp = sharpPixelsFrom > 0.0 && s >= sharpPixelsFrom;
+            const bool smoothBefore = ctx->GetImageSmoothing();
+            if (sharp) ctx->SetImageSmoothing(false);
             if (auto framePm = animator.GetCurrentFramePixmap()) {
                 // Animated image: draw the controller's current frame; the
                 // zoom / pan transform applies to the running animation.
                 ctx->DrawPixmap(*framePm, Rect2Dd(left, top, dispW, dispH),
                                 ImageFitMode::Fill);
+            } else if (sharp) {
+                if (auto natural = image->GetPixmap(static_cast<int>(iw), static_cast<int>(ih),
+                                                    ImageFitMode::Fill, 1.0f)) {
+                    ctx->DrawPixmap(*natural, Rect2Dd(left, top, dispW, dispH), ImageFitMode::Fill);
+                }
             } else {
                 ctx->DrawImage(*image, Rect2Dd(left, top, dispW, dispH), ImageFitMode::Fill);
             }
+            if (sharp) ctx->SetImageSmoothing(smoothBefore);
         }
         ctx->PopState();
     }
@@ -162,8 +176,11 @@ namespace UltraCanvas {
 
         double newZoom = std::max(1.0, std::min(zoom * factor, 40.0));
         // Cap the rasterized size so very large SVG zooms stay responsive.
+        // Sharp pixels are drawn from the natural-size pixmap, so nothing of
+        // the display size is rasterised and the cap does not apply there.
         const double maxDim = 8000.0;
-        if (iw * fit * newZoom > maxDim || ih * fit * newZoom > maxDim) {
+        const bool sharpThere = sharpPixelsFrom > 0.0 && fit * newZoom >= sharpPixelsFrom;
+        if (!sharpThere && (iw * fit * newZoom > maxDim || ih * fit * newZoom > maxDim)) {
             newZoom = std::max(1.0, std::min(maxDim / (iw * fit), maxDim / (ih * fit)));
         }
         if (newZoom == zoom) return;

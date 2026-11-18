@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.9.1 - zoomed to 200 % or more, the picture's pixels are hard-edged squares
 // Version: 0.9.0 - the picture in an UltraCanvasZoomPanImage: the wheel zooms it about the
 //                  cursor, a drag moves it while it is larger than the pane (never off it),
 //                  a double-click fits it again; a small snip still starts at its own size
@@ -338,6 +339,7 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildContent() {
     picture_ = std::make_shared<UltraCanvasZoomPanImage>("snip.picture");
     picture_->SetFitEnlarges(false);
     picture_->SetPanKeptInView(true);
+    picture_->SetSharpPixelsFrom(2.0);          // from 200 %: pixels as squares, to read a snip closely
     picture_->SetCanvasColor(CanvasColor());
     picture_->SetTooltip(Tr("Scroll to zoom, drag to move, double-click to fit"));
     picture_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);

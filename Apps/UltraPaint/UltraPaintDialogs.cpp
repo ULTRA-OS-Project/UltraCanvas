@@ -1,6 +1,7 @@
 // Apps/UltraPaint/UltraPaintDialogs.cpp
 // New Image, Scale Image / Canvas Size, Layer Properties, Import, Colour to
 // Alpha and Password Protection windows.
+// Version: 1.6.0 - Scale Image: Resampling (Lanczos 3 ... Nearest) and Sharpen after scaling
 // Version: 1.5.0 - "Open in new tab" in place of "Open new window"
 // Version: 1.4.0 - Password Protection: the password a *.ucd is saved with
 // Version: 1.3.0 - the Text window is gone: text is typed on the canvas
@@ -147,10 +148,20 @@ UltraPaintNewImageDialog::UltraPaintNewImageDialog(const UltraPaintNewImageResul
 // SCALE IMAGE / CANVAS SIZE
 // ===========================================================================
 
-UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode)
+namespace {
+    // The Resampling list, in its order: the sharpest first
+    const UCResampleMethod kScaleMethods[] = {
+        UCResampleMethod::Lanczos3, UCResampleMethod::Lanczos2, UCResampleMethod::Mitchell,
+        UCResampleMethod::Bicubic, UCResampleMethod::Bilinear, UCResampleMethod::Nearest,
+    };
+    // How strong Sharpen after scaling is (UCScaleImageOptions::sharpen)
+    constexpr double kScaleSharpen = 0.5;
+}
+
+UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode, const UCScaleImageOptions& initialScale)
     : UltraCanvasWindow(), origW(std::max(1, w)), origH(std::max(1, h)), canvas(canvasMode) {
     config_.title = canvas ? "Canvas Size" : "Scale Image";
-    config_.width = 360; config_.height = canvas ? 240 : 240;
+    config_.width = canvas ? 360 : 440; config_.height = canvas ? 240 : 310;
     config_.minWidth = 320; config_.minHeight = 200;
     // Resizable: a longer caption in another language widens the caption
     // column, and the user can give the controls their room back.
@@ -192,6 +203,36 @@ UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode)
     keepAspect->SetChecked(!canvas);
     FormWideRow(form, keepAspect);
 
+    if (!canvas) {
+        methodDrop = CreateDropdown("upr-method", 0, 0, 280, 24);
+        methodDrop->AddItem(Tr("Lanczos 3 (sharpest)"));
+        methodDrop->AddItem(Tr("Lanczos 2 (sharp)"));
+        methodDrop->AddItem(Tr("Mitchell (clean edges)"));
+        methodDrop->AddItem(Tr("Bicubic"));
+        methodDrop->AddItem(Tr("Bilinear (soft)"));
+        methodDrop->AddItem(Tr("Nearest (hard pixels)"));
+        int selected = 0;
+        for (int i = 0; i < static_cast<int>(std::size(kScaleMethods)); ++i)
+            if (kScaleMethods[i] == initialScale.method) selected = i;
+        methodDrop->SetSelectedIndex(selected, false);
+        methodDrop->SetTooltip(Tr("How the new pixels are worked out. Photos: Lanczos 3, or Mitchell for "
+                                  "edges without a halo. Pixel art, icons and screenshots: Nearest, at 200 %, 300 % "
+                                  "or 400 %. None can add detail the picture does not have."));
+        FormRow(form, "upr-method-row", Tr("Resampling:"), methodDrop);
+
+        sharpenBox = std::make_shared<UltraCanvasCheckbox>("upr-sharpen", 0, 0, 0, 24, Tr("Sharpen after scaling"));
+        sharpenBox->SetChecked(initialScale.sharpen > 0.0);
+        sharpenBox->SetTooltip(Tr("An unsharp mask after the scale, to win back some of the crispness an enlargement loses"));
+        FormWideRow(form, sharpenBox);
+        // Hard pixels have nothing to sharpen
+        auto syncSharpen = [this]() {
+            const int i = methodDrop->GetSelectedIndex();
+            sharpenBox->SetDisabled(i >= 0 && kScaleMethods[i] == UCResampleMethod::Nearest);
+        };
+        methodDrop->onSelectionChanged = [syncSharpen](int, const DropdownItem&) { syncSharpen(); };
+        syncSharpen();
+    }
+
     if (canvas) {
         anchorDrop = CreateDropdown("upr-anchor", 0, 0, 200, 24);
         for (const char* n : { "Top left", "Top", "Top right", "Left", "Centre", "Right", "Bottom left", "Bottom", "Bottom right" })
@@ -205,6 +246,11 @@ UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode)
         r.width = static_cast<int>(widthSpin->GetValue());
         r.height = static_cast<int>(heightSpin->GetValue());
         r.anchor = anchorDrop ? anchorDrop->GetSelectedIndex() : 4;
+        if (methodDrop) {
+            const int i = methodDrop->GetSelectedIndex();
+            if (i >= 0 && i < static_cast<int>(std::size(kScaleMethods))) r.scale.method = kScaleMethods[i];
+            r.scale.sharpen = (sharpenBox->IsChecked() && r.scale.method != UCResampleMethod::Nearest) ? kScaleSharpen : 0.0;
+        }
         if (onAccept) onAccept(r);
     }, canvas ? "Resize" : "Scale"));
 }

@@ -23,6 +23,8 @@
 // and rotating. Rendering the text is not the document's job: a host renders
 // a text layer with RenderTextLayer (UltraCanvasRasterText.h) and puts it in
 // with AddLayer or ReplaceLayer.
+// Version: 1.5.0 - ScaleImage takes UCScaleImageOptions: the resampling method
+//                  (UCResampleMethod) and a sharpening pass after it
 // Version: 1.4.0 - password-protected *.ucd: SetUCDPassword, LoadUCD with a password,
 //                  IsPasswordProtected
 // Version: 1.3.0 - layered UltraCanvas documents (*.ucd, UCD 2.1 UCBitmap): SaveUCD / LoadUCD,
@@ -48,6 +50,28 @@
 class UltraCryptSecureBuffer;   // UltraCrypt/UltraCryptCore.h
 
 namespace UltraCanvas {
+
+// How ScaleImage works out the new pixels. Interpolation cannot add detail
+// that is not there: enlarged, the smooth methods look soft, Nearest looks
+// blocky. Pick by the picture.
+enum class UCResampleMethod {
+    Nearest,    // copies the nearest pixel: pixel art, icons, screenshots at 200 % / 300 % / 400 %
+    Bilinear,   // blends the four nearest: quick, the softest
+    Bicubic,    // a cubic over sixteen: sharper than bilinear
+    Mitchell,   // a balanced cubic: soft but clean, hardly any halo at hard edges - photos
+    Lanczos2,   // a windowed sinc over 4 x 4: sharp, with faint halos
+    Lanczos3    // a windowed sinc over 6 x 6: the sharpest, slight halos at hard edges (the default)
+};
+
+struct UCScaleImageOptions {
+    UCResampleMethod method = UCResampleMethod::Lanczos3;
+    // An unsharp mask after the resample, 0 (none) to 1 (strong), to win
+    // back some of the crispness an enlargement loses. Its radius grows
+    // with the enlargement. The colour is sharpened, never the transparency,
+    // so an edge against nothing gets no halo of half-transparent pixels.
+    // Nearest is never sharpened: it stays an exact copy of the pixels.
+    double sharpen = 0.0;
+};
 
 // ===== UNDO ENTRY =====
 // Either a pixel snapshot of one rectangle of one layer (a stroke, a fill,
@@ -143,9 +167,11 @@ public:
     void CommitSelectionChange(const std::string& label = "Selection");
 
     // ===== WHOLE-IMAGE GEOMETRY (structural, undoable) =====
-    // Resample every layer to the new size (PixelFX Lanczos when available,
-    // bilinear otherwise).
-    void ScaleImage(int newWidth, int newHeight);
+    // Resample every layer to the new size, by `options` (Lanczos3 and no
+    // sharpening unless asked). The smooth methods and the sharpening run
+    // through PixelFX; a build without libvips resamples them bilinearly and
+    // does not sharpen. Nearest needs no PixelFX.
+    void ScaleImage(int newWidth, int newHeight, const UCScaleImageOptions& options = UCScaleImageOptions());
     // Change the canvas without resampling; existing pixels are placed at
     // (offsetX, offsetY) of the new canvas.
     void ResizeCanvas(int newWidth, int newHeight, int offsetX, int offsetY);
