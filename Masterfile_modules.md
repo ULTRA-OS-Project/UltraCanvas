@@ -770,6 +770,21 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   No renderer, no writer. In `core/UltraCanvasPresentationPptx.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
 
+- **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
+  presentations (`.odp`, `.otp` templates, flat `.fodp`) read as text into
+  UltraCanvasPresentationPptx's model (`PptxPresentation` and the rest), so
+  `PptxPresentationToRichDocument` outlines either kind of deck:
+  `ReadOdpPresentation`, `ReadOdpPresentationFromMemory` (a package or a flat
+  file's XML), `IsOdpPresentationFile` (by content), `IsOdpExtension`. Titles,
+  subtitles, outline and text-box paragraphs with list levels, bullets and
+  numbering from the list styles, bold / italic / underline through the style
+  parents, groups, tables (covered cells kept as empty cells), pictures,
+  speaker notes, hidden slides, the slide size from the master's page layout;
+  slide furniture, prompting placeholders, embedded objects and page comments
+  left out. A password-protected deck is refused with a reason. No renderer,
+  no writer. In `core/UltraCanvasPresentationOdp.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationOdp.md`.
+
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
   tables and Excel 2003 XML files saved under the name, read into a UI-free

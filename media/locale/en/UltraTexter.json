@@ -233,6 +233,7 @@
   "Subscript (~text~)": "Subscript (~text~)",
   "Superscript (^text^)": "Superscript (^text^)",
   "Texter cannot save the Word 97-2003 (.doc) format.": "Texter cannot save the Word 97-2003 (.doc) format.",
+  "Texter opens presentations as the outline of their slides and cannot save them as a presentation. Save the outline as .odt or .docx instead.": "Texter opens presentations as the outline of their slides and cannot save them as a presentation. Save the outline as .odt or .docx instead.",
   "The document could not be written.": "The document could not be written.",
   "The document has no file name yet.": "The document has no file name yet.",
   "The file could not be opened for writing.": "The file could not be opened for writing.",

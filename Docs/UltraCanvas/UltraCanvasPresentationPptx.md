@@ -1,7 +1,8 @@
 # UltraCanvasPresentationPptx — PowerPoint decks (.pptx) as text
 
 `UltraCanvasPresentationPptx.h` reads a PowerPoint presentation - `.pptx`,
-and `.pptm` / `.ppsx` / `.potx`, which are the same package - into a UI-free
+and `.pptm` / `.ppsx` / `.ppsm` / `.potx` / `.potm`, which are the same
+package - into a UI-free
 model of its slides' text: titles, the paragraphs of every placeholder and
 text box with their outline levels and bullets, tables, the pictures' names
 and descriptions, speaker notes, and which slides are hidden. A
@@ -9,6 +10,10 @@ password-protected deck is decrypted on the way in, through the same code as
 a protected `.xlsx` or `.docx` ([UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)).
 
 It is a reader of text, not a slide renderer. There is no writer.
+
+An OpenDocument presentation (`.odp`, `.otp`, `.fodp`) is read into the same
+model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), so the
+outline, the preview and the text extraction below serve both kinds of deck.
 
 ## Opening one as a document
 
@@ -40,7 +45,12 @@ speaker notes as a block quote opening "Notes:"; a rule between slides.
 UltraFiler's preview page (`UltraCanvasFilerWidget::TextPreviewLines`) shows
 the same outline: the first page of a deck's slide text on its tile and in
 the detail pane. A protected deck keeps its type glyph, since the preview has
-no password to ask for.
+no password to ask for. UltraTexter opens a deck as the outline in its
+document editor, and refuses to save it back as a deck.
+
+A file named `.pptx` (or `.odp`) that is no deck - damaged, or something else
+renamed - is refused by `LoadTextDocument` ("The file is not a valid
+PowerPoint presentation") rather than read as text.
 
 ## Reading the model
 

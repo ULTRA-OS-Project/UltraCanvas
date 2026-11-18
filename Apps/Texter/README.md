@@ -33,6 +33,12 @@ This app versions itself: [`Docs/Texter/CHANGELOG.md`](../../Docs/Texter/CHANGEL
   WYSIWYG editor (`UltraCanvasRichTextEdit`): fonts, sizes, colours,
   alignment, styles, embedded images, tables with merged and editable cells.
   Saving writes the same document back, so formatting survives a round trip.
+- **Presentations as an outline.** A PowerPoint deck (`.pptx`, `.pptm`,
+  `.ppsx`, `.ppsm`, `.potx`, `.potm`) or an OpenDocument one (`.odp`, `.otp`,
+  `.fodp`) opens in the same editor as the outline of its slides - each
+  slide's number and title, its bullets, tables, pictures' descriptions and
+  speaker notes. It can be saved as `.odt`, `.docx`, Markdown or text; saving
+  it back as a deck is refused, so the deck is never overwritten.
 - **Find and replace.** *Find…*, *Replace…*, a search-as-you-type bar and
   *Go to Line…*, in text and word-processing tabs alike.
 - **Spell checking** (*Edit → Spelling*). The status bar shows the

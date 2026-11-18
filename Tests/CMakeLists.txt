@@ -5670,6 +5670,31 @@ else()
     message(STATUS "  OfficeEncryptionTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== OPENDOCUMENT PRESENTATION TEST =====
+# .odp / .otp / .fodp read into the PowerPoint reader's model: the PowerPoint
+# fixture as LibreOffice converts it (compared with the .pptx reader's view of
+# the original), a flat deck written by hand, the refusals, and the file
+# loader, text extraction and UltraFiler preview taking the new types. Needs
+# the full library (the file loader, the Filer widget).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PresentationOdpTest...")
+    add_executable(PresentationOdpTest ${CMAKE_CURRENT_SOURCE_DIR}/PresentationOdpTest.cpp)
+    target_include_directories(PresentationOdpTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PresentationOdpTest PRIVATE cxx_std_20)
+    target_link_libraries(PresentationOdpTest PRIVATE UltraCanvas)
+    target_compile_definitions(PresentationOdpTest PRIVATE
+        ODPTEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(PresentationOdpTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PresentationOdpTest COMMAND PresentationOdpTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PresentationOdpTest")
+else()
+    message(STATUS "  PresentationOdpTest skipped (UltraCanvas target not present)")
+endif()
+
 # open but cannot list is one whose thumbnail nobody can switch on.
 if(TARGET UltraCanvas)
     message(STATUS "  Building FilerFormatListTest...")

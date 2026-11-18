@@ -4,6 +4,8 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.16.0 - LoadTextDocument / OpenTextDocument read an OpenDocument presentation
+//                  (.odp, .otp, .fodp) as an outline
 // Version: 1.15.0 - ConvertVideoFile, CanConvertVideoTo, GetVideoSaveExtensions,
 //                  AddVideoSaveTypes (a video saved in
 //                  another type, by the converter a module registers - VideoFX's)
@@ -26,7 +28,7 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -277,8 +279,9 @@ namespace UltraCanvas {
         // .odt and .docx are fully parsed (detection is signature-based, so
         // renamed files still load); .tex is imported by the LaTeX document
         // reader (article subset, formulas kept for the math engine);
-        // a PowerPoint deck (.pptx, .pptm, .ppsx, .potx) reads as an outline of
-        // its slides (UltraCanvasPresentationPptx.h);
+        // a PowerPoint deck (.pptx, .pptm, .ppsx, .ppsm, .potx, .potm) and an
+        // OpenDocument presentation (.odp, .otp, .fodp) read as an outline of
+        // their slides (UltraCanvasPresentationPptx.h, UltraCanvasPresentationOdp.h);
         // .md/.markdown parse as Markdown; anything
         // else readable as text becomes plain paragraphs. Legacy Word 97-2003
         // .doc files are detected and rejected with a clear loadError telling

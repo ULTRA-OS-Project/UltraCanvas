@@ -1,5 +1,9 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.9.0 - a PowerPoint deck (.pptx and kin) or an OpenDocument presentation (.odp,
+//                  .otp, .fodp) opens as the outline of its slides, as the Open dialog's
+//                  "Documents" promised, not as a hex dump; saving one back to a deck type
+//                  is refused rather than writing plain text over the deck
 // Version: 2.8.0 - a window started dark has dark chrome (the theme was only laid over it on a change);
 //                  View > Dark Mode: Document Background (dark / light grey / white text tabs under a dark look)
 // Version: 2.7.0 - the status bar shows which dictionary the active document is spell checked against; a click opens the Spelling menu
@@ -21,7 +25,7 @@
 // Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
 //                  and shortcut colours
 // Version: 2.3.3 - The profile folder and comment author read as UTF-8
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -67,6 +71,8 @@
 #include "UltraCanvasUtilsUtf8.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasFileError.h"   // FileWriteFailureReason
+#include "UltraCanvasPresentationPptx.h"   // IsPptxExtension
+#include "UltraCanvasPresentationOdp.h"    // IsOdpExtension
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasLocalisationEditor.h"
 
@@ -1849,15 +1855,17 @@ namespace {
 
         // PDFs take a separate codepath: the tab's textArea is swapped out
         // for a UltraCanvasPDFView. Word-processing documents (.odt/.docx/.doc)
-        // are converted to editable Markdown. Detect by extension
-        // (case-insensitive).
+        // open in the rich document editor, and so does a presentation
+        // (.pptx and kin, .odp / .otp / .fodp) as the outline of its slides.
+        // Detect by extension (case-insensitive).
         std::string ext = PathToUtf8(p.extension());
         if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
         bool ok;
         if (ext == "pdf") {
             ok = LoadPDFIntoDocument(docIndex, filePath);
-        } else if (ext == "odt" || ext == "docx" || ext == "doc") {
+        } else if (ext == "odt" || ext == "docx" || ext == "doc" || IsPptxExtension(ext) ||
+                   IsOdpExtension(ext)) {
             ok = LoadWordIntoDocument(docIndex, filePath);
         } else {
             ok = LoadFileIntoDocument(docIndex, filePath);
@@ -2467,14 +2475,20 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             // The element shares ownership of the document, so the tab can
             // hand the very same blocks back to the writer on save.
-            // Read through FileLoader - only a real word-processing file,
-            // so a damaged one still falls back to the plain view below
+            // Read through FileLoader - only a real word-processing file, so
+            // a damaged one still falls back to the plain view below. A
+            // presentation, by its extension, reads as the outline of its
+            // slides.
+            const bool presentation = IsPptxExtension(filePath) || IsOdpExtension(filePath);
             std::string loadError = "not a word-processing document";
             std::shared_ptr<UCRichDocument> document;
-            if (DetectWordDocumentFormat(filePath) != WordDocumentFormat::Unknown)
+            if (presentation || DetectWordDocumentFormat(filePath) != WordDocumentFormat::Unknown)
                 document = UltraCanvasFileLoader::LoadTextDocument(filePath, loadError);
             if (!document) {
-                if (DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc) {
+                // A deck that cannot be read - protected or damaged - says
+                // why: its bytes would tell nobody anything. So does a .doc,
+                // and a protected .docx, which is a compound file as a .doc is.
+                if (presentation || DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc) {
                     UltraCanvasDialogManager::ShowError(loadError, Tr("Unsupported Format"),
                                                         nullptr, this);
                     return false;
@@ -2589,7 +2603,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 // fallback for corrupt/mislabeled packages (hex view).
                 "doc", "xls", "ppt",
                 // Office Open XML / OpenDocument (ZIP-based binary containers)
-                "docx", "xlsx", "pptx", "odt", "ods",
+                "docx", "xlsx", "pptx", "odt", "ods", "odp",
                 // Fonts
                 "ttf", "otf", "woff", "woff2", "eot",
                 // Database
@@ -2687,6 +2701,17 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 "supported. Save as .docx instead."),
                 Tr("Unsupported Format"), nullptr, this);
             lastSaveError = Tr("Texter cannot save the Word 97-2003 (.doc) format.");
+            return false;
+        }
+
+        // A presentation is read as an outline, never written: saving the
+        // outline under the deck's own name would put text over the slides.
+        if (IsPptxExtension(targetExtension) || IsOdpExtension(targetExtension)) {
+            const std::string reason =
+                Tr("Texter opens presentations as the outline of their slides and cannot save "
+                   "them as a presentation. Save the outline as .odt or .docx instead.");
+            UltraCanvasDialogManager::ShowError(reason, Tr("Unsupported Format"), nullptr, this);
+            lastSaveError = reason;
             return false;
         }
 
