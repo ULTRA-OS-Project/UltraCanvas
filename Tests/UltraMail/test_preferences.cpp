@@ -76,6 +76,8 @@ TEST(preferences_round_trip) {
     out.scamWarnings.romance = false;
     out.scamWarnings.cryptoCaution = false;
     out.scamWarnings.loanOffers = false;
+    out.scamWarnings.counterfeits = false;
+    out.scamWarnings.seoOffers = false;
     out.senderLists.trusted = { "friend@example.org" };
     out.senderLists.blocked = { "offers@shop.example", "@junk.example" };
     out.folderTreeContent = FolderTreeContent::CurrentAccount;
@@ -97,6 +99,8 @@ TEST(preferences_round_trip) {
     REQUIRE(!in.scamWarnings.romance);
     REQUIRE(!in.scamWarnings.cryptoCaution);
     REQUIRE(!in.scamWarnings.loanOffers);
+    REQUIRE(!in.scamWarnings.counterfeits);
+    REQUIRE(!in.scamWarnings.seoOffers);
     REQUIRE(in.scamWarnings.phishing);          // the others stay on
     REQUIRE(in.scamWarnings.advanceFee);
     REQUIRE(in.scamWarnings == out.scamWarnings);

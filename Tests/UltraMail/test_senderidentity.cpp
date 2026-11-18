@@ -754,3 +754,27 @@ TEST(icon_cache_finds_the_icons_on_disk_with_one_listing) {
     }
     fs::remove_all(dir, ec);
 }
+
+TEST(an_offer_of_services_is_spam_from_a_stranger_only) {
+    ContactIndex index;
+    index.Build({ MakeContact("Agency", ContactSection::Work, "seo@agency.example") });
+
+    SenderIdentity who;
+    who.level    = ThreatLevel::Suspicious;
+    who.findings = "seo-solicitation";
+    who.address  = "stranger@gmail.com";
+    REQUIRE(ClassifySender(who, index).cls == SenderClass::Spam);
+
+    // The reader's own SEO agency writes about SEO.
+    who.address = "seo@agency.example";
+    REQUIRE(ClassifySender(who, index).cls == SenderClass::Business);
+    who.bulk = true;   // ... in a newsletter: a contact still
+    REQUIRE(ClassifySender(who, index).cls == SenderClass::Business);
+    who.bulk = false;
+
+    // Anything else the scan found still counts for a contact.
+    who.findings = "seo-solicitation,link-disguised-address";
+    REQUIRE(ClassifySender(who, index).cls == SenderClass::Spam);
+    who.findings = "";   // a verdict stored before the codes were
+    REQUIRE(ClassifySender(who, index).cls == SenderClass::Spam);
+}

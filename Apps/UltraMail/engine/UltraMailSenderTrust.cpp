@@ -120,17 +120,34 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
     status.inAddressBook = contacts.Lookup(who.address, section);
     status.section       = section;
 
+    // An offer of services (an SEO "audit") is spam from a stranger and
+    // ordinary business from a contact: when that is all the scan found, a
+    // contact's message is not called spam for it.
+    ThreatLevel level = who.level;
+    if (status.inAddressBook && level == ThreatLevel::Suspicious && !who.findings.empty()) {
+        bool onlyStrangerFindings = true;
+        std::size_t start = 0;
+        while (start <= who.findings.size()) {
+            std::size_t comma = who.findings.find(',', start);
+            if (comma == std::string::npos) comma = who.findings.size();
+            const std::string code = who.findings.substr(start, comma - start);
+            if (!code.empty() && !FindingOnlyFromStrangers(code)) onlyStrangerFindings = false;
+            start = comma + 1;
+        }
+        if (onlyStrangerFindings) level = who.bulk ? ThreatLevel::Advertisement : ThreatLevel::Clean;
+    }
+
     // Danger first: a message whose links lie is a scam whoever it claims to be
     // from — an address book entry says nothing about *this* message.
-    if (who.level == ThreatLevel::Scam) {
+    if (level == ThreatLevel::Scam) {
         status.cls    = SenderClass::Scam;
         status.reason = "This message shows scam or phishing markers — check the reasons "
                         "below before clicking, paying or answering anything in it.";
         return status;
     }
-    if (who.level == ThreatLevel::Suspicious || (who.junkFolder && !status.inAddressBook)) {
+    if (level == ThreatLevel::Suspicious || (who.junkFolder && !status.inAddressBook)) {
         status.cls    = SenderClass::Spam;
-        status.reason = who.junkFolder && who.level != ThreatLevel::Suspicious
+        status.reason = who.junkFolder && level != ThreatLevel::Suspicious
             ? "This message is in the junk folder."
             : "Parts of this message do not add up — treat its links with care.";
         return status;
@@ -145,7 +162,7 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
     // Bulk mail is called what it is even when it comes from a known service:
     // a campaign newsletter really is advertising, and saying so is the point
     // of the dark-blue badge.
-    if (who.level == ThreatLevel::Advertisement || who.bulk) {
+    if (level == ThreatLevel::Advertisement || who.bulk) {
         status.cls = SenderClass::Advertisement;
         status.reason = status.brandName.empty()
             ? "Bulk mail — this looks like advertising or a newsletter."

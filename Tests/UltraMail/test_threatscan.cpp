@@ -1761,3 +1761,229 @@ TEST(a_companys_name_from_its_own_or_a_free_domain_is_not_a_mismatch) {
     REQUIRE(proven.Has("sender-company-mismatch"));
     REQUIRE(proven.level == ThreatLevel::Clean);
 }
+
+// ---------------------------------------------------------------------------
+// Fake luxury goods behind disguised links (a reader's inbox, 2026-11-17)
+// ---------------------------------------------------------------------------
+namespace {
+
+// The mail as it arrived, cut to what the rules read: no List-Unsubscribe, no
+// Authentication-Results, and every link written "https:////host".
+const char* kReplicaWatchMail =
+    "Return-Path: <infospool@wwwpopshoponline.example>\r\n"
+    "Received: from wwwpopshoponline.example (unknown [196.251.102.238])\r\n"
+    "\tby mail.reader.example (Postfix) with ESMTPS id DE4AFC112B1\r\n"
+    "\tfor <info@reader.example>; Tue, 17 Nov 2026 17:54:52 +0100 (CET)\r\n"
+    "Message-ID: <4o.xg0bmjniq.oz6vdlltrpu@4p.7crrlgxl.ti>\r\n"
+    "Date: Tue, 17 Nov 2026 16:55:51 -0300\r\n"
+    "From: Victoria <infospool@wwwpopshoponline.example>\r\n"
+    "To: info <info@reader.example>\r\n"
+    "Subject: [Black Friday] Rolex Watches Starting at Just $250\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: text/html;\r\n\tcharset=\"utf-8\"\r\n"
+    "Content-Transfer-Encoding: Quoted-Printable\r\n"
+    "X-Antivirus-Status: Clean\r\n"
+    "\r\n"
+    "<HTML lang=3Den><BODY><TABLE><TR><TD><A style=3D\"DISPLAY: b=\r\n"
+    "lock\" href=3D\"https:////vv1.popshoponline.example////////1v5wer//////=\r\n"
+    "/vy5.html\" target=3D_blank><IMG alt=3D\"Exclusive Luxury Timepieces Starting =\r\n"
+    "at Only $250\" src=3D\"https:////vv1.popshoponline.example//////qw.jpg\" width=\r\n"
+    "=3D600></A></TD></TR><TR><TD><A href=3D\"https:////vv1.popshoponline.example=\r\n"
+    "////////1v5wer///////vy5.html\"><H1>Timeless Luxury, Crafted For You </H1></A>=\r\n"
+    "<A href=3D\"https:////vv1.popshoponline.example////////1v5wer///////vy5.html\">=\r\n"
+    "<P>Discover our exclusive range of precision luxury watches. Designed for=20\r\n"
+    "distinction and built to last, now available starting from an unbeatable=20\r\n"
+    "<STRONG>$250</STRONG>. </P></A><A href=3D\"https:////vv1.popshoponline.examp=\r\n"
+    "le////////1v5wer///////vy5.html\">SHOP LUXURY WATCHES FROM $250 </A></TD></T=\r\n"
+    "R><TR><TD><P>You received this message because you subscribed to our luxury=\r\n"
+    " arrivals and special promotions. </P><A href=3D\"https:////vv1.popshoponlin=\r\n"
+    "e.example/////return.php?p=3DTUsxP2lu\">Unsubscribe from this mailing list =\r\n"
+    "</A></TD></TR></TABLE></BODY></HTML>\r\n";
+
+} // namespace
+
+TEST(links_with_extra_slashes_keep_their_host) {
+    // A browser reads any run of '/' and '\' after "https:" as the "//".
+    const auto links = ExtractLinks(
+        "<a href=\"https:////shop.example.ru////x.html\">a</a>"
+        "<a href=\"https:\\\\shop.example.ru\\x.html\">b</a>"
+        "<a href=\"http:/shop.example.ru/\">c</a>"
+        "<a href=\"https://shop.example.ru/\">d</a>"
+        "<a href=\"/go?u=https://elsewhere.example\">e</a>"
+        "<a href=\"mailto:x@shop.example.ru\">f</a>", true);
+    REQUIRE(links.size() == 6);
+    REQUIRE(links[0].host == "shop.example.ru");
+    REQUIRE(links[1].host == "shop.example.ru");
+    REQUIRE(links[2].host == "shop.example.ru");
+    REQUIRE(links[3].host == "shop.example.ru");
+    REQUIRE(links[4].host.empty());   // a relative path on the sender's own site
+    REQUIRE(links[5].host.empty());
+    // Pictures loaded the same way are found too.
+    const auto images = ExtractImageHosts("<img src=\"https:////cdn.example.ru//a.jpg\">");
+    REQUIRE(images.size() == 1);
+    REQUIRE(images[0] == "cdn.example.ru");
+}
+
+TEST(a_disguised_link_address_is_told) {
+    const ThreatReport r = ScanMessage(Html("news@shop.example",
+        "<a href=\"https:////vv1.other.example////x.html\">Shop now</a>"));
+    REQUIRE(r.Has("link-disguised-address"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+    // Written as usual, it is not.
+    REQUIRE(!ScanMessage(Html("news@shop.example",
+        "<a href=\"https://vv1.other.example/x.html\">Shop now</a>"))
+                 .Has("link-disguised-address"));
+    // A phishing warning: switched off with them.
+    ScanInput off = Html("news@shop.example",
+        "<a href=\"https:////vv1.other.example////x.html\">Shop now</a>");
+    off.options.phishing = false;
+    REQUIRE(!ScanMessage(off).Has("link-disguised-address"));
+}
+
+TEST(the_250_dollar_rolex_mail_is_flagged) {
+    const ThreatReport r = ScanRawMessage(kReplicaWatchMail);
+    REQUIRE(r.Has("link-disguised-address"));
+    REQUIRE(r.Has("counterfeit-goods"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    // The reading pane can show where the button really goes.
+    const DomainMismatch m = FindDomainMismatchInRaw(kReplicaWatchMail);
+    REQUIRE(m.found);
+    REQUIRE(m.senderDomain == "wwwpopshoponline.example");
+    REQUIRE(m.linkDomain == "vv1.popshoponline.example");
+}
+
+TEST(counterfeit_luxury_goods) {
+    auto scan = [](const std::string& from, const std::string& subject,
+                   const std::string& body) {
+        ScanInput in = Html(from, body);
+        in.subject = subject;
+        return ScanMessage(in);
+    };
+    // A price no genuine one has, an offer.
+    REQUIRE(scan("deals@watch-outlet.example", "Rolex Watches Starting at Just $250", "<p>Shop now</p>")
+                .Has("counterfeit-goods"));
+    REQUIRE(scan("x@bags.example", "Black Friday", "<p>Louis Vuitton bags from 89 EUR</p>")
+                .Has("counterfeit-goods"));
+    REQUIRE(scan("x@bags.example", "Sale", "<p>Rolex Submariner only 1.250,00 \xE2\x82\xAC</p>")
+                .Has("counterfeit-goods"));
+    // Calling itself a replica, at any price.
+    const ThreatReport replica = scan("x@time.example", "New arrivals",
+        "<p>1:1 replica Patek Philippe and Audemars Piguet, AAA quality</p>");
+    REQUIRE(replica.Has("counterfeit-goods"));
+    REQUIRE(replica.level >= ThreatLevel::Suspicious);
+    // A genuine price, the brand's own domain, a word that only sounds like one.
+    REQUIRE(!scan("x@jeweller.example", "New in", "<p>Rolex Submariner Date, $12,950</p>")
+                 .Has("counterfeit-goods"));
+    REQUIRE(!scan("news@rolex.com", "Rolex", "<p>Leather strap from $250</p>")
+                 .Has("counterfeit-goods"));
+    REQUIRE(!scan("x@health.example", "Omega-3 sale", "<p>Omega 3 capsules only $25</p>")
+                 .Has("counterfeit-goods"));
+    REQUIRE(!scan("x@parcel.example", "Hermes delivery", "<p>Send a parcel from 4.99 EUR</p>")
+                 .Has("counterfeit-goods"));
+    // A proven shop's own bulk mail: a low price alone is a hint, not a verdict.
+    ScanInput shop = Html("news@jeweller.example", "<p>Cartier box, only $300</p>");
+    shop.listUnsubscribe = "<https://jeweller.example/u>";
+    shop.authResults = "mx.reader.example; dkim=pass header.d=jeweller.example; dmarc=pass "
+                       "header.from=jeweller.example";
+    const ThreatReport proven = ScanMessage(shop);
+    REQUIRE(proven.Has("counterfeit-goods"));
+    REQUIRE(proven.level < ThreatLevel::Suspicious);
+    // Its own switch.
+    ScanInput off = Html("deals@watch-outlet.example", "<p>Shop now</p>");
+    off.subject = "Rolex Watches Starting at Just $250";
+    off.options.counterfeits = false;
+    REQUIRE(!ScanMessage(off).Has("counterfeit-goods"));
+}
+
+// ---------------------------------------------------------------------------
+// Unsolicited SEO offers (a reader's inbox, 2026-11-17)
+// ---------------------------------------------------------------------------
+namespace {
+
+// From a genuine (DKIM-signed) free mailbox, as a "Re:" to nothing.
+const char* kSeoOfferMail =
+    "Return-Path: <samardnamcy@gmail.com>\r\n"
+    "Authentication-Results: mail.reader.example;\r\n"
+    "\tdkim=pass (2048-bit key; unprotected) header.d=gmail.com header.i=@gmail.com "
+    "header.a=rsa-sha256 header.s=20260707 header.b=TBHtucHs;\r\n"
+    "\tdkim-atps=neutral\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Message-ID: <autogen-java-2fd2b4f5-7f63-4189-bd7e-fd374be0ed91@google.com>\r\n"
+    "Date: Tue, 17 Nov 2026 09:02:58 +0000\r\n"
+    "Subject: Re: Following Up on My Previous Email \r\n"
+    "From: samardnamcy@gmail.com\r\n"
+    "To: info@reader.example\r\n"
+    "Content-Type: multipart/alternative; boundary=\"0000000000003377a60660752935\"\r\n"
+    "\r\n"
+    "--0000000000003377a60660752935\r\n"
+    "Content-Type: text/plain; charset=\"UTF-8\"; format=flowed; delsp=yes\r\n"
+    "\r\n"
+    "Hi,\r\n\r\nJust following up on my previous email.\r\n\r\n"
+    "Would you be interested in seeing the brief SEO audit report I prepared for  \r\n"
+    "your website?\r\n\r\nLooking forward to your response.\r\n\r\nBest,\r\n\r\n"
+    "--0000000000003377a60660752935\r\n"
+    "Content-Type: text/html; charset=\"UTF-8\"\r\n"
+    "Content-Transfer-Encoding: quoted-printable\r\n"
+    "\r\n"
+    "Hi,<br><br>Just following up on my previous email.<br><br>Would you be inte=\r\n"
+    "rested in seeing the brief SEO audit report I prepared for your website?<br=\r\n"
+    "><br>Looking forward to your response.<br><br>Best,<br><br>On Thu, Nov 12, =\r\n"
+    "2026 at 11:52=E2=80=AFAM wrote:<br>Hey!<br><br>I noticed a small SEO issue o=\r\n"
+    "n your website that could be affecting how it appears in Google search resul=\r\n"
+    "ts.<br><br>I've captured a screenshot and put together a quick audit report.=\r\n"
+    "<br><br>Would you like me to share it?<br><br>Thanks,\r\n"
+    "--0000000000003377a60660752935--\r\n";
+
+} // namespace
+
+TEST(the_seo_audit_offer_is_spam) {
+    const ThreatReport r = ScanRawMessage(kSeoOfferMail);
+    REQUIRE(r.Has("seo-solicitation"));
+    REQUIRE(r.verifiedDomain == "gmail.com");    // genuine gmail - and still spam
+    REQUIRE(r.level == ThreatLevel::Suspicious);  // spam, not a scam
+}
+
+TEST(seo_offers) {
+    auto scan = [](const std::string& from, const std::string& subject,
+                   const std::string& body) {
+        ScanInput in;
+        in.fromAddr = from;
+        in.subject  = subject;
+        in.body     = body;
+        return ScanMessage(in);
+    };
+    // From a domain of its own, nothing proven.
+    REQUIRE(scan("sam@rank-boost.example", "Quick question",
+                 "We can get your website on the first page of Google. Would you like "
+                 "a free analysis?").level >= ThreatLevel::Suspicious);
+    // Search engines without the reader's website, or without an offer.
+    REQUIRE(!scan("x@gmail.com", "SEO meetup", "The SEO meetup is on Friday, see you there.")
+                 .Has("seo-solicitation"));
+    REQUIRE(!scan("x@gmail.com", "Hi", "I found your website in the search results. "
+                  "Nice photos!").Has("seo-solicitation"));
+    // "seo" small is a name: Seo-yeon writing about the reader's website.
+    REQUIRE(!scan("seo.yeon@gmail.com", "Photos", "Hi, it's Seo! I saw your website and "
+                  "would you like the photos from Saturday? Seo").Has("seo-solicitation"));
+    REQUIRE(scan("x@gmail.com", "Quick question", "Your website has seo issues - would you "
+                 "like a free audit? It would help its google ranking.")
+                .Has("seo-solicitation"));   // another search-engine term says it
+    REQUIRE(scan("x@gmail.com", "Hi", "I found SEO issues on your website. Would you like "
+                 "the report?").Has("seo-solicitation"));
+    // A proven domain's newsletter is a hint; a proven registry brand nothing.
+    ScanInput news;
+    news.fromAddr = "news@seo-tool.example";
+    news.body = "Our SEO report for your website is ready - would you like a tour?";
+    news.listUnsubscribe = "<https://seo-tool.example/u>";
+    news.authResults = "mx.reader.example; dkim=pass header.d=seo-tool.example; dmarc=pass "
+                       "header.from=seo-tool.example";
+    const ThreatReport newsletter = ScanMessage(news);
+    REQUIRE(newsletter.Has("seo-solicitation"));
+    REQUIRE(newsletter.level == ThreatLevel::Advertisement);
+    // Its own switch.
+    ScanInput off;
+    off.fromAddr = "x@gmail.com";
+    off.body = "I noticed an SEO issue on your website. Would you like the report?";
+    REQUIRE(ScanMessage(off).Has("seo-solicitation"));
+    off.options.seoOffers = false;
+    REQUIRE(!ScanMessage(off).Has("seo-solicitation"));
+}
