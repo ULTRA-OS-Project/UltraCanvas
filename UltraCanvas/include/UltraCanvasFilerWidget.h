@@ -3016,14 +3016,16 @@ namespace UltraCanvas {
         // Refuses a command that would write into the listing on screen when
         // that listing cannot be written to - today, a remote drive: the
         // widget can browse one (remoteListing) but has no way to change it.
-        // Reports through ReportError and answers true when it refused, so a
-        // command reads `if (RefuseWriteHere("delete")) return;`.
+        // Reports `refusal` - the whole translated sentence for the command,
+        // "Cannot rename on a drive: ..." - followed by what a drive can do,
+        // through ReportError, and answers true when it refused, so a command
+        // reads `if (RefuseWriteHere(Tr("Cannot ... on a drive: ..."))) return;`.
         //
         // Without this the command would reach std::filesystem with a path
         // like "ultracloud://acc/x", which resolves to nothing: the operation
         // fails anyway, but with an error about a missing file rather than an
         // answer about where it was pointed.
-        bool RefuseWriteHere(const char* what);
+        bool RefuseWriteHere(const std::string& refusal);
 
         // True while the listing on screen is a remote drive's.
         bool ShowingRemoteFolder() const;
