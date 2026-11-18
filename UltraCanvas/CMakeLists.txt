@@ -1322,6 +1322,14 @@ else()
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasCircularProgressChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasColormap.cpp)
+    # The bridge that draws a word-processing document's chart with the engine
+    # (core/UltraCanvasRichDocumentChart.cpp) calls the engine's charts, so no
+    # program could link this core with it. Its chart-free form makes no
+    # chart, and the rich text view then draws the chart's shapes.
+    list(REMOVE_ITEM ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChart.cpp)
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChartNone.cpp)
     message(STATUS "Charts: DISABLED - core keeps only the chart base the diagrams and the progress dialog use")
 endif()
 
