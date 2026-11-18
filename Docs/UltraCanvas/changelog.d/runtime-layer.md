@@ -15,7 +15,7 @@
   plug-ins, spelled with its capital I, which the walk up from the
   executable found only on a volume that ignores case.
 - **UltraMail is in the macOS suite** (`package-macos.sh`), with UltraNet's
-  plug-ins in its `Contents/PlugIns/UltraNet/` (`ULTRANET_PLUGIN_APPS`) and
+  plug-ins in its `Contents/PlugIns/UltraNet/` (`ultranet_plugins_of`) and
   their libraries in the shared `Frameworks/`; it had been built on macOS and
   never packaged. Every Mach-O file under a bundle's `PlugIns/` is signed,
   not only the top-level `.dylib`.

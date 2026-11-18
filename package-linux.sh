@@ -169,7 +169,7 @@ fi
 # libVideoFX ships with the rest: UltraVideo links it (and FFmpeg through it),
 # so the package carries the engine since UltraVideo 0.1.0.
 
-# --- UltraNet plug-ins (dlopened by UltraMail, UltraNetMonitor, …) -----------
+# --- UltraNet plug-ins (dlopened by UltraMail, EmailCleaner, and the printer and scanner discovery of every app) ---
 
 # These are MODULE libraries built to $BUILDDIR/Plugins/UltraNet, not lib/, so
 # the glob above misses them - which is why a CI archive could ship every app

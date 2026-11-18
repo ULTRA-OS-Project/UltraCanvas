@@ -15,8 +15,8 @@ directory configured without it, going by its cache: a plain configure leaves
 a file of a few entries behind, which is not the tree's) is compiled again with the flags the build gave it,
 by clang++ with -stdlib=libc++ and -fsyntax-only. C sources and the Linux,
 macOS and Android OS arms (never compiled on Windows) are left out, as is
-anything generated under build/. Only errors are printed: the Windows build
-does not treat warnings as errors either.
+anything generated in the build directory. Only errors are printed: the
+Windows build does not treat warnings as errors either.
 
     python3 scripts/check_libcxx_syntax.py                 # the whole tree
     python3 scripts/check_libcxx_syntax.py VideoFX Apps/UltraVideo
@@ -24,7 +24,15 @@ does not treat warnings as errors either.
 
 A path argument keeps the translation units under that directory or that
 file. --clang names the compiler (default: clang++), --jobs the parallel
-compiles (default: the processor count), --db another compile database.
+compiles (default: the processor count), --db another compile database -
+of a build anywhere, inside the checkout or not. A build configured without
+the database is configured again under the folder and the sources its own
+CMakeCache.txt names (CMAKE_CACHEFILE_DIR, CMAKE_HOME_DIRECTORY), never under
+the spelling given here: reached through a symbolic link, CMake would
+otherwise record the link's path as the build's home, and the build would
+not build from its own folder any more. A cache that names another folder
+- a build copied or moved, whose database runs its commands in folders that
+are not there - is refused, with or without the database.
 
 Needs clang++, libc++'s headers and a configured build (the headers the
 build found). Only the headers: the units are type-checked, never linked.
@@ -46,6 +54,12 @@ backends out without a word. The cloud session hook
 Exit 0: every unit compiles; 1: some do not; 2: the toolchain or the
 database is missing.
 """
+# Version: 2.2.0 - a build outside the checkout: no ValueError naming it; the
+#                 reconfigure goes by the cache's own folders, so a build
+#                 reached through a symbolic link is not re-homed; one whose
+#                 cache names another folder (moved, or re-homed) is refused
+#                 instead of crashing on a missing folder; the generated
+#                 sources of the build checked are left out wherever it is
 # Version: 2.1.0 - a private copy of libc++'s headers when none is installed
 #                 (--fetch-libcxx): installing libc++-dev on Ubuntu 24.04 removes
 #                 the libunwind-dev that GStreamer's dev package needs
@@ -171,36 +185,78 @@ def check_toolchain(cxx, work):
     return flags
 
 
+def shown(path):
+    """A path for a message: relative to the checkout when it is inside it,
+    as given when it is not (a build directory may be anywhere)."""
+    try:
+        return str(Path(path).resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def read_cache(build):
+    """The entries of the build's CMakeCache.txt, NAME -> value; {} when it
+    has none."""
+    cache = build / "CMakeCache.txt"
+    if not cache.exists():
+        return {}
+    entries = {}
+    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line or line.startswith(("#", "//")) or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        entries[key.split(":", 1)[0]] = value.strip()
+    return entries
+
+
 def exports_compile_commands(build):
     """Whether the build directory was configured to write the database.
     The file's presence does not say: a plain configure leaves one of a
     handful of entries behind (a sub-build of the UltraCanvas tree writes
     its own), which would pass for the whole tree's."""
-    cache = build / "CMakeCache.txt"
-    if not cache.exists():
-        return False
-    for line in cache.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.startswith("CMAKE_EXPORT_COMPILE_COMMANDS:") and line.split("=", 1)[1].strip().upper() in ("ON", "1", "TRUE", "YES"):
-            return True
-    return False
+    value = read_cache(build).get("CMAKE_EXPORT_COMPILE_COMMANDS", "")
+    return value.upper() in ("ON", "1", "TRUE", "YES")
 
 
 def load_database(path):
     """The compile database, written first when the build directory was
-    configured without it."""
+    configured without it; None (said why) when there is no build there, or
+    one whose cache names another folder."""
     build = path.parent
+    cache = read_cache(build)
+    if not cache:
+        print("check_libcxx_syntax: no build in %s - configure one first "
+              "(cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)" % shown(build), file=sys.stderr)
+        return None
+    # The folders the build knows itself by. CMake records the -B path as it
+    # is spelled, so configuring a build reached through a symbolic link by
+    # the link's path re-homes it there, and it no longer builds from its own
+    # folder; a build copied or moved has a cache naming the old folder, and
+    # a database whose commands run in folders that are not there.
+    home = cache.get("CMAKE_CACHEFILE_DIR") or str(build)
+    source = cache.get("CMAKE_HOME_DIRECTORY") or str(ROOT)
+    if Path(home).resolve() != build.resolve():
+        # CMake refuses to configure such a cache in the folder it is in
+        # ("CMakeCache.txt directory ... is different than the directory ...
+        # where CMakeCache.txt was created"), so the way out is the old path
+        # or a new build.
+        print("check_libcxx_syntax: the build in %s was configured as %s, and CMake builds it only there - "
+              "pass --db %s/compile_commands.json while that path leads to it, or configure a new build "
+              "(cmake -B <folder> -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)" % (shown(build), home, home),
+              file=sys.stderr)
+        return None
     if not exports_compile_commands(build):
-        if not (build / "CMakeCache.txt").exists():
-            print("check_libcxx_syntax: no build in %s - configure one first "
-                  "(cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON)" % build, file=sys.stderr)
-            return None
         print("check_libcxx_syntax: %s was configured without a compile database - configuring it with "
-              "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" % build.relative_to(ROOT))
-        r = subprocess.run(["cmake", "-S", str(ROOT), "-B", str(build), "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"],
+              "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON" % shown(build))
+        r = subprocess.run(["cmake", "-S", source, "-B", home, "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"],
                            capture_output=True, text=True)
         if r.returncode != 0 or not path.exists():
             print(r.stdout[-2000:], r.stderr[-2000:], file=sys.stderr)
             return None
+    if not path.exists():
+        print("check_libcxx_syntax: %s has no %s - configure it again (cmake -B %s)"
+              % (shown(build), path.name, shown(build)), file=sys.stderr)
+        return None
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
@@ -225,10 +281,15 @@ def kept_flags(command):
     return out
 
 
-def select_units(db, wanted):
+def select_units(db, wanted, build=None):
     """The C++ translation units to check: every one of the database, or
-    those under the paths given, minus what Windows never compiles."""
+    those under the paths given, minus what Windows never compiles and what
+    the build generated - under build/, or under `build`, the folder of the
+    database checked, wherever it is."""
     roots = [(ROOT / w).resolve() for w in wanted]
+    generated = {str(ROOT / "build")}
+    if build is not None:
+        generated |= {str(Path(build)), str(Path(build).resolve())}
     units = []
     seen = set()
     for entry in db:
@@ -238,7 +299,7 @@ def select_units(db, wanted):
         s = str(file)
         if file.suffix not in CXX_SUFFIXES or s in seen:
             continue
-        if not s.startswith(str(ROOT) + os.sep) or s.startswith(str(ROOT / "build") + os.sep):
+        if not s.startswith(str(ROOT) + os.sep) or any(s.startswith(g + os.sep) for g in generated):
             continue
         if any(d in s for d in SKIPPED_DIRS):
             continue
@@ -286,9 +347,10 @@ def main():
     db = load_database(args.db)
     if db is None:
         return 2
-    units = select_units(db, args.paths)
+    units = select_units(db, args.paths, args.db.parent)
     if not units:
-        print("check_libcxx_syntax: nothing to check under %s" % " ".join(args.paths), file=sys.stderr)
+        print("check_libcxx_syntax: nothing to check under %s - the database of %s names no source of this checkout"
+              % (" ".join(args.paths) or "the checkout", shown(args.db.parent)), file=sys.stderr)
         return 2
     if args.list:
         for file, _ in units:

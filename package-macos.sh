@@ -951,21 +951,25 @@ DEMO_SAMPLE_MEDIA=(3D videos images vector audios ebooks textsamples LaTex diagr
 # default; add it here only after checking the same.
 NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer SmartHomeCenter UltraMail)
 
-# Apps that load UltraNet's plug-ins (IMAP, SMTP, JMAP, ...): the MODULE
-# libraries of <build>/Plugins/UltraNet go into the bundle's
-# Contents/PlugIns/UltraNet/, where UltraNet looks inside a bundle
+# The UltraNet plug-ins an app loads - the MODULE libraries of
+# <build>/Plugins/UltraNet, named ultranet_<name> - which go into the
+# bundle's Contents/PlugIns/UltraNet/, where UltraNet looks inside a bundle
 # (<exe>/../PlugIns/UltraNet), with their dylibs in the shared Frameworks/.
-# Without them UltraMail starts and reports that the IMAP plug-in was not
-# found.
-ULTRANET_PLUGIN_APPS=(UltraMail)
-
-# True when the app $1 is in ULTRANET_PLUGIN_APPS.
-app_loads_ultranet() {
-    local a
-    for a in "${ULTRANET_PLUGIN_APPS[@]}"; do
-        [ "$a" = "$1" ] && return 0
-    done
-    return 1
+# "all" is every plug-in the build made; nothing printed, none. Linux and
+# Windows give every app all of them from one shared folder; a bundle carries
+# its own, so each app names what it loads:
+#   UltraMail       the mail protocols (IMAP, SMTP, POP3, JMAP) and what an
+#                   account may reach besides - every one. Without them it
+#                   starts and reports that the IMAP plug-in was not found.
+#   DeviceExplorer  mdns: the DNS-SD browser behind its network printers
+#                   (IODeviceManager's IPP enumeration) and its eSCL
+#                   scanners, which it finds no other way.
+# UltraNetMonitor loads none: it reads the system's socket table.
+ultranet_plugins_of() {
+    case "$1" in
+        UltraMail)      echo "all" ;;
+        DeviceExplorer) echo "mdns" ;;
+    esac
 }
 
 # True when the app $1 is in NO_LATEX_APPS.
@@ -1133,22 +1137,28 @@ build_app_bundle() {
         fi
     fi
 
-    # UltraNet's plug-ins, for the apps that load them (ULTRANET_PLUGIN_APPS).
-    if app_loads_ultranet "$exe_name"; then
-        if compgen -G "$BUILD_DIR/Plugins/UltraNet/*.so" >/dev/null || \
-           compgen -G "$BUILD_DIR/Plugins/UltraNet/*.dylib" >/dev/null; then
-            mkdir -p "$contents_dir/PlugIns/UltraNet"
-            local plugin
+    # UltraNet's plug-ins, those the app loads (ultranet_plugins_of).
+    local net_wanted net_name plugin found
+    net_wanted="$(ultranet_plugins_of "$exe_name")"
+    if [ -n "$net_wanted" ]; then
+        mkdir -p "$contents_dir/PlugIns/UltraNet"
+        for net_name in $net_wanted; do
+            found=false
             for plugin in "$BUILD_DIR"/Plugins/UltraNet/*.so "$BUILD_DIR"/Plugins/UltraNet/*.dylib; do
                 [ -f "$plugin" ] || continue
+                if [ "$net_name" != "all" ]; then
+                    case "$(basename "$plugin")" in "ultranet_$net_name".*) ;; *) continue ;; esac
+                fi
                 cp "$plugin" "$contents_dir/PlugIns/UltraNet/"
                 chmod 644 "$contents_dir/PlugIns/UltraNet/$(basename "$plugin")"
+                found=true
             done
-            echo "  Copied UltraNet plug-ins: $(ls "$contents_dir/PlugIns/UltraNet" | tr '\n' ' ')"
-        else
-            echo "Error: $display_name loads UltraNet's plug-ins and $BUILD_DIR/Plugins/UltraNet has none" >&2
-            return 1
-        fi
+            if ! $found; then
+                echo "Error: $display_name loads UltraNet's plug-in(s) '$net_name' and $BUILD_DIR/Plugins/UltraNet has none" >&2
+                return 1
+            fi
+        done
+        echo "  Copied UltraNet plug-ins: $(ls "$contents_dir/PlugIns/UltraNet" | tr '\n' ' ')"
     fi
 
     # Bundle Homebrew dylibs into the shared suite Frameworks/
@@ -1777,7 +1787,7 @@ package_if_built "UltraVideo" build_app_bundle \
     "$ULTRAVIDEO_DOC_TYPES"
 
 # Package UltraMail (Apps/UltraMail), with UltraNet's plug-ins in its
-# PlugIns/UltraNet/ (ULTRANET_PLUGIN_APPS) and no LaTeX module.
+# PlugIns/UltraNet/ (ultranet_plugins_of) and no LaTeX module.
 package_if_built "UltraMail" build_app_bundle \
     "UltraMail" \
     "UltraMail" \

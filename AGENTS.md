@@ -645,11 +645,16 @@ framework on top. The rules:
   the local-network reason and `NSBonjourServices`, because any app that
   prints browses for IPP printers. A new Bonjour service type the framework
   browses goes into `BONJOUR_SERVICES` there.
-- **An app that loads UltraNet's plug-ins (IMAP, SMTP, JMAP, ...) goes into
-  `ULTRANET_PLUGIN_APPS`** in `package-macos.sh`: its bundle gets
+- **An app that loads UltraNet's plug-ins (IMAP, SMTP, mDNS, ...) gets a line
+  in `ultranet_plugins_of`** in `package-macos.sh`, naming the plug-ins it
+  loads (`all`, or names such as `mdns`): its bundle gets them from
   `<build>/Plugins/UltraNet/` in `Contents/PlugIns/UltraNet/`, where UltraNet
   looks inside a bundle, with their libraries in the shared `Frameworks/`.
-  UltraMail is the first; without them it starts and finds no IMAP plug-in.
+  On Linux and Windows every app finds every plug-in in one shared folder; a
+  bundle carries only its own, so an app left out finds none - UltraMail
+  reported no IMAP plug-in, DeviceExplorer found no network printer or eSCL
+  scanner. A plug-in the framework loads for an app (`mdns` for the print
+  dialog's network printers) counts as the app's.
 - **An app published in UltraStore is cut out of the suite with
   `--store-app <App>`**, the one exception to the shared folder besides
   UltraCanvasStart: a bundle in `dist-store-macos/` with a
