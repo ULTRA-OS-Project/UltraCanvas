@@ -62,6 +62,7 @@
     "Tools",
     "Undo",
     "Upload",
+    "Video",
     "Window"
   ],
   "\"{0}\" cannot be a file's name.": "\"{0}\" cannot be a file's name.",
@@ -442,7 +443,6 @@
   "Use as the Windows desktop (beside Explorer)": "Use as the Windows desktop (beside Explorer)",
   "Use as the Windows desktop...": "Use as the Windows desktop...",
   "Use instead of Explorer (from the next sign-in)": "Use instead of Explorer (from the next sign-in)",
-  "Video": "Video",
   "Viewers": "Viewers",
   "Virtual machines": "Virtual machines",
   "VPN": "VPN",

@@ -29,3 +29,9 @@
     progress window of a pack, an unpack, Extract and Run and an
     administrator delete (titles, "Unpacking \"{0}\" (1 of 3)" captions,
     the Windows permission line) are translated too.
+  - **`FilerNewDocumentType::fileName`** (new): New > Spreadsheet created
+    "New Spreadsheet.ods" on every desktop - "New " + the label, a name no
+    translation can build. Each kind now names its file as a whole
+    (`TrC("file name", "New spreadsheet")` → "Neue Tabelle.ods"), the default
+    kinds' labels are translated, and an entry a host gives no `fileName`
+    falls back to `TrF("New {0}", label)`.

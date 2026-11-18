@@ -637,10 +637,15 @@ namespace UltraCanvas {
     // Spreadsheet, Bitmap, Vector, Audio, Video) is installed by the widget and
     // can be replaced via SetNewDocumentTypes().
     struct FilerNewDocumentType {
-        std::string label;          // menu label, e.g. "Spreadsheet"
+        std::string label;          // menu label, e.g. "Spreadsheet" - the text
+                                    // shown, so already in the reader's language
         std::string extension;      // created file extension, e.g. "ods"
         std::string templatePath;   // optional file copied as the new document;
                                     // empty = an empty file is created
+        std::string fileName;       // the new file's name without extension, e.g.
+                                    // TrC("file name", "New spreadsheet"); empty =
+                                    // TrF("New {0}", label). A whole name per kind
+                                    // translates; "New " + a label does not
     };
 
     // ===== A FINISHED COPY / MOVE =====

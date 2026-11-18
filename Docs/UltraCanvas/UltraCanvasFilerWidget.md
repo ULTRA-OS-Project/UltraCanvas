@@ -2435,6 +2435,22 @@ split button lists exactly these. Each entry may name a
 `onNewDocument` lets the application take over creation entirely (return `true`
 when handled). A freshly created document goes straight into rename mode.
 
+The entry's `label` is the menu text and its `fileName` the new file's name
+without the extension (`New spreadsheet.ods`, numbered `New spreadsheet (2).ods`
+when taken). Both are what a person reads, so a host passes them translated -
+the name as a whole, through `TrC("file name", ...)`: "New " + a translated
+label is not how most languages name a new file ("Neue Tabelle", "Nouvelle
+feuille de calcul"). The defaults do this. An entry without a `fileName` falls
+back to `TrF("New {0}", label)`, which a translator can only reorder.
+
+```cpp
+filer->SetNewDocumentTypes({
+    {Tr("Spreadsheet"), "ods", "", TrC("file name", "New spreadsheet")},
+    {Tr("Presentation"), "odp", "/usr/share/templates/blank.odp",
+     TrC("file name", "New presentation")},
+});
+```
+
 The **New >** submenu opens with **Folder** — above the document kinds and set
 apart from them by a separator — bound to **Ctrl+F**. `CreateNewFolder()` is the
 same action programmatically: it creates `New folder` (numbered `New folder (2)`

@@ -51,6 +51,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.51.0 - FilerNewDocumentType::fileName: a new document is named as a
+//                  whole per kind (TrC("file name", "New spreadsheet")), its
+//                  fallback TrF("New {0}", label); the default kinds' labels and
+//                  names are translated
 // Version: 1.50.0 - PreviewTypeText: a preview kind's translated name, shared by
 //                  the Display submenus and an application's settings; the
 //                  extract-conflict dialog is translated whole (captions,
@@ -2399,14 +2403,17 @@ namespace UltraCanvas {
         BindScrollAnimators();
         EnsureDetailsColumnWidths();
 
+        // Each kind names its new file as a whole, in the reader's language:
+        // "New " + a translated label is not a name any language but English
+        // builds that way.
         newDocumentTypes = {
-            {"Text",        "txt", ""},
-            {"Doc",         "odt", ""},
-            {"Spreadsheet", "ods", ""},
-            {"Bitmap",      "png", ""},
-            {"Vector",      "svg", ""},
-            {"Audio",       "wav", ""},
-            {"Video",       "mp4", ""},
+            {Tr("Text"),        "txt", "", TrC("file name", "New text document")},
+            {Tr("Doc"),         "odt", "", TrC("file name", "New document")},
+            {Tr("Spreadsheet"), "ods", "", TrC("file name", "New spreadsheet")},
+            {Tr("Bitmap"),      "png", "", TrC("file name", "New image")},
+            {Tr("Vector"),      "svg", "", TrC("file name", "New drawing")},
+            {Tr("Audio"),       "wav", "", TrC("file name", "New audio file")},
+            {Tr("Video"),       "mp4", "", TrC("file name", "New video file")},
         };
 
         // Parse the OS association database on its background worker while
@@ -10413,7 +10420,9 @@ namespace UltraCanvas {
             ReportError(TrF("Cannot create a document in {0}", currentPath));
             return;
         }
-        std::string dest = UniqueChildPath("New " + type.label + "." + type.extension);
+        const std::string stem = type.fileName.empty() ? TrF("New {0}", type.label)
+                                                       : type.fileName;
+        std::string dest = UniqueChildPath(stem + "." + type.extension);
         if (!type.templatePath.empty() && fs::exists(UltraCanvas::PathFromUtf8(type.templatePath), ec)) {
             fs::copy_file(UltraCanvas::PathFromUtf8(type.templatePath), UltraCanvas::PathFromUtf8(dest), ec);
             if (ec) { ReportError(TrF("Creating the document failed: {0}", ec.message())); return; }
