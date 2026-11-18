@@ -6,7 +6,7 @@
 //
 // Built as <App>.com beside <App>.exe by ultracanvas_windows_console_companion()
 // (cmake/UltraCanvasWindowsGuiApp.cmake), for the applications whose command
-// line prints - UltraDesktop --windows, UltraCleaner --scan, ultrafibu's
+// line prints - UltraDesktop --windows, UltraCleaner --scan, UltraFIBU's
 // commands. The .exe is a GUI program, so the Start menu, Explorer and the
 // sign-in start it without a console window. Typed at a prompt, cmd and
 // PowerShell find the .com first (PATHEXT lists .COM before .EXE), and this
