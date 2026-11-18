@@ -69,26 +69,6 @@ jobs:
         with:
           submodules: recursive
 
-      # The packages and package lists of the last run on main, as build.yml's
-      # and wayland-build.yml's Linux rows keep them (scripts/ci-apt.sh
-      # cache-in): fetched only when changed, and an `apt-get update` that
-      # cannot reach the mirror goes on with these lists. Without them this
-      # step downloaded every package on every run, and on 2026-11-18 a mirror
-      # serving 64 kB/s ran it out of its 45 minutes (#1323). Both rows install
-      # the same set on the same image, so they share one cache; until main
-      # has saved one, wayland-build's - the same image - covers part of it.
-      - name: Restore the apt package cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ runner.temp }}/apt-debs
-          key: apt-debs-element-modules-ubuntu-24.04-
-          restore-keys: |
-            apt-debs-element-modules-ubuntu-24.04-
-            apt-debs-wayland-ubuntu-24.04-
-
-      - name: Put the cached packages in apt's cache
-        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
-
       - name: Install dependencies
         timeout-minutes: 45
         run: |
@@ -116,21 +96,6 @@ jobs:
           scripts/ci-apt.sh install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
           scripts/ci-apt.sh install libflac-dev libogg-dev libopus-dev libopusfile-dev libvorbis-dev libmp3lame-dev
           scripts/ci-apt.sh install libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev libswscale-dev
-
-      # After the job's last apt install. Saved by main alone, as ccache is,
-      # and by one row: the two rows' caches are the same files, and two jobs
-      # saving one key race for it.
-      - name: Keep the downloaded packages (main)
-        if: github.ref == 'refs/heads/main' && matrix.core == 'static'
-        id: apt-keep
-        run: echo "hash=$(scripts/ci-apt.sh cache-out "${{ runner.temp }}/apt-debs")" >> "$GITHUB_OUTPUT"
-
-      - name: Save the apt package cache (main)
-        if: github.ref == 'refs/heads/main' && matrix.core == 'static' && steps.apt-keep.outputs.hash != ''
-        uses: actions/cache/save@v5
-        with:
-          path: ${{ runner.temp }}/apt-debs
-          key: apt-debs-element-modules-ubuntu-24.04-${{ steps.apt-keep.outputs.hash }}
 
       - name: Restore ccache
         id: ccache

@@ -35,10 +35,3 @@
 - `.odg`, `.otg` and `.fodg` are vector files in the graphics plugin
   system's format table, the Filer's type names and the Save dialog's type
   names.
-- **CI: the element-modules rows keep their apt packages between runs.**
-  `element-modules.yml` downloaded every package on every run, so a slow
-  mirror (64 kB/s on 2026-11-18) ran its dependency step out of its 45
-  minutes. It now restores and saves them through `scripts/ci-apt.sh
-  cache-in` / `cache-out` as `build.yml` and `wayland-build.yml` do,
-  falling back to wayland-build's cache of the same image until main has
-  saved its own.
