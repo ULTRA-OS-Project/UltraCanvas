@@ -311,12 +311,21 @@ LaunchPlan PlanLaunch(const InstalledRecord& app, const std::vector<InstalledRec
     }
     if (layers.empty()) return plan;
 
+    // The paths are the target's, spelled as `os` spells them: a POSIX
+    // component's lib/ joined with '/', whatever this host's separator is -
+    // std::filesystem would join with a backslash on a Windows host, and the plan is
+    // a function of `os` alone (the tests plan for every system on each).
     const char separator = os == OS::Windows ? ';' : ':';
     std::string value;
     for (const InstalledRecord* layer : layers) {
         if (!value.empty()) value += separator;
-        value += os == OS::Windows ? layer->folder
-                                   : UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(layer->folder) / "lib");
+        if (os == OS::Windows) {
+            value += layer->folder;
+        } else {
+            std::string folder = layer->folder;
+            while (folder.size() > 1 && folder.back() == '/') folder.pop_back();
+            value += folder + "/lib";
+        }
     }
     if (!currentLibraryPath.empty()) value += separator + currentLibraryPath;
     plan.environment.emplace_back(LibraryPathVariable(os), value);

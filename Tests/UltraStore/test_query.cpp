@@ -266,6 +266,14 @@ TEST(the_launch_puts_the_runtime_layer_on_the_library_path) {
     REQUIRE_EQ(onWindows.environment[0].second,
                std::string("/store/components/org.ultraos.lib.videofx/0.12;/store/components/org.ultraos.runtime/0.9.600"));
 
+    // A folder recorded with a trailing separator gets one, not two.
+    InstalledRecord slash = runtime;
+    slash.folder += "/";
+    InstalledRecord onSlash = Rec("org.ultraos.slash", "1");
+    onSlash.depends = {{"org.ultraos.runtime", "0.9.600"}};
+    REQUIRE_EQ(PlanLaunch(onSlash, {onSlash, slash}, OS::Linux, "").environment[0].second,
+               std::string("/store/components/org.ultraos.runtime/0.9.600/lib"));
+
     // A runtime reached only through a library still counts.
     InstalledRecord video = Rec("org.ultraos.ultravideo", "0.2");
     video.depends = {{"org.ultraos.lib.videofx", "0.12"}};
