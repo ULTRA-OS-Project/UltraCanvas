@@ -67,6 +67,8 @@
 // someone not yet among the contacts is added and asked back; an invitation
 // to a room is accepted and the room bookmarked.
 //
+// Version: 0.3.0 - XmppTimings::pingTimeoutMs: TCP pings a silent server (XEP-0199)
+// Last Modified: 2026-11-17
 // Version: 0.2.0 - the TCP binding: STARTTLS, direct TLS, DNS SRV, the endpoint kept; SetTlsOptions
 // Version: 0.1.0
 // Last Modified: 2026-11-17
@@ -100,6 +102,8 @@ struct XmppTimings {
     int requestTimeoutMs = 30000;   // an iq's answer
     int connectTimeoutMs = 15000;
     int pingIntervalMs = 30000;     // the WebSocket's pings, TCP's whitespace keepalive (a silent connection checked)
+                                    // and, over TCP, an XMPP ping after this long with nothing from the server
+    int pingTimeoutMs = 30000;      // TCP: the ping's answer; none in time is a connection gone
     int reconnectFirstMs = 1000;    // after a dropped connection; doubled each time
     int reconnectMaxMs = 60000;
 };

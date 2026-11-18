@@ -37,8 +37,9 @@
 // landed in, next to the plain rescan notification onFolderRefreshed.
 // Content previews are produced per file kind (see SELECTIVE PREVIEWS): image
 // pipeline for bitmaps and vectors, poster frame for videos, first page for
-// PDFs, a shaded software render for 3D models and a miniature page of the
-// file's own text for text, documents and spreadsheets. Each kind can be
+// PDFs and for word-processing documents (.odt, .docx, .doc), a shaded
+// software render for 3D models and a miniature page of the file's own text
+// for text, the other documents and spreadsheets. Each kind can be
 // switched off individually (Display > Thumbnails), which drops its entries
 // back to the plain type glyph and stops the widget from reading those files;
 // a single format can be switched off inside a kind, and Display > Detail view
@@ -50,6 +51,13 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.49.1 - the move / copy / delete dialogs' entry list follows the theme: its rows and
+//                  header were the light look's white and grey under a dark theme (a style
+//                  set by hand had stopped the list following)
+// Version: 1.49.0 - a word-processing document (.odt, .docx, .doc) shows its first page as laid
+//                  out - fonts, pictures, colours, header - drawn on the thumbnail workers by the
+//                  "word-processing" preview provider, not a page of its text lines; the text page
+//                  stays as the fallback for a page that cannot be drawn
 // Version: 1.48.0 - dark-theme greys: the scroll bars (FilerStyle::scrollbar*), the hidden-items
 //                  notice's gear (FilerStyle::tool*) and the operation dialogs' list caption and
 //                  note (LabelVariant::Muted) follow the theme - fixed light-look greys before,
@@ -1022,7 +1030,8 @@ namespace UltraCanvas {
         // which is neither a page of text nor an honest "no preview". Naming
         // them in one place keeps the format lists' "this build cannot render
         // it" and the extractor's answer the same fact. (An EPUB's or a
-        // Kindle book's tile is its cover instead - EBookCoverReadable below.)
+        // Kindle book's tile is its cover instead - DocumentPictureReadable
+        // below.)
         bool TextPreviewReadable(const std::string& ext) {
             static const std::set<std::string> containersWithoutReader = {
                 "epub", "fb2.zip",   // ZIP e-book containers
@@ -1031,13 +1040,16 @@ namespace UltraCanvas {
             return containersWithoutReader.find(ext) == containersWithoutReader.end();
         }
 
-        // ===== E-BOOK COVERS =====
+        // ===== DOCUMENT PICTURES: A BOOK'S COVER, A DOCUMENT'S FIRST PAGE =====
         // A book shows its cover, the way Finder shows a folder of books: the
         // picture the book declares, which a preview provider reads without
         // unpacking a chapter (the e-book engines', for EPUB and Mobipocket /
-        // Kindle). FB2 keeps its page of text. True for a document whose
-        // format has a thumbnail provider - a book's cover today.
-        bool EBookCoverReadable(const std::string& ext) {
+        // Kindle). A word-processing document (.odt, .docx, .doc) shows its
+        // first page as it is laid out - fonts, pictures, colours - which the
+        // "word-processing" provider draws. FB2, RTF, Markdown and the rest
+        // keep their page of text. True for a document whose format has a
+        // thumbnail provider.
+        bool DocumentPictureReadable(const std::string& ext) {
             return CanRenderFileThumbnail(ext);
         }
 
@@ -1112,7 +1124,7 @@ namespace UltraCanvas {
                     return TextPreviewReadable(ext);
                 // ... or, for a book, a cover to show.
                 case FilerPreviewType::Docs:
-                    return TextPreviewReadable(ext) || EBookCoverReadable(ext);
+                    return TextPreviewReadable(ext) || DocumentPictureReadable(ext);
                 // Audio files have no picture in them that anything here
                 // reads (cover art is not extracted yet), so no switch can
                 // give them a thumbnail. They are listed all the same: the
@@ -1198,10 +1210,11 @@ namespace UltraCanvas {
             return img->GetPixmap(w, h, fit, scale);
         }
 
-        // ===== E-BOOK COVER (EPUB, MOBI / KINDLE) =====
-        // The cover a provider reads (UltraCanvasFilePreviews.h), with the
-        // edge shaded so a white cover keeps its outline on a white tile.
-        std::shared_ptr<UCPixmap> RenderEBookCoverPixmap(const std::string& path,
+        // ===== DOCUMENT PICTURE (A BOOK'S COVER, A DOCUMENT'S FIRST PAGE) =====
+        // The picture a provider draws (UltraCanvasFilePreviews.h), with the
+        // edge shaded so a white cover or page keeps its outline on a white
+        // tile.
+        std::shared_ptr<UCPixmap> RenderDocumentPicturePixmap(const std::string& path,
                                                          int w, int h,
                                                          ImageFitMode fit,
                                                          float scale) {
@@ -1810,16 +1823,18 @@ namespace UltraCanvas {
                 case FilerPreviewType::Fonts:
                     pm = RenderFontSpecimenPixmap(path, w, h, scale);
                     break;
-                // A book shows its cover. (The Filer's workers see a document
-                // only as a book whose cover ThumbSourceFor asked for; its tiles
-                // draw the other documents' text themselves.)
-                case FilerPreviewType::Docs:
-                    if (EBookCoverReadable(LowerExtension(path))) {
-                        pm = RenderEBookCoverPixmap(path, w, h, fit, scale);
-                    } else if (textPages) {
-                        pm = RenderTextPagePixmap(path, w, h, scale);
-                    }
+                // A book shows its cover, a word-processing document its
+                // first page. (The Filer's workers see a document only when
+                // ThumbSourceFor asked for its picture; its tiles draw the
+                // other documents' text themselves.) A document whose page
+                // cannot be drawn falls back to the page of its text, which
+                // a book - no text reader - does not have.
+                case FilerPreviewType::Docs: {
+                    const bool picture = DocumentPictureReadable(LowerExtension(path));
+                    if (picture) pm = RenderDocumentPicturePixmap(path, w, h, fit, scale);
+                    if (!pm && (picture || textPages)) pm = RenderTextPagePixmap(path, w, h, scale);
                     break;
+                }
                 case FilerPreviewType::Text:
                 case FilerPreviewType::Spreadsheets:
                     if (textPages) pm = RenderTextPagePixmap(path, w, h, scale);
@@ -6211,7 +6226,12 @@ namespace UltraCanvas {
         }
 
         auto list = std::make_shared<UltraCanvasListView>(id, 0, 0, 0, outHeight);
-        ListViewStyle listStyle;
+        // The list's own shape over the theme's colours. Setting a style by
+        // hand stops an element following the theme, which left the rows
+        // white and the header light grey in a dark dialog: a list that was
+        // following picks the theme up again below, once its delegate is in.
+        const bool followTheme = list->GetFollowTheme();
+        ListViewStyle listStyle = list->GetStyle();
         listStyle.showHeader = true;
         listStyle.headerHeight = kOperationListHeaderHeight;
         listStyle.headerFontSize = 10;
@@ -6227,6 +6247,7 @@ namespace UltraCanvas {
         delegate->SetRowHeight(kOperationListRowHeight);
         list->SetModel(model);
         list->SetDelegate(delegate);
+        if (followTheme) list->SetFollowTheme(true);
         list->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         return list;
@@ -12043,14 +12064,15 @@ namespace UltraCanvas {
             // once and the tile keeps its glyph.
             case FilerPreviewType::Fonts:
                 return e.path;
-            // A book's cover, read out of the EPUB or Kindle file. The other
-            // documents have no image to decode.
+            // A book's cover, read out of the EPUB or Kindle file, and a
+            // word-processing document's first page, laid out and drawn. The
+            // other documents (RTF, Markdown, HTML, ...) have no picture.
             case FilerPreviewType::Docs:
-                return EBookCoverReadable(NormalizedFormatExtension(e.extension))
+                return DocumentPictureReadable(NormalizedFormatExtension(e.extension))
                                ? e.path : std::string{};
             // Text and Spreadsheets have no image to decode either: they -
-            // and the documents above - preview through AcquireTextPreview
-            // instead.
+            // and the documents above without a picture - preview through
+            // AcquireTextPreview instead.
             default:
                 return {};
         }
@@ -12233,9 +12255,10 @@ namespace UltraCanvas {
                     case FilerPreviewType::Models3D:
                     case FilerPreviewType::Fonts:
                         break;
-                    // A book is its cover - a folder of books shows books.
+                    // A book is its cover, a document its first page - a
+                    // folder of books shows books.
                     case FilerPreviewType::Docs:
-                        if (!EBookCoverReadable(ext)) continue;
+                        if (!DocumentPictureReadable(ext)) continue;
                         break;
                     // Text-shaped files preview as a page of their own
                     // content, which a card this size cannot show.

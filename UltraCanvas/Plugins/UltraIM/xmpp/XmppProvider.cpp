@@ -1,8 +1,9 @@
 // Plugins/UltraIM/xmpp/XmppProvider.cpp
 // XMPP - chats, rooms and the roster of an XMPP account as UltraIM conversations
+// Version: 0.3.0 - TCP: a silent server pinged (XEP-0199), no answer a dropped connection
+// Last Modified: 2026-11-17
 // Version: 0.2.0 - TCP (STARTTLS, direct TLS), the endpoint found by SRV / host-meta / 5222 and kept
 // Version: 0.1.0
-// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 
 #include "XmppProvider.h"
@@ -762,6 +763,8 @@ UltraIMResult XmppProvider::Connect(Account& account, bool fresh) {
     // SCRAM's keys are kept for the next start; after PLAIN nothing is.
     if (account.hasKeys) SaveAccount(account);
     else ForgetAccount();
+    // Over TCP a server that falls silent is asked whether it is there.
+    if (tcp) stream->StartPinging(domain, timings_.pingTimeoutMs);
     SetState(UltraIMConnectionState::Connected);
     AfterBind(stream, fresh);
     return UltraIMResult::Ok();

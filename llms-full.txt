@@ -28474,7 +28474,10 @@ Custom buttons carry no `DialogButton` type, so neither rule can name them —
 they take a **role** instead. `AddCustomButton(text, result, role, callback)`
 with `DialogButtonRole::Default` makes the button what Return takes (before the
 configured default) and draws it in the accent colour; `Destructive` draws it
-red (`DestructiveDefault` filled red, when the red answer is also the default);
+as the theme's ordinary button outlined and lettered in the theme's `danger`
+colour - a dark red in a light look, a light one in a dark look
+(`UltraCanvasModalDialog::DestructiveOutlineStyle`) - and `DestructiveDefault`
+fills it red, when the red answer is also the default;
 `Cancel` makes it what Escape takes. Buttons are laid out in the order they are
 added, each as wide as its label. `AddFooterElement(element)` puts an element —
 an "Apply to all 7 remaining conflicts" checkbox — at the left of the button
@@ -29091,7 +29094,7 @@ inline void DrawSortTriangle(IRenderContext* ctx, const Point2Dd& centre, double
                              const Color& color);
 inline bool IsDrawnBullet(const std::string& bullet);
 inline bool DrawBulletMark(IRenderContext* ctx, const std::string& bullet, const Point2Dd& topLeft,
-                           const FontStyle& font, const Color& color);
+                           const FontStyle& font, const Color& color, double scale = 1.0);
 ```
 
 * `DrawTickMark`, `DrawCrossMark` — a stroked tick or diagonal cross
@@ -29102,8 +29105,9 @@ inline bool DrawBulletMark(IRenderContext* ctx, const std::string& bullet, const
 * `DrawBulletMark` — draws "•" (a disc), "◦" (a ring) or "▪" (a square)
   where `DrawText(bullet, topLeft)` in `font` would put the character:
   centred on the font's capitals (`GetCapCentreOffset`) and as large as
-  Ubuntu's "•". It returns false and draws nothing for any other string,
-  which the caller then draws as text.
+  Ubuntu's "•" - times `scale`, about its centre (1.5 for a document's own
+  bullet, which is a symbol font's). It returns false and draws nothing for
+  any other string, which the caller then draws as text.
 * `IsDrawnBullet` — true for the three bullets `DrawBulletMark` draws.
   Each takes the room of a "•", so measure "•" to place text after one.
 
@@ -31882,6 +31886,7 @@ FILE: Docs/UltraCanvas/UltraCanvasEngineCharts.md
 - [Mekko](#mekko)
 - [Radar](#radar)
 - [Radial bar](#radial-bar)
+- [Columns and bars](#columns-and-bars)
 - [Pie and donut](#pie-and-donut)
 - [Polar](#polar)
 - [Engine features added for the ports](#engine-features-added-for-the-ports)
@@ -31913,8 +31918,8 @@ compared before the switch.
   usual `(id, x, y, w, h)` constructor (position and size default to 0, for a
   chart sized by its layout).
 
-**Version:** 1.1.0 (`SetValueAtLeast` on the line family)
-**Last Modified:** 2026-10-24
+**Version:** 1.2.0 (`UltraCanvasEngineBarChart`)
+**Last Modified:** 2026-11-18
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -31934,7 +31939,7 @@ engine's `Space3D` projection.
 | `UltraCanvasCumulativeFlowChartElement` | `UltraCanvasEngineLineChart` (`StackedArea`, `SetReverseStackOrder`) | Lead / cycle time and WIP as engine span annotations; no Kanban binding |
 | `UltraCanvasScatterPlotElement` | `UltraCanvasEngineScatterChart` | Trend line with r / r², confidence ellipses, both grids |
 | `UltraCanvasBubbleChartElement` | `UltraCanvasEngineScatterChart` (size channel) | XY bubbles only - packed and hierarchical layouts have no axes |
-| `UltraCanvasBarChartElement` | the demo's `EngineBarChart` (`UltraCanvasBarChartExamples.cpp`) | Converted earlier, on its own page |
+| `UltraCanvasBarChartElement` | `UltraCanvasEngineBarChart` | Columns and bars: side by side, stacked, per cent. The demo's `EngineBarChart` (`UltraCanvasBarChartExamples.cpp`) shows the fill styles on top of the same geometry |
 | `UltraCanvasWaterfallChartElement` | `UltraCanvasEngineWaterfallChart` | Change / subtotal / total steps, connectors |
 | `UltraCanvasDivergingBarChart` | `UltraCanvasEngineDivergingBarChart` | Likert (neutral split across zero), tornado, opposing bars - one shared scale |
 | `UltraCanvasPopulationChart` | `UltraCanvasEngineDivergingBarChart` (`PopulationPyramid`) | Surplus shaded inside the true bar; average ages as limiters |
@@ -32265,6 +32270,39 @@ chart->SetCenterText("Sensors");
 
 Rays radiate from a base ring (`SetPolarInnerRadius`), each series filling an
 angular sector; the series names are the rim labels.
+
+## Columns and bars
+
+```cpp
+auto chart = CreateEngineBarChart("Sales", 0, 0, 640, 400);
+chart->SetCategories({"Q1", "Q2", "Q3", "Q4"});
+
+EngineBarSeries north;
+north.name = "North";
+north.values = {12.0, 15.5, 9.0, 18.2};
+chart->AddSeries(north);
+
+EngineBarSeries south;
+south.name = "South";
+south.values = {8.0, 11.0, 14.5, 10.1};
+south.color = Color(237, 125, 49, 255);          // alpha 0 = from the palette
+chart->AddSeries(south);
+
+chart->SetArrangement(ChartBarArrangement::Stacked);   // Grouped, Stacked, PercentStacked
+chart->SetHorizontal(true);                            // bars lying down
+chart->SetShowLegend(true);
+```
+
+The group offsets, the stacking and the value range are the engine's bar
+series geometry (`BuildBarSpans`, `ObserveBarSeries`); `BarSpans()` gives the
+bars in normalised chart space. Lying down, the first category is at the foot
+and the first series of a group the lowest, as office charts have them.
+`SetValueRange(lo, hi)` states the value axis in place of the fitted one,
+`SetSlotFill` how much of a category's slot the bars fill, `SetCornerRadius`
+rounds them. Under `ChartProjectionKind::Polar` the bars are ring sectors.
+
+The first client is the chart of a word-processing document: see *Charts* in
+[`UltraCanvasRichTextEdit.md`](UltraCanvasRichTextEdit.md).
 
 ## Pie and donut
 
@@ -33356,11 +33394,20 @@ framework, once, on the first query:
 | `pdf` | the first page (PDF plugin builds, with an engine) | `pdf` |
 | `ebook-cover` | the cover the book declares | `epub`, `mobi`, `prc`, `azw`, `azw3` |
 | `video-poster` | a frame a short way into the clip | the containers the media codec registry decodes |
-| `word-processing` | the document, the first page's header and footer inline | `odt`, `docx`, `doc`, `tex` |
+| `word-processing` | a thumbnail: the first page as the document lays it out (`odt`, `docx`, `doc`); a preview document: the document, the first page's header and footer inline (those and `tex`) | `odt`, `docx`, `doc`, `tex` |
 | `powerpoint` | each slide's number and title, bullets, tables and notes | `pptx`, `pptm`, `ppsx`, `ppsm`, `potx`, `potm` |
 
 The Filer draws its own styling over these: an outline round a PDF page, a
-shaded edge on a book cover.
+shaded edge on a book cover and on a document's page.
+
+A word-processing document's first page is laid out and drawn by
+`UltraCanvasRichTextEdit` - the same pages its PDF export and its print pages
+are (`BeginPrintLayout` / `RenderPrintPage`): the document's page size and
+margins, its fonts, pictures, colours, tables, header and footer, on white
+paper whatever the theme. Only the first 200 blocks are laid out, so the first
+page of a long report costs what a letter's does. Laying out goes through the
+process-wide font machinery, so these thumbnails are drawn one at a time; a
+`.tex` keeps its outline (its page is a TeX engine's, not this layout's).
 
 ## Threads
 
@@ -33538,6 +33585,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Per-format switches (the list of files)](#per-format-switches-the-list-of-files)
   - [Embedded preview bitmaps](#embedded-preview-bitmaps)
   - [E-book covers](#e-book-covers)
+  - [Document pages](#document-pages)
   - [File types the FileLoader knows](#file-types-the-fileloader-knows)
   - [Native application icons](#native-application-icons)
   - [Thumbnail memory](#thumbnail-memory)
@@ -34189,7 +34237,8 @@ Needs the VirtualFS module (`ULTRACANVAS_HAS_VIRTUALFS`); without it
 
 A **content preview** is a tile rendered from the file itself instead of the
 generic category glyph. The PDF page, the e-book cover, the video poster frame
-and the Word / PowerPoint text come from the formats' preview providers
+the word-processing document's first page and the Word / PowerPoint text come
+from the formats' preview providers
 ([`UltraCanvasFilePreviews`](UltraCanvasFilePreviews.md)); a format registered
 there previews here without the widget knowing it. Two independent sets of switches decide what a file
 may show, and every kind is enabled in both by default:
@@ -34221,7 +34270,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, potx), rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
+| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, potx), rtf, md, html, tex, and the e-book containers | a **word-processing document shows its first page** - odt, doc and docx laid out with their fonts, pictures, colours, header and footer, as they print (see [Document pages](#document-pages)); the others the same page of text, with tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, xls, csv, tsv | the first cells of the first sheet as a small grid. An `.xls` is read by the [legacy workbook reader](UltraCanvasSpreadsheetXls.md) (Excel 97-2003 and 5.0/95), and so is what else is saved under the name — an HTML table, an Excel 2003 XML file; an `.xlsx` renamed `.xls` previews as one, and delimited text as CSV. An encrypted workbook, or a binary one above 32 MB (it is read whole), keeps its glyph. The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -34417,6 +34466,27 @@ folder of books shows covers peeking out of its icon under Display > Folder
 previews. Display > Thumbnails > Docs turns them off with the other documents,
 and `SetThumbnailFormatEnabled("epub", false)` (or `"mobi"`, `"azw3"`, ... —
 UltraFiler: Settings > Display > Thumbnails) turns off one format's.
+
+### Document pages
+
+A word-processing document tile — `.odt`, `.docx`, `.doc` — shows the
+document's **first page as it looks**: its page size and margins, its fonts and
+sizes, pictures, colours, tables, header and footer, the way a PDF tile shows
+its first page. It used to be a page of the document's text lines in one small
+grey font, which told what a letter says but not what it looks like, and set a
+letterhead or a CV apart from a plain draft by nothing.
+
+The page is drawn on the thumbnail workers by the `word-processing` preview
+provider ([`UltraCanvasFilePreviews`](UltraCanvasFilePreviews.md)), which reads
+the document with `UCWordDocumentIO` and lays it out with
+`UltraCanvasRichTextEdit` — the same pages its PDF export and print give — on
+white paper whatever the theme. The tile then gets the shaded edge a book cover
+gets. A document whose page cannot be drawn falls back to the page of its text;
+a password-protected `.docx` can be neither and keeps its type glyph. Pages are
+cached like every other thumbnail, in memory and on disk, and Display >
+Thumbnails > Docs turns them off with the other documents
+(`SetThumbnailFormatEnabled("docx", false)` for one format). RTF, Markdown,
+HTML and LaTeX keep their page of text.
 
 ### File types the FileLoader knows
 
@@ -66428,8 +66498,10 @@ state of the selection** rather than two asterisks in a buffer.
   - [Floating pictures](#floating-pictures)
   - [Check lists](#check-lists)
   - [Formulas](#formulas)
+  - [Charts](#charts)
   - [Structure](#structure)
 - [Following the theme](#following-the-theme)
+  - [A document's colours on a dark page](#a-documents-colours-on-a-dark-page)
 - [Keyboard](#keyboard)
 - [Autoformat as you type](#autoformat-as-you-type)
 - [Input methods](#input-methods)
@@ -67036,12 +67108,38 @@ table if it is bigger than the cell - a card's background picture, anchored in
 the first cell, lies under the whole card. It takes no room, and it is drawn
 but not picked up, moved or resized from the page. Any other frame or drawing
 in a cell stands in the cell's line, as wide and tall as it says (a frame at
-least as tall as its words; a drawing with room for its outline), with the
-line's descent under it - a photo drawn as the fill of a shape. (Square and
+least as tall as its words; a drawing with room for its outline) - a photo
+drawn as the fill of a shape. (Square and
 top-and-bottom *pictures* in a cell stay in the line as before.)
 
-**Turned.** `RichTextRun::imageRotationDeg` turns a floating picture clockwise
-about its centre; its size and offsets are those of the box before the turn
+A **table nested in a table cell** is such a frame: its blocks are the inner
+table and `RichTextFrame::nestedTable` is set, so it has no box, padding or
+guide line of its own and is as wide as the cell's text where its run names no
+width. Its words are part of `ToPlainText()`. The DOCX reader makes one for
+every `w:tbl` inside a `w:tc`, the ODT reader for every `table:table` inside
+a `table:table-cell`; both writers write it back as a table in the cell. A
+double-click on it - or `EditFrame(frameIndex)` - opens it for editing in
+place, as a text frame's words are: the caret moves through its cells, rows
+and columns are added and removed as in any table, and the cell around it
+grows and shrinks with what is typed. A click outside, or
+`FinishHeaderFooterEditing()`, ends it.
+
+A **chart** in a DOCX (DrawingML, `c:chartSpace`) is read as such a drawing:
+columns (side by side, stacked or stacked to 100%), bars lying down, lines
+or a pie's slices for its series from the values the file keeps with it, a
+value axis with its grid, the categories beside it and a legend. It is a
+picture of the chart - saved again it is a drawing, not a chart. A .doc's
+chart is the metafile picture Word stored with it, drawn by the vector
+readers (`RegisterVectorFormatsPlugin()`).
+
+A **drawing set in a paragraph's line** (wrap `Inline`: Word's `wp:inline`
+shape, ODF's `as-char` one) stands in that line in the body too, where the
+paragraph's alignment puts it; it is no float.
+
+**Turned.** `RichTextRun::imageRotationDeg` turns a picture clockwise about
+its centre - a floating one where it is placed, one in the line in a line as
+tall as the turned picture (read and written by DOCX and ODT alike). A
+floating picture's size and offsets are those of the box before the turn
 (Word's `a:xfrm rot`, ODF's `draw:transform`), so a 150 x 389 pt picture
 turned three quarters covers 389 x 150 pt round the same centre.
 
@@ -67058,9 +67156,9 @@ banner.imageOffsetYPt = -118.0f;
 banner.imageRotationDeg = 270.0f;                   // lies on its side
 ```
 
-A picture or drawn shape standing in a line makes that line as tall as it is
-and keeps the line's descent under it, with words beside it or alone in its
-paragraph.
+A picture or drawn shape standing in a line makes that line as tall as it is;
+alone in its line it stands on the line's foot, with no descent under it (a
+row of 14.4 pt icons is a 14.4 pt line, as in Word).
 
 **Placed from the page.** By default a float counts across from the text
 column and down from its paragraph. `floatHorizontalFrom` and
@@ -67195,6 +67293,44 @@ editing; move the caret away and it is typeset again. A `MathBlock` is typeset
 in display style and centred until the caret enters it. Without the LaTeX
 module, both show their source.
 
+### Charts
+
+A chart in a document is a frame with the chart's data
+(`RichTextFrame::chart`, a `RichChart`: its kind, categories, series of
+values, legend and title). The view draws it with the chart engine - the
+same charts an application uses as elements
+([`UltraCanvasEngineCharts.md`](UltraCanvasEngineCharts.md)):
+
+| `RichChart::Kind` | Drawn by |
+|---|---|
+| `Column`, `Bar` (side by side, `stacked`, `percent`) | `UltraCanvasEngineBarChart` |
+| `Line`, `Area` | `UltraCanvasEngineLineChart` |
+| `Pie`, `Doughnut` | `UltraCanvasEnginePieChart` |
+| `Scatter` | `UltraCanvasEngineScatterChart`; the line chart over numeric x where the points are joined and the series share their x |
+
+The chart is laid out for the frame's own size and scaled into its place, so
+it prints and exports as vectors and keeps its proportions under zoom. It is
+shown, not edited: there is no dialog for its data yet.
+
+```cpp
+#include "UltraCanvasRichDocumentChart.h"
+
+// The same chart as a live element of an application's own:
+const RichTextFrame& frame = document->frames[frameIndex];
+if (frame.chart.IsChart()) {
+    auto element = CreateRichDocumentChart(frame.chart, 480, 300);
+    container->AddChild(element);
+}
+```
+
+The DOCX reader fills the data from the chart part (`c:chartSpace`) and the
+writer writes it back as one; the ODT reader fills it from the chart object
+(`Object N/content.xml`, a `chart:chart` over its own table - Writer's
+charts) and the writer writes one back. So the chart is still a chart in
+Word and in Writer, and through a conversion between the two formats. The
+frame also holds the chart as drawn shapes (`RichTextFrame::shapes`, made by
+`UCRichDocument::ChartAsShapes`): what a consumer without the UI stack has.
+
 ### Structure
 
 ```cpp
@@ -67245,6 +67381,30 @@ RichTextEditStyle serif = edit->GetStyle();
 serif.baseFont.fontFamily = "Georgia";
 edit->SetStyle(RichTextEditStyle::FromTheme(UltraCanvasTheme::Current(), serif));   // the roles over the document's font
 edit->SetFollowTheme(true);
+```
+
+### A document's colours on a dark page
+
+A document states its colours for white paper: black text, a pale grey table
+header, a white box. On a dark theme the page is dark and the view's ink
+light, so those colours are fitted to the page
+(`RichTextEditStyle::adaptDocumentColors`, on by default): a colour's
+lightness is turned over and set between the page's and the ink's, its hue
+kept. Black text reads in the ink, a white fill is the page, a pale grey cell
+a dark grey one with its text still readable on it, a dark red a lighter red.
+This covers text colour and highlight, paragraph and cell fills, borders,
+frames, drawn shapes and a chart's axes and words. Pictures are never
+changed, and printing and PDF export are on white paper in the document's own
+colours. The document itself is not touched: saved again, it has the colours
+it came with.
+
+```cpp
+RichTextEditStyle style = edit->GetStyle();
+style.adaptDocumentColors = false;      // always the document's own colours
+edit->SetStyle(style);
+
+// The same rule for an application's own drawing:
+Color shown = AdaptDocumentColorToPage(Color(0, 0, 0), style.pageColor, style.textColor);
 ```
 
 ## Keyboard
@@ -67635,7 +67795,41 @@ exactly that height (`RichTextRun::emptyLineHeightPt`); above the first and
 below the last it is part of the cell's padding. Lines are a font's own
 height apart, its line gap included, and letters are pair-kerned - unless the
 document says otherwise (`UCRichDocument::fontLineGap`, `letterKerning`:
-Word's files are unkerned, older Writer files have no line gap). A table
+Word's files are unkerned, older Writer files have no line gap). A cell's
+lines can have a set height (`RichTableCell::lineHeightPt`, exactly or - with
+`lineHeightAtLeast` - at least that) or be a multiple of each font's own line
+(`RichTableCell::lineSpacing`, Word's 1.15); a picture in such a line keeps
+its own height. A paragraph of the cell set tighter or wider than the others
+- a heading at 70% - says so on its runs (`RichTextRun::lineSpacing`), which
+go before the cell's. A set height holds for a line without words too,
+whatever its font: "exactly 14 pt" makes an empty 1 pt paragraph 14 pt high. An empty first or last line of a cell is a line of its own
+font (Word's 2 pt paragraphs that set a signature's parts a hair apart), and a
+picture lower than a line of its run's font stands in such a line. A table can
+start left of its column (a negative `tableIndentPt`, Word's `w:tblInd`), and
+a column whose width the document states is kept however narrow. A picture is
+stretched to the size its document gives it.
+
+**Columns that give way to their content.** With `RichDocBlock::tableAutoFit`
+(Word's "autofit" table layout, its default; `w:tblLayout w:type="fixed"`
+turns it off) a column narrower than the longest word or the widest picture in
+it is widened to hold it. The room comes from the columns that have some to
+spare, each by its share, and then from the room beside the table; a table
+without it keeps its stated widths, and a word too long for its column is
+broken. A table's width in points is kept where it is a little wider than its
+column (it reaches into the margin, as in Word). Spaces a line ends with take
+no room, and - where `UCRichDocument::breakAfterSlash` is false, as for Word's
+documents - a line is not broken after a slash inside a word ("she/her/hers"
+stays whole).
+
+```cpp
+RichDocBlock table;
+table.type = RichBlockType::Table;    // ...its rows and cells
+table.tableColumnWidths = {60.0f, 400.0f};
+table.tableWidthPt = 460.0f;
+table.tableAutoFit = true;       // a long word in the first column widens it
+```
+
+A table
 continues between rows - never through a cell spanning rows - and its
 leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
 ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at
@@ -67651,6 +67845,25 @@ otherwise), with page number and page count fields
 (`RichTextRun::field`) filled in for that page. The body starts below the
 top margin, or below the header when the header is taller than the margin
 leaves room for; the footer likewise.
+
+A heading is set in the size and font its document's style gives it
+(`paragraphFontSizePt`, `paragraphFontFamily`), the document's first paragraph
+keeps its space above, a hanging first line starts left of the column where
+the paragraph's indent is smaller than the hang, and a paragraph whose picture
+or frame would reach past the foot of the page goes to the next page with it.
+
+**Column breaks.** `RichDocBlock::columnBreakBefore` starts the block in its
+section's next column, at the height the columns began at - or on the next
+page, from the last column or in a section of one column. It is Word's
+`w:br w:type="column"` and ODF's `fo:break-before="column"`, read and written
+by both formats.
+
+```cpp
+RichDocBlock heading;
+heading.runs = {title};
+heading.columnBreakBefore = true;       // top of the next column
+document->blocks.push_back(heading);
+```
 
 **Sections and columns.** `InsertSectionBreak(newPage)` starts a new section
 at the caret (`RichDocBlock::sectionStart`, its setup in
@@ -67737,6 +67950,10 @@ send the same pages along for them to draw:
 PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window,
                         CreateRichDocumentPrintPages(*editor));
 ```
+
+A print and an export are on white paper, whatever colour the screen's theme
+gives the page; under a dark theme, whose inks are light, they take the light
+style's inks.
 
 `CreateRichDocumentPrintPages` copies the document into an element of its own
 (the one on screen keeps its view) and returns an `IPrintPageSource`: the pages
@@ -80975,7 +81192,7 @@ Whether a new element follows is the application-wide default,
 (`FollowHost`, `Light`, `Dark`) in `Initialize`, so every element built
 after it takes the theme at the end of its constructor; an `Own`
 application turns it on itself when its theme is in place. A style **set by
-hand** (`SetStyle`, a dialog's too; `SetConfig` on an album, `SetAppearance`
+hand** (`SetStyle`; `SetConfig` on an album, `SetAppearance`
 on a toolbar, `SetVisualStyle` on a switch) stops the following for that
 element, so it keeps its look through every change, as before; an element
 that should keep both calls `SetStyle` and then `SetFollowTheme(true)`,
@@ -80991,7 +81208,15 @@ a caption with a size of its own no longer jumps to the body size when the
 look changes, and needs no `SetFollowTheme(false)` for it. A list hands the
 theme on to its delegate (`IItemDelegate::ApplyTheme`), also to one set
 with `SetDelegate` after the list was made; the default delegate keeps a
-text colour or size the application set on it.
+text colour or size the application set on it. A modal dialog's `SetStyle`
+follows the same rule for its type sizes: a style that changes only sizes
+(the message, details and button sizes an application runs its UI at, as
+the file display's and the Save settings' dialogs set) keeps the dialog
+following, and every theme change after keeps those sizes; a style that
+changes the message or details colour stops the following, as any
+`SetStyle` by hand does. A dialog left open while the theme changes is
+re-styled whole - its surface, message, buttons by their role and the
+elements added to it.
 
 ```cpp
 UltraCanvasUIElement::SetFollowThemeByDefault(true);        // what the policy does; an Own application's own call
@@ -86776,7 +87001,7 @@ Each takes its data through setters and renders itself; most have a
 | A project schedule: task table, dependencies, milestones, critical path | `UltraCanvasGanttChartElement` | `Plugins/Charts/UltraCanvasGanttChart.h` |
 | A Kanban board, and the cumulative flow diagram over its history | `UltraCanvasKanbanBoardElement`, `UltraCanvasCumulativeFlowChartElement` | `Plugins/Charts/UltraCanvasKanbanBoard.h`, `Plugins/Charts/UltraCanvasCumulativeFlowChart.h` |
 | Milestones and spans on a real date axis | `UltraCanvasTimelineChart` | `Plugins/Charts/UltraCanvasTimelineChart.h` |
-| Any of the charts above **on the chart engine** — themes, measured layout, solved labels, tooltips, Vertical / Horizontal / Polar — compared with the legacy ones on the demo's *Chart Engine Comparison* page (`UltraCanvasEngineCharts.md`) | line / area / stacked area / cumulative flow `UltraCanvasEngineLineChart`; scatter and bubble `UltraCanvasEngineScatterChart`; `UltraCanvasEngineWaterfallChart`; Likert / tornado / population pyramid `UltraCanvasEngineDivergingBarChart`; `UltraCanvasEngineDumbbellChart`; candlestick / OHLC / Heikin-Ashi `UltraCanvasEngineFinancialChart`; `UltraCanvasEngineHeatmapChart`; `UltraCanvasEngineMekkoChart`; `UltraCanvasEngineRadarChart`; `UltraCanvasEngineRadialBarChart`; pie / donut `UltraCanvasEnginePieChart`; `UltraCanvasEnginePolarChart` | `Plugins/Charts/Engine/Charts/UltraCanvasEngine<Name>Chart.h` |
+| Any of the charts above **on the chart engine** — themes, measured layout, solved labels, tooltips, Vertical / Horizontal / Polar — compared with the legacy ones on the demo's *Chart Engine Comparison* page (`UltraCanvasEngineCharts.md`) | line / area / stacked area / cumulative flow `UltraCanvasEngineLineChart`; scatter and bubble `UltraCanvasEngineScatterChart`; columns and bars (side by side, stacked, per cent, lying down) `UltraCanvasEngineBarChart`; `UltraCanvasEngineWaterfallChart`; Likert / tornado / population pyramid `UltraCanvasEngineDivergingBarChart`; `UltraCanvasEngineDumbbellChart`; candlestick / OHLC / Heikin-Ashi `UltraCanvasEngineFinancialChart`; `UltraCanvasEngineHeatmapChart`; `UltraCanvasEngineMekkoChart`; `UltraCanvasEngineRadarChart`; `UltraCanvasEngineRadialBarChart`; pie / donut `UltraCanvasEnginePieChart`; `UltraCanvasEnginePolarChart` | `Plugins/Charts/Engine/Charts/UltraCanvasEngine<Name>Chart.h` |
 | **A chart type that does not exist yet** — derive, do not paint | `UltraCanvasChartEngineElement` (three-phase engine; implement phase 2) or `UltraCanvasChartElementBase` | `Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`, `Plugins/Charts/UltraCanvasChartElementBase.h` |
 
 ### Diagrams — `Plugins/Diagrams/`
@@ -93770,7 +93995,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
 | Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
 | Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | yes | yes | yes | yes | yes | 2026-11. A drawing is a frame with shapes (`RichTextFrame::shapes`, `RichShape`): lines, rectangles, rounded rectangles, ellipses, outlines (straight and curved), groups, pictures in groups; fill, line colour and width, dashes, arrowheads, a turn and mirroring; words in a shape, centred or at the foot. ODF `draw:rect` / `ellipse` / `line` / `path` / `polygon` / `polyline` / `custom-shape` / `g`; DOCX `wps:wsp` (preset and custom outlines; theme colours through `wps:style` and `a:schemeClr` with their tint, shade and luminance changes), `wpg:wgp` groups with pictures and text boxes, and VML (`v:line`, `v:rect`, `v:roundrect`, `v:oval`, `v:shape` paths and types, `v:group`); DOC OfficeArt shapes and groups (shape types, freeform vertices, `FSPGR` / `FChildAnchor`). About forty of Word's named outlines (stars, arrows, flowchart symbols); others draw as their box. Both writers save drawings, and LibreOffice reads them back in place. Gradient fills (linear, axial, radial with their centre: ODF `draw:gradient`, DOCX `a:gradFill`, VML `v:fill`, DOC shades) are drawn and saved. Pattern fills draw as their pattern: DOCX `a:pattFill` (all of Word's presets), ODF `draw:hatch` (lines, single or crossed), DOC pattern bitmaps; saved to DOCX by name, to ODT as a hatch or, for dots and checks, as the pattern's tile. Picture fills (DOCX `a:blipFill`, ODF `draw:fill-image`, DOC textures and pictures) are drawn tiled or stretched and saved. Writer's DOC export keeps hatches as EMF textures, which are not decoded (they draw in the fill colour). No shadows, 3-D or WordArt. In page view a floating frame, drawing or picture is selected, moved by dragging and resized - in a header or footer while it is being edited; the new place and size are saved. |
-| Charts, embedded spreadsheets (OLE) | no | no | no | no | no | |
+| Charts, embedded spreadsheets (OLE) | *partial* | *partial* | no | yes | yes | 2026-11. `RichTextFrame::chart` (`RichChart`): kind, categories, series, legend, title, stated axis ranges - columns and bars (side by side, stacked, per cent), lines, areas, pies and doughnuts, scatter charts. DOCX: read from the chart part (`c:chartSpace`) and written back as one. ODT: read from the chart object (`Object N/content.xml`, `chart:chart` with its own table) and written back as one. The view draws it with the chart engine (`UltraCanvasRichDocumentChart.h`); the frame holds it as drawn shapes too (`UCRichDocument::ChartAsShapes`). Other chart kinds (stock, radar, bubble, 3D) show Writer's replacement picture, or columns from DOCX. No editing of the data. Embedded spreadsheets: no. |
 | Formulas | yes | yes | no | yes | yes | ODT MathML / DOCX OMML → LaTeX. |
 
 ### Page and document structure
@@ -93781,7 +94006,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Headers and footers | yes | yes | yes | yes | yes | 2026-09. `pageFurniture` and `firstPageFurniture` (another first page: ODF `style:header-first` or a first master page with a next style, DOCX `w:titlePg`, DOC first-page stories). Drawn on every page in page view, and above and below the body otherwise. Both writers save them. Even/odd headers are not read. |
 | Page number and page count fields | yes | yes | yes | yes | yes | 2026-09. `RichTextRun::field`: ODF `text:page-number` / `text:page-count`, DOCX `PAGE` / `NUMPAGES` / `SECTIONPAGES` (complex and simple fields), DOC field codes. Page view fills in each page's numbers in headers and footers. |
 | Dates and other fields | *partial* | *partial* | *partial* | no | — | Their last displayed value is kept as text. Captions and cross-references are real fields (see below). |
-| Footnotes / endnotes | yes | yes | no | yes | yes | `UCRichDocument::notes` with numbered reference runs; footnotes at the foot of their page in page view, endnotes after the body. DOC: the note text is not read yet. |
+| Footnotes / endnotes | yes | yes | yes | yes | yes | `UCRichDocument::notes` with numbered reference runs; footnotes at the foot of their page in page view, endnotes after the body. DOC: references from `PlcffndRef` / `PlcfendRef`, each note's words from its story after the main text; an author's own mark is kept as text beside the number. |
 | Table of contents and indexes | yes | yes | *partial* | yes | yes | Contents entries are `RichDocBlock::tocLevel` paragraphs whose page numbers are `PageReference` fields; `UpdateTableOfContents` rebuilds them. ODT: the generated text (`text:index-body`) of every index is read; only a table of contents gets `tocLevel`. DOCX: "TOC 1-9" paragraphs, also inside `w:sdt`. DOC shows the field result. Both writers save a table of contents. Alphabetical and other indexes are plain text. |
 | Sections, multiple columns | yes | yes | no | yes | *partial* | `RichSectionSetup` (columns, gap, new page) in `UCRichDocument::firstSection` and `RichDocBlock::sectionStart` / `section`; ODF `text:section` with `style:columns`, DOCX `w:sectPr` with `w:cols` / `w:type`. Page view flows a section column by column; the continuous view draws one column. Unequal column widths become equal, and a section's own page size is not read. Hidden ODT sections are dropped. Both writers save them. |
 | Comments, tracked changes | yes | yes | no | yes | yes | Comments: `UCRichDocument::comments` (`RichComment`), anchored by `RichTextRun::commentIds`; ODF `office:annotation`, DOCX `comments.xml`. Tracked changes: `RichTextRun::change` / `revision` into `UCRichDocument::revisions`; ODF `text:tracked-changes`, DOCX `w:ins` / `w:del` / `w:moveTo` / `w:moveFrom`. The view shades commented text with a comment pane beside it, underlines insertions and strikes through deletions. Both writers save them. Format changes are not kept. DOC does not read comments or revision marks. |
@@ -93836,9 +94061,7 @@ zoom to the page's width or the whole page
 (`UltraCanvasRichTextEdit::SetZoomFit`), and drawn shapes and groups from
 all three formats.
 
-1. **The DOC reader's remaining gaps**: merged cells, footnotes and endnotes
-   (their text lies after the main text in the piece table: `ccpFtn`,
-   `ccpEdn`), comments and revision marks, sections and their columns,
+1. **The DOC reader's remaining gaps**: merged cells, comments and revision marks, sections and their columns,
    bookmarks and caption / cross-reference fields. ODT and DOCX read all of
    these.
 2. Charts: read-only display first.
@@ -102954,7 +103177,8 @@ UltraIMConfig config;
 config.pluginDirectory = "<exe dir>/Plugins/UltraIM";
 config.dataDirectory   = "<user data dir>/ChatCube";
 UltraIM_Initialize(config);
-UltraIM_RefreshProviders();                 // load the provider modules
+UltraIM_LoadUsedProviders();                // the networks in use (signed in to before)
+UltraIM_LoadProvider("telegram");           // another one, when it is asked for
 
 UltraIM_Subscribe([](const UltraIMEvent& e) {
     if (e.type == UltraIMEventType::MessageReceive) { /* append e.message */ }
@@ -103263,9 +103487,29 @@ extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost
 }
 ```
 
-`UltraIM_RefreshProviders` loads each module in `pluginDirectory` once and
-never unloads it (queued callbacks may still point into it). A provider
-compiled into the application uses `UltraIM_RegisterProvider` instead.
+A module is named `ultraim_<provider id>` (`.so`, `.dll`, `.dylib`) - the
+build's `OUTPUT_NAME` with no prefix - so a provider is found by its id
+without loading anything. Modules are loaded **on demand**:
+
+- `UltraIM_ListProviderModules()` - the ids of the modules in
+  `pluginDirectory`, loaded or not (to offer them);
+- `UltraIM_LoadProvider(id)` - that one module, when its network is asked
+  for (a button, a sign-in); `ProviderNotFound` when there is none;
+- `UltraIM_LoadUsedProviders()` - at start, the networks in use: those
+  listed in `<dataDirectory>/ultraim-providers.txt`, one provider id a line
+  (`#` a comment). UltraIM adds a provider there when it connects
+  (`ConnectionStateChange` to `Connected`) and takes it out on
+  `UltraIM_SignOut`; `UltraIM_GetUsedProviders()` reads it. With no list
+  yet, a first start (the data folder empty) begins an empty one; a data
+  folder used before - an application that loaded every module until now -
+  has every module loaded once and those with a sign-in kept written down,
+  so an update signs no one out;
+- `UltraIM_RefreshProviders` - every module, as before.
+
+A module is loaded once and never unloaded (queued callbacks may still point
+into it); after `UltraIM_Shutdown` and a new `UltraIM_Initialize` it is asked
+to register its provider again. A provider compiled into the application
+uses `UltraIM_RegisterProvider` instead.
 
 **The module ABI.** `ULTRAIM_PLUGIN_HOST_ABI_VERSION` covers everything a
 module and the host share in binary form: the host table, the
@@ -103813,8 +104057,15 @@ UltraCrypt.
   2-7 people (a group message, its title the members') - **leave** (a
   channel; a direct or group message is hidden as Mattermost hides it and
   comes back with its next post), **search** one conversation at a time.
-- **Not here**: typing, presence, read receipts, calls, reactions; only a
-  post's first file is its attachment.
+- **Typing**: `SetTyping(true)` posts `/api/v4/users/me/typing` (Mattermost
+  has no "stopped"; `false` sends nothing). Typing is heard on a WebSocket
+  (`/api/v4/websocket`) opened for that alone - polling stays as it was - and
+  closed with the sign-out; it reconnects with a growing pause after a drop.
+  Mattermost never says "stopped" either: the provider sends the stop itself
+  `MattermostTimings::typingStopMs` (5 s) after the last word of it, when
+  that person's post arrives, or when the socket drops. Needs Mattermost 5.26.
+- **Not here**: presence, read receipts, calls, reactions; only a post's
+  first file is its attachment.
 
 Tests: `Tests/UltraIM/MattermostProviderTests.cpp` against
 `mattermost_fake_server.py` (standard-library python: a team with two
@@ -103852,9 +104103,14 @@ without python3 unless `ULTRAIM_TEST_MATTERMOST_REQUIRED` is set.
   **people** (`AddContact` an e-mail or a user id, `CreateGroup` a group
   direct message), **leave** (a topic muted, a direct message hidden on this
   device), **search** one conversation at a time.
-- **Not here**: replies to a message (Zulip quotes instead), typing,
-  presence, read receipts, calls; moved or renamed topics. Needs Zulip 7.0
-  or later.
+- **Typing**: `SetTyping` posts `/api/v1/typing` (a direct message, or a
+  stream topic on Zulip 8.0 and later; an older server's refusal turns
+  stream typing off for the session), and typing events come from the event
+  queue. Zulip's own clients say "typing" only every ten seconds, so the
+  provider repeats it every `ZulipTimings::typingRefreshMs` (4 s) until the
+  stop, that person's message, or `typingExpireMs` (15 s) without a word.
+- **Not here**: replies to a message (Zulip quotes instead), presence, read
+  receipts, calls; moved or renamed topics. Needs Zulip 7.0 or later.
 
 Tests: `Tests/UltraIM/ZulipProviderTests.cpp` against `zulip_fake_server.py`
 (standard-library python, with a real long-poll): password and API-key
@@ -103930,7 +104186,11 @@ tinyxml2's, cut into elements from the TCP byte stream by `XmppSplitter`.
   and `ws://`, are refused unless they are on this computer. The endpoint
   that connected is kept with the keys and tried first next time.
   `SetTlsOptions` takes a CA bundle (tests). Over TCP a single space keeps a
-  quiet connection open.
+  quiet connection open, and a server that has said nothing for
+  `XmppTimings::pingIntervalMs` is pinged (XEP-0199): no answer, nor anything
+  else, within `pingTimeoutMs` and the connection counts as gone and is made
+  again - a server that hangs, or a path that drops packets without a word,
+  is found this way, where a write never fails.
 - **Sign-in** (`UltraIMLoginType::UsernamePassword`): the bare JID
   (`username`, `erin@example.org`) and the password, by SASL SCRAM-SHA-256,
   else SCRAM-SHA-1, else PLAIN (only over TLS or to this computer).
@@ -103958,7 +104218,9 @@ Tests: `Tests/UltraIM/XmppProviderTests.cpp` against `xmpp_fake_server.py`
 one with STARTTLS and a direct-TLS one, sharing users and archives): the
 splitter on awkward reads, server-field forms, SRV ordering, an untrusted
 certificate refused, STARTTLS and WebSocket clients talking both ways,
-direct TLS with the endpoint kept and resumed, a dropped TCP connection;
+direct TLS with the endpoint kept and resumed, a dropped TCP connection, a
+quiet server pinged and kept, one fallen silent with its socket open found
+by the unanswered ping;
 SCRAM-SHA-256,
 SCRAM-SHA-1 and PLAIN (nothing kept), plain `ws://` to another computer
 refused, the WebSocket found from host-meta, the kept keys and a changed
@@ -115818,79 +116080,6 @@ and its reference from the shadow, the newsletter's e-mail mode of the
 emitter, the Markdown block, and
 everything of the server tier (Phase 2): forms and newsletter sign-ups on a
 static site need a form service until then.
-
-==============================================================================
-FILE: Docs/UltraPress/changelog.d/documentation-sites.md
-==============================================================================
-
-- **Documentation, the way Docusaurus publishes it.**
-  - **A site's `docs/` folder.** Its Markdown is published at `/docs/` in
-    the HTML + JavaScript output. Each page gets a sidebar after the
-    folders, a table of contents, breadcrumbs, and previous and next.
-    Code is highlighted, and `:::tip` admonitions and `:::tabs` work.
-  - **Search.** A site with docs gets a search box and a search page.
-  - **Translations.** `i18n/<language>/docs` publishes at
-    `/<language>/docs/`, with a language switcher.
-  - **The example site** has a small `docs/`, linked from its menu.
-- **`ultrapress docs <folder> <out>`** publishes a folder of Markdown alone
-  as a documentation site.
-  - `--source-root` and `--source-url` send a link out of the folder to a
-    repository's file view.
-  - `--edit-url` adds *Edit this page*, and `--exclude` leaves out files
-    such as the changelogs.
-  - `--broken-links warn` publishes despite links that lead nowhere.
-  - This repository's `Docs/` (418 pages) builds with it in 18 seconds.
-
-==============================================================================
-FILE: Docs/UltraPress/changelog.d/serve-pictures-versions-blog.md
-==============================================================================
-
-- **`ultrapress serve <site>`** shows the site on this computer. It builds
-  the site as HTML + JavaScript, serves it on 127.0.0.1, and builds it
-  again when a file of the site changed; a built folder is served as it
-  is.
-- **Pictures** of the site's media are responsive: AVIF and WebP variants
-  at the widths each role is shown at, with the original kept.
-- **`--precompress`** on `publish` and `docs` writes a `.gz` (and `.br`)
-  copy beside every page, stylesheet and script.
-- **Versioned docs.** `versioned_docs/<label>/`, ordered by
-  `versions.json`, is published at `/docs/<label>/` with a version
-  switcher; `ultrapress docs --versions <dir>` does the same for a
-  Markdown folder.
-- **A blog.** Posts take `"tags"`. A site with posts gets `/blog/`, the
-  posts newest first, and a page per tag.
-
-==============================================================================
-FILE: Docs/UltraPress/changelog.d/two-outputs-html-javascript.md
-==============================================================================
-
-- **A site is published as HTML + JavaScript or as WebAssembly.** The new
-  `"output"` in `site.json` chooses which; it is also *Publish as* in *Site
-  settings…*, and `ultrapress publish --output html|wasm` for one run.
-  `html`, the default for new sites and for sites that do not say, writes
-  every page through UltraSite:
-  - styled pages, built from the blocks and the theme's colours, with a
-    4 KB script for prefetch and the theme toggle;
-  - a hashed stylesheet;
-  - `feed.xml`, `sitemap.xml`, `404.html`, `.htaccess`, `_headers` and the
-    media folder.
-
-  The example site's front page is 2.3 KB compressed, with 3.0 KB of
-  stylesheet and 0.8 KB of script that every page shares. A broken link,
-  a missing anchor or a page over its size budget fails the publish;
-  `--sizes` lists what everything weighs. `wasm` writes the HTML shadow for
-  the WebAssembly renderer, as before.
-  - **The dark look:** `"dark"` in `theme.json` gives a site's colours for
-    it. The site then follows the visitor's system and offers a toggle that
-    remembers the choice. The example site has one.
-  - **Outputs per block:** a block type states which outputs can show it
-    (`BlockType::htmlOutput`, `wasmOutput`), and `check` reports a block the
-    site's output cannot show. Every built-in block has both.
-  - **Engine:** `UltraPressSite.h` (`PublishHtml`, `Publish`, `ThemeTokens`,
-    `BlockStylesheet`); `HtmlEmitter::Parts`; `HtmlOptions::styled`, which
-    fetches the hero's picture first and every other picture lazily, and
-    makes the FAQ an accordion that keeps one answer open. The shadow is
-    unchanged.
 
 ==============================================================================
 FILE: Docs/Legal/Privacy/README.md

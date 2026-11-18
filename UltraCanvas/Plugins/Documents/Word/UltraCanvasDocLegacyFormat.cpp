@@ -18,6 +18,8 @@
 // column widths and cell alignment, hyperlinks and embedded PNG/JPEG
 // pictures. There is deliberately no .doc writer — save as .docx or .odt.
 // Specification: [MS-DOC] Word (.doc) Binary File Format.
+// Version: 2.9.0 - footnotes and endnotes: their references (PlcffndRef / PlcfendRef) and words
+// Version: 2.8.0 - UCRichDocument::breakAfterSlash is false for Word's documents
 // Version: 2.7.0 - the sections after the first: their header, footer and margins; shapes' shadows
 // Version: 2.6.0 - paragraph spacing in cells; text unkerned
 // Version: 2.5.0 - documents of several sections (page size), row heights, merged cells, a cell's empty
@@ -1245,14 +1247,25 @@ public:
         LoadOfficeArt();
         LoadShapeAnchors(40, anchors_);            // PlcSpaMom: the main text's shapes
         LoadShapeAnchors(41, headerAnchors_);      // PlcSpaHdr: the headers' and footers'
+        // Footnotes and endnotes: where the body refers to each...
+        const size_t footnoteStory = ccpText, endnoteStory = static_cast<size_t>(ccpText) + ccpFtn + ccpHdd + ccpAtn;
+        const size_t footnotes = LoadNoteReferences(2, RichNote::Kind::Footnote);     // PlcffndRef
+        const size_t endnotes = LoadNoteReferences(46, RichNote::Kind::Endnote);      // PlcfendRef
         activeAnchors_ = &anchors_;
         anchorCpBase_ = 0;
         recordParagraphStarts_ = true;             // which block each of the body's paragraphs begins
+        notesActive_ = true;
         BuildBlocks(chars);
+        notesActive_ = false;
         recordParagraphStarts_ = false;
         activeAnchors_ = nullptr;
+        // ...and their words, from the stories after the body's.
+        LoadNoteTexts(allChars, 3, footnoteStory, ccpFtn, 0, footnotes);              // PlcffndTxt
+        LoadNoteTexts(allChars, 47, endnoteStory, ccpEdn, footnotes, endnotes);       // PlcfendTxt
+        if (!doc_.notes.empty()) doc_.UpdateNoteMarks();
         LoadSection();
         doc_.letterKerning = false;                // Word 97-2003 sets text unkerned unless a run asks
+        doc_.breakAfterSlash = false;              // ...and keeps "a/b" whole
         LoadHeaderStories(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
         ApplyLaterSections(allChars, static_cast<size_t>(ccpText) + ccpFtn, ccpHdd);
         LoadTextBoxStories(allChars);
@@ -1304,6 +1317,61 @@ public:
     // Header and footer stories of the first section (PlcfHdd): six note
     // separators, then per section even/odd header, even/odd footer, first
     // header, first footer. Odd pages' are every page's here.
+    // PlcffndRef / PlcfendRef: the character of the main text each note is
+    // referred to at (n + 1 CPs, then n two-byte flags). Makes the notes, to
+    // be filled in by LoadNoteTexts, and returns how many.
+    size_t LoadNoteReferences(size_t index, RichNote::Kind kind) {
+        const uint32_t fc = FcAt(index), lcb = LcbAt(index);
+        if (lcb < 10 || static_cast<size_t>(fc) + lcb > table_.size()) return 0;
+        const size_t count = (lcb - 4) / 6;
+        for (size_t i = 0; i < count && i < 65536; i++) {
+            RichNote note;
+            note.kind = kind;
+            noteRefs_[ReadU32(table_, fc + i * 4)] = static_cast<int>(doc_.notes.size());
+            doc_.notes.push_back(std::move(note));
+        }
+        return std::min<size_t>(count, 65536);
+    }
+
+    // PlcffndTxt / PlcfendTxt: where each note's words begin in its story
+    // (the CPs of n notes, and the story's end). Each is read with the
+    // body's machinery into its note; the mark it begins with is the view's.
+    void LoadNoteTexts(const std::vector<DocChar>& allChars, size_t index, size_t storyStart, uint32_t ccp,
+                       size_t firstNote, size_t count) {
+        const uint32_t fc = FcAt(index), lcb = LcbAt(index);
+        if (count == 0 || ccp == 0 || static_cast<size_t>(fc) + lcb > table_.size()) return;
+        const size_t entries = lcb / 4;
+        for (size_t i = 0; i < count && i + 1 < entries && firstNote + i < doc_.notes.size(); i++) {
+            const size_t begin = ReadU32(table_, fc + i * 4);
+            const size_t end = std::min<size_t>(ReadU32(table_, fc + (i + 1) * 4), ccp);
+            if (end <= begin || storyStart + end > allChars.size()) continue;
+            std::vector<DocChar> text(allChars.begin() + static_cast<std::ptrdiff_t>(storyStart + begin),
+                                      allChars.begin() + static_cast<std::ptrdiff_t>(storyStart + end));
+            std::vector<RichDocBlock> body = std::move(doc_.blocks);
+            doc_.blocks.clear();
+            BuildBlocks(text);
+            std::vector<RichDocBlock> words = std::move(doc_.blocks);
+            doc_.blocks = std::move(body);
+            while (!words.empty() && words.back().type == RichBlockType::Paragraph && words.back().runs.empty()) words.pop_back();
+            // The blank or tab after the note's own mark: the view sets its
+            // mark and the gap itself.
+            if (!words.empty()) {
+                std::vector<RichTextRun>& runs = words.front().runs;
+                while (!runs.empty() && !runs.front().IsInlineImage()) {
+                    std::string& first = runs.front().text;
+                    const size_t kept = first.find_first_not_of(" \t");
+                    if (kept == 0) break;
+                    if (kept != std::string::npos) { first.erase(0, kept); break; }
+                    if (runs.size() == 1) { first.clear(); break; }
+                    runs.erase(runs.begin());
+                }
+            }
+            doc_.notes[firstNote + i].blocks = std::move(words);
+        }
+    }
+    std::map<size_t, int> noteRefs_;              // the main text's CP -> the note referred to there
+    bool notesActive_ = false;                    // the main text is being built
+
     void LoadHeaderStories(const std::vector<DocChar>& allChars, size_t storyStart, uint32_t ccpHdd) {
         const uint32_t fc = FcAt(11), lcb = LcbAt(11);
         if (ccpHdd == 0 || lcb < 4 * 13 || static_cast<size_t>(fc) + lcb > table_.size()) return;
@@ -2396,6 +2464,22 @@ private:
                 if (activeAnchors_) AppendShapes(runs, anchorCpBase_ + i, lineBreak);
                 lineBreak = false;
                 continue;
+            }
+            if (notesActive_) {
+                // A footnote's or endnote's reference: the note's mark, set
+                // high. (Its number is the view's; a mark of the author's
+                // own follows as the text it is.)
+                auto note = noteRefs_.find(anchorCpBase_ + i);
+                if (note != noteRefs_.end()) {
+                    RichTextRun reference = MakeRun(props, heading ? &styleChars : nullptr);
+                    reference.noteIndex = note->second;
+                    reference.superscript = true;
+                    reference.text = "*";             // numbered once all are read
+                    reference.lineBreakBefore = lineBreak;
+                    runs.push_back(std::move(reference));
+                    lineBreak = false;
+                    if (ch == 0x02) continue;
+                }
             }
             std::string text;
             if (props.special && props.symbolChar != 0) {

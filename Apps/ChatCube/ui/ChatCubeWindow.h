@@ -71,6 +71,8 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.13 - who is typing, per conversation: in its row of the list and, named in a group, in the header
+// Version: 0.3.12 - a network's module loaded when its button is pressed (LoadNetwork); NetworkName
 // Version: 0.3.11 - an IRC account (server, nickname, the password of a registered nick); #channel goes to IRC
 // Version: 0.3.10 - an XMPP account (the address and password; the server found from its domain)
 // Version: 0.3.9 - Signal: linked to the phone by a QR code (signal-cli); +phone asks Telegram or Signal
@@ -115,7 +117,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-16
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -380,6 +382,11 @@ private:
     void SetStatus(const std::string& text);                                      // the action's part
     void SetProviderStatus(const std::string& providerId, const std::string& text);   // "" removes the entry
     void RenderStatus();
+    // The networks of the sidebar, in its order, under the names it shows.
+    std::vector<std::pair<std::string, const char*>> Networks() const;
+    std::string NetworkName(const std::string& providerId) const;
+    // The network's module loaded if it is not yet (on demand); its info.
+    bool LoadNetwork(const std::string& providerId, UltraIMProviderInfo& info);
     void SetSignInStatus(const std::string& text);
     void RefreshConversations();
     void ScrollToEnd();
@@ -411,6 +418,11 @@ private:
     void CopyAddress(const std::string& address);
     // A group's members: a name for each, a chat with one, one taken out.
     std::string MemberName(const UltraIMConversation& group, const std::string& memberId) const;
+    // Who is typing: kept per conversation, shown in its row and its header.
+    void SetTyping(const std::string& conversationId, const std::string& contactId, bool typing);
+    void ExpireTyping();
+    void ShowTyping(const std::string& conversationId);
+    std::string TypingText(const UltraIMConversation& conversation) const;
     void MessageMember(const std::string& providerId, const std::string& memberId);
     void RemoveMember(const std::string& conversationId, const std::string& memberId);
     // Asked in a dialog, then done through UltraIM.
@@ -663,8 +675,8 @@ private:
     uint64_t         callTimer_ = 0;        // the duration ticker (0: none)
 
     std::string activeConversation_;
-    std::string typingContact_;
-    int64_t     typingUntilMs_ = 0;
+    // Who is typing where: conversation id -> contact id -> shown until (ms).
+    std::map<std::string, std::map<std::string, int64_t>> typing_;
     int64_t     lastTypingSentMs_ = 0;
     bool        relayoutPending_ = false;
     bool        fillingList_ = false;

@@ -966,6 +966,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineHeatmapChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineRadarChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineRadialBarChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineBarChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEnginePieChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEnginePolarChart.cpp
         # Charts built on the engine with no legacy twin
@@ -1207,6 +1208,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # and the element that renders and edits it.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextFormatBar.cpp
         # Its pages, for the printers that draw rather than take its PDF.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextPrint.cpp

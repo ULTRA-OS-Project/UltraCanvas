@@ -19,9 +19,11 @@
 // and direct TLS signed in and talking with a WebSocket client, an untrusted
 // certificate refused both ways, a server without STARTTLS taken only on
 // this computer, the endpoint kept and signed in to again, a drop over TCP
-// reconnecting.
+// reconnecting, a quiet server pinged and answering (the connection kept), a
+// server fallen silent with its socket open found by the unanswered ping.
 // Skips without python3, unless ULTRAIM_TEST_XMPP_REQUIRED is set; the TLS
 // part needs openssl as well.
+// Version: 0.3.0 - the XMPP ping over TCP: answered, and unanswered (a silent server)
 // Version: 0.2.0 - the TCP binding: splitter, endpoints, SRV order, STARTTLS / direct TLS end to end
 // Version: 0.1.0
 // Last Modified: 2026-11-17
@@ -957,7 +959,8 @@ std::unique_ptr<Client_> NewTcpClient(const fs::path& dir, const std::string& ca
     fast.requestTimeoutMs = 10000;
     fast.reconnectFirstMs = 300;
     fast.reconnectMaxMs = 2000;
-    fast.pingIntervalMs = 250;      // the whitespace keepalive, often
+    fast.pingIntervalMs = 250;      // the whitespace keepalive and the XMPP ping, often
+    fast.pingTimeoutMs = 1500;
     c->p->SetTimings(fast);
     if (!caFile.empty()) {
         UltraNetTlsOptions tls;
@@ -1076,6 +1079,33 @@ void TestTcp(const FakeServer& server, const fs::path& base, const std::string& 
     CHECK(e.GetEndpoint() == starttls);
     CHECK(f.SendText(erinJid, "after the tcp drop", Client("w-3")));
     CHECK(erin->events.WaitFor([](const UltraIMEvent& ev) { return IsReceived(ev, "after the tcp drop"); }));
+
+    // ---- a quiet server is pinged and answers: the connection stays -----------------------------
+    // (Pings go out after 250 ms without a word from the server; unanswered for
+    // 1.5 s, the connection would count as gone.)
+    erin->events.Clear();
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    CHECK(erin->events.Count([](const UltraIMEvent& ev) {
+        return ev.type == UltraIMEventType::ConnectionStateChange &&
+               ev.connectionState != UltraIMConnectionState::Connected;
+    }) == 0);
+    CHECK(e.GetConnectionState() == UltraIMConnectionState::Connected);
+
+    // ---- a server that falls silent (the socket still open): the unanswered ping ends it ---------
+    erin->events.Clear();
+    Post(server.url, "/_test/silence", "{\"user\": \"erin\"}");
+    UltraIMEvent lost;
+    CHECK(erin->events.WaitFor([](const UltraIMEvent& ev) {
+        return ev.type == UltraIMEventType::ConnectionStateChange &&
+               ev.connectionState == UltraIMConnectionState::Reconnecting;
+    }, &lost, 10));
+    CHECK(lost.errorText.find("ping") != std::string::npos);
+    CHECK(erin->events.WaitFor([](const UltraIMEvent& ev) {
+        return ev.type == UltraIMEventType::ConnectionStateChange &&
+               ev.connectionState == UltraIMConnectionState::Connected;
+    }, nullptr, 20));
+    CHECK(f.SendText(erinJid, "after the silence", Client("w-4")));
+    CHECK(erin->events.WaitFor([](const UltraIMEvent& ev) { return IsReceived(ev, "after the silence"); }));
 
     // ---- no STARTTLS offered: only to this computer (the "host:port" form) ---------------------
     Post(server.url, "/_test/starttls", "{\"offer\": false}");

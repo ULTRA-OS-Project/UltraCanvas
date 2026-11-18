@@ -27,7 +27,7 @@ inline void DrawSortTriangle(IRenderContext* ctx, const Point2Dd& centre, double
                              const Color& color);
 inline bool IsDrawnBullet(const std::string& bullet);
 inline bool DrawBulletMark(IRenderContext* ctx, const std::string& bullet, const Point2Dd& topLeft,
-                           const FontStyle& font, const Color& color);
+                           const FontStyle& font, const Color& color, double scale = 1.0);
 ```
 
 * `DrawTickMark`, `DrawCrossMark` — a stroked tick or diagonal cross
@@ -38,8 +38,9 @@ inline bool DrawBulletMark(IRenderContext* ctx, const std::string& bullet, const
 * `DrawBulletMark` — draws "•" (a disc), "◦" (a ring) or "▪" (a square)
   where `DrawText(bullet, topLeft)` in `font` would put the character:
   centred on the font's capitals (`GetCapCentreOffset`) and as large as
-  Ubuntu's "•". It returns false and draws nothing for any other string,
-  which the caller then draws as text.
+  Ubuntu's "•" - times `scale`, about its centre (1.5 for a document's own
+  bullet, which is a symbol font's). It returns false and draws nothing for
+  any other string, which the caller then draws as text.
 * `IsDrawnBullet` — true for the three bullets `DrawBulletMark` draws.
   Each takes the room of a "•", so measure "•" to place text after one.
 

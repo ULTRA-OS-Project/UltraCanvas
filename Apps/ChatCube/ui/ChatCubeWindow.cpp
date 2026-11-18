@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.7 - who is typing: per conversation, in the list's row and the header, named in a group
+// Version: 0.3.6 - a network's module loaded on demand, from its button; names of networks not loaded
 // Version: 0.3.5 - a Mastodon account (the server, then its sign-in page in the browser); the network
 //                  buttons in two rows; @user@server and https://server/@user go to Mastodon
 // Version: 0.3.4 - sending in the background, a file's progress in its bubble, a video's preview picture
@@ -35,7 +37,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-16
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -1303,15 +1305,39 @@ void ChatCubeWindow::SetProviderStatus(const std::string& providerId, const std:
     RenderStatus();
 }
 
+std::vector<std::pair<std::string, const char*>> ChatCubeWindow::Networks() const {
+    return {{providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
+            {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"},
+            {signalProviderId_, "Signal"}, {xmpp_.providerId, "XMPP"}, {irc_.providerId, "IRC"}};
+}
+
+std::string ChatCubeWindow::NetworkName(const std::string& providerId) const {
+    for (const auto& network : Networks()) {
+        if (network.first == providerId) return network.second;
+    }
+    UltraIMProviderInfo info;
+    if (UltraIM_GetProviderInfo(providerId, info) && !info.displayName.empty()) return info.displayName;
+    return providerId;
+}
+
+bool ChatCubeWindow::LoadNetwork(const std::string& providerId, UltraIMProviderInfo& info) {
+    // A network's module is loaded the first time it is asked for (UltraIM
+    // loads at start only those in use): its button opens its form.
+    const bool wasLoaded = UltraIM_GetProviderInfo(providerId, info);
+    if (!wasLoaded && !UltraIM_LoadProvider(providerId)) return false;
+    if (!UltraIM_GetProviderInfo(providerId, info)) return false;
+    // Telegram's keys come from the relay, asked for at start when Telegram
+    // was loaded then: now, when it is loaded only now.
+    if (!wasLoaded && providerId == telegramProviderId_ && telegramRelayApiId_.empty())
+        FetchTelegramCredentials([this]() { UpdateTelegramForm(); });
+    return true;
+}
+
 void ChatCubeWindow::RenderStatus() {
     if (!status_) return;
     std::string line = actionStatus_;
     // The networks in a fixed order, each under the name the sidebar uses.
-    const std::pair<std::string, const char*> networks[] = {
-        {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"},
-        {mastodonProviderId_, "Mastodon"}, {mattermost_.providerId, "Mattermost"}, {zulip_.providerId, "Zulip"},
-        {signalProviderId_, "Signal"}, {xmpp_.providerId, "XMPP"}, {irc_.providerId, "IRC"}};
-    for (const auto& network : networks) {
+    for (const auto& network : Networks()) {
         auto it = providerStatus_.find(network.first);
         if (it == providerStatus_.end()) continue;
         if (!line.empty()) line += " \xC2\xB7 ";       // a middle dot
@@ -1814,6 +1840,63 @@ void ChatCubeWindow::CopyAddress(const std::string& address) {
     if (SetClipboardText(address)) SetStatus(TrF("{0} is on the clipboard.", address));
 }
 
+// ---- Who is typing ------------------------------------------------------------
+// Per conversation, each person typing and until when it is shown: a network
+// says "typing" again every few seconds while it lasts, and not every one
+// says when it stops - so it goes kTypingShownMs after the last word of it,
+// or when that person's message arrives.
+
+void ChatCubeWindow::SetTyping(const std::string& conversationId, const std::string& contactId, bool typing) {
+    if (conversationId.empty() || contactId.empty()) return;
+    auto it = typing_.find(conversationId);
+    if (typing) {
+        typing_[conversationId][contactId] = NowMs() + kTypingShownMs;
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->StartTimer(static_cast<unsigned>(kTypingShownMs + 100), false,
+                            [this](TimerId) { ExpireTyping(); });
+        }
+    } else {
+        if (it == typing_.end() || !it->second.erase(contactId)) return;
+        if (it->second.empty()) typing_.erase(it);
+    }
+    ShowTyping(conversationId);
+}
+
+void ChatCubeWindow::ExpireTyping() {
+    const int64_t now = NowMs();
+    std::vector<std::string> changed;
+    for (auto it = typing_.begin(); it != typing_.end();) {
+        const size_t before = it->second.size();
+        for (auto who = it->second.begin(); who != it->second.end();) {
+            if (who->second <= now) who = it->second.erase(who);
+            else ++who;
+        }
+        if (it->second.size() != before) changed.push_back(it->first);
+        if (it->second.empty()) it = typing_.erase(it);
+        else ++it;
+    }
+    for (const std::string& id : changed) ShowTyping(id);
+}
+
+void ChatCubeWindow::ShowTyping(const std::string& conversationId) {
+    const UltraIMConversation* c = conversations_->Find(conversationId);
+    conversations_->SetTyping(conversationId, c ? TypingText(*c) : std::string());
+    if (conversationId == activeConversation_) UpdateHeader();
+}
+
+std::string ChatCubeWindow::TypingText(const UltraIMConversation& c) const {
+    auto it = typing_.find(c.conversationId);
+    if (it == typing_.end() || it->second.empty()) return std::string();
+    // A chat with one person: just that they are typing - their name is above it.
+    if (!c.isGroup) return Tr("typing\xE2\x80\xA6");
+    std::vector<std::string> names;
+    for (const auto& who : it->second) names.push_back(MemberName(c, who.first));
+    std::sort(names.begin(), names.end());
+    if (names.size() == 1) return TrF("{0} is typing\xE2\x80\xA6", names[0]);
+    if (names.size() == 2) return TrF("{0} and {1} are typing\xE2\x80\xA6", names[0], names[1]);
+    return TrF("{0} and others are typing\xE2\x80\xA6", names[0]);
+}
+
 std::string ChatCubeWindow::MemberName(const UltraIMConversation& group, const std::string& memberId) const {
     const auto named = group.memberNames.find(memberId);
     if (named != group.memberNames.end() && !named->second.empty()) return named->second;
@@ -2041,9 +2124,7 @@ void ChatCubeWindow::AddContactById(const std::string& id) {
     if (connected.empty() && candidates.size() > 1) {
         std::string names;
         for (const std::string& provider : candidates) {
-            UltraIMProviderInfo info;
-            if (!UltraIM_GetProviderInfo(provider, info)) continue;
-            names += (names.empty() ? "" : ", ") + (info.displayName.empty() ? provider : info.displayName);
+            names += (names.empty() ? "" : ", ") + NetworkName(provider);
         }
         SetStatus(TrF("Sign in to one of these first: {0}", names));
         return;
@@ -2072,7 +2153,7 @@ void ChatCubeWindow::AddContactOn(const std::string& provider, const std::string
 
 void ChatCubeWindow::ToggleMatrixForm() {
     UltraIMProviderInfo info;
-    if (!UltraIM_GetProviderInfo(matrixProviderId_, info)) {
+    if (!LoadNetwork(matrixProviderId_, info)) {
         SetStatus(Tr("The Matrix module was not found (Plugins/UltraIM)."));
         return;
     }
@@ -2091,7 +2172,7 @@ void ChatCubeWindow::ToggleMatrixForm() {
 
 void ChatCubeWindow::ToggleTelegramForm() {
     UltraIMProviderInfo info;
-    if (!UltraIM_GetProviderInfo(telegramProviderId_, info)) {
+    if (!LoadNetwork(telegramProviderId_, info)) {
         SetStatus(Tr("The Telegram module was not found (Plugins/UltraIM)."));
         return;
     }
@@ -2299,7 +2380,7 @@ void ChatCubeWindow::SignInToMatrix(bool stored) {
 
 void ChatCubeWindow::ToggleMastodonForm() {
     UltraIMProviderInfo info;
-    if (!UltraIM_GetProviderInfo(mastodonProviderId_, info)) {
+    if (!LoadNetwork(mastodonProviderId_, info)) {
         SetStatus(Tr("The Mastodon module was not found (Plugins/UltraIM)."));
         return;
     }
@@ -2337,7 +2418,7 @@ void ChatCubeWindow::SignInToMastodon(bool stored) {
 
 void ChatCubeWindow::ToggleSignalForm() {
     UltraIMProviderInfo info;
-    if (!UltraIM_GetProviderInfo(signalProviderId_, info)) {
+    if (!LoadNetwork(signalProviderId_, info)) {
         SetStatus(TrF("The {0} module was not found (Plugins/UltraIM).", std::string("Signal")));
         return;
     }
@@ -2459,7 +2540,7 @@ ChatCubeWindow::AccountForm* ChatCubeWindow::AccountFormOf(const std::string& pr
 
 void ChatCubeWindow::ToggleAccountForm(AccountForm& f) {
     UltraIMProviderInfo info;
-    if (!UltraIM_GetProviderInfo(f.providerId, info)) {
+    if (!LoadNetwork(f.providerId, info)) {
         SetStatus(TrF("The {0} module was not found (Plugins/UltraIM).", f.name));
         return;
     }
@@ -2778,7 +2859,6 @@ void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
     }
     activeConversation_ = conversationId;
     activeProvider_ = ProviderOf(conversationId);
-    typingContact_.clear();
     const UltraIMConversation* c = conversations_->Find(conversationId);
     if (c && conversations_->IsMarkedUnread(*c)) SetMarkedUnread(conversationId, false);   // read now
     c = conversations_->Find(conversationId);
@@ -2853,8 +2933,8 @@ void ChatCubeWindow::UpdateHeader() {
                                     : Tr("This network does not take pictures or files yet"));
     recordVoice_->SetDisabled(!attachments);
     recordVideo_->SetDisabled(!attachments);
-    if (!typingContact_.empty() && NowMs() < typingUntilMs_) {
-        subtitle_->SetText(Tr("typing\xE2\x80\xA6"));
+    if (const std::string typing = TypingText(*c); !typing.empty()) {
+        subtitle_->SetText(typing);
     } else if (c->isGroup) {
         subtitle_->SetText(TrN("{n} member", "{n} members", MemberCount(*c)) +
                            (c->isPublic ? " \xC2\xB7 " + Tr("public group") : std::string()) +
@@ -4283,8 +4363,10 @@ void ChatCubeWindow::ApplySettings() {
         lastTypingSentMs_ = 0;
         UltraIM_SetTyping(activeProvider_, activeConversation_, false);
     }
-    if (!settings_.showTyping && !typingContact_.empty()) {
-        typingContact_.clear();
+    if (!settings_.showTyping && !typing_.empty()) {
+        const auto shown = typing_;
+        typing_.clear();
+        for (const auto& conversation : shown) conversations_->SetTyping(conversation.first, std::string());
         UpdateHeader();
     }
     // The people on this network: listed again, or put away.
@@ -4404,6 +4486,8 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
     const bool telegram = e.providerId == telegramProviderId_;
     switch (e.type) {
         case UltraIMEventType::MessageReceive:
+            // Their message is here: they are no longer typing it.
+            SetTyping(e.conversationId, e.message.senderId.empty() ? e.contactId : e.message.senderId, false);
             if (e.conversationId == activeConversation_) {
                 // While a search shows its matches, only what matches joins them.
                 UltraIMMessageSearch shown;
@@ -4415,7 +4499,6 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                 EnsureVideoPreview(e.message);
                 ScrollToEnd();
                 UltraIM_MarkRead(e.providerId, activeConversation_);
-                if (e.contactId == typingContact_) typingContact_.clear();
                 UpdateHeader();
             }
             break;
@@ -4465,14 +4548,8 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (e.conversationId == activeConversation_) UpdateHeader();
             break;
         case UltraIMEventType::TypingChange:
-            if (e.conversationId != activeConversation_ || !settings_.showTyping) break;
-            typingContact_ = e.isTyping ? e.contactId : std::string();
-            typingUntilMs_ = NowMs() + kTypingShownMs;
-            UpdateHeader();
-            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
-                app->StartTimer(static_cast<unsigned>(kTypingShownMs + 100), false,
-                                [this](TimerId) { UpdateHeader(); });
-            }
+            if (!settings_.showTyping) break;
+            SetTyping(e.conversationId, e.contactId, e.isTyping);
             break;
         case UltraIMEventType::MessageUpdate:
             // An edit, or an attachment's picture that has arrived - of a

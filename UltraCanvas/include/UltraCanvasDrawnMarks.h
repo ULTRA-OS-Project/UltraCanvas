@@ -5,6 +5,7 @@
 // come from whatever fallback font the system has, and where it has none
 // (a stock Windows install, the bundled fonts alone) they show as hex boxes.
 // A drawn mark looks the same everywhere and takes the colour it is given.
+// Version: 1.1.0 - DrawBulletMark: `scale`, for a document's own (larger) bullets
 // Version: 1.0.0
 // Last Modified: 2026-10-11
 // Author: UltraCanvas Framework
@@ -80,8 +81,10 @@ namespace UltraCanvas {
     // character: centred on the font's capitals, and as large as Ubuntu's
     // "•". Returns false, drawing nothing, for any other string; the caller
     // draws that one as text.
+    // `scale` enlarges the mark about its centre: a word processor's
+    // bullet (its symbol font's) is half as large again as a text font's.
     inline bool DrawBulletMark(IRenderContext* ctx, const std::string& bullet, const Point2Dd& topLeft,
-                               const FontStyle& font, const Color& color) {
+                               const FontStyle& font, const Color& color, double scale = 1.0) {
         if (!IsDrawnBullet(bullet)) return false;
         const bool disc = bullet == "\xE2\x80\xA2";
         const bool ring = bullet == "\xE2\x97\xA6";
@@ -94,14 +97,14 @@ namespace UltraCanvas {
         ctx->ClearPath();
         if (disc) {
             ctx->SetFillPaint(color);
-            ctx->FillCircle(centre, em * 0.128);
+            ctx->FillCircle(centre, em * 0.128 * scale);
         } else if (ring) {
             const double stroke = std::max(1.0, em * 0.06);
             ctx->SetStrokePaint(color);
             ctx->SetStrokeWidth(stroke);
-            ctx->DrawCircle(centre, em * 0.128 - stroke / 2.0);
+            ctx->DrawCircle(centre, em * 0.128 * scale - stroke / 2.0);
         } else {
-            const double side = em * 0.22;
+            const double side = em * 0.22 * scale;
             ctx->SetFillPaint(color);
             ctx->FillRectangle(Rect2Dd(centre.x - side / 2.0, centre.y - side / 2.0, side, side));
         }

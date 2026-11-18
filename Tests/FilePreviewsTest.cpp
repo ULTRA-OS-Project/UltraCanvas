@@ -7,8 +7,10 @@
 // refused; a throwing one is contained; queries from several threads at once
 // while another registers are safe. Then the built-in providers through the
 // Filer, which now reaches them only through the registry: a Word document's
-// and a PowerPoint deck's text preview, an encrypted one refused. Headless.
+// and a PowerPoint deck's text preview, an encrypted one refused; a
+// word-processing document's first page as its thumbnail. Headless.
 //
+// Version: 1.1.0 - a word-processing document's first page (odt, docx, doc)
 // Version: 1.0.0
 // Last Modified: 2026-11-10
 // Author: UltraCanvas Framework
@@ -213,6 +215,45 @@ int main() {
         }
     } else {
         std::printf("  (no PDF engine in this build: the page checks skipped)\n");
+    }
+
+    std::printf("A word-processing document's first page\n");
+    {
+        Check(Contains(thumbs, "docx") && Contains(thumbs, "odt") && Contains(thumbs, "doc"),
+              "odt, docx and doc have a first-page thumbnail");
+        Check(!Contains(thumbs, "tex"), "a .tex keeps its outline (no page thumbnail)");
+        FileThumbnailRequest request;
+        request.width = 96;
+        request.height = 96;
+        for (const char* name : {"word97-formatting.docx", "word97-formatting.odt", "word97-formatting.doc"}) {
+            const std::string what = name;
+            auto page = RenderFileThumbnailFromProvider(fixtures + "/" + name, request);
+            Check(page != nullptr, what + ": its first page as the thumbnail");
+            if (!page) continue;
+            const int w = page->GetWidth(), h = page->GetHeight();
+            Check(h == 96 && w < h && w > 48,
+                  what + ": a portrait page fitted to the box (" + std::to_string(w) + " x " +
+                          std::to_string(h) + ")");
+            int seeThrough = 0, ink = 0;
+            for (int y = 0; y < h; ++y) {
+                for (int x = 0; x < w; ++x) {
+                    const uint32_t p = page->GetPixel(x, y);
+                    if ((p >> 24) != 255) ++seeThrough;
+                    const int r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+                    if (r + g + b < 3 * 160) ++ink;
+                }
+            }
+            Check(seeThrough == 0, what + ": the page is opaque paper");
+            Check((page->GetPixel(1, 1) & 0xFFFFFF) == 0xFFFFFF, what + ": the margin is white paper");
+            Check(ink > 20, what + ": the text is drawn on it (" + std::to_string(ink) + " dark pixels)");
+        }
+        Check(!RenderFileThumbnailFromProvider(fixtures + "/office-agile-encrypted.docx", request),
+              "an encrypted .docx has no page (it keeps its type glyph)");
+
+        // Through the Filer, as UltraFiler's tiles and the desktop boards ask.
+        auto tile = RenderFileThumbnail(fixtures + "/word97-formatting.docx", 120, 120);
+        Check(tile != nullptr && tile->GetHeight() == 120 && tile->GetWidth() < 120,
+              "RenderFileThumbnail gives a .docx its page, not a square page of text");
     }
 
     std::printf(failures ? "%d check(s) failed\n" : "all checks passed\n", failures);

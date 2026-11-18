@@ -1,3 +1,27 @@
+#### 2026-11-17 *0.1.17*
+- **The web store as HTML + JavaScript.** Publish lays the web store beside
+  the catalog as complete, styled pages written through UltraSite
+  (`core/WebStoreHtml.h`).
+  - **Pages.** Discover, the categories with their free and paid lists,
+    each category and each app, all after the store's design with a dark
+    look.
+  - **Languages.** The same pages are written in every language of the
+    apps' texts. The words come from the store's own translations, and a
+    language switcher joins the trees.
+  - **Search and actions.** A search box, and *Install* / *Try* / *Buy* as
+    `ultrastore://` links with the store's download beside them.
+  - **Size.** Discover is about 11 KB compressed on a first visit, its
+    pictures aside.
+- **The new setting `web.output`** chooses the web store: `html`, `wasm`
+  (the WebAssembly store from `web.site_dir`, as before) or `off`.
+  - Unset, a store with `web.site_dir` keeps the WebAssembly store, and
+    any other now gets the HTML one.
+  - Nothing else in the publish folder is touched.
+  - A missing picture or a page over its budget is a warning in the
+    report, never a failed publish.
+  - The report names the output (`webOutput`) and the languages
+    (`webLanguages`).
+
 #### 2026-11-14 *0.1.16*
 - **A picture's web sizes at import** (`ImportMediaVariants`): `app media` and the form's picture buttons write the icon at 64, 128 and 256 px and a screenshot at 560 and 1120 px wide beside the original, as AVIF and WebP, never above the original, and keep them with the picture in the component (`icon_variants`, `screenshot_variants`); a format this machine cannot write is a warning. Budgets (12 KB for an icon at 256 px, 120 KB for a screenshot at 1120 px) are warned about at import, and `publish` copies the variants and lists the files over budget.
 - **Publish lays the web store beside the catalog** when the setting `web.site_dir` names the web store build's `site/` folder (`WebSite.h`): an HTML shadow page for Discover, the categories, each category and each app, the module, the runtime's loader with its extension lookup, and the runtime under `runtime/<hash>/`. New settings `web.site_dir` and `web.store_download_url`; `store.contact` reaches the web store's footer too.
