@@ -1,13 +1,14 @@
 // Apps/UltraPaint/UltraPaintDialogs.cpp
 // New Image, Scale Image / Canvas Size, Layer Properties, Import, Colour to
 // Alpha and Password Protection windows.
+// Version: 1.7.0 - every text in the person's language (Tr); Colour to Alpha's buttons size to their text
 // Version: 1.6.0 - Scale Image: Resampling (Lanczos 3 ... Nearest) and Sharpen after scaling
 // Version: 1.5.0 - "Open in new tab" in place of "Open new window"
 // Version: 1.4.0 - Password Protection: the password a *.ucd is saved with
 // Version: 1.3.0 - the Text window is gone: text is typed on the canvas
 // Version: 1.2.1 - Colour to Alpha: the picker in the framework's light style, as the panel's
 // Version: 1.2.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraPaintDialogs.h"
@@ -20,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -62,11 +64,11 @@ std::shared_ptr<UltraCanvasContainer> ButtonRow(const std::string& id, UltraCanv
     row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center)
                 .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexEnd);
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    auto cancel = std::make_shared<UltraCanvasButton>(id + "-cancel", 0, 0, 84, 28, "Cancel");
+    auto cancel = std::make_shared<UltraCanvasButton>(id + "-cancel", 0, 0, 84, 28, Tr("Cancel"));
     cancel->onClick = [win]() { win->Close(); };
     SizeButtonToText(cancel);
     row->AddChild(cancel);
-    auto ok = std::make_shared<UltraCanvasButton>(id + "-ok", 0, 0, 84, 28, okLabel);
+    auto ok = std::make_shared<UltraCanvasButton>(id + "-ok", 0, 0, 84, 28, okLabel.empty() ? Tr("OK") : okLabel);
     ok->onClick = [win, onOk]() { if (onOk) onOk(); win->Close(); };
     // The action the dialog exists for reads as the default.
     ok->SetStyle(ButtonStyles::PrimaryStyle());
@@ -75,21 +77,42 @@ std::shared_ptr<UltraCanvasContainer> ButtonRow(const std::string& id, UltraCanv
     return row;
 }
 
+std::string BlendModeDisplayName(RasterBlendMode mode) {
+    switch (mode) {
+        case RasterBlendMode::Normal:     return Tr("Normal");
+        case RasterBlendMode::Multiply:   return Tr("Multiply");
+        case RasterBlendMode::Screen:     return Tr("Screen");
+        case RasterBlendMode::Overlay:    return Tr("Overlay");
+        case RasterBlendMode::Darken:     return Tr("Darken");
+        case RasterBlendMode::Lighten:    return Tr("Lighten");
+        case RasterBlendMode::Difference: return Tr("Difference");
+        case RasterBlendMode::Addition:   return Tr("Addition");
+        case RasterBlendMode::Subtract:   return Tr("Subtract");
+        case RasterBlendMode::SoftLight:  return Tr("Soft Light");
+        case RasterBlendMode::HardLight:  return Tr("Hard Light");
+    }
+    return RasterBlendModeName(mode);
+}
+
 } // namespace UltraPaintDialogParts
 
 using namespace UltraPaintDialogParts;
 
 namespace {
-    struct Preset { const char* name; int w, h; };
-    const Preset kPresets[] = {
-        { "Custom", 0, 0 }, { "640 x 480", 640, 480 }, { "800 x 600", 800, 600 }, { "1024 x 768", 1024, 768 },
-        { "1280 x 720 (HD)", 1280, 720 }, { "1920 x 1080 (Full HD)", 1920, 1080 }, { "2560 x 1440", 2560, 1440 },
-        { "3840 x 2160 (4K)", 3840, 2160 }, { "A4 300 dpi", 2480, 3508 }, { "Instagram square", 1080, 1080 },
-        { "Icon 512", 512, 512 }, { "Icon 256", 256, 256 }
-    };
+    struct Preset { std::string name; int w, h; };
+    // Built when the dialog is, not at static initialisation: the names are
+    // in the person's language, and the language is not known before main().
+    std::vector<Preset> Presets() {
+        return {
+            { Tr("Custom"), 0, 0 }, { "640 x 480", 640, 480 }, { "800 x 600", 800, 600 }, { "1024 x 768", 1024, 768 },
+            { Tr("1280 x 720 (HD)"), 1280, 720 }, { Tr("1920 x 1080 (Full HD)"), 1920, 1080 }, { "2560 x 1440", 2560, 1440 },
+            { Tr("3840 x 2160 (4K)"), 3840, 2160 }, { Tr("A4 300 dpi"), 2480, 3508 }, { Tr("Instagram square"), 1080, 1080 },
+            { TrF("Icon {0}", 512), 512, 512 }, { TrF("Icon {0}", 256), 256, 256 }
+        };
+    }
 
     std::string FileNameOnly(const std::string& path) {
-        if (path.empty()) return "Untitled";
+        if (path.empty()) return Tr("Untitled");
         return PathToUtf8(PathFromUtf8(path).filename());
     }
 }
@@ -99,7 +122,7 @@ namespace {
 // ===========================================================================
 
 UltraPaintNewImageDialog::UltraPaintNewImageDialog(const UltraPaintNewImageResult& initial) : UltraCanvasWindow() {
-    config_.title = "New Image";
+    config_.title = Tr("New Image");
     config_.width = 360; config_.height = 230;
     config_.minWidth = 320; config_.minHeight = 200;
     // Resizable: a longer caption in another language widens the caption
@@ -112,27 +135,29 @@ UltraPaintNewImageDialog::UltraPaintNewImageDialog(const UltraPaintNewImageResul
     auto form = FormGrid("upn-form");
     AddChild(form);
 
+    const std::vector<Preset> presets = Presets();
     presetDrop = CreateDropdown("upn-preset", 0, 0, 200, 24);
-    for (const auto& p : kPresets) presetDrop->AddItem(p.name);
+    for (const auto& p : presets) presetDrop->AddItem(p.name);
     presetDrop->SetSelectedIndex(0, false);
-    FormRow(form, "upn-preset-row", "Preset:", presetDrop);
+    FormRow(form, "upn-preset-row", Tr("Preset:"), presetDrop);
 
     widthSpin = CreateIntSpinner("upn-w", 0, 0, 120, 24, 1, 20000, initial.width, 1);
     widthSpin->SetSuffix(" px");
-    FormRow(form, "upn-w-row", "Width:", widthSpin);
+    FormRow(form, "upn-w-row", Tr("Width:"), widthSpin);
     heightSpin = CreateIntSpinner("upn-h", 0, 0, 120, 24, 1, 20000, initial.height, 1);
     heightSpin->SetSuffix(" px");
-    FormRow(form, "upn-h-row", "Height:", heightSpin);
+    FormRow(form, "upn-h-row", Tr("Height:"), heightSpin);
 
     backgroundDrop = CreateDropdown("upn-bg", 0, 0, 200, 24);
-    for (const char* n : { "White", "Black", "Transparent", "Foreground colour", "Background colour" }) backgroundDrop->AddItem(n);
+    for (const std::string& n : { Tr("White"), Tr("Black"), Tr("Transparent"), Tr("Foreground colour"), Tr("Background colour") })
+        backgroundDrop->AddItem(n);
     backgroundDrop->SetSelectedIndex(std::clamp(initial.background, 0, 4), false);
-    FormRow(form, "upn-bg-row", "Background:", backgroundDrop);
+    FormRow(form, "upn-bg-row", Tr("Background:"), backgroundDrop);
 
-    presetDrop->onSelectionChanged = [this](int i, const DropdownItem&) {
-        if (i <= 0 || i >= static_cast<int>(sizeof(kPresets) / sizeof(kPresets[0]))) return;
-        widthSpin->SetValue(kPresets[i].w);
-        heightSpin->SetValue(kPresets[i].h);
+    presetDrop->onSelectionChanged = [this, presets](int i, const DropdownItem&) {
+        if (i <= 0 || i >= static_cast<int>(presets.size())) return;
+        widthSpin->SetValue(presets[i].w);
+        heightSpin->SetValue(presets[i].h);
     };
 
     AddChild(ButtonRow("upn-buttons", this, [this]() {
@@ -141,7 +166,7 @@ UltraPaintNewImageDialog::UltraPaintNewImageDialog(const UltraPaintNewImageResul
         r.height = static_cast<int>(heightSpin->GetValue());
         r.background = backgroundDrop->GetSelectedIndex();
         if (onAccept) onAccept(r);
-    }, "Create"));
+    }, Tr("Create")));
 }
 
 // ===========================================================================
@@ -160,7 +185,7 @@ namespace {
 
 UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode, const UCScaleImageOptions& initialScale)
     : UltraCanvasWindow(), origW(std::max(1, w)), origH(std::max(1, h)), canvas(canvasMode) {
-    config_.title = canvas ? "Canvas Size" : "Scale Image";
+    config_.title = canvas ? Tr("Canvas Size") : Tr("Scale Image");
     config_.width = canvas ? 360 : 440; config_.height = canvas ? 240 : 310;
     config_.minWidth = 320; config_.minHeight = 200;
     // Resizable: a longer caption in another language widens the caption
@@ -170,7 +195,7 @@ UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode, co
     SetPadding(12);
     layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    auto info = CreateLabel("upr-info", 0, 0, 0, 22, "Current size: " + std::to_string(origW) + " x " + std::to_string(origH) + " px");
+    auto info = CreateLabel("upr-info", 0, 0, 0, 22, TrF("Current size: {0} x {1} px", origW, origH));
     info->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     AddChild(info);
 
@@ -180,11 +205,11 @@ UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode, co
     widthSpin = CreateIntSpinner("upr-w", 0, 0, 120, 24, 1, 20000, origW, 1);
     widthSpin->SetSuffix(" px");
     widthSpin->onValueChanged = [this](double) { SyncFromWidth(); };
-    FormRow(form, "upr-w-row", "Width:", widthSpin);
+    FormRow(form, "upr-w-row", Tr("Width:"), widthSpin);
     heightSpin = CreateIntSpinner("upr-h", 0, 0, 120, 24, 1, 20000, origH, 1);
     heightSpin->SetSuffix(" px");
     heightSpin->onValueChanged = [this](double) { SyncFromHeight(); };
-    FormRow(form, "upr-h-row", "Height:", heightSpin);
+    FormRow(form, "upr-h-row", Tr("Height:"), heightSpin);
 
     if (!canvas) {
         percentSpin = CreateDecimalSpinner("upr-pct", 0, 0, 120, 24, 1.0, 1000.0, 100.0, 1.0, 1);
@@ -196,10 +221,10 @@ UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode, co
             heightSpin->SetValue(std::max(1.0, std::round(origH * v / 100.0)));
             syncing = false;
         };
-        FormRow(form, "upr-pct-row", "Scale:", percentSpin);
+        FormRow(form, "upr-pct-row", Tr("Scale:"), percentSpin);
     }
 
-    keepAspect = std::make_shared<UltraCanvasCheckbox>("upr-aspect", 0, 0, 0, 24, "Keep aspect ratio");
+    keepAspect = std::make_shared<UltraCanvasCheckbox>("upr-aspect", 0, 0, 0, 24, Tr("Keep aspect ratio"));
     keepAspect->SetChecked(!canvas);
     FormWideRow(form, keepAspect);
 
@@ -235,10 +260,11 @@ UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode, co
 
     if (canvas) {
         anchorDrop = CreateDropdown("upr-anchor", 0, 0, 200, 24);
-        for (const char* n : { "Top left", "Top", "Top right", "Left", "Centre", "Right", "Bottom left", "Bottom", "Bottom right" })
+        for (const std::string& n : { Tr("Top left"), Tr("Top"), Tr("Top right"), Tr("Left"), Tr("Centre"), Tr("Right"),
+                                      Tr("Bottom left"), Tr("Bottom"), Tr("Bottom right") })
             anchorDrop->AddItem(n);
         anchorDrop->SetSelectedIndex(4, false);
-        FormRow(form, "upr-anchor-row", "Anchor:", anchorDrop);
+        FormRow(form, "upr-anchor-row", Tr("Anchor:"), anchorDrop);
     }
 
     AddChild(ButtonRow("upr-buttons", this, [this]() {
@@ -252,7 +278,7 @@ UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode, co
             r.scale.sharpen = (sharpenBox->IsChecked() && r.scale.method != UCResampleMethod::Nearest) ? kScaleSharpen : 0.0;
         }
         if (onAccept) onAccept(r);
-    }, canvas ? "Resize" : "Scale"));
+    }, canvas ? Tr("Resize") : Tr("Scale")));
 }
 
 void UltraPaintResizeDialog::SyncFromWidth() {
@@ -278,7 +304,7 @@ void UltraPaintResizeDialog::SyncFromHeight() {
 // ===========================================================================
 
 UltraPaintLayerDialog::UltraPaintLayerDialog(const UltraPaintLayerProps& initial) : UltraCanvasWindow() {
-    config_.title = "Layer Properties";
+    config_.title = Tr("Layer Properties");
     config_.width = 380; config_.height = 240;
     config_.minWidth = 320; config_.minHeight = 200;
     config_.deleteOnClose = true;
@@ -290,21 +316,21 @@ UltraPaintLayerDialog::UltraPaintLayerDialog(const UltraPaintLayerProps& initial
 
     nameInput = CreateTextInput("upl-name", 0, 0, 0, 26);
     nameInput->SetText(initial.name);
-    FormRow(form, "upl-name-row", "Name:", nameInput);
+    FormRow(form, "upl-name-row", Tr("Name:"), nameInput);
 
     opacitySpin = CreateIntSpinner("upl-opacity", 0, 0, 120, 24, 0, 100, static_cast<int>(std::lround(initial.opacity * 100.0f)), 1);
     opacitySpin->SetSuffix(" %");
-    FormRow(form, "upl-opacity-row", "Opacity:", opacitySpin);
+    FormRow(form, "upl-opacity-row", Tr("Opacity:"), opacitySpin);
 
     blendDrop = CreateDropdown("upl-blend", 0, 0, 160, 24);
-    for (RasterBlendMode m : AllRasterBlendModes()) blendDrop->AddItem(RasterBlendModeName(m));
+    for (RasterBlendMode m : AllRasterBlendModes()) blendDrop->AddItem(BlendModeDisplayName(m));
     blendDrop->SetSelectedIndex(initial.blendIndex, false);
-    FormRow(form, "upl-blend-row", "Blend mode:", blendDrop);
+    FormRow(form, "upl-blend-row", Tr("Blend mode:"), blendDrop);
 
-    visibleBox = std::make_shared<UltraCanvasCheckbox>("upl-visible", 0, 0, 0, 24, "Visible");
+    visibleBox = std::make_shared<UltraCanvasCheckbox>("upl-visible", 0, 0, 0, 24, Tr("Visible"));
     visibleBox->SetChecked(initial.visible);
     FormWideRow(form, visibleBox);
-    lockedBox = std::make_shared<UltraCanvasCheckbox>("upl-locked", 0, 0, 0, 24, "Locked (no painting)");
+    lockedBox = std::make_shared<UltraCanvasCheckbox>("upl-locked", 0, 0, 0, 24, Tr("Locked (no painting)"));
     lockedBox->SetChecked(initial.locked);
     FormWideRow(form, lockedBox);
 
@@ -325,7 +351,7 @@ UltraPaintLayerDialog::UltraPaintLayerDialog(const UltraPaintLayerProps& initial
 
 UltraPaintPasswordDialog::UltraPaintPasswordDialog(bool protectedNow, bool hidePreview, bool available)
     : UltraCanvasWindow() {
-    config_.title = "Password Protection";
+    config_.title = Tr("Password Protection");
     config_.width = 440; config_.height = 250;
     config_.minWidth = 380; config_.minHeight = 260;
     config_.resizable = true;
@@ -336,11 +362,11 @@ UltraPaintPasswordDialog::UltraPaintPasswordDialog(bool protectedNow, bool hideP
     // What it does and what it costs, before anything is typed.
     auto note = CreateLabel("upw-note", 0, 0, 0, 0,
         protectedNow
-            ? "This image is password-protected: saved as an UltraCanvas layered image (.ucd), "
-              "it is encrypted with its password. Change the password, or remove the protection."
-            : "Saved as an UltraCanvas layered image (.ucd), the image is encrypted with this "
-              "password. Without it the file cannot be opened - a forgotten password cannot be "
-              "recovered.");
+            ? Tr("This image is password-protected: saved as an UltraCanvas layered image (.ucd), "
+                 "it is encrypted with its password. Change the password, or remove the protection.")
+            : Tr("Saved as an UltraCanvas layered image (.ucd), the image is encrypted with this "
+                 "password. Without it the file cannot be opened - a forgotten password cannot be "
+                 "recovered."));
     note->SetWrap(TextWrap::WrapWord);
     note->size.height = CSSLayout::Dimension::Auto();
     note->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -349,11 +375,11 @@ UltraPaintPasswordDialog::UltraPaintPasswordDialog(bool protectedNow, bool hideP
     auto form = FormGrid("upw-form");
     AddChild(form);
     passwordInput = CreateRevealablePasswordInput("upw-password", 0, 0, 0, 26);
-    FormRow(form, "upw-password-row", protectedNow ? "New password:" : "Password:", passwordInput);
+    FormRow(form, "upw-password-row", protectedNow ? Tr("New password:") : Tr("Password:"), passwordInput);
     confirmInput = CreateRevealablePasswordInput("upw-confirm", 0, 0, 0, 26);
-    FormRow(form, "upw-confirm-row", "Again:", confirmInput);
+    FormRow(form, "upw-confirm-row", Tr("Again:"), confirmInput);
     hidePreviewBox = std::make_shared<UltraCanvasCheckbox>("upw-private", 0, 0, 0, 24,
-                                                           "Hide the preview too (no thumbnail in file managers)");
+                                                           Tr("Hide the preview too (no thumbnail in file managers)"));
     hidePreviewBox->SetChecked(hidePreview);
     FormWideRow(form, hidePreviewBox);
     // Enter in the second field is OK.
@@ -364,7 +390,7 @@ UltraPaintPasswordDialog::UltraPaintPasswordDialog(bool protectedNow, bool hideP
     message->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     AddChild(message);
     if (!available) {
-        message->SetText("This build cannot encrypt: it has no cryptography library (libsodium).");
+        message->SetText(Tr("This build cannot encrypt: it has no cryptography library (libsodium)."));
         passwordInput->SetDisabled(true);
         confirmInput->SetDisabled(true);
         hidePreviewBox->SetDisabled(true);
@@ -375,7 +401,7 @@ UltraPaintPasswordDialog::UltraPaintPasswordDialog(bool protectedNow, bool hideP
                 .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexEnd);
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     if (protectedNow) {
-        auto remove = std::make_shared<UltraCanvasButton>("upw-remove", 0, 0, 84, 28, "Remove Protection");
+        auto remove = std::make_shared<UltraCanvasButton>("upw-remove", 0, 0, 84, 28, Tr("Remove Protection"));
         remove->onClick = [this]() {
             UltraPaintPasswordResult r;
             r.remove = true;
@@ -385,11 +411,11 @@ UltraPaintPasswordDialog::UltraPaintPasswordDialog(bool protectedNow, bool hideP
         SizeButtonToText(remove);
         row->AddChild(remove);
     }
-    auto cancel = std::make_shared<UltraCanvasButton>("upw-cancel", 0, 0, 84, 28, "Cancel");
+    auto cancel = std::make_shared<UltraCanvasButton>("upw-cancel", 0, 0, 84, 28, Tr("Cancel"));
     cancel->onClick = [this]() { Close(); };
     SizeButtonToText(cancel);
     row->AddChild(cancel);
-    auto ok = std::make_shared<UltraCanvasButton>("upw-ok", 0, 0, 84, 28, protectedNow ? "Change" : "Protect");
+    auto ok = std::make_shared<UltraCanvasButton>("upw-ok", 0, 0, 84, 28, protectedNow ? Tr("Change") : Tr("Protect"));
     ok->onClick = [this]() { Accept(); };
     ok->SetStyle(ButtonStyles::PrimaryStyle());
     ok->SetDisabled(!available);
@@ -401,9 +427,9 @@ UltraPaintPasswordDialog::UltraPaintPasswordDialog(bool protectedNow, bool hideP
 void UltraPaintPasswordDialog::Accept() {
     if (passwordInput->IsDisabled()) return;
     const std::string password = passwordInput->GetText();
-    if (password.empty()) { message->SetText("Type a password."); return; }
+    if (password.empty()) { message->SetText(Tr("Type a password.")); return; }
     if (password != confirmInput->GetText()) {
-        message->SetText("The two passwords differ - type it again.");
+        message->SetText(Tr("The two passwords differ - type it again."));
         return;
     }
     UltraPaintPasswordResult r;
@@ -423,7 +449,7 @@ UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& re
     // file at its own natural size instead.
     const bool showSize = req.vector && req.extraFiles == 0;
     const bool paged = showSize && req.pageCount > 1;
-    config_.title = req.offerMerge ? "Open or Merge" : "Open Drawing";
+    config_.title = req.offerMerge ? Tr("Open or Merge") : Tr("Open Drawing");
     config_.width = 470;
     config_.height = 128 + (req.vector && !req.provider.empty() ? 20 : 0) +
                      (showSize ? 64 : 0) + (paged ? 28 : 0) + (req.offerMerge ? 28 : 0);
@@ -436,9 +462,10 @@ UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& re
     SetPadding(12);
     layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    std::string heading = FileNameOnly(req.path);
-    if (req.extraFiles == 1) heading += " and 1 more file";
-    else if (req.extraFiles > 1) heading += " and " + std::to_string(req.extraFiles) + " more files";
+    const std::string heading = req.extraFiles > 0
+            ? LocalisationDetail::Substitute(TrN("{0} and {n} more file", "{0} and {n} more files", req.extraFiles),
+                                             {FileNameOnly(req.path)})
+            : FileNameOnly(req.path);
     auto name = CreateLabel("upi-name", 0, 0, 0, 22, heading);
     name->SetFontWeight(FontWeight::Bold);
     name->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -456,8 +483,8 @@ UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& re
             ? std::to_string(req.naturalWidth) + " x " + std::to_string(req.naturalHeight) + " px"
             : std::string();
     if (req.vector) {
-        addSubtitle("upi-sub", size.empty() ? "Vector drawing" : "Vector drawing, " + size + " at its natural size");
-        if (!req.provider.empty()) addSubtitle("upi-provider", "Rendered by " + req.provider);
+        addSubtitle("upi-sub", size.empty() ? Tr("Vector drawing") : TrF("Vector drawing, {0} at its natural size", size));
+        if (!req.provider.empty()) addSubtitle("upi-provider", TrF("Rendered by {0}", req.provider));
     } else {
         addSubtitle("upi-sub", size);
     }
@@ -481,16 +508,16 @@ UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& re
         widthSpin = CreateIntSpinner("upi-w", 0, 0, 120, 24, 1, 20000, startW, 1);
         widthSpin->SetSuffix(" px");
         widthSpin->onValueChanged = [this](double) { SyncFromWidth(); };
-        FormRow(form, "upi-w-row", "Raster width:", widthSpin);
+        FormRow(form, "upi-w-row", Tr("Raster width:"), widthSpin);
         heightSpin = CreateIntSpinner("upi-h", 0, 0, 120, 24, 1, 20000, startH, 1);
         heightSpin->SetSuffix(" px");
         heightSpin->onValueChanged = [this](double) { SyncFromHeight(); };
-        FormRow(form, "upi-h-row", "Raster height:", heightSpin);
+        FormRow(form, "upi-h-row", Tr("Raster height:"), heightSpin);
 
         if (paged) {
             pageSpin = CreateIntSpinner("upi-page", 0, 0, 120, 24, 1, req.pageCount, 1, 1);
-            pageSpin->SetSuffix(" of " + std::to_string(req.pageCount));
-            FormRow(form, "upi-page-row", "Page:", pageSpin);
+            pageSpin->SetSuffix(" " + TrF("of {0}", req.pageCount));
+            FormRow(form, "upi-page-row", Tr("Page:"), pageSpin);
         }
     }
 
@@ -499,7 +526,7 @@ UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& re
     if (req.offerMerge && !req.vector && req.canvasWidth > 0 && req.canvasHeight > 0 &&
         (req.naturalWidth > req.canvasWidth || req.naturalHeight > req.canvasHeight)) {
         fitBox = std::make_shared<UltraCanvasCheckbox>("upi-fit", 0, 0, 0, 24,
-                                                       "Scale to fit the canvas when merging");
+                                                       Tr("Scale to fit the canvas when merging"));
         fitBox->SetChecked(true);
         FormWideRow(form, fitBox);
     }
@@ -521,12 +548,12 @@ UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& re
         row->AddChild(b);
         return b;
     };
-    addButton("upi-cancel", "Cancel", 88, UltraPaintImportResult::Action::Cancel);
+    addButton("upi-cancel", Tr("Cancel"), 88, UltraPaintImportResult::Action::Cancel);
     if (req.offerMerge) {
-        addButton("upi-merge", "Merge image", 136, UltraPaintImportResult::Action::Merge);
+        addButton("upi-merge", Tr("Merge image"), 136, UltraPaintImportResult::Action::Merge);
         addButton("upi-tab", Tr("Open in new tab"), 176, UltraPaintImportResult::Action::NewTab);
     } else {
-        addButton("upi-open", "Open", 96, UltraPaintImportResult::Action::Open);
+        addButton("upi-open", Tr("Open"), 96, UltraPaintImportResult::Action::Open);
     }
     AddChild(row);
 }
@@ -572,7 +599,7 @@ void UltraPaintImportDialog::Finish(UltraPaintImportResult::Action action) {
 
 UltraPaintColourToAlphaDialog::UltraPaintColourToAlphaDialog(const UltraPaintColourToAlphaParams& initial)
     : UltraCanvasWindow(), params(initial) {
-    config_.title = "Colour to Alpha";
+    config_.title = Tr("Colour to Alpha");
     config_.width = 380; config_.height = 560;
     config_.minWidth = 340; config_.minHeight = 500;
     // Resizable: a longer caption in another language widens the caption
@@ -584,8 +611,8 @@ UltraPaintColourToAlphaDialog::UltraPaintColourToAlphaDialog(const UltraPaintCol
 
     // Two labels rather than one string with a newline in it: UltraCanvasLabel
     // draws a single line.
-    const char* hintLines[] = { "Pick the colour to make transparent.",
-                                "The eyedropper samples it off the canvas." };
+    const std::string hintLines[] = { Tr("Pick the colour to make transparent."),
+                                      Tr("The eyedropper samples it off the canvas.") };
     for (int i = 0; i < 2; ++i) {
         auto hint = CreateLabel("upc-hint" + std::to_string(i), 0, 0, 0, 17, hintLines[i]);
         hint->SetFontSize(11);
@@ -614,13 +641,13 @@ UltraPaintColourToAlphaDialog::UltraPaintColourToAlphaDialog(const UltraPaintCol
     sliders->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     sliders->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     constexpr float kLabelW = 132.0f;   // wide enough for "Transparency %"
-    PaintOptionWidgets::AddSliderRow(*sliders, "upc-tol", "Tolerance", 0, 255, static_cast<float>(params.tolerance), 1, true,
+    PaintOptionWidgets::AddSliderRow(*sliders, "upc-tol", Tr("Tolerance"), 0, 255, static_cast<float>(params.tolerance), 1, true,
                                      [this](float v) { params.tolerance = static_cast<int>(v); EmitPreview(); }, kLabelW);
-    PaintOptionWidgets::AddSliderRow(*sliders, "upc-soft", "Softness", 0, 255, static_cast<float>(params.softness), 1, true,
+    PaintOptionWidgets::AddSliderRow(*sliders, "upc-soft", Tr("Softness"), 0, 255, static_cast<float>(params.softness), 1, true,
                                      [this](float v) { params.softness = static_cast<int>(v); EmitPreview(); }, kLabelW);
-    PaintOptionWidgets::AddSliderRow(*sliders, "upc-amount", "Transparency %", 0, 100, static_cast<float>(params.transparency), 1, true,
+    PaintOptionWidgets::AddSliderRow(*sliders, "upc-amount", Tr("Transparency %"), 0, 100, static_cast<float>(params.transparency), 1, true,
                                      [this](float v) { params.transparency = static_cast<int>(v); EmitPreview(); }, kLabelW);
-    PaintOptionWidgets::AddCheckbox(*sliders, "upc-despill", "Remove colour fringe from soft edges", params.despill,
+    PaintOptionWidgets::AddCheckbox(*sliders, "upc-despill", Tr("Remove colour fringe from soft edges"), params.despill,
                                     [this](bool v) { params.despill = v; EmitPreview(); });
     AddChild(sliders);
 
@@ -628,7 +655,7 @@ UltraPaintColourToAlphaDialog::UltraPaintColourToAlphaDialog(const UltraPaintCol
     row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    previewBox = std::make_shared<UltraCanvasCheckbox>("upc-preview", 0, 0, 90, 24, "Preview");
+    previewBox = std::make_shared<UltraCanvasCheckbox>("upc-preview", 0, 0, 90, 24, Tr("Preview"));
     previewBox->SetChecked(true);
     previewBox->onStateChanged = [this](CheckedState, CheckedState n) {
         previewEnabled = n == CheckedState::Checked;
@@ -637,18 +664,18 @@ UltraPaintColourToAlphaDialog::UltraPaintColourToAlphaDialog(const UltraPaintCol
     previewBox->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     row->AddChild(previewBox);
 
-    auto cancel = std::make_shared<UltraCanvasButton>("upc-cancel", 0, 0, 80, 28, "Cancel");
+    auto cancel = std::make_shared<UltraCanvasButton>("upc-cancel", 0, 0, 80, 28, Tr("Cancel"));
     cancel->onClick = [this]() { Close(); };
-    cancel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    SizeButtonToText(cancel);
     row->AddChild(cancel);
 
-    auto ok = std::make_shared<UltraCanvasButton>("upc-ok", 0, 0, 80, 28, "OK");
+    auto ok = std::make_shared<UltraCanvasButton>("upc-ok", 0, 0, 80, 28, Tr("OK"));
     ok->onClick = [this]() {
         accepted = true;
         if (onAccept) onAccept(params);
         Close();
     };
-    ok->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    SizeButtonToText(ok);
     row->AddChild(ok);
     AddChild(row);
 

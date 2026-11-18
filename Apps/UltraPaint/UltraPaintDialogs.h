@@ -4,12 +4,13 @@
 // import question a dropped file asks and the password a *.ucd is saved with. Each is an UltraCanvasWindow built
 // out of framework elements (spinners, dropdowns, text input, colour picker,
 // buttons) and reports through callbacks.
+// Version: 1.7.0 - every text in the person's language; BlendModeDisplayName for the blend-mode lists
 // Version: 1.6.0 - Scale Image: the resampling method and Sharpen after scaling
 // Version: 1.5.0 - the import question offers "Open in new tab" (Action::NewTab) in place of a new window
 // Version: 1.4.0 - Password Protection: the password a *.ucd is saved with
 // Version: 1.3.0 - the Text tool's entry is gone: text is typed on the canvas
 // Version: 1.2.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -214,9 +215,13 @@ namespace UltraPaintDialogParts {
                      std::shared_ptr<UltraCanvasUIElement> element);
     // Auto width with a minimum, so a translated button label fits.
     void SizeButtonToText(const std::shared_ptr<UltraCanvasButton>& button);
-    // OK / Cancel row; `onOk` runs before the window closes.
+    // OK / Cancel row; `onOk` runs before the window closes. An empty
+    // `okLabel` is "OK" in the person's language.
     std::shared_ptr<UltraCanvasContainer> ButtonRow(const std::string& id, UltraCanvasWindow* win,
-                                                    const std::function<void()>& onOk, const std::string& okLabel = "OK");
+                                                    const std::function<void()>& onOk, const std::string& okLabel = {});
+    // A blend mode's name as a list shows it, in the person's language
+    // (RasterBlendModeName is the English one).
+    std::string BlendModeDisplayName(RasterBlendMode mode);
 }
 
 } // namespace UltraCanvas
