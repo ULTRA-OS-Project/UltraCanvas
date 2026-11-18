@@ -11,6 +11,7 @@
 // second start hands over add a tab rather than a window. The class also
 // holds the registry of open windows - File > New Window still opens one -
 // and the application exits with the last of them.
+// Version: 2.2.0 - PastedFrom / PastedText: a paste's status line as one translatable sentence per source
 // Version: 2.1.0 - lastScaleOptions: Scale Image offers the resampling method and sharpening chosen last
 // Version: 2.0.0 - images in tabs: DocumentTab (document + its own surface), the tab strip
 //                  over the canvas, AddDocumentTab / SwitchToTab / CloseTab, OpenPaths,
@@ -52,7 +53,7 @@
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -523,13 +524,24 @@ private:
         std::string file;
     };
     PasteSource ReadPasteSource();
+public:
+    // Where a pasted picture came from, as the status line names it: the
+    // clipboard (nothing more said), a copied file, the clipboard history's
+    // newest image, or the history's image copied at a given time.
+    enum class PastedFrom { Clipboard, File, LastCopied, CopiedWhen };
+private:
+    // The status line after a paste, one whole sentence per source (so a
+    // translation can order it): `detail` is the file's name (File) or when
+    // it was copied (CopiedWhen).
+    static std::string PastedText(PastedFrom from, const std::string& detail, int w, int h, bool asNewImage);
     // `image` as a new layer: where it was copied from when it came from
-    // here and still fits, centred otherwise.
+    // here and still fits, centred otherwise. `from` and `detail` name it in
+    // the status line.
     void PasteAsLayer(std::shared_ptr<UCRasterLayer> image, const std::string& layerName, bool fromHere,
-                      const std::string& what);
-    // `image` as a new image; `what` names it in the status line ("the last
+                      PastedFrom from = PastedFrom::Clipboard, const std::string& detail = std::string());
+    // `image` as a new image; `from` names it in the status line ("the last
     // copied image").
-    void PasteAsNewImage(std::shared_ptr<UCRasterLayer> image, const std::string& what = std::string());
+    void PasteAsNewImage(std::shared_ptr<UCRasterLayer> image, PastedFrom from = PastedFrom::Clipboard);
     // The clipboard history's newest image (UltraCanvasClipboardHistory, the
     // one UltraDesktop keeps) and when it was copied ("5 min ago"); null when
     // there is no history or no image in it.
