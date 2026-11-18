@@ -68,7 +68,7 @@ mkdir -p "$DIST_DIR"
 # Verhaltensschutz quarantined UltraNetApiStatus.exe from the 0.3.50 package
 # as IDP.Generic. End users have no use for them anyway.
 # Both locations: most targets output to the build root, but some set
-# RUNTIME_OUTPUT_DIRECTORY to bin/ (UltraFIBU and ultrapress do), and globbing
+# RUNTIME_OUTPUT_DIRECTORY to bin/ (UltraFIBU and UltraPress do), and globbing
 # only the root is why such an app is built by CI and then missing from the
 # package.
 # The .com files are the console companions of the applications whose command
@@ -80,6 +80,12 @@ for exe in ./build/*.exe ./build/bin/*.exe ./build/*.com ./build/bin/*.com; do
         *Test.exe|*Tests.exe|*Test.com|*Tests.com|ultraai_test_*.exe|UltraNetApiStatus.exe|\
         ConsoleCompanionProbe.exe|ConsoleCompanionProbe.com)
             echo "  Skipping test/diagnostic binary: $(basename "$exe")"
+            continue ;;
+        # UltraFIBU is out of the package for the moment (BUILD_ULTRAFIBU is
+        # off); a build tree that still has it from an earlier build must not
+        # put it back in.
+        UltraFIBU.exe|UltraFIBU.com)
+            echo "  Skipping (not distributed for now): $(basename "$exe")"
             continue ;;
     esac
     cp "$exe" "$DIST_DIR/"
@@ -498,8 +504,9 @@ cp -r media Docs $DIST_DIR/Resources
 
 # UltraFIBU's chart of accounts and tax keys, beside the executables: the
 # application looks for `data/` next to its own binary. Without them it starts
-# and can do nothing, because no chart of accounts means no Mandant.
-if [ -d Apps/UltraFIBU/data ]; then
+# and can do nothing, because no chart of accounts means no Mandant. Only while
+# UltraFIBU is in the package, which for the moment it is not.
+if [ -e "$DIST_DIR/UltraFIBU.exe" ] && [ -d Apps/UltraFIBU/data ]; then
     mkdir -p "$DIST_DIR/data"
     cp -r Apps/UltraFIBU/data/. "$DIST_DIR/data/"
 fi

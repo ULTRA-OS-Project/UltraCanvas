@@ -56,17 +56,17 @@ void PrintHelp() {
     std::printf(
         "UltraPress %s - a website and shop builder that publishes HTML + JavaScript or WebAssembly\n"
         "\n"
-        "  ultrapress new <site-dir> [--name <name>] [--url <url>] [--language <code>]\n"
+        "  UltraPress new <site-dir> [--name <name>] [--url <url>] [--language <code>]\n"
         "      a starter site: site.json, theme.json, menus.json, pages/\n"
-        "  ultrapress check <site-dir>\n"
+        "  UltraPress check <site-dir>\n"
         "      load the site and report every problem, a picture the site does not have included;\n"
         "      exit 1 when there is one\n"
-        "  ultrapress media <site-dir> [add <file>... | remove <media-path>... | prune]\n"
+        "  UltraPress media <site-dir> [add <file>... | remove <media-path>... | prune]\n"
         "      the media library: every file under media/ with its kind, size, pixels and uses;\n"
         "      add copies files in under a clean name, remove deletes unused ones, prune every unused one\n"
-        "  ultrapress page <site-dir> <slug>\n"
+        "  UltraPress page <site-dir> <slug>\n"
         "      print the page's HTML shadow\n"
-        "  ultrapress publish <site-dir> <out-dir> [--output html|wasm] [--renderer <script.js>] [--drafts] [--sizes] [--precompress]\n"
+        "  UltraPress publish <site-dir> <out-dir> [--output html|wasm] [--renderer <script.js>] [--drafts] [--sizes] [--precompress]\n"
         "                                          [--to <host>|--to site [--path <remote-folder>] [--force] [--prune]]\n"
         "      the site's output (\"output\" in site.json; --output for this run) into <out-dir>:\n"
         "      html - every page styled, with small script modules, a hashed stylesheet,\n"
@@ -76,33 +76,33 @@ void PrintHelp() {
         "      --to uploads it onto a host (what changed since the last upload),\n"
         "      `--to site` onto the host site.json names; --force uploads everything;\n"
         "      --prune deletes on the host what an earlier publish put there and the site no longer has\n"
-        "  ultrapress docs <markdown-dir> <out-dir> [--name <name>] [--url <url>] [--language <code>]\n"
+        "  UltraPress docs <markdown-dir> <out-dir> [--name <name>] [--url <url>] [--language <code>]\n"
         "                  [--edit-url <base>] [--source-root <dir> --source-url <base>] [--exclude <name>]...\n"
         "                  [--versions <dir>] [--sizes] [--no-budgets] [--broken-links warn] [--precompress] [--quiet]\n"
         "      a folder of Markdown as a documentation site, the way Docusaurus publishes one: a page\n"
         "      per file, the sidebar after the folders, a table of contents, search, links between the\n"
         "      files kept; a link out of the folder goes to --source-url + its path under --source-root\n"
-        "  ultrapress serve <site-dir|built-dir> [--port <n>] [--base <path>]\n"
+        "  UltraPress serve <site-dir|built-dir> [--port <n>] [--base <path>]\n"
         "      the site on this computer only (127.0.0.1): built as HTML + JavaScript into\n"
         "      <site>/.ultrapress/preview and built again when a file of it changed; a built\n"
         "      folder (index.html) is served as it is; .br / .gz copies go to browsers that take them\n"
-        "  ultrapress hosts\n"
+        "  UltraPress hosts\n"
         "      the hosts a site can be published to: FTP, FTPS, SFTP, WebDAV, Nextcloud\n"
-        "  ultrapress hosts add <ftp|webdav|nextcloud> --server <url> --user <name> [--password <p>]\n"
+        "  UltraPress hosts add <ftp|webdav|nextcloud> --server <url> --user <name> [--password <p>]\n"
         "                      [--port <n>] [--key <private-key-file>] [--name <label>] [--folder <remote-folder>] [--no-verify]\n"
         "      a host; the password from --password or ULTRAPRESS_HOST_PASSWORD; the\n"
         "      server is ftp://, ftps://, ftpes:// or sftp:// for ftp, https:// otherwise;\n"
         "      --port when an ftp host's port is not its protocol's own (21; 990 for ftps://, 22 for sftp://);\n"
         "      --key signs an sftp:// host in with that key, the password as its passphrase\n"
-        "  ultrapress hosts remove <host>\n"
-        "  ultrapress hosts use <site-dir> <host> [--path <remote-folder>]\n"
+        "  UltraPress hosts remove <host>\n"
+        "  UltraPress hosts use <site-dir> <host> [--path <remote-folder>]\n"
         "      remember the host and the folder in site.json, for the window's Publish\n"
-        "  ultrapress import <export.xml> <site-dir> [--front <slug>] [--media] [--no-drafts]\n"
+        "  UltraPress import <export.xml> <site-dir> [--front <slug>] [--media] [--no-drafts]\n"
         "      a WordPress export (Tools > Export) as a site: pages, posts, menus,\n"
         "      the bodies as blocks; --media fetches the attachments into media/\n"
-        "  ultrapress <site-dir> [--check]\n"
+        "  UltraPress <site-dir> [--check]\n"
         "      open the site in the editor window; --check renders every page without one\n"
-        "  ultrapress --version\n",
+        "  UltraPress --version\n",
         ULTRAPRESS_VERSION);
 }
 
@@ -189,7 +189,7 @@ int CommandMedia(const std::vector<std::string>& args) {
     }
     const std::string verb = args[1];
     if (verb == "add") {
-        if (args.size() < 3) { std::fprintf(stderr, "ultrapress media <site-dir> add <file>...\n"); return 2; }
+        if (args.size() < 3) { std::fprintf(stderr, "UltraPress media <site-dir> add <file>...\n"); return 2; }
         int failures = 0;
         for (size_t i = 2; i < args.size(); ++i) {
             std::string path, error;
@@ -199,7 +199,7 @@ int CommandMedia(const std::vector<std::string>& args) {
         return failures == 0 ? 0 : 1;
     }
     if (verb == "remove") {
-        if (args.size() < 3) { std::fprintf(stderr, "ultrapress media <site-dir> remove <media-path>...\n"); return 2; }
+        if (args.size() < 3) { std::fprintf(stderr, "UltraPress media <site-dir> remove <media-path>...\n"); return 2; }
         int failures = 0;
         for (size_t i = 2; i < args.size(); ++i) {
             std::string error;
@@ -322,7 +322,7 @@ int CommandServe(const std::vector<std::string>& args) {
 #endif
 }
 
-// A folder of Markdown as a documentation site: `ultrapress docs`.
+// A folder of Markdown as a documentation site: `UltraPress docs`.
 int CommandDocs(const std::vector<std::string>& args) {
     if (args.size() < 2) { PrintHelp(); return 2; }
     DocsSiteOptions options;
@@ -380,7 +380,7 @@ int CommandPublish(const std::vector<std::string>& args) {
     std::string remotePath = Option(args, "--path", "");
     if (to == "site") {
         if (site.hosting.account.empty()) {
-            std::fprintf(stderr, "%s names no host: `ultrapress hosts use %s <host>` first\n", args[0].c_str(), args[0].c_str());
+            std::fprintf(stderr, "%s names no host: `UltraPress hosts use %s <host>` first\n", args[0].c_str(), args[0].c_str());
             return 1;
         }
         hostName = site.hosting.account;
@@ -388,7 +388,7 @@ int CommandPublish(const std::vector<std::string>& args) {
     }
     UltraCloud::Account host;
     const UltraCloud::Result found = hosts.Find(hostName, host);
-    if (!found) { std::fprintf(stderr, "%s (`ultrapress hosts` lists them)\n", found.message.c_str()); return 1; }
+    if (!found) { std::fprintf(stderr, "%s (`UltraPress hosts` lists them)\n", found.message.c_str()); return 1; }
     if (remotePath.empty()) remotePath = host.remoteFolder.empty() ? "/" : host.remoteFolder;
     DeployOptions deploy;
     deploy.remoteRoot = remotePath;
@@ -418,7 +418,7 @@ int CommandHosts(const std::vector<std::string>& args) {
     if (args.empty()) {
         const std::vector<UltraCloud::Account> list = hosts.List();
         if (list.empty()) {
-            std::printf("no hosts yet: `ultrapress hosts add ftp --server ftp://ftp.example.org --user me`\n");
+            std::printf("no hosts yet: `UltraPress hosts add ftp --server ftp://ftp.example.org --user me`\n");
             return 0;
         }
         for (const UltraCloud::Account& account : list) std::printf("%s\n", DescribeHost(account).c_str());
@@ -427,7 +427,7 @@ int CommandHosts(const std::vector<std::string>& args) {
     const std::string verb = args[0];
     if (verb == "add") {
         if (args.size() < 2 || !Hosts::IsHostProvider(args[1])) {
-            std::fprintf(stderr, "ultrapress hosts add <ftp|webdav|nextcloud> --server <url> --user <name>\n");
+            std::fprintf(stderr, "UltraPress hosts add <ftp|webdav|nextcloud> --server <url> --user <name>\n");
             return 2;
         }
         UltraCloud::Account account;
@@ -490,7 +490,7 @@ int CommandHosts(const std::vector<std::string>& args) {
         return 0;
     }
     if (verb == "remove") {
-        if (args.size() < 2) { std::fprintf(stderr, "ultrapress hosts remove <host>\n"); return 2; }
+        if (args.size() < 2) { std::fprintf(stderr, "UltraPress hosts remove <host>\n"); return 2; }
         UltraCloud::Account account;
         const UltraCloud::Result found = hosts.Find(args[1], account);
         if (!found) { std::fprintf(stderr, "%s\n", found.message.c_str()); return 1; }
@@ -500,7 +500,7 @@ int CommandHosts(const std::vector<std::string>& args) {
         return 0;
     }
     if (verb == "use") {
-        if (args.size() < 3) { std::fprintf(stderr, "ultrapress hosts use <site-dir> <host> [--path <remote-folder>]\n"); return 2; }
+        if (args.size() < 3) { std::fprintf(stderr, "UltraPress hosts use <site-dir> <host> [--path <remote-folder>]\n"); return 2; }
         UltraCloud::Account account;
         const UltraCloud::Result found = hosts.Find(args[2], account);
         if (!found) { std::fprintf(stderr, "%s\n", found.message.c_str()); return 1; }
@@ -522,7 +522,7 @@ int CommandHosts(const std::vector<std::string>& args) {
 }
 #else
 int CommandHosts(const std::vector<std::string>&) {
-    std::fprintf(stderr, "this build has no UltraCloud, so no hosts; `ultrapress publish` writes the folder to upload\n");
+    std::fprintf(stderr, "this build has no UltraCloud, so no hosts; `UltraPress publish` writes the folder to upload\n");
     return 1;
 }
 #endif
