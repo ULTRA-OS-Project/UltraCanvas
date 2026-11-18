@@ -136,6 +136,7 @@
   "no translation provider is available": "沒有可用的翻譯提供者",
   "None found": "找不到",
   "Not available": "無法使用",
+  "Not saved yet": "尚未儲存",
   "One Column": "一欄",
   "Open File(s)": "開啟檔案",
   "Open File... (Ctrl+O)": "開啟檔案... (Ctrl+O)",
@@ -213,5 +214,8 @@
   "Windows-1251 (Cyrillic)": "Windows-1251（斯拉夫文）",
   "Windows-1252 (Western)": "Windows-1252（西歐語系）",
   "Word Wrap": "自動換行",
-  "Zoom Level": "縮放比例"
+  "Zoom Level": "縮放比例",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "other": "{n} 個檔案有未儲存的變更。關閉前要儲存嗎?"
+  }
 }

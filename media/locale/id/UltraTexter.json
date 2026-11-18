@@ -136,6 +136,7 @@
   "no translation provider is available": "tidak ada penyedia terjemahan yang tersedia",
   "None found": "Tidak ditemukan",
   "Not available": "Tidak tersedia",
+  "Not saved yet": "Belum disimpan",
   "One Column": "Satu Kolom",
   "Open File(s)": "Buka File",
   "Open File... (Ctrl+O)": "Buka File... (Ctrl+O)",
@@ -213,5 +214,8 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Sirilik)",
   "Windows-1252 (Western)": "Windows-1252 (Barat)",
   "Word Wrap": "Bungkus Kata",
-  "Zoom Level": "Tingkat Zoom"
+  "Zoom Level": "Tingkat Zoom",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "other": "{n} file memiliki perubahan yang belum disimpan. Simpan sebelum menutup?"
+  }
 }

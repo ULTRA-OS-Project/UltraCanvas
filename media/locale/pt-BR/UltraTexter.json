@@ -65,6 +65,7 @@
   "No spell check dictionaries were found on this system.\n\nInstall a dictionary for your language (for example the hunspell or myspell package for it) and try again.": "Nenhum dicionário de verificação ortográfica foi encontrado neste sistema.\n\nInstale um dicionário para o seu idioma (por exemplo, o pacote hunspell ou myspell correspondente) e tente novamente.",
   "no translation provider is available": "nenhum provedor de tradução está disponível",
   "None found": "Nada encontrado",
+  "Not saved yet": "Ainda não salvo",
   "Open File(s)": "Abrir arquivo(s)",
   "Open File... (Ctrl+O)": "Abrir arquivo… (Ctrl+O)",
   "Open in New Window": "Abrir em nova janela",
@@ -100,5 +101,9 @@
   "Unsaved Changes": "Alterações não salvas",
   "Update Table of Contents": "Atualizar sumário",
   "Version {0}\nUltraCanvas version {1}": "Versão {0}\nUltraCanvas versão {1}",
-  "Word Wrap": "Quebra automática de linha"
+  "Word Wrap": "Quebra automática de linha",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} arquivo tem alterações não salvas. Salvá-lo antes de fechar?",
+    "other": "{n} arquivos têm alterações não salvas. Salvá-los antes de fechar?"
+  }
 }

@@ -137,6 +137,7 @@
   "no translation provider is available": "nem érhető el fordítási szolgáltató",
   "None found": "Nincs találat",
   "Not available": "Nem érhető el",
+  "Not saved yet": "Még nincs mentve",
   "One Column": "Egy hasáb",
   "Open File(s)": "Fájl(ok) megnyitása",
   "Open File... (Ctrl+O)": "Fájl megnyitása... (Ctrl+O)",
@@ -214,5 +215,9 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (cirill)",
   "Windows-1252 (Western)": "Windows-1252 (nyugat-európai)",
   "Word Wrap": "Sortörés",
-  "Zoom Level": "Nagyítási szint"
+  "Zoom Level": "Nagyítási szint",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} fájl nem mentett módosításokat tartalmaz. Menti bezárás előtt?",
+    "other": "{n} fájl nem mentett módosításokat tartalmaz. Menti őket bezárás előtt?"
+  }
 }

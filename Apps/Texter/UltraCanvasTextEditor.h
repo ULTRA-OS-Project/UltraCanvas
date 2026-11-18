@@ -608,6 +608,11 @@ namespace UltraCanvas {
         void SetupRichDocumentCallbacks(int docIndex);
         void ConfirmSaveChanges(int docIndex, std::function<void(bool)> onComplete);
         void ConfirmCloseWithUnsavedChanges(std::function<void(bool)> onComplete);
+        // The list of files under that question: name and folder (or "Not
+        // saved yet"), in the shape of the file display's operation lists.
+        // Null for no files; outHeight is the list's height.
+        std::shared_ptr<UltraCanvasUIElement> BuildUnsavedFileList(
+                const std::vector<std::shared_ptr<DocumentTab>>& listed, int& outHeight);
 
         // Layout
         void UpdateChildLayout();

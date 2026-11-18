@@ -1,5 +1,8 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.9.0 - closing with unsaved files lists them (name, folder) in the question, as the file
+//                  display lists the files of a delete; saving them shows each file's tab before its
+//                  Save dialog, and a save that fails shows its tab before saying so
 // Version: 2.8.0 - a window started dark has dark chrome (the theme was only laid over it on a change);
 //                  View > Dark Mode: Document Background (dark / light grey / white text tabs under a dark look)
 // Version: 2.7.0 - the status bar shows which dictionary the active document is spell checked against; a click opens the Spelling menu
@@ -38,6 +41,9 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasListModel.h"
+#include "UltraCanvasListDelegate.h"
 #include "UltraCanvasTextEditorHelpers.h"
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
@@ -5170,6 +5176,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     void UltraCanvasTextEditor::OfferSaveAsAfterFailure(std::shared_ptr<DocumentTab> doc,
                                                         const std::string& failedPath,
                                                         std::function<void(bool)> onDone) {
+        // The file that failed is the one on show while it is asked about.
+        if (auto it = std::find(documents.begin(), documents.end(), doc); it != documents.end())
+            SwitchToDocument(static_cast<int>(it - documents.begin()));
         const std::string reason = lastSaveError.empty() ? Tr("The file could not be written.") : lastSaveError;
         const std::string message = "\"" + failedPath + "\" could not be saved.\n\n" + reason +
                                     "\n\nChoose another name or folder to save it.";
@@ -5229,15 +5238,37 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             return;
         }
 
-        std::string message = std::to_string(modifiedDocs.size()) +
-                              " file(s) have unsaved changes.\n\n" +
-                              "Save all before closing?";
+        // The question names the files: a list under it, in the shape of the
+        // file display's delete / copy / move questions - a header, striped
+        // rows, the caption size - with each file's folder beside its name
+        // (or that it was never saved) and the whole path as its tooltip.
+        std::vector<std::shared_ptr<DocumentTab>> listed;
+        for (int idx : modifiedDocs) listed.push_back(documents[idx]);
+        int listHeight = 0;
+        auto list = BuildUnsavedFileList(listed, listHeight);
 
-        UltraCanvasDialogManager::ShowMessage(
-                message,
-                Tr("Unsaved Changes"),
-                DialogType::Question,
-                DialogButtons::YesNoCancel,
+        DialogConfig cfg;
+        cfg.title = Tr("Unsaved Changes");
+        cfg.dialogType = DialogType::Question;
+        cfg.message = TrN("{n} file has unsaved changes. Save it before closing?",
+                          "{n} files have unsaved changes. Save them before closing?",
+                          static_cast<long long>(modifiedDocs.size()));
+        cfg.buttons = DialogButtons::YesNoCancel;
+        cfg.defaultButton = DialogButton::Yes;
+        cfg.width = 520;
+        // A starting height; the dialog fits itself to the message and to the
+        // list (which carries its own height).
+        cfg.height = 190 + (list ? listHeight + 8 : 0);
+
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        if (!dialog) {
+            if (onComplete) onComplete(false);
+            return;
+        }
+        if (list) dialog->AddDialogElement(list);
+
+        UltraCanvasDialogManager::ShowDialog(
+                dialog,
                 [this, modifiedDocs, onComplete](DialogResult result) {
                     if (result == DialogResult::Yes) {
                         // Documents with a file path first, then the new ones.
@@ -5270,6 +5301,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                             int idx = remaining->front();
                             remaining->erase(remaining->begin());
                             auto doc = documents[idx];
+                            // The file being saved is the one on show, so the
+                            // Save dialog (or a failure's) is plainly about it.
+                            SwitchToDocument(idx);
 
                             if (!doc->filePath.empty()) {
                                 SaveOrOfferSaveAs(idx, [savedFlag, saveNext](bool saved) {
@@ -5311,6 +5345,55 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 },
                 GetWindow()
         );
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasTextEditor::BuildUnsavedFileList(
+            const std::vector<std::shared_ptr<DocumentTab>>& listed, int& outHeight) {
+        outHeight = 0;
+        if (listed.empty()) return nullptr;
+        // The file display's operation lists (UltraCanvasFilerWidget::
+        // BuildOperationEntryList): a header, rows of 22 px, at most eight
+        // rows on show and the rest scrolled to.
+        constexpr int kRowHeight = 22;
+        constexpr int kHeaderHeight = 24;
+        const int rows = static_cast<int>(std::min<size_t>(listed.size(), 8));
+        outHeight = kHeaderHeight + rows * kRowHeight + 2;
+
+        auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
+        model->AddColumn(ListColumnDef(Tr("Name"), 190));
+        model->AddColumn(ListColumnDef(Tr("Folder"), 280));
+        for (const auto& doc : listed) {
+            const bool onDisk = !doc->filePath.empty();
+            const std::string folder = onDisk
+                    ? PathToUtf8(PathFromUtf8(doc->filePath).parent_path())
+                    : Tr("Not saved yet");
+            MultiColumnListItem item({doc->fileName, folder});
+            item.tooltip = onDisk ? doc->filePath : doc->fileName;
+            model->AddItem(item);
+        }
+
+        auto list = std::make_shared<UltraCanvasListView>("TexterUnsavedList", 0, 0, 0, outHeight);
+        // Its shape over the theme's colours: a style set by hand stops a list
+        // following the theme, so one that was following takes it up again
+        // once its delegate is in (white rows in a dark dialog otherwise).
+        const bool followTheme = list->GetFollowTheme();
+        ListViewStyle listStyle = list->GetStyle();
+        listStyle.showHeader = true;
+        listStyle.headerHeight = kHeaderHeight;
+        listStyle.headerFontSize = 10;
+        listStyle.rowHeight = kRowHeight;
+        listStyle.alternateRowColors = true;
+        list->SetStyle(listStyle);
+        auto delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
+        delegate->SetFontSize(static_cast<float>(
+                UltraCanvasTheme::Current().FontSize(ThemeTextRole::Caption)));
+        delegate->SetRowHeight(kRowHeight);
+        list->SetModel(model);
+        list->SetDelegate(delegate);
+        if (followTheme) list->SetFollowTheme(true);
+        list->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return list;
     }
 
 // ===== PUBLIC API =====

@@ -136,6 +136,7 @@
   "no translation provider is available": "ไม่มีผู้ให้บริการแปลภาษาที่ใช้ได้",
   "None found": "ไม่พบ",
   "Not available": "ไม่มีข้อมูล",
+  "Not saved yet": "ยังไม่ได้บันทึก",
   "One Column": "หนึ่งคอลัมน์",
   "Open File(s)": "เปิดไฟล์",
   "Open File... (Ctrl+O)": "เปิดไฟล์... (Ctrl+O)",
@@ -213,5 +214,8 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (ซีริลลิก)",
   "Windows-1252 (Western)": "Windows-1252 (ตะวันตก)",
   "Word Wrap": "ตัดคำอัตโนมัติ",
-  "Zoom Level": "ระดับการซูม"
+  "Zoom Level": "ระดับการซูม",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "other": "มี {n} ไฟล์ที่มีการเปลี่ยนแปลงซึ่งยังไม่ได้บันทึก บันทึกก่อนปิดหรือไม่"
+  }
 }
