@@ -1894,3 +1894,88 @@ TEST(counterfeit_luxury_goods) {
     off.options.counterfeits = false;
     REQUIRE(!ScanMessage(off).Has("counterfeit-goods"));
 }
+
+// ---------------------------------------------------------------------------
+// Unsolicited SEO offers (a reader's inbox, 2026-11-17)
+// ---------------------------------------------------------------------------
+namespace {
+
+// From a genuine (DKIM-signed) free mailbox, as a "Re:" to nothing.
+const char* kSeoOfferMail =
+    "Return-Path: <samardnamcy@gmail.com>\r\n"
+    "Authentication-Results: mail.reader.example;\r\n"
+    "\tdkim=pass (2048-bit key; unprotected) header.d=gmail.com header.i=@gmail.com "
+    "header.a=rsa-sha256 header.s=20260707 header.b=TBHtucHs;\r\n"
+    "\tdkim-atps=neutral\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Message-ID: <autogen-java-2fd2b4f5-7f63-4189-bd7e-fd374be0ed91@google.com>\r\n"
+    "Date: Tue, 17 Nov 2026 09:02:58 +0000\r\n"
+    "Subject: Re: Following Up on My Previous Email \r\n"
+    "From: samardnamcy@gmail.com\r\n"
+    "To: info@reader.example\r\n"
+    "Content-Type: multipart/alternative; boundary=\"0000000000003377a60660752935\"\r\n"
+    "\r\n"
+    "--0000000000003377a60660752935\r\n"
+    "Content-Type: text/plain; charset=\"UTF-8\"; format=flowed; delsp=yes\r\n"
+    "\r\n"
+    "Hi,\r\n\r\nJust following up on my previous email.\r\n\r\n"
+    "Would you be interested in seeing the brief SEO audit report I prepared for  \r\n"
+    "your website?\r\n\r\nLooking forward to your response.\r\n\r\nBest,\r\n\r\n"
+    "--0000000000003377a60660752935\r\n"
+    "Content-Type: text/html; charset=\"UTF-8\"\r\n"
+    "Content-Transfer-Encoding: quoted-printable\r\n"
+    "\r\n"
+    "Hi,<br><br>Just following up on my previous email.<br><br>Would you be inte=\r\n"
+    "rested in seeing the brief SEO audit report I prepared for your website?<br=\r\n"
+    "><br>Looking forward to your response.<br><br>Best,<br><br>On Thu, Nov 12, =\r\n"
+    "2026 at 11:52=E2=80=AFAM wrote:<br>Hey!<br><br>I noticed a small SEO issue o=\r\n"
+    "n your website that could be affecting how it appears in Google search resul=\r\n"
+    "ts.<br><br>I've captured a screenshot and put together a quick audit report.=\r\n"
+    "<br><br>Would you like me to share it?<br><br>Thanks,\r\n"
+    "--0000000000003377a60660752935--\r\n";
+
+} // namespace
+
+TEST(the_seo_audit_offer_is_spam) {
+    const ThreatReport r = ScanRawMessage(kSeoOfferMail);
+    REQUIRE(r.Has("seo-solicitation"));
+    REQUIRE(r.verifiedDomain == "gmail.com");    // genuine gmail - and still spam
+    REQUIRE(r.level == ThreatLevel::Suspicious);  // spam, not a scam
+}
+
+TEST(seo_offers) {
+    auto scan = [](const std::string& from, const std::string& subject,
+                   const std::string& body) {
+        ScanInput in;
+        in.fromAddr = from;
+        in.subject  = subject;
+        in.body     = body;
+        return ScanMessage(in);
+    };
+    // From a domain of its own, nothing proven.
+    REQUIRE(scan("sam@rank-boost.example", "Quick question",
+                 "We can get your website on the first page of Google. Would you like "
+                 "a free analysis?").level >= ThreatLevel::Suspicious);
+    // Search engines without the reader's website, or without an offer.
+    REQUIRE(!scan("x@gmail.com", "SEO meetup", "The SEO meetup is on Friday, see you there.")
+                 .Has("seo-solicitation"));
+    REQUIRE(!scan("x@gmail.com", "Hi", "I found your website in the search results. "
+                  "Nice photos!").Has("seo-solicitation"));
+    // A proven domain's newsletter is a hint; a proven registry brand nothing.
+    ScanInput news;
+    news.fromAddr = "news@seo-tool.example";
+    news.body = "Our SEO report for your website is ready - would you like a tour?";
+    news.listUnsubscribe = "<https://seo-tool.example/u>";
+    news.authResults = "mx.reader.example; dkim=pass header.d=seo-tool.example; dmarc=pass "
+                       "header.from=seo-tool.example";
+    const ThreatReport newsletter = ScanMessage(news);
+    REQUIRE(newsletter.Has("seo-solicitation"));
+    REQUIRE(newsletter.level == ThreatLevel::Advertisement);
+    // Its own switch.
+    ScanInput off;
+    off.fromAddr = "x@gmail.com";
+    off.body = "I noticed an SEO issue on your website. Would you like the report?";
+    REQUIRE(ScanMessage(off).Has("seo-solicitation"));
+    off.options.seoOffers = false;
+    REQUIRE(!ScanMessage(off).Has("seo-solicitation"));
+}

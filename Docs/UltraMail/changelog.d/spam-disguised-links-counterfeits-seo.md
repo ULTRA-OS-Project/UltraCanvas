@@ -13,5 +13,14 @@
   in *Settings > Warnings > Spam/scam warnings*. Not for the brand's own
   domain; a shop that proved its own domain, in its own bulk mail, only gets
   a hint for a low price.
+- **SEO offers from strangers are marked as spam.** "I noticed a small SEO
+  issue on your website ... would you like the audit report?" - an offer of
+  search engine services for the reader's own website - gets the *Likely
+  spam* badge and a warning strip with advice not to answer
+  (`seo-solicitation`), more so from a free mailbox and as a "Re:" to a
+  mail never sent. A sender in the address book is not called spam for it
+  (the reader's own SEO agency), and a newsletter from a domain that proved
+  itself only gets a hint. It has its own switch in *Settings > Warnings >
+  Spam/scam warnings*.
 - Stored verdicts made before this change are scanned again, so mail already
   in the inbox gets the new warnings.

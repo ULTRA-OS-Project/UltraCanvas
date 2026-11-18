@@ -1066,6 +1066,46 @@ long long LowestPrice(const std::string& textLower, std::string* written) {
     return lowest;
 }
 
+// ---------------------------------------------------------------------------
+// Unsolicited SEO offers
+// ---------------------------------------------------------------------------
+// "I noticed a small SEO issue on your website ... I've put together a quick
+// audit report. Would you like me to share it?" - from a stranger's free
+// mailbox, as a "Re:" to a mail never sent. Three things together: search
+// engines, the reader's own website, and an offer.
+const std::vector<std::string>& SeoPhrases() {
+    static const std::vector<std::string> v = {
+        "seo", "search engine optimization", "search engine optimisation",
+        "search engine ranking*", "google ranking*", "ranking on google",
+        "rank higher", "rank on the first page", "first page of google",
+        "page 1 of google", "top of google", "google search results",
+        "search results", "organic traffic", "backlink*", "domain authority",
+        "suchmaschinenoptimierung", "google-ranking*",
+    };
+    return v;
+}
+
+const std::vector<std::string>& ReaderWebsitePhrases() {
+    static const std::vector<std::string> v = {
+        "your website", "your web site", "your site", "your webpage", "your web page",
+        "your homepage", "your domain", "your online presence", "your business online",
+        "ihre website", "ihre webseite", "ihre homepage", "deine website",
+    };
+    return v;
+}
+
+const std::vector<std::string>& PitchPhrases() {
+    static const std::vector<std::string> v = {
+        "audit", "report", "screenshot", "proposal", "quote", "free analysis",
+        "would you like", "would you be interested", "are you interested",
+        "interested in", "can i send", "may i send", "shall i send", "share it",
+        "let me know", "looking forward to your response", "following up",
+        "follow up", "packages", "affordable", "our services", "my services",
+        "analyse", "analysis", "angebot", "kostenlos",
+    };
+    return v;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -1125,6 +1165,7 @@ bool FindingEnabled(const ThreatScanOptions& o, const std::string& code) {
     if (code.compare(0, 11, "attachment-") == 0) return o.attachments;
     if (code == "spam-flag")                return o.spamFlag;
     if (code == "counterfeit-goods")        return o.counterfeits;
+    if (code == "seo-solicitation")         return o.seoOffers;
     static const std::set<std::string> phishing = {
         "auth-failure", "brand-impersonation", "sender-domain-lookalike",
         "borrowed-brand-pictures", "link-userinfo", "link-ip-host", "link-punycode",
@@ -1218,6 +1259,10 @@ bool FindingKeptForTrustedSender(const std::string& code) {
 ThreatScanOptions GetThreatScanOptions() {
     std::lock_guard<std::mutex> lock(g_optionsMutex);
     return g_options;
+}
+
+bool FindingOnlyFromStrangers(const std::string& code) {
+    return code == "seo-solicitation";
 }
 
 bool HasFindingCode(const std::string& codes, const std::string& code) {
@@ -1770,6 +1815,41 @@ ThreatReport ScanMessage(const ScanInput& input) {
         }
     }
 
+    // ---- Unsolicited SEO offers -------------------------------------------
+    // A stranger who "noticed an SEO issue on your website" sells search
+    // engine services. Not from a proven registry brand (a search console's
+    // own notices), and a proven domain's bulk mail - a newsletter the reader
+    // signed up for - is only a hint. A known contact's mail is spared by the
+    // badge, which knows the address book (FindingOnlyFromStrangers).
+    {
+        const std::string text = StraightQuotes(Lower(input.subject) + "\n" + bodyLower);
+        const std::string* seo = FirstWordPhraseIn(text, SeoPhrases());
+        const std::string* site = FirstWordPhraseIn(text, ReaderWebsitePhrases());
+        const std::string* pitch = FirstWordPhraseIn(text, PitchPhrases());
+        if (seo && site && pitch && !verifiedBrand) {
+            const bool freeSender = IsPersonalMailboxDomain(senderDomain);
+            // "Re: Following up" with nothing it replies to.
+            const std::string subject = Lower(Trim(input.subject));
+            const bool fakeReply = (subject.compare(0, 3, "re:") == 0 ||
+                                    subject.compare(0, 3, "aw:") == 0) &&
+                                   Trim(input.inReplyTo).empty() && Trim(input.references).empty();
+            int weight = freeSender ? 35 : authenticated ? 22 : 30;
+            if (authenticated && report.bulk && !freeSender) weight = 10;
+            if (fakeReply) weight += 10;
+            weight = std::min(weight, 40);   // spam, not a scam: alone it stays below 45
+            const std::string seoWord = *seo == "seo" ? std::string("SEO") : *seo;
+            std::string why = "The message offers search engine services (\"" + seoWord +
+                              "\") for " + *site;
+            if (freeSender) why += ", from a free mailbox (" + senderDomain + ")";
+            if (fakeReply) why += ", and calls itself a reply (\"" + Trim(input.subject) +
+                                  "\") to a message that was never sent";
+            why += ". Unsolicited SEO offers are sent to every address on a list; the "
+                   "\"audit\" or \"report\" is the sales pitch, and an answer only confirms "
+                   "the address for more.";
+            Add(report, weight, "seo-solicitation", why);
+        }
+    }
+
     // ---- Government agencies and international organisations -------------
     // A letter in the FBI's, Interpol's or the IMF's name from an address that
     // is not theirs. In the sender's name or domain it is a claim on its own
@@ -2163,6 +2243,8 @@ bool BuildScanInput(const std::string& rawMessage, ScanInput& in) {
     in.listUnsubscribe = Header(msg.root.headers, "List-Unsubscribe");
     in.precedence      = Header(msg.root.headers, "Precedence");
     in.autoSubmitted   = Header(msg.root.headers, "Auto-Submitted");
+    in.inReplyTo       = Header(msg.root.headers, "In-Reply-To");
+    in.references      = Header(msg.root.headers, "References");
     in.spamFlag        = Header(msg.root.headers, "X-Spam-Flag");
     in.spamStatus      = Header(msg.root.headers, "X-Spam-Status");
     // The topmost: the parsed headers keep the last of a repeated header,

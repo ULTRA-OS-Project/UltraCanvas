@@ -1,5 +1,5 @@
 // Apps/UltraMail/ui/UltraMailPreferences.cpp
-// Version: 0.18.0 - warn_counterfeits
+// Version: 0.18.0 - warn_counterfeits, warn_seo_offers
 // Version: 0.17.0 - strip_* (Settings > Display > Email warnings)
 // Version: 0.16.0 - send_notification (popup / status-bar)
 // Version: 0.15.0 - attachments (bottom / right)
@@ -77,6 +77,7 @@ bool Preferences::Load(const std::string& path) {
         if (key == "warn_attachments")    scamWarnings.attachments   = ParseBool(value);
         if (key == "warn_spam_flag")      scamWarnings.spamFlag      = ParseBool(value);
         if (key == "warn_counterfeits")   scamWarnings.counterfeits  = ParseBool(value);
+        if (key == "warn_seo_offers")     scamWarnings.seoOffers     = ParseBool(value);
         if (key == "strip_phishing")       warningStrip.phishing      = ParseBool(value);
         if (key == "strip_scam")           warningStrip.scam          = ParseBool(value);
         if (key == "strip_romance")        warningStrip.romance       = ParseBool(value);
@@ -256,6 +257,7 @@ bool Preferences::Save(const std::string& path) const {
     flag("warn_attachments",    scamWarnings.attachments);
     flag("warn_spam_flag",      scamWarnings.spamFlag);
     flag("warn_counterfeits",   scamWarnings.counterfeits);
+    flag("warn_seo_offers",     scamWarnings.seoOffers);
     flag("strip_phishing",       warningStrip.phishing);
     flag("strip_scam",           warningStrip.scam);
     flag("strip_romance",        warningStrip.romance);
