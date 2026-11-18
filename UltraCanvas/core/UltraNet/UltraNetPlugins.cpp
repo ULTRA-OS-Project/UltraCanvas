@@ -3,6 +3,8 @@
 // ones directly, DSOs through the host table UltraNet_RefreshPlugins hands to
 // their UltraNet_PluginInit. The registry maintains two indexes: by plug-in
 // name and by URL scheme.
+// Version: 0.5.3 - the default plug-in folder: a macOS bundle's PlugIns/UltraNet first, the runtime's
+//                  (ULTRACANVAS_RUNTIME_DIR) after the executable's
 // Version: 0.5.2 - UltraNet_OpenSshTunnel / UltraNet_CloseSshTunnel, through the ssh plug-in.
 //                  0.5.1: plug-ins are loaded RTLD_LOCAL. 0.5.0: only
 //                  UltraNet_PluginInit is loaded (the POSIX-only v1 entry is
@@ -30,6 +32,7 @@
 
 using UltraCanvas::PathFromUtf8;
 using UltraCanvas::PathToUtf8;
+using UltraCanvas::GetEnvUtf8;
 
 #if defined(_WIN32) || defined(_WIN64)
   #ifndef WIN32_LEAN_AND_MEAN
@@ -102,10 +105,12 @@ static std::filesystem::path ExecutableFolder() {
 }
 
 // Where plug-ins are looked for until UltraNet_SetPluginDirectory() names
-// another folder: Plugins/UltraNet beside the executable, or one or two
+// another folder: in a macOS bundle Contents/PlugIns/UltraNet; Plugins/UltraNet
+// beside the executable, or one or two
 // folders above it (the build tree has the executable at <build>/, an
 // installed one may sit in bin/), the first of those that holds a plug-in;
-// else the one beside the executable. Only with no executable path at all is
+// then the runtime's (ULTRACANVAS_RUNTIME_DIR) when it holds one; else the
+// one beside the executable. Only with no executable path at all is
 // it the folder of that name in the working directory - never first, because
 // the working directory is wherever the application was started from: System32
 // for a packaged Windows application (MSIX), any folder for one started from
@@ -129,11 +134,33 @@ static std::string DefaultPluginDirectory() {
         }
         return false;
     };
+#if defined(__APPLE__)
+    // Inside a macOS bundle: Contents/PlugIns/UltraNet, beside the LaTeX
+    // module the core probes as <exe>/../PlugIns/ - where package-macos.sh
+    // puts them, since code in a bundle belongs in its PlugIns/. Spelled with
+    // its capital I; the walk below finds Contents/Plugins only where the
+    // volume ignores case.
+    if (const fs::path bundled = exeFolder / ".." / "PlugIns" / "UltraNet"; holdsPlugin(bundled)) {
+        return PathToUtf8(bundled.lexically_normal());
+    }
+#endif
     fs::path base = exeFolder;
     for (int up = 0; up < 3; ++up) {
         if (holdsPlugin(base / relative)) return PathToUtf8((base / relative).lexically_normal());
         if (!base.has_parent_path() || base.parent_path() == base) break;
         base = base.parent_path();
+    }
+    // The runtime the application runs on (ULTRACANVAS_RUNTIME_DIR, the
+    // framework's kRuntimeDirVariable - spelled out here because UltraNet does
+    // not include the core's headers): UltraStore names it when it starts an
+    // application installed beside a runtime component, whose plug-ins sit
+    // where the suite package has them, bin/Plugins/UltraNet on Linux and
+    // Plugins/UltraNet on Windows.
+    if (const std::string runtime = GetEnvUtf8("ULTRACANVAS_RUNTIME_DIR"); !runtime.empty()) {
+        const fs::path root = PathFromUtf8(runtime);
+        for (const fs::path& candidate : {root / "bin" / relative, root / relative}) {
+            if (holdsPlugin(candidate)) return PathToUtf8(candidate.lexically_normal());
+        }
     }
     return PathToUtf8((exeFolder / relative).lexically_normal());
 }

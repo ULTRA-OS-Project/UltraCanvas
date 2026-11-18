@@ -19,6 +19,10 @@
 #                      notarized like the suite, as a DMG of its own with --dmg
 #                      (see "UltraCanvasStart on its own" below)
 #   --start-dir DIR    Where that goes (default: dist-start)
+#   --store-app NAME   Also cut the app NAME out of the suite on its own, as
+#                      --start-app does UltraCanvasStart, for UltraStore
+#                      (scripts/package-store-app.sh zips it); repeatable
+#   --store-dir DIR    Where those go (default: dist-store-macos)
 #
 # Environment variables:
 #   MACOSX_DEPLOYMENT_TARGET  Oldest macOS the apps must run on (CI: 15.0).
@@ -41,6 +45,8 @@ DO_SIGN=true
 NOTARIZE=false
 START_APP=false
 START_OUTPUT_DIR="dist-start"
+STORE_APPS=()
+STORE_OUTPUT_DIR="dist-store-macos"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENTITLEMENTS_PATH="MacOS/entitlements.plist"
 IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: ULTRA OS Devolopment GmbH (29638T25M9)}"
@@ -86,8 +92,10 @@ while [[ $# -gt 0 ]]; do
         --notarize)   NOTARIZE=true; shift ;;
         --start-app)  START_APP=true; shift ;;
         --start-dir)  START_OUTPUT_DIR="$2"; shift 2 ;;
+        --store-app)  STORE_APPS+=("$2"); shift 2 ;;
+        --store-dir)  STORE_OUTPUT_DIR="$2"; shift 2 ;;
         -h|--help)
-            sed -n '2,27p' "$0" | sed 's/^# \?//'
+            sed -n '2,35p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -160,6 +168,7 @@ echo "  Code signing:    $($DO_SIGN && echo "Developer ID" || echo "ad hoc (--no
 echo "  Notarize:        $NOTARIZE"
 echo "  Create DMG:      $CREATE_DMG"
 echo "  UltraCanvasStart on its own: $($START_APP && echo "yes, to $START_OUTPUT_DIR" || echo no)"
+echo "  For UltraStore on their own: ${STORE_APPS[*]:-none}${STORE_APPS[*]:+, to $STORE_OUTPUT_DIR}"
 echo ""
 
 # ── Validate prerequisites ───────────────────────────────────────────────────
@@ -773,13 +782,13 @@ codesign_bundle() {
     # (sign_shared_frameworks); the bundle holds only its plug-ins and
     # executable.
 
-    # Plug-in modules loaded at runtime (the LaTeX engine) are signed like
-    # the frameworks: inside-out, before the executable and the bundle.
-    for dylib in "$app_bundle/Contents/PlugIns/"*.dylib; do
-        if [ -f "$dylib" ]; then
-            sign_code "$dylib"
-        fi
-    done
+    # Plug-in modules loaded at runtime (the LaTeX engine, UltraNet's
+    # plug-ins under PlugIns/UltraNet/) are signed like the frameworks:
+    # inside-out, before the executable and the bundle.
+    local module
+    while IFS= read -r -d '' module; do
+        case "$(file -b "$module")" in Mach-O*) sign_code "$module" ;; esac
+    done < <(find "$app_bundle/Contents/PlugIns" -type f -print0 2>/dev/null)
 
     # Sign the main executable with hardened runtime + secure timestamp
     sign_code "$app_bundle/Contents/MacOS/"*
@@ -940,7 +949,24 @@ DEMO_SAMPLE_MEDIA=(3D videos images vector audios ebooks textsamples LaTex diagr
 # substituted) when the module is absent - and their dialogs carry only their
 # own status and error text. An app added to the bundle list keeps LaTeX by
 # default; add it here only after checking the same.
-NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer SmartHomeCenter)
+NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer SmartHomeCenter UltraMail)
+
+# Apps that load UltraNet's plug-ins (IMAP, SMTP, JMAP, ...): the MODULE
+# libraries of <build>/Plugins/UltraNet go into the bundle's
+# Contents/PlugIns/UltraNet/, where UltraNet looks inside a bundle
+# (<exe>/../PlugIns/UltraNet), with their dylibs in the shared Frameworks/.
+# Without them UltraMail starts and reports that the IMAP plug-in was not
+# found.
+ULTRANET_PLUGIN_APPS=(UltraMail)
+
+# True when the app $1 is in ULTRANET_PLUGIN_APPS.
+app_loads_ultranet() {
+    local a
+    for a in "${ULTRANET_PLUGIN_APPS[@]}"; do
+        [ "$a" = "$1" ] && return 0
+    done
+    return 1
+}
 
 # True when the app $1 is in NO_LATEX_APPS.
 app_without_latex() {
@@ -1107,8 +1133,35 @@ build_app_bundle() {
         fi
     fi
 
+    # UltraNet's plug-ins, for the apps that load them (ULTRANET_PLUGIN_APPS).
+    if app_loads_ultranet "$exe_name"; then
+        if compgen -G "$BUILD_DIR/Plugins/UltraNet/*.so" >/dev/null || \
+           compgen -G "$BUILD_DIR/Plugins/UltraNet/*.dylib" >/dev/null; then
+            mkdir -p "$contents_dir/PlugIns/UltraNet"
+            local plugin
+            for plugin in "$BUILD_DIR"/Plugins/UltraNet/*.so "$BUILD_DIR"/Plugins/UltraNet/*.dylib; do
+                [ -f "$plugin" ] || continue
+                cp "$plugin" "$contents_dir/PlugIns/UltraNet/"
+                chmod 644 "$contents_dir/PlugIns/UltraNet/$(basename "$plugin")"
+            done
+            echo "  Copied UltraNet plug-ins: $(ls "$contents_dir/PlugIns/UltraNet" | tr '\n' ' ')"
+        else
+            echo "Error: $display_name loads UltraNet's plug-ins and $BUILD_DIR/Plugins/UltraNet has none" >&2
+            return 1
+        fi
+    fi
+
     # Bundle Homebrew dylibs into the shared suite Frameworks/
     bundle_dylibs "$contents_dir/MacOS/$exe_name" "$SHARED_FW" "$APP_FW_REF"
+
+    # The UltraNet plug-ins' own dependencies (libcurl, OpenSSL, ...), into
+    # the shared Frameworks/ the same way as the LaTeX module's below.
+    if [ -d "$contents_dir/PlugIns/UltraNet" ]; then
+        local net_plugin
+        for net_plugin in "$contents_dir"/PlugIns/UltraNet/*; do
+            [ -f "$net_plugin" ] && bundle_dylibs "$net_plugin" "$SHARED_FW" "$APP_FW_REF"
+        done
+    fi
 
     # The module's own Homebrew dependencies (cairo, pango, ...) are largely
     # the executable's, but collect and rewrite them from the module as well
@@ -1332,21 +1385,35 @@ finish_suite() {
 # the app never opens them. The archive is named like the SDKs, after the
 # framework version, since the app and the SDK it fetches belong to the same
 # release.
+#
+# --store-app NAME cuts any app of the suite out the same way, into
+# --store-dir, for UltraStore: a store package is one app with what it
+# loads (scripts/package-store-app.sh zips the bundle). Its Resources keep
+# the translations and the emoji fonts besides (STORE_MEDIA), and its
+# plug-ins - UltraNet's under PlugIns/UltraNet/ - come along with their
+# closure.
 STANDALONE_FW_REF="@executable_path/../Frameworks"
 STANDALONE_MEDIA=(fonts icons appicon lib microtex)
+STORE_MEDIA=(fonts icons appicon lib locale emoji microtex)
 STANDALONE_APP=""
+LAST_STANDALONE_APP=""
 
+# build_standalone_app NAME OUT_DIR MEDIA... - NAME.app out of the suite into
+# OUT_DIR, with its own Frameworks/ and the media folders named; the bundle
+# is left in LAST_STANDALONE_APP.
 build_standalone_app() {
-    local exe_name="$1"
+    local exe_name="$1" out_dir="$2"
+    shift 2
+    local keep_media=("$@")
     local src_app="$SUITE_DIR/$exe_name.app"
     if [ ! -d "$src_app" ]; then
         echo "Error: $exe_name.app is not in the suite - was $exe_name built?" >&2
         exit 1
     fi
     echo "── Packaging $exe_name on its own ──"
-    rm -rf "$START_OUTPUT_DIR"
-    mkdir -p "$START_OUTPUT_DIR"
-    local app="$START_OUTPUT_DIR/$exe_name.app"
+    mkdir -p "$out_dir"
+    rm -rf "$out_dir/$exe_name.app"
+    local app="$out_dir/$exe_name.app"
     local contents="$app/Contents"
     local fw="$contents/Frameworks"
     cp -R "$src_app" "$app"
@@ -1359,7 +1426,7 @@ build_standalone_app() {
         [ -e "$entry" ] || continue
         name="$(basename "$entry")"
         keep=false
-        for m in "${STANDALONE_MEDIA[@]}"; do
+        for m in "${keep_media[@]}"; do
             [ "$name" = "$m" ] && keep=true
         done
         $keep || rm -rf "$entry"
@@ -1370,9 +1437,10 @@ build_standalone_app() {
     local queue_file count=0 current dep
     queue_file=$(mktemp)
     echo "$contents/MacOS/$exe_name" > "$queue_file"
-    for current in "$contents/PlugIns"/*.dylib; do
-        [ -f "$current" ] && echo "$current" >> "$queue_file"
-    done
+    # Every plug-in, the ones in PlugIns/UltraNet/ too.
+    while IFS= read -r -d '' current; do
+        case "$(file -b "$current")" in Mach-O*) echo "$current" >> "$queue_file" ;; esac
+    done < <(find "$contents/PlugIns" -type f -print0 2>/dev/null)
     while [ -s "$queue_file" ]; do
         current=$(head -1 "$queue_file")
         sed -i '' '1d' "$queue_file"
@@ -1479,7 +1547,7 @@ build_standalone_app() {
     if $NOTARIZE; then
         notarize_bundle "$app"
     fi
-    STANDALONE_APP="$app"
+    LAST_STANDALONE_APP="$app"
     echo "  Bundle size: $(du -sh "$app" | cut -f1)"
     echo ""
 }
@@ -1708,6 +1776,16 @@ package_if_built "UltraVideo" build_app_bundle \
     "public.app-category.video" \
     "$ULTRAVIDEO_DOC_TYPES"
 
+# Package UltraMail (Apps/UltraMail), with UltraNet's plug-ins in its
+# PlugIns/UltraNet/ (ULTRANET_PLUGIN_APPS) and no LaTeX module.
+package_if_built "UltraMail" build_app_bundle \
+    "UltraMail" \
+    "UltraMail" \
+    "com.cloverleaf.UltraMail" \
+    "media/appicon/UltraMail.png" \
+    "public.app-category.productivity" \
+    ""
+
 # Package UltraCanvasStart, the setup application (Apps/UltraCanvasStart).
 # In the suite like every app, and with --start-app also on its own
 # (build_standalone_app, after finish_suite).
@@ -1751,9 +1829,18 @@ fi
 # own Frameworks/ (verify_suite rejects that). See "Suite layout".
 finish_suite
 
-# UltraCanvasStart on its own is cut out of the finished suite, after it.
+# UltraCanvasStart on its own is cut out of the finished suite, after it,
+# and so is each app for UltraStore (--store-app).
 if $START_APP; then
-    build_standalone_app "UltraCanvasStart"
+    rm -rf "$START_OUTPUT_DIR"
+    build_standalone_app "UltraCanvasStart" "$START_OUTPUT_DIR" "${STANDALONE_MEDIA[@]}"
+    STANDALONE_APP="$LAST_STANDALONE_APP"
+fi
+if [ "${#STORE_APPS[@]}" -gt 0 ]; then
+    rm -rf "$STORE_OUTPUT_DIR"
+    for store_app in "${STORE_APPS[@]}"; do
+        build_standalone_app "$store_app" "$STORE_OUTPUT_DIR" "${STORE_MEDIA[@]}"
+    done
 fi
 
 # ── DMG creation ────────────────────────────────────────────────────────────

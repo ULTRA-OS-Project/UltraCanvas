@@ -17,7 +17,7 @@ The brief's open questions, answered on 2026-10-24:
 
 | Question | Decision |
 |---|---|
-| What is the unit the store installs? | **Layers.** A *runtime* (the general shared libraries every app runs on: libUltraCanvas and what it loads), *libraries* (specialised shared sets some apps need: VideoFX, the PDF plug-in, OCR) and the *app* itself. The installer checks which layers are already there and installs only the missing ones, then the app. Least storage on the server, least transfer to the machine. |
+| What is the unit the store installs? | **Layers.** A *runtime* (the general shared libraries every app runs on: libUltraCanvas and what it loads), *libraries* (specialised shared sets some apps need: VideoFX, the PDF plug-in, OCR) and the *app* itself. The installer checks which layers are already there and installs only the missing ones, then the app, and starts the app with its layers on the library path (*Packaging an application for the store*). Least storage on the server, least transfer to the machine. |
 | Where do packages come from? | **Our own server.** The admin backend keeps the apps and their settings in a database; the packages are zip / 7z files on a server only the store reaches; the catalog is generated from the database and signed. |
 | Where does the code live? | `Apps/UltraStore`, with `ultrastore_core` as a static library in v1. |
 | Signature and hash primitives | Ed25519 added to UltraCrypt 0.2.0 (framework 0.9.272); the store target **requires** libsodium and SQLite and stops the configure without them. |
@@ -852,44 +852,80 @@ review pipeline behind the checks marked *not run*.
 
 ## Packaging an application for the store
 
-A store package is one archive per operating system and processor that the
-store unpacks into `<root>/apps/<id>/<version>/` and starts by its `entry`.
-The store puts nothing on the library path when it starts it - no runtime
-layer of *Decisions*, *What is the unit the store installs?* - so until it
-does, a package carries every library it loads.
-`scripts/package-store-app.sh <App>` makes that archive out of the suite
-package `package-linux.sh` or `package-win.sh` has made: the executable and
-its launcher, the plug-in families it loads (every one but UltraIM, which
-goes with ChatCube alone), the closure of libraries the loader resolves
-inside the suite (with libvips', libheif's and ImageMagick's run-time
-modules where those libraries are in it), the media the framework loads
-(fonts, icons, app icons, `media/lib`, the translations, the emoji fonts)
-and the application's own data folder. It checks the package from inside -
-every library of the executable and the plug-ins resolves within it, and an
-application that answers `--version` runs from it - and ends with the
-`ultrastoreadmin package add` line, the entry spelled out (on Linux the
-admin backend would otherwise suggest `bin/<App>`, the executable without
-the launcher that puts `lib/` on the path) and the newest glibc the files
-ask for as the variant:
+A store package is one archive per operating system and processor. The
+store unpacks an app into `<root>/apps/<id>/<version>/` and a runtime or
+library into `<root>/components/<id>/<version>/`, and starts an app's
+`entry` **on its runtime layer** (`PlanLaunch`, `StoreQuery.h`): the
+components the app was installed with - the exact versions of its release's
+`depends`, and theirs in turn - go first on the library path (a component's
+`lib/` on Linux, its folder on Windows, as the suite package lays them out;
+`LD_LIBRARY_PATH`, `PATH`), and the runtime's folder is named in
+`ULTRACANVAS_RUNTIME_DIR`. The framework looks there for `media/` and for
+UltraNet's plug-ins after the app's own folders (`kRuntimeDirVariable`,
+`UltraCanvasConfig.h`), so an app whose package carries none takes the
+runtime's. That is the *layers* of *Decisions*, *What is the unit the store
+installs?*, at the moment the app starts. On macOS nothing is added: an app
+there is a bundle with its own `Frameworks/`, and `open` passes no
+environment.
+
+`scripts/package-store-app.sh` makes the archives out of the suite package
+`package-linux.sh` or `package-win.sh` made, the way
+`package-ultracanvasstart.sh` cuts UltraCanvasStart out of it, in three
+shapes:
+
+| Shape | What it carries | Release |
+|---|---|---|
+| `<App>` | the app on its own: the executable and its launcher, the plug-in families it loads (every one but UltraIM, which goes with ChatCube alone), the closure of libraries the loader resolves inside the suite with libvips', libheif's and ImageMagick's run-time modules, the media the framework loads (fonts, icons, app icons, `media/lib`, the translations, the emoji fonts), the app's own data folder | no `depends`; runs in every store |
+| `--runtime` | `org.ultraos.runtime` at the framework's version: the core library and its closure, the plug-in families every app may load with theirs, the run-time modules, the media - at the top of the archive (`lib/`, `bin/Plugins/`, `share/media/` on Linux; the DLLs, `Plugins/`, `Resources/media` on Windows), as the component's folder | a component of kind `runtime` |
+| `<App> --on-runtime` | the app without what that runtime carries: the executable, its launcher, the libraries and plug-in families the runtime does not have, the app's own data | `--depends org.ultraos.runtime@<framework version>`; needs a store that starts an app on its runtime layer |
+
+An app on the runtime is a few megabytes where the app on its own is a
+hundred, and every app built on one framework version shares one runtime.
+A store from before the runtime layer starts the entry with nothing added,
+and an app on the runtime does not find `libUltraCanvas`: the self-contained
+shape stays the one to publish until the stores in use start apps on their
+runtime.
+
+Each run checks the package from inside - every library of the executable
+and the plug-ins resolves within it (and the runtime, for `--on-runtime`),
+and an app that answers `--version` runs from it (on the staged runtime,
+with the environment the store would give it) - and ends with the
+`ultrastoreadmin` lines: the release (with its `depends`) and the package,
+with the entry and the glibc variant (the newest the files ask for) or the
+macOS minimum. The admin backend's own suggestion takes the launcher too
+(`SuggestEntry`: on Linux `<dir>/<name>` when `<dir>/bin/<name>` is in the
+archive, before `bin/<name>`, the executable that alone does not find
+`lib/`).
 
 ```
 ./package-linux.sh
-scripts/package-store-app.sh UltraMail
+scripts/package-store-app.sh --runtime          # once per framework version
+scripts/package-store-app.sh UltraMail --on-runtime
+# dist-store/org.ultraos.runtime-<fw>-linux-x86_64.tar.xz and
 # dist-store/org.ultraos.ultramail-<version>-linux-x86_64.tar.xz, then:
-ultrastoreadmin release add org.ultraos.ultramail <version>
+ultrastoreadmin release add org.ultraos.runtime <fw>
+ultrastoreadmin package add org.ultraos.runtime <fw> dist-store/org.ultraos.runtime-<fw>-linux-x86_64.tar.xz \
+    --os linux --arch x86_64 --variant glibc-<x.y>
+ultrastoreadmin release add org.ultraos.ultramail <version> --depends org.ultraos.runtime@<fw>
 ultrastoreadmin package add org.ultraos.ultramail <version> dist-store/org.ultraos.ultramail-<version>-linux-x86_64.tar.xz \
     --os linux --arch x86_64 --entry UltraMail/UltraMail --variant glibc-<x.y>
+ultrastoreadmin market submit org.ultraos.runtime
 ultrastoreadmin market submit org.ultraos.ultramail
 ```
 
-The version is line 1 of the application's changelog and the id
-`org.ultraos.<app in lower case>`; `--version`, `--id`, `--plugins` and
-`--media` say otherwise. CI's Linux and Windows builds make UltraMail's
-package this way on every run and upload it (`UltraMail-store-<os>-<arch>`).
-macOS is not done yet: the suite there shares one `Frameworks/` between
-its applications, and one on its own needs the rewrite `package-macos.sh
---start-app` makes for UltraCanvasStart - and the macOS suite does not
-build UltraMail at all.
+On macOS, `./package-macos.sh --store-app UltraMail` cuts the bundle out of
+the signed suite with a `Contents/Frameworks/` of its own (the rewrite
+`--start-app` makes for UltraCanvasStart), into `dist-store-macos/`, and
+`scripts/package-store-app.sh UltraMail` zips it, checks its signature and
+prints its `--min-os`. UltraMail is in the macOS suite since 2026-11-18, with
+UltraNet's plug-ins in its `Contents/PlugIns/UltraNet/`.
+
+The version is line 1 of the application's changelog (the framework's for
+the runtime) and the id `org.ultraos.<app in lower case>`; `--version`,
+`--id`, `--plugins` and `--media` say otherwise. CI makes UltraMail's
+package on every Linux, Windows and macOS build and uploads it
+(`UltraMail-store-<os>-<arch>`), and on Linux and Windows the runtime and
+UltraMail on it (`UltraCanvas-runtime-store-<os>-<arch>`).
 
 ## Milestones
 
@@ -939,4 +975,6 @@ build UltraMail at all.
    `scripts/package-store-app.sh` (*Packaging an application for the
    store*). Next for that: the handover of the public catalog - the
    operator's key announced by a last catalog signed with `publish.pub`,
-   which the admin backend cannot do yet - and the macOS package.
+   which the admin backend cannot do yet. The store starts an app on its
+   runtime layer after 0.1.21 (*Packaging an application for the store*),
+   so an app's package can leave the runtime out.

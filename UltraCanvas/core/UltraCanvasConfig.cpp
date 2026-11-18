@@ -1,7 +1,8 @@
 // core/UltraCanvasConfig.cpp
 // Utils
+// Version: 1.2.0 - GetResourcesDir: the runtime's resources (ULTRACANVAS_RUNTIME_DIR) after the application's own
 // Version: 1.1.0
-// Last Modified: 2026-10-01
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasConfig.h"
@@ -46,8 +47,16 @@ namespace UltraCanvas {
         // started straight from the build tree finds its resources on every
         // desktop platform; then the portable Linux package and the legacy
         // AppImage layout, which use the same share/ offsets.
+        //
+        // Last, the runtime the application runs on (ULTRACANVAS_RUNTIME_DIR,
+        // kRuntimeDirVariable): UltraStore installs an application beside the
+        // runtime component it was built against and names that folder when it
+        // starts it, so an application whose package carries no media/ of its
+        // own takes the runtime's - laid out like the suite package, share/ on
+        // Linux, Resources/ on Windows. The application's own folders come
+        // first, so a package that carries its media keeps using it.
         const std::string exeDir = GetExecutableDir();
-        const std::vector<std::string> candidates = {
+        std::vector<std::string> candidates = {
 #if defined(_WIN32) || defined(_WIN64)
             exeDir + "/Resources/",                   // the Windows package: exe/Resources/
 #elif defined(__APPLE__)
@@ -57,6 +66,12 @@ namespace UltraCanvas {
             exeDir + "/../share/",                    // real exe in bin/
             exeDir + "/../share/" + subpath + "/",    // legacy AppImage layout
         };
+        if (const std::string runtime = GetEnvUtf8(kRuntimeDirVariable); !runtime.empty()) {
+#if defined(_WIN32) || defined(_WIN64)
+            candidates.push_back(runtime + "/Resources/");
+#endif
+            candidates.push_back(runtime + "/share/");
+        }
         resourcesDir = candidates[0]; // fallback if none exist
         for (const std::string& candidate : candidates) {
             std::error_code ec;

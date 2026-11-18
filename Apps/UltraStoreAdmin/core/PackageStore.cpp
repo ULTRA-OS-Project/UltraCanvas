@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/PackageStore.cpp
+// Version: 0.3.1 - SuggestEntry takes the launcher beside bin/ on Linux
 // Version: 0.3.0 - ImportMediaVariants
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -18,6 +19,7 @@
 #include <cctype>
 #include <filesystem>
 #include <functional>
+#include <set>
 #include <system_error>
 
 namespace fs = std::filesystem;
@@ -264,6 +266,17 @@ std::string SuggestEntry(const std::vector<std::string>& entries, UltraStore::OS
         return {};
     }
     if (std::string s = first([](const std::string& e) { return EndsWith(Lower(e), ".appimage"); }); !s.empty()) return s;
+    // A launcher beside bin/: <dir>/<name> with <dir>/bin/<name> in the same
+    // archive is the script the suite packages and package-store-app.sh
+    // write, which puts <dir>/lib/ on the library path and starts the
+    // executable; started directly, the executable does not find lib/.
+    const std::set<std::string> files(sorted.begin(), sorted.end());
+    if (std::string s = first([&](const std::string& e) {
+            const size_t slash = e.rfind('/');
+            const std::string dir = slash == std::string::npos ? std::string() : e.substr(0, slash + 1);
+            const std::string name = e.substr(dir.size());
+            return name.find('.') == std::string::npos && files.count(dir + "bin/" + name) != 0;
+        }); !s.empty()) return s;
     if (std::string s = first([](const std::string& e) {
             const std::string name = BaseName(e);
             return e.find("bin/") != std::string::npos && name.find('.') == std::string::npos;

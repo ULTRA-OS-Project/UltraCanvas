@@ -1,4 +1,5 @@
 // Apps/UltraStore/core/StoreQuery.cpp
+// Version: 0.4.0 - PlanLaunch: the runtime layer on the library path
 // Version: 0.3.0 - categories from the fixed list, named in the person's language
 // Version: 0.2.1 - the code, price and size texts through Tr
 // Version: 0.2.0 - codes
@@ -6,6 +7,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StoreQuery.h"
 
+#include "UltraCanvasConfig.h"     // kRuntimeDirVariable
 #include "UltraCanvasPathUtf8.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -271,6 +273,59 @@ std::string FormatBytes(uint64_t bytes) {
 std::string LaunchPath(const InstalledRecord& record) {
     if (record.entry.empty() || record.folder.empty()) return {};
     return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(record.folder) / UltraCanvas::PathFromUtf8(record.entry));
+}
+
+std::string LibraryPathVariable(OS os) {
+    switch (os) {
+        case OS::Windows: return "PATH";
+        case OS::MacOS:   return "DYLD_LIBRARY_PATH";
+        default:          return "LD_LIBRARY_PATH";
+    }
+}
+
+LaunchPlan PlanLaunch(const InstalledRecord& app, const std::vector<InstalledRecord>& installed, OS os,
+                      const std::string& currentLibraryPath) {
+    LaunchPlan plan;
+    const std::string path = LaunchPath(app);
+    if (path.empty()) return plan;
+    plan.workingDirectory = app.folder;
+    const bool bundle = path.size() >= 4 && path.compare(path.size() - 4, 4, ".app") == 0;
+    if (os == OS::MacOS && bundle) plan.argv = {"open", path};
+    else plan.argv = {path};
+    if (os == OS::MacOS) return plan;
+
+    // The layer, breadth first from the app's own depends: each exact
+    // version once, a component before the ones it needs in turn.
+    std::vector<const InstalledRecord*> layers;
+    std::set<std::string> seen;
+    std::vector<Dependency> queue = app.depends;
+    for (size_t next = 0; next < queue.size(); ++next) {
+        const Dependency dep = queue[next];
+        if (!seen.insert(dep.id + "@" + dep.version).second) continue;
+        const auto it = std::find_if(installed.begin(), installed.end(), [&](const InstalledRecord& r) {
+            return r.kind != ComponentKind::App && r.id == dep.id && r.version == dep.version;
+        });
+        if (it == installed.end()) continue;
+        layers.push_back(&*it);
+        queue.insert(queue.end(), it->depends.begin(), it->depends.end());
+    }
+    if (layers.empty()) return plan;
+
+    const char separator = os == OS::Windows ? ';' : ':';
+    std::string value;
+    for (const InstalledRecord* layer : layers) {
+        if (!value.empty()) value += separator;
+        value += os == OS::Windows ? layer->folder
+                                   : UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(layer->folder) / "lib");
+    }
+    if (!currentLibraryPath.empty()) value += separator + currentLibraryPath;
+    plan.environment.emplace_back(LibraryPathVariable(os), value);
+    for (const InstalledRecord* layer : layers) {
+        if (layer->kind != ComponentKind::Runtime) continue;
+        plan.environment.emplace_back(UltraCanvas::kRuntimeDirVariable, layer->folder);
+        break;
+    }
+    return plan;
 }
 
 std::string LanguageFromLocale(const std::string& locale, const std::string& fallback) {
