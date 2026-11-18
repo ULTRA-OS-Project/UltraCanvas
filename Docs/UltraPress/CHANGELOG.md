@@ -1,3 +1,12 @@
+#### 2026-11-18 *0.8.7*
+- **The program is called `UltraPress`, as the app is.** The binary was
+  `ultrapress`; it is now `UltraPress` (`UltraPress.exe` and its console
+  companion `UltraPress.com` on Windows, `UltraPress.app` on macOS). The
+  commands are the same - `UltraPress new`, `UltraPress publish` and the
+  rest. On Linux the name is case-sensitive: a script that ran `ultrapress`
+  runs `UltraPress` now. The folders a site keeps (`.ultrapress/`) are
+  unchanged.
+
 #### 2026-11-17 *0.8.6*
 - **Documentation, the way Docusaurus publishes it.**
   - **A site's `docs/` folder.** Its Markdown is published at `/docs/` in
