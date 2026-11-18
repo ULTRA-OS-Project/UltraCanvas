@@ -1,5 +1,9 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.10.0 - a password-protected document or deck (.docx, .odt, .pptx, .odp) asks for its
+//                  password - the framework's prompt, asked again after a wrong one - and opens;
+//                  saved again as .docx it keeps the password, and an .odt with one is not saved
+//                  unprotected
 // Version: 2.9.1 - a password-protected .odt says so instead of opening as a hex dump
 // Version: 2.9.0 - a PowerPoint deck (.pptx and kin) or an OpenDocument presentation (.odp,
 //                  .otp, .fodp) opens as the outline of its slides, as the Open dialog's
@@ -87,6 +91,9 @@
 #endif
 
 namespace UltraCanvas {
+    // How long after a protected file is asked for the native password
+    // prompt comes up: long enough for the window to be on screen first.
+    constexpr unsigned int kPasswordPromptDelayMs = 300;
     std::string UltraCanvasTextEditor::version = ULTRATEXTER_VERSION;
     
 namespace {
@@ -1843,7 +1850,7 @@ namespace {
         return docIndex;
     }
 
-    int UltraCanvasTextEditor::OpenDocumentFromPath(const std::string& filePath) {
+    int UltraCanvasTextEditor::OpenDocumentFromPath(const std::string& filePath, const std::string& password) {
         // Already open: switch to that tab instead of opening a second one.
         const int openIndex = FindDocumentIndexByPath(filePath);
         if (openIndex >= 0) {
@@ -1851,8 +1858,44 @@ namespace {
             return openIndex;
         }
 
-        // Create new document
         std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
+        std::string ext = PathToUtf8(p.extension());
+        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        const bool wordOrDeck = ext == "odt" || ext == "docx" || ext == "doc" || IsPptxExtension(ext) ||
+                                IsOdpExtension(ext);
+
+        // A password-protected document or deck (a .docx or .pptx saved with
+        // a password, an .odt or .odp LibreOffice saved with one) asks for it
+        // first - the framework's prompt, which checks it and asks again
+        // after a wrong one - and its tab opens once it is given.
+        if (wordOrDeck && password.empty()) {
+            std::string unused;
+            if (CheckOfficePassword(filePath, std::string(), unused) == OfficeDecryptStatus::PasswordRequired) {
+                // Asked from the event loop a moment later, not here: a file
+                // named on the command line or restored from the last
+                // session is opened before the window is on screen, and the
+                // native prompt blocks the loop - asked at once, it stood in
+                // front of an empty screen until it was answered.
+                std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+                auto ask = [this, self, filePath]() {
+                    if (self.expired()) return;
+                    UltraCanvasFileLoader::RequestDocumentPassword(filePath, this,
+                        [this, self, filePath](bool proceed, const std::string& typed) {
+                            if (self.expired() || !proceed || typed.empty()) return;
+                            OpenDocumentFromPath(filePath, typed);
+                        });
+                };
+                if (auto* app = UltraCanvasApplication::GetInstance()) {
+                    app->StartTimer(kPasswordPromptDelayMs, false, [ask](TimerId) { ask(); });
+                } else {
+                    ask();
+                }
+                return -1;
+            }
+        }
+
+        // Create new document
         int docIndex = CreateNewDocument(PathToUtf8(p.filename()));
 
         // PDFs take a separate codepath: the tab's textArea is swapped out
@@ -1860,15 +1903,11 @@ namespace {
         // open in the rich document editor, and so does a presentation
         // (.pptx and kin, .odp / .otp / .fodp) as the outline of its slides.
         // Detect by extension (case-insensitive).
-        std::string ext = PathToUtf8(p.extension());
-        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
-        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
         bool ok;
         if (ext == "pdf") {
             ok = LoadPDFIntoDocument(docIndex, filePath);
-        } else if (ext == "odt" || ext == "docx" || ext == "doc" || IsPptxExtension(ext) ||
-                   IsOdpExtension(ext)) {
-            ok = LoadWordIntoDocument(docIndex, filePath);
+        } else if (wordOrDeck) {
+            ok = LoadWordIntoDocument(docIndex, filePath, password);
         } else {
             ok = LoadFileIntoDocument(docIndex, filePath);
         }
@@ -2468,7 +2507,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
-    bool UltraCanvasTextEditor::LoadWordIntoDocument(int docIndex, const std::string& filePath) {
+    bool UltraCanvasTextEditor::LoadWordIntoDocument(int docIndex, const std::string& filePath,
+                                                     const std::string& password) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
             return false;
         }
@@ -2485,7 +2525,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             std::string loadError = "not a word-processing document";
             std::shared_ptr<UCRichDocument> document;
             if (presentation || DetectWordDocumentFormat(filePath) != WordDocumentFormat::Unknown)
-                document = UltraCanvasFileLoader::LoadTextDocument(filePath, loadError);
+                document = UltraCanvasFileLoader::LoadTextDocument(filePath, loadError, password);
             if (!document) {
                 // A deck that cannot be read - protected or damaged - says
                 // why: its bytes would tell nobody anything. So does a .doc,
@@ -2528,6 +2568,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->originalRawBytes.clear();
             doc->isWordDocument = true;
             doc->kind = DocumentKind::RichDocument;
+            // Kept to save it protected again (as .docx); never written out.
+            doc->password = password.empty()
+                ? nullptr
+                : std::make_shared<UltraCryptSecureBuffer>(password.data(), password.size());
             // Whatever currently fills the editor slot leaves it: the text area
             // on first load, an earlier rich editor when the tab is reloaded.
             std::shared_ptr<UltraCanvasUIElement> previousContent = doc->richEdit
@@ -2720,12 +2764,29 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         if (targetExtension == "odt" || targetExtension == "docx") {
+            // A document opened with a password stays protected: a .docx is
+            // saved with it. An .odt cannot carry one here, so it is not
+            // saved - unprotected - under the protected file's name or any
+            // other; .docx keeps the password.
+            std::string password;
+            if (doc->password) password.assign(reinterpret_cast<const char*>(doc->password->Data()),
+                                               doc->password->GetSize());
+            if (!password.empty() && targetExtension == "odt") {
+                const std::string reason =
+                    Tr("This document was opened with a password. Texter cannot save an OpenDocument file "
+                       "with a password; save it as .docx to keep it protected.");
+                UltraCanvasDialogManager::ShowError(reason, Tr("Save Failed"), nullptr, this);
+                lastSaveError = reason;
+                return false;
+            }
             if (document->metadata.title.empty()) {
                 document->metadata.title =
                     PathToUtf8(PathFromUtf8(filePath).stem());
             }
             std::string saveError;
-            if (!UltraCanvasFileLoader::SaveTextDocument(*document, filePath, saveError)) {
+            const bool saved = UltraCanvasFileLoader::SaveTextDocument(*document, filePath, saveError, password);
+            UltraCrypt_SecureZero(password.data(), password.size());
+            if (!saved) {
                 debugOutput << "Failed to save document: " << saveError << std::endl;
                 lastSaveError = saveError;
                 UltraCanvasDialogManager::ShowError(saveError, Tr("Save Failed"),

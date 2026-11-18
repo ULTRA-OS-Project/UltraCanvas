@@ -1,6 +1,7 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.28.1 - the Unlock dialog shows the Unlock button's lock, centred above the password field
 // Version: 1.28.0 - a presentation (.pptx and kin, .odp / .otp / .fodp) opens in the text view as
 //                  the outline of its slides, rendered as Markdown, as a LaTeX file does
 // Version: 1.27.1 - an empty video is left to the player, which refuses it now
@@ -4125,8 +4126,12 @@ void UltraCanvasMediaViewer::AskForPassword(const std::string& note) {
                                "Password for " + BaseName(path) + ":";
     std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
     askingForPassword = true;
-    UltraCanvasDialogManager::ShowInputDialog(prompt, "Unlock " + BaseName(path), std::string(),
-        InputType::Password,
+    InputDialogConfig unlock;
+    unlock.title = "Unlock " + BaseName(path);
+    unlock.inputLabel = prompt;
+    unlock.inputType = InputType::Password;
+    unlock.iconAboveInput = ViewerIconPath("unlock.svg");   // the Unlock button's lock, centred above the field
+    UltraCanvasDialogManager::ShowInputDialog(unlock,
         [this, self, path](DialogResult r, const std::string& password) {
             if (self.expired()) return;
             askingForPassword = false;

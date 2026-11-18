@@ -39,6 +39,11 @@ This app versions itself: [`Docs/Texter/CHANGELOG.md`](../../Docs/Texter/CHANGEL
   slide's number and title, its bullets, tables, pictures' descriptions and
   speaker notes. It can be saved as `.odt`, `.docx`, Markdown or text; saving
   it back as a deck is refused, so the deck is never overwritten.
+- **Password-protected documents.** A `.docx`, `.odt`, `.pptx` or `.odp`
+  saved with a password (Word, PowerPoint, LibreOffice - its ODF 1.4
+  encryption too) asks for the password and opens; a wrong one is asked
+  again. Saved again as `.docx` it keeps the password; an `.odt` opened with
+  one is not saved without it (save as `.docx` to keep it protected).
 - **Find and replace.** *Find…*, *Replace…*, a search-as-you-type bar and
   *Go to Line…*, in text and word-processing tabs alike.
 - **Spell checking** (*Edit → Spelling*). The status bar shows the

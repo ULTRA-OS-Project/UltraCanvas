@@ -1,6 +1,8 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.11.0 - an input dialog's iconAboveInput: a picture centred above its field, in the
+//                  message colour (the Unlock dialog's lock)
 // Version: 3.10.0 - a SetStyle that changes only the type sizes keeps the dialog following the theme
 //                  (the Filer's and the Save settings' dialogs stopped following when they set
 //                  their fonts), and a theme change keeps the sizes set: the message and details
@@ -1231,11 +1233,33 @@ namespace UltraCanvas {
             OnInputChanged(newText);
         };
 
+        // A picture centred above the field and its caption - the lock of an
+        // Unlock dialog - in the message's colour, so it follows the theme.
+        if (!inputConfig.iconAboveInput.empty()) {
+            const float side = std::max(8.0f, inputConfig.iconAboveInputSize);
+            inputIcon = std::make_shared<UltraCanvasImageElement>("InputIcon", 0, 0, side, side);
+            if (inputIcon->LoadFromFile(inputConfig.iconAboveInput)) {
+                inputIcon->size.width = CSSLayout::Dimension::Px(side);
+                inputIcon->size.height = CSSLayout::Dimension::Px(side);
+                inputIcon->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Center);
+                inputIcon->SetFitMode(ImageFitMode::Contain);
+                inputIcon->SetMaskColor(style.messageTextColor);
+            } else {
+                inputIcon.reset();   // a missing picture leaves no empty gap
+            }
+        }
+
         // Add to content via layout
+        if (inputIcon) AddDialogElement(inputIcon);
         if (inputLabel) AddDialogElement(inputLabel);
         AddDialogElement(textInput);
 
         ValidateInput();
+    }
+
+    void UltraCanvasInputDialog::ApplyTheme(const UltraCanvasTheme& theme) {
+        UltraCanvasModalDialog::ApplyTheme(theme);
+        if (inputIcon) inputIcon->SetMaskColor(style.messageTextColor);
     }
 
     void UltraCanvasInputDialog::FocusInitialElement() {
@@ -3124,6 +3148,24 @@ namespace UltraCanvas {
             if (onResult) {
                 onResult(result, dialog->GetInputValue());
             }
+        }, parent);
+    }
+
+    void UltraCanvasDialogManager::ShowInputDialog(const InputDialogConfig& config,
+                                                   std::function<void(DialogResult, const std::string&)> onResult,
+                                                   UltraCanvasWindowBase* parent) {
+        if (!enabled) {
+            if (onResult) onResult(DialogResult::Cancel, "");
+            return;
+        }
+        if (useNativeDialogs) {
+            ShowInputDialog(config.inputLabel, config.title, config.defaultValue, config.inputType,
+                            std::move(onResult), parent);
+            return;
+        }
+        auto dialog = CreateInputDialog(config);
+        ShowDialog(dialog, [onResult, dialog](DialogResult result) {
+            if (onResult) onResult(result, dialog->GetInputValue());
         }, parent);
     }
 

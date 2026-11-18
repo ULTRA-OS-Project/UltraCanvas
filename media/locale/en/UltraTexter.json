@@ -244,6 +244,7 @@
   "The {0} dictionary could not be loaded.\n\nSpell checking has no dictionary loaded.": "The {0} dictionary could not be loaded.\n\nSpell checking has no dictionary loaded.",
   "The {0} dictionary could not be loaded.\n\nSpell checking is still using {1}.": "The {0} dictionary could not be loaded.\n\nSpell checking is still using {1}.",
   "This build of UltraTexter has no UltraAI module to translate with.": "This build of UltraTexter has no UltraAI module to translate with.",
+  "This document was opened with a password. Texter cannot save an OpenDocument file with a password; save it as .docx to keep it protected.": "This document was opened with a password. Texter cannot save an OpenDocument file with a password; save it as .docx to keep it protected.",
   "Three Columns": "Three Columns",
   "Toggle Theme": "Toggle Theme",
   "Track Changes": "Track Changes",

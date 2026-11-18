@@ -6045,6 +6045,8 @@ if(TARGET UltraCanvas)
     target_include_directories(InputDialogPromptTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(InputDialogPromptTest PRIVATE cxx_std_20)
     target_link_libraries(InputDialogPromptTest PRIVATE UltraCanvas)
+    target_compile_definitions(InputDialogPromptTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
     set_target_properties(InputDialogPromptTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )

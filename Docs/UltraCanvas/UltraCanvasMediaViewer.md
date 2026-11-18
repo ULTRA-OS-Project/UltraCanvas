@@ -413,7 +413,8 @@ document is private), or a note saying the PDF or the deck is
 password-protected, both in the dark note view. An **Unlock** button comes up in the info bar (so a host
 that hides the top bars, such as UltraFiler's preview pane, still offers it)
 and as an icon in the toolbar; **Enter** does the same. Unlock
-asks for the password over the viewer's window - again, saying so, when it
+asks for the password over the viewer's window - its dialog shows the
+button's lock centred above the password field - - again, saying so, when it
 is not right - and then shows the file whole: the image at full size with
 its layers composited, the PDF in its view with every page, the deck as the
 outline of its slides.

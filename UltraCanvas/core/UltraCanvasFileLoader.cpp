@@ -1,6 +1,7 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.12.1 - RequestDocumentPassword's prompt shows a lock centred above the field
 // Version: 1.12.0 - LoadTextDocument / OpenTextDocument read an OpenDocument presentation
 //                  (.odp, .otp, .fodp) as an outline, like a .pptx
 // Version: 1.11.0 - ConvertVideoFile, CanConvertVideoTo, GetVideoSaveExtensions, AddVideoSaveTypes
@@ -26,6 +27,7 @@
 #include "UltraCanvasAudio.h"
 #include "UltraCanvasMediaCodecRegistry.h"   // SaveAudio's encoders, ConvertVideoFile's converters
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasConfig.h"   // GetResourcesDir: the prompt's lock icon
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasOfficeEncryption.h"   // RequestDocumentPassword
 #include "UltraCanvasPresentationPptx.h"    // .pptx, read as an outline
@@ -1001,7 +1003,13 @@ namespace UltraCanvas {
             const std::string name = PathToUtf8(PathFromUtf8(filePath).filename());
             const std::string prompt = (notice.empty() ? std::string() : notice + ".\n") +
                                        "\"" + name + "\" is password-protected. Password:";
-            UltraCanvasDialogManager::ShowInputDialog(prompt, "Password", "", InputType::Password,
+            InputDialogConfig ask;
+            ask.title = "Password";
+            ask.inputLabel = prompt;
+            ask.inputType = InputType::Password;
+            // The lock UltraViewer's Unlock shows, centred above the field.
+            ask.iconAboveInput = NormalizePath(GetResourcesDir() + "media/icons/unlock.svg");
+            UltraCanvasDialogManager::ShowInputDialog(ask,
                 [filePath, parent, onResult](DialogResult result, const std::string& password) {
                     if (result != DialogResult::OK) {
                         onResult(false, "");
