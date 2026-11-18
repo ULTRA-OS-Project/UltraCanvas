@@ -80,7 +80,7 @@ hand-rolled one, reached around the rules, or stalled at design stage:
 | Consumer | Requires | State today |
 |---|---|---|
 | **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Fully specified; **none of the primitives exist**, so the format cannot be implemented as written |
-| **UltraCanvasDocument** (UCD v1 encryption) | AEAD + password KDF | **Fixed** — now uses UltraCrypt through `UCDCryptoEnvelope`; see §1.1 for what it was |
+| **UltraCanvasDocument** (UCD v1 encryption) | AEAD + password KDF | **Resolved** — the cryptography is `UCDCryptoEnvelope`, on UltraCrypt; the v1 document code itself has since been removed. See §1.1 for what it was |
 | **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. `Apps/AnchorPoint/net/Sha256.h` has been deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
 | **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Design doc only |
 | **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
@@ -91,7 +91,8 @@ Six consumers, one missing service. That is the case for building it once.
 ### 1.1 What the absence already produced
 
 `UltraCanvas/Plugins/Documents/UltraCanvasDocument.cpp` is the cautionary
-example. Its `EncryptData` / `DecryptData` are guarded by
+example. (The file was removed on 2026-11-18 - see the end of this section;
+what follows describes it as it was.) Its `EncryptData` / `DecryptData` are guarded by
 `#ifdef ULTRACANVAS_USE_OPENSSL`, **a macro no build file anywhere defines**.
 The branch that actually compiles is:
 
@@ -119,19 +120,23 @@ Plausible, well-intentioned security code that silently does nothing.
 `UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, which depends only
 on UltraCrypt and is therefore compiled and unit-tested on its own
 (`Tests/UCDCryptoEnvelopeTests.cpp`) rather than reviewed by eye.
-`UltraCanvasDocument::EncryptData` / `DecryptData` are now thin adapters over
-it, `SetPassword` / `VerifyPassword` use Argon2id with a constant-time
+`UltraCanvasDocument::EncryptData` / `DecryptData` became thin adapters over
+it, `SetPassword` / `VerifyPassword` used Argon2id with a constant-time
 comparison instead of a bare SHA-256 with a `std::hash` fallback, and
-`GeneratePasswordHash` / `GenerateSalt` are gone. Every regression test in that
+`GeneratePasswordHash` / `GenerateSalt` went. Every regression test in that
 suite fails against the old implementation.
 
 Two caveats stated plainly:
 
-1. `UltraCanvasDocument.cpp` **still does not compile**, for reasons unrelated
-   to cryptography — it references undeclared types (`UCComponentData`,
-   `UltraCanvasWindow`) and defines `GetCurrentDateTime` twice. It therefore
-   remains out of the build, and the crypto changes inside it are verified by
-   inspection, while the logic they delegate to is verified by tests.
+1. `UltraCanvasDocument.{h,cpp}` **never compiled**, for reasons unrelated
+   to cryptography — it referenced undeclared types (`UCComponentData` before
+   its definition, an `UltraCanvasWindow` the framework does not have),
+   defined `GetCurrentDateTime` twice and included a JSON library the build
+   does not carry: 11 errors in the header and 88 in the source when it was
+   last tried. It was never in the build, so the crypto changes inside it
+   were verified by inspection alone, and the pair was **removed on
+   2026-11-18**. What remains is what was verified by tests: the envelope,
+   which UltraAuthenticator's account export uses as well.
 2. Because the old code never produced ciphertext, **no readable encrypted
    `.ucd` file can exist**, so the new envelope carries no backward-compatibility
    burden and none is implemented.
@@ -1363,6 +1368,7 @@ storage layer and the UCD v2 format.
 - ~~`UltraCanvasDocument`'s dormant encryption~~ — **leave it.** The file is
   out of the build and likely to be deleted; its encryption path was already
   superseded by `UCDCryptoEnvelope` (§1.1). Nothing further is to be done to it.
+  *(Deleted on 2026-11-18.)*
 - ~~Naming convention~~ — **keep the `UltraCrypt_` prefix** and the global
   namespace, matching UltraNet and UltraDatabase. The framework accepts having
   both patterns.

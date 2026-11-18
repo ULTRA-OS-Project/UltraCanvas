@@ -256,7 +256,9 @@ block/run model —
   sub/superscript, code, font family/size, foreground/background color,
   hyperlink target}.
 - Document-level: metadata (title/author/dates), embedded media store
-  (reuse the `UCMediaResource` shape from `UltraCanvasDocument.h`),
+  (the shape the v1 document code's `UCMediaResource` had, before that code
+  was removed: a resource id, its kind - image, audio, video - and MIME
+  type, a file name, and either the bytes or the path of a file outside),
   named styles table (so DOCX/ODT style inheritance can be resolved once at
   load and flattened into runs).
 

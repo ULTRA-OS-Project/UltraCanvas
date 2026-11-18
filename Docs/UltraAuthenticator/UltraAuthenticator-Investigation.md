@@ -203,7 +203,7 @@ wrapped-engines rule, or stalled at design stage.
 | Consumer | Needs | Current state |
 |---|---|---|
 | **UCD file format v2** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`) | XChaCha20-Poly1305, Argon2id, HKDF, SHA-256 (cipher and KDF fixed to one each by the 2026-08-10 ruling) | **Specified in detail; none of the primitives exist.** §4.3 defines the per-section compress→encrypt pipeline, §4.4 the SuperVault remote-authorization record. The format cannot be implemented as written. |
-| **UltraCanvasDocument** (v1 doc encryption) | AES-256, PBKDF2, password hashing | Implemented by `#include <openssl/aes.h>` **directly inside a plugin** — a house-rule violation — and the implementation is broken (see below) |
+| **UltraCanvasDocument** (v1 doc encryption) | AES-256, PBKDF2, password hashing | Was implemented by `#include <openssl/aes.h>` **directly inside a plugin** — a house-rule violation — and broken (see below). Since rewritten on UltraCrypt as `UCDCryptoEnvelope`; the file itself, which never compiled, is removed |
 | **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. The hand-rolled `Apps/AnchorPoint/net/Sha256.h` is deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
 | **UltraVault** | KDF + AEAD for its file-backed fallback backend, per-platform keyring glue | Was design doc only; v0.1 has since shipped with Memory and File backends built on UltraCrypt. Native keyring backends still planned |
 | **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
@@ -222,6 +222,10 @@ decision, not a free one; the options and a recommendation are in
 [UltraCrypt](../Modules/UltraCrypt/README.md) §3.
 
 #### Cautionary tale: what the missing API already produced
+
+*(Since then: the encryption was rewritten on UltraCrypt as
+`UCDCryptoEnvelope`, and the file described here, which never compiled, was
+removed on 2026-11-18. The account below is of the file as it was found.)*
 
 `UltraCanvas/Plugins/Documents/UltraCanvasDocument.cpp` is the clearest
 argument for a shared API. It implements document password protection like
