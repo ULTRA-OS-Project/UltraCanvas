@@ -256,8 +256,16 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildMagnifierPa
     sizeRow->size.height = CSSLayout::Dimension::Px(32);
     sizeRow->SetMargin(10, 0, 0, 0);
     auto sizeLabel = MakeLabel(id + "-size-label", Tr("Window size:"));
-    sizeLabel->size.width  = CSSLayout::Dimension::Px(110);
+    // 110 at least, wider for a longer caption in another language; the
+    // slider gives way to it
+    sizeLabel->size.width  = CSSLayout::Dimension::Auto();
     sizeLabel->size.height = CSSLayout::Dimension::Px(20);
+    {
+        CSSLayout::BoxConstraints limits = sizeLabel->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(110.0f);
+        sizeLabel->boxConstraints = limits;
+    }
+    sizeLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     sizeRow->AddChild(sizeLabel);
     sizeSlider = CreateSlider(id + "-size", 0, 0, 200, 24);
     sizeSlider->SetRange(static_cast<float>(UltraPaintSettings::kMinMagnifierSize),
@@ -266,7 +274,7 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildMagnifierPa
     sizeSlider->SetValue(static_cast<float>(settings ? settings->magnifierSize : UltraPaintSettings::kDefaultMagnifierSize));
     sizeSlider->size.width  = CSSLayout::Dimension::Px(200);
     sizeSlider->size.height = CSSLayout::Dimension::Px(24);
-    sizeSlider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    sizeSlider->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
     // Reported while the handle is dragged and when it is let go, so the
     // glass follows the slider instead of jumping at the end.
     auto sizeChanged = [this](float v) {

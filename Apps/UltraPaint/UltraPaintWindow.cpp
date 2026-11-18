@@ -894,6 +894,13 @@ void UltraPaintWindow::BuildRightPanel() {
     opRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     auto opLabel = CreateLabel("up-l-oplabel", 0, 0, 52, kRowH, Tr("Opacity"));
     opLabel->SetFontSize(11);
+    // At least the English width, wider for a longer word ("Deckkraft")
+    opLabel->size.width = CSSLayout::Dimension::Auto();
+    {
+        CSSLayout::BoxConstraints limits = opLabel->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(52.0f);
+        opLabel->boxConstraints = limits;
+    }
     opLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     opRow->AddChild(opLabel);
     layerOpacity = CreateHorizontalSlider("up-l-opacity", 0, 0, 100, kRowH, 0, 100);
@@ -940,6 +947,14 @@ void UltraPaintWindow::BuildStatusBar() {
     statusPos  = mk("up-st-pos", 130, false);
     statusZoom = mk("up-st-zoom", 80, false);
     statusSize = mk("up-st-size", 160, false);
+    // "{0} x {1} px, {n} layers" runs longer in some languages: 160 at least,
+    // as wide as the text when it needs more
+    statusSize->size.width = CSSLayout::Dimension::Auto();
+    {
+        CSSLayout::BoxConstraints limits = statusSize->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(160.0f);
+        statusSize->boxConstraints = limits;
+    }
     statusHint = mk("up-st-hint", 0, true);
     window->AddChild(statusBar);
 }

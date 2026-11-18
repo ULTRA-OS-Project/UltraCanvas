@@ -59,6 +59,17 @@ namespace {
     constexpr float kRowH = 24.0f;
     constexpr float kLabelW = 66.0f;
 
+    // A caption column at least `minWidth` wide that grows to its text, so
+    // a longer word in another language pushes the control along instead
+    // of being cut off; in English the columns still line up.
+    void SizeCaptionToText(const std::shared_ptr<UltraCanvasLabel>& label, float minWidth) {
+        label->size.width = CSSLayout::Dimension::Auto();
+        CSSLayout::BoxConstraints limits = label->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+        label->boxConstraints = limits;
+        label->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    }
+
     std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id) {
         auto row = std::make_shared<UltraCanvasContainer>(id, 0, 0, 0, kRowH);
         row->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
@@ -81,7 +92,7 @@ void AddSliderRow(UltraCanvasContainer& panel, const std::string& id, const std:
     auto row = MakeRow(id + "-row");
     auto lbl = CreateLabel(id + "-label", 0, 0, labelWidth > 0 ? labelWidth : kLabelW, kRowH, label);
     lbl->SetFontSize(11);
-    lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    SizeCaptionToText(lbl, labelWidth > 0 ? labelWidth : kLabelW);
     row->AddChild(lbl);
     auto slider = CreateHorizontalSlider(id + "-slider", 0, 0, 100, kRowH, minVal, maxVal);
     slider->SetStep(step);
@@ -120,7 +131,7 @@ UltraCanvasDropdown* AddDropdown(UltraCanvasContainer& panel, const std::string&
     auto row = MakeRow(id + "-row");
     auto lbl = CreateLabel(id + "-label", 0, 0, kLabelW, kRowH, label);
     lbl->SetFontSize(11);
-    lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    SizeCaptionToText(lbl, kLabelW);
     row->AddChild(lbl);
     auto dd = CreateDropdown(id + "-dropdown", 0, 0, 120, kRowH);
     for (const auto& it : items) dd->AddItem(it);
