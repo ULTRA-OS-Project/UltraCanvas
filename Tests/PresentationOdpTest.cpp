@@ -14,6 +14,8 @@
 //   - a password-protected package and other ODF types refused with a reason
 //   - UltraCanvasFileLoader (LoadTextDocument, the Open dialog's types, text
 //     extraction) and UltraFiler's preview page take the new types
+// Version: 1.0.1 - the protected package's manifest is a whole one (it now opens with a password;
+//                  OdfEncryptionTest reads real ones)
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -300,13 +302,17 @@ void TestRefusals() {
         "<manifest:file-entry manifest:full-path=\"content.xml\" manifest:media-type=\"text/xml\">"
         "<manifest:encryption-data manifest:checksum-type=\"SHA1/1K\" manifest:checksum=\"AAAA\">"
         "<manifest:algorithm manifest:algorithm-name=\"http://www.w3.org/2001/04/xmlenc#aes256-cbc\" "
-        "manifest:initialisation-vector=\"AAAA\"/></manifest:encryption-data></manifest:file-entry>"
+        "manifest:initialisation-vector=\"AAAA\"/>"
+        "<manifest:start-key-generation manifest:start-key-generation-name=\"http://www.w3.org/2000/09/xmldsig#sha256\" "
+        "manifest:key-size=\"32\"/>"
+        "<manifest:key-derivation manifest:key-derivation-name=\"PBKDF2\" manifest:iteration-count=\"100000\" "
+        "manifest:salt=\"AAAA\" manifest:key-size=\"32\"/></manifest:encryption-data></manifest:file-entry>"
         "</manifest:manifest>";
     PptxPresentation deck;
     std::string error;
     Check(!ReadOdpPresentationFromMemory(Package(mime, manifest, "\x01\x02 not XML"), deck, error) &&
               Contains(error, "password-protected"),
-          "a password-protected deck says so (\"" + error + "\")");
+          "a password-protected deck without its password says so (\"" + error + "\")");
 
     const std::string content =
         "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\">"

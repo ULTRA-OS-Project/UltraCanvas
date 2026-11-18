@@ -5,6 +5,7 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.14.0 - a password-protected .odt opened with its password (UltraCanvasOdfEncryption.h)
 // Version: 1.13.0 - charts as chart objects ("Object N/content.xml", chart:chart): written and read
 // Version: 1.12.3 - a heading's own font, size and spacing read and written
 // Version: 1.12.2 - a turned picture in the line (as-char with draw:transform) read and written
@@ -31,13 +32,14 @@
 // Version: 1.3.0 - fo:letter-spacing: a run's (and a named text style's) letter spacing, read
 //                  and written
 // Version: 1.2.0
-// Last Modified: 2026-11-04
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasMathToLatex.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasOdfEncryption.h"
 #include "UltraCanvasTextUtils.h"
 
 #include "tinyxml2.h"
@@ -233,11 +235,28 @@ void ProtectInterElementWhitespace(std::string& xml) {
 
 class OdtReader {
 public:
-    bool Load(const std::string& filePath, UCRichDocument& doc, std::string& error) {
+    bool Load(const std::string& filePath, UCRichDocument& doc, std::string& error,
+              const std::string& password = std::string()) {
         doc_ = &doc;
-        if (!zip_.Open(filePath)) {
-            error = "The file is not a valid OpenDocument text file (.odt): " + filePath;
-            return false;
+        // A password-protected .odt is decrypted into an ordinary package
+        // in memory first.
+        std::vector<uint8_t> decrypted;
+        switch (DecryptOdfPackageFile(filePath, password, decrypted, error)) {
+            case OfficeDecryptStatus::NotEncrypted:
+                if (!zip_.Open(filePath)) {
+                    error = "The file is not a valid OpenDocument text file (.odt): " + filePath;
+                    return false;
+                }
+                break;
+            case OfficeDecryptStatus::Decrypted:
+                if (!zip_.OpenFromMemory(std::move(decrypted))) {
+                    error = "The decrypted OpenDocument text file is not valid: " + filePath;
+                    return false;
+                }
+                break;
+            default:
+                error += ": " + filePath;
+                return false;
         }
         std::string contentXml;
         if (!zip_.ReadEntry("content.xml", contentXml)) {
@@ -5307,10 +5326,10 @@ private:
 } // namespace
 
 bool UCWordDocumentIO::LoadOdt(const std::string& filePath, UCRichDocument& outDocument,
-                               std::string& outError) {
+                               std::string& outError, const std::string& password) {
     outDocument = UCRichDocument{};
     OdtReader reader;
-    if (!reader.Load(filePath, outDocument, outError)) return false;
+    if (!reader.Load(filePath, outDocument, outError, password)) return false;
     outDocument.ReadCheckboxPrefixes();
     return true;
 }

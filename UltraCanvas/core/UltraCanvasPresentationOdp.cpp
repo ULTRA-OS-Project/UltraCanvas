@@ -1,9 +1,11 @@
 // core/UltraCanvasPresentationOdp.cpp
 // OpenDocument presentation (.odp / .otp / .fodp) reader - see UltraCanvasPresentationOdp.h.
+// Version: 1.1.0 - a password-protected deck opened with its password (UltraCanvasOdfEncryption.h)
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #include "UltraCanvasPresentationOdp.h"
+#include "UltraCanvasOdfEncryption.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasZipPackage.h"
@@ -528,24 +530,24 @@ bool IsPresentationMediaType(const std::string& mediaType) {
     return mediaType.rfind(kPresentationMediaType, 0) == 0;   // and "...-template"
 }
 
-// True when the manifest says content.xml is encrypted.
-bool IsEncryptedPackage(const UCZipPackageReader& zip) {
-    std::string xml;
-    tinyxml2::XMLDocument manifest;
-    if (!zip.ReadEntry("META-INF/manifest.xml", xml) ||
-        manifest.Parse(xml.c_str(), xml.size()) != tinyxml2::XML_SUCCESS || !manifest.RootElement())
-        return false;
-    for (auto* entry = manifest.RootElement()->FirstChildElement(); entry; entry = entry->NextSiblingElement())
-        if (Is(entry, "file-entry") && Attr(entry, "full-path") == "content.xml" && Child(entry, "encryption-data"))
-            return true;
-    return false;
-}
-
-bool ReadPackage(const UCZipPackageReader& zip, PptxPresentation& out, std::string& error) {
-    if (IsEncryptedPackage(zip)) {
-        error = "The presentation is password-protected; password-protected OpenDocument files "
-                "cannot be opened yet";
-        return false;
+bool ReadPackage(const UCZipPackageReader& zip, PptxPresentation& out, std::string& error,
+                 const std::string& password) {
+    // A password-protected deck: decrypted into an ordinary package first.
+    std::vector<uint8_t> decrypted;
+    switch (DecryptOdfPackage(zip, password, decrypted, error)) {
+        case OfficeDecryptStatus::NotEncrypted:
+            error.clear();
+            break;
+        case OfficeDecryptStatus::Decrypted: {
+            UCZipPackageReader plain;
+            if (!plain.OpenFromMemory(std::move(decrypted))) {
+                error = "The decrypted OpenDocument presentation is not valid";
+                return false;
+            }
+            return ReadPackage(plain, out, error, std::string());
+        }
+        default:
+            return false;   // `error` says why: no password, a wrong one, an unsupported cipher
     }
     const std::string mediaType = PackageMediaType(zip);
     if (!mediaType.empty() && !IsPresentationMediaType(mediaType)) {
@@ -610,7 +612,8 @@ bool IsOdpPresentationFile(const std::string& filePath) {
     return text.find(std::string("mimetype=\"") + kPresentationMediaType) != std::string::npos;
 }
 
-bool ReadOdpPresentationFromMemory(std::vector<uint8_t> data, PptxPresentation& out, std::string& error) {
+bool ReadOdpPresentationFromMemory(std::vector<uint8_t> data, PptxPresentation& out, std::string& error,
+                                   const std::string& password) {
     out = PptxPresentation{};
     error.clear();
     if (IsZip(data.data(), data.size())) {
@@ -619,12 +622,13 @@ bool ReadOdpPresentationFromMemory(std::vector<uint8_t> data, PptxPresentation& 
             error = "The file is not a valid OpenDocument presentation (.odp)";
             return false;
         }
-        return ReadPackage(zip, out, error);
+        return ReadPackage(zip, out, error, password);
     }
     return ReadFlat(reinterpret_cast<const char*>(data.data()), data.size(), out, error);
 }
 
-bool ReadOdpPresentation(const std::string& filePath, PptxPresentation& out, std::string& error) {
+bool ReadOdpPresentation(const std::string& filePath, PptxPresentation& out, std::string& error,
+                         const std::string& password) {
     out = PptxPresentation{};
     error.clear();
     std::vector<uint8_t> head;
@@ -638,7 +642,7 @@ bool ReadOdpPresentation(const std::string& filePath, PptxPresentation& out, std
         if (!zip.Open(filePath)) {
             error = "The file is not a valid OpenDocument presentation (.odp)";
         } else {
-            ok = ReadPackage(zip, out, error);
+            ok = ReadPackage(zip, out, error, password);
         }
     } else {
         std::ifstream file(PathFromUtf8(filePath), std::ios::binary);

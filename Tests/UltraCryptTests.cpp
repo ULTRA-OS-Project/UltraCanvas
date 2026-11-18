@@ -980,7 +980,35 @@ static void TestPbkdf2() {
 
     Check(derive(UltraCryptHashAlgorithm::SHA1, "p", "s", 1, 20, out).code == UltraCryptResultCode::NotSupported &&
               out.empty(),
-          "PBKDF2-SHA-1 is refused");
+          "PBKDF2-SHA-1 is refused without allowLegacy");
+
+    // PBKDF2-HMAC-SHA-1 with allowLegacy (OpenDocument's password key): the
+    // RFC 6070 vectors, and a password longer than SHA-1's block.
+    auto legacy = [](const std::string& password, const std::string& salt, uint32_t iterations, size_t length,
+                     std::vector<uint8_t>& out) {
+        const UltraCryptSecureBuffer pw(password.data(), password.size());
+        UltraCryptSecureBuffer key;
+        UltraCryptHashOptions options;
+        options.allowLegacy = true;
+        auto r = UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm::SHA1, pw,
+                                            std::vector<uint8_t>(salt.begin(), salt.end()), iterations, length, key,
+                                            options);
+        out.assign(key.Data(), key.Data() + key.GetSize());
+        return r;
+    };
+    Check(static_cast<bool>(legacy("password", "salt", 1, 20, out)), "PBKDF2-SHA-1 succeeds with allowLegacy");
+    CheckHex(out, "0c60c80f961f0e71f3a9b524af6012062fe037a6", "RFC 6070 PBKDF2-HMAC-SHA-1, c = 1");
+    legacy("password", "salt", 2, 20, out);
+    CheckHex(out, "ea6c014dc72d6f8ccd1ed92ace1d41f0d8de8957", "RFC 6070 PBKDF2-HMAC-SHA-1, c = 2");
+    legacy("password", "salt", 4096, 20, out);
+    CheckHex(out, "4b007901b765489abead49d926f721d065a429c1", "RFC 6070 PBKDF2-HMAC-SHA-1, c = 4096");
+    legacy("passwordPASSWORDpassword", "saltSALTsaltSALTsaltSALTsaltSALTsalt", 4096, 25, out);
+    CheckHex(out, "3d2eec4fe41c849b80c8d83662c0e44a8b291a964cf2f07038",
+             "RFC 6070 PBKDF2-HMAC-SHA-1, 25 bytes (past one block)");
+    legacy(std::string("pass\0word", 9), std::string("sa\0lt", 5), 4096, 16, out);
+    CheckHex(out, "56fa6aa75548099dcc37d7f03425e0c3", "RFC 6070 PBKDF2-HMAC-SHA-1, NUL in password and salt");
+    legacy(std::string(100, 'x'), "salt", 2, 32, out);
+    CheckHex(out, "9162cc76c004b470bd2085f8f7c1a6335eb140a7c9b268147c4bb883971b85f6", "PBKDF2-HMAC-SHA-1, a 100-byte password (hashed first)");
     Check(derive(UltraCryptHashAlgorithm::SHA256, "p", "s", 0, 32, out).code ==
               UltraCryptResultCode::InvalidArgument,
           "PBKDF2 refuses zero iterations");

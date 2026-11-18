@@ -10,9 +10,10 @@ tables, the pictures' parts and descriptions, speaker notes, and which slides
 are hidden. One model means one outline, one preview and one text extractor
 for both kinds of deck.
 
-It is a reader of text, not a slide renderer. There is no writer, and a
-password-protected `.odp` is refused with a reason (ODF's own encryption is not
-implemented; a protected `.pptx` is read).
+It is a reader of text, not a slide renderer. There is no writer. A
+password-protected `.odp` opens with its password
+([UltraCanvasOdfEncryption](UltraCanvasOdfEncryption.md)); without it, or
+with a wrong one, it is refused with a reason.
 
 ## Opening one as a document
 
@@ -30,7 +31,7 @@ std::string error;
 if (auto outline = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
     ShowDocument(outline);   // e.g. in an UltraCanvasRichTextEdit
 } else {
-    ShowError(error);        // "The presentation is password-protected; ...", ...
+    ShowError(error);        // "The file is password-protected; ...", ...
 }
 ```
 
@@ -79,8 +80,8 @@ UCRichDocument outline = PptxPresentationToRichDocument(deck);
 |---|---|
 | `IsOdpPresentationFile(path)` | true for a ZIP package whose `mimetype` (or manifest) says `application/vnd.oasis.opendocument.presentation` or `-template`, or a flat XML document whose `office:mimetype` says so |
 | `IsOdpExtension(extOrPath)` | `odp`, `otp`, `fodp`, with or without a dot, any case |
-| `ReadOdpPresentation(path, out, error)` | the deck; `path` is UTF-8. False with a sentence in `error` |
-| `ReadOdpPresentationFromMemory(bytes, out, error)` | the same for bytes: a package, or a flat file's XML |
+| `ReadOdpPresentation(path, out, error, password)` | the deck; `path` is UTF-8, `password` (optional) opens a protected one. False with a sentence in `error` |
+| `ReadOdpPresentationFromMemory(bytes, out, error, password)` | the same for bytes: a package, or a flat file's XML |
 
 The model's types are described in
 [UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md#reading-the-model).
@@ -118,10 +119,13 @@ For an `.odp` they hold:
 - Not read: master pages and styles as drawn (fonts, sizes, colours, fills)
   beyond bold, italic and underline, animations and transitions. Pictures are
   named, not decoded.
-- A password-protected deck (`manifest:encryption-data` on `content.xml`) is
-  refused: "The presentation is password-protected; password-protected
-  OpenDocument files cannot be opened yet". Another OpenDocument type (an
-  `.odt` named `.odp`) is refused naming its type.
+- A password-protected deck (`manifest:encryption-data` in the manifest) is
+  decrypted with the password `ReadOdpPresentation` and
+  `ReadOdpPresentationFromMemory` take (and `LoadTextDocument`'s, which
+  `OpenTextDocument` asks for). Without it: "The file is password-protected;
+  enter its password to open it"; with a wrong one: "The password is not
+  correct". Another OpenDocument type (an `.odt` named `.odp`) is refused
+  naming its type.
 
 ## Test
 

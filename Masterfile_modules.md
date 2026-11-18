@@ -755,8 +755,24 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it; and
   by the writers `SaveToFile` / `SaveXLSX`, `UCWordDocumentIO::Save` /
   `SaveDocx`, `UltraCanvasFileLoader::SaveTextDocument`, with
-  `RequestNewDocumentPassword` to ask for a new one.
+  `RequestNewDocumentPassword` to ask for a new one. `CheckOfficePassword`
+  answers for an OpenDocument file through UltraCanvasOdfEncryption.
   See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+- **UltraCanvasOdfEncryption** (`UltraCanvasOdfEncryption.h`) — password-protected
+  OpenDocument files (`.odt`, `.ods`, `.odp`) as LibreOffice and
+  OpenOffice.org 3.2+ save them: each package entry deflated, then
+  AES-256-CBC keyed by PBKDF2-HMAC-SHA-1 from a SHA-256 (or SHA-1) start key,
+  checked by its 1K checksum. `IsEncryptedOdfPackage`, `DecryptOdfPackage` /
+  `DecryptOdfPackageFile` (an ordinary package rebuilt in memory, statuses
+  `OfficeDecryptStatus`), `CheckOdfPassword` (one key derivation, for the
+  prompt). Blowfish, AES-GCM, Argon2id and ODF 1.4's whole-package
+  encryption are refused by name. No writer. Used by the `.odt` reader
+  (`UCWordDocumentIO::Load` / `LoadOdt` with a password), the `.ods` loader
+  (`UltraCanvasSpreadsheet::LoadFromFile` / `LoadODS`), `ReadOdpPresentation`,
+  and `CheckOfficePassword` - so `RequestDocumentPassword` prompts for them.
+  In `core/UltraCanvasOdfEncryption.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasOdfEncryption.md`.
 
 - **UltraCanvasPresentationPptx** (`UltraCanvasPresentationPptx.h`) — PowerPoint
   decks (`.pptx`, `.pptm`, `.ppsx`, `.potx`) read as text into a UI-free model:
@@ -781,7 +797,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   parents, groups, tables (covered cells kept as empty cells), pictures,
   speaker notes, hidden slides, the slide size from the master's page layout;
   slide furniture, prompting placeholders, embedded objects and page comments
-  left out. A password-protected deck is refused with a reason. No renderer,
+  left out. A password-protected deck opens with its password
+  (UltraCanvasOdfEncryption). No renderer,
   no writer. In `core/UltraCanvasPresentationOdp.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationOdp.md`.
 
@@ -2156,7 +2173,8 @@ backing library is never visible in a public header.
   only - Matrix key exports and attachments, WebCrypto)
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`, `UltraCrypt_DeriveKeyPbkdf2`
-  (PBKDF2-HMAC-SHA-256/512, interop only)
+  (PBKDF2-HMAC-SHA-256/512, and -SHA-1 with `allowLegacy` for OpenDocument;
+  interop only)
 - `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
   `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
   `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`

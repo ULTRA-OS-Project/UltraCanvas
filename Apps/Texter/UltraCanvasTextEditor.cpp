@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.9.1 - a password-protected .odt says so instead of opening as a hex dump
 // Version: 2.9.0 - a PowerPoint deck (.pptx and kin) or an OpenDocument presentation (.odp,
 //                  .otp, .fodp) opens as the outline of its slides, as the Open dialog's
 //                  "Documents" promised, not as a hex dump; saving one back to a deck type
@@ -73,6 +74,7 @@
 #include "UltraCanvasFileError.h"   // FileWriteFailureReason
 #include "UltraCanvasPresentationPptx.h"   // IsPptxExtension
 #include "UltraCanvasPresentationOdp.h"    // IsOdpExtension
+#include "UltraCanvasOdfEncryption.h"      // IsEncryptedOdfPackage
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasLocalisationEditor.h"
 
@@ -2487,8 +2489,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!document) {
                 // A deck that cannot be read - protected or damaged - says
                 // why: its bytes would tell nobody anything. So does a .doc,
-                // and a protected .docx, which is a compound file as a .doc is.
-                if (presentation || DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc) {
+                // a protected .docx, which is a compound file as a .doc is,
+                // and a protected .odt, whose content is encrypted.
+                if (presentation || DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc ||
+                    IsEncryptedOdfPackage(filePath)) {
                     UltraCanvasDialogManager::ShowError(loadError, Tr("Unsupported Format"),
                                                         nullptr, this);
                     return false;

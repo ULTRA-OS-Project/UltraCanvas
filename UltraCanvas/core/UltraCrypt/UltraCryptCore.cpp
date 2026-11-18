@@ -1098,6 +1098,72 @@ bool Pbkdf2Block(const UltraCryptSecureBuffer& password, const std::vector<uint8
 }
 #endif
 
+// One PBKDF2 block with HMAC-SHA-1, on the module's own SHA-1 (libsodium has
+// none): the key's inner and outer pads are hashed once, and each iteration
+// continues from copies of those two states.
+void Pbkdf2BlockSha1(const UltraCryptSecureBuffer& password, const std::vector<uint8_t>& salt,
+                     uint32_t iterations, uint32_t index, uint8_t out[20]) {
+    uint8_t key[64] = {};
+    if (password.GetSize() > sizeof(key)) {
+        Sha1OneShot(password.Data(), password.GetSize(), key);
+    } else if (password.GetSize() > 0) {
+        std::memcpy(key, password.Data(), password.GetSize());
+    }
+    uint8_t pad[64];
+    Sha1State inner, outer;
+    for (size_t i = 0; i < sizeof(pad); ++i) pad[i] = static_cast<uint8_t>(key[i] ^ 0x36);
+    Sha1Init(inner);
+    Sha1Update(inner, pad, sizeof(pad));
+    for (size_t i = 0; i < sizeof(pad); ++i) pad[i] = static_cast<uint8_t>(key[i] ^ 0x5c);
+    Sha1Init(outer);
+    Sha1Update(outer, pad, sizeof(pad));
+
+    uint8_t u[20], innerDigest[20];
+    Sha1State state = inner;
+    if (!salt.empty()) Sha1Update(state, salt.data(), salt.size());
+    const uint8_t be[4] = {static_cast<uint8_t>(index >> 24), static_cast<uint8_t>(index >> 16),
+                           static_cast<uint8_t>(index >> 8), static_cast<uint8_t>(index)};
+    Sha1Update(state, be, 4);
+    Sha1Final(state, innerDigest);
+    state = outer;
+    Sha1Update(state, innerDigest, 20);
+    Sha1Final(state, u);
+    std::memcpy(out, u, 20);
+    // Every later round hashes a 20-byte message after the 64-byte pad: one
+    // block each for the inner and the outer hash, padded once here (0x80,
+    // zeros, the 672-bit length), so a round is two compressions.
+    uint8_t message[64] = {};
+    message[20] = 0x80;
+    message[62] = 0x02;   // (64 + 20) * 8 = 672 = 0x02A0 bits
+    message[63] = 0xA0;
+    auto digestInto = [](const Sha1State& from, uint8_t* to) {
+        for (int i = 0; i < 5; ++i) {
+            to[i * 4] = static_cast<uint8_t>(from.h[i] >> 24);
+            to[i * 4 + 1] = static_cast<uint8_t>(from.h[i] >> 16);
+            to[i * 4 + 2] = static_cast<uint8_t>(from.h[i] >> 8);
+            to[i * 4 + 3] = static_cast<uint8_t>(from.h[i]);
+        }
+    };
+    std::memcpy(message, u, 20);
+    for (uint32_t c = 1; c < iterations; ++c) {
+        state = inner;
+        Sha1Compress(state, message);
+        digestInto(state, message);    // the inner digest is the outer hash's message
+        state = outer;
+        Sha1Compress(state, message);
+        digestInto(state, message);    // ... and this round's U, the next round's message
+        for (size_t k = 0; k < 20; ++k) out[k] ^= message[k];
+    }
+    UltraCrypt_SecureZero(message, sizeof(message));
+    UltraCrypt_SecureZero(key, sizeof(key));
+    UltraCrypt_SecureZero(pad, sizeof(pad));
+    UltraCrypt_SecureZero(u, sizeof(u));
+    UltraCrypt_SecureZero(innerDigest, sizeof(innerDigest));
+    UltraCrypt_SecureZero(&state, sizeof(state));
+    UltraCrypt_SecureZero(&inner, sizeof(inner));
+    UltraCrypt_SecureZero(&outer, sizeof(outer));
+}
+
 } // namespace
 
 UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(
@@ -1106,18 +1172,37 @@ UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(
         const std::vector<uint8_t>& salt,
         uint32_t iterations,
         size_t outputLength,
-        UltraCryptSecureBuffer& outKey) {
+        UltraCryptSecureBuffer& outKey,
+        const UltraCryptHashOptions& options) {
     outKey.Clear();
-    if (algorithm == UltraCryptHashAlgorithm::SHA1) {
+    if (algorithm == UltraCryptHashAlgorithm::SHA1 && !options.allowLegacy) {
         return UltraCryptResult::Error(
             UltraCryptResultCode::NotSupported,
-            "PBKDF2-SHA-1 is not offered: the formats PBKDF2 is here for use SHA-256 or SHA-512");
+            "PBKDF2-SHA-1 is offered only with allowLegacy, for the formats that require it");
     }
     if (iterations == 0 || outputLength == 0) {
         return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
                                        "PBKDF2 needs at least one iteration and a non-zero output length");
     }
     if (!EnsureReady()) return NoBackend();
+    if (algorithm == UltraCryptHashAlgorithm::SHA1) {
+        UltraCryptSecureBuffer okm(outputLength);
+        if (okm.GetSize() != outputLength) {
+            return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                           "could not allocate output buffer");
+        }
+        uint8_t block[20];
+        size_t produced = 0;
+        for (uint32_t index = 1; produced < outputLength; ++index) {
+            Pbkdf2BlockSha1(password, salt, iterations, index, block);
+            const size_t take = std::min(outputLength - produced, sizeof(block));
+            std::memcpy(okm.Data() + produced, block, take);
+            produced += take;
+        }
+        UltraCrypt_SecureZero(block, sizeof(block));
+        outKey = std::move(okm);
+        return UltraCryptResult::Ok();
+    }
 #ifdef ULTRACRYPT_HAVE_SODIUM
     const size_t hashLen = UltraCrypt_GetDigestSize(algorithm);
     UltraCryptSecureBuffer okm(outputLength);

@@ -10,6 +10,11 @@ reader and writer, the [PowerPoint reader](UltraCanvasPresentationPptx.md)
 and `UltraCanvasFileLoader` use it; most code never calls it
 directly, but passes a password to them.
 
+A password-protected OpenDocument file (`.odt`, `.ods`, `.odp`) is a ZIP
+package encrypted entry by entry instead; [UltraCanvasOdfEncryption](UltraCanvasOdfEncryption.md)
+reads it, with the same `OfficeDecryptStatus`, and `CheckOfficePassword`
+answers through it, so `RequestDocumentPassword` prompts for both kinds.
+
 Header: `UltraCanvasOfficeEncryption.h`. The cryptography is UltraCrypt's
 (`Docs/Modules/UltraCrypt/README.md`): its constant-time AES-CBC, SHA-2, HMAC
 and random numbers, and SHA-1 to read Office 2010's files.

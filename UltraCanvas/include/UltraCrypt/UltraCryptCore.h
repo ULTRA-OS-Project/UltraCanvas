@@ -29,6 +29,8 @@
 // hardware-gated; AES-CBC and AES-CTR (and the PBKDF2 those formats key them
 // with) exist only for foreign formats and are portable.
 //
+// Version: 0.5.0 - UltraCrypt_DeriveKeyPbkdf2 takes UltraCryptHashOptions: PBKDF2-HMAC-SHA-1 with
+//                  allowLegacy, for OpenDocument's password encryption
 // Version: 0.4.1 - X.509 and CMS in UltraCryptX509.h
 // Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -146,10 +148,13 @@ enum class UltraCryptHashAlgorithm : uint8_t {
     // LEGACY. Provided for HMAC-SHA-1 only, which TOTP requires for issuer
     // compatibility and where SHA-1's collision weakness does not apply. As a
     // plain digest it is collision-broken: UltraCrypt_Hash refuses it unless
-    // UltraCryptHashOptions::allowLegacy is set. One reader sets it, for
-    // interop: UltraCanvasOfficeEncryption, to read the Office 2010 files
-    // whose password key is SHA-1 - a key derivation, which collisions do not
-    // reach. Nothing UltraCanvas writes uses it.
+    // UltraCryptHashOptions::allowLegacy is set. Two readers set it, for
+    // interop, each for a key derivation, which collisions do not reach:
+    // UltraCanvasOfficeEncryption, to read the Office 2010 files whose
+    // password key is SHA-1, and UltraCanvasOdfEncryption, to read the
+    // OpenDocument files whose key is PBKDF2-HMAC-SHA-1 (every one: ODF 1.2
+    // names no other) from a SHA-1 or SHA-256 start key. Nothing UltraCanvas
+    // writes uses it.
     SHA1,
     SHA256,
     SHA512
@@ -416,15 +421,19 @@ UltraCryptResult UltraCrypt_DeriveKeyHkdf(
 // storage passphrases (PBKDF2-HMAC-SHA-512), and the like. It is not
 // memory-hard, so a GPU tries passwords against it far faster than against
 // Argon2id: never use it for anything UltraCanvas defines - that is
-// UltraCrypt_DeriveKeyFromPassword. SHA1 is rejected; SHA256 and SHA512 are
-// offered. `iterations` is the format's (at least 1); `salt` may be empty.
+// UltraCrypt_DeriveKeyFromPassword. SHA256 and SHA512 are offered; SHA1
+// (PBKDF2-HMAC-SHA-1) only with options.allowLegacy, for the one format that
+// requires it: OpenDocument's password encryption (ODF 1.2, what LibreOffice
+// writes), read by UltraCanvasOdfEncryption. `iterations` is the format's (at
+// least 1); `salt` may be empty.
 UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(
         UltraCryptHashAlgorithm algorithm,
         const UltraCryptSecureBuffer& password,
         const std::vector<uint8_t>& salt,
         uint32_t iterations,
         size_t outputLength,
-        UltraCryptSecureBuffer& outKey);
+        UltraCryptSecureBuffer& outKey,
+        const UltraCryptHashOptions& options = UltraCryptHashOptions());
 
 // ============================================================================
 // Random generation

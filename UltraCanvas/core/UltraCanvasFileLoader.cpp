@@ -887,7 +887,7 @@ namespace UltraCanvas {
         // An OpenDocument presentation the same way, by its content.
         if (IsOdpPresentationFile(filePath)) {
             PptxPresentation deck;
-            if (!ReadOdpPresentation(filePath, deck, outError)) return nullptr;
+            if (!ReadOdpPresentation(filePath, deck, outError, password)) return nullptr;
             return std::make_shared<UCRichDocument>(PptxPresentationToRichDocument(deck));
         }
 

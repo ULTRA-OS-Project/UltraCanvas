@@ -2404,11 +2404,13 @@ if(PkgConfig_FOUND)
 endif()
 
 # The .docx reader opens password-protected documents through
-# UltraCanvasOfficeEncryption.cpp, which sits on UltraCrypt. These tests link
+# UltraCanvasOfficeEncryption.cpp, and the .odt reader through
+# UltraCanvasOdfEncryption.cpp, which sit on UltraCrypt. These tests link
 # the uc-crypt archive rather than the UltraCrypt home: on a shared core the
 # home is libUltraCanvas, which carries its own copy of the Word readers these
 # tests compile from source.
-set(WORD_ENCRYPTION_SOURCES ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasOfficeEncryption.cpp)
+set(WORD_ENCRYPTION_SOURCES ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasOfficeEncryption.cpp
+                            ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasOdfEncryption.cpp)
 if(TINYXML2_TEST_FOUND AND NOT TARGET uc-crypt)
     message(STATUS "  uc-crypt not built - WordFormatsTest and LaTeXDocumentTest disabled")
 endif()
@@ -5668,6 +5670,32 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: OfficeEncryptionTest")
 else()
     message(STATUS "  OfficeEncryptionTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== OPENDOCUMENT ENCRYPTION TEST =====
+# Password-protected .odt / .ods / .odp as LibreOffice saves them (AES-256-CBC,
+# PBKDF2-HMAC-SHA-1, make-odf-encrypted-fixtures.py): the decryptor - no,
+# wrong and right passwords, a changed byte, the refused ciphers - then
+# UCWordDocumentIO::Load, UltraCanvasSpreadsheet::LoadFromFile,
+# ReadOdpPresentation and UltraCanvasFileLoader with the password. Needs the
+# full library.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OdfEncryptionTest...")
+    add_executable(OdfEncryptionTest ${CMAKE_CURRENT_SOURCE_DIR}/OdfEncryptionTest.cpp)
+    target_include_directories(OdfEncryptionTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OdfEncryptionTest PRIVATE cxx_std_20)
+    target_link_libraries(OdfEncryptionTest PRIVATE UltraCanvas)
+    target_compile_definitions(OdfEncryptionTest PRIVATE
+        ODFCRYPTTEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(OdfEncryptionTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME OdfEncryptionTest COMMAND OdfEncryptionTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OdfEncryptionTest")
+else()
+    message(STATUS "  OdfEncryptionTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== OPENDOCUMENT PRESENTATION TEST =====

@@ -8,8 +8,9 @@
 // [Content_Types].xml probe, CFB magic, \documentclass head) so renamed
 // files are classified correctly. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md
 // and Docs/UltraCanvas/UltraCanvasLaTeXDocumentReader.md.
+// Version: 1.5.0 - Load / LoadOdt open a password-protected .odt with its password
 // Version: 1.4.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -40,15 +41,19 @@ public:
     // suggests converting it to .docx.
     //
     // `password` opens a password-protected .docx: the ECMA-376 agile
-    // encryption Word 2010 and later write (UltraCanvasOfficeEncryption.h).
+    // encryption Word 2010 and later write (UltraCanvasOfficeEncryption.h) -
+    // and a password-protected .odt, whose package LibreOffice encrypts entry
+    // by entry (UltraCanvasOdfEncryption.h).
     // Such a file is a compound file, so DetectWordDocumentFormat calls it
     // LegacyDoc; Load and LoadDocx recognise it and decrypt it. Without the
     // password it fails with a message saying one is needed;
     // UltraCanvasFileLoader::RequestDocumentPassword asks the user for it.
     static bool Load(const std::string& filePath, UCRichDocument& outDocument,
                      std::string& outError, const std::string& password = std::string());
+    // `password` opens a password-protected .odt (LibreOffice's "Save with
+    // password": AES-256 keyed with PBKDF2, UltraCanvasOdfEncryption.h).
     static bool LoadOdt(const std::string& filePath, UCRichDocument& outDocument,
-                        std::string& outError);
+                        std::string& outError, const std::string& password = std::string());
     static bool LoadDocx(const std::string& filePath, UCRichDocument& outDocument,
                          std::string& outError, const std::string& password = std::string());
     // Word 97-2003 binary (CFB container, piece table, FKPs, stylesheet,

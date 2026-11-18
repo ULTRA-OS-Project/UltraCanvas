@@ -14,11 +14,14 @@
 //
 // What is not read: the layout as drawn (master pages, styles beyond bold /
 // italic / underline, fills), charts and other embedded objects, comments,
-// animations and transitions. A password-protected deck is refused with a
-// reason - ODF's own encryption is not implemented. There is no writer.
+// animations and transitions. A password-protected deck - LibreOffice's "Save
+// with password" - opens with its password (UltraCanvasOdfEncryption.h);
+// without it, or with a wrong one, it is refused with a reason. There is no
+// writer.
 //
 // Specification: OASIS OpenDocument 1.3, Part 3 (Schema), §10 (drawing and
 // presentation content) and §5-6 (paragraph and list content).
+// Version: 1.1.0 - ReadOdpPresentation / ReadOdpPresentationFromMemory take a password
 // Version: 1.0.0 - ReadOdpPresentation / ReadOdpPresentationFromMemory, IsOdpPresentationFile, IsOdpExtension
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -40,10 +43,13 @@ bool IsOdpPresentationFile(const std::string& filePath);
 // fodp), with or without a dot, any case.
 bool IsOdpExtension(const std::string& extensionOrPath);
 
-// Reads a deck; `filePath` is UTF-8. False with a reason in `error` a user can
-// be shown - a password-protected deck says so.
-bool ReadOdpPresentation(const std::string& filePath, PptxPresentation& out, std::string& error);
+// Reads a deck; `filePath` is UTF-8. `password` opens a password-protected
+// one. False with a reason in `error` a user can be shown - a protected deck
+// without its password, or with a wrong one, says so.
+bool ReadOdpPresentation(const std::string& filePath, PptxPresentation& out, std::string& error,
+                         const std::string& password = std::string());
 // The same for a deck already in memory: the ZIP package, or a flat .fodp's XML.
-bool ReadOdpPresentationFromMemory(std::vector<uint8_t> data, PptxPresentation& out, std::string& error);
+bool ReadOdpPresentationFromMemory(std::vector<uint8_t> data, PptxPresentation& out, std::string& error,
+                                   const std::string& password = std::string());
 
 } // namespace UltraCanvas

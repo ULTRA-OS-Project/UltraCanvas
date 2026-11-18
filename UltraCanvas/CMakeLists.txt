@@ -1198,6 +1198,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # Password-protected .xlsx / .docx (ECMA-376 agile encryption), on
         # UltraCrypt - linked below, after the module is defined
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeEncryption.cpp
+        # Password-protected OpenDocument packages (.odt / .ods / .odp): per-entry
+        # AES-CBC keyed with PBKDF2, on UltraCrypt
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOdfEncryption.cpp
         # PowerPoint (.pptx) and OpenDocument (.odp / .fodp) decks read as
         # text: slides, shapes, tables, notes
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptx.cpp
@@ -3355,7 +3358,8 @@ set(ULTRACANVAS_CRYPT_HAS_OPENSSL ${_uc_crypt_openssl} CACHE INTERNAL
     "UltraCrypt has its OpenSSL 3 backend (UltraCryptX509.h, UltraCryptPublicKey.h)")
 _ultracanvas_module_home(UltraCrypt uc-crypt)
 # The core itself uses it: UltraCanvasOfficeEncryption.cpp decrypts
-# password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC.
+# password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC,
+# UltraCanvasOdfEncryption.cpp OpenDocument ones with its AES-CBC and PBKDF2.
 # Absorbed whole into a shared core by the _ultracanvas_absorb_modules call
 # below; a static core links the home, which is the archive, PUBLIC.
 if(NOT ULTRACANVAS_BUILD_SHARED)
