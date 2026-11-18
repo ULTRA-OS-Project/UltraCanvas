@@ -5,3 +5,5 @@
   of their 45 minutes in the dependency step, downloading the same packages as
   every run before. Both rows share one cache (`apt-debs-element-modules-ubuntu-24.04-`),
   saved by the static row on `main` only.
+  Until that cache exists, the Wayland row's serves (same image; its packages
+  are these but `ninja-build`).

@@ -75,14 +75,18 @@ jobs:
       # both rows of this job ran out of their 45 minutes in this step, the
       # mirror handing out each package in seconds. Both rows install the
       # same packages on the same image, so they share one cache; the static
-      # row alone saves it (below), and on main only.
+      # row alone saves it (below), and on main only. Until main has saved
+      # one, the Wayland row's serves: same image, and its packages are this
+      # job's but ninja-build, which apt then fetches alone.
       - name: Restore the apt package cache
         id: apt-cache
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/apt-debs
           key: apt-debs-element-modules-ubuntu-24.04-
-          restore-keys: apt-debs-element-modules-ubuntu-24.04-
+          restore-keys: |
+            apt-debs-element-modules-ubuntu-24.04-
+            apt-debs-wayland-ubuntu-24.04-
 
       - name: Put the cached packages in apt's cache
         run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
