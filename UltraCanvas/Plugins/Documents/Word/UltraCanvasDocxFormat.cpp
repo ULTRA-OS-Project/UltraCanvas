@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.17.0 - charts: radar, bubble and stock charts; smoothed lines (c:smooth)
 // Version: 1.16.0 - the chart's drawn shapes are made by UCRichDocument::ChartAsShapes (shared with ODT)
 // Version: 1.15.0 - a chart's data is read into RichTextFrame::chart and written back as a chart part (word/charts)
 // Version: 1.14.0 - charts: a scatter chart's points over a value axis of their own
@@ -2586,11 +2587,14 @@ private:
             bool stated = false;                // the file states its colour
             std::vector<double> across;         // a scatter chart's x of each value
             bool joined = true, marked = true;  // ...and whether its points are joined by a line, and marked
+            std::vector<double> sizes;          // a bubble chart's size of each point
+            bool smooth = false;                // a curve through the points
         };
         std::vector<Series> series;
         std::vector<std::string> categories;
         bool lines = false, pie = false, horizontal = false, stacked = false, percent = false, scatter = false;
         bool area = false, doughnut = false, lineMarkers = false;
+        bool radar = false, radarFilled = false, radarMarkers = false, bubble = false, stock = false;
         std::vector<std::string> pointColors;       // a pie's slices, where the file colours them
         static const char* const kPalette[] = {"#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47"};
         for (auto* kind = plot->FirstChildElement(); kind; kind = kind->NextSiblingElement()) {
@@ -2599,6 +2603,13 @@ private:
             if (series.empty()) {
                 lines = tag == "c:lineChart" || tag == "c:areaChart" || tag == "c:scatterChart";
                 scatter = tag == "c:scatterChart";
+                radar = tag == "c:radarChart";
+                bubble = tag == "c:bubbleChart";
+                stock = tag == "c:stockChart";
+                if (auto* style = kind->FirstChildElement("c:radarStyle")) {
+                    radarFilled = std::string(Attr(style, "val")) == "filled";
+                    radarMarkers = std::string(Attr(style, "val")) == "marker";
+                }
                 area = tag == "c:areaChart" || tag == "c:area3DChart";
                 doughnut = tag == "c:doughnutChart";
                 if (auto* marker = kind->FirstChildElement("c:marker")) lineMarkers = std::string(Attr(marker, "val")) != "0";
@@ -2644,7 +2655,8 @@ private:
                     if (!point.empty()) WordFormatInternal::ReadNumberAt(point, 0, value);
                     one.values.push_back(value);
                 }
-                if (tag == "c:scatterChart") {
+                if (auto* curve = ser->FirstChildElement("c:smooth")) one.smooth = std::string(Attr(curve, "val")) != "0";
+                if (tag == "c:scatterChart" || tag == "c:bubbleChart") {
                     // Each point's own x (its number in the row where the
                     // file gives none or words), and how the points show.
                     std::vector<std::string> xs;
@@ -2673,10 +2685,23 @@ private:
                             one.stated = true;
                         }
                     }
+                    if (tag == "c:bubbleChart") {
+                        // Bubbles: each point's size, no line.
+                        std::vector<std::string> sizes;
+                        CollectChartPoints(ser->FirstChildElement("c:bubbleSize"), sizes);
+                        for (size_t i = 0; i < one.values.size(); i++) {
+                            double size = 1.0;
+                            if (i < sizes.size() && !sizes[i].empty()) WordFormatInternal::ReadNumberAt(sizes[i], 0, size);
+                            one.sizes.push_back(size);
+                        }
+                        one.joined = false;
+                        one.marked = true;
+                        if (look && look->FirstChildElement("a:solidFill")) one.color = DrawingColor(look->FirstChildElement("a:solidFill"));
+                    }
                     if (!one.joined && !one.marked) one.marked = true;      // something to see
                 }
                 if (categories.empty()) CollectChartPoints(ser->FirstChildElement("c:cat"), categories);
-                if (tag != "c:scatterChart") {
+                if (tag != "c:scatterChart" && tag != "c:bubbleChart") {
                     if (auto* marker = ser->FirstChildElement("c:marker")) {
                         auto* symbol = marker->FirstChildElement("c:symbol");
                         if (symbol && std::string(Attr(symbol, "val")) == "none") one.marked = false;
@@ -2688,13 +2713,15 @@ private:
         if (series.empty()) return false;
         // The chart's data, for the view's chart engine...
         RichChart data;
-        data.kind = pie ? (doughnut ? RichChart::Kind::Doughnut : RichChart::Kind::Pie)
+        data.kind = radar ? RichChart::Kind::Radar : bubble ? RichChart::Kind::Bubble : stock ? RichChart::Kind::Stock
+                  : pie ? (doughnut ? RichChart::Kind::Doughnut : RichChart::Kind::Pie)
                   : scatter ? RichChart::Kind::Scatter
                   : area ? RichChart::Kind::Area
                   : lines ? RichChart::Kind::Line
                   : horizontal ? RichChart::Kind::Bar : RichChart::Kind::Column;
-        data.stacked = stacked;
-        data.percent = percent;
+        data.stacked = stacked && !radar && !bubble && !stock;
+        data.percent = percent && !radar && !bubble && !stock;
+        data.filled = radarFilled;
         data.legend = FindDescendant(chart.RootElement(), "c:legend") != nullptr;
         data.categories = categories;
         data.pointColors = pointColors;
@@ -2715,8 +2742,11 @@ private:
             kept.color = one.stated ? one.color : std::string();
             kept.values = one.values;
             kept.xValues = one.across;
-            kept.joined = scatter ? one.joined : true;
-            kept.marked = scatter ? one.marked : (lines && !area && lineMarkers && one.marked);
+            kept.joined = scatter || bubble ? one.joined : true;
+            kept.marked = scatter || bubble ? one.marked : radar ? (radarMarkers && one.marked)
+                        : (lines && !area && lineMarkers && one.marked);
+            kept.sizes = one.sizes;
+            kept.smooth = one.smooth && (scatter || (lines && !area));
             data.series.push_back(std::move(kept));
         }
         // What the file states for its value axes: the one at the foot or
@@ -2724,7 +2754,7 @@ private:
         for (auto* ax = plot->FirstChildElement("c:valAx"); ax; ax = ax->NextSiblingElement("c:valAx")) {
             auto* side = ax->FirstChildElement("c:axPos");
             const std::string pos = side ? Attr(side, "val") : "";
-            const bool along = scatter && (pos == "b" || pos == "t");
+            const bool along = (scatter || bubble) && (pos == "b" || pos == "t");
             auto* scaling = ax->FirstChildElement("c:scaling");
             if (!scaling) continue;
             if (auto* least = scaling->FirstChildElement("c:min")) (along ? data.xMin : data.valueMin) = least->DoubleAttribute("val", 0.0);
@@ -4675,7 +4705,9 @@ private:
         const bool scatter = chart.kind == Kind::Scatter;
         const bool line = chart.kind == Kind::Line;
         const bool bars = chart.kind == Kind::Column || chart.kind == Kind::Bar;
-        const char* tag = pie ? (chart.kind == Kind::Doughnut ? "c:doughnutChart" : "c:pieChart")
+        const bool radar = chart.kind == Kind::Radar, bubble = chart.kind == Kind::Bubble, stock = chart.kind == Kind::Stock;
+        const char* tag = radar ? "c:radarChart" : bubble ? "c:bubbleChart" : stock ? "c:stockChart"
+                        : pie ? (chart.kind == Kind::Doughnut ? "c:doughnutChart" : "c:pieChart")
                         : scatter ? "c:scatterChart" : line ? "c:lineChart"
                         : chart.kind == Kind::Area ? "c:areaChart" : "c:barChart";
         xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
@@ -4689,18 +4721,31 @@ private:
         }
         xml << "<c:autoTitleDeleted val=\"" << (chart.title.empty() ? 1 : 0) << "\"/><c:plotArea><c:layout/><" << tag << ">";
         if (bars) xml << "<c:barDir val=\"" << (chart.kind == Kind::Bar ? "bar" : "col") << "\"/>";
-        if (scatter) xml << "<c:scatterStyle val=\"lineMarker\"/>";
+        bool anySmooth = false, anyRadarMark = false;
+        for (const RichChartSeries& one : chart.series) {
+            anySmooth = anySmooth || one.smooth;
+            anyRadarMark = anyRadarMark || one.marked;
+        }
+        if (scatter) xml << "<c:scatterStyle val=\"" << (anySmooth ? "smoothMarker" : "lineMarker") << "\"/>";
+        if (radar) xml << "<c:radarStyle val=\"" << (chart.filled ? "filled" : anyRadarMark ? "marker" : "standard") << "\"/>";
         if (bars) xml << "<c:grouping val=\"" << (chart.percent ? "percentStacked" : chart.stacked ? "stacked" : "clustered") << "\"/>";
-        else if (!pie && !scatter) xml << "<c:grouping val=\"" << (chart.percent ? "percentStacked" : chart.stacked ? "stacked" : "standard") << "\"/>";
-        xml << "<c:varyColors val=\"" << (pie ? 1 : 0) << "\"/>";
+        else if (!pie && !scatter && !radar && !bubble && !stock) xml << "<c:grouping val=\"" << (chart.percent ? "percentStacked" : chart.stacked ? "stacked" : "standard") << "\"/>";
+        if (!stock) xml << "<c:varyColors val=\"" << (pie ? 1 : 0) << "\"/>";
         bool anyMarked = false;
         for (size_t s = 0; s < chart.series.size(); s++) {
             const RichChartSeries& one = chart.series[s];
             anyMarked = anyMarked || one.marked;
             xml << "<c:ser><c:idx val=\"" << s << "\"/><c:order val=\"" << s << "\"/>";
             if (!one.name.empty()) xml << "<c:tx><c:v>" << EscapeXml(one.name) << "</c:v></c:tx>";
-            const std::string fill = color(one.color);
-            if (line || scatter) {
+            std::string fill = color(one.color);
+            // (Writer draws a line or a bubble only in a colour the file
+            // states: one without takes the office palette's, as it shows.)
+            static const char* const kOffice[] = {"#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47"};
+            if (fill.empty() && (line || scatter || bubble || (radar && !chart.filled))) fill = color(kOffice[s % 6]);
+            if (stock) {
+                // High, low and close are marks of the bars, not lines.
+                xml << "<c:spPr><a:ln><a:noFill/></a:ln></c:spPr><c:marker><c:symbol val=\"none\"/></c:marker>";
+            } else if (line || scatter || (radar && !chart.filled)) {
                 if (!one.joined) xml << "<c:spPr><a:ln><a:noFill/></a:ln></c:spPr>";
                 else if (!fill.empty()) xml << "<c:spPr><a:ln w=\"28575\">" << fill << "</a:ln></c:spPr>";
                 xml << "<c:marker><c:symbol val=\"" << (one.marked ? "circle" : "none") << "\"/>";
@@ -4715,17 +4760,40 @@ private:
                     if (!slice.empty()) xml << "<c:dPt><c:idx val=\"" << i << "\"/><c:bubble3D val=\"0\"/><c:spPr>" << slice << "</c:spPr></c:dPt>";
                 }
             }
-            if (scatter) {
+            if (scatter || bubble) {
                 if (one.xValues.size() == one.values.size()) numbers("c:xVal", one.xValues);
                 numbers("c:yVal", one.values);
+                if (bubble) {
+                    std::vector<double> sizes = one.sizes;
+                    sizes.resize(one.values.size(), 1.0);
+                    numbers("c:bubbleSize", sizes);
+                    xml << "<c:bubble3D val=\"0\"/>";
+                } else {
+                    xml << "<c:smooth val=\"" << (one.smooth ? 1 : 0) << "\"/>";
+                }
             } else {
                 names();
                 numbers("c:val", one.values);
+                if (line || stock) xml << "<c:smooth val=\"" << (one.smooth && line ? 1 : 0) << "\"/>";
             }
             xml << "</c:ser>";
         }
         if (bars && chart.stacked) xml << "<c:overlap val=\"100\"/>";
         if (line) xml << "<c:marker val=\"" << (anyMarked ? 1 : 0) << "\"/>";
+        if (bubble) xml << "<c:bubbleScale val=\"100\"/>";
+        if (stock) {
+            // The bar from low to high; with an opening value, the box
+            // between it and the close.
+            const char* ink = "<c:spPr><a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill></a:ln></c:spPr>";
+            xml << "<c:hiLowLines>" << ink << "</c:hiLowLines>";
+            if (chart.series.size() >= 4) {
+                xml << "<c:upDownBars><c:gapWidth val=\"150\"/>"
+                       "<c:upBars><c:spPr><a:solidFill><a:srgbClr val=\"FFFFFF\"/></a:solidFill><a:ln w=\"9525\"><a:solidFill>"
+                       "<a:srgbClr val=\"000000\"/></a:solidFill></a:ln></c:spPr></c:upBars>"
+                       "<c:downBars><c:spPr><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill><a:ln w=\"9525\"><a:solidFill>"
+                       "<a:srgbClr val=\"000000\"/></a:solidFill></a:ln></c:spPr></c:downBars></c:upDownBars>";
+            }
+        }
         if (pie) {
             xml << "<c:firstSliceAng val=\"0\"/>";
             if (chart.kind == Kind::Doughnut) xml << "<c:holeSize val=\"50\"/>";
@@ -4737,10 +4805,10 @@ private:
             // The axis the categories (a scatter chart's x) run along, and
             // the values' - at the left and foot for bars lying down.
             const bool lying = chart.kind == Kind::Bar;
-            const char* across = scatter ? "c:valAx" : "c:catAx";
+            const char* across = scatter || bubble ? "c:valAx" : "c:catAx";
             xml << "<" << across << "><c:axId val=\"1\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
                    "<c:delete val=\"0\"/><c:axPos val=\"" << (lying ? "l" : "b") << "\"/>"
-                << (scatter ? "<c:majorGridlines/>" : "")
+                << (scatter || bubble || radar ? "<c:majorGridlines/>" : "")
                 << "<c:tickLblPos val=\"nextTo\"/><c:crossAx val=\"2\"/></" << across << ">"
                    "<c:valAx><c:axId val=\"2\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
                    "<c:delete val=\"0\"/><c:axPos val=\"" << (lying ? "b" : "l") << "\"/><c:majorGridlines/>"

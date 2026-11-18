@@ -16,6 +16,7 @@
 // Axis indices: 0 = y (the value), 1 = x (the projection's domain) - the
 // engine's convention, shared with the highlight and span defaults.
 //
+// Version: 1.3.0 - EngineScatterGroup::smooth: a joined group's line as a curve through its points
 // Version: 1.2.0 - joined groups: EngineScatterGroup::joined / showMarkers / lineWidth, SetJoinLineWidth, GroupLineRuns
 // Version: 1.1.0 - AddChartHighlights() / RefreshHighlights(): a derived chart's own highlights
 //   survive the rebuild every data, theme and legend change does
@@ -58,6 +59,10 @@ struct EngineScatterGroup {
     // the line. Off by default - a scatter chart shows points.
     bool joined = false;
     float lineWidth = 0.0f;            // 0 = the chart's SetJoinLineWidth
+    // A joined group's line as a smooth curve through its points (a
+    // centripetal Catmull-Rom spline: it follows the points in their order
+    // whichever way they run, and does not loop or overshoot between them).
+    bool smooth = false;
     // false = no marks, the line alone (hover, tooltips and labels stay).
     bool showMarkers = true;
 };
@@ -112,6 +117,9 @@ public:
     // runs, each with its screen polyline and the points it joins. Empty for
     // a group that is not joined, hidden, or before a paint.
     std::vector<ChartLineRun> GroupLineRuns(size_t group) const;
+    // The smooth curve drawn through `knots` (screen points, three or more;
+    // fewer come back as they are), as a polyline.
+    static std::vector<Point2Dd> SmoothThrough(const std::vector<Point2Dd>& knots);
 
     // ---- size channel (bubbles) ----------------------------------------------
     void SetRadiusRange(float minRadius, float maxRadius);

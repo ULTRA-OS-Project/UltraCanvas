@@ -1,5 +1,6 @@
 // core/UltraCanvasRichDocumentChart.cpp
 // A document's chart as a chart of the chart engine - see the header.
+// Version: 1.4.0 - radar, bubble and stock charts; smoothed lines
 // Version: 1.3.0 - a scatter chart is always the engine's scatter chart (joined groups)
 // Version: 1.2.0 - a chart's stated axis ranges (bars, scatter)
 // Version: 1.1.0 - `ink`: the chart's furniture on a dark page
@@ -12,6 +13,8 @@
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.h"
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEnginePieChart.h"
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEngineScatterChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineRadarChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineFinancialChart.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -108,6 +111,7 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
             element = pie;
             break;
         }
+        case RichChart::Kind::Bubble:
         case RichChart::Kind::Scatter: {
             // Points over two value axes, each series over its own x; a
             // series with a line is joined in the order of its points.
@@ -118,18 +122,23 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
                 EngineScatterGroup group;
                 group.name = one.name;
                 group.color = ChartColor(one.color);
-                group.joined = one.joined;
-                group.showMarkers = one.marked || !one.joined;
+                const bool bubbles = chart.kind == RichChart::Kind::Bubble;
+                group.joined = one.joined && !bubbles;
+                group.smooth = one.smooth;
+                group.showMarkers = one.marked || !group.joined;
                 for (size_t i = 0; i < one.values.size(); i++) {
-                    group.points.emplace_back(i < one.xValues.size() ? one.xValues[i] : static_cast<double>(i + 1),
-                                              one.values[i]);
+                    EngineScatterPoint point(i < one.xValues.size() ? one.xValues[i] : static_cast<double>(i + 1), one.values[i]);
+                    // (A bubble's size is its area's; one without a size is the smallest.)
+                    if (bubbles) point.size = i < one.sizes.size() ? std::max(0.0, one.sizes[i]) : 0.0;
+                    group.points.push_back(point);
                 }
                 groups.push_back(std::move(group));
             }
             scatter->SetGroups(groups);
             scatter->SetMarkerRadius(3.0f);
-            scatter->SetMarkerOpacity(1.0f);
+            scatter->SetMarkerOpacity(chart.kind == RichChart::Kind::Bubble ? 0.75f : 1.0f);
             scatter->SetJoinLineWidth(2.0f);
+            if (chart.kind == RichChart::Kind::Bubble) scatter->SetRadiusRange(3.0f, std::max(8.0f, std::min(width, height) * 0.09f));
             if (std::isfinite(chart.xMin) && std::isfinite(chart.xMax)) scatter->SetXRange(chart.xMin, chart.xMax);
             if (std::isfinite(chart.valueMin) && std::isfinite(chart.valueMax)) scatter->SetYRange(chart.valueMin, chart.valueMax);
             element = scatter;
@@ -147,6 +156,7 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
                 series.values = one.values;
                 series.color = ChartColor(one.color);
                 series.showMarkers = one.marked;
+                if (one.smooth) series.shape = ChartLineShape::Curved;
                 series.drawLine = one.joined;
                 list.push_back(std::move(series));
             }
@@ -162,6 +172,72 @@ std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const Ric
                 lines->SetIncludeZero(true);
             }
             element = lines;
+            break;
+        }
+        case RichChart::Kind::Radar: {
+            // The categories are the spokes, on one range from nought to a
+            // round number over the highest value.
+            auto radar = CreateEngineRadarChart("DocumentChart", 0, 0, width, height);
+            radar->SetAnimateOnDataChange(false);     // a page shows the chart as it is
+            size_t spokes = chart.categories.size();
+            double lowest = 0.0, highest = 0.0;
+            for (const RichChartSeries& one : chart.series) {
+                spokes = std::max(spokes, one.values.size());
+                for (double value : one.values) {
+                    if (!std::isfinite(value)) continue;
+                    lowest = std::min(lowest, value);
+                    highest = std::max(highest, value);
+                }
+            }
+            if (spokes < 3) return nullptr;
+            if (std::isfinite(chart.valueMin)) lowest = chart.valueMin;
+            if (std::isfinite(chart.valueMax)) highest = chart.valueMax;
+            else if (highest > lowest) {
+                const double step = NiceNumber((highest - lowest) / 5.0, true);
+                highest = std::ceil(highest / step - 1e-9) * step;
+            }
+            if (highest <= lowest) highest = lowest + 1.0;
+            for (size_t i = 0; i < spokes; i++) {
+                radar->AddAxis(i < chart.categories.size() ? chart.categories[i] : std::to_string(i + 1), lowest, highest);
+            }
+            for (const RichChartSeries& one : chart.series) {
+                EngineRadarSeries series;
+                series.name = one.name;
+                series.values = one.values;
+                series.color = ChartColor(one.color);
+                series.fillOpacity = chart.filled ? 0.35f : 0.0f;
+                series.showPoints = one.marked;
+                series.pointRadius = 3.0f;
+                radar->AddSeries(series);
+            }
+            element = radar;
+            break;
+        }
+        case RichChart::Kind::Stock: {
+            // A bar for each category from its low to its high, with its
+            // close - and its open, as a candle, where the chart has one.
+            const size_t count = chart.series.size();
+            if (count < 3) return nullptr;
+            const bool opened = count >= 4;
+            const RichChartSeries& high = chart.series[opened ? 1 : 0];
+            const RichChartSeries& low = chart.series[opened ? 2 : 1];
+            const RichChartSeries& close = chart.series[opened ? 3 : 2];
+            std::vector<ChartOHLCBar> bars;
+            for (size_t i = 0; i < close.values.size() && i < high.values.size() && i < low.values.size(); i++) {
+                const double open = opened && i < chart.series[0].values.size() ? chart.series[0].values[i] : close.values[i];
+                bars.emplace_back(i < chart.categories.size() ? chart.categories[i] : std::to_string(i + 1),
+                                  open, high.values[i], low.values[i], close.values[i]);
+            }
+            if (bars.empty()) return nullptr;
+            auto stock = CreateEngineFinancialChart("DocumentChart", 0, 0, width, height);
+            stock->SetAnimateOnDataChange(false);     // a page shows the chart as it is
+            stock->SetCandleStyle(opened ? ChartCandleStyle::Candlestick : ChartCandleStyle::OHLCBars);
+            stock->SetShowVolumePane(false);
+            stock->SetShowMovingAverage(false);
+            stock->SetShowCrosshair(false);
+            stock->SetPriceFormat("");
+            stock->SetData(bars);
+            element = stock;
             break;
         }
         case RichChart::Kind::NoChart:

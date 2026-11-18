@@ -282,7 +282,10 @@ series has its own x values and they need not rise (a loop, a path, a curve
 that turns back). A point that is not finite breaks the line.
 `showMarkers = false` leaves the line alone (a mark still shows under the
 pointer); `lineWidth` sets the group's line, `SetJoinLineWidth` the chart's;
-`GroupLineRuns(group)` gives the line as laid out.
+`GroupLineRuns(group)` gives the line as laid out. `smooth = true` draws the
+line as a curve through the points (a centripetal Catmull-Rom spline, which
+follows the points in their order whichever way they run and does not loop
+between them); `SmoothThrough(points)` is that curve for any screen points.
 
 ```cpp
 auto trials = CreateEngineScatterChart("Trials", 0, 0, 640, 400);
@@ -291,6 +294,7 @@ path.name = "Trial 1";
 path.points = {{1.0, 2.0}, {4.0, 6.5}, {3.0, 8.0}, {0.5, 5.0}};   // x turns back
 path.joined = true;
 path.lineWidth = 1.5f;
+path.smooth = true;                            // a curve through the points
 trials->AddGroup(path);
 trials->SetJoinLineWidth(2.0f);
 ```
