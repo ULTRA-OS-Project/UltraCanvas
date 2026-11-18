@@ -1,3 +1,20 @@
+#### 2026-11-18 *1.107.20*
+- **The Delete dialog is dark under a dark theme.** The list of what is about
+  to be deleted (and the list in the copy / move questions) was white with a
+  light grey header inside the dark dialog, and "Delete permanently" was a
+  light pink button. The list now takes the theme's dark colours, and "Delete
+  permanently" is a dark button with a light red outline and label.
+- **A dialog left open follows a theme change.** The delete, copy, move and
+  problem dialogs (and the Save dialog's Settings) kept the look they opened
+  with when the theme changed while they were open; they now switch with it,
+  at the filer's own type size.
+- **Word and LibreOffice documents show a real thumbnail.** A `.docx`, `.doc`
+  or `.odt` file's tile was a white square with the document's first lines of
+  text in small grey type, though Settings > Display > Thumbnails had Docs
+  switched on. It is now the document's first page as it looks - its layout,
+  fonts, pictures, colours, header and footer - the way a PDF's tile shows its
+  first page.
+
 #### 2026-11-17 *1.107.19*
 - **The status line's grey half reads under a dark theme.** The text after
   the bold part ("3 drives, 424.5 GB free of 1.3 TB in total · 3 items",

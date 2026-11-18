@@ -1,3 +1,266 @@
+#### 2026-11-18 *0.9.574*
+- **A paragraph in a table cell keeps its own proportional line height**
+  (`RichTextRun::lineSpacing`, new): a card's heading set at 70% or 90% of its
+  font's line, in a cell whose first paragraph is not, had its lines a full
+  line apart. Read from ODT (`fo:line-height` in per cent) and DOCX
+  (`w:line` with "auto") for every paragraph of a cell, written by both, and
+  laid out by `UltraCanvasRichTextEdit`. An ODT written by Word sets such a
+  height on every line of a cell, as Word does; Writer's own keep Writer's way
+  (more room above the paragraph, but not above a cell's first line).
+- **More kinds of DOCX charts are drawn as what they are**: a pie or
+  doughnut as slices (in the colours the file gives its points), a bar chart
+  as bars lying down with the categories up the left, and stacked or
+  per-cent columns one on the other. They were all drawn as columns side by
+  side.
+- **A document's own bullets look like a word processor's.** A list read
+  from a document carries its bullet (`RichDocBlock::bulletText`); it was
+  drawn like the view's own - a text font's small bullet in the grey marker
+  colour - and came out as a faint dot. It is now drawn in the text's colour
+  and half as large again, the size of the symbol font's bullet Word and
+  Writer use. `DrawBulletMark` (UltraCanvasDrawnMarks.h) takes a `scale`.
+- **The delete, copy and move questions of the file display are dark under a
+  dark theme.** Their list of the entries concerned had white rows and a light
+  grey header in a dark dialog: setting its row and header sizes by hand had
+  stopped the list following the theme. It keeps its sizes and follows the
+  theme again (`ListView` well, header and ink).
+- **A dialog's red answer beside the default one reads in a dark dialog.**
+  `DialogButtonRole::Destructive` ("Delete permanently" beside "Move to
+  Trash") was a fixed light pink button with dark red text, which glared from
+  a dark dialog. It is now the theme's ordinary button, outlined and lettered
+  in the theme's `danger` colour (`UltraCanvasModalDialog::DestructiveOutlineStyle`):
+  a dark red on a light button in a light look, a light red on a dark one in a
+  dark look, filled red while pressed, and it changes with the theme. A
+  dialog whose host set its fonts by hand before adding the answers (the file
+  display's) gets it too. `UltraCanvasThemeTest` checks both looks and the
+  list.
+- **A dialog given its own type sizes follows the theme.** Setting the sizes
+  through `UltraCanvasModalDialog::SetStyle` - which the file display's
+  delete, copy, move and problem dialogs and the Save dialog's Settings do -
+  stopped the dialog following the theme, so one left open while the theme
+  changed kept the old look. A style that changes only sizes now keeps the
+  dialog following, and a theme change keeps the message, details and button
+  sizes it set; a style that changes the colours still stops the following.
+  The message also stays on the dialog's surface through a change (it took
+  the text field's ground, a lighter or darker box behind the text).
+- **Footnotes and endnotes are read from .doc files.** The legacy Word reader
+  skipped the reference marks and never read the note stories. It now reads
+  where the body refers to each note (`PlcffndRef`, `PlcfendRef`) and each
+  note's words (`PlcffndTxt`, `PlcfendTxt`, the stories after the main text)
+  into `UCRichDocument::notes`, with numbered reference runs as DOCX and ODT
+  have them - so a .doc's notes show at the foot of their page (endnotes
+  after the body) and go along when the document is saved as DOCX or ODT.
+- **A document's chart is drawn by the chart engine.** The DOCX reader
+  turned a chart into drawn shapes with code of its own. It now also keeps
+  the chart's data in its frame (`RichTextFrame::chart`, a `RichChart`: kind,
+  categories, series, legend, title) and `UltraCanvasRichTextEdit` draws it
+  with the engine's charts - with their axes, grid, legend and palette
+  handling - on screen, in print and in PDF.
+  `CreateRichDocumentChart` (UltraCanvasRichDocumentChart.h) gives the same
+  chart as a live element.
+- **New: `UltraCanvasEngineBarChart`**, the engine's column and bar chart
+  (side by side, stacked, per cent; lying down; ring sectors under Polar).
+  The engine had it only as a class of the demo application.
+- **A chart saved to DOCX is a chart again**: the writer makes a chart part
+  (`word/charts/chartN.xml`) instead of a group of shapes, so Word and Writer
+  open it as a chart. A doughnut now has its hole. ODT is still given the
+  chart as a drawing.
+- **A document reads on a dark theme.** A document states its colours for
+  white paper; on a dark page the view drew them as they are - black text on
+  the dark page, the view's light text on a pale grey table header. The view
+  now fits a document's colours to a dark page
+  (`RichTextEditStyle::adaptDocumentColors`, on by default;
+  `AdaptDocumentColorToPage`): lightness turned over between the page and the
+  ink, hue kept. Text colour and highlight, paragraph and cell fills, borders,
+  frames, drawn shapes and a chart's axes follow; pictures, printing, PDF
+  export and the saved document keep the document's own colours.
+- **A DOCX scatter chart has a real horizontal value axis.** Its points were
+  set evenly over categories, like a line chart's. Each is now placed by its
+  own x (`c:xVal`) and y on two value axes with round steps - from nought
+  unless the values lie far from it, below nought where they are negative,
+  or as the file states (`c:scaling` `c:min` / `c:max`) - marked with a dot
+  and joined by a line where the series has one.
+- **A chart whose series has no name no longer crashes the DOCX reader.**
+- **A line without words has the line height its paragraph sets.** A Word
+  card template sets its text "exactly 14 pt" and spaces its parts with empty
+  paragraphs in a 1 to 3 pt font: each is 14 pt high in Word, and was a hair
+  of a line here, so every card came out a fifth too low. An empty line of a
+  table cell, a cell of nothing else, and an empty paragraph of the body now
+  take the set height ("exactly" as given, "at least" not below their font's).
+- **UltraIM: typing on Mattermost and Zulip.** Both providers now have the
+  `TypingIndicator` capability, both ways. Zulip sends through
+  `/api/v1/typing` (direct messages; stream topics on Zulip 8.0+) and hears
+  typing on its event queue, repeating it every `typingRefreshMs` (4 s) until
+  the stop, the typist's message or `typingExpireMs` (15 s), since Zulip's
+  own clients say it only every ten seconds. Mattermost sends through
+  `/api/v4/users/me/typing` and hears typing on a WebSocket opened for that
+  alone (chained into UltraNet's process-wide WebSocket callbacks as the XMPP
+  stream is), sending the stop itself after `typingStopMs` (5 s), the
+  typist's post or a dropped socket. Also fixed in Zulip: a message deleted
+  before the event queue echoed it came back and was deleted twice. Tested
+  in `ZulipProviderTests` and `MattermostProviderTests` (the stand-in
+  Mattermost server now has a WebSocket).
+- **ODT table cells are read and written as DOCX ones are**, so a table-heavy
+  document converted to ODT reads back the same (the email signatures: 0.01 pt,
+  three pages; they were six) and opens in Writer on the same pages:
+  - the writer writes every line of a cell as a paragraph (an empty one states
+    its font), the cell's line height or multiple, a negative table indent, a
+    run of nothing but spaces as `text:s` (it was collapsed away between two
+    pictures), and the font a picture in a line stands in;
+  - the reader keeps a table in a cell as a nested table (it flattened it into
+    the cell's lines), an empty first paragraph as a line of its own font, the
+    cell's line height, and the font round a picture in a line.
+  - Writer sets a paragraph of proportional line height (122%) in a cell with
+    that much more room above its line, but not the first line of the cell:
+    read as that room. A multiple on every line of a cell is Word's way, and
+    is read from an ODT only where this writer's own settings item says so.
+- **Table columns give way to their content** (`RichDocBlock::tableAutoFit`,
+  Word's autofit layout, read from and written as `w:tblLayout`): a column
+  narrower than the longest word or widest picture in it takes room from the
+  columns that have some to spare, then from beside the table. Word's files
+  have it unless they say "fixed"; other tables keep their widths.
+- **A table's width in points is kept where it is a little wider than its
+  column**, as in Word: squeezed to the column, its words no longer fitted
+  their cells and were broken in the middle.
+- **Spaces a line ends with take no room.** A line that just fitted its cell
+  was broken a word early when its paragraph ended in a space.
+- **No line break after a slash inside a word in Word's documents**
+  (`UCRichDocument::breakAfterSlash`, false for DOCX and DOC, carried through
+  ODT in a settings item of our own): "(she/her/hers)" stays whole, as in Word.
+- **A table nested in a table cell is edited in place**: a double-click (or
+  `EditFrame`) opens it like a text frame's words, and the cell around it
+  grows and shrinks with what is typed. So is any frame standing in a line.
+- **Charts in ODT are chart objects.** The ODT writer wrote a chart as a
+  group of drawn shapes, and the reader showed Writer's own charts as their
+  replacement picture. A chart is now written as an object of its own in the
+  package (`Object N/content.xml`: a `chart:chart` with its series, styles
+  and the table their ranges point into) and read from one into
+  `RichTextFrame::chart` - columns and bars (side by side, stacked, per
+  cent), lines, areas, pies, doughnuts and scatter charts, with their
+  series' names and colours, categories, legend, title and stated axis
+  ranges. A chart stays a chart from DOCX to ODT and back, and Writer opens
+  ours as a chart.
+- `UCRichDocument::ChartAsShapes` makes a chart's drawn shapes from its data
+  (the code the DOCX reader had, now shared by both readers), and
+  `RichChart` carries a chart's stated axis ranges (`valueMin` / `valueMax`,
+  `xMin` / `xMax`).
+- **A turned picture in the line keeps its turn in ODT.** The ODT writer
+  wrote it upright and the reader ignored a `draw:transform` on an `as-char`
+  picture; both now carry `RichTextRun::imageRotationDeg`, as DOCX does. It
+  is written with a graphic style that makes it a drawing object for Writer,
+  which then shows it turned in its line (as a plain picture Writer clips the
+  turned picture to its old box).
+- **A picture or box standing in a line leaves no room under it.** The
+  line kept its font's descent under the box; Word and Writer set the box on
+  the line's foot, and so does the view now.
+- **UltraIM Signal: a delivery tick that came too early was lost.** When the
+  other side's receipt reached signal-cli before its answer to `send`
+  (a slow machine: the ARM CI runner), the provider had not recorded the
+  message yet and dropped the receipt, so the message never showed as
+  delivered. Such a receipt is now kept and applied once the send is
+  recorded. `SignalProviderTests` forces the order (`/_test/send_delay` in
+  the stand-in daemon).
+- **UltraIM: provider modules on demand.** A provider module is no longer
+  loaded until it is used: `UltraIM_LoadProvider(id)` loads the one module
+  `ultraim_<id>` from `pluginDirectory`, `UltraIM_ListProviderModules()`
+  names the modules there without loading them, and
+  `UltraIM_LoadUsedProviders()` loads at start only the networks in use -
+  those listed in `<dataDirectory>/ultraim-providers.txt`, which UltraIM
+  keeps itself: a provider is added when it connects and taken out by
+  `UltraIM_SignOut` (`UltraIM_GetUsedProviders()` reads it). With no list
+  yet a first start begins an empty one, while a data folder used before
+  has every module loaded once and the providers with a sign-in kept
+  written down, so an update signs no one out. A module loaded before an
+  `UltraIM_Shutdown` registers its provider again after the next
+  `UltraIM_Initialize` (before, `UltraIM_RefreshProviders` skipped it). The
+  test module is now `ultraim_moduletest`, named after its provider id.
+  Tested in `UltraIMTests`.
+- **A Word or LibreOffice document's thumbnail is its first page.** A `.docx`,
+  `.doc` or `.odt` tile in the file display (UltraFiler, the desktop's boards,
+  `RenderFileThumbnail`) showed a white square holding the document's text
+  lines in one small grey font - what the letter says, not what it looks
+  like, so a letterhead, a CV with a photo and a plain draft looked the same.
+  The `word-processing` preview provider now draws thumbnails too: it reads
+  the document with `UCWordDocumentIO` and lays out its first page with
+  `UltraCanvasRichTextEdit`, the same pages its PDF export and print give -
+  page size and margins, fonts and sizes, pictures, colours, tables, header
+  and footer - on white paper in either theme, drawn on the thumbnail
+  workers and cached like every other thumbnail. Only the first 200 blocks
+  are laid out, so page 1 of a long report costs what a letter's does; the
+  layouts are serialized, as the vector drawings' are. A page that cannot be
+  drawn falls back to the page of text; a password-protected `.docx` keeps
+  its type glyph. RTF, Markdown, HTML and LaTeX keep their page of text.
+  `FilePreviewsTest` checks the page of the `.docx`, `.odt` and `.doc`
+  fixtures.
+- **A Word template of twenty email signatures (tables in two columns) came
+  out on four pages with two signatures half empty**; it is three pages now,
+  every signature in Word's page and column. What was missing:
+  - **A table inside a table cell** was dropped with everything in it. The
+    DOCX reader keeps it as a frame of its own standing in the cell's line
+    (`RichTextFrame::nestedTable`), `UltraCanvasRichTextEdit` lays it out and
+    draws it there, its words are part of the plain text, and the DOCX and ODT
+    writers write it back as a table in the cell. The empty paragraph a cell
+    must end with after such a table takes no line, as in Word.
+  - **Column breaks** were read as line breaks. `RichDocBlock::columnBreakBefore`
+    starts a block in the next column (the next page from the last one): Word's
+    `w:br w:type="column"`, ODF's `fo:break-before="column"`, read, written and
+    laid out.
+  - **A cell's lines of a set height or multiple** (`RichTableCell::lineHeightPt`
+    / `lineHeightAtLeast` / `lineSpacing`): Word's `w:spacing w:line` with
+    "exact", "atLeast" and "auto".
+  - **An empty first paragraph of a cell, an empty last line, and the line a
+    break at a paragraph's end leaves** are lines of their paragraph mark's
+    font (a 2 pt paragraph sets two parts a hair apart); they were lines of
+    the default font, or lost.
+  - **A table left of its column** (a negative `w:tblInd`), and a column as
+    narrow as its document states (it was at least 18 pt).
+  - **Pictures are stretched to the size the document gives them**; they kept
+    their own proportions inside it.
+  - A picture in a line carries its run's font: one lower than a line of that
+    font stands in such a line. A picture alone in its line has no descent
+    under it.
+  - The DOCX writer writes every line of a cell as a paragraph (an empty one
+    keeps its font in its mark), so a saved document reads back the same.
+- **A drawing Word sets in the line of a body paragraph** (`wp:inline`, ODF's
+  `as-char`) stands in that line (wrap `Inline`), where the paragraph's
+  alignment puts it; it was a float at the left.
+- **A turned picture in the line** (`RichTextRun::imageRotationDeg`) is drawn
+  turned, in a line as tall as the turned picture; read and written by the
+  DOCX reader and writer.
+- **Pictures and drawings behind or in front of the text in a cell of a
+  header's or footer's table** float from that cell, as in the body.
+- **Print and PDF export are on white paper.** The page was painted in the
+  screen theme's page colour - a light grey by default, a dark sheet with
+  light text under a dark theme. Under a dark theme the output also takes the
+  light style's inks.
+- `DocumentRenderProbe` lists each table cell's lines with
+  `DOCUMENT_PROBE_VERBOSE=1`.
+- **A DOCX saved by Writer had a horizontal rule after almost every
+  paragraph and a bullet before every heading.** Writer writes
+  `w:pBdr` sides of "nil" on its paragraphs, and an empty paragraph with a
+  bottom border was taken for a rule whatever the border said; its headings
+  are in an outline numbering whose levels show nothing (`w:numFmt` "none",
+  an empty `w:lvlText`), which made list items of them. Only a border that is
+  drawn makes a rule now, and such a level makes no list item.
+- **A font named with its alternatives** ("Liberation Sans;Arial", as Writer
+  writes `w:rFonts`) is the first of them; the whole string named no font, so
+  the text fell back to the default one.
+- **Charts in a DOCX are drawn** (they were left out): a DrawingML chart is
+  read from its part as a drawing of shapes - columns for a bar or column
+  chart, lines for a line or area chart - with the value axis, the grid, the
+  categories and the legend, from the values cached in the file. A .doc's
+  chart was already shown from the metafile stored with it.
+- **A heading is set in its style's own size and font** where the document
+  gives them (it took the view's heading sizes and font).
+- **A picture or frame that does not fit the rest of its page goes to the
+  next page with its paragraph**; it was cut by the page's edge.
+- **The document's first paragraph keeps its space above** (a title's 12 pt),
+  and **a hanging first line starts left of the column** where the
+  paragraph's indent is smaller than the hang (Writer's headings).
+- `DocumentRenderProbe` registers the vector readers, so a document's EMF and
+  WMF pictures are drawn in its output.
+- **A heading keeps its own font, size and spacing through ODT**: the ODT
+  writer wrote the plain heading style and the reader took no font from it.
+
 #### 2026-11-18 *0.9.573*
 - **The ChatCube relay workflow copies the tested sources to the server and
   installs nothing.** Its deploy job ran `update.sh` over SSH through a sudo

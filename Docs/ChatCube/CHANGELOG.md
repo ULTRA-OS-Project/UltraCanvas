@@ -1,3 +1,17 @@
+#### 2026-11-18 *0.1.30*
+- **Only the networks you use are loaded.** ChatCube used to load every
+  network's module at start - Telegram, Matrix, Signal and the rest - even
+  for an account on ChatCube alone, each starting its own worker. Now it
+  loads ChatCube Direct and the networks you are signed in to; another
+  network's module is loaded when you press its button, and one you sign
+  out of is not loaded at the next start. The first start after the update
+  still finds every network you were signed in to.
+- **Who is typing, and where.** Someone typing now shows in the chat list
+  too - in the accent colour, in place of the last message - so it is seen
+  in a chat that is not open. In a group it says who: "Anna is typing…",
+  "Anna and Ben are typing…", "Anna and others are typing…". And Mattermost
+  and Zulip now show typing both ways, as the other networks did.
+
 #### 2026-11-17 *0.1.29*
 - **A group's new name no longer flips back for a moment.** Renaming a group
   right after it was made could show its first name again until the next
