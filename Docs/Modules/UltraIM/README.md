@@ -1153,3 +1153,22 @@ Implemented: the registry, the module loader, the event bus and dispatcher,
 the merged conversation fetch and every forwarding call; the ChatCube
 Direct, Matrix, Telegram, Mastodon, Mattermost, Zulip, Signal, XMPP and IRC
 providers (above).
+
+The providers' `GetCapabilities()` (`UltraIMCapabilityFlags`), as they stand -
+every one has TextMessages, AddContact, CreateGroup, GroupChats,
+LeaveConversation, OfflineMessages and SearchMessages:
+
+| Provider (module) | Files, images, voice notes | Edit, delete | Reply | Typing | Read receipts | E2E | Calls | Other |
+|---|---|---|---|---|---|---|---|---|
+| `direct` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Voice, Video | PeerToPeer, ManageGroups, AccountProfile, SignInProtection, AccountRecovery, AnonymousLogin |
+| `matrix` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ManageGroups, MultiDevice |
+| `telegram` | ✓ | ✓ | ✓ | ✓ | ✓ | | | ManageGroups, MultiDevice, Channels, Stickers |
+| `mastodon` | ✓ (pictures, video, sound) | ✓ | ✓ | | | | | MultiDevice |
+| `mattermost` | ✓ | ✓ | ✓ | ✓ | | | | MultiDevice |
+| `zulip` | ✓ | ✓ | | ✓ | | | | MultiDevice |
+| `signal` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | MultiDevice |
+| `xmpp` | ✓ | ✓ | ✓ | ✓ | ✓ | | | MultiDevice |
+| `irc` | | | ✓ | ✓ | | | | |
+
+Modules are loaded on demand (*Writing a provider* above): an application
+loads the networks in use at start and the others when they are asked for.
