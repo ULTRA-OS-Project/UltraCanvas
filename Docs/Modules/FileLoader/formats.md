@@ -67,11 +67,12 @@ load through the ImageMagick delegate when libvips was built with it.
 | PostScript / EPS | `.eps`, `.ps` | ✅ † | — | libvips delegate |
 | AutoCAD DXF | `.dxf` | ✅ ‡ | ✅ ‡ | Vector plugin (built-in reader and writer) |
 | AutoCAD DWG | `.dwg`, `.dwt`, `.dws`, `.sv$` | ✅ ‡ | ✅ ‡ § | Vector plugin (native R13–R2018 decoder) |
+| OpenDocument Drawing (LibreOffice Draw) | `.odg`, `.otg`, `.fodg` | ✅ ‡ | ✅ ‡ | Vector plugin (built-in reader and writer; miniz + tinyxml2) |
 
 There is no SVG *writer* in the image pipeline — SVG is load-only. EPS/PS load
 only when libvips was built with a PostScript loader (Ghostscript delegate).
 The Vector plugin writes the whole matrix it reads and more (SVG, XAR, EPS,
-CDR, PDF, EMF, WMF, AI, DXF, DWG) once `RegisterVectorFormatsPlugin()` has
+CDR, PDF, EMF, WMF, AI, DXF, ODG, DWG) once `RegisterVectorFormatsPlugin()` has
 been called — see
 [UltraCanvasVectorConverters](../../UltraCanvas/UltraCanvasVectorConverters.md).
 Those converters read into an editable `VectorDocument` rather than pixels and

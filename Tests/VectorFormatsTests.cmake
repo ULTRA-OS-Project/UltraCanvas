@@ -1,6 +1,6 @@
 # Tests/VectorFormatsTests.cmake
 # VectorFormatsPluginTest (every vector converter, and detailed.cdr through
-# the patched libcdr), CDRWriterTest and CDRPluginRenderTest. Included by Tests/CMakeLists.txt
+# the patched libcdr), ODGConverterTest, CDRWriterTest and CDRPluginRenderTest. Included by Tests/CMakeLists.txt
 # under BUILD_TESTS, and by the top-level CMakeLists.txt on its own under
 # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS - so platforms that build no full
 # test suite (Windows CI) still run the CorelDRAW path on real files.
@@ -42,6 +42,29 @@ if(TARGET UltraCanvasVectorPlugin)
     message(STATUS "    Test registered: VectorFormatsPluginTest")
 else()
     message(STATUS "  VectorFormatsPluginTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# ===== OPENDOCUMENT DRAWING =====
+# ODGConverterTest: the .odg / .fodg writer and reader round trip, LibreOffice
+# Draw's own sample files (media/vector/ODG) and hand-written custom-shape
+# geometry. Run with --render <file> <out.ppm> to draw any vector file.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building ODGConverterTest...")
+    add_executable(ODGConverterTest
+        ${_VFT_DIR}/ODGConverterTest.cpp
+    )
+    target_include_directories(ODGConverterTest PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(ODGConverterTest PRIVATE cxx_std_20)
+    target_compile_definitions(ODGConverterTest PRIVATE
+        VECTOR_SAMPLES_DIR="${_VFT_DIR}/../media/vector"
+    )
+    target_link_libraries(ODGConverterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(ODGConverterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+    add_test(NAME ODGConverterTest COMMAND ODGConverterTest
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
+    message(STATUS "    Test registered: ODGConverterTest")
 endif()
 
 # Round-trips a VectorDocument through the Vector plugin's CDR writer and the
