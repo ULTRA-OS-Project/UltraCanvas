@@ -547,7 +547,7 @@ std::string Beurteile(const Steuerschluessel& key, const Mandant& mandant,
                 // threshold has been crossed depends on the whole year's EU
                 // turnover, which this function does not have - and stating it
                 // as a fact would be the program vouching for something it did
-                // not check. "ultrafibu lieferschwelle" is what checks it.
+                // not check. "UltraFIBU lieferschwelle" is what checks it.
                 return "Nur solange die Schwelle des § 3c UStG (10.000 EUR EU-weit) "
                        "nicht überschritten ist - darüber gilt der Satz des "
                        "Bestimmungslandes über den One-Stop-Shop.";

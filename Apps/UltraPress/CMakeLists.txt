@@ -101,7 +101,7 @@ endif()
 # case-insensitive filesystem (macOS, Windows) the two names are one, so the
 # generator wrote both targets' CMakeFiles into one directory and both
 # binaries to one path, and make stopped with "No rule to make target
-# ultrapress.dir/depend". UltraFIBU made the same move (one `ultrafibu`).
+# ultrapress.dir/depend". UltraFIBU made the same move (one `UltraFIBU`).
 # The one program that was left is named `UltraPress`, as the app is.
 add_executable(UltraPress ui/main.cpp ui/UltraPressWindow.cpp ui/UltraPressMediaDialog.cpp ui/UltraPressTheme.cpp
     ui/UltraPressStart.cpp ui/UltraPressSettings.cpp cli/UltraPressCli.cpp)
@@ -137,7 +137,7 @@ set_target_properties(UltraPress PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 ultracanvas_embed_windows_manifest(UltraPress)
 ultracanvas_embed_app_icon(UltraPress "${CMAKE_SOURCE_DIR}/media/appicon/UltraPress.png")
-# The commands are half of this program, like ultrafibu's: on Windows
+# The commands are half of this program, like UltraFIBU's: on Windows
 # UltraPress.exe is a GUI program and UltraPress.com its console companion,
 # which a prompt runs for the bare name and waits for
 # (cmake/UltraCanvasWindowsGuiApp.cmake).

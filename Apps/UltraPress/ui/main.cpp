@@ -17,7 +17,7 @@
 // There were two programs, ultrapress and UltraPress, until the macOS build
 // showed that two names differing only in case are one name on a
 // case-insensitive filesystem. One program, named UltraPress like the app. And like
-// ultrafibu, started with nothing it opens a window rather than printing
+// UltraFIBU, started with nothing it opens a window rather than printing
 // its usage: a double-click on Windows gave that usage a console that
 // closed before it could be read, which looked like a crash.
 // Version: 0.9.0 - the theme under the Own policy: ThemeFor over the settings' look and the desktop, the host's fonts
