@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.10 - a row says who is typing there, in the accent, in place of the last message
 // Version: 0.2.9 - a bar under a file on its way (going out or coming in) with its percent; a sound file
 //                  with a note and a play mark, played in its bubble; a file's name measured bold, as
 //                  it is drawn, so it stays inside its bubble; no "Video" word under the play mark
@@ -19,7 +20,7 @@
 //                  rounded selection, bubbles without borders in the theme's colours, senders in
 //                  their avatar's colour
 // Version: 0.1.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeViews.h"
@@ -893,6 +894,21 @@ void ConversationListModel::SetPresence(const std::string& contactId, UltraIMPre
     }
 }
 
+void ConversationListModel::SetTyping(const std::string& conversationId, const std::string& text) {
+    auto it = typing_.find(conversationId);
+    const std::string before = it == typing_.end() ? std::string() : it->second;
+    if (before == text) return;
+    if (text.empty()) typing_.erase(conversationId);
+    else typing_[conversationId] = text;
+    const int row = FindRow(conversationId);
+    if (row >= 0) NotifyRowChanged(row);
+}
+
+std::string ConversationListModel::TypingText(const std::string& conversationId) const {
+    auto it = typing_.find(conversationId);
+    return it == typing_.end() ? std::string() : it->second;
+}
+
 int ConversationListModel::FindRow(const std::string& conversationId) const {
     for (size_t i = 0; i < list_.size(); ++i) {
         if (list_[i].conversationId == conversationId) return static_cast<int>(i);
@@ -999,6 +1015,12 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     ctx->SetTextPaint(unread ? look.ink : look.inkMuted);
     std::string snippet = c.lastMessageSnippet.empty() ? Tr("No messages yet") : c.lastMessageSnippet;
     if (c.isEncrypted && c.lastMessageSnippet.empty()) snippet = Tr("End-to-end encrypted");
+    // Someone typing there: that, in the accent, instead of the last message.
+    const std::string typing = list->TypingText(c.conversationId);
+    if (!typing.empty()) {
+        snippet = typing;
+        ctx->SetTextPaint(look.accent);
+    }
     ctx->DrawTextInRect(snippet, Rect2Dd(textX, topY + 22, rightEdge - textX - badgeWidth - 8, 18));
 }
 
