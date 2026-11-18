@@ -1,8 +1,5 @@
 // core/UltraCanvasRichDocumentChart.cpp
 // A document's chart as a chart of the chart engine - see the header.
-// Version: 1.2.1 - a chart-free core (ULTRACANVAS_ENABLE_CHARTS=OFF) builds this as a bridge that
-//                  makes no chart: the view then draws the chart's shapes. It called the engine's
-//                  charts there too, and every program linking that core failed to link
 // Version: 1.2.0 - a chart's stated axis ranges (bars, scatter)
 // Version: 1.1.0 - `ink`: the chart's furniture on a dark page
 // Version: 1.0.0
@@ -10,29 +7,6 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichDocumentChart.h"
-
-#ifdef ULTRACANVAS_CHART_FREE_CORE
-// The core was built without the chart engine (ULTRACANVAS_ENABLE_CHARTS=OFF;
-// UltraCanvas/CMakeLists.txt defines this for this file alone). There is no
-// chart to make, and a caller draws the chart's shapes instead, as
-// UltraCanvasRichTextEdit does when DrawRichDocumentChart returns false.
-namespace UltraCanvas {
-
-std::shared_ptr<UltraCanvasChartEngineElement> CreateRichDocumentChart(const RichChart& chart, int width, int height,
-                                                                       const Color& ink) {
-    (void)chart; (void)width; (void)height; (void)ink;
-    return nullptr;
-}
-
-bool DrawRichDocumentChart(IRenderContext* ctx, const RichChart& chart, const Rect2Dd& target, const Size2Di& natural,
-                           std::shared_ptr<UltraCanvasChartEngineElement>* cached, const Color& ink) {
-    (void)ctx; (void)chart; (void)target; (void)natural; (void)ink;
-    if (cached) cached->reset();
-    return false;
-}
-
-} // namespace UltraCanvas
-#else
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEngineBarChart.h"
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.h"
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEnginePieChart.h"
@@ -229,4 +203,3 @@ bool DrawRichDocumentChart(IRenderContext* ctx, const RichChart& chart, const Re
 }
 
 } // namespace UltraCanvas
-#endif // ULTRACANVAS_CHART_FREE_CORE
