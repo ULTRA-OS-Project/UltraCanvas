@@ -29,6 +29,8 @@
 // hardware-gated; AES-CBC and AES-CTR (and the PBKDF2 those formats key them
 // with) exist only for foreign formats and are portable.
 //
+// Version: 0.6.0 - UltraCrypt_AesGcmDecrypt (portable AES-GCM, interop); Argon2id with more than
+//                  one lane (UltraCryptKdfParams::parallelism), for files written elsewhere
 // Version: 0.5.0 - UltraCrypt_DeriveKeyPbkdf2 takes UltraCryptHashOptions: PBKDF2-HMAC-SHA-1 with
 //                  allowLegacy, for OpenDocument's password encryption
 // Version: 0.4.1 - X.509 and CMS in UltraCryptX509.h
@@ -320,6 +322,29 @@ UltraCryptResult UltraCrypt_AesCbcDecrypt(const UltraCryptSecureBuffer& key,
                                           UltraCryptSecureBuffer& outPlaintext);
 
 // ============================================================================
+// AES-GCM decryption (interop only, portable)
+// ============================================================================
+// AES-GCM (NIST SP 800-38D) for reading data produced elsewhere - LibreOffice's
+// ODF 1.4 encryption, W3C XML Encryption 1.1's aes*-gcm. Unlike the AEAD API's
+// Aes256Gcm above (libsodium, AES-NI only, 256-bit keys) it is the module's
+// own constant-time AES and a constant-time GHASH, so it works on every CPU,
+// with a 128-, 192- or 256-bit key. Decryption only: nothing UltraCanvas
+// writes uses GCM.
+//
+// `ciphertext` ends with the 16-byte tag. The tag is checked before anything
+// is released: AuthenticationFailed, and outPlaintext empty, when the key, the
+// IV, the associated data or a byte of the ciphertext is not what was sealed.
+struct UltraCryptGcmParams {
+    std::vector<uint8_t> iv;             // 12 bytes usually; any non-empty length is taken
+    std::vector<uint8_t> associatedData;
+};
+
+UltraCryptResult UltraCrypt_AesGcmDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptGcmParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
+
+// ============================================================================
 // AES-CTR (interop only)
 // ============================================================================
 // AES in counter mode (NIST SP 800-38A), for formats defined elsewhere that
@@ -383,10 +408,14 @@ struct UltraCryptKdfParams {
 
     uint32_t iterations   = 0;   // Argon2id passes ("opslimit")
     uint32_t memoryKiB    = 0;   // Argon2id memory cost
-    uint32_t parallelism  = 1;   // Argon2id lanes. The backing implementation
-                                 // fixes this at 1; any other value is
-                                 // rejected rather than silently ignored, so
-                                 // stored parameters always mean what they say.
+    uint32_t parallelism  = 1;   // Argon2id lanes. 1 is what UltraCanvas writes
+                                 // (libsodium). More - what a file written
+                                 // elsewhere records, LibreOffice's 4 - goes
+                                 // through the module's own RFC 9106
+                                 // implementation, checked against libargon2;
+                                 // never silently computed with 1. Then the
+                                 // salt may be 8 bytes or more, and the memory
+                                 // must be 8 KiB per lane or more.
     size_t   outputLength = 32;
 };
 

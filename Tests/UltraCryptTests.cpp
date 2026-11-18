@@ -508,14 +508,22 @@ static void TestKdf() {
                                          k5.Data(), k5.GetSize()),
           "a different iteration count yields a different key");
 
-    // parallelism != 1 must be refused rather than silently ignored, so that a
-    // stored parameter set always describes how the key was really derived.
-    UltraCryptKdfParams bad = makeParams();
-    bad.parallelism = 4;
+    // parallelism != 1 is honoured, never silently computed with one lane:
+    // the same salt and costs with 4 lanes give another key.
+    UltraCryptKdfParams four = makeParams();
+    four.salt = p1.salt;
+    four.parallelism = 4;
+    UltraCryptSecureBuffer fourLanes;
+    Check(static_cast<bool>(UltraCrypt_DeriveKeyFromPassword(password, four, fourLanes)) &&
+              fourLanes.GetSize() == k1.GetSize() &&
+              !UltraCrypt_ConstantTimeEquals(k1.Data(), k1.GetSize(), fourLanes.Data(), fourLanes.GetSize()),
+          "parallelism 4 derives a key of its own, not the one-lane key");
     UltraCryptSecureBuffer unused;
-    auto br = UltraCrypt_DeriveKeyFromPassword(password, bad, unused);
-    Check(!br && br.code == UltraCryptResultCode::NotSupported,
-          "parallelism != 1 is refused rather than silently ignored");
+    UltraCryptKdfParams tight = makeParams();
+    tight.parallelism = 4;
+    tight.memoryKiB = 16;
+    Check(UltraCrypt_DeriveKeyFromPassword(password, tight, unused).code == UltraCryptResultCode::InvalidArgument,
+          "less than 8 KiB per lane is refused");
 
     // Zero cost parameters must be refused.
     UltraCryptKdfParams zero = makeParams();
@@ -1697,6 +1705,133 @@ static void TestRsaEcdsa() {
           "a 31-byte coordinate: InvalidKeySize");
 }
 
+// ===== Argon2id with several lanes: the reference implementation's output =====
+// The expected keys are libargon2's (argon2-cffi's hash_secret_raw, type ID,
+// version 0x13) - what LibreOffice's ODF 1.4 encryption derives its key with.
+static void TestArgon2Lanes() {
+    std::printf("Argon2id with several lanes (libargon2 vectors)\n");
+    struct Case {
+        std::string password, salt;
+        uint32_t passes, memoryKiB, lanes;
+        size_t length;
+        const char* hex;
+        const char* what;
+    };
+    const Case cases[] = {
+        {"password", "somesaltsomesalt", 3, 64, 4, 32,
+         "9cb56f6cad0c84f51536569e63acbc47d2fdefaeea4b4f711efb5409e37f34ca", "t=3, m=64 KiB, p=4"},
+        {"password", "saltsaltsaltsalt", 1, 256, 2, 64,
+         "bb63cfce3dcd2c257971aa6173b7a756f968d1379e97d883a6367269326a8acb"
+         "7e5a564021ba626b945415a200bccde43dbfafb725683e9e17f85e27ee757e17", "one pass, 2 lanes, 64 bytes"},
+        {"\xC3\x9Cltra", "0123456789abcdef", 2, 1024, 3, 100,
+         "078804e1910c59bb082263f77f6357fd0549d44465cd7261675f658938f614631bf4e7d392c19fe8c9751b16832bccca"
+         "02a5c8c2a1e74e0f85ceed9fa1c281b17ce18a88c6c7afc7c0e4974dd2b8650ef1536d7c6f6bcc8f5496b196a7b61ea6"
+         "38c9696e", "3 lanes, a 100-byte output (H' past one hash)"},
+        {"pw", "somesaltsomesalt", 4, 37, 4, 16, "665ca7b04e4d59d7f7bd5850123d6899",
+         "m not a multiple of 4p: rounded down"},
+        {"password", "somesaltsomesalt", 3, 65536, 4, 32,
+         "81db97a7e67a891784a2599bc879f957cb3512d273984bd97d8a18fc59ff01e2", "LibreOffice's costs: t=3, 64 MiB, p=4"},
+    };
+    for (const Case& c : cases) {
+        const UltraCryptSecureBuffer pw(c.password.data(), c.password.size());
+        UltraCryptKdfParams params;
+        params.salt.assign(c.salt.begin(), c.salt.end());
+        params.iterations = c.passes;
+        params.memoryKiB = c.memoryKiB;
+        params.parallelism = c.lanes;
+        params.outputLength = c.length;
+        UltraCryptSecureBuffer key;
+        auto r = UltraCrypt_DeriveKeyFromPassword(pw, params, key);
+        Check(static_cast<bool>(r), std::string("Argon2id ") + c.what + " derives");
+        CheckHex(std::vector<uint8_t>(key.Data(), key.Data() + key.GetSize()), c.hex,
+                 std::string("Argon2id ") + c.what);
+    }
+}
+
+// ===== AES-GCM decryption — the GCM specification's test cases =====
+static void TestAesGcm() {
+    std::printf("AES-GCM decryption (GCM specification test cases)\n");
+    auto open = [](const std::string& keyHex, const std::string& ivHex, const std::string& aadHex,
+                   const std::string& ctHex, const std::string& tagHex, std::vector<uint8_t>& out) {
+        UltraCryptGcmParams params;
+        UltraCrypt_FromHex(ivHex, params.iv);
+        UltraCrypt_FromHex(aadHex, params.associatedData);
+        std::vector<uint8_t> sealed, tag;
+        UltraCrypt_FromHex(ctHex, sealed);
+        UltraCrypt_FromHex(tagHex, tag);
+        sealed.insert(sealed.end(), tag.begin(), tag.end());
+        UltraCryptSecureBuffer plain;
+        auto r = UltraCrypt_AesGcmDecrypt(BufferFromHex(keyHex), params, sealed.data(), sealed.size(), plain);
+        out.assign(plain.Data(), plain.Data() + plain.GetSize());
+        return r;
+    };
+    std::vector<uint8_t> out;
+    Check(static_cast<bool>(open("00000000000000000000000000000000", "000000000000000000000000", "", "",
+                                 "58e2fccefa7e3061367f1d57a4e7455a", out)) && out.empty(),
+          "test case 1: an empty message, its tag");
+    Check(static_cast<bool>(open("00000000000000000000000000000000", "000000000000000000000000", "",
+                                 "0388dace60b6a392f328c2b971b2fe78", "ab6e47d42cec13bdf53a67b21257bddf", out)),
+          "test case 2 opens");
+    CheckHex(out, "00000000000000000000000000000000", "test case 2: one zero block");
+    const std::string plain60 =
+        "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525"
+        "b16aedf5aa0de657ba637b39";
+    const std::string aad = "feedfacedeadbeeffeedfacedeadbeefabaddad2";
+    Check(static_cast<bool>(open("feffe9928665731c6d6a8f9467308308", "cafebabefacedbaddecaf888", aad,
+                                 "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c"
+                                 "7d8f6a5aac84aa051ba30b396a0aac973d58e091",
+                                 "5bc94fbc3221a5db94fae95ae7121a47", out)),
+          "test case 4 (AES-128, associated data, a partial block) opens");
+    CheckHex(out, plain60, "test case 4: the plaintext");
+    Check(static_cast<bool>(open("feffe9928665731c6d6a8f9467308308",
+                                 "9313225df88406e555909c5aff5269aa6a7a9538534f7da1e4c303d2a318a728c3c0c95156809539"
+                                 "fcf0e2429a6b525416aedbf5a0de6a57a637b39b",
+                                 aad,
+                                 "8ce24998625615b603a033aca13fb894be9112a5c3a211a8ba262a3cca7e2ca701e4a9a4fba43c90"
+                                 "ccdcb281d48c7c6fd62875d2aca417034c34aee5",
+                                 "619cc5aefffe0bfa462af43c1699d050", out)),
+          "test case 6 (a 60-byte IV, hashed into J0) opens");
+    CheckHex(out, plain60, "test case 6: the plaintext");
+    Check(static_cast<bool>(open("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308",
+                                 "cafebabefacedbaddecaf888", aad,
+                                 "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3d"
+                                 "a7b08b1056828838c5f61e6393ba7a0abcc9f662",
+                                 "76fc6ece0f4e1768cddf8853bb2d551b", out)),
+          "test case 16 (AES-256) opens");
+    CheckHex(out, plain60, "test case 16: the plaintext");
+
+    auto refused = open("feffe9928665731c6d6a8f9467308308", "cafebabefacedbaddecaf888", aad,
+                        "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c"
+                        "7d8f6a5aac84aa051ba30b396a0aac973d58e092",
+                        "5bc94fbc3221a5db94fae95ae7121a47", out);
+    Check(!refused && refused.code == UltraCryptResultCode::AuthenticationFailed && out.empty(),
+          "a changed ciphertext bit: AuthenticationFailed, nothing released");
+    refused = open("feffe9928665731c6d6a8f9467308308", "cafebabefacedbaddecaf888", "feedface",
+                   "42831ec2217774244b7221b784d0d49ce3aa212f2c02a4e035c17e2329aca12e21d514b25466931c"
+                   "7d8f6a5aac84aa051ba30b396a0aac973d58e091",
+                   "5bc94fbc3221a5db94fae95ae7121a47", out);
+    Check(!refused && refused.code == UltraCryptResultCode::AuthenticationFailed, "other associated data: refused");
+
+    // What libsodium's AES-256-GCM seals, where this CPU has it, opens here.
+    if (UltraCrypt_IsAeadAvailable(UltraCryptAeadAlgorithm::Aes256Gcm)) {
+        UltraCryptSecureBuffer key;
+        UltraCrypt_RandomSecureBuffer(32, key);
+        UltraCryptAeadParams seal;
+        seal.algorithm = UltraCryptAeadAlgorithm::Aes256Gcm;
+        seal.associatedData = {1, 2, 3};
+        std::vector<uint8_t> message(1000), sealed;
+        for (size_t i = 0; i < message.size(); ++i) message[i] = static_cast<uint8_t>(i * 7);
+        UltraCrypt_AeadSeal(key, seal, message.data(), message.size(), sealed);
+        UltraCryptGcmParams params;
+        params.iv = seal.nonce;
+        params.associatedData = seal.associatedData;
+        UltraCryptSecureBuffer plain;
+        Check(UltraCrypt_AesGcmDecrypt(key, params, sealed.data(), sealed.size(), plain) &&
+                  plain.GetSize() == message.size() && std::memcmp(plain.Data(), message.data(), message.size()) == 0,
+              "libsodium's AES-256-GCM output opens with the portable decrypter");
+    }
+}
+
 int main() {
     std::printf("UltraCrypt tests — backend: %s\n\n",
                 UltraCrypt_GetBackendName().c_str());
@@ -1715,7 +1850,9 @@ int main() {
     TestAead();
     TestAesCbc();
     TestAesCtr();
+    TestAesGcm();
     TestKdf();
+    TestArgon2Lanes();
     TestSignatures();
     TestKeyExchange();
     TestSecureBuffer();

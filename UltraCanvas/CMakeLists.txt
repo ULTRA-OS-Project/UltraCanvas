@@ -3299,6 +3299,9 @@ set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(uc-crypt STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptAes.cpp
+    # Argon2id with more than one lane (libsodium's has one): LibreOffice's
+    # ODF 1.4 encryption uses four
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptArgon2.cpp
     # HOTP / TOTP (RFC 4226 / 6238) and the otpauth:// URI: UltraAuthenticator
     # shows the codes, ChatCube Direct checks them at sign-in.
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraOtp.cpp

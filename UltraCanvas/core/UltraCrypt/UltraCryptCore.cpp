@@ -19,6 +19,7 @@
 #include <mutex>
 #include <new>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCryptArgon2.h"   // Argon2id with more than one lane
 
 #ifdef ULTRACRYPT_HAVE_SODIUM
 #include <sodium.h>
@@ -851,21 +852,48 @@ UltraCryptResult UltraCrypt_DeriveKeyFromPassword(
         return UltraCryptResult::Error(UltraCryptResultCode::NotSupported,
                                        "only Argon2id is supported");
     }
-    if (params.parallelism != 1) {
-        // The backing implementation fixes Argon2id parallelism at 1. Rejecting
-        // anything else keeps stored parameters honest: a file that records
-        // parallelism=4 must never have been derived with parallelism=1.
-        return UltraCryptResult::Error(
-            UltraCryptResultCode::NotSupported,
-            "Argon2id parallelism is fixed at 1 by the backing implementation");
-    }
     if (params.outputLength < 16) {
         return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
                                        "derived key must be at least 16 bytes");
     }
-    if (params.iterations == 0 || params.memoryKiB == 0) {
+    if (params.iterations == 0 || params.memoryKiB == 0 || params.parallelism == 0) {
         return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
                                        "Argon2id cost parameters must be non-zero");
+    }
+    if (params.parallelism != 1) {
+        // libsodium fixes Argon2id's parallelism at 1, so more lanes - what a
+        // file written elsewhere records (LibreOffice: 4) - go through the
+        // module's own RFC 9106 implementation (UltraCryptArgon2.cpp). The
+        // lanes are honoured, never silently dropped: a key derived with 4
+        // lanes differs from one with 1.
+#ifdef ULTRACRYPT_HAVE_SODIUM
+        if (params.salt.empty()) {
+            params.salt.assign(UltraCrypt_GetKdfSaltSize(), 0);
+            auto rr = UltraCrypt_RandomBytes(params.salt.data(), params.salt.size());
+            if (!rr) { params.salt.clear(); return rr; }
+        } else if (params.salt.size() < 8) {
+            return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                           "Argon2id salt must be at least 8 bytes");
+        }
+        if (params.parallelism > 0xFFFFFF ||
+            static_cast<uint64_t>(params.memoryKiB) < 8ull * params.parallelism) {
+            return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                           "Argon2id needs at least 8 KiB of memory per lane");
+        }
+        UltraCryptSecureBuffer lanesKey(params.outputLength);
+        if (lanesKey.GetSize() != params.outputLength ||
+            !UltraCryptInternal::Argon2idRaw(password.Data(), password.GetSize(), params.salt.data(),
+                                             params.salt.size(), params.iterations, params.memoryKiB,
+                                             params.parallelism, lanesKey.Data(), params.outputLength)) {
+            return UltraCryptResult::Error(
+                UltraCryptResultCode::InternalError,
+                "Argon2id derivation failed (most likely out of memory for the requested memory cost)");
+        }
+        outKey = std::move(lanesKey);
+        return UltraCryptResult::Ok();
+#else
+        return NoBackend();
+#endif
     }
 #ifdef ULTRACRYPT_HAVE_SODIUM
     const size_t saltSize = UltraCrypt_GetKdfSaltSize();

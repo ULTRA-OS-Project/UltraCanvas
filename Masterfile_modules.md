@@ -766,8 +766,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   checked by its 1K checksum. `IsEncryptedOdfPackage`, `DecryptOdfPackage` /
   `DecryptOdfPackageFile` (an ordinary package rebuilt in memory, statuses
   `OfficeDecryptStatus`), `CheckOdfPassword` (one key derivation, for the
-  prompt). Blowfish, AES-GCM, Argon2id and ODF 1.4's whole-package
-  encryption are refused by name. No writer. Used by the `.odt` reader
+  prompt). ODF 1.4's encryption too - the whole package in one
+  `encrypted-package`, AES-256-GCM, Argon2id with its lanes (what LibreOffice
+  writes for ODF 1.4 in experimental mode). Blowfish is refused by name. No writer. Used by the `.odt` reader
   (`UCWordDocumentIO::Load` / `LoadOdt` with a password), the `.ods` loader
   (`UltraCanvasSpreadsheet::LoadFromFile` / `LoadODS`), `ReadOdpPresentation`,
   and `CheckOfficePassword` - so `RequestDocumentPassword` prompts for them.
@@ -2171,7 +2172,9 @@ backing library is never visible in a public header.
   constant-time portable software, independent of libsodium)
 - `UltraCrypt_AesCtrEncrypt`, `UltraCrypt_AesCtrDecrypt` (AES-CTR, interop
   only - Matrix key exports and attachments, WebCrypto)
-- `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
+- `UltraCrypt_AesGcmDecrypt` (AES-GCM, interop only: portable, every CPU)
+- `UltraCrypt_DeriveKeyFromPassword` (Argon2id; `parallelism` above 1 through
+  the module's own RFC 9106 lanes), `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`, `UltraCrypt_DeriveKeyPbkdf2`
   (PBKDF2-HMAC-SHA-256/512, and -SHA-1 with `allowLegacy` for OpenDocument;
   interop only)

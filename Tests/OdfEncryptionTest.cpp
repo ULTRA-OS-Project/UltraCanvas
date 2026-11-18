@@ -10,9 +10,13 @@
 //     ReadOdpPresentation on the .odp (the same slides), and
 //     UltraCanvasFileLoader::LoadTextDocument / ExtractText with the password;
 //     UltraFiler's preview keeping the type glyph for each;
-//   * a byte changed past the checksummed kilobyte (damaged), and what is
-//     refused as Unsupported: Blowfish, AES-GCM, Argon2id, a whole encrypted
-//     package.
+//   * ODF 1.4 as LibreOffice writes it in experimental mode
+//     (odf14-encrypted.*): the whole package in one entry, AES-256-GCM,
+//     Argon2id with 4 lanes - every reader, a wrong password, a changed byte;
+//   * a byte changed past the checksummed kilobyte (damaged), Blowfish
+//     refused by name, an Argon2id cost past the limit refused, missing
+//     parameters damaged.
+// Version: 1.1.0 - ODF 1.4: the whole package, AES-GCM, Argon2id (odf14-encrypted.*)
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -223,13 +227,83 @@ void TestDamageAndRefusals() {
     };
     refused("http://www.w3.org/2001/04/xmlenc#aes256-cbc", "Blowfish CFB", "Blowfish",
             "Blowfish (OpenOffice.org 1 to 3.1) is refused by name");
-    refused("http://www.w3.org/2001/04/xmlenc#aes256-cbc", "http://www.w3.org/2009/xmlenc11#aes256-gcm", "AES-GCM",
-            "AES-GCM (ODF 1.4) is refused by name");
-    refused("manifest:key-derivation-name=\"PBKDF2\"",
-            "manifest:key-derivation-name=\"urn:org:documentfoundation:names:experimental:office:manifest:argon2id\"",
-            "Argon2id", "Argon2id (ODF 1.4) is refused by name");
-    refused("manifest:full-path=\"content.xml\"", "manifest:full-path=\"encrypted-package\"", "whole package",
-            "a whole encrypted package is refused");
+
+    // ODF 1.4: an Argon2id cost past the limit is refused before any memory
+    // is taken; its parameters missing are a damaged file.
+    auto odf14 = [&](const std::string& from, const std::string& to, OfficeDecryptStatus want, const std::string& word,
+                     const std::string& what) {
+        const auto bytes = Rebuilt(Fixture("odf14-encrypted.odt"), [&](const std::string& name, std::string& data) {
+            if (name == "META-INF/manifest.xml") Replace(data, from, to);
+        });
+        std::string why;
+        const OfficeDecryptStatus status = DecryptBytes(bytes, kPassword, why);
+        Check(status == want && Contains(why, word), what + " (\"" + why + "\")");
+    };
+    odf14("argon2-memory=\"65536\"", "argon2-memory=\"4194304\"", OfficeDecryptStatus::Unsupported, "Argon2id",
+          "Argon2id asking for 4 GiB is refused");
+    odf14("argon2-lanes=\"4\"", "argon2-lane=\"4\"", OfficeDecryptStatus::Damaged, "Argon2id",
+          "Argon2id without its lanes is damaged");
+    odf14("manifest:encryption-data", "manifest:not-encryption-data", OfficeDecryptStatus::Damaged, "no encryption data",
+          "a whole package without encryption data is damaged");
+}
+
+// ODF 1.4, as LibreOffice 24.2 writes it in experimental mode: the whole
+// package in one entry, AES-256-GCM, Argon2id with 4 lanes over 64 MiB.
+void TestOdf14() {
+    std::cout << "\n=== ODF 1.4: the whole package, AES-GCM, Argon2id ===\n";
+    const std::string odt = Fixture("odf14-encrypted.odt");
+    Check(IsEncryptedOdfPackage(odt) && IsEncryptedOdfPackage(Fixture("odf14-encrypted.ods")) &&
+              IsEncryptedOdfPackage(Fixture("odf14-encrypted.odp")),
+          "the three are told as encrypted");
+    std::vector<uint8_t> package;
+    std::string error;
+    Check(DecryptOdfPackageFile(odt, "", package, error) == OfficeDecryptStatus::PasswordRequired,
+          "without a password: PasswordRequired");
+    Check(DecryptOdfPackageFile(odt, "wrong", package, error) == OfficeDecryptStatus::WrongPassword &&
+              Contains(error, "not correct") && package.empty(),
+          "a wrong password: WrongPassword, nothing released");
+    const auto started = std::chrono::steady_clock::now();
+    const OfficeDecryptStatus status = DecryptOdfPackageFile(odt, kPassword, package, error);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
+    Check(status == OfficeDecryptStatus::Decrypted,
+          "the right password decrypts it (" + std::to_string(ms.count()) + " ms, Argon2id 64 MiB x 4 lanes)");
+    UCZipPackageReader plain;
+    std::string content, mimetype, manifest;
+    Check(plain.OpenFromMemory(package) && plain.ReadEntry("content.xml", content) &&
+              Contains(content, "office:document-content") && plain.ReadEntry("mimetype", mimetype) &&
+              mimetype == "application/vnd.oasis.opendocument.text" &&
+              plain.ReadEntry("META-INF/manifest.xml", manifest) && !Contains(manifest, "encryption-data"),
+          "the inner package: its own mimetype, content and an unencrypted manifest");
+    Check(CheckOdfPassword(odt, kPassword, error) == OfficeDecryptStatus::Decrypted &&
+              CheckOdfPassword(odt, "wrong", error) == OfficeDecryptStatus::WrongPassword &&
+              CheckOfficePassword(Fixture("odf14-encrypted.odp"), "", error) == OfficeDecryptStatus::PasswordRequired,
+          "CheckOdfPassword and CheckOfficePassword (the prompt's check)");
+
+    UCRichDocument original, opened;
+    UCWordDocumentIO::Load(Fixture("word97-formatting.odt"), original, error);
+    Check(UCWordDocumentIO::Load(odt, opened, error, kPassword) && opened.ToPlainText() == original.ToPlainText(),
+          "UCWordDocumentIO::Load: the .odt as the unencrypted original");
+    {
+        UltraCanvasSpreadsheet sheet("Protected14", 0, 0, 400, 300);
+        Check(sheet.LoadFromFile(Fixture("odf14-encrypted.ods"), kPassword) && sheet.GetCellText(1, 0) == "Widget" &&
+                  sheet.GetCellDisplayValue(1, 1) == "42",
+              "UltraCanvasSpreadsheet::LoadFromFile: the .ods's cells");
+    }
+    PptxPresentation plainDeck, deck;
+    ReadOdpPresentation(Fixture("office-pptx-sample.odp"), plainDeck, error);
+    Check(ReadOdpPresentation(Fixture("odf14-encrypted.odp"), deck, error, kPassword) && deck.slides.size() == 5 &&
+              PptxPresentationToRichDocument(deck).ToPlainText() ==
+                  PptxPresentationToRichDocument(plainDeck).ToPlainText(),
+          "ReadOdpPresentation: the .odp's slides as the original's");
+    auto document = UltraCanvasFileLoader::LoadTextDocument(Fixture("odf14-encrypted.odp"), error, kPassword);
+    Check(document && Contains(document->ToPlainText(), "Item 60"), "LoadTextDocument with the password");
+
+    // The tag covers the whole package: one changed byte and nothing opens.
+    const auto flipped = Rebuilt(odt, [](const std::string& name, std::string& data) {
+        if (name == "encrypted-package" && data.size() > 100) data[data.size() / 2] ^= 0x01;
+    });
+    Check(DecryptBytes(flipped, kPassword, error) == OfficeDecryptStatus::WrongPassword,
+          "one changed byte fails the GCM tag - refused, nothing released");
 }
 
 } // namespace
@@ -237,6 +311,7 @@ void TestDamageAndRefusals() {
 int main() {
     TestPackage();
     TestReaders();
+    TestOdf14();
     TestDamageAndRefusals();
     std::cout << "\n" << (g_failures == 0 ? "All checks passed" : "FAILURES: ")
               << (g_failures == 0 ? "" : std::to_string(g_failures)) << "\n";

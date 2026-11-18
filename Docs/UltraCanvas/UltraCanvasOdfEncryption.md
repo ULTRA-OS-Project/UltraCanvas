@@ -113,14 +113,37 @@ by default:
 5. the raw deflate stream inflated to the entry's `manifest:size`. An entry
    stored as it is, at that size, is taken too.
 
-Refused as `Unsupported`, each naming what it is:
+Also read: ODF 1.4's encryption, which LibreOffice 24.2 writes when it saves
+ODF 1.4 in experimental mode (its profile's `DefaultVersion` 11 and
+`ExperimentalMode`, set before it starts; the fixture script does that).
+The package then holds only `mimetype`, the manifest and one entry,
+`encrypted-package`:
 
-- Blowfish CFB, as OpenOffice.org 1 to 3.1 saved;
-- AES-GCM and the Argon2id key derivation of ODF 1.4;
-- the whole-package encryption of ODF 1.4, which puts every entry into one
-  encrypted `encrypted-package`.
+1. the start key, as above (`…xmlenc#sha256`);
+2. the key: Argon2id, version 0x13, no secret or associated data, over the
+   start key with the entry's `salt` and its `argon2-iterations`,
+   `argon2-memory` (KiB) and `argon2-lanes` (LibreOffice 24.2 writes them
+   `loext:`, ODF 1.4 `manifest:`; LibreOffice uses 3 passes, 64 MiB and 4
+   lanes) - libargon2's `argon2id_ctx`, as LibreOffice calls it. UltraCrypt
+   computes the lanes itself (libsodium has one);
+3. AES-256-GCM (`…xmlenc11#aes256-gcm`): the entry is the 12-byte IV, the
+   ciphertext and the 16-byte tag, as XML Encryption 1.1 lays it out. The tag
+   is checked before anything is released;
+4. the plaintext inflated: it is the whole package - its own `mimetype`,
+   its own unencrypted manifest, every entry - which is what
+   `DecryptOdfPackage` hands back.
 
-ODF carries no integrity check beyond the checksum. A changed byte in the
+The GCM tag covers the whole package, so a wrong password and a changed
+byte both fail it, and both are `WrongPassword`: the tag cannot tell them
+apart. A per-entry GCM or Argon2id entry (the same manifest elements on each
+file entry) is read the same way.
+
+Refused, each naming what it is: Blowfish CFB, as OpenOffice.org 1 to 3.1
+saved (`Unsupported`); an Argon2id cost past 1 GiB, 64 passes or 64 lanes
+(`Unsupported`, before any memory is taken); Argon2id without its
+parameters, or an `encrypted-package` without encryption data (`Damaged`).
+
+ODF 1.2 carries no integrity check beyond the checksum. A changed byte in the
 first kilobyte of an entry looks like a wrong password; one past it shows as
 a damaged entry ("The encrypted entry content.xml is damaged"), since the
 deflate stream then fails.
@@ -141,6 +164,12 @@ and `UCWordDocumentIO::Save` / `SaveToFile` still refuse a password for
   padded once.
 - The inflate is `UCZipInflateRaw` (`UltraCanvasZipPackage.h`), the ZIP
   wrapper's miniz.
+- ODF 1.4: one Argon2id derivation (64 MiB, 4 lanes) and one GCM pass over
+  the package - about a quarter of a second for the test `.odt`. AES-GCM is
+  `UltraCrypt_AesGcmDecrypt`, the module's own constant-time AES and GHASH,
+  so it works on CPUs without AES instructions too (libsodium's AES-GCM needs
+  them); Argon2id with more than one lane is UltraCrypt's RFC 9106
+  implementation (`UltraCryptKdfParams::parallelism`).
 
 ## Test
 
@@ -148,7 +177,9 @@ and `UCWordDocumentIO::Save` / `SaveToFile` still refuse a password for
 the Office fixtures' non-ASCII password ("Ültra-Pässwört 1") through its UNO
 API (`Tests/fixtures/make-odf-encrypted-fixtures.py`):
 `odf-encrypted.odt` (`word97-formatting.odt`), `odf-encrypted.ods` (a small
-sheet) and `odf-encrypted.odp` (`office-pptx-sample.odp`). It checks the
+sheet) and `odf-encrypted.odp` (`office-pptx-sample.odp`) - and the same three
+saved as ODF 1.4 in experimental mode, `odf14-encrypted.*` (one
+`encrypted-package`, AES-256-GCM, Argon2id with 4 lanes). It checks the
 following:
 
 - the encrypted packages are told from ordinary ones;
@@ -159,7 +190,12 @@ following:
 - `LoadTextDocument` and `ExtractText` take the password;
 - UltraFiler's preview keeps the glyph;
 - a changed byte past the checksummed kilobyte is damaged;
-- Blowfish, AES-GCM, Argon2id and a whole encrypted package are refused by
-  name.
+- ODF 1.4: every reader against the unencrypted original, no and wrong
+  passwords, and one changed byte refused by the GCM tag;
+- Blowfish is refused by name, an Argon2id cost past the limit refused,
+  missing Argon2id parameters and an `encrypted-package` without encryption
+  data damaged.
 
-`UltraCryptTests` checks PBKDF2-HMAC-SHA-1 against RFC 6070.
+`UltraCryptTests` checks PBKDF2-HMAC-SHA-1 against RFC 6070, AES-GCM against
+the GCM specification's test cases, and Argon2id with 2, 3 and 4 lanes against
+libargon2's output.

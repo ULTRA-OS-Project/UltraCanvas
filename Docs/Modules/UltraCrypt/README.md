@@ -26,9 +26,14 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
+Argon2id key derivation (one lane through libsodium; more - what files
+written elsewhere record, LibreOffice's ODF 1.4 encryption 4 - through the
+module's own RFC 9106 implementation on libsodium's BLAKE2b,
+`UltraCryptArgon2.cpp`, checked against libargon2), HKDF-SHA-256/512, Ed25519 signatures (§5.8),
 X25519 key agreement (§5.8.1),
-AES-128/192/256-CBC and -CTR and PBKDF2-HMAC-SHA-256/512 (and -SHA-1, legacy-gated) for foreign
+AES-128/192/256-CBC and -CTR, AES-GCM decryption on the same portable AES
+(`UltraCrypt_AesGcmDecrypt`, every CPU, the GCM specification's vectors) and
+PBKDF2-HMAC-SHA-256/512 (and -SHA-1, legacy-gated) for foreign
 formats (§5.9, §5.10), and X.509 certificates with their trust check, CMS
 signed and enveloped data and PKCS #12 (§5.11) - the one part on a second,
 optional backend, OpenSSL 3, since libsodium has nothing of public-key

@@ -22,17 +22,26 @@
 //   4. the checksum - SHA-256 ("sha256-1k") or SHA-1 ("SHA1/1K") of the first
 //      1024 bytes - which tells a wrong password from a right one;
 //   5. the raw deflate stream inflated to the entry's size.
-// Not supported, each refused as Unsupported naming what the file uses:
-// Blowfish (OpenOffice.org 1 to 3.1), AES-GCM and Argon2id (ODF 1.4), and the
-// whole-package encryption that puts every entry into one encrypted one.
-// ODF has no integrity check beyond the checksum, so a changed byte past the
-// first kilobyte shows only as a damaged entry.
+// Also read: ODF 1.4's encryption, which LibreOffice 24.2 writes for ODF 1.4
+// in experimental mode - the whole package, deflated, in one entry
+// "encrypted-package", AES-256-GCM (its 12-byte IV in front of the
+// ciphertext, the 16-byte tag at its end), keyed by Argon2id (LibreOffice: 3
+// passes, 64 MiB, 4 lanes) from the SHA-256 start key. The GCM tag covers the
+// whole package, so a wrong password and a changed byte both fail it - both
+// reported as WrongPassword, since the tag cannot tell them apart. Per-entry
+// GCM and Argon2id are read the same way.
+// Not supported, refused as Unsupported naming it: Blowfish (OpenOffice.org 1
+// to 3.1), and Argon2id costs past 1 GiB, 64 passes or 64 lanes.
+// ODF 1.2 has no integrity check beyond the checksum, so a changed byte past
+// the first kilobyte of an entry shows only as a damaged entry.
 //
-// Cryptography is UltraCrypt's: its AES-CBC, SHA-2 and PBKDF2 - with SHA-1
-// asked for as a legacy algorithm, since ODF names no other PRF. There is no
+// Cryptography is UltraCrypt's: its AES-CBC, AES-GCM (portable, every CPU),
+// SHA-2, PBKDF2 - with SHA-1 asked for as a legacy algorithm, since ODF 1.2
+// names no other PRF - and Argon2id with any number of lanes. There is no
 // writer: a document saved with a password is saved as .docx / .xlsx
 // (UltraCanvasOfficeEncryption.h).
 //
+// Version: 1.1.0 - ODF 1.4's encryption: AES-GCM, Argon2id, the whole package in one entry
 // Version: 1.0.0 - IsEncryptedOdfPackage, DecryptOdfPackage, DecryptOdfPackageFile, CheckOdfPassword
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework

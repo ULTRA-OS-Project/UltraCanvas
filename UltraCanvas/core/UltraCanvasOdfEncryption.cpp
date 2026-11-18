@@ -1,5 +1,7 @@
 // core/UltraCanvasOdfEncryption.cpp
 // Password-protected OpenDocument packages - see UltraCanvasOdfEncryption.h.
+// Version: 1.1.0 - ODF 1.4: AES-GCM (IV in front, tag at the end), Argon2id with its lanes, and
+//                  the whole package in one encrypted entry
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -80,7 +82,8 @@ struct EncryptedEntry {
     std::vector<uint8_t> iv;
     std::string startKey;                // start-key-generation-name; empty: SHA-1 (ODF 1.0 - 1.1)
     std::string derivation;
-    int64_t iterations = -1;
+    int64_t iterations = -1;             // PBKDF2's
+    int64_t argon2Passes = -1, argon2MemoryKiB = -1, argon2Lanes = -1;   // Argon2id's (ODF 1.4)
     std::vector<uint8_t> salt;
     int64_t keySize = -1;                // the derived key's size
 };
@@ -115,6 +118,10 @@ bool ReadManifest(const UCZipPackageReader& zip, Manifest& out, std::string& xml
         const tinyxml2::XMLElement* derivation = Child(data, "key-derivation");
         e.derivation = Attr(derivation, "key-derivation-name");
         e.iterations = AttrNumber(derivation, "iteration-count");
+        // ODF 1.4 names them manifest:argon2-*, LibreOffice 24.2 loext:argon2-*.
+        e.argon2Passes = AttrNumber(derivation, "argon2-iterations");
+        e.argon2MemoryKiB = AttrNumber(derivation, "argon2-memory");
+        e.argon2Lanes = AttrNumber(derivation, "argon2-lanes");
         e.salt = Base64Decode(Attr(derivation, "salt"));
         e.keySize = AttrNumber(derivation, "key-size");
         out.entries.push_back(std::move(e));
@@ -123,12 +130,30 @@ bool ReadManifest(const UCZipPackageReader& zip, Manifest& out, std::string& xml
 }
 
 // The cipher's key size in bytes; 0 for one this reader does not implement.
+// CBC is XML Encryption 1.0's (ODF 1.2), GCM 1.1's (ODF 1.4).
 size_t AesKeyBytes(const std::string& algorithm) {
     if (algorithm == "http://www.w3.org/2001/04/xmlenc#aes256-cbc") return 32;
     if (algorithm == "http://www.w3.org/2001/04/xmlenc#aes192-cbc") return 24;
     if (algorithm == "http://www.w3.org/2001/04/xmlenc#aes128-cbc") return 16;
+    if (algorithm == "http://www.w3.org/2009/xmlenc11#aes256-gcm") return 32;
+    if (algorithm == "http://www.w3.org/2009/xmlenc11#aes192-gcm") return 24;
+    if (algorithm == "http://www.w3.org/2009/xmlenc11#aes128-gcm") return 16;
     return 0;
 }
+
+bool IsGcm(const std::string& algorithm) {
+    return algorithm.rfind("http://www.w3.org/2009/xmlenc11#aes", 0) == 0 && EndsWith(algorithm, "-gcm");
+}
+
+bool IsArgon2id(const std::string& derivation) {
+    return EndsWith(Lower(derivation), "argon2id");   // ODF 1.4's #argon2id, LibreOffice's ...:argon2id
+}
+
+// A hostile file's Argon2id cost stays bounded: LibreOffice asks for 3 passes
+// over 64 MiB in 4 lanes.
+constexpr int64_t kMaxArgon2MemoryKiB = 1 << 20;   // 1 GiB
+constexpr int64_t kMaxArgon2Passes = 64;
+constexpr int64_t kMaxArgon2Lanes = 64;
 
 bool StartKeyHash(const std::string& name, UltraCryptHashAlgorithm& out) {
     const std::string n = Lower(name);
@@ -170,8 +195,11 @@ struct Refusal {
 // empty message when every entry uses what this reader implements.
 Refusal CheckSupported(const Manifest& manifest) {
     if (manifest.wholePackage) {
-        return {OfficeDecryptStatus::Unsupported,
-                "The file is encrypted as one whole package (ODF 1.4), which this program cannot open yet"};
+        bool found = false;
+        for (const EncryptedEntry& e : manifest.entries) found = found || e.path == "encrypted-package";
+        if (!found)
+            return {OfficeDecryptStatus::Damaged,
+                    "The file's encrypted package has no encryption data in its manifest"};
     }
     for (const EncryptedEntry& e : manifest.entries) {
         const std::string algorithm = Lower(e.algorithm);
@@ -180,9 +208,6 @@ Refusal CheckSupported(const Manifest& manifest) {
                 return {OfficeDecryptStatus::Unsupported,
                         "The file is encrypted with Blowfish, as OpenOffice.org 1 to 3.1 saved it, which this "
                         "program cannot open"};
-            if (algorithm.find("gcm") != std::string::npos)
-                return {OfficeDecryptStatus::Unsupported,
-                        "The file is encrypted with AES-GCM (ODF 1.4), which this program cannot open yet"};
             return {OfficeDecryptStatus::Unsupported,
                     "The file is encrypted with " + (e.algorithm.empty() ? std::string("no named cipher")
                                                                          : e.algorithm) +
@@ -193,13 +218,20 @@ Refusal CheckSupported(const Manifest& manifest) {
             return {OfficeDecryptStatus::Damaged,
                     "The file's encryption data for " + e.path + " names no key derivation"};
         }
-        if (derivation != "pbkdf2" && !EndsWith(derivation, "#pbkdf2")) {
+        if (IsArgon2id(e.derivation)) {
+            if (e.argon2Passes <= 0 || e.argon2MemoryKiB <= 0 || e.argon2Lanes <= 0) {
+                return {OfficeDecryptStatus::Damaged,
+                        "The file's Argon2id parameters for " + e.path + " are missing"};
+            }
+            if (e.argon2Passes > kMaxArgon2Passes || e.argon2MemoryKiB > kMaxArgon2MemoryKiB ||
+                e.argon2Lanes > kMaxArgon2Lanes) {
+                return {OfficeDecryptStatus::Unsupported,
+                        "The file's encryption asks for more Argon2id memory or passes than this program allows"};
+            }
+        } else if (derivation != "pbkdf2" && !EndsWith(derivation, "#pbkdf2")) {
             return {OfficeDecryptStatus::Unsupported,
-                    derivation.find("argon2") != std::string::npos
-                        ? "The file's password key is derived with Argon2id (ODF 1.4), which this program "
-                          "cannot open yet"
-                        : "The file's password key is derived with " + e.derivation +
-                              ", which this program does not know"};
+                    "The file's password key is derived with " + e.derivation +
+                        ", which this program does not know"};
         }
         UltraCryptHashAlgorithm hash;
         if (!StartKeyHash(e.startKey, hash)) {
@@ -228,8 +260,13 @@ OfficeDecryptStatus DecryptEntry(const UCZipPackageReader& zip, const EncryptedE
     const std::string damaged = "The encrypted entry " + e.path + " is damaged";
     std::vector<uint8_t> cipher;
     const size_t block = UltraCrypt_GetAesBlockSize();
+    const bool gcm = IsGcm(e.algorithm);
+    const bool argon2 = IsArgon2id(e.derivation);
+    constexpr size_t kGcmTag = 16;
     if (!zip.ReadEntry(e.path, cipher)) return Refuse({OfficeDecryptStatus::Damaged, damaged + " or missing"}, error);
-    if (cipher.empty() || cipher.size() % block != 0 || e.iv.size() != block || e.iterations <= 0) {
+    const bool shapeOk = gcm ? !e.iv.empty() && cipher.size() >= e.iv.size() + kGcmTag
+                             : !cipher.empty() && cipher.size() % block == 0 && e.iv.size() == block;
+    if (!shapeOk || (!argon2 && e.iterations <= 0)) {
         return Refuse({OfficeDecryptStatus::Damaged, damaged}, error);
     }
 
@@ -250,14 +287,54 @@ OfficeDecryptStatus DecryptEntry(const UCZipPackageReader& zip, const EncryptedE
                       error);
     }
     UltraCryptSecureBuffer key;
-    const UltraCryptResult derived = UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm::SHA1, startKey, e.salt,
-                                                                static_cast<uint32_t>(e.iterations), keyBytes, key,
-                                                                legacy);
+    UltraCryptResult derived = UltraCryptResult::Ok();
+    if (argon2) {
+        // ODF 1.4: Argon2id (version 0x13, no secret, no associated data)
+        // over the start key - libargon2's argon2id_ctx, as LibreOffice calls it.
+        UltraCryptKdfParams params;
+        params.salt = e.salt;
+        params.iterations = static_cast<uint32_t>(e.argon2Passes);
+        params.memoryKiB = static_cast<uint32_t>(e.argon2MemoryKiB);
+        params.parallelism = static_cast<uint32_t>(e.argon2Lanes);
+        params.outputLength = keyBytes;
+        derived = UltraCrypt_DeriveKeyFromPassword(startKey, params, key);
+    } else {
+        derived = UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm::SHA1, startKey, e.salt,
+                                             static_cast<uint32_t>(e.iterations), keyBytes, key, legacy);
+    }
     if (!derived) {
         return Refuse({derived.code == UltraCryptResultCode::BackendUnavailable ? OfficeDecryptStatus::NoCryptoBackend
                                                                                 : OfficeDecryptStatus::Damaged,
                        "The password key could not be derived"},
                       error);
+    }
+
+    if (gcm) {
+        // XML Encryption 1.1's layout: the IV in front of the ciphertext, the
+        // tag at its end. The tag covers it all, so it says whether the
+        // password is right - and nothing is released if it is not.
+        UltraCryptGcmParams params;
+        params.iv.assign(cipher.begin(), cipher.begin() + static_cast<std::ptrdiff_t>(e.iv.size()));
+        UltraCryptSecureBuffer opened;
+        const UltraCryptResult result = UltraCrypt_AesGcmDecrypt(key, params, cipher.data() + e.iv.size(),
+                                                                 cipher.size() - e.iv.size(), opened);
+        if (!result) {
+            if (result.code == UltraCryptResultCode::AuthenticationFailed)
+                return Refuse({OfficeDecryptStatus::WrongPassword, "The password is not correct"}, error);
+            return Refuse({OfficeDecryptStatus::Damaged, damaged}, error);
+        }
+        if (verifyOnly) return OfficeDecryptStatus::Decrypted;
+        const size_t limit = e.size >= 0 ? static_cast<size_t>(e.size) : kMaxEntryBytes;
+        if (UCZipInflateRaw(opened.Data(), opened.GetSize(), out, limit) &&
+            (e.size < 0 || out.size() == static_cast<size_t>(e.size))) {
+            return OfficeDecryptStatus::Decrypted;
+        }
+        if (e.size >= 0 && opened.GetSize() == static_cast<size_t>(e.size)) {
+            out.assign(opened.Data(), opened.Data() + opened.GetSize());
+            return OfficeDecryptStatus::Decrypted;
+        }
+        out.clear();
+        return Refuse({OfficeDecryptStatus::Damaged, damaged}, error);
     }
 
     UltraCryptCbcParams cbc;
@@ -363,6 +440,24 @@ OfficeDecryptStatus DecryptOdfPackage(const UCZipPackageReader& package, const s
                       error);
     }
 
+    // ODF 1.4's whole-package encryption: the one entry is the package.
+    if (manifest.wholePackage) {
+        for (const EncryptedEntry& e : manifest.entries) {
+            if (e.path != "encrypted-package") continue;
+            std::vector<uint8_t> inner;
+            const OfficeDecryptStatus status = DecryptEntry(package, e, password, false, inner, error);
+            if (status != OfficeDecryptStatus::Decrypted) return status;
+            UCZipPackageReader check;
+            if (inner.size() < 4 || inner[0] != 'P' || inner[1] != 'K' ||
+                !check.OpenFromMemory(inner)) {
+                return Refuse({OfficeDecryptStatus::Damaged, "The decrypted package is not a valid ZIP package"},
+                              error);
+            }
+            outPackage = std::move(inner);
+            return OfficeDecryptStatus::Decrypted;
+        }
+    }
+
     std::map<std::string, std::vector<uint8_t>> plain;
     for (const EncryptedEntry& e : manifest.entries) {
         std::vector<uint8_t> bytes;
@@ -430,10 +525,11 @@ OfficeDecryptStatus CheckOdfPassword(const std::string& filePath, const std::str
                        "The file is password-protected; enter its password to open it"},
                       error);
     }
-    // One key derivation: the entry the checksum covers, content.xml first.
+    // One key derivation: content.xml's (its checksum or its GCM tag), or
+    // the whole package's.
     const EncryptedEntry* probe = &manifest.entries.front();
     for (const EncryptedEntry& e : manifest.entries)
-        if (e.path == "content.xml") probe = &e;
+        if (e.path == "content.xml" || e.path == "encrypted-package") probe = &e;
     std::vector<uint8_t> unused;
     return DecryptEntry(zip, *probe, password, true, unused, error);
 }
