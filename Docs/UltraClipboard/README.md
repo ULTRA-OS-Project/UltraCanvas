@@ -48,7 +48,9 @@ panel follows the same setting.
 preview over the right part of the list: an image, or the first of copied
 files - a picture, a PDF, a spreadsheet (.ods, .xlsx, .xls, .csv) you can
 scroll, a word-processing document (.odt, .docx, .doc) as its first page, a
-drawing, a 3D model or a video's first frame. The wheel zooms. While it is
+PowerPoint deck (.pptx) as its slides - PageUp / PageDown, or a click on the
+picture's left or right, turns them - a drawing, a 3D model or a video's
+first frame. The wheel zooms. While it is
 open, the selected row's buttons and the previewed row's stand just left of
 it. Settings, *Display*, chooses how it looks.
 

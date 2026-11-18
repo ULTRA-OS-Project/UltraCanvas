@@ -11,3 +11,8 @@
   out with its fonts, pictures and tables. The page is drawn in the
   background and the preview opens when it is ready (once per document, again
   after it is saved); a PDF was previewed already.
+- **Slides in the preview.** A copied PowerPoint deck (.pptx, .pptm, .ppsx,
+  .potx) previews its slides as they are laid out - titles, bullets, colours,
+  shapes, pictures and tables - drawn in the background; *1 / 12* in the
+  preview's info line says which, and PageUp / PageDown (or a click on the
+  picture's left or right) turn them.

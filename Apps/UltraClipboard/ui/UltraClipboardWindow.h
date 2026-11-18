@@ -41,6 +41,7 @@
 // stays while the pointer is on that row or on the preview itself, where
 // the wheel zooms; it follows the wheel scrolling the list; Escape or
 // moving elsewhere closes it.
+// Version: 0.2.5 - a PowerPoint deck (.pptx ...) previews its slides (PageUp / PageDown)
 // Version: 0.2.4 - the preview shows a copied spreadsheet (.ods, .xlsx, .xls, .csv) in the viewer
 //                  and a word-processing document (.odt, .docx, .doc) as its first page, drawn
 //                  on a worker (StartPagePreview)
@@ -95,8 +96,9 @@ public:
         int64_t entryId = 0;
         std::string source;              // the document, UTF-8
         std::filesystem::file_time_type sourceTime{};   // as it was drawn: a later save draws it again
-        std::filesystem::path picture;   // its first page, PNG; empty when it could not be drawn
-        int width = 0;
+        std::vector<std::filesystem::path> pictures;   // PNG: a document's first page, a deck's slides;
+                                                       // none when it could not be drawn
+        int width = 0;                   // the first picture's
         int height = 0;
     };
 
@@ -172,10 +174,11 @@ private:
     // hand-off folder (once per entry), the first of copied files when the
     // viewer can show it; "" when there is nothing to preview.
     std::string PreviewFileFor(const UltraCanvas::ClipboardHistoryEntry& entry);
-    // A copied word-processing document has no view of its own in the viewer:
-    // its first page is drawn as a picture on a worker, and the preview opens
-    // when it is there, if the pointer still rests on the entry. True when
-    // that is under way (the entry is such a document).
+    // A copied word-processing document or PowerPoint deck has no view of its
+    // own in the viewer: its first page, or its slides, are drawn as pictures
+    // on a worker, and the preview opens when they are there, if the pointer
+    // still rests on the entry. True when that is under way (the entry is such
+    // a document).
     bool StartPagePreview(const UltraCanvas::ClipboardHistoryEntry& entry);
     void FinishPagePreview();
 

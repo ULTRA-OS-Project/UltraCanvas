@@ -1200,6 +1200,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeEncryption.cpp
         # PowerPoint (.pptx) decks read as text: slides, shapes, tables, notes
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptx.cpp
+        # ... and a slide drawn as a picture from what it reads (previews)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPptxSlideRender.cpp
         # UCRichDocument: the block/run document model + its Markdown/HTML/plain
         # serializers. Lives in core (not the Word plugin) because framework
         # elements edit it - see UltraCanvasRichTextEdit / UCRichDocumentEditor.
