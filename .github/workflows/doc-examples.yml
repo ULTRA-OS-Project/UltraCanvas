@@ -37,6 +37,8 @@ on:
     paths: &paths
       - 'Docs/UltraCanvas/*.md'
       - 'Docs/Modules/FileLoader/*.md'   # scripts/check_doc_examples.py CHECKED_MODULE_DOCS
+      - 'Docs/Modules/UltraLocalisation/*.md'
+      - 'Docs/Modules/UltraNet/*.md'     # (its README mirrors UltraNet/README.md)
       - 'Docs/Modules/UltraSite/*.md'
       - 'UltraSite/include/**'
       - 'UltraCanvas/include/**'

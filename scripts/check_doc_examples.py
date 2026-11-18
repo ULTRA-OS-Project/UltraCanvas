@@ -112,6 +112,8 @@ per doc rather than per file, so a merge that brings another doc's
 rewritten block from main stays valid. The entries are a multiset (a
 message a doc repeats is listed as often), which a hand merge loses first.
 """
+# Version: 1.10.1 - the UltraNet module docs are checked (CHECKED_MODULE_DOCS):
+#                 its README's examples had six mistakes nothing compiled
 # Version: 1.10.0 - UltraAI/include is on the include path and in the
 #                 header index, for the UltraAI module docs
 # Version: 1.9.0 - the baseline is signed per doc, and --update-baseline is
@@ -1738,8 +1740,11 @@ SIGNATURE_PREFIX = "# signature "
 # component docs. A module joins once its examples compile: its findings are
 # mistakes in a description of an API that exists, not a design document's
 # unwritten one, so they are fixed, never baselined. The FileLoader README had
-# eight broken examples for months because nothing compiled it.
-CHECKED_MODULE_DOCS = ["FileLoader", "UltraLocalisation", "UltraSite"]
+# eight broken examples for months because nothing compiled it, and UltraNet's
+# six (an SSH key assigned as text among them, which no reader could build).
+# UltraNet's README there is the mirror of UltraNet/README.md
+# (scripts/generate_llms_txt.py): a finding in it is fixed in that file.
+CHECKED_MODULE_DOCS = ["FileLoader", "UltraLocalisation", "UltraNet", "UltraSite"]
 
 
 def component_docs():
