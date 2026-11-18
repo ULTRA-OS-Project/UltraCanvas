@@ -2172,7 +2172,9 @@ backing library is never visible in a public header.
   codes, ChatCube Direct's sign-in checks them (until 2026-11 in
   `Apps/UltraAuthenticator/otp/`)
 
-Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
+Streaming class: `UltraCryptHasher` (HMAC is the one call
+`UltraCrypt_Hmac`; a streaming `UltraCryptHmacHasher` was proposed and not
+built).
 
 UltraCrypt is the required cryptographic module for the UCD v2 file format,
 UltraVault, UltraDatabase at-rest encryption, UltraAuthenticator and any

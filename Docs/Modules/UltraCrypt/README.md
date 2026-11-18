@@ -584,7 +584,9 @@ public:
 void UltraCrypt_SecureZero(void* data, size_t size);
 
 // Length-independent comparison. Use for every MAC / tag / digest check.
-bool UltraCrypt_ConstantTimeEquals(const void* a, const void* b, size_t size);
+// False when the sizes differ.
+bool UltraCrypt_ConstantTimeEquals(const void* a, size_t aSize,
+                                   const void* b, size_t bSize);
 ```
 
 ### 5.2 Hashing
@@ -600,16 +602,15 @@ enum class UltraCryptHashAlgorithm : uint8_t {
 };
 
 struct UltraCryptHashOptions {
-    bool allowLegacy = false;    // required to use SHA1 as a plain digest
+    bool allowLegacy = false;    // UltraCrypt_Hash refuses SHA1 without it
 };
 
 class UltraCryptHasher {          // streaming; for files and large payloads
 public:
-    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm,
-                              const UltraCryptHashOptions& options =
-                                  UltraCryptHashOptions());
+    // Takes the algorithm alone: no options, so - unlike UltraCrypt_Hash -
+    // nothing here asks for allowLegacy before SHA1. Neither copied nor moved.
+    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm);
     ~UltraCryptHasher();
-    UltraCryptHasher(UltraCryptHasher&&) noexcept;
     UltraCryptHasher(const UltraCryptHasher&) = delete;
 
     void Update(const void* data, size_t size);
@@ -618,7 +619,7 @@ public:
     void Reset();
 
     size_t GetDigestSize() const;
-    bool   IsValid() const;       // false when the algorithm is unavailable
+    bool   IsValid() const;       // false when there is no backend to hash with
 };
 
 size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm);
@@ -646,18 +647,7 @@ checksums.
 ### 5.3 HMAC
 
 ```cpp
-class UltraCryptHmacHasher {      // streaming, same shape as UltraCryptHasher
-public:
-    UltraCryptHmacHasher(UltraCryptHashAlgorithm algorithm,
-                         const UltraCryptSecureBuffer& key);
-    ~UltraCryptHmacHasher();
-    void Update(const void* data, size_t size);
-    std::vector<uint8_t> Final();
-    void Reset();                 // keeps the key
-    size_t GetDigestSize() const;
-    bool   IsValid() const;
-};
-
+// Accepts keys of any length (the standard HMAC key schedule is applied).
 // SHA1 is permitted here without allowLegacy: HMAC-SHA-1 remains sound and
 // TOTP interoperability requires it.
 UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
@@ -665,6 +655,10 @@ UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
                                  const void* data, size_t size,
                                  std::vector<uint8_t>& outMac);
 ```
+
+One call over the whole message: there is no streaming HMAC. (The proposal
+had a `UltraCryptHmacHasher` class of the shape of `UltraCryptHasher`; no
+consumer needed one - an OTP counter is eight bytes - and it was not built.)
 
 *Serves:* UltraAuthenticator (RFC 4226 / 6238), any future signed-manifest work.
 
@@ -1112,11 +1106,20 @@ UltraCryptResult UltraCrypt_ImportPkcs12(const std::vector<uint8_t>& pkcs12,
 // (detached, SHA-256, the chain carried); enveloped data made (AES-256-CBC)
 // and opened.
 UltraCryptCmsType UltraCrypt_CmsTypeOf(const std::vector<uint8_t>& der);
-UltraCryptResult UltraCrypt_CmsVerifyDetached(content, signatureDer, UltraCryptCmsSignature& out);
-UltraCryptResult UltraCrypt_CmsVerifyAttached(signedDer, outContent, UltraCryptCmsSignature& out);
-UltraCryptResult UltraCrypt_CmsSignDetached(content, const UltraCryptX509Identity& signer, outSignatureDer);
-UltraCryptResult UltraCrypt_CmsEncrypt(content, recipientsPem, outEnvelopedDer);
-UltraCryptResult UltraCrypt_CmsDecrypt(envelopedDer, const UltraCryptX509Identity& recipient,
+UltraCryptResult UltraCrypt_CmsVerifyDetached(const std::vector<uint8_t>& content,
+                                              const std::vector<uint8_t>& signatureDer,
+                                              UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsVerifyAttached(const std::vector<uint8_t>& signedDer,
+                                              std::vector<uint8_t>& outContent,
+                                              UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsSignDetached(const std::vector<uint8_t>& content,
+                                            const UltraCryptX509Identity& signer,
+                                            std::vector<uint8_t>& outSignatureDer);
+UltraCryptResult UltraCrypt_CmsEncrypt(const std::vector<uint8_t>& content,
+                                       const std::vector<std::string>& recipientsPem,
+                                       std::vector<uint8_t>& outEnvelopedDer);
+UltraCryptResult UltraCrypt_CmsDecrypt(const std::vector<uint8_t>& envelopedDer,
+                                       const UltraCryptX509Identity& recipient,
                                        UltraCryptSecureBuffer& outContent);
 ```
 
@@ -1187,14 +1190,22 @@ bool UltraCrypt_IsRsaEcdsaAvailable();
 
 // RS256: RSASSA-PKCS1-v1_5 with SHA-256. The key as a JWK's n and e
 // (big-endian bytes); below 2048 bits it is InvalidKeySize.
-UltraCryptResult UltraCrypt_CheckRsaPublicKey(modulus, exponent);
-UltraCryptResult UltraCrypt_VerifyRsaPkcs1Sha256(modulus, exponent, data, size, signature);
+UltraCryptResult UltraCrypt_CheckRsaPublicKey(const std::vector<uint8_t>& modulus,
+                                              const std::vector<uint8_t>& exponent);
+UltraCryptResult UltraCrypt_VerifyRsaPkcs1Sha256(const std::vector<uint8_t>& modulus,
+                                                 const std::vector<uint8_t>& exponent,
+                                                 const void* data, size_t size,
+                                                 const std::vector<uint8_t>& signature);
 
 // ES256: ECDSA on P-256 with SHA-256. The key as a JWK's x and y (32 bytes
 // each; a point off the curve is InvalidArgument); the signature as r || s,
 // 64 bytes, as JWS gives it - converted to DER inside.
-UltraCryptResult UltraCrypt_CheckP256PublicKey(x, y);
-UltraCryptResult UltraCrypt_VerifyEcdsaP256Sha256(x, y, data, size, signature);
+UltraCryptResult UltraCrypt_CheckP256PublicKey(const std::vector<uint8_t>& x,
+                                               const std::vector<uint8_t>& y);
+UltraCryptResult UltraCrypt_VerifyEcdsaP256Sha256(const std::vector<uint8_t>& x,
+                                                  const std::vector<uint8_t>& y,
+                                                  const void* data, size_t size,
+                                                  const std::vector<uint8_t>& signature);
 ```
 
 Checks only; a signature that does not hold is `SignatureInvalid`, whichever
@@ -1219,6 +1230,7 @@ coordinates and signatures.
 de-facto `otpauth://` key URI an authenticator scans from a QR code. Until
 2026-11 the files were UltraAuthenticator's (`Apps/UltraAuthenticator/otp/`).
 
+<!-- doc-check: int64_t unixTime; std::string typed; uint64_t lastAcceptedStep; -->
 ```cpp
 namespace Otp = UltraCanvas::Otp;
 Otp::Parameters params;                         // TOTP, SHA-1, 6 digits, 30 s
@@ -1254,6 +1266,7 @@ use, the digit count, a short secret.
 
 **UCD v2 section encryption (§4.3 pipeline):**
 
+<!-- doc-check: std::vector<uint8_t> sectionHeaderBytes; std::vector<uint8_t> payload; -->
 ```cpp
 UltraCryptKdfParams kdf =
     UltraCrypt_RecommendedKdfParams(UltraCryptKdfAlgorithm::Argon2id);
@@ -1271,6 +1284,7 @@ if (!UltraCrypt_AeadSeal(key, aead, payload.data(), payload.size(), ciphertext))
 
 **UCD v2 SuperVault subkey (§4.4 step 6):**
 
+<!-- doc-check: std::string kSvltInfoPrefix; std::string fileUuid; UltraCryptSecureBuffer serviceKeyMaterial; std::vector<uint8_t> kdfSalt; -->
 ```cpp
 std::vector<uint8_t> info(kSvltInfoPrefix.begin(), kSvltInfoPrefix.end());
 info.insert(info.end(), fileUuid.begin(), fileUuid.end());
@@ -1282,6 +1296,7 @@ UltraCrypt_DeriveKeyHkdf(UltraCryptHashAlgorithm::SHA256, serviceKeyMaterial,
 
 **TOTP code (RFC 6238):**
 
+<!-- doc-check: int64_t unixTimeUtc; uint64_t period; -->
 ```cpp
 uint64_t counter = static_cast<uint64_t>(unixTimeUtc) / period;
 uint8_t  message[8];
