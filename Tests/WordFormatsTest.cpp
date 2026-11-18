@@ -3385,6 +3385,588 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== Signatures in tables, in two columns, the way Word writes them =====
+    // A table nested in a table cell, a column break, a cell's lines of a
+    // set height and of a multiple, a table left of its column, a cell's
+    // empty first paragraph in a 2 pt font, a break at a paragraph's end, a
+    // turned picture and a drawn shape standing in a line.
+    {
+        std::cout << "\n--- Signatures: nested tables, column breaks, cell line heights ---\n";
+        const std::string wml = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"";
+        const std::string inlinePicture =
+            "<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"1270000\" cy=\"254000\"/>"
+            "<wp:docPr id=\"1\" name=\"Turned\"/><a:graphic><a:graphicData "
+            "uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\"><pic:pic><pic:nvPicPr>"
+            "<pic:cNvPr id=\"1\" name=\"Turned\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rId1\"/>"
+            "<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm rot=\"5400000\"><a:off x=\"0\" y=\"0\"/>"
+            "<a:ext cx=\"1270000\" cy=\"254000\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>"
+            "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>";
+        const std::string inlineShape =
+            "<w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"635000\" cy=\"635000\"/>"
+            "<wp:docPr id=\"2\" name=\"Dot\"/><a:graphic><a:graphicData "
+            "uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><wps:wsp><wps:cNvSpPr/><wps:spPr>"
+            "<a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"635000\" cy=\"635000\"/></a:xfrm>"
+            "<a:prstGeom prst=\"ellipse\"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val=\"C8005F\"/></a:solidFill>"
+            "</wps:spPr><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing>";
+        const std::string documentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<w:document " + wml + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+            "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" "
+            "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" "
+            "xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" "
+            "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><w:body>"
+            "<w:p><w:r><w:t>First column</w:t></w:r></w:p>"
+            "<w:tbl><w:tblPr><w:tblW w:w=\"4000\" w:type=\"dxa\"/><w:tblInd w:w=\"-255\" w:type=\"dxa\"/></w:tblPr>"
+            "<w:tblGrid><w:gridCol w:w=\"4000\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr>"
+            "<w:p><w:pPr><w:rPr><w:sz w:val=\"4\"/></w:rPr></w:pPr></w:p>"
+            "<w:p><w:pPr><w:spacing w:line=\"300\" w:lineRule=\"atLeast\"/><w:rPr><w:sz w:val=\"6\"/></w:rPr></w:pPr>"
+            "<w:r><w:rPr><w:sz w:val=\"16\"/></w:rPr><w:t>Outer line</w:t></w:r><w:r><w:br/></w:r></w:p>"
+            "<w:tbl><w:tblPr><w:tblW w:w=\"2000\" w:type=\"dxa\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"1000\"/>"
+            "<w:gridCol w:w=\"1000\"/></w:tblGrid><w:tr><w:tc><w:p><w:r><w:t>inner one</w:t></w:r></w:p></w:tc>"
+            "<w:tc><w:p><w:r><w:t>inner two</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/></w:tc></w:tr>"
+            "<w:tr><w:tc><w:tcPr><w:tcW w:w=\"4000\" w:type=\"dxa\"/></w:tcPr>"
+            "<w:p><w:pPr><w:spacing w:line=\"276\" w:lineRule=\"auto\"/></w:pPr><w:r><w:t>Spaced</w:t></w:r></w:p>"
+            "<w:p><w:pPr><w:spacing w:line=\"168\" w:lineRule=\"auto\"/></w:pPr><w:r><w:t>Tight</w:t></w:r></w:p>"
+            "</w:tc></w:tr></w:tbl>"
+            "<w:p><w:r><w:br w:type=\"column\"/></w:r><w:r><w:t>Second column</w:t></w:r></w:p>"
+            "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr><w:r><w:rPr><w:sz w:val=\"8\"/></w:rPr>" + inlinePicture + "</w:r>"
+            "<w:r>" + inlineShape + "</w:r></w:p>"
+            "<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"720\" w:right=\"720\" w:bottom=\"720\" "
+            "w:left=\"720\"/><w:cols w:num=\"2\" w:space=\"720\"/></w:sectPr></w:body></w:document>";
+        {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(TmpPath("signatures.docx")));
+            zip.AddEntry("[Content_Types].xml", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                "<Default Extension=\"png\" ContentType=\"image/png\"/>"
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document.main+xml\"/></Types>"));
+            zip.AddEntry("_rels/.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "officeDocument\" Target=\"word/document.xml\"/></Relationships>"));
+            zip.AddEntry("word/_rels/document.xml.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "image\" Target=\"media/image1.png\"/></Relationships>"));
+            zip.AddEntry("word/document.xml", documentXml);
+            zip.AddEntry("word/media/image1.png", kTinyPng, sizeof(kTinyPng));
+            CHECK(zip.Finalize());
+        }
+        auto checkSignatures = [&](const std::string& path, const std::string& label, bool docx) {
+            UCRichDocument read;
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(path, read, err), label + ": " + err);
+            const RichDocBlock* table = nullptr;
+            const RichDocBlock* broken = nullptr;
+            const RichDocBlock* pictured = nullptr;
+            for (const RichDocBlock& block : read.blocks) {
+                if (block.type == RichBlockType::Table && !table) table = &block;
+                if (block.columnBreakBefore) broken = &block;
+                for (const RichTextRun& run : block.runs) {
+                    if (run.IsInlineImage() || run.IsTextFrame()) pictured = &block;
+                }
+            }
+            CHECK_MSG(broken && UCRichDocument::ConcatenateRunText(broken->runs) == "Second column",
+                      label + ": the column break is its paragraph's, not a line break");
+            CHECK_MSG(read.ToPlainText().find("inner two") != std::string::npos,
+                      label + ": the nested table's words are in the plain text");
+            CHECK_MSG(!read.breakAfterSlash, label + ": no line break after a slash, as in Word");
+            CHECK_MSG(table && table->tableRows.size() == 2, label + ": the outer table's two rows");
+            if (docx && table) CHECK_MSG(table->tableAutoFit, label + ": the table's columns give way to their content");
+            if (!table || table->tableRows.size() != 2) return;
+            CHECK_MSG(Near(table->tableIndentPt, -12.75f), label + ": the table starts left of its column, got "
+                      + std::to_string(table->tableIndentPt));
+            const RichTableCell& first = table->tableRows[0].cells[0];
+            CHECK_MSG(first.runs.size() == 4, label + ": an empty line, a line, the break's line, the table: "
+                      + std::to_string(first.runs.size()) + " runs");
+            if (first.runs.size() == 4) {
+                CHECK_MSG(first.runs[0].text.empty() && !first.runs[0].lineBreakBefore && Near(first.runs[0].fontSizePt, 2.0f),
+                          label + ": the empty first paragraph is a 2 pt line, got "
+                          + std::to_string(first.runs[0].fontSizePt));
+                CHECK_MSG(first.runs[2].text.empty() && first.runs[2].lineBreakBefore && Near(first.runs[2].fontSizePt, 3.0f),
+                          label + ": the line a break at the paragraph's end leaves is its mark's (3 pt), got "
+                          + std::to_string(first.runs[2].fontSizePt));
+                const RichTextFrame* nested = read.FrameFor(first.runs[3]);
+                CHECK_MSG(nested && nested->nestedTable && nested->blocks.size() == 1
+                          && nested->blocks[0].type == RichBlockType::Table && nested->blocks[0].tableRows.size() == 1
+                          && nested->blocks[0].tableRows[0].cells.size() == 2,
+                          label + ": the nested table is a table of its own, one row of two cells");
+                CHECK_MSG(first.runs[3].lineBreakBefore && Near(first.runs[3].imageWidthPt, 100.0f),
+                          label + ": ...on a line of its own, 100 pt wide");
+            }
+            if (docx) CHECK_MSG(first.lineHeightPt <= 0.0f, label + ": the first paragraph sets no line height");
+            else CHECK_MSG(Near(first.lineHeightPt, 15.0f) && first.lineHeightAtLeast, label + ": a cell's lines at least 15 pt");
+            const RichTableCell& second = table->tableRows[1].cells[0];
+            // A cell's lines 1.15 times their font's (the cell's, or - from
+            // an ODT - each line's own), and one paragraph in it at 70%.
+            float spaced = second.lineSpacing, tight = 0.0f;
+            for (const RichTextRun& run : second.runs) {
+                if (run.text == "Spaced" && run.lineSpacing > 0.0f) spaced = run.lineSpacing;
+                if (run.text == "Tight") tight = run.lineSpacing;
+            }
+            CHECK_MSG(std::abs(spaced - 1.15f) < 0.01f, label + ": lines 1.15 times their font's, got "
+                      + std::to_string(spaced));
+            CHECK_MSG(std::abs(tight - 0.7f) < 0.01f, label + ": a paragraph of its own at 70%, got " + std::to_string(tight));
+            CHECK_MSG(pictured != nullptr, label + ": the picture and the shape are in a paragraph's line");
+            if (pictured) {
+                const RichTextRun* picture = nullptr;
+                const RichTextRun* shape = nullptr;
+                for (const RichTextRun& run : pictured->runs) {
+                    if (run.IsInlineImage()) picture = &run;
+                    if (run.IsTextFrame()) shape = &run;
+                }
+                CHECK_MSG(picture && Near(std::fmod(picture->imageRotationDeg + 360.0f, 360.0f), 90.0f)
+                          && !picture->IsFloatingObject(), label + ": the picture in the line is turned a quarter");
+                CHECK_MSG(picture && Near(picture->imageWidthPt, 100.0f) && Near(picture->imageHeightPt, 20.0f),
+                          label + ": ...its size as before the turn: " + std::to_string(picture ? picture->imageWidthPt : 0.0f)
+                          + " x " + std::to_string(picture ? picture->imageHeightPt : 0.0f));
+                CHECK_MSG(picture && Near(picture->fontSizePt, 4.0f), label + ": ...in its run's 4 pt font");
+                CHECK_MSG(shape && shape->imageWrap == RichTextRun::ImageWrap::Inline,
+                          label + ": the shape stands in the line, it does not float");
+            }
+        };
+        checkSignatures(TmpPath("signatures.docx"), "docx", true);
+        UCRichDocument signatures;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("signatures.docx"), signatures, err), err);
+        // A cell's line height, set on its first paragraph.
+        for (RichDocBlock& block : signatures.blocks) {
+            if (block.type != RichBlockType::Table) continue;
+            block.tableRows[0].cells[0].lineHeightPt = 15.0f;
+            block.tableRows[0].cells[0].lineHeightAtLeast = true;
+        }
+        CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-saved.docx"), signatures, err), err);
+        {
+            UCRichDocument again;
+            CHECK_MSG(UCWordDocumentIO::Load(TmpPath("signatures-saved.docx"), again, err), err);
+            for (RichDocBlock& block : again.blocks) {
+                if (block.type != RichBlockType::Table) continue;
+                CHECK_MSG(Near(block.tableRows[0].cells[0].lineHeightPt, 15.0f) && block.tableRows[0].cells[0].lineHeightAtLeast,
+                          "saved as docx: a cell's lines at least 15 pt");
+                block.tableRows[0].cells[0].lineHeightPt = 0.0f;
+                block.tableRows[0].cells[0].lineHeightAtLeast = false;
+            }
+            CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-saved2.docx"), again, err), err);
+        }
+        checkSignatures(TmpPath("signatures-saved2.docx"), "saved as docx", true);
+        CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-saved.odt"), signatures, err), err);
+        checkSignatures(TmpPath("signatures-saved.odt"), "saved as odt", false);
+        // ...and an ODT of an ODT is still the same.
+        {
+            UCRichDocument fromOdt;
+            CHECK_MSG(UCWordDocumentIO::Load(TmpPath("signatures-saved.odt"), fromOdt, err), err);
+            CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-saved2.odt"), fromOdt, err), err);
+            checkSignatures(TmpPath("signatures-saved2.odt"), "saved as odt twice", false);
+        }
+        // A fixed table layout is kept: its columns stay as stated.
+        {
+            for (RichDocBlock& block : signatures.blocks) {
+                if (block.type == RichBlockType::Table) block.tableAutoFit = false;
+            }
+            CHECK_MSG(UCWordDocumentIO::Save(TmpPath("signatures-fixed.docx"), signatures, err), err);
+            UCRichDocument fixed;
+            CHECK_MSG(UCWordDocumentIO::Load(TmpPath("signatures-fixed.docx"), fixed, err), err);
+            bool any = false, allFixed = true;
+            for (const RichDocBlock& block : fixed.blocks) {
+                if (block.type != RichBlockType::Table) continue;
+                any = true;
+                allFixed = allFixed && !block.tableAutoFit;
+            }
+            CHECK_MSG(any && allFixed, "docx: a fixed table layout is written and read back");
+        }
+    }
+
+    // ===== A document the way Writer saves it as DOCX =====
+    // Every paragraph with borders of "nil", headings in a numbering whose
+    // levels show nothing, fonts named with their alternatives, and a chart.
+    {
+        std::cout << "\n--- Writer's DOCX: nil borders, silent numbering, font lists, a chart ---\n";
+        const std::string wml = "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"";
+        const std::string documentXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<w:document " + wml + " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+            "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" "
+            "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><w:body>"
+            "<w:p><w:pPr><w:pBdr><w:top w:val=\"nil\"/><w:left w:val=\"nil\"/><w:bottom w:val=\"nil\"/><w:right w:val=\"nil\"/>"
+            "</w:pBdr></w:pPr></w:p>"
+            "<w:p><w:pPr><w:pStyle w:val=\"Heading1\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr>"
+            "<w:ind w:left=\"0\" w:hanging=\"432\"/></w:pPr><w:r><w:t>A heading</w:t></w:r></w:p>"
+            "<w:p><w:r><w:rPr><w:rFonts w:ascii=\"Open Sans;Arial\" w:hAnsi=\"Open Sans;Arial\"/></w:rPr><w:t>Body</w:t></w:r></w:p>"
+            "<w:p><w:pPr><w:pBdr><w:bottom w:val=\"single\" w:sz=\"6\" w:space=\"1\" w:color=\"808080\"/></w:pBdr></w:pPr></w:p>"
+            "<w:p><w:r><w:drawing><wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\"><wp:extent cx=\"3810000\" cy=\"1905000\"/>"
+            "<wp:docPr id=\"1\" name=\"\"/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+            "<c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" r:id=\"rId7\"/>"
+            "</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
+            "</w:body></w:document>";
+        auto seriesXml = [](const char* name, const char* color, const char* values) {
+            std::string xml = std::string("<c:ser><c:tx><c:strRef><c:strCache><c:pt idx=\"0\"><c:v>") + name
+                + "</c:v></c:pt></c:strCache></c:strRef></c:tx><c:spPr><a:solidFill><a:srgbClr val=\"" + color
+                + "\"/></a:solidFill></c:spPr><c:cat><c:strRef><c:strCache><c:pt idx=\"0\"><c:v>Row 1</c:v></c:pt>"
+                  "<c:pt idx=\"1\"><c:v>Row 2</c:v></c:pt></c:strCache></c:strRef></c:cat><c:val><c:numRef><c:numCache>";
+            int index = 0;
+            std::istringstream list(values);
+            for (std::string value; list >> value; index++) {
+                xml += "<c:pt idx=\"" + std::to_string(index) + "\"><c:v>" + value + "</c:v></c:pt>";
+            }
+            return xml + "</c:numCache></c:numRef></c:val></c:ser>";
+        };
+        const std::string chartXml =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+            "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><c:chart><c:plotArea><c:barChart>"
+            "<c:barDir val=\"col\"/>" + seriesXml("Column 1", "004586", "9.1 2.4") + seriesXml("Column 2", "ff420e", "3.2 8.8")
+            + "</c:barChart></c:plotArea><c:legend><c:legendPos val=\"r\"/></c:legend></c:chart></c:chartSpace>";
+        auto writePackage = [&](const std::string& path, const std::string& chartPart) {
+            UCZipPackageWriter zip;
+            CHECK(zip.Open(path));
+            zip.AddEntry("[Content_Types].xml", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+                "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument."
+                "wordprocessingml.document.main+xml\"/></Types>"));
+            zip.AddEntry("_rels/.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "officeDocument\" Target=\"word/document.xml\"/></Relationships>"));
+            zip.AddEntry("word/_rels/document.xml.rels", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+                "<Relationship Id=\"rId7\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+                "chart\" Target=\"charts/chart1.xml\"/></Relationships>"));
+            zip.AddEntry("word/document.xml", documentXml);
+            zip.AddEntry("word/styles.xml", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:styles " + wml + ">"
+                "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\"><w:name w:val=\"Normal\"/></w:style>"
+                "<w:style w:type=\"paragraph\" w:styleId=\"Heading1\"><w:name w:val=\"heading 1\"/><w:basedOn w:val=\"Normal\"/>"
+                "<w:rPr><w:rFonts w:ascii=\"Liberation Sans;Arial\" w:hAnsi=\"Liberation Sans;Arial\"/><w:b/><w:sz w:val=\"36\"/>"
+                "</w:rPr></w:style></w:styles>"));
+            zip.AddEntry("word/numbering.xml", std::string(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><w:numbering " + wml + ">"
+                "<w:abstractNum w:abstractNumId=\"1\"><w:lvl w:ilvl=\"0\"><w:start w:val=\"1\"/><w:numFmt w:val=\"none\"/>"
+                "<w:suff w:val=\"nothing\"/><w:lvlText w:val=\"\"/></w:lvl></w:abstractNum>"
+                "<w:num w:numId=\"1\"><w:abstractNumId w:val=\"1\"/></w:num></w:numbering>"));
+            zip.AddEntry("word/charts/chart1.xml", chartPart);
+            CHECK(zip.Finalize());
+        };
+        writePackage(TmpPath("writer.docx"), chartXml);
+        UCRichDocument writer;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(TmpPath("writer.docx"), writer, err), err);
+        int rules = 0;
+        const RichDocBlock* heading = nullptr;
+        const RichTextRun* body = nullptr;
+        const RichTextRun* chart = nullptr;
+        for (const RichDocBlock& block : writer.blocks) {
+            if (block.type == RichBlockType::HorizontalRule) rules++;
+            if (block.type == RichBlockType::Heading) heading = &block;
+            CHECK_MSG(block.type != RichBlockType::ListItem, "docx: a level without number or bullet makes no list item");
+            for (const RichTextRun& run : block.runs) {
+                if (run.text == "Body") body = &run;
+                if (run.IsTextFrame()) chart = &run;
+            }
+        }
+        CHECK_MSG(rules == 1, "docx: only a border that is drawn is a rule (\"nil\" is none), got " + std::to_string(rules));
+        CHECK_MSG(heading && UCRichDocument::ConcatenateRunText(heading->runs) == "A heading",
+                  "docx: the heading in a silent numbering is a heading");
+        if (heading) {
+            CHECK_MSG(heading->paragraphFontFamily == "Liberation Sans" && Near(heading->paragraphFontSizePt, 18.0f),
+                      "docx: ...in its style's font and size, the first of the names: \"" + heading->paragraphFontFamily
+                      + "\" " + std::to_string(heading->paragraphFontSizePt));
+            CHECK_MSG(Near(heading->firstLineIndentPt, -21.6f), "docx: ...its first line hanging 21.6 pt");
+        }
+        CHECK_MSG(body && body->fontFamily == "Open Sans", "docx: a run's font is the first of its names, got \""
+                  + (body ? body->fontFamily : std::string()) + "\"");
+        CHECK_MSG(chart && chart->imageWrap == RichTextRun::ImageWrap::Inline && Near(chart->imageWidthPt, 300.0f)
+                  && Near(chart->imageHeightPt, 150.0f), "docx: the chart stands in its line, 300 x 150 pt");
+        if (chart && chart->frameIndex < static_cast<int>(writer.frames.size())) {
+            const RichTextFrame& frame = writer.frames[static_cast<size_t>(chart->frameIndex)];
+            CHECK_MSG(frame.shapes.size() == 1 && frame.shapes[0].kind == RichShape::Kind::Group, "docx: ...drawn as a group of shapes");
+            if (frame.shapes.size() == 1) {
+                // Two series of two values: four columns, in the series' colours, the 9.1 the tallest.
+                int blue = 0, red = 0;
+                float tallest = 0.0f, shortest = 1e9f;
+                std::string words;
+                for (const RichShape& shape : frame.shapes[0].children) {
+                    if (shape.kind == RichShape::Kind::Rectangle && shape.heightPt > 8.0f && !shape.fillColor.empty()) {
+                        if (Lower(shape.fillColor) == "#004586") blue++;
+                        if (Lower(shape.fillColor) == "#ff420e") red++;
+                        tallest = std::max(tallest, shape.heightPt);
+                        shortest = std::min(shortest, shape.heightPt);
+                    }
+                    if (shape.textFrame >= 0 && shape.textFrame < static_cast<int>(writer.frames.size())) {
+                        for (const RichDocBlock& block : writer.frames[static_cast<size_t>(shape.textFrame)].blocks) {
+                            words += UCRichDocument::ConcatenateRunText(block.runs) + "|";
+                        }
+                    }
+                }
+                CHECK_MSG(blue == 2 && red == 2, "docx: ...two columns for each of its two series, got " + std::to_string(blue)
+                          + " and " + std::to_string(red));
+                CHECK_MSG(tallest > 0.0f && std::abs(shortest / tallest - 2.4f / 9.1f) < 0.02f,
+                          "docx: ...as tall as their values: " + std::to_string(shortest) + " and " + std::to_string(tallest));
+                CHECK_MSG(words.find("Row 1|") != std::string::npos && words.find("Column 2|") != std::string::npos
+                          && words.find("10|") != std::string::npos, "docx: ...with its categories, legend and axis values: " + words);
+            }
+        }
+        // The other kinds: bars lying down, columns one on the other, a pie.
+        {
+            auto shapesOf = [&](const std::string& name, const std::string& plot) {
+                const std::string part =
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                    "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+                    "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><c:chart><c:plotArea>" + plot
+                    + "</c:plotArea><c:legend><c:legendPos val=\"r\"/></c:legend></c:chart></c:chartSpace>";
+                writePackage(TmpPath("writer-" + name + ".docx"), part);
+                UCRichDocument read;
+                std::string error;
+                CHECK_MSG(UCWordDocumentIO::Load(TmpPath("writer-" + name + ".docx"), read, error), error);
+                std::vector<RichShape> shapes;
+                for (const RichDocBlock& block : read.blocks) {
+                    for (const RichTextRun& run : block.runs) {
+                        const RichTextFrame* frame = run.IsTextFrame() ? read.FrameFor(run) : nullptr;
+                        if (frame && frame->shapes.size() == 1) shapes = frame->shapes[0].children;
+                    }
+                }
+                return shapes;
+            };
+            const std::string two = seriesXml("Column 1", "004586", "9.1 2.4") + seriesXml("Column 2", "ff420e", "3.2 8.8");
+            // Lying down: a bar is as long as its value, across the chart.
+            float longest = 0.0f, thickest = 0.0f;
+            for (const RichShape& shape : shapesOf("bar", "<c:barChart><c:barDir val=\"bar\"/><c:grouping val=\"clustered\"/>"
+                                                          + two + "</c:barChart>")) {
+                if (shape.kind != RichShape::Kind::Rectangle || Lower(shape.fillColor) != "#004586" || shape.widthPt <= 8.0f) continue;
+                longest = std::max(longest, shape.widthPt);
+                thickest = std::max(thickest, shape.heightPt);
+            }
+            CHECK_MSG(longest > 100.0f && thickest > 0.0f && thickest < 40.0f,
+                      "docx: a bar chart's bars lie down: " + std::to_string(longest) + " long, " + std::to_string(thickest) + " thick");
+            // Stacked: the second series stands on the first, in the same column.
+            float blueTop = -1.0f, redBottom = -1.0f, blueLeft = -1.0f, redLeft = -2.0f;
+            for (const RichShape& shape : shapesOf("stacked", "<c:barChart><c:barDir val=\"col\"/><c:grouping val=\"stacked\"/>"
+                                                              + two + "</c:barChart>")) {
+                if (shape.kind != RichShape::Kind::Rectangle || shape.heightPt <= 8.0f || shape.fillColor.empty()) continue;
+                if (Lower(shape.fillColor) == "#004586" && blueTop < 0.0f) { blueTop = shape.yPt; blueLeft = shape.xPt; }
+                if (Lower(shape.fillColor) == "#ff420e" && redBottom < 0.0f) { redBottom = shape.yPt + shape.heightPt; redLeft = shape.xPt; }
+            }
+            CHECK_MSG(Near(blueTop, redBottom) && Near(blueLeft, redLeft),
+                      "docx: stacked columns stand one on the other: " + std::to_string(redBottom) + " on " + std::to_string(blueTop));
+            // A pie: a slice for each value of its first series, 9.1 of 11.5 more than half the round.
+            int slices = 0, curves = 0;
+            for (const RichShape& shape : shapesOf("pie", "<c:pieChart><c:varyColors val=\"1\"/>"
+                                                          + seriesXml("Column 1", "004586", "9.1 2.4") + "</c:pieChart>")) {
+                if (shape.kind != RichShape::Kind::Path) continue;
+                slices++;
+                int arcs = 0;
+                for (const RichShape::PathPoint& point : shape.path) arcs += point.op == RichShape::PathPoint::Op::Curve ? 1 : 0;
+                curves = std::max(curves, arcs);
+            }
+            CHECK_MSG(slices == 2 && curves == 4, "docx: a pie's slices, the larger of four arcs: " + std::to_string(slices)
+                      + " slices, " + std::to_string(curves) + " arcs");
+            // A scatter chart: each point over its own x, on an axis of
+            // values - (1, 2), (2, 4) and (10, 8), the last far to the right.
+            auto points = [](const char* tag, const char* values) {
+                std::string xml = std::string("<") + tag + "><c:numRef><c:numCache>";
+                int index = 0;
+                std::istringstream list(values);
+                for (std::string value; list >> value; index++) {
+                    xml += "<c:pt idx=\"" + std::to_string(index) + "\"><c:v>" + value + "</c:v></c:pt>";
+                }
+                return xml + "</c:numCache></c:numRef></" + tag + ">";
+            };
+            std::vector<float> markX, markY;
+            int joins = 0;
+            std::string scatterWords;
+            for (const RichShape& shape : shapesOf("scatter", "<c:scatterChart><c:scatterStyle val=\"lineMarker\"/><c:ser>"
+                     "<c:spPr><a:ln><a:solidFill><a:srgbClr val=\"004586\"/></a:solidFill></a:ln></c:spPr>"
+                     + points("c:xVal", "1 2 10") + points("c:yVal", "2 4 8") + "</c:ser></c:scatterChart>"
+                     "<c:valAx><c:scaling/><c:axPos val=\"b\"/></c:valAx><c:valAx><c:scaling/><c:axPos val=\"l\"/></c:valAx>")) {
+                if (shape.kind == RichShape::Kind::Ellipse) {
+                    markX.push_back(shape.xPt + shape.widthPt * 0.5f);
+                    markY.push_back(shape.yPt + shape.heightPt * 0.5f);
+                }
+                if (shape.kind == RichShape::Kind::Path && Lower(shape.lineColor) == "#004586") joins += static_cast<int>(shape.path.size());
+            }
+            {
+                // Every kind keeps its data through a DOCX and an ODT of our own.
+                struct Case { const char* name; RichChart::Kind kind; bool stacked; const char* ext; };
+                for (const Case& one : {Case{"bar", RichChart::Kind::Bar, false, ".docx"}, Case{"stacked", RichChart::Kind::Column, true, ".docx"},
+                                        Case{"pie", RichChart::Kind::Pie, false, ".docx"}, Case{"scatter", RichChart::Kind::Scatter, false, ".docx"},
+                                        Case{"bar", RichChart::Kind::Bar, false, ".odt"}, Case{"stacked", RichChart::Kind::Column, true, ".odt"},
+                                        Case{"pie", RichChart::Kind::Pie, false, ".odt"}, Case{"scatter", RichChart::Kind::Scatter, false, ".odt"}}) {
+                    UCRichDocument read, again;
+                    std::string error;
+                    const std::string saved = TmpPath(std::string("writer-") + one.name + "-saved" + one.ext);
+                    CHECK_MSG(UCWordDocumentIO::Load(TmpPath(std::string("writer-") + one.name + ".docx"), read, error)
+                                  && UCWordDocumentIO::Save(saved, read, error) && UCWordDocumentIO::Load(saved, again, error), error);
+                    const RichChart* before = nullptr;
+                    const RichChart* after = nullptr;
+                    for (const RichTextFrame& frame : read.frames) if (frame.chart.IsChart()) before = &frame.chart;
+                    for (const RichTextFrame& frame : again.frames) if (frame.chart.IsChart()) after = &frame.chart;
+                    bool same = before && after && before->kind == one.kind && after->kind == one.kind
+                             && after->stacked == one.stacked && before->series.size() == after->series.size();
+                    for (size_t s = 0; same && s < before->series.size(); s++) {
+                        same = before->series[s].values == after->series[s].values
+                            && before->series[s].xValues == after->series[s].xValues
+                            && before->series[s].joined == after->series[s].joined
+                            && before->series[s].marked == after->series[s].marked;
+                    }
+                    same = same && before->categories == after->categories && before->legend == after->legend;
+                    for (size_t s = 0; same && s < before->series.size(); s++) {
+                        same = before->series[s].name == after->series[s].name
+                            && Lower(before->series[s].color) == Lower(after->series[s].color);
+                    }
+                    CHECK_MSG(same, std::string("a ") + one.name + " chart keeps its kind and data when saved as " + one.ext);
+                    // ...and is still drawn shapes too, for whoever has no chart engine.
+                    bool shapes = false;
+                    for (const RichTextFrame& frame : again.frames) shapes = shapes || (frame.chart.IsChart() && frame.IsDrawing());
+                    CHECK_MSG(shapes, std::string("...and is held as shapes beside it (") + one.name + one.ext + ")");
+                }
+            }
+            CHECK_MSG(markX.size() == 3 && joins == 3, "docx: a scatter chart's three points, marked and joined: "
+                      + std::to_string(markX.size()) + " marks, " + std::to_string(joins) + " joined");
+            if (markX.size() == 3) {
+                // Along a value axis the third point is eight times as far
+                // from the second as the second from the first (over
+                // categories they would be evenly spaced).
+                const float firstGap = markX[1] - markX[0], secondGap = markX[2] - markX[1];
+                CHECK_MSG(firstGap > 1.0f && std::abs(secondGap / firstGap - 8.0f) < 0.1f,
+                          "docx: ...each over its own x: " + std::to_string(firstGap) + " and " + std::to_string(secondGap));
+                CHECK_MSG(std::abs((markY[0] - markY[1]) / (markY[1] - markY[2]) - 0.5f) < 0.02f, "docx: ...and at its value's height");
+            }
+        }
+
+        // The chart's data is in its frame, for the view's chart engine.
+        if (chart && chart->frameIndex < static_cast<int>(writer.frames.size())) {
+            const RichChart& data = writer.frames[static_cast<size_t>(chart->frameIndex)].chart;
+            CHECK_MSG(data.kind == RichChart::Kind::Column && !data.stacked && data.legend, "docx: the chart's data: columns with a legend");
+            CHECK_MSG(data.categories == std::vector<std::string>({"Row 1", "Row 2"}), "docx: ...its categories");
+            CHECK_MSG(data.series.size() == 2 && data.series[0].name == "Column 1" && Lower(data.series[0].color) == "#004586"
+                          && data.series[0].values == std::vector<double>({9.1, 2.4})
+                          && data.series[1].values == std::vector<double>({3.2, 8.8}), "docx: ...its series' names, colours and values");
+        }
+
+        // Saved and read again, the chart is still a chart: a chart part of
+        // its own in DOCX, a chart object of its own in ODT.
+        for (const char* ext : {"docx", "odt"}) {
+            const std::string path = TmpPath(std::string("writer-saved.") + ext);
+            CHECK_MSG(UCWordDocumentIO::Save(path, writer, err), err);
+            UCRichDocument again;
+            CHECK_MSG(UCWordDocumentIO::Load(path, again, err), err);
+            bool drawing = false;
+            const RichChart* kept = nullptr;
+            for (const RichDocBlock& block : again.blocks) {
+                for (const RichTextRun& run : block.runs) {
+                    drawing = drawing || run.IsTextFrame();
+                    if (const RichTextFrame* frame = run.IsTextFrame() ? again.FrameFor(run) : nullptr) {
+                        if (frame->chart.IsChart()) kept = &frame->chart;
+                    }
+                }
+            }
+            {
+                CHECK_MSG(kept && kept->kind == RichChart::Kind::Column && kept->legend && kept->series.size() == 2
+                              && kept->categories.size() == 2 && kept->series[1].name == "Column 2"
+                              && kept->series[0].values == std::vector<double>({9.1, 2.4})
+                              && Lower(kept->series[1].color) == "#ff420e", std::string("saved as ") + ext + ": the chart is a chart, with its data");
+            }
+            CHECK_MSG(drawing, std::string("saved as ") + ext + ": the chart is kept as a drawing");
+            CHECK_MSG(again.ToPlainText().find("Row 2") != std::string::npos, std::string("saved as ") + ext + ": ...with its words");
+        }
+    }
+
+    // ===== WRITER'S OWN CHART OBJECT =====
+    // word-chart.odt is a document with a column chart saved by LibreOffice
+    // Writer: the chart is an object of its own in the package ("Object
+    // 2/content.xml"), with a replacement picture beside it.
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        UCRichDocument doc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(std::string(WORDTEST_FIXTURE_DIR) + "/word-chart.odt", doc, err), err);
+        const RichChart* chart = nullptr;
+        const RichTextRun* at = nullptr;
+        int pictures = 0;
+        for (const RichDocBlock& block : doc.blocks) {
+            pictures += block.type == RichBlockType::Image ? 1 : 0;
+            for (const RichTextRun& run : block.runs) {
+                pictures += run.IsInlineImage() && !run.IsTextFrame() ? 1 : 0;
+                const RichTextFrame* frame = run.IsTextFrame() ? doc.FrameFor(run) : nullptr;
+                if (frame && frame->chart.IsChart()) { chart = &frame->chart; at = &run; }
+            }
+        }
+        CHECK_MSG(chart && chart->kind == RichChart::Kind::Column && chart->legend, "odt: Writer's chart object is read as a chart");
+        CHECK_MSG(pictures == 0, "odt: ...not as its replacement picture");
+        if (chart) {
+            CHECK_MSG(chart->categories == std::vector<std::string>({"Row 1", "Row 2"}), "odt: ...its categories, from the chart's table");
+            CHECK_MSG(chart->series.size() == 2 && chart->series[0].name == "Column 1" && chart->series[1].name == "Column 2"
+                          && chart->series[0].values == std::vector<double>({9.1, 2.4})
+                          && chart->series[1].values == std::vector<double>({3.2, 8.8}), "odt: ...its series' names and values");
+            CHECK_MSG(Lower(chart->series[0].color) == "#004586" && Lower(chart->series[1].color) == "#ff420e",
+                      "odt: ...and their colours (" + chart->series[0].color + ", " + chart->series[1].color + ")");
+            CHECK_MSG(at && at->imageWidthPt > 100.0f && at->imageHeightPt > 50.0f, "odt: ...in a frame of the object's size");
+        }
+    }
+#endif
+
+    // ===== A .DOC'S FOOTNOTES AND ENDNOTES =====
+    // word-notes.doc is word-notes.fodt saved as Word 97 by LibreOffice: two
+    // footnotes (the second of two paragraphs) and an endnote.
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        UCRichDocument doc;
+        std::string err;
+        CHECK_MSG(UCWordDocumentIO::Load(std::string(WORDTEST_FIXTURE_DIR) + "/word-notes.doc", doc, err), err);
+        CHECK_MSG(doc.notes.size() == 3, "doc: two footnotes and an endnote are read");
+        if (doc.notes.size() == 3) {
+            auto words = [](const RichNote& note) {
+                std::string text;
+                for (const RichDocBlock& block : note.blocks) text += UCRichDocument::ConcatenateRunText(block.runs) + "|";
+                return text;
+            };
+            CHECK_MSG(doc.notes[0].kind == RichNote::Kind::Footnote && words(doc.notes[0]) == "Source of the first claim.|",
+                      "doc: the first footnote's words (" + words(doc.notes[0]) + ")");
+            CHECK_MSG(doc.notes[1].kind == RichNote::Kind::Footnote
+                          && words(doc.notes[1]) == "Second source, first paragraph.|Second source, second paragraph.|",
+                      "doc: a footnote of two paragraphs (" + words(doc.notes[1]) + ")");
+            CHECK_MSG(doc.notes[2].kind == RichNote::Kind::Endnote && words(doc.notes[2]) == "Kept for the end of the document.|",
+                      "doc: the endnote's words (" + words(doc.notes[2]) + ")");
+        }
+        // The references stand where the body refers to them, numbered.
+        std::string marks;
+        std::vector<int> referred;
+        for (const RichDocBlock& block : doc.blocks) {
+            for (const RichTextRun& run : block.runs) {
+                if (run.noteIndex < 0) continue;
+                referred.push_back(run.noteIndex);
+                marks += run.text + (run.superscript ? "^" : "") + " ";
+            }
+        }
+        CHECK_MSG(referred == std::vector<int>({0, 1, 2}), "doc: one reference to each note, in the body's order");
+        CHECK_MSG(marks == "1^ 2^ i^ ", "doc: the references are numbered and set high (" + marks + ")");
+        CHECK_MSG(doc.blocks.size() == 2
+                      && UCRichDocument::ConcatenateRunText(doc.blocks[0].runs) == "The first claim1 stands here, and a second2 follows it.",
+                  "doc: the body's words round the references are whole");
+
+        // Saved as DOCX and ODT the notes go along.
+        for (const char* ext : {".docx", ".odt"}) {
+            const std::string path = UltraCanvas::PathToUtf8(std::filesystem::temp_directory_path() / (std::string("uc_doc_notes") + ext));
+            UCRichDocument again;
+            CHECK_MSG(UCWordDocumentIO::Save(path, doc, err) && UCWordDocumentIO::Load(path, again, err), err);
+            CHECK_MSG(again.notes.size() == 3 && again.notes[1].blocks.size() == 2
+                          && again.notes[2].kind == RichNote::Kind::Endnote,
+                      std::string("saved as ") + ext + ": the .doc's notes are kept");
+            std::remove(path.c_str());
+        }
+    }
+#endif
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;

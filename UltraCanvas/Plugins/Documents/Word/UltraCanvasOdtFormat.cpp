@@ -5,6 +5,15 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
+// Version: 1.13.0 - charts as chart objects ("Object N/content.xml", chart:chart): written and read
+// Version: 1.12.3 - a heading's own font, size and spacing read and written
+// Version: 1.12.2 - a turned picture in the line (as-char with draw:transform) read and written
+// Version: 1.12.1 - a cell paragraph's own proportional line height (70%); a file by Word sets it on every line
+// Version: 1.12.0 - table cells: a paragraph per line, line heights, nested tables read as tables, the font a
+//                   picture in a line stands in, a negative table indent; Writer's proportional line
+//                   height in cells; settings items of our own
+// Version: 1.11.0 - fo:break-before="column" read and written; a table nested in a cell written as a table;
+//                   as-char drawings stand in the line
 // Version: 1.10.0 - a turned picture (draw:transform) read and written; drawn shapes in table cells
 //                   read, and written in the line (as-char) where text stops above and below them
 // Version: 1.9.0 - paragraph spacing in cells, the kerning, line-gap and cell-spacing settings read and written
@@ -37,6 +46,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <limits>
 #include <vector>
 #include <cstring>
@@ -79,6 +89,7 @@ struct OdtTextProps {
     int rightToLeft = -1;                           // style:writing-mode rl-*: 1, lr-*: 0, unset: -1
     bool bottomBorder = false;                      // paragraph styles only
     bool pageBreakBefore = false;                   // paragraph styles only
+    bool columnBreakBefore = false;                 // fo:break-before="column", the style's own
     int headingLevel = 0;                           // derived from heading style names
     std::string characterStyle;                     // the named text style a span has (model id)
     // Paragraph geometry (paragraph styles only). NaN = not set by this style.
@@ -551,6 +562,7 @@ private:
     };
     std::map<std::string, TablePlacement> tablePlacements_;    // table style -> width, position
     std::vector<std::string> columnDefaultCellStyles_;         // of the table being read
+    bool cellLineMultiples_ = false;                           // a cell's proportional line height is every line's
     std::map<std::string, std::string> fontFamilies_;          // font-face name -> family
     bool tabsRelativeToIndent_ = true;                         // Writer's default
     // Numbering runs per LIST, not per text:list element: a list that
@@ -874,6 +886,12 @@ private:
     // (Writer's own default) or from the page margin (Word's convention,
     // kept in documents Writer imported from Word).
     void LoadSettings() {
+        // A file Word wrote sets a proportional line height on every line
+        // of a cell, as Word does (Writer's own files: see CollectCellRuns).
+        std::string metaXml;
+        if (zip_.ReadEntry("meta.xml", metaXml) && metaXml.find("MicrosoftWord") != std::string::npos) {
+            cellLineMultiples_ = true;
+        }
         std::string settingsXml;
         if (!zip_.ReadEntry("settings.xml", settingsXml)) return;
         // A boolean config item's value, or `otherwise` when the file does
@@ -892,6 +910,11 @@ private:
         // in table cells. A file without them (Word's export) has both.
         doc_->fontLineGap = setting("AddExternalLeading", true);
         doc_->paragraphSpacingInCells = setting("AddParaSpacingToTableCells", true);
+        doc_->breakAfterSlash = setting("UltraCanvasBreakAfterSlash", true);
+        // A multiple of the font's line on every line of a cell is Word's
+        // way (and this writer's file says so); Writer sets a one-line
+        // paragraph at 122% as it does at 100%.
+        cellLineMultiples_ = setting("UltraCanvasCellLineMultiples", cellLineMultiples_);
     }
 
     // Applies a paragraph style's geometry to a block, in the model's terms.
@@ -972,6 +995,7 @@ private:
             std::string border = Attr(pp, "fo:border-bottom");
             props.bottomBorder = !border.empty() && border != "none";
             props.pageBreakBefore = std::string(Attr(pp, "fo:break-before")) == "page";
+            props.columnBreakBefore = std::string(Attr(pp, "fo:break-before")) == "column";
         }
     }
 
@@ -1276,6 +1300,8 @@ private:
         OdtTextProps pendingBreakProps;        // the style of the text whose line break is pending
         OdtTextProps lastCellParagraph;
         float cellSpaceAbovePt = 0.0f, cellSpaceBelowPt = 0.0f;   // the first paragraph's space before, the last's after
+        float cellLineHeightPt = 0.0f, cellLineSpacing = 0.0f;    // the first paragraph's line height, or multiple
+        bool cellLineHeightAtLeast = false;
         bool endsInCollapsibleSpace = false;   // last text ended in XML whitespace
         std::vector<std::string> bookmarks;    // text:bookmark(-start) names met
     };
@@ -1451,6 +1477,210 @@ private:
         return true;
     }
 
+    // An embedded chart object ("Object 1/content.xml" holding a
+    // chart:chart): its class, its series' ranges in the chart's own table
+    // and their styles become the frame's chart (RichTextFrame::chart), with
+    // the same chart as drawn shapes beside it. A class this model has no
+    // kind for is left to the object's replacement picture.
+    bool ParseChartObject(tinyxml2::XMLElement* frame, InlineContext& ctx) {
+        auto* object = frame->FirstChildElement("draw:object");
+        if (!object) return false;
+        std::string href = Attr(object, "xlink:href");
+        if (href.rfind("./", 0) == 0) href = href.substr(2);
+        if (href.empty()) return false;
+        std::string contentXml;
+        if (!zip_.ReadEntry(href + "/content.xml", contentXml)) return false;
+        tinyxml2::XMLDocument chartDoc;
+        if (chartDoc.Parse(contentXml.c_str()) != tinyxml2::XML_SUCCESS || !chartDoc.RootElement()) return false;
+        std::function<tinyxml2::XMLElement*(tinyxml2::XMLElement*, const char*)> find =
+            [&](tinyxml2::XMLElement* root, const char* name) -> tinyxml2::XMLElement* {
+                for (auto* child = root->FirstChildElement(); child; child = child->NextSiblingElement()) {
+                    if (child->Name() && std::string(child->Name()) == name) return child;
+                    if (auto* found = find(child, name)) return found;
+                }
+                return nullptr;
+            };
+        auto* chart = find(chartDoc.RootElement(), "chart:chart");
+        auto* plot = chart ? chart->FirstChildElement("chart:plot-area") : nullptr;
+        if (!plot) return false;
+
+        // The chart's automatic styles: what a series looks like, how the
+        // plot is arranged, an axis' stated range.
+        struct Look {
+            std::string fillColor, strokeColor, stroke, symbol;
+            bool vertical = false, stacked = false, percentage = false;
+            double minimum = std::numeric_limits<double>::quiet_NaN(), maximum = std::numeric_limits<double>::quiet_NaN();
+        };
+        std::map<std::string, Look> looks;
+        if (auto* styles = find(chartDoc.RootElement(), "office:automatic-styles")) {
+            for (auto* style = styles->FirstChildElement("style:style"); style; style = style->NextSiblingElement("style:style")) {
+                Look look;
+                if (auto* graphic = style->FirstChildElement("style:graphic-properties")) {
+                    look.fillColor = Attr(graphic, "draw:fill-color");
+                    look.strokeColor = Attr(graphic, "svg:stroke-color");
+                    look.stroke = Attr(graphic, "draw:stroke");
+                    if (std::string(Attr(graphic, "draw:fill")) == "none") look.fillColor.clear();
+                }
+                if (auto* props = style->FirstChildElement("style:chart-properties")) {
+                    look.symbol = Attr(props, "chart:symbol-type");
+                    look.vertical = std::string(Attr(props, "chart:vertical")) == "true";
+                    look.stacked = std::string(Attr(props, "chart:stacked")) == "true";
+                    look.percentage = std::string(Attr(props, "chart:percentage")) == "true";
+                    if (props->Attribute("chart:minimum")) look.minimum = props->DoubleAttribute("chart:minimum");
+                    if (props->Attribute("chart:maximum")) look.maximum = props->DoubleAttribute("chart:maximum");
+                }
+                looks[Attr(style, "style:name")] = look;
+            }
+        }
+        auto lookOf = [&](tinyxml2::XMLElement* element) {
+            auto found = looks.find(Attr(element, "chart:style-name"));
+            return found != looks.end() ? found->second : Look();
+        };
+
+        // The chart's own table: every row's cells, a repeated cell as often
+        // as it says.
+        struct Cell { std::string text; double value = std::numeric_limits<double>::quiet_NaN(); };
+        std::vector<std::vector<Cell>> grid;
+        if (auto* table = chart->FirstChildElement("table:table")) {
+            std::function<void(tinyxml2::XMLElement*)> rows = [&](tinyxml2::XMLElement* parent) {
+                for (auto* child = parent->FirstChildElement(); child; child = child->NextSiblingElement()) {
+                    const std::string tag = child->Name() ? child->Name() : "";
+                    if (tag != "table:table-row") {
+                        if (tag == "table:table-header-rows" || tag == "table:table-rows" || tag == "table:table-row-group") rows(child);
+                        continue;
+                    }
+                    std::vector<Cell> row;
+                    for (auto* cell = child->FirstChildElement("table:table-cell"); cell; cell = cell->NextSiblingElement("table:table-cell")) {
+                        Cell one;
+                        if (auto* words = cell->FirstChildElement("text:p")) one.text = words->GetText() ? words->GetText() : "";
+                        if (cell->Attribute("office:value")) one.value = cell->DoubleAttribute("office:value");
+                        const int repeated = std::clamp(cell->IntAttribute("table:number-columns-repeated", 1), 1, 1024);
+                        for (int i = 0; i < repeated && row.size() < 4096; i++) row.push_back(one);
+                    }
+                    if (grid.size() < 65536) grid.push_back(std::move(row));
+                }
+            };
+            rows(table);
+        }
+        // "local-table.$B$2:.$B$5" (or one cell): the cells it names.
+        auto cellsOf = [&](const std::string& range) {
+            std::vector<Cell> cells;
+            std::vector<std::pair<int, int>> corners;       // column, row (from 0)
+            size_t at = 0;
+            while (at <= range.size() && corners.size() < 2) {
+                size_t end = range.find(':', at);
+                if (end == std::string::npos) end = range.size();
+                std::string part = range.substr(at, end - at);
+                const size_t dot = part.rfind('.');
+                if (dot != std::string::npos) part = part.substr(dot + 1);
+                int column = 0, row = 0;
+                bool letters = false, digits = false;
+                for (char c : part) {
+                    if (std::isalpha(static_cast<unsigned char>(c)) && !digits) { column = column * 26 + (std::toupper(static_cast<unsigned char>(c)) - 'A' + 1); letters = true; }
+                    else if (std::isdigit(static_cast<unsigned char>(c))) { row = row * 10 + (c - '0'); digits = true; }
+                }
+                if (letters && digits && column <= 4096 && row <= 65536) corners.emplace_back(column - 1, row - 1);
+                at = end + 1;
+            }
+            if (corners.empty()) return cells;
+            if (corners.size() == 1) corners.push_back(corners.front());
+            for (int r = std::min(corners[0].second, corners[1].second); r <= std::max(corners[0].second, corners[1].second); r++) {
+                for (int c = std::min(corners[0].first, corners[1].first); c <= std::max(corners[0].first, corners[1].first); c++) {
+                    cells.push_back(r < static_cast<int>(grid.size()) && c < static_cast<int>(grid[static_cast<size_t>(r)].size())
+                                    ? grid[static_cast<size_t>(r)][static_cast<size_t>(c)] : Cell());
+                }
+            }
+            return cells;
+        };
+        auto numbersOf = [&](const std::string& range) {
+            std::vector<double> values;
+            for (const Cell& cell : cellsOf(range)) values.push_back(std::isfinite(cell.value) ? cell.value : 0.0);
+            return values;
+        };
+
+        RichChart data;
+        const std::string kind = Attr(chart, "chart:class");
+        const Look plotLook = lookOf(plot);
+        if (kind == "chart:bar") data.kind = plotLook.vertical ? RichChart::Kind::Bar : RichChart::Kind::Column;
+        else if (kind == "chart:line") data.kind = RichChart::Kind::Line;
+        else if (kind == "chart:area") data.kind = RichChart::Kind::Area;
+        else if (kind == "chart:circle") data.kind = RichChart::Kind::Pie;
+        else if (kind == "chart:ring") data.kind = RichChart::Kind::Doughnut;
+        else if (kind == "chart:scatter") data.kind = RichChart::Kind::Scatter;
+        else return false;
+        const bool scatter = data.kind == RichChart::Kind::Scatter, line = data.kind == RichChart::Kind::Line;
+        const bool pie = data.kind == RichChart::Kind::Pie || data.kind == RichChart::Kind::Doughnut;
+        data.percent = plotLook.percentage;
+        data.stacked = (plotLook.stacked || plotLook.percentage) && !scatter;
+        data.legend = chart->FirstChildElement("chart:legend") != nullptr;
+        if (auto* title = chart->FirstChildElement("chart:title")) {
+            if (auto* words = title->FirstChildElement("text:p")) data.title = words->GetText() ? words->GetText() : "";
+        }
+        for (auto* axis = plot->FirstChildElement("chart:axis"); axis; axis = axis->NextSiblingElement("chart:axis")) {
+            const std::string dimension = Attr(axis, "chart:dimension");
+            const Look axisLook = lookOf(axis);
+            if (dimension == "x") {
+                if (auto* categories = axis->FirstChildElement("chart:categories")) {
+                    for (const Cell& cell : cellsOf(Attr(categories, "table:cell-range-address"))) data.categories.push_back(cell.text);
+                }
+                if (scatter) { data.xMin = axisLook.minimum; data.xMax = axisLook.maximum; }
+            } else if (dimension == "y") {
+                data.valueMin = axisLook.minimum;
+                data.valueMax = axisLook.maximum;
+            }
+        }
+        for (auto* ser = plot->FirstChildElement("chart:series"); ser; ser = ser->NextSiblingElement("chart:series")) {
+            RichChartSeries one;
+            one.values = numbersOf(Attr(ser, "chart:values-cell-range-address"));
+            if (one.values.empty()) continue;
+            const std::vector<Cell> label = cellsOf(Attr(ser, "chart:label-cell-address"));
+            if (!label.empty()) one.name = label.front().text;
+            const Look look = lookOf(ser);
+            if (scatter) {
+                if (auto* domain = ser->FirstChildElement("chart:domain")) one.xValues = numbersOf(Attr(domain, "table:cell-range-address"));
+                if (one.xValues.size() != one.values.size()) one.xValues.clear();
+            }
+            if (line || scatter) {
+                one.color = !look.strokeColor.empty() ? look.strokeColor : look.fillColor;
+                one.joined = look.stroke != "none";
+                one.marked = look.symbol.empty() ? scatter : look.symbol != "none";
+            } else {
+                one.color = look.fillColor;
+            }
+            if (pie && data.series.empty()) {
+                for (auto* point = ser->FirstChildElement("chart:data-point"); point; point = point->NextSiblingElement("chart:data-point")) {
+                    const int repeated = std::clamp(point->IntAttribute("chart:repeated", 1), 1, 4096);
+                    for (int i = 0; i < repeated && data.pointColors.size() < 4096; i++) data.pointColors.push_back(lookOf(point).fillColor);
+                }
+            }
+            data.series.push_back(std::move(one));
+        }
+        if (data.series.empty()) return false;
+
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        run.imageWidthPt = ParseLengthPt(Attr(frame, "svg:width"));
+        run.imageHeightPt = ParseLengthPt(Attr(frame, "svg:height"));
+        RichTextFrame content;
+        content.name = Attr(frame, "draw:name");
+        if (content.name.empty()) content.name = "Chart";
+        RichShape group;
+        if (!UCRichDocument::ChartAsShapes(data, run.imageWidthPt, run.imageHeightPt, doc_->frames, group)) return false;
+        content.shapes.push_back(std::move(group));
+        content.drawingWidthPt = run.imageWidthPt;
+        content.drawingHeightPt = run.imageHeightPt;
+        content.chart = std::move(data);
+        run.imageAltText = content.name;
+        if (std::string(Attr(frame, "text:anchor-type")) == "as-char") run.imageWrap = RichTextRun::ImageWrap::Inline;
+        else ApplyFloatPlacement(frame, run);
+        run.frameIndex = static_cast<int>(doc_->frames.size());
+        doc_->frames.push_back(std::move(content));
+        run.lineBreakBefore = ctx.pendingLineBreak;
+        ctx.pendingLineBreak = false;
+        ctx.runs.push_back(std::move(run));
+        return true;
+    }
+
     bool ParseImageFrame(tinyxml2::XMLElement* frame, InlineContext& ctx) {
         auto* image = frame->FirstChildElement("draw:image");
         if (!image) return false;
@@ -1492,6 +1722,11 @@ private:
                         if (run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) run.imageOffsetYPt = box.yPt;
                     }
                 }
+            } else if (frame->Attribute("draw:transform")) {
+                // Turned in the line: the turn alone (its place is the line's).
+                RichShape box;
+                ReadShapeBox(frame, box);
+                run.imageRotationDeg = box.rotationDeg;
             }
             run.lineBreakBefore = ctx.pendingLineBreak;
             ctx.pendingLineBreak = false;
@@ -1516,7 +1751,17 @@ private:
     void ParseFrame(tinyxml2::XMLElement* frame, const OdtTextProps& props,
                     const std::string& linkTarget, InlineContext& ctx) {
         if (ParseFormulaObject(frame, props, linkTarget, ctx)) return;
-        if (ParseImageFrame(frame, ctx)) return;
+        if (ParseChartObject(frame, ctx)) return;
+        const size_t runsBefore = ctx.runs.size();
+        if (ParseImageFrame(frame, ctx)) {
+            // A picture in the line stands in a line of the font around it.
+            for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                if (!ctx.runs[r].IsInlineImage() || ctx.runs[r].IsFloatingImage()) continue;
+                if (props.fontSizePt > 0.0f) ctx.runs[r].fontSizePt = props.fontSizePt;
+                if (!props.fontFamily.empty()) ctx.runs[r].fontFamily = props.fontFamily;
+            }
+            return;
+        }
         if (auto* textBox = frame->FirstChildElement("draw:text-box")) {
             if (ctx.framesAsRuns && frameDepth_ == 0) ParseTextFrame(frame, textBox, ctx);
             else ctx.textBoxes.push_back(textBox);
@@ -2000,7 +2245,7 @@ private:
         shape.yPt -= boxY;
         frame.shapes.push_back(std::move(shape));
         if (std::string(Attr(element, "text:anchor-type")) == "as-char") {
-            run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+            run.imageWrap = RichTextRun::ImageWrap::Inline;         // a drawing standing in the line
         } else {
             ApplyFloatPlacement(element, run);
             // The box, not the element's svg:x / svg:y (a line, a group and
@@ -2257,7 +2502,8 @@ private:
             || block.type == RichBlockType::CodeBlock) {
             runBase = OdtTextProps{};
         }
-        if (block.type == RichBlockType::Paragraph || block.type == RichBlockType::ListItem) {
+        if (block.type == RichBlockType::Paragraph || block.type == RichBlockType::ListItem
+            || block.type == RichBlockType::Heading) {
             block.paragraphFontSizePt = paraProps.fontSizePt;
             block.paragraphFontFamily = paraProps.fontFamily;
         }
@@ -2275,6 +2521,7 @@ private:
         if (inTableOfContents_ && block.type == RichBlockType::Paragraph) MakeContentsEntry(block, styleName);
 
         bool pageBreak = inMainFlow_ && paraProps.pageBreakBefore;
+        block.columnBreakBefore = inMainFlow_ && frameDepth_ == 0 && paraProps.columnBreakBefore;
         // One break, not two, where a page break is followed by the empty
         // paragraph that starts another page style (as the writer spells a
         // section of its own header and footer after a page break).
@@ -2430,8 +2677,23 @@ private:
                     return (!counts || std::isnan(margin)) ? 0.0f : std::max(0.0f, margin);
                 };
                 if (ctx.cellParagraphs > 0) {
-                    if (ctx.pendingLineBreak) AppendEmptyLine(ctx, ctx.lastCellParagraph);
-                    const float between = room(ctx.lastCellParagraph.marginBottom) + room(paragraph.marginTop);
+                    if (ctx.pendingLineBreak) {
+                        AppendEmptyLine(ctx, ctx.lastCellParagraph);
+                    } else if (ctx.runs.empty()) {
+                        // An empty first paragraph: the cell's first line,
+                        // in its own font.
+                        RichTextRun first;
+                        ApplyPropsToRun(first, ctx.lastCellParagraph);
+                        ctx.runs.push_back(std::move(first));
+                    }
+                    float between = room(ctx.lastCellParagraph.marginBottom) + room(paragraph.marginTop);
+                    // Writer sets a paragraph of proportional line height
+                    // (122%) that much higher lines - all but the first in
+                    // its cell: the room is above the paragraph's line.
+                    if (!cellLineMultiples_ && !std::isnan(paragraph.lineSpacing) && paragraph.lineSpacing > 1.01f) {
+                        const float size = paragraph.fontSizePt > 0.0f ? paragraph.fontSizePt : 12.0f;
+                        between += (paragraph.lineSpacing - 1.0f) * size * 1.15f;
+                    }
                     if (between > 0.5f) {
                         RichTextRun spacer;
                         spacer.lineBreakBefore = true;
@@ -2441,11 +2703,59 @@ private:
                     ctx.pendingLineBreak = true;
                 } else {
                     ctx.cellSpaceAbovePt = room(paragraph.marginTop);
+                    // The cell's lines take its first paragraph's height.
+                    if (!std::isnan(paragraph.lineHeightPt) && paragraph.lineHeightPt > 0.0f) {
+                        ctx.cellLineHeightPt = paragraph.lineHeightPt;
+                        ctx.cellLineHeightAtLeast = paragraph.lineHeightAtLeast;
+                    }
                 }
                 ctx.cellSpaceBelowPt = room(paragraph.marginBottom);
                 ctx.cellParagraphs++;
                 ctx.lastCellParagraph = paragraph;
+                const size_t runsBefore = ctx.runs.size();
                 ParseInlineNodes(elem, paragraph, "", ctx);
+                // A paragraph's own line multiple is its runs': tighter
+                // lines (70%) always, wider ones where every line takes them.
+                if (!std::isnan(paragraph.lineSpacing) && paragraph.lineSpacing > 0.0f
+                    && (std::isnan(paragraph.lineHeightPt) || paragraph.lineHeightPt <= 0.0f)
+                    && (paragraph.lineSpacing < 0.99f || (paragraph.lineSpacing > 1.01f && cellLineMultiples_))) {
+                    for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                        if (!ctx.runs[r].IsInlineImage() && !ctx.runs[r].IsTextFrame()) ctx.runs[r].lineSpacing = paragraph.lineSpacing;
+                    }
+                } else if (ctx.cellLineHeightPt > 0.0f && ctx.cellParagraphs > 1
+                           && (std::isnan(paragraph.lineHeightPt) || paragraph.lineHeightPt <= 0.0f)) {
+                    // Not of the height in points the cell's first sets: its own font's lines.
+                    for (size_t r = runsBefore; r < ctx.runs.size(); ++r) {
+                        if (!ctx.runs[r].IsInlineImage() && !ctx.runs[r].IsTextFrame()) ctx.runs[r].lineSpacing = 1.0f;
+                    }
+                }
+            } else if (tag == "table:table" && frameDepth_ == 0) {
+                // A table in the cell: a frame of its own standing in the
+                // cell's line, as wide as the table says.
+                RichTextFrame nested;
+                nested.nestedTable = true;
+                const size_t start = doc_->blocks.size();
+                ParseTable(elem);
+                nested.blocks.assign(std::make_move_iterator(doc_->blocks.begin() + static_cast<std::ptrdiff_t>(start)),
+                                     std::make_move_iterator(doc_->blocks.end()));
+                doc_->blocks.resize(start);
+                if (nested.blocks.empty()) continue;
+                if (ctx.cellParagraphs > 0) {
+                    if (ctx.pendingLineBreak) AppendEmptyLine(ctx, ctx.lastCellParagraph);
+                    ctx.pendingLineBreak = true;
+                }
+                ctx.cellParagraphs++;
+                ctx.cellSpaceBelowPt = 0.0f;
+                ctx.lastCellParagraph = OdtTextProps{};
+                RichTextRun run;
+                run.text = RichTextRun::kObjectReplacement;
+                run.imageWrap = RichTextRun::ImageWrap::TopAndBottom;
+                run.imageWidthPt = std::max(0.0f, nested.blocks.front().tableWidthPt);
+                run.frameIndex = static_cast<int>(doc_->frames.size());
+                doc_->frames.push_back(std::move(nested));
+                run.lineBreakBefore = ctx.pendingLineBreak;
+                ctx.pendingLineBreak = false;
+                ctx.runs.push_back(std::move(run));
             } else if (tag == "text:list" || tag == "text:list-item"
                        || tag == "text:list-header" || tag == "table:table"
                        || tag == "table:table-row" || tag == "table:table-cell"
@@ -2461,6 +2771,11 @@ private:
         RichTextRun run;
         ApplyPropsToRun(run, props);
         run.lineBreakBefore = true;
+        // Not of the height in points the cell's first paragraph sets: a
+        // line of its own font.
+        if (ctx.cellLineHeightPt > 0.0f && (std::isnan(props.lineHeightPt) || props.lineHeightPt <= 0.0f)) {
+            run.lineSpacing = 1.0f;
+        }
         ctx.runs.push_back(std::move(run));
         ctx.pendingLineBreak = false;
     }
@@ -2580,6 +2895,9 @@ private:
                     }
                 }
                 cell.runs = std::move(ctx.runs);
+                cell.lineHeightPt = ctx.cellLineHeightPt;
+                cell.lineHeightAtLeast = ctx.cellLineHeightAtLeast;
+                cell.lineSpacing = ctx.cellLineSpacing;
                 // The first paragraph's space before and the last one's
                 // after are room inside the cell, as Writer keeps them.
                 if (ctx.cellSpaceAbovePt > 0.0f) cell.paddingTopPt = std::max(0.0f, cell.paddingTopPt) + ctx.cellSpaceAbovePt;
@@ -2998,6 +3316,12 @@ public:
             error = "Failed to write document package: " + zip_.GetLastError();
             return false;
         }
+        for (size_t i = 0; i < chartObjects_.size(); ++i) {
+            if (!zip_.AddEntry("Object " + std::to_string(i + 1) + "/content.xml", chartObjects_[i])) {
+                error = "Failed to write a chart: " + zip_.GetLastError();
+                return false;
+            }
+        }
         for (size_t i = 0; i < doc.media.size(); ++i) {
             if (!zip_.AddEntry(PictureHref(i), doc.media[i].data.data(),
                                doc.media[i].data.size())) {
@@ -3061,6 +3385,13 @@ private:
         size_t spaceRun = 0;
         auto flushSpaces = [&]() {
             if (spaceRun == 0) return;
+            // A run of nothing but spaces is all text:s: a plain space
+            // after another run's space, or after a picture, is collapsed away.
+            if (out.empty() && spaceRun == text.size()) {
+                out += "<text:s text:c=\"" + std::to_string(spaceRun) + "\"/>";
+                spaceRun = 0;
+                return;
+            }
             out += ' ';
             if (spaceRun > 1) {
                 out += "<text:s text:c=\"" + std::to_string(spaceRun - 1) + "\"/>";
@@ -3122,6 +3453,31 @@ private:
             }
         } else {
             xml << " text:anchor-type=\"as-char\"";
+            if (std::fmod(static_cast<double>(run.imageRotationDeg), 360.0) != 0.0) {
+                // Turned in the line: its size as before the turn and a
+                // draw:transform, as a turned shape. Anchored as a character
+                // it stands on the baseline - down counts from there, so the
+                // top of the box round the turned picture is its height
+                // above. (Writer turns it only as a drawing object, which a
+                // graphic style with a stroke and fill makes it; as a plain
+                // picture it clips the turned picture to its old box.)
+                RichShape box;
+                box.widthPt = widthPt;
+                box.heightPt = heightPt;
+                box.rotationDeg = run.imageRotationDeg;
+                constexpr double kRad = 3.14159265358979323846 / 180.0;
+                const double c = std::abs(std::cos(run.imageRotationDeg * kRad)), sn = std::abs(std::sin(run.imageRotationDeg * kRad));
+                const float boundWidth = static_cast<float>(widthPt * c + heightPt * sn);
+                const float boundHeight = static_cast<float>(widthPt * sn + heightPt * c);
+                if (graphicStylesXml_.find("\"grTurned\"") == std::string::npos) {
+                    graphicStylesXml_ += "<style:style style:name=\"grTurned\" style:family=\"graphic\">"
+                                         "<style:graphic-properties draw:stroke=\"none\" draw:fill=\"none\""
+                                         " style:vertical-pos=\"top\" style:vertical-rel=\"baseline\"/></style:style>\n";
+                }
+                xml << " draw:style-name=\"grTurned\""
+                    << ShapeBoxAttributes(box, (boundWidth - widthPt) * 0.5f, (boundHeight - heightPt) * 0.5f - boundHeight) << ">";
+                turned = true;
+            }
         }
         if (!turned) xml << " svg:width=\"" << Pt(widthPt) << "\" svg:height=\"" << Pt(heightPt) << "\">";
         xml
@@ -3481,11 +3837,167 @@ private:
 
     // A drawing, anchored to its paragraph and placed as its run says: a lone
     // shape (with the frame's words), else a group of its shapes.
+    // A chart as ODF has one: an object of its own in the package
+    // ("Object N/content.xml": a chart:chart with its series, and the table
+    // their ranges point into), shown by a draw:frame.
+    std::vector<std::string> chartObjects_;       // "Object <n>/content.xml", n from 1
+    static std::string BuildChartObjectXml(const RichChart& chart, float widthPt, float heightPt) {
+        using Kind = RichChart::Kind;
+        const bool pie = chart.kind == Kind::Pie || chart.kind == Kind::Doughnut;
+        const bool scatter = chart.kind == Kind::Scatter;
+        const bool line = chart.kind == Kind::Line;
+        const char* kind = chart.kind == Kind::Line ? "chart:line" : chart.kind == Kind::Area ? "chart:area"
+                         : chart.kind == Kind::Pie ? "chart:circle" : chart.kind == Kind::Doughnut ? "chart:ring"
+                         : scatter ? "chart:scatter" : "chart:bar";
+        std::ostringstream styles, body, table;
+        for (std::ostringstream* stream : {&styles, &body, &table}) {
+            stream->imbue(std::locale::classic());
+            stream->precision(15);
+        }
+        // The table: the categories down the first column, then a column
+        // for each series' values (before it, a scatter series' x).
+        size_t rows = chart.categories.size();
+        for (const RichChartSeries& one : chart.series) rows = std::max(rows, one.values.size());
+        auto column = [](size_t index) {              // 0 -> A, 26 -> AA
+            std::string name;
+            for (size_t n = index + 1; n > 0; n = (n - 1) / 26) name.insert(name.begin(), static_cast<char>('A' + (n - 1) % 26));
+            return name;
+        };
+        auto range = [&](size_t col) {
+            return "local-table.$" + column(col) + "$2:.$" + column(col) + "$" + std::to_string(rows + 1);
+        };
+        std::vector<size_t> valueColumn, xColumn;
+        size_t columns = 1;
+        for (const RichChartSeries& one : chart.series) {
+            const bool ownX = scatter && one.xValues.size() == one.values.size();
+            xColumn.push_back(ownX ? columns++ : 0);
+            valueColumn.push_back(columns++);
+        }
+        auto words = [&](const std::string& text) {
+            table << "<table:table-cell office:value-type=\"string\"><text:p>" << EscapeXml(text) << "</text:p></table:table-cell>";
+        };
+        auto number = [&](const std::vector<double>& values, size_t row) {
+            if (row < values.size() && std::isfinite(values[row])) {
+                table << "<table:table-cell office:value-type=\"float\" office:value=\"" << values[row] << "\"><text:p>"
+                      << values[row] << "</text:p></table:table-cell>";
+            } else {
+                table << "<table:table-cell><text:p/></table:table-cell>";
+            }
+        };
+        table << "<table:table table:name=\"local-table\"><table:table-header-columns><table:table-column/></table:table-header-columns>"
+                 "<table:table-columns><table:table-column table:number-columns-repeated=\"" << (columns - 1) << "\"/></table:table-columns>"
+                 "<table:table-header-rows><table:table-row><table:table-cell><text:p/></table:table-cell>";
+        for (size_t s = 0; s < chart.series.size(); s++) {
+            if (xColumn[s] != 0) words("x");
+            words(chart.series[s].name);
+        }
+        table << "</table:table-row></table:table-header-rows><table:table-rows>";
+        for (size_t r = 0; r < rows; r++) {
+            table << "<table:table-row>";
+            words(r < chart.categories.size() ? chart.categories[r] : std::to_string(r + 1));
+            for (size_t s = 0; s < chart.series.size(); s++) {
+                if (xColumn[s] != 0) number(chart.series[s].xValues, r);
+                number(chart.series[s].values, r);
+            }
+            table << "</table:table-row>";
+        }
+        table << "</table:table-rows></table:table>";
+
+        auto stated = [](const std::string& hex) { return hex.size() == 7 && hex[0] == '#'; };
+        styles << "<style:style style:name=\"plot\" style:family=\"chart\"><style:chart-properties"
+               << (chart.kind == Kind::Bar ? " chart:vertical=\"true\"" : "")
+               << (chart.percent ? " chart:percentage=\"true\"" : chart.stacked ? " chart:stacked=\"true\"" : "")
+               << (line || scatter ? " chart:lines=\"true\"" : "") << "/></style:style>";
+        auto axisStyle = [&](const char* name, double low, double high, bool show) {
+            styles << "<style:style style:name=\"" << name << "\" style:family=\"chart\"><style:chart-properties chart:display-label=\""
+                   << (show ? "true" : "false") << "\"";
+            if (std::isfinite(low)) styles << " chart:minimum=\"" << low << "\"";
+            if (std::isfinite(high)) styles << " chart:maximum=\"" << high << "\"";
+            styles << "/></style:style>";
+        };
+        axisStyle("axisX", scatter ? chart.xMin : std::numeric_limits<double>::quiet_NaN(),
+                  scatter ? chart.xMax : std::numeric_limits<double>::quiet_NaN(), !pie);
+        axisStyle("axisY", chart.valueMin, chart.valueMax, !pie);
+        // No wall behind the plot, and a pale grid, as the view draws it.
+        styles << "<style:style style:name=\"wall\" style:family=\"chart\"><style:graphic-properties draw:stroke=\"none\""
+                  " draw:fill=\"none\"/></style:style><style:style style:name=\"grid\" style:family=\"chart\">"
+                  "<style:graphic-properties draw:stroke=\"solid\" svg:stroke-color=\"#d0d0d0\"/></style:style>";
+
+        body << "<chart:chart chart:class=\"" << kind << "\" svg:width=\"" << Pt(widthPt) << "\" svg:height=\"" << Pt(heightPt)
+             << "\" xlink:href=\".\" xlink:type=\"simple\">";
+        if (!chart.title.empty()) body << "<chart:title><text:p>" << EscapeXml(chart.title) << "</text:p></chart:title>";
+        if (chart.legend) body << "<chart:legend chart:legend-position=\"end\"/>";
+        body << "<chart:plot-area chart:style-name=\"plot\" chart:data-source-has-labels=\"both\">"
+                "<chart:axis chart:dimension=\"x\" chart:name=\"primary-x\" chart:style-name=\"axisX\">";
+        if (!scatter) body << "<chart:categories table:cell-range-address=\"" << range(0) << "\"/>";
+        else body << "<chart:grid chart:class=\"major\" chart:style-name=\"grid\"/>";
+        body << "</chart:axis><chart:axis chart:dimension=\"y\" chart:name=\"primary-y\" chart:style-name=\"axisY\">"
+             << (pie ? "" : "<chart:grid chart:class=\"major\" chart:style-name=\"grid\"/>") << "</chart:axis>";
+        for (size_t s = 0; s < chart.series.size(); s++) {
+            const RichChartSeries& one = chart.series[s];
+            const std::string name = "series" + std::to_string(s + 1);
+            styles << "<style:style style:name=\"" << name << "\" style:family=\"chart\"><style:graphic-properties";
+            if (line || scatter) {
+                styles << " draw:stroke=\"" << (one.joined ? "solid" : "none") << "\" svg:stroke-width=\"0.08cm\"";
+                if (stated(one.color)) styles << " svg:stroke-color=\"" << one.color << "\" draw:fill-color=\"" << one.color << "\"";
+                styles << "/><style:chart-properties chart:symbol-type=\"" << (one.marked ? "automatic" : "none") << "\"/>";
+            } else {
+                styles << " draw:stroke=\"none\"";
+                if (stated(one.color)) styles << " draw:fill=\"solid\" draw:fill-color=\"" << one.color << "\"";
+                styles << "/>";
+            }
+            styles << "</style:style>";
+            body << "<chart:series chart:style-name=\"" << name << "\" chart:values-cell-range-address=\"" << range(valueColumn[s])
+                 << "\" chart:label-cell-address=\"local-table.$" << column(valueColumn[s]) << "$1\" chart:class=\"" << kind << "\">";
+            if (scatter) body << "<chart:domain table:cell-range-address=\"" << range(xColumn[s]) << "\"/>";
+            if (pie && s == 0) {
+                for (size_t i = 0; i < one.values.size(); i++) {
+                    if (i < chart.pointColors.size() && stated(chart.pointColors[i])) {
+                        const std::string point = "point" + std::to_string(i + 1);
+                        styles << "<style:style style:name=\"" << point << "\" style:family=\"chart\"><style:graphic-properties"
+                                  " draw:fill=\"solid\" draw:fill-color=\"" << chart.pointColors[i] << "\"/></style:style>";
+                        body << "<chart:data-point chart:style-name=\"" << point << "\"/>";
+                    } else {
+                        body << "<chart:data-point/>";
+                    }
+                }
+            }
+            body << "</chart:series>";
+        }
+        body << "<chart:wall chart:style-name=\"wall\"/></chart:plot-area>" << table.str() << "</chart:chart>";
+        return std::string("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+               "<office:document-content xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\""
+               " xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\""
+               " xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\""
+               " xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\""
+               " xmlns:draw=\"urn:oasis:names:tc:opendocument:xmlns:drawing:1.0\""
+               " xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\""
+               " xmlns:xlink=\"http://www.w3.org/1999/xlink\""
+               " xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\""
+               " xmlns:chart=\"urn:oasis:names:tc:opendocument:xmlns:chart:1.0\" office:version=\"1.2\">"
+               "<office:automatic-styles>") + styles.str() + "</office:automatic-styles><office:body><office:chart>"
+               + body.str() + "</office:chart></office:body></office:document-content>\n";
+    }
+
     void WriteDrawing(std::ostringstream& xml, const RichTextRun& run, const RichTextFrame& frame) {
         // In a table cell a drawing text stops above and goes on below
         // stands in the line (so every view sets it): anchored as a
         // character, on the baseline.
-        const bool inLine = writingCell_ && run.imageWrap == RichTextRun::ImageWrap::TopAndBottom;
+        const bool inLine = run.imageWrap == RichTextRun::ImageWrap::Inline
+                         || (writingCell_ && run.imageWrap == RichTextRun::ImageWrap::TopAndBottom);
+        if (frame.chart.IsChart() && !frame.chart.series.empty() && run.imageWidthPt > 0.0f && run.imageHeightPt > 0.0f) {
+            // A chart stays a chart: an object of its own, not its shapes.
+            chartObjects_.push_back(BuildChartObjectXml(frame.chart, run.imageWidthPt, run.imageHeightPt));
+            xml << "<draw:frame draw:style-name=\"" << FloatingFrameStyle(run, nullptr, " draw:ole-draw-aspect=\"1\"", inLine) << "\"";
+            if (!frame.name.empty()) xml << " draw:name=\"" << EscapeXml(frame.name) << "\"";
+            xml << (inLine ? " text:anchor-type=\"as-char\"" : " text:anchor-type=\"paragraph\"");
+            if (!inLine && run.imageFloatAlign == RichTextAlign::Default) xml << " svg:x=\"" << Pt(run.imageOffsetXPt) << "\"";
+            if (!inLine && run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top) xml << " svg:y=\"" << Pt(run.imageOffsetYPt) << "\"";
+            xml << " svg:width=\"" << Pt(run.imageWidthPt) << "\" svg:height=\"" << Pt(run.imageHeightPt) << "\">"
+                << "<draw:object xlink:href=\"./Object " << chartObjects_.size()
+                << "\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/></draw:frame>";
+            return;
+        }
         const float x = inLine ? 0.0f : run.imageFloatAlign == RichTextAlign::Default ? run.imageOffsetXPt : 0.0f;
         const float y = inLine ? 0.0f
                       : run.floatVerticalAlign == RichTextRun::FloatVerticalAlign::Top ? run.imageOffsetYPt : 0.0f;
@@ -3700,6 +4212,16 @@ private:
     void WriteRun(std::ostringstream& xml, const RichTextRun& run) {
         if (run.lineBreakBefore) xml << "<text:line-break/>";
         if (run.IsInlineImage()) {
+            // In the line it stands in a line of its run's font: a span says which.
+            if (!run.IsFloatingImage() && run.fontSizePt > 0.0f) {
+                RichTextRun font;
+                font.fontSizePt = run.fontSizePt;
+                font.fontFamily = run.fontFamily;
+                xml << "<text:span text:style-name=\"" << TextStyleNameFor(font) << "\">";
+                WriteInlineImage(xml, run);
+                xml << "</text:span>";
+                return;
+            }
             WriteInlineImage(xml, run);
             return;
         }
@@ -3746,6 +4268,7 @@ private:
             && (block.type == RichBlockType::Paragraph || block.type == RichBlockType::Heading)) {
             const std::string parent = StyleIdToOdfName(block.styleId);
             if (block.HasParagraphGeometry() || block.align != RichTextAlign::Default || block.rightToLeft
+                || block.columnBreakBefore
                 || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()) {
                 return GeometryStyleFor(block, parent);
             }
@@ -3757,7 +4280,7 @@ private:
             default: break;
         }
         if (block.HasParagraphGeometry() || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty()
-            || block.rightToLeft) {
+            || block.rightToLeft || block.columnBreakBefore) {
             return GeometryStyleFor(block);
         }
         return AlignedStyle(block.align);
@@ -3777,6 +4300,7 @@ private:
         std::ostringstream props;
         if (const char* align = AlignValue(block.align)) props << " fo:text-align=\"" << align << "\"";
         if (block.rightToLeft) props << " style:writing-mode=\"rl-tb\"";
+        if (block.columnBreakBefore) props << " fo:break-before=\"column\"";
         if (block.leftIndentPt != 0.0f) props << " fo:margin-left=\"" << Pt(block.leftIndentPt) << "\"";
         if (block.rightIndentPt != 0.0f) props << " fo:margin-right=\"" << Pt(block.rightIndentPt) << "\"";
         if (block.firstLineIndentPt != 0.0f) props << " fo:text-indent=\"" << Pt(block.firstLineIndentPt) << "\"";
@@ -3884,17 +4408,39 @@ private:
 
     // A cell's paragraph: aligned, `above` points below the one before it,
     // and otherwise without space before or after.
-    std::string CellParagraphStyle(RichTextAlign align, float above) {
-        const char* value = AlignValue(align);
-        const std::string name = std::string("PCell") + (value ? value : "") + (above > 0.0f ? Pt(above) : std::string());
-        if (columnStyles_.find("\"" + name + "\"") == std::string::npos) {
-            columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\""
-                             " style:parent-style-name=\"Standard\"><style:paragraph-properties"
-                           + (value ? std::string(" fo:text-align=\"") + value + "\"" : std::string())
-                           + " fo:margin-top=\"" + Pt(above) + "\" fo:margin-bottom=\"0pt\"/></style:style>\n";
+    // The style of one line of a cell: the cell's alignment and line height,
+    // the room above it, and - for a line without words - the font it is a
+    // line of (`mark`).
+    std::string CellParagraphStyle(const RichTableCell& cell, float above, const RichTextRun* mark, float multiple) {
+        const char* value = AlignValue(cell.align);
+        std::string props = (value ? std::string(" fo:text-align=\"") + value + "\"" : std::string())
+                          + " fo:margin-top=\"" + Pt(above) + "\" fo:margin-bottom=\"0pt\"";
+        if (multiple > 0.0f && cell.lineHeightPt > 0.0f) {
+            // Its own multiple, not the cell's height in points.
+            props += " fo:line-height=\"" + std::to_string(std::lround(multiple * 100.0f)) + "%\"";
+            if (std::abs(multiple - 1.0f) > 0.01f) usesCellLineMultiples_ = true;
+        } else if (cell.lineHeightPt > 0.0f) {
+            props += std::string(cell.lineHeightAtLeast ? " style:line-height-at-least=\"" : " fo:line-height=\"")
+                   + Pt(cell.lineHeightPt) + "\"";
+        } else if (multiple > 0.0f || cell.lineSpacing > 0.0f) {
+            props += " fo:line-height=\"" + std::to_string(std::lround((multiple > 0.0f ? multiple : cell.lineSpacing) * 100.0f))
+                   + "%\"";
+            usesCellLineMultiples_ = true;
         }
+        std::string text;
+        if (mark && mark->fontSizePt > 0.0f) text += " fo:font-size=\"" + Pt(mark->fontSizePt) + "\"";
+        if (mark && !mark->fontFamily.empty()) text += " fo:font-family=\"" + EscapeXml(mark->fontFamily) + "\"";
+        const std::string key = props + "|" + text;
+        auto known = cellParagraphStyles_.find(key);
+        if (known != cellParagraphStyles_.end()) return known->second;
+        const std::string name = "PCell" + std::to_string(cellParagraphStyles_.size() + 1);
+        cellParagraphStyles_[key] = name;
+        columnStyles_ += "<style:style style:name=\"" + name + "\" style:family=\"paragraph\""
+                         " style:parent-style-name=\"Standard\"><style:paragraph-properties" + props + "/>"
+                       + (text.empty() ? std::string() : "<style:text-properties" + text + "/>") + "</style:style>\n";
         return name;
     }
+    std::map<std::string, std::string> cellParagraphStyles_;   // by their properties
 
     static const char* AlignedStyle(RichTextAlign align) {
         switch (align) {
@@ -3960,7 +4506,7 @@ private:
             const char* align = block.tableAlign == RichTextAlign::Center ? "center"
                               : block.tableAlign == RichTextAlign::Right ? "right" : "left";
             props << " table:align=\"" << align << "\"";
-            if (block.tableIndentPt > 0.0f && std::string(align) == "left") {
+            if (block.tableIndentPt != 0.0f && std::string(align) == "left") {
                 props << " fo:margin-left=\"" << Pt(block.tableIndentPt) << "\"";
             }
             if (block.spaceBeforePt >= 0.0f) props << " fo:margin-top=\"" << Pt(block.spaceBeforePt) << "\"";
@@ -4038,23 +4584,55 @@ private:
                 writingCell_ = true;
                 std::vector<RichTextRun> piece;
                 float above = 0.0f;
+                bool afterTable = false;          // a nested table was the last thing written
                 auto flush = [&]() {
-                    xml << "<text:p text:style-name=\"" << CellParagraphStyle(cell.align, above) << "\">";
+                    // A paragraph without words is a line of its font,
+                    // which its style states.
+                    bool words = false;
+                    for (const RichTextRun& run : piece) words = words || !run.text.empty();
+                    const RichTextRun* mark = !words && !piece.empty() ? &piece.front() : nullptr;
+                    float multiple = 0.0f;        // the line's own, before the cell's
+                    for (const RichTextRun& run : piece) {
+                        if (run.lineSpacing > 0.0f) { multiple = run.lineSpacing; break; }
+                    }
+                    xml << "<text:p text:style-name=\"" << CellParagraphStyle(cell, above, mark, multiple) << "\">";
                     WriteRuns(xml, piece);
                     xml << "</text:p>";
                     piece.clear();
+                    above = 0.0f;
                 };
+                // Every line of the cell is a paragraph; a table nested in
+                // the cell is written as that table, between them.
+                bool open = true;                 // a paragraph is begun: a line break ends it
+                bool written = false;
                 for (const RichTextRun& run : cell.runs) {
                     if (run.lineBreakBefore && run.text.empty() && run.emptyLineHeightPt > 0.0f) {
-                        flush();
+                        if (open) { flush(); written = true; }
                         above = run.emptyLineHeightPt;
+                        open = false;             // the break after a spacer is the new paragraph's start
                         continue;
                     }
+                    const RichTextFrame* nested = run.IsTextFrame() ? doc_->FrameFor(run) : nullptr;
+                    if (nested && nested->nestedTable) {
+                        if (open && (!piece.empty() || (run.lineBreakBefore && written))) { flush(); written = true; }
+                        piece.clear();
+                        for (const RichDocBlock& inner : nested->blocks) {
+                            if (inner.type == RichBlockType::Table) WriteTable(xml, inner, ++tableCount_);
+                        }
+                        writingCell_ = true;
+                        written = true;
+                        open = false;
+                        afterTable = true;
+                        continue;
+                    }
+                    if (run.lineBreakBefore && open) { flush(); written = true; }
                     piece.push_back(run);
-                    // The break after a spacer is the new paragraph's start.
-                    if (piece.size() == 1 && above > 0.0f) piece.front().lineBreakBefore = false;
+                    piece.back().lineBreakBefore = false;
+                    open = true;
+                    afterTable = false;
                 }
-                flush();
+                if (open || !written) flush();
+                (void)afterTable;
                 writingCell_ = false;
                 xml << "</table:table-cell>";
                 for (int s = 1; s < columnSpan; ++s) {
@@ -4292,7 +4870,12 @@ private:
                     if (!block.styleId.empty() && doc_->FindStyle(block.styleId)) {
                         body << "<text:h text:style-name=\"" << EscapeXml(ParagraphStyleFor(block)) << "\"";
                     } else {
-                        body << "<text:h text:style-name=\"Heading_20_" << std::clamp(block.headingLevel, 1, 6) << "\"";
+                        // Its own font, size, spacing and indents on top of
+                        // the heading style, where it has any.
+                        const std::string level = "Heading_20_" + std::to_string(std::clamp(block.headingLevel, 1, 6));
+                        const bool own = block.HasParagraphGeometry() || block.align != RichTextAlign::Default
+                            || block.columnBreakBefore || block.paragraphFontSizePt > 0.0f || !block.paragraphFontFamily.empty();
+                        body << "<text:h text:style-name=\"" << (own ? GeometryStyleFor(block, level) : level) << "\"";
                     }
                     body << " text:outline-level=\"" << std::clamp(block.headingLevel, 1, 6) << "\">";
                     WriteBookmarks(body, block);
@@ -4471,7 +5054,10 @@ private:
     // header starts, the header's height and spacing following it.
     // settings.xml: the compatibility options the document's layout was made
     // with, when they are not the ones a reader assumes.
-    bool HasSettings() const { return !doc_->fontLineGap || !doc_->paragraphSpacingInCells; }
+    bool HasSettings() const {
+        return !doc_->fontLineGap || !doc_->paragraphSpacingInCells || !doc_->breakAfterSlash || usesCellLineMultiples_;
+    }
+    bool usesCellLineMultiples_ = false;          // a cell written with a line multiple (RichTableCell::lineSpacing)
     std::string BuildSettingsXml() const {
         auto item = [](const char* name, bool value) {
             return std::string("<config:config-item config:name=\"") + name + "\" config:type=\"boolean\">"
@@ -4483,6 +5069,12 @@ private:
                "<office:settings><config:config-item-set config:name=\"ooo:configuration-settings\">"
              + item("AddExternalLeading", doc_->fontLineGap)
              + item("AddParaSpacingToTableCells", doc_->paragraphSpacingInCells)
+             + "</config:config-item-set>"
+               // What Writer has no setting for, in a set of its own (Writer
+               // keeps to its own sets and leaves this one alone).
+               "<config:config-item-set config:name=\"ultracanvas:layout-settings\">"
+             + item("UltraCanvasBreakAfterSlash", doc_->breakAfterSlash)
+             + item("UltraCanvasCellLineMultiples", usesCellLineMultiples_)
              + "</config:config-item-set></office:settings></office:document-settings>\n";
     }
 
@@ -4700,6 +5292,12 @@ private:
             xml << "<manifest:file-entry manifest:full-path=\"" << PictureHref(i)
                 << "\" manifest:media-type=\"" << EscapeXml(doc_->media[i].mimeType)
                 << "\"/>\n";
+        }
+        for (size_t i = 0; i < chartObjects_.size(); ++i) {
+            xml << "<manifest:file-entry manifest:full-path=\"Object " << (i + 1)
+                << "/\" manifest:media-type=\"application/vnd.oasis.opendocument.chart\"/>\n"
+                << "<manifest:file-entry manifest:full-path=\"Object " << (i + 1)
+                << "/content.xml\" manifest:media-type=\"text/xml\"/>\n";
         }
         xml << "</manifest:manifest>\n";
         return xml.str();

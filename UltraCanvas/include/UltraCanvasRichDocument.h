@@ -6,6 +6,12 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.16.0 - UCRichDocument::ChartAsShapes; RichChart's stated axis ranges
+// Version: 1.15.0 - RichChart: a chart's data in its frame (RichTextFrame::chart)
+// Version: 1.14.0 - RichTextRun::lineSpacing: a cell paragraph's own line multiple
+// Version: 1.13.0 - RichDocBlock::tableAutoFit; UCRichDocument::breakAfterSlash
+// Version: 1.12.0 - RichDocBlock::columnBreakBefore; RichTextFrame::nestedTable; RichTableCell::lineHeightPt,
+//                   lineHeightAtLeast, lineSpacing; imageRotationDeg for a picture in the line too
 // Version: 1.11.0 - RichDocumentHTMLOptions::headingId and codeBlock: anchors and highlighted code for a web page
 // Version: 1.10.0 - RichTextRun::imageRotationDeg: a floating picture turned about its centre
 // Version: 1.9.0 - RichTextRun::emptyLineHeightPt; UCRichDocument::letterKerning, fontLineGap, paragraphSpacingInCells
@@ -29,6 +35,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -69,6 +76,11 @@ struct RichTextRun {
     // its paragraphs as lines, and the room between two of them - a
     // paragraph's space before and after - as such a line.
     float emptyLineHeightPt = 0.0f;
+    // In a table cell: this run's lines are that multiple of its font's own
+    // line (0 = as the cell says, RichTableCell::lineSpacing). A cell keeps
+    // its paragraphs as lines; one set tighter or wider than the others - a
+    // heading at 70% - says so on its runs.
+    float lineSpacing = 0.0f;
 
     // ===== INLINE IMAGE =====
     // A run with mediaIndex >= 0 IS a picture sitting in the run of text - a
@@ -184,6 +196,7 @@ struct RichTextRun {
             && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color
             && letterSpacingPt == other.letterSpacingPt
+            && lineSpacing == other.lineSpacing
             && highlightColor == other.highlightColor && characterStyleId == other.characterStyleId
             && commentIds == other.commentIds && change == other.change && revision == other.revision
             && field == Field::Plain && other.field == Field::Plain   // a field stays its own run
@@ -306,6 +319,14 @@ struct RichTableCell {
     // text and the cell's edges (points; < 0 = the view's default).
     RichVerticalAlign verticalAlign = RichVerticalAlign::Top;
     float paddingTopPt = -1.0f, paddingBottomPt = -1.0f, paddingLeftPt = -1.0f, paddingRightPt = -1.0f;
+    // The height of the cell's lines of text where its paragraphs set one
+    // (points; 0 = each font's own): exactly that, or at least that
+    // (lineHeightAtLeast) - Word's w:spacing w:line with "exact" / "atLeast".
+    float lineHeightPt = 0.0f;
+    bool lineHeightAtLeast = false;
+    // ...or a multiple of each font's own line (0 = single): Word's
+    // w:line with "auto" (276 = 1.15).
+    float lineSpacing = 0.0f;
 
     // Copies borders and background (a new cell next to this one looks
     // like it).
@@ -374,6 +395,10 @@ struct RichDocBlock {
     // setup is UCRichDocument::firstSection.
     bool sectionStart = false;
     RichSectionSetup section;
+    // This block starts the next column of its section (Word's column
+    // break, ODF's fo:break-before="column"); the next page where the
+    // section has one column, or it was in the last.
+    bool columnBreakBefore = false;
 
     // An entry of the table of contents, for a heading of this level (1..9);
     // 0 = an ordinary block. UCRichDocument::UpdateTableOfContents rebuilds
@@ -488,6 +513,12 @@ struct RichDocBlock {
     float tableWidthPercent = 0.0f;
     RichTextAlign tableAlign = RichTextAlign::Default;
     float tableIndentPt = 0.0f;
+    // Table: its columns give way to their content (Word's table layout
+    // "autofit", its default): a column narrower than the longest word or
+    // the widest picture in it is widened to hold it - at the cost of
+    // columns with room to spare, then of the table's width. false: the
+    // widths are kept as stated (Word's "fixed" layout, Writer's tables).
+    bool tableAutoFit = false;
     int mediaIndex = -1;                // Image
     std::string imageAltText;           // Image
     float imageWidthPt = 0.0f;          // Image: 0 = unknown
@@ -670,6 +701,40 @@ struct RichShape {
 };
 
 // ===== TEXT FRAMES =====
+// ===== CHARTS =====
+// A chart's data, as its file states it: what kind it is, its categories and
+// its series of values. The view draws it with the chart engine
+// (UltraCanvasRichDocumentChart.h); the model itself stays free of the UI
+// stack. A chart lives in a frame (RichTextFrame::chart), which also holds
+// it as drawn shapes - what a consumer without the engine shows, and what a
+// format that cannot carry a chart is given.
+struct RichChartSeries {
+    std::string name;
+    std::string color;                    // "#RRGGBB"; empty = from the palette
+    std::vector<double> values;           // one per category (a scatter point's y)
+    std::vector<double> xValues;          // Scatter: each point's x
+    bool joined = true;                   // Line / Scatter: its points are joined by a line
+    bool marked = false;                  // Line / Scatter: ...and marked
+};
+
+struct RichChart {
+    // (NoChart, not None: X11's Xlib.h #defines None.)
+    enum class Kind { NoChart, Column, Bar, Line, Area, Pie, Doughnut, Scatter };
+    Kind kind = Kind::NoChart;
+    bool stacked = false;                 // Column / Bar / Area: one on the other
+    bool percent = false;                 // ...as shares of 100%
+    bool legend = false;
+    std::string title;
+    std::vector<std::string> categories;
+    std::vector<std::string> pointColors; // Pie / Doughnut: a slice's own colour ("" = from the palette)
+    std::vector<RichChartSeries> series;
+    // What the file states for the value axis, and for a scatter chart's x
+    // axis (NaN = fitted to the data).
+    double valueMin = std::numeric_limits<double>::quiet_NaN(), valueMax = std::numeric_limits<double>::quiet_NaN();
+    double xMin = std::numeric_limits<double>::quiet_NaN(), xMax = std::numeric_limits<double>::quiet_NaN();
+    bool IsChart() const { return kind != Kind::NoChart; }
+};
+
 // A text box's content and look, referenced by a run with frameIndex (which
 // also carries where it floats).
 struct RichTextFrame {
@@ -683,6 +748,9 @@ struct RichTextFrame {
     // with shapes is a drawing, not a box: it shows no frame of its own.
     std::vector<RichShape> shapes;
     bool IsDrawing() const { return !shapes.empty(); }
+    // A chart: its data (the view draws it with the chart engine in place
+    // of the shapes above, which are the same chart as a drawing).
+    RichChart chart;
     // The box its shapes were drawn for, in points (0 = its run's size). A
     // drawing resized on the page keeps this, and its shapes are scaled from
     // it to the run's new size.
@@ -693,6 +761,10 @@ struct RichTextFrame {
     // A text frame used only for a group member's text (RichShape::textFrame):
     // no run refers to it.
     bool shapeText = false;
+    // A table nested in a table cell (its blocks are that table): it stands
+    // in the cell's line with no box, padding or guide line of its own, as
+    // wide as the cell's text where its run names no width.
+    bool nestedTable = false;
 };
 
 // ===== COMMENTS =====
@@ -844,6 +916,10 @@ public:
     // turned on (w:kern), and its files say so (ODF style:letter-kerning) -
     // kerned, their lines come out a little shorter and break elsewhere.
     bool letterKerning = true;
+    // Whether a line may be broken after a slash inside a word
+    // ("she/her/hers", a path): Unicode's line breaking allows it, Word does
+    // not - its documents keep such a word whole.
+    bool breakAfterSlash = true;
     // Whether lines are a font's full height apart - its ascent and descent
     // and the line gap ("external leading") its designer gave it - as Word
     // and Writer set them. false: ascent and descent only, as documents from
@@ -1037,6 +1113,14 @@ public:
     static std::string FileExtensionForMimeType(const std::string& mimeType);
     // Reads PNG/GIF/JPEG pixel dimensions from raw bytes (0 on failure).
     static bool SniffImagePixelSize(const std::vector<uint8_t>& data, int& width, int& height);
+    // A chart as drawn shapes, `width` x `height` points: one group of its
+    // bars, lines or slices, its axes' rules and values, and its legend -
+    // what a frame holds beside the chart's data (RichTextFrame::shapes), for
+    // a consumer without the chart engine. The words are text frames added to
+    // `frames` (pass the document's). False, and no shapes, for a chart with
+    // nothing to show or a box under 40 points.
+    static bool ChartAsShapes(const RichChart& chart, float width, float height,
+                              std::vector<RichTextFrame>& frames, RichShape& group);
     // The runs' text as one string: each run's text, preceded by a '\n' for
     // every run carrying lineBreakBefore - the first run's too, so a block
     // that starts with an empty line keeps it. The concatenation the

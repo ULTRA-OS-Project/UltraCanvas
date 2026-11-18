@@ -18,6 +18,13 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.19.0 - RichTextEditStyle::adaptDocumentColors; AdaptDocumentColorToPage
+// Version: 1.18.0 - chartCache: a frame's chart drawn by the chart engine
+// Version: 1.17.1 - layoutStatedLines
+// Version: 1.17.0 - a frame standing in a line (a table nested in a cell) is edited in place
+//                   (InlineFrameRect, FurnitureEditState::frameHostBlock)
+// Version: 1.16.0 - tables nested in cells and drawings in a body line stand in the line; PlaceCellFloats
+//                   (headers and footers too); a print is on white paper
 // Version: 1.15.0 - a table cell floats what its text ignores (PlacedFloat::inCell, a turned picture's
 //                   rotationDeg) and keeps a frame or drawing in its line (InlineImage::frameContent)
 // Version: 1.14.0 - a section's own header, footer and page margins are laid out and edited
@@ -63,6 +70,13 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+class UltraCanvasChartEngineElement;      // Plugins/Charts/Engine: draws a document's charts
+
+// A colour a document states (for white paper) as it reads on `page` with
+// the view's `ink`: unchanged on a light page; on a dark one its lightness
+// is turned over and fitted between the page's and the ink's, its hue kept.
+Color AdaptDocumentColorToPage(const Color& color, const Color& page, const Color& ink);
 
 // ===== STYLE =====
 
@@ -123,6 +137,12 @@ struct RichTextEditStyle {
     float scrollbarWidth = 15.0f;
     float pageGap = 16.0f;            // page view: desk between and around pages
     bool drawBorder = true;
+    // A document states its colours for white paper. On a dark page (a dark
+    // theme) they are fitted to it: lightness turned over, hue kept - black
+    // text reads in the view's ink, a pale cell fill becomes a dark one.
+    // false = always the document's own colours. Pictures are never changed,
+    // and print and PDF export are on white paper with the document's colours.
+    bool adaptDocumentColors = true;
     // Comments: the text they are on, and the pane beside the text.
     Color commentHighlightColor = Color(255, 236, 160);
     Color commentPaneColor = Color(238, 238, 238);
@@ -642,6 +662,15 @@ public:
     Rect2Df GetFloatRectForTest(size_t index) const {
         return index < placedFloats.size() ? placedFloats[index].rect : Rect2Df(0, 0, 0, 0);
     }
+    // A colour the document states, as this view shows it (the fallback,
+    // (1, 1, 1), for one it cannot read).
+    Color DocumentColorForTest(const std::string& hex) const { return DocumentColor(hex, Color(1, 1, 1)); }
+    // The engine chart that drew frame `frameIndex`'s chart on the last
+    // paint; null when the frame has none or was not painted.
+    std::shared_ptr<UltraCanvasChartEngineElement> GetChartElementForTest(int frameIndex) const {
+        auto found = chartCache.find(frameIndex);
+        return found != chartCache.end() ? found->second : nullptr;
+    }
     // ...and where it is on the element, for a pointer to press on.
     Rect2Df GetFloatElementRectForTest(size_t index) const {
         if (index >= placedFloats.size()) return Rect2Df(0, 0, 0, 0);
@@ -706,6 +735,9 @@ private:
         struct InlineImage {
             int byteOffset = 0;                   // the placeholder, in layout text
             float rotationDeg = 0.0f;             // turned about its centre, clockwise
+            // A turned picture in the line: its own size (width and height
+            // are then those of the box round it).
+            float pictureWidth = 0.0f, pictureHeight = 0.0f;
             float width = 0.0f;
             float height = 0.0f;
             // A picture on a line of its own, centred or at the right: how
@@ -864,6 +896,7 @@ private:
     void DrawTextFrame(IRenderContext* ctx, const PlacedFloat& placed, const Rect2Dd& target);
     // A drawing's shapes (RichTextFrame::shapes), their boxes from (originX, originY).
     void DrawShape(IRenderContext* ctx, const RichShape& shape, double originX, double originY, int depth);
+    Color DocumentColor(const std::string& hex, const Color& fallback) const;
     static void TraceShape(IRenderContext* ctx, const RichShape& shape, double x, double y, double w, double h);
     std::map<std::pair<const void*, size_t>, std::shared_ptr<UCImage>> shapeImages;   // pictures in groups, by their bytes
     std::vector<PlacedFloat> placedFloats;
@@ -872,6 +905,10 @@ private:
     // beside a square one - relaying it out when that changes). Returns the
     // block's top.
     float FlowAroundFloats(IRenderContext* ctx, int index, float top, std::vector<PlacedFloat>& pageFloats);
+    struct PageFrame;
+    // Places what the cells of the table `bl` float (its top at `top`), each handed to `take`.
+    void PlaceCellFloats(IRenderContext* ctx, const BlockLayout& bl, float top, const PageFrame* page,
+                         int pageNumber, int pageCount, const std::function<void(PlacedFloat)>& take);
     void SplitBesideFloat(IRenderContext* ctx, const RichDocBlock& block, int blockIndex, BlockLayout& bl,
                           float fullIndent);
     void DrawFloats(IRenderContext* ctx, bool behindText);
@@ -886,6 +923,9 @@ private:
         int noteIndex = -1;                   // >= 0: a note is edited, not a header
         int frameIndex = -1;                  // >= 0: a text frame's words are edited
         float frameInnerWidth = 0.0f;         // ...laid out this wide (pixels)
+        // The body block whose line the edited frame stands in (a table
+        // nested in a cell, a frame in a cell's line); -1: it floats.
+        int frameHostBlock = -1;
         UCRichDocumentEditor bodyEditor;
         float bodyContentHeight = 0.0f;
     };
@@ -893,6 +933,13 @@ private:
     bool BeginFurnitureEditing(int pageIndex, bool footer);
     // The body's placed float of the frame being edited, or null.
     const PlacedFloat* EditedFramePlacement() const;
+    // Where the frame `frameIndex` stands in a line of `layouts` (a cell's
+    // or a paragraph's): x from the column's left edge, y in content
+    // pixels, and the block it is in. False when it stands in none.
+    bool InlineFrameRect(const std::vector<BlockLayout>& layouts, int frameIndex, Rect2Df& outRect, int* outBlock) const;
+    // The frame standing in a line under a point of the element, or -1.
+    int InlineFrameAt(const Point2Df& documentPoint) const;
+    PlacedFloat editedInlineFrame;                // the place of the frame edited in a line (frameHostBlock)
     // Parks the body and hands `editor` a document of `part`'s blocks.
     void StartEditingPart(std::shared_ptr<UCRichDocument> part, std::unique_ptr<FurnitureEditState> state);
     // Writes the furniture being edited into the document.
@@ -983,8 +1030,7 @@ private:
     // (RichTextRun::emptyLineHeightPt) is scaled from.
     mutable std::map<std::string, float> lineUnitCache;
     mutable float emptyLineUnitPx = 0.0f;
-    mutable float lineDescentPx = 0.0f;           // of that line, what lies under its baseline
-    mutable std::map<std::string, float> lineDescentCache;
+    mutable bool layoutStatedLines = false;       // the layout being made is a cell's with set line heights
     mutable bool layoutHasBox = false;            // the layout being made has a box standing in a line
     // The paragraphs of the frames standing in a table cell's lines, by
     // frame: laid out by the table's layout just before the cell's.
@@ -1134,6 +1180,8 @@ private:
     // scrolling does not re-lay them. Cleared with the block layouts.
     std::map<std::string, std::shared_ptr<FurnitureLayout>> furnitureCache;
     float furnitureCacheWidth = -1.0f;
+    // The engine chart drawing each chart frame (by frame index).
+    std::map<int, std::shared_ptr<UltraCanvasChartEngineElement>> chartCache;
     float scrollOffset = 0.0f;
     float hScrollOffset = 0.0f;       // document pixels, page view only
     float zoom = 1.0f;
@@ -1211,6 +1259,7 @@ private:
         Rect2Df visibleArea{0, 0, 0, 0};
     };
     OutputViewState savedOutputView;
+    RichTextEditStyle savedScreenStyle;           // the screen's style while a print or an export is laid out
     bool selecting = false;           // mouse drag in progress
     // Drag and drop of the selection: a press inside it arms a drag, which
     // starts once the pointer has moved a few pixels (a press and release

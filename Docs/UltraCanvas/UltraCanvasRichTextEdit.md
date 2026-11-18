@@ -31,8 +31,10 @@ state of the selection** rather than two asterisks in a buffer.
   - [Floating pictures](#floating-pictures)
   - [Check lists](#check-lists)
   - [Formulas](#formulas)
+  - [Charts](#charts)
   - [Structure](#structure)
 - [Following the theme](#following-the-theme)
+  - [A document's colours on a dark page](#a-documents-colours-on-a-dark-page)
 - [Keyboard](#keyboard)
 - [Autoformat as you type](#autoformat-as-you-type)
 - [Input methods](#input-methods)
@@ -639,12 +641,38 @@ table if it is bigger than the cell - a card's background picture, anchored in
 the first cell, lies under the whole card. It takes no room, and it is drawn
 but not picked up, moved or resized from the page. Any other frame or drawing
 in a cell stands in the cell's line, as wide and tall as it says (a frame at
-least as tall as its words; a drawing with room for its outline), with the
-line's descent under it - a photo drawn as the fill of a shape. (Square and
+least as tall as its words; a drawing with room for its outline) - a photo
+drawn as the fill of a shape. (Square and
 top-and-bottom *pictures* in a cell stay in the line as before.)
 
-**Turned.** `RichTextRun::imageRotationDeg` turns a floating picture clockwise
-about its centre; its size and offsets are those of the box before the turn
+A **table nested in a table cell** is such a frame: its blocks are the inner
+table and `RichTextFrame::nestedTable` is set, so it has no box, padding or
+guide line of its own and is as wide as the cell's text where its run names no
+width. Its words are part of `ToPlainText()`. The DOCX reader makes one for
+every `w:tbl` inside a `w:tc`, the ODT reader for every `table:table` inside
+a `table:table-cell`; both writers write it back as a table in the cell. A
+double-click on it - or `EditFrame(frameIndex)` - opens it for editing in
+place, as a text frame's words are: the caret moves through its cells, rows
+and columns are added and removed as in any table, and the cell around it
+grows and shrinks with what is typed. A click outside, or
+`FinishHeaderFooterEditing()`, ends it.
+
+A **chart** in a DOCX (DrawingML, `c:chartSpace`) is read as such a drawing:
+columns (side by side, stacked or stacked to 100%), bars lying down, lines
+or a pie's slices for its series from the values the file keeps with it, a
+value axis with its grid, the categories beside it and a legend. It is a
+picture of the chart - saved again it is a drawing, not a chart. A .doc's
+chart is the metafile picture Word stored with it, drawn by the vector
+readers (`RegisterVectorFormatsPlugin()`).
+
+A **drawing set in a paragraph's line** (wrap `Inline`: Word's `wp:inline`
+shape, ODF's `as-char` one) stands in that line in the body too, where the
+paragraph's alignment puts it; it is no float.
+
+**Turned.** `RichTextRun::imageRotationDeg` turns a picture clockwise about
+its centre - a floating one where it is placed, one in the line in a line as
+tall as the turned picture (read and written by DOCX and ODT alike). A
+floating picture's size and offsets are those of the box before the turn
 (Word's `a:xfrm rot`, ODF's `draw:transform`), so a 150 x 389 pt picture
 turned three quarters covers 389 x 150 pt round the same centre.
 
@@ -661,9 +689,9 @@ banner.imageOffsetYPt = -118.0f;
 banner.imageRotationDeg = 270.0f;                   // lies on its side
 ```
 
-A picture or drawn shape standing in a line makes that line as tall as it is
-and keeps the line's descent under it, with words beside it or alone in its
-paragraph.
+A picture or drawn shape standing in a line makes that line as tall as it is;
+alone in its line it stands on the line's foot, with no descent under it (a
+row of 14.4 pt icons is a 14.4 pt line, as in Word).
 
 **Placed from the page.** By default a float counts across from the text
 column and down from its paragraph. `floatHorizontalFrom` and
@@ -798,6 +826,44 @@ editing; move the caret away and it is typeset again. A `MathBlock` is typeset
 in display style and centred until the caret enters it. Without the LaTeX
 module, both show their source.
 
+### Charts
+
+A chart in a document is a frame with the chart's data
+(`RichTextFrame::chart`, a `RichChart`: its kind, categories, series of
+values, legend and title). The view draws it with the chart engine - the
+same charts an application uses as elements
+([`UltraCanvasEngineCharts.md`](UltraCanvasEngineCharts.md)):
+
+| `RichChart::Kind` | Drawn by |
+|---|---|
+| `Column`, `Bar` (side by side, `stacked`, `percent`) | `UltraCanvasEngineBarChart` |
+| `Line`, `Area` | `UltraCanvasEngineLineChart` |
+| `Pie`, `Doughnut` | `UltraCanvasEnginePieChart` |
+| `Scatter` | `UltraCanvasEngineScatterChart`; the line chart over numeric x where the points are joined and the series share their x |
+
+The chart is laid out for the frame's own size and scaled into its place, so
+it prints and exports as vectors and keeps its proportions under zoom. It is
+shown, not edited: there is no dialog for its data yet.
+
+```cpp
+#include "UltraCanvasRichDocumentChart.h"
+
+// The same chart as a live element of an application's own:
+const RichTextFrame& frame = document->frames[frameIndex];
+if (frame.chart.IsChart()) {
+    auto element = CreateRichDocumentChart(frame.chart, 480, 300);
+    container->AddChild(element);
+}
+```
+
+The DOCX reader fills the data from the chart part (`c:chartSpace`) and the
+writer writes it back as one; the ODT reader fills it from the chart object
+(`Object N/content.xml`, a `chart:chart` over its own table - Writer's
+charts) and the writer writes one back. So the chart is still a chart in
+Word and in Writer, and through a conversion between the two formats. The
+frame also holds the chart as drawn shapes (`RichTextFrame::shapes`, made by
+`UCRichDocument::ChartAsShapes`): what a consumer without the UI stack has.
+
 ### Structure
 
 ```cpp
@@ -848,6 +914,30 @@ RichTextEditStyle serif = edit->GetStyle();
 serif.baseFont.fontFamily = "Georgia";
 edit->SetStyle(RichTextEditStyle::FromTheme(UltraCanvasTheme::Current(), serif));   // the roles over the document's font
 edit->SetFollowTheme(true);
+```
+
+### A document's colours on a dark page
+
+A document states its colours for white paper: black text, a pale grey table
+header, a white box. On a dark theme the page is dark and the view's ink
+light, so those colours are fitted to the page
+(`RichTextEditStyle::adaptDocumentColors`, on by default): a colour's
+lightness is turned over and set between the page's and the ink's, its hue
+kept. Black text reads in the ink, a white fill is the page, a pale grey cell
+a dark grey one with its text still readable on it, a dark red a lighter red.
+This covers text colour and highlight, paragraph and cell fills, borders,
+frames, drawn shapes and a chart's axes and words. Pictures are never
+changed, and printing and PDF export are on white paper in the document's own
+colours. The document itself is not touched: saved again, it has the colours
+it came with.
+
+```cpp
+RichTextEditStyle style = edit->GetStyle();
+style.adaptDocumentColors = false;      // always the document's own colours
+edit->SetStyle(style);
+
+// The same rule for an application's own drawing:
+Color shown = AdaptDocumentColorToPage(Color(0, 0, 0), style.pageColor, style.textColor);
 ```
 
 ## Keyboard
@@ -1238,7 +1328,41 @@ exactly that height (`RichTextRun::emptyLineHeightPt`); above the first and
 below the last it is part of the cell's padding. Lines are a font's own
 height apart, its line gap included, and letters are pair-kerned - unless the
 document says otherwise (`UCRichDocument::fontLineGap`, `letterKerning`:
-Word's files are unkerned, older Writer files have no line gap). A table
+Word's files are unkerned, older Writer files have no line gap). A cell's
+lines can have a set height (`RichTableCell::lineHeightPt`, exactly or - with
+`lineHeightAtLeast` - at least that) or be a multiple of each font's own line
+(`RichTableCell::lineSpacing`, Word's 1.15); a picture in such a line keeps
+its own height. A paragraph of the cell set tighter or wider than the others
+- a heading at 70% - says so on its runs (`RichTextRun::lineSpacing`), which
+go before the cell's. A set height holds for a line without words too,
+whatever its font: "exactly 14 pt" makes an empty 1 pt paragraph 14 pt high. An empty first or last line of a cell is a line of its own
+font (Word's 2 pt paragraphs that set a signature's parts a hair apart), and a
+picture lower than a line of its run's font stands in such a line. A table can
+start left of its column (a negative `tableIndentPt`, Word's `w:tblInd`), and
+a column whose width the document states is kept however narrow. A picture is
+stretched to the size its document gives it.
+
+**Columns that give way to their content.** With `RichDocBlock::tableAutoFit`
+(Word's "autofit" table layout, its default; `w:tblLayout w:type="fixed"`
+turns it off) a column narrower than the longest word or the widest picture in
+it is widened to hold it. The room comes from the columns that have some to
+spare, each by its share, and then from the room beside the table; a table
+without it keeps its stated widths, and a word too long for its column is
+broken. A table's width in points is kept where it is a little wider than its
+column (it reaches into the margin, as in Word). Spaces a line ends with take
+no room, and - where `UCRichDocument::breakAfterSlash` is false, as for Word's
+documents - a line is not broken after a slash inside a word ("she/her/hers"
+stays whole).
+
+```cpp
+RichDocBlock table;
+table.type = RichBlockType::Table;    // ...its rows and cells
+table.tableColumnWidths = {60.0f, 400.0f};
+table.tableWidthPt = 460.0f;
+table.tableAutoFit = true;       // a long word in the first column widens it
+```
+
+A table
 continues between rows - never through a cell spanning rows - and its
 leading header rows (`RichTableRow::header`: Word's *repeat as header row*,
 ODF's `table:table-header-rows`, a Markdown table's first row) are repeated at
@@ -1254,6 +1378,25 @@ otherwise), with page number and page count fields
 (`RichTextRun::field`) filled in for that page. The body starts below the
 top margin, or below the header when the header is taller than the margin
 leaves room for; the footer likewise.
+
+A heading is set in the size and font its document's style gives it
+(`paragraphFontSizePt`, `paragraphFontFamily`), the document's first paragraph
+keeps its space above, a hanging first line starts left of the column where
+the paragraph's indent is smaller than the hang, and a paragraph whose picture
+or frame would reach past the foot of the page goes to the next page with it.
+
+**Column breaks.** `RichDocBlock::columnBreakBefore` starts the block in its
+section's next column, at the height the columns began at - or on the next
+page, from the last column or in a section of one column. It is Word's
+`w:br w:type="column"` and ODF's `fo:break-before="column"`, read and written
+by both formats.
+
+```cpp
+RichDocBlock heading;
+heading.runs = {title};
+heading.columnBreakBefore = true;       // top of the next column
+document->blocks.push_back(heading);
+```
 
 **Sections and columns.** `InsertSectionBreak(newPage)` starts a new section
 at the caret (`RichDocBlock::sectionStart`, its setup in
@@ -1340,6 +1483,10 @@ send the same pages along for them to draw:
 PrintDocumentWithDialog(name, pdfBytes, "application/pdf", window,
                         CreateRichDocumentPrintPages(*editor));
 ```
+
+A print and an export are on white paper, whatever colour the screen's theme
+gives the page; under a dark theme, whose inks are light, they take the light
+style's inks.
 
 `CreateRichDocumentPrintPages` copies the document into an element of its own
 (the one on screen keeps its view) and returns an `IPrintPageSource`: the pages

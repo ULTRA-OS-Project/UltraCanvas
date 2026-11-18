@@ -183,27 +183,28 @@ Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::prose names `RenderD
 Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::prose names `RenderDiagramText(`, which no header declares
 Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::prose names `UltraCanvas_RegisterBundledElements(`, which no header declares
 # signature Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md: b80df4457f3508d923d51dfe297f8a98152abc62ffdfcadb5f70931db834caa4
-Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'BuildErrorBars' is not a member of UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, UltraCanvasEngineScatterChart, nor a free function
-Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'ComputeErrorRange' is not a member of UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, UltraCanvasEngineScatterChart, nor a free function
-Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'DrawChartErrorBars' is not a member of UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, UltraCanvasEngineScatterChart, nor a free function
-Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'StudentTQuantile' is not a member of UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, UltraCanvasEngineScatterChart, nor a free function
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'BuildErrorBars' is not a member of UltraCanvasEngineBarChart, UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'ComputeErrorRange' is not a member of UltraCanvasEngineBarChart, UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'DrawChartErrorBars' is not a member of UltraCanvasEngineBarChart, UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::'StudentTQuantile' is not a member of UltraCanvasEngineBarChart, UltraCanvasEngineLineChart, UltraCanvasEngineDumbbellChart, IChartProjection, nor a free function
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errorBars' in 'EngineBarSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errorBars' in 'EngineLineSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errorBars' in 'EngineLineSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errorBars' in 'EngineLineSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errorBars' in 'EngineLineSeries'
+Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errors' in 'EngineBarSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'errors' in 'EngineLineSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'samples' in 'EngineLineSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'xError' in 'EngineScatterPoint'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::no member named 'yError' in 'EngineScatterPoint'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::prose names `FromEnds(`, which no header declares
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::prose names `SetShowErrorBars(`, which no header declares
-Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::unknown type name 'EngineBarSeries'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::use of undeclared identifier 'ChartErrorKind'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::use of undeclared identifier 'ChartErrorKind'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::use of undeclared identifier 'ChartErrorKind'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::use of undeclared identifier 'ChartErrorKind'
 Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md::use of undeclared identifier 'ChartErrorKind'
-# signature Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md: ddb46d6444ddfbfd91506526e2c4f67d55158e1fd5e56ceae9e65e0c43cc9168
+# signature Docs/UltraCanvas/UltraCanvasErrorBarsProposal.md: 0136a490084430cf95218b8de6edfeb5fe357ac53f18553deb87063031c78305
 Docs/UltraCanvas/UltraCanvasFileAssociationsProposal.md::'OpenWithChooser' is not a member of UltraCanvasFilerWidget, nor a free function
 Docs/UltraCanvas/UltraCanvasFileAssociationsProposal.md::prose names `OpenWithChooser(`, which no header declares
 Docs/UltraCanvas/UltraCanvasFileAssociationsProposal.md::prose names `SHAssocEnumHandlers(`, which no header declares
