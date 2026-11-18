@@ -51,7 +51,6 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
-// Version: 1.49.3 - .odg / .otg / .fodg are named OpenDocument Drawing (vector)
 // Version: 1.49.2 - the Compress / Extract dialog follows the theme: its buttons are the theme's
 //                  Primary and Standard parts (Cancel was a fixed light-grey face under the theme's
 //                  ink - blank under a dark theme), and its panel edge, field border and drag

@@ -1,7 +1,6 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
-// Version: 1.11.1 - the Save dialog names OpenDocument Drawing (.odg / .otg / .fodg)
 // Version: 1.11.0 - ConvertVideoFile, CanConvertVideoTo, GetVideoSaveExtensions, AddVideoSaveTypes
 // Version: 1.10.0 - SaveAudio, ConvertAudioFile
 // Version: 1.9.0 - SaveFile
