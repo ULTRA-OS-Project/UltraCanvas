@@ -709,7 +709,7 @@ endif()
 # The website and shop builder that publishes WebAssembly or HTML +
 # JavaScript (Docs/Research/UltraPressDesignProposal.md, the HTML output
 # through UltraSite). Phase 1 begins with the
-# headless engine and the `ultrapress` command line; the editor and the
+# headless engine and the `UltraPress` command line; the editor and the
 # renderer follow. The engine links the core for UltraCanvasJSON and the
 # HTMLReader, so it is built wherever the core is.
 option(BUILD_ULTRAPRESS "Build the UltraPress engine and command line" ON)
@@ -3088,7 +3088,7 @@ endif()
 # which cmd and PowerShell run for the bare name, starts the .exe, waits for
 # it and returns its exit code. So the prompt waits as for a console program,
 # and the Start menu, Explorer and the sign-in start the .exe without a
-# console window. ultrafibu and ultrapress do the same in their own
+# console window. ultrafibu and UltraPress do the same in their own
 # CMakeLists.txt. Debug builds keep the console.
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app

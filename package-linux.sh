@@ -58,13 +58,13 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
 # UltraCanvasStart, the setup application, is in the bundle like every app;
 # scripts/package-ultracanvasstart.sh cuts it out of the bundle on its own.
-# `ultrapress` is one program too (Apps/UltraPress): the commands - a
+# `UltraPress` is one program too (Apps/UltraPress): the commands - a
 # starter site, the check, a page's HTML shadow, the static publish, the
 # WordPress import - and, given a site folder, the editor window. Outputs
 # to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraNotifications UltraToDo UltraWeb UltraCanvasStart ultrapress
+      UltraAuthenticator UltraPassword UltraClipboard UltraNotifications UltraToDo UltraWeb UltraCanvasStart UltraPress
       SmartHomeCenter UltraDBAdmin)
 
 # AnchorPoint is peer-to-peer file sharing: the window, and `anchorpoint-cli`,
