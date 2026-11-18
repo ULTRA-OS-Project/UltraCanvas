@@ -103834,8 +103834,15 @@ UltraCrypt.
   2-7 people (a group message, its title the members') - **leave** (a
   channel; a direct or group message is hidden as Mattermost hides it and
   comes back with its next post), **search** one conversation at a time.
-- **Not here**: typing, presence, read receipts, calls, reactions; only a
-  post's first file is its attachment.
+- **Typing**: `SetTyping(true)` posts `/api/v4/users/me/typing` (Mattermost
+  has no "stopped"; `false` sends nothing). Typing is heard on a WebSocket
+  (`/api/v4/websocket`) opened for that alone - polling stays as it was - and
+  closed with the sign-out; it reconnects with a growing pause after a drop.
+  Mattermost never says "stopped" either: the provider sends the stop itself
+  `MattermostTimings::typingStopMs` (5 s) after the last word of it, when
+  that person's post arrives, or when the socket drops. Needs Mattermost 5.26.
+- **Not here**: presence, read receipts, calls, reactions; only a post's
+  first file is its attachment.
 
 Tests: `Tests/UltraIM/MattermostProviderTests.cpp` against
 `mattermost_fake_server.py` (standard-library python: a team with two
@@ -103873,9 +103880,14 @@ without python3 unless `ULTRAIM_TEST_MATTERMOST_REQUIRED` is set.
   **people** (`AddContact` an e-mail or a user id, `CreateGroup` a group
   direct message), **leave** (a topic muted, a direct message hidden on this
   device), **search** one conversation at a time.
-- **Not here**: replies to a message (Zulip quotes instead), typing,
-  presence, read receipts, calls; moved or renamed topics. Needs Zulip 7.0
-  or later.
+- **Typing**: `SetTyping` posts `/api/v1/typing` (a direct message, or a
+  stream topic on Zulip 8.0 and later; an older server's refusal turns
+  stream typing off for the session), and typing events come from the event
+  queue. Zulip's own clients say "typing" only every ten seconds, so the
+  provider repeats it every `ZulipTimings::typingRefreshMs` (4 s) until the
+  stop, that person's message, or `typingExpireMs` (15 s) without a word.
+- **Not here**: replies to a message (Zulip quotes instead), presence, read
+  receipts, calls; moved or renamed topics. Needs Zulip 7.0 or later.
 
 Tests: `Tests/UltraIM/ZulipProviderTests.cpp` against `zulip_fake_server.py`
 (standard-library python, with a real long-poll): password and API-key
