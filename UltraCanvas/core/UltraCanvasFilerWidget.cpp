@@ -61,17 +61,21 @@
 //                  note, apply-to-all and its four buttons), and so is the
 //                  progress window of a pack, an unpack or an administrator
 //                  delete (titles and captions)
-// Version: 1.49.3 - the context menu is translated whole (every entry, the Display
+// Version: 1.49.4 - the context menu is translated whole (every entry, the Display
 //                  submenu's sort fields, view types, file kinds, dataset fields,
 //                  badges, icon styles and switches - the public *Label functions
 //                  stay English names); the default names "New folder", "Pasted
 //                  image" and "Pasted text" are in the reader's language; every
 //                  error the widget reports is a translated sentence (paths as
 //                  {0}), RefuseWriteHere taking the whole refusal per command
-// Version: 1.49.2 - the Compress / Extract dialog is translated whole: its title,
+// Version: 1.49.3 - the Compress / Extract dialog is translated whole: its title,
 //                  buttons, "Location: {0}" line and archive count (TrN); the
 //                  default names ("archive", "Extracted") are in the reader's
 //                  language, in the dialog and in the direct Compress alike
+// Version: 1.49.2 - the Compress / Extract dialog follows the theme: its buttons are the theme's
+//                  Primary and Standard parts (Cancel was a fixed light-grey face under the theme's
+//                  ink - blank under a dark theme), and its panel edge, field border and drag
+//                  placeholder are veils of the ink rather than of black
 // Version: 1.49.1 - the move / copy / delete dialogs' entry list follows the theme: its rows and
 //                  header were the light look's white and grey under a dark theme (a style
 //                  set by hand had stopped the list following)
@@ -9841,7 +9845,9 @@ namespace UltraCanvas {
         compressNameInput = CreateTextInput("filer-compress-name", 1, 1, 120, 26);
         TextInputStyle ts;
         ts.backgroundColor  = style.renameFieldColor;
-        ts.borderColor      = Color(0, 0, 0, 55);
+        // The resting border is a veil of the ink: a black one vanished on
+        // a dark dialog.
+        ts.borderColor      = style.textColor.WithAlpha(70);
         ts.focusBorderColor = style.renameBorderColor;
         ts.textColor        = style.textColor;
         ts.caretColor       = style.textColor;
@@ -9916,19 +9922,26 @@ namespace UltraCanvas {
             const std::string& identifier, const std::string& label, bool primary,
             std::function<void()> action) {
         auto button = CreateButton(identifier, 0, 0, 104, 30, label);
-        ButtonStyle bs;
-        bs.normalColor   = primary ? Color(66, 133, 244, 255) : Color(238, 238, 242, 255);
-        bs.hoverColor    = primary ? Color(90, 150, 250, 255) : Color(226, 226, 232, 255);
-        bs.pressedColor  = primary ? Color(52, 112, 214, 255) : Color(214, 214, 220, 255);
-        bs.normalTextColor = bs.hoverTextColor = bs.pressedTextColor =
-                primary ? Colors::White : style.textColor;
-        bs.borderColor = Color(0, 0, 0, 40);
-        bs.borderWidth = primary ? 0.0f : 1.0f;
-        bs.cornerRadius = 5.0f;
-        bs.fontFamily = style.fontFamily;
+        // The colours are the theme's button parts - the accent for the main
+        // action, the raised surface with the control border and the ink for
+        // Cancel - so both read in either look. Cancel had a fixed light-grey
+        // face under the theme's ink, which a dark theme makes near-white:
+        // a blank grey button.
+        const ButtonVariant variant = primary ? ButtonVariant::Primary
+                                              : ButtonVariant::Standard;
+        ButtonStyle shape = button->GetStyle();
+        shape.borderWidth = primary ? 0.0f : 1.0f;
+        shape.cornerRadius = 5.0f;
+        shape.fontWeight = FontWeight::Bold;
+        ButtonStyle bs = ButtonStyle::FromTheme(UltraCanvasTheme::Current(), shape, variant);
+        bs.fontFamily = bs.fontStyle.fontFamily = style.fontFamily;
         bs.fontSize = style.fontSize;
-        bs.fontWeight = FontWeight::Bold;
+        bs.fontStyle.fontSize = style.fontSize;
         button->SetStyle(bs);
+        button->SetThemeVariant(variant);
+        // A theme change while the dialog is open re-styles the buttons with
+        // the widget.
+        if (GetFollowTheme()) button->SetFollowTheme(true);
         // The name editor keeps the keyboard: a click on Compress / Cancel must
         // not pull the focus out of the field it is about to act on.
         button->SetAcceptsFocus(false);
@@ -10205,7 +10218,8 @@ namespace UltraCanvas {
         // Panel.
         ctx->SetFillPaint(style.backgroundColor);
         ctx->FillRoundedRectangle(Rect2Dd(d.panel), 10);
-        ctx->SetStrokePaint(Color(0, 0, 0, 45));
+        // Its edge is a veil of the ink, so it shows on a dark panel too.
+        ctx->SetStrokePaint(style.textColor.WithAlpha(45));
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawRoundedRectangle(Rect2Dd(d.panel), 10);
 
@@ -10222,7 +10236,7 @@ namespace UltraCanvas {
         // File-type icon on top. While being dragged a ghost follows the cursor
         // and the panel shows a faint placeholder in its place.
         if (d.draggingIcon) {
-            ctx->SetFillPaint(Color(0, 0, 0, 22));
+            ctx->SetFillPaint(style.textColor.WithAlpha(22));
             ctx->FillRoundedRectangle(Rect2Dd(d.iconRect), 4);
         } else {
             DrawEntryIcon(ctx, synth, d.iconRect);

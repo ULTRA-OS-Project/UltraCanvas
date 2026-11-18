@@ -1,3 +1,21 @@
+#### 2026-11-18 *0.9.575*
+- **A core built without charts links again.** With
+  `ULTRACANVAS_ENABLE_CHARTS=OFF` the bridge that draws a word-processing
+  document's chart with the chart engine (`UltraCanvasRichDocumentChart.cpp`)
+  still called the engine's charts, which that core leaves out, so no program
+  could link it (the Image codecs check on `main` failed this way). That core
+  now builds `UltraCanvasRichDocumentChartNone.cpp` in its place, which makes
+  no chart, and the rich text view draws the chart's shapes instead, as it
+  does for a chart the engine cannot draw.
+- **The file display's Compress and Extract dialog reads under a dark theme.**
+  Its Cancel button had a fixed light-grey face under the theme's ink, which a
+  dark theme makes near-white, so it showed as a blank grey block; the main
+  button was a fixed blue. Both are now the theme's button parts - Primary and
+  Standard - and re-style with a theme change while the dialog is open. The
+  panel's edge, the name field's resting border and the placeholder left
+  while the icon is dragged were black veils that vanished on a dark panel;
+  they are veils of the theme's ink now.
+
 #### 2026-11-18 *0.9.574*
 - **A paragraph in a table cell keeps its own proportional line height**
   (`RichTextRun::lineSpacing`, new): a card's heading set at 70% or 90% of its
