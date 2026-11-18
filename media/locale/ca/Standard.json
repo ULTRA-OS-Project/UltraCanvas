@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Exporta el catàleg combinat",
   "Export...": "Exporta…",
   "Exported to {0}": "S'ha exportat a {0}",
+  "Extract": "Extreu",
   "Extract: the folder name is already taken": "Extreu: el nom de la carpeta ja està en ús",
   "Extras": "Extres",
   "Failed": "Ha fallat",
   "File": "Fitxer",
   "File extensions": "Extensions de fitxer",
   "File icons": "Icones de fitxer",
+  "file name|archive": "arxiu",
   "File Not Found": "No s'ha trobat el fitxer",
   "File:": "Fitxer:",
   "Files": "Fitxers",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "La carpeta «{0}» és buida.",
   "Folder Already Exists": "La carpeta ja existeix",
+  "folder name|Extracted": "Extret",
   "Folder Not Found": "No s'ha trobat la carpeta",
   "Folder:": "Carpeta:",
   "Folders": "Carpetes",
@@ -375,6 +378,7 @@
   "loading": "s'està carregant",
   "Loading {0}…": "S'està carregant {0}…",
   "Location": "Ubicació",
+  "Location: {0}": "Ubicació: {0}",
   "Lock": "Bloqueja",
   "Locked": "Bloquejat",
   "Machine drafts": "Esborranys automàtics",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: s'ha eliminat l'entrada de {1}",
   "{0}: written into {1}": "{0}: s'ha escrit a {1}",
   "{0}: {1} has no entry to move": "{0}: {1} no té cap entrada per moure",
+  "{n} archive": {
+    "one": "{n} arxiu",
+    "other": "{n} arxius"
+  },
   "{n} byte": {
     "one": "{n} byte",
     "other": "{n} bytes"

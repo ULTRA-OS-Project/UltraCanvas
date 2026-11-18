@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Exportar o catálogo combinado",
   "Export...": "Exportar…",
   "Exported to {0}": "Exportado para {0}",
+  "Extract": "Extrair",
   "Extract: the folder name is already taken": "Extrair: o nome da pasta já está em uso",
   "Extras": "Extras",
   "Failed": "Falhou",
   "File": "Ficheiro",
   "File extensions": "Extensões de ficheiro",
   "File icons": "Ícones de ficheiro",
+  "file name|archive": "arquivo",
   "File Not Found": "Ficheiro não encontrado",
   "File:": "Ficheiro:",
   "Files": "Ficheiros",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "A pasta \"{0}\" está vazia.",
   "Folder Already Exists": "A pasta já existe",
+  "folder name|Extracted": "Extraído",
   "Folder Not Found": "Pasta não encontrada",
   "Folder:": "Pasta:",
   "Folders": "Pastas",
@@ -375,6 +378,7 @@
   "loading": "a carregar",
   "Loading {0}…": "A abrir {0}…",
   "Location": "Localização",
+  "Location: {0}": "Localização: {0}",
   "Lock": "Bloquear",
   "Locked": "Bloqueado",
   "Machine drafts": "Rascunhos automáticos",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: entrada de {1} removida",
   "{0}: written into {1}": "{0}: escrito em {1}",
   "{0}: {1} has no entry to move": "{0}: {1} não tem nenhuma entrada para mover",
+  "{n} archive": {
+    "one": "{n} arquivo",
+    "other": "{n} arquivos"
+  },
   "{n} byte": {
     "one": "{n} byte",
     "other": "{n} bytes"

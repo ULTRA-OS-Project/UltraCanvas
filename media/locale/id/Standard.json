@@ -257,12 +257,14 @@
   "Export the merged catalogue": "Ekspor katalog gabungan",
   "Export...": "Ekspor...",
   "Exported to {0}": "Diekspor ke {0}",
+  "Extract": "Ekstrak",
   "Extract: the folder name is already taken": "Ekstrak: nama folder sudah digunakan",
   "Extras": "Tambahan",
   "Failed": "Gagal",
   "File": "File",
   "File extensions": "Ekstensi file",
   "File icons": "Ikon file",
+  "file name|archive": "arsip",
   "File Not Found": "File Tidak Ditemukan",
   "File:": "File:",
   "Files": "File",
@@ -284,6 +286,7 @@
   },
   "Folder \"{0}\" is empty.": "Folder \"{0}\" kosong.",
   "Folder Already Exists": "Folder Sudah Ada",
+  "folder name|Extracted": "Diekstrak",
   "Folder Not Found": "Folder Tidak Ditemukan",
   "Folder:": "Folder:",
   "Folders": "Folder",
@@ -363,6 +366,7 @@
   "loading": "memuat",
   "Loading {0}…": "Memuat {0}…",
   "Location": "Lokasi",
+  "Location: {0}": "Lokasi: {0}",
   "Lock": "Kunci",
   "Locked": "Terkunci",
   "Machine drafts": "Draf mesin",
@@ -784,6 +788,9 @@
   "{0}: the entry of {1} removed": "{0}: entri {1} dihapus",
   "{0}: written into {1}": "{0}: ditulis ke {1}",
   "{0}: {1} has no entry to move": "{0}: {1} tidak memiliki entri untuk dipindahkan",
+  "{n} archive": {
+    "other": "{n} arsip"
+  },
   "{n} byte": {
     "other": "{n} byte"
   },

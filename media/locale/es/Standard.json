@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Exportar el catálogo combinado",
   "Export...": "Exportar…",
   "Exported to {0}": "Exportado a {0}",
+  "Extract": "Extraer",
   "Extract: the folder name is already taken": "Extraer: el nombre de la carpeta ya está en uso",
   "Extras": "Extras",
   "Failed": "Error",
   "File": "Archivo",
   "File extensions": "Extensiones de archivo",
   "File icons": "Iconos de archivo",
+  "file name|archive": "archivo comprimido",
   "File Not Found": "Archivo no encontrado",
   "File:": "Archivo:",
   "Files": "Archivos",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "La carpeta «{0}» está vacía.",
   "Folder Already Exists": "La carpeta ya existe",
+  "folder name|Extracted": "Extraído",
   "Folder Not Found": "Carpeta no encontrada",
   "Folder:": "Carpeta:",
   "Folders": "Carpetas",
@@ -375,6 +378,7 @@
   "loading": "cargando",
   "Loading {0}…": "Cargando {0}…",
   "Location": "Ubicación",
+  "Location: {0}": "Ubicación: {0}",
   "Lock": "Bloquear",
   "Locked": "Bloqueado",
   "Machine drafts": "Borradores automáticos",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: entrada de {1} quitada",
   "{0}: written into {1}": "{0}: escrito en {1}",
   "{0}: {1} has no entry to move": "{0}: {1} no tiene ninguna entrada que mover",
+  "{n} archive": {
+    "one": "{n} archivo comprimido",
+    "other": "{n} archivos comprimidos"
+  },
   "{n} byte": {
     "one": "{n} byte",
     "other": "{n} bytes"

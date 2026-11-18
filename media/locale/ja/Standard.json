@@ -257,12 +257,14 @@
   "Export the merged catalogue": "統合したカタログをエクスポート",
   "Export...": "エクスポート…",
   "Exported to {0}": "{0} にエクスポートしました",
+  "Extract": "展開",
   "Extract: the folder name is already taken": "展開: そのフォルダー名はすでに使われています",
   "Extras": "その他",
   "Failed": "失敗",
   "File": "ファイル",
   "File extensions": "ファイル拡張子",
   "File icons": "ファイルアイコン",
+  "file name|archive": "アーカイブ",
   "File Not Found": "ファイルが見つかりません",
   "File:": "ファイル:",
   "Files": "ファイル",
@@ -284,6 +286,7 @@
   },
   "Folder \"{0}\" is empty.": "フォルダー「{0}」は空です。",
   "Folder Already Exists": "フォルダーはすでに存在します",
+  "folder name|Extracted": "展開済み",
   "Folder Not Found": "フォルダーが見つかりません",
   "Folder:": "フォルダー:",
   "Folders": "フォルダー",
@@ -363,6 +366,7 @@
   "loading": "読み込み中",
   "Loading {0}…": "{0} を読み込んでいます…",
   "Location": "場所",
+  "Location: {0}": "場所: {0}",
   "Lock": "ロック",
   "Locked": "ロック済み",
   "Machine drafts": "機械翻訳の下書き",
@@ -784,6 +788,9 @@
   "{0}: the entry of {1} removed": "{0}: {1} の項目を削除しました",
   "{0}: written into {1}": "{0}: {1} に書き込みました",
   "{0}: {1} has no entry to move": "{0}: {1} には移動する項目がありません",
+  "{n} archive": {
+    "other": "{n} 個のアーカイブ"
+  },
   "{n} byte": {
     "other": "{n} バイト"
   },

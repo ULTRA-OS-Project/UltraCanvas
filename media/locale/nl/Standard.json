@@ -267,12 +267,14 @@
   "Export the merged catalogue": "De samengevoegde catalogus exporteren",
   "Export...": "Exporteren…",
   "Exported to {0}": "Geëxporteerd naar {0}",
+  "Extract": "Uitpakken",
   "Extract: the folder name is already taken": "Uitpakken: de mapnaam is al in gebruik",
   "Extras": "Extra's",
   "Failed": "Mislukt",
   "File": "Bestand",
   "File extensions": "Bestandsextensies",
   "File icons": "Bestandspictogrammen",
+  "file name|archive": "archief",
   "File Not Found": "Bestand niet gevonden",
   "File:": "Bestand:",
   "Files": "Bestanden",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "Map '{0}' is leeg.",
   "Folder Already Exists": "Map bestaat al",
+  "folder name|Extracted": "Uitgepakt",
   "Folder Not Found": "Map niet gevonden",
   "Folder:": "Map:",
   "Folders": "Mappen",
@@ -375,6 +378,7 @@
   "loading": "laden",
   "Loading {0}…": "{0} laden…",
   "Location": "Locatie",
+  "Location: {0}": "Locatie: {0}",
   "Lock": "Vergrendelen",
   "Locked": "Vergrendeld",
   "Machine drafts": "Machineconcepten",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: het item van {1} verwijderd",
   "{0}: written into {1}": "{0}: geschreven naar {1}",
   "{0}: {1} has no entry to move": "{0}: {1} heeft geen item om te verplaatsen",
+  "{n} archive": {
+    "one": "{n} archief",
+    "other": "{n} archieven"
+  },
   "{n} byte": {
     "one": "{n} byte",
     "other": "{n} bytes"

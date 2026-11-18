@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Vie yhdistetty luettelo",
   "Export...": "Vie...",
   "Exported to {0}": "Viety kohteeseen {0}",
+  "Extract": "Pura",
   "Extract: the folder name is already taken": "Purku: kansion nimi on jo käytössä",
   "Extras": "Lisätoiminnot",
   "Failed": "Epäonnistui",
   "File": "Tiedosto",
   "File extensions": "Tiedostopäätteet",
   "File icons": "Tiedostokuvakkeet",
+  "file name|archive": "arkisto",
   "File Not Found": "Tiedostoa ei löydy",
   "File:": "Tiedosto:",
   "Files": "Tiedostot",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "Kansio ”{0}” on tyhjä.",
   "Folder Already Exists": "Kansio on jo olemassa",
+  "folder name|Extracted": "Purettu",
   "Folder Not Found": "Kansiota ei löydy",
   "Folder:": "Kansio:",
   "Folders": "Kansiot",
@@ -375,6 +378,7 @@
   "loading": "ladataan",
   "Loading {0}…": "Ladataan {0}…",
   "Location": "Sijainti",
+  "Location: {0}": "Sijainti: {0}",
   "Lock": "Lukitse",
   "Locked": "Lukittu",
   "Machine drafts": "Koneluonnokset",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: kokoelman {1} merkintä poistettu",
   "{0}: written into {1}": "{0}: kirjoitettu kokoelmaan {1}",
   "{0}: {1} has no entry to move": "{0}: kokoelmalla {1} ei ole siirrettävää merkintää",
+  "{n} archive": {
+    "one": "{n} arkisto",
+    "other": "{n} arkistoa"
+  },
   "{n} byte": {
     "one": "{n} tavu",
     "other": "{n} tavua"

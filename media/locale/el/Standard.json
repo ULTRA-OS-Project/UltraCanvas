@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Εξαγωγή του συγχωνευμένου καταλόγου",
   "Export...": "Εξαγωγή...",
   "Exported to {0}": "Έγινε εξαγωγή στο {0}",
+  "Extract": "Αποσυμπίεση",
   "Extract: the folder name is already taken": "Αποσυμπίεση: το όνομα φακέλου χρησιμοποιείται ήδη",
   "Extras": "Επιπλέον",
   "Failed": "Απέτυχε",
   "File": "Αρχείο",
   "File extensions": "Επεκτάσεις αρχείων",
   "File icons": "Εικονίδια αρχείων",
+  "file name|archive": "αρχειοθήκη",
   "File Not Found": "Το αρχείο δεν βρέθηκε",
   "File:": "Αρχείο:",
   "Files": "Αρχεία",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "Ο φάκελος «{0}» είναι κενός.",
   "Folder Already Exists": "Ο φάκελος υπάρχει ήδη",
+  "folder name|Extracted": "Αποσυμπιεσμένα",
   "Folder Not Found": "Ο φάκελος δεν βρέθηκε",
   "Folder:": "Φάκελος:",
   "Folders": "Φάκελοι",
@@ -375,6 +378,7 @@
   "loading": "φόρτωση",
   "Loading {0}…": "Φόρτωση {0}…",
   "Location": "Θέση",
+  "Location: {0}": "Θέση: {0}",
   "Lock": "Κλείδωμα",
   "Locked": "Κλειδωμένο",
   "Machine drafts": "Αυτόματα πρόχειρα",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: η καταχώριση του {1} αφαιρέθηκε",
   "{0}: written into {1}": "{0}: γράφτηκε στο {1}",
   "{0}: {1} has no entry to move": "{0}: το {1} δεν έχει καταχώριση για μεταφορά",
+  "{n} archive": {
+    "one": "{n} αρχείο συμπίεσης",
+    "other": "{n} αρχεία συμπίεσης"
+  },
   "{n} byte": {
     "one": "{n} byte",
     "other": "{n} byte"

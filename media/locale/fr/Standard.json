@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Exporter le catalogue fusionné",
   "Export...": "Exporter…",
   "Exported to {0}": "Exporté vers {0}",
+  "Extract": "Extraire",
   "Extract: the folder name is already taken": "Extraction : ce nom de dossier est déjà utilisé",
   "Extras": "Extras",
   "Failed": "Échec",
   "File": "Fichier",
   "File extensions": "Extensions de fichier",
   "File icons": "Icônes de fichier",
+  "file name|archive": "archive",
   "File Not Found": "Fichier introuvable",
   "File:": "Fichier :",
   "Files": "Fichiers",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "Le dossier « {0} » est vide.",
   "Folder Already Exists": "Le dossier existe déjà",
+  "folder name|Extracted": "Extrait",
   "Folder Not Found": "Dossier introuvable",
   "Folder:": "Dossier :",
   "Folders": "Dossiers",
@@ -375,6 +378,7 @@
   "loading": "chargement",
   "Loading {0}…": "Chargement de {0}…",
   "Location": "Emplacement",
+  "Location: {0}": "Emplacement : {0}",
   "Lock": "Verrouiller",
   "Locked": "Verrouillé",
   "Machine drafts": "Brouillons automatiques",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0} : entrée de {1} supprimée",
   "{0}: written into {1}": "{0} : écrit dans {1}",
   "{0}: {1} has no entry to move": "{0} : {1} n'a aucune entrée à déplacer",
+  "{n} archive": {
+    "one": "{n} archive",
+    "other": "{n} archives"
+  },
   "{n} byte": {
     "one": "{n} octet",
     "other": "{n} octets"

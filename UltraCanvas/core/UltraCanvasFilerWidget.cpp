@@ -51,6 +51,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.49.2 - the Compress / Extract dialog is translated whole: its title,
+//                  buttons, "Location: {0}" line and archive count (TrN); the
+//                  default names ("archive", "Extracted") are in the reader's
+//                  language, in the dialog and in the direct Compress alike
 // Version: 1.49.1 - the move / copy / delete dialogs' entry list follows the theme: its rows and
 //                  header were the light look's white and grey under a dark theme (a style
 //                  set by hand had stopped the list following)
@@ -9511,7 +9515,7 @@ namespace UltraCanvas {
         std::string base = (targets.size() == 1)
                 ? ArchiveBaseNameOf(targets[0].name, targets[0].isDirectory)
                 : PathToUtf8(PathFromUtf8(currentPath).filename());
-        if (base.empty()) base = "archive";
+        if (base.empty()) base = TrC("file name", "archive");
         // The extension drives the archive format chosen by the VirtualFS bridge.
         std::string ext = extension.empty() ? std::string("zip") : extension;
         if (!ext.empty() && ext.front() == '.') ext.erase(ext.begin());
@@ -9725,10 +9729,12 @@ namespace UltraCanvas {
         std::string base = (targets.size() == 1)
                 ? ArchiveBaseNameOf(targets[0].name, targets[0].isDirectory)
                 : PathToUtf8(PathFromUtf8(currentPath).filename());
-        if (base.empty()) base = "archive";
+        // The fallback is a name a person reads in the field and keeps on
+        // disk, so it is in their language, as the desktops name it.
+        if (base.empty()) base = TrC("file name", "archive");
         compressDlg.destDir = currentPath;
 
-        OpenArchiveDialogChrome(base, "Compress");
+        OpenArchiveDialogChrome(base, Tr("Compress"));
     }
 
     void UltraCanvasFilerWidget::OpenExtractDialog() {
@@ -9754,14 +9760,16 @@ namespace UltraCanvas {
         }
         compressDlg.formatLabel = (archives.size() == 1)
                 ? archives[0].name
-                : std::to_string(archives.size()) + " archives";
+                : TrN("{n} archive", "{n} archives", static_cast<long long>(archives.size()));
 
         // Default destination folder: the archive's own name without its
-        // suffix — what the direct ExtractSelection() would pick.
-        std::string base = (archives.size() == 1) ? firstBase : std::string("Extracted");
-        if (base.empty()) base = "Extracted";
+        // suffix — what the direct ExtractSelection() would pick. The
+        // fallback is a folder name the person reads and keeps, so it is
+        // in their language.
+        std::string base = (archives.size() == 1) ? firstBase : std::string();
+        if (base.empty()) base = TrC("folder name", "Extracted");
 
-        OpenArchiveDialogChrome(base, "Extract");
+        OpenArchiveDialogChrome(base, Tr("Extract"));
     }
 
     void UltraCanvasFilerWidget::OpenArchiveDialogChrome(const std::string& defaultName,
@@ -9816,7 +9824,7 @@ namespace UltraCanvas {
                 "filer-compress-ok", okLabel, true,
                 [this]() { CommitCompressDialog(); });
         compressCancelButton = MakeCompressButton(
-                "filer-compress-cancel", "Cancel", false,
+                "filer-compress-cancel", Tr("Cancel"), false,
                 [this]() { CloseCompressDialog(); });
 
         InstallCompressKeyFilter();
@@ -9985,7 +9993,8 @@ namespace UltraCanvas {
         size_t last  = baseName.find_last_not_of(' ');
         baseName = (first == std::string::npos)
                  ? std::string() : baseName.substr(first, last - first + 1);
-        if (baseName.empty()) baseName = d.extractMode ? "Extracted" : "archive";
+        if (baseName.empty()) baseName = d.extractMode ? TrC("folder name", "Extracted")
+                                                       : TrC("file name", "archive");
 
         std::error_code ec;
         fs::path dir = PathFromUtf8(d.destDir.empty() ? currentPath : d.destDir);
@@ -10010,7 +10019,7 @@ namespace UltraCanvas {
                     // their contents cannot collide.
                     std::string stem =
                             ArchiveBaseNameOf(PathToUtf8(PathFromUtf8(src).filename()), false);
-                    if (stem.empty()) stem = "archive";
+                    if (stem.empty()) stem = TrC("file name", "archive");
                     dest = target / PathFromUtf8(stem);
                     int m = 2;
                     while (fs::exists(UltraCanvas::PathFromUtf8(dest), ec))
@@ -10150,7 +10159,7 @@ namespace UltraCanvas {
         titleFont.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(titleFont);
         ctx->SetTextPaint(style.textColor);
-        ctx->DrawText(d.extractMode ? "Extract" : "Compress",
+        ctx->DrawText(d.extractMode ? Tr("Extract") : Tr("Compress"),
                       Point2Dd(d.panel.x + 16, d.panel.y + 12));
 
         // File-type icon on top. While being dragged a ghost follows the cursor
@@ -10224,7 +10233,7 @@ namespace UltraCanvas {
         ctx->SetFontStyle(smallFont);
         ctx->SetTextPaint(style.secondaryTextColor);
         std::string dir = d.destDir.empty() ? currentPath : d.destDir;
-        std::string pathText = "Location:  " + dir;
+        std::string pathText = TrF("Location: {0}", dir);
         pathText = EllipsizeText(ctx, pathText, d.panel.width - 32);
         ctx->DrawText(pathText,
                       Point2Dd(d.panel.x + 16, d.nameRect.y + d.nameRect.height + 8));

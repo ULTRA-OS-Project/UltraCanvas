@@ -257,12 +257,14 @@
   "Export the merged catalogue": "ส่งออกแคตตาล็อกที่รวมแล้ว",
   "Export...": "ส่งออก...",
   "Exported to {0}": "ส่งออกไปยัง {0} แล้ว",
+  "Extract": "แตกไฟล์",
   "Extract: the folder name is already taken": "แตกไฟล์: มีชื่อโฟลเดอร์นี้อยู่แล้ว",
   "Extras": "ส่วนเสริม",
   "Failed": "ล้มเหลว",
   "File": "ไฟล์",
   "File extensions": "นามสกุลไฟล์",
   "File icons": "ไอคอนไฟล์",
+  "file name|archive": "ไฟล์บีบอัด",
   "File Not Found": "ไม่พบไฟล์",
   "File:": "ไฟล์:",
   "Files": "ไฟล์",
@@ -284,6 +286,7 @@
   },
   "Folder \"{0}\" is empty.": "โฟลเดอร์ “{0}” ว่างเปล่า",
   "Folder Already Exists": "มีโฟลเดอร์นี้อยู่แล้ว",
+  "folder name|Extracted": "แตกไฟล์แล้ว",
   "Folder Not Found": "ไม่พบโฟลเดอร์",
   "Folder:": "โฟลเดอร์:",
   "Folders": "โฟลเดอร์",
@@ -363,6 +366,7 @@
   "loading": "กำลังโหลด",
   "Loading {0}…": "กำลังโหลด {0}…",
   "Location": "ตำแหน่ง",
+  "Location: {0}": "ตำแหน่ง: {0}",
   "Lock": "ล็อก",
   "Locked": "ล็อกอยู่",
   "Machine drafts": "ฉบับร่างจากเครื่อง",
@@ -784,6 +788,9 @@
   "{0}: the entry of {1} removed": "{0}: ลบรายการของ {1} แล้ว",
   "{0}: written into {1}": "{0}: เขียนลงใน {1} แล้ว",
   "{0}: {1} has no entry to move": "{0}: {1} ไม่มีรายการที่จะย้าย",
+  "{n} archive": {
+    "other": "ไฟล์บีบอัด {n} ไฟล์"
+  },
   "{n} byte": {
     "other": "{n} ไบต์"
   },

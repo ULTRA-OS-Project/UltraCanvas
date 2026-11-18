@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Zusammengeführten Katalog exportieren",
   "Export...": "Exportieren …",
   "Exported to {0}": "Nach {0} exportiert",
+  "Extract": "Entpacken",
   "Extract: the folder name is already taken": "Entpacken: der Ordnername ist bereits vergeben",
   "Extras": "Extras",
   "Failed": "Fehlgeschlagen",
   "File": "Datei",
   "File extensions": "Dateiendungen",
   "File icons": "Dateisymbole",
+  "file name|archive": "Archiv",
   "File Not Found": "Datei nicht gefunden",
   "File:": "Datei:",
   "Files": "Dateien",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "Ordner „{0}“ ist leer.",
   "Folder Already Exists": "Ordner bereits vorhanden",
+  "folder name|Extracted": "Entpackt",
   "Folder Not Found": "Ordner nicht gefunden",
   "Folder:": "Ordner:",
   "Folders": "Ordner",
@@ -375,6 +378,7 @@
   "loading": "wird geladen",
   "Loading {0}…": "{0} wird geladen …",
   "Location": "Ort",
+  "Location: {0}": "Ort: {0}",
   "Lock": "Sperren",
   "Locked": "Gesperrt",
   "Machine drafts": "Maschinenentwürfe",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: Eintrag von {1} entfernt",
   "{0}: written into {1}": "{0}: in {1} geschrieben",
   "{0}: {1} has no entry to move": "{0}: {1} hat keinen Eintrag zum Verschieben",
+  "{n} archive": {
+    "one": "{n} Archiv",
+    "other": "{n} Archive"
+  },
   "{n} byte": {
     "one": "{n} Byte",
     "other": "{n} Bytes"

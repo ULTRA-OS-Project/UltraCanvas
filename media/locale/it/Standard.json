@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Esporta il catalogo unito",
   "Export...": "Esporta…",
   "Exported to {0}": "Esportato in {0}",
+  "Extract": "Estrai",
   "Extract: the folder name is already taken": "Estrai: il nome della cartella è già in uso",
   "Extras": "Extra",
   "Failed": "Non riuscito",
   "File": "File",
   "File extensions": "Estensioni dei file",
   "File icons": "Icone dei file",
+  "file name|archive": "archivio",
   "File Not Found": "File non trovato",
   "File:": "File:",
   "Files": "File",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "La cartella «{0}» è vuota.",
   "Folder Already Exists": "La cartella esiste già",
+  "folder name|Extracted": "Estratti",
   "Folder Not Found": "Cartella non trovata",
   "Folder:": "Cartella:",
   "Folders": "Cartelle",
@@ -375,6 +378,7 @@
   "loading": "caricamento",
   "Loading {0}…": "Caricamento di {0}…",
   "Location": "Posizione",
+  "Location: {0}": "Posizione: {0}",
   "Lock": "Blocca",
   "Locked": "Bloccato",
   "Machine drafts": "Bozze automatiche",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: voce di {1} rimossa",
   "{0}: written into {1}": "{0}: scritto in {1}",
   "{0}: {1} has no entry to move": "{0}: {1} non ha voci da spostare",
+  "{n} archive": {
+    "one": "{n} archivio",
+    "other": "{n} archivi"
+  },
   "{n} byte": {
     "one": "{n} byte",
     "other": "{n} byte"

@@ -266,12 +266,14 @@
   "Export the merged catalogue": "Export the merged catalogue",
   "Export...": "Export...",
   "Exported to {0}": "Exported to {0}",
+  "Extract": "Extract",
   "Extract: the folder name is already taken": "Extract: the folder name is already taken",
   "Extras": "Extras",
   "Failed": "Failed",
   "File": "File",
   "File extensions": "File extensions",
   "File icons": "File icons",
+  "file name|archive": "archive",
   "File Not Found": "File Not Found",
   "File:": "File:",
   "Files": "Files",
@@ -294,6 +296,7 @@
   },
   "Folder \"{0}\" is empty.": "Folder \"{0}\" is empty.",
   "Folder Already Exists": "Folder Already Exists",
+  "folder name|Extracted": "Extracted",
   "Folder Not Found": "Folder Not Found",
   "Folder:": "Folder:",
   "Folders": "Folders",
@@ -374,6 +377,7 @@
   "loading": "loading",
   "Loading {0}…": "Loading {0}…",
   "Location": "Location",
+  "Location: {0}": "Location: {0}",
   "Lock": "Lock",
   "Locked": "Locked",
   "Machine drafts": "Machine drafts",
@@ -804,6 +808,10 @@
   "{0}: the entry of {1} removed": "{0}: the entry of {1} removed",
   "{0}: written into {1}": "{0}: written into {1}",
   "{0}: {1} has no entry to move": "{0}: {1} has no entry to move",
+  "{n} archive": {
+    "one": "{n} archive",
+    "other": "{n} archives"
+  },
   "{n} byte": {
     "one": "{n} byte",
     "other": "{n} bytes"

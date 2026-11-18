@@ -257,12 +257,14 @@
   "Export the merged catalogue": "匯出合併後的翻譯目錄",
   "Export...": "匯出...",
   "Exported to {0}": "已匯出至 {0}",
+  "Extract": "解壓縮",
   "Extract: the folder name is already taken": "解壓縮：資料夾名稱已被使用",
   "Extras": "其他",
   "Failed": "失敗",
   "File": "檔案",
   "File extensions": "副檔名",
   "File icons": "檔案圖示",
+  "file name|archive": "壓縮檔",
   "File Not Found": "找不到檔案",
   "File:": "檔案：",
   "Files": "檔案",
@@ -284,6 +286,7 @@
   },
   "Folder \"{0}\" is empty.": "資料夾「{0}」是空的。",
   "Folder Already Exists": "資料夾已存在",
+  "folder name|Extracted": "已解壓縮",
   "Folder Not Found": "找不到資料夾",
   "Folder:": "資料夾：",
   "Folders": "資料夾",
@@ -363,6 +366,7 @@
   "loading": "載入中",
   "Loading {0}…": "正在載入 {0}…",
   "Location": "位置",
+  "Location: {0}": "位置：{0}",
   "Lock": "鎖定",
   "Locked": "已鎖定",
   "Machine drafts": "機器草稿",
@@ -784,6 +788,9 @@
   "{0}: the entry of {1} removed": "{0}：已移除 {1} 中的項目",
   "{0}: written into {1}": "{0}：已寫入 {1}",
   "{0}: {1} has no entry to move": "{0}：{1} 中沒有可移動的項目",
+  "{n} archive": {
+    "other": "{n} 個壓縮檔"
+  },
   "{n} byte": {
     "other": "{n} 位元組"
   },

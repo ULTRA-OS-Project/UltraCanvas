@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Birleştirilmiş kataloğu dışa aktar",
   "Export...": "Dışa Aktar...",
   "Exported to {0}": "{0} konumuna dışa aktarıldı",
+  "Extract": "Ayıkla",
   "Extract: the folder name is already taken": "Ayıklama: klasör adı zaten kullanılıyor",
   "Extras": "Ekstralar",
   "Failed": "Başarısız",
   "File": "Dosya",
   "File extensions": "Dosya uzantıları",
   "File icons": "Dosya simgeleri",
+  "file name|archive": "arşiv",
   "File Not Found": "Dosya Bulunamadı",
   "File:": "Dosya:",
   "Files": "Dosyalar",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "“{0}” klasörü boş.",
   "Folder Already Exists": "Klasör Zaten Var",
+  "folder name|Extracted": "Ayıklanan",
   "Folder Not Found": "Klasör Bulunamadı",
   "Folder:": "Klasör:",
   "Folders": "Klasörler",
@@ -375,6 +378,7 @@
   "loading": "yükleniyor",
   "Loading {0}…": "{0} yükleniyor…",
   "Location": "Konum",
+  "Location: {0}": "Konum: {0}",
   "Lock": "Kilitle",
   "Locked": "Kilitli",
   "Machine drafts": "Makine taslakları",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: {1} kümesindeki girdi kaldırıldı",
   "{0}: written into {1}": "{0}: {1} kümesine yazıldı",
   "{0}: {1} has no entry to move": "{0}: {1} kümesinde taşınacak girdi yok",
+  "{n} archive": {
+    "one": "{n} arşiv",
+    "other": "{n} arşiv"
+  },
   "{n} byte": {
     "one": "{n} bayt",
     "other": "{n} bayt"

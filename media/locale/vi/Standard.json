@@ -257,12 +257,14 @@
   "Export the merged catalogue": "Xuất danh mục đã hợp nhất",
   "Export...": "Xuất...",
   "Exported to {0}": "Đã xuất sang {0}",
+  "Extract": "Giải nén",
   "Extract: the folder name is already taken": "Giải nén: tên thư mục đã được sử dụng",
   "Extras": "Bổ sung",
   "Failed": "Thất bại",
   "File": "Tệp",
   "File extensions": "Phần mở rộng tệp",
   "File icons": "Biểu tượng tệp",
+  "file name|archive": "tệp nén",
   "File Not Found": "Không tìm thấy tệp",
   "File:": "Tệp:",
   "Files": "Tệp",
@@ -284,6 +286,7 @@
   },
   "Folder \"{0}\" is empty.": "Thư mục “{0}” trống.",
   "Folder Already Exists": "Thư mục đã tồn tại",
+  "folder name|Extracted": "Đã giải nén",
   "Folder Not Found": "Không tìm thấy thư mục",
   "Folder:": "Thư mục:",
   "Folders": "Thư mục",
@@ -363,6 +366,7 @@
   "loading": "đang tải",
   "Loading {0}…": "Đang tải {0}…",
   "Location": "Vị trí",
+  "Location: {0}": "Vị trí: {0}",
   "Lock": "Khóa",
   "Locked": "Đã khóa",
   "Machine drafts": "Bản nháp máy",
@@ -784,6 +788,9 @@
   "{0}: the entry of {1} removed": "{0}: đã xóa mục của {1}",
   "{0}: written into {1}": "{0}: đã ghi vào {1}",
   "{0}: {1} has no entry to move": "{0}: {1} không có mục nào để chuyển",
+  "{n} archive": {
+    "other": "{n} tệp nén"
+  },
   "{n} byte": {
     "other": "{n} byte"
   },

@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Eksporter den sammenslåtte katalogen",
   "Export...": "Eksporter...",
   "Exported to {0}": "Eksportert til {0}",
+  "Extract": "Pakk ut",
   "Extract: the folder name is already taken": "Pakk ut: mappenavnet er allerede i bruk",
   "Extras": "Ekstra",
   "Failed": "Mislyktes",
   "File": "Fil",
   "File extensions": "Filendelser",
   "File icons": "Filikoner",
+  "file name|archive": "arkiv",
   "File Not Found": "Finner ikke filen",
   "File:": "Fil:",
   "Files": "Filer",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "Mappen «{0}» er tom.",
   "Folder Already Exists": "Mappen finnes allerede",
+  "folder name|Extracted": "Utpakket",
   "Folder Not Found": "Finner ikke mappen",
   "Folder:": "Mappe:",
   "Folders": "Mapper",
@@ -375,6 +378,7 @@
   "loading": "laster inn",
   "Loading {0}…": "Laster inn {0}…",
   "Location": "Plassering",
+  "Location: {0}": "Plassering: {0}",
   "Lock": "Lås",
   "Locked": "Låst",
   "Machine drafts": "Maskinutkast",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: oppføringen i {1} fjernet",
   "{0}: written into {1}": "{0}: skrevet til {1}",
   "{0}: {1} has no entry to move": "{0}: {1} har ingen oppføring å flytte",
+  "{n} archive": {
+    "one": "{n} arkiv",
+    "other": "{n} arkiver"
+  },
   "{n} byte": {
     "one": "{n} byte",
     "other": "{n} byte"

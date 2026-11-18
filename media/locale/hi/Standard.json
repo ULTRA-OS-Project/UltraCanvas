@@ -267,12 +267,14 @@
   "Export the merged catalogue": "मर्ज किया गया कैटलॉग निर्यात करें",
   "Export...": "निर्यात करें...",
   "Exported to {0}": "{0} में निर्यात किया गया",
+  "Extract": "एक्सट्रैक्ट करें",
   "Extract: the folder name is already taken": "एक्सट्रैक्ट करें: फ़ोल्डर का नाम पहले से उपयोग में है",
   "Extras": "अतिरिक्त",
   "Failed": "विफल",
   "File": "फ़ाइल",
   "File extensions": "फ़ाइल एक्सटेंशन",
   "File icons": "फ़ाइल आइकन",
+  "file name|archive": "आर्काइव",
   "File Not Found": "फ़ाइल नहीं मिली",
   "File:": "फ़ाइल:",
   "Files": "फ़ाइलें",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "फ़ोल्डर “{0}” खाली है।",
   "Folder Already Exists": "फ़ोल्डर पहले से मौजूद है",
+  "folder name|Extracted": "एक्सट्रैक्ट किया गया",
   "Folder Not Found": "फ़ोल्डर नहीं मिला",
   "Folder:": "फ़ोल्डर:",
   "Folders": "फ़ोल्डर",
@@ -375,6 +378,7 @@
   "loading": "लोड हो रहा है",
   "Loading {0}…": "{0} लोड हो रहा है…",
   "Location": "स्थान",
+  "Location: {0}": "स्थान: {0}",
   "Lock": "लॉक करें",
   "Locked": "लॉक है",
   "Machine drafts": "मशीन ड्राफ़्ट",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: {1} की प्रविष्टि हटाई गई",
   "{0}: written into {1}": "{0}: {1} में लिखा गया",
   "{0}: {1} has no entry to move": "{0}: {1} में ले जाने के लिए कोई प्रविष्टि नहीं है",
+  "{n} archive": {
+    "one": "{n} आर्काइव",
+    "other": "{n} आर्काइव"
+  },
   "{n} byte": {
     "one": "{n} बाइट",
     "other": "{n} बाइट"

@@ -267,12 +267,14 @@
   "Export the merged catalogue": "Az egyesített katalógus exportálása",
   "Export...": "Exportálás...",
   "Exported to {0}": "Exportálva ide: {0}",
+  "Extract": "Kibontás",
   "Extract: the folder name is already taken": "Kibontás: a mappanév már foglalt",
   "Extras": "Extrák",
   "Failed": "Sikertelen",
   "File": "Fájl",
   "File extensions": "Fájlkiterjesztések",
   "File icons": "Fájlikonok",
+  "file name|archive": "archívum",
   "File Not Found": "A fájl nem található",
   "File:": "Fájl:",
   "Files": "Fájlok",
@@ -295,6 +297,7 @@
   },
   "Folder \"{0}\" is empty.": "A(z) „{0}” mappa üres.",
   "Folder Already Exists": "A mappa már létezik",
+  "folder name|Extracted": "Kibontva",
   "Folder Not Found": "A mappa nem található",
   "Folder:": "Mappa:",
   "Folders": "Mappák",
@@ -375,6 +378,7 @@
   "loading": "betöltés",
   "Loading {0}…": "Betöltés: {0}…",
   "Location": "Hely",
+  "Location: {0}": "Hely: {0}",
   "Lock": "Zárolás",
   "Locked": "Zárolva",
   "Machine drafts": "Gépi piszkozatok",
@@ -805,6 +809,10 @@
   "{0}: the entry of {1} removed": "{0}: a(z) {1} készlet bejegyzése eltávolítva",
   "{0}: written into {1}": "{0}: beírva ide: {1}",
   "{0}: {1} has no entry to move": "{0}: a(z) {1} készletben nincs áthelyezhető bejegyzés",
+  "{n} archive": {
+    "one": "{n} archívum",
+    "other": "{n} archívum"
+  },
   "{n} byte": {
     "one": "{n} bájt",
     "other": "{n} bájt"
