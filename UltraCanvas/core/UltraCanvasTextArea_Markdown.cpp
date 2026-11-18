@@ -1,6 +1,9 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
+// Version: 2.8.4 - a table is sized to the visible width once it is known: without word wrap the
+//                  first layout ran before the visible area was measured, so tables kept their
+//                  100 px floor and broke header words ("Quar-ter") with room to spare
 // Version: 2.8.3 - a backslash escape inside bold, italic or strike-through is resolved, as outside
 //                  ("*\\[Picture]*" shows "[Picture]"), and an escaped marker does not close the run
 // Version: 2.8.2 - a table's separator row is only a small gap when there is no
@@ -1183,6 +1186,7 @@ namespace UltraCanvas {
         constexpr int cellPadding = 4;
         constexpr int rowVerticalPad = 4;
         const float availWidth = std::max(100.0f, visibleTextArea.width);
+        tablesLaidOutWidth = visibleTextArea.width;
 
         int colCount = 0;
         for (int i = startLine; i <= endLine; i++) {

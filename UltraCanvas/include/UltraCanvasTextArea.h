@@ -1,5 +1,6 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.18.2 - tablesLaidOutWidth: tables are sized again once the visible width is known
 // Version: 3.18.1 - a font change keeps the top line in view and the scroll offset inside the content
 // Version: 3.18.0 - the SetStyle rule and the constructor tail of an area that follows by default
 // Version: 3.17.0 - a read-only or display-only area opens a Copy / Select All menu on a
@@ -1120,6 +1121,10 @@ namespace UltraCanvas {
         // collected; if the total fits the available width the leftover is distributed evenly,
         // otherwise columns shrink proportionally. Row heights are re-measured after rewrap.
         void NormalizeTableGroupWidths(int startLine, int endLine);
+        // The visible width the tables were last sized to; -1 when there are
+        // none. Render lays the lines out again when the visible area turns
+        // out wider or narrower than that (see Render).
+        float tablesLaidOutWidth = -1.0f;
 
         // Inline markdown run (produced by ParseInlineMarkdownRuns) — byte offsets are within the
         // *visible* (markup-stripped) text, not the raw line.

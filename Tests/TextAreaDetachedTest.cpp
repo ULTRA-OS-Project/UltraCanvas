@@ -12,9 +12,10 @@
 // or losing the focus ends it, composing over a selection replaces it, and a
 // read-only area leaves the composing to the input method's own window.
 // Runs headless under Xvfb; skips when there is no display.
+// Version: 1.2.0 - the table is sized to the visible width once attached (no word wrap)
 // Version: 1.1.0 - input method composition
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -58,6 +59,7 @@ struct ProbeArea : UltraCanvasTextArea {
     using UltraCanvasTextArea::UltraCanvasTextArea;
     using UltraCanvasTextArea::GetContentHeight;
     using UltraCanvasTextArea::LineColumnToCursorPos;   // where the caret is drawn
+    using UltraCanvasTextArea::tablesLaidOutWidth;      // the width its tables were sized to
 };
 
 // The shape of the media viewer's Details text: a heading, a table, sections.
@@ -137,6 +139,12 @@ int main() {
     window->AddChild(plain);
     window->UpdateAndRender();
     TEST("The Markdown area lays out once it is in a window", md->GetContentHeight() > 0);
+    // Without word wrap the first layout ran before the visible width was
+    // measured, and the table kept the 100 px floor - a deck's outline in the
+    // media viewer broke "Quarter" in two in a 600 px view.
+    TEST("Its table is sized to the area's width, not the 100 px floor (" +
+             std::to_string(static_cast<int>(md->tablesLaidOutWidth)) + " px)",
+         md->tablesLaidOutWidth > 350.0f);
 
     plain->ScrollTo(50);
     window->UpdateAndRender();
