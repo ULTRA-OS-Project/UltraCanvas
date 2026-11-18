@@ -404,7 +404,8 @@ The full 3-OS dependency lists are in `.github/workflows/build.yml`. CI
 installs Ubuntu packages with `scripts/ci-apt.sh install`, not
 `sudo apt-get install`: it stops and retries a download that has stopped
 dead, which apt itself waits out for as long as the job lasts. The build's
-Linux legs also restore the packages the last run on `main` downloaded
+Linux legs, and both rows of `element-modules.yml` (one cache, which its
+static row saves), also restore the packages the last run on `main` downloaded
 (`ci-apt.sh cache-in` / `cache-out`, saved on `main` only), so a slow mirror
 serves only what changed.
 The repository has 10 GB of Actions cache, and GitHub evicts past that.
