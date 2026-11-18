@@ -1,7 +1,9 @@
 // core/UltraCanvasPresentationPptx.cpp
 // PowerPoint (.pptx) reader - see UltraCanvasPresentationPptx.h.
+// Version: 1.1.0 - mc:AlternateContent read: its first Choice that gives anything, else its
+//                  Fallback - around shapes and around runs; an equation (a14:m) gives its text
 // Version: 1.0.0
-// Last Modified: 2026-10-18
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #include "UltraCanvasPresentationPptx.h"
 #include "UltraCanvasOfficeEncryption.h"
@@ -179,6 +181,22 @@ private:
                 if (ReadShape(e, shape)) out.push_back(std::move(shape));
             } else if (Is(e, "grpSp")) {
                 ReadTree(e, rels, out);
+            } else if (Is(e, "AlternateContent")) {
+                // Markup Compatibility (ECMA-376 Part 3): PowerPoint wraps
+                // what an older reader may not know - an equation, a newer
+                // chart, a 3D model, ink - in a Choice and gives a Fallback
+                // beside it. Read the first Choice that gives a shape, else
+                // the Fallback; never both, which would read it twice.
+                bool chosen = false;
+                for (auto* branch = e->FirstChildElement(); branch && !chosen; branch = branch->NextSiblingElement()) {
+                    if (!Is(branch, "Choice")) continue;
+                    std::vector<PptxShape> shapes;
+                    ReadTree(branch, rels, shapes);
+                    if (shapes.empty()) continue;
+                    for (PptxShape& shape : shapes) out.push_back(std::move(shape));
+                    chosen = true;
+                }
+                if (!chosen) ReadTree(Child(e, "Fallback"), rels, out);
             } else if (Is(e, "graphicFrame")) {
                 const tinyxml2::XMLElement* table = Child(Child(Child(e, "graphic"), "graphicData"), "tbl");
                 if (!table) continue;
@@ -254,22 +272,57 @@ private:
             if (Child(pPr, "buNone")) para.bullet = false;
             if (Child(pPr, "buChar")) para.bullet = true;
             if (Child(pPr, "buAutoNum")) para.bullet = para.numbered = true;
-            for (auto* r = p->FirstChildElement(); r; r = r->NextSiblingElement()) {
-                if (Is(r, "br")) {
-                    para.runs.push_back({"\n", false, false, false});
-                } else if (Is(r, "r") || Is(r, "fld")) {
-                    PptxRun run;
-                    const tinyxml2::XMLElement* t = Child(r, "t");
-                    run.text = t && t->GetText() ? t->GetText() : "";
-                    const tinyxml2::XMLElement* rPr = Child(r, "rPr");
-                    run.bold = Attr(rPr, "b") == "1" || Attr(rPr, "b") == "true";
-                    run.italic = Attr(rPr, "i") == "1" || Attr(rPr, "i") == "true";
-                    const std::string u = Attr(rPr, "u");
-                    run.underline = !u.empty() && u != "none";
-                    if (!run.text.empty()) para.runs.push_back(std::move(run));
-                }
-            }
+            ReadRuns(p, para.runs);
             out.push_back(std::move(para));
+        }
+    }
+
+    // The text of an Office Math element (m:oMathPara, m:oMath): its m:t
+    // runs in order - the equation as it reads, not as it is set.
+    static void MathText(const tinyxml2::XMLElement* e, std::string& out) {
+        for (auto* c = e->FirstChildElement(); c; c = c->NextSiblingElement()) {
+            if (Is(c, "t")) {
+                if (c->GetText()) out += c->GetText();
+            } else {
+                MathText(c, out);
+            }
+        }
+    }
+
+    static void ReadRuns(const tinyxml2::XMLElement* parent, std::vector<PptxRun>& runs) {
+        for (auto* r = parent->FirstChildElement(); r; r = r->NextSiblingElement()) {
+            if (Is(r, "br")) {
+                runs.push_back({"\n", false, false, false});
+            } else if (Is(r, "r") || Is(r, "fld")) {
+                PptxRun run;
+                const tinyxml2::XMLElement* t = Child(r, "t");
+                run.text = t && t->GetText() ? t->GetText() : "";
+                const tinyxml2::XMLElement* rPr = Child(r, "rPr");
+                run.bold = Attr(rPr, "b") == "1" || Attr(rPr, "b") == "true";
+                run.italic = Attr(rPr, "i") == "1" || Attr(rPr, "i") == "true";
+                const std::string u = Attr(rPr, "u");
+                run.underline = !u.empty() && u != "none";
+                if (!run.text.empty()) runs.push_back(std::move(run));
+            } else if (Is(r, "m")) {
+                // An equation (a14:m), as PowerPoint 2010 and later store it.
+                PptxRun run;
+                MathText(r, run.text);
+                if (!run.text.empty()) runs.push_back(std::move(run));
+            } else if (Is(r, "AlternateContent")) {
+                // Inside a paragraph too: the first Choice that gives text,
+                // else the Fallback (an older reader's runs for an equation).
+                bool chosen = false;
+                for (auto* branch = r->FirstChildElement(); branch && !chosen; branch = branch->NextSiblingElement()) {
+                    if (!Is(branch, "Choice")) continue;
+                    std::vector<PptxRun> choice;
+                    ReadRuns(branch, choice);
+                    if (choice.empty()) continue;
+                    runs.insert(runs.end(), choice.begin(), choice.end());
+                    chosen = true;
+                }
+                if (!chosen)
+                    if (const tinyxml2::XMLElement* fallback = Child(r, "Fallback")) ReadRuns(fallback, runs);
+            }
         }
     }
 };

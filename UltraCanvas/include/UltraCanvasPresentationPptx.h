@@ -10,14 +10,20 @@
 // A password-protected deck is decrypted on the way in
 // (UltraCanvasOfficeEncryption.h), like a protected .xlsx or .docx.
 //
+// Markup Compatibility's mc:AlternateContent is read - around shapes and
+// around runs - through its first Choice that gives anything, else its
+// Fallback; an equation (a14:m) gives its text.
+//
 // What is not read: the layout as drawn (masters, themes, fills, fonts and
 // sizes, animations, transitions), charts, SmartArt and embedded objects.
 // Shape positions are kept as the slide gives them - a shape that inherits its
 // place from the layout has none. There is no writer.
 //
 // Specification: ECMA-376 Part 1, PresentationML (§19) and DrawingML (§20-21).
+// Version: 1.1.0 - mc:AlternateContent (Choice, else Fallback) around shapes and runs; equations
+//                  (a14:m) read as their text
 // Version: 1.0.0
-// Last Modified: 2026-10-18
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 

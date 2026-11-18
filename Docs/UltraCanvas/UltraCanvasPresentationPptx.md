@@ -107,6 +107,12 @@ reads a package already in memory.
   group's own coordinates. A shape that takes its place from the layout has
   none (0, 0, 0, 0).
 - Speaker notes: the body placeholder of the slide's notes slide.
+- `mc:AlternateContent` (Markup Compatibility, ECMA-376 Part 3), which
+  PowerPoint wraps around what an older reader may not know - an equation,
+  a newer chart, a 3D model, ink: the first `mc:Choice` that gives a shape
+  (or, inside a paragraph, text) is read, else the `mc:Fallback`; never both.
+  An equation (`a14:m`) reads as the text of its `m:t` runs ("p=r−c"), a
+  chart the reader cannot read as the picture its Fallback holds.
 - Not read: masters, layouts and themes as drawn (fonts, sizes, colours,
   fills), charts, SmartArt, embedded objects, comments, animations and
   transitions. Pictures are named, not decoded.
@@ -119,7 +125,9 @@ which python-pptx - an independent writer - builds from its default template
 order, titles, a subtitle, bullets on two levels with a bold run, a numbered
 pair, a text box at its place, speaker notes, a table, a picture's
 description and part, a hidden slide, sixty bullets, no slide-number text,
-and the outline. `office-agile-encrypted.pptx` is the same deck encrypted;
+and the outline; and the same deck rebuilt in memory with an equation
+shape, a chart with a picture as its fallback and an equation inside a
+paragraph, each read once. `office-agile-encrypted.pptx` is the same deck encrypted;
 it is refused without the password, read with it, and opened by
 `UltraCanvasFileLoader::LoadTextDocument`. The same test checks UltraFiler's
 preview page: the plain deck's slides, titles first, and no page for the
