@@ -1072,7 +1072,8 @@ long long LowestPrice(const std::string& textLower, std::string* written) {
 // "I noticed a small SEO issue on your website ... I've put together a quick
 // audit report. Would you like me to share it?" - from a stranger's free
 // mailbox, as a "Re:" to a mail never sent. Three things together: search
-// engines, the reader's own website, and an offer.
+// engines, the reader's own website, and an offer. "seo" counts only as
+// "SEO" (seo-solicitation): written small it is a name as well.
 const std::vector<std::string>& SeoPhrases() {
     static const std::vector<std::string> v = {
         "seo", "search engine optimization", "search engine optimisation",
@@ -1823,7 +1824,18 @@ ThreatReport ScanMessage(const ScanInput& input) {
     // badge, which knows the address book (FindingOnlyFromStrangers).
     {
         const std::string text = StraightQuotes(Lower(input.subject) + "\n" + bodyLower);
+        // "seo" alone counts written "SEO": in lower case it is also a name
+        // (Seo-yeon, Mr Seo), and a friend called Seo may mention a website.
         const std::string* seo = FirstWordPhraseIn(text, SeoPhrases());
+        if (seo && *seo == "seo") {
+            const std::string* other = nullptr;
+            for (const auto& p : SeoPhrases())
+                if (p != "seo" && ContainsPhrase(text, p)) { other = &p; break; }
+            const std::string bodyText = input.bodyIsHtml
+                ? UltraCanvas::HTML::ExtractPlainText(input.body) : input.body;
+            if (other) seo = other;
+            else if (!ContainsPhrase(input.subject + "\n" + bodyText, "SEO")) seo = nullptr;
+        }
         const std::string* site = FirstWordPhraseIn(text, ReaderWebsitePhrases());
         const std::string* pitch = FirstWordPhraseIn(text, PitchPhrases());
         if (seo && site && pitch && !verifiedBrand) {

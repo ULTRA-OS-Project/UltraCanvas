@@ -32,7 +32,8 @@
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
 // Version: 1.22.0 - Spam/scam warnings: fake designer goods (counterfeits), SEO offers
-//                   from strangers (seoOffers)
+//                   from strangers (seoOffers); that page's switches and every page's
+//                   "Restore default" button go through Tr
 // Version: 1.21.0 - the window's colours are the look's and follow a change of it (UltraMailTheme.h
 //                   Follow): a dark desktop gives a dark settings window, the light look
 //                   keeps its colours; the gear button too
@@ -570,7 +571,7 @@ namespace {
         d->checkMailDropdown = dropdown;
         parts.body->AddChild(dropdown);
 
-        d->resets[kPageNewMail] = PageReset{ "Restore default", 140, [d]() {
+        d->resets[kPageNewMail] = PageReset{ Tr("Restore default"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->checkMailEverySec = Preferences::kDefaultCheckMailSec;
             SyncControls(d);
@@ -623,7 +624,7 @@ namespace {
         d->switchOnQuietDropdown = dropdown;
         parts.body->AddChild(dropdown);
 
-        d->resets[kPageConnection] = PageReset{ "Restore default", 140, [d]() {
+        d->resets[kPageConnection] = PageReset{ Tr("Restore default"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->switchOnQuietSec = Preferences::kDefaultSwitchOnQuietSec;
             SyncControls(d);
@@ -710,7 +711,7 @@ namespace {
         parts.body->AddChild(d->treeFitRadio);
         parts.body->AddChild(fixedRow);
 
-        d->resets[kPageLayout] = PageReset{ "Restore default layout", 170, [d]() {
+        d->resets[kPageLayout] = PageReset{ Tr("Restore default layout"), 170, [d]() {
             if (!d->prefs) return;
             d->prefs->showReadingPane = true;
             d->prefs->folderTreeWidthMode = FolderTreeWidthMode::FitToText;
@@ -754,7 +755,7 @@ namespace {
         parts.body->AddChild(d->attachBottomRadio);
         parts.body->AddChild(d->attachRightRadio);
 
-        d->resets[kPageAttachments] = PageReset{ "Restore default", 140, [d]() {
+        d->resets[kPageAttachments] = PageReset{ Tr("Restore default"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->attachmentPlacement = AttachmentPlacement::Bottom;
             SyncControls(d);
@@ -807,7 +808,7 @@ namespace {
             ApplyAndSave(d);
         };
 
-        d->resets[kPageMessages] = PageReset{ "Restore default view", 170, [d]() {
+        d->resets[kPageMessages] = PageReset{ Tr("Restore default view"), 170, [d]() {
             if (!d->prefs) return;
             d->prefs->showHtml = true;
             d->prefs->messageTextSize = 12;
@@ -855,7 +856,7 @@ namespace {
         });
         parts.body->AddChild(d->writtenToBox);
 
-        d->resets[kPageWaiting] = PageReset{ "Restore default", 140, [d]() {
+        d->resets[kPageWaiting] = PageReset{ Tr("Restore default"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->needsAnswerMaxAgeDays = 14;
             d->prefs->needsAnswerOnlyWrittenTo = true;
@@ -956,7 +957,7 @@ namespace {
         };
         parts.body->AddChild(d->sendersInput);
 
-        d->resets[kPageImages] = PageReset{ "Restore default", 140, [d]() {
+        d->resets[kPageImages] = PageReset{ Tr("Restore default"), 140, [d]() {
             if (!d->prefs) return;
             // The choice only - the websites and senders listed are the
             // reader's own, to remove one by one.
@@ -1003,7 +1004,7 @@ namespace {
         });
         parts.body->AddChild(d->siteIconsBox);
 
-        d->resets[kPageSenderIcons] = PageReset{ "Restore default", 140, [d]() {
+        d->resets[kPageSenderIcons] = PageReset{ Tr("Restore default"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->fetchSenderIcons = false;
             d->prefs->fetchSiteIcons   = false;
@@ -1114,7 +1115,7 @@ namespace {
         parts.body->AddChild(d->linksStatusRadio);
         parts.body->AddChild(d->linksTooltipRadio);
 
-        d->resets[kPageLinks] = PageReset{ "Restore default", 140, [d]() {
+        d->resets[kPageLinks] = PageReset{ Tr("Restore default"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->linkDisplay = LinkDisplay::StatusBar;
             SyncControls(d);
@@ -1158,7 +1159,7 @@ namespace {
         parts.body->AddChild(d->treeCurrentRadio);
         parts.body->AddChild(d->treeAllRadio);
 
-        d->resets[kPageTreeview] = PageReset{ "Restore default", 140, [d]() {
+        d->resets[kPageTreeview] = PageReset{ Tr("Restore default"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->folderTreeContent = FolderTreeContent::AllAccounts;
             SyncControls(d);
@@ -1217,7 +1218,7 @@ namespace {
             parts.body->AddChild(box);
         }
 
-        d->resets[kPageEmailWarnings] = PageReset{ "Show all", 140, [d]() {
+        d->resets[kPageEmailWarnings] = PageReset{ Tr("Show all"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->warningStrip = WarningStripOptions{};
             SyncControls(d);
@@ -1246,7 +1247,7 @@ namespace {
         });
         parts.body->AddChild(d->notifyBox);
 
-        d->resets[kPageNotify] = PageReset{ "Restore default", 140, [d]() {
+        d->resets[kPageNotify] = PageReset{ Tr("Restore default"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->notifyNewMail = true;
             SyncControls(d);
@@ -1290,7 +1291,7 @@ namespace {
         parts.body->AddChild(d->sendPopupRadio);
         parts.body->AddChild(d->sendStatusRadio);
 
-        d->resets[kPageSendNotify] = PageReset{ "Restore default", 140, [d]() {
+        d->resets[kPageSendNotify] = PageReset{ Tr("Restore default"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->sendNotification = SendNotification::Popup;
             SyncControls(d);
@@ -1316,40 +1317,40 @@ namespace {
         PageParts parts = MakePage("um-set-page-scams", Tr("Spam/scam warnings"),
                 Tr("Warn about a message when it looks like:"));
 
-        struct Kind { const char* id; const char* text; bool ThreatScanOptions::* option; };
-        static const Kind kinds[] = {
+        struct Kind { const char* id; std::string text; bool ThreatScanOptions::* option; };
+        const Kind kinds[] = {
             { "um-set-warn-phishing",
-              "Phishing - links or a sender that pretend to be someone else",
+              Tr("Phishing - links or a sender that pretend to be someone else"),
               &ThreatScanOptions::phishing },
             { "um-set-warn-romance",
-              "A romance scam - a love letter from a stranger",
+              Tr("A romance scam - a love letter from a stranger"),
               &ThreatScanOptions::romance },
             { "um-set-warn-advance-fee",
-              "An advance-fee letter - millions waiting for a small fee",
+              Tr("An advance-fee letter - millions waiting for a small fee"),
               &ThreatScanOptions::advanceFee },
             { "um-set-warn-loan-offers",
-              "A loan or credit offered by anyone but your bank",
+              Tr("A loan or credit offered by anyone but your bank"),
               &ThreatScanOptions::loanOffers },
             { "um-set-warn-government",
-              "A letter in the name of the FBI, Interpol, the IMF ...",
+              Tr("A letter in the name of the FBI, Interpol, the IMF ..."),
               &ThreatScanOptions::government },
             { "um-set-warn-crypto-scams",
-              "A cryptocurrency scam - a recovery phrase, a wallet to pay into",
+              Tr("A cryptocurrency scam - a recovery phrase, a wallet to pay into"),
               &ThreatScanOptions::cryptoScams },
             { "um-set-warn-crypto-caution",
-              "Any mail about cryptocurrency (a word of caution)",
+              Tr("Any mail about cryptocurrency (a word of caution)"),
               &ThreatScanOptions::cryptoCaution },
             { "um-set-warn-counterfeits",
-              "Fake designer goods - a Rolex for $250, \"replica\" bags",
+              Tr("Fake designer goods - a Rolex for $250, \"replica\" bags"),
               &ThreatScanOptions::counterfeits },
             { "um-set-warn-seo-offers",
-              "SEO offers from strangers - \"an issue on your website\"",
+              Tr("SEO offers from strangers - \"an issue on your website\""),
               &ThreatScanOptions::seoOffers },
             { "um-set-warn-attachments",
-              "A dangerous attachment - a program, or one dressed as a document",
+              Tr("A dangerous attachment - a program, or one dressed as a document"),
               &ThreatScanOptions::attachments },
             { "um-set-warn-spam-flag",
-              "Spam, as the mail server marked it",
+              Tr("Spam, as the mail server marked it"),
               &ThreatScanOptions::spamFlag },
         };
         d->warningBoxes.clear();
@@ -1365,7 +1366,7 @@ namespace {
             parts.body->AddChild(box);
         }
 
-        d->resets[kPageScamWarnings] = PageReset{ "Warn about all", 140, [d]() {
+        d->resets[kPageScamWarnings] = PageReset{ Tr("Warn about all"), 140, [d]() {
             if (!d->prefs) return;
             d->prefs->scamWarnings = ThreatScanOptions{};
             SyncControls(d);

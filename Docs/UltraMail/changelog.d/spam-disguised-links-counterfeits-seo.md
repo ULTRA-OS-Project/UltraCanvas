@@ -21,6 +21,11 @@
   mail never sent. A sender in the address book is not called spam for it
   (the reader's own SEO agency), and a newsletter from a domain that proved
   itself only gets a hint. It has its own switch in *Settings > Warnings >
-  Spam/scam warnings*.
+  Spam/scam warnings*. "SEO" counts in capitals only, so a friend called
+  Seo is not taken for a sales pitch.
+- **The settings window speaks your language on two more counts.** The
+  switches on *Spam/scam warnings* and the "Restore default" button of every
+  settings page were shown in English whatever the language; they are now
+  translated like the rest of the window.
 - Stored verdicts made before this change are scanned again, so mail already
   in the inbox gets the new warnings.

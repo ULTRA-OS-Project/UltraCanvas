@@ -15,7 +15,8 @@
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
 // Version: 0.13.0 - unsolicited SEO offers (seo-solicitation; its own switch, seoOffers),
-//                   stronger as a "Re:" with no In-Reply-To / References
+//                   stronger as a "Re:" with no In-Reply-To / References; "seo" only
+//                   in capitals, "SEO" (in lower case it is a name: Seo-yeon)
 //                   (ScanInput::inReplyTo, references); FindingOnlyFromStrangers;
 //                   kThreatRulesRevision 2026-11-18 03:00
 // Version: 0.12.0 - links written "https:////host" or "https:\\host" are read the way

@@ -1961,6 +1961,14 @@ TEST(seo_offers) {
                  .Has("seo-solicitation"));
     REQUIRE(!scan("x@gmail.com", "Hi", "I found your website in the search results. "
                   "Nice photos!").Has("seo-solicitation"));
+    // "seo" small is a name: Seo-yeon writing about the reader's website.
+    REQUIRE(!scan("seo.yeon@gmail.com", "Photos", "Hi, it's Seo! I saw your website and "
+                  "would you like the photos from Saturday? Seo").Has("seo-solicitation"));
+    REQUIRE(scan("x@gmail.com", "Quick question", "Your website has seo issues - would you "
+                 "like a free audit? It would help its google ranking.")
+                .Has("seo-solicitation"));   // another search-engine term says it
+    REQUIRE(scan("x@gmail.com", "Hi", "I found SEO issues on your website. Would you like "
+                 "the report?").Has("seo-solicitation"));
     // A proven domain's newsletter is a hint; a proven registry brand nothing.
     ScanInput news;
     news.fromAddr = "news@seo-tool.example";
