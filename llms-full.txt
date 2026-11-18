@@ -6280,6 +6280,7 @@ first lines as of 2026-10-18.
 | [UltraMail](#ultramail) | Email client | 0.10.59 | UltraNet, UltraDatabase, UltraVault, UltraMessage |
 | [EmailCleaner](#emailcleaner) | Mailbox analysis and clean-up | 0.4.8 | UltraMail engine, UltraDatabase |
 | [UltraSocial](#ultrasocial) | Cross-posting to social networks | 0.2.2 | UltraNet, UltraDatabase, UltraVault |
+| [ChatCube](#chatcube) | Messenger: its own encrypted chats and calls, and nine networks in one window | 0.1.30 | UltraIM, UltraRTC, UltraNet, UltraVault |
 | **Security** | | | |
 | [UltraPassword](#ultrapassword) | Password vault | 0.1.4 | UltraCrypt |
 | [UltraAuthenticator](#ultraauthenticator) | TOTP / HOTP two-factor codes | 0.2.8 | UltraCrypt |
@@ -6581,6 +6582,34 @@ mail, for cleaning up cluttered or spam-heavy accounts.
 **Version:** 0.2.2 (2026-10-12).
 **Notes:** Instagram, Reddit media, LinkedIn images and AI adaptation of
 drafts are still open.
+
+### ChatCube
+
+**Purpose:** the ULTRA OS messenger - its own end-to-end encrypted chats and
+calls, and the other messengers in the same window.
+
+**Capabilities:**
+- ChatCube Direct: an ID that is a key made on the computer, chats peer to
+  peer when both sides are online and through a relay otherwise, groups
+  (public ones too), voice and video calls, a password and authenticator
+  code to protect the ID, recovery by e-mail.
+- Eight more networks, each a module loaded only once it is used: Matrix
+  (encrypted rooms included), Telegram, Mastodon direct messages, the team
+  chats Mattermost and Zulip, Signal (as a linked device through
+  signal-cli), XMPP (TLS or WebSocket) and IRC (IRCv3, TLS).
+- Texts, replies, edits, deletes, pictures, videos, files, voice and video
+  messages with a progress bar; ticks, typing (in the list too, with names
+  in groups), search through a chat's history and filters for pictures,
+  videos, sound, files and links.
+- An address in *Add* goes to the network it belongs to, and asks which when
+  more than one could take it; a status line says where each network stands.
+
+**Built on:** UltraIM (the provider modules), UltraRTC (calls), UltraNet,
+UltraVault, FileLoader, the QR code element.
+**Version:** 0.1.30 (2026-11-18).
+**Notes:** Signal needs signal-cli installed; calls are ChatCube Direct's
+only. The relay server is `Server/ChatCubeRelay`. Docs:
+`Apps/ChatCube/README.md`, `Docs/Modules/UltraIM/README.md`.
 
 ---
 
@@ -7097,6 +7126,7 @@ how UltraCanvas compares with Qt, GTK and others, see
 | [UltraCloud](#ultracloud) | Cloud storage accounts, uploads and share links | ✅ |
 | [UltraAI](#ultraai) | Provider-agnostic AI: LLM, speech, vision, generation | ✅ |
 | [UltraMessage](#ultramessage) | Messages, notifications and commands between applications | 🟡 |
+| [UltraIM](#ultraim) | Instant messaging: one API over ChatCube Direct, Matrix, Telegram, Mastodon, Mattermost, Zulip, Signal, XMPP and IRC | ✅ |
 | [WasmHost](#wasmhost) | Sandboxed WebAssembly runtime for applications | 🟡 |
 | [UltraWin](#ultrawin) | Windows applications on Linux as native windows | 🟡 |
 | [UltraAndroid](#ultraandroid) | Android applications on Linux as native windows | 📝 |
@@ -7436,6 +7466,23 @@ use it.
 
 **Docs:** `Docs/Modules/UltraMessage/`.
 
+### UltraIM
+
+**Purpose:** instant messaging without a UI of its own: one API
+(`UltraIM_*`) over every network, each network a provider module loaded on
+demand - the networks in use at start (`ultraim-providers.txt` in the data
+folder), the others when they are asked for.
+
+**Capabilities:** sign-in in steps (codes, a QR code, the browser), the
+conversations of every network merged, messages, replies, edits, deletes,
+attachments with progress, ticks, typing, presence, search, groups, calls
+where the network has them; events through one dispatcher onto the UI
+thread. Providers: ChatCube Direct (its own relay and peer to peer), Matrix,
+Telegram (TDLib), Mastodon, Mattermost, Zulip, Signal (signal-cli), XMPP
+(TCP or WebSocket) and IRC, each tested against a stand-in server.
+
+**Docs:** `Docs/Modules/UltraIM/README.md`.
+
 ### WasmHost
 
 **Purpose:** runs WebAssembly modules for UltraCanvas applications, safely.
@@ -7525,6 +7572,7 @@ more detail in [UltraOSApplicationOverview.md](UltraOSApplicationOverview.md).
 | UltraMail | Mail client | UltraNet, UltraDatabase, UltraVault, UltraCloud |
 | EmailCleaner | Clean-up of large, old mailboxes | UltraNet, UltraDatabase |
 | UltraSocial | Posting to social networks | UltraNet, UltraDatabase, UltraVault, UltraCrypt |
+| ChatCube | Messenger: its own encrypted chats and calls, and eight more networks | UltraIM, UltraRTC, UltraNet, UltraVault |
 | UltraWeb | Browser for web pages and WebAssembly apps | HTMLReader, WasmHost |
 | UltraPress | Website and shop builder that publishes WebAssembly | UltraNet, UltraCloud |
 | UltraAIApp | Dashboard for the AI services | UltraAI |
@@ -104283,6 +104331,25 @@ the merged conversation fetch and every forwarding call; the ChatCube
 Direct, Matrix, Telegram, Mastodon, Mattermost, Zulip, Signal, XMPP and IRC
 providers (above).
 
+The providers' `GetCapabilities()` (`UltraIMCapabilityFlags`), as they stand -
+every one has TextMessages, AddContact, CreateGroup, GroupChats,
+LeaveConversation, OfflineMessages and SearchMessages:
+
+| Provider (module) | Files, images, voice notes | Edit, delete | Reply | Typing | Read receipts | E2E | Calls | Other |
+|---|---|---|---|---|---|---|---|---|
+| `direct` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Voice, Video | PeerToPeer, ManageGroups, AccountProfile, SignInProtection, AccountRecovery, AnonymousLogin |
+| `matrix` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | ManageGroups, MultiDevice |
+| `telegram` | ✓ | ✓ | ✓ | ✓ | ✓ | | | ManageGroups, MultiDevice, Channels, Stickers |
+| `mastodon` | ✓ (pictures, video, sound) | ✓ | ✓ | | | | | MultiDevice |
+| `mattermost` | ✓ | ✓ | ✓ | ✓ | | | | MultiDevice |
+| `zulip` | ✓ | ✓ | | ✓ | | | | MultiDevice |
+| `signal` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | | MultiDevice |
+| `xmpp` | ✓ | ✓ | ✓ | ✓ | ✓ | | | MultiDevice |
+| `irc` | | | ✓ | ✓ | | | | |
+
+Modules are loaded on demand (*Writing a provider* above): an application
+loads the networks in use at start and the others when they are asked for.
+
 ==============================================================================
 FILE: Docs/Modules/UltraLocalisation/README.md
 ==============================================================================
@@ -115348,42 +115415,6 @@ folder.
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
 
 ==============================================================================
-FILE: Docs/UltraMail/changelog.d/spam-disguised-links-counterfeits-seo.md
-==============================================================================
-
-- **Spam whose links are written `https:////host` is caught.** A link with
-  extra slashes after `https:` (or backslashes: `https:\\host`) still opens
-  the site in the browser, but the scan read it as a link with no site, so
-  none of the link checks applied to it. A "Rolex from $250" mail that did
-  this everywhere showed no warning at all. Those links now keep their site,
-  and writing a link that way is itself a warning (`link-disguised-address`,
-  under the phishing switch).
-- **Fake designer goods are told.** A mail selling a luxury watch or bag
-  (Rolex, Patek Philippe, Cartier, Louis Vuitton, a Birkin ...) for less than
-  any genuine one costs, or calling it a "replica", "1:1 copy" or "AAA
-  quality", is marked (`counterfeit-goods`), and the reading pane says
-  *counterfeit goods*, with advice not to order or pay. It has its own switch
-  in *Settings > Warnings > Spam/scam warnings*. Not for the brand's own
-  domain; a shop that proved its own domain, in its own bulk mail, only gets
-  a hint for a low price.
-- **SEO offers from strangers are marked as spam.** "I noticed a small SEO
-  issue on your website ... would you like the audit report?" - an offer of
-  search engine services for the reader's own website - gets the *Likely
-  spam* badge and a warning strip with advice not to answer
-  (`seo-solicitation`), more so from a free mailbox and as a "Re:" to a
-  mail never sent. A sender in the address book is not called spam for it
-  (the reader's own SEO agency), and a newsletter from a domain that proved
-  itself only gets a hint. It has its own switch in *Settings > Warnings >
-  Spam/scam warnings*. "SEO" counts in capitals only, so a friend called
-  Seo is not taken for a sales pitch.
-- **The settings window speaks your language on two more counts.** The
-  switches on *Spam/scam warnings* and the "Restore default" button of every
-  settings page were shown in English whatever the language; they are now
-  translated like the rest of the window.
-- Stored verdicts made before this change are scanned again, so mail already
-  in the inbox gets the new warnings.
-
-==============================================================================
 FILE: Docs/UltraVideo/README.md
 ==============================================================================
 
@@ -115704,7 +115735,7 @@ FILE: Docs/UltraPress/README.md
 # UltraPress
 
 **Status:** Phase 1 under way. UltraPress 0.8 is the headless engine, the
-`ultrapress` program - the commands and the editor window -, the block
+`UltraPress` program - the commands and the editor window -, the block
 renderer on real elements, the WordPress importer, the publisher onto
 web hosts and the media library: a site as a folder of JSON files, the
 block registry, the HTML shadow of every page, the static publish, every
@@ -115737,12 +115768,12 @@ This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
 ## The window
 
 ```bash
-ultrapress                    # the start window: open a site folder, or create a new site in one
-ultrapress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
-ultrapress mysite --check     # render every page without a window; element counts and warnings
+UltraPress                    # the start window: open a site folder, or create a new site in one
+UltraPress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
+UltraPress mysite --check     # render every page without a window; element counts and warnings
 ```
 
-`ultrapress` is one program: a command word first (`new`, `check`, `page`,
+`UltraPress` is one program: a command word first (`new`, `check`, `page`,
 `publish`, `import`, `hosts`, `help`) runs that command without a window, a
 site folder opens the editor. There is no second `UltraPress` binary: two
 names that differ only in case are one name on macOS and Windows. Started
@@ -115766,7 +115797,7 @@ host). An FTP / SFTP host is asked for its protocol, its name or address
 and its port (empty: the protocol's own), and its private key is chosen
 with a file dialog. The sign-in is reported on the console as it happens -
 where, as whom, the session's steps, how it ended and the transport's
-diagnostics - the way `ultrapress hosts add` reports one, so a host that
+diagnostics - the way `UltraPress hosts add` reports one, so a host that
 refused can be read step by step. Without a host of its own the site
 publishes to the default host; without any, Publish opens the dialog.
 
@@ -115890,13 +115921,13 @@ banner leads to the latest. **A blog** comes with any site that has posts:
   picture fetched first, a card's and a picture block's lazily;
 - WebP alone where the machine's image library writes no AVIF.
 
-`ultrapress docs` publishes a folder of Markdown on its own, with no
+`UltraPress docs` publishes a folder of Markdown on its own, with no
 UltraPress site around it. A link out of the folder goes to
 `--source-url` plus its path under `--source-root`, which is a
 repository's file view. This repository's own `Docs/` builds this way:
 
 ```bash
-ultrapress docs Docs out --name "UltraCanvas docs" --url https://docs.example.org \
+UltraPress docs Docs out --name "UltraCanvas docs" --url https://docs.example.org \
     --source-root . --source-url https://github.com/<owner>/<repo>/blob/main/ \
     --edit-url https://github.com/<owner>/<repo>/edit/main/Docs/ \
     --exclude CHANGELOG.md --exclude changelog.d --sizes
@@ -115905,28 +115936,28 @@ ultrapress docs Docs out --name "UltraCanvas docs" --url https://docs.example.or
 ## The command line
 
 ```bash
-ultrapress new mysite --name "My site" --url https://my.example   # a starter site
-ultrapress check mysite                                           # every problem, exit 1 when there is one
-ultrapress page mysite home                                       # the front page's HTML shadow, to stdout
-ultrapress publish mysite out                                     # the site's output, into out/
-ultrapress publish mysite out --sizes                             # and what every page and asset weighs
-ultrapress docs Docs out --name "My docs" --url https://docs.my.example   # a Markdown folder as a documentation site
-ultrapress serve mysite --port 3000                               # look at it on this computer: built, served on 127.0.0.1, rebuilt on a change
-ultrapress publish mysite out --precompress                       # with a .gz (and .br) copy beside every page, stylesheet and script
-ultrapress publish mysite out --output wasm --renderer ultrapress-0.1.0.js   # the WebAssembly output, the renderer referenced (later)
-ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
-ultrapress hosts                                                  # the hosts a site can be published to
-ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
-ultrapress hosts add ftp --server sftp://my.example --port 2222 --user me       # on a port that is not the protocol's own
-ultrapress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
-ultrapress publish mysite out --to site                           # write, then upload what changed onto the site's host
-ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
-ultrapress publish mysite out --to site --prune                   # and delete on the host what the site no longer has
-ultrapress hosts add ftp --server sftp://my.example --user me --key ~/.ssh/id_ed25519   # SFTP with a key (the password: its passphrase)
-ultrapress media mysite                                           # every file under media/: kind, size, uses
-ultrapress media mysite add ~/Pictures/launch.png                 # copied in as media/launch.png
-ultrapress media mysite remove media/launch.png                   # deleted, unless a page uses it
-ultrapress media mysite prune                                     # every unused file deleted
+UltraPress new mysite --name "My site" --url https://my.example   # a starter site
+UltraPress check mysite                                           # every problem, exit 1 when there is one
+UltraPress page mysite home                                       # the front page's HTML shadow, to stdout
+UltraPress publish mysite out                                     # the site's output, into out/
+UltraPress publish mysite out --sizes                             # and what every page and asset weighs
+UltraPress docs Docs out --name "My docs" --url https://docs.my.example   # a Markdown folder as a documentation site
+UltraPress serve mysite --port 3000                               # look at it on this computer: built, served on 127.0.0.1, rebuilt on a change
+UltraPress publish mysite out --precompress                       # with a .gz (and .br) copy beside every page, stylesheet and script
+UltraPress publish mysite out --output wasm --renderer ultrapress-0.1.0.js   # the WebAssembly output, the renderer referenced (later)
+UltraPress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
+UltraPress hosts                                                  # the hosts a site can be published to
+UltraPress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
+UltraPress hosts add ftp --server sftp://my.example --port 2222 --user me       # on a port that is not the protocol's own
+UltraPress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
+UltraPress publish mysite out --to site                           # write, then upload what changed onto the site's host
+UltraPress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
+UltraPress publish mysite out --to site --prune                   # and delete on the host what the site no longer has
+UltraPress hosts add ftp --server sftp://my.example --user me --key ~/.ssh/id_ed25519   # SFTP with a key (the password: its passphrase)
+UltraPress media mysite                                           # every file under media/: kind, size, uses
+UltraPress media mysite add ~/Pictures/launch.png                 # copied in as media/launch.png
+UltraPress media mysite remove media/launch.png                   # deleted, unless a page uses it
+UltraPress media mysite prune                                     # every unused file deleted
 ```
 
 `import` reads a WordPress export (Tools > Export in WordPress, the WXR
@@ -116025,7 +116056,7 @@ against it.
   blocks are the owner's own HTML and pass through.
 - `UltraPressSite.h` - the HTML + JavaScript output: `PublishHtml` through
   UltraSite (with the site's `docs/`), `Publish` (the site's output, or
-  `PublishOptions::output`), `PublishDocsFolder` (`ultrapress docs`),
+  `PublishOptions::output`), `PublishDocsFolder` (`UltraPress docs`),
   `ThemeTokens`, `BlockStylesheet`, `HasHtmlOutput`. `HtmlEmitter::Parts`
   gives it each page's body, title, description, social picture and
   structured data.
@@ -116082,7 +116113,7 @@ MKCOL, outermost first). A site names its host and the folder on it in
 "hosting": { "account": "ftp-me-my-example", "path": "/public_html" }
 ```
 
-`ultrapress hosts use` writes it; the window's Host… button does the same,
+`UltraPress hosts use` writes it; the window's Host… button does the same,
 from the protocol, server and port it asks for (`FtpServerUrl`); on the
 command line the port is `--port`, or part of the URL (`sftp://my.example:2222`),
 the two storing the same host. A server URL that is not FTP - `https://`,
@@ -116111,7 +116142,7 @@ copies the chosen file into `media/` under a clean name; **Remove** deletes
 a file nothing uses, **Remove unused** every such file; **Choose** puts the
 path into the property and the preview shows the picture in its own shape. **Media library…** in the side column opens the same
 dialog to browse.
-Without UltraCloud the program says so, and `ultrapress publish` still
+Without UltraCloud the program says so, and `UltraPress publish` still
 writes the folder to upload by other means.
 
 ## Not yet
