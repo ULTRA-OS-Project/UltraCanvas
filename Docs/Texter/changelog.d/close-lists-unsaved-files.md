@@ -7,3 +7,6 @@
   one; Texter now switches to each file's tab before it is saved, so the Save
   dialog a new file needs, or the message about a file that could not be
   written, is plainly about the file on screen.
+- **Closing one tab shows it before asking.** Closing a tab that is not the
+  current one (with its x) asked "Save changes to …?" over another file; Texter
+  now switches to that tab first.

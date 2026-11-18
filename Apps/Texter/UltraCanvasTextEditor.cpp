@@ -3,7 +3,7 @@
 // Version: 2.9.0 - closing with unsaved files lists them (name, folder) in the question, as the file
 //                  display lists the files of a delete; saving them shows each file's tab before its
 //                  Save dialog (painted before the dialog opens), and a save that fails shows its tab
-//                  before saying so
+//                  before saying so; closing one tab with unsaved changes shows that tab before asking
 // Version: 2.8.0 - a window started dark has dark chrome (the theme was only laid over it on a change);
 //                  View > Dark Mode: Document Background (dark / light grey / white text tabs under a dark look)
 // Version: 2.7.0 - the status bar shows which dictionary the active document is spell checked against; a click opens the Spelling menu
@@ -5109,6 +5109,23 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (onComplete) {
                 onComplete(true);
             }
+            return;
+        }
+
+        // The tab asked about is the one on show - closing a tab that is not
+        // the current one (its x) asked about a file behind another. Painted
+        // before the question opens: a native message box holds the event
+        // loop, and the window behind it would still show the old tab.
+        if (docIndex != activeDocumentIndex) {
+            SwitchToDocument(docIndex);
+            AfterRepaint([this, doc, onComplete]() {
+                auto it = std::find(documents.begin(), documents.end(), doc);
+                if (it == documents.end()) {
+                    if (onComplete) onComplete(false);
+                    return;
+                }
+                ConfirmSaveChanges(static_cast<int>(it - documents.begin()), onComplete);
+            });
             return;
         }
 
