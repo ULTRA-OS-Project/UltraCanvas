@@ -2,8 +2,11 @@
 // Reusable lightbox image viewer: a zoomable / pannable image above a dark
 // info panel, opened in its own window. Shared by the markdown renderer's
 // image-click action and the Album photo viewer.
+// Version: 1.2.0 - ZoomPanImage: SetFitEnlarges (a small image starts at its own
+//   size) and SetPanKeptInView (moves only while zoomed past the view, never
+//   off it); GetZoom
 // Version: 1.1.0
-// Last Modified: 2026-07-12
+// Last Modified: 2026-11-18
 // V1.1.0: Animated images (GIF / animated WebP) now play in the lightbox — the
 //   zoom / pan surface steps them with a UCImageAnimationController, matching
 //   UltraCanvasImageElement.
@@ -37,13 +40,31 @@ public:
     // reads correctly.
     void SetCanvasColor(const Color& c) { canvasColor = c; RequestRedraw(); }
     void ResetView() { needsFit = true; RequestRedraw(); }
+    // Whether fit-to-view enlarges an image smaller than the view (default
+    // true). Off, a small image starts at its own size - as ImageFitMode::
+    // ScaleDown shows it - and the wheel zooms in from there.
+    void SetFitEnlarges(bool enlarge) { fitEnlarges = enlarge; needsFit = true; RequestRedraw(); }
+    // Keep the image in view (default false: it can be dragged anywhere).
+    // On, an axis on which the image fits the view stays centred, and on an
+    // axis where it is larger its edges never come inside the view's: an
+    // image shown whole does not move, a zoomed one moves as far as its
+    // edges, and the cursor says which (four arrows only when it can move).
+    void SetPanKeptInView(bool keep) { panKeptInView = keep; RequestRedraw(); }
+    // The zoom now, as a multiple of the starting scale (1.0 == the start)
+    double GetZoom() const { return zoom; }
 
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
+    UCMouseCursor GetMouseCursor() const override;
 
 private:
     bool HandleZoom(const UCEvent& event);
     void ApplyZoomFactorAtCursor(double factor, const Point2Di& cursor);
+    // The scale zoom 1.0 shows the image at: fit-to-view, no larger than
+    // 1:1 when fitEnlarges is off
+    double StartScale(const Rect2Df& bounds, double imageW, double imageH) const;
+    // With panKeptInView: the pan brought back so the image stays in view
+    void KeepPanInView(const Rect2Df& bounds, double shownW, double shownH);
 
     std::shared_ptr<UCImage> image;
     // Steps animated images (GIF / animated WebP) on the app timer; zoom and
@@ -58,6 +79,9 @@ private:
     UltraCanvasSmoothZoom zoomAnim;
     Point2Di zoomCursor;
     double panX = 0.0, panY = 0.0;
+    bool   fitEnlarges = true;
+    bool   panKeptInView = false;
+    bool   canPan = true;         // the image is larger than the view on an axis (panKeptInView)
     bool   dragging = false;
     double lastX = 0.0, lastY = 0.0;
 };

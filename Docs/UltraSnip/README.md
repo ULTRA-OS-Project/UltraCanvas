@@ -69,6 +69,11 @@ was done (the whole path in its tooltip):
 | Open folder | | the saved file's folder in the file manager |
 | Edit in UltraPaint | | the saved picture in UltraPaint (saved first when it was not) |
 
+The picture is shown whole, and never larger than it was taken. The mouse
+wheel zooms it about the cursor; once it is larger than the window, drag it
+to move it - as far as its edges, no further. A double-click shows it whole
+again.
+
 ## Videos
 
 With *Video* chosen, the area you pick is recorded instead:

@@ -1,5 +1,8 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.9.0 - the picture in an UltraCanvasZoomPanImage: the wheel zooms it about the
+//                  cursor, a drag moves it while it is larger than the pane (never off it),
+//                  a double-click fits it again; a small snip still starts at its own size
 // Version: 0.8.0 - the bar, the snip's ground, the rules and the status line are the theme's
 //                  roles, again on every theme change (ApplyLook): a dark desktop gives a dark bar
 // Version: 0.7.1 - the kit's colours and sizes as functions (UltraCanvasSettingsPageKit 1.2.0)
@@ -32,7 +35,7 @@
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
-#include "UltraCanvasImageElement.h"
+#include "UltraCanvasImageViewer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasPathUtf8.h"
@@ -329,8 +332,14 @@ std::shared_ptr<UltraCanvasContainer> UltraSnipWindow::BuildContent() {
     content_->SetBorderTop(1, LineColor());
     content_->SetPadding(12);
 
-    picture_ = CreateImageElement("snip.picture", 0, 0, 0, 0);
-    picture_->SetFitMode(ImageFitMode::ScaleDown);
+    // Shown whole and never enlarged, as before; the wheel zooms about the
+    // cursor, a drag moves it once it is larger than the pane, a double-click
+    // fits it again
+    picture_ = std::make_shared<UltraCanvasZoomPanImage>("snip.picture");
+    picture_->SetFitEnlarges(false);
+    picture_->SetPanKeptInView(true);
+    picture_->SetCanvasColor(CanvasColor());
+    picture_->SetTooltip(Tr("Scroll to zoom, drag to move, double-click to fit"));
     picture_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     picture_->SetVisible(false);
     content_->AddChild(picture_);
@@ -804,7 +813,7 @@ void UltraSnipWindow::ShowPicture() {
     }
     if (picture_) {
         // Straight from the pixels; the PNG is for the clipboard and the file
-        picture_->LoadFromImage(UCImage::FromRgba(resultImage_.pixels.data(), resultImage_.width, resultImage_.height));
+        picture_->SetImage(UCImage::FromRgba(resultImage_.pixels.data(), resultImage_.width, resultImage_.height));
         picture_->SetVisible(true);
     }
     SetCompact(false);
@@ -842,7 +851,7 @@ void UltraSnipWindow::SetStatus(const std::string& text, bool error) {
 
 // The colours set by hand, from the theme now in force: the bar, its rule,
 // the snip's ground, the status line and the kit's buttons (the segmented
-// choices, the image and the media viewer follow the theme by themselves).
+// choices and the media viewer follow the theme by themselves).
 void UltraSnipWindow::ApplyLook() {
     if (!window_) return;
     window_->SetBackgroundColor(CanvasColor());
@@ -852,6 +861,7 @@ void UltraSnipWindow::ApplyLook() {
         content_->SetBackgroundColor(CanvasColor());
         content_->SetBorderTop(1, LineColor());
     }
+    if (picture_) picture_->SetCanvasColor(CanvasColor());   // the ground around a picture shown whole
     if (status_) status_->SetTextColor(statusError_ ? ErrorColor() : StatusColor());
     for (const auto& button : {startButton_, saveButton_, copyButton_, folderButton_, paintButton_, settingsButton_}) {
         if (!button) continue;

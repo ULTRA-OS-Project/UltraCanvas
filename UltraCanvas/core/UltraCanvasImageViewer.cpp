@@ -1,8 +1,10 @@
 // core/UltraCanvasImageViewer.cpp
 // Implementation of the reusable lightbox image viewer (zoom / pan image +
 // info panel in its own window). Shared by the markdown renderer and Album.
+// Version: 1.2.0 - ZoomPanImage: SetFitEnlarges, SetPanKeptInView (the pan
+//   clamped to the image's edges, applied after every drag, zoom and resize)
 // Version: 1.1.0
-// Last Modified: 2026-07-12
+// Last Modified: 2026-11-18
 // V1.1.0: Animated images (GIF / animated WebP) now play in the lightbox — the
 //   zoom / pan surface steps them with a UCImageAnimationController and draws
 //   the controller's current frame, so zoom / pan apply to the live animation.
@@ -52,11 +54,13 @@ namespace UltraCanvas {
         if (image && image->IsValid()) {
             const double iw = std::max(1, image->GetWidth());
             const double ih = std::max(1, image->GetHeight());
-            const double fit = std::min(b.width / iw, b.height / ih);
+            const double fit = StartScale(b, iw, ih);
             if (needsFit) { zoom = 1.0; panX = panY = 0.0; needsFit = false; }
             const double s     = fit * zoom;
             const double dispW = iw * s;
             const double dispH = ih * s;
+            // A drag, a zoom or a smaller view may have taken it off the view
+            KeepPanInView(b, dispW, dispH);
             const double left  = b.width  * 0.5 + panX - dispW * 0.5;
             const double top   = b.height * 0.5 + panY - dispH * 0.5;
             if (auto framePm = animator.GetCurrentFramePixmap()) {
@@ -94,6 +98,15 @@ namespace UltraCanvas {
                     panY += event.pointer.y - lastY;
                     lastX = event.pointer.x;
                     lastY = event.pointer.y;
+                    if (image && image->IsValid()) {
+                        // Clamped now, not only at the next frame, so a drag
+                        // past the edge does not have to be undone first
+                        const Rect2Df b = GetLocalBounds();
+                        const double iw = std::max(1, image->GetWidth());
+                        const double ih = std::max(1, image->GetHeight());
+                        const double s = StartScale(b, iw, ih) * zoom;
+                        KeepPanInView(b, iw * s, ih * s);
+                    }
                     RequestRedraw();
                     return true;
                 }
@@ -137,7 +150,7 @@ namespace UltraCanvas {
         const Rect2Df b = GetLocalBounds();
         const double iw = std::max(1, image->GetWidth());
         const double ih = std::max(1, image->GetHeight());
-        const double fit = std::min(b.width / iw, b.height / ih);
+        const double fit = StartScale(b, iw, ih);
         if (fit <= 0.0) return;
 
         const double sOld    = fit * zoom;
@@ -159,6 +172,34 @@ namespace UltraCanvas {
         const double sNew = fit * zoom;
         panX = (cursor.x - b.width  * 0.5) - (imgX * sNew - iw * sNew * 0.5);
         panY = (cursor.y - b.height * 0.5) - (imgY * sNew - ih * sNew * 0.5);
+        KeepPanInView(b, iw * sNew, ih * sNew);
+    }
+
+    double UltraCanvasZoomPanImage::StartScale(const Rect2Df& b, double iw, double ih) const {
+        const double fit = std::min(b.width / iw, b.height / ih);
+        return fitEnlarges ? fit : std::min(fit, 1.0);
+    }
+
+    // On each axis: an image narrower than the view is centred on it, a wider
+    // one keeps its edges at or beyond the view's. The pan is the image
+    // centre's offset from the view centre, so the room on an axis is half
+    // of what the image overhangs the view by.
+    void UltraCanvasZoomPanImage::KeepPanInView(const Rect2Df& b, double shownW, double shownH) {
+        if (!panKeptInView) {
+            canPan = true;
+            return;
+        }
+        const double roomX = std::max(0.0, (shownW - b.width) * 0.5);
+        const double roomY = std::max(0.0, (shownH - b.height) * 0.5);
+        panX = std::clamp(panX, -roomX, roomX);
+        panY = std::clamp(panY, -roomY, roomY);
+        // Half a pixel of overhang is rounding, not something to drag
+        canPan = roomX > 0.5 || roomY > 0.5;
+    }
+
+    UCMouseCursor UltraCanvasZoomPanImage::GetMouseCursor() const {
+        if (panKeptInView && !canPan && !dragging) return UCMouseCursor::Default;
+        return UltraCanvasUIElement::GetMouseCursor();
     }
 
 // ===== LIGHTBOX VIEWER WINDOW =====
