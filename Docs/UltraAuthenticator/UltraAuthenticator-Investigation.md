@@ -202,11 +202,11 @@ wrapped-engines rule, or stalled at design stage.
 
 | Consumer | Needs | Current state |
 |---|---|---|
-| **UCD file format v2** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`) | XChaCha20-Poly1305, Argon2id, HKDF, SHA-256 (cipher and KDF fixed to one each by the 2026-08-10 ruling) | **Specified in detail; none of the primitives exist.** §4.3 defines the per-section compress→encrypt pipeline, §4.4 the SuperVault remote-authorization record. The format cannot be implemented as written. |
+| **UCD file format v2** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`) | XChaCha20-Poly1305, Argon2id, HKDF, SHA-256 (cipher and KDF fixed to one each by the 2026-08-10 ruling) | Was specified in detail with none of the primitives in existence (§4.3 the per-section compress→encrypt pipeline, §4.4 the SuperVault remote-authorization record). The container and its password protection have since been implemented on UltraCrypt (`UltraCanvasUCDContainer.h`); SuperVault is still to come |
 | **UltraCanvasDocument** (v1 doc encryption) | AES-256, PBKDF2, password hashing | Was implemented by `#include <openssl/aes.h>` **directly inside a plugin** — a house-rule violation — and broken (see below). Since rewritten on UltraCrypt as `UCDCryptoEnvelope`; the file itself, which never compiled, is removed |
 | **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. The hand-rolled `Apps/AnchorPoint/net/Sha256.h` is deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
 | **UltraVault** | KDF + AEAD for its file-backed fallback backend, per-platform keyring glue | Was design doc only; v0.1 has since shipped with Memory and File backends built on UltraCrypt. Native keyring backends still planned |
-| **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
+| **UltraDatabase** | At-rest encryption | Was listed as a Stage 3 item, unstarted; SQLite files are now encrypted at rest on UltraCrypt (`UltraDatabaseEncryption.h`) |
 | **UltraAuthenticator** (this app) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare | ✅ Unblocked and built on UltraCrypt: OTP engine, vault, account layer and app shell |
 
 **Correction (2026-08-10):** an earlier revision of this document stated that

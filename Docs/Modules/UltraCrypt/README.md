@@ -1,9 +1,10 @@
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
-**Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
+**Status:** Stages 1, 2 and 5 implemented and under test; stages 3 and 4 in
+progress (§8).
 **Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-10-21
+**Last Modified:** 2026-11-18
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
@@ -69,24 +70,25 @@ BLAKE3-256, once listed as optional, has been dropped altogether (§9).
 
 ## 1. Why this module exists
 
-There is currently **no sanctioned way for UltraCanvas code to compute a hash,
-an HMAC, derive a key, or encrypt a blob.** Outside vendored third-party
-code, only three files in the repository touch a crypto library, and all three
-are TLS backends doing TLS.
+Before this module there was **no sanctioned way for UltraCanvas code to
+compute a hash, an HMAC, derive a key, or encrypt a blob.** Outside vendored
+third-party code, only three files in the repository touched a crypto
+library, and all three were TLS backends doing TLS.
 
-The result is that every component needing cryptography has independently
-hand-rolled one, reached around the rules, or stalled at design stage:
+The result was that every component needing cryptography had independently
+hand-rolled one, reached around the rules, or stalled at design stage. The
+last column says where each stands now:
 
 | Consumer | Requires | State today |
 |---|---|---|
-| **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Fully specified; **none of the primitives exist**, so the format cannot be implemented as written |
+| **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Was fully specified with **none of the primitives in existence**. Now implemented as far as the container and its password protection: sections sealed with XChaCha20-Poly1305 under an Argon2id key (`UltraCanvasUCDContainer.h`, `UCDContainerTest`). SuperVault (§4.4) is still to come |
 | **UltraCanvasDocument** (UCD v1 encryption) | AEAD + password KDF | **Resolved** — the cryptography is `UCDCryptoEnvelope`, on UltraCrypt; the v1 document code itself has since been removed. See §1.1 for what it was |
 | **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. `Apps/AnchorPoint/net/Sha256.h` has been deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
-| **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Design doc only |
-| **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
-| **UltraAuthenticator** ([investigation](../../UltraAuthenticator/UltraAuthenticator-Investigation.md)) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare, secure memory | Blocked |
+| **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Was a design document only. v0.1 has shipped with a Memory and a File backend, the file sealed with XChaCha20-Poly1305 under an Argon2id key; native keyring backends are still planned |
+| **UltraDatabase** | At-rest encryption | ✅ Done for SQLite: every page of the database, its WAL and its journal sealed with XChaCha20-Poly1305 (`UltraDatabaseEncryption.h`) |
+| **UltraAuthenticator** ([investigation](../../UltraAuthenticator/UltraAuthenticator-Investigation.md)) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare, secure memory | ✅ Unblocked and built on UltraCrypt: the OTP engine (since moved here, §5.13), its vault, its account layer and the application |
 
-Six consumers, one missing service. That is the case for building it once.
+Six consumers, one missing service. That was the case for building it once.
 
 ### 1.1 What the absence already produced
 
@@ -1343,7 +1345,7 @@ is part of the deliverable, not a follow-up:
 |---|---|
 | **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
-| **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
+| **3** | ◐ **All but one item** — the v1 document encryption rewritten on UltraCrypt as `UCDCryptoEnvelope` (§1.1), `AnchorPoint/net/Sha256.h` retired, the UCD v2 container written with its password protection (`UltraCanvasUCDContainer.h`), SQLite files encrypted at rest (`UltraDatabaseEncryption.h`), UltraVault's file backend shipped. Still to do: UCD v2's SuperVault key source (spec §4.4), which the container refuses to open so far |
 | **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog; AES-CBC for foreign formats (§5.9). Still optional: XChaCha20-Poly1305 at volume, key agreement |
 | **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME; RSA / ECDSA checks (§5.12), for the UltraDBAdmin relay's sign-in |
 
