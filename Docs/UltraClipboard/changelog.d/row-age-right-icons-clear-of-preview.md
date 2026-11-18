@@ -5,3 +5,9 @@
   covers the right part of the list, and with it the icons at the row's right
   edge; the selected row and the previewed one now show Copy, Edit, Save as
   and Delete just left of the preview.
+- **Spreadsheets and documents in the preview.** Resting on copied files
+  previews a spreadsheet (.ods, .xlsx, .xls, .csv) in the viewer, scrollable,
+  and a word-processing document (.odt, .docx, .doc) as its first page, laid
+  out with its fonts, pictures and tables. The page is drawn in the
+  background and the preview opens when it is ready (once per document, again
+  after it is saved); a PDF was previewed already.
