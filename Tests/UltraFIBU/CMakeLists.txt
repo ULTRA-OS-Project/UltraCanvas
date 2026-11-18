@@ -106,9 +106,9 @@ set_tests_properties(UltraFIBUEngine PROPERTIES
 # ---------------------------------------------------------------------------
 # The start window's page, without a window. Unlike the engine suite this one
 # needs the UI library (the page is UltraCanvasStartPage), so it is built only
-# where the ultrafibu window is; it opens no window and needs no display.
+# where the UltraFIBU window is; it opens no window and needs no display.
 # ---------------------------------------------------------------------------
-if(TARGET ultrafibu AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+if(TARGET UltraFIBU AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
     add_executable(UltraFIBUStartTests
         UltraFIBUStartTests.cpp
         ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/ui/UltraFIBUStart.cpp

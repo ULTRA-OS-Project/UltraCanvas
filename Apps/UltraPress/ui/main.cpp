@@ -1,5 +1,5 @@
 // Apps/UltraPress/ui/main.cpp
-// ultrapress: the one UltraPress program - the commands and the window.
+// UltraPress: the one UltraPress program - the commands and the window.
 // A command word first (new, check, page, publish, import, hosts, media, help) runs that
 // command without a window (cli/UltraPressCli.h); a site folder opens it in
 // the editor - the pages and the current page's blocks on the left, the
@@ -7,17 +7,17 @@
 // properties on the right (ui/UltraPressWindow.h). The renderer is the one
 // that becomes the published page under Emscripten.
 //
-//   ultrapress                       the start window: open a site folder, or create a site
-//   ultrapress <site-dir>            open a site folder in the editor
-//   ultrapress <site-dir> --check    render every page without a window and
+//   UltraPress                       the start window: open a site folder, or create a site
+//   UltraPress <site-dir>            open a site folder in the editor
+//   UltraPress <site-dir> --check    render every page without a window and
 //                                    print the element counts and warnings
-//   ultrapress <command> ...         new, check, page, publish, import, hosts, media, help
-//   ultrapress --version
+//   UltraPress <command> ...         new, check, page, publish, import, hosts, media, help
+//   UltraPress --version
 //
 // There were two programs, ultrapress and UltraPress, until the macOS build
 // showed that two names differing only in case are one name on a
-// case-insensitive filesystem. One program, like ultrafibu. And like
-// ultrafibu, started with nothing it opens a window rather than printing
+// case-insensitive filesystem. One program, named UltraPress like the app. And like
+// UltraFIBU, started with nothing it opens a window rather than printing
 // its usage: a double-click on Windows gave that usage a console that
 // closed before it could be read, which looked like a crash.
 // Version: 0.9.0 - the theme under the Own policy: ThemeFor over the settings' look and the desktop, the host's fonts
@@ -67,11 +67,11 @@ namespace {
 int Usage() {
     std::fprintf(stderr,
                  "UltraPress %s\n"
-                 "  ultrapress                      the start window: open a site folder, or create a site\n"
-                 "  ultrapress <site-dir>           open a site folder in the editor\n"
-                 "  ultrapress <site-dir> --check   render every page without a window, print what was built\n"
-                 "  ultrapress <command> ...        new, check, page, publish, import, hosts, media; `ultrapress help` lists them\n"
-                 "  ultrapress --version\n",
+                 "  UltraPress                      the start window: open a site folder, or create a site\n"
+                 "  UltraPress <site-dir>           open a site folder in the editor\n"
+                 "  UltraPress <site-dir> --check   render every page without a window, print what was built\n"
+                 "  UltraPress <command> ...        new, check, page, publish, import, hosts, media; `UltraPress help` lists them\n"
+                 "  UltraPress --version\n",
                  ULTRAPRESS_VERSION);
     return 2;
 }

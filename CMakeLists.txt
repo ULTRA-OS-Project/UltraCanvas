@@ -688,9 +688,13 @@ endif()
 # ===== ULTRAFIBU =====
 # German double-entry accounting: DATEV, UStVA/ELSTER, One-Stop-Shop, a fiscal
 # year with a free start date. Phase A1 builds the headless engine and the
-# ultrafibu CLI on top of it; the German UI follows once the framework has a
+# UltraFIBU CLI on top of it; the German UI follows once the framework has a
 # data grid (Docs/Research/UltraFIBUDesignProposal.md).
-option(BUILD_ULTRAFIBU "Build the UltraFIBU accounting application" ON)
+# Off for the moment: UltraFIBU is not built and not in the distribution
+# packages. -DBUILD_ULTRAFIBU=ON builds it again. The engine test suite
+# (ULTRACANVAS_BUILD_ULTRAFIBU_TESTS) compiles the engine sources itself and
+# still runs without it.
+option(BUILD_ULTRAFIBU "Build the UltraFIBU accounting application" OFF)
 if(BUILD_ULTRAFIBU AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraFIBU)
 endif()
@@ -709,7 +713,7 @@ endif()
 # The website and shop builder that publishes WebAssembly or HTML +
 # JavaScript (Docs/Research/UltraPressDesignProposal.md, the HTML output
 # through UltraSite). Phase 1 begins with the
-# headless engine and the `ultrapress` command line; the editor and the
+# headless engine and the `UltraPress` command line; the editor and the
 # renderer follow. The engine links the core for UltraCanvasJSON and the
 # HTMLReader, so it is built wherever the core is.
 option(BUILD_ULTRAPRESS "Build the UltraPress engine and command line" ON)
@@ -3088,7 +3092,7 @@ endif()
 # which cmd and PowerShell run for the bare name, starts the .exe, waits for
 # it and returns its exit code. So the prompt waits as for a console program,
 # and the Start menu, Explorer and the sign-in start the .exe without a
-# console window. ultrafibu and ultrapress do the same in their own
+# console window. UltraFIBU and UltraPress do the same in their own
 # CMakeLists.txt. Debug builds keep the console.
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
