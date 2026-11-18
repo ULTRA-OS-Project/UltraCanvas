@@ -4,7 +4,10 @@ v1 the UltraIM Zulip provider uses - the API key fetched with a password, the
 account and the people, one stream everyone is subscribed to ("general", id
 1) and its topics, direct and group direct messages, messages sent, read
 (with a narrow and an anchor), edited, deleted and flagged read, topics
-muted, uploads, and the event queue with a real long-poll.
+muted, uploads, typing notifications (POST /api/v1/typing, delivered as
+"typing" events to every queue of the people in it - the typist's own too,
+as Zulip does, so a client must leave its own out), and the event queue with
+a real long-poll.
 
 Standard library only. Prints {"url": "http://127.0.0.1:<port>"} once it
 listens; runs until it is killed.
@@ -14,7 +17,9 @@ listens; runs until it is killed.
 Each user's e-mail is "<name>@example.org", the password "<name>-pass", the
 API key "<name>-key"; requests sign with HTTP Basic "<e-mail>:<API key>".
 A long-poll (GET /api/v1/events) waits up to --poll-seconds for an event and
-then answers a heartbeat. POST /_test/forget_queues drops every event queue,
+then answers a heartbeat. POST /_test/typing_counts answers how many typing
+notifications each user sent ({"counts": {"<user id>": n}}).
+POST /_test/forget_queues drops every event queue,
 as a server restart does: the next poll of each answers BAD_EVENT_QUEUE_ID.
 """
 
@@ -40,6 +45,7 @@ FLAGS = {}             # (user id, message id) -> set of flags
 MUTED = set()          # (user id, stream id, topic)
 UPLOADS = {}           # "/user_uploads/..." -> bytes
 QUEUES = {}            # queue id -> {"user", "events": [...], "next": int, "types": set}
+TYPING_SENT = {}       # user id -> typing notifications sent
 POLL_SECONDS = 10.0
 
 
@@ -230,6 +236,8 @@ class Handler(BaseHTTPRequestHandler):
         if method == "GET" and path == "/_test/messages":
             return self.success({"messages": [dict((k, v if not isinstance(v, set) else sorted(v))
                                                    for k, v in m.items()) for m in MESSAGES.values()]})
+        if method == "POST" and path == "/_test/typing_counts":
+            return self.success({"counts": {str(k): v for k, v in TYPING_SENT.items()}})
         if method == "GET" and path == "/_test/queues":
             return self.success({"queues": len(QUEUES)})
 
@@ -386,6 +394,34 @@ class Handler(BaseHTTPRequestHandler):
                     event.update({"stream_id": msg["stream_id"], "topic": msg["subject"]})
                 push(readers_of(msg), event)
                 return self.success()
+
+        # Typing: to the people of a direct chat (the typist too), or to a
+        # stream's subscribers. "direct" since Zulip 7 ("private" before);
+        # a topic by stream_id and topic since Zulip 8.
+        if method == "POST" and path == "/api/v1/typing":
+            kind, op = f.get("type", "direct"), f.get("op", "")
+            if op not in ("start", "stop"):
+                return self.error(400, "Invalid op")
+            sender = {"user_id": uid, "email": user["email"]}
+            if kind in ("direct", "private"):
+                ids = operand_ids(json.loads(f.get("to", "[]")))
+                if not ids or -1 in ids or any(i not in USERS for i in ids):
+                    return self.error(400, "Invalid user ID")
+                people = ids | {uid}
+                event = {"type": "typing", "op": op, "message_type": "direct", "sender": sender,
+                         "recipients": [{"user_id": i, "email": USERS[i]["email"]} for i in sorted(people)]}
+            elif kind in ("stream", "channel"):
+                sid = int(f.get("stream_id", "0") or "0")
+                if sid not in STREAMS or not f.get("topic"):
+                    return self.error(400, "Missing 'stream_id' argument")
+                people = set(STREAMS[sid]["subscribers"])
+                event = {"type": "typing", "op": op, "message_type": "stream", "sender": sender,
+                         "stream_id": sid, "topic": f["topic"]}
+            else:
+                return self.error(400, "Invalid type")
+            TYPING_SENT[uid] = TYPING_SENT.get(uid, 0) + 1
+            push(people, event)
+            return self.success()
 
         # Uploads.
         if method == "POST" and path == "/api/v1/user_uploads":

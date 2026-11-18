@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Video - Home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#b91c1c}a:hover{color:#991b1b}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="position: sticky; top: 0; z-index: 2; background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="padding: 12px 24px; min-height: 64px; box-sizing: border-box; display: flex; align-items: center; gap: 20px">
+<button type="button" aria-label="Menu" style="width: 44px; height: 44px; border-radius: 999px; border: 0; background: transparent; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button>
+<a href="VideoHome.dc.html" aria-label="UltraStore Video home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Video</span>
+</a>
+<form role="search" style="flex: 1 1 400px; max-width: 640px; margin: 0 auto; display: flex; align-items: stretch; height: 44px; border-radius: 999px; border: 1px solid #cbd5e1; overflow: hidden; background: #ffffff">
+<label for="search-video" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search videos</label>
+<input id="search-video" type="search" placeholder="Search videos, channels, playlists" style="flex: 1 1 auto; min-width: 0; border: 0; padding: 0 18px; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+<button type="submit" aria-label="Search" style="width: 60px; border: 0; border-left: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></button>
+</form>
+<button type="button" aria-label="Search by voice" style="width: 44px; height: 44px; border-radius: 999px; border: 0; background: #f1f5f9; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></button>
+<nav aria-label="Account" style="display: flex; gap: 8px; align-items: center">
+<a href="VideoStudio.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 700; font-size: 14px"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="M6 10l6-6 6 6"></path><path d="M4 20h16"></path></svg>Upload</a>
+<button type="button" aria-label="Notifications, 4 new" style="position: relative; width: 44px; height: 44px; border-radius: 999px; border: 0; background: transparent; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"></path><path d="M10 21h4"></path></svg><span style="position: absolute; top: 4px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center">4</span></button>
+<button type="button" aria-label="Account" style="width: 40px; height: 40px; border-radius: 999px; border: 0; background: #fee2e2; color: #b91c1c; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">AK</button>
+</nav>
+</div>
+</header>
+
+<div style="display: flex; flex: 1 1 auto; min-height: 0">
+
+<nav aria-label="Sections" style="flex: 0 0 240px; padding: 12px 12px 24px; box-sizing: border-box; border-right: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 2px; font-size: 14px">
+<a href="VideoHome.dc.html" aria-current="page" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #b91c1c; background: #fee2e2; font-weight: 700"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"></path></svg>Home</a>
+<a href="#shorts" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="3"></rect><path d="M11 9l4 3-4 3z"></path></svg>Shorts</a>
+<a href="#subscriptions" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"></rect><path d="M7 4h10M5 6h14"></path><path d="M11 11l4 3-4 3z"></path></svg>Subscriptions</a>
+<span style="height: 1px; background: #f1f5f9; margin: 8px 6px"></span>
+<a href="#library" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h12v14H4z"></path><path d="M18 7h2v12h-2"></path><path d="M8 10l4 2.5L8 15z"></path></svg>Library</a>
+<a href="#history" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.7"></path><path d="M4 4v5h5"></path><path d="M12 8v4l3 2"></path></svg>History</a>
+<a href="#watch-later" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>Watch later</a>
+<a href="#liked" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v9H4v-9z"></path><path d="M7 11l4-7a2 2 0 0 1 3 2v4h5a2 2 0 0 1 2 2l-1.5 6a2 2 0 0 1-2 2H7"></path></svg>Liked videos</a>
+<a href="VideoStudio.dc.html" style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M10 9l5 3-5 3z"></path></svg>Your videos</a>
+<span style="height: 1px; background: #f1f5f9; margin: 8px 6px"></span>
+<span style="padding: 6px 14px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Subscriptions</span>
+<a href="VideoChannel.dc.html" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><img src="/_blob/90eb60090b672bec83f5ce0aa977c5a0" alt="" style="width: 26px; height: 26px; border-radius: 999px">ULTRA OS Project<span aria-hidden="true" style="margin-left: auto; width: 8px; height: 8px; border-radius: 999px; background: #2563eb"></span></a>
+<a href="#ada" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 999px; background: linear-gradient(135deg, #8b5cf6, #312e81); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800">AC</span>Ada Codes<span aria-hidden="true" style="margin-left: auto; width: 8px; height: 8px; border-radius: 999px; background: #2563eb"></span></a>
+<a href="#nora" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 999px; background: linear-gradient(135deg, #22c55e, #14532d); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800">TN</span>Trailhead Nora</a>
+<a href="#kuechenwerk" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 999px; background: linear-gradient(135deg, #f59e0b, #78350f); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800">KW</span>Küchenwerk</a>
+<a href="#jazz" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500"><span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 999px; background: linear-gradient(135deg, #ec4899, #581c87); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800">BJ</span>Berlin Jazz Collective<span style="margin-left: auto; height: 18px; padding: 0 6px; border-radius: 4px; background: {{accent}}; color: #ffffff; font-size: 10px; font-weight: 800; display: inline-flex; align-items: center">LIVE</span></a>
+<a href="#all-subs" style="display: flex; align-items: center; gap: 12px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 13px">All 23 subscriptions</a>
+<span style="height: 1px; background: #f1f5f9; margin: 8px 6px"></span>
+<span style="padding: 6px 14px; font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em">Explore</span>
+<a href="#music" style="display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Music</a>
+<a href="#learning" style="display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Learning</a>
+<a href="#gaming" style="display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Gaming</a>
+<a href="#news" style="display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">News</a>
+<a href="#sport" style="display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Sport</a>
+<a href="#live" style="display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500">Live</a>
+</nav>
+
+<main style="flex: 1 1 auto; min-width: 0; padding: 16px 32px 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 32px">
+
+<div aria-label="Topics" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px">
+<a href="#all" aria-current="true" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #0f172a; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px">All</a>
+<a href="#t-ultraos" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">ULTRA OS</a>
+<a href="#t-music" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Music</a>
+<a href="#t-live" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Live</a>
+<a href="#t-programming" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Programming</a>
+<a href="#t-cooking" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Cooking</a>
+<a href="#t-hiking" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Hiking</a>
+<a href="#t-science" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Science</a>
+<a href="#t-games" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Games</a>
+<a href="#t-jazz" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Jazz</a>
+<a href="#t-recent" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Recently uploaded</a>
+<a href="#t-watched" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Watched</a>
+<a href="#t-new" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 10px; background: #f1f5f9; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">New to you</a>
+</div>
+
+<section aria-label="Recommended" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 20px">
+
+<article style="display: flex; flex-direction: column; gap: 12px">
+<a href="VideoWatch.dc.html" aria-label="UltraVideo 0.7: cut, grade and export in 12 minutes" style="position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: linear-gradient(160deg, #1e1b4b, #0f172a 60%, #082f49); text-decoration: none">
+<span aria-hidden="true" style="position: absolute; left: 10%; top: 18%; width: 80%; height: 64%; border-radius: 8px; background: #111a2e; border: 1px solid #243047; display: flex; flex-direction: column; gap: 4px; padding: 8px; box-sizing: border-box"><span style="display: flex; gap: 3px; height: 14px"><span style="flex: 0 0 34%; border-radius: 3px; background: #3b82f6"></span><span style="flex: 0 0 22%; border-radius: 3px; background: #60a5fa"></span><span style="flex: 0 0 30%; border-radius: 3px; background: #3b82f6"></span></span><span style="display: flex; gap: 3px; height: 14px"><span style="flex: 0 0 40%; margin-left: 10%; border-radius: 3px; background: #8b5cf6"></span></span><span style="display: flex; gap: 3px; height: 14px"><span style="flex: 0 0 88%; border-radius: 3px; background: #14b8a6"></span></span></span>
+<span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; font-variant-numeric: tabular-nums">12:04</span>
+<span aria-hidden="true" style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #94a3b8">[THUMBNAIL]</span>
+</a>
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<img src="/_blob/90eb60090b672bec83f5ce0aa977c5a0" alt="" style="width: 40px; height: 40px; border-radius: 999px; flex: 0 0 auto">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="VideoWatch.dc.html" style="font-weight: 700; font-size: 15px; color: #0f172a; text-decoration: none; line-height: 1.35">UltraVideo 0.7: cut, grade and export in 12 minutes</a>
+<a href="VideoChannel.dc.html" style="font-size: 13px; color: #64748b; text-decoration: none; display: inline-flex; align-items: center; gap: 4px">ULTRA OS Project <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="#64748b"><circle cx="12" cy="12" r="10"></circle><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+<span style="font-size: 13px; color: #64748b">48K views · 2 days ago</span>
+</div>
+<button type="button" aria-label="More" style="margin-left: auto; width: 36px; height: 36px; border-radius: 999px; border: 0; background: transparent; cursor: pointer; color: #64748b; font-size: 18px; font-weight: 800">⋮</button>
+</div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 12px">
+<a href="#jazz-live" aria-label="Live: Friday session at the Kesselhaus" style="position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: linear-gradient(160deg, #581c87, #1e1b4b 60%, #0f172a); text-decoration: none">
+<span aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 45%; display: flex; align-items: flex-end; gap: 4px; padding: 0 10%"><span style="flex: 1 1 0; height: 40%; background: #ec4899; opacity: 0.8; border-radius: 3px 3px 0 0"></span><span style="flex: 1 1 0; height: 75%; background: #f472b6; opacity: 0.8; border-radius: 3px 3px 0 0"></span><span style="flex: 1 1 0; height: 55%; background: #ec4899; opacity: 0.8; border-radius: 3px 3px 0 0"></span><span style="flex: 1 1 0; height: 90%; background: #f9a8d4; opacity: 0.8; border-radius: 3px 3px 0 0"></span><span style="flex: 1 1 0; height: 60%; background: #ec4899; opacity: 0.8; border-radius: 3px 3px 0 0"></span><span style="flex: 1 1 0; height: 30%; background: #f472b6; opacity: 0.8; border-radius: 3px 3px 0 0"></span><span style="flex: 1 1 0; height: 70%; background: #ec4899; opacity: 0.8; border-radius: 3px 3px 0 0"></span></span>
+<span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 8px; border-radius: 5px; background: {{accent}}; color: #ffffff; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; gap: 5px"><span style="width: 6px; height: 6px; border-radius: 999px; background: #ffffff"></span>LIVE</span>
+<span aria-hidden="true" style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #94a3b8">[THUMBNAIL]</span>
+</a>
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 999px; background: linear-gradient(135deg, #ec4899, #581c87); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex: 0 0 auto">BJ</span>
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#jazz-live" style="font-weight: 700; font-size: 15px; color: #0f172a; text-decoration: none; line-height: 1.35">Friday session at the Kesselhaus, live from Berlin</a>
+<a href="#jazz" style="font-size: 13px; color: #64748b; text-decoration: none">Berlin Jazz Collective</a>
+<span style="font-size: 13px; color: #b91c1c; font-weight: 600">1,208 watching now</span>
+</div>
+<button type="button" aria-label="More" style="margin-left: auto; width: 36px; height: 36px; border-radius: 999px; border: 0; background: transparent; cursor: pointer; color: #64748b; font-size: 18px; font-weight: 800">⋮</button>
+</div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 12px">
+<a href="#sourdough" aria-label="Sourdough that works in a cold kitchen" style="position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: linear-gradient(160deg, #fde68a, #f59e0b 60%, #b45309); text-decoration: none">
+<span aria-hidden="true" style="position: absolute; left: 30%; top: 25%; width: 40%; height: 50%; border-radius: 50% 50% 45% 45%; background: #fef3c7; box-shadow: inset 0 -12px 0 #d97706"></span>
+<span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; font-variant-numeric: tabular-nums">18:37</span>
+<span aria-hidden="true" style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #7c2d12">[THUMBNAIL]</span>
+</a>
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 999px; background: linear-gradient(135deg, #f59e0b, #78350f); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex: 0 0 auto">KW</span>
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#sourdough" style="font-weight: 700; font-size: 15px; color: #0f172a; text-decoration: none; line-height: 1.35">Sourdough that works in a cold kitchen (no proofing box)</a>
+<a href="#kuechenwerk" style="font-size: 13px; color: #64748b; text-decoration: none">Küchenwerk</a>
+<span style="font-size: 13px; color: #64748b">212K views · 1 week ago</span>
+</div>
+<button type="button" aria-label="More" style="margin-left: auto; width: 36px; height: 36px; border-radius: 999px; border: 0; background: transparent; cursor: pointer; color: #64748b; font-size: 18px; font-weight: 800">⋮</button>
+</div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 12px">
+<a href="#elbe" aria-label="Cycling the Elbe, day 3: Magdeburg to Tangermünde" style="position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: linear-gradient(180deg, #bae6fd 0%, #7dd3fc 55%, #4d7c0f 55%, #365314 100%); text-decoration: none">
+<span aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 52%; height: 10%; background: #0ea5e9; opacity: 0.7"></span>
+<span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; font-variant-numeric: tabular-nums">24:51</span>
+<span aria-hidden="true" style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #ecfccb">[THUMBNAIL]</span>
+<span aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,0.4)"><span style="display: block; width: 38%; height: 100%; background: #dc2626"></span></span>
+</a>
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 999px; background: linear-gradient(135deg, #22c55e, #14532d); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex: 0 0 auto">TN</span>
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#elbe" style="font-weight: 700; font-size: 15px; color: #0f172a; text-decoration: none; line-height: 1.35">Cycling the Elbe, day 3: Magdeburg to Tangermünde</a>
+<a href="#nora" style="font-size: 13px; color: #64748b; text-decoration: none">Trailhead Nora</a>
+<span style="font-size: 13px; color: #64748b">31K views · 3 days ago · watched to 9:30</span>
+</div>
+<button type="button" aria-label="More" style="margin-left: auto; width: 36px; height: 36px; border-radius: 999px; border: 0; background: transparent; cursor: pointer; color: #64748b; font-size: 18px; font-weight: 800">⋮</button>
+</div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 12px">
+<a href="#rust" aria-label="Rust for C++ developers, part 4: lifetimes without tears" style="position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: #0f172a; text-decoration: none">
+<span aria-hidden="true" style="position: absolute; left: 8%; top: 14%; right: 8%; bottom: 14%; display: flex; flex-direction: column; gap: 6px"><span style="height: 8px; width: 40%; border-radius: 3px; background: #a78bfa"></span><span style="height: 8px; width: 70%; border-radius: 3px; background: #334155"></span><span style="height: 8px; width: 55%; border-radius: 3px; background: #334155"></span><span style="height: 8px; width: 30%; border-radius: 3px; background: #34d399"></span><span style="height: 8px; width: 65%; border-radius: 3px; background: #334155"></span><span style="height: 8px; width: 48%; border-radius: 3px; background: #334155"></span><span style="height: 8px; width: 22%; border-radius: 3px; background: #a78bfa"></span></span>
+<span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; font-variant-numeric: tabular-nums">41:12</span>
+<span aria-hidden="true" style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #94a3b8">[THUMBNAIL]</span>
+</a>
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 999px; background: linear-gradient(135deg, #8b5cf6, #312e81); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex: 0 0 auto">AC</span>
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#rust" style="font-weight: 700; font-size: 15px; color: #0f172a; text-decoration: none; line-height: 1.35">Rust for C++ developers, part 4: lifetimes without tears</a>
+<a href="#ada" style="font-size: 13px; color: #64748b; text-decoration: none; display: inline-flex; align-items: center; gap: 4px">Ada Codes <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="#64748b"><circle cx="12" cy="12" r="10"></circle><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg></a>
+<span style="font-size: 13px; color: #64748b">96K views · 5 days ago</span>
+</div>
+<button type="button" aria-label="More" style="margin-left: auto; width: 36px; height: 36px; border-radius: 999px; border: 0; background: transparent; cursor: pointer; color: #64748b; font-size: 18px; font-weight: 800">⋮</button>
+</div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 12px">
+<a href="#milk" aria-label="Why the sky is blue, explained with a glass of milk" style="position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: linear-gradient(160deg, #bfdbfe, #3b82f6 60%, #1e3a8a); text-decoration: none">
+<span aria-hidden="true" style="position: absolute; left: 38%; top: 22%; width: 24%; height: 60%; border-radius: 6px 6px 14px 14px; background: rgba(255,255,255,0.85)"></span>
+<span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; font-variant-numeric: tabular-nums">7:45</span>
+<span aria-hidden="true" style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #dbeafe">[THUMBNAIL]</span>
+</a>
+<div style="display: flex; gap: 12px; align-items: flex-start">
+<span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 999px; background: linear-gradient(135deg, #38bdf8, #1e40af); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex: 0 0 auto">OL</span>
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<a href="#milk" style="font-weight: 700; font-size: 15px; color: #0f172a; text-decoration: none; line-height: 1.35">Why the sky is blue, explained with a glass of milk</a>
+<a href="#orbitlabs" style="font-size: 13px; color: #64748b; text-decoration: none">Orbit Labs</a>
+<span style="font-size: 13px; color: #64748b">1.4M views · 2 months ago</span>
+</div>
+<button type="button" aria-label="More" style="margin-left: auto; width: 36px; height: 36px; border-radius: 999px; border: 0; background: transparent; cursor: pointer; color: #64748b; font-size: 18px; font-weight: 800">⋮</button>
+</div>
+</article>
+
+</section>
+
+<section aria-labelledby="shorts-title" style="display: flex; flex-direction: column; gap: 14px; padding: 20px 0; border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="10" height="18" rx="3"></rect><path d="M11 9l4 3-4 3z"></path></svg>
+<h2 id="shorts-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Shorts</h2>
+</div>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px">
+<a href="#s1" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="position: relative; display: block; aspect-ratio: 9 / 16; border-radius: 14px; background: linear-gradient(180deg, #fecaca, #dc2626); overflow: hidden"><span style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #fee2e2">[SHORT]</span></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">Trim a clip in UltraVideo with one key</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">120K views</span></a>
+<a href="#s2" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="position: relative; display: block; aspect-ratio: 9 / 16; border-radius: 14px; background: linear-gradient(180deg, #a7f3d0, #047857); overflow: hidden"><span style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #d1fae5">[SHORT]</span></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">Sunrise above the Elbe fog</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">44K views</span></a>
+<a href="#s3" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="position: relative; display: block; aspect-ratio: 9 / 16; border-radius: 14px; background: linear-gradient(180deg, #fde68a, #b45309); overflow: hidden"><span style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #fef3c7">[SHORT]</span></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">Scoring a loaf, three patterns</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">310K views</span></a>
+<a href="#s4" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="position: relative; display: block; aspect-ratio: 9 / 16; border-radius: 14px; background: linear-gradient(180deg, #c4b5fd, #4c1d95); overflow: hidden"><span style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #ede9fe">[SHORT]</span></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">The borrow checker in 45 seconds</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">88K views</span></a>
+<a href="#s5" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="position: relative; display: block; aspect-ratio: 9 / 16; border-radius: 14px; background: linear-gradient(180deg, #bae6fd, #0369a1); overflow: hidden"><span style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #e0f2fe">[SHORT]</span></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">A rocket from a film canister</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">2.1M views</span></a>
+<a href="#s6" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="position: relative; display: block; aspect-ratio: 9 / 16; border-radius: 14px; background: linear-gradient(180deg, #f9a8d4, #9d174d); overflow: hidden"><span style="position: absolute; left: 8px; bottom: 8px; font-size: 11px; color: #fce7f3">[SHORT]</span></span><span style="font-size: 13px; font-weight: 600; line-height: 1.3">Drum solo, Kesselhaus soundcheck</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">19K views</span></a>
+</div>
+</section>
+
+<section aria-labelledby="subs-title" style="display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<h2 id="subs-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">From your subscriptions</h2>
+<a href="#subscriptions" style="font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; height: 44px">See all <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></a>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 20px">
+<article style="display: flex; flex-direction: column; gap: 12px">
+<a href="#desktop-tour" aria-label="UltraDesktop 0.4: the panel, the launcher and tiling" style="position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: linear-gradient(160deg, #0f172a, #1e3a8a); text-decoration: none"><span aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 12%; background: rgba(255,255,255,0.12)"></span><span aria-hidden="true" style="position: absolute; left: 12%; top: 14%; width: 46%; height: 60%; border-radius: 6px; background: #ffffff; opacity: 0.9"></span><span aria-hidden="true" style="position: absolute; left: 62%; top: 24%; width: 30%; height: 50%; border-radius: 6px; background: #f1f5f9; opacity: 0.9"></span><span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center">9:18</span></a>
+<div style="display: flex; gap: 12px; align-items: flex-start"><img src="/_blob/90eb60090b672bec83f5ce0aa977c5a0" alt="" style="width: 40px; height: 40px; border-radius: 999px; flex: 0 0 auto"><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><a href="#desktop-tour" style="font-weight: 700; font-size: 15px; color: #0f172a; text-decoration: none; line-height: 1.35">UltraDesktop 0.4: the panel, the launcher and tiling</a><span style="font-size: 13px; color: #64748b">ULTRA OS Project · 22K views · 4 days ago</span></div></div>
+</article>
+<article style="display: flex; flex-direction: column; gap: 12px">
+<a href="#ramen" aria-label="Ramen broth in 90 minutes with a pressure cooker" style="position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: linear-gradient(160deg, #fef3c7, #d97706); text-decoration: none"><span aria-hidden="true" style="position: absolute; left: 25%; top: 30%; width: 50%; height: 45%; border-radius: 0 0 40% 40%; background: #78350f"></span><span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center">15:02</span></a>
+<div style="display: flex; gap: 12px; align-items: flex-start"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 999px; background: linear-gradient(135deg, #f59e0b, #78350f); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex: 0 0 auto">KW</span><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><a href="#ramen" style="font-weight: 700; font-size: 15px; color: #0f172a; text-decoration: none; line-height: 1.35">Ramen broth in 90 minutes with a pressure cooker</a><span style="font-size: 13px; color: #64748b">Küchenwerk · 58K views · 6 days ago</span></div></div>
+</article>
+<article style="display: flex; flex-direction: column; gap: 12px">
+<a href="#harz" aria-label="Harz in November: the Brocken by the old railway line" style="position: relative; display: block; aspect-ratio: 16 / 9; border-radius: 16px; overflow: hidden; background: linear-gradient(180deg, #e2e8f0 0%, #94a3b8 50%, #14532d 50%, #052e16 100%); text-decoration: none"><span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.85); color: #ffffff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center">32:40</span></a>
+<div style="display: flex; gap: 12px; align-items: flex-start"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 999px; background: linear-gradient(135deg, #22c55e, #14532d); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex: 0 0 auto">TN</span><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><a href="#harz" style="font-weight: 700; font-size: 15px; color: #0f172a; text-decoration: none; line-height: 1.35">Harz in November: the Brocken by the old railway line</a><span style="font-size: 13px; color: #64748b">Trailhead Nora · 12K views · 1 week ago</span></div></div>
+</article>
+</div>
+</section>
+
+<section aria-labelledby="why-title" style="display: flex; flex-direction: column; gap: 16px; padding-top: 8px">
+<h2 id="why-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Why watch on UltraStore Video</h2>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 20px; background: #f8fafc"><span style="width: 40px; height: 40px; border-radius: 12px; background: #fee2e2; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M10 9l5 3-5 3z"></path></svg></span><h3 style="margin: 0; font-size: 15px; font-weight: 700">Plays in the native player</h3><p style="margin: 0; color: #475569; font-size: 13px">The same video element as UltraViewer and UltraVideo: hardware decoding, captions, chapters, picture in picture on the desktop.</p></div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 20px; background: #f8fafc"><span style="width: 40px; height: 40px; border-radius: 12px; background: #dbeafe; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"></path><path d="M6 10l6-6 6 6"></path><path d="M4 20h16"></path></svg></span><h3 style="margin: 0; font-size: 15px; font-weight: 700">Upload from UltraVideo</h3><p style="margin: 0; color: #475569; font-size: 13px">One-button export sends the cut straight to your channel with chapters from the timeline's markers and captions from the subtitle track.</p></div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 20px; background: #f8fafc"><span style="width: 40px; height: 40px; border-radius: 12px; background: #dcfce7; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg></span><h3 style="margin: 0; font-size: 15px; font-weight: 700">No tracking, no autoplay ads</h3><p style="margin: 0; color: #475569; font-size: 13px">Recommendations come from your subscriptions and what you watched here, kept on your machine; nothing follows you to other sites.</p></div>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 20px; background: #f8fafc"><span style="width: 40px; height: 40px; border-radius: 12px; background: #fef3c7; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11v9H4v-9z"></path><path d="M7 11l4-7a2 2 0 0 1 3 2v4h5a2 2 0 0 1 2 2l-1.5 6a2 2 0 0 1-2 2H7"></path></svg></span><h3 style="margin: 0; font-size: 15px; font-weight: 700">Support a channel directly</h3><p style="margin: 0; color: #475569; font-size: 13px">Memberships and tips go through the store's payment service, with the creator's share shown on every page, and the store's invoice.</p></div>
+</div>
+</section>
+
+</main>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#dc2626","options":["#dc2626","#2563eb","#0f172a","#0f766e"]},"$preview":{"width":1440,"height":2200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#dc2626' };
+  }
+}
+</script>
+</body>
+</html>

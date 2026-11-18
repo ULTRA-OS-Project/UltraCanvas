@@ -3,9 +3,10 @@
 // process-wide WebSocket callbacks shared with whoever installed them before,
 // or over TCP (RFC 6120) with direct TLS or STARTTLS, read and written by a
 // thread of its own
+// Version: 0.3.0 - TCP: an XMPP ping (XEP-0199) after a silence; no answer in time ends the stream
+// Last Modified: 2026-11-17
 // Version: 0.2.0 - the TCP binding: ConnectTcp, StartTls, OpenStream, the whitespace keepalive
 // Version: 0.1.0
-// Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
 
 #include "XmppStream.h"
@@ -55,6 +56,8 @@ struct XmppStream::Shared {
     bool tlsDone = false;
     std::string tlsError;
     bool tlsCertificateRefused = false;
+    std::string pingTo;             // TCP: whom to ping after a silence ("" = not yet: before sign-in)
+    int pingTimeoutMs = 0;
     std::function<void(const XmlElement&)> onElement;
     std::function<void(const std::string&)> onDropped;
 
@@ -225,6 +228,8 @@ void InstallRouter() {
 
 // How long one read waits; what is to be written goes between reads.
 constexpr int kReadSliceMs = 25;
+// The ids of the stream's own pings (their answers are not handed on).
+constexpr const char* kPingIdPrefix = "cc-tcp-ping-";
 
 struct TcpTarget {
     std::string host;
@@ -255,16 +260,24 @@ void TcpLoop(std::shared_ptr<XmppStream::Shared> shared, TcpTarget target) {
     using Clock = std::chrono::steady_clock;
     XmppSplitter splitter;
     auto lastSent = Clock::now();
+    auto lastReceived = Clock::now();
+    std::string pingId;             // the ping waiting for its answer ("" = none)
+    auto pingSentAt = Clock::now();
+    int pingCount = 0;
     std::string why;                // why the stream ended by itself ("": Close())
     bool sayGoodbye = true;         // </stream:stream> before the socket closes
     for (;;) {
         std::string out;
         bool stopping = false, ended = false;
+        std::string pingTo;
+        int pingTimeoutMs = 0;
         {
             std::lock_guard<std::mutex> lock(shared->mutex);
             out.swap(shared->outbox);
             stopping = shared->stopping;
             ended = shared->ended;
+            pingTo = shared->pingTo;
+            pingTimeoutMs = shared->pingTimeoutMs;
         }
         if (!out.empty()) {
             if (!conn.Send(out)) {
@@ -285,6 +298,29 @@ void TcpLoop(std::shared_ptr<XmppStream::Shared> shared, TcpTarget target) {
             }
             lastSent = Clock::now();
         }
+        // A server that has said nothing for a while is asked (XEP-0199): the
+        // whitespace keepalive only finds a connection that is gone when a
+        // write fails, which a server that hangs, or a path that drops
+        // packets silently, never makes happen.
+        if (!pingId.empty() && Clock::now() - pingSentAt >= std::chrono::milliseconds(pingTimeoutMs)) {
+            why = "the server stopped answering (no answer to a ping within " +
+                  std::to_string((pingTimeoutMs + 999) / 1000) + " s)";
+            sayGoodbye = false;
+            break;
+        }
+        if (pingId.empty() && !pingTo.empty() && pingTimeoutMs > 0 && target.keepaliveMs > 0 &&
+            Clock::now() - lastReceived >= std::chrono::milliseconds(target.keepaliveMs)) {
+            pingId = std::string(kPingIdPrefix) + std::to_string(++pingCount);
+            XmlElement iq("iq", Ns::Client);
+            iq.Set("type", "get").Set("id", pingId).Set("to", pingTo);
+            iq.Add("ping", Ns::Ping);
+            if (!conn.Send(iq.Serialize(Ns::Client))) {
+                why = "the connection broke (a ping could not be written)";
+                sayGoodbye = false;
+                break;
+            }
+            pingSentAt = lastSent = Clock::now();
+        }
         std::string data;
         const XmppTcpConnection::ReadStatus status = conn.Read(kReadSliceMs, data);
         if (status == XmppTcpConnection::ReadStatus::Closed) {
@@ -293,6 +329,9 @@ void TcpLoop(std::shared_ptr<XmppStream::Shared> shared, TcpTarget target) {
             break;
         }
         if (status == XmppTcpConnection::ReadStatus::Idle) continue;
+        // Anything from the server shows it is there.
+        lastReceived = Clock::now();
+        pingId.clear();
         std::vector<XmppSplitter::Item> items;
         splitter.Feed(data, items);
         for (const XmppSplitter::Item& item : items) {
@@ -322,6 +361,8 @@ void TcpLoop(std::shared_ptr<XmppStream::Shared> shared, TcpTarget target) {
                 why = "the server's XML is not well-formed (" + parseError + ")";
                 break;
             }
+            // The answers to our own pings are ours alone.
+            if (element.Is("iq") && element.Attr("id").rfind(kPingIdPrefix, 0) == 0) continue;
             if (armed && element.Is("proceed", Ns::Tls)) {
                 // TLS before anything else is read: whatever came with the
                 // <proceed/> is not trusted (and dropped).
@@ -404,6 +445,12 @@ bool XmppStream::Connect(const std::string& url, int connectTimeoutMs, int pingI
         return false;
     }
     return true;
+}
+
+void XmppStream::StartPinging(const std::string& to, int timeoutMs) {
+    std::lock_guard<std::mutex> lock(shared_->mutex);
+    shared_->pingTo = to;
+    shared_->pingTimeoutMs = timeoutMs;
 }
 
 bool XmppStream::ConnectTcp(const std::string& host, int port, bool directTls, const std::string& tlsHost,

@@ -24,8 +24,18 @@
 //   - sending posts to the channel (files uploaded first, with progress),
 //     edit and delete one's own, read (the channel viewed), leave (a channel
 //     left; a direct or group message hidden, as Mattermost does - it comes
-//     back with the next post in it); no typing, read receipts, presence or
-//     calls here.
+//     back with the next post in it); no read receipts, presence or calls
+//     here;
+//   - typing both ways: SetTyping(true) posts POST /api/v4/users/me/typing
+//     (Mattermost 5.26+; it has no "stopped" - the others' clients let it go
+//     after a few seconds); the others' typing comes only over Mattermost's
+//     WebSocket (/api/v4/websocket, wss://, ws:// to this machine only), which
+//     is opened for that alone - everything else is still polled - and
+//     reconnected with a growing pause when it drops. A "typing" event is a
+//     TypingChange start (the typist's user id the contactId); its stop is
+//     ours to say: MattermostTimings::typingStopMs after the last one, at once
+//     when a post of theirs arrives in that channel, and for everyone when the
+//     socket drops.
 //
 // Sign-in is a username (or e-mail) and password (UltraIMLoginType::
 // UsernamePassword): POST /api/v4/users/login, the session's token in the
@@ -36,6 +46,8 @@
 // access token (credentials.accessToken) signs in directly. The session's
 // token is kept in UltraVault; a SignIn with nothing in it resumes it.
 //
+// Version: 0.2.0 - typing indicators both ways: POST /api/v4/users/me/typing, and a WebSocket for the
+//                  others' typing (reconnected with backoff; stop after typingStopMs or their post)
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -46,14 +58,17 @@
 #include "DataFormats/UltraCanvasJSON.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace UltraIMMattermost {
@@ -63,7 +78,15 @@ struct MattermostTimings {
     // A channel with a post this recent (by the server's clock) is read at
     // every look, open or not: its edits and deletes do not move it in the list.
     int busyWindowMs = 15 * 60 * 1000;
+    // Typing: Mattermost says when someone types, never when they stopped.
+    int typingStopMs = 5000;        // a typist with no news for this long has stopped
+    int socketRetryMinMs = 1000;    // the first pause after the WebSocket dropped or could not connect
+    int socketRetryMaxMs = 30000;   // the longest
+    int socketPingMs = 30000;       // the WebSocket's pings (a silent server is taken as gone after two)
 };
+
+// The typing WebSocket's state, shared with UltraNet's callbacks (MattermostProvider.cpp).
+struct MattermostTypingShared;
 
 // The answer of one request: the status, the body as JSON, the headers.
 struct MattermostResponse {
@@ -83,7 +106,7 @@ public:
 
     std::string GetProviderId() const override { return providerId_; }
     std::string GetDisplayName() const override { return "Mattermost"; }
-    std::string GetVersion() const override { return "0.1.0"; }
+    std::string GetVersion() const override { return "0.2.0"; }
     UltraIMCapabilityFlags GetCapabilities() const override;
     UltraIMLoginType GetLoginType() const override { return UltraIMLoginType::UsernamePassword; }
 
@@ -153,6 +176,9 @@ public:
     UltraIMDeleteChoices GetDeleteChoices(const std::string& conversationId,
                                           const std::string& messageId) const override;
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
+    // true: POST /api/v4/users/me/typing, on the worker. false: nothing to
+    // send (Mattermost has no "stopped").
+    UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
     void SetTimings(const MattermostTimings& timings) { timings_ = timings; }
     std::string GetServerUrl() const;
@@ -229,6 +255,15 @@ private:
     UltraIMResult SendPost(const std::string& conversationId, const std::string& text, const std::string& localPath,
                            UltraIMMessageType type, const UltraIMSendOptions& options);
 
+    // ---- typing: a WebSocket of its own (Mattermost tells typing only there) --
+    void StartTypingSocket();
+    void StopTypingSocket();
+    void TypingSocketLoop(const std::shared_ptr<MattermostTypingShared>& shared);
+    bool SocketMessage(const std::string& text);    // true: the server's "hello" (signed in)
+    void TypingSeen(const std::string& channelId, const std::string& userId);
+    void TypingStopped(const std::string& channelId, const std::string& userId);   // told when they were typing
+    void ExpireTyping(bool everyone);
+
     std::string       providerId_;
     UltraIMConfig     config_;
     UltraIMEventSink  sink_;
@@ -267,6 +302,13 @@ private:
     bool stopping_ = false;
     bool polling_ = false;
     std::thread worker_;
+
+    // The typing WebSocket's thread, and who types where (channel, user) -> when last told.
+    std::mutex socketMutex_;
+    std::shared_ptr<MattermostTypingShared> typingShared_;
+    std::thread typingThread_;
+    std::mutex typingMutex_;
+    std::map<std::pair<std::string, std::string>, std::chrono::steady_clock::time_point> typists_;
 };
 
 } // namespace UltraIMMattermost

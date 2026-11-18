@@ -1,5 +1,6 @@
 // Plugins/UltraIM/signal/SignalProvider.cpp
 // Signal - signal-cli's accounts, contacts and groups as UltraIM conversations
+// Version: 0.1.1 - a receipt that comes before the send is recorded is kept and applied, not lost
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -1291,8 +1292,17 @@ void SignalProvider::HandleEnvelope(const JSONValue& item, std::vector<UltraIMEv
             if (read || delivered) {
                 const UltraIMDeliveryStatus status = read ? UltraIMDeliveryStatus::Read : UltraIMDeliveryStatus::Delivered;
                 for (const JSONValue& t : (*receipt)["timestamps"].GetElements()) {
-                    UltraIMMessage* m = FindMessage(MessageIdOf(account_, t.GetInteger(0)));
-                    if (!m || !m->isOwn) continue;
+                    const std::string ownId = MessageIdOf(account_, t.GetInteger(0));
+                    UltraIMMessage* m = FindMessage(ownId);
+                    if (!m) {
+                        // Ours, but the send that made it is still returning
+                        // (the other side was quicker): kept until it is recorded.
+                        UltraIMDeliveryStatus& early = earlyReceipts_[ownId];
+                        if (status == UltraIMDeliveryStatus::Read || early != UltraIMDeliveryStatus::Read) early = status;
+                        if (earlyReceipts_.size() > 1000) earlyReceipts_.erase(earlyReceipts_.begin());
+                        continue;
+                    }
+                    if (!m->isOwn) continue;
                     // Never back: a read message is not "delivered" again.
                     if (m->deliveryStatus == UltraIMDeliveryStatus::Read ||
                         (m->deliveryStatus == UltraIMDeliveryStatus::Delivered && !read))
@@ -1589,6 +1599,7 @@ UltraIMResult SignalProvider::SendSignal(const std::string& conversationId, cons
         if (!localPath.empty()) progress(size);
         UltraIMMessage sent;
         UltraIMConversation conversation;
+        UltraIMDeliveryStatus lateStatus = UltraIMDeliveryStatus::Sent;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             JSONValue dm = JSONValue::MakeObject();
@@ -1616,6 +1627,12 @@ UltraIMResult SignalProvider::SendSignal(const std::string& conversationId, cons
                 if (type == UltraIMMessageType::File) sent.type = UltraIMMessageType::File;
             }
             Remember(sent);
+            // The other side's receipt was quicker than the send's answer.
+            if (auto early = earlyReceipts_.find(id); early != earlyReceipts_.end()) {
+                lateStatus = early->second;
+                earlyReceipts_.erase(early);
+                if (UltraIMMessage* kept = FindMessage(id)) kept->deliveryStatus = lateStatus;
+            }
             auto chat = chats_.find(conversationId);
             if (chat != chats_.end()) {
                 RefreshLast(chat->second);
@@ -1634,6 +1651,13 @@ UltraIMResult SignalProvider::SendSignal(const std::string& conversationId, cons
             UltraIMEvent changed = EventOf(UltraIMEventType::ConversationUpdate, providerId_, conversationId);
             changed.conversation = conversation;
             Emit(changed);
+        }
+        if (lateStatus != UltraIMDeliveryStatus::Sent) {
+            UltraIMEvent late = EventOf(UltraIMEventType::MessageDelivered, providerId_, conversationId);
+            late.message = sent;
+            late.message.deliveryStatus = lateStatus;
+            late.deliveryStatus = lateStatus;
+            Emit(late);
         }
     });
     return UltraIMResult::Ok();

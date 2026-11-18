@@ -29,9 +29,9 @@
 # Through sudo, which clears the environment, set them on its command line:
 # sudo CHATCUBE_RELAY_HOME=/srv/relay deploy/update.sh ...
 #
-# The CI deploy job (.github/workflows/chatcube-relay.yml) copies the new
-# code to the server and runs this through sudo; by hand it is the same
-# command. Exit 0: the relay runs the new version. Exit 1: it was rolled back
+# The CI deploy job (.github/workflows/chatcube-relay.yml) only copies the
+# new code to the server, to ~/chatcube-relay-src of its deploy user; the
+# operator logs in and runs this with that folder as SOURCE_DIR. Exit 0: the relay runs the new version. Exit 1: it was rolled back
 # (or nothing was changed) and runs what it ran before.
 #
 # Version: 0.2.0 - its settings are named CHATCUBE_* (CHATCUBE_RELAY_HOME, ...);
@@ -56,11 +56,11 @@ setting() {     # setting NAME DEFAULT: $CHATCUBE_NAME, else $NAME (warned), els
         printf '%s' "$2"
     fi
 }
-CHATCUBE_RELAY_HOME="$(setting RELAY_HOME /opt/chatcube-relay)"
+CHATCUBE_RELAY_HOME="$(setting RELAY_HOME /home/chatcube-relay/ChatCubeRelay)"
 CHATCUBE_RELAY_USER="$(setting RELAY_USER chatcube-relay)"
 CHATCUBE_RELAY_SERVICE="$(setting RELAY_SERVICE chatcube-relay)"
-CHATCUBE_RELAY_ENV_FILE="$(setting RELAY_ENV_FILE /etc/chatcube-relay.env)"
-CHATCUBE_RELAY_BACKUPS="$(setting RELAY_BACKUPS /var/lib/chatcube-relay/backups)"
+CHATCUBE_RELAY_ENV_FILE="$(setting RELAY_ENV_FILE /home/chatcube-relay/conf/.env)"
+CHATCUBE_RELAY_BACKUPS="$(setting RELAY_BACKUPS /home/chatcube-relay/backups)"
 CHATCUBE_KEEP_BACKUPS="$(setting KEEP_BACKUPS 5)"
 CHATCUBE_SYSTEMCTL="$(setting SYSTEMCTL systemctl)"
 CHATCUBE_RUN_AS="$(setting RUN_AS "sudo -u $CHATCUBE_RELAY_USER")"
@@ -82,7 +82,7 @@ env_value() {
     [ -f "$CHATCUBE_RELAY_ENV_FILE" ] || return 0
     sed -n "s/^$1=//p" "$CHATCUBE_RELAY_ENV_FILE" | tail -1 | sed 's/^"\(.*\)"$/\1/'
 }
-db="$(env_value CHATCUBE_RELAY_DB)"; db="${db:-/var/lib/chatcube-relay/relay.sqlite3}"
+db="$(env_value CHATCUBE_RELAY_DB)"; db="${db:-/home/chatcube-relay/data/relay.sqlite3}"
 host="$(env_value CHATCUBE_RELAY_HOST)"; host="${host:-127.0.0.1}"
 port="$(env_value CHATCUBE_RELAY_PORT)"; port="${port:-8790}"
 [ "$host" = "0.0.0.0" ] && host=127.0.0.1

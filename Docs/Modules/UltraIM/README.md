@@ -48,7 +48,8 @@ UltraIMConfig config;
 config.pluginDirectory = "<exe dir>/Plugins/UltraIM";
 config.dataDirectory   = "<user data dir>/ChatCube";
 UltraIM_Initialize(config);
-UltraIM_RefreshProviders();                 // load the provider modules
+UltraIM_LoadUsedProviders();                // the networks in use (signed in to before)
+UltraIM_LoadProvider("telegram");           // another one, when it is asked for
 
 UltraIM_Subscribe([](const UltraIMEvent& e) {
     if (e.type == UltraIMEventType::MessageReceive) { /* append e.message */ }
@@ -357,9 +358,29 @@ extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost
 }
 ```
 
-`UltraIM_RefreshProviders` loads each module in `pluginDirectory` once and
-never unloads it (queued callbacks may still point into it). A provider
-compiled into the application uses `UltraIM_RegisterProvider` instead.
+A module is named `ultraim_<provider id>` (`.so`, `.dll`, `.dylib`) - the
+build's `OUTPUT_NAME` with no prefix - so a provider is found by its id
+without loading anything. Modules are loaded **on demand**:
+
+- `UltraIM_ListProviderModules()` - the ids of the modules in
+  `pluginDirectory`, loaded or not (to offer them);
+- `UltraIM_LoadProvider(id)` - that one module, when its network is asked
+  for (a button, a sign-in); `ProviderNotFound` when there is none;
+- `UltraIM_LoadUsedProviders()` - at start, the networks in use: those
+  listed in `<dataDirectory>/ultraim-providers.txt`, one provider id a line
+  (`#` a comment). UltraIM adds a provider there when it connects
+  (`ConnectionStateChange` to `Connected`) and takes it out on
+  `UltraIM_SignOut`; `UltraIM_GetUsedProviders()` reads it. With no list
+  yet, a first start (the data folder empty) begins an empty one; a data
+  folder used before - an application that loaded every module until now -
+  has every module loaded once and those with a sign-in kept written down,
+  so an update signs no one out;
+- `UltraIM_RefreshProviders` - every module, as before.
+
+A module is loaded once and never unloaded (queued callbacks may still point
+into it); after `UltraIM_Shutdown` and a new `UltraIM_Initialize` it is asked
+to register its provider again. A provider compiled into the application
+uses `UltraIM_RegisterProvider` instead.
 
 **The module ABI.** `ULTRAIM_PLUGIN_HOST_ABI_VERSION` covers everything a
 module and the host share in binary form: the host table, the
@@ -907,8 +928,15 @@ UltraCrypt.
   2-7 people (a group message, its title the members') - **leave** (a
   channel; a direct or group message is hidden as Mattermost hides it and
   comes back with its next post), **search** one conversation at a time.
-- **Not here**: typing, presence, read receipts, calls, reactions; only a
-  post's first file is its attachment.
+- **Typing**: `SetTyping(true)` posts `/api/v4/users/me/typing` (Mattermost
+  has no "stopped"; `false` sends nothing). Typing is heard on a WebSocket
+  (`/api/v4/websocket`) opened for that alone - polling stays as it was - and
+  closed with the sign-out; it reconnects with a growing pause after a drop.
+  Mattermost never says "stopped" either: the provider sends the stop itself
+  `MattermostTimings::typingStopMs` (5 s) after the last word of it, when
+  that person's post arrives, or when the socket drops. Needs Mattermost 5.26.
+- **Not here**: presence, read receipts, calls, reactions; only a post's
+  first file is its attachment.
 
 Tests: `Tests/UltraIM/MattermostProviderTests.cpp` against
 `mattermost_fake_server.py` (standard-library python: a team with two
@@ -946,9 +974,14 @@ without python3 unless `ULTRAIM_TEST_MATTERMOST_REQUIRED` is set.
   **people** (`AddContact` an e-mail or a user id, `CreateGroup` a group
   direct message), **leave** (a topic muted, a direct message hidden on this
   device), **search** one conversation at a time.
-- **Not here**: replies to a message (Zulip quotes instead), typing,
-  presence, read receipts, calls; moved or renamed topics. Needs Zulip 7.0
-  or later.
+- **Typing**: `SetTyping` posts `/api/v1/typing` (a direct message, or a
+  stream topic on Zulip 8.0 and later; an older server's refusal turns
+  stream typing off for the session), and typing events come from the event
+  queue. Zulip's own clients say "typing" only every ten seconds, so the
+  provider repeats it every `ZulipTimings::typingRefreshMs` (4 s) until the
+  stop, that person's message, or `typingExpireMs` (15 s) without a word.
+- **Not here**: replies to a message (Zulip quotes instead), presence, read
+  receipts, calls; moved or renamed topics. Needs Zulip 7.0 or later.
 
 Tests: `Tests/UltraIM/ZulipProviderTests.cpp` against `zulip_fake_server.py`
 (standard-library python, with a real long-poll): password and API-key
@@ -1024,7 +1057,11 @@ tinyxml2's, cut into elements from the TCP byte stream by `XmppSplitter`.
   and `ws://`, are refused unless they are on this computer. The endpoint
   that connected is kept with the keys and tried first next time.
   `SetTlsOptions` takes a CA bundle (tests). Over TCP a single space keeps a
-  quiet connection open.
+  quiet connection open, and a server that has said nothing for
+  `XmppTimings::pingIntervalMs` is pinged (XEP-0199): no answer, nor anything
+  else, within `pingTimeoutMs` and the connection counts as gone and is made
+  again - a server that hangs, or a path that drops packets without a word,
+  is found this way, where a write never fails.
 - **Sign-in** (`UltraIMLoginType::UsernamePassword`): the bare JID
   (`username`, `erin@example.org`) and the password, by SASL SCRAM-SHA-256,
   else SCRAM-SHA-1, else PLAIN (only over TLS or to this computer).
@@ -1052,7 +1089,9 @@ Tests: `Tests/UltraIM/XmppProviderTests.cpp` against `xmpp_fake_server.py`
 one with STARTTLS and a direct-TLS one, sharing users and archives): the
 splitter on awkward reads, server-field forms, SRV ordering, an untrusted
 certificate refused, STARTTLS and WebSocket clients talking both ways,
-direct TLS with the endpoint kept and resumed, a dropped TCP connection;
+direct TLS with the endpoint kept and resumed, a dropped TCP connection, a
+quiet server pinged and kept, one fallen silent with its socket open found
+by the unanswered ping;
 SCRAM-SHA-256,
 SCRAM-SHA-1 and PLAIN (nothing kept), plain `ws://` to another computer
 refused, the WebSocket found from host-meta, the kept keys and a changed

@@ -1,5 +1,8 @@
 // Plugins/UltraIM/zulip/ZulipProvider.cpp
 // Zulip - the streams and direct messages of a Zulip organization as UltraIM conversations
+// Version: 0.2.0 - typing indicators both ways (POST /api/v1/typing, the queue's "typing" events; a
+//                  typist's start told again every typingRefreshMs until their stop, message or expiry); a
+//                  message deleted here before the queue's echo of it came is not received again
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -251,7 +254,7 @@ UltraIMCapabilityFlags ZulipProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     return F::TextMessages | F::GroupChats | F::ImageMessages | F::FileTransfer | F::EditMessage |
            F::DeleteMessage | F::OfflineMessages | F::MultiDevice | F::AddContact | F::CreateGroup |
-           F::SearchMessages | F::LeaveConversation | F::VoiceNotes;
+           F::SearchMessages | F::LeaveConversation | F::VoiceNotes | F::TypingIndicator;
 }
 
 UltraIMResult ZulipProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -271,6 +274,11 @@ UltraIMResult ZulipProvider::Initialize(const UltraIMConfig& config, UltraIMEven
     }
     workAbort_ = false;
     if (!worker_.joinable()) worker_ = std::thread([this]() { WorkLoop(); });
+    {
+        std::lock_guard<std::mutex> lock(typingMutex_);
+        typingTimerStop_ = false;
+    }
+    if (!typingTimer_.joinable()) typingTimer_ = std::thread([this]() { TypingTimerLoop(); });
     return UltraIMResult::Ok();
 }
 
@@ -285,6 +293,15 @@ void ZulipProvider::Shutdown() {
     workAbort_ = true;
     workWake_.notify_all();
     if (worker_.joinable()) worker_.join();
+    {
+        std::lock_guard<std::mutex> lock(typingMutex_);
+        typingTimerStop_ = true;
+    }
+    typingWake_.notify_all();
+    if (typingTimer_.joinable()) {
+        if (typingTimer_.get_id() == std::this_thread::get_id()) typingTimer_.detach();
+        else typingTimer_.join();
+    }
     sink_ = nullptr;
 }
 
@@ -340,6 +357,7 @@ void ZulipProvider::AuthLost(const std::string& why) {
         stopEvents_ = true;
     }
     eventsWake_.notify_all();
+    StopAllTyping();
     SetState(UltraIMConnectionState::Error, why);
     UltraIMEvent event;
     event.type = UltraIMEventType::AuthRequire;
@@ -653,10 +671,14 @@ UltraIMResult ZulipProvider::StartSession(const std::string& base, const std::st
         streamNames_.clear();
         chats_.clear();
         byId_.clear();
+        deletedIds_.clear();
         linkLines_.clear();
         clientOfMessage_.clear();
         pendingLocal_.clear();
         maxSeenId_ = 0;
+        typingTo_.clear();
+        streamTypingRefused_ = false;
+        directTypingOld_ = false;
     }
     SaveSession(base, email, key);
     LoadHidden();
@@ -685,6 +707,7 @@ void ZulipProvider::SignOut() {
         chats_.clear();
         queueId_.clear();
     }
+    StopAllTyping();
     if (state_.load() != UltraIMConnectionState::Disconnected) SetState(UltraIMConnectionState::Disconnected);
 }
 
@@ -710,7 +733,7 @@ void ZulipProvider::WaitEvents(int ms) {
 
 bool ZulipProvider::RegisterQueue() {
     const ZulipResponse r = Request("POST", "/api/v1/register",
-                                    {{"event_types", "[\"message\",\"update_message\",\"delete_message\"]"},
+                                    {{"event_types", "[\"message\",\"update_message\",\"delete_message\",\"typing\"]"},
                                      {"apply_markdown", "false"},
                                      {"client_gravatar", "false"}},
                                     30000);
@@ -767,8 +790,12 @@ void ZulipProvider::EventLoop() {
             continue;
         }
         if (r.code == "BAD_EVENT_QUEUE_ID") {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (queueId_ == queue) queueId_.clear();
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (queueId_ == queue) queueId_.clear();
+            }
+            // The stops it held are lost with it.
+            StopAllTyping();
             continue;
         }
         if (r.status == 401) break;                 // AuthLost has told
@@ -802,6 +829,10 @@ void ZulipProvider::HandleEvent(const JSONValue& event) {
     const std::string type = event["type"].GetString();
     if (type == "message") {
         Received(event["message"], event["flags"].GetElements(), event["local_message_id"].GetString());
+        return;
+    }
+    if (type == "typing") {
+        Typing(event);
         return;
     }
     if (type == "update_message") {
@@ -874,6 +905,7 @@ void ZulipProvider::HandleEvent(const JSONValue& event) {
                 e.message.messageId = it->second.messageId;
                 e.message.clientMessageId = it->second.clientMessageId;
                 byId_.erase(it);
+                deletedIds_.insert(id);
                 linkLines_.erase(id);
                 Chat* chat = ChatOf(e.conversationId);
                 if (chat) {
@@ -900,6 +932,144 @@ void ZulipProvider::HandleEvent(const JSONValue& event) {
     // "heartbeat" and the rest: nothing to do.
 }
 
+// {"type": "typing", "op": "start" | "stop", "message_type": "direct" (Zulip 8+;
+// "private" before) | "stream", "sender": {"user_id"}, "recipients":
+// [{"user_id", "email"}] (direct: everyone in it, the typist and we too) or
+// "stream_id" and "topic"}.
+void ZulipProvider::Typing(const JSONValue& event) {
+    const std::string op = event["op"].GetString();
+    if (op != "start" && op != "stop") return;
+    UltraIMEvent e;
+    e.type = UltraIMEventType::TypingChange;
+    e.providerId = providerId_;
+    e.isTyping = op == "start";
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        const JSONValue& sender = event["sender"];
+        e.contactId = IdText(sender["user_id"]);
+        if (e.contactId.empty()) {
+            // (Servers before Zulip 4 name people by their e-mail only.)
+            const std::string email = Lower(sender["email"].GetString());
+            for (const auto& [id, person] : people_) {
+                if (!email.empty() && Lower(person.email) == email) e.contactId = id;
+            }
+        }
+        if (e.contactId.empty() || e.contactId == me_.id) return;      // our own typing, from another device
+        if (event["message_type"].GetString() == "stream") {
+            const std::string streamId = IdText(event["stream_id"]);
+            if (!AllDigits(streamId)) return;
+            e.conversationId = "stream:" + streamId + ":" + event["topic"].GetString();
+            if (hidden_.count(e.conversationId)) return;               // a topic left: muted
+        } else {
+            std::vector<std::string> others;
+            for (const JSONValue& r : event["recipients"].GetElements()) {
+                std::string id = IdText(r["user_id"]);
+                if (id.empty()) {
+                    const std::string email = Lower(r["email"].GetString());
+                    for (const auto& [pid, person] : people_) {
+                        if (!email.empty() && Lower(person.email) == email) id = pid;
+                    }
+                }
+                if (id.empty() || id == me_.id) continue;
+                if (std::find(others.begin(), others.end(), id) == others.end()) others.push_back(id);
+            }
+            if (std::find(others.begin(), others.end(), e.contactId) == others.end()) others.push_back(e.contactId);
+            std::sort(others.begin(), others.end(), IdLess);
+            e.conversationId = "dm:" + Join(others, ",");
+        }
+    }
+    std::lock_guard<std::recursive_mutex> emitLock(emitMutex_);
+    {
+        std::lock_guard<std::mutex> lock(typingMutex_);
+        const auto key = std::make_pair(e.conversationId, e.contactId);
+        if (e.isTyping) {
+            const auto now = std::chrono::steady_clock::now();
+            typists_[key] = Typist{now, now};
+        } else {
+            typists_.erase(key);
+        }
+    }
+    typingWake_.notify_all();
+    Emit(e);
+}
+
+void ZulipProvider::TypingStopped(const std::string& conversationId, const std::string& userId) {
+    std::lock_guard<std::recursive_mutex> emitLock(emitMutex_);
+    {
+        std::lock_guard<std::mutex> lock(typingMutex_);
+        if (!typists_.erase({conversationId, userId})) return;
+    }
+    UltraIMEvent e;
+    e.type = UltraIMEventType::TypingChange;
+    e.providerId = providerId_;
+    e.conversationId = conversationId;
+    e.contactId = userId;
+    e.isTyping = false;
+    Emit(e);
+}
+
+void ZulipProvider::StopAllTyping() {
+    std::lock_guard<std::recursive_mutex> emitLock(emitMutex_);
+    std::map<std::pair<std::string, std::string>, Typist> all;
+    {
+        std::lock_guard<std::mutex> lock(typingMutex_);
+        all.swap(typists_);
+    }
+    for (const auto& entry : all) {
+        UltraIMEvent e;
+        e.type = UltraIMEventType::TypingChange;
+        e.providerId = providerId_;
+        e.conversationId = entry.first.first;
+        e.contactId = entry.first.second;
+        e.isTyping = false;
+        Emit(e);
+    }
+}
+
+void ZulipProvider::TypingTimerLoop() {
+    for (;;) {
+        {
+            // Asleep while no one types; otherwise a look every 100 ms at most.
+            std::unique_lock<std::mutex> lock(typingMutex_);
+            if (typists_.empty())
+                typingWake_.wait(lock, [this]() { return typingTimerStop_ || !typists_.empty(); });
+            else
+                typingWake_.wait_for(lock, std::chrono::milliseconds(100), [this]() { return typingTimerStop_; });
+            if (typingTimerStop_) return;
+        }
+        // emitMutex_ first: a stop told by a message in between is not followed by a stale start.
+        std::lock_guard<std::recursive_mutex> emitLock(emitMutex_);
+        std::vector<UltraIMEvent> tell;
+        {
+            const auto now = std::chrono::steady_clock::now();
+            const auto refresh = std::chrono::milliseconds(std::max(50, timings_.typingRefreshMs));
+            const auto expire = std::chrono::milliseconds(std::max(0, timings_.typingExpireMs));
+            std::lock_guard<std::mutex> lock(typingMutex_);
+            if (typingTimerStop_) return;
+            for (auto it = typists_.begin(); it != typists_.end();) {
+                UltraIMEvent e;
+                e.type = UltraIMEventType::TypingChange;
+                e.providerId = providerId_;
+                e.conversationId = it->first.first;
+                e.contactId = it->first.second;
+                if (now - it->second.lastStart >= expire) {
+                    e.isTyping = false;
+                    tell.push_back(e);
+                    it = typists_.erase(it);
+                    continue;
+                }
+                if (now - it->second.lastTold >= refresh) {
+                    it->second.lastTold = now;
+                    e.isTyping = true;
+                    tell.push_back(e);
+                }
+                ++it;
+            }
+        }
+        for (const UltraIMEvent& e : tell) Emit(e);
+    }
+}
+
 void ZulipProvider::Received(const JSONValue& message, const std::vector<JSONValue>& flags, const std::string& localId) {
     UltraIMMessage m;
     bool tell = false;
@@ -907,6 +1077,8 @@ void ZulipProvider::Received(const JSONValue& message, const std::vector<JSONVal
         std::lock_guard<std::mutex> lock(mutex_);
         const int64_t id = message["id"].GetInteger();
         if (id <= 0 || byId_.count(id)) return;     // told already (or ours, sent from here)
+        // Deleted already: the queue's word of it came after our delete.
+        if (deletedIds_.count(id)) return;
         // Our own, sent from here: by the local id the queue hands back, or -
         // from a queue registered after it was sent - by its words.
         std::string client;
@@ -948,7 +1120,12 @@ void ZulipProvider::Received(const JSONValue& message, const std::vector<JSONVal
     e.conversationId = m.conversationId;
     e.contactId = m.senderId;
     e.message = m;
-    Emit(e);
+    {
+        // Their message is here: they have stopped typing - said just before it.
+        std::lock_guard<std::recursive_mutex> emitLock(emitMutex_);
+        TypingStopped(m.conversationId, m.senderId);
+        Emit(e);
+    }
     EmitConversation(m.conversationId);
     QueueMedia(m);
 }
@@ -1812,6 +1989,60 @@ UltraIMResult ZulipProvider::DeleteMessage(const std::string& conversationId, co
         event.Set("type", JSONValue("delete_message"));
         event.Set("message_id", JSONValue(id));
         HandleEvent(event);
+    });
+    return UltraIMResult::Ok();
+}
+
+UltraIMResult ZulipProvider::SetTyping(const std::string& conversationId, bool isTyping) {
+    if (state_.load() != UltraIMConnectionState::Connected && state_.load() != UltraIMConnectionState::Reconnecting)
+        return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Zulip");
+    bool isStream = false;
+    std::string streamId, topic, to;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        Chat* chat = ChatOf(conversationId);
+        if (!chat) return UltraIMResult::Error(UltraIMResultCode::NotFound, "No such conversation");
+        // A stop only where a start went: the window says "stopped" on every send.
+        if (isTyping) typingTo_.insert(conversationId);
+        else if (!typingTo_.erase(conversationId)) return UltraIMResult::Ok();
+        isStream = chat->isStream;
+        if (isStream) {
+            if (streamTypingRefused_) return UltraIMResult::Ok();
+            streamId = chat->streamId;
+            topic = chat->topic;
+        } else {
+            if (chat->others.size() == 1 && chat->others.front() == me_.id) return UltraIMResult::Ok();     // notes to oneself
+            to = "[" + Join(chat->others, ",") + "]";
+        }
+    }
+    const std::string op = isTyping ? "start" : "stop";
+    Enqueue([this, isStream, streamId, topic, to, op]() {
+        if (isStream) {
+            const ZulipResponse r = Request("POST", "/api/v1/typing",
+                                            {{"type", "stream"}, {"op", op}, {"stream_id", streamId}, {"topic", topic}}, 15000);
+            // A server before Zulip 8 refuses a topic's typing (it wanted
+            // "to"): not asked again in this session; no one is told.
+            if (!r.Ok() && r.status == 400) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                streamTypingRefused_ = true;
+            }
+            return;
+        }
+        bool old = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            old = directTypingOld_;
+        }
+        const ZulipResponse r = Request("POST", "/api/v1/typing",
+                                        {{"type", old ? "private" : "direct"}, {"op", op}, {"to", to}}, 15000);
+        if (!old && !r.Ok() && r.status == 400) {
+            // Before Zulip 7 a direct message's type was "private".
+            const ZulipResponse again = Request("POST", "/api/v1/typing", {{"type", "private"}, {"op", op}, {"to", to}}, 15000);
+            if (again.Ok()) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                directTypingOld_ = true;
+            }
+        }
     });
     return UltraIMResult::Ok();
 }

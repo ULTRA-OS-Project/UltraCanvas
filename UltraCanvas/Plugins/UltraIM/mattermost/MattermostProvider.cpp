@@ -1,5 +1,7 @@
 // Plugins/UltraIM/mattermost/MattermostProvider.cpp
 // Mattermost - the channels and direct messages of a Mattermost server as UltraIM conversations
+// Version: 0.2.0 - typing indicators both ways: POST /api/v4/users/me/typing, and a WebSocket for the
+//                  others' typing (its UltraNet callbacks chained to those installed before)
 // Version: 0.1.0
 // Last Modified: 2026-11-17
 // Author: UltraCanvas Framework
@@ -12,6 +14,7 @@
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
 #include "UltraNet/UltraNetUrl.h"
+#include "UltraNet/UltraNetWebSocket.h"
 
 #include <algorithm>
 #include <cctype>
@@ -23,6 +26,113 @@
 namespace UltraIMMattermost {
 
 using UltraCanvas::JSONValue;
+
+// The typing WebSocket, as UltraNet's callbacks (on its receiver thread) and
+// the socket's own thread share it.
+struct MattermostTypingShared {
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool stopping = false;
+    bool dropped = false;               // the socket closed by itself (or went silent)
+    std::string connectError;           // why the last connect failed
+    std::deque<std::string> inbox;      // what came, for the socket's thread
+};
+
+namespace {
+
+// ---- the process-wide WebSocket callbacks ------------------------------------
+// UltraNet delivers every socket's frames through one callback bag. A router
+// is installed once; the frames of a socket that is not ours go on to what
+// was installed before (XMPP's, Direct's, the application's), so every one
+// of them keeps working.
+
+std::mutex g_routeMutex;
+std::map<UltraNetHandle, std::weak_ptr<MattermostTypingShared>>& Routes() {
+    static auto* routes = new std::map<UltraNetHandle, std::weak_ptr<MattermostTypingShared>>();
+    return *routes;
+}
+UltraNetWebSocketCallbacks g_previous;
+bool g_routerInstalled = false;
+// The socket connecting on this thread: onOpen (and a failed connect's
+// onError) arrive on the connecting thread before the handle is returned.
+thread_local std::weak_ptr<MattermostTypingShared> t_connecting;
+
+std::shared_ptr<MattermostTypingShared> RouteFor(UltraNetHandle handle) {
+    std::lock_guard<std::mutex> lock(g_routeMutex);
+    auto it = Routes().find(handle);
+    return it == Routes().end() ? nullptr : it->second.lock();
+}
+
+void Unroute(UltraNetHandle handle) {
+    std::lock_guard<std::mutex> lock(g_routeMutex);
+    Routes().erase(handle);
+}
+
+void SocketDropped(const std::shared_ptr<MattermostTypingShared>& shared, UltraNetHandle handle) {
+    // (The handle stays: the socket's thread closes it, which joins UltraNet's thread.)
+    Unroute(handle);
+    std::lock_guard<std::mutex> lock(shared->mutex);
+    shared->dropped = true;
+    shared->changed.notify_all();
+}
+
+void InstallRouter() {
+    std::lock_guard<std::mutex> lock(g_routeMutex);
+    if (g_routerInstalled) return;
+    g_routerInstalled = true;
+    UltraNetWebSocketCallbacks router;
+    router.onOpen = [](UltraNetHandle handle) {
+        if (auto shared = t_connecting.lock()) {
+            std::lock_guard<std::mutex> routeLock(g_routeMutex);
+            Routes()[handle] = shared;
+            return;
+        }
+        if (g_previous.onOpen) g_previous.onOpen(handle);
+    };
+    router.onText = [](UltraNetHandle handle, const std::string& text) {
+        if (auto shared = RouteFor(handle)) {
+            // Handled on the socket's own thread: UltraNet's never waits on the sink.
+            std::lock_guard<std::mutex> sharedLock(shared->mutex);
+            if (!shared->stopping) shared->inbox.push_back(text);
+            shared->changed.notify_all();
+            return;
+        }
+        if (g_previous.onText) g_previous.onText(handle, text);
+    };
+    router.onBinary = [](UltraNetHandle handle, const std::vector<uint8_t>& data) {
+        if (RouteFor(handle)) return;       // Mattermost sends text only
+        if (g_previous.onBinary) g_previous.onBinary(handle, data);
+    };
+    router.onClose = [](UltraNetHandle handle, int code, const std::string& reason) {
+        if (auto shared = RouteFor(handle)) {
+            SocketDropped(shared, handle);
+            return;
+        }
+        if (g_previous.onClose) g_previous.onClose(handle, code, reason);
+    };
+    router.onError = [](UltraNetHandle handle, const std::string& message) {
+        if (auto shared = RouteFor(handle)) {
+            SocketDropped(shared, handle);
+            return;
+        }
+        // A connect of ours that failed: its handle was never routed.
+        if (auto shared = t_connecting.lock()) {
+            std::lock_guard<std::mutex> sharedLock(shared->mutex);
+            shared->connectError = message;
+            return;
+        }
+        if (g_previous.onError) g_previous.onError(handle, message);
+    };
+    router.onPing = [](UltraNetHandle handle, const std::vector<uint8_t>& data) {
+        if (!RouteFor(handle) && g_previous.onPing) g_previous.onPing(handle, data);
+    };
+    router.onPong = [](UltraNetHandle handle, const std::vector<uint8_t>& data) {
+        if (!RouteFor(handle) && g_previous.onPong) g_previous.onPong(handle, data);
+    };
+    g_previous = UltraNet_WebSocketSetCallbacks(router);
+}
+
+} // namespace
 
 namespace {
 
@@ -54,6 +164,24 @@ std::string HostOf(const std::string& base) {
     const size_t slash = host.find('/');
     if (slash != std::string::npos) host = host.substr(0, slash);
     return host;
+}
+
+// The server's WebSocket: wss:// at the same place; ws:// only to this
+// machine (a test server), never in the clear across a network.
+std::string SocketUrlFor(const std::string& base) {
+    if (base.empty()) return std::string();
+    const size_t scheme = base.find("://");
+    const std::string rest = scheme == std::string::npos ? base : base.substr(scheme + 3);
+    std::string host = Lower(HostOf(base));
+    if (!host.empty() && host[0] == '[') {
+        host = host.substr(0, host.find(']') + 1);
+    } else {
+        const size_t colon = host.find(':');
+        if (colon != std::string::npos) host = host.substr(0, colon);
+    }
+    const bool loopback = host == "localhost" || host.rfind("127.", 0) == 0 || host == "[::1]";
+    const bool clear = base.rfind("http://", 0) == 0 && loopback;
+    return (clear ? "ws://" : "wss://") + rest + "/api/v4/websocket";
 }
 
 // Mattermost's ids: 26 lower-case letters and digits.
@@ -152,7 +280,7 @@ UltraIMCapabilityFlags MattermostProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     return F::TextMessages | F::GroupChats | F::ImageMessages | F::FileTransfer | F::ReplyToMessage |
            F::EditMessage | F::DeleteMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
-           F::CreateGroup | F::SearchMessages | F::LeaveConversation | F::VoiceNotes;
+           F::CreateGroup | F::SearchMessages | F::LeaveConversation | F::VoiceNotes | F::TypingIndicator;
 }
 
 UltraIMResult MattermostProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -625,10 +753,12 @@ UltraIMResult MattermostProvider::StartSession(const std::string& base, const st
         std::lock_guard<std::mutex> lock(workMutex_);
         polling_ = true;
     }
+    StartTypingSocket();
     return UltraIMResult::Ok();
 }
 
 void MattermostProvider::SessionEnded() {
+    StopTypingSocket();
     ForgetSession();
     {
         std::lock_guard<std::mutex> lock(workMutex_);
@@ -646,6 +776,7 @@ void MattermostProvider::SessionEnded() {
 }
 
 void MattermostProvider::SignOut() {
+    StopTypingSocket();
     {
         std::lock_guard<std::mutex> lock(workMutex_);
         polling_ = false;
@@ -1238,7 +1369,11 @@ void MattermostProvider::Poll(bool first) {
                 }
             }
         }
-        for (const auto& e : events) Emit(e);
+        for (const auto& e : events) {
+            // Their post is here: they have stopped typing (Mattermost does not say so).
+            if (e.type == UltraIMEventType::MessageReceive) TypingStopped(e.conversationId, e.contactId);
+            Emit(e);
+        }
         for (const auto& m : media) QueueMedia(m);
     }
     // Channels gone from the list: left (or removed) elsewhere.
@@ -1949,6 +2084,211 @@ UltraIMResult MattermostProvider::MarkRead(const std::string& conversationId, co
         Emit(e);
     });
     return UltraIMResult::Ok();
+}
+
+// ============================================================================
+// TYPING
+// ============================================================================
+
+UltraIMResult MattermostProvider::SetTyping(const std::string& conversationId, bool isTyping) {
+    // Mattermost has no "stopped": the others' clients let a typist go a few
+    // seconds after the last word of them.
+    if (!isTyping) return UltraIMResult::Ok();
+    if (state_.load() != UltraIMConnectionState::Connected && state_.load() != UltraIMConnectionState::Reconnecting)
+        return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Mattermost");
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!chats_.count(conversationId)) return UltraIMResult::Error(UltraIMResultCode::NotFound, "No such conversation");
+    }
+    Enqueue([this, conversationId]() {
+        JSONValue body = JSONValue::MakeObject();
+        body.Set("channel_id", JSONValue(conversationId));
+        body.Set("parent_id", JSONValue(std::string()));
+        // (Mattermost 5.26+; an older server answers 404, and no one is told.)
+        Request("POST", "/api/v4/users/me/typing", &body, 15000);
+    });
+    return UltraIMResult::Ok();
+}
+
+void MattermostProvider::StartTypingSocket() {
+    StopTypingSocket();
+    InstallRouter();
+    std::lock_guard<std::mutex> lock(socketMutex_);
+    typingShared_ = std::make_shared<MattermostTypingShared>();
+    const std::shared_ptr<MattermostTypingShared> shared = typingShared_;
+    typingThread_ = std::thread([this, shared]() { TypingSocketLoop(shared); });
+}
+
+void MattermostProvider::StopTypingSocket() {
+    std::shared_ptr<MattermostTypingShared> shared;
+    std::thread thread;
+    {
+        std::lock_guard<std::mutex> lock(socketMutex_);
+        shared = std::move(typingShared_);
+        thread = std::move(typingThread_);
+    }
+    if (shared) {
+        std::lock_guard<std::mutex> lock(shared->mutex);
+        shared->stopping = true;
+        shared->changed.notify_all();
+    }
+    // The socket's thread closes its socket and ends (a connect in progress
+    // first runs out: at most its connect timeout). From that thread itself
+    // (a sink that signs out on an event it tells), it ends by itself.
+    if (thread.joinable()) {
+        if (thread.get_id() == std::this_thread::get_id()) thread.detach();
+        else thread.join();
+    }
+    std::lock_guard<std::mutex> lock(typingMutex_);
+    typists_.clear();
+}
+
+void MattermostProvider::TypingSocketLoop(const std::shared_ptr<MattermostTypingShared>& shared) {
+    const auto stopping = [&shared]() {
+        std::lock_guard<std::mutex> lock(shared->mutex);
+        return shared->stopping;
+    };
+    int pause = std::max(50, timings_.socketRetryMinMs);
+    while (!stopping()) {
+        std::string url, token;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            url = SocketUrlFor(base_);
+            token = token_;
+        }
+        UltraNetHandle handle = UltraNetInvalidHandle;
+        if (!url.empty() && !token.empty()) {
+            UltraNetWebSocketOptions options;
+            options.headers.Set("Authorization", "Bearer " + token);
+            options.connectTimeoutMs = 5000;            // what a sign-out may have to wait for, at most
+            options.pingIntervalMs = std::max(0, timings_.socketPingMs);
+            options.maxMessageBytes = 4 * 1024 * 1024;  // events, not files
+            {
+                std::lock_guard<std::mutex> lock(shared->mutex);
+                shared->dropped = false;
+                shared->connectError.clear();
+                shared->inbox.clear();
+            }
+            t_connecting = shared;
+            handle = UltraNet_WebSocketConnect(url, options);
+            t_connecting.reset();
+        }
+        if (handle != UltraNetInvalidHandle) {
+            // Signed in by the Authorization header; the challenge as well,
+            // for a server (or a proxy) that does not pass the header on.
+            JSONValue challenge = JSONValue::MakeObject();
+            challenge.Set("seq", JSONValue(static_cast<int64_t>(1)));
+            challenge.Set("action", JSONValue(std::string("authentication_challenge")));
+            JSONValue data = JSONValue::MakeObject();
+            data.Set("token", JSONValue(token));
+            challenge.Set("data", data);
+            UltraNet_WebSocketSendText(handle, UltraCanvas::JSON::Serialize(challenge));
+            for (;;) {
+                std::deque<std::string> inbox;
+                bool stop = false, dropped = false;
+                {
+                    std::unique_lock<std::mutex> lock(shared->mutex);
+                    shared->changed.wait_for(lock, std::chrono::milliseconds(200), [&shared]() {
+                        return shared->stopping || shared->dropped || !shared->inbox.empty();
+                    });
+                    inbox.swap(shared->inbox);
+                    stop = shared->stopping;
+                    dropped = shared->dropped;
+                }
+                if (stop) break;
+                for (const std::string& text : inbox) {
+                    if (SocketMessage(text)) pause = std::max(50, timings_.socketRetryMinMs);    // signed in: a good connection
+                }
+                ExpireTyping(false);
+                if (dropped) break;
+            }
+            // (Joins UltraNet's thread for it: never called from that thread.)
+            UltraNet_WebSocketClose(handle);
+            Unroute(handle);
+            if (stopping()) break;
+        }
+        // Gone, or not there: whoever typed is not known any more.
+        ExpireTyping(true);
+        std::unique_lock<std::mutex> lock(shared->mutex);
+        shared->changed.wait_for(lock, std::chrono::milliseconds(pause), [&shared]() { return shared->stopping; });
+        if (shared->stopping) break;
+        pause = std::min(pause * 2, std::max(pause, timings_.socketRetryMaxMs));
+    }
+}
+
+bool MattermostProvider::SocketMessage(const std::string& text) {
+    UltraCanvas::JSONParseResult parsed;
+    const JSONValue message = UltraCanvas::JSON::Parse(text, &parsed);
+    if (!message.IsObject()) return false;
+    const std::string event = message["event"].GetString();
+    if (event == "hello") return true;
+    if (event != "typing") return false;
+    // {"event": "typing", "data": {"parent_id", "user_id"}, "broadcast": {"channel_id"}}: in a
+    // thread or not, the conversation is the channel.
+    const std::string channelId = message["broadcast"]["channel_id"].GetString();
+    const std::string userId = message["data"]["user_id"].GetString();
+    if (channelId.empty() || userId.empty()) return false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (userId == me_.id) return false;        // our own, from another device
+    }
+    TypingSeen(channelId, userId);
+    return false;
+}
+
+void MattermostProvider::TypingSeen(const std::string& channelId, const std::string& userId) {
+    {
+        std::lock_guard<std::mutex> lock(typingMutex_);
+        typists_[{channelId, userId}] = std::chrono::steady_clock::now();
+    }
+    // Every time: the window keeps showing it while it is said again.
+    UltraIMEvent e;
+    e.type = UltraIMEventType::TypingChange;
+    e.providerId = providerId_;
+    e.conversationId = channelId;
+    e.contactId = userId;
+    e.isTyping = true;
+    Emit(e);
+}
+
+void MattermostProvider::TypingStopped(const std::string& channelId, const std::string& userId) {
+    {
+        std::lock_guard<std::mutex> lock(typingMutex_);
+        if (!typists_.erase({channelId, userId})) return;
+    }
+    UltraIMEvent e;
+    e.type = UltraIMEventType::TypingChange;
+    e.providerId = providerId_;
+    e.conversationId = channelId;
+    e.contactId = userId;
+    e.isTyping = false;
+    Emit(e);
+}
+
+void MattermostProvider::ExpireTyping(bool everyone) {
+    std::vector<std::pair<std::string, std::string>> stopped;
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const auto quiet = std::chrono::milliseconds(std::max(0, timings_.typingStopMs));
+        std::lock_guard<std::mutex> lock(typingMutex_);
+        for (auto it = typists_.begin(); it != typists_.end();) {
+            if (everyone || now - it->second >= quiet) {
+                stopped.push_back(it->first);
+                it = typists_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+    for (const auto& [channelId, userId] : stopped) {
+        UltraIMEvent e;
+        e.type = UltraIMEventType::TypingChange;
+        e.providerId = providerId_;
+        e.conversationId = channelId;
+        e.contactId = userId;
+        e.isTyping = false;
+        Emit(e);
+    }
 }
 
 } // namespace UltraIMMattermost
