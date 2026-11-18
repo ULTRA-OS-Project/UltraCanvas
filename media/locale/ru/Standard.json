@@ -280,6 +280,7 @@
   "Extract: the folder name is already taken": "Извлечение: папка с таким именем уже существует",
   "Extras": "Дополнительно",
   "Failed": "Ошибка",
+  "Failed to open presentation: {0} ({1})": "Не удалось открыть презентацию: {0} ({1})",
   "File": "Файл",
   "File extensions": "Расширения файлов",
   "File icons": "Значки файлов",

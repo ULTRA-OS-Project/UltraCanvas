@@ -269,6 +269,7 @@
   "Extract: the folder name is already taken": "Extract: the folder name is already taken",
   "Extras": "Extras",
   "Failed": "Failed",
+  "Failed to open presentation: {0} ({1})": "Failed to open presentation: {0} ({1})",
   "File": "File",
   "File extensions": "File extensions",
   "File icons": "File icons",

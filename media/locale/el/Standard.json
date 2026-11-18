@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "Αποσυμπίεση: το όνομα φακέλου χρησιμοποιείται ήδη",
   "Extras": "Επιπλέον",
   "Failed": "Απέτυχε",
+  "Failed to open presentation: {0} ({1})": "Δεν ήταν δυνατό το άνοιγμα της παρουσίασης: {0} ({1})",
   "File": "Αρχείο",
   "File extensions": "Επεκτάσεις αρχείων",
   "File icons": "Εικονίδια αρχείων",

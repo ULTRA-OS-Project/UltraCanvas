@@ -260,6 +260,7 @@
   "Extract: the folder name is already taken": "解壓縮：資料夾名稱已被使用",
   "Extras": "其他",
   "Failed": "失敗",
+  "Failed to open presentation: {0} ({1})": "無法開啟簡報：{0}（{1}）",
   "File": "檔案",
   "File extensions": "副檔名",
   "File icons": "檔案圖示",

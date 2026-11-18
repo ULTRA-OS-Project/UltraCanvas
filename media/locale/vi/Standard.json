@@ -260,6 +260,7 @@
   "Extract: the folder name is already taken": "Giải nén: tên thư mục đã được sử dụng",
   "Extras": "Bổ sung",
   "Failed": "Thất bại",
+  "Failed to open presentation: {0} ({1})": "Không thể mở bản trình bày: {0} ({1})",
   "File": "Tệp",
   "File extensions": "Phần mở rộng tệp",
   "File icons": "Biểu tượng tệp",

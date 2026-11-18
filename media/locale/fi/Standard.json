@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "Purku: kansion nimi on jo käytössä",
   "Extras": "Lisätoiminnot",
   "Failed": "Epäonnistui",
+  "Failed to open presentation: {0} ({1})": "Esitystä ei voitu avata: {0} ({1})",
   "File": "Tiedosto",
   "File extensions": "Tiedostopäätteet",
   "File icons": "Tiedostokuvakkeet",

@@ -1552,6 +1552,8 @@ VIEWER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
                 <string>public.audio</string>
                 <string>com.adobe.pdf</string>
                 <string>org.idpf.epub-container</string>
+                <string>org.openxmlformats.presentationml.presentation</string>
+                <string>org.oasis-open.opendocument.presentation</string>
                 <string>public.plain-text</string>
             </array>
         </dict>

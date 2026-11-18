@@ -19,6 +19,7 @@ This app versions itself: [`Docs/UltraViewer/CHANGELOG.md`](../../Docs/UltraView
 | Documents | PDF | `UltraCanvasPDFView` (MuPDF) |
 | e-books | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapters, TOC, reflowing text) |
 | Spreadsheets | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
+| Presentations | PPTX (and PPTM, PPSX, PPSM, POTX, POTM), ODP (and OTP, FODP) | The outline of the slides - titles, bullets, tables, pictures' descriptions, speaker notes - in the read-only `UltraCanvasTextArea` |
 | 3D models | STL, and with the Models plugin OBJ, PLY, 3DS, STEP, FBX, COLLADA, Alembic, … | `UltraCanvasSTLElement` (OpenGL viewer) |
 | Text / source / markdown | txt, md, json, xml, source code, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown rendering) |
 | UltraCanvas Documents | `*.ucd` (UCD v2 containers) | Embedded preview thumbnail + container details (full rendering arrives with the UCD v2 engine) |
@@ -53,7 +54,8 @@ the front; a start without arguments just brings it forward
   or several files to view just those.
 - **e-books:** PageUp / PageDown switch chapters, the TOC panel toggles from
   the reading toolbar.
-- **Password-protected files:** a protected PDF or UltraCanvas image shows
+- **Password-protected files:** a protected PDF, UltraCanvas image or
+  presentation (.pptx, .odp) shows
   an **Unlock** button (Enter does the same); its password is kept while
   the folder is browsed, and forgotten - the file locked again - when the
   screen locks or UltraViewer has had no input for a while.

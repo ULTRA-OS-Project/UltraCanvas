@@ -83,7 +83,7 @@ tool and a missing plugin should stop it running.
 | `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
-| `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
+| `Text` | txt, md, json, xml, source code, tex, … and presentations: pptx, pptm, ppsx, ppsm, potx, potm, odp, otp, fodp | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset; a deck (`IsPresentationFile`, classified before text so a flat `.fodp` is not shown as XML) as the outline of its slides - each slide's number and title, its bullets, tables, pictures' descriptions and notes - read by `UltraCanvasFileLoader::LoadTextDocument` ([PowerPoint](UltraCanvasPresentationPptx.md), [OpenDocument](UltraCanvasPresentationOdp.md)) and rendered as Markdown; the info bar says *PRESENTATION*) |
 | `Text` (pages) | html, htm, xhtml, xht, shtml, and an `.xml` that holds XHTML | **Rendered**, as a browser shows the page, in an `UltraCanvasWebView` in the text view's place (*HTML pages* below) - not its source, which is the Texter's to show |
 | `Text` (messages) | eml, emlx, msg | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
 | `Text` (saved pages) | mht, mhtml | **The page it saved**, its style sheets and pictures read from the archive's own parts (*Saved web pages* below) |
@@ -404,15 +404,19 @@ damaged).
 ## Password-protected files
 
 A file the viewer can open with its password - a layered `*.ucd` image
-(UCD 2.2, see [`UltraCanvasUCDContainer.md`](UltraCanvasUCDContainer.md#password-protection))
-or a PDF - first shows what it can without it: the `*.ucd`'s thumbnail
-(its header summary when the document is private), or a note saying the PDF
-is password-protected, both in the dark note view. An **Unlock** button comes up in the info bar (so a host
+(UCD 2.2, see [`UltraCanvasUCDContainer.md`](UltraCanvasUCDContainer.md#password-protection)),
+a PDF, or a presentation (a `.pptx` saved with *Encrypt with Password*, an
+`.odp` saved *with password* - [UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md),
+[UltraCanvasOdfEncryption](UltraCanvasOdfEncryption.md)) - first shows what
+it can without it: the `*.ucd`'s thumbnail (its header summary when the
+document is private), or a note saying the PDF or the deck is
+password-protected, both in the dark note view. An **Unlock** button comes up in the info bar (so a host
 that hides the top bars, such as UltraFiler's preview pane, still offers it)
 and as an icon in the toolbar; **Enter** does the same. Unlock
 asks for the password over the viewer's window - again, saying so, when it
 is not right - and then shows the file whole: the image at full size with
-its layers composited, the PDF in its view with every page.
+its layers composited, the PDF in its view with every page, the deck as the
+outline of its slides.
 
 Nothing asks on its own: browsing a folder of protected files never pops up
 a prompt. The info bar says *password-protected*, and the Details panel adds

@@ -280,6 +280,7 @@
   "Extract: the folder name is already taken": "Rozpakowywanie: nazwa folderu jest już zajęta",
   "Extras": "Dodatki",
   "Failed": "Niepowodzenie",
+  "Failed to open presentation: {0} ({1})": "Nie można otworzyć prezentacji: {0} ({1})",
   "File": "Plik",
   "File extensions": "Rozszerzenia plików",
   "File icons": "Ikony plików",

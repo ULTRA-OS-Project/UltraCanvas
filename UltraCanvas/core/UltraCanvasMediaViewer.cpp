@@ -1,6 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.28.0 - a presentation (.pptx and kin, .odp / .otp / .fodp) opens in the text view as
+//                  the outline of its slides, rendered as Markdown, as a LaTeX file does
 // Version: 1.27.1 - an empty video is left to the player, which refuses it now
 // Version: 1.27.0 - Save as for a video the player opened: every type FileLoader's
 //                  ConvertVideoFile writes, converted on a worker thread behind a progress
@@ -65,7 +67,7 @@
 // Version: 1.9.1 - *.ucd: header and thumbnail through the UCD container engine; the
 //                  encryption line names the key source the spec defines
 // Version: 1.9.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-18
 // V1.9.0: Save image as offers FileLoader's types - every bitmap type this
 //   build writes - instead of six of its own; and another size in a bitmap
 //   type's Settings - the
@@ -129,6 +131,9 @@
 #endif
 #include "UltraCanvasLanguageDetect.h" // the language of a .txt
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h" // .tex → rich document → markdown
+#include "UltraCanvasPresentationPptx.h"   // IsPptxExtension: a deck → its outline → markdown
+#include "UltraCanvasPresentationOdp.h"    // IsOdpExtension
+#include "UltraCanvasOfficeEncryption.h"   // CheckOfficePassword: a protected deck waits for Unlock
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
 #include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
@@ -2622,6 +2627,11 @@ bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
     return tokenizer.SetLanguageByExtension(e);
 }
 
+bool UltraCanvasMediaViewer::IsPresentationFile(const std::string& path) {
+    const std::string e = LowerExt(path);
+    return !e.empty() && (IsPptxExtension(e) || IsOdpExtension(e));
+}
+
 bool UltraCanvasMediaViewer::IsHtmlFile(const std::string& path) {
     const std::string e = LowerExt(path);
     if (e == "html" || e == "htm" || e == "xhtml" || e == "xht" || e == "shtml") return true;
@@ -2782,6 +2792,9 @@ MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     // Before the text check: an EPS is PostScript source, and its own drawing
     // is the more useful answer to "what is in this file".
     if (IsVectorDocumentFile(path)) return MediaKind::Vector;
+    // A deck is shown as its slides' outline in the text view - before the
+    // text check, which would take a flat .fodp for XML source.
+    if (IsPresentationFile(path)) return MediaKind::Text;
     if (IsSpreadsheetFile(path)) return MediaKind::Sheet;
     if (IsModelFile(path))       return MediaKind::Model;
     if (IsEBookFile(path))       return MediaKind::Book;
@@ -2806,7 +2819,7 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     // video / audio (video & audio gated by their backend being present).
     return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
            IsEBookFile(path) || IsUCDFile(path) || IsVectorDocumentFile(path) ||
-           IsFontFile(path) ||
+           IsFontFile(path) || IsPresentationFile(path) ||
            IsVideoFile(path) || IsAudioFile(path) || IsTextFile(path);
 }
 
@@ -3056,6 +3069,7 @@ static std::vector<std::string> SupportedOpenExtensions() {
     add(PlainTextExtensions());
     add(EBookExtensions());
     add({ "pdf", "ods", "xlsx", "xls", "csv", "tsv", "ucd" });
+    add({ "pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp" });
     add({ "ttf", "otf", "ttc", "otc", "pfa", "pfb", "woff", "woff2",
           "pcf", "bdf", "fon", "fnt" });
     add(PreviewableModelExtensions());
@@ -3721,7 +3735,30 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
                 importedDocument = true;
             }
         }
-        if (!importedDocument && !ReadTextFile(path, content)) {
+        // A deck: the outline of its slides, rendered the same way. A
+        // password-protected one waits for Unlock, as a protected PDF does;
+        // a damaged one says why rather than showing its bytes.
+        bool deckFailed = false;
+        if (IsPresentationFile(path)) {
+            std::string error;
+            if (auto deck = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
+                content = deck->ToMarkdown();
+                importedDocument = true;
+            } else {
+                deckFailed = true;
+                ta->SetText("");
+                std::string unused;
+                if (CheckOfficePassword(path, std::string(), unused) == OfficeDecryptStatus::PasswordRequired) {
+                    locked = MediaLock::Presentation;
+                    ShowLockedPDFNote(path);
+                } else if (infoLabel) {
+                    infoLabel->SetText(TrF("Failed to open presentation: {0} ({1})", BaseName(path), error));
+                }
+            }
+        }
+        if (deckFailed) {
+            // the reason is on the info line
+        } else if (!importedDocument && !ReadTextFile(path, content)) {
             if (infoLabel) infoLabel->SetText("Failed to open text file: " + BaseName(path));
         } else {
             // A .txt names no language, so the text is asked: a snippet of
@@ -4067,6 +4104,15 @@ void UltraCanvasMediaViewer::ShowLockedPDFNote(const std::string& path) {
              "Unlock, in the bar below (or Enter), asks for its password and opens it.\n");
 }
 
+void UltraCanvasMediaViewer::ShowOutlineInTextView(const std::string& markdown) {
+    if (!textView) return;
+    auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
+    ta->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+    ta->SetHighlightSyntax(false);
+    ta->SetDisplayOnly(true);
+    ta->SetText(markdown);
+}
+
 void UltraCanvasMediaViewer::Unlock() {
     AskForPassword(std::string());
 }
@@ -4134,6 +4180,27 @@ MediaUnlockResult UltraCanvasMediaViewer::UnlockWithPassword(const std::string& 
         ShowView(MediaKind::Image);
         surface->ShowImage(ucd.picture, MediaTransition::NoTransition, 0, false,
                            SurfaceAdjustmentsFor(path));
+    }
+    else if (locked == MediaLock::Presentation && textView) {
+        // The password checked first (one key derivation), so a wrong one is
+        // told from a deck that would not open with the right one.
+        std::string checkError;
+        const OfficeDecryptStatus check = CheckOfficePassword(path, password, checkError);
+        if (check == OfficeDecryptStatus::WrongPassword || check == OfficeDecryptStatus::PasswordRequired) {
+            error = "That password is not right.";
+            return MediaUnlockResult::WrongPassword;
+        }
+        auto deck = UltraCanvasFileLoader::LoadTextDocument(path, error, password);
+        if (!deck) return MediaUnlockResult::Failed;
+        locked = MediaLock::NotLocked;
+        if (noteView) {
+            static_cast<UltraCanvasTextArea*>(noteView.get())->SetText("");
+            noteView->SetVisible(false);
+        }
+        noteShown = false;
+        ShowView(MediaKind::Text);
+        textView->SetVisible(true);
+        ShowOutlineInTextView(deck->ToMarkdown());
     }
 #ifdef ULTRACANVAS_PLUGIN_PDF
     else if (locked == MediaLock::PDF && pdfView) {
@@ -4805,6 +4872,21 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         return;
     }
 #endif
+
+    if (activeKind == MediaKind::Text && IsPresentationFile(path)) {
+        // A deck, shown as its outline: what it is, and whether it is
+        // protected - locked, or opened with its password.
+        std::ostringstream os;
+        os << BaseName(path) << "   \xC2\xB7   PRESENTATION";
+        if (locked != MediaLock::NotLocked) os << "   \xC2\xB7   password-protected";
+        else if (unlocked) os << "   \xC2\xB7   unlocked";
+        std::error_code ec;
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
 
     if (activeKind == MediaKind::Font && fontView) {
         // A font says what it is and how much of it there is - the glyph count

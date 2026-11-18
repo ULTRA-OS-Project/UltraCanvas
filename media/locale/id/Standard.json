@@ -260,6 +260,7 @@
   "Extract: the folder name is already taken": "Ekstrak: nama folder sudah digunakan",
   "Extras": "Tambahan",
   "Failed": "Gagal",
+  "Failed to open presentation: {0} ({1})": "Gagal membuka presentasi: {0} ({1})",
   "File": "File",
   "File extensions": "Ekstensi file",
   "File icons": "Ikon file",

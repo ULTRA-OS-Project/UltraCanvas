@@ -260,6 +260,7 @@
   "Extract: the folder name is already taken": "展開: そのフォルダー名はすでに使われています",
   "Extras": "その他",
   "Failed": "失敗",
+  "Failed to open presentation: {0} ({1})": "プレゼンテーションを開けませんでした: {0} ({1})",
   "File": "ファイル",
   "File extensions": "ファイル拡張子",
   "File icons": "ファイルアイコン",

@@ -260,6 +260,7 @@
   "Extract: the folder name is already taken": "解压：该文件夹名称已被使用",
   "Extras": "其他",
   "Failed": "失败",
+  "Failed to open presentation: {0} ({1})": "无法打开演示文稿：{0}（{1}）",
   "File": "文件",
   "File extensions": "文件扩展名",
   "File icons": "文件图标",

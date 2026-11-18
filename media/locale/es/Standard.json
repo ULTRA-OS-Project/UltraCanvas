@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "Extraer: el nombre de la carpeta ya está en uso",
   "Extras": "Extras",
   "Failed": "Error",
+  "Failed to open presentation: {0} ({1})": "No se pudo abrir la presentación: {0} ({1})",
   "File": "Archivo",
   "File extensions": "Extensiones de archivo",
   "File icons": "Iconos de archivo",

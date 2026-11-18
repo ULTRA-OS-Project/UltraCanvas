@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "Udpak: mappenavnet er allerede i brug",
   "Extras": "Ekstra",
   "Failed": "Mislykkedes",
+  "Failed to open presentation: {0} ({1})": "Præsentationen kunne ikke åbnes: {0} ({1})",
   "File": "Fil",
   "File extensions": "Filtypenavne",
   "File icons": "Filikoner",
