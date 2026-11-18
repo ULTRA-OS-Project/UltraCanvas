@@ -23,6 +23,8 @@
 // and rotating. Rendering the text is not the document's job: a host renders
 // a text layer with RenderTextLayer (UltraCanvasRasterText.h) and puts it in
 // with AddLayer or ReplaceLayer.
+// Version: 1.6.0 - the undo entries are named in the person's language (Tr); an empty label
+//                  on AddLayer / CommitSelectionChange means "Add Layer" / "Selection"
 // Version: 1.5.0 - ScaleImage takes UCScaleImageOptions: the resampling method
 //                  (UCResampleMethod) and a sharpening pass after it
 // Version: 1.4.0 - password-protected *.ucd: SetUCDPassword, LoadUCD with a password,
@@ -128,7 +130,7 @@ public:
     int  AddLayer(const std::string& name = "", const RasterPixel& fill = RasterPixel(0, 0, 0, 0));
     // -1: above the active layer. `label` names the undo entry ("Text" for a
     // text layer a Text tool adds, say).
-    int  AddLayer(std::shared_ptr<UCRasterLayer> layer, int atIndex = -1, const std::string& label = "Add Layer");
+    int  AddLayer(std::shared_ptr<UCRasterLayer> layer, int atIndex = -1, const std::string& label = std::string());
     int  DuplicateLayer(int index);
     bool RemoveLayer(int index);
     bool MoveLayer(int fromIndex, int toIndex);
@@ -164,7 +166,7 @@ public:
     const UCRasterSelection& GetSelection() const { return selection; }
     // Call after changing the selection through GetSelection() so the change
     // is undoable and views refresh. `label` names the undo entry.
-    void CommitSelectionChange(const std::string& label = "Selection");
+    void CommitSelectionChange(const std::string& label = std::string());
 
     // ===== WHOLE-IMAGE GEOMETRY (structural, undoable) =====
     // Resample every layer to the new size, by `options` (Lanczos3 and no

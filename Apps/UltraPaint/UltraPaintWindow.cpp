@@ -3,6 +3,7 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 2.3.0 - the blend mode on a row of its own beside "Blend mode", the list as wide as the panel
 // Version: 2.2.0 - every text a person reads goes through Tr / TrF / TrN (UltraLocalisation): whole
 //                  sentences with placeholders, the undo labels too; the filters' DisplayName /
 //                  DisplayCategory / DisplayTitle and the dialogs' BlendModeDisplayName
@@ -915,15 +916,32 @@ void UltraPaintWindow::BuildRightPanel() {
         if (document) document->SetLayerOpacity(document->GetActiveLayerIndex(), v / 100.0f);
     };
     opRow->AddChild(layerOpacity);
+    layersPanel->AddChild(opRow);
+
+    // The blend mode on a row of its own, the list as wide as the panel: a
+    // mode's name runs much longer in some languages than "Normal"
+    auto blendRow = std::make_shared<UltraCanvasContainer>("up-l-blendrow", 0, 0, 0, kRowH);
+    blendRow->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    blendRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto blendLabel = CreateLabel("up-l-blendlabel", 0, 0, 52, kRowH, Tr("Blend mode"));
+    blendLabel->SetFontSize(11);
+    blendLabel->size.width = CSSLayout::Dimension::Auto();
+    {
+        CSSLayout::BoxConstraints limits = blendLabel->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(52.0f);
+        blendLabel->boxConstraints = limits;
+    }
+    blendLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    blendRow->AddChild(blendLabel);
     layerBlend = CreateDropdown("up-l-blend", 0, 0, 96, kRowH);
     for (RasterBlendMode m : AllRasterBlendModes()) layerBlend->AddItem(UltraPaintDialogParts::BlendModeDisplayName(m));
     layerBlend->SetSelectedIndex(0, false);
     layerBlend->onSelectionChanged = [this](int i, const DropdownItem&) {
         if (document) document->SetLayerBlendMode(document->GetActiveLayerIndex(), AllRasterBlendModes()[static_cast<size_t>(std::max(0, i))]);
     };
-    layerBlend->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    opRow->AddChild(layerBlend);
-    layersPanel->AddChild(opRow);
+    layerBlend->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    blendRow->AddChild(layerBlend);
+    layersPanel->AddChild(blendRow);
 
     layerRows = std::make_shared<UltraCanvasContainer>("up-layer-rows", 0, 0, 0, 0);
     layerRows->layout.SetFlexColumn().SetFlexGap(2).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);

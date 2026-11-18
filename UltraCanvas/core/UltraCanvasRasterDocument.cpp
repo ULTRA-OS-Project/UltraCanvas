@@ -27,6 +27,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRasterDocument.h"
+#include "UltraLocalisation/UltraLocalisation.h"   // the undo entries' names
 #include "UltraCanvasRichDocument.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasZipPackage.h"
@@ -285,7 +286,7 @@ int UCRasterDocument::AddLayer(std::shared_ptr<UCRasterLayer> layer, int atIndex
         fitted->CopyFrom(*layer, 0, 0);
         layer = fitted;
     }
-    BeginStructuralUndo(label);
+    BeginStructuralUndo(label.empty() ? Tr("Add Layer") : label);
     int idx = atIndex < 0 ? activeLayer + 1 : atIndex;
     idx = std::clamp(idx, 0, static_cast<int>(layers.size()));
     layers.insert(layers.begin() + idx, layer);
@@ -300,7 +301,7 @@ int UCRasterDocument::DuplicateLayer(int index) {
     if (!src) return -1;
     auto copy = src->Clone();
     copy->name = src->name + " copy";
-    BeginStructuralUndo("Duplicate Layer");
+    BeginStructuralUndo(Tr("Duplicate Layer"));
     layers.insert(layers.begin() + index + 1, copy);
     activeLayer = index + 1;
     InvalidateComposite();
@@ -310,7 +311,7 @@ int UCRasterDocument::DuplicateLayer(int index) {
 
 bool UCRasterDocument::RemoveLayer(int index) {
     if (index < 0 || index >= static_cast<int>(layers.size()) || layers.size() <= 1) return false;
-    BeginStructuralUndo("Delete Layer");
+    BeginStructuralUndo(Tr("Delete Layer"));
     layers.erase(layers.begin() + index);
     activeLayer = std::clamp(activeLayer >= index ? activeLayer - 1 : activeLayer, 0,
                              static_cast<int>(layers.size()) - 1);
@@ -322,7 +323,7 @@ bool UCRasterDocument::RemoveLayer(int index) {
 bool UCRasterDocument::MoveLayer(int from, int to) {
     const int n = static_cast<int>(layers.size());
     if (from < 0 || from >= n || to < 0 || to >= n || from == to) return false;
-    BeginStructuralUndo("Move Layer");
+    BeginStructuralUndo(Tr("Move Layer"));
     auto l = layers[static_cast<size_t>(from)];
     layers.erase(layers.begin() + from);
     layers.insert(layers.begin() + to, l);
@@ -336,7 +337,7 @@ bool UCRasterDocument::MergeLayerDown(int index) {
     if (index <= 0 || index >= static_cast<int>(layers.size())) return false;
     auto upper = layers[static_cast<size_t>(index)];
     auto lower = layers[static_cast<size_t>(index - 1)];
-    BeginStructuralUndo("Merge Down");
+    BeginStructuralUndo(Tr("Merge Down"));
     auto merged = lower->Clone();
     merged->text.reset();   // its pixels are no longer what its text draws
     if (upper->visible) merged->BlendFrom(*upper, 0, 0, upper->opacity, upper->blendMode);
@@ -350,7 +351,7 @@ bool UCRasterDocument::MergeLayerDown(int index) {
 
 bool UCRasterDocument::FlattenImage() {
     if (layers.size() <= 1) return false;
-    BeginStructuralUndo("Flatten Image");
+    BeginStructuralUndo(Tr("Flatten Image"));
     auto flat = Flatten();
     flat->name = "Background";
     layers.clear();
@@ -376,7 +377,7 @@ bool UCRasterDocument::RasterizeLayer(int index) {
     if (!l || !l->IsTextLayer()) return false;
     auto copy = l->Clone();
     copy->text.reset();
-    return ReplaceLayer(index, copy, "Rasterize Layer");
+    return ReplaceLayer(index, copy, Tr("Rasterize Layer"));
 }
 
 void UCRasterDocument::SetInPlaceEditLayer(const std::shared_ptr<UCRasterLayer>& layer) {
@@ -419,32 +420,32 @@ namespace {
 void UCRasterDocument::SetLayerVisible(int index, bool visible) {
     auto l = GetLayer(index);
     if (!l || l->visible == visible) return;
-    ReplaceLayer(index, WithAttribute(*l, [&](UCRasterLayer& c) { c.visible = visible; }), visible ? "Show Layer" : "Hide Layer");
+    ReplaceLayer(index, WithAttribute(*l, [&](UCRasterLayer& c) { c.visible = visible; }), visible ? Tr("Show Layer") : Tr("Hide Layer"));
 }
 
 void UCRasterDocument::SetLayerOpacity(int index, float opacity) {
     auto l = GetLayer(index);
     opacity = std::clamp(opacity, 0.0f, 1.0f);
     if (!l || std::fabs(l->opacity - opacity) < 1e-4f) return;
-    ReplaceLayer(index, WithAttribute(*l, [&](UCRasterLayer& c) { c.opacity = opacity; }), "Layer Opacity");
+    ReplaceLayer(index, WithAttribute(*l, [&](UCRasterLayer& c) { c.opacity = opacity; }), Tr("Layer Opacity"));
 }
 
 void UCRasterDocument::SetLayerBlendMode(int index, RasterBlendMode mode) {
     auto l = GetLayer(index);
     if (!l || l->blendMode == mode) return;
-    ReplaceLayer(index, WithAttribute(*l, [&](UCRasterLayer& c) { c.blendMode = mode; }), "Layer Blend Mode");
+    ReplaceLayer(index, WithAttribute(*l, [&](UCRasterLayer& c) { c.blendMode = mode; }), Tr("Layer Blend Mode"));
 }
 
 void UCRasterDocument::SetLayerName(int index, const std::string& name) {
     auto l = GetLayer(index);
     if (!l || l->name == name) return;
-    ReplaceLayer(index, WithAttribute(*l, [&](UCRasterLayer& c) { c.name = name; }), "Rename Layer");
+    ReplaceLayer(index, WithAttribute(*l, [&](UCRasterLayer& c) { c.name = name; }), Tr("Rename Layer"));
 }
 
 void UCRasterDocument::SetLayerLocked(int index, bool locked) {
     auto l = GetLayer(index);
     if (!l || l->locked == locked) return;
-    ReplaceLayer(index, WithAttribute(*l, [&](UCRasterLayer& c) { c.locked = locked; }), locked ? "Lock Layer" : "Unlock Layer");
+    ReplaceLayer(index, WithAttribute(*l, [&](UCRasterLayer& c) { c.locked = locked; }), locked ? Tr("Lock Layer") : Tr("Unlock Layer"));
 }
 
 // ===========================================================================
@@ -455,7 +456,7 @@ void UCRasterDocument::CommitSelectionChange(const std::string& label) {
     // The selection was already changed in place; record before (the last
     // committed state, kept in `lastSelection`) and after.
     RasterUndoEntry e;
-    e.label = label;
+    e.label = label.empty() ? Tr("Selection") : label;
     e.structural = true;
     e.width = e.widthAfter = width;
     e.height = e.heightAfter = height;
@@ -503,7 +504,7 @@ namespace {
 void UCRasterDocument::ScaleImage(int newWidth, int newHeight, const UCScaleImageOptions& options) {
     newWidth = std::max(1, newWidth); newHeight = std::max(1, newHeight);
     if (newWidth == width && newHeight == height) return;
-    BeginStructuralUndo("Scale Image");
+    BeginStructuralUndo(Tr("Scale Image"));
     const bool nearest = options.method == UCResampleMethod::Nearest;
     // Hard pixels have nothing to sharpen: Nearest stays an exact copy
     const double sharpen = nearest ? 0.0 : std::clamp(options.sharpen, 0.0, 1.0);
@@ -554,7 +555,7 @@ void UCRasterDocument::ScaleImage(int newWidth, int newHeight, const UCScaleImag
 
 void UCRasterDocument::ResizeCanvas(int newWidth, int newHeight, int offsetX, int offsetY) {
     newWidth = std::max(1, newWidth); newHeight = std::max(1, newHeight);
-    BeginStructuralUndo("Canvas Size");
+    BeginStructuralUndo(Tr("Canvas Size"));
     std::vector<std::shared_ptr<UCRasterLayer>> next;
     for (const auto& l : layers) {
         auto copy = l->Clone();
@@ -573,7 +574,7 @@ void UCRasterDocument::CropTo(const Rect2Di& rIn) {
                               std::min(width - std::max(0, rIn.x), rIn.width),
                               std::min(height - std::max(0, rIn.y), rIn.height));
     if (r.width <= 0 || r.height <= 0) return;
-    BeginStructuralUndo("Crop");
+    BeginStructuralUndo(Tr("Crop"));
     std::vector<std::shared_ptr<UCRasterLayer>> next;
     for (const auto& l : layers) next.push_back(l->CropCopy(r));
     layers.swap(next);
@@ -584,21 +585,21 @@ void UCRasterDocument::CropTo(const Rect2Di& rIn) {
 }
 
 void UCRasterDocument::FlipHorizontal() {
-    BeginStructuralUndo("Flip Horizontal");
+    BeginStructuralUndo(Tr("Flip Horizontal"));
     for (auto& l : layers) { auto c = l->Clone(); c->FlipHorizontal(); l = c; }
     InvalidateComposite();
     EndStructuralUndo();
 }
 
 void UCRasterDocument::FlipVertical() {
-    BeginStructuralUndo("Flip Vertical");
+    BeginStructuralUndo(Tr("Flip Vertical"));
     for (auto& l : layers) { auto c = l->Clone(); c->FlipVertical(); l = c; }
     InvalidateComposite();
     EndStructuralUndo();
 }
 
 void UCRasterDocument::Rotate90(bool clockwise) {
-    BeginStructuralUndo(clockwise ? "Rotate 90° CW" : "Rotate 90° CCW");
+    BeginStructuralUndo(clockwise ? Tr("Rotate 90° Clockwise") : Tr("Rotate 90° Counter-clockwise"));
     for (auto& l : layers) { auto c = l->Clone(); c->Rotate90(clockwise); l = c; }
     std::swap(width, height);
     selection.Resize(width, height);
@@ -607,7 +608,7 @@ void UCRasterDocument::Rotate90(bool clockwise) {
 }
 
 void UCRasterDocument::Rotate180() {
-    BeginStructuralUndo("Rotate 180°");
+    BeginStructuralUndo(Tr("Rotate 180°"));
     for (auto& l : layers) { auto c = l->Clone(); c->Rotate180(); l = c; }
     InvalidateComposite();
     EndStructuralUndo();
@@ -817,7 +818,7 @@ void UCRasterDocument::DeleteSelection() {
     auto layer = GetActiveLayer();
     if (!layer || layer->locked) return;
     const Rect2Di area = selection.IsActive() ? selection.GetBounds() : GetRect();
-    BeginEdit("Delete", activeLayer, area);
+    BeginEdit(Tr("Delete"), activeLayer, area);
     for (int y = area.y; y < area.y + area.height; ++y) {
         uint8_t* row = layer->Row(y);
         for (int x = area.x; x < area.x + area.width; ++x) {
@@ -835,7 +836,7 @@ void UCRasterDocument::FillSelection(const RasterPixel& colour) {
     auto layer = GetActiveLayer();
     if (!layer || layer->locked) return;
     const Rect2Di area = selection.IsActive() ? selection.GetBounds() : GetRect();
-    BeginEdit("Fill", activeLayer, area);
+    BeginEdit(Tr("Fill"), activeLayer, area);
     for (int y = area.y; y < area.y + area.height; ++y) {
         uint8_t* row = layer->Row(y);
         for (int x = area.x; x < area.x + area.width; ++x) {

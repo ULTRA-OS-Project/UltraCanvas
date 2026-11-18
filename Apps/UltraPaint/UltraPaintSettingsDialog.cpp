@@ -5,6 +5,7 @@
 // notes block at the foot that says what the setting does. The tree's root
 // row is hidden, so Display is the top level; selecting it moves on to its
 // first page.
+// Version: 1.3.0 - the choices wrap a longer translation onto another line (SetLabelWrap)
 // Version: 1.2.0 - every text in the person's language (Tr); the bottom buttons size to their text
 // Version: 1.1.0 - Display > Tool palette: an adaptive or a static toolbar
 // Version: 1.0.0
@@ -68,8 +69,12 @@ namespace {
         style.base.textColor      = kTextColor;
         style.base.textHoverColor = kTextColor;
         radio->SetVisualStyle(style);
+        // A longer translation wraps onto a second line instead of being cut off
+        radio->SetLabelWrap(true);
         radio->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        radio->size.height = CSSLayout::Dimension::Px(kControlHeight);
+        radio->size.height = CSSLayout::Dimension::Auto();
+        radio->boxConstraints = CSSLayout::BoxConstraints{};
+        radio->boxConstraints->minHeight = CSSLayout::Dimension::Px(kControlHeight);
         radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return radio;
     }
@@ -221,8 +226,11 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildMagnifierPa
     boxStyle.base.textColor      = kTextColor;
     boxStyle.base.textHoverColor = kTextColor;
     magnifierBox->SetVisualStyle(boxStyle);
+    magnifierBox->SetLabelWrap(true);   // a longer translation wraps instead of being cut off
     magnifierBox->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-    magnifierBox->size.height = CSSLayout::Dimension::Px(kControlHeight);
+    magnifierBox->size.height = CSSLayout::Dimension::Auto();
+    magnifierBox->boxConstraints = CSSLayout::BoxConstraints{};
+    magnifierBox->boxConstraints->minHeight = CSSLayout::Dimension::Px(kControlHeight);
     magnifierBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     magnifierBox->onStateChanged = [this](CheckedState, CheckedState now) {
         if (syncing || !settings) return;
