@@ -18,6 +18,7 @@
 - [Mekko](#mekko)
 - [Radar](#radar)
 - [Radial bar](#radial-bar)
+- [Columns and bars](#columns-and-bars)
 - [Pie and donut](#pie-and-donut)
 - [Polar](#polar)
 - [Engine features added for the ports](#engine-features-added-for-the-ports)
@@ -49,8 +50,8 @@ compared before the switch.
   usual `(id, x, y, w, h)` constructor (position and size default to 0, for a
   chart sized by its layout).
 
-**Version:** 1.1.0 (`SetValueAtLeast` on the line family)
-**Last Modified:** 2026-10-24
+**Version:** 1.2.0 (`UltraCanvasEngineBarChart`)
+**Last Modified:** 2026-11-18
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -70,7 +71,7 @@ engine's `Space3D` projection.
 | `UltraCanvasCumulativeFlowChartElement` | `UltraCanvasEngineLineChart` (`StackedArea`, `SetReverseStackOrder`) | Lead / cycle time and WIP as engine span annotations; no Kanban binding |
 | `UltraCanvasScatterPlotElement` | `UltraCanvasEngineScatterChart` | Trend line with r / r², confidence ellipses, both grids |
 | `UltraCanvasBubbleChartElement` | `UltraCanvasEngineScatterChart` (size channel) | XY bubbles only - packed and hierarchical layouts have no axes |
-| `UltraCanvasBarChartElement` | the demo's `EngineBarChart` (`UltraCanvasBarChartExamples.cpp`) | Converted earlier, on its own page |
+| `UltraCanvasBarChartElement` | `UltraCanvasEngineBarChart` | Columns and bars: side by side, stacked, per cent. The demo's `EngineBarChart` (`UltraCanvasBarChartExamples.cpp`) shows the fill styles on top of the same geometry |
 | `UltraCanvasWaterfallChartElement` | `UltraCanvasEngineWaterfallChart` | Change / subtotal / total steps, connectors |
 | `UltraCanvasDivergingBarChart` | `UltraCanvasEngineDivergingBarChart` | Likert (neutral split across zero), tornado, opposing bars - one shared scale |
 | `UltraCanvasPopulationChart` | `UltraCanvasEngineDivergingBarChart` (`PopulationPyramid`) | Surplus shaded inside the true bar; average ages as limiters |
@@ -401,6 +402,39 @@ chart->SetCenterText("Sensors");
 
 Rays radiate from a base ring (`SetPolarInnerRadius`), each series filling an
 angular sector; the series names are the rim labels.
+
+## Columns and bars
+
+```cpp
+auto chart = CreateEngineBarChart("Sales", 0, 0, 640, 400);
+chart->SetCategories({"Q1", "Q2", "Q3", "Q4"});
+
+EngineBarSeries north;
+north.name = "North";
+north.values = {12.0, 15.5, 9.0, 18.2};
+chart->AddSeries(north);
+
+EngineBarSeries south;
+south.name = "South";
+south.values = {8.0, 11.0, 14.5, 10.1};
+south.color = Color(237, 125, 49, 255);          // alpha 0 = from the palette
+chart->AddSeries(south);
+
+chart->SetArrangement(ChartBarArrangement::Stacked);   // Grouped, Stacked, PercentStacked
+chart->SetHorizontal(true);                            // bars lying down
+chart->SetShowLegend(true);
+```
+
+The group offsets, the stacking and the value range are the engine's bar
+series geometry (`BuildBarSpans`, `ObserveBarSeries`); `BarSpans()` gives the
+bars in normalised chart space. Lying down, the first category is at the foot
+and the first series of a group the lowest, as office charts have them.
+`SetValueRange(lo, hi)` states the value axis in place of the fitted one,
+`SetSlotFill` how much of a category's slot the bars fill, `SetCornerRadius`
+rounds them. Under `ChartProjectionKind::Polar` the bars are ring sectors.
+
+The first client is the chart of a word-processing document: see *Charts* in
+[`UltraCanvasRichTextEdit.md`](UltraCanvasRichTextEdit.md).
 
 ## Pie and donut
 

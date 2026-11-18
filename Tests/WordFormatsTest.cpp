@@ -3794,6 +3794,31 @@ int main(int argc, char** argv) {
                 }
                 if (shape.kind == RichShape::Kind::Path && Lower(shape.lineColor) == "#004586") joins += static_cast<int>(shape.path.size());
             }
+            {
+                // Every kind keeps its data through a DOCX of our own.
+                struct Case { const char* name; RichChart::Kind kind; bool stacked; };
+                for (const Case& one : {Case{"bar", RichChart::Kind::Bar, false}, Case{"stacked", RichChart::Kind::Column, true},
+                                        Case{"pie", RichChart::Kind::Pie, false}, Case{"scatter", RichChart::Kind::Scatter, false}}) {
+                    UCRichDocument read, again;
+                    std::string error;
+                    const std::string saved = TmpPath(std::string("writer-") + one.name + "-saved.docx");
+                    CHECK_MSG(UCWordDocumentIO::Load(TmpPath(std::string("writer-") + one.name + ".docx"), read, error)
+                                  && UCWordDocumentIO::Save(saved, read, error) && UCWordDocumentIO::Load(saved, again, error), error);
+                    const RichChart* before = nullptr;
+                    const RichChart* after = nullptr;
+                    for (const RichTextFrame& frame : read.frames) if (frame.chart.IsChart()) before = &frame.chart;
+                    for (const RichTextFrame& frame : again.frames) if (frame.chart.IsChart()) after = &frame.chart;
+                    bool same = before && after && before->kind == one.kind && after->kind == one.kind
+                             && after->stacked == one.stacked && before->series.size() == after->series.size();
+                    for (size_t s = 0; same && s < before->series.size(); s++) {
+                        same = before->series[s].values == after->series[s].values
+                            && before->series[s].xValues == after->series[s].xValues
+                            && before->series[s].joined == after->series[s].joined
+                            && before->series[s].marked == after->series[s].marked;
+                    }
+                    CHECK_MSG(same, std::string("docx: a ") + one.name + " chart keeps its kind and data when saved");
+                }
+            }
             CHECK_MSG(markX.size() == 3 && joins == 3, "docx: a scatter chart's three points, marked and joined: "
                       + std::to_string(markX.size()) + " marks, " + std::to_string(joins) + " joined");
             if (markX.size() == 3) {
@@ -3807,15 +3832,40 @@ int main(int argc, char** argv) {
             }
         }
 
-        // Saved and read again, the chart is still there (as the drawing it became).
+        // The chart's data is in its frame, for the view's chart engine.
+        if (chart && chart->frameIndex < static_cast<int>(writer.frames.size())) {
+            const RichChart& data = writer.frames[static_cast<size_t>(chart->frameIndex)].chart;
+            CHECK_MSG(data.kind == RichChart::Kind::Column && !data.stacked && data.legend, "docx: the chart's data: columns with a legend");
+            CHECK_MSG(data.categories == std::vector<std::string>({"Row 1", "Row 2"}), "docx: ...its categories");
+            CHECK_MSG(data.series.size() == 2 && data.series[0].name == "Column 1" && Lower(data.series[0].color) == "#004586"
+                          && data.series[0].values == std::vector<double>({9.1, 2.4})
+                          && data.series[1].values == std::vector<double>({3.2, 8.8}), "docx: ...its series' names, colours and values");
+        }
+
+        // Saved and read again, the chart is still there: as a chart in
+        // DOCX (a chart part of its own), as the drawing it also is in ODT.
         for (const char* ext : {"docx", "odt"}) {
             const std::string path = TmpPath(std::string("writer-saved.") + ext);
             CHECK_MSG(UCWordDocumentIO::Save(path, writer, err), err);
             UCRichDocument again;
             CHECK_MSG(UCWordDocumentIO::Load(path, again, err), err);
             bool drawing = false;
+            const RichChart* kept = nullptr;
             for (const RichDocBlock& block : again.blocks) {
-                for (const RichTextRun& run : block.runs) drawing = drawing || run.IsTextFrame();
+                for (const RichTextRun& run : block.runs) {
+                    drawing = drawing || run.IsTextFrame();
+                    if (const RichTextFrame* frame = run.IsTextFrame() ? again.FrameFor(run) : nullptr) {
+                        if (frame->chart.IsChart()) kept = &frame->chart;
+                    }
+                }
+            }
+            if (std::string(ext) == "docx") {
+                CHECK_MSG(kept && kept->kind == RichChart::Kind::Column && kept->legend && kept->series.size() == 2
+                              && kept->categories.size() == 2 && kept->series[1].name == "Column 2"
+                              && kept->series[0].values == std::vector<double>({9.1, 2.4})
+                              && Lower(kept->series[1].color) == "#ff420e", "saved as docx: the chart is a chart, with its data");
+            } else {
+                CHECK_MSG(!kept, "saved as odt: the chart is the drawing");
             }
             CHECK_MSG(drawing, std::string("saved as ") + ext + ": the chart is kept as a drawing");
             CHECK_MSG(again.ToPlainText().find("Row 2") != std::string::npos, std::string("saved as ") + ext + ": ...with its words");

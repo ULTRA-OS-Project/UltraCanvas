@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.15.0 - a chart's data is read into RichTextFrame::chart and written back as a chart part (word/charts)
 // Version: 1.14.0 - charts: a scatter chart's points over a value axis of their own
 // Version: 1.13.1 - charts: pies, bars lying down, stacked and per-cent columns
 // Version: 1.13.0 - charts (c:chartSpace) drawn as shapes; nil paragraph borders; numbering levels without
@@ -2581,12 +2582,15 @@ private:
         struct Series {
             std::string name, color;
             std::vector<double> values;
+            std::vector<double> given;          // the values as the file has them (`values` become shares in a per-cent chart)
+            bool stated = false;                // the file states its colour
             std::vector<double> across;         // a scatter chart's x of each value
             bool joined = true, marked = true;  // ...and whether its points are joined by a line, and marked
         };
         std::vector<Series> series;
         std::vector<std::string> categories;
         bool lines = false, pie = false, horizontal = false, stacked = false, percent = false, scatter = false;
+        bool area = false, doughnut = false, lineMarkers = false;
         std::vector<std::string> pointColors;       // a pie's slices, where the file colours them
         static const char* const kPalette[] = {"#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47"};
         for (auto* kind = plot->FirstChildElement(); kind; kind = kind->NextSiblingElement()) {
@@ -2595,12 +2599,15 @@ private:
             if (series.empty()) {
                 lines = tag == "c:lineChart" || tag == "c:areaChart" || tag == "c:scatterChart";
                 scatter = tag == "c:scatterChart";
+                area = tag == "c:areaChart" || tag == "c:area3DChart";
+                doughnut = tag == "c:doughnutChart";
+                if (auto* marker = kind->FirstChildElement("c:marker")) lineMarkers = std::string(Attr(marker, "val")) != "0";
                 pie = tag == "c:pieChart" || tag == "c:pie3DChart" || tag == "c:doughnutChart" || tag == "c:ofPieChart";
                 if (auto* direction = kind->FirstChildElement("c:barDir")) horizontal = std::string(Attr(direction, "val")) == "bar";
                 if (auto* grouping = kind->FirstChildElement("c:grouping")) {
                     const std::string how = Attr(grouping, "val");
                     percent = how == "percentStacked";
-                    stacked = !lines && (how == "stacked" || percent);
+                    stacked = (!lines || area) && (how == "stacked" || percent);
                 }
             }
             for (auto* ser = kind->FirstChildElement("c:ser"); ser; ser = ser->NextSiblingElement("c:ser")) {
@@ -2615,6 +2622,7 @@ private:
                     }
                     if (fill) one.color = DrawingColor(fill);
                 }
+                one.stated = !one.color.empty();
                 if (one.color.empty()) one.color = kPalette[series.size() % 6];
                 if (pie && series.empty()) {
                     for (auto* point = ser->FirstChildElement("c:dPt"); point; point = point->NextSiblingElement("c:dPt")) {
@@ -2662,11 +2670,19 @@ private:
                         auto* fill = markerLook ? markerLook->FirstChildElement("a:solidFill") : nullptr;
                         if (fill && !(look && (look->FirstChildElement("a:solidFill") || (line && line->FirstChildElement("a:solidFill"))))) {
                             one.color = DrawingColor(fill);
+                            one.stated = true;
                         }
                     }
                     if (!one.joined && !one.marked) one.marked = true;      // something to see
                 }
                 if (categories.empty()) CollectChartPoints(ser->FirstChildElement("c:cat"), categories);
+                if (tag != "c:scatterChart") {
+                    if (auto* marker = ser->FirstChildElement("c:marker")) {
+                        auto* symbol = marker->FirstChildElement("c:symbol");
+                        if (symbol && std::string(Attr(symbol, "val")) == "none") one.marked = false;
+                    }
+                }
+                one.given = one.values;
                 if (!one.values.empty()) series.push_back(std::move(one));
             }
         }
@@ -3016,6 +3032,42 @@ private:
         if (auto* docPr = FindDescendant(drawing, "wp:docPr")) frame.name = Attr(docPr, "name");
         if (frame.name.empty()) frame.name = "Chart";
         frame.shapes.push_back(std::move(group));
+        // The chart's data, for the view's chart engine (the shapes above
+        // are the same chart for whoever has none).
+        frame.drawingWidthPt = width;
+        frame.drawingHeightPt = height;
+        RichChart& data = frame.chart;
+        data.kind = pie ? (doughnut ? RichChart::Kind::Doughnut : RichChart::Kind::Pie)
+                  : scatter ? RichChart::Kind::Scatter
+                  : area ? RichChart::Kind::Area
+                  : lines ? RichChart::Kind::Line
+                  : horizontal ? RichChart::Kind::Bar : RichChart::Kind::Column;
+        data.stacked = stacked;
+        data.percent = percent;
+        data.legend = legend;
+        data.categories = categories;
+        data.pointColors = pointColors;
+        if (auto* title = FindDescendant(chart.RootElement(), "c:title")) {
+            std::vector<tinyxml2::XMLElement*> open{title};
+            while (!open.empty()) {              // its a:t texts, in document order
+                auto* at = open.back();
+                open.pop_back();
+                if (at->Name() && std::string(at->Name()) == "a:t" && at->GetText()) data.title += at->GetText();
+                std::vector<tinyxml2::XMLElement*> children;
+                for (auto* child = at->FirstChildElement(); child; child = child->NextSiblingElement()) children.push_back(child);
+                open.insert(open.end(), children.rbegin(), children.rend());
+            }
+        }
+        for (const Series& one : series) {
+            RichChartSeries kept;
+            kept.name = one.name;
+            kept.color = one.stated ? one.color : std::string();
+            kept.values = percent ? one.given : one.values;
+            kept.xValues = one.across;
+            kept.joined = scatter ? one.joined : true;
+            kept.marked = scatter ? one.marked : (lines && !area && lineMarkers && one.marked);
+            data.series.push_back(std::move(kept));
+        }
         if (drawing->FirstChildElement("wp:inline")) run.imageWrap = RichTextRun::ImageWrap::Inline;
         else ApplyAnchorPlacement(drawing->FirstChildElement("wp:anchor"), run);
         run.imageAltText = frame.name;
@@ -4158,6 +4210,12 @@ public:
             error = "Failed to write document settings: " + zip_.GetLastError();
             return false;
         }
+        for (size_t i = 0; i < chartParts_.size(); ++i) {
+            if (!zip_.AddEntry("word/charts/chart" + std::to_string(i + 1) + ".xml", chartParts_[i])) {
+                error = "Failed to write a chart: " + zip_.GetLastError();
+                return false;
+            }
+        }
         for (const FurniturePart& part : furnitureParts_) {
             if (!zip_.AddEntry("word/" + part.name, part.xml)
                 || !zip_.AddEntry("word/_rels/" + part.name + ".rels", BuildPartRelsXml())) {
@@ -4905,11 +4963,134 @@ private:
 
     // A drawing as Word draws one: a lone shape as a wps shape (its frame's
     // words in its text box); several shapes, or a group, as a wpg group.
+    // A chart's part (word/charts/chartN.xml): its kind, categories and
+    // series, the values as literals (there is no workbook behind them).
+    static std::string BuildChartPartXml(const RichChart& chart) {
+        using Kind = RichChart::Kind;
+        std::ostringstream xml;
+        xml.imbue(std::locale::classic());
+        xml.precision(15);
+        auto color = [](const std::string& hex) {        // "#RRGGBB" -> a:solidFill
+            return hex.size() == 7 && hex[0] == '#'
+                ? "<a:solidFill><a:srgbClr val=\"" + hex.substr(1) + "\"/></a:solidFill>" : std::string();
+        };
+        auto numbers = [&](const char* tag, const std::vector<double>& values) {
+            xml << "<" << tag << "><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val=\"" << values.size() << "\"/>";
+            for (size_t i = 0; i < values.size(); i++) {
+                if (std::isfinite(values[i])) xml << "<c:pt idx=\"" << i << "\"><c:v>" << values[i] << "</c:v></c:pt>";
+            }
+            xml << "</c:numLit></" << tag << ">";
+        };
+        auto names = [&]() {
+            if (chart.categories.empty()) return;
+            xml << "<c:cat><c:strLit><c:ptCount val=\"" << chart.categories.size() << "\"/>";
+            for (size_t i = 0; i < chart.categories.size(); i++) {
+                xml << "<c:pt idx=\"" << i << "\"><c:v>" << EscapeXml(chart.categories[i]) << "</c:v></c:pt>";
+            }
+            xml << "</c:strLit></c:cat>";
+        };
+        const bool pie = chart.kind == Kind::Pie || chart.kind == Kind::Doughnut;
+        const bool scatter = chart.kind == Kind::Scatter;
+        const bool line = chart.kind == Kind::Line;
+        const bool bars = chart.kind == Kind::Column || chart.kind == Kind::Bar;
+        const char* tag = pie ? (chart.kind == Kind::Doughnut ? "c:doughnutChart" : "c:pieChart")
+                        : scatter ? "c:scatterChart" : line ? "c:lineChart"
+                        : chart.kind == Kind::Area ? "c:areaChart" : "c:barChart";
+        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
+               "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\""
+               " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\""
+               " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+               "<c:roundedCorners val=\"0\"/><c:chart>";
+        if (!chart.title.empty()) {
+            xml << "<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>" << EscapeXml(chart.title)
+                << "</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>";
+        }
+        xml << "<c:autoTitleDeleted val=\"" << (chart.title.empty() ? 1 : 0) << "\"/><c:plotArea><c:layout/><" << tag << ">";
+        if (bars) xml << "<c:barDir val=\"" << (chart.kind == Kind::Bar ? "bar" : "col") << "\"/>";
+        if (scatter) xml << "<c:scatterStyle val=\"lineMarker\"/>";
+        if (bars) xml << "<c:grouping val=\"" << (chart.percent ? "percentStacked" : chart.stacked ? "stacked" : "clustered") << "\"/>";
+        else if (!pie && !scatter) xml << "<c:grouping val=\"" << (chart.percent ? "percentStacked" : chart.stacked ? "stacked" : "standard") << "\"/>";
+        xml << "<c:varyColors val=\"" << (pie ? 1 : 0) << "\"/>";
+        bool anyMarked = false;
+        for (size_t s = 0; s < chart.series.size(); s++) {
+            const RichChartSeries& one = chart.series[s];
+            anyMarked = anyMarked || one.marked;
+            xml << "<c:ser><c:idx val=\"" << s << "\"/><c:order val=\"" << s << "\"/>";
+            if (!one.name.empty()) xml << "<c:tx><c:v>" << EscapeXml(one.name) << "</c:v></c:tx>";
+            const std::string fill = color(one.color);
+            if (line || scatter) {
+                if (!one.joined) xml << "<c:spPr><a:ln><a:noFill/></a:ln></c:spPr>";
+                else if (!fill.empty()) xml << "<c:spPr><a:ln w=\"28575\">" << fill << "</a:ln></c:spPr>";
+                xml << "<c:marker><c:symbol val=\"" << (one.marked ? "circle" : "none") << "\"/>";
+                if (one.marked && !fill.empty()) xml << "<c:spPr>" << fill << "</c:spPr>";
+                xml << "</c:marker>";
+            } else if (!fill.empty()) {
+                xml << "<c:spPr>" << fill << "</c:spPr>";
+            }
+            if (pie && s == 0) {
+                for (size_t i = 0; i < chart.pointColors.size(); i++) {
+                    const std::string slice = color(chart.pointColors[i]);
+                    if (!slice.empty()) xml << "<c:dPt><c:idx val=\"" << i << "\"/><c:bubble3D val=\"0\"/><c:spPr>" << slice << "</c:spPr></c:dPt>";
+                }
+            }
+            if (scatter) {
+                if (one.xValues.size() == one.values.size()) numbers("c:xVal", one.xValues);
+                numbers("c:yVal", one.values);
+            } else {
+                names();
+                numbers("c:val", one.values);
+            }
+            xml << "</c:ser>";
+        }
+        if (bars && chart.stacked) xml << "<c:overlap val=\"100\"/>";
+        if (line) xml << "<c:marker val=\"" << (anyMarked ? 1 : 0) << "\"/>";
+        if (pie) {
+            xml << "<c:firstSliceAng val=\"0\"/>";
+            if (chart.kind == Kind::Doughnut) xml << "<c:holeSize val=\"50\"/>";
+        } else {
+            xml << "<c:axId val=\"1\"/><c:axId val=\"2\"/>";
+        }
+        xml << "</" << tag << ">";
+        if (!pie) {
+            // The axis the categories (a scatter chart's x) run along, and
+            // the values' - at the left and foot for bars lying down.
+            const bool lying = chart.kind == Kind::Bar;
+            const char* across = scatter ? "c:valAx" : "c:catAx";
+            xml << "<" << across << "><c:axId val=\"1\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+                   "<c:delete val=\"0\"/><c:axPos val=\"" << (lying ? "l" : "b") << "\"/>"
+                << (scatter ? "<c:majorGridlines/>" : "")
+                << "<c:tickLblPos val=\"nextTo\"/><c:crossAx val=\"2\"/></" << across << ">"
+                   "<c:valAx><c:axId val=\"2\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
+                   "<c:delete val=\"0\"/><c:axPos val=\"" << (lying ? "b" : "l") << "\"/><c:majorGridlines/>"
+                   "<c:tickLblPos val=\"nextTo\"/><c:crossAx val=\"1\"/></c:valAx>";
+        }
+        xml << "</c:plotArea>";
+        if (chart.legend) xml << "<c:legend><c:legendPos val=\"r\"/><c:overlay val=\"0\"/></c:legend>";
+        xml << "<c:plotVisOnly val=\"1\"/></c:chart></c:chartSpace>";
+        return xml.str();
+    }
+    std::vector<std::string> chartParts_;         // word/charts/chart<n>.xml, n from 1 (relationship rIdChart<n>)
+
     void WriteDrawingFrame(std::ostringstream& xml, const RichTextRun& run, const RichTextFrame& frame) {
         const int drawingId = ++inlineDrawingId_;
         const long long cx = std::max(0LL, Emu(run.imageWidthPt));
         const long long cy = std::max(0LL, Emu(run.imageHeightPt));
         const std::string name = frame.name.empty() ? "Drawing " + std::to_string(drawingId) : frame.name;
+        if (frame.chart.IsChart() && !frame.chart.series.empty()) {
+            // A chart stays a chart: a part of its own, referred to from
+            // the drawing (not the shapes it is also held as).
+            chartParts_.push_back(BuildChartPartXml(frame.chart));
+            xml << "<w:drawing>";
+            WriteAnchorPlacement(xml, run, drawingId, cx, cy);
+            xml << "<wp:docPr id=\"" << drawingId << "\" name=\"" << EscapeXml(name) << "\"/><wp:cNvGraphicFramePr/>"
+                << "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">"
+                   "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">"
+                   "<c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\""
+                   " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:id=\"rIdChart"
+                << chartParts_.size() << "\"/></a:graphicData></a:graphic>"
+                << (run.imageWrap == RichTextRun::ImageWrap::Inline ? "</wp:inline>" : "</wp:anchor>") << "</w:drawing>";
+            return;
+        }
         const bool lone = frame.shapes.size() == 1 && frame.shapes.front().kind != RichShape::Kind::Group
                        && frame.shapes.front().mediaIndex < 0;
         xml << "<mc:AlternateContent xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\""
@@ -5550,6 +5731,10 @@ private:
                    "ContentType=\"application/vnd.openxmlformats-officedocument."
                    "wordprocessingml.numbering+xml\"/>\n";
         }
+        for (size_t i = 0; i < chartParts_.size(); ++i) {
+            xml << "<Override PartName=\"/word/charts/chart" << (i + 1) << ".xml\" "
+                   "ContentType=\"application/vnd.openxmlformats-officedocument.drawingml.chart+xml\"/>\n";
+        }
         for (const FurniturePart& part : furnitureParts_) {
             xml << "<Override PartName=\"/word/" << part.name << "\" "
                    "ContentType=\"application/vnd.openxmlformats-officedocument."
@@ -5635,6 +5820,11 @@ private:
 
     std::string MediaAndLinkRelationships() const {
         std::ostringstream xml;
+        for (size_t i = 0; i < chartParts_.size(); ++i) {
+            xml << "<Relationship Id=\"rIdChart" << (i + 1)
+                << "\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart\" "
+                << "Target=\"charts/chart" << (i + 1) << ".xml\"/>\n";
+        }
         for (size_t i = 0; i < doc_->media.size(); ++i) {
             std::string target = MediaPartName(i).substr(5);   // strip "word/"
             xml << "<Relationship Id=\"rIdImg" << (i + 1)

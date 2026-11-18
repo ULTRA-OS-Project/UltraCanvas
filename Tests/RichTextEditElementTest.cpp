@@ -13,6 +13,11 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasRichDocumentChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineBarChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEnginePieChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineScatterChart.h"
 #include "UltraCanvasFontCoverage.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
@@ -2880,6 +2885,102 @@ int main() {
         fontEdit->SetDocument(std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("Only Latin.", "")));
         TEST("A document with nothing missing reports nothing", fontEdit->GetFontReport().IsEmpty());
         window->RemoveChild(fontEdit);
+    }
+
+    // ===== A DOCUMENT'S CHART IS DRAWN BY THE CHART ENGINE =====
+    std::cerr << "\n--- A document's chart ---" << std::endl;
+    {
+        RichChart chart;
+        chart.kind = RichChart::Kind::Column;
+        chart.legend = true;
+        chart.categories = {"Row 1", "Row 2"};
+        RichChartSeries first, second;
+        first.name = "Column 1";
+        first.color = "#004586";
+        first.values = {9.1, 2.4};
+        second.name = "Column 2";
+        second.values = {3.2, 8.8};
+        chart.series = {first, second};
+
+        // Each kind is the engine's chart of that kind.
+        auto columns = std::dynamic_pointer_cast<UltraCanvasEngineBarChart>(CreateRichDocumentChart(chart, 400, 200));
+        TEST("Columns are the engine's bar chart, of the file's series", columns && columns->GetSeries().size() == 2
+             && !columns->IsHorizontal() && columns->GetArrangement() == ChartBarArrangement::Grouped
+             && columns->SeriesColor(0) == Color(0x00, 0x45, 0x86, 255));
+        TEST("...a series without a colour takes the office palette's", columns && columns->SeriesColor(1) == Color(0xED, 0x7D, 0x31, 255));
+        RichChart lying = chart;
+        lying.kind = RichChart::Kind::Bar;
+        lying.stacked = true;
+        auto bars = std::dynamic_pointer_cast<UltraCanvasEngineBarChart>(CreateRichDocumentChart(lying, 400, 200));
+        TEST("Stacked bars lie down, one on the other", bars && bars->IsHorizontal()
+             && bars->GetArrangement() == ChartBarArrangement::Stacked);
+        RichChart round = chart;
+        round.kind = RichChart::Kind::Doughnut;
+        auto ring = std::dynamic_pointer_cast<UltraCanvasEnginePieChart>(CreateRichDocumentChart(round, 300, 200));
+        TEST("A doughnut is the engine's pie chart with its hole", ring && ring->GetDonutMode());
+        RichChart lines = chart;
+        lines.kind = RichChart::Kind::Line;
+        TEST("A line chart is the engine's line chart",
+             std::dynamic_pointer_cast<UltraCanvasEngineLineChart>(CreateRichDocumentChart(lines, 300, 200)) != nullptr);
+        RichChart points = chart;
+        points.kind = RichChart::Kind::Scatter;
+        for (RichChartSeries& one : points.series) { one.xValues = {1.0, 10.0}; one.joined = false; one.marked = true; }
+        TEST("A scatter chart of unjoined points is the engine's scatter chart",
+             std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(CreateRichDocumentChart(points, 300, 200)) != nullptr);
+        TEST("A frame without a chart has none to make", CreateRichDocumentChart(RichChart(), 300, 200) == nullptr);
+
+        // In the view: the frame's chart is drawn by an engine chart of the
+        // frame's size, and takes its room in the line.
+        auto chartEdit = std::make_shared<UltraCanvasRichTextEdit>("ChartEdit", 0, 0, 600, 400);
+        window->AddChild(chartEdit);
+        auto document = std::make_shared<UCRichDocument>();
+        RichTextFrame frame;
+        frame.chart = chart;
+        frame.drawingWidthPt = 300.0f;
+        frame.drawingHeightPt = 150.0f;
+        RichShape fallback;                 // the same chart as a drawing: one shape stands for it here
+        fallback.widthPt = 300.0f;
+        fallback.heightPt = 150.0f;
+        frame.shapes.push_back(fallback);
+        document->frames.push_back(frame);
+        RichTextRun run;
+        run.text = RichTextRun::kObjectReplacement;
+        run.frameIndex = 0;
+        run.imageWidthPt = 300.0f;
+        run.imageHeightPt = 150.0f;
+        run.imageWrap = RichTextRun::ImageWrap::Inline;
+        RichDocBlock block, after;
+        block.type = after.type = RichBlockType::Paragraph;
+        block.runs.push_back(run);
+        RichTextRun words;
+        words.text = "After the chart.";
+        after.runs.push_back(words);
+        document->blocks = {block, after};
+        chartEdit->SetDocument(document);
+        TEST("Before a paint no chart is made", chartEdit->GetChartElementForTest(0) == nullptr);
+        window->UpdateAndRender();
+        auto drawn = std::dynamic_pointer_cast<UltraCanvasEngineBarChart>(chartEdit->GetChartElementForTest(0));
+        TEST("The view draws the frame's chart with the chart engine", drawn != nullptr);
+        if (drawn) {
+            TEST("...laid out for the frame's size: " + std::to_string(drawn->GetWidth()) + " x " + std::to_string(drawn->GetHeight()),
+                 drawn->GetWidth() == 400 && drawn->GetHeight() == 200);
+            // Four bars, as tall as their values; the engine's legend names the series.
+            const std::vector<ChartBarSpan> spans = drawn->BarSpans();
+            double tallest = 0.0, shortest = 1e9;
+            for (const ChartBarSpan& span : spans) {
+                tallest = std::max(tallest, span.v1 - span.v0);
+                shortest = std::min(shortest, span.v1 - span.v0);
+            }
+            TEST("...four bars as tall as their values", spans.size() == 4 && tallest > 0.0
+                 && std::abs(shortest / tallest - 2.4 / 9.1) < 0.001);
+            TEST("...and the engine's legend", drawn->GetLegend().GetEntries().size() == 2);
+            TEST("...not animated, on the page's own ground", !drawn->IsEngineAnimating() && drawn->GetTheme().backgroundColor.a == 0);
+        }
+        window->UpdateAndRender();
+        TEST("A second paint draws with the same chart", chartEdit->GetChartElementForTest(0) == drawn && drawn != nullptr);
+        chartEdit->SetDocument(document);
+        TEST("A document set anew makes its charts anew", chartEdit->GetChartElementForTest(0) == nullptr);
+        window->RemoveChild(chartEdit);
     }
 
     std::cerr << "\n========================================" << std::endl;

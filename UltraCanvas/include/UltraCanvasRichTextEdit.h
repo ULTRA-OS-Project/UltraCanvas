@@ -18,6 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.18.0 - chartCache: a frame's chart drawn by the chart engine
 // Version: 1.17.1 - layoutStatedLines
 // Version: 1.17.0 - a frame standing in a line (a table nested in a cell) is edited in place
 //                   (InlineFrameRect, FurnitureEditState::frameHostBlock)
@@ -68,6 +69,8 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+class UltraCanvasChartEngineElement;      // Plugins/Charts/Engine: draws a document's charts
 
 // ===== STYLE =====
 
@@ -647,6 +650,12 @@ public:
     Rect2Df GetFloatRectForTest(size_t index) const {
         return index < placedFloats.size() ? placedFloats[index].rect : Rect2Df(0, 0, 0, 0);
     }
+    // The engine chart that drew frame `frameIndex`'s chart on the last
+    // paint; null when the frame has none or was not painted.
+    std::shared_ptr<UltraCanvasChartEngineElement> GetChartElementForTest(int frameIndex) const {
+        auto found = chartCache.find(frameIndex);
+        return found != chartCache.end() ? found->second : nullptr;
+    }
     // ...and where it is on the element, for a pointer to press on.
     Rect2Df GetFloatElementRectForTest(size_t index) const {
         if (index >= placedFloats.size()) return Rect2Df(0, 0, 0, 0);
@@ -1155,6 +1164,8 @@ private:
     // scrolling does not re-lay them. Cleared with the block layouts.
     std::map<std::string, std::shared_ptr<FurnitureLayout>> furnitureCache;
     float furnitureCacheWidth = -1.0f;
+    // The engine chart drawing each chart frame (by frame index).
+    std::map<int, std::shared_ptr<UltraCanvasChartEngineElement>> chartCache;
     float scrollOffset = 0.0f;
     float hScrollOffset = 0.0f;       // document pixels, page view only
     float zoom = 1.0f;

@@ -7,6 +7,7 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.16.0 - a frame's chart (RichTextFrame::chart) is drawn by the chart engine (UltraCanvasRichDocumentChart.h)
 // Version: 1.15.1 - a document's own bullet is drawn in the text's colour, half as large again
 // Version: 1.15.0 - a heading in its style's size and font; the first paragraph's space above; a hanging first
 //                   line left of the column; a paragraph whose float does not fit its page moves on
@@ -53,6 +54,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
+#include "UltraCanvasRichDocumentChart.h"
 #include "UltraCanvasDrawnMarks.h"
 #include "UltraCanvasUI.h"
 #include "UltraCanvasCaret.h"
@@ -462,6 +464,7 @@ void UltraCanvasRichTextEdit::SetDocument(std::shared_ptr<UCRichDocument> docume
     editor.SetDocument(std::move(document));
     blockLayouts.clear();
     furnitureCache.clear();
+    chartCache.clear();
     visibleAreaDirty = true;          // another page size
     scrollOffset = 0.0f;
     layoutsDirty = true;
@@ -488,6 +491,7 @@ void UltraCanvasRichTextEdit::InvalidateDocument() {
     layoutsDirty = true;
     blockLayouts.clear();
     furnitureCache.clear();
+    chartCache.clear();
     RequestRedraw();
 }
 
@@ -709,6 +713,7 @@ std::shared_ptr<UltraCanvasRichTextEdit::FurnitureLayout> UltraCanvasRichTextEdi
     if (blocks.empty()) return nullptr;
     if (furnitureCacheWidth != ColumnWidth()) {
         furnitureCache.clear();
+    chartCache.clear();
         furnitureCacheWidth = ColumnWidth();
     }
     const bool numbered = HasPageFields(blocks);
@@ -1344,6 +1349,14 @@ void UltraCanvasRichTextEdit::DrawTextFrame(IRenderContext* ctx, const PlacedFlo
         // A drawing: its shapes, scaled from the box they were drawn for to
         // the frame's (once it has been resized), then its words over them.
         const double drawnWidth = Px(frame->drawingWidthPt), drawnHeight = Px(frame->drawingHeightPt);
+        if (frame->chart.IsChart()) {
+            // A chart: the chart engine draws its data, laid out for the
+            // size it was made for and scaled into the frame's. (Its shapes
+            // and their words are the same chart as a drawing: not drawn.)
+            const Size2Di natural(static_cast<int>(std::lround(drawnWidth > 0.0 ? drawnWidth : target.width)),
+                                  static_cast<int>(std::lround(drawnHeight > 0.0 ? drawnHeight : target.height)));
+            if (DrawRichDocumentChart(ctx, frame->chart, target, natural, &chartCache[placed.frameIndex])) return;
+        }
         const double scaleX = drawnWidth > 0.0 ? target.width / drawnWidth : 1.0;
         const double scaleY = drawnHeight > 0.0 ? target.height / drawnHeight : 1.0;
         ctx->PushState();
@@ -6266,6 +6279,7 @@ void UltraCanvasRichTextEdit::SyncFurnitureToDocument() {
         for (size_t i = body->media.size(); i < edited->media.size(); i++) body->media.push_back(edited->media[i]);
         furnitureEdit->bodyEditor.SetModified(true);
         furnitureCache.clear();
+    chartCache.clear();
         return;
     }
     if (furnitureEdit->noteIndex >= 0) {
@@ -6275,6 +6289,7 @@ void UltraCanvasRichTextEdit::SyncFurnitureToDocument() {
         for (size_t i = body->media.size(); i < edited->media.size(); i++) body->media.push_back(edited->media[i]);
         furnitureEdit->bodyEditor.SetModified(true);
         furnitureCache.clear();
+    chartCache.clear();
         return;
     }
     const bool ownSet = furnitureEdit->furnitureSet >= 0
@@ -6295,6 +6310,7 @@ void UltraCanvasRichTextEdit::SyncFurnitureToDocument() {
     for (size_t i = body->media.size(); i < edited->media.size(); i++) body->media.push_back(edited->media[i]);
     furnitureEdit->bodyEditor.SetModified(true);
     furnitureCache.clear();
+    chartCache.clear();
 }
 
 void UltraCanvasRichTextEdit::FinishHeaderFooterEditing() {
@@ -6328,6 +6344,7 @@ float UltraCanvasRichTextEdit::PlaceFurnitureBeingEdited(IRenderContext* ctx) {
     const int hostBlock = furnitureEdit->frameHostBlock;
     if (hostBlock >= 0 && hostBlock < static_cast<int>(blockLayouts.size())) {
         furnitureCache.clear();
+    chartCache.clear();
         BuildBlockLayoutFor(ctx, hostBlock);
     }
     const float bodyHeight = PlaceBody(ctx);
@@ -6530,7 +6547,8 @@ bool UltraCanvasRichTextEdit::InsertNoteOf(RichNote::Kind kind) {
     if (furnitureEdit) FinishHeaderFooterEditing();
     const int noteIndex = editor.InsertNote(kind);
     if (noteIndex < 0) return false;
-    furnitureCache.clear();                 // the notes moved in memory
+    furnitureCache.clear();
+    chartCache.clear();                 // the notes moved in memory
     AfterEdit();
     return EditNote(noteIndex);
 }
@@ -6665,6 +6683,7 @@ std::shared_ptr<UltraCanvasRichTextEdit::FurnitureLayout> UltraCanvasRichTextEdi
     if (noteIndex < 0 || noteIndex >= static_cast<int>(document.notes.size())) return nullptr;
     if (furnitureCacheWidth != ColumnWidth()) {
         furnitureCache.clear();
+    chartCache.clear();
         furnitureCacheWidth = ColumnWidth();
     }
     const RichNote& note = document.notes[static_cast<size_t>(noteIndex)];
@@ -7444,6 +7463,7 @@ int UltraCanvasRichTextEdit::BeginPrintLayout(IRenderContext* ctx) {
     visibleArea.height = std::max(visibleArea.height, Px(page.heightPt) + 2.0f * style.pageGap);
     blockLayouts.clear();
     furnitureCache.clear();
+    chartCache.clear();
     layoutsDirty = true;
     EnsureLayouts(ctx);
     return static_cast<int>(pages.size());

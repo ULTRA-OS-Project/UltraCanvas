@@ -31,6 +31,7 @@ state of the selection** rather than two asterisks in a buffer.
   - [Floating pictures](#floating-pictures)
   - [Check lists](#check-lists)
   - [Formulas](#formulas)
+  - [Charts](#charts)
   - [Structure](#structure)
 - [Following the theme](#following-the-theme)
 - [Keyboard](#keyboard)
@@ -815,6 +816,42 @@ two lines). Put the caret inside it and the source appears in its place for
 editing; move the caret away and it is typeset again. A `MathBlock` is typeset
 in display style and centred until the caret enters it. Without the LaTeX
 module, both show their source.
+
+### Charts
+
+A chart in a document is a frame with the chart's data
+(`RichTextFrame::chart`, a `RichChart`: its kind, categories, series of
+values, legend and title). The view draws it with the chart engine - the
+same charts an application uses as elements
+([`UltraCanvasEngineCharts.md`](UltraCanvasEngineCharts.md)):
+
+| `RichChart::Kind` | Drawn by |
+|---|---|
+| `Column`, `Bar` (side by side, `stacked`, `percent`) | `UltraCanvasEngineBarChart` |
+| `Line`, `Area` | `UltraCanvasEngineLineChart` |
+| `Pie`, `Doughnut` | `UltraCanvasEnginePieChart` |
+| `Scatter` | `UltraCanvasEngineScatterChart`; the line chart over numeric x where the points are joined and the series share their x |
+
+The chart is laid out for the frame's own size and scaled into its place, so
+it prints and exports as vectors and keeps its proportions under zoom. It is
+shown, not edited: there is no dialog for its data yet.
+
+```cpp
+#include "UltraCanvasRichDocumentChart.h"
+
+// The same chart as a live element of an application's own:
+const RichTextFrame& frame = document->frames[frameIndex];
+if (frame.chart.IsChart()) {
+    auto element = CreateRichDocumentChart(frame.chart, 480, 300);
+    container->AddChild(element);
+}
+```
+
+The DOCX reader fills the data from the chart part (`c:chartSpace`) and the
+writer writes it back as one, so the chart is still a chart in Word. The
+frame also holds the chart as drawn shapes (`RichTextFrame::shapes`): what a
+consumer without the UI stack has, and what ODT - where a chart is an
+embedded object the writer does not make yet - is given.
 
 ### Structure
 

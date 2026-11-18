@@ -6,6 +6,7 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.14.0 - RichChart: a chart's data in its frame (RichTextFrame::chart)
 // Version: 1.13.0 - RichTextRun::lineSpacing: a cell paragraph's own line multiple
 // Version: 1.12.0 - RichDocBlock::tableAutoFit; UCRichDocument::breakAfterSlash
 // Version: 1.11.0 - RichDocBlock::columnBreakBefore; RichTextFrame::nestedTable; RichTableCell::lineHeightPt,
@@ -697,6 +698,36 @@ struct RichShape {
 };
 
 // ===== TEXT FRAMES =====
+// ===== CHARTS =====
+// A chart's data, as its file states it: what kind it is, its categories and
+// its series of values. The view draws it with the chart engine
+// (UltraCanvasRichDocumentChart.h); the model itself stays free of the UI
+// stack. A chart lives in a frame (RichTextFrame::chart), which also holds
+// it as drawn shapes - what a consumer without the engine shows, and what a
+// format that cannot carry a chart is given.
+struct RichChartSeries {
+    std::string name;
+    std::string color;                    // "#RRGGBB"; empty = from the palette
+    std::vector<double> values;           // one per category (a scatter point's y)
+    std::vector<double> xValues;          // Scatter: each point's x
+    bool joined = true;                   // Line / Scatter: its points are joined by a line
+    bool marked = false;                  // Line / Scatter: ...and marked
+};
+
+struct RichChart {
+    // (NoChart, not None: X11's Xlib.h #defines None.)
+    enum class Kind { NoChart, Column, Bar, Line, Area, Pie, Doughnut, Scatter };
+    Kind kind = Kind::NoChart;
+    bool stacked = false;                 // Column / Bar / Area: one on the other
+    bool percent = false;                 // ...as shares of 100%
+    bool legend = false;
+    std::string title;
+    std::vector<std::string> categories;
+    std::vector<std::string> pointColors; // Pie / Doughnut: a slice's own colour ("" = from the palette)
+    std::vector<RichChartSeries> series;
+    bool IsChart() const { return kind != Kind::NoChart; }
+};
+
 // A text box's content and look, referenced by a run with frameIndex (which
 // also carries where it floats).
 struct RichTextFrame {
@@ -710,6 +741,9 @@ struct RichTextFrame {
     // with shapes is a drawing, not a box: it shows no frame of its own.
     std::vector<RichShape> shapes;
     bool IsDrawing() const { return !shapes.empty(); }
+    // A chart: its data (the view draws it with the chart engine in place
+    // of the shapes above, which are the same chart as a drawing).
+    RichChart chart;
     // The box its shapes were drawn for, in points (0 = its run's size). A
     // drawing resized on the page keeps this, and its shapes are scaled from
     // it to the run's new size.
