@@ -112,11 +112,20 @@ framework, once, on the first query:
 | `pdf` | the first page (PDF plugin builds, with an engine) | `pdf` |
 | `ebook-cover` | the cover the book declares | `epub`, `mobi`, `prc`, `azw`, `azw3` |
 | `video-poster` | a frame a short way into the clip | the containers the media codec registry decodes |
-| `word-processing` | the document, the first page's header and footer inline | `odt`, `docx`, `doc`, `tex` |
+| `word-processing` | a thumbnail: the first page as the document lays it out (`odt`, `docx`, `doc`); a preview document: the document, the first page's header and footer inline (those and `tex`) | `odt`, `docx`, `doc`, `tex` |
 | `powerpoint` | each slide's number and title, bullets, tables and notes | `pptx`, `pptm`, `ppsx`, `ppsm`, `potx`, `potm` |
 
 The Filer draws its own styling over these: an outline round a PDF page, a
-shaded edge on a book cover.
+shaded edge on a book cover and on a document's page.
+
+A word-processing document's first page is laid out and drawn by
+`UltraCanvasRichTextEdit` - the same pages its PDF export and its print pages
+are (`BeginPrintLayout` / `RenderPrintPage`): the document's page size and
+margins, its fonts, pictures, colours, tables, header and footer, on white
+paper whatever the theme. Only the first 200 blocks are laid out, so the first
+page of a long report costs what a letter's does. Laying out goes through the
+process-wide font machinery, so these thumbnails are drawn one at a time; a
+`.tex` keeps its outline (its page is a TeX engine's, not this layout's).
 
 ## Threads
 

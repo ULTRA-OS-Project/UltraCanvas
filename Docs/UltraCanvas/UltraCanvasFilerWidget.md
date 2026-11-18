@@ -45,6 +45,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Per-format switches (the list of files)](#per-format-switches-the-list-of-files)
   - [Embedded preview bitmaps](#embedded-preview-bitmaps)
   - [E-book covers](#e-book-covers)
+  - [Document pages](#document-pages)
   - [File types the FileLoader knows](#file-types-the-fileloader-knows)
   - [Native application icons](#native-application-icons)
   - [Thumbnail memory](#thumbnail-memory)
@@ -696,7 +697,8 @@ Needs the VirtualFS module (`ULTRACANVAS_HAS_VIRTUALFS`); without it
 
 A **content preview** is a tile rendered from the file itself instead of the
 generic category glyph. The PDF page, the e-book cover, the video poster frame
-and the Word / PowerPoint text come from the formats' preview providers
+the word-processing document's first page and the Word / PowerPoint text come
+from the formats' preview providers
 ([`UltraCanvasFilePreviews`](UltraCanvasFilePreviews.md)); a format registered
 there previews here without the widget knowing it. Two independent sets of switches decide what a file
 may show, and every kind is enabled in both by default:
@@ -728,7 +730,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, potx), rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
+| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, potx), rtf, md, html, tex, and the e-book containers | a **word-processing document shows its first page** - odt, doc and docx laid out with their fonts, pictures, colours, header and footer, as they print (see [Document pages](#document-pages)); the others the same page of text, with tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, xls, csv, tsv | the first cells of the first sheet as a small grid. An `.xls` is read by the [legacy workbook reader](UltraCanvasSpreadsheetXls.md) (Excel 97-2003 and 5.0/95), and so is what else is saved under the name — an HTML table, an Excel 2003 XML file; an `.xlsx` renamed `.xls` previews as one, and delimited text as CSV. An encrypted workbook, or a binary one above 32 MB (it is read whole), keeps its glyph. The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -924,6 +926,27 @@ folder of books shows covers peeking out of its icon under Display > Folder
 previews. Display > Thumbnails > Docs turns them off with the other documents,
 and `SetThumbnailFormatEnabled("epub", false)` (or `"mobi"`, `"azw3"`, ... —
 UltraFiler: Settings > Display > Thumbnails) turns off one format's.
+
+### Document pages
+
+A word-processing document tile — `.odt`, `.docx`, `.doc` — shows the
+document's **first page as it looks**: its page size and margins, its fonts and
+sizes, pictures, colours, tables, header and footer, the way a PDF tile shows
+its first page. It used to be a page of the document's text lines in one small
+grey font, which told what a letter says but not what it looks like, and set a
+letterhead or a CV apart from a plain draft by nothing.
+
+The page is drawn on the thumbnail workers by the `word-processing` preview
+provider ([`UltraCanvasFilePreviews`](UltraCanvasFilePreviews.md)), which reads
+the document with `UCWordDocumentIO` and lays it out with
+`UltraCanvasRichTextEdit` — the same pages its PDF export and print give — on
+white paper whatever the theme. The tile then gets the shaded edge a book cover
+gets. A document whose page cannot be drawn falls back to the page of its text;
+a password-protected `.docx` can be neither and keeps its type glyph. Pages are
+cached like every other thumbnail, in memory and on disk, and Display >
+Thumbnails > Docs turns them off with the other documents
+(`SetThumbnailFormatEnabled("docx", false)` for one format). RTF, Markdown,
+HTML and LaTeX keep their page of text.
 
 ### File types the FileLoader knows
 

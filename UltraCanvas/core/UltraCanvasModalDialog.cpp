@@ -1,6 +1,15 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.10.0 - a SetStyle that changes only the type sizes keeps the dialog following the theme
+//                  (the Filer's and the Save settings' dialogs stopped following when they set
+//                  their fonts), and a theme change keeps the sizes set: the message and details
+//                  sizes by hand, the buttons' buttonFontSize over ButtonStyle::FromTheme's; the
+//                  message stays on the dialog's panel through a theme change (it took the
+//                  theme's well, a box behind the text)
+// Version: 3.9.4 - a destructive answer beside the default one (Delete permanently) is the theme's
+//                  button outlined in the theme's danger colour: it was a fixed light pink fill
+//                  with dark red text in a dark dialog too
 // Version: 3.9.3 - the Save dialog opens a type's Settings at its own type size
 // Version: 3.9.2 - nor by a popup's own window
 // Version: 3.9.1 - a dialog without a parent is not placed by the tooltip's window
@@ -520,7 +529,20 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::SetStyle(const ModalDialogStyle& dialogStyle) {
-        StyleSetByHand();
+        if (!IsApplyingTheme()) {
+            // A host that sets the dialog's type sizes (the Filer's 9, the
+            // Save settings at the Save dialog's size) keeps the theme's
+            // colours: only a style that changes the colours stops the
+            // following, as every element's SetStyle does. The sizes given
+            // are kept through every theme change after (ApplyTheme), as a
+            // label keeps the size set with SetFontSize.
+            if (dialogStyle.messageTextColor != style.messageTextColor ||
+                dialogStyle.detailsTextColor != style.detailsTextColor) {
+                StyleSetByHand();
+            }
+            if (dialogStyle.messageFontSize != style.messageFontSize) messageFontSizeByHand = true;
+            if (dialogStyle.detailsFontSize != style.detailsFontSize) detailsFontSizeByHand = true;
+        }
         style = dialogStyle;
 
         // Apply style to components
@@ -1047,18 +1069,25 @@ namespace UltraCanvas {
             case DialogButtonRole::DestructiveDefault:
                 button->SetStyle(ButtonStyles::DangerStyle());
                 break;
-            case DialogButtonRole::Destructive: {
-                ButtonStyle red;
-                red.borderColor      = Color(163, 38, 31, 255);
-                red.borderWidth      = 1.5f;
-                red.normalTextColor  = Color(143, 31, 25, 255);
-                red.hoverTextColor   = Color(143, 31, 25, 255);
-                red.pressedTextColor = Colors::White;
-                red.hoverColor       = Color(250, 232, 230, 255);
-                red.pressedColor     = Color(163, 38, 31, 255);
-                button->SetStyle(red);
+            case DialogButtonRole::Destructive:
+                // The theme's button surface with a red outline and red ink:
+                // a fixed light-look pink fill and dark red text before,
+                // which glared from a dark dialog.
+                if (GetFollowTheme()) {
+                    button->SetStyle(DestructiveOutlineStyle(UltraCanvasTheme::Current(),
+                                                             button->GetStyle()));
+                } else {
+                    ButtonStyle red;
+                    red.borderColor      = Color(163, 38, 31, 255);
+                    red.borderWidth      = 1.5f;
+                    red.normalTextColor  = Color(143, 31, 25, 255);
+                    red.hoverTextColor   = Color(143, 31, 25, 255);
+                    red.pressedTextColor = Colors::White;
+                    red.hoverColor       = Color(250, 232, 230, 255);
+                    red.pressedColor     = Color(163, 38, 31, 255);
+                    button->SetStyle(red);
+                }
                 break;
-            }
             default:
                 break;
         }
@@ -3359,7 +3388,10 @@ namespace UltraCanvas {
         SetBackgroundColor(panel);
         for (auto& section : {contentSection, footerSection, messageContainer}) if (section) section->SetBackgroundColor(panel);
         if (messageArea) messageArea->SetBackgroundColor(panel);
-        SetStyle(ModalDialogStyle::FromTheme(theme, style));
+        ModalDialogStyle themed = ModalDialogStyle::FromTheme(theme, style);
+        if (messageFontSizeByHand) themed.messageFontSize = style.messageFontSize;
+        if (detailsFontSizeByHand) themed.detailsFontSize = style.detailsFontSize;
+        SetStyle(themed);
         for (auto& entry : dialogButtons) {
             if (!entry.button) continue;
             switch (entry.role) {
@@ -3370,10 +3402,43 @@ namespace UltraCanvas {
                 case DialogButtonRole::Normal:
                     entry.button->SetStyle(ButtonStyle::FromTheme(theme, entry.button->GetStyle(), ButtonVariant::Standard));
                     break;
+                case DialogButtonRole::Destructive:
+                    entry.button->SetStyle(DestructiveOutlineStyle(theme, entry.button->GetStyle()));
+                    break;
                 default:
-                    break;   // a destructive answer keeps its red
+                    break;   // a destructive default keeps its red fill and white text
             }
+            // ButtonStyle::FromTheme sets the theme's body size: the
+            // dialog's own button size (buttonFontSize) goes back on.
+            ApplyButtonFont(entry.button);
         }
         RequestRedraw();
+    }
+
+    void UltraCanvasModalDialog::OnThemeChanged(const UltraCanvasTheme& theme) {
+        UltraCanvasWindow::OnThemeChanged(theme);
+        // The message area follows the theme too, and as a text field its
+        // ground is the theme's well: re-themed after the dialog, it stood
+        // out as a lighter box behind the message once the theme changed
+        // with the dialog open. The message sits on the dialog's panel.
+        if (GetFollowTheme() && messageArea) messageArea->SetBackgroundColor(dialogConfig.backgroundColor);
+    }
+
+    // A destructive answer beside the default one: the theme's ordinary
+    // button - its surface, hover and font - outlined and lettered in the
+    // theme's danger colour, filled with it while pressed. The danger colour
+    // is a dark red in a light look and a light one in a dark look, so the
+    // label reads on either surface.
+    ButtonStyle UltraCanvasModalDialog::DestructiveOutlineStyle(const UltraCanvasTheme& theme,
+                                                                const ButtonStyle& base) {
+        ButtonStyle s = ButtonStyle::FromTheme(theme, base, ButtonVariant::Standard);
+        const Color danger = theme.roles.danger;
+        s.borderColor = danger;
+        s.borderWidth = 1.5f;
+        s.normalTextColor = danger;
+        s.hoverTextColor = danger;
+        s.pressedColor = danger;
+        s.pressedTextColor = theme.dark ? theme.roles.ground : Colors::White;
+        return s;
     }
 } // namespace UltraCanvas
