@@ -4,6 +4,7 @@
 //                  display lists the files of a delete; saving them shows each file's tab before its
 //                  Save dialog (painted before the dialog opens), and a save that fails shows its tab
 //                  before saying so; closing one tab with unsaved changes shows that tab before asking
+//                  (the close stays in progress until the question is answered)
 // Version: 2.8.0 - a window started dark has dark chrome (the theme was only laid over it on a change);
 //                  View > Dark Mode: Document Background (dark / light grey / white text tabs under a dark look)
 // Version: 2.7.0 - the status bar shows which dictionary the active document is spell checked against; a click opens the Spelling menu
@@ -1942,6 +1943,12 @@ namespace {
                 }
                 isDocumentClosing = false;
             });
+            // The answer clears isDocumentClosing, not this: the question may
+            // still be open (it waits for a paint when the tab was not the
+            // current one), and RemoveTab must not find the flag down and
+            // close a second document - the one that took the closed tab's
+            // place - leaving its tab on screen with no document behind it.
+            return;
         } else {
             // No unsaved changes - close directly
             if (!doc->autosaveBackupPath.empty()) {
