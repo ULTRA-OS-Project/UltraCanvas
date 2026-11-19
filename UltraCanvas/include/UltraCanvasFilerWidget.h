@@ -104,6 +104,9 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.55.0 - PendingExtract::existingChoice, kept and targetFolder (the Extract dialog's folder,
+//                  asked about when it exists); DecideExistingFile; ExtractExistingChoice: what Extract into
+//                  existing does with a file that is there already
 // Version: 1.54.1 - BuildOperationEntryList: the summary's reason column takes the list's width
 // Version: 1.54.0 - PasteReplaceCondition::IfOlder (bring an earlier version back);
 //                  PasteConflictAction::KeepBothUnlessIdentical (no duplicate of a file that is there)
@@ -4288,8 +4291,37 @@ namespace UltraCanvas {
             PasteConflictAction action = PasteConflictAction::KeepBoth;
             bool applyToAll = false;
             bool changed = false;
+            // "Extract into existing": what happens to a file that is there
+            // already (ExtractExistingChoice), and the files it left as they
+            // were, with why - listed once the queue is through.
+            int existingChoice = 0;
+            std::vector<SkippedItem> kept;
+            // The Extract dialog's own folder (its name field, the folder
+            // the icon was dropped on) for its one archive; empty: each
+            // archive's stem beside it, as ExtractSelection unpacks.
+            std::string targetFolder;
         };
+        // Where an archive of the pending extract unpacks to.
+        std::string ExtractDestinationFor(const FilerEntry& archive) const;
+        // What Extract into existing does with one file that is there
+        // already, by ExtractExistingChoice `choice`: 0 write over it, 1 leave
+        // it (`whyKept` says why), 2 write the archive's file to `writeAs`.
+        // Reads only the file at `destPath`; safe on the archive worker.
+        static int DecideExistingFile(int choice, const std::string& destPath,
+                                      uint64_t entrySize, int64_t entryModifiedTime,
+                                      std::string& writeAs, std::string& whyKept);
         std::unique_ptr<PendingExtract> pendingExtract;
+        // What the extract question's options panel says happens to a file
+        // that exists already, by the order of its choices: replace always;
+        // replace when the archive's file is newer, older, bigger, or the
+        // files differ; skip identical files and keep both for the rest.
+        enum ExtractExistingChoice {
+            ExtractReplaceAlways = 0, ExtractReplaceIfNewer, ExtractReplaceIfOlder,
+            ExtractReplaceIfLarger, ExtractReplaceIfDifferent, ExtractKeepBothUnlessIdentical
+        };
+        // The last answer of the session, and whether the panel was open.
+        int lastExtractExistingChoice = ExtractReplaceAlways;
+        bool extractOptionsOpen = false;
 
         // ===== ARCHIVE WORKER (compress / extract with a progress window) =====
         // Packing and unpacking are the widget's only file operations that can

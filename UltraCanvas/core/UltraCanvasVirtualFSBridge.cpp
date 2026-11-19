@@ -1,10 +1,11 @@
 // UltraCanvas/core/UltraCanvasVirtualFSBridge.cpp
 // Implementation of VirtualFS bridge for UltraCanvas
+// Version: 1.3.0 - ExtractArchive hands onExistingFile on to VirtualFS (VirtualFSExtractOptions)
 // Version: 1.2.0 - CreateArchive hands options.archive.method on as the archive's
 //                  compressionMethod (refusing a type no archive can be written in)
 // Version: 1.1.0 - CreateArchive hands options.archive on to VirtualFS
 // Version: 1.0.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVirtualFSBridge.h"
@@ -726,7 +727,8 @@ bool UltraCanvasVirtualFSBridge::ExtractArchive(
     const std::string& archivePath,
     const std::string& destDirectory,
     UCVFSProgressCallback progressCallback,
-    std::string* outError) {
+    std::string* outError,
+    UCVFSExistingFileCallback onExistingFile) {
     
     if (outError) outError->clear();
     if (!initialized && !Initialize()) {
@@ -745,11 +747,28 @@ bool UltraCanvasVirtualFSBridge::ExtractArchive(
         };
     }
     
+    VirtualFS::VirtualFSExtractOptions options = VirtualFS::VirtualFSExtractOptions::Default();
+    if (onExistingFile) {
+        options.onExistingFile = [&onExistingFile](const VirtualFS::VirtualFSExistingFile& file,
+                                                   std::string& writeAs) {
+            UCVFSExistingFile existing;
+            existing.entryPath = file.entryPath;
+            existing.destPath = file.destPath;
+            existing.entrySize = file.entrySize;
+            existing.entryModifiedTime = file.entryModifiedTime;
+            switch (onExistingFile(existing, writeAs)) {
+                case UCVFSExistingFileAction::Skip:
+                    return VirtualFS::VirtualFSExistingFileAction::Skip;
+                case UCVFSExistingFileAction::WriteAs:
+                    return VirtualFS::VirtualFSExistingFileAction::WriteAs;
+                default:
+                    return VirtualFS::VirtualFSExistingFileAction::Overwrite;
+            }
+        };
+    }
     std::string detail;
     auto result = VirtualFS::VirtualFS_ExtractAll(
-        archivePath, destDirectory,
-        VirtualFS::VirtualFSExtractOptions::Default(),
-        vfsCallback, &detail);
+        archivePath, destDirectory, options, vfsCallback, &detail);
     
     if (result != VirtualFS::VirtualFSResult::Ok) {
         // The provider's own account (which entries were skipped, and why)

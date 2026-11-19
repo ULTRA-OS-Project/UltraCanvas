@@ -51,6 +51,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.55.0 - Extract into existing: a foldable Options panel says what happens to a file that is
+//                  there already (replace always / when newer, older, bigger, different / keep both
+//                  unless identical); the files left as they were are listed when the extract is through
 // Version: 1.54.1 - the summary's reason column takes the width the name leaves (a German reason was cut
 //                  off at 260 px), and the summary is 700 wide like the conflict question
 // Version: 1.54.0 - Replace when the pasted file is older; Keep both that skips identical files
@@ -255,6 +258,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <chrono>
 #include <mutex>
 #include <set>
 #include <sys/stat.h>
@@ -9959,6 +9963,64 @@ namespace UltraCanvas {
 #endif
     }
 
+    int UltraCanvasFilerWidget::DecideExistingFile(int choice, const std::string& destPath,
+                                                   uint64_t entrySize, int64_t entryModifiedTime,
+                                                   std::string& writeAs, std::string& whyKept) {
+        if (choice == ExtractReplaceAlways) return 0;
+        const fs::path dest = PathFromUtf8(destPath);
+        std::error_code sizeEc, timeEc;
+        const uint64_t destSize = fs::file_size(dest, sizeEc);
+        const fs::file_time_type written = fs::last_write_time(dest, timeEc);
+        // The file's time as seconds since the epoch, by the offset between
+        // the two clocks now: within a second or so, and the comparison
+        // allows two (a ZIP keeps times to two seconds).
+        int64_t destTime = 0;
+        if (!timeEc) {
+            using namespace std::chrono;
+            const auto asSystem = time_point_cast<system_clock::duration>(
+                    written - fs::file_time_type::clock::now() + system_clock::now());
+            destTime = static_cast<int64_t>(system_clock::to_time_t(asSystem));
+        }
+        constexpr int64_t kSlack = 2;
+        const bool timesKnown = !timeEc && entryModifiedTime != 0;
+        const bool newer = timesKnown && entryModifiedTime > destTime + kSlack;
+        const bool older = timesKnown && entryModifiedTime < destTime - kSlack;
+        const bool identical = !sizeEc && destSize == entrySize && timesKnown && !newer && !older;
+        switch (choice) {
+            case ExtractReplaceIfNewer:
+                if (newer) return 0;
+                whyKept = Tr("Kept: the existing file is not older");
+                return 1;
+            case ExtractReplaceIfOlder:
+                if (older) return 0;
+                whyKept = Tr("Kept: the existing file is not newer");
+                return 1;
+            case ExtractReplaceIfLarger:
+                if (!sizeEc && entrySize > destSize) return 0;
+                whyKept = Tr("Kept: the existing file is not smaller");
+                return 1;
+            case ExtractReplaceIfDifferent:
+                if (!identical) return 0;
+                whyKept = Tr("Kept: same size and date");
+                return 1;
+            case ExtractKeepBothUnlessIdentical:
+                if (!identical) {
+                    writeAs = UniquePathIn(PathToUtf8(dest.parent_path()), PathToUtf8(dest.filename()));
+                    return 2;
+                }
+                whyKept = Tr("An identical file exists already");
+                return 1;
+            default:
+                return 0;
+        }
+    }
+
+    std::string UltraCanvasFilerWidget::ExtractDestinationFor(const FilerEntry& archive) const {
+        if (pendingExtract && !pendingExtract->targetFolder.empty())
+            return pendingExtract->targetFolder;
+        return PathToUtf8(PathFromUtf8(currentPath) / PathFromUtf8(archive.name).stem());
+    }
+
     void UltraCanvasFilerWidget::ExtractSelection() {
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         if (pendingExtract) return;   // one extract (and its dialog) at a time
@@ -9981,8 +10043,7 @@ namespace UltraCanvas {
                pendingExtract->next < pendingExtract->archives.size()) {
             PendingExtract& pe = *pendingExtract;
             const FilerEntry& e = pe.archives[pe.next];
-            const std::string destDir =
-                    PathToUtf8(PathFromUtf8(currentPath) / PathFromUtf8(e.name).stem());
+            const std::string destDir = ExtractDestinationFor(e);
             if (fs::exists(UltraCanvas::PathFromUtf8(destDir), ec) && !pe.applyToAll) {
                 ShowExtractConflictDialog(e);
                 return;
@@ -9998,8 +10059,23 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::FinishPendingExtract() {
         if (!pendingExtract) return;
         const bool changed = pendingExtract->changed;
+        const std::vector<SkippedItem> kept = std::move(pendingExtract->kept);
+        const std::string target = pendingExtract->targetFolder;
         pendingExtract.reset();
-        if (changed) { Refresh(); NotifyFolderModified(); }
+        if (changed) {
+            Refresh();
+            // The Extract dialog's folder can sit where its icon was
+            // dropped, not in the folder shown.
+            if (!target.empty()) NotifyFolderModified(PathToUtf8(PathFromUtf8(target).parent_path()));
+            else                 NotifyFolderModified();
+        }
+        // The files "Extract into existing" left as they were, by the
+        // options' choice: listed with why, the way a copy lists what it
+        // skipped. Nothing to copy again - the archive is still there.
+        if (!kept.empty())
+            ShowOperationSummary(Tr("Extract finished"),
+                                 TrF("Existing files kept: {0}", kept.size()), kept,
+                                 std::string(), std::string(), nullptr);
     }
 
     bool UltraCanvasFilerWidget::ExtractCurrentAndAdvance(
@@ -10012,14 +10088,44 @@ namespace UltraCanvas {
         }
         if (archiveJob) return false;   // a job is already running
 
-        const std::string baseName = PathToUtf8(PathFromUtf8(e.name).stem());
-        std::string destDir = PathToUtf8(PathFromUtf8(currentPath) / PathFromUtf8(baseName));
+        std::string destDir = ExtractDestinationFor(e);
         std::error_code ec;
-        // Keep both renames the destination; Replace merges the archive
-        // content into the existing folder.
-        if (action == PasteConflictAction::KeepBoth && fs::exists(UltraCanvas::PathFromUtf8(destDir), ec))
-            destDir = UniqueChildPath(baseName);
+        // Keep both renames the destination - "name (2)" beside it; Replace
+        // merges the archive content into the existing folder.
+        if (action == PasteConflictAction::KeepBoth && fs::exists(UltraCanvas::PathFromUtf8(destDir), ec)) {
+            const fs::path wanted = PathFromUtf8(destDir);
+            fs::path candidate = wanted;
+            for (int n = 2; fs::exists(candidate, ec); ++n)
+                candidate = wanted.parent_path() /
+                            PathFromUtf8(PathToUtf8(wanted.filename()) + " (" + std::to_string(n) + ")");
+            destDir = PathToUtf8(candidate);
+        }
         fs::create_directories(UltraCanvas::PathFromUtf8(destDir), ec);
+
+        // Extract into existing: each file of the archive whose name is taken
+        // there is decided on by the options' choice - written over, left as
+        // it is (and listed at the end), or written beside it under the next
+        // free name. Runs on the archive worker, so it only reads the two
+        // files and collects what it kept.
+        UCVFSExistingFileCallback onExisting;
+        auto kept = std::make_shared<std::vector<SkippedItem>>();
+        auto keptMutex = std::make_shared<std::mutex>();
+        if (action == PasteConflictAction::Replace &&
+            pe.existingChoice != ExtractReplaceAlways) {
+            const int choice = pe.existingChoice;
+            onExisting = [choice, kept, keptMutex](const UCVFSExistingFile& file,
+                                                   std::string& writeAs) {
+                std::string whyKept;
+                const int decision = DecideExistingFile(choice, file.destPath, file.entrySize,
+                                                        file.entryModifiedTime, writeAs, whyKept);
+                if (decision == 0) return UCVFSExistingFileAction::Overwrite;
+                if (decision == 2) return UCVFSExistingFileAction::WriteAs;
+                std::lock_guard<std::mutex> lock(*keptMutex);
+                kept->push_back({file.destPath, whyKept,
+                                 PathToUtf8(PathFromUtf8(file.destPath).parent_path()), true});
+                return UCVFSExistingFileAction::Skip;
+            };
+        }
 
         // Initialize on the UI thread: the worker must not be the first caller
         // to build the VirtualFS provider registry.
@@ -10031,15 +10137,19 @@ namespace UltraCanvas {
         auto detail = std::make_shared<std::string>();
         StartArchiveJob(Tr("Extracting"), TrF("Unpacking \"{0}\"", archiveName),
                         destDir, /*packing=*/false,
-                        [archivePath, destDir, detail](const ArchiveProgressReporter& report) {
+                        [archivePath, destDir, detail, onExisting](const ArchiveProgressReporter& report) {
             return UCVFSBridge::ExtractArchive(archivePath, destDir,
                     [&report](uint64_t done, uint64_t total,
                               const std::string& file) {
                 return report(done, total, file);
-            }, detail.get());
+            }, detail.get(), onExisting);
         },
-                        [this, archivePath, detail](bool ok, bool cancelled) {
+                        [this, archivePath, detail, kept, keptMutex](bool ok, bool cancelled) {
             if (!pendingExtract) return;
+            {
+                std::lock_guard<std::mutex> lock(*keptMutex);
+                pendingExtract->kept.insert(pendingExtract->kept.end(), kept->begin(), kept->end());
+            }
             // A partial extraction still put files into the folder.
             if (ok || IsPartialExtraction(*detail)) pendingExtract->changed = true;
             if (!ok && !cancelled) ReportExtractionProblem(archivePath, *detail);
@@ -10053,7 +10163,8 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::ShowExtractConflictDialog(
             const FilerEntry& archive) {
-        const std::string folderName = PathToUtf8(PathFromUtf8(archive.name).stem());
+        const std::string destination = ExtractDestinationFor(archive);
+        const std::string folderName = PathToUtf8(PathFromUtf8(destination).filename());
 
         DialogConfig cfg;
         cfg.title = Tr("Folder Already Exists");
@@ -10070,8 +10181,7 @@ namespace UltraCanvas {
         spec.type = DialogType::Question;
         spec.question = cfg.message;
         spec.facts = "**" + Tr("Archive:") + "** " + FactPath(archive.path)
-                   + "\n\n**" + Tr("Folder:") + "** " + FactPath(PathToUtf8(
-                             PathFromUtf8(archive.path).parent_path() / folderName));
+                   + "\n\n**" + Tr("Folder:") + "** " + FactPath(destination);
         spec.note = Tr("Keep both extracts into a renamed folder; Extract into existing "
                        "adds the archive's entries to the folder that is there.");
         if (pendingExtract->archives.size() > pendingExtract->next + 1)
@@ -10082,9 +10192,34 @@ namespace UltraCanvas {
                         {Tr("Skip"), DialogButtonRole::Normal},
                         {Tr("Stop"), DialogButtonRole::Cancel}};
         spec.width = 640;
+        // What "Extract into existing" does with a file that is there
+        // already: the options the copy question offers, worded for an
+        // archive. They open as the last question left them.
+        std::shared_ptr<OptionsPanelState> state;
+        spec.options = BuildChoicePanel("FilerExtractOptions", Tr("Options"),
+                {Tr("Replace always"),
+                 Tr("Replace only when the archive's file is newer"),
+                 Tr("Replace only when the archive's file is older"),
+                 Tr("Replace only when the archive's file is bigger"),
+                 Tr("Replace only when the files differ (other size or date)"),
+                 Tr("Skip identical files (same size and date), keep both for the rest")},
+                {Tr("replace always"), Tr("replace when newer"), Tr("replace when older"),
+                 Tr("replace when bigger"), Tr("replace when different"),
+                 Tr("skip identical, keep both")},
+                lastExtractExistingChoice, extractOptionsOpen,
+                style.smallFontSize, OptionsRowWidth(spec.width), state);
+        spec.options->onExpandedChanged = [this](bool open) { extractOptionsOpen = open; };
+        OptionsPanelState* existingOptions = state.get();   // alive with the dialog (optionsState)
+        spec.optionsState = state;
         const bool shown = ShowOperationDialog(spec,
-                [self](size_t button, bool all) {
+                [self, existingOptions](size_t button, bool all) {
                     if (!self->pendingExtract) return;
+                    if (existingOptions) {
+                        const int choice = std::clamp(existingOptions->choice, 0,
+                                                      static_cast<int>(ExtractKeepBothUnlessIdentical));
+                        self->pendingExtract->existingChoice = choice;
+                        self->lastExtractExistingChoice = choice;
+                    }
                     if (button >= 3) {   // Stop keeps what was extracted, drops the rest
                         self->FinishPendingExtract();
                         return;
@@ -10095,8 +10230,11 @@ namespace UltraCanvas {
                     };
                     self->pendingExtract->action = kActions[button];
                     self->pendingExtract->applyToAll = all;
-                    self->ExtractCurrentAndAdvance(self->pendingExtract->action);
-                    self->ContinuePendingExtract();
+                    // A started extraction resumes the queue itself when it is
+                    // through; going on here as well found the same archive
+                    // first in the queue and asked about it a second time.
+                    if (self->ExtractCurrentAndAdvance(self->pendingExtract->action))
+                        self->ContinuePendingExtract();
                 },
                 [self]() { self->FinishPendingExtract(); });
         if (!shown) {   // dialogs disabled — keep both, the old fixed behavior
@@ -10407,6 +10545,19 @@ namespace UltraCanvas {
         if (d.extractMode) {
             // The name is the destination folder the archives unpack into.
             fs::path target = dir / PathFromUtf8(baseName);
+            // One archive and a folder of that name there already: asked,
+            // like a direct extract - a numbered folder beside it (Keep
+            // both), into the folder that is there, with the options for its
+            // files that exist already, or not at all.
+            FilerEntry single;
+            if (d.sourcePaths.size() == 1 && !pendingExtract && !archiveJob &&
+                fs::is_directory(target, ec) && StatEntryForPath(d.sourcePaths[0], single)) {
+                pendingExtract = std::make_unique<PendingExtract>();
+                pendingExtract->archives = {single};
+                pendingExtract->targetFolder = PathToUtf8(target);
+                ContinuePendingExtract();
+                return;
+            }
             int n = 2;
             while (fs::exists(UltraCanvas::PathFromUtf8(target), ec))
                 target = dir / PathFromUtf8(baseName + " (" + std::to_string(n++) + ")");
