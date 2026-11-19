@@ -9,12 +9,14 @@ The operator (Authorization: Bearer <operator token>):
   GET  /v1/released                     what the catalog is generated from
   POST /v1/publish                      the catalog generated from it and signed into the publish folder (publish.py)
   GET  /v1/reports[?state=]; GET /v1/reports/{id}; POST /v1/reports/{id}/assign {assignee}; /resolve, /dismiss {findings, outcome}
+  GET  /v1/applications[?state=]; GET /v1/applications/{id}; POST /v1/applications/{id}/approve {id?, message?}; POST .../reject {message}
   POST /v1/notices                      {kind, subject, text, clause, recipients}; GET /v1/notices
   POST /v1/terms                        {text, changes, in_force_from, version?}
   GET  /v1/policy, PUT /v1/policy       the enforcement policy
   GET  /v1/audit?since=N, GET /v1/audit/verify
 A merchant (Authorization: Merchant <id>:<timestamp>:<signature>, auth.py):
   GET  /v1/merchants/me                 the standing, the strikes, the terms
+  PUT  /v1/merchants/me                 {name?, contact?, website?, description?, key?}: the merchant's own profile; a key given is the rotation, signed with the old one
   POST /v1/submissions                  {component, signature, packages, answers?}; GET /v1/merchants/me/submissions
   POST /v1/submissions/{id}/withdraw
   GET  /v1/merchants/me/notices; POST /v1/notices/{id}/ack
@@ -23,6 +25,8 @@ A merchant (Authorization: Merchant <id>:<timestamp>:<signature>, auth.py):
   POST /v1/terms/accept                 {version, accepted_by}
   POST /v1/reports                      a merchant reporting (the store's door is the same URL, unsigned)
 Public:
+  POST /v1/merchants/apply              {name, contact, email?, website?, description?, key, signature}: a shop asked for, the key proven -> {id, secret, state}
+  GET  /v1/applications/{id}?secret=    what became of it: applied, approved (with the merchant id), rejected (with the message)
   GET  /v1/publish/key                  the operator's signing key (public half), for a store's trusted_keys
   POST /v1/reports                      {target_kind, target, kind, text, attachments?, reporter?} -> {id, secret}
   GET  /v1/reports/{id}/outcome?secret= the one line the reporter learns
@@ -31,6 +35,7 @@ Public:
 
 Errors are {"error", "error_description"} with a 4xx status.
 
+Version: 0.3.0 - the applications; the merchant's own profile
 Version: 0.2.0 - the publish, the signing key
 Version: 0.1.0
 """
@@ -63,6 +68,30 @@ class MerchantUpdate(BaseModel):
     name: str | None = None
     contact: str | None = None
     key: str | None = Field(default=None, min_length=64, max_length=64)
+    website: str | None = Field(default=None, max_length=300)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class ApplyBody(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    contact: str = Field(min_length=1, max_length=300)
+    email: str = Field(default="", max_length=254)
+    website: str = Field(default="", max_length=300)
+    description: str = Field(default="", max_length=2000)
+    key: str = Field(min_length=64, max_length=64)
+    signature: str = Field(min_length=128, max_length=128)
+
+    def signed(self) -> dict:
+        return {"name": self.name, "contact": self.contact, "email": self.email, "website": self.website, "description": self.description, "key": self.key}
+
+
+class ApproveBody(BaseModel):
+    id: str = Field(default="", max_length=64)
+    message: str = ""
+
+
+class RejectBody(BaseModel):
+    message: str = Field(min_length=1)
 
 
 class SuspendBody(BaseModel):
@@ -200,6 +229,86 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         day = today()
         return {**m.public(), "suspensions": [s.public() for s in store.suspensions_of("merchant", m.id) if s.active_on(day)],
                 "acceptances": store.acceptances_of(m.id)}
+
+    @app.put("/v1/merchants/me")
+    async def update_me(request: Request) -> dict[str, Any]:
+        m = await merchant(request)
+        try:
+            body = MerchantUpdate.model_validate_json(await request.body())
+        except ValueError as e:
+            raise error(400, "bad_body", str(e)) from e
+        if body.key is not None:
+            try:
+                bytes.fromhex(body.key)
+            except ValueError as e:
+                raise error(400, "bad_key", "The key is 32 bytes, hex") from e
+            other = store.merchant_by_key(body.key)
+            if other and other.id != m.id:
+                raise error(409, "key_taken", "That key signs for another merchant")
+        if body.website is not None and body.website and not body.website.startswith(("http://", "https://")):
+            raise error(400, "bad_website", "The website is an http(s) URL")
+        updated = store.update_merchant(m.id, name=body.name, contact=body.contact, key_hex=body.key, actor=m.id, website=body.website, description=body.description)
+        return updated.public()   # type: ignore[union-attr]
+
+    # ----- applications: a shop asked for -----
+    @app.post("/v1/merchants/apply")
+    async def apply(body: ApplyBody) -> dict[str, Any]:
+        try:
+            bytes.fromhex(body.key)
+        except ValueError as e:
+            raise error(400, "bad_key", "The key is 32 bytes, hex") from e
+        if not verify_bytes(body.key, body.signature, canonical(body.signed()).encode()):
+            raise error(400, "bad_signature", "The application is signed with the key it names, over its canonical JSON")
+        if body.website and not body.website.startswith(("http://", "https://")):
+            raise error(400, "bad_website", "The website is an http(s) URL")
+        if store.merchant_by_key(body.key):
+            raise error(409, "key_registered", "That key signs for a merchant already")
+        if store.open_application_for_key(body.key):
+            raise error(409, "applied_already", "An application with that key is waiting for the operator")
+        a = store.add_application(name=body.name, contact=body.contact, email=body.email, website=body.website, description=body.description, key_hex=body.key)
+        return {"id": a.id, "secret": a.secret, "state": a.state}
+
+    @app.get("/v1/applications/{aid}")
+    async def application_state(aid: str, secret: str = "", authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        a = store.get_application(aid)
+        if not a:
+            raise error(404, "no_such_application", "No such application")
+        if authorization:
+            operator(authorization)
+            return a.public(for_operator=True)
+        if not secret or not hmac.compare_digest(secret, a.secret):
+            raise error(404, "no_such_application", "No such application")
+        return a.public()
+
+    @app.get("/v1/applications")
+    async def list_applications(state: str = "", authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        operator(authorization)
+        return {"applications": [a.public(for_operator=True) for a in store.applications(state)]}
+
+    @app.post("/v1/applications/{aid}/approve")
+    async def approve_application(aid: str, body: ApproveBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        actor = operator(authorization)
+        try:
+            a = store.decide_application(aid, approve=True, message=body.message, actor=actor, merchant_id=body.id)
+        except ValueError as e:
+            code = str(e)
+            if code == "no_such_application":
+                raise error(404, code, "No such application") from None
+            if code == "merchant_exists":
+                raise error(409, code, f"The merchant {body.id} is registered already") from None
+            raise error(409, "decided", "The application was decided already") from None
+        return {"application": a.public(for_operator=True), "merchant": store.get_merchant(a.merchant_id).public()}   # type: ignore[union-attr]
+
+    @app.post("/v1/applications/{aid}/reject")
+    async def reject_application(aid: str, body: RejectBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        actor = operator(authorization)
+        try:
+            a = store.decide_application(aid, approve=False, message=body.message, actor=actor)
+        except ValueError as e:
+            if str(e) == "no_such_application":
+                raise error(404, "no_such_application", "No such application") from None
+            raise error(409, "decided", "The application was decided already") from None
+        return {"application": a.public(for_operator=True)}
 
     @app.get("/v1/merchants/me/submissions")
     async def my_submissions(request: Request) -> dict[str, Any]:

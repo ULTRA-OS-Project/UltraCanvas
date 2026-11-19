@@ -90,6 +90,12 @@ void OperatorWindow::BuildMerchantsPage() {
     refresh->onClick = [this]() { RefreshMerchants(); };
     header->AddChild(refresh);
 
+    auto applications = Theme::Section("uoM.applications", Tr("Applications for a shop"));
+    applications->AddChild(Theme::Caption("uoM.applications.hint", Tr("A merchant applied from its admin backend: the shop's name, how to reach them, and the key that will sign its submissions, proven by the signature on the application. Approve registers the merchant with that key; reject tells the applicant why.")));
+    applicationsList_ = Theme::Column("uoM.applications.rows", Theme::kInnerGap);
+    applications->AddChild(applicationsList_);
+    body->AddChild(applications);
+
     auto list = Theme::Section("uoM.list", Tr("All merchants"));
     merchantsList_ = Theme::Column("uoM.rows", Theme::kInnerGap);
     list->AddChild(merchantsList_);
@@ -131,7 +137,61 @@ void OperatorWindow::RefreshMerchants() {
     Fetch<std::vector<Merchant>>(Tr("Reading the merchants"), [client = Client()]() { return client.Merchants(); }, [this](const std::vector<Merchant>& list) {
         merchants_ = list;
         ShowMerchants();
-    });
+    }, [this]() { RefreshApplications(); });
+}
+
+void OperatorWindow::RefreshApplications() {
+    Fetch<std::vector<MerchantApplication>>(Tr("Reading the applications"), [client = Client()]() { return client.Applications("applied"); },
+                                            [this](const std::vector<MerchantApplication>& list) { applications_ = list; ShowApplications(); });
+}
+
+void OperatorWindow::ShowApplications() {
+    if (!applicationsList_) return;
+    applicationsList_->ClearChildren();
+    int n = 0;
+    for (const MerchantApplication& a : applications_) {
+        const std::string id = "uoM.a" + std::to_string(n++);
+        auto card = Theme::Column(id, Theme::kInnerGap);
+        auto head = Theme::Row(id + ".head", Theme::kInnerGap, true);
+        auto text = Theme::Column(id + ".c", 0);
+        text->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        text->AddChild(Theme::Text(id + ".t", a.name, 13.0f, FontWeight::Bold));
+        text->AddChild(Theme::Caption(id + ".s", TrF("{0} · applied {1} · contact {2}{3}{4}", a.id, a.createdAt.substr(0, 10), a.contact,
+                                                       a.email.empty() ? std::string() : " · " + a.email, a.website.empty() ? std::string() : " · " + a.website)));
+        if (!a.description.empty()) text->AddChild(Theme::Caption(id + ".d", a.description));
+        text->AddChild(Theme::Caption(id + ".k", TrF("Key {0}", a.key)));
+        head->AddChild(text);
+        card->AddChild(head);
+        auto actions = Theme::Row(id + ".actions", Theme::kInnerGap, true);
+        auto merchantId = Theme::Pin(CreateTextInput(id + ".mid", 0, 0, 160, Theme::kControlHeight));
+        merchantId->SetPlaceholder(Tr("merchant id (made when empty)"));
+        actions->AddChild(merchantId);
+        auto message = Theme::Pin(CreateTextInput(id + ".msg", 0, 0, 320, Theme::kControlHeight));
+        message->SetPlaceholder(Tr("a message to the applicant"));
+        message->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        actions->AddChild(message);
+        auto approve = Theme::Button(id + ".approve", Tr("Approve"), 100, Theme::ButtonKind::Primary);
+        approve->onClick = [this, aid = a.id, mid = merchantId.get(), msg = message.get()]() {
+            Fetch<Merchant>(Tr("Approving the application"), [client = Client(), aid, merchantId = mid->GetText(), text = msg->GetText()]() {
+                return client.ApproveApplication(aid, merchantId, text);
+            }, [this](const Merchant& m) { SetStatus(TrF("Registered {0} as {1}", m.name, m.id)); }, [this]() { RefreshMerchants(); });
+        };
+        actions->AddChild(approve);
+        auto reject = Theme::Button(id + ".reject", Tr("Reject"), 90, Theme::ButtonKind::Danger);
+        reject->onClick = [this, aid = a.id, msg = message.get()]() {
+            if (msg->GetText().empty()) { SetStatus(Tr("A rejection says why: the message is the applicant's to read"), true); return; }
+            Confirm(Tr("Reject the application? The applicant reads the message."), [this, aid, text = msg->GetText()]() {
+                Fetch<MerchantApplication>(Tr("Rejecting the application"), [client = Client(), aid, text]() { return client.RejectApplication(aid, text); },
+                                           [this](const MerchantApplication&) { SetStatus(Tr("Rejected")); }, [this]() { RefreshApplications(); });
+            });
+        };
+        actions->AddChild(reject);
+        card->AddChild(actions);
+        applicationsList_->AddChild(card);
+        if (n < static_cast<int>(applications_.size())) applicationsList_->AddChild(Theme::Rule(id + ".rule"));
+    }
+    if (n == 0) applicationsList_->AddChild(Theme::Caption("uoM.applications.none", Tr("No application waiting.")));
+    Relayout();
 }
 
 void OperatorWindow::ShowMerchants() {
@@ -182,6 +242,7 @@ void OperatorWindow::ShowMerchantFile() {
     merchantFileBox_->AddChild(head);
     merchantFileBox_->AddChild(Theme::Caption("uoMF.facts", TrF("{0} · merchant since {1} · contact {2} · {3} · terms {4} accepted of {5} in force", m.id, m.createdAt.substr(0, 10),
                                                                  m.contact.empty() ? Tr("none") : m.contact, TrN("{n} strike", "{n} strikes", m.strikes), m.termsAccepted, m.termsInForce)));
+    if (!m.website.empty() || !m.description.empty()) merchantFileBox_->AddChild(Theme::Caption("uoMF.profile", (m.website.empty() ? std::string() : m.website + (m.description.empty() ? "" : " · ")) + m.description));
     merchantFileBox_->AddChild(Theme::Caption("uoMF.key", TrF("Key {0}", m.key)));
     if (!f.notes.empty()) merchantFileBox_->AddChild(Theme::Caption("uoMF.notes", f.notes));
 

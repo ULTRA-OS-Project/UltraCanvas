@@ -63,7 +63,7 @@ Every text goes through `Tr`.
 | Page | Shows | Does |
 |---|---|---|
 | Dashboard | the merchants (suspended, paused by the terms), the submissions waiting with the oldest's age and the failed checks, the open reports with the urgent ones (malware), the merchants not on the terms in force, the catalog sequence and the apps the next publish carries; the review queue; the open reports; the compliance lines; the latest operator actions from the audit log | *Start reviewing*, *Open* on a queue row or a report |
-| Merchants | every merchant with its standing, strikes, terms accepted of in force; a merchant's file: the key, the submissions with their state, the acceptances and the suspensions | *Open file*; a notice or a warning to the merchant (the kind, the subject, the clause, the text), *Suspend the shop* (the clause, the reason, the days; 0 until reinstated), *Reinstate*; *Register* a merchant with its name, id, contact and the public half of its key |
+| Merchants | the applications for a shop waiting for a decision (the name, the contact, the email, the website, the description, the key the application proved); every merchant with its standing, strikes, terms accepted of in force; a merchant's file: the profile, the key, the submissions with their state, the acceptances and the suspensions | *Approve* an application (the merchant id to give, or one made; a message) or *Reject* with the reason the applicant reads; *Open file*; a notice or a warning to the merchant (the kind, the subject, the clause, the text), *Suspend the shop* (the clause, the reason, the days; 0 until reinstated), *Reinstate*; *Register* a merchant by hand with its name, id, contact and the public half of its key |
 | App review | the catalog's last publish and how many released apps go into the next one; the submissions by *Waiting*, *Changes requested*, *Released*, *All*; one submission: the automatic checks with their outcomes, the card as the store will show it, the packages, the decisions so far | *Publish the catalog*; *Start the review*, *Request changes*, *Approve and release* (a sequence of your own, or the next), *Reject*, each with the message to the merchant; a release of a submission with a failed check needs a message saying why |
 | Reports | the reports by *Open*, *Mine*, *Closed*, *All*; one report: where it came from, the reporter (the operator's to see), the text and the attachments, the findings and the outcome once closed | *Assign*; *Resolve as upheld* or *Dismiss*, with the findings for the file and the outcome line for the reporter; *Open a report from mail* |
 | Terms and notices | the versions with who accepted them and which is current; the merchants not on the version in force; the enforcement policy; the notices sent | *Publish this version* (the text, what changed, the day it comes into force); *Save the policy*; *Send* a notice to named merchants or everyone, a warning with its clause |
@@ -81,6 +81,8 @@ health                                                   the service's healthz
 merchant list | show <id>                                every merchant; one with its file
 merchant add <name> --key <hex> [--id <id>] [--contact <c>]
 merchant set <id> [--name <n>] [--contact <c>] [--key <hex>]   the key given is the rotation
+merchant applications [--state applied|approved|rejected]    the applications for a shop
+merchant approve <application> [--id <merchant-id>] [--message <m>] | reject <application> --message <m>
 merchant suspend <id> [--clause <c>] [--reason <r>] [--days <n>] | reinstate <id> [--reason <r>]
 app suspend <app-id> [--clause <c>] [--reason <r>] [--days <n>] | reinstate <app-id> [--reason <r>]
 review list [--state <s>] [--merchant <id>] [--app <id>] | show <submission>
@@ -162,5 +164,8 @@ its permissions, the age of a timestamp. The service's own tests
    with its own token: the counts, the states and the search, the file,
    the notice, sign out everywhere, reset two-factor, the archive released,
    suspend and reinstate, the deletion on request; `ultrastoreop users`.
-   Next: the payouts page, which needs the payment service's figures per
-   merchant.
+3. **The applications for a shop** on the Merchants page: approve (the
+   merchant registered with the key the application proved) or reject
+   with a reason; `ultrastoreop merchant applications | approve |
+   reject`. Next: the payouts page, which needs the payment service's
+   figures per merchant.

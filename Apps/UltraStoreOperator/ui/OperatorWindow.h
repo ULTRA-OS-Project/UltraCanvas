@@ -83,6 +83,8 @@ private:
     void ShowMerchants();
     void OpenMerchant(const std::string& id);
     void ShowMerchantFile();
+    void RefreshApplications();
+    void ShowApplications();
     void BuildReviewPage();
     void RefreshReview();
     void ShowReview();
@@ -144,6 +146,7 @@ private:
 
     // what was fetched
     std::vector<Merchant> merchants_;
+    std::vector<MerchantApplication> applications_;
     std::vector<Submission> submissions_;
     std::vector<Report> reports_;
     std::vector<Notice> notices_;
@@ -160,7 +163,7 @@ private:
     // dashboard
     std::shared_ptr<Container> stats_, dashQueue_, dashReports_, dashCompliance_, dashActions_;
     // merchants
-    std::shared_ptr<Container> merchantsList_, merchantFileBox_;
+    std::shared_ptr<Container> merchantsList_, merchantFileBox_, applicationsList_;
     std::shared_ptr<TextInput> mId_, mName_, mContact_, mKey_;
     std::shared_ptr<TextInput> mClause_, mReason_, mDays_, mSubject_;
     std::shared_ptr<TextArea> mText_;

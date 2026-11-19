@@ -83,7 +83,11 @@ def build_catalog(store: MarketStore, *, sequence: int, day: str, trusted_keys: 
         publisher_id = str(component.get("publisher") or entry["merchant"])
         component["publisher"] = publisher_id
         if publisher_id not in publishers:
-            url = merchant.contact if merchant and merchant.contact.startswith(("http://", "https://")) else ""
+            url = ""
+            if merchant and merchant.website.startswith(("http://", "https://")):
+                url = merchant.website
+            elif merchant and merchant.contact.startswith(("http://", "https://")):
+                url = merchant.contact
             publishers[publisher_id] = {"id": publisher_id, "name": merchant.name if merchant else publisher_id, **({"url": url} if url else {})}
         kind = str(component.get("kind", "app"))
         (apps if kind == "app" else components).append(component)

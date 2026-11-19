@@ -24,7 +24,7 @@ from ultrastore_market.publish import SigningKey
 from ultrastore_market.store import MarketStore, add_days, canonical, today
 
 OP = {"Authorization": "Bearer op-token"}
-TABLES = ["audit", "suspensions", "notice_acks", "notices", "reports", "decisions", "submissions", "terms_acceptances", "terms_versions", "merchants", "meta"]
+TABLES = ["applications", "audit", "suspensions", "notice_acks", "notices", "reports", "decisions", "submissions", "terms_acceptances", "terms_versions", "merchants", "meta"]
 
 
 def database_urls() -> list[str]:
@@ -381,3 +381,61 @@ def test_publish_needs_a_folder(tmp_path):
         first = client.get("/v1/publish/key").json()["public_key"]
     with TestClient(create_app(settings)) as client:
         assert client.get("/v1/publish/key").json()["public_key"] == first
+
+
+def test_a_merchant_applies_is_approved_and_edits_its_profile(service):
+    m = MerchantClient(service, "")
+    body = {"name": "Pixelwerk Studio", "contact": "mail@pixelwerk.example", "email": "jo@pixelwerk.example", "website": "https://pixelwerk.example",
+            "description": "Games and tools for ULTRA OS.", "key": m.public}
+    # A bad signature, or a key with a signature by another key, is refused; the right one is an application.
+    r = service.post("/v1/merchants/apply", json={**body, "signature": "00" * 64})
+    assert r.status_code == 400 and r.json()["error"] == "bad_signature"
+    signature = m.key.sign(canonical(body).encode()).hex()
+    r = service.post("/v1/merchants/apply", json={**body, "signature": signature})
+    assert r.status_code == 200, r.text
+    aid, secret = r.json()["id"], r.json()["secret"]
+    assert aid.startswith("ap-") and r.json()["state"] == "applied"
+    # Applied twice with the same key: refused while one waits.
+    assert service.post("/v1/merchants/apply", json={**body, "signature": signature}).json()["error"] == "applied_already"
+    # The applicant polls with the secret; a stranger learns nothing.
+    assert service.get(f"/v1/applications/{aid}").status_code == 404
+    assert service.get(f"/v1/applications/{aid}?secret=wrong").status_code == 404
+    state = service.get(f"/v1/applications/{aid}?secret={secret}").json()
+    assert state["state"] == "applied" and "email" not in state
+    # The operator sees the queue with the email, and approves with an id of its own.
+    queue = service.get("/v1/applications?state=applied", headers=OP).json()["applications"]
+    assert len(queue) == 1 and queue[0]["email"] == "jo@pixelwerk.example"
+    r = service.post(f"/v1/applications/{aid}/approve", json={"id": "pixelwerk", "message": "Welcome"}, headers=OP)
+    assert r.status_code == 200, r.text
+    assert r.json()["application"]["state"] == "approved" and r.json()["merchant"]["id"] == "pixelwerk"
+    assert r.json()["merchant"]["website"] == "https://pixelwerk.example" and r.json()["merchant"]["key"] == m.public
+    assert service.post(f"/v1/applications/{aid}/approve", json={}, headers=OP).json()["error"] == "decided"
+    state = service.get(f"/v1/applications/{aid}?secret={secret}").json()
+    assert state["state"] == "approved" and state["merchant"] == "pixelwerk" and state["message"] == "Welcome"
+    # The key now signs for a merchant: a new application with it is refused.
+    assert service.post("/v1/merchants/apply", json={**body, "signature": signature}).json()["error"] == "key_registered"
+    # The merchant edits its own profile, signed with its key; the key rotates signed with the old one.
+    m.id = "pixelwerk"
+    r = m.request("PUT", "/v1/merchants/me", {"description": "Games for ULTRA OS.", "website": "ftp://no"})
+    assert r.status_code == 400 and r.json()["error"] == "bad_website"
+    r = m.request("PUT", "/v1/merchants/me", {"description": "Games for ULTRA OS.", "contact": "https://pixelwerk.example/contact"})
+    assert r.status_code == 200, r.text
+    assert r.json()["description"] == "Games for ULTRA OS." and r.json()["name"] == "Pixelwerk Studio"
+    other = MerchantClient(service, "pixelwerk")
+    r = m.request("PUT", "/v1/merchants/me", {"key": other.public})
+    assert r.status_code == 200 and r.json()["key"] == other.public
+    assert m.request("GET", "/v1/merchants/me").status_code == 401   # the old key signs no more
+    assert other.request("GET", "/v1/merchants/me").status_code == 200
+    # Another merchant cannot take that key.
+    anna = register(service)
+    assert anna.request("PUT", "/v1/merchants/me", {"key": other.public}).json()["error"] == "key_taken"
+    # A second application, rejected with a message the applicant learns.
+    third = MerchantClient(service, "")
+    body2 = {**body, "name": "Copycat", "key": third.public}
+    r = service.post("/v1/merchants/apply", json={**body2, "signature": third.key.sign(canonical(body2).encode()).hex()})
+    aid2, secret2 = r.json()["id"], r.json()["secret"]
+    assert service.post(f"/v1/applications/{aid2}/reject", json={"message": "The name is another publisher's"}, headers=OP).json()["application"]["state"] == "rejected"
+    assert service.get(f"/v1/applications/{aid2}?secret={secret2}").json()["message"] == "The name is another publisher's"
+    assert service.get("/v1/audit/verify", headers=OP).json()["ok"] is True
+    # The publish names the publisher's page from the website.
+    assert service.get("/v1/merchants/pixelwerk", headers=OP).json()["website"] == "https://pixelwerk.example"

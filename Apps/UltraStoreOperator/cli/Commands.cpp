@@ -52,6 +52,7 @@ int UltraStoreOperator::Cli::Usage(FILE* to) {
         "  health\n"
         "  merchant list | show <id> | add <name> --key <hex> [--id <id>] [--contact <c>]\n"
         "  merchant set <id> [--name <n>] [--contact <c>] [--key <hex>]\n"
+        "  merchant applications [--state applied|approved|rejected] | approve <application> [--id <merchant-id>] [--message <m>] | reject <application> --message <m>\n"
         "  merchant suspend <id> [--clause <c>] [--reason <r>] [--days <n>] | reinstate <id> [--reason <r>]\n"
         "  app suspend <app-id> [--clause <c>] [--reason <r>] [--days <n>] | reinstate <app-id> [--reason <r>]\n"
         "  review list [--state <s>] [--merchant <id>] [--app <id>] | show <submission>\n"
@@ -213,6 +214,31 @@ int CmdMerchant(const OperatorClient& client, const std::vector<std::string>& ar
         const auto m = client.UpdateMerchant(pos[2], Option(args, "--name"), Option(args, "--contact"), Option(args, "--key"));
         if (!m) return Fail(m.error);
         PrintMerchant(m.Value());
+        return 0;
+    }
+    if (pos[1] == "applications") {
+        const auto list = client.Applications(Option(args, "--state", "applied"));
+        if (!list) return Fail(list.error);
+        if (list.Value().empty()) { std::printf("no applications\n"); return 0; }
+        for (const MerchantApplication& a : list.Value())
+            std::printf("%-10s %-28s %-10s %s  %s  %s%s%s\n", a.id.c_str(), a.name.c_str(), a.state.c_str(), a.createdAt.substr(0, 10).c_str(), a.contact.c_str(),
+                        a.website.c_str(), a.merchant.empty() ? "" : ("  merchant " + a.merchant).c_str(), a.message.empty() ? "" : ("  - " + a.message).c_str());
+        return 0;
+    }
+    if (pos[1] == "approve") {
+        if (pos.size() < 3) return Usage(stderr);
+        const auto m = client.ApproveApplication(pos[2], Option(args, "--id"), Option(args, "--message"));
+        if (!m) return Fail(m.error);
+        std::printf("approved %s: registered %s as %s with its key\n", pos[2].c_str(), m.Value().name.c_str(), m.Value().id.c_str());
+        return 0;
+    }
+    if (pos[1] == "reject") {
+        if (pos.size() < 3) return Usage(stderr);
+        const std::string message = Option(args, "--message");
+        if (message.empty()) return Fail("A rejection says why: --message <text>, the applicant's to read");
+        const auto a = client.RejectApplication(pos[2], message);
+        if (!a) return Fail(a.error);
+        std::printf("rejected %s\n", pos[2].c_str());
         return 0;
     }
     if (pos[1] == "suspend") {

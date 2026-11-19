@@ -176,6 +176,8 @@ Merchant MerchantOf(const JSONValue& v) {
     m.id = v.Get("id").GetString();
     m.name = v.Get("name").GetString();
     m.contact = v.Get("contact").GetString();
+    m.website = v.Get("website").GetString();
+    m.description = v.Get("description").GetString();
     m.key = v.Get("key").GetString();
     m.createdAt = v.Get("created_at").GetString();
     m.standing = v.Get("standing").GetString();
@@ -183,6 +185,24 @@ Merchant MerchantOf(const JSONValue& v) {
     m.termsInForce = static_cast<int>(v.Get("terms").Get("in_force").GetInteger(0));
     m.termsAccepted = static_cast<int>(v.Get("terms").Get("accepted").GetInteger(0));
     return m;
+}
+
+MerchantApplication ApplicationOf(const JSONValue& v) {
+    MerchantApplication a;
+    a.id = v.Get("id").GetString();
+    a.name = v.Get("name").GetString();
+    a.contact = v.Get("contact").GetString();
+    a.email = v.Get("email").GetString();
+    a.website = v.Get("website").GetString();
+    a.description = v.Get("description").GetString();
+    a.key = v.Get("key").GetString();
+    a.state = v.Get("state").GetString();
+    a.message = v.Get("message").GetString();
+    a.createdAt = v.Get("created_at").GetString();
+    a.decidedAt = v.Get("decided_at").GetString();
+    a.decidedBy = v.Get("decided_by").GetString();
+    a.merchant = v.Get("merchant").GetString();
+    return a;
 }
 
 Suspension SuspensionOf(const JSONValue& v) {
@@ -474,6 +494,41 @@ Result<Merchant> OperatorClient::UpdateMerchant(const std::string& id, const std
     const auto v = Ask("PUT", "/v1/merchants/" + Encode(id), UltraCanvas::JSON::Serialize(body));
     if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
     return R::Succeed(MerchantOf(v.Value()));
+}
+
+Result<std::vector<MerchantApplication>> OperatorClient::Applications(const std::string& state) const {
+    using R = Result<std::vector<MerchantApplication>>;
+    const auto v = Ask("GET", "/v1/applications" + (state.empty() ? std::string() : "?state=" + Encode(state)));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    std::vector<MerchantApplication> out;
+    for (const JSONValue& a : v.Value().Get("applications").GetElements()) out.push_back(ApplicationOf(a));
+    return R::Succeed(out);
+}
+
+Result<MerchantApplication> OperatorClient::GetApplication(const std::string& id) const {
+    using R = Result<MerchantApplication>;
+    const auto v = Ask("GET", "/v1/applications/" + Encode(id));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(ApplicationOf(v.Value()));
+}
+
+Result<Merchant> OperatorClient::ApproveApplication(const std::string& id, const std::string& merchantId, const std::string& message) const {
+    using R = Result<Merchant>;
+    JSONValue body = JSONValue::MakeObject();
+    if (!merchantId.empty()) body.Set("id", JSONValue(merchantId));
+    body.Set("message", JSONValue(message));
+    const auto v = Ask("POST", "/v1/applications/" + Encode(id) + "/approve", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(MerchantOf(v.Value().Get("merchant")));
+}
+
+Result<MerchantApplication> OperatorClient::RejectApplication(const std::string& id, const std::string& message) const {
+    using R = Result<MerchantApplication>;
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("message", JSONValue(message));
+    const auto v = Ask("POST", "/v1/applications/" + Encode(id) + "/reject", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(ApplicationOf(v.Value().Get("application")));
 }
 
 Result<Merchant> OperatorClient::SuspendMerchant(const std::string& id, const std::string& clause, const std::string& reason, int days) const {

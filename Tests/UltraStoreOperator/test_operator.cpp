@@ -405,3 +405,29 @@ TEST(the_users_are_read_from_the_account_service_with_its_own_token) {
     REQUIRE(!OperatorClient(s, fake.Call()).Users().Ok());
     REQUIRE_EQ(fake.calls.size(), calls);
 }
+
+TEST(an_application_for_a_shop_is_listed_approved_and_rejected) {
+    FakeService fake;
+    fake.answers["GET /v1/applications?state=applied"] = R"({"applications":[{"id":"ap-000001","name":"Pixelwerk","contact":"mail@pixelwerk.example","email":"jo@pixelwerk.example",
+        "website":"https://pixelwerk.example","description":"Games.","key":")" + std::string(64, 'b') + R"(","state":"applied","message":"","created_at":"2026-11-19T10:00:00Z","decided_at":"","decided_by":"","merchant":""}]})";
+    fake.answers["POST /v1/applications/ap-000001/approve"] = R"({"application":{"id":"ap-000001","state":"approved","merchant":"pixelwerk"},
+        "merchant":{"id":"pixelwerk","name":"Pixelwerk","contact":"mail@pixelwerk.example","website":"https://pixelwerk.example","description":"Games.","key":")" + std::string(64, 'b') +
+        R"(","created_at":"2026-11-19T11:00:00Z","standing":"active","strikes":0,"terms":{"in_force":0,"accepted":0}}})";
+    fake.answers["POST /v1/applications/ap-000002/reject"] = R"({"application":{"id":"ap-000002","name":"Copycat","state":"rejected","message":"The name is another publisher's"}})";
+    OperatorClient client(TestSettings(), fake.Call());
+    const auto list = client.Applications("applied");
+    REQUIRE(list.Ok());
+    REQUIRE_EQ(list.Value().size(), size_t(1));
+    REQUIRE(list.Value()[0].Open());
+    REQUIRE_EQ(list.Value()[0].email, std::string("jo@pixelwerk.example"));
+    REQUIRE_EQ(list.Value()[0].website, std::string("https://pixelwerk.example"));
+    const auto approved = client.ApproveApplication("ap-000001", "pixelwerk", "Welcome");
+    REQUIRE(approved.Ok());
+    REQUIRE_EQ(approved.Value().id, std::string("pixelwerk"));
+    REQUIRE_EQ(approved.Value().website, std::string("https://pixelwerk.example"));
+    REQUIRE_EQ(fake.calls.back().substr(fake.calls.back().rfind(" | ") + 3), std::string(R"({"id":"pixelwerk","message":"Welcome"})"));
+    const auto rejected = client.RejectApplication("ap-000002", "The name is another publisher's");
+    REQUIRE(rejected.Ok());
+    REQUIRE_EQ(rejected.Value().state, std::string("rejected"));
+    REQUIRE(fake.calls.back().find(R"({"message":"The name is another publisher's"})") != std::string::npos);
+}

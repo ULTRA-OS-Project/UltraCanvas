@@ -14,6 +14,7 @@
 // is), which is what the service checks. The HTTP call is a function the
 // caller hands in, so the tests use a fake and nothing here touches the
 // network in a test; the default is UltraNet.
+// Version: 0.2.0 - the application for a shop, the merchant's own profile and key rotation
 // Version: 0.1.1 - MarketCall speaks PUT as well (the operator's client shares it)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -26,6 +27,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -59,8 +61,10 @@ MarketCall UltraNetMarketCall();   // HTTPS, redirects to https:// only
 // market.merchant_id (the id the operator registered this backend under).
 struct MarketSettings {
     std::string url, merchantId;
+    std::string applicationId, applicationSecret;   // market.application_id, market.application_secret: a shop asked for, not yet decided
     static MarketSettings From(const AdminDatabase& db);
     bool Complete() const { return !url.empty() && !merchantId.empty(); }
+    bool Applied() const { return !applicationId.empty() && !applicationSecret.empty(); }
 };
 
 // A notice as the merchant sees it.
@@ -69,12 +73,28 @@ struct Notice {
     bool Acknowledged() const { return !acknowledgedAt.empty(); }
 };
 
-// The merchant's standing, from GET /v1/merchants/me.
+// The merchant's standing and profile, from GET /v1/merchants/me.
 struct Standing {
     std::string id, name, standing;   // active, paused, suspended
+    std::string contact, website, description, key;   // the profile, the merchant's own to edit
     int strikes = 0;
     int termsInForce = 0, termsAccepted = 0;
     bool TermsDue() const { return termsInForce > termsAccepted; }
+};
+
+// The change the profile form sends: a field left unset is not changed; a
+// key given is the rotation (the request is signed with the old one).
+struct ProfileChange {
+    std::optional<std::string> name, contact, website, description, keyHex;
+};
+
+// A shop asked for (POST /v1/merchants/apply) and what became of it.
+struct ApplicationReceipt {
+    std::string id, secret;
+};
+struct Application {
+    std::string id, state, message, merchant, name, createdAt, decidedAt;   // state: applied, approved, rejected
+    bool Approved() const { return state == "approved"; }
 };
 
 // The current terms, from GET /v1/terms/current.
@@ -93,8 +113,20 @@ class MarketClient {
 public:
     MarketClient(MarketSettings settings, std::vector<uint8_t> seed, MarketCall call = UltraNetMarketCall());
 
-    // The merchant's standing, strikes and terms.
+    // The merchant's standing, strikes and terms, and its profile.
     Result<Standing> GetStanding() const;
+    // PUT /v1/merchants/me: the profile the merchant edits itself; a key
+    // given rotates it (signed with the old one, as every request here).
+    Result<Standing> UpdateProfile(const ProfileChange& change) const;
+
+    // ----- before the merchant id: a shop asked for -----
+    // POST /v1/merchants/apply: the application signed with this backend's
+    // key (the public half goes with it), no merchant id needed. The
+    // receipt's id and secret are kept in the settings for Application().
+    Result<ApplicationReceipt> Apply(const std::string& name, const std::string& contact, const std::string& email, const std::string& website,
+                                     const std::string& description) const;
+    // GET /v1/applications/{id}?secret=: public, no key needed.
+    static Result<Application> ApplicationState(const std::string& url, const std::string& id, const std::string& secret, const MarketCall& call = UltraNetMarketCall());
     // A component of this backend's database, signed and sent as a
     // submission; `answers` names the submission a resubmission answers.
     Result<SubmissionReceipt> Submit(const UltraStore::Component& component, const std::string& answers = {}) const;
@@ -115,6 +147,7 @@ public:
 
 private:
     Result<UltraCanvas::JSONValue> Ask(const std::string& method, const std::string& path, const std::string& jsonBody = {}) const;
+    static Result<UltraCanvas::JSONValue> Answer(const MarketReply& reply);
 
     MarketSettings settings_;
     std::vector<uint8_t> seed_;
