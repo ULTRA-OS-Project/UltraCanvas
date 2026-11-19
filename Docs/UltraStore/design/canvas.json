@@ -362,6 +362,32 @@
       "h": 844,
       "title": "Account phone: Account",
       "radius": 44
+    },
+    "AccountRecovery.dc.html": {
+      "x": 0,
+      "y": 35900,
+      "w": 1440,
+      "h": 1260,
+      "title": "Account: Reset password, two-factor setup, delete",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SuperUsers.dc.html": {
+      "x": 1520,
+      "y": 35900,
+      "w": 1440,
+      "h": 1640,
+      "title": "Super admin: Users",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "AccountPhoneSignIn.dc.html": {
+      "x": 3040,
+      "y": 35900,
+      "w": 390,
+      "h": 844,
+      "title": "Account phone: Sign in",
+      "radius": 44
     }
   },
   "order": [
@@ -404,7 +430,10 @@
     "AccountSignUp.dc.html",
     "AccountProfile.dc.html",
     "AccountBilling.dc.html",
-    "AccountPhoneProfile.dc.html"
+    "AccountPhoneProfile.dc.html",
+    "AccountRecovery.dc.html",
+    "SuperUsers.dc.html",
+    "AccountPhoneSignIn.dc.html"
   ],
   "notes": {
     "desk": {
@@ -539,6 +568,13 @@
       "w": 420,
       "text": "The account every shop on this canvas shares: sign in or create an account (email, password with the strength check, country for VAT and the age rating, year of birth, consent), the email code, the profile basics and what the account keeps, the welcome with two-factor as the next step - the steps work in the script. The account page: profile (avatar, name, handle, the private email, country and year), security (password, two-factor with UltraAuthenticator or any TOTP app with recovery codes, passkeys, sign-in history), devices with the licence seats they hold, notifications, privacy and data (history on the account or on the machine, the data archive, delete the account). Payment methods (a reference to the method through the store's payment service and Skrill Quick Checkout, never the card), subscriptions (monthly, yearly, switch, cancel), purchases and licences with seats and install on a machine, orders and invoices as PDF and XRechnung with returns and credit notes. The phone's account page. A proposal: the store README says the store has no accounts - licences live in registry.sqlite on each machine and the payment service sells without one. An account service would tie licences, subscriptions, the library and the reporter's identity to a person across machines. Every person, device, order and figure is invented sample data.",
       "fill": "purple"
+    },
+    "account2": {
+      "x": 0,
+      "y": 35600,
+      "text": "UltraStore account - recovery, the operator's users, phone sign-in",
+      "kind": "title1",
+      "maxW": 4480
     }
   },
   "designSystems": []

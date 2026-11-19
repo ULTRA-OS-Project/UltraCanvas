@@ -51,6 +51,9 @@ over these.
 | `AccountProfile.dc.html` | the account page: the account rail; profile (avatar, display name, handle, the private email, language, country, year of birth, about); security (password, two-factor with recovery codes, passkeys, sign-in history); devices with the licence seats they hold; notifications; privacy and data (history on the account, public profile, the data archive, delete the account) | page |
 | `AccountBilling.dc.html` | payment methods (a reference to the method, the billing address, VAT); subscriptions (switch, cancel, resume); purchases and licences with seats and *Install on a machine*; orders and invoices (PDF, XRechnung, returns, credit notes) | page |
 | `AccountPhoneProfile.dc.html` | the account on a phone: the profile head, the Premium card, the account sections, this device, sign out, the bottom tab bar with Account | 390 × 844 |
+| `AccountRecovery.dc.html` | reset the password (email, the email code and the two-factor code, the new password, done) and set up two-factor (the app, the QR code or the key, the recovery codes, on) - both step flows work in the script; the delete-account confirmation with what happens | page |
+| `SuperUsers.dc.html` | the operator's users: the counts with the data-archive and deletion requests, the table with a working status filter (active, suspended, deleting, with a request), one user's file with history and the actions (notice, sign out everywhere, reset two-factor, archive, suspend or reinstate, delete on request) and what the operator cannot see | page |
+| `AccountPhoneSignIn.dc.html` | sign in on a phone: email and password, a passkey, or confirming on a signed-in machine nearby | 390 × 844 |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -212,7 +215,11 @@ bought on, and the payment service sells without one. An account service
 would tie licences and their seats, subscriptions, the library (wish
 list, playlists, watch later, saved games) and, for the marketplace, the
 reporter's identity to a person across machines; installing a free app
-would still need none. Two-factor sign-in is UltraAuthenticator or any
+would still need none. The operator's `SuperUsers` page is the
+other side: accounts as far as the store needs them, suspend and
+reinstate with a reason in the audit log, the data-archive and deletion
+requests with their deadlines, and never the password, the payment
+method or the listening history. Two-factor sign-in is UltraAuthenticator or any
 TOTP app, passkeys where the machine has them, recovery codes in
 UltraPassword if wanted; payment stays on Skrill Quick Checkout's page
 through the store's payment service, the account keeping only a reference
