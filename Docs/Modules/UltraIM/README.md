@@ -1112,6 +1112,37 @@ proxy. Skips without python3 unless
 the tests: that it takes its proxy from Java's properties is its own source
 (`Utils.getHttpsProxy`, `SignalDependencies.setSignalNetworkProxy`).
 
+`Tests/UltraIM/SignalDaemonTests.cpp` is `SignalDaemon` on its own - the one
+part of the provider written per platform - and the Signal test that runs
+on Windows: the fake daemon above is a shell script's child, so there the
+whole of `SignalProviderTests` is skipped. The test is its own child program
+(no python): started through `SignalDaemon::Start`, it reports the
+environment and arguments it was given. Checked on every platform: the
+variables handed to `Start` arrive exactly (Java options with spaces,
+quotes, `|`, `&`, Thai), one the environment already has is replaced and
+not doubled (on Windows whatever its spelling: names there have no case),
+the rest is kept; arguments arrive exactly (a folder with spaces and a
+trailing backslash, quotes, an empty one, Thai); standard output and error
+are appended to a log named in Thai; the same through a wrapper script as
+signal-cli is one (a `.bat` run by `cmd.exe` on Windows, a shell script
+elsewhere, in a folder with a space and Thai in its name); `Stop` ends the
+script *and* the program it started (the job object, the process group); a
+program that ends by itself is let go of (`ProcessId()` 0), one that is not
+there never shows as running; `FindSignalCli`, `JavaToolOptionsWith`,
+`JvmTookOptions`.
+
+CI runs the chat-network suites on Linux in the full pass, and since
+2026-11 on the other rows too ("Run the chat-network tests
+(macOS/Windows)" in `.github/workflows/build.yml`): `UltraIMTests`,
+`MatrixCryptoTests`, `SignalDaemonTests` and `TelegramProviderTests` on
+every Windows and macOS row; `TelegramTdlibTests` where the packages ship a
+TDLib (Windows x64, macOS arm64 - no library there is a failure);
+`DirectProviderTests`' envelopes and store on Windows; and the suites that
+sign in to a python stand-in (Signal, IRC, XMPP, Mastodon, Mattermost,
+Zulip) on the Apple silicon row, where no python3 or openssl is a failure.
+Windows cannot run those (they fork), and the Intel macOS runner is too
+slow for suites that wait on clocks.
+
 ## Provider: XMPP
 
 `UltraCanvas/Plugins/UltraIM/xmpp/` (module `ultraim_xmpp`, provider id

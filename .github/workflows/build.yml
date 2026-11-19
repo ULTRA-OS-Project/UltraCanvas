@@ -2174,6 +2174,61 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error --timeout 300 -R "^UltraMessage$"
 
+      # The chat networks (UltraIM and its providers) on macOS and Windows.
+      # ULTRACANVAS_BUILD_ULTRAIM_TESTS builds every suite on every row, and
+      # only Linux ran them (the full pass below) - so what is written per
+      # platform was run on the one where it cannot differ: provider modules
+      # loaded as DLLs and dylibs (UltraIMTests); the libtdjson stand-in the
+      # Telegram provider loads by path, proxy handed over and all
+      # (TelegramProviderTests); vodozemac through each row's own Rust build
+      # (MatrixCryptoTests); and signal-cli as a child process - on Windows
+      # CreateProcessW with a Unicode environment block (the proxy reaches
+      # signal-cli as JAVA_TOOL_OPTIONS), cmd.exe for its .bat and a job
+      # object that ends the tree, none of which any test ran before
+      # SignalDaemonTests. That one is its own child program: no python.
+      #
+      # TelegramTdlibTests where the packages ship a TDLib: the tdjson wheel
+      # exists for Windows x64 and macOS arm64 (cmake/UltraCanvasTdlib.cmake),
+      # and there no library is a failure, not a skip. The other two rows
+      # have none and would only print "SKIP", so they are not asked.
+      #
+      # The suites that sign in to a fake server need python3 and fork.
+      # Windows prints "skipped" for them and is not asked either; of
+      # DirectProviderTests it runs what needs neither - envelopes and the
+      # message store, through Windows' file names. On macOS they run on the
+      # Apple silicon row alone: the Intel runner is five to ten times slower
+      # (see "Restore ccache"), these suites wait on clocks, and what they add
+      # over Linux - the system's sockets, its LibreSSL, its python - does not
+      # depend on the processor. There no python3 or openssl is a failure.
+      # DirectProviderTests' and MatrixProviderTests' end-to-end parts stay
+      # with Linux, which installs the relay and Synapse they sign in to.
+      #
+      # One ctest call a suite: a name that matches nothing is an error
+      # (--no-tests=error), where a list would quietly run what is left of it.
+      - name: Run the chat-network tests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: |
+          set -eu
+          suites="UltraIMTests MatrixCryptoTests SignalDaemonTests TelegramProviderTests"
+          case "${{ matrix.os }}" in
+            windows-latest|macos-15)
+              export ULTRAIM_TEST_TDLIB_REQUIRED=1
+              suites="$suites TelegramTdlibTests" ;;
+          esac
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            suites="$suites DirectProviderTests"
+          fi
+          if [ "${{ matrix.os }}" = "macos-15" ]; then
+            export ULTRAIM_TEST_SIGNAL_REQUIRED=1 ULTRAIM_TEST_IRC_REQUIRED=1 ULTRAIM_TEST_XMPP_REQUIRED=1
+            export ULTRAIM_TEST_MASTODON_REQUIRED=1 ULTRAIM_TEST_MATTERMOST_REQUIRED=1 ULTRAIM_TEST_ZULIP_REQUIRED=1
+            suites="$suites SignalProviderTests IrcProviderTests XmppProviderTests"
+            suites="$suites MastodonProviderTests MattermostProviderTests ZulipProviderTests"
+          fi
+          for suite in $suites; do
+            ctest --output-on-failure --no-tests=error --timeout 300 -R "^$suite\$"
+          done
+
       # The Win32 backend of the desktop shell module (UltraDesktop's window
       # list, monitor, screen edges, hot keys, screenshot and Start menu)
       # against the runner's desktop: the test opens a window of its own,
