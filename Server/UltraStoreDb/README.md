@@ -25,6 +25,13 @@ statement is a method here:
 
 Install it beside a service: `pip install -e ../UltraStoreDb[postgres,mysql]`.
 
+`ultrastore_db.operator_session` is the one other thing the services
+share: the operator's signed session (`issue`, `verify`: `op1.<payload>.
+<hmac>` with a secret both services are configured with) and the roles
+with what each may do (`PERMISSIONS`, `allowed`) - the marketplace service
+keeps the operator accounts and signs the sessions, the account service
+verifies them, so one sign-in names the person and the role to both.
+
 The tests run on SQLite always and on PostgreSQL and MySQL too when
 `ULTRASTORE_TEST_PG_URL` and `ULTRASTORE_TEST_MYSQL_URL` name one each:
 

@@ -7,6 +7,7 @@ the strikes they count, the suspensions, the terms versions and the
 acceptances, the enforcement policy, and the audit log - append-only,
 hash-chained, never edited (the store's README, *The operator tier*).
 
+Version: 0.3.0 - the operators with their roles
 Version: 0.2.0 - the applications, the merchant's website and description (schema 2, the columns added to a 0.1 database)
 Version: 0.1.0
 """
@@ -84,6 +85,28 @@ class Merchant:
 
 
 APPLICATION_STATES = ("applied", "approved", "rejected")
+
+
+@dataclass
+class Operator:
+    """A person at the operator's window, with a role (ultrastore_db.operator_session)."""
+    id: str
+    email: str
+    name: str
+    role: str
+    password_hash: str
+    created_at: str
+    created_by: str
+    disabled_at: str
+    last_signin: str
+
+    @property
+    def active(self) -> bool:
+        return not self.disabled_at
+
+    def public(self) -> dict:
+        return {"id": self.id, "email": self.email, "name": self.name, "role": self.role, "created_at": self.created_at, "created_by": self.created_by,
+                "disabled_at": self.disabled_at, "last_signin": self.last_signin, "active": self.active}
 
 
 @dataclass
@@ -221,6 +244,9 @@ class MarketStore:
             f"CREATE TABLE IF NOT EXISTS merchants (id {tk} PRIMARY KEY, name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '',"
             f" key_hex {tk} NOT NULL, created_at TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '',"
             " description TEXT NOT NULL DEFAULT '')",
+            f"CREATE TABLE IF NOT EXISTS operators (id {tk} PRIMARY KEY, email {tk} NOT NULL, name TEXT NOT NULL DEFAULT '', role TEXT NOT NULL,"
+            " password_hash TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT '', disabled_at TEXT NOT NULL DEFAULT '',"
+            " last_signin TEXT NOT NULL DEFAULT '')",
             f"CREATE TABLE IF NOT EXISTS applications (id {tk} PRIMARY KEY, name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '',"
             " email TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',"
             f" key_hex {tk} NOT NULL, state TEXT NOT NULL, message TEXT NOT NULL DEFAULT '', secret TEXT NOT NULL DEFAULT '',"
@@ -264,6 +290,7 @@ class MarketStore:
             if column not in have:
                 db.execute(f"ALTER TABLE merchants ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
         db.create_index("applications_key", "applications", "key_hex")
+        db.create_index("operators_email", "operators", "email")
         if not self.meta("schema"):
             self.set_meta("schema", str(SCHEMA))
 
@@ -387,6 +414,47 @@ class MarketStore:
     def merchant_by_key(self, key_hex: str) -> Merchant | None:
         r = self._db.fetchone("SELECT * FROM merchants WHERE key_hex = ?", (key_hex,))
         return self._merchant(r) if r else None
+
+    # ----- the operators -----
+    @staticmethod
+    def _operator(r: dict) -> Operator:
+        return Operator(id=r["id"], email=r["email"], name=r["name"], role=r["role"], password_hash=r["password_hash"], created_at=r["created_at"],
+                        created_by=r["created_by"], disabled_at=r["disabled_at"], last_signin=r["last_signin"])
+
+    def operators(self) -> list[Operator]:
+        return [self._operator(r) for r in self._db.fetchall("SELECT * FROM operators ORDER BY created_at, id")]
+
+    def get_operator(self, op_id: str) -> Operator | None:
+        r = self._db.fetchone("SELECT * FROM operators WHERE id = ?", (op_id,))
+        return self._operator(r) if r else None
+
+    def operator_by_email(self, email: str) -> Operator | None:
+        r = self._db.fetchone("SELECT * FROM operators WHERE email = ?", (email.strip().lower(),))
+        return self._operator(r) if r else None
+
+    def add_operator(self, *, email: str, name: str, role: str, password_hash: str, actor: str) -> Operator:
+        op_id = f"op-{self.next_number('operator_no'):04d}"
+        self._db.execute("INSERT INTO operators (id, email, name, role, password_hash, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         (op_id, email.strip().lower(), name, role, password_hash, now_iso(), actor))
+        self.audit(actor, "add_operator", "operator", op_id, after={"email": email.strip().lower(), "name": name, "role": role})
+        return self.get_operator(op_id)   # type: ignore[return-value]
+
+    def update_operator(self, op_id: str, *, actor: str, name: str | None = None, role: str | None = None, password_hash: str | None = None,
+                        disabled: bool | None = None) -> Operator | None:
+        before = self.get_operator(op_id)
+        if not before:
+            return None
+        new = {"name": name if name is not None else before.name, "role": role if role is not None else before.role,
+               "password_hash": password_hash if password_hash is not None else before.password_hash,
+               "disabled_at": (now_iso() if disabled else "") if disabled is not None else before.disabled_at}
+        self._db.execute("UPDATE operators SET name = ?, role = ?, password_hash = ?, disabled_at = ? WHERE id = ?",
+                         (new["name"], new["role"], new["password_hash"], new["disabled_at"], op_id))
+        self.audit(actor, "update_operator", "operator", op_id, before={"name": before.name, "role": before.role, "disabled": not before.active},
+                   after={"name": new["name"], "role": new["role"], "disabled": bool(new["disabled_at"]), "password_changed": password_hash is not None})
+        return self.get_operator(op_id)
+
+    def record_operator_signin(self, op_id: str) -> None:
+        self._db.execute("UPDATE operators SET last_signin = ? WHERE id = ?", (now_iso(), op_id))
 
     # ----- applications -----
     @staticmethod

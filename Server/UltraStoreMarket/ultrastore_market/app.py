@@ -1,6 +1,8 @@
 """The HTTP API of the marketplace service.
 
-The operator (Authorization: Bearer <operator token>):
+The operator (Authorization: Bearer <operator token or session>; the static token is the bootstrap admin, a session comes from the sign-in and names the person and the role):
+  POST /v1/operators/signin             {email, password} -> {token, operator, hours}; GET /v1/operators/me
+  GET  /v1/operators; POST /v1/operators {email, name, role, password}; PUT /v1/operators/{id} {name?, role?, password?, disabled?}
   POST /v1/merchants                    register a merchant with its key; GET /v1/merchants, GET /v1/merchants/{id}, PUT /v1/merchants/{id}
   POST /v1/merchants/{id}/suspend       {clause, reason, days}; POST /v1/merchants/{id}/reinstate {reason}
   POST /v1/apps/{app}/suspend, /reinstate   the same for one app
@@ -35,6 +37,7 @@ Public:
 
 Errors are {"error", "error_description"} with a 4xx status.
 
+Version: 0.4.0 - the operators with their roles: sign-in, the signed session, a permission on every operator call
 Version: 0.3.0 - the applications; the merchant's own profile
 Version: 0.2.0 - the publish, the signing key
 Version: 0.1.0
@@ -51,7 +54,9 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from . import __version__
-from .auth import parse_merchant_header, verify_bytes, verify_request
+from ultrastore_db.operator_session import ROLES, allowed, issue, verify as verify_session
+
+from .auth import hash_password, parse_merchant_header, verify_bytes, verify_password, verify_request
 from .config import Settings
 from .publish import SigningKey, publish
 from .store import NOTICE_KINDS, MarketStore, Merchant, canonical, today
@@ -83,6 +88,25 @@ class ApplyBody(BaseModel):
 
     def signed(self) -> dict:
         return {"name": self.name, "contact": self.contact, "email": self.email, "website": self.website, "description": self.description, "key": self.key}
+
+
+class OperatorSigninBody(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class OperatorBody(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    name: str = Field(default="", max_length=120)
+    role: str = Field(default="support", max_length=20)
+    password: str = Field(min_length=12, max_length=256)
+
+
+class OperatorUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    role: str | None = Field(default=None, max_length=20)
+    password: str | None = Field(default=None, min_length=12, max_length=256)
+    disabled: bool | None = None
 
 
 class ApproveBody(BaseModel):
@@ -179,11 +203,79 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def error(status: int, code: str, description: str) -> HTTPException:
         return HTTPException(status_code=status, detail={"error": code, "error_description": description})
 
-    def operator(authorization: str | None) -> str:
+    def whoami(authorization: str | None) -> dict:
+        """The person behind the bearer: the static token is the bootstrap
+        admin, a session names the operator and the role."""
         token = (authorization or "").removeprefix("Bearer ").strip()
-        if not settings.operator_token or not hmac.compare_digest(token, settings.operator_token):
-            raise error(401, "unauthorized", "The operator token is missing or wrong")
-        return "operator"
+        if settings.operator_token and hmac.compare_digest(token, settings.operator_token):
+            return {"id": "", "name": "operator", "role": "admin", "bootstrap": True}
+        session = verify_session(settings.operator_session_secret, token)
+        if not session:
+            raise error(401, "unauthorized", "The operator token is missing or wrong, or the session is over: sign in again")
+        op = store.get_operator(str(session.get("id", "")))
+        if not op or not op.active:
+            raise error(401, "unauthorized", "This operator account is disabled or gone")
+        return {"id": op.id, "name": op.name or op.email, "role": op.role, "bootstrap": False}
+
+    def operator(authorization: str | None, permission: str = "audit.read") -> str:
+        """The actor's name for the audit log, once the role allows the action."""
+        who = whoami(authorization)
+        if not allowed(who["role"], permission):
+            raise error(403, "forbidden", f"The role {who['role']} may not {permission.replace('.', ' ')}")
+        return who["name"]
+
+    # ----- the operators: sign in, who am I, the accounts (admin) -----
+    @app.post("/v1/operators/signin")
+    async def operator_signin(body: OperatorSigninBody) -> dict[str, Any]:
+        if not settings.operator_session_secret:
+            raise error(503, "not_configured", "The service has no operator session secret (ULTRASTORE_MARKET_OPERATOR_SESSION_SECRET)")
+        op = store.operator_by_email(body.email)
+        if not op or not op.active or not verify_password(body.password, op.password_hash):
+            raise error(401, "bad_credentials", "The email or the password is wrong")
+        store.record_operator_signin(op.id)
+        token = issue(settings.operator_session_secret, operator_id=op.id, name=op.name or op.email, role=op.role, hours=settings.operator_session_hours)
+        return {"token": token, "operator": op.public(), "hours": settings.operator_session_hours}
+
+    @app.get("/v1/operators/me")
+    async def operator_me(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        who = whoami(authorization)
+        return {**who, "permissions": sorted(p for p in ("merchants.manage", "review.decide", "publish", "reports.handle", "notices.send", "terms.manage",
+                                                            "policy.manage", "users.support", "users.manage", "operators.manage") if allowed(who["role"], p))}
+
+    @app.get("/v1/operators")
+    async def list_operators(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        operator(authorization, "operators.read")
+        return {"operators": [o.public() for o in store.operators()], "roles": list(ROLES)}
+
+    @app.post("/v1/operators")
+    async def add_operator(body: OperatorBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        actor = operator(authorization, "operators.manage")
+        if body.role not in ROLES:
+            raise error(400, "bad_role", "The role is one of " + ", ".join(ROLES))
+        if "@" not in body.email:
+            raise error(400, "bad_email", "That is not an email address")
+        if store.operator_by_email(body.email):
+            raise error(409, "operator_exists", "An operator with that email exists already")
+        return store.add_operator(email=body.email, name=body.name, role=body.role, password_hash=hash_password(body.password), actor=actor).public()
+
+    @app.put("/v1/operators/{op_id}")
+    async def update_operator(op_id: str, body: OperatorUpdate, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        who = whoami(authorization)
+        own = who["id"] == op_id
+        # Anyone may change their own name and password; the role and the switch are an admin's.
+        if (body.role is not None or body.disabled is not None or not own) and not allowed(who["role"], "operators.manage"):
+            raise error(403, "forbidden", "Only an admin changes another operator, a role or the switch")
+        if body.role is not None and body.role not in ROLES:
+            raise error(400, "bad_role", "The role is one of " + ", ".join(ROLES))
+        if own and body.disabled:
+            raise error(409, "own_account", "An operator does not disable their own account")
+        if body.role is not None and own and body.role != "admin":
+            raise error(409, "own_account", "An admin does not take their own admin role away")
+        updated = store.update_operator(op_id, actor=who["name"], name=body.name, role=body.role,
+                                        password_hash=hash_password(body.password) if body.password else None, disabled=body.disabled)
+        if not updated:
+            raise error(404, "no_such_operator", "No such operator")
+        return updated.public()
 
     async def merchant(request: Request) -> Merchant:
         parsed = parse_merchant_header(request.headers.get("authorization"))
@@ -208,7 +300,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ----- merchants -----
     @app.post("/v1/merchants")
     async def register_merchant(body: MerchantBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "merchants.manage")
         merchant_id = body.id or "m-" + secrets.token_hex(4)
         if store.get_merchant(merchant_id):
             raise error(409, "merchant_exists", f"The merchant {merchant_id} is registered already")
@@ -220,7 +312,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/merchants")
     async def list_merchants(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "merchants.read")
         return {"merchants": [m.public() for m in store.merchants()]}
 
     @app.get("/v1/merchants/me")
@@ -274,7 +366,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not a:
             raise error(404, "no_such_application", "No such application")
         if authorization:
-            operator(authorization)
+            operator(authorization, "merchants.read")
             return a.public(for_operator=True)
         if not secret or not hmac.compare_digest(secret, a.secret):
             raise error(404, "no_such_application", "No such application")
@@ -282,12 +374,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/applications")
     async def list_applications(state: str = "", authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "merchants.read")
         return {"applications": [a.public(for_operator=True) for a in store.applications(state)]}
 
     @app.post("/v1/applications/{aid}/approve")
     async def approve_application(aid: str, body: ApproveBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "merchants.manage")
         try:
             a = store.decide_application(aid, approve=True, message=body.message, actor=actor, merchant_id=body.id)
         except ValueError as e:
@@ -301,7 +393,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/v1/applications/{aid}/reject")
     async def reject_application(aid: str, body: RejectBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "merchants.manage")
         try:
             a = store.decide_application(aid, approve=False, message=body.message, actor=actor)
         except ValueError as e:
@@ -332,40 +424,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/merchants/{merchant_id}")
     async def get_merchant(merchant_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "merchants.read")
         m = merchant_or_404(merchant_id)
         return {**m.public(), "notes": m.notes, "suspensions": [s.public() for s in store.suspensions_of("merchant", m.id)],
                 "acceptances": store.acceptances_of(m.id), "submissions": [s.public() for s in store.submissions(merchant_id=m.id)]}
 
     @app.put("/v1/merchants/{merchant_id}")
     async def update_merchant(merchant_id: str, body: MerchantUpdate, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "merchants.manage")
         merchant_or_404(merchant_id)
         updated = store.update_merchant(merchant_id, name=body.name, contact=body.contact, key_hex=body.key, actor=actor)
         return updated.public()   # type: ignore[union-attr]
 
     @app.post("/v1/merchants/{merchant_id}/suspend")
     async def suspend_merchant(merchant_id: str, body: SuspendBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "merchants.manage")
         merchant_or_404(merchant_id)
         s = store.suspend("merchant", merchant_id, clause=body.clause, reason=body.reason, days=body.days, actor=actor)
         return {"suspension": s.public(), "merchant": store.get_merchant(merchant_id).public()}   # type: ignore[union-attr]
 
     @app.post("/v1/merchants/{merchant_id}/reinstate")
     async def reinstate_merchant(merchant_id: str, body: ReinstateBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "merchants.manage")
         merchant_or_404(merchant_id)
         lifted = store.reinstate("merchant", merchant_id, actor=actor, reason=body.reason)
         return {"lifted": lifted, "merchant": store.get_merchant(merchant_id).public()}   # type: ignore[union-attr]
 
     @app.post("/v1/apps/{app_id}/suspend")
     async def suspend_app(app_id: str, body: SuspendBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "merchants.manage")
         return {"suspension": store.suspend("app", app_id, clause=body.clause, reason=body.reason, days=body.days, actor=actor).public()}
 
     @app.post("/v1/apps/{app_id}/reinstate")
     async def reinstate_app(app_id: str, body: ReinstateBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "merchants.manage")
         return {"lifted": store.reinstate("app", app_id, actor=actor, reason=body.reason)}
 
     # ----- submissions -----
@@ -399,12 +491,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/submissions")
     async def list_submissions(state: str = "", merchant: str = "", app: str = "", authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "review.read")
         return {"submissions": [s.public() for s in store.submissions(state=state, merchant_id=merchant, app_id=app)]}
 
     @app.get("/v1/submissions/{sid}")
     async def get_submission(sid: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "review.read")
         s = store.get_submission(sid)
         if not s:
             raise error(404, "no_such_submission", "No such submission")
@@ -412,7 +504,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/v1/submissions/{sid}/decide")
     async def decide(sid: str, body: DecideBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "review.decide")
         s = store.get_submission(sid)
         if not s:
             raise error(404, "no_such_submission", "No such submission")
@@ -440,7 +532,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/released")
     async def released(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "review.read")
         # `sequence`: the last release's; `published`: the last publish's (a release past it waits for the next publish).
         return {"released": store.released(today()), "sequence": int(store.meta("catalog_sequence") or "0"),
                 "published": int(store.meta("publish_sequence") or "0")}
@@ -448,7 +540,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/publish")
     async def publish_catalog(authorization: str | None = Header(default=None)) -> dict[str, Any]:
         """The catalog from the released submissions, signed into the publish folder."""
-        actor = operator(authorization)
+        actor = operator(authorization, "publish")
         if not settings.publish_dir:
             raise error(503, "not_configured", "ULTRASTORE_MARKET_PUBLISH_DIR names where the catalog goes")
         report = publish(store, signing, settings.publish_dir, day=today(), extra_trusted_keys=settings.trusted_keys, payment_url=settings.payment_url,
@@ -485,12 +577,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/reports")
     async def list_reports(state: str = "", authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "reports.read")
         return {"reports": [r.public() for r in store.reports(state=state)]}
 
     @app.get("/v1/reports/{rid}")
     async def get_report(rid: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "reports.read")
         r = store.get_report(rid)
         if not r:
             raise error(404, "no_such_report", "No such report")
@@ -498,7 +590,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/v1/reports/{rid}/assign")
     async def assign(rid: str, body: AssignBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "reports.handle")
         r = store.assign_report(rid, body.assignee, actor)
         if not r:
             raise error(404, "no_such_report", "No such report")
@@ -506,7 +598,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/v1/reports/{rid}/resolve")
     async def resolve(rid: str, body: CloseBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "reports.handle")
         r = store.close_report(rid, "resolve", findings=body.findings, outcome=body.outcome, actor=actor)
         if not r:
             raise error(404, "no_such_report", "No such report")
@@ -514,7 +606,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/v1/reports/{rid}/dismiss")
     async def dismiss(rid: str, body: CloseBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "reports.handle")
         r = store.close_report(rid, "dismiss", findings=body.findings, outcome=body.outcome, actor=actor)
         if not r:
             raise error(404, "no_such_report", "No such report")
@@ -523,7 +615,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ----- notices -----
     @app.post("/v1/notices")
     async def notify(body: NoticeBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "notices.send")
         if body.kind not in NOTICE_KINDS:
             raise error(400, "bad_kind", "The kind is " + ", ".join(NOTICE_KINDS))
         if body.kind == "warning" and not body.clause:
@@ -536,7 +628,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/notices")
     async def list_notices(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "notices.read")
         return {"notices": [n.public() for n in store.notices()]}
 
     @app.post("/v1/notices/{nid}/ack")
@@ -562,7 +654,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/v1/terms")
     async def add_terms(body: TermsBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "terms.manage")
         if body.version and any(t["version"] == body.version for t in store.terms_versions()):
             raise error(409, "version_exists", f"Terms version {body.version} exists")
         return store.add_terms(text=body.text, changes=body.changes, in_force_from=body.in_force_from, actor=actor, version=body.version)
@@ -577,23 +669,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/policy")
     async def policy(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "policy.read")
         return store.policy()
 
     @app.put("/v1/policy")
     async def set_policy(body: dict, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "policy.manage")
         return store.set_policy(body, actor)
 
     @app.get("/v1/audit")
     async def audit(since: int = 0, limit: int = 500, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "audit.read")
         rows = store.audit_since(since, min(limit, 1000))
         return {"audit": rows, "next": rows[-1]["id"] if rows else since}
 
     @app.get("/v1/audit/verify")
     async def audit_verify(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "audit.read")
         return store.verify_audit()
 
     @app.get("/healthz", response_class=PlainTextResponse)

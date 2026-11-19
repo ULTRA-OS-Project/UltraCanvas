@@ -11,6 +11,7 @@ the serial and the key column types, an upsert, string concatenation, an
 index made only once, how a row is read - are methods here. Nothing else in
 a service knows which engine runs.
 
+Version: 0.3.0 - operator_session: the operator's signed session and the roles, shared by the services
 Version: 0.2.0 - MySQL (PyMySQL); text_key, upsert, concat, create_index, columns
 Version: 0.1.0 - PostgreSQL and SQLite (the payment service's db.py)
 """
@@ -21,7 +22,7 @@ from typing import Any, Iterable
 from urllib.parse import unquote, urlparse
 
 __all__ = ["Database", "__version__"]
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 class Database:

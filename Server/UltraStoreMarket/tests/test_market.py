@@ -24,7 +24,7 @@ from ultrastore_market.publish import SigningKey
 from ultrastore_market.store import MarketStore, add_days, canonical, today
 
 OP = {"Authorization": "Bearer op-token"}
-TABLES = ["applications", "audit", "suspensions", "notice_acks", "notices", "reports", "decisions", "submissions", "terms_acceptances", "terms_versions", "merchants", "meta"]
+TABLES = ["operators", "applications", "audit", "suspensions", "notice_acks", "notices", "reports", "decisions", "submissions", "terms_acceptances", "terms_versions", "merchants", "meta"]
 
 
 def database_urls() -> list[str]:
@@ -70,7 +70,8 @@ class MerchantClient:
 
 @pytest.fixture(params=database_urls())
 def service(request, tmp_path):
-    settings = Settings(database=database_url(request.param, tmp_path), operator_token="op-token", publish_dir=str(tmp_path / "publish"),
+    settings = Settings(database=database_url(request.param, tmp_path), operator_token="op-token", operator_session_secret="shared-secret",
+                        publish_dir=str(tmp_path / "publish"),
                         payment_url="https://pay.example", licence_key="ab" * 32, public_base_url="https://market.example",
                         trusted_keys=["cd" * 32])
     with TestClient(create_app(settings)) as client:
@@ -439,3 +440,70 @@ def test_a_merchant_applies_is_approved_and_edits_its_profile(service):
     assert service.get("/v1/audit/verify", headers=OP).json()["ok"] is True
     # The publish names the publisher's page from the website.
     assert service.get("/v1/merchants/pixelwerk", headers=OP).json()["website"] == "https://pixelwerk.example"
+
+
+def test_the_operators_sign_in_and_the_roles_gate_the_calls(service):
+    # The static token is the bootstrap admin; it makes the first accounts.
+    me = service.get("/v1/operators/me", headers=OP).json()
+    assert me["role"] == "admin" and me["bootstrap"] is True and "operators.manage" in me["permissions"]
+    assert service.get("/v1/operators/me", headers={"Authorization": "Bearer op1.forged.00"}).status_code == 401
+    r = service.post("/v1/operators", json={"email": "alex@ultra-os.example", "name": "Alex", "role": "admin", "password": "a long enough password"}, headers=OP)
+    assert r.status_code == 200, r.text
+    alex = r.json()
+    assert alex["id"] == "op-0001" and alex["active"] is True and "password" not in alex and "password_hash" not in alex
+    assert service.post("/v1/operators", json={"email": "alex@ultra-os.example", "role": "admin", "password": "a long enough password"}, headers=OP).json()["error"] == "operator_exists"
+    assert service.post("/v1/operators", json={"email": "x@y", "role": "king", "password": "a long enough password"}, headers=OP).json()["error"] == "bad_role"
+    assert service.post("/v1/operators", json={"email": "x@y", "role": "support", "password": "short"}, headers=OP).status_code == 422
+    r = service.post("/v1/operators", json={"email": "Sam@ultra-os.example", "name": "Sam", "role": "support", "password": "another long password"}, headers=OP)
+    sam = r.json()
+    assert sam["email"] == "sam@ultra-os.example" and sam["role"] == "support"
+    # Sign in: a wrong password, a wrong email, then the session.
+    assert service.post("/v1/operators/signin", json={"email": "alex@ultra-os.example", "password": "nope"}).json()["error"] == "bad_credentials"
+    assert service.post("/v1/operators/signin", json={"email": "nobody@ultra-os.example", "password": "a long enough password"}).status_code == 401
+    r = service.post("/v1/operators/signin", json={"email": "ALEX@ultra-os.example", "password": "a long enough password"})
+    assert r.status_code == 200, r.text
+    assert r.json()["token"].startswith("op1.") and r.json()["operator"]["name"] == "Alex" and r.json()["hours"] == 12
+    alex_h = {"Authorization": "Bearer " + r.json()["token"]}
+    sam_h = {"Authorization": "Bearer " + service.post("/v1/operators/signin", json={"email": "sam@ultra-os.example", "password": "another long password"}).json()["token"]}
+    me = service.get("/v1/operators/me", headers=alex_h).json()
+    assert me == {"id": "op-0001", "name": "Alex", "role": "admin", "bootstrap": False, "permissions": me["permissions"]}
+    assert service.get("/v1/operators/me", headers=sam_h).json()["permissions"] == ["notices.send", "reports.handle", "users.support"]
+    assert service.get("/v1/operators", headers=OP).json()["operators"][1]["last_signin"] != ""
+    # The roles gate the calls: support reads the merchants but registers none, sends a notice, cannot decide a review.
+    anna = register(service)
+    assert service.get("/v1/merchants", headers=sam_h).status_code == 200
+    r = service.post("/v1/merchants", json={"name": "No", "contact": "no@example.org", "key": "ab" * 32}, headers=sam_h)
+    assert r.status_code == 403 and r.json()["error"] == "forbidden" and "support" in r.json()["error_description"]
+    assert service.post("/v1/notices", json={"kind": "announcement", "subject": "Hi", "text": "Welcome", "recipients": [anna.id]}, headers=sam_h).status_code == 200
+    assert service.get("/v1/submissions", headers=sam_h).status_code == 200
+    assert service.post("/v1/submissions/s-1/decide", json={"action": "approve"}, headers=sam_h).status_code == 403
+    assert service.get("/v1/operators", headers=sam_h).status_code == 200
+    assert service.post("/v1/operators", json={"email": "x@y", "role": "admin", "password": "a long enough password"}, headers=sam_h).status_code == 403
+    # The audit names the person, not the token.
+    rows = service.get("/v1/audit", headers=alex_h).json()["audit"]
+    assert any(e["actor"] == "Sam" and e["action"] == "notify" for e in rows), rows
+    # Sam changes their own name and password, not their role; Alex changes the role and disables.
+    assert service.put("/v1/operators/op-0002", json={"name": "Samira"}, headers=sam_h).json()["name"] == "Samira"
+    assert service.put("/v1/operators/op-0002", json={"role": "admin"}, headers=sam_h).status_code == 403
+    assert service.put("/v1/operators/op-0001", json={"name": "A"}, headers=sam_h).status_code == 403
+    assert service.put("/v1/operators/op-0002", json={"password": "a third long password"}, headers=sam_h).status_code == 200
+    assert service.post("/v1/operators/signin", json={"email": "sam@ultra-os.example", "password": "another long password"}).status_code == 401
+    assert service.put("/v1/operators/op-0001", json={"disabled": True}, headers=alex_h).json()["error"] == "own_account"
+    assert service.put("/v1/operators/op-0001", json={"role": "auditor"}, headers=alex_h).json()["error"] == "own_account"
+    assert service.put("/v1/operators/op-0002", json={"role": "auditor"}, headers=alex_h).json()["role"] == "auditor"
+    assert service.put("/v1/operators/op-0002", json={"disabled": True}, headers=alex_h).json()["active"] is False
+    assert service.put("/v1/operators/op-9999", json={"name": "x"}, headers=alex_h).status_code == 404
+    # A disabled operator's session is refused on the next call, and cannot sign in.
+    assert service.get("/v1/merchants", headers=sam_h).status_code == 401
+    assert service.post("/v1/operators/signin", json={"email": "sam@ultra-os.example", "password": "a third long password"}).status_code == 401
+    assert service.put("/v1/operators/op-0002", json={"disabled": False}, headers=alex_h).json()["active"] is True
+    assert service.get("/v1/audit/verify", headers=OP).json()["ok"] is True
+
+
+def test_signin_needs_the_session_secret(tmp_path):
+    settings = Settings(database="sqlite:///" + str(tmp_path / "m.sqlite3"), operator_token="op-token", publish_dir=str(tmp_path / "publish"),
+                        payment_url="https://pay.example", licence_key="ab" * 32)
+    with TestClient(create_app(settings)) as client:
+        client.post("/v1/operators", json={"email": "a@b.example", "role": "admin", "password": "a long enough password"}, headers=OP)
+        r = client.post("/v1/operators/signin", json={"email": "a@b.example", "password": "a long enough password"})
+        assert r.status_code == 503 and r.json()["error"] == "not_configured"

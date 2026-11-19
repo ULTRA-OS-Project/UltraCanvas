@@ -16,7 +16,12 @@ class Settings:
     port: int = 8793
     public_base_url: str = "http://127.0.0.1:8793"
     # The operator's bearer token: the operator's window and command line.
+    # The static token is the bootstrap admin; an operator signed in to the
+    # marketplace service carries a signed session, which this service
+    # verifies with the same secret (ultrastore_db.operator_session), so the
+    # name and the role reach both services from one sign-in.
     operator_token: str = ""
+    operator_session_secret: str = ""
     # The payment service's licence key (its GET /v1/keys, hex): a licence a
     # store attaches to an account is verified against it; empty refuses
     # every licence.
@@ -43,6 +48,7 @@ class Settings:
         s.port = int(env("ULTRASTORE_ACCOUNT_PORT", s.port))
         s.public_base_url = env("ULTRASTORE_ACCOUNT_BASE_URL", s.public_base_url).rstrip("/")
         s.operator_token = env("ULTRASTORE_ACCOUNT_OPERATOR_TOKEN", "")
+        s.operator_session_secret = env("ULTRASTORE_ACCOUNT_OPERATOR_SESSION_SECRET", "").strip()
         s.licence_key = env("ULTRASTORE_ACCOUNT_LICENCE_KEY", "").strip()
         s.smtp_url = env("ULTRASTORE_ACCOUNT_SMTP_URL", "").strip()
         s.mail_from = env("ULTRASTORE_ACCOUNT_MAIL_FROM", s.mail_from)

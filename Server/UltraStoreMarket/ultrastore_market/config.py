@@ -16,7 +16,13 @@ class Settings:
     port: int = 8792
     public_base_url: str = "http://127.0.0.1:8792"
     # The operator's bearer token: the operator's window and command line.
+    # It is the bootstrap admin - with it the first operator account is made;
+    # afterwards the operators sign in (POST /v1/operators/signin) and carry
+    # a signed session, verified with the session secret, which the account
+    # service shares so one sign-in reaches both.
     operator_token: str = ""
+    operator_session_secret: str = ""
+    operator_session_hours: int = 12
     # A merchant's signed request is good for this long around its timestamp.
     request_window_seconds: int = 300
     # The publish (publish.py): where catalog.json and its signature go, the
@@ -39,6 +45,8 @@ class Settings:
         s.port = int(env("ULTRASTORE_MARKET_PORT", s.port))
         s.public_base_url = env("ULTRASTORE_MARKET_BASE_URL", s.public_base_url).rstrip("/")
         s.operator_token = env("ULTRASTORE_MARKET_OPERATOR_TOKEN", "")
+        s.operator_session_secret = env("ULTRASTORE_MARKET_OPERATOR_SESSION_SECRET", "").strip()
+        s.operator_session_hours = int(env("ULTRASTORE_MARKET_OPERATOR_SESSION_HOURS", s.operator_session_hours))
         s.request_window_seconds = int(env("ULTRASTORE_MARKET_REQUEST_WINDOW", s.request_window_seconds))
         s.publish_dir = env("ULTRASTORE_MARKET_PUBLISH_DIR", "")
         s.signing_seed = env("ULTRASTORE_MARKET_SIGNING_SEED", "").strip()
