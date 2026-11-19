@@ -104,6 +104,13 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.54.1 - BuildOperationEntryList: the summary's reason column takes the list's width
+// Version: 1.54.0 - PasteReplaceCondition::IfOlder (bring an earlier version back);
+//                  PasteConflictAction::KeepBothUnlessIdentical (no duplicate of a file that is there)
+// Version: 1.53.0 - PasteReplaceCondition: Replace in the name-conflict question can replace only a
+//                  file that is newer, bigger or different, chosen in a foldable options panel;
+//                  the summary's "Copy skipped items again" has the same panel (ask, keep both,
+//                  replace ...) and no longer re-skips everything under a standing Skip
 // Version: 1.52.0 - RenderFileThumbnail: a word-processing document (odt, docx, doc) is its first
 //                  page as laid out, not a page of its text lines
 // Version: 1.51.0 - FilerStyle: toolGlyphColor / toolHoverColor / toolPressedColor (the hidden-items
@@ -196,6 +203,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <set>
 #include <string>
@@ -213,6 +221,7 @@ namespace UltraCanvas {
 
 
     class UltraCanvasMenu;
+    class UltraCanvasCollapsiblePanel;
     class UltraCanvasButton;
     class UltraCanvasTextInput;
     struct DialogConfig;
@@ -230,7 +239,31 @@ namespace UltraCanvas {
         // taken there; nothing already in the existing folder is removed.
         // (Replace on a folder removes the existing folder first, with
         // everything in it that the pasted one does not have.)
-        Merge
+        Merge,
+        // Files only: Keep both, except for a pasted file identical to the
+        // existing one (the same size and modified time), which is skipped -
+        // no duplicate of a file that is there, and nothing overwritten.
+        KeepBothUnlessIdentical
+    };
+
+    // When Replace replaces a FILE whose name is taken: always, or only when
+    // the pasted file wins a comparison with the existing one - newer
+    // (modified later), bigger, or different (another size or another
+    // modified time). A file that does not win is left as it is and listed
+    // in the summary at the end, with why. Folders are merged or replaced as
+    // before; the files a merge brings in are compared one by one.
+    // IfOlder is the other way round from IfNewer: the pasted file was
+    // modified earlier - an earlier version brought back from a backup.
+    enum class PasteReplaceCondition { Unconditionally, IfNewer, IfOlder, IfLarger, IfDifferent };
+
+    // How the summary's "Copy skipped items again" answers a name that is
+    // taken, chosen in its options panel: as the host's policy says (no
+    // choice made), ask about each, keep both, or replace - unconditionally
+    // or on a condition.
+    enum class FilerRetryConflicts { Policy, Ask, KeepBoth, KeepBothUnlessIdentical, Replace };
+    struct FilerRetryConflictAnswer {
+        FilerRetryConflicts how = FilerRetryConflicts::Policy;
+        PasteReplaceCondition condition = PasteReplaceCondition::Unconditionally;
     };
 
     // ===== WHAT THE HOST DECIDED ABOUT CONFLICTS AND FAILURES =====
@@ -3863,6 +3896,10 @@ namespace UltraCanvas {
             std::string path;
             std::string reason;
             std::string folder;
+            // Skipped because its name was taken where it went (a Skip, or a
+            // Replace whose condition the pasted file did not meet): what the
+            // summary's options for copying again are about.
+            bool nameTaken = false;
         };
         // The summary's "Copy skipped items again": the skipped entries
         // grouped by destination, pasted one group after the other (one
@@ -3873,7 +3910,19 @@ namespace UltraCanvas {
             bool cut = false;
         };
         std::unique_ptr<PasteRetry> pasteRetry;
-        void RetrySkippedPaste(const std::vector<SkippedItem>& items, bool cut);
+        FilerRetryConflictAnswer retryConflicts;   // for the whole retry
+        // Set by ContinuePasteRetry for the StartPaste it is about to make,
+        // and taken by it in place of the host's conflict policy.
+        std::optional<FilerRetryConflictAnswer> nextPasteConflicts;
+        void RetrySkippedPaste(const std::vector<SkippedItem>& items, bool cut,
+                               FilerRetryConflictAnswer conflicts = FilerRetryConflictAnswer());
+        // The last choices of the conflict question's options panel, for the
+        // next question of the session: the replace condition, and whether
+        // the panel was open.
+        PasteReplaceCondition lastReplaceCondition = PasteReplaceCondition::Unconditionally;
+        // ... and whether its Keep both skips identical files.
+        bool lastKeepBothSkipsIdentical = false;
+        bool replaceOptionsOpen = false;
         void ContinuePasteRetry();
 
         struct PendingPaste {
@@ -3897,6 +3946,8 @@ namespace UltraCanvas {
             bool cut = false;
             PasteConflictAction action = PasteConflictAction::KeepBoth;
             bool applyToAll = false;   // reuse `action` for later file conflicts
+            // What a Replace of a file asks of the pasted file first.
+            PasteReplaceCondition replaceCondition = PasteReplaceCondition::Unconditionally;
             // The same for folders whose name is taken: Merge, Replace or
             // Skip, remembered apart from the file answer because Merge means
             // nothing for a file.
@@ -3987,7 +4038,9 @@ namespace UltraCanvas {
                                   const std::vector<SkippedItem>& skipped,
                                   const std::string& facts,
                                   const std::string& retryLabel,
-                                  std::function<void()> onRetry);
+                                  std::function<void()> onRetry,
+                                  std::shared_ptr<UltraCanvasCollapsiblePanel> options = nullptr,
+                                  std::shared_ptr<void> optionsState = nullptr);
 
         // ===== THE OPERATION DIALOG =====
         // Every question a copy, move or delete asks is one of these: a
@@ -4038,6 +4091,12 @@ namespace UltraCanvas {
             std::function<std::string()> liveFacts;
             // The same for `content`: brings its elements up to date.
             std::function<void()> liveContent;
+            // A foldable panel of further choices under the note (the
+            // conflict question's replace conditions); the dialog grows and
+            // shrinks with it. `optionsState` - what its controls report into
+            // - lives as long as the dialog.
+            std::shared_ptr<UltraCanvasCollapsiblePanel> options;
+            std::shared_ptr<void> optionsState;
         };
         // Shows the dialog; `onAnswer(buttonIndex, applyToAll)` runs for the
         // button that was pressed, `onDismiss` when the dialog went without
@@ -4069,12 +4128,14 @@ namespace UltraCanvas {
                                 const std::string& from, const std::string& destDir);
         // The entry list the operation dialogs share (the delete confirmation's
         // list, generalised): at most kOperationListRows rows, `visibleRows`
-        // of them at a time, the rest behind a scrollbar.
+        // of them at a time, the rest behind a scrollbar. `width` is the room
+        // the list has (0: not known): a reason column takes what the name
+        // leaves of it, so a longer translation is not cut short.
         std::shared_ptr<UltraCanvasUIElement> BuildOperationEntryList(
                 const std::string& id, const std::vector<FilerEntry>& listed,
                 const std::vector<std::string>& rowNotes,
                 const std::vector<std::string>& rowLabels, bool details,
-                int visibleRows, int& outHeight);
+                int visibleRows, int& outHeight, int width = 0);
         // At most this many rows in an operation dialog's list.
         static constexpr size_t kOperationListRows = 200;
 

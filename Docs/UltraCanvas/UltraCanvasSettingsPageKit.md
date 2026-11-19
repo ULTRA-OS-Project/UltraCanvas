@@ -6,6 +6,7 @@
 - [The window](#the-window)
 - [A page](#a-page)
 - [The controls](#the-controls)
+  - [Following a theme change](#following-a-theme-change)
 - [Usage](#usage)
 - [Related](#related)
 
@@ -73,9 +74,38 @@ Heading, Body and Caption sizes (the desktop's interface font size and the
 ratios of [`UltraCanvasTheme.md`](UltraCanvasTheme.md)); `TextColor()`,
 `NoteTextColor()`, `NoteBackground()`, `NoteAccent()`, `WindowBackground()`,
 `TreeBackground()`, `PageBackground()`, `ButtonFace()`, `ButtonHover()`
-and `Rule()` are its roles, so a settings window is dark on a dark desktop
-and a window built after the theme changed takes the new look. The page
-geometry (`kTextWidth`, `kControlHeight`, ...) stays constant.
+and `Rule()` are its roles, so a settings window is dark on a dark desktop.
+The page geometry (`kTextWidth`, `kControlHeight`, ...) stays constant.
+
+### Following a theme change
+
+A settings window left open switches with the application when the theme
+changes - a desktop going dark, or an application's own light / dark
+setting. Every element the kit builds remembers which roles it took and
+takes them again after the change: the window, the sidebar, the tree and
+the page area, the notes block, the buttons, the choices and checkboxes
+(their boxes too), the colour boxes' frames. A label follows as the role
+its colour and size were - `TextColor()` / `NoteTextColor()`,
+`TitleFontSize()` / `TextFontSize()` / `NoteFontSize()`; a colour or size
+of the page's own stays as given.
+
+A control a page styles in the kit's look itself registers the same way,
+with `FollowKitLook(element, restyle)`: `restyle` is called with the
+element after every theme change, once the application has passed the
+change to its windows, and sets the kit's colours again. The element is
+held weakly, so one that is gone is dropped.
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasSwitch> sw; -->
+```cpp
+using namespace UltraCanvas::SettingsPageKit;
+FollowKitLook(sw, [](UltraCanvasUIElement& e) {
+    auto& s = static_cast<UltraCanvasSwitch&>(e);
+    SwitchVisualStyle themed = SwitchVisualStyle::FromTheme(UltraCanvasTheme::Current(), s.GetVisualStyle());
+    themed.base.fontSize = TextFontSize();
+    themed.base.textColor = TextColor();
+    s.SetVisualStyle(themed);
+});
+```
 
 ## Usage
 

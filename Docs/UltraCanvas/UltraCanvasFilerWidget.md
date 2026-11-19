@@ -2677,8 +2677,11 @@ the same size and date are called *identical*, and the default moves to Skip.
 The answers are the buttons:
 
 - **Keep both** (the default) — the pasted entry takes the next free " (2)"
-  style name, what a conflict-free paste always does
-- **Replace** — the existing file is removed first
+  style name, what a conflict-free paste always does: `photo.jpg` arrives
+  as `photo (2).jpg`, or `photo (3).jpg` when that is taken too; the
+  existing file is not touched
+- **Replace** — the existing file is removed first, on the condition the
+  replace options hold (below)
 - **Skip** — the entry is not pasted (and is listed in the summary)
 - **Stop** — keeps what was already pasted and drops the rest
 
@@ -2691,6 +2694,25 @@ in the existing folder; a move removes the emptied source folder at the end
 (an entry that was skipped keeps it). *Replace* deletes the existing folder
 first, with everything in it that the pasted one does not have, and the note
 says so with the count. `PasteConflictAction::Merge` is the enumerator.
+
+Under a file's question, a foldable **Options** panel says what *Replace*
+asks of the pasted file first (`PasteReplaceCondition`): **Replace always**
+(`Unconditionally`, the default), **only when the pasted file is newer**
+(`IfNewer`: modified later), **only when it is older** (`IfOlder`: an earlier
+version brought back from a backup), **only when it is bigger**
+(`IfLarger`), or **only when the files differ** - another size or another
+modified time (`IfDifferent`). A checkbox under them, **Keep both: skip
+files that are identical (same size and date)**, makes *Keep both* skip a
+pasted file the same as the one there (`PasteConflictAction::
+KeepBothUnlessIdentical`) - no duplicate of a file that is there, and
+nothing overwritten. Folded, the panel's header still names what is in force
+(*Options · replace when newer, keep both skips identical*). A file that does
+not win the comparison is left as it is and listed in the summary with why -
+*Kept: the existing file is not older*, *... not newer*, *... not smaller*,
+*Kept: same size and date*, *An identical file exists already*.
+With the scope checked the condition holds for the rest of the paste too, the
+files a folder merge brings in included; the panel opens with the last
+choice of the session, folded or open as it was left.
 
 The checkbox beside the buttons, **"Apply to all 7 remaining conflicts"**,
 counts the entries still to come whose name is taken (folders and files are
@@ -2721,10 +2743,19 @@ A paste or delete that ran to its end with entries left behind — skipped by
 hand, by a policy, or because they failed — ends on one **summary** instead of
 nothing: *Copied 137 of 140 items. 3 were skipped.*, the destination, and the
 skipped entries in a list with the reason beside each (*In use by another
-program*, *Skipped: the name is already taken*, *Skipped: write-protected*).
+program*, *File exists already*, *Kept: the existing file is not older*,
+*Skipped: write-protected*).
 **Close** is the default; **Copy skipped items again** (*Move …*, *Delete …*)
 runs the same operation for just those entries, grouped by the folder they
-were headed for. A Stop or a Cancel shows no summary — it already said what
+were headed for. When some were skipped because their name was taken, an
+open **Options for copying again** panel under the list says how the copy
+again answers them: **Ask about each file that exists already** (the
+default), **Keep both** (the copy gets a number, *photo (2).jpg*), **Skip
+identical files, keep both for the rest**, **Replace always**, or replace
+only when the pasted file is **newer**, **older**, **bigger** or the files
+**differ**. That choice stands in for the host's conflict policy
+for the copy again - under `FilerConflictPolicy::Skip` the copy again would
+otherwise skip every one of them again. A Stop or a Cancel shows no summary — it already said what
 happened — and neither does an operation where nothing was skipped.
 
 A **move, a rename and a delete** all need the file to themselves: a rename is

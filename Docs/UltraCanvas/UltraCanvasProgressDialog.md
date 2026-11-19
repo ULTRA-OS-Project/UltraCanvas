@@ -121,3 +121,9 @@ available on any alert or modal dialog — see
 The ring is an `UltraCanvasCircularProgressChart` in `SingleRing` style, so it
 carries the framework's chart styling rather than a hand-drawn arc. Nothing in
 this dialog is painted directly.
+
+Its colours are the current theme's: the arc is the accent, the track the
+hairline colour (`line`), the percentage the ink - so the reading is white on
+a dark dialog and dark on a light one. The chart keeps the colours it is
+given rather than following the theme itself, so the dialog sets them again
+when the theme changes while it is open.

@@ -1,14 +1,16 @@
 // core/UltraCanvasProgressDialog.cpp
 // Implementation of the modal progress window.
 // See UltraCanvasProgressDialog.h for the contract.
+// Version: 1.2.0 - the ring's colours are the theme's (accent, line, ink), again on a theme change
 // Version: 1.1.0 - the Cancel button goes through Tr
 // Version: 1.0.0
-// Last Modified: 2026-08-23
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasProgressDialog.h"
 
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasTheme.h"
 #include "Plugins/Charts/UltraCanvasCircularProgressChart.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
@@ -70,16 +72,16 @@ namespace UltraCanvas {
         self->caption = caption;
         self->onCancel = std::move(onCancel);
 
-        // The ring: one arc over a grey track, the percentage in the middle.
+        // The ring: one arc over a track, the percentage in the middle; the
+        // colours are the theme's (ApplyThemeColors, below).
         // Explicit size — content measuring needs a render context, which the
         // dialog does not have while it is first laid out.
         self->ring = CreateCircularProgressChart(
                 "ProgressRing", 0, 0, kRingSize, kRingSize);
         self->ring->SetSubStyle(CircularProgressStyle::SingleRing);
-        self->ring->AddRing("", 0.0, Color(60, 140, 220, 255));
+        self->ring->AddRing("", 0.0, UltraCanvasTheme::Current().roles.accent);
         self->ring->SetInnerRadiusFraction(0.72f);
         self->ring->SetTrackMode(RingTrackMode::Explicit);
-        self->ring->SetTrackColor(Color(232, 232, 238, 255));
         self->ring->SetCapStyle(RingCapStyle::Round);
         self->ring->SetTipLabelContent(RingTipLabel::NoLabel);
         self->ring->SetRingNameLabels(RingNamePosition::Hidden);
@@ -93,7 +95,14 @@ namespace UltraCanvas {
         self->ring->size.height = CSSLayout::Dimension::Px(kRingSize);
         self->ring->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                               .SetAlignSelf(CSSLayout::AlignSelf::Center);
+        self->ApplyThemeColors();
         modal->AddDialogElement(self->ring);
+        // The chart has fixed colours of its own and does not follow the
+        // theme, so a change while the window is up is taken here.
+        std::weak_ptr<UltraCanvasProgressDialog> weakForTheme = self;
+        self->themeHandler = UltraCanvasTheme::AddChangeHandler([weakForTheme](const UltraCanvasTheme&) {
+            if (auto me = weakForTheme.lock()) me->ApplyThemeColors();
+        });
 
         modal->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, nullptr);
         // Every way out of the window - the button, Escape, the title bar - is
@@ -146,7 +155,22 @@ namespace UltraCanvas {
         dialog->SetDetails(detail.empty() ? " " : detail);
     }
 
+    void UltraCanvasProgressDialog::ApplyThemeColors() {
+        if (!ring) return;
+        const ThemeRoles& roles = UltraCanvasTheme::Current().roles;
+        ring->SetRingColor(0, roles.accent);
+        ring->SetTrackColor(roles.line);
+        ring->SetCenterTextColor(roles.ink);
+        ring->RequestRedraw();
+    }
+
     void UltraCanvasProgressDialog::Close() {
+        // Before the early return: a window the user closed is closed
+        // already, and its handler still has to go.
+        if (themeHandler != 0) {
+            UltraCanvasTheme::RemoveChangeHandler(themeHandler);
+            themeHandler = 0;
+        }
         if (closed) return;
         closed = true;
         auto modal = dialog;

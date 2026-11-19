@@ -3,7 +3,8 @@
 // page on the right. The tree shows the three sections - Display, Handling,
 // Extras - as its top level (the root row itself is hidden), each closed when
 // the window opens, so it opens on the start page: what the sections hold.
-// Pages: Display > Treeview (the folder tree's drive-row
+// Pages: Display > Display mode (light, dark, or as the desktop says),
+// Display > Treeview (the folder tree's drive-row
 // background and selected-folder highlight, each shown as a colour box that
 // opens the colour picker in a popup window, and the tree's width - fitted
 // to its rows or fixed), Display > Home folder (what the
@@ -45,6 +46,8 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.22.0 - Display > Display mode: UltraFiler light, dark, or as the desktop says;
+//                  the window's own switches follow a theme change (FollowKitLook)
 // Version: 1.21.2 - Display > Thumbnails / Detail view name the file kinds in the reader's
 //                  language (UltraCanvasFilerWidget::PreviewTypeText), no longer in English
 // Version: 1.21.1 - the kit's colours and sizes as functions (UltraCanvasSettingsPageKit 1.2.0)
@@ -59,7 +62,7 @@
 //                   preview forgets Unlock's passwords (0: never)
 // Version: 1.16.1 - the colour popup's picker is the framework's ColorPickerStyle::Light
 // Version: 1.16.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -114,6 +117,7 @@ namespace {
 
     // Page ids double as tree node ids.
     constexpr const char* kPageDisplay = "display";
+    constexpr const char* kPageDisplayMode = "display/display-mode";
     constexpr const char* kPageTreeview = "display/treeview";
     constexpr const char* kPageTabStyle = "display/tab-style";
     constexpr const char* kPageNewTab = "display/new-tab";
@@ -256,6 +260,12 @@ namespace {
         UltraCanvasRadioGroup                   failureGroup;
         std::shared_ptr<UltraCanvasSlider>      progressDelaySlider;
         std::shared_ptr<UltraCanvasLabel>       progressDelayValue;
+
+        // Display > Display mode: as the desktop says, light or dark.
+        std::shared_ptr<UltraCanvasRadio>       displaySystemRadio;
+        std::shared_ptr<UltraCanvasRadio>       displayLightRadio;
+        std::shared_ptr<UltraCanvasRadio>       displayDarkRadio;
+        UltraCanvasRadioGroup                   displayModeGroup;
 
         // Display > New tab: what the tab strip's "+" opens.
         std::shared_ptr<UltraCanvasRadio>       newTabCurrentRadio;
@@ -1786,6 +1796,54 @@ namespace {
         return parts.page;
     }
 
+    // ===== DISPLAY > DISPLAY MODE =====
+    std::shared_ptr<UltraCanvasContainer> BuildDisplayModePage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-display-mode", Tr("Display mode"),
+                Tr("Whether UltraFiler is light or dark:"));
+
+        const FilerDisplayMode mode = d->settings->displayMode;
+        d->displaySystemRadio = MakeChoice("ufl-set-display-system",
+                Tr("As the system says"), mode == FilerDisplayMode::System);
+        d->displayLightRadio = MakeChoice("ufl-set-display-light",
+                Tr("Light mode"), mode == FilerDisplayMode::Light);
+        d->displayDarkRadio = MakeChoice("ufl-set-display-dark",
+                Tr("Dark mode"), mode == FilerDisplayMode::Dark);
+        d->displayModeGroup.AddRadioButton(d->displaySystemRadio);
+        d->displayModeGroup.AddRadioButton(d->displayLightRadio);
+        d->displayModeGroup.AddRadioButton(d->displayDarkRadio);
+        d->displayModeGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->displayMode =
+                    selected == d->displayLightRadio ? FilerDisplayMode::Light
+                  : selected == d->displayDarkRadio  ? FilerDisplayMode::Dark
+                                                     : FilerDisplayMode::System;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->displaySystemRadio);
+        parts.body->AddChild(d->displayLightRadio);
+        parts.body->AddChild(d->displayDarkRadio);
+
+        AddNote(parts, "ufl-set-display-mode-note1",
+                Tr("As the system says follows the desktop - and the Look page "
+                   "of UOS-Settings - and switches with it while UltraFiler "
+                   "runs. Light mode and Dark mode keep UltraFiler in that look "
+                   "whatever the desktop says; its accent colour, fonts and "
+                   "high contrast still apply."));
+        AddNote(parts, "ufl-set-display-mode-note2",
+                Tr("The change shows at once, in the main window and in this "
+                   "settings window."));
+
+        d->resets[kPageDisplayMode] = PageReset{Tr("Restore default"), 120, [d]() {
+            if (!d->settings || !d->displaySystemRadio) return;
+            // SelectButton does not report the change: the setting is set here.
+            d->displayModeGroup.SelectButton(d->displaySystemRadio);
+            d->settings->displayMode = FilerDisplayMode::System;
+            ApplyAndSave(d);
+        }};
+        return parts.page;
+    }
+
     // ===== DISPLAY > NEW TAB =====
     std::shared_ptr<UltraCanvasContainer> BuildNewTabPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-new-tab", Tr("New tab"),
@@ -2227,6 +2285,16 @@ namespace {
         style.base.textColor      = TextColor();
         style.base.textHoverColor = TextColor();
         sw->SetVisualStyle(style);
+        // A theme change while the window is open: the switch takes the
+        // theme and the kit's text again, as the kit's own controls do.
+        FollowKitLook(sw, [](UltraCanvasUIElement& e) {
+            auto& s = static_cast<UltraCanvasSwitch&>(e);
+            SwitchVisualStyle themed = SwitchVisualStyle::FromTheme(UltraCanvasTheme::Current(), s.GetVisualStyle());
+            themed.base.fontSize       = TextFontSize();
+            themed.base.textColor      = TextColor();
+            themed.base.textHoverColor = TextColor();
+            s.SetVisualStyle(themed);
+        });
         // Explicit sizes: content measuring needs a render context, which the
         // dialog does not have while it is first laid out.
         sw->size.width  = CSSLayout::Dimension::Px(kTextWidth);
@@ -2639,6 +2707,7 @@ namespace {
         d->onClosed = []() { CloseColorPopup(false); };
 
         AddTreeNode(d, "settings", kPageDisplay, Tr("Display"));
+        AddTreeNode(d, kPageDisplay, kPageDisplayMode, Tr("Display mode"));
         AddTreeNode(d, kPageDisplay, kPageTreeview, Tr("Treeview"));
         AddTreeNode(d, kPageDisplay, kPageTabStyle, Tr("Tab style"));
         AddTreeNode(d, kPageDisplay, kPagePathBar, Tr("Path bar"));
@@ -2668,6 +2737,7 @@ namespace {
         AddTreeNode(d, kPageExtras, kPageProxy, Tr("Proxy"));
 
         // ----- pages -----
+        AddPage(d, kPageDisplayMode, BuildDisplayModePage(d));
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
         AddPage(d, kPageTabStyle, BuildTabStylePage(d));
         AddPage(d, kPagePathBar, BuildPathBarPage(d));

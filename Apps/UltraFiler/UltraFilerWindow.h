@@ -81,6 +81,8 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.38.1 - ComputerDriveCard::noOwnSize: a RAM disc with no size of its own
+// Version: 1.38.0 - ApplyDisplayMode: Settings > Display > Display mode through the theme policy
 // Version: 1.37.0 - ApplyLook: the filer's own surfaces from the theme, again on every theme change
 // Version: 1.36.0 - OpenRemoteFile, OpenRemoteCopy
 // Version: 1.35.0 - VolumeDisplayName, RefreshPathBars, pathBarVolumeNamesApplied: the path
@@ -115,7 +117,7 @@
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1163,6 +1165,10 @@ private:
     // preview's transparent-image backdrop). Called at startup and by the
     // settings dialog after every change.
     void ApplySettings();
+    // Display > Display mode: the application's theme policy - FollowHost,
+    // Light or Dark - set when it is not that already; the theme change
+    // that follows re-styles the window (ApplyLook).
+    void ApplyDisplayMode();
     // Every file display of the window - the tabs, the folder preview and the
     // History / Favorites lists - so a setting that governs all of them is
     // applied in one pass.
@@ -1281,6 +1287,10 @@ private:
         std::shared_ptr<UltraCanvasPieChartElement> pie;     // used / free
         std::shared_ptr<UltraCanvasLabel> usageLabel;        // "62% used"
         std::shared_ptr<UltraCanvasLabel> spaceLabel;        // "232.9 GB free of 476.2 GB"
+        // A RAM disc with no size of its own (the Windows fallback, a folder
+        // on the system drive): no volume is read for it - that would be the
+        // system drive's - and the card says so instead.
+        bool noOwnSize = false;
     };
     std::shared_ptr<UltraCanvasContainer>       computerPane;
     std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders

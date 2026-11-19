@@ -65,6 +65,10 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.46.1 - the Computer page's card of a RAM disc without a size of its own (Windows
+//                  without ImDisk) no longer shows the system drive's pie: "No size of its own"
+// Version: 1.46.0 - Settings > Display > Display mode: the settings are read before the window is
+//                  built and the mode is the theme policy, so the window is built in its look
 // Version: 1.45.5 - the "New ▾" button's Folder entry is translated, like the context
 //                  menu's New > Folder
 // Version: 1.45.4 - the path bars under Dark: dark grey segments, the current folder's segment in the
@@ -144,7 +148,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -1336,6 +1340,14 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     config.resizable = true;
     config.type = WindowType::Standard;
 
+    // The persisted settings (the preview's transparent-image backdrop, the
+    // tree, the tabs ...) are read before anything is built: Display >
+    // Display mode decides the theme, and the window and every surface
+    // below take their colours from it as they are made. ApplySettings,
+    // further down, pushes the rest onto the widgets once they exist.
+    settings.Load();
+    ApplyDisplayMode();
+
     window = CreateWindow(config);
     if (!window || !window->IsCreated()) return false;
     // Quitting stops the remote drives' uploads and downloads: asked first.
@@ -1549,9 +1561,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // It overlays the folder preview rather than hiding behind it.
     folderPreviewPromoteButton->SetZIndex(OverlayZOrder::Overlays);
 
-    // Persisted settings (transparent-image backdrop of the preview, ...) and
-    // the recently used files / folders / applications behind the clock button.
-    settings.Load();
+    // The settings read at the top onto the widgets, and the recently used
+    // files / folders / applications behind the clock button.
     ApplySettings();
     // After ApplySettings(), which puts the History limit in force: a
     // list longer than the limit allows is then trimmed as the file is read,
@@ -2065,7 +2076,21 @@ void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target
     target.SetTarSettings(settings.tar);
 }
 
+void UltraFilerWindow::ApplyDisplayMode() {
+    UltraCanvasApplication* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    const ThemePolicy wanted =
+            settings.displayMode == FilerDisplayMode::Light ? ThemePolicy::Light
+          : settings.displayMode == FilerDisplayMode::Dark  ? ThemePolicy::Dark
+                                                            : ThemePolicy::FollowHost;
+    // Set only on a change: SetThemePolicy builds and applies the theme
+    // again, and every element of the window re-styles with it.
+    if (app->GetThemePolicy() != wanted) app->SetThemePolicy(wanted);
+}
+
 void UltraFilerWindow::ApplySettings() {
+    // Display > Display mode first, so what follows reads the new look.
+    ApplyDisplayMode();
     // Display > Tab style. The strip does not exist yet on the call during
     // start-up; BuildTabbedContainer applies the style itself then.
     ApplyTabStripStyle();
@@ -7967,6 +7992,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         std::string path, label, icon;
         std::string under;   // the line at the foot of the card
         ComputerSection section = ComputerSection::All;   // the tree section it belongs to
+        bool noOwnSize = false;   // a RAM disc that is a folder on the system drive
     };
     std::vector<CardSource> sources;
     // A RAM disc that is also a mounted volume (ImDisk's drive letter,
@@ -7998,7 +8024,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         std::string under = disc.mountPath;
         if (!disc.trueRam) under += " - " + Tr("on disk");
         sources.push_back({disc.mountPath, disc.name, "drive.png", under,
-                           ComputerSection::Ram});
+                           ComputerSection::Ram, !disc.trueRam});
     }
     if (remoteDrives) {
         // The server under the name, or for an account signed into through
@@ -8111,7 +8137,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         card->AddChild(mount);
 
         rowFor(source)->AddChild(card);
-        computerDriveCards.push_back({path, pie, usage, space});
+        computerDriveCards.push_back({path, pie, usage, space, source.noOwnSize});
 
         // What is already known about the volume goes up at once; the fresh
         // reading replaces it when the worker answers. A volume never seen
@@ -8130,6 +8156,19 @@ void UltraFilerWindow::ApplyVolumeSpaceToCard(const VolumeSpace& space) {
     for (ComputerDriveCard& card : computerDriveCards) {
         if (card.path != space.path || !card.pie) continue;
         std::vector<ChartDataPoint> slices;
+        if (card.noOwnSize) {
+            // A folder on the system drive: whatever its volume says is the
+            // system drive's, so the ring stays neutral and says why.
+            slices.emplace_back(1, 1.0, 0, "No size of its own", 1.0, Look().freeSlice);
+            card.pie->SetCenterKPI(Tr("n/a"), "");
+            auto data = std::make_shared<ChartDataVector>();
+            data->LoadFromArray(slices);
+            card.pie->SetDataSource(data);
+            if (card.usageLabel) card.usageLabel->SetText(Tr("Folder on the system drive"));
+            if (card.spaceLabel) card.spaceLabel->SetText(Tr("No size of its own"));
+            card.pie->RequestRedraw();
+            continue;
+        }
         if (space.known && space.totalBytes > 0) {
             const double used = static_cast<double>(VolumeUsedBytes(space));
             const double free = static_cast<double>(space.freeBytes);
@@ -8179,6 +8218,9 @@ void UltraFilerWindow::QueueVolumeSpaceQuery() {
         for (const RemoteDrive& d : remoteDrives->Drives())
             if (d.isDevice) deviceIds[d.rootPath] = d.deviceId;
     for (const ComputerDriveCard& card : computerDriveCards) {
+        // Nothing to read for a RAM disc without a size of its own: its
+        // volume is the system drive (ApplyVolumeSpaceToCard says so).
+        if (card.noOwnSize) continue;
         auto device = deviceIds.find(card.path);
         paths.emplace_back(card.path, device != deviceIds.end() ? device->second : std::string());
     }
