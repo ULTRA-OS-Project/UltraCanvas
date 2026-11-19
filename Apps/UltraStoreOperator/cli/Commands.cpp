@@ -2,7 +2,9 @@
 // ultrastoreop <command>: the operator's marketplace from a prompt, on the
 // same OperatorClient the window uses, so the two never disagree.
 //
-//   ultrastoreop settings [set url|token|name <value>]
+//   ultrastoreop settings [set url|token|name|account_url|account_token <value>]
+//   ultrastoreop signin <email> [--password <p>] | signout | whoami
+//   ultrastoreop operator list | add <email> <role> --password <p> [--name <n>] | set <id> [--name <n>] [--role <r>] [--password <p>] | disable <id> | enable <id>
 //   ultrastoreop health
 //   ultrastoreop merchant list | show <id> | add <name> --key <hex> [--id <id>] [--contact <c>]
 //   ultrastoreop merchant set <id> [--name <n>] [--contact <c>] [--key <hex>]
@@ -19,6 +21,7 @@
 //   ultrastoreop audit [--since <id>] [--limit <n>] | verify
 //
 // The command line stays English: it runs before any language is loaded.
+// Version: 0.2.0 - the sign-in and the operator accounts; users in the usage
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Commands.h"
@@ -45,10 +48,13 @@ int UltraStoreOperator::Cli::Usage(FILE* to) {
     std::fprintf(to,
         "ultrastoreop %s - the UltraStore operator's window and command line\n"
         "\n"
-        "  ultrastoreop [--settings <file>] [--page <id>]         the window (on the page: dashboard merchants review reports terms audit settings)\n"
+        "  ultrastoreop [--settings <file>] [--page <id>]         the window (on the page: dashboard merchants review reports terms users operators audit settings)\n"
         "  ultrastoreop [--settings <file>] [--url <base>] [--token <t>] <command>\n"
         "\n"
         "  settings [set url|token|name|account_url|account_token <value>]\n"
+        "  signin <email> [--password <p>]       an operator account at the service; the session becomes the token (asked for the password when not given)\n"
+        "  signout | whoami\n"
+        "  operator list | add <email> <role> --password <p> [--name <n>] | set <id> [--name <n>] [--role <r>] [--password <p>] | disable <id> | enable <id>\n"
         "  health\n"
         "  merchant list | show <id> | add <name> --key <hex> [--id <id>] [--contact <c>]\n"
         "  merchant set <id> [--name <n>] [--contact <c>] [--key <hex>]\n"
@@ -71,9 +77,10 @@ int UltraStoreOperator::Cli::Usage(FILE* to) {
         "  users release-archive <archive-id> | maintenance | audit [--since <id>] [--limit <n>] | audit verify\n"
         "  --version | --help\n"
         "\n"
-        "The settings file (settings.json under the data folder) keeps the service's URL, the operator token and your name;\n"
-        "ULTRASTORE_OPERATOR_URL and ULTRASTORE_OPERATOR_TOKEN override it; the account service (users) is account_url and account_token,\n"
-        "ULTRASTORE_OPERATOR_ACCOUNT_URL and _ACCOUNT_TOKEN. Notice kinds: announcement reminder information_request warning suspension.\n",
+        "The settings file (settings.json under the data folder) keeps the service's URL, the operator token (the static one, or the session\n"
+        "a sign-in gave) and your name; ULTRASTORE_OPERATOR_URL and ULTRASTORE_OPERATOR_TOKEN override it; the account service (users) is\n"
+        "account_url and account_token, ULTRASTORE_OPERATOR_ACCOUNT_URL and _ACCOUNT_TOKEN - signed in, the session reaches it without a token.\n"
+        "Roles: admin reviewer support auditor. Notice kinds: announcement reminder information_request warning suspension.\n",
         ULTRASTOREOPERATOR_VERSION);
     return to == stdout ? 0 : 2;
 }
@@ -161,15 +168,107 @@ int CmdSettings(const std::string& path, const std::vector<std::string>& args) {
         if (pos[2] == "url") s.url = pos[3];
         else if (pos[2] == "token") s.token = pos[3];
         else if (pos[2] == "name") s.name = pos[3];
-        else return Fail("The settings are url, token and name");
+        else if (pos[2] == "account_url") s.accountUrl = pos[3];
+        else if (pos[2] == "account_token") s.accountToken = pos[3];
+        else return Fail("The settings are url, token, name, account_url and account_token");
+        if (pos[2] == "token") s.role.clear();   // a hand-set token is not a session
         if (const auto saved = s.Save(path); !saved) return Fail(saved.error);
         std::printf("%s set in %s\n", pos[2].c_str(), path.c_str());
         return 0;
     }
     if (pos.size() != 1) return Usage(stderr);
-    std::printf("settings %s\nurl    %s\ntoken  %s\nname   %s\naccount_url    %s\naccount_token  %s\n", path.c_str(), Or(s.url, "(not set)"), s.token.empty() ? "(not set)" : "(set)",
-                Or(s.name, "(not set)"), Or(s.accountUrl, "(not set)"), s.accountToken.empty() ? "(not set)" : "(set)");
+    std::printf("settings %s\nurl    %s\ntoken  %s\nname   %s\nrole   %s\naccount_url    %s\naccount_token  %s\n", path.c_str(), Or(s.url, "(not set)"),
+                s.token.empty() ? "(not set)" : s.SignedIn() ? "(a session)" : "(set)", Or(s.name, "(not set)"), Or(s.role, "(none: the static token)"),
+                Or(s.accountUrl, "(not set)"), s.accountToken.empty() ? (s.SignedIn() ? "(the session)" : "(not set)") : "(set)");
     return 0;
+}
+
+// ----- the sign-in and the operator accounts -----
+std::string AskPassword(const char* prompt) {
+    std::fprintf(stderr, "%s", prompt);
+    std::fflush(stderr);
+    std::string line;
+    int c;
+    while ((c = std::fgetc(stdin)) != EOF && c != '\n') line.push_back(static_cast<char>(c));
+    while (!line.empty() && (line.back() == '\r')) line.pop_back();
+    return line;
+}
+
+void PrintOperator(const OperatorAccount& a) {
+    std::printf("%-10s %-10s %-9s %-32s %-24s made %s by %s%s\n", a.id.c_str(), a.role.c_str(), a.active ? "active" : "disabled", a.email.c_str(), a.name.c_str(),
+                a.createdAt.substr(0, 10).c_str(), Or(a.createdBy, "-"), a.lastSignin.empty() ? "" : ("  last sign-in " + a.lastSignin).c_str());
+}
+
+int CmdSignIn(const std::string& path, OperatorSettings settings, const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    std::string password = Option(args, "--password");
+    if (password.empty()) password = AskPassword("Password: ");
+    const OperatorClient client(settings);
+    const auto in = client.SignIn(pos[1], password);
+    if (!in) return Fail(in.error);
+    settings.token = in.Value().token;
+    settings.name = in.Value().account.Name();
+    settings.role = in.Value().account.role;
+    if (const auto saved = settings.Save(path); !saved) return Fail(saved.error);
+    std::printf("Signed in as %s (%s), %s; the session lasts %d hours and is kept in %s\n", settings.name.c_str(), in.Value().account.id.c_str(), settings.role.c_str(),
+                in.Value().hours, path.c_str());
+    return 0;
+}
+
+int CmdSignOut(const std::string& path, OperatorSettings settings) {
+    if (!settings.SignedIn()) return Fail("No session to end: the token is the static one");
+    settings.token.clear();
+    settings.role.clear();
+    if (const auto saved = settings.Save(path); !saved) return Fail(saved.error);
+    std::printf("Signed out; the session is forgotten here\n");
+    return 0;
+}
+
+int CmdWhoAmI(const OperatorClient& client) {
+    const auto me = client.Me();
+    if (!me) return Fail(me.error);
+    const WhoAmI& w = me.Value();
+    std::printf("%s%s  %s%s\n", w.name.c_str(), w.id.empty() ? "" : (" (" + w.id + ")").c_str(), w.role.c_str(), w.bootstrap ? "  (the static token: the bootstrap admin)" : "");
+    std::printf("may:");
+    for (const std::string& p : w.permissions) std::printf(" %s", p.c_str());
+    std::printf("\n");
+    return 0;
+}
+
+int CmdOperator(const OperatorClient& client, const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    if (pos[1] == "list") {
+        const auto list = client.Operators();
+        if (!list) return Fail(list.error);
+        for (const OperatorAccount& a : list.Value()) PrintOperator(a);
+        if (list.Value().empty()) std::printf("No accounts yet: the static token is the only operator\n");
+        return 0;
+    }
+    if (pos[1] == "add") {
+        if (pos.size() < 4) return Usage(stderr);
+        std::string password = Option(args, "--password");
+        if (password.empty()) password = AskPassword("Password for the new account: ");
+        const auto a = client.AddOperator(pos[2], Option(args, "--name"), pos[3], password);
+        if (!a) return Fail(a.error);
+        PrintOperator(a.Value());
+        return 0;
+    }
+    if (pos.size() < 3) return Usage(stderr);
+    if (pos[1] == "set") {
+        const auto a = client.UpdateOperator(pos[2], Option(args, "--name"), Option(args, "--role"), Option(args, "--password"));
+        if (!a) return Fail(a.error);
+        PrintOperator(a.Value());
+        return 0;
+    }
+    if (pos[1] == "disable" || pos[1] == "enable") {
+        const auto a = client.UpdateOperator(pos[2], "", "", "", pos[1] == "disable" ? 1 : 0);
+        if (!a) return Fail(a.error);
+        PrintOperator(a.Value());
+        return 0;
+    }
+    return Usage(stderr);
 }
 
 // ----- merchants -----
@@ -619,7 +718,11 @@ int UltraStoreOperator::Cli::Run(const std::vector<std::string>& argsIn) {
     OperatorSettings settings = loaded.Value().WithEnvironment();
     if (!urlOverride.empty()) settings.url = urlOverride;
     if (!tokenOverride.empty()) settings.token = tokenOverride;
+    if (cmd == "signin")  return CmdSignIn(settingsPath, settings, args);
+    if (cmd == "signout") return CmdSignOut(settingsPath, settings);
     const OperatorClient client(settings);
+    if (cmd == "whoami")   return CmdWhoAmI(client);
+    if (cmd == "operator") return CmdOperator(client, args);
     if (cmd == "health") {
         const auto h = client.Health();
         if (!h) return Fail(h.error);

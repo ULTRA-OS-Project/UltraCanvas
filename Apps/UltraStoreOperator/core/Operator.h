@@ -13,6 +13,7 @@
 // the program's own file (settings.json under the data folder, readable by
 // the user alone), overridden by ULTRASTORE_OPERATOR_URL and _TOKEN; the
 // window and the command line read the same file.
+// Version: 0.4.0 - the operator accounts with their roles: the sign-in, the session in the settings, the account service on the same session
 // Version: 0.3.0 - the applications for a shop, the merchant's website and description
 // Version: 0.2.0 - the users of the account service: the records, the calls with the account token
 // Version: 0.1.0
@@ -42,13 +43,20 @@ using UltraStoreAdmin::UltraNetMarketCall;
 // ===========================================================================
 struct OperatorSettings {
     std::string url;     // the service's base, https://market.example
-    std::string token;   // ULTRASTORE_MARKET_OPERATOR_TOKEN at the service
-    std::string name;    // who sits at the window: shown, never sent (the service records "operator")
-    // The account service (Server/UltraStoreAccount) the Users page drives,
-    // and its own operator token (ULTRASTORE_ACCOUNT_OPERATOR_TOKEN); both
-    // empty when the operator runs no accounts.
+    // The bearer: the service's static ULTRASTORE_MARKET_OPERATOR_TOKEN (the
+    // bootstrap admin), or the session a sign-in gave ("op1."...), which
+    // names the operator and the role and ends after the service's hours.
+    std::string token;
+    std::string name;    // who sits at the window: the account's name after a sign-in; shown, and the assignee of a report
+    std::string role;    // the signed-in account's role (admin, reviewer, support, auditor); empty with the static token
+    // The account service (Server/UltraStoreAccount) the Users page drives.
+    // Its own operator token (ULTRASTORE_ACCOUNT_OPERATOR_TOKEN) when set;
+    // otherwise the session, which the account service verifies with the
+    // secret the two services share.
     std::string accountUrl, accountToken;
-    bool Accounts() const { return !accountUrl.empty() && !accountToken.empty(); }
+    bool SignedIn() const { return token.rfind("op1.", 0) == 0; }
+    std::string AccountBearer() const { return !accountToken.empty() ? accountToken : SignedIn() ? token : std::string(); }
+    bool Accounts() const { return !accountUrl.empty() && !AccountBearer().empty(); }
 
     static std::string DefaultPath();                           // <data folder>/UltraStoreOperator/settings.json
     static Result<OperatorSettings> Load(const std::string& pathUtf8);   // empty settings when the file is not there
@@ -159,6 +167,30 @@ struct AuditPage {
     int64_t next = 0;
 };
 
+// ----- the operator accounts (the marketplace service keeps them) -----
+struct OperatorAccount {
+    std::string id, email, name, role, createdAt, createdBy, disabledAt, lastSignin;
+    bool active = true;
+    std::string Name() const { return name.empty() ? email : name; }
+};
+
+// Who the bearer is, as the service sees it: the static token is the
+// bootstrap admin ("operator", bootstrap), a session the account and its role.
+struct WhoAmI {
+    std::string id, name, role;
+    bool bootstrap = false;
+    std::vector<std::string> permissions;   // beyond reading: merchants.manage, review.decide, publish, reports.handle, notices.send, terms.manage, policy.manage, users.support, users.manage, operators.manage
+    bool May(const std::string& permission) const;
+};
+
+struct OperatorSignIn {
+    std::string token;   // the session, kept as the settings' token
+    OperatorAccount account;
+    int hours = 0;       // how long the session lasts
+};
+
+inline const char* const kRoles[] = {"admin", "reviewer", "support", "auditor"};
+
 // ----- the account service's users (its operator API) -----
 struct User {
     std::string id, email, displayName, handle, language, country, state, createdAt;   // the email masked by the service
@@ -255,6 +287,16 @@ public:
 
     // ----- the service -----
     Result<std::string> Health() const;   // GET /healthz: "ok", or what is not configured
+
+    // ----- the operator accounts -----
+    // The sign-in needs the URL only: the session it gives is the token from then on.
+    Result<OperatorSignIn> SignIn(const std::string& email, const std::string& password) const;
+    Result<WhoAmI> Me() const;
+    Result<std::vector<OperatorAccount>> Operators() const;                                 // admin, and anyone reads
+    Result<OperatorAccount> AddOperator(const std::string& email, const std::string& name, const std::string& role, const std::string& password) const;
+    // An empty field is left as it is; disabled -1 leaves the switch, 0 enables, 1 disables.
+    // Anyone changes their own name and password; the role and the switch are an admin's.
+    Result<OperatorAccount> UpdateOperator(const std::string& id, const std::string& name, const std::string& role, const std::string& password, int disabled = -1) const;
 
     // ----- merchants -----
     Result<std::vector<Merchant>> Merchants() const;

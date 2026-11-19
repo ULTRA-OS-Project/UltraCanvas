@@ -66,6 +66,7 @@ private:
     bool OnClosing();
     void Relayout();
     void UpdateSidebarNote(const std::string& numbers);
+    static std::string RoleWord(const std::string& role);   // the role for a person
     OperatorClient Client() const;   // on the settings as they are now
     bool Ready(bool say = true);     // the settings complete, no job running
 
@@ -101,6 +102,13 @@ private:
     void RefreshTerms();
     void ShowTerms();
     // (OperatorUsersPage.cpp: the account service's users)
+    void BuildOperatorsPage();      // OperatorOperatorsPage.cpp: the accounts and the roles, the sign-in section of Settings
+    void BuildSignInSection(const std::shared_ptr<Container>& body);
+    void RefreshWhoAmI();           // GET /v1/operators/me: the name and the role into the settings and the sidebar
+    void RefreshOperators();
+    void ShowOperators();
+    void SignInNow();
+    void SignOutNow();
     void BuildUsersPage();
     void RefreshUsers();
     void ShowUsers();
@@ -196,6 +204,14 @@ private:
     std::shared_ptr<TextArea> uText_;
     std::shared_ptr<Dropdown> uKind_;
     std::shared_ptr<TextInput> sAccountUrl_, sAccountToken_;
+    // the operator accounts
+    WhoAmI whoami_;
+    bool haveWhoAmI_ = false;
+    std::vector<OperatorAccount> operators_;
+    std::shared_ptr<Container> operatorsList_, operatorsAdd_;
+    std::shared_ptr<Label> signInInfo_;
+    std::shared_ptr<TextInput> sEmail_, sPassword_, oEmail_, oName_, oPassword_;
+    std::shared_ptr<Dropdown> oRole_;
     // audit
     std::shared_ptr<Container> auditList_;
     std::shared_ptr<Label> auditCheck_;

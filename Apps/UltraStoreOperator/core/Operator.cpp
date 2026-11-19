@@ -123,6 +123,7 @@ Result<OperatorSettings> OperatorSettings::Load(const std::string& pathUtf8) {
     s.url = TrimSlash(v.Get("url").GetString());
     s.token = v.Get("token").GetString();
     s.name = v.Get("name").GetString();
+    s.role = v.Get("role").GetString();
     s.accountUrl = TrimSlash(v.Get("account_url").GetString());
     s.accountToken = v.Get("account_token").GetString();
     return R::Succeed(s);
@@ -137,6 +138,7 @@ Result<void> OperatorSettings::Save(const std::string& pathUtf8) const {
     v.Set("url", JSONValue(TrimSlash(url)));
     v.Set("token", JSONValue(token));
     v.Set("name", JSONValue(name));
+    v.Set("role", JSONValue(role));
     v.Set("account_url", JSONValue(TrimSlash(accountUrl)));
     v.Set("account_token", JSONValue(accountToken));
     {
@@ -448,6 +450,101 @@ Result<std::string> OperatorClient::Health() const {
     if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The marketplace service could not be reached", reply.error);
     if (reply.status < 200 || reply.status >= 300) return R::Failure(ErrorCode::NetworkError, "The marketplace service answered HTTP " + std::to_string(reply.status), reply.body);
     return R::Succeed(reply.body);
+}
+
+// ----- the operator accounts -----
+namespace {
+
+OperatorAccount OperatorAccountOf(const JSONValue& v) {
+    OperatorAccount a;
+    a.id = v.Get("id").GetString();
+    a.email = v.Get("email").GetString();
+    a.name = v.Get("name").GetString();
+    a.role = v.Get("role").GetString();
+    a.createdAt = v.Get("created_at").GetString();
+    a.createdBy = v.Get("created_by").GetString();
+    a.disabledAt = v.Get("disabled_at").GetString();
+    a.lastSignin = v.Get("last_signin").GetString();
+    a.active = v.Get("active").GetBoolean(a.disabledAt.empty());
+    return a;
+}
+
+} // namespace
+
+bool WhoAmI::May(const std::string& permission) const {
+    for (const std::string& p : permissions) if (p == permission) return true;
+    return false;
+}
+
+Result<OperatorSignIn> OperatorClient::SignIn(const std::string& email, const std::string& password) const {
+    using R = Result<OperatorSignIn>;
+    if (settings_.url.empty()) return R::Failure(ErrorCode::InvalidArgument, "No marketplace service URL: `settings set url <https://...>`");
+    if (email.empty() || password.empty()) return R::Failure(ErrorCode::InvalidArgument, "The sign-in needs the email and the password");
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("email", JSONValue(email));
+    body.Set("password", JSONValue(password));
+    const MarketReply reply = call_("POST", settings_.url + "/v1/operators/signin", {}, UltraCanvas::JSON::Serialize(body));
+    if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The marketplace service could not be reached", reply.error);
+    UltraCanvas::JSONParseResult parse;
+    const JSONValue v = UltraCanvas::JSON::Parse(reply.body, &parse);
+    if (reply.status < 200 || reply.status >= 300) {
+        const std::string description = parse.success && v.IsObject() ? v.Get("error_description").GetString() : std::string();
+        return R::Failure(reply.status == 401 ? ErrorCode::SignatureInvalid : ErrorCode::NetworkError,
+                          description.empty() ? "The marketplace service answered HTTP " + std::to_string(reply.status) : description, "HTTP " + std::to_string(reply.status));
+    }
+    if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, "The marketplace service's answer is not JSON", parse.errorMessage);
+    OperatorSignIn in;
+    in.token = v.Get("token").GetString();
+    in.account = OperatorAccountOf(v.Get("operator"));
+    in.hours = static_cast<int>(v.Get("hours").GetInteger(0));
+    if (in.token.empty()) return R::Failure(ErrorCode::ParseError, "The sign-in answered no session");
+    return R::Succeed(in);
+}
+
+Result<WhoAmI> OperatorClient::Me() const {
+    using R = Result<WhoAmI>;
+    const auto v = Ask("GET", "/v1/operators/me");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    WhoAmI me;
+    me.id = v.Value().Get("id").GetString();
+    me.name = v.Value().Get("name").GetString();
+    me.role = v.Value().Get("role").GetString();
+    me.bootstrap = v.Value().Get("bootstrap").GetBoolean(false);
+    for (const JSONValue& p : v.Value().Get("permissions").GetElements()) me.permissions.push_back(p.GetString());
+    return R::Succeed(me);
+}
+
+Result<std::vector<OperatorAccount>> OperatorClient::Operators() const {
+    using R = Result<std::vector<OperatorAccount>>;
+    const auto v = Ask("GET", "/v1/operators");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    std::vector<OperatorAccount> out;
+    for (const JSONValue& o : v.Value().Get("operators").GetElements()) out.push_back(OperatorAccountOf(o));
+    return R::Succeed(out);
+}
+
+Result<OperatorAccount> OperatorClient::AddOperator(const std::string& email, const std::string& name, const std::string& role, const std::string& password) const {
+    using R = Result<OperatorAccount>;
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("email", JSONValue(email));
+    body.Set("name", JSONValue(name));
+    body.Set("role", JSONValue(role));
+    body.Set("password", JSONValue(password));
+    const auto v = Ask("POST", "/v1/operators", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(OperatorAccountOf(v.Value()));
+}
+
+Result<OperatorAccount> OperatorClient::UpdateOperator(const std::string& id, const std::string& name, const std::string& role, const std::string& password, int disabled) const {
+    using R = Result<OperatorAccount>;
+    JSONValue body = JSONValue::MakeObject();
+    if (!name.empty()) body.Set("name", JSONValue(name));
+    if (!role.empty()) body.Set("role", JSONValue(role));
+    if (!password.empty()) body.Set("password", JSONValue(password));
+    if (disabled >= 0) body.Set("disabled", JSONValue(disabled > 0));
+    const auto v = Ask("PUT", "/v1/operators/" + Encode(id), UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(OperatorAccountOf(v.Value()));
 }
 
 // ----- merchants -----
@@ -793,8 +890,9 @@ Result<AuditCheck> OperatorClient::VerifyAudit() const {
 Result<JSONValue> OperatorClient::AskAccount(const std::string& method, const std::string& path, const std::string& jsonBody) const {
     using R = Result<JSONValue>;
     if (settings_.accountUrl.empty()) return R::Failure(ErrorCode::InvalidArgument, "No account service URL: `settings set account_url <https://...>`");
-    if (settings_.accountToken.empty()) return R::Failure(ErrorCode::InvalidArgument, "No account operator token: `settings set account_token <token>` (the service's ULTRASTORE_ACCOUNT_OPERATOR_TOKEN)");
-    const MarketReply reply = call_(method, settings_.accountUrl + path, "Bearer " + settings_.accountToken, jsonBody);
+    const std::string bearer = settings_.AccountBearer();
+    if (bearer.empty()) return R::Failure(ErrorCode::InvalidArgument, "No account operator token: sign in (`signin <email>`), or `settings set account_token <token>` (the service's ULTRASTORE_ACCOUNT_OPERATOR_TOKEN)");
+    const MarketReply reply = call_(method, settings_.accountUrl + path, "Bearer " + bearer, jsonBody);
     if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The account service could not be reached", reply.error);
     UltraCanvas::JSONParseResult parse;
     const JSONValue v = UltraCanvas::JSON::Parse(reply.body, &parse);
