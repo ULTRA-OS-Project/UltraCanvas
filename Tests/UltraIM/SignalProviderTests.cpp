@@ -49,6 +49,7 @@
 
 #if !defined(_WIN32)
 #include <cerrno>
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -717,26 +718,34 @@ bool ProcessGone(pid_t pid) {
     return pid > 0 && kill(pid, 0) != 0 && errno == ESRCH;
 }
 
+// A script the provider runs, written whole: beside it, then moved into its
+// place. The provider may be starting the one there at that very moment (its
+// tries once the daemon is gone), and a script rewritten in place is then
+// "Text file busy" for whoever writes it - or is run half written.
+bool WriteScript(const fs::path& path, const std::string& script) {
+    fs::path beside = path;
+    beside += ".new";
+    const int fd = ::open(beside.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0755);
+    if (fd < 0) return false;
+    bool whole = ::write(fd, script.data(), script.size()) == static_cast<ssize_t>(script.size());
+    whole = ::fchmod(fd, 0755) == 0 && whole;
+    whole = ::close(fd) == 0 && whole;
+    return whole && ::rename(beside.c_str(), path.c_str()) == 0;
+}
+
 // A stand-in for signal-cli: a wrapper that runs the fake with the arguments
 // signal-cli gets. `java`: as signal-cli's Java distribution, whose runtime
 // says on standard error that it read JAVA_TOOL_OPTIONS; without it, as the
 // native build, which says nothing and reads none. `version`: the number it
 // tells ("" = the fake's own, a current one).
 fs::path WriteWrapper(const fs::path& path, bool java, const std::string& version = std::string()) {
-    std::FILE* f = UltraCanvas::OpenFileUtf8(UltraCanvas::PathToUtf8(path), "wb");
-    if (!f) {
-        CHECK(false);
-        return path;
-    }
     std::string script = "#!/bin/sh\n";
     if (java)
         script += "if [ -n \"$JAVA_TOOL_OPTIONS\" ]; then echo \"Picked up JAVA_TOOL_OPTIONS: $JAVA_TOOL_OPTIONS\" >&2; fi\n";
     script += std::string("exec python3 '") + ULTRAIM_TEST_DIR + "/signal_fake_daemon.py' --accounts " + kDave + "," +
               kErin + " --names 'Dave Dunn,Erin Ernst'" + (version.empty() ? "" : " --fake-version " + version) +
               " \"$@\"\n";
-    std::fwrite(script.data(), 1, script.size(), f);
-    std::fclose(f);
-    chmod(path.c_str(), 0755);
+    CHECK(WriteScript(path, script));
     return path;
 }
 
@@ -1083,15 +1092,7 @@ void TestOwnDaemonGone(const fs::path& base) {
     CHECK(first > 0);
 
     // signal-cli stops starting (Java taken off the machine), and the daemon ends.
-    {
-        std::FILE* f = UltraCanvas::OpenFileUtf8(UltraCanvas::PathToUtf8(wrapper), "wb");
-        const std::string broken = "#!/bin/sh\necho 'java: command not found' >&2\nexit 127\n";
-        if (f) {
-            std::fwrite(broken.data(), 1, broken.size(), f);
-            std::fclose(f);
-        }
-        CHECK(f != nullptr);
-    }
+    CHECK(WriteScript(wrapper, "#!/bin/sh\necho 'java: command not found' >&2\nexit 127\n"));
     events.Clear();
     kill(first, SIGKILL);
     UltraIMEvent told;
@@ -1109,7 +1110,9 @@ void TestOwnDaemonGone(const fs::path& base) {
     CHECK(errors == 1);
     CHECK(reconnecting <= 1);
     CHECK(ivan->GetConnectionState() == UltraIMConnectionState::Error);
-    CHECK(ivan->GetDaemonProcessId() == 0);
+    // None is left running. (Not "none at this moment": a try may be under
+    // way - the script is started, and found gone a moment later.)
+    CHECK(Eventually([&]() { return ivan->GetDaemonProcessId() == 0; }, 10));
 
     // signal-cli starts again: the daemon is back by itself, on the link it kept.
     WriteWrapper(wrapper, true);
