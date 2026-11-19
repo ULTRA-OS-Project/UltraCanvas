@@ -78,6 +78,7 @@ app and every runtime or library the database has, an item marked
 | Affiliates and codes | The partners with their shares, who recruited them and what the ledger owes them; add or change one, switch one off, the join QR code. The codes with what they take off, the apps and the validity; a new code, its QR code, switch off, remove. A sale recorded by hand with what it credits. |
 | Finance | The books from the ledger for a period - all time, a year, a month: the statement by currency (paid, given back by the refunds and chargebacks, the partners' credits, net to the store), net by month as a bar chart in the main currency, revenue by app, the partners with what they earned, what a reversal took back, what was paid out and what is owed, a payout recorded, the reversals; *Statement CSV* writes the period for the books; *Sync sales* pulls the sales and the reversals. The design's VAT by country and statements archive are not here: the ledger knows no buyer country, and a statement is written when it is asked for. |
 | Settings | The store's settings (the URLs, the languages, the UltraAI provider) and the publishers. |
+| Marketplace | The design's `AdminMarketplace` artboard: without a merchant id, *Apply for a shop* (the name, the contact, the email, the website, a line about the publisher; signed with the key behind the passphrase) and *Check the application*, which sets `market.merchant_id` once approved; with one, the standing, *Your shop's profile* (name, contact, website, description, saved with `PUT /v1/merchants/me`), the notices with *Acknowledge*, the terms with *Accept the terms*, *Submit a release*, the submissions and the reports. |
 
 The slow operations (a key's Argon2id seal, a publish, a translation) run
 on a worker thread and report through `PostToUIThread`; the window refuses
@@ -183,7 +184,17 @@ bearer token for `sale sync`, or `ULTRASTORE_PAY_ADMIN_TOKEN`), and
 its README) is named by `market.url` (the service's base) and
 `market.merchant_id` (the id the operator registered this backend under,
 with the public half of its key); `market.key` names the key that signs,
-the first active one when empty. Every `market` request is signed with
+the first active one when empty. A backend without a merchant id applies
+for one: `market apply <name> --contact <c>` sends the shop's name, the
+contact, an email for the operator, the website and a description with
+the key's public half, signed by that key, and keeps the application's id
+and secret (`market.application_id`, `market.application_secret`);
+`market application` asks what became of it and, once the operator
+approved, sets `market.merchant_id`. `market profile` shows the profile
+the service holds and changes it (`--name`, `--contact`, `--website`,
+`--description`; the website is the publisher's page in the catalog), and
+`--rotate-key <id>` sends another of this backend's keys as the new one,
+signed with the old, then names it in `market.key`. Every `market` request is signed with
 that key - `Authorization: Merchant <id>:<timestamp>:<signature>` over
 the method, the path, the timestamp and the body, as the service's
 `auth.py` verifies it - so the passphrase is asked for as it is for
@@ -337,5 +348,9 @@ store's README, *Packaging an application for the store*).
    signed with this backend's key, the notices show as a banner until
    acknowledged, the terms are read and accepted there, the standing and
    the reports about this merchant are shown; `publish` stays for a
-   private or test catalog. Next: the packages uploaded into the
+   private or test catalog. Self-service (2026-11-19): `market apply`
+   asks the operator for a shop with this backend's key, `market
+   application` sets the merchant id once approved, `market profile`
+   edits the profile the catalog shows and rotates the key; the window's
+   page has the three states. Next: the packages uploaded into the
    operator's package store with the submission.

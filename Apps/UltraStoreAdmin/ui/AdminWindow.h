@@ -113,7 +113,10 @@ private:
     void RefreshMarketPage();                // asks the service (a job)
     void ShowMarketPage();                   // fills the page from what was fetched
     void UpdateNoticesBanner();
-    Result<std::vector<uint8_t>> MarketSeed();   // the key opened with the page's passphrase
+    Result<std::vector<uint8_t>> MarketSeed(bool needMerchant = true);   // the key opened with the page's passphrase
+    void ApplyForShop();                     // POST /v1/merchants/apply, the receipt into the settings
+    void CheckApplication();                 // what became of it; approved sets market.merchant_id
+    void SaveProfile();                      // PUT /v1/merchants/me
 
     // ----- the component form (AdminComponentPage.cpp) -----
     void BuildComponentPage();
@@ -163,6 +166,12 @@ private:
     std::shared_ptr<Container> noticesList_, submissionsList_, reportsList_;
     std::shared_ptr<Dropdown> submitApp_;
     std::shared_ptr<TextInput> marketPassphrase_, marketAcceptedBy_, submitAnswers_;
+    // the application for a shop, and the profile
+    Standing marketProfile_;
+    std::shared_ptr<Container> applyBox_, profileBox_;
+    std::shared_ptr<Label> applyState_;
+    std::shared_ptr<TextInput> apName_, apContact_, apEmail_, apWebsite_, prName_, prContact_, prWebsite_;
+    std::shared_ptr<TextArea> apDescription_, prDescription_;
     std::shared_ptr<int> alive_ = std::make_shared<int>(1);
     std::thread worker_;
     std::atomic<bool> busy_{false};

@@ -7,6 +7,7 @@ the strikes they count, the suspensions, the terms versions and the
 acceptances, the enforcement policy, and the audit log - append-only,
 hash-chained, never edited (the store's README, *The operator tier*).
 
+Version: 0.2.0 - the applications, the merchant's website and description (schema 2, the columns added to a 0.1 database)
 Version: 0.1.0
 """
 
@@ -21,7 +22,7 @@ from typing import Any
 
 from ultrastore_db import Database
 
-SCHEMA = 1
+SCHEMA = 2
 
 DEFAULT_POLICY: dict[str, Any] = {
     "strike_expiry_days": 365,          # a warning counts as a strike this long
@@ -69,14 +70,48 @@ class Merchant:
     key_hex: str
     created_at: str
     notes: str = ""
+    website: str = ""               # the publisher's page the catalog names
+    description: str = ""           # a line about the publisher, the merchant's own
     standing: str = "active"        # computed: active, paused (terms), suspended
     strikes: int = 0                # computed
     terms_in_force: int = 0         # computed
     terms_accepted: int = 0         # computed: the newest version accepted
 
     def public(self) -> dict:
-        return {"id": self.id, "name": self.name, "contact": self.contact, "key": self.key_hex, "created_at": self.created_at,
-                "standing": self.standing, "strikes": self.strikes, "terms": {"in_force": self.terms_in_force, "accepted": self.terms_accepted}}
+        return {"id": self.id, "name": self.name, "contact": self.contact, "website": self.website, "description": self.description, "key": self.key_hex,
+                "created_at": self.created_at, "standing": self.standing, "strikes": self.strikes,
+                "terms": {"in_force": self.terms_in_force, "accepted": self.terms_accepted}}
+
+
+APPLICATION_STATES = ("applied", "approved", "rejected")
+
+
+@dataclass
+class Application:
+    """A merchant's request to open a shop: what they said of themselves, the
+    key that will sign their submissions (proven by the signature over the
+    application), and the operator's decision."""
+    id: str
+    name: str
+    contact: str
+    email: str
+    website: str
+    description: str
+    key_hex: str
+    state: str
+    message: str
+    secret: str
+    created_at: str
+    decided_at: str
+    decided_by: str
+    merchant_id: str
+
+    def public(self, *, for_operator: bool = False) -> dict:
+        out = {"id": self.id, "name": self.name, "contact": self.contact, "website": self.website, "description": self.description, "key": self.key_hex,
+               "state": self.state, "message": self.message, "created_at": self.created_at, "decided_at": self.decided_at, "merchant": self.merchant_id}
+        if for_operator:
+            out.update({"email": self.email, "decided_by": self.decided_by})
+        return out
 
 
 @dataclass
@@ -184,7 +219,13 @@ class MarketStore:
         db.script([
             f"CREATE TABLE IF NOT EXISTS meta ({self._key} {tk} PRIMARY KEY, value TEXT NOT NULL)",
             f"CREATE TABLE IF NOT EXISTS merchants (id {tk} PRIMARY KEY, name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '',"
-            f" key_hex {tk} NOT NULL, created_at TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '')",
+            f" key_hex {tk} NOT NULL, created_at TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '',"
+            " description TEXT NOT NULL DEFAULT '')",
+            f"CREATE TABLE IF NOT EXISTS applications (id {tk} PRIMARY KEY, name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '',"
+            " email TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',"
+            f" key_hex {tk} NOT NULL, state TEXT NOT NULL, message TEXT NOT NULL DEFAULT '', secret TEXT NOT NULL DEFAULT '',"
+            " created_at TEXT NOT NULL, decided_at TEXT NOT NULL DEFAULT '', decided_by TEXT NOT NULL DEFAULT '',"
+            f" merchant_id {tk} NOT NULL DEFAULT '')",
             "CREATE TABLE IF NOT EXISTS terms_versions (version INTEGER PRIMARY KEY, text TEXT NOT NULL, changes TEXT NOT NULL DEFAULT '',"
             " in_force_from TEXT NOT NULL, created_at TEXT NOT NULL, created_by TEXT NOT NULL DEFAULT '')",
             f"CREATE TABLE IF NOT EXISTS terms_acceptances (id {db.serial} PRIMARY KEY, merchant_id {tk} NOT NULL, version INTEGER NOT NULL,"
@@ -217,6 +258,12 @@ class MarketStore:
                                   ("notice_acks_notice", "notice_acks", "notice_id, merchant_id"), ("suspensions_target", "suspensions", "target"),
                                   ("acceptances_merchant", "terms_acceptances", "merchant_id")):
             db.create_index(name, table, cols)
+        # A database from 0.2: the profile columns the merchant edits itself.
+        have = db.columns("merchants")
+        for column in ("website", "description"):
+            if column not in have:
+                db.execute(f"ALTER TABLE merchants ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        db.create_index("applications_key", "applications", "key_hex")
         if not self.meta("schema"):
             self.set_meta("schema", str(SCHEMA))
 
@@ -303,7 +350,8 @@ class MarketStore:
 
     # ----- merchants, terms, standing -----
     def _merchant(self, r: dict) -> Merchant:
-        m = Merchant(id=r["id"], name=r["name"], contact=r["contact"], key_hex=r["key_hex"], created_at=r["created_at"], notes=r["notes"])
+        m = Merchant(id=r["id"], name=r["name"], contact=r["contact"], key_hex=r["key_hex"], created_at=r["created_at"], notes=r["notes"],
+                     website=r.get("website", ""), description=r.get("description", ""))
         day = today()
         m.strikes = self.strikes(m.id, day)
         m.terms_in_force = self.terms_in_force(day)
@@ -316,20 +364,75 @@ class MarketStore:
             m.standing = "active"
         return m
 
-    def add_merchant(self, *, id: str, name: str, contact: str, key_hex: str, actor: str) -> Merchant:
-        self._db.execute("INSERT INTO merchants (id, name, contact, key_hex, created_at) VALUES (?, ?, ?, ?, ?)", (id, name, contact, key_hex, now_iso()))
-        self.audit(actor, "register", "merchant", id, after={"name": name, "contact": contact, "key": key_hex})
+    def add_merchant(self, *, id: str, name: str, contact: str, key_hex: str, actor: str, website: str = "", description: str = "") -> Merchant:
+        self._db.execute("INSERT INTO merchants (id, name, contact, key_hex, created_at, website, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         (id, name, contact, key_hex, now_iso(), website, description))
+        self.audit(actor, "register", "merchant", id, after={"name": name, "contact": contact, "key": key_hex, "website": website})
         return self.get_merchant(id)   # type: ignore[return-value]
 
-    def update_merchant(self, id: str, *, name: str | None, contact: str | None, key_hex: str | None, actor: str) -> Merchant | None:
+    def update_merchant(self, id: str, *, name: str | None, contact: str | None, key_hex: str | None, actor: str, website: str | None = None,
+                        description: str | None = None) -> Merchant | None:
         before = self.get_merchant(id)
         if not before:
             return None
         new = {"name": name if name is not None else before.name, "contact": contact if contact is not None else before.contact,
-               "key": key_hex if key_hex is not None else before.key_hex}
-        self._db.execute("UPDATE merchants SET name = ?, contact = ?, key_hex = ? WHERE id = ?", (new["name"], new["contact"], new["key"], id))
-        self.audit(actor, "update", "merchant", id, before={"name": before.name, "contact": before.contact, "key": before.key_hex}, after=new)
+               "key": key_hex if key_hex is not None else before.key_hex, "website": website if website is not None else before.website,
+               "description": description if description is not None else before.description}
+        self._db.execute("UPDATE merchants SET name = ?, contact = ?, key_hex = ?, website = ?, description = ? WHERE id = ?",
+                         (new["name"], new["contact"], new["key"], new["website"], new["description"], id))
+        self.audit(actor, "update", "merchant", id, before={"name": before.name, "contact": before.contact, "key": before.key_hex, "website": before.website,
+                                                            "description": before.description}, after=new)
         return self.get_merchant(id)
+
+    def merchant_by_key(self, key_hex: str) -> Merchant | None:
+        r = self._db.fetchone("SELECT * FROM merchants WHERE key_hex = ?", (key_hex,))
+        return self._merchant(r) if r else None
+
+    # ----- applications -----
+    @staticmethod
+    def _application(r: dict) -> Application:
+        return Application(id=r["id"], name=r["name"], contact=r["contact"], email=r["email"], website=r["website"], description=r["description"],
+                           key_hex=r["key_hex"], state=r["state"], message=r["message"], secret=r["secret"], created_at=r["created_at"],
+                           decided_at=r["decided_at"], decided_by=r["decided_by"], merchant_id=r["merchant_id"])
+
+    def add_application(self, *, name: str, contact: str, email: str, website: str, description: str, key_hex: str) -> Application:
+        aid = f"ap-{self.next_number('application_no'):06d}"
+        secret = secrets.token_hex(16)
+        self._db.execute("INSERT INTO applications (id, name, contact, email, website, description, key_hex, state, secret, created_at)"
+                         " VALUES (?, ?, ?, ?, ?, ?, ?, 'applied', ?, ?)", (aid, name, contact, email, website, description, key_hex, secret, now_iso()))
+        self.audit(aid, "apply", "application", aid, after={"name": name, "contact": contact, "website": website, "key": key_hex})
+        return self.get_application(aid)   # type: ignore[return-value]
+
+    def get_application(self, aid: str) -> Application | None:
+        r = self._db.fetchone("SELECT * FROM applications WHERE id = ?", (aid,))
+        return self._application(r) if r else None
+
+    def applications(self, state: str = "") -> list[Application]:
+        rows = self._db.fetchall("SELECT * FROM applications ORDER BY id")
+        return [self._application(r) for r in rows if not state or r["state"] == state]
+
+    def open_application_for_key(self, key_hex: str) -> Application | None:
+        r = self._db.fetchone("SELECT * FROM applications WHERE key_hex = ? AND state = 'applied' ORDER BY id DESC LIMIT 1", (key_hex,))
+        return self._application(r) if r else None
+
+    def decide_application(self, aid: str, *, approve: bool, message: str, actor: str, merchant_id: str = "") -> Application:
+        """Approved: the merchant registered with the application's key and
+        profile. Rejected: the message is what the applicant learns."""
+        a = self.get_application(aid)
+        if not a:
+            raise ValueError("no_such_application")
+        if a.state != "applied":
+            raise ValueError("decided")
+        new_merchant = ""
+        if approve:
+            new_merchant = merchant_id or ("m-" + secrets.token_hex(4))
+            if self.get_merchant(new_merchant):
+                raise ValueError("merchant_exists")
+            self.add_merchant(id=new_merchant, name=a.name, contact=a.contact, key_hex=a.key_hex, actor=actor, website=a.website, description=a.description)
+        self._db.execute("UPDATE applications SET state = ?, message = ?, decided_at = ?, decided_by = ?, merchant_id = ? WHERE id = ?",
+                         ("approved" if approve else "rejected", message, now_iso(), actor, new_merchant, aid))
+        self.audit(actor, "approve" if approve else "reject", "application", aid, after={"message": message, "merchant": new_merchant})
+        return self.get_application(aid)   # type: ignore[return-value]
 
     def get_merchant(self, id: str) -> Merchant | None:
         r = self._db.fetchone("SELECT * FROM merchants WHERE id = ?", (id,))

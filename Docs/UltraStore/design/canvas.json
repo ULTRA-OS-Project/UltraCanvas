@@ -120,7 +120,7 @@
       "x": 1520,
       "y": 9200,
       "w": 1440,
-      "h": 1420,
+      "h": 1860,
       "title": "Super admin: Merchants",
       "expand": "fill",
       "is_interactive": true
@@ -429,6 +429,14 @@
       "h": 844,
       "title": "Books phone: Listening",
       "radius": 44
+    },
+    "AdminMarketplace.dc.html": {
+      "x": 0,
+      "y": 41000,
+      "w": 1440,
+      "h": 2160,
+      "title": "Admin: Marketplace (apply, waiting, the shop's profile)",
+      "expand": "fill"
     }
   },
   "order": [
@@ -479,7 +487,8 @@
     "BooksDetail.dc.html",
     "BooksBrowse.dc.html",
     "BooksLibrary.dc.html",
-    "BooksPhoneListen.dc.html"
+    "BooksPhoneListen.dc.html",
+    "AdminMarketplace.dc.html"
   ],
   "notes": {
     "desk": {
@@ -635,6 +644,20 @@
       "w": 420,
       "text": "A variant as an e-book and audiobook shop in the manner of Audible: the home with the book of the month in both editions, continue listening and reading with the place kept between the audiobook and the e-book, the genres, the editor's picks, Books Plus (one credit a month through the store's subscription, the book kept), a series with the next part on pre-order, short listens; a title's page with the editions (audiobook, e-book, both kept in step), the narrator, chapters shared by both editions, reviews that say listened or read to the end, the author's and narrator's share of the price; browse with working format, genre, language and Plus filters; the library with progress, the device the place was last kept on, bookmarks and highlights, the files on the machine, this year's hours and pages; the phone's listening screen with chapters, 30-second skips, speed, the sleep timer, bookmark and 'read here'. What exists: UltraViewer reads EPUB, FB2, MOBI, PRC, AZW and AZW3 (UltraCanvasEBookViewer with the chapter toolbar and the table of contents) and PDF; UltraCanvas Audio plays MP3, M4A/M4B (AAC with FAAD2, fdk-aac or the GStreamer plugins) and the rest; the store sells subscriptions through its own payment service and Skrill Quick Checkout. What does not: a book catalogue with editions, narrators, chapters, credits, the kept place and the publishers' share. The shop is UltraStore's own business. Every book, author, narrator, review and figure is invented sample data; the covers are drawn [COVER] placeholders.",
       "fill": "yellow"
+    },
+    "merchant": {
+      "x": 0,
+      "y": 40700,
+      "text": "UltraStoreAdmin - the merchant's Marketplace page (self-service)",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "merchantnote": {
+      "x": 1520,
+      "y": 41000,
+      "w": 420,
+      "text": "The merchant tier's self-service, built 2026-11-19 (Docs/UltraStore/README.md, The operator tier, 'How does a merchant join?'): a merchant applies for a shop from its admin backend - the shop's name, contact, email, website and a line about the publisher, with the public half of the key that will sign its submissions, the application signed by that key; the operator approves (the merchant registered with that key) or rejects with a reason the applicant reads; once approved the merchant edits its own profile (name, contact, website, description), and rotates its key signed with the old one. The page is drawn with its three states stacked: before a shop, waiting, open. The operator's side is the Applications section on SuperMerchants. Not built: staff accounts per merchant (a key is the identity; a second machine is a second key), the public publisher page beyond the catalog's name and URL, the finance design's VAT by country and statements archive.",
+      "fill": "blue"
     }
   },
   "designSystems": []

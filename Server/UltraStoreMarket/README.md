@@ -7,7 +7,10 @@ service. A small [FastAPI](https://fastapi.tiangolo.com/) service on
 **MySQL** (PostgreSQL works too; SQLite for tests and development only)
 through [`ultrastore-db`](../UltraStoreDb/README.md). It holds:
 
-- the **merchants**, their keys, and where each stands with the terms;
+- the **merchants**, their keys, their profile (the website the catalog
+  names as the publisher's page, a description) and where each stands
+  with the terms; the **applications** for a shop, decided by the
+  operator;
 - the **submissions**: a merchant's signed component, its packages' hashes,
   the automatic checks, and every decision appended - never edited;
 - the **reports** from the three doors (the store's app page, a merchant,
@@ -44,6 +47,9 @@ with a 4xx status.
 | `POST /v1/merchants` | `{id?, name, contact?, key}` → the merchant (`standing`, `strikes`, `terms`) |
 | `GET /v1/merchants`, `GET /v1/merchants/{id}` | the merchants; one with its suspensions, acceptances and submissions |
 | `PUT /v1/merchants/{id}` | `{name?, contact?, key?}` - the key rotated |
+| `GET /v1/applications[?state=]`, `GET /v1/applications/{id}` | the applications for a shop, with the applicant's email |
+| `POST /v1/applications/{id}/approve` | `{id?, message?}` → the application and the merchant registered with the application's key and profile, under the id given or one made |
+| `POST /v1/applications/{id}/reject` | `{message}`: the reason the applicant reads |
 | `POST /v1/merchants/{id}/suspend` | `{clause, reason, days}` (0: until reinstated); `POST .../reinstate {reason}` |
 | `POST /v1/apps/{app}/suspend`, `/reinstate` | the same for one app: it leaves `/v1/released` while suspended |
 | `GET /v1/submissions[?state=&merchant=&app=]`, `GET /v1/submissions/{id}` | the review's queue; one with its decisions |
@@ -62,7 +68,8 @@ with a 4xx status.
 
 | | |
 |---|---|
-| `GET /v1/merchants/me` | the standing (`active`, `paused` until the terms in force are accepted, `suspended`), the strikes, the terms, the active suspensions, the acceptances |
+| `GET /v1/merchants/me` | the standing (`active`, `paused` until the terms in force are accepted, `suspended`), the strikes, the terms, the active suspensions, the acceptances, the profile (`contact`, `website`, `description`, `key`) |
+| `PUT /v1/merchants/me` | `{name?, contact?, website?, description?, key?}`: the merchant's own profile; the website is the publisher's page the publish names; a key given is the rotation, the request signed with the old one, 409 `key_taken` when it signs for another merchant |
 | `POST /v1/submissions` | `{component, signature, packages, answers?}`: the component object as `PutComponent` reads it back, signed with the merchant's key over its canonical JSON (sorted keys, no spaces); the packages as `{file or url, sha256, size}`; `answers` the submission a resubmission answers. The checks the service makes at once: the signature, the merchant's standing, the packages' hashes; the scans, the entry, the smoke run and the listing are *not run* until the review pipeline exists. State `checked` or `failed_checks` |
 | `GET /v1/merchants/me/submissions` | with every decision |
 | `POST /v1/submissions/{id}/withdraw` | |
@@ -76,6 +83,8 @@ with a 4xx status.
 
 | | |
 |---|---|
+| `POST /v1/merchants/apply` | `{name, contact, email?, website?, description?, key, signature}`: a shop asked for; `signature` is Ed25519 by `key` over the canonical JSON of the other fields, so the key is proven; 409 `key_registered` when it signs for a merchant already, `applied_already` while one waits → `{id, secret, state}` |
+| `GET /v1/applications/{id}?secret=` | what became of it: `applied`, `approved` with `merchant`, `rejected` with `message` |
 | `POST /v1/reports` | `{target_kind: app\|release\|merchant, target, kind, text, attachments?, reporter?}` → `{id, secret}`; the store sends the licence or the install id as `reporter` when there is one |
 | `GET /v1/reports/{id}/outcome?secret=` | the one line the reporter learns |
 | `GET /v1/terms`, `GET /v1/terms/current` | |

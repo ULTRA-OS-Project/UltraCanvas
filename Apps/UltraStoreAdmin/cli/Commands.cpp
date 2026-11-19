@@ -23,6 +23,9 @@
 //   ultrastoreadmin translate [<id>] [--languages de fr ...] [--redo]
 //   ultrastoreadmin build [-o <catalog.json>]              the catalog, unsigned, for a look
 //   ultrastoreadmin publish <outdir> --key <id> [--passphrase <p>] [--no-copy]
+//   ultrastoreadmin market apply <name> --contact <c> [--email <e>] [--website <w>] [--description <d|@file>] [--key <id>] [--passphrase <p>]
+//   ultrastoreadmin market application        what became of the application; approved sets market.merchant_id
+//   ultrastoreadmin market profile [--name <n>] [--contact <c>] [--website <w>] [--description <d|@file>] [--rotate-key <id>]
 //   ultrastoreadmin market standing | submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]
 //   ultrastoreadmin market submissions | withdraw <submission> | notices [--all] | ack <notice> | terms [accept <version> --by <name>] | reports
 //   ultrastoreadmin --version | --help
@@ -31,6 +34,7 @@
 // a line on standard input.
 //
 // Version: 0.7.0 - finance report / statement / periods, sale reversal / reversals, sync pulls the reversals, affiliate payout
+// Version: 0.7.0 - market apply, application, profile: a shop asked for, the profile the merchant edits itself, the key rotated
 // Version: 0.6.0 - market: the marketplace service (submit, notices, terms, standing, reports)
 // Version: 0.5.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
 // Version: 0.5.0 - sale sync
@@ -115,6 +119,9 @@ int UltraStoreAdmin::Cli::Usage(FILE* to) {
         "  sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list | sync [--from <url>] [--token <t>]\n"
         "  sale reversal <refund|chargeback> <reference|sale-no> <amount> <currency> [--at <iso8601>] | reversals\n"
         "  finance report [<YYYY-MM>|<YYYY>] | periods | statement [<YYYY-MM>|<YYYY>] [-o <file.csv>]\n"
+        "  market apply <name> --contact <c> [--email <e>] [--website <w>] [--description <d|@file>] [--key <id>] [--passphrase <p>]\n"
+        "  market application                     what became of it; approved sets market.merchant_id\n"
+        "  market profile [--name <n>] [--contact <c>] [--website <w>] [--description <d|@file>] [--rotate-key <id>]\n"
         "  market standing | submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]\n"
         "  market submissions | withdraw <submission> | notices [--all] | ack <notice> | terms [accept <version> --by <name>] | reports\n"
         "  --version | --help\n"
@@ -196,6 +203,16 @@ std::vector<std::string> Positional(const std::vector<std::string>& args, const 
         out.push_back(args[i]);
     }
     return out;
+}
+
+// A text, or the contents of a file when it starts with @.
+std::string TextOrFile(const std::string& arg) {
+    if (arg.rfind("@", 0) != 0) return arg;
+    std::ifstream in(UltraCanvas::PathFromUtf8(arg.substr(1)), std::ios::binary);
+    if (!in) return {};
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
 }
 
 std::string Passphrase(const std::vector<std::string>& args) {
@@ -1003,14 +1020,63 @@ int CmdMarket(Store& store, const std::vector<std::string>& args) {
     if (!store.Open(false)) return 1;
     const auto pos = Positional(args, {"--all"});
     if (pos.size() < 2) return Usage(stderr);
-    const MarketSettings settings = MarketSettings::From(store.db);
-    if (!settings.Complete()) return Fail("The marketplace service is named in the settings: market.url and market.merchant_id (from the operator)");
+    MarketSettings settings = MarketSettings::From(store.db);
+    if (settings.url.empty()) return Fail("The marketplace service is named in the settings: market.url");
+    // Before the merchant id: a shop asked for, and what became of it.
+    if (pos[1] == "application") {
+        const auto a = MarketClient::ApplicationState(settings.url, settings.applicationId, settings.applicationSecret);
+        if (!a) return Fail(a.error);
+        std::printf("application %s for \"%s\": %s%s%s\n", a.Value().id.c_str(), a.Value().name.c_str(), a.Value().state.c_str(),
+                    a.Value().message.empty() ? "" : (" - " + a.Value().message).c_str(),
+                    a.Value().Approved() ? ("; merchant id " + a.Value().merchant).c_str() : "");
+        if (a.Value().Approved() && settings.merchantId != a.Value().merchant) {
+            store.db.SetSetting("market.merchant_id", a.Value().merchant);
+            std::printf("market.merchant_id set to %s: the shop is open, `market standing` asks the service\n", a.Value().merchant.c_str());
+        }
+        return 0;
+    }
     std::vector<uint8_t> seed;
     const std::string key = Option(args, "--key");
     const auto opened = OpenKeySeed(store.db, key.empty() ? 0 : std::strtoll(key.c_str(), nullptr, 10), Passphrase(args));   // locale-ok: digits only
     if (!opened) return Fail(opened.error);
     seed = opened.Value();
+    if (pos[1] == "apply") {
+        if (pos.size() < 3) return Usage(stderr);
+        if (!settings.merchantId.empty()) return Fail("This backend is a merchant already (market.merchant_id " + settings.merchantId + ")");
+        MarketClient applicant(settings, seed);
+        const auto r = applicant.Apply(pos[2], Option(args, "--contact"), Option(args, "--email"), Option(args, "--website"), TextOrFile(Option(args, "--description")));
+        UltraCrypt_SecureZero(seed.data(), seed.size());
+        if (!r) return Fail(r.error);
+        store.db.SetSetting("market.application_id", r.Value().id);
+        store.db.SetSetting("market.application_secret", r.Value().secret);
+        if (!key.empty()) store.db.SetSetting("market.key", key);
+        std::printf("applied as %s: the operator decides; `market application` says what became of it\n", r.Value().id.c_str());
+        return 0;
+    }
+    if (!settings.Complete()) return Fail("No merchant id yet: `market apply <name> --contact <c>` asks the operator for a shop, `market application` says what became of it");
     MarketClient client(settings, seed);
+    if (pos[1] == "profile") {
+        ProfileChange change;
+        if (Flag(args, "--name")) change.name = Option(args, "--name");
+        if (Flag(args, "--contact")) change.contact = Option(args, "--contact");
+        if (Flag(args, "--website")) change.website = Option(args, "--website");
+        if (Flag(args, "--description")) change.description = TextOrFile(Option(args, "--description"));
+        const std::string rotate = Option(args, "--rotate-key");
+        if (!rotate.empty()) {
+            const auto newKey = store.db.GetKey(std::strtoll(rotate.c_str(), nullptr, 10));   // locale-ok: digits only
+            if (!newKey) { UltraCrypt_SecureZero(seed.data(), seed.size()); return Fail(newKey.error); }
+            change.keyHex = newKey.Value().publicKeyHex;
+        }
+        const bool changes = change.name || change.contact || change.website || change.description || change.keyHex;
+        const auto s2 = changes ? client.UpdateProfile(change) : client.GetStanding();
+        UltraCrypt_SecureZero(seed.data(), seed.size());
+        if (!s2) return Fail(s2.error);
+        if (change.keyHex) { store.db.SetSetting("market.key", rotate); std::printf("the key %s signs from now on (market.key)\n", rotate.c_str()); }
+        const Standing& st = s2.Value();
+        std::printf("%s (%s)\n  contact      %s\n  website      %s\n  description  %s\n  key          %s\n", st.name.c_str(), st.id.c_str(), st.contact.c_str(),
+                    st.website.c_str(), st.description.c_str(), st.key.c_str());
+        return 0;
+    }
     UltraCrypt_SecureZero(seed.data(), seed.size());
     if (pos[1] == "standing") {
         const auto s = client.GetStanding();

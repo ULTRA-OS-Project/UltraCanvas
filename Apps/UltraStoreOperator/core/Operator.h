@@ -13,6 +13,7 @@
 // the program's own file (settings.json under the data folder, readable by
 // the user alone), overridden by ULTRASTORE_OPERATOR_URL and _TOKEN; the
 // window and the command line read the same file.
+// Version: 0.3.0 - the applications for a shop, the merchant's website and description
 // Version: 0.2.0 - the users of the account service: the records, the calls with the account token
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -63,10 +64,17 @@ struct OperatorSettings {
 // ===========================================================================
 struct Merchant {
     std::string id, name, contact, key, createdAt;
+    std::string website, description;   // the merchant's own profile (the catalog's publisher page)
     std::string standing;   // active, paused (the terms), suspended
     int strikes = 0;
     int termsInForce = 0, termsAccepted = 0;
     bool TermsDue() const { return termsInForce > termsAccepted; }
+};
+
+// A merchant's application for a shop (POST /v1/merchants/apply), decided by the operator.
+struct MerchantApplication {
+    std::string id, name, contact, email, website, description, key, state, message, createdAt, decidedAt, decidedBy, merchant;
+    bool Open() const { return state == "applied"; }
 };
 
 struct Suspension {
@@ -255,6 +263,12 @@ public:
     Result<Merchant> RegisterMerchant(const std::string& id, const std::string& name, const std::string& contact, const std::string& keyHex) const;
     // An empty field is left as it is; a key given is the rotation.
     Result<Merchant> UpdateMerchant(const std::string& id, const std::string& name, const std::string& contact, const std::string& keyHex) const;
+    // ----- the applications for a shop -----
+    Result<std::vector<MerchantApplication>> Applications(const std::string& state = {}) const;
+    Result<MerchantApplication> GetApplication(const std::string& id) const;
+    // Approved: the merchant registered with the application's key and profile, under the id given or one made.
+    Result<Merchant> ApproveApplication(const std::string& id, const std::string& merchantId, const std::string& message) const;
+    Result<MerchantApplication> RejectApplication(const std::string& id, const std::string& message) const;   // the message is the applicant's to read
     Result<Merchant> SuspendMerchant(const std::string& id, const std::string& clause, const std::string& reason, int days) const;   // 0: until reinstated
     Result<Merchant> ReinstateMerchant(const std::string& id, const std::string& reason) const;
     Result<Suspension> SuspendApp(const std::string& appId, const std::string& clause, const std::string& reason, int days) const;
@@ -325,6 +339,7 @@ private:
 
 // The parsers, for the window's own reading of a service answer.
 Merchant MerchantOf(const UltraCanvas::JSONValue& v);
+MerchantApplication ApplicationOf(const UltraCanvas::JSONValue& v);
 Submission SubmissionOf(const UltraCanvas::JSONValue& v);
 Report ReportOf(const UltraCanvas::JSONValue& v);
 Notice NoticeOf(const UltraCanvas::JSONValue& v);
