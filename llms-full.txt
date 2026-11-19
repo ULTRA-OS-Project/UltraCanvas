@@ -34462,6 +34462,12 @@ Notes:
   the Details and List rows keeps the type glyph, so a folder listing does not
   read every document in it, and a font specimen squeezed into an icon slot is
   not shown as a smear of ink.
+- The *Menu label* column is the kind's English name,
+  `UltraCanvasFilerWidget::PreviewTypeLabel(kind)` - a stable name for tests,
+  logs and element identifiers. What a person reads is
+  `UltraCanvasFilerWidget::PreviewTypeText(kind)`, the same name through `Tr`:
+  the Display submenus show it, and an application listing the kinds (UltraFiler's
+  Settings > Display > Thumbnails / Detail view) shows it too.
 - `FilerPreviewType` values are a bitmask; `GetThumbnailKinds()` /
   `GetDetailViewKinds()` return the current sets and `kFilerAllPreviewTypes` is
   the default of both. The preview kinds do not map one to one onto
@@ -36124,6 +36130,22 @@ split button lists exactly these. Each entry may name a
 `templatePath` that is copied instead of creating an empty file, and
 `onNewDocument` lets the application take over creation entirely (return `true`
 when handled). A freshly created document goes straight into rename mode.
+
+The entry's `label` is the menu text and its `fileName` the new file's name
+without the extension (`New spreadsheet.ods`, numbered `New spreadsheet (2).ods`
+when taken). Both are what a person reads, so a host passes them translated -
+the name as a whole, through `TrC("file name", ...)`: "New " + a translated
+label is not how most languages name a new file ("Neue Tabelle", "Nouvelle
+feuille de calcul"). The defaults do this. An entry without a `fileName` falls
+back to `TrF("New {0}", label)`, which a translator can only reorder.
+
+```cpp
+filer->SetNewDocumentTypes({
+    {Tr("Spreadsheet"), "ods", "", TrC("file name", "New spreadsheet")},
+    {Tr("Presentation"), "odp", "/usr/share/templates/blank.odp",
+     TrC("file name", "New presentation")},
+});
+```
 
 The **New >** submenu opens with **Folder** — above the document kinds and set
 apart from them by a separator — bound to **Ctrl+F**. `CreateNewFolder()` is the
