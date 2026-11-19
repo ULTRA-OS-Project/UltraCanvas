@@ -23,8 +23,10 @@
 // graphic, and an icon column to its left would push it off centre. Pass
 // showIcon = true to get the classic Information badge back.
 //
+// Version: 1.1.0 - the ring, its track and the percentage take the theme's colours, and again on a
+//                  theme change while the window is open (the percentage was dark grey on a dark dialog)
 // Version: 1.0.0
-// Last Modified: 2026-08-23
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -78,6 +80,9 @@ namespace UltraCanvas {
     private:
         UltraCanvasProgressDialog() = default;
         void UpdateText();
+        // The ring's colours from the current theme: the arc the accent, the
+        // track a hairline, the percentage the ink.
+        void ApplyThemeColors();
 
         std::shared_ptr<UltraCanvasModalDialog> dialog;
         std::shared_ptr<UltraCanvasCircularProgressChart> ring;
@@ -87,6 +92,7 @@ namespace UltraCanvas {
         bool cancelled = false;
         bool closed = false;
         std::function<void()> onCancel;
+        int themeHandler = 0;   // UltraCanvasTheme change handler: ApplyThemeColors
     };
 
 } // namespace UltraCanvas
