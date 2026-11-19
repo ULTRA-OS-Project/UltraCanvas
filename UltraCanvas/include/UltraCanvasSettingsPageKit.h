@@ -26,11 +26,13 @@
 //   shell->resets["look/colours"] = PageReset{"Restore defaults", 170, [&]() { settings.dark = false; }};
 //   shell->Finish("look/colours");
 //
+// Version: 1.3.0 - a settings window follows a theme change while it is open: every element the kit
+//                  builds takes its roles again (FollowKitLook, for an application's own controls)
 // Version: 1.2.0 - the colours and sizes are the theme's roles and text roles, read as functions
 //                  (TextColor(), TextFontSize() ...): a settings window is dark on a dark desktop
 // Version: 1.1.0 - ShowSaveSettingsDialog: a file type's settings in the window's type size
 // Version: 1.0.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -60,8 +62,10 @@ namespace SettingsPageKit {
 // sizes are the theme's text roles - the desktop's interface font size and
 // the ratios of UltraCanvasTheme - and the colours its roles, read as
 // functions when a page is built, so a settings window is dark on a dark
-// desktop (T6 of the host theme proposal); a window built after the theme
-// changed takes the new look.
+// desktop (T6 of the host theme proposal). An element the kit builds also
+// remembers which roles it took, and takes them again when the theme
+// changes, so a settings window left open switches with the rest of the
+// application (FollowKitLook).
 inline float TitleFontSize() { return static_cast<float>(UltraCanvasTheme::Current().FontSize(ThemeTextRole::Heading)); }   // page title (bold)
 inline float TextFontSize()  { return static_cast<float>(UltraCanvasTheme::Current().FontSize(ThemeTextRole::Body)); }      // captions, choices, buttons, fields
 inline float NoteFontSize()  { return static_cast<float>(UltraCanvasTheme::Current().FontSize(ThemeTextRole::Caption)); }   // the notes under the controls
@@ -90,8 +94,22 @@ constexpr int kTextWidth = 440;     // wrapped texts and choice rows
 constexpr int kNoteWidth = 430;     // wrapped notes inside their block
 constexpr int kControlHeight = 22;  // one checkbox / radio row
 
+// ===== FOLLOWING THE THEME =====
+// `restyle` is called with the element again after every theme change
+// (UltraCanvasTheme::SetCurrent), once the application has passed the
+// change to its windows: it sets the kit's colours and sizes again, read
+// from the functions above, over whatever the element's own ApplyTheme
+// made of them. Every Make... below registers its element this way; an
+// application calls it for a control it styles in the kit's look itself
+// (a switch, a field). The element is held weakly: one that is gone is
+// dropped. UI thread.
+void FollowKitLook(const std::shared_ptr<UltraCanvasUIElement>& element,
+                   std::function<void(UltraCanvasUIElement&)> restyle);
+
 // ===== TEXT =====
-// A single-line label that hugs its text.
+// A single-line label that hugs its text. A colour or size that is one of
+// the kit's (TextColor(), NoteTextColor(); TitleFontSize(), TextFontSize(),
+// NoteFontSize()) follows the theme as that role; any other stays as given.
 std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text,
                                             float fontSize = TextFontSize(), const Color& color = TextColor());
 // A paragraph: word-wrapped at `width`, as tall as its lines.
