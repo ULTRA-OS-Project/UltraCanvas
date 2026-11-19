@@ -2,12 +2,14 @@
 // Implementation of the new RAM disc dialog. Construction follows
 // UltraFilerFindTextDialog (flex-column content, custom Create / Cancel
 // buttons so Create can refuse a bad name without closing).
+// Version: 1.2.0 - no Size row for a disc without a size of its own (Windows without ImDisk)
 // Version: 1.1.4 - the error colour is the theme's danger (UltraFilerLook.h)
 // Version: 1.1.3 - the size notes and the name errors go through Tr
 // Version: 1.1.2 - the note under the size is as tall as its text, the window as tall
 //                  as its content, and the buttons sit at the bottom right
 // Version: 1.1.1 - the interface strings go through Tr (UltraLocalisation)
 // Version: 1.1.0 - the facts about the machine come from the caller
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 
 #include "UltraFilerRamDiskDialog.h"
@@ -48,9 +50,15 @@ const uint64_t kPresetSizes[] = {
 // the size so nobody is surprised by either.
 // Whole sentences, each translated on its own and joined with a space, so a
 // translation never has to fit around a piece of another sentence.
-std::string PlatformNote(uint64_t largest) {
+std::string PlatformNote(uint64_t largest, bool hasOwnSize) {
     std::string note;
-    if (!UltraFilerRamDisks::TrueRamAvailable()) {
+    if (!hasOwnSize) {
+        // Windows without ImDisk: no size to explain, only what the disc is.
+        note = Tr("No RAM disc driver (ImDisk) is installed, so this disc will be "
+                  "a folder on the system drive, wiped when it is ejected - it "
+                  "is not held in memory and has no size of its own: it holds "
+                  "what the system drive has room for.") + " ";
+    } else if (!UltraFilerRamDisks::TrueRamAvailable()) {
         // Keeps its trailing space: it is the key the catalogues know it by.
         note = Tr("No RAM disc driver (ImDisk) is installed, so this disc will be "
                "a folder on the system drive, wiped when it is ejected - it "
@@ -106,32 +114,36 @@ void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     };
     content->AddChild(nameInput_);
 
-    content->AddChild(std::make_shared<UltraCanvasLabel>(
-        "uf-ramdisk-size-label", 0, 0, kContentWidth, kLabelHeight, Tr("Size:")));
-    sizeDropdown_ = std::make_shared<UltraCanvasDropdown>(
-        "uf-ramdisk-size", 0, 0, kContentWidth, kFieldHeight);
-    // Only sizes that fit: a choice that can only fail is not a choice. When
-    // free memory cannot be read every size is offered and Create says so if
-    // one does not fit.
+    // A disc with no size of its own (Windows without ImDisk: a folder on
+    // the system drive) is asked for its name alone.
     const uint64_t largest = facts.largestBytes;
-    int preselect = 0;
-    for (uint64_t size : kPresetSizes) {
-        if (largest > 0 && size > largest && !sizes_.empty()) break;
-        sizes_.push_back(size);
-        sizeDropdown_->AddItem(UltraFilerRamDisks::FormatSize(size));
-        // 512 MB when it fits: enough for a build tree or a batch of photos,
-        // small enough not to squeeze anything else out of memory.
-        if (size <= 512 * kMiB) preselect = static_cast<int>(sizes_.size()) - 1;
+    if (facts.hasOwnSize) {
+        content->AddChild(std::make_shared<UltraCanvasLabel>(
+            "uf-ramdisk-size-label", 0, 0, kContentWidth, kLabelHeight, Tr("Size:")));
+        sizeDropdown_ = std::make_shared<UltraCanvasDropdown>(
+            "uf-ramdisk-size", 0, 0, kContentWidth, kFieldHeight);
+        // Only sizes that fit: a choice that can only fail is not a choice.
+        // When free memory cannot be read every size is offered and Create
+        // says so if one does not fit.
+        int preselect = 0;
+        for (uint64_t size : kPresetSizes) {
+            if (largest > 0 && size > largest && !sizes_.empty()) break;
+            sizes_.push_back(size);
+            sizeDropdown_->AddItem(UltraFilerRamDisks::FormatSize(size));
+            // 512 MB when it fits: enough for a build tree or a batch of
+            // photos, small enough not to squeeze anything else out of memory.
+            if (size <= 512 * kMiB) preselect = static_cast<int>(sizes_.size()) - 1;
+        }
+        sizeDropdown_->SetSelectedIndex(preselect, false);
+        content->AddChild(sizeDropdown_);
     }
-    sizeDropdown_->SetSelectedIndex(preselect, false);
-    content->AddChild(sizeDropdown_);
 
     // The note runs from four lines to six, longer in other languages and
     // at a larger font: a fixed box cut its last line off. It is measured
     // at the width it wraps at once it is in the window, and everything
     // below it - the content, the window - follows from that height.
     auto note = std::make_shared<UltraCanvasLabel>(
-        "uf-ramdisk-note", 0, 0, kContentWidth, kFallbackNoteHeight, PlatformNote(largest));
+        "uf-ramdisk-note", 0, 0, kContentWidth, kFallbackNoteHeight, PlatformNote(largest, facts.hasOwnSize));
     note->SetWrap(TextWrap::WrapWord);
     content->AddChild(note);
 
@@ -150,8 +162,10 @@ void UltraFilerRamDiskDialog::Initialize(const RamDiskDialogFacts& facts) {
     }
     note->SetElementSize(Size2Df(kContentWidth, noteHeight));
     // Name label, name, size label, size, note, error line - and a gap
-    // between each pair.
-    const float contentHeight = 3 * kLabelHeight + 2 * kFieldHeight + noteHeight + 5 * kRowGap;
+    // between each pair; without a size, two rows and two gaps fewer.
+    const float contentHeight = facts.hasOwnSize
+            ? 3 * kLabelHeight + 2 * kFieldHeight + noteHeight + 5 * kRowGap
+            : 2 * kLabelHeight + kFieldHeight + noteHeight + 3 * kRowGap;
     content->SetElementSize(Size2Df(kContentWidth, contentHeight));
     SetWindowSize(static_cast<int>(cfg.width),
                   static_cast<int>(std::ceil(2 * kPadding + contentHeight + kSectionGap +
@@ -181,6 +195,11 @@ void UltraFilerRamDiskDialog::FocusInitialElement() {
         SetFocusedElement(sizeDropdown_.get());
         return;
     }
+    // No size to choose: the name is the one thing left to set.
+    if (nameInput_) {
+        SetFocusedElement(nameInput_.get());
+        return;
+    }
     UltraCanvasModalDialog::FocusInitialElement();
 }
 
@@ -198,9 +217,13 @@ void UltraFilerRamDiskDialog::Accept() {
         }
         return;
     }
-    const int index = sizeDropdown_ ? sizeDropdown_->GetSelectedIndex() : -1;
-    if (index < 0 || index >= static_cast<int>(sizes_.size())) return;
-    const uint64_t sizeBytes = sizes_[static_cast<size_t>(index)];
+    // No dropdown: a disc without a size of its own, handed on as 0.
+    uint64_t sizeBytes = 0;
+    if (sizeDropdown_) {
+        const int index = sizeDropdown_->GetSelectedIndex();
+        if (index < 0 || index >= static_cast<int>(sizes_.size())) return;
+        sizeBytes = sizes_[static_cast<size_t>(index)];
+    }
     // Copied: closing may release the last reference to this dialog.
     auto callback = onCreate;
     CloseDialog(DialogResult::OK);
@@ -211,6 +234,7 @@ RamDiskDialogFacts GatherRamDiskDialogFacts() {
     RamDiskDialogFacts facts;
     facts.largestBytes = UltraFilerRamDisks::LargestPossibleBytes();
     facts.suggestedName = UltraFilerRamDisks::SuggestName();
+    facts.hasOwnSize = UltraFilerRamDisks::HasOwnSize();
     return facts;
 }
 

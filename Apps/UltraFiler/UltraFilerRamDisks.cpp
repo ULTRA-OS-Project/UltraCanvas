@@ -1,5 +1,6 @@
 // Apps/UltraFiler/UltraFilerRamDisks.cpp
 // The RAM discs behind "+ Drive > RAM disc...". See UltraFilerRamDisks.h.
+// Version: 1.2.0 - HasOwnSize; 0 to Create for a disc without a size
 // Version: 1.1.0 - BuiltIn
 // Author: UltraCanvas Framework
 
@@ -112,6 +113,15 @@ bool SizeIsEnforced() {
 #endif
 }
 
+bool HasOwnSize() {
+#ifdef ULTRAFILER_HAS_RAMDISK
+    return VirtualFS::VirtualFS_GetPreferredRamDiskBacking() !=
+           VirtualFSRamDiskBacking::DiskFallback;
+#else
+    return true;
+#endif
+}
+
 uint64_t LargestPossibleBytes() {
     uint64_t largest = UltraCanvasHardwareInfo::GetMemory().availableBytes;
 #ifdef __linux__
@@ -165,6 +175,9 @@ bool Create(const std::string& name, uint64_t sizeBytes, RamDisc& outDisc,
             std::string& outError) {
 #ifdef ULTRAFILER_HAS_RAMDISK
     VirtualFSRamDisk disk;
+    // A disc with no size of its own: VirtualFS refuses 0, and the fallback
+    // keeps what it is given only as a note, so one byte stands for "none".
+    if (sizeBytes == 0 && !HasOwnSize()) sizeBytes = 1;
     const VirtualFSResult result = VirtualFS::VirtualFS_CreateRamDisk(name, sizeBytes, disk);
     if (result != VirtualFSResult::Ok) {
         outError = CreateErrorText(result, name, sizeBytes);

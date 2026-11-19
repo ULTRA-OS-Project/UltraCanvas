@@ -19,8 +19,9 @@
 // a worker thread at start-up (UltraFilerWindow::StartRamDiskProbe), and
 // until that answer is in uses BuiltIn(), which costs nothing, to decide
 // what the "+ Drive" menu offers.
+// Version: 1.2.0 - HasOwnSize; Create takes 0 for a disc without a size (the Windows fallback)
 // Version: 1.1.0 - BuiltIn; the probe is paid for once
-// Last Modified: 2026-10-13
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -62,6 +63,13 @@ bool TrueRamAvailable();
 // to that mount's limit shared by all of them.
 bool SizeIsEnforced();
 
+// Whether a disc made now has a size to choose at all. False for the Windows
+// fallback without ImDisk: that disc is a folder on the system drive, and
+// holds what that drive has room for whatever size it is given - so the
+// dialog does not ask for one. (Linux's discs share /dev/shm, but a size is
+// still asked there: it is checked against what is free.)
+bool HasOwnSize();
+
 // Most a new disc can hold: the memory free right now, or on Linux the space
 // free on /dev/shm when that is less. 0 when it cannot be read.
 uint64_t LargestPossibleBytes();
@@ -83,7 +91,8 @@ std::size_t MaxNameLength();
 bool IsValidName(const std::string& name);
 
 // Makes a disc. Fills `outDisc` and returns true, or returns false with a
-// message fit for an alert in `outError`.
+// message fit for an alert in `outError`. `sizeBytes` 0: no size, for a disc
+// that has none of its own (HasOwnSize() false).
 bool Create(const std::string& name, uint64_t sizeBytes, RamDisc& outDisc,
             std::string& outError);
 

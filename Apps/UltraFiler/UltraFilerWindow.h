@@ -81,6 +81,7 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.38.1 - ComputerDriveCard::noOwnSize: a RAM disc with no size of its own
 // Version: 1.38.0 - ApplyDisplayMode: Settings > Display > Display mode through the theme policy
 // Version: 1.37.0 - ApplyLook: the filer's own surfaces from the theme, again on every theme change
 // Version: 1.36.0 - OpenRemoteFile, OpenRemoteCopy
@@ -1286,6 +1287,10 @@ private:
         std::shared_ptr<UltraCanvasPieChartElement> pie;     // used / free
         std::shared_ptr<UltraCanvasLabel> usageLabel;        // "62% used"
         std::shared_ptr<UltraCanvasLabel> spaceLabel;        // "232.9 GB free of 476.2 GB"
+        // A RAM disc with no size of its own (the Windows fallback, a folder
+        // on the system drive): no volume is read for it - that would be the
+        // system drive's - and the card says so instead.
+        bool noOwnSize = false;
     };
     std::shared_ptr<UltraCanvasContainer>       computerPane;
     std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders

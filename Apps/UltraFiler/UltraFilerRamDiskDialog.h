@@ -3,13 +3,16 @@
 // and how large to make it. The sizes offered stop at what the machine can
 // give right now, and the note under them says what the size means on this
 // platform (reserved up front on macOS and with ImDisk, a ceiling shared by
-// all discs on Linux, not memory at all on Windows without ImDisk).
+// all discs on Linux). On Windows without ImDisk the disc is a folder on the
+// system drive with no size of its own, and the dialog asks for the name
+// alone.
 //
 // What the dialog shows about the machine - the memory free now and a name
 // no disc uses yet - is gathered by the caller (RamDiskDialogFacts) and
 // handed in, not read here: reading it means a hardware-information capture
 // and a pass over the mounted discs, which the window does on a worker
 // thread before opening the dialog, so the UI thread never waits on either.
+// Version: 1.2.0 - no size asked for a disc that has none (RamDiskDialogFacts::hasOwnSize)
 // Version: 1.1.0 - the facts about the machine come from the caller
 // Author: UltraCanvas Framework
 #pragma once
@@ -34,6 +37,9 @@ struct RamDiskDialogFacts {
     uint64_t largestBytes = 0;
     // The name offered in the name field (UltraFilerRamDisks::SuggestName).
     std::string suggestedName;
+    // Whether the disc has a size to choose (UltraFilerRamDisks::HasOwnSize):
+    // false on Windows without ImDisk, and the Size row is left out.
+    bool hasOwnSize = true;
 };
 
 class UltraFilerRamDiskDialog : public UltraCanvasModalDialog {
@@ -42,7 +48,8 @@ public:
 
     void Initialize(const RamDiskDialogFacts& facts);
 
-    // Invoked on Create with a valid name and the chosen size in bytes.
+    // Invoked on Create with a valid name and the chosen size in bytes - 0
+    // for a disc without a size of its own.
     std::function<void(const std::string& name, uint64_t sizeBytes)> onCreate;
 
 protected:

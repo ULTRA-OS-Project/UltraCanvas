@@ -471,7 +471,10 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     every disc is a private directory on the `/dev/shm` tmpfs, which uses
     memory only as files are written, so the size is checked against what is
     free but not enforced; on Windows without ImDisk the disc is a folder in
-    `%TEMP%`, wiped on eject, and its row says *on disk*. A disc stays until it
+    `%TEMP%` on the system drive, wiped on eject, with no size of its own - it
+    holds what that drive has room for - so the dialog asks for its name alone,
+    its row says *on disk*, and its card on the Computer page says *No size of
+    its own* rather than showing the system drive's pie. A disc stays until it
     is ejected — *Eject RAM disc* in its row's context menu, after a question
     naming it — or the machine restarts, and one left by an earlier run is
     found again at start-up. Its row keeps *Delete* disabled like the other
