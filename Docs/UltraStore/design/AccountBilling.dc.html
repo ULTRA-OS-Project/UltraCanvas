@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore - Payment, subscriptions and licences</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="border-bottom: 1px solid #e2e8f0; background: #ffffff">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 24px; flex-wrap: wrap">
+<a href="Main.dc.html" aria-label="UltraStore home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+</a>
+<nav aria-label="Store sections" style="display: flex; gap: 4px; flex-wrap: wrap">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Discover</a>
+<a href="Categories.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Categories</a>
+<a href="#installed" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Installed</a>
+<a href="#updates" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Updates <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #0f172a; color: #ffffff; font-size: 12px; font-weight: 700">3</span></a>
+</nav>
+<form role="search" style="flex: 1 1 240px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9; border: 1px solid transparent">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-bill" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search apps</label>
+<input id="search-bill" type="search" placeholder="Search apps, publishers, tags" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+</form>
+<button type="button" aria-label="Account menu: Anna K." style="display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 6px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; cursor: pointer"><span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px">AK</span><span style="font-weight: 700; font-size: 14px; padding-right: 8px">Anna K.</span></button>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 32px 32px 0; box-sizing: border-box; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 40px; align-items: flex-start">
+
+<nav aria-label="Account" style="display: flex; flex-direction: column; gap: 2px; position: sticky; top: 24px">
+<div style="display: flex; align-items: center; gap: 12px; padding: 8px 12px 18px">
+<span aria-hidden="true" style="width: 56px; height: 56px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; justify-content: center; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 20px; flex: 0 0 auto">AK</span>
+<span style="display: flex; flex-direction: column; min-width: 0; line-height: 1.25"><span style="font-weight: 700">Anna K.</span><span style="font-size: 12px; color: #64748b">@annak · since Nov 2026</span></span>
+</div>
+<a href="AccountProfile.dc.html" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Profile</a>
+<a href="AccountProfile.dc.html" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Security and sign-in</a>
+<a href="AccountProfile.dc.html" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Devices</a>
+<a href="#payment" aria-current="page" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #1d4ed8; background: #dbeafe; font-weight: 700; font-size: 14px">Payment methods</a>
+<a href="#subscriptions" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Subscriptions</a>
+<a href="#licences" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Purchases and licences</a>
+<a href="#orders" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Orders and invoices</a>
+<a href="AccountProfile.dc.html" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Notifications</a>
+<a href="AccountProfile.dc.html" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #0f172a; font-weight: 500; font-size: 14px">Privacy and data</a>
+<span style="height: 1px; background: #f1f5f9; margin: 8px 6px"></span>
+<a href="#signout" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px; border-radius: 12px; text-decoration: none; color: #475569; font-weight: 600; font-size: 14px">Sign out</a>
+</nav>
+
+<div style="display: flex; flex-direction: column; gap: 36px; min-width: 0">
+
+<section id="payment" aria-labelledby="payment-title" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 id="payment-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 32px; font-weight: 800; letter-spacing: -0.03em">Payment methods</h1>
+<p style="margin: 0; color: #64748b">You pay on Skrill Quick Checkout's page through the store's payment service; the store keeps a reference to the method, never the card number.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 20px; border: 2px solid #0f172a; background: #ffffff; position: relative">
+<span style="position: absolute; right: 14px; top: 14px; height: 22px; padding: 0 8px; border-radius: 6px; background: #0f172a; color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center">Default</span>
+<span aria-hidden="true" style="width: 48px; height: 32px; border-radius: 6px; background: linear-gradient(135deg, #1e3a8a, #2563eb)"></span>
+<span style="font-weight: 700">Visa ending 4821</span>
+<span style="font-size: 13px; color: #64748b">Anna Kessler · expires 09/2028 · through Skrill</span>
+<div style="display: flex; gap: 6px; margin-top: auto"><button type="button" style="height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Remove</button></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 20px; border: 1px solid #e2e8f0; background: #ffffff">
+<span aria-hidden="true" style="width: 48px; height: 32px; border-radius: 6px; background: linear-gradient(135deg, #7c3aed, #4c1d95)"></span>
+<span style="font-weight: 700">Skrill wallet</span>
+<span style="font-size: 13px; color: #64748b">anna.k@example.org · balance 12.40 EUR</span>
+<div style="display: flex; gap: 6px; margin-top: auto"><button type="button" style="height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Make default</button><button type="button" style="height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Remove</button></div>
+</div>
+<button type="button" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 20px; border-radius: 20px; border: 2px dashed #cbd5e1; background: #ffffff; font: inherit; color: #475569; cursor: pointer; min-height: 160px"><span style="width: 40px; height: 40px; border-radius: 999px; background: #f1f5f9; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: #0f172a">+</span><span style="font-weight: 700; font-size: 14px">Add a payment method</span><span style="font-size: 12px">Card, Skrill wallet or a local method, on Skrill's page</span></button>
+</div>
+<div style="display: flex; gap: 20px; flex-wrap: wrap; padding: 16px 20px; border-radius: 16px; background: #f8fafc; font-size: 13px; color: #334155">
+<span><strong>Billing address</strong> · Anna Kessler, Torstraße 12, 10119 Berlin, Germany · <a href="#address" style="font-weight: 600">Change</a></span>
+<span><strong>VAT</strong> · 19 %, Germany · no VAT ID (private)</span>
+<span><strong>Currency</strong> · EUR</span>
+</div>
+</section>
+
+<section id="subscriptions" aria-labelledby="subs-title" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="subs-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Subscriptions</h2>
+<p style="margin: 0; color: #64748b">Monthly or yearly, renewed by the payment service on the day shown. Cancelling keeps the subscription to the end of the paid period.</p>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden">
+<li style="display: flex; align-items: center; gap: 16px; padding: 18px 22px; border-bottom: 1px solid #f1f5f9">
+<span aria-hidden="true" style="width: 48px; height: 48px; border-radius: 12px; background: #16a34a; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; flex: 0 0 auto">M</span>
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 700; display: flex; align-items: center; gap: 8px">UltraStore Music Premium <span style="height: 22px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center">Active</span></span><span style="font-size: 13px; color: #64748b">9.90 EUR a month · renews 1 Dec 2026 · Visa ending 4821 · lossless on 3 devices</span></div>
+<div style="display: flex; gap: 8px"><button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Switch to yearly · 99 EUR</button><button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Cancel</button></div>
+</li>
+<li style="display: flex; align-items: center; gap: 16px; padding: 18px 22px; border-bottom: 1px solid #f1f5f9">
+<img src="/_blob/c5402e04d2949ef467a6e80deabd4144" alt="" style="width: 48px; height: 48px; border-radius: 12px">
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 700; display: flex; align-items: center; gap: 8px">UltraFIBU <span style="height: 22px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center">Active</span></span><span style="font-size: 13px; color: #64748b">[PRICE] EUR a year · renews 3 Mar 2027 · Skrill wallet · a licence for 2 machines</span></div>
+<div style="display: flex; gap: 8px"><button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Change payment</button><button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Cancel</button></div>
+</li>
+<li style="display: flex; align-items: center; gap: 16px; padding: 18px 22px">
+<img src="/_blob/90eb60090b672bec83f5ce0aa977c5a0" alt="" style="width: 48px; height: 48px; border-radius: 12px">
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 700; display: flex; align-items: center; gap: 8px">Support: ULTRA OS Project on Video <span style="height: 22px; padding: 0 8px; border-radius: 6px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center">Ends 30 Nov</span></span><span style="font-size: 13px; color: #64748b">2.00 EUR a month · cancelled 12 Nov 2026, paid until 30 Nov · the creator receives 85 %</span></div>
+<div style="display: flex; gap: 8px"><button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; border: 0; background: #dbeafe; color: #1d4ed8; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Resume</button></div>
+</li>
+</ul>
+</section>
+
+<section id="licences" aria-labelledby="lic-title" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="lic-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Purchases and licences</h2>
+<p style="margin: 0; color: #64748b">Every purchase is a licence signed by the payment service; the machines it is on are counted against its seats. Install on a new machine from here.</p>
+</div>
+<table style="border-collapse: separate; border-spacing: 0; width: 100%; font-size: 14px; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden">
+<thead>
+<tr style="background: #f8fafc; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em">
+<th scope="col" style="text-align: left; padding: 12px 20px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Licence</th>
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Bought</th>
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Updates</th>
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Seats</th>
+<th scope="col" style="text-align: right; padding: 12px 20px; font-weight: 600; border-bottom: 1px solid #e2e8f0"> </th>
+</tr>
+</thead>
+<tbody>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9"><div style="display: flex; align-items: center; gap: 12px"><img src="/_blob/023cd138f38912c764ae7c221c087db6" alt="" style="width: 40px; height: 40px; border-radius: 10px"><div style="display: flex; flex-direction: column; line-height: 1.25"><a href="AppDetail.dc.html" style="font-weight: 700; color: #0f172a; text-decoration: none">UltraVideo</a><span style="font-size: 12px; color: #64748b">App · 29.90 EUR one-time · ULTRA OS Project</span></div></div></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">22 Oct 2025</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">Free until 31 Dec 2027</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">2 of 3 · laptop, office PC</td><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9; text-align: right"><button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: #dbeafe; color: #1d4ed8; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Install on a machine</button></td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9"><div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #f59e0b, #78350f); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 12px">SS</span><div style="display: flex; flex-direction: column; line-height: 1.25"><a href="GamesDetail.dc.html" style="font-weight: 700; color: #0f172a; text-decoration: none">Skyline Siege</a><span style="font-size: 12px; color: #64748b">Game · [PRICE] EUR one-time · Northwind Studio</span></div></div></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">11 Nov 2026</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">Free, all versions</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">1 of 5 · laptop</td><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9; text-align: right"><button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: #dbeafe; color: #1d4ed8; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Install on a machine</button></td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9"><div style="display: flex; align-items: center; gap: 12px"><img src="/_blob/0d8f1d55bd369843755da72b7a7fbd33" alt="" style="width: 40px; height: 40px; border-radius: 10px"><div style="display: flex; flex-direction: column; line-height: 1.25"><a href="#artcreator" style="font-weight: 700; color: #0f172a; text-decoration: none">ArtCreator</a><span style="font-size: 12px; color: #64748b">App · trial · 14 of 30 days left</span></div></div></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">Trial from 3 Nov 2026</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">–</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">1 · laptop</td><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9; text-align: right"><button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Buy · [PRICE] EUR</button></td></tr>
+<tr><td style="padding: 14px 20px"><div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #a16207, #422006); color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 12px">TC</span><div style="display: flex; flex-direction: column; line-height: 1.25"><a href="#tabletop" style="font-weight: 700; color: #0f172a; text-decoration: none">Tabletop Club</a><span style="font-size: 12px; color: #64748b">Game · free · Woodgrain</span></div></div></td><td style="padding: 14px; color: #334155">–</td><td style="padding: 14px; color: #334155">Free</td><td style="padding: 14px; color: #334155">2 · laptop, kitchen Pi</td><td style="padding: 14px 20px; text-align: right"><a href="#tabletop" style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font-weight: 700; font-size: 13px; text-decoration: none; color: #0f172a">Open</a></td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="orders" aria-labelledby="orders-title" style="display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="orders-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Orders and invoices</h2>
+<p style="margin: 0; color: #64748b">Every payment with its invoice as PDF and XRechnung; marketplace orders with their delivery and returns.</p>
+</div>
+<div style="display: flex; gap: 6px">
+<span style="height: 36px; padding: 0 14px; border-radius: 999px; background: #0f172a; color: #ffffff; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center">2026</span>
+<span style="height: 36px; padding: 0 14px; border-radius: 999px; background: #f1f5f9; color: #0f172a; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center">2025</span>
+<span style="height: 36px; padding: 0 14px; border-radius: 999px; background: #f1f5f9; color: #0f172a; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center">All</span>
+</div>
+</div>
+<table style="border-collapse: separate; border-spacing: 0; width: 100%; font-size: 14px; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden">
+<thead>
+<tr style="background: #f8fafc; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em">
+<th scope="col" style="text-align: left; padding: 12px 20px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Order</th>
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Date</th>
+<th scope="col" style="text-align: left; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Status</th>
+<th scope="col" style="text-align: right; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Total</th>
+<th scope="col" style="text-align: right; padding: 12px 20px; font-weight: 600; border-bottom: 1px solid #e2e8f0">Invoice</th>
+</tr>
+</thead>
+<tbody>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9"><div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">Nordlicht Aura 2 headphones, headphone stand</span><span style="font-size: 12px; color: #64748b">Market · US-2026-118204 · Nordlicht Audio · delivered 18 Nov</span></div></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">17 Nov 2026</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Delivered</span> <a href="#return" style="font-size: 12px; font-weight: 600; margin-left: 6px">Return until 17 Dec</a></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600">151.00 EUR</td><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9; text-align: right"><a href="#inv1" style="font-weight: 600; text-decoration: none; font-size: 13px">PDF</a> · <a href="#inv1x" style="font-weight: 600; text-decoration: none; font-size: 13px">XRechnung</a></td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9"><div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">Skyline Siege</span><span style="font-size: 12px; color: #64748b">Games · US-2026-117711 · Northwind Studio · licence</span></div></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">11 Nov 2026</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Paid</span></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600">[PRICE] EUR</td><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9; text-align: right"><a href="#inv2" style="font-weight: 600; text-decoration: none; font-size: 13px">PDF</a> · <a href="#inv2x" style="font-weight: 600; text-decoration: none; font-size: 13px">XRechnung</a></td></tr>
+<tr><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9"><div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">UltraStore Music Premium, November</span><span style="font-size: 12px; color: #64748b">Music · US-2026-116020 · subscription renewal</span></div></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; color: #334155">1 Nov 2026</td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Paid</span></td><td style="padding: 14px; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600">9.90 EUR</td><td style="padding: 14px 20px; border-bottom: 1px solid #f1f5f9; text-align: right"><a href="#inv3" style="font-weight: 600; text-decoration: none; font-size: 13px">PDF</a> · <a href="#inv3x" style="font-weight: 600; text-decoration: none; font-size: 13px">XRechnung</a></td></tr>
+<tr><td style="padding: 14px 20px"><div style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">Fjell 28 L daypack</span><span style="font-size: 12px; color: #64748b">Market · US-2026-112388 · Bergwerk Outdoor · returned, refunded 28 Oct</span></div></td><td style="padding: 14px; color: #334155">20 Oct 2026</td><td style="padding: 14px"><span style="height: 24px; padding: 0 8px; border-radius: 6px; background: #fee2e2; color: #991b1b; font-weight: 700; font-size: 12px; display: inline-flex; align-items: center">Refunded</span></td><td style="padding: 14px; text-align: right; font-weight: 600; color: #64748b"><s>55.90 EUR</s></td><td style="padding: 14px 20px; text-align: right"><a href="#inv4" style="font-weight: 600; text-decoration: none; font-size: 13px">PDF</a> · <a href="#credit4" style="font-weight: 600; text-decoration: none; font-size: 13px">Credit note</a></td></tr>
+</tbody>
+</table>
+</section>
+
+</div>
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px"><img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px"><span style="font-weight: 600; color: #0f172a">UltraStore</span><span>· the ULTRA OS app store</span></div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px"><a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a><a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a><a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a><a href="#imprint" style="color: #475569; text-decoration: none; font-weight: 500">Imprint</a></nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":2180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#2563eb' };
+  }
+}
+</script>
+</body>
+</html>

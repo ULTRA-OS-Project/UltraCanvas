@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore - Reset password and two-factor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#1d4ed8}a:hover{color:#1e40af}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #f8fafc; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column">
+
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 24px">
+<a href="Main.dc.html" aria-label="UltraStore home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+</a>
+<span style="color: #64748b">Account</span>
+<a href="AccountSignUp.dc.html" style="margin-left: auto; font-weight: 600; text-decoration: none; font-size: 14px">Back to sign in</a>
+</div>
+</header>
+
+<main style="flex: 1 1 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; max-width: 1280px; width: 100%; margin: 0 auto; padding: 40px 32px 48px; box-sizing: border-box; align-items: flex-start">
+
+<section aria-labelledby="reset-title" style="display: flex; flex-direction: column; gap: 18px; padding: 28px; border-radius: 24px; background: #ffffff; border: 1px solid #e2e8f0; min-height: 560px; box-sizing: border-box">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<h1 id="reset-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Reset your password</h1>
+<ol aria-label="Steps" style="margin: 0; padding: 0; list-style: none; display: flex; gap: 6px">
+<sc-for list="{{rsteps}}" as="st" hint-placeholder-count="4">
+<li style="{{st.style}}" aria-label="{{st.label}}">{{st.n}}</li>
+</sc-for>
+</ol>
+</div>
+
+<sc-if value="{{r1}}" hint-placeholder-val="{{true}}">
+<form style="display: flex; flex-direction: column; gap: 16px">
+<p style="margin: 0; color: #64748b">Tell us the email of the account. We send a code there; nothing changes until the code is entered.</p>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="r-email" style="font-size: 13px; font-weight: 700; color: #334155">Email</label><input id="r-email" type="email" value="anna.k@example.org" style="height: 48px; padding: 0 16px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 15px; outline: none"></div>
+<button type="button" onClick="{{rNext}}" style="height: 52px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">Send the code</button>
+<p style="margin: 0; font-size: 13px; color: #64748b">Lost the email address too? <a href="#support" style="font-weight: 600">Write to support</a> with an invoice number; identity is checked by a person, within two working days.</p>
+</form>
+</sc-if>
+
+<sc-if value="{{r2}}" hint-placeholder-val="{{false}}">
+<form style="display: flex; flex-direction: column; gap: 16px">
+<p style="margin: 0; color: #64748b">The code went to <strong style="color: #0f172a">anna.k@example.org</strong>. Two-factor is on, so the code from UltraAuthenticator is asked as well.</p>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="r-code" style="font-size: 13px; font-weight: 700; color: #334155">Code from the email</label><input id="r-code" type="text" inputmode="numeric" value="481 920" style="height: 48px; padding: 0 16px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 18px; font-weight: 700; letter-spacing: 0.1em; outline: none"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="r-totp" style="font-size: 13px; font-weight: 700; color: #334155">Code from UltraAuthenticator</label><input id="r-totp" type="text" inputmode="numeric" value="" placeholder="6 digits" style="height: 48px; padding: 0 16px; border-radius: 12px; border: 2px solid #2563eb; font: inherit; font-size: 18px; font-weight: 700; letter-spacing: 0.1em; outline: none"><span style="font-size: 12px; color: #64748b">No phone at hand? <a href="#recovery" style="font-weight: 600">Use a recovery code</a> instead.</span></div>
+<button type="button" onClick="{{rNext}}" style="height: 52px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">Continue</button>
+<button type="button" onClick="{{rBack}}" style="height: 40px; border: 0; background: transparent; color: #475569; font: inherit; font-weight: 600; font-size: 14px; cursor: pointer">Change the address</button>
+</form>
+</sc-if>
+
+<sc-if value="{{r3}}" hint-placeholder-val="{{false}}">
+<form style="display: flex; flex-direction: column; gap: 16px">
+<p style="margin: 0; color: #64748b">Choose a new password. Every other machine is signed out when it is saved; the passkeys stay.</p>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="r-new" style="font-size: 13px; font-weight: 700; color: #334155">New password</label><input id="r-new" type="password" value="••••••••••••••••••" style="height: 48px; padding: 0 16px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 15px; outline: none"><div style="display: flex; gap: 4px; height: 6px" aria-hidden="true"><span style="flex: 1 1 0; border-radius: 3px; background: #16a34a"></span><span style="flex: 1 1 0; border-radius: 3px; background: #16a34a"></span><span style="flex: 1 1 0; border-radius: 3px; background: #16a34a"></span><span style="flex: 1 1 0; border-radius: 3px; background: #16a34a"></span></div><span style="font-size: 12px; color: #15803d; font-weight: 600">Very strong · 18 characters, not in any known breach, not the old one</span></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="r-new2" style="font-size: 13px; font-weight: 700; color: #334155">Once more</label><input id="r-new2" type="password" value="••••••••••••••••••" style="height: 48px; padding: 0 16px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 15px; outline: none"></div>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #334155"><input type="checkbox" checked style="width: 18px; height: 18px; margin: 0; accent-color: #2563eb">Save it in UltraPassword on this machine</label>
+<button type="button" onClick="{{rNext}}" style="height: 52px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">Save the new password</button>
+</form>
+</sc-if>
+
+<sc-if value="{{r4}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 16px; align-items: center; text-align: center; padding-top: 12px">
+<span aria-hidden="true" style="width: 72px; height: 72px; border-radius: 999px; background: #dcfce7; display: inline-flex; align-items: center; justify-content: center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg></span>
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Password changed</h2>
+<p style="margin: 0; color: #64748b; max-width: 40ch">Anna's phone and the kitchen Pi were signed out and will ask for the new password. A mail about the change went to anna.k@example.org.</p>
+<a href="AccountSignUp.dc.html" style="display: inline-flex; align-items: center; justify-content: center; height: 48px; padding: 0 24px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700">Sign in</a>
+<button type="button" onClick="{{rRestart}}" style="border: 0; background: transparent; padding: 0; font: inherit; font-size: 12px; color: #94a3b8; cursor: pointer">Start over (design preview)</button>
+</div>
+</sc-if>
+</section>
+
+<section aria-labelledby="tfa-title" style="display: flex; flex-direction: column; gap: 18px; padding: 28px; border-radius: 24px; background: #ffffff; border: 1px solid #e2e8f0; min-height: 560px; box-sizing: border-box">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px">
+<h1 id="tfa-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Set up two-factor sign-in</h1>
+<ol aria-label="Steps" style="margin: 0; padding: 0; list-style: none; display: flex; gap: 6px">
+<sc-for list="{{tsteps}}" as="st" hint-placeholder-count="4">
+<li style="{{st.style}}" aria-label="{{st.label}}">{{st.n}}</li>
+</sc-for>
+</ol>
+</div>
+
+<sc-if value="{{t1}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 16px">
+<p style="margin: 0; color: #64748b">A second code at every purchase, new device and change of email. The code comes from an app on your phone; the store never sends it by SMS.</p>
+<div style="display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 14px; border: 1px solid #e2e8f0">
+<img src="/_blob/ee8d25a781cc2a803bc6dce46ffb3a8e" alt="" style="width: 48px; height: 48px; border-radius: 12px">
+<div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">UltraAuthenticator</span><span style="font-size: 12px; color: #64748b">ULTRA OS Project · free · backs the codes up encrypted</span></div>
+<a href="#install-auth" style="height: 36px; padding: 0 14px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; text-decoration: none; font-weight: 700; font-size: 13px">Install</a>
+</div>
+<p style="margin: 0; font-size: 13px; color: #64748b">Any app that does time-based codes (TOTP) works as well.</p>
+<button type="button" onClick="{{tNext}}" style="height: 52px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">I have an app, continue</button>
+</div>
+</sc-if>
+
+<sc-if value="{{t2}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 16px">
+<p style="margin: 0; color: #64748b">Scan the code with the app, or type the key.</p>
+<div style="display: flex; gap: 20px; align-items: center">
+<span aria-hidden="true" style="width: 168px; height: 168px; border-radius: 12px; border: 1px solid #e2e8f0; background: repeating-conic-gradient(#0f172a 0% 25%, #ffffff 0% 50%) 50% / 14px 14px; position: relative; flex: 0 0 auto"><span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center"><span style="padding: 4px 8px; border-radius: 6px; background: #ffffff; font-size: 11px; color: #64748b; font-weight: 600">[QR CODE]</span></span></span>
+<div style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+<span style="font-size: 13px; font-weight: 700; color: #334155">Or the key</span>
+<code style="padding: 10px 12px; border-radius: 10px; background: #f1f5f9; font-size: 14px; font-weight: 700; letter-spacing: 0.08em; word-break: break-all">JBSW Y3DP EHPK 3PXP 7TQ2 NZ6H</code>
+<span style="font-size: 12px; color: #64748b">Account: UltraStore (anna.k@example.org) · time-based · 6 digits · 30 s</span>
+<button type="button" style="align-self: flex-start; height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Copy the key</button>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="t-code" style="font-size: 13px; font-weight: 700; color: #334155">The code the app shows now</label><input id="t-code" type="text" inputmode="numeric" value="" placeholder="6 digits" style="height: 48px; padding: 0 16px; border-radius: 12px; border: 2px solid #2563eb; font: inherit; font-size: 18px; font-weight: 700; letter-spacing: 0.1em; outline: none"></div>
+<button type="button" onClick="{{tNext}}" style="height: 52px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">Confirm</button>
+</div>
+</sc-if>
+
+<sc-if value="{{t3}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 16px">
+<p style="margin: 0; color: #64748b">Recovery codes let you in when the phone is lost. Each works once. Keep them where the phone is not.</p>
+<ol style="margin: 0; padding: 14px 18px; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; border-radius: 14px; background: #f1f5f9; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; font-weight: 700; letter-spacing: 0.06em">
+<li>7Q2M-H9XK</li><li>P4VN-3DLR</li><li>Z8KT-M2WQ</li><li>C6JD-9RVS</li><li>N3XF-K7PL</li><li>H5WB-4TQM</li><li>R9LC-2ZND</li><li>V2PK-8HJT</li>
+</ol>
+<div style="display: flex; gap: 8px; flex-wrap: wrap">
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Download as a file</button>
+<button type="button" style="height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer">Print</button>
+<button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer"><img src="/_blob/a59673ce6edcb56f9629a3733d04bc3c" alt="" style="width: 20px; height: 20px; border-radius: 5px">Save in UltraPassword</button>
+</div>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 14px; color: #334155"><input type="checkbox" style="width: 18px; height: 18px; margin: 0; accent-color: #2563eb">I have kept the codes somewhere safe</label>
+<button type="button" onClick="{{tNext}}" style="height: 52px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">Turn two-factor on</button>
+</div>
+</sc-if>
+
+<sc-if value="{{t4}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 16px; align-items: center; text-align: center; padding-top: 12px">
+<span aria-hidden="true" style="width: 72px; height: 72px; border-radius: 999px; background: #dcfce7; display: inline-flex; align-items: center; justify-content: center"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg></span>
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Two-factor is on</h2>
+<p style="margin: 0; color: #64748b; max-width: 40ch">From now on a purchase, a new device or a change of email asks for the code from UltraAuthenticator on Anna's phone. Eight recovery codes are unused.</p>
+<a href="AccountProfile.dc.html" style="display: inline-flex; align-items: center; justify-content: center; height: 48px; padding: 0 24px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700">Back to the account</a>
+<button type="button" onClick="{{tRestart}}" style="border: 0; background: transparent; padding: 0; font: inherit; font-size: 12px; color: #94a3b8; cursor: pointer">Start over (design preview)</button>
+</div>
+</sc-if>
+</section>
+
+<section aria-labelledby="delete-title" style="grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 24px; padding: 28px; border-radius: 24px; background: #ffffff; border: 1px solid #fecaca">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="delete-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; color: #991b1b">Delete the account: the confirmation</h2>
+<p style="margin: 0; color: #334155">What happens, listed before the last click, as the privacy section promises.</p>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #334155">
+<li style="display: flex; gap: 10px"><span style="color: #991b1b; font-weight: 800">1</span>Music Premium and UltraFIBU run to the end of the paid period (1 Dec 2026, 3 Mar 2027), then stop. Nothing more is charged.</li>
+<li style="display: flex; gap: 10px"><span style="color: #991b1b; font-weight: 800">2</span>UltraVideo and Skyline Siege keep working on the machines they are on, without updates; their licences cannot move to a new machine.</li>
+<li style="display: flex; gap: 10px"><span style="color: #991b1b; font-weight: 800">3</span>The invoices stay for ten years, as the law asks, under the order numbers; nothing else of the account is kept after 30 days.</li>
+<li style="display: flex; gap: 10px"><span style="color: #991b1b; font-weight: 800">4</span>Reviews and comments are removed; a shared playlist stops being shared.</li>
+<li style="display: flex; gap: 10px"><span style="color: #991b1b; font-weight: 800">5</span>You can cancel within 30 days by signing in again.</li>
+</ul>
+</div>
+<form style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 18px; background: #fff5f5">
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="d-reason" style="font-size: 13px; font-weight: 700; color: #334155">Why? (optional)</label><select id="d-reason" style="height: 44px; padding: 0 12px; border-radius: 12px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 14px"><option>I would rather not say</option><option>I have another account</option><option>Too expensive</option><option>Privacy</option><option>Something else</option></select></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="d-confirm" style="font-size: 13px; font-weight: 700; color: #334155">Type <strong>delete</strong> to confirm</label><input id="d-confirm" type="text" value="" style="height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 15px; outline: none"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="d-totp" style="font-size: 13px; font-weight: 700; color: #334155">Code from UltraAuthenticator</label><input id="d-totp" type="text" inputmode="numeric" value="" placeholder="6 digits" style="height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #cbd5e1; font: inherit; font-size: 15px; outline: none"></div>
+<button type="button" style="height: 48px; border-radius: 999px; border: 0; background: #dc2626; color: #ffffff; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer">Delete my account</button>
+<a href="AccountProfile.dc.html" style="text-align: center; font-size: 13px; font-weight: 600; text-decoration: none; color: #475569">Keep the account</a>
+</form>
+</section>
+
+</main>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#2563eb","options":["#2563eb","#0f172a","#7c3aed","#0f766e"]},"$preview":{"width":1440,"height":1260}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { r: 1, t: 1 };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#2563eb';
+    const s = this.state;
+    const dot = (n, cur) => 'width: 28px; height: 28px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; ' + (n < cur ? 'background: #dcfce7; color: #15803d' : n === cur ? 'background: ' + accent + '; color: #ffffff' : 'border: 1px solid #cbd5e1; color: #94a3b8');
+    const rsteps = ['Email', 'Codes', 'New password', 'Done'].map((label, i) => ({ n: i + 1, label, style: dot(i + 1, s.r) }));
+    const tsteps = ['App', 'Scan', 'Recovery codes', 'Done'].map((label, i) => ({ n: i + 1, label, style: dot(i + 1, s.t) }));
+    return {
+      accent,
+      rsteps, tsteps,
+      r1: s.r === 1, r2: s.r === 2, r3: s.r === 3, r4: s.r === 4,
+      t1: s.t === 1, t2: s.t === 2, t3: s.t === 3, t4: s.t === 4,
+      rNext: () => this.setState({ r: Math.min(4, s.r + 1) }),
+      rBack: () => this.setState({ r: Math.max(1, s.r - 1) }),
+      rRestart: () => this.setState({ r: 1 }),
+      tNext: () => this.setState({ t: Math.min(4, s.t + 1) }),
+      tRestart: () => this.setState({ t: 1 })
+    };
+  }
+}
+</script>
+</body>
+</html>
