@@ -1,3 +1,11 @@
+#### 2026-11-19 *0.2.6*
+- **Network printers and eSCL scanners are found on macOS.** The macOS
+  bundle came without UltraNet's `mdns` plug-in, the DNS-SD browser that the
+  IPP printer and eSCL scanner discovery runs on, so on a Mac neither found
+  anything on the network: printers came only from CUPS, eSCL scanners not
+  at all. The bundle carries it now (`package-macos.sh`,
+  `ultranet_plugins_of`).
+
 #### 2026-11-15 *0.2.5*
 - **The device tree no longer scrolls back to the top while you read it.** The
   scan timer rebuilds the tree row by row, so the device being read scrolled

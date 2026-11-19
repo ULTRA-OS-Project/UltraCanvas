@@ -1,5 +1,33 @@
-#### 2026-11-19 *0.1.22*
+#### 2026-11-19 *0.1.23*
 - **The music streaming variant of the design** (`Docs/UltraStore/design/Music*.dc.html`, on the design canvas): the shop's chrome as a streaming service - the home with the library rail, mixes, new releases, the charts and podcasts; an album page with the track table and the artist's share of the subscription; an artist page with working discography filters; search with working type and genre filters; the phone's Now playing with lyrics; the now-playing bar on every desktop page. A design only: UltraCanvas Audio and the store's subscriptions exist, a streaming service does not; every artist, album and figure is sample data.
+- **The account pages of the design** (`Docs/UltraStore/design/Account*.dc.html`): sign up, sign in and the email code with working steps, the profile, security (two-factor, passkeys, sign-in history), devices with licence seats, notifications, privacy and data, payment methods, subscriptions, purchases and licences, orders and invoices, and the phone's account page - shared by every shop on the canvas. A proposal: the store has no accounts today; the README says what an account service would tie together.
+
+#### 2026-11-19 *0.1.22*
+- **The ULTRA OS Project's own apps go through the marketplace** (decided
+  2026-11-18, the README's *The operator tier*): the project is the merchant
+  `ultra-os-project`, its admin backend submits each release, and the
+  public catalog has one writer, the marketplace's publish; the merchant
+  backend's `publish` stays for a store of one's own. The README names what
+  the handover needs - the operator's key committed as `keys/market.pub`
+  and announced by a last catalog signed with `publish.pub` (which the
+  admin backend cannot do yet), a first sequence above the public
+  catalog's, the project's codes leaving the public catalog - and a new
+  section, *Packaging an application for the store*, on
+  `scripts/package-store-app.sh`.
+- **Open starts an app on its runtime layer.** The store installed an app's
+  runtime and libraries beside it and then started the app with nothing on
+  its library path, so an app whose package left the runtime out installed
+  and did not start - and every package had to carry the whole runtime, a
+  hundred megabytes each. `PlanLaunch` (`StoreQuery.h`) now puts the
+  components the app was installed with - the exact versions of its
+  `depends`, and theirs in turn - first on `LD_LIBRARY_PATH` (a component's
+  `lib/`) or `PATH` (its folder, on Windows), and names the runtime's folder
+  in `ULTRACANVAS_RUNTIME_DIR`, where the framework finds media and
+  UltraNet's plug-ins after the app's own. A self-contained app (no
+  `depends`) starts as before; on macOS nothing is added, an app there being
+  a bundle with its own `Frameworks/`. The README's *Packaging an
+  application for the store* describes the three package shapes of
+  `scripts/package-store-app.sh`.
 
 #### 2026-11-17 *0.1.21*
 - **The video portal variant of the design** (`Docs/UltraStore/design/Video*.dc.html`, on the design canvas): the shop's chrome as a portal with channels - the home with the sections rail, topic chips, the video grid, Shorts and live; the watch page on the UltraCanvas video element with chapters, captions, the channel row, comments, up next and the transcript; a channel page with working sort and kind filters; the creator's Studio with the upload, the details form and the videos table; the phone's watch page. A design only: the video element and UltraVideo's export exist, a portal service does not; every channel, video and figure is sample data.

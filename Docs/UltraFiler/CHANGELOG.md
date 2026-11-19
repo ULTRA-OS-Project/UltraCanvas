@@ -1,3 +1,52 @@
+#### 2026-11-19 *1.107.21*
+- **Dark mode across the dialogs.** Adding an FTP / SFTP or cloud drive opens
+  a dark form under a dark look (it was a white window, its checkbox label
+  invisible); long context menus, dropdown lists and scrolling settings pages
+  show a dark scroll bar; the connection log's Close and the "Show hidden
+  files" / "Scan sub folder" buttons take the theme's accent (framework fixes).
+- **Light or dark, whatever the desktop says.** *Settings > Display > Display
+  mode* chooses UltraFiler's look: **As the system says** (the default, and
+  what every earlier release did) follows the desktop and UOS-Settings' Look
+  page, live; **Light mode** and **Dark mode** keep UltraFiler in that look.
+  The desktop's accent colour, fonts and high contrast still apply. The main
+  window switches at once, and the choice is kept in `config.ini` as
+  `display.mode`. The settings are now read before the window is built, so a
+  filer set to Dark starts dark rather than switching after it appears.
+- **The settings window follows a theme change while it is open.** It kept
+  the look it opened with; now it switches at once with the main window -
+  from its own Display mode page as well as from the desktop - its switches
+  included.
+- **A RAM disc on Windows without ImDisk is no longer asked for a size.**
+  Without the ImDisk driver the "RAM disc" is a folder on the system drive,
+  wiped when it is ejected. The size chosen in the *New RAM disc* dialog was
+  never kept to - the folder holds whatever the drive has room for - and the
+  disc's card on the Computer page showed the system drive's pie (the same
+  69 % and free space as C:), which read as a disc as large as the drive. The
+  dialog now asks for the name alone there and says the disc has no size of
+  its own; the card shows a neutral ring with *Folder on the system drive* and
+  *No size of its own*. With ImDisk installed, on macOS and on Linux the size
+  is asked as before.
+- **Copying over existing files: replace when newer, bigger or different.**
+  The question for a file that exists already has a foldable *Replace
+  options* panel, and the *Copy finished* summary an *Options for copying
+  again* panel - ask, keep both, replace always, or replace only when the
+  copied file is newer, bigger or different. "Copy skipped items again" now
+  follows that choice even with *Settings > Handling > File operations* set
+  to Skip, where it used to skip every file again. A file skipped this way is
+  listed as "File exists already".
+- **Replace when older, and Keep both without duplicates.** The same panels
+  offer *Replace only when the copied file is older* - for bringing an
+  earlier version back from a backup - and *Keep both: skip files that are
+  identical*, which gives every other file a numbered name ("photo (2).jpg")
+  but does not copy a file that is already there unchanged.
+- **Settings > Display > Thumbnails and Detail view listed the file kinds in
+  English** ("Bitmaps", "Vector graphics", "Spreadsheets", ...) on every
+  desktop. They are named through `UltraCanvasFilerWidget::PreviewTypeText`
+  now, in the reader's language, as the folder view's Display menu names them.
+- The command bar's **New ▾** menu showed "Folder" in English; it is
+  translated like the folder view's New > Folder, and the documents it
+  creates are named in the reader's language ("Neue Tabelle.ods").
+
 #### 2026-11-18 *1.107.20*
 - **The Delete dialog is dark under a dark theme.** The list of what is about
   to be deleted (and the list in the copy / move questions) was white with a

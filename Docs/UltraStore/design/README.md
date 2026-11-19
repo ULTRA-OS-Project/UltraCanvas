@@ -47,6 +47,10 @@ over these.
 | `MusicArtist.dc.html` | an artist (Kesselhaus Quartet): the header with monthly listeners, follow and support, popular songs; the discography's kind (albums, singles and EPs, live, appears on) and sort (newest, oldest) filters work (state in the script); about, on tour, fans also like | page |
 | `MusicSearch.dc.html` | search: the type (songs, artists, albums, playlists, podcasts) and genre filters work over a sample result set (state in the script), the top result with songs, the result grid, browse all by genre | page |
 | `MusicPhoneNowPlaying.dc.html` | Now playing on a phone: the cover, title, like, the position, shuffle, previous, play, next, repeat, the playing device and quality, share and queue, lyrics | 390 × 844 |
+| `AccountSignUp.dc.html` | sign in or create an account: the brand panel, the steps (account, verify, profile, done) work in the script - email and password with the strength check, country and year of birth, consent; the email code; the profile basics and what the account keeps; the welcome with two-factor as the next step; sign in with a passkey | page |
+| `AccountProfile.dc.html` | the account page: the account rail; profile (avatar, display name, handle, the private email, language, country, year of birth, about); security (password, two-factor with recovery codes, passkeys, sign-in history); devices with the licence seats they hold; notifications; privacy and data (history on the account, public profile, the data archive, delete the account) | page |
+| `AccountBilling.dc.html` | payment methods (a reference to the method, the billing address, VAT); subscriptions (switch, cancel, resume); purchases and licences with seats and *Install on a machine*; orders and invoices (PDF, XRechnung, returns, credit notes) | page |
+| `AccountPhoneProfile.dc.html` | the account on a phone: the profile head, the Premium card, the account sections, this device, sign out, the bottom tab bar with Account | 390 × 844 |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -198,6 +202,22 @@ on the machine, downloads and the artists' share. The service is
 UltraStore's own business, not UltraPress's. Every artist, album, song,
 count and figure is invented sample data; the covers are drawn `[COVER]`
 placeholders.
+
+The `Account*` pages are the **account** every shop on the canvas shares:
+sign up, sign in and the profile, security, devices, notifications,
+privacy, payment methods, subscriptions, licences and orders. They are a
+**proposal**: [the store's README](../README.md) says the store has no
+accounts - a licence lives in `registry.sqlite` on the machine it was
+bought on, and the payment service sells without one. An account service
+would tie licences and their seats, subscriptions, the library (wish
+list, playlists, watch later, saved games) and, for the marketplace, the
+reporter's identity to a person across machines; installing a free app
+would still need none. Two-factor sign-in is UltraAuthenticator or any
+TOTP app, passkeys where the machine has them, recovery codes in
+UltraPassword if wanted; payment stays on Skrill Quick Checkout's page
+through the store's payment service, the account keeping only a reference
+to the method. Every person, device, order and figure is invented sample
+data.
 
 The `Super*` pages are a **proposal** for a third tier, later: the operator
 of UltraStore running a marketplace in which other publishers (merchants)
