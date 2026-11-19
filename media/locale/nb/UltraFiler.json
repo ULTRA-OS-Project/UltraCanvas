@@ -425,7 +425,6 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "Zstandard langmodus: treff over 128 MB (zstd --long=27)",
   "{0} (default)": "{0} (standard)",
   "{0} - not supported by this build": "{0} – støttes ikke av denne utgaven",
-  "{0} min": "{0} min",
   "{0}, {1} (room for {2})": "{0}, {1} (plass til {2})",
   "{n} download is still running or waiting — quit anyway?": {
     "one": "{n} nedlasting kjører eller venter fortsatt — avslutte likevel?",

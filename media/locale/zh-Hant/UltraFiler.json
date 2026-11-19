@@ -421,7 +421,6 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "Zstandard 長距離模式：跨 128 MB 比對 (zstd --long=27)",
   "{0} (default)": "{0}（預設）",
   "{0} - not supported by this build": "{0} - 此版本不支援",
-  "{0} min": "{0} 分鐘",
   "{0}, {1} (room for {2})": "{0}，{1}（可容納 {2}）",
   "{n} download is still running or waiting — quit anyway?": {
     "other": "{n} 項下載仍在進行或等待。仍要結束嗎？"

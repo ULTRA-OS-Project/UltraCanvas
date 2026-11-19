@@ -1,8 +1,10 @@
 # UltraCanvasProgressDialog
 
 A modal window for an operation that takes long enough to need reporting: a
-circular progress ring with the percentage in its centre, a caption above it, a
-line naming what is being worked on right now, and a Cancel button.
+circular progress ring with the percentage in its centre; beside it a headline,
+where the work goes from and to (two chips), and what is being worked on right
+now; for a transfer, a strip of figures under them - speed, time left, items,
+size; and Cancel, with Pause / Resume where the work can wait.
 
 ```cpp
 #include "UltraCanvasProgressDialog.h"
@@ -32,13 +34,49 @@ dlg->Close();
 | `SetProgress(double fraction)` | `0..1`, clamped. A **negative** value means the total is not known: the ring shows a busy sweep and the centre reads `...` instead of inventing a percentage. |
 | `SetCaption(text)` | The line above the ring. |
 | `SetDetail(text)` | What is being worked on now. Long text is ellipsized from the left, so the window keeps the height it opened with. |
+| `Show(parent, title, caption, onCancel, ProgressDialogOptions)` | The same with the transfer layout (below): `from` / `to` for the route chips, `figures` for the strip with an Items cell (`items`) and a Size cell (`bytes`), `onPause` for a Pause / Resume button. With a route the window's title is the headline. |
+| `SetFigures(ProgressFigures)` | What is done (`doneItems`, `doneBytes`) and, where the work knows it, the total (`totalItems`, `totalBytes`; 0 = not known, and the cell shows what is done alone). Cheap on every tick. |
 | `IsCancelled()` | True once the user asked to cancel. |
+| `IsPaused()` | True while Pause is pressed. |
+| `FormatDuration(seconds)`, `FormatBytes(bytes)` | "9 s", "2 min", "1 h 5 min"; "742 MB", "1.2 GB" - as the window shows them. |
 | `Close()` | Takes the window down. Safe to call twice, and safe after the user closed it. |
 
 `onCancel` fires on the UI thread for every way out of the window — the button,
 Escape, the title bar. The dialog only *reports* the cancel; stopping the work
 is the caller's job, and so is deciding what a cancelled operation leaves
 behind.
+
+## The transfer layout
+
+```cpp
+ProgressDialogOptions options;
+options.from = "ULTRA OS";             // the chips: "ULTRA OS" -> "Projekte"
+options.to = "Projekte";
+options.figures = true;                // the strip: Speed, Time left ...
+options.items = true;                  // ... Items
+options.bytes = true;                  // ... Size; speed in bytes per second
+options.onPause = [&](bool paused) { job.paused = paused; };
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Copying", "", onCancel, options);
+// each tick: the figures first, then the reading that takes the sample
+dlg->SetFigures({job.doneItems, job.totalItems, job.doneBytes, job.totalBytes});
+dlg->SetProgress(job.fraction);
+```
+
+Everything the window shows is fixed when it opens, so its height never changes
+while it is up. **Time left** is worked out from the bytes where their total is
+known, from the items where theirs is, else from how fast the ring moves;
+**speed** is bytes (or, without `bytes`, items) per second. Both are averaged
+over the last three seconds and appear after the first second ("—" until then);
+a pause starts the averaging over.
+
+It is built to cost the work nothing measurable. The ring follows every
+`SetProgress`; the texts change at most four times a second and are plain
+labels, not a laid-out Markdown message. Nothing is counted for the window: the
+caller hands in what it counts anyway, and leaves a total at 0 where knowing it
+would mean walking a tree first. In the UltraFiler, a copy of 100,000 small
+files spent 1.5 - 1.9 % of one core on the window's thread with this layout,
+against 1.1 - 1.7 % with the ring and file name alone; the copy itself runs on
+another core.
 
 ## Worked example: a background job
 

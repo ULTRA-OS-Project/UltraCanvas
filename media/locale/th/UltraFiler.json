@@ -421,7 +421,6 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "โหมด long ของ Zstandard: จับคู่ข้ามช่วง 128 MB (zstd --long=27)",
   "{0} (default)": "{0} (ค่าเริ่มต้น)",
   "{0} - not supported by this build": "{0} - บิลด์นี้ไม่รองรับ",
-  "{0} min": "{0} นาที",
   "{0}, {1} (room for {2})": "{0}, {1} (รองรับได้ {2})",
   "{n} download is still running or waiting — quit anyway?": {
     "other": "การดาวน์โหลด {n} รายการยังทำงานอยู่หรือรออยู่ — ออกต่อไปหรือไม่"

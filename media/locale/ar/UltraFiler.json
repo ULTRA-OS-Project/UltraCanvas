@@ -441,7 +441,6 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "الوضع الطويل لـ Zstandard: مطابقات عبر 128 MB (zstd --long=27)",
   "{0} (default)": "{0} (افتراضي)",
   "{0} - not supported by this build": "{0} - غير مدعوم في هذا الإصدار",
-  "{0} min": "{0} د",
   "{0}, {1} (room for {2})": "{0}، {1} (يتسع لـ {2})",
   "{n} download is still running or waiting — quit anyway?": {
     "zero": "لا تزال {n} من عمليات التنزيل جارية أو في الانتظار — هل تريد الإنهاء على أي حال؟",

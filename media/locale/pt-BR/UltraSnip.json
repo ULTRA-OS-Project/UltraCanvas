@@ -76,6 +76,5 @@
   "When a snip was started from the desktop's button, the shortcut or the command line:": "Quando uma captura foi iniciada pelo botão da área de trabalho, pelo atalho ou pela linha de comando:",
   "Window: the window you click": "Janela: a janela em que você clica",
   "With both off a snip only shows in the window, where Save as and Copy do the rest. Save as always offers every type and any folder, whatever is set here.": "Com as duas opções desativadas, uma captura só aparece na janela, onde Salvar como e Copiar fazem o resto. Salvar como sempre oferece todos os tipos e qualquer pasta, independentemente do que estiver definido aqui.",
-  "Write every picture to the folder below": "Gravar cada imagem na pasta abaixo",
-  "{0} s": "{0} s"
+  "Write every picture to the folder below": "Gravar cada imagem na pasta abaixo"
 }

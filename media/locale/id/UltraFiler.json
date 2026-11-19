@@ -421,7 +421,6 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "Mode panjang Zstandard: kecocokan hingga 128 MB (zstd --long=27)",
   "{0} (default)": "{0} (default)",
   "{0} - not supported by this build": "{0} - tidak didukung oleh build ini",
-  "{0} min": "{0} mnt",
   "{0}, {1} (room for {2})": "{0}, {1} (kapasitas {2})",
   "{n} download is still running or waiting — quit anyway?": {
     "other": "{n} unduhan masih berjalan atau menunggu — tetap keluar?"

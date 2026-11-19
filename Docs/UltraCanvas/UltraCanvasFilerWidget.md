@@ -2212,6 +2212,18 @@ a dialog for every copied text file is worse than one that shows none. (Packing,
 open theirs immediately instead: none of those is ever the quick case, and the
 last one is waiting on a consent prompt the user has to answer.)
 
+The window shows the operation as its headline ("Copying"), the route as two
+chips (*ULTRA OS → Projekte*, *Downloads → Trash*), the file being handled, and
+a strip of **speed, time left, items and size** (a delete: items only; packing
+and unpacking: bytes only), with **Pause / Resume** beside Cancel. The worker
+counts what is done as it goes - one atomic add per file - and the totals come
+only from the counting it does anyway: a copy or delete of one entry counts it
+before starting on it, so "26 731 / 37 650" shows; several entries show what is
+done alone, since knowing their total would mean walking every tree first;
+moving to the Trash knows its total from the start (one move per entry). Pause
+holds the worker between files and between the chunks of a big file, and an
+archive job between its blocks; Cancel still gets through while paused.
+
 The window is the same for every route into these operations — Ctrl+V, the
 context menu, `Delete`, a drag & drop between panes, `Duplicate`,
 `PasteFilesInto()`, `DeletePaths()` — because they all go through the same two

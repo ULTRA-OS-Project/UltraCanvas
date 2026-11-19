@@ -51,6 +51,9 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.56.0 - the progress window's figures, route and Pause: copies, moves and deletes count the
+//                  files and bytes done (totals only from the counting the work does anyway), archive
+//                  jobs report bytes; the window's titles are translated ("Copying" was English)
 // Version: 1.55.0 - Extract into existing: a foldable Options panel says what happens to a file that is
 //                  there already (replace always / when newer, older, bigger, different / keep both
 //                  unless identical); the files left as they were are listed when the extract is through
@@ -6808,11 +6811,18 @@ namespace UltraCanvas {
         const std::string verb = cut ? "Moving" : "Copying";
         std::string target = PathToUtf8(PathFromUtf8(pendingPaste->folder).filename());
         if (target.empty()) target = pendingPaste->folder;   // a drive root
-        BeginFileOperation(verb,
-                FileOperationCaption(verb, pendingPaste->sources.size(),
-                        PathToUtf8(PathFromUtf8(pendingPaste->sources.front()).filename()),
-                        target),
+        const std::string firstName = PathToUtf8(PathFromUtf8(pendingPaste->sources.front()).filename());
+        BeginFileOperation(cut ? Tr("Moving") : Tr("Copying"),
+                FileOperationCaption(verb, pendingPaste->sources.size(), firstName, target),
                 pendingPaste->sources.size());
+        if (fileOp) {
+            const size_t n = pendingPaste->sources.size();
+            fileOp->routeFrom = n == 1 ? firstName
+                                       : TrN("{n} item", "{n} items", static_cast<long long>(n));
+            fileOp->routeTo = target;
+            fileOp->countsBytes = true;
+            fileOp->singleEntry = n == 1;
+        }
         ContinuePendingPaste();
     }
 
@@ -6954,6 +6964,7 @@ namespace UltraCanvas {
             pp->currentAction = action;
             for (;;) {
                 FileOpItemCredit credit{.op = op, .slice = kFileOpItemUnits};
+                credit.topLevel = (kind == ItemKind::Entry);   // a merge's entries are no total
                 credit.SetFile(PathToUtf8(from.filename()));
                 std::string why;
                 if (PasteOneEntry(*pp, src, folder, action,
@@ -7973,13 +7984,29 @@ namespace UltraCanvas {
         // opens only if the delete is still going two seconds from now.
         const std::string verb = pendingDelete->toTrash
                 ? "Moving to the " + TrashDisplayName() : std::string("Deleting");
-        BeginFileOperation(verb,
+        BeginFileOperation(pendingDelete->toTrash ? TrF("Moving to the {0}", TrashDisplayName())
+                                                  : Tr("Deleting"),
                 FileOperationCaption(verb, pendingDelete->victims.size(),
                         pendingDelete->victims.empty()
                                 ? std::string()
                                 : pendingDelete->victims.front().name,
                         std::string()),
                 pendingDelete->victims.size());
+        if (fileOp) {
+            const size_t n = pendingDelete->victims.size();
+            fileOp->routeFrom = n == 1 ? pendingDelete->victims.front().name
+                                       : TrN("{n} item", "{n} items", static_cast<long long>(n));
+            fileOp->routeTo = pendingDelete->toTrash ? TrashDisplayName() : std::string();
+            fileOp->countsBytes = false;
+            if (pendingDelete->toTrash) {
+                // One move per selected entry, whatever it holds: their number
+                // is the total, known from the start.
+                fileOp->totalItems.store(n);
+                fileOp->totalsKnown.store(true);
+            } else {
+                fileOp->singleEntry = n == 1;   // its count (CountTreeEntries) is the total
+            }
+        }
         ContinuePendingDelete();
     }
 
@@ -8246,7 +8273,8 @@ namespace UltraCanvas {
         }
         StartArchiveJob(Tr("Deleting as Administrator"), caption, "", false,
                         std::move(work),
-                        [this, result](bool, bool) { FinishElevatedDeletes(*result); });
+                        [this, result](bool, bool) { FinishElevatedDeletes(*result); },
+                        ArchiveJobLook{.figures = false, .pausable = false});
     }
 
     void UltraCanvasFilerWidget::FinishElevatedDeletes(
@@ -9255,7 +9283,25 @@ namespace UltraCanvas {
     // ===== COPY / MOVE / DELETE WORKER =====
 
     bool UltraCanvasFilerWidget::FileOpItemCredit::Cancelled() const {
-        return heedCancel && op && op->cancelled.load();
+        if (!op) return false;
+        // Pause in the window holds the work here - between files, and between
+        // the chunks of a big one; a cancel still gets through.
+        while (op->paused.load(std::memory_order_relaxed) && !op->cancelled.load())
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        return heedCancel && op->cancelled.load();
+    }
+
+    void UltraCanvasFilerWidget::FileOpItemCredit::CountItem(uint64_t bytes) {
+        if (!op) return;
+        ++itemsCounted;
+        op->doneItems.fetch_add(1, std::memory_order_relaxed);
+        CountBytes(bytes);
+    }
+
+    void UltraCanvasFilerWidget::FileOpItemCredit::CountBytes(uint64_t bytes) {
+        if (!op || bytes == 0) return;
+        bytesCounted += bytes;
+        op->doneBytes.fetch_add(bytes, std::memory_order_relaxed);
     }
 
     void UltraCanvasFilerWidget::FileOpItemCredit::SetFile(const std::string& file) {
@@ -9283,12 +9329,20 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::FileOpItemCredit::Finish() {
+        // An entry handled in one go - a move that was a rename, a skip, a
+        // trip to the Trash - is one item done.
+        if (op && itemsCounted == 0) CountItem();
         if (!op || credited >= slice) return;
         op->doneUnits.fetch_add(slice - credited);
         credited = slice;
     }
 
     void UltraCanvasFilerWidget::FileOpItemCredit::Rollback() {
+        if (op && (itemsCounted || bytesCounted)) {
+            op->doneItems.fetch_sub(itemsCounted, std::memory_order_relaxed);
+            op->doneBytes.fetch_sub(bytesCounted, std::memory_order_relaxed);
+            itemsCounted = bytesCounted = 0;
+        }
         if (!op || credited == 0) return;
         op->doneUnits.fetch_sub(credited);
         credited = 0;
@@ -9300,30 +9354,44 @@ namespace UltraCanvas {
         // One unit per entry on top of its bytes: a folder of ten thousand
         // empty files is real work, and a ring that stands at 0 % all through
         // it is a ring that says the operation is stuck.
+        // The window's totals come from this count, which the copy makes
+        // anyway: the operation's own, when it is this one entry.
+        auto noteTotals = [&credit](uint64_t entries, uint64_t bytes) {
+            FileOperation* op = credit.op;
+            if (!op || !credit.topLevel || !op->singleEntry || op->totalsKnown.load()) return;
+            op->totalItems.store(entries);
+            op->totalBytes.store(bytes);
+            op->totalsKnown.store(true);
+        };
         std::error_code ec;
         const fs::path root(UltraCanvas::PathFromUtf8(path));
         const fs::file_status st = fs::status(UltraCanvas::PathFromUtf8(root), ec);   // follows links, as
         if (ec) return 1;                                  // the copy does
         if (!fs::is_directory(st)) {
-            if (!fs::is_regular_file(st)) return 1;
+            if (!fs::is_regular_file(st)) { noteTotals(1, 0); return 1; }
             const uintmax_t size = fs::file_size(UltraCanvas::PathFromUtf8(root), ec);
+            noteTotals(1, ec ? 0 : static_cast<uint64_t>(size));
             return ec ? 1 : 1 + static_cast<uint64_t>(size);
         }
-        uint64_t units = 1;
+        uint64_t entries = 1;
+        uint64_t bytes = 0;
         std::error_code iterEc;
         fs::recursive_directory_iterator it(UltraCanvas::PathFromUtf8(root), iterEc), end;
-        if (iterEc) return units;
+        if (iterEc) { noteTotals(entries, bytes); return entries; }
+        bool cancelled = false;
         for (; it != end; it.increment(iterEc)) {
-            if (iterEc || credit.Cancelled()) break;
-            ++units;
+            if (iterEc) break;
+            if (credit.Cancelled()) { cancelled = true; break; }
+            ++entries;
             std::error_code fec;
             // symlink_status, because a link's target is counted where the
             // target lives - or not at all, when it leaves the tree.
             if (!fs::is_regular_file(it->symlink_status(fec)) || fec) continue;
             const uintmax_t size = it->file_size(fec);
-            if (!fec) units += static_cast<uint64_t>(size);
+            if (!fec) bytes += static_cast<uint64_t>(size);
         }
-        return units;
+        if (!cancelled) noteTotals(entries, bytes);
+        return entries + bytes;
     }
 
     uint64_t UltraCanvasFilerWidget::CountTreeEntries(const std::string& path,
@@ -9334,10 +9402,19 @@ namespace UltraCanvas {
         uint64_t entries = 1;
         std::error_code iterEc;
         fs::recursive_directory_iterator it(UltraCanvas::PathFromUtf8(root), iterEc), end;
-        if (iterEc) return entries;
-        for (; it != end; it.increment(iterEc)) {
-            if (iterEc || credit.Cancelled()) break;
-            ++entries;
+        bool cancelled = false;
+        if (!iterEc) {
+            for (; it != end; it.increment(iterEc)) {
+                if (iterEc) break;
+                if (credit.Cancelled()) { cancelled = true; break; }
+                ++entries;
+            }
+        }
+        // The delete's own count, the window's total when it is this one entry.
+        FileOperation* op = credit.op;
+        if (op && !cancelled && credit.topLevel && op->singleEntry && !op->totalsKnown.load()) {
+            op->totalItems.store(entries);
+            op->totalsKnown.store(true);
         }
         return entries;
     }
@@ -9358,6 +9435,7 @@ namespace UltraCanvas {
             // date at "now" everywhere and the modification date too off Windows.
             CopyFileTimes(from, to);
             credit.Step(1 + bytes, {});
+            credit.CountItem(bytes);
             return true;
         }
 
@@ -9389,6 +9467,7 @@ namespace UltraCanvas {
                 return false;
             }
             credit.Step(static_cast<uint64_t>(got), {});
+            credit.CountBytes(static_cast<uint64_t>(got));
         }
         const bool readFailed = in.bad();
         in.close();
@@ -9408,6 +9487,7 @@ namespace UltraCanvas {
                                   fs::perm_options::replace, pec);
         // ...and its dates, as the small-file path does.
         CopyFileTimes(from, to);
+        credit.CountItem();   // its bytes were counted chunk by chunk
         return true;
     }
 
@@ -9430,6 +9510,7 @@ namespace UltraCanvas {
             fs::create_directories(UltraCanvas::PathFromUtf8(target), ec);
             if (ec) return false;
             credit.Step(1, PathToUtf8(source.filename()));
+            credit.CountItem();
             std::error_code iterEc;
             fs::directory_iterator it(UltraCanvas::PathFromUtf8(source), iterEc), end;
             if (iterEc) { ec = iterEc; return false; }
@@ -9459,6 +9540,7 @@ namespace UltraCanvas {
         fs::copy(UltraCanvas::PathFromUtf8(source), UltraCanvas::PathFromUtf8(target), fs::copy_options::recursive, ec);
         if (ec) return false;
         credit.Step(1, PathToUtf8(source.filename()));
+        credit.CountItem();
         return true;
     }
 
@@ -9563,6 +9645,7 @@ namespace UltraCanvas {
         FileRemovalProblem why = FileRemovalProblem::NoProblem;
         if (!RemoveFileSystemEntry(victim, ec, &why)) return failedHere(why);
         credit.Step(1, PathToUtf8(victim.filename()));
+        credit.CountItem();
         return true;
     }
 
@@ -9656,13 +9739,30 @@ namespace UltraCanvas {
                 // operation, not of this stretch: a paste that spent the first
                 // two seconds in a conflict dialog does not start the wait
                 // again for every entry after it.
+                ProgressDialogOptions options;
+                options.from = op->routeFrom;
+                options.to = op->routeTo;
+                options.figures = true;
+                options.items = true;
+                options.bytes = op->countsBytes;
+                options.onPause = [this](bool paused) { if (fileOp) fileOp->paused.store(paused); };
                 op->dialog = UltraCanvasProgressDialog::Show(
                         GetWindow(), op->title, op->caption,
                         [this]() { if (fileOp) fileOp->cancelled.store(true); },
-                        /*showIcon=*/false);
+                        options);
             }
         }
         if (op->dialog && !stretchEnded) {
+            // The figures first: the ring's reading below is what takes the
+            // sample speed and time left are worked out from.
+            ProgressFigures figures;
+            figures.doneItems = op->doneItems.load(std::memory_order_relaxed);
+            figures.doneBytes = op->doneBytes.load(std::memory_order_relaxed);
+            if (op->totalsKnown.load()) {
+                figures.totalItems = op->totalItems.load();
+                figures.totalBytes = op->totalBytes.load();
+            }
+            op->dialog->SetFigures(figures);
             const uint64_t total = op->totalUnits.load();
             const uint64_t done = op->doneUnits.load();
             op->dialog->SetProgress(total > 0
@@ -9687,6 +9787,7 @@ namespace UltraCanvas {
         op->finished.store(false);
         if (op->worker.joinable()) op->worker.join();
         if (op->dialog) { op->dialog->Close(); op->dialog.reset(); }
+        op->paused.store(false);   // a new window starts running
         op->dialogDue = false;   // the next stretch may open its own window
         FlushFileOperationErrors();
         std::function<void()> stretchDone;
@@ -9730,6 +9831,16 @@ namespace UltraCanvas {
             const std::string& destination, bool packing,
             std::function<bool(const ArchiveProgressReporter&)> work,
             std::function<void(bool ok, bool cancelled)> onFinished) {
+        StartArchiveJob(title, caption, destination, packing, std::move(work),
+                        std::move(onFinished), ArchiveJobLook());
+    }
+
+    void UltraCanvasFilerWidget::StartArchiveJob(
+            const std::string& title, const std::string& caption,
+            const std::string& destination, bool packing,
+            std::function<bool(const ArchiveProgressReporter&)> work,
+            std::function<void(bool ok, bool cancelled)> onFinished,
+            const ArchiveJobLook& look) {
         if (archiveJob) return;   // one at a time
 
         archiveJob = std::make_unique<ArchiveJob>();
@@ -9742,15 +9853,25 @@ namespace UltraCanvas {
         // work still runs, it just runs unannounced.
         // No severity badge on the pack / unpack window: the progress ring is
         // its graphic, and the icon column would push the ring off centre.
+        ProgressDialogOptions options;
+        options.from = look.from;
+        options.to = look.to;
+        options.figures = look.figures;
+        options.bytes = look.figures;   // archives report bytes, not items
+        if (look.pausable)
+            options.onPause = [job](bool paused) { job->paused.store(paused); };
         job->dialog = UltraCanvasProgressDialog::Show(
                 GetWindow(), title, caption,
                 [this]() { if (archiveJob) archiveJob->cancelRequested.store(true); },
-                /*showIcon=*/false);
+                options);
 
         // The reporter is the worker's only way to talk to the UI: it stores
         // numbers the poll timer reads, and answers whether to keep going.
         ArchiveProgressReporter report =
                 [job](uint64_t done, uint64_t total, const std::string& file) {
+            // Pause holds the packer / unpacker here, between its blocks.
+            while (job->paused.load(std::memory_order_relaxed) && !job->cancelRequested.load())
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
             job->doneBytes.store(done);
             job->totalBytes.store(total);
             if (!file.empty()) {
@@ -9784,6 +9905,10 @@ namespace UltraCanvas {
         if (job->dialog) {
             const uint64_t total = job->totalBytes.load();
             const uint64_t done = job->doneBytes.load();
+            ProgressFigures figures;   // before the ring's reading, which takes the sample
+            figures.doneBytes = done;
+            figures.totalBytes = total;
+            job->dialog->SetFigures(figures);
             // An unknown total (a backend that only names files) shows the busy
             // ring rather than a percentage invented from nothing.
             job->dialog->SetProgress(total > 0
@@ -9956,7 +10081,10 @@ namespace UltraCanvas {
             if (!ok && !cancelled) ReportError(TrF("Compressing into {0} failed", dest));
             Refresh();
             if (ok) NotifyFolderModified(PathToUtf8(PathFromUtf8(dest).parent_path()));
-        });
+        },
+                        ArchiveJobLook{.from = paths.size() == 1 ? PathToUtf8(PathFromUtf8(paths.front()).filename())
+                                                          : TrN("{n} item", "{n} items", static_cast<long long>(paths.size())),
+                                       .to = archiveName});
 #else
         (void)extension;
         ReportError(Tr("Compressing needs the VirtualFS module, which this program was built without."));
@@ -10157,7 +10285,8 @@ namespace UltraCanvas {
             // Cancelling stops the whole queue, not just this archive.
             if (cancelled) FinishPendingExtract();
             else           ContinuePendingExtract();
-        });
+        },
+                        ArchiveJobLook{.from = archiveName, .to = PathToUtf8(PathFromUtf8(destDir).filename())});
         return false;   // the queue resumes from the callback above
     }
 
@@ -10512,7 +10641,9 @@ namespace UltraCanvas {
                 return;
             }
             ExtractArchivesSequentially(std::move(jobs), index + 1, notifyFolder);
-        });
+        },
+                        ArchiveJobLook{.from = PathToUtf8(PathFromUtf8(src).filename()),
+                                       .to = PathToUtf8(PathFromUtf8(dest).filename())});
     }
 #endif
 
@@ -10620,7 +10751,10 @@ namespace UltraCanvas {
             Refresh();
             // The archive can be written into a folder the icon was dragged onto.
             if (ok) NotifyFolderModified(PathToUtf8(PathFromUtf8(dest).parent_path()));
-        });
+        },
+                        ArchiveJobLook{.from = sources.size() == 1 ? PathToUtf8(PathFromUtf8(sources.front()).filename())
+                                                            : TrN("{n} item", "{n} items", static_cast<long long>(sources.size())),
+                                       .to = PathToUtf8(candidate.filename())});
 #else
         ReportError(d.extractMode
                 ? Tr("Extracting needs the VirtualFS module, which this program was built without.")
@@ -11203,7 +11337,8 @@ namespace UltraCanvas {
                 return;
             }
             StartExtractedProgram(folder, program);
-        });
+        },
+                        ArchiveJobLook{.from = archiveName});
 #else
         (void)e;
         ReportError(Tr("Extract and Run needs the VirtualFS module, which this program was built without."));

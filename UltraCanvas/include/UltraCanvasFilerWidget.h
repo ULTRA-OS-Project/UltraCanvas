@@ -104,6 +104,9 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.56.0 - the progress window's figures: FileOperation and ArchiveJob count what is done
+//                  (items, bytes) and take totals only from the counting the work does anyway;
+//                  the route and Pause (FileOperation::paused, ArchiveJob::paused; ArchiveJobLook)
 // Version: 1.55.0 - PendingExtract::existingChoice, kept and targetFolder (the Extract dialog's folder,
 //                  asked about when it exists); DecideExistingFile; ExtractExistingChoice: what Extract into
 //                  existing does with a file that is there already
@@ -3768,6 +3771,24 @@ namespace UltraCanvas {
             // rename, that walk is longer than the move itself.
             std::atomic<uint64_t> totalUnits{0};
             std::atomic<uint64_t> doneUnits{0};
+            // The progress window's figures. What is done is counted as the
+            // work goes (one atomic add per file); the totals are known only
+            // when the operation is one entry and the work counted it anyway
+            // before starting on it (CountTreeBytes / CountTreeEntries) -
+            // nothing is walked for the window's sake.
+            std::atomic<uint64_t> doneItems{0};
+            std::atomic<uint64_t> doneBytes{0};
+            std::atomic<uint64_t> totalItems{0};
+            std::atomic<uint64_t> totalBytes{0};
+            std::atomic<bool> totalsKnown{false};
+            bool singleEntry = false;   // one entry queued: its count is the total
+            bool countsBytes = false;   // a copy moves bytes; a delete does not
+            // The route the window shows: "ULTRA OS" -> "Projekte".
+            std::string routeFrom;
+            std::string routeTo;
+            // Pause in the window: the worker waits between files and between
+            // the chunks of a big one (FileOpItemCredit::Cancelled).
+            std::atomic<bool> paused{false};
             std::mutex mutex;
             std::string currentFile;                  // guarded by mutex
             std::vector<std::string> deferredErrors;  // guarded by mutex
@@ -3804,7 +3825,18 @@ namespace UltraCanvas {
             bool heedCancel = true;
             uint64_t done = 0;      // of `total`, so far
             uint64_t credited = 0;  // units already added to op->doneUnits
+            // An entry of the queue as it was asked for, not one a folder
+            // merge spliced in: only its count can be the operation's total.
+            bool topLevel = true;
+            // What this entry added to the window's figures, for Rollback.
+            uint64_t itemsCounted = 0;
+            uint64_t bytesCounted = 0;
+            // Waits while the window is paused; true once the user cancelled.
             bool Cancelled() const;
+            // One file or folder handled, with its bytes (a copy); and bytes
+            // of a big file as its chunks go.
+            void CountItem(uint64_t bytes = 0);
+            void CountBytes(uint64_t bytes);
             void SetFile(const std::string& file);
             void Step(uint64_t units, const std::string& file);
             void Finish();          // credit the rest of the slice
@@ -4337,6 +4369,7 @@ namespace UltraCanvas {
             std::atomic<bool>     cancelRequested{false};
             std::atomic<uint64_t> doneBytes{0};
             std::atomic<uint64_t> totalBytes{0};
+            std::atomic<bool>     paused{false};   // the reporter waits while set
             std::mutex            fileMutex;
             std::string           currentFile;      // guarded by fileMutex
             std::string           destination;      // archive path / target folder
@@ -4356,6 +4389,22 @@ namespace UltraCanvas {
         using ArchiveProgressReporter =
                 std::function<bool(uint64_t done, uint64_t total,
                                    const std::string& file)>;
+        // What the window of an archive job shows besides the ring: the route
+        // ("photos.zip" -> "photos"), the strip of figures (bytes), Pause.
+        struct ArchiveJobLook {
+            std::string from;
+            std::string to;
+            bool figures = true;
+            bool pausable = true;
+        };
+        void StartArchiveJob(const std::string& title,
+                             const std::string& caption,
+                             const std::string& destination,
+                             bool packing,
+                             std::function<bool(const ArchiveProgressReporter&)> work,
+                             std::function<void(bool ok, bool cancelled)> onFinished,
+                             const ArchiveJobLook& look);
+        // ... with no route, the figures and Pause.
         void StartArchiveJob(const std::string& title,
                              const std::string& caption,
                              const std::string& destination,

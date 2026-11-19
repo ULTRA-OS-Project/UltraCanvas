@@ -429,7 +429,6 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "Довгий режим Zstandard: збіги в межах 128 МБ (zstd --long=27)",
   "{0} (default)": "{0} (типово)",
   "{0} - not supported by this build": "{0} — не підтримується цією збіркою",
-  "{0} min": "{0} хв",
   "{0}, {1} (room for {2})": "{0}, {1} (ліміт {2})",
   "{n} download is still running or waiting — quit anyway?": {
     "one": "{n} завантаження ще триває або чекає — все одно вийти?",

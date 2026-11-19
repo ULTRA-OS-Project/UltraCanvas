@@ -15,7 +15,8 @@
     "Start",
     "Stop",
     "The picture could not be read.",
-    "Videos"
+    "Videos",
+    "{0} s"
   ],
   "A recording is already running.": "A recording is already running.",
   "A snip taken from the window itself always comes back to the window. Out of the way, a picture is saved and copied as the Saving page says and nothing else appears; a recording still shows its bar, and its window stays hidden after Stop.": "A snip taken from the window itself always comes back to the window. Out of the way, a picture is saved and copied as the Saving page says and nothing else appears; a recording still shows its bar, and its window stays hidden after Stop.",
@@ -138,6 +139,5 @@
   "Write every picture to the folder below": "Write every picture to the folder below",
   "{0} fps": "{0} fps",
   "{0} recorded": "{0} recorded",
-  "{0} s": "{0} s",
   "{0} × {1} px": "{0} × {1} px"
 }

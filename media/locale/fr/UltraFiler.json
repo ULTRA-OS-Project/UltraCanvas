@@ -425,7 +425,6 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "Mode long de Zstandard : correspondances sur 128 Mo (zstd --long=27)",
   "{0} (default)": "{0} (par défaut)",
   "{0} - not supported by this build": "{0} - non pris en charge par cette version",
-  "{0} min": "{0} min",
   "{0}, {1} (room for {2})": "{0}, {1} (place pour {2})",
   "{n} download is still running or waiting — quit anyway?": {
     "one": "{n} téléchargement est toujours en cours ou en attente — quitter quand même ?",
