@@ -24,6 +24,7 @@
 //
 // Usage: VectorLocaleTest
 // Exit code is the number of failed checks.
+// Version: 1.1.0 - OpenDocument Drawing (its flat XML form)
 // Version: 1.0.0
 // Last Modified: 2026-11-12
 // Author: UltraCanvas Framework
@@ -36,6 +37,7 @@
 #include "UltraCanvasEPSConverter.h"
 #include "UltraCanvasMetafileConverters.h"
 #include "UltraCanvasXARConverter.h"
+#include "UltraCanvasODGConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 
 #include <algorithm>
@@ -158,6 +160,16 @@ std::string Difference(const std::string& inC, const std::string& inComma) {
            "\" against \"" + piece(inComma) + "\"";
 }
 
+// The .odg package is a ZIP whose entries carry the time they were written,
+// so two runs a second apart differ there; the flat .fodg form is the same
+// writer without the container.
+class FlatODGConverter : public ODGConverter {
+public:
+    std::string ExportToString(const VectorDocument& document, const ConversionOptions& options) override {
+        return ExportFlatXml(document, options);
+    }
+};
+
 } // namespace
 
 int main() {
@@ -180,6 +192,7 @@ int main() {
         {"AI", &Make<AIConverter>},
         {"CDR", &Make<CDRConverter>},
         {"XAR", &Make<XARConverter>},
+        {"ODG", &Make<FlatODGConverter>},
     };
 
     for (const WriterCase& test : writers) {

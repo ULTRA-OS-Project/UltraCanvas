@@ -1,10 +1,11 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
 // Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
 // dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.1.0 - a password-protected .ods opened with its password (UltraCanvasOdfEncryption.h)
 // Version: 1.0.3 - CSV rows through CSVFormatRecord (UltraCanvasCSVImport.h); with "quote all fields"
 //                  an empty cell is written "" as every other field is
 // Version: 1.0.2
-// Last Modified: 2026-10-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include <stdexcept>   // predeclare std::runtime_error for libspecific/Cairo/ImageCairo.h
@@ -14,6 +15,7 @@
 #include "UltraCanvasSpreadsheetCell.h"
 #include "UltraCanvasSpreadsheetTypes.h"
 #include "UltraCanvasSpreadsheetOdsFormula.h"
+#include "UltraCanvasOdfEncryption.h"   // a password-protected .ods
 #include <fstream>
 #include <sstream>
 #include <iomanip>
@@ -258,6 +260,8 @@ private:
     std::map<std::string, ODSColumnStyle> columnStyles_;
     std::map<std::string, ODSRowStyle> rowStyles_;
     std::string error_;
+    // A password-protected file's package, decrypted: miniz reads it from here.
+    std::vector<uint8_t> decrypted_;
 
 public:
     ODSLoader(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {
@@ -271,7 +275,23 @@ public:
 
     const std::string& GetError() const { return error_; }
 
-    bool Load(const std::string& filePath) {
+    bool Load(const std::string& filePath, const std::string& password = std::string()) {
+        // A password-protected .ods is decrypted into an ordinary package in
+        // memory first, and read from there.
+        switch (DecryptOdfPackageFile(filePath, password, decrypted_, error_)) {
+            case OfficeDecryptStatus::NotEncrypted:
+                error_.clear();
+                break;
+            case OfficeDecryptStatus::Decrypted:
+                if (!mz_zip_reader_init_mem(&zip_, decrypted_.data(), decrypted_.size(), 0)) {
+                    error_ = "The decrypted OpenDocument spreadsheet is not valid: " + filePath;
+                    return false;
+                }
+                return LoadOpened(filePath);
+            default:
+                error_ += ": " + filePath;
+                return false;
+        }
         // Open ZIP archive. ODS files are ZIP containers, so a failure here is
         // either a file-access problem (locked / no permission / missing) or the
         // file simply is not a valid OpenDocument archive — tell them which.
@@ -286,7 +306,12 @@ public:
                 : openError;
             return false;
         }
+        return LoadOpened(filePath);
+    }
 
+    // The rest of Load, once zip_ holds the archive (the file, or the
+    // decrypted package).
+    bool LoadOpened(const std::string& filePath) {
         // Verify mimetype
         std::string mimetype = ReadFileFromZip("mimetype");
         if (mimetype.find("opendocument.spreadsheet") == std::string::npos) {
@@ -1747,7 +1772,7 @@ bool UltraCanvasSpreadsheet::LoadFromFile(const std::string& filePath, const std
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
     if (ext == ".ods") {
-        return LoadODS(filePath);
+        return LoadODS(filePath, password);
     } else if (ext == ".xlsx") {
         return LoadXLSX(filePath, password);
     } else if (ext == ".xls") {
@@ -1801,11 +1826,11 @@ bool UltraCanvasSpreadsheet::SaveToFile(const std::string& filePath, const std::
     return false;
 }
 
-bool UltraCanvasSpreadsheet::LoadODS(const std::string& filePath) {
+bool UltraCanvasSpreadsheet::LoadODS(const std::string& filePath, const std::string& password) {
     UndoRecordingPause pause(*this);   // a new document, not edits to undo
     lastError_.clear();
     ODSLoader loader(this);
-    bool result = loader.Load(filePath);
+    bool result = loader.Load(filePath, password);
     if (result) {
         ClearUndoHistory();   // the loaded document starts a fresh history
         Recalculate();

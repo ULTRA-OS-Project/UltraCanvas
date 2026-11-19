@@ -11,11 +11,21 @@
 // Signal. Then a daemon the provider starts itself (ULTRAIM_SIGNAL_CLI: a
 // wrapper running the fake with signal-cli's arguments), its attachments
 // folder read directly, the daemon stopped with Shutdown and started again
-// with the link it kept. Skips without python3, unless
-// ULTRAIM_TEST_SIGNAL_REQUIRED is set.
+// with the link it kept. The proxy setting for that daemon: as Java's proxy
+// options after the environment's own JAVA_TOOL_OPTIONS (DaemonProxyFor for
+// every kind of setting), the daemon started again when the setting changes
+// while signed in - another proxy, none - with the account kept, stopped with
+// the reason as the state for a proxy signal-cli cannot use, and a signal-cli
+// that is no Java program, or older than 0.13.13, refused for a proxy rather
+// than left to connect directly. The provider's own daemon gone and not to
+// be started again (no Java any more): the state says why, once, while the
+// tries go on, and it is back once it can be started. Skips without python3,
+// unless ULTRAIM_TEST_SIGNAL_REQUIRED is set.
+// Version: 0.1.3 - a daemon that cannot be started again
+// Version: 0.1.2 - the proxy setting and the provider's own daemon
 // Version: 0.1.1 - a receipt quicker than the send's answer (/_test/send_delay) still gives the tick
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "SignalProvider.h"
@@ -39,6 +49,7 @@
 
 #if !defined(_WIN32)
 #include <cerrno>
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -707,23 +718,40 @@ bool ProcessGone(pid_t pid) {
     return pid > 0 && kill(pid, 0) != 0 && errno == ESRCH;
 }
 
-// A daemon the provider starts itself: ULTRAIM_SIGNAL_CLI names a wrapper
-// that runs the fake with the arguments signal-cli gets.
+// A script the provider runs, written whole: beside it, then moved into its
+// place. The provider may be starting the one there at that very moment (its
+// tries once the daemon is gone), and a script rewritten in place is then
+// "Text file busy" for whoever writes it - or is run half written.
+bool WriteScript(const fs::path& path, const std::string& script) {
+    fs::path beside = path;
+    beside += ".new";
+    const int fd = ::open(beside.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0755);
+    if (fd < 0) return false;
+    bool whole = ::write(fd, script.data(), script.size()) == static_cast<ssize_t>(script.size());
+    whole = ::fchmod(fd, 0755) == 0 && whole;
+    whole = ::close(fd) == 0 && whole;
+    return whole && ::rename(beside.c_str(), path.c_str()) == 0;
+}
+
+// A stand-in for signal-cli: a wrapper that runs the fake with the arguments
+// signal-cli gets. `java`: as signal-cli's Java distribution, whose runtime
+// says on standard error that it read JAVA_TOOL_OPTIONS; without it, as the
+// native build, which says nothing and reads none. `version`: the number it
+// tells ("" = the fake's own, a current one).
+fs::path WriteWrapper(const fs::path& path, bool java, const std::string& version = std::string()) {
+    std::string script = "#!/bin/sh\n";
+    if (java)
+        script += "if [ -n \"$JAVA_TOOL_OPTIONS\" ]; then echo \"Picked up JAVA_TOOL_OPTIONS: $JAVA_TOOL_OPTIONS\" >&2; fi\n";
+    script += std::string("exec python3 '") + ULTRAIM_TEST_DIR + "/signal_fake_daemon.py' --accounts " + kDave + "," +
+              kErin + " --names 'Dave Dunn,Erin Ernst'" + (version.empty() ? "" : " --fake-version " + version) +
+              " \"$@\"\n";
+    CHECK(WriteScript(path, script));
+    return path;
+}
+
+// A daemon the provider starts itself: ULTRAIM_SIGNAL_CLI names the wrapper.
 void TestOwnDaemon(const fs::path& base) {
-    const fs::path wrapper = base / "signal-cli-wrapper.sh";
-    {
-        std::FILE* f = UltraCanvas::OpenFileUtf8(UltraCanvas::PathToUtf8(wrapper), "wb");
-        if (!f) {
-            CHECK(false);
-            return;
-        }
-        const std::string script = std::string("#!/bin/sh\nexec python3 '") + ULTRAIM_TEST_DIR +
-                                   "/signal_fake_daemon.py' --accounts " + kDave + "," + kErin +
-                                   " --names 'Dave Dunn,Erin Ernst' \"$@\"\n";
-        std::fwrite(script.data(), 1, script.size(), f);
-        std::fclose(f);
-        chmod(wrapper.c_str(), 0755);
-    }
+    const fs::path wrapper = WriteWrapper(base / "signal-cli-wrapper.sh", true);
     setenv("ULTRAIM_SIGNAL_CLI", UltraCanvas::PathToUtf8(wrapper).c_str(), 1);
 
     Events daveEvents, erinEvents;
@@ -794,12 +822,318 @@ void TestOwnDaemon(const fs::path& base) {
     CHECK(ProcessGone(again));
     unsetenv("ULTRAIM_SIGNAL_CLI");
 }
+
+// The proxy setting as the Java options signal-cli reads (DaemonProxyFor).
+void TestDaemonProxyOptions() {
+    auto proxy = [](UltraNetProxyType type, const std::string& host = std::string(), int port = 0) {
+        UltraNetProxyConfig p;
+        p.type = type;
+        p.host = host;
+        p.port = port;
+        return p;
+    };
+    const UltraNetProxyConfig none;
+    const UltraNetProxyConfig system = UltraNetProxyConfig::FromSystem();
+    const std::string direct = "-Djava.net.useSystemProxies=false -Dhttps.proxyHost= -Dhttp.proxyHost= -DsocksProxyHost=";
+
+    // The operating system's settings naming no proxy: nothing is passed.
+    DaemonProxy d = DaemonProxyFor(system, none);
+    CHECK(d.kind == DaemonProxy::Kind::AsItIs && d.jvmOptions.empty());
+    // "No proxy", and a chosen proxy whose exceptions name Signal: directly,
+    // whatever the environment's own options say.
+    d = DaemonProxyFor(none, none);
+    CHECK(d.kind == DaemonProxy::Kind::Direct && d.jvmOptions == direct);
+    d = DaemonProxyFor(proxy(UltraNetProxyType::Socks5, "127.0.0.1", 10808), none);
+    CHECK(d.kind == DaemonProxy::Kind::Direct && d.jvmOptions == direct);
+    // A SOCKS 5 proxy - chosen, or the system's - with the HTTP kind emptied
+    // (Java asks that one first).
+    const UltraNetProxyConfig socks = proxy(UltraNetProxyType::Socks5, "127.0.0.1", 10808);
+    d = DaemonProxyFor(socks, socks);
+    CHECK(d.kind == DaemonProxy::Kind::Through);
+    CHECK(d.jvmOptions == "-Djava.net.useSystemProxies=false -DsocksProxyHost=127.0.0.1 -DsocksProxyPort=10808 "
+                          "-DsocksProxyVersion=5 -Dhttps.proxyHost= -Dhttp.proxyHost=");
+    CHECK(d.text == "socks5h://127.0.0.1:10808");
+    CHECK(DaemonProxyFor(system, socks) == d);
+    // An HTTP proxy, for https and http, with the SOCKS kind emptied.
+    const UltraNetProxyConfig http = proxy(UltraNetProxyType::Http, "proxy.example", 3128);
+    d = DaemonProxyFor(http, http);
+    CHECK(d.kind == DaemonProxy::Kind::Through);
+    CHECK(d.jvmOptions == "-Djava.net.useSystemProxies=false -Dhttps.proxyHost=proxy.example -Dhttps.proxyPort=3128 "
+                          "-Dhttp.proxyHost=proxy.example -Dhttp.proxyPort=3128 -DsocksProxyHost=");
+    // What signal-cli has no means for: a sign-in, SOCKS 4, a proxy reached
+    // over TLS - and a "host" that would be read as more options.
+    UltraNetProxyConfig signIn = http;
+    signIn.credentials.type = UltraNetAuthType::Basic;
+    signIn.credentials.username = "user";
+    signIn.credentials.password = "secret";
+    d = DaemonProxyFor(signIn, signIn);
+    CHECK(d.kind == DaemonProxy::Kind::Unusable && d.jvmOptions.empty());
+    CHECK(d.text.find("user name and password") != std::string::npos);
+    CHECK(d.text.find("http://proxy.example:3128") != std::string::npos && d.text.find("secret") == std::string::npos);
+    const UltraNetProxyConfig socks4 = proxy(UltraNetProxyType::Socks4, "127.0.0.1", 1080);
+    CHECK(DaemonProxyFor(socks4, socks4).kind == DaemonProxy::Kind::Unusable);
+    const UltraNetProxyConfig tls = proxy(UltraNetProxyType::Https, "proxy.example", 443);
+    CHECK(DaemonProxyFor(tls, tls).kind == DaemonProxy::Kind::Unusable);
+    const UltraNetProxyConfig odd = proxy(UltraNetProxyType::Http, "proxy.example -Dx=y", 3128);
+    d = DaemonProxyFor(odd, odd);
+    CHECK(d.kind == DaemonProxy::Kind::Unusable && d.jvmOptions.empty());
+
+    // The signal-cli versions that send everything through the proxy.
+    CHECK(SignalCliTakesProxy("0.13.13") && SignalCliTakesProxy("0.13.24") && SignalCliTakesProxy("0.14.10"));
+    CHECK(SignalCliTakesProxy("1.0.0") && SignalCliTakesProxy("0.14.11-SNAPSHOT"));
+    CHECK(!SignalCliTakesProxy("0.13.12") && !SignalCliTakesProxy("0.12.8") && !SignalCliTakesProxy("0.9.0"));
+    CHECK(!SignalCliTakesProxy("") && !SignalCliTakesProxy("unknown") && !SignalCliTakesProxy("0.13"));
+}
+
+bool Eventually(const std::function<bool()>& holds, int seconds = 30) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+    while (!holds()) {
+        if (std::chrono::steady_clock::now() >= until) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return true;
+}
+
+// The module-wide proxy setting, as an application's proxy settings set it.
+void SetProxy(UltraNetProxyType type, const std::string& host, int port, const std::string& user = std::string()) {
+    UltraNetProxyConfig p;
+    p.type = type;
+    p.host = host;
+    p.port = port;
+    if (!user.empty()) {
+        p.credentials.type = UltraNetAuthType::Basic;
+        p.credentials.username = user;
+        p.credentials.password = "secret";
+    }
+    UltraNet_SetGlobalProxy(p);
+}
+
+// signal-cli connects to Signal by itself: the provider's own daemon is
+// started for the proxy setting, and started again when it changes.
+void TestOwnDaemonProxy(const fs::path& base) {
+    const fs::path java = WriteWrapper(base / "signal-cli-java.sh", true);
+    const fs::path native = WriteWrapper(base / "signal-cli-native.sh", false);
+    setenv("ULTRAIM_SIGNAL_CLI", UltraCanvas::PathToUtf8(java).c_str(), 1);
+    // Options the environment has for Java already stay, ahead of ours.
+    setenv("JAVA_TOOL_OPTIONS", "-Dinherited=1 -Dhttps.proxyHost=old.example", 1);
+    const std::string inherited = "-Dinherited=1 -Dhttps.proxyHost=old.example ";
+    const std::string socksOptions = "-Djava.net.useSystemProxies=false -DsocksProxyHost=127.0.0.1 "
+                                     "-DsocksProxyPort=10808 -DsocksProxyVersion=5 -Dhttps.proxyHost= -Dhttp.proxyHost=";
+    const fs::path configDir = base / "frank" / "signal" / "signal-cli";
+    // What the daemon running now was started with (the fake writes it down).
+    auto started = [&](int64_t* pid = nullptr) {
+        UltraCanvas::JSONParseResult parsed;
+        const JSONValue written =
+            UltraCanvas::JSON::ParseFile(UltraCanvas::PathToUtf8(configDir / "fake-daemon.json"), &parsed);
+        if (pid) *pid = written["pid"].GetInteger(0);
+        return written["java_tool_options"].GetString();
+    };
+    auto isState = [](UltraIMConnectionState state, const std::string& text) {
+        return [state, text](const UltraIMEvent& x) {
+            return x.type == UltraIMEventType::ConnectionStateChange && x.connectionState == state &&
+                   x.errorText.find(text) != std::string::npos;
+        };
+    };
+
+    // A SOCKS proxy chosen before the sign-in: the daemon is started with it.
+    SetProxy(UltraNetProxyType::Socks5, "127.0.0.1", 10808);
+    Events events;
+    auto frank = std::make_unique<SignalProvider>();
+    frank->SetTimings(Fast());
+    UltraIMConfig config;
+    config.dataDirectory = UltraCanvas::PathToUtf8(base / "frank");
+    CHECK(frank->Initialize(config, events.Sink()));
+    UltraIMResult r;
+    UltraIMCredentials own;
+    own.loginType = UltraIMLoginType::QRCode;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { frank->SignIn(own, cb); }, r));
+    CHECK(r.code == UltraIMResultCode::NeedsInput);
+    const pid_t first = static_cast<pid_t>(frank->GetDaemonProcessId());
+    CHECK(first > 0 && !ProcessGone(first));
+    CHECK(started() == inherited + socksOptions);
+    int status = 0;
+    PostTest(frank->GetDaemonUrl(), "/_test/scan", Object({{"uri", frank->GetAuthHint()}, {"number", kDave}}), &status);
+    CHECK(status == 200);
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Connected, "")));
+    CHECK(frank->GetLocalUserId() == kDave);
+
+    // Another proxy while signed in - an HTTP one: the daemon is started
+    // again with it, on the link it kept, and the provider is connected again.
+    events.Clear();
+    SetProxy(UltraNetProxyType::Http, "proxy.example", 3128);
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Reconnecting, "proxy setting changed")));
+    CHECK(Eventually([&]() {
+        const pid_t now = static_cast<pid_t>(frank->GetDaemonProcessId());
+        return now > 0 && now != first;
+    }));
+    CHECK(ProcessGone(first));
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Connected, "")));
+    int64_t writtenPid = 0;
+    CHECK(started(&writtenPid) == inherited + "-Djava.net.useSystemProxies=false -Dhttps.proxyHost=proxy.example "
+                                              "-Dhttps.proxyPort=3128 -Dhttp.proxyHost=proxy.example "
+                                              "-Dhttp.proxyPort=3128 -DsocksProxyHost=");
+    const pid_t second = static_cast<pid_t>(frank->GetDaemonProcessId());
+    CHECK(writtenPid == second);
+    CHECK(frank->GetLocalUserId() == kDave);
+    CHECK(events.All(UltraIMEventType::AuthStepChange).empty());    // no QR code again
+    // The setting as it stands starts nothing again.
+    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+    CHECK(static_cast<pid_t>(frank->GetDaemonProcessId()) == second && !ProcessGone(second));
+
+    // No proxy: started again to connect directly, the environment's own
+    // proxy option overridden.
+    events.Clear();
+    UltraNet_DisableProxy();
+    CHECK(Eventually([&]() {
+        const pid_t now = static_cast<pid_t>(frank->GetDaemonProcessId());
+        return now > 0 && now != second &&
+               started() == inherited + "-Djava.net.useSystemProxies=false -Dhttps.proxyHost= -Dhttp.proxyHost= "
+                                        "-DsocksProxyHost=";
+    }));
+    CHECK(ProcessGone(second));
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Connected, "")));
+    const pid_t third = static_cast<pid_t>(frank->GetDaemonProcessId());
+
+    // A proxy that asks for a user name and password - signal-cli passes
+    // none on: the daemon is stopped rather than left connecting directly,
+    // and the state says why.
+    events.Clear();
+    SetProxy(UltraNetProxyType::Socks5, "127.0.0.1", 10808, "frank");
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Error, "user name and password")));
+    CHECK(Eventually([&]() { return ProcessGone(third) && frank->GetDaemonProcessId() == 0; }));
+    // Still stopped a few retries later.
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+    CHECK(frank->GetDaemonProcessId() == 0);
+    CHECK(frank->GetConnectionState() == UltraIMConnectionState::Error);
+    // The setting put right: started again, connected, still the account.
+    events.Clear();
+    SetProxy(UltraNetProxyType::Socks5, "127.0.0.1", 10808);
+    CHECK(Eventually([&]() { return frank->GetDaemonProcessId() > 0 && started() == inherited + socksOptions; }));
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Connected, "")));
+    CHECK(frank->GetLocalUserId() == kDave);
+    const pid_t last = static_cast<pid_t>(frank->GetDaemonProcessId());
+    frank->Shutdown();
+    CHECK(ProcessGone(last));
+
+    // A signal-cli that is no Java program (the native build) says nothing
+    // of the options and reads none: for a proxy it is stopped and the
+    // sign-in refused; with no proxy it is started as ever.
+    setenv("ULTRAIM_SIGNAL_CLI", UltraCanvas::PathToUtf8(native).c_str(), 1);
+    Events graceEvents;
+    auto grace = std::make_unique<SignalProvider>();
+    grace->SetTimings(Fast());
+    UltraIMConfig graceConfig;
+    graceConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "grace");
+    CHECK(grace->Initialize(graceConfig, graceEvents.Sink()));
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { grace->SignIn(own, cb); }, r));
+    CHECK(!r.success && r.code == UltraIMResultCode::Unsupported);
+    CHECK(r.message.find("not run by Java") != std::string::npos);
+    CHECK(r.message.find("socks5h://127.0.0.1:10808") != std::string::npos);
+    CHECK(grace->GetDaemonProcessId() == 0);
+    CHECK(grace->GetConnectionState() == UltraIMConnectionState::Error);
+    UltraNet_DisableProxy();
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { grace->SignIn(own, cb); }, r));
+    CHECK(r.code == UltraIMResultCode::NeedsInput);
+    CHECK(grace->GetDaemonProcessId() > 0);
+    grace->Shutdown();
+
+    // A signal-cli older than 0.13.13 tells its network library nothing of
+    // the proxy: refused for one as well, by the version it tells.
+    const fs::path old = WriteWrapper(base / "signal-cli-old.sh", true, "0.13.12");
+    setenv("ULTRAIM_SIGNAL_CLI", UltraCanvas::PathToUtf8(old).c_str(), 1);
+    SetProxy(UltraNetProxyType::Socks5, "127.0.0.1", 10808);
+    Events heidiEvents;
+    auto heidi = std::make_unique<SignalProvider>();
+    heidi->SetTimings(Fast());
+    UltraIMConfig heidiConfig;
+    heidiConfig.dataDirectory = UltraCanvas::PathToUtf8(base / "heidi");
+    CHECK(heidi->Initialize(heidiConfig, heidiEvents.Sink()));
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { heidi->SignIn(own, cb); }, r));
+    CHECK(!r.success && r.code == UltraIMResultCode::Unsupported);
+    CHECK(r.message.find("signal-cli 0.13.12") != std::string::npos);
+    CHECK(r.message.find("0.13.13 or later") != std::string::npos);
+    CHECK(heidi->GetDaemonProcessId() == 0 && heidi->GetDaemonUrl().empty());
+    UltraNet_DisableProxy();
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { heidi->SignIn(own, cb); }, r));
+    CHECK(r.code == UltraIMResultCode::NeedsInput);
+    heidi->Shutdown();
+
+    unsetenv("JAVA_TOOL_OPTIONS");
+    unsetenv("ULTRAIM_SIGNAL_CLI");
+}
+
+// Our own daemon gone while signed in, and signal-cli no longer starting:
+// the state says why instead of "reconnecting" for ever.
+void TestOwnDaemonGone(const fs::path& base) {
+    const fs::path wrapper = WriteWrapper(base / "signal-cli-gone.sh", true);
+    setenv("ULTRAIM_SIGNAL_CLI", UltraCanvas::PathToUtf8(wrapper).c_str(), 1);
+    Events events;
+    auto ivan = std::make_unique<SignalProvider>();
+    ivan->SetTimings(Fast());
+    UltraIMConfig config;
+    config.dataDirectory = UltraCanvas::PathToUtf8(base / "ivan");
+    CHECK(ivan->Initialize(config, events.Sink()));
+    UltraIMResult r;
+    UltraIMCredentials own;
+    own.loginType = UltraIMLoginType::QRCode;
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { ivan->SignIn(own, cb); }, r));
+    CHECK(r.code == UltraIMResultCode::NeedsInput);
+    int status = 0;
+    PostTest(ivan->GetDaemonUrl(), "/_test/scan", Object({{"uri", ivan->GetAuthHint()}, {"number", kDave}}), &status);
+    CHECK(status == 200);
+    auto isState = [](UltraIMConnectionState state, const std::string& text) {
+        return [state, text](const UltraIMEvent& x) {
+            return x.type == UltraIMEventType::ConnectionStateChange && x.connectionState == state &&
+                   x.errorText.find(text) != std::string::npos;
+        };
+    };
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Connected, "")));
+    const pid_t first = static_cast<pid_t>(ivan->GetDaemonProcessId());
+    CHECK(first > 0);
+
+    // signal-cli stops starting (Java taken off the machine), and the daemon ends.
+    CHECK(WriteScript(wrapper, "#!/bin/sh\necho 'java: command not found' >&2\nexit 127\n"));
+    events.Clear();
+    kill(first, SIGKILL);
+    UltraIMEvent told;
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Error, "signal-cli did not start"), &told));
+    // What that start wrote, not the log of the starts before it.
+    CHECK(told.errorText.find("java: command not found") != std::string::npos);
+    CHECK(told.errorText.find("fake") == std::string::npos && told.errorText.find("url") == std::string::npos);
+    // Told once, while the tries go on behind it - less and less often.
+    std::this_thread::sleep_for(std::chrono::milliseconds(4000));
+    size_t errors = 0, reconnecting = 0;
+    for (const UltraIMEvent& x : events.All(UltraIMEventType::ConnectionStateChange)) {
+        errors += x.connectionState == UltraIMConnectionState::Error ? 1 : 0;
+        reconnecting += x.connectionState == UltraIMConnectionState::Reconnecting ? 1 : 0;
+    }
+    CHECK(errors == 1);
+    CHECK(reconnecting <= 1);
+    CHECK(ivan->GetConnectionState() == UltraIMConnectionState::Error);
+    // None is left running. (Not "none at this moment": a try may be under
+    // way - the script is started, and found gone a moment later.)
+    CHECK(Eventually([&]() { return ivan->GetDaemonProcessId() == 0; }, 10));
+
+    // signal-cli starts again: the daemon is back by itself, on the link it kept.
+    WriteWrapper(wrapper, true);
+    CHECK(Eventually([&]() { return ivan->GetDaemonProcessId() > 0; }, 60));
+    CHECK(events.WaitFor(isState(UltraIMConnectionState::Connected, ""), nullptr, 60));
+    CHECK(ivan->GetLocalUserId() == kDave);
+    CHECK(events.All(UltraIMEventType::AuthStepChange).empty());
+    const pid_t again = static_cast<pid_t>(ivan->GetDaemonProcessId());
+    CHECK(again > 0 && again != first);
+    ivan->Shutdown();
+    CHECK(ProcessGone(again));
+    unsetenv("ULTRAIM_SIGNAL_CLI");
+}
 #endif
 
 } // namespace
 
 int main() {
     UltraNet_Initialize();
+    // Whatever proxy this machine is set to is not part of the tests.
+    UltraNet_DisableProxy();
 #if defined(_WIN32)
     std::printf("SignalProviderTests: skipped on Windows\n");
 #else
@@ -818,6 +1152,9 @@ int main() {
     TestEndToEnd(daemon.url, base);
     daemon.Stop();
     TestOwnDaemon(base);
+    TestDaemonProxyOptions();
+    TestOwnDaemonProxy(base);
+    TestOwnDaemonGone(base);
     fs::remove_all(base, ec);
 #endif
     UltraNet_Shutdown();

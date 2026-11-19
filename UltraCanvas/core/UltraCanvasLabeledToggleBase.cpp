@@ -1,5 +1,7 @@
 // UltraCanvasLabeledToggleBase.cpp
 // Shared layout/event/label/focus plumbing for checkbox, radio, and switch.
+// Version: 1.4.0 - SetLabelWrap: the label wraps at the toggle's width, the indicator level with
+//                 its first line; min-content is the longest word
 // Version: 1.3.1 - the label is centred on its capitals, level with the box or dot
 // Version: 1.3.0 - a press focuses the toggle; Space activates it and Enter is left
 //                 to the window (a dialog's default button)
@@ -28,6 +30,14 @@ namespace UltraCanvas {
         InvalidateLayout();
         RequestRedraw();
         if (renamed && GetAccessibleNameOverride().empty()) NotifyAccessibility(AccessibilityEventType::NameChanged);
+    }
+
+    void UltraCanvasLabeledToggleBase::SetLabelWrap(bool wrap) {
+        if (labelWrap == wrap) return;
+        labelWrap = wrap;
+        layoutDirty = true;
+        InvalidateLayout();
+        RequestRedraw();
     }
 
     std::string UltraCanvasLabeledToggleBase::GetAccessibleName() const {
@@ -81,11 +91,28 @@ namespace UltraCanvas {
         indicatorRect.width = indicatorSize.width;
         indicatorRect.height = indicatorSize.height;
 
+        labelWrapped = false;
         if (!text.empty()) {
             textRect.x = indicatorRect.x + indicatorRect.width + GetBaseVisualStyle().textSpacing;
             textRect.y = 0;
             textRect.width = GetWidth() - textRect.x - padding;
             textRect.height = GetHeight();
+            if (labelWrap && ctx && textRect.width > 1.0f) {
+                const auto& base = GetBaseVisualStyle();
+                ctx->PushState();
+                ctx->SetFontFace(base.fontFamily, base.fontWeight, FontSlant::Normal);
+                ctx->SetFontSize(base.fontSize);
+                const Size2Di oneLine = ctx->GetTextLineDimensions(text);
+                if (oneLine.width > textRect.width) {
+                    labelWrapped = true;
+                    // The indicator beside the first line, the lines from the top
+                    // inset the measure gave them
+                    indicatorRect.y = padding + (oneLine.height - indicatorSize.height) / 2.0f;
+                    textRect.y = padding;
+                    textRect.height = GetHeight() - 2.0f * padding;
+                }
+                ctx->PopState();
+            }
         }
 
         totalBounds.x = 0;
@@ -96,7 +123,7 @@ namespace UltraCanvas {
         layoutDirty = false;
     }
 
-    Size2Df UltraCanvasLabeledToggleBase::MeasureContentSize(IRenderContext* ctx) const {
+    Size2Df UltraCanvasLabeledToggleBase::MeasureContentSize(IRenderContext* ctx, float availableWidth) const {
         const auto& base = GetBaseVisualStyle();
         Size2Df indicatorSize = GetIndicatorSize();
 
@@ -105,6 +132,12 @@ namespace UltraCanvas {
             ctx->SetFontFace(base.fontFamily, base.fontWeight, FontSlant::Normal);
             ctx->SetFontSize(base.fontSize);
             textSize = ctx->GetTextLineDimensions(text);
+            // Wrapping: as tall as the lines the label takes at the width it has
+            const float room = availableWidth - 16.0f - indicatorSize.width - base.textSpacing;
+            if (labelWrap && availableWidth > 0 && textSize.width > room && room > 1.0f) {
+                ctx->SetTextWrap(TextWrap::WrapWord);
+                textSize = ctx->GetTextDimensions(text, Size2Di(static_cast<int>(room), 0));
+            }
         }
 
         // Natural box = 8px inset each side + indicator + (spacing + label) when present.
@@ -127,6 +160,14 @@ namespace UltraCanvas {
         ctx->SetFontStyle(font);
         ctx->SetTextPaint(color);
 
+        if (labelWrapped) {
+            // Several lines, from the top, broken at the label's width
+            ctx->SetTextWrap(TextWrap::WrapWord);
+            if (auto layout = ctx->GetOrCreateTextLayout(text, Size2Di(static_cast<int>(textRect.width), 0), false)) {
+                ctx->DrawTextLayout(*layout, Point2Dd(textRect.x, textRect.y));
+            }
+            return;
+        }
         // Centred on its capitals - level with the box or dot centred beside
         // it - not on its line box, which sits high or low with the font.
         float textY = static_cast<float>(ctx->TextTopCentredOnCaps(textRect, font));
@@ -144,7 +185,7 @@ namespace UltraCanvas {
                                  base.focusRingWidth, base.focusRingColor, 0.0f);
     }
 
-    Size2Df UltraCanvasLabeledToggleBase::MeasureOwnContent(std::optional<float> /*definiteContentWidth*/,
+    Size2Df UltraCanvasLabeledToggleBase::MeasureOwnContent(std::optional<float> definiteContentWidth,
                                                             const CSSLayout::LayoutContext& /*ctx*/) {
         IRenderContext* rc = GetRenderContext();
         if (!rc) {
@@ -156,8 +197,12 @@ namespace UltraCanvas {
         // these widgets carry no CSS padding/border). The block layout applies
         // size.*/constraints — leave size = Auto for content sizing.
         rc->PushState();
-        Size2Df content = MeasureContentSize(rc);
+        Size2Df content = MeasureContentSize(rc, definiteContentWidth ? *definiteContentWidth : -1.0f);
         rc->PopState();
+        // Wrapped, it fills the width it was given rather than reporting the
+        // one-line width it does not have
+        if (labelWrap && definiteContentWidth && content.width > *definiteContentWidth)
+            content.width = *definiteContentWidth;
         return Size2Df((float)content.width, (float)content.height);
     }
 
@@ -174,12 +219,28 @@ namespace UltraCanvas {
 
         rc->PushState();
         Size2Dd content = MeasureContentSize(rc);
+        // A wrapping label can narrow to its longest word; one that does not
+        // wrap has min-content == max-content.
+        float minWidth = (float)content.width;
+        if (labelWrap && !text.empty()) {
+            const auto& base = GetBaseVisualStyle();
+            float longest = 0.0f;
+            size_t start = 0;
+            while (start <= text.size()) {
+                size_t end = text.find(' ', start);
+                if (end == std::string::npos) end = text.size();
+                if (end > start)
+                    longest = std::max(longest, (float)rc->GetTextLineDimensions(text.substr(start, end - start)).width);
+                start = end + 1;
+            }
+            minWidth = std::min(minWidth, 16.0f + (float)GetIndicatorSize().width + base.textSpacing + longest);
+        }
         rc->PopState();
 
-        // No wrapping — min-content == max-content. Publish in border-box units.
+        // Publish in border-box units.
         intrinsic.valid = true;
         intrinsic.maxContentWidth  = (float)content.width  + padH;
-        intrinsic.minContentWidth  = (float)content.width  + padH;
+        intrinsic.minContentWidth  = minWidth              + padH;
         intrinsic.maxContentHeight = (float)content.height + padV;
         intrinsic.minContentHeight = (float)content.height + padV;
     }

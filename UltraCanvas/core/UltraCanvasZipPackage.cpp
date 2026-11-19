@@ -6,14 +6,16 @@
 // flag — the ODF package readers in LibreOffice/OpenOffice reject archives
 // whose "mimetype" entry uses a data descriptor (general-purpose bit 3).
 // Both ends open their file through OpenFileUtf8, never miniz's own fopen.
+// Version: 1.3.0 - UCZipInflateRaw
 // Version: 1.2.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasZipPackage.h"
 
 #include "miniz.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -393,6 +395,48 @@ bool UCZipPackageWriter::Finalize() {
         lastError_ = "Failed to finalize ZIP archive";
     }
     return ok;
+}
+
+bool UCZipInflateRaw(const uint8_t* data, size_t size, std::vector<uint8_t>& out, size_t limit) {
+    out.clear();
+    mz_stream stream{};
+    if (mz_inflateInit2(&stream, -MZ_DEFAULT_WINDOW_BITS) != MZ_OK) return false;
+    static const uint8_t kEmpty = 0;
+    const uint8_t* in = size ? data : &kEmpty;
+    size_t inLeft = size;
+    constexpr size_t kChunk = 1u << 20;
+    uint8_t buffer[65536];
+    int status = MZ_OK;
+    while (status != MZ_STREAM_END) {
+        if (stream.avail_in == 0 && inLeft > 0) {
+            stream.next_in = in;
+            stream.avail_in = static_cast<unsigned int>(std::min(inLeft, kChunk));
+            in += stream.avail_in;
+            inLeft -= stream.avail_in;
+        }
+        stream.next_out = buffer;
+        stream.avail_out = sizeof(buffer);
+        status = mz_inflate(&stream, MZ_NO_FLUSH);
+        if (status != MZ_OK && status != MZ_STREAM_END) {
+            mz_inflateEnd(&stream);
+            out.clear();
+            return false;
+        }
+        const size_t produced = sizeof(buffer) - stream.avail_out;
+        if (out.size() + produced > limit) {
+            mz_inflateEnd(&stream);
+            out.clear();
+            return false;
+        }
+        out.insert(out.end(), buffer, buffer + produced);
+        if (status == MZ_OK && produced == 0 && stream.avail_in == 0 && inLeft == 0) {
+            mz_inflateEnd(&stream);   // the data ended before the stream did
+            out.clear();
+            return false;
+        }
+    }
+    mz_inflateEnd(&stream);
+    return true;
 }
 
 } // namespace UltraCanvas

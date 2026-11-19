@@ -1,7 +1,8 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.4.0 - LoadFromFile / LoadODS open a password-protected .ods with its password
 // Version: 1.3.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -572,13 +573,15 @@ public:
     // UltraCanvasOfficeEncryption.h. Without it such a file fails with a
     // message saying a password is needed; a wrong one, with "The password is
     // not correct". UltraCanvasFileLoader::RequestDocumentPassword asks the
-    // user for it. Other formats ignore it.
+    // user for it. It opens a password-protected .ods too - LibreOffice's
+    // "Save with password", decrypted by UltraCanvasOdfEncryption.h. Other
+    // formats ignore it.
     bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
     // `password` saves a password-protected .xlsx (agile encryption,
     // AES-256 / SHA-512, what Excel 2013 and later write). Any other format
     // with a password is refused rather than saved unprotected.
     bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
-    bool LoadODS(const std::string& filePath);
+    bool LoadODS(const std::string& filePath, const std::string& password = std::string());
     bool SaveODS(const std::string& filePath);
     bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
     bool SaveXLSX(const std::string& filePath, const std::string& password = std::string());

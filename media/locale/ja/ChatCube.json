@@ -105,7 +105,6 @@
   "Could not leave {0}: {1}": "{0} から退出できませんでした: {1}",
   "Could not load the messages: {0}": "メッセージを読み込めませんでした: {0}",
   "Could not open the chat: {0}": "チャットを開けませんでした: {0}",
-  "Could not open {0}": "{0} を開けませんでした",
   "Could not remove {0}: {1}": "{0} を外せませんでした: {1}",
   "Could not rename the group: {0}": "グループ名を変更できませんでした: {0}",
   "Could not save the description: {0}": "説明を保存できませんでした: {0}",

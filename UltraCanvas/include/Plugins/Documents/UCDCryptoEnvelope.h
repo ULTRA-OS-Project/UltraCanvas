@@ -1,9 +1,10 @@
 // include/Plugins/Documents/UCDCryptoEnvelope.h
 // Password-based encryption envelope for the UCD v1 document format.
 //
-// Split out of UltraCanvasDocument so the cryptographic path can be compiled
-// and tested on its own: it depends only on UltraCrypt and the standard
-// library, never on the document object model.
+// Split out of the v1 document code (UltraCanvasDocument, which never
+// compiled and has since been removed) so the cryptographic path can be
+// compiled and tested on its own: it depends only on UltraCrypt and the
+// standard library, never on a document object model.
 //
 // Cryptography goes through UltraCrypt, never a vendored library directly, and
 // there is no unauthenticated or "no backend" fallback path — a caller either

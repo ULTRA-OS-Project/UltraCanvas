@@ -21,6 +21,9 @@
 //     slide text (a protected deck or .docx keeping its type glyph); what a
 //     slide is drawn with (places from the layout, sizes from the master,
 //     the theme's colours, the background) and RenderPptxSlide drawing it;
+//     mc:AlternateContent - the deck rebuilt with an equation shape, a newer
+//     chart with a picture as its fallback and an equation inside a
+//     paragraph, each read once, from its Choice or its Fallback;
 //   * writing: UCCompoundFileWriter read back, EncryptOfficePackage round
 //     trips (a package in the mini stream, one past the header's 109 FAT
 //     sectors), fresh salts on every save, a changed byte caught, and the
@@ -30,6 +33,7 @@
 // rebuilds them and says what each holds). That msoffcrypto-tool decrypts
 // what EncryptOfficePackage writes was checked when the writer was made; the
 // test cannot run Python, so it checks the format against the reader here.
+// Version: 1.6.0 - mc:AlternateContent in a deck: Choice, else Fallback, never both
 // Version: 1.5.0 - the slide's drawing: inherited places, text sizes, theme colours, RenderPptxSlide
 // Version: 1.4.0
 // Last Modified: 2026-11-18
@@ -617,6 +621,90 @@ void TestSaving() {
 
 } // namespace
 
+// mc:AlternateContent: the PowerPoint fixture rebuilt in memory with slide 2
+// holding what PowerPoint wraps for older readers - an equation in a text box
+// (its Fallback a picture of it, with stand-in text), a newer chart (chartex,
+// no table: its Fallback the picture of it), and an equation inside a
+// paragraph (its Fallback a plain run).
+void TestPresentationAlternateContent() {
+    std::cout << "\n=== PowerPoint mc:AlternateContent ===\n";
+    UCZipPackageReader source;
+    if (!source.Open(Fixture("office-pptx-sample.pptx"))) {
+        Check(false, "the .pptx fixture opens");
+        return;
+    }
+    const std::string mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+    const std::string shapes =
+        "<mc:AlternateContent xmlns:mc=\"" + mc + "\" xmlns:a14=\"http://schemas.microsoft.com/office/drawing/2010/main\">"
+        "<mc:Choice Requires=\"a14\"><p:sp><p:nvSpPr><p:cNvPr id=\"10\" name=\"Equation 9\"/><p:cNvSpPr txBox=\"1\"/>"
+        "<p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:p><a:r><a:t>Margin: </a:t></a:r><a14:m>"
+        "<m:oMathPara xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"><m:oMath>"
+        "<m:r><m:t>p=r</m:t></m:r><m:r><m:t>\xE2\x88\x92" "c</m:t></m:r></m:oMath></m:oMathPara></a14:m></a:p>"
+        "</p:txBody></p:sp></mc:Choice>"
+        "<mc:Fallback><p:sp><p:nvSpPr><p:cNvPr id=\"10\" name=\"Equation 9\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/>"
+        "</p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:p><a:r><a:t>Margin (picture)</a:t></a:r></a:p></p:txBody>"
+        "</p:sp></mc:Fallback></mc:AlternateContent>"
+        "<mc:AlternateContent xmlns:mc=\"" + mc + "\"><mc:Choice Requires=\"cx1\"><p:graphicFrame><p:nvGraphicFramePr>"
+        "<p:cNvPr id=\"11\" name=\"Chart 10\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm/>"
+        "<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/drawing/2014/chartex\"/></a:graphic>"
+        "</p:graphicFrame></mc:Choice><mc:Fallback><p:pic><p:nvPicPr><p:cNvPr id=\"11\" name=\"Chart 10\" "
+        "descr=\"Waterfall chart\"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip/></p:blipFill><p:spPr/>"
+        "</p:pic></mc:Fallback></mc:AlternateContent>"
+        "<p:sp><p:nvSpPr><p:cNvPr id=\"12\" name=\"TextBox 11\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr><p:spPr/>"
+        "<p:txBody><a:bodyPr/><a:p><a:r><a:t>Total </a:t></a:r><mc:AlternateContent xmlns:mc=\"" + mc + "\" "
+        "xmlns:a14=\"http://schemas.microsoft.com/office/drawing/2010/main\"><mc:Choice Requires=\"a14\"><a14:m>"
+        "<m:oMath xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"><m:r><m:t>x\xC2\xB2</m:t>"
+        "</m:r></m:oMath></a14:m></mc:Choice><mc:Fallback><a:r><a:t>[x squared]</a:t></a:r></mc:Fallback>"
+        "</mc:AlternateContent><a:r><a:t> each</a:t></a:r></a:p></p:txBody></p:sp>";
+
+    UCZipPackageWriter rebuilt;
+    rebuilt.OpenInMemory();
+    for (const std::string& name : source.EntryNames()) {
+        std::string data;
+        if (!source.ReadEntry(name, data)) continue;
+        if (name == "ppt/slides/slide2.xml") {
+            const size_t end = data.rfind("</p:spTree>");
+            if (end != std::string::npos) data.insert(end, shapes);
+        }
+        rebuilt.AddEntry(name, data);
+    }
+    rebuilt.Finalize();
+
+    PptxPresentation deck;
+    std::string error;
+    const bool ok = ReadPptxPresentationFromPackage(rebuilt.TakeBytes(), deck, error);
+    Check(ok && deck.slides.size() == 5, "the rebuilt deck reads");
+    if (!ok || deck.slides.size() != 5) {
+        std::cout << "         " << error << "\n";
+        return;
+    }
+    const PptxSlide& slide = deck.slides[1];
+    std::string all;
+    const PptxShape* equation = nullptr;
+    const PptxShape* chart = nullptr;
+    const PptxShape* total = nullptr;
+    size_t named = 0;
+    for (const PptxShape& shape : slide.shapes) {
+        for (const PptxParagraph& p : shape.paragraphs) all += p.Text() + "\n";
+        if (shape.name == "Equation 9") { equation = &shape; ++named; }
+        if (shape.name == "Chart 10") { chart = &shape; ++named; }
+        if (shape.name == "TextBox 11") total = &shape;
+    }
+    Check(equation && equation->kind == PptxShapeKind::Text && equation->paragraphs.size() == 1 &&
+              equation->paragraphs[0].Text() == "Margin: p=r\xE2\x88\x92" "c",
+          "an equation shape from its Choice, the equation as its text");
+    Check(chart && chart->kind == PptxShapeKind::Picture && chart->altText == "Waterfall chart",
+          "a chart the reader cannot read: its Fallback picture");
+    Check(named == 2 && !Contains(all, "Margin (picture)"), "each read once - never Choice and Fallback both");
+    Check(total && total->paragraphs.size() == 1 && total->paragraphs[0].Text() == "Total x\xC2\xB2 each" &&
+              !Contains(all, "[x squared]"),
+          "an equation inside a paragraph, from its Choice");
+    Check(slide.title == "Agenda" && FindShape(slide, PptxShapeKind::Body) != nullptr,
+          "the slide's own shapes are untouched");
+    Check(Contains(PptxPresentationToRichDocument(deck).ToPlainText(), "[Picture: Waterfall chart]"),
+          "the outline names the chart's picture");
+}
+
 int main() {
     TestDecryptor();
     TestSpreadsheet();
@@ -624,6 +712,7 @@ int main() {
     TestSha1();
     TestStandard();
     TestPresentation();
+    TestPresentationAlternateContent();
     TestCompoundFileWriter();
     TestEncryptor();
     TestSaving();

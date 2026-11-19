@@ -4,8 +4,9 @@
 // library behind a pimpl so consumers never see miniz types.
 // The writer supports the ODF rule that the "mimetype" entry must be the
 // first entry and stored uncompressed.
+// Version: 1.3.0 - UCZipInflateRaw: a raw deflate stream, as an encrypted ODF entry holds
 // Version: 1.2.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -85,5 +86,12 @@ private:
     std::unique_ptr<Impl> impl_;
     std::string lastError_;
 };
+
+// Inflates a raw deflate stream (RFC 1951: no zlib or gzip wrapper) - what a
+// ZIP entry holds, and what an encrypted OpenDocument entry holds once
+// decrypted (UltraCanvasOdfEncryption.h). False, with `out` empty, for a
+// damaged stream, one that ends early, or one that would grow past `limit`
+// bytes.
+bool UCZipInflateRaw(const uint8_t* data, size_t size, std::vector<uint8_t>& out, size_t limit);
 
 } // namespace UltraCanvas

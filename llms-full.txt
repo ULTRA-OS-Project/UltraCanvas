@@ -241,7 +241,7 @@ the backing implementation can be replaced without affecting callers.
 - **UltraCanvasVectorStorage** (`DataFormats/UltraCanvasVectorStorage.h`) — the
   framework's universal 2D vector document structure,
   `VectorStorage::VectorDocument`: the in-memory drawing every vector file
-  format reads into and writes out of (SVG, XAR, EMF, WMF, DXF, DWG read;
+  format reads into and writes out of (SVG, XAR, EMF, WMF, DXF, DWG, ODG read;
   those plus PDF, AI, EPS, CDR written — the converters are the Vector
   plugin, `Plugins/Vector/`, documented in
   `Docs/UltraCanvas/UltraCanvasVectorConverters.md`). Core rather than
@@ -261,7 +261,8 @@ the backing implementation can be replaced without affecting callers.
     `Id`, `Style` (`FillData` variant of colour / gradient / pattern,
     `StrokeData` with the line gallery — `StartArrow` / `EndArrow`,
     `WidthProfile`, `Brush` — opacities, blend, an optional Xara-style
-    `Transparency` ramp with its mix, clip, mask), `Effects` (optional
+    `Transparency` ramp with its mix, clip, mask, `ShapeFillRule` - non-zero
+    or even-odd), `Effects` (optional
     `ShadowEffect`, `FeatherEffect`, `ContourEffect` and `BevelEffect`),
     an optional double-precision `Matrix3x3` `Transform`,
     `GetBoundingBox()` in its parent's space and `Clone()`. The Xara-class
@@ -958,8 +959,25 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it; and
   by the writers `SaveToFile` / `SaveXLSX`, `UCWordDocumentIO::Save` /
   `SaveDocx`, `UltraCanvasFileLoader::SaveTextDocument`, with
-  `RequestNewDocumentPassword` to ask for a new one.
+  `RequestNewDocumentPassword` to ask for a new one. `CheckOfficePassword`
+  answers for an OpenDocument file through UltraCanvasOdfEncryption.
   See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+- **UltraCanvasOdfEncryption** (`UltraCanvasOdfEncryption.h`) — password-protected
+  OpenDocument files (`.odt`, `.ods`, `.odp`) as LibreOffice and
+  OpenOffice.org 3.2+ save them: each package entry deflated, then
+  AES-256-CBC keyed by PBKDF2-HMAC-SHA-1 from a SHA-256 (or SHA-1) start key,
+  checked by its 1K checksum. `IsEncryptedOdfPackage`, `DecryptOdfPackage` /
+  `DecryptOdfPackageFile` (an ordinary package rebuilt in memory, statuses
+  `OfficeDecryptStatus`), `CheckOdfPassword` (one key derivation, for the
+  prompt). ODF 1.4's encryption too - the whole package in one
+  `encrypted-package`, AES-256-GCM, Argon2id with its lanes (what LibreOffice
+  writes for ODF 1.4 in experimental mode). Blowfish is refused by name. No writer. Used by the `.odt` reader
+  (`UCWordDocumentIO::Load` / `LoadOdt` with a password), the `.ods` loader
+  (`UltraCanvasSpreadsheet::LoadFromFile` / `LoadODS`), `ReadOdpPresentation`,
+  and `CheckOfficePassword` - so `RequestDocumentPassword` prompts for them.
+  In `core/UltraCanvasOdfEncryption.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasOdfEncryption.md`.
 
 - **UltraCanvasPresentationPptx** (`UltraCanvasPresentationPptx.h`) — PowerPoint
   decks (`.pptx`, `.pptm`, `.ppsx`, `.potx`) read as text into a UI-free model:
@@ -979,6 +997,22 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `RenderPptxSlide(deck, index, widthPx)`: a slide of a `PptxPresentation` as
   a `UCPixmap` (background, shapes, pictures, tables, text shrunk to fit).
   UltraClipboard's slide previews. In `core/UltraCanvasPptxSlideRender.cpp`.
+
+- **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
+  presentations (`.odp`, `.otp` templates, flat `.fodp`) read as text into
+  UltraCanvasPresentationPptx's model (`PptxPresentation` and the rest), so
+  `PptxPresentationToRichDocument` outlines either kind of deck:
+  `ReadOdpPresentation`, `ReadOdpPresentationFromMemory` (a package or a flat
+  file's XML), `IsOdpPresentationFile` (by content), `IsOdpExtension`. Titles,
+  subtitles, outline and text-box paragraphs with list levels, bullets and
+  numbering from the list styles, bold / italic / underline through the style
+  parents, groups, tables (covered cells kept as empty cells), pictures,
+  speaker notes, hidden slides, the slide size from the master's page layout;
+  slide furniture, prompting placeholders, embedded objects and page comments
+  left out. A password-protected deck opens with its password
+  (UltraCanvasOdfEncryption). No renderer,
+  no writer. In `core/UltraCanvasPresentationOdp.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationOdp.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
@@ -2089,7 +2123,9 @@ future.
   challenge and collects the code, and the exchange and the refresh go
   through the service, which adds the secret. UltraMail signs in through
   `https://oauth-callback.ultraos.eu` this way
-- `UltraNet_ResolveProxy`, `UltraNet_DetectSystemProxy`,
+- `UltraNet_ResolveProxy`, `UltraNet_ResolveTunnelProxy` (a connection that
+  is not the web's: the system's SOCKS proxy, else its web proxy as a
+  tunnel - IRC, XMPP, Telegram), `UltraNet_DetectSystemProxy`,
   `UltraNet_DetectSystemProxyFor`, `UltraNet_CanEvaluateProxyScript`,
   `UltraNet_SetGlobalProxy`, `UltraNet_GetGlobalProxy`, `UltraNet_DisableProxy`,
   `UltraNet_SetGlobalProxySource`, `UltraNet_ForgetSystemProxy`,
@@ -2349,9 +2385,12 @@ backing library is never visible in a public header.
   constant-time portable software, independent of libsodium)
 - `UltraCrypt_AesCtrEncrypt`, `UltraCrypt_AesCtrDecrypt` (AES-CTR, interop
   only - Matrix key exports and attachments, WebCrypto)
-- `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
+- `UltraCrypt_AesGcmDecrypt` (AES-GCM, interop only: portable, every CPU)
+- `UltraCrypt_DeriveKeyFromPassword` (Argon2id; `parallelism` above 1 through
+  the module's own RFC 9106 lanes), `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`, `UltraCrypt_DeriveKeyPbkdf2`
-  (PBKDF2-HMAC-SHA-256/512, interop only)
+  (PBKDF2-HMAC-SHA-256/512, and -SHA-1 with `allowLegacy` for OpenDocument;
+  interop only)
 - `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
   `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
   `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
@@ -2380,7 +2419,9 @@ backing library is never visible in a public header.
   codes, ChatCube Direct's sign-in checks them (until 2026-11 in
   `Apps/UltraAuthenticator/otp/`)
 
-Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
+Streaming class: `UltraCryptHasher` (HMAC is the one call
+`UltraCrypt_Hmac`; a streaming `UltraCryptHmacHasher` was proposed and not
+built).
 
 UltraCrypt is the required cryptographic module for the UCD v2 file format,
 UltraVault, UltraDatabase at-rest encryption, UltraAuthenticator and any
@@ -3224,7 +3265,10 @@ Telegram (`UltraCanvas/Plugins/UltraIM/telegram/`, module `ultraim_telegram`)
 on TDLib's JSON interface, loaded at run time (not linked): sign-in in steps
 (`UltraIMAuthStep`, result `NeedsInput`), the main chat list, private chats
 and groups, replies, edits, deletion, read marks, typing, presence, history,
-people by username or phone number. Provider: Mastodon
+people by username or phone number; TDLib connects by itself, so the
+provider tells it the proxy the applications share (`addProxy` /
+`disableProxy` before its parameters, and again when the setting changes).
+Provider: Mastodon
 (`UltraCanvas/Plugins/UltraIM/mastodon/`, module `ultraim_mastodon`): the
 direct messages of a Mastodon server over its REST API - browser sign-in
 (OAuth with PKCE, `UltraIMAuthStep::Browser`), a chat per set of people
@@ -3238,7 +3282,9 @@ thread replies, files, edits, deletes. Provider: Zulip
 group messages and stream topics of a Zulip organization - password or API
 key; the event queue; uploads, edits, deletes. Provider: Signal
 (`UltraCanvas/Plugins/UltraIM/signal/`, module `ultraim_signal`): through a
-signal-cli daemon (the user's, or one it starts) - linked to the phone by
+signal-cli daemon (the user's, or one it starts - for the proxy the
+applications share, as Java's proxy options, and again when the setting
+changes) - linked to the phone by
 QR code; 1:1 chats and groups, quotes, edits, deletes, receipts, typing,
 attachments. Provider: XMPP (`UltraCanvas/Plugins/UltraIM/xmpp/`, module
 `ultraim_xmpp`): any XMPP server over TCP (STARTTLS or direct TLS, found by
@@ -9357,8 +9403,10 @@ FILE: Docs/UltraCanvas/UCD-FileFormat-v2.md
 
 # UltraCanvas Document File Format v2.0 (UCD v2)
 
-Status: **Draft specification** — reference for the v2 implementation of
-`UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`. Revision **2.1** adds
+Status: **Draft specification** — reference for the v2 implementation. (It
+was first written for `UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`,
+the v1 document code: that pair never compiled and was removed on
+2026-11-18; what v2 has is named below.) Revision **2.1** adds
 layered images (§4.7: the `LAYR` layer stack, several `BMAP` sections, text
 frames that stay text) and pins down what 2.0 left open — the `INDX` layout
 (§4.2.1) and the deflate and gzip stream formats (§2.3). Revision **2.2**
@@ -9547,8 +9595,8 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `INDX` | Section index: array of (type ID, absolute offset, stored length, uncompressed length) — layout in 4.2.1 | Optional but recommended as the **first** section; enables random access without scanning. Stored uncompressed and unencrypted. |
 | `META` | Document metadata: title, author, dates, custom properties, file UUID (random, set at creation), default locale (see 4.6) | May be left unencrypted in an `ENCRYPTED` file unless `PRIVATE` is set. |
 | `STYL` | Stylesheet: named styles for fonts, padding, margins, colors — CSS-like, referencing the `UltraCanvas::CSSLayout` property set | Shared styles referenced by ID from pages/components. |
-| `WNDW` | Window definitions (`UCWindowData`) | IDE templates / window content. |
-| `PAGE` | One page (`UCPageData`) including its component tree | One section per page → per-page random access. |
+| `WNDW` | Window definitions: per window its id, title, size and position, its properties, the order of its pages with bookmarks and a table of contents, and the transition between pages | IDE templates / window content. Not implemented yet; the fields are those of the removed v1 code's `UCWindowData`. |
+| `PAGE` | One page - id, name, number, size, background, margins, header and footer, the ids of the pages before and after it and of its media - including its component tree (per component: its type, id, properties, validation rules and children) | One section per page → per-page random access. Not implemented yet; the fields are those of the removed v1 code's `UCPageData` and `UCComponentData`. |
 | `FORM` | Form field definitions, validation rules, saved field values | |
 | `VECT` | Vector graphics document (serialized `VectorStorage::VectorDocument`: layers, paths, gradients, masks, filters, text-on-path …) | XAR-like feature set. Payload starts with the sub-format preamble (4.5). |
 | `MEDI` | One embedded media resource (image/audio/video/font), MIME-typed | One section per resource; already-compressed media should set compression `0` (none). |
@@ -19279,6 +19327,7 @@ FILE: Docs/UltraCanvas/UltraCanvasCheckbox.md
   - [Shared visual fields](#shared-visual-fields)
   - [Following the theme](#following-the-theme)
   - [Sizing and placement](#sizing-and-placement)
+  - [A label that wraps](#a-label-that-wraps)
 - [UltraCanvasCheckbox](#ultracanvascheckbox)
   - [Constructors and factory](#constructors-and-factory)
   - [The three states](#the-three-states)
@@ -19511,6 +19560,27 @@ explicit size, as UltraFiler's and UltraMail's settings dialogs do:
 auto box = std::make_shared<UltraCanvasCheckbox>("ShowHidden", "Show hidden files");
 box->size.width  = CSSLayout::Dimension::Px(320);
 box->size.height = CSSLayout::Dimension::Px(26);
+```
+
+### A label that wraps
+
+A label is one line unless `SetLabelWrap(true)` is called: then a label longer
+than the toggle is wide - a long caption, or a translation that runs longer
+than the English - breaks into lines at the toggle's width, the toggle grows
+a line at a time, and the box, dot or track sits level with the first line.
+Give the toggle a width (or let its container stretch it) and leave its
+height to the content; a minimum height keeps a one-line toggle as tall as
+its neighbours. Its min-content width is its longest word, so a flex row can
+narrow it that far.
+
+```cpp
+auto choice = std::make_shared<UltraCanvasRadio>("AdaptiveToolbar",
+        Tr("Adaptive toolbar - the tool last picked from the bar"));
+choice->SetLabelWrap(true);
+choice->size.width  = CSSLayout::Dimension::Px(400);
+choice->size.height = CSSLayout::Dimension::Auto();
+choice->boxConstraints = CSSLayout::BoxConstraints{};
+choice->boxConstraints->minHeight = CSSLayout::Dimension::Px(22);
 ```
 
 ## UltraCanvasCheckbox
@@ -34349,11 +34419,11 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$, odg, otg, fodg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, the OpenDocument drawings odg, otg and fodg, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on), the OpenDocument drawing packages (odg, otg - where no Vector plugin is registered) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and every source-text extension the syntax highlighter knows (`SyntaxTokenizer::GetLanguageExtensions()`: Swift, Rust, SQL, Go, Kotlin, Java, PHP, Lua, Ruby, C#, CSS, Pascal, R, Scala, MATLAB (.m), VBA (.vba, .cls, .frm), the assemblers, ...; .bas is BASIC; the shared extensions .cls (VBA / LaTeX), .m (MATLAB / Objective-C) and .pl (Perl / Prolog) are named after what their first lines say, else after the first-named default, and their switch names both languages; binary members of a language's list - .mat, .mlx, .svgz - excluded; the widget's table and registered plugins claim an extension first) | a miniature page holding the first lines of the file; each extension has its own switch under Text, and a source file's type is named after its language ("Swift Text") |
-| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, potx), rtf, md, html, tex, and the e-book containers | a **word-processing document shows its first page** - odt, doc and docx laid out with their fonts, pictures, colours, header and footer, as they print (see [Document pages](#document-pages)); the others the same page of text, with tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
+| `Docs` | Docs | odt, doc, docx, pptx (and pptm, ppsx, ppsm, potx, potm), odp (and otp, fodp), rtf, md, html, tex, and the e-book containers | a **word-processing document shows its first page** - odt, doc and docx laid out with their fonts, pictures, colours, header and footer, as they print (see [Document pages](#document-pages)); the others the same page of text, with tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup), a PowerPoint or OpenDocument deck as its slides' text - each slide's number and title, then its bullets, tables and notes ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md), [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md)) - and HTML stripped of its tags. A password-protected `.docx` or `.pptx` cannot be read without its password and keeps its type glyph. An **e-book shows its cover** (epub, and the Mobipocket / Kindle mobi, prc, azw, azw3), the way Finder shows a folder of books — see [E-book covers](#e-book-covers) |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, xls, csv, tsv | the first cells of the first sheet as a small grid. An `.xls` is read by the [legacy workbook reader](UltraCanvasSpreadsheetXls.md) (Excel 97-2003 and 5.0/95), and so is what else is saved under the name — an HTML table, an Excel 2003 XML file; an `.xlsx` renamed `.xls` previews as one, and delimited text as CSV. An encrypted workbook, or a binary one above 32 MB (it is read whole), keeps its glyph. The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -34462,10 +34532,12 @@ the choice and mirrors it into its other file displays.
 ### Embedded preview bitmaps
 
 Most vector formats have no renderer that works without a window, so a
-background worker cannot rasterize them. Three families do not need one: Xara
+background worker cannot rasterize them. Four families do not need one: Xara
 documents (`.xar`, `.web`, `.wix`) store a GIF/JPEG/PNG preview among the first
 records of the file head, the ZIP-based CorelDRAW documents (`.cdr`, `.cdt`,
-X4 and newer) keep one as `previews/thumbnail.png`, and PostScript documents
+X4 and newer) keep one as `previews/thumbnail.png`, OpenDocument drawings
+(`.odg`, `.otg` - LibreOffice Draw's, and what the Vector plugin's ODG writer
+produces) as `Thumbnails/thumbnail.png`, and PostScript documents
 (`.eps`, `.epsf`, `.epsi`, `.ps` and the pre-CS2 `.ai` files, which are EPS)
 carry one either as the TIFF section of a DOS EPS binary header or as the
 hex-encoded EPSI preview in their comment block. The first two are ordinary
@@ -34485,7 +34557,8 @@ if (FormatCarriesEmbeddedPreview(path)) {               // asks about the format
 
 `ExtractEmbeddedPreviewBytes` returns an empty vector for a file that carries
 no preview (a plain ASCII EPS, for one — rendering that needs a PostScript
-interpreter), an older RIFF-based `.cdr`, or a document too damaged to parse —
+interpreter), an older RIFF-based `.cdr`, an ODF package written without a
+thumbnail (the flat-XML `.fodg` never has one), or a document too damaged to parse —
 it never throws, so a worker can hand it any file the user points at.
 
 `UltraCanvasMediaViewer` shows the same picture: a vector document it cannot
@@ -51874,7 +51947,7 @@ tool and a missing plugin should stop it running.
 | `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
-| `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
+| `Text` | txt, md, json, xml, source code, tex, … and presentations: pptx, pptm, ppsx, ppsm, potx, potm, odp, otp, fodp | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset; a deck (`IsPresentationFile`, classified before text so a flat `.fodp` is not shown as XML) as the outline of its slides - each slide's number and title, its bullets, tables, pictures' descriptions and notes - read by `UltraCanvasFileLoader::LoadTextDocument` ([PowerPoint](UltraCanvasPresentationPptx.md), [OpenDocument](UltraCanvasPresentationOdp.md)) and rendered as Markdown; the info bar says *PRESENTATION*) |
 | `Text` (pages) | html, htm, xhtml, xht, shtml, and an `.xml` that holds XHTML | **Rendered**, as a browser shows the page, in an `UltraCanvasWebView` in the text view's place (*HTML pages* below) - not its source, which is the Texter's to show |
 | `Text` (messages) | eml, emlx, msg | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
 | `Text` (saved pages) | mht, mhtml | **The page it saved**, its style sheets and pictures read from the archive's own parts (*Saved web pages* below) |
@@ -52195,15 +52268,20 @@ damaged).
 ## Password-protected files
 
 A file the viewer can open with its password - a layered `*.ucd` image
-(UCD 2.2, see [`UltraCanvasUCDContainer.md`](UltraCanvasUCDContainer.md#password-protection))
-or a PDF - first shows what it can without it: the `*.ucd`'s thumbnail
-(its header summary when the document is private), or a note saying the PDF
-is password-protected, both in the dark note view. An **Unlock** button comes up in the info bar (so a host
+(UCD 2.2, see [`UltraCanvasUCDContainer.md`](UltraCanvasUCDContainer.md#password-protection)),
+a PDF, or a presentation (a `.pptx` saved with *Encrypt with Password*, an
+`.odp` saved *with password* - [UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md),
+[UltraCanvasOdfEncryption](UltraCanvasOdfEncryption.md)) - first shows what
+it can without it: the `*.ucd`'s thumbnail (its header summary when the
+document is private), or a note saying the PDF or the deck is
+password-protected, both in the dark note view. An **Unlock** button comes up in the info bar (so a host
 that hides the top bars, such as UltraFiler's preview pane, still offers it)
 and as an icon in the toolbar; **Enter** does the same. Unlock
-asks for the password over the viewer's window - again, saying so, when it
+asks for the password over the viewer's window - its dialog shows the
+button's lock centred above the password field - - again, saying so, when it
 is not right - and then shows the file whole: the image at full size with
-its layers composited, the PDF in its view with every page.
+its layers composited, the PDF in its view with every page, the deck as the
+outline of its slides.
 
 Nothing asks on its own: browsing a folder of protected files never pops up
 a prompt. The info bar says *password-protected*, and the Details panel adds
@@ -57446,6 +57524,212 @@ screens.
   this element replaced it.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasOdfEncryption.md
+==============================================================================
+
+# UltraCanvasOdfEncryption — password-protected .odt, .ods and .odp
+
+An OpenDocument file saved *with password* by LibreOffice (or OpenOffice.org
+3.2 and later) is still a ZIP package. The `mimetype` entry and
+`META-INF/manifest.xml` are in the clear. Every other entry - `content.xml`,
+`styles.xml`, the pictures - is deflated and then encrypted on its own, with
+its own salt and IV, which the manifest records in a
+`manifest:encryption-data` element. This module turns such a package back
+into an ordinary one in memory, which the `.odt`, `.ods` and `.odp` readers
+then read as usual.
+
+Most code never calls it directly: the readers take the password as one more
+argument, and `UltraCanvasFileLoader` asks for it.
+
+Header: `UltraCanvasOdfEncryption.h`. Its statuses are
+[UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)'s
+`OfficeDecryptStatus`, so one password prompt serves a protected `.docx` and
+a protected `.odt` alike. The cryptography is UltraCrypt's
+(`Docs/Modules/UltraCrypt/README.md`): AES-CBC, SHA-256, and PBKDF2 with
+HMAC-SHA-1, which UltraCrypt offers only with `allowLegacy` because ODF names
+no other.
+
+## Opening one
+
+<!-- doc-check: std::string path; std::string password; UltraCanvas::UltraCanvasWindowBase* window; void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasPresentationOdp.h"
+#include "UltraCanvasSpreadsheet.h"
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+
+using namespace UltraCanvas;
+
+UCRichDocument document;                                         // .odt
+std::string error;
+if (!UCWordDocumentIO::Load(path, document, error, password)) ShowError(error);
+
+auto sheet = std::make_shared<UltraCanvasSpreadsheet>("Book", 0, 0, 800, 600);
+if (!sheet->LoadFromFile(path, password)) ShowError(sheet->GetLastError());   // .ods
+
+PptxPresentation deck;                                           // .odp
+if (!ReadOdpPresentation(path, deck, error, password)) ShowError(error);
+
+// Or ask the user, as for a protected .docx: a password field, checked, asked
+// again after a wrong one; a file without a password calls back at once.
+UltraCanvasFileLoader::RequestDocumentPassword(path, window,
+    [sheet, path](bool proceed, const std::string& typed) {
+        if (proceed && !sheet->LoadFromFile(path, typed)) ShowError(sheet->GetLastError());
+    });
+```
+
+`UltraCanvasFileLoader::OpenTextDocument` asks by itself for a protected
+`.odt` or `.odp` chosen in its dialog, and `LoadTextDocument` /
+`ExtractText` take the password. Without the password, or with a wrong one,
+every reader fails with "The file is password-protected; ..." or "The
+password is not correct", never that the file is damaged. UltraFiler's
+preview has no password to ask for, so a protected file keeps its type
+glyph. UltraTexter says that an `.odt` is protected rather than show its
+bytes.
+
+## Decrypting directly
+
+<!-- doc-check: std::string path; std::string password; void ReadPackage(const std::vector<uint8_t>& zip); void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasOdfEncryption.h"
+
+using namespace UltraCanvas;
+
+if (IsEncryptedOdfPackage(path)) {
+    std::string error;
+    switch (CheckOdfPassword(path, password, error)) {   // one key derivation
+        case OfficeDecryptStatus::Decrypted: break;          // the password is right
+        default: ShowError(error); return;
+    }
+    std::vector<uint8_t> zip;
+    if (DecryptOdfPackageFile(path, password, zip, error) == OfficeDecryptStatus::Decrypted)
+        ReadPackage(zip);   // e.g. UCZipPackageReader::OpenFromMemory
+    else
+        ShowError(error);
+}
+```
+
+| Function | Does |
+|---|---|
+| `IsEncryptedOdfPackage(path)` / `(UCZipPackageReader)` | true when the manifest gives any entry `manifest:encryption-data` (or the package is one whole encrypted entry) |
+| `DecryptOdfPackageFile(path, password, zip, error)` | the package rebuilt unencrypted: `mimetype` first and stored, the entries in their order, the manifest without its encryption data |
+| `DecryptOdfPackage(reader, password, zip, error)` | the same for a package already open |
+| `CheckOdfPassword(path, password, error)` | the password checked against one entry's checksum (`content.xml`'s), nothing else decrypted |
+
+The status is `Decrypted`; `NotEncrypted` for an ordinary package or a file
+that is no ZIP (read it as it is); `PasswordRequired` for an empty password;
+`WrongPassword`; `Unsupported`, naming what the file uses; `Damaged`; or
+`NoCryptoBackend` in a build without UltraCrypt's backend.
+`UltraCanvasOfficeEncryption`'s `CheckOfficePassword` answers through
+`CheckOdfPassword` for a ZIP file, which is how `RequestDocumentPassword`
+prompts for both kinds.
+
+## What is supported
+
+Read, per entry - ODF 1.2 / 1.3 Part 3 §3.8 and §4, what LibreOffice writes
+by default:
+
+1. the start key: SHA-256 of the password's UTF-8
+   (`start-key-generation-name` `…xmldsig#sha256`), or SHA-1 (OpenOffice.org
+   3.2's, and the default when the element is absent);
+2. the key: PBKDF2-HMAC-SHA-1 over the start key with the entry's `salt` and
+   `iteration-count` (100 000 in LibreOffice; more than 10 000 000 is refused),
+   `key-size` bytes;
+3. AES-256-CBC (or AES-128/192) with the entry's `initialisation-vector`; the
+   last byte gives the padding to drop (W3C XML Encryption padding);
+4. the checksum: SHA-256 (`…#sha256-1k`) or SHA-1 (`SHA1/1K`) of the first
+   1024 bytes, compared in constant time. A mismatch is `WrongPassword`;
+5. the raw deflate stream inflated to the entry's `manifest:size`. An entry
+   stored as it is, at that size, is taken too.
+
+Also read: ODF 1.4's encryption, which LibreOffice 24.2 writes when it saves
+ODF 1.4 in experimental mode (its profile's `DefaultVersion` 11 and
+`ExperimentalMode`, set before it starts; the fixture script does that).
+The package then holds only `mimetype`, the manifest and one entry,
+`encrypted-package`:
+
+1. the start key, as above (`…xmlenc#sha256`);
+2. the key: Argon2id, version 0x13, no secret or associated data, over the
+   start key with the entry's `salt` and its `argon2-iterations`,
+   `argon2-memory` (KiB) and `argon2-lanes` (LibreOffice 24.2 writes them
+   `loext:`, ODF 1.4 `manifest:`; LibreOffice uses 3 passes, 64 MiB and 4
+   lanes) - libargon2's `argon2id_ctx`, as LibreOffice calls it. UltraCrypt
+   computes the lanes itself (libsodium has one);
+3. AES-256-GCM (`…xmlenc11#aes256-gcm`): the entry is the 12-byte IV, the
+   ciphertext and the 16-byte tag, as XML Encryption 1.1 lays it out. The tag
+   is checked before anything is released;
+4. the plaintext inflated: it is the whole package - its own `mimetype`,
+   its own unencrypted manifest, every entry - which is what
+   `DecryptOdfPackage` hands back.
+
+The GCM tag covers the whole package, so a wrong password and a changed
+byte both fail it, and both are `WrongPassword`: the tag cannot tell them
+apart. A per-entry GCM or Argon2id entry (the same manifest elements on each
+file entry) is read the same way.
+
+Refused, each naming what it is: Blowfish CFB, as OpenOffice.org 1 to 3.1
+saved (`Unsupported`); an Argon2id cost past 1 GiB, 64 passes or 64 lanes
+(`Unsupported`, before any memory is taken); Argon2id without its
+parameters, or an `encrypted-package` without encryption data (`Damaged`).
+
+ODF 1.2 carries no integrity check beyond the checksum. A changed byte in the
+first kilobyte of an entry looks like a wrong password; one past it shows as
+a damaged entry ("The encrypted entry content.xml is damaged"), since the
+deflate stream then fails.
+
+There is no writer. A document or a workbook saved with a password is saved
+as `.docx` or `.xlsx` ([UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)),
+and `UCWordDocumentIO::Save` / `SaveToFile` still refuse a password for
+`.odt` and `.ods` rather than save the file unprotected.
+
+## Implementation notes
+
+- Every entry has its own salt, so every entry costs one key derivation:
+  LibreOffice's six-entry `.odt` takes about half a second at 100 000 rounds.
+  `CheckOdfPassword` derives one key, for the password prompt.
+- PBKDF2-HMAC-SHA-1 is UltraCrypt's (`UltraCrypt_DeriveKeyPbkdf2` with
+  `UltraCryptHashOptions::allowLegacy`), on its own SHA-1. libsodium has
+  none. Each round after the first is two SHA-1 compressions of a block
+  padded once.
+- The inflate is `UCZipInflateRaw` (`UltraCanvasZipPackage.h`), the ZIP
+  wrapper's miniz.
+- ODF 1.4: one Argon2id derivation (64 MiB, 4 lanes) and one GCM pass over
+  the package - about a quarter of a second for the test `.odt`. AES-GCM is
+  `UltraCrypt_AesGcmDecrypt`, the module's own constant-time AES and GHASH,
+  so it works on CPUs without AES instructions too (libsodium's AES-GCM needs
+  them); Argon2id with more than one lane is UltraCrypt's RFC 9106
+  implementation (`UltraCryptKdfParams::parallelism`).
+
+## Test
+
+`Tests/OdfEncryptionTest.cpp` reads three files LibreOffice 24.2 saved with
+the Office fixtures' non-ASCII password ("Ültra-Pässwört 1") through its UNO
+API (`Tests/fixtures/make-odf-encrypted-fixtures.py`):
+`odf-encrypted.odt` (`word97-formatting.odt`), `odf-encrypted.ods` (a small
+sheet) and `odf-encrypted.odp` (`office-pptx-sample.odp`) - and the same three
+saved as ODF 1.4 in experimental mode, `odf14-encrypted.*` (one
+`encrypted-package`, AES-256-GCM, Argon2id with 4 lanes). It checks the
+following:
+
+- the encrypted packages are told from ordinary ones;
+- no, a wrong and a nearly right password are refused;
+- the decrypted package is laid out as an ordinary one;
+- `CheckOdfPassword` and `CheckOfficePassword` answer for these files;
+- each reader with the password gives what the unencrypted original gives;
+- `LoadTextDocument` and `ExtractText` take the password;
+- UltraFiler's preview keeps the glyph;
+- a changed byte past the checksummed kilobyte is damaged;
+- ODF 1.4: every reader against the unencrypted original, no and wrong
+  passwords, and one changed byte refused by the GCM tag;
+- Blowfish is refused by name, an Argon2id cost past the limit refused,
+  missing Argon2id parameters and an `encrypted-package` without encryption
+  data damaged.
+
+`UltraCryptTests` checks PBKDF2-HMAC-SHA-1 against RFC 6070, AES-GCM against
+the GCM specification's test cases, and Argon2id with 2, 3 and 4 lanes against
+libargon2's output.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasOfficeEncryption.md
 ==============================================================================
 
@@ -57460,6 +57744,11 @@ usual, and the other way round for the writers. The spreadsheet, the Word
 reader and writer, the [PowerPoint reader](UltraCanvasPresentationPptx.md)
 and `UltraCanvasFileLoader` use it; most code never calls it
 directly, but passes a password to them.
+
+A password-protected OpenDocument file (`.odt`, `.ods`, `.odp`) is a ZIP
+package encrypted entry by entry instead; [UltraCanvasOdfEncryption](UltraCanvasOdfEncryption.md)
+reads it, with the same `OfficeDecryptStatus`, and `CheckOfficePassword`
+answers through it, so `RequestDocumentPassword` prompts for both kinds.
 
 Header: `UltraCanvasOfficeEncryption.h`. The cryptography is UltraCrypt's
 (`Docs/Modules/UltraCrypt/README.md`): its constant-time AES-CBC, SHA-2, HMAC
@@ -59284,6 +59573,25 @@ Two kinds of history entry keep memory in check:
 
 `SetUndoMemoryLimit()` bounds the history; the oldest entries go first.
 
+`ScaleImage(width, height, options)` resamples every layer by
+`UCScaleImageOptions`: `method` is a `UCResampleMethod` - `Lanczos3` (the
+default, the sharpest), `Lanczos2`, `Mitchell` (soft but clean, hardly any
+halo at hard edges), `Bicubic`, `Bilinear`, or `Nearest`, which copies the
+nearest old pixel and is the one for pixel art, icons and screenshots at a
+whole multiple - and `sharpen`, 0 to 1, an unsharp mask after the resample
+whose radius follows the enlargement. Sharpening works on the colour of the
+premultiplied pixels and leaves the alpha band as it was, so an edge against
+transparency gets no fringe; `Nearest` is never sharpened. Interpolation
+adds no detail: an enlarged picture looks soft with the smooth methods and
+blocky with `Nearest`, whichever is chosen.
+
+```cpp
+UCScaleImageOptions options;
+options.method = UCResampleMethod::Mitchell;
+options.sharpen = 0.5;
+document->ScaleImage(document->GetWidth() * 2, document->GetHeight() * 2, options);
+```
+
 A selection belongs to the canvas it was made on. The whole-image geometry
 operations (`CropTo`, `ScaleImage`, `ResizeCanvas`, `Rotate90`) re-shape it,
 which is a selection change like any other: they fire `onSelectionChanged()`
@@ -59607,7 +59915,8 @@ a single-threaded WebAssembly program, where it cannot run. There the layer,
 selection, document, brush engine and surface compile without
 `HAS_LIBVIPS`. What disappears is `ToPixelFX` / `FromPixelFX`,
 `ApplyFilter` / `PreviewFilter`, file load / save and layered files (`.ucd`, `.ucraster`);
-`ScaleImage` falls back to the layer's bilinear resample. Text layers are
+`ScaleImage` falls back to the layer's bilinear resample for every method
+but `Nearest`, and does not sharpen. Text layers are
 drawn without libvips (through the render context); only keeping them in a
 project needs it, as every project does.
 
@@ -62395,13 +62704,172 @@ copies, copy off and onto the device, rename, delete and new folder — and the
 device's account lives in a store that is never written to disk.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasPresentationOdp.md
+==============================================================================
+
+# UltraCanvasPresentationOdp — OpenDocument decks (.odp) as text
+
+`UltraCanvasPresentationOdp.h` reads an OpenDocument presentation - an
+Impress `.odp`, a template `.otp`, or the flat single-XML `.fodp` - into the
+same UI-free model as a PowerPoint deck
+([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)): the slides in
+order, their titles, the paragraphs of every placeholder, text box and shape
+with their list levels, bullets and numbering, bold / italic / underline,
+tables, the pictures' parts and descriptions, speaker notes, and which slides
+are hidden. One model means one outline, one preview and one text extractor
+for both kinds of deck.
+
+It is a reader of text, not a slide renderer. There is no writer. A
+password-protected `.odp` opens with its password
+([UltraCanvasOdfEncryption](UltraCanvasOdfEncryption.md)); without it, or
+with a wrong one, it is refused with a reason.
+
+## Opening one as a document
+
+`UltraCanvasFileLoader::LoadTextDocument` and `OpenTextDocument` open a deck
+as an outline, by its content, whatever its name; the Open dialog's
+"Documents" (`AddTextDocumentLoadTypes`) offer `.odp`, `.otp` and `.fodp`:
+
+<!-- doc-check: std::string path; void ShowDocument(std::shared_ptr<UltraCanvas::UCRichDocument> document); void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasFileLoader.h"
+
+using namespace UltraCanvas;
+
+std::string error;
+if (auto outline = UltraCanvasFileLoader::LoadTextDocument(path, error)) {
+    ShowDocument(outline);   // e.g. in an UltraCanvasRichTextEdit
+} else {
+    ShowError(error);        // "The file is password-protected; ...", ...
+}
+```
+
+The outline is the PowerPoint one: per slide a heading (its number and
+title, "(hidden)" after a hidden slide's), its bulleted paragraphs as list
+items at their level - numbered where the list numbers them - its other text
+as paragraphs, a subtitle in italics, each table as a table, a line
+`[Picture: <description>]` for each picture, and the speaker notes as a block
+quote opening "Notes:".
+
+`UltraCanvasFileLoader::ExtractText` reads a deck's text the same way, and
+UltraFiler's preview page (`UltraCanvasFilerWidget::TextPreviewLines`) shows
+the first page of the outline. UltraTexter opens a deck as the outline in its
+document editor.
+
+## Reading the model
+
+<!-- doc-check: std::string path; std::vector<uint8_t> bytes; void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasPresentationOdp.h"
+
+using namespace UltraCanvas;
+
+PptxPresentation deck;   // the PowerPoint reader's model
+std::string error;
+if (!IsOdpPresentationFile(path)) {
+    ShowError("not an OpenDocument presentation");
+} else if (!ReadOdpPresentation(path, deck, error)) {
+    ShowError(error);
+} else {
+    for (const PptxSlide& slide : deck.slides) {
+        for (const PptxShape& shape : slide.shapes) {
+            if (shape.kind == PptxShapeKind::Picture) (void)shape.altText;
+            for (const PptxParagraph& paragraph : shape.paragraphs)
+                (void)(std::string(paragraph.level * 2, ' ') + paragraph.Text());
+        }
+    }
+}
+// A package (or a flat file's XML) already in memory:
+PptxPresentation fromMemory;
+ReadOdpPresentationFromMemory(bytes, fromMemory, error);
+UCRichDocument outline = PptxPresentationToRichDocument(deck);
+```
+
+| Function | Does |
+|---|---|
+| `IsOdpPresentationFile(path)` | true for a ZIP package whose `mimetype` (or manifest) says `application/vnd.oasis.opendocument.presentation` or `-template`, or a flat XML document whose `office:mimetype` says so |
+| `IsOdpExtension(extOrPath)` | `odp`, `otp`, `fodp`, with or without a dot, any case |
+| `ReadOdpPresentation(path, out, error, password)` | the deck; `path` is UTF-8, `password` (optional) opens a protected one. False with a sentence in `error` |
+| `ReadOdpPresentationFromMemory(bytes, out, error, password)` | the same for bytes: a package, or a flat file's XML |
+
+The model's types are described in
+[UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md#reading-the-model).
+For an `.odp` they hold:
+
+| Field | From |
+|---|---|
+| `PptxPresentation::slideWidth` / `slideHeight` | the page layout of the first slide's master page (`fo:page-width` / `fo:page-height`), in EMU |
+| `PptxSlide::hidden` | `presentation:visibility="hidden"` on the slide's drawing-page style |
+| `PptxSlide::title` | the `presentation:class="title"` frame's text |
+| `PptxSlide::notes` | the `presentation:class="notes"` frame of the slide's `presentation:notes` |
+| `PptxShape::kind` | `title` → `Title`, `subtitle` → `Subtitle`, `outline` → `Body`; any other text frame or shape with text → `Text`; a frame holding a `table:table` → `Table`, a `draw:image` → `Picture` |
+| `PptxShape::x` / `y` / `width` / `height` | `svg:x` / `svg:y` / `svg:width` / `svg:height` (cm, mm, in, pt, pc, px) in EMU - on the page, also inside a group, since ODF places a grouped shape on the page |
+| `PptxShape::pictureTarget` | the picture's part (`Pictures/...png`); empty for a flat file's inline picture |
+| `PptxShape::altText` | the frame's `svg:desc`, else its `svg:title` |
+| `PptxParagraph::level` | how deep the paragraph's `text:list` is nested (0-based) |
+| `PptxParagraph::bullet` / `numbered` | the list style at that level: a bullet or a number format; a `text:list-header`, a level with no number format or bullet character, and a paragraph outside a list have none |
+| `PptxRun::bold` / `italic` / `underline` | `fo:font-weight` (bold, or 600 and more), `fo:font-style`, `style:text-underline-style` of the span's style, its parent styles and the paragraph's |
+
+## What is read, and what is not
+
+- Slides in document order; every `draw:page` is one, the hidden ones marked.
+- Text frames, the drawing shapes that carry text (custom shapes, rectangles,
+  ellipses, ...), groups (`draw:g`) and shapes behind a hyperlink (`draw:a`)
+  are read through. A shape without text is no shape of the outline.
+- White space as ODF has it: a run of spaces, tabs and line ends is one
+  space, none at a paragraph's start or end; `text:s`, `text:tab` and
+  `text:line-break` stay. A field (page number, date, ...) gives the text it
+  holds, a link its text.
+- Left out: the header, footer, date and page-number frames, a notes page's
+  slide picture, a placeholder still showing its prompt
+  (`presentation:placeholder="true"`), embedded objects such as charts (and
+  the picture that stands in for them), comments on a page
+  (`officeooo:annotation`), and a table's preview picture.
+- Not read: master pages and styles as drawn (fonts, sizes, colours, fills)
+  beyond bold, italic and underline, animations and transitions. Pictures are
+  named, not decoded.
+- A password-protected deck (`manifest:encryption-data` in the manifest) is
+  decrypted with the password `ReadOdpPresentation` and
+  `ReadOdpPresentationFromMemory` take (and `LoadTextDocument`'s, which
+  `OpenTextDocument` asks for). Without it: "The file is password-protected;
+  enter its password to open it"; with a wrong one: "The password is not
+  correct". Another OpenDocument type (an `.odt` named `.odp`) is refused
+  naming its type.
+
+## Test
+
+`Tests/PresentationOdpTest.cpp` reads two fixtures:
+
+- `Tests/fixtures/office-pptx-sample.odp` - the PowerPoint test deck as
+  LibreOffice Impress converts it (`Tests/fixtures/make-odp-fixtures.py`), an
+  ODF producer independent of UltraCanvas: the 16:9 size, the five slides'
+  titles, the subtitle, bullets on two levels with a bold run, the numbered
+  pair, the text box at its place, the speaker notes, the table, the
+  picture's description and part, the hidden slide and the sixty bullets -
+  and, slide by slide, the same titles, notes and bullets the `.pptx` reader
+  finds in the original.
+- `Tests/fixtures/presentation-features.fodp` - a flat deck written by hand,
+  which LibreOffice opens: white space, units, inherited text styles, nested,
+  header and unnumbered lists, a line break, a link and a tab, a group, a
+  hyperlinked frame, the footer and a prompting placeholder left out, a hidden
+  slide, a table with header rows and a covered cell, an embedded chart left
+  out, an inline picture, a field, and a page comment left out.
+
+It also checks the refusals (a protected package, an `.odt`, a broken
+package, a missing file), that a template is read, and that
+`LoadTextDocument`, the Open dialog's types, `ExtractText` and UltraFiler's
+preview page take the new types - and that an `.odp` or `.pptx` that is no
+deck is refused rather than read as text.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPresentationPptx.md
 ==============================================================================
 
 # UltraCanvasPresentationPptx — PowerPoint decks (.pptx) as text and slides
 
 `UltraCanvasPresentationPptx.h` reads a PowerPoint presentation - `.pptx`,
-and `.pptm` / `.ppsx` / `.potx`, which are the same package - into a UI-free
+and `.pptm` / `.ppsx` / `.ppsm` / `.potx` / `.potm`, which are the same
+package - into a UI-free
 model of its slides' text: titles, the paragraphs of every placeholder and
 text box with their outline levels and bullets, tables, the pictures' names
 and descriptions, speaker notes, and which slides are hidden. A
@@ -62412,6 +62880,10 @@ For drawing a slide it also resolves what each shape takes from its layout,
 master and theme - place, text sizes, colours and alignment, anchor, fill,
 outline, the background - and `UltraCanvasPptxSlideRender.h` draws a slide
 from that as a picture (*Drawing a slide*, below). There is no writer.
+
+An OpenDocument presentation (`.odp`, `.otp`, `.fodp`) is read into the same
+model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), so the
+outline, the preview and the text extraction below serve both kinds of deck.
 
 ## Opening one as a document
 
@@ -62443,7 +62915,12 @@ speaker notes as a block quote opening "Notes:"; a rule between slides.
 UltraFiler's preview page (`UltraCanvasFilerWidget::TextPreviewLines`) shows
 the same outline: the first page of a deck's slide text on its tile and in
 the detail pane. A protected deck keeps its type glyph, since the preview has
-no password to ask for.
+no password to ask for. UltraTexter opens a deck as the outline in its
+document editor, and refuses to save it back as a deck.
+
+A file named `.pptx` (or `.odp`) that is no deck - damaged, or something else
+renamed - is refused by `LoadTextDocument` ("The file is not a valid
+PowerPoint presentation") rather than read as text.
 
 ## Reading the model
 
@@ -62509,6 +62986,12 @@ reads a package already in memory.
   theme, with `lumMod`, `lumOff`, `tint` and `shade` applied. A shape with a
   fill or outline and no text is kept (a coloured bar, a circle).
 - Speaker notes: the body placeholder of the slide's notes slide.
+- `mc:AlternateContent` (Markup Compatibility, ECMA-376 Part 3), which
+  PowerPoint wraps around what an older reader may not know - an equation,
+  a newer chart, a 3D model, ink: the first `mc:Choice` that gives a shape
+  (or, inside a paragraph, text) is read, else the `mc:Fallback`; never both.
+  An equation (`a14:m`) reads as the text of its `m:t` runs ("p=r−c"), a
+  chart the reader cannot read as the picture its Fallback holds.
 - Not read: theme fonts, gradient, picture and pattern fills, effects,
   charts, SmartArt, embedded objects, comments, animations and transitions.
   Pictures are named; their bytes are kept with `withPictures`, not decoded.
@@ -62556,7 +63039,9 @@ and the outline; then what a slide is drawn with - the subtitle's place from
 its layout, the title's 44 pt and centring and the body's 32 / 28 pt from the
 master, the theme's colours, the master's background and text colour, the
 subtitle's tinted colour - and `RenderPptxSlide` drawing the first slide at
-640 x 360. `office-agile-encrypted.pptx` is the same deck encrypted;
+640 x 360; and the same deck rebuilt in memory with an equation shape, a
+chart with a picture as its fallback and an equation inside a paragraph,
+each read once. `office-agile-encrypted.pptx` is the same deck encrypted;
 it is refused without the password, read with it, and opened by
 `UltraCanvasFileLoader::LoadTextDocument`. The same test checks UltraFiler's
 preview page: the plain deck's slides, titles first, and no page for the
@@ -62774,7 +63259,14 @@ UltraNet follows the setting on every connection it makes through libcurl -
 HTTP and HTTPS (and so every UltraAI provider), WebSocket, FTP / SFTP, the
 IMAP, SMTP, POP3, WebDAV, LDAP, Telnet, RTSP and gRPC plug-ins, and SSH
 (the SSH plug-in is handed a connection made through the proxy); UltraClaude
-passes it to the `claude` CLI in its environment. How UltraNet
+passes it to the `claude` CLI in its environment, and two UltraIM providers
+hand it to the program that connects for them: Telegram tells it to TDLib,
+Signal starts signal-cli with it as Java's proxy options
+(`Docs/Modules/UltraIM/README.md`, *Provider: Telegram* and *Provider:
+Signal*). IRC and XMPP over TCP go through it as well - and, like
+Telegram, through the system's web proxy where it names no SOCKS proxy
+(`UltraNet_ResolveTunnelProxy`), so that with "the system's proxy" chosen
+every network of ChatCube takes the same way out. How UltraNet
 decides, and what "the operating system's proxy" is on each platform, is
 the UltraNet module's *Proxies* section (`Docs/Modules/UltraNet/README.md`).
 
@@ -62966,7 +63458,10 @@ for a sign-in (HTTP 407) is named as such.
   (`CanUseAutoConfigUrl`, Linux and the BSDs); the system's own automatic
   setting still applies there through GIO.
 - A password that is not remembered is used only by the application it was
-  typed into, until it ends: another application connects without it.
+  typed into, until it ends: another application connects without it. One
+  exception: ChatCube's Telegram network hands the proxy to TDLib, which
+  keeps the proxy it uses - the password with it - in its own encrypted
+  database until it is told another.
 - `ProxySettingsTest` (`Tests/ProxySettingsTest.cpp`) covers the file, the
   vault, UltraNet following a change another application saved, and the
   check through a proxy on 127.0.0.1; `UltraNetTests` (`test_proxy.cpp`)
@@ -75184,13 +75679,15 @@ std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int
 
 ```cpp
 // Format chosen automatically from the file extension. `password` opens a
-// password-protected .xlsx (see UltraCanvasOfficeEncryption.md); other
-// formats ignore it.
+// password-protected .xlsx (see UltraCanvasOfficeEncryption.md) or .ods
+// (UltraCanvasOdfEncryption.md); other formats ignore it.
 bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
 // With a password: a password-protected .xlsx; any other format with one is refused.
 bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
 
-bool LoadODS(const std::string& filePath);
+// `password` opens a password-protected .ods (LibreOffice's "Save with
+// password", ODF 1.2 and 1.4 - see UltraCanvasOdfEncryption.md).
+bool LoadODS(const std::string& filePath, const std::string& password = std::string());
 bool SaveODS(const std::string& filePath);
 bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
 bool SaveXLSX(const std::string& filePath, const std::string& password = std::string());
@@ -77065,6 +77562,25 @@ UltraCanvasDialogManager::ShowInputDialog("Name of the new folder:", "New folder
 
 `InputType::Password` masks the field. Native message dialogs block and call
 the callback before returning; the framework's do not block.
+
+What the short form cannot say goes in an `InputDialogConfig`, shown with
+`ShowInputDialog(config, onResult, parent)`. `iconAboveInput` puts a picture
+(an SVG or bitmap path) centred above the field, drawn in the dialog's text
+colour so it follows the theme - the lock of UltraViewer's Unlock dialog and
+of `UltraCanvasFileLoader::RequestDocumentPassword`; `iconAboveInputSize` is
+its side (48 by default). A picture that cannot be read leaves no gap. With
+native dialogs on, the native dialog is shown without it.
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasWindow> window; std::string resources; -->
+```cpp
+InputDialogConfig unlock;
+unlock.title = "Unlock report.odt";
+unlock.inputLabel = "Password for report.odt:";
+unlock.inputType = InputType::Password;
+unlock.iconAboveInput = resources + "media/icons/unlock.svg";
+UltraCanvasDialogManager::ShowInputDialog(unlock,
+    [](DialogResult r, const std::string& password) { /* ... */ }, window.get());
+```
 
 ## See also
 
@@ -84618,8 +85134,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.6.0 - the tooltip is shown in a window of its own, above every other window (`SetUseOwnWindow`, `GetTooltipWindow`)  
-**Last Modified:** 2026-11-09  
+**Version:** 2.6.1 - the pointer leaving the window a tooltip belongs to, or that window losing the focus, takes the tooltip away (`PointerLeftWindow`)  
+**Last Modified:** 2026-11-18  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -84905,6 +85421,16 @@ the tooltip's window is no application window: it never keeps `Run()` going,
 is not counted by `ClosingEndsApplication`, is no jump target and is not
 reported to assistive technology.
 
+Because that window floats above every other, the tooltip goes as soon as
+the pointer leaves the window it belongs to or that window loses the focus
+(`PointerLeftWindow`, which `UltraCanvasApplication` calls on the window's
+`MouseLeave` and `WindowBlur`); a tooltip still waiting for its delay is not
+shown. The element the pointer was over gets its `MouseLeave` too, so the
+pointer back on it asks for its tooltip again - unless an element holds the
+pointer (a drag out of the window). Without this a tooltip stayed over another
+program's window that had come over its own, where, drawn inside its window,
+it had been covered with it.
+
 The window is opaque, so in it the tooltip has square corners and no soft
 shadow of its own; a compositing window manager gives a tooltip window a
 shadow. Drawn inside its window the tooltip keeps the style's
@@ -84962,6 +85488,7 @@ static bool GetUseOwnWindow();
 static UltraCanvasWindowBase* GetTooltipWindow();   // nullptr: drawn in its window, or none
 static void ForgetWindow(UltraCanvasWindowBase* win);        // a window is closing
 static void WindowScaleChanged(UltraCanvasWindowBase* win);  // a window changed monitor scale
+static void PointerLeftWindow(UltraCanvasWindowBase* win);   // the pointer left it, or it lost the focus
 
 // Rendering (called by the window compositor of the window the tooltip is
 // shown in: its own, or the one it belongs to)
@@ -87991,7 +88518,7 @@ FILE: Docs/UltraCanvas/UltraCanvasVectorConverters.md
 
 The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file formats and the framework's in-memory `VectorStorage::VectorDocument` model. Every converter implements `UltraCanvas::VectorConverter::IVectorFormatConverter` (`UltraCanvasVectorConverter.h`): `Import`/`ImportFromString`/`ImportFromStream` produce a `VectorDocument`, `Export`/`ExportToString`/`ExportToStream` serialize one, and `ValidateFile`/`ValidateData` sniff signatures.
 
-**Headers:** `UltraCanvasVectorConverter.h` (interface, `SVGConverter`, `PDFVectorConverter`), `UltraCanvasXARConverter.h`, `UltraCanvasEPSConverter.h`, `UltraCanvasCDRConverter.h`, `UltraCanvasMetafileConverters.h` (`EMFConverter`, `WMFConverter`, `AIConverter`), `UltraCanvasCADConverters.h` (`DXFConverter`, `DWGConverter`), `UltraCanvasVectorFormatsPlugin.h` (the graphics plugin exposing the matrix to `LoadGraphicsFile` / `SaveGraphicsFile`).
+**Headers:** `UltraCanvasVectorConverter.h` (interface, `SVGConverter`, `PDFVectorConverter`), `UltraCanvasXARConverter.h`, `UltraCanvasEPSConverter.h`, `UltraCanvasCDRConverter.h`, `UltraCanvasODGConverter.h` (`ODGConverter`), `UltraCanvasMetafileConverters.h` (`EMFConverter`, `WMFConverter`, `AIConverter`), `UltraCanvasCADConverters.h` (`DXFConverter`, `DWGConverter`), `UltraCanvasVectorFormatsPlugin.h` (the graphics plugin exposing the matrix to `LoadGraphicsFile` / `SaveGraphicsFile`).
 
 ## Contents
 
@@ -88019,6 +88546,7 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | AI | `AIConverter` | ✓ | ✓ | Writing: modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading (`UltraCanvasAIReader.cpp`): a `.ai` saved *without* "Create PDF Compatible File" has an empty PDF page and keeps all of its artwork in the private `/AIPrivateData` streams, so a PDF engine renders it blank. The reader decodes those streams (ASCIIHex / ASCII85 / Flate) and interprets Illustrator's art language — path construction, painting with closepath on the lowercase operators, clipping (`W`), compound paths (`*u`/`*U`), groups, named layers, the graphics state, the grey/CMYK/RGB/spot colour operators and the AI9 transparency operator `Xy`. Legacy (v8 and earlier) EPS-based `.ai` files carry the same language in the open and read through the same parser; Illustrator's y-down ruler space and PostScript's y-up space both map onto the document page. Gradients and text are reported, not imported. A PDF-compatible `.ai` has no private data and is declined, so the caller falls back to the PDF plugin. **Render trap:** Ghostscript, poppler, ImageMagick and every PDF viewer show such a file as a blank page, correctly — never use them as the reference for a private-data `.ai`; see [UltraCanvasAIExamples](UltraCanvasAIExamples.md#render-trap-do-not-check-an-ai-against-a-pdf-renderer). |
 | DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), at physical size when `$INSUNITS` declares a unit and the result is a usable page, otherwise scaled to a sensible point size, since drawing units are arbitrary; the unit and scale are recorded on the document, and layer-table properties (colour, lineweight, linetype, frozen/locked/plot flags) land on the `VectorLayer`s. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
 | DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). The reader answers for the whole drawing family, not just `.dwg` — see [The DWG family](#the-dwg-family). |
+| ODG | `ODGConverter` | ✓ | ✓ | OpenDocument Drawing, LibreOffice Draw's format: the `.odg` package, the `.otg` template and the flat-XML `.fodg`. Reading takes the first page (others are reported): `draw:rect` / `ellipse` / `circle` (sections, cuts, arcs) / `line` / `polyline` / `polygon` / `path` / `regular-polygon` / `connector` / `measure` / `caption` / `frame` (pictures from `Pictures/` or inline, text boxes) / `g`, and `draw:custom-shape` by evaluating its `draw:enhanced-geometry` - every enhanced-path command (`M L C Q Z N F S T U A B W V X Y G`, the shading commands), the equations with their functions, the modifiers, stretch points and mirroring - so LibreOffice's basic shapes, stars, arrows, flowchart and callout shapes arrive as editable paths; the shading LibreOffice gives some stock shapes from its preset tables (a can's lid, a cube's faces, a bevel's sides) is applied by type. `draw:transform` in ODF's left-to-right order with LibreOffice's counter-clockwise rotation. Styles resolve through the default style, the parent chain and the automatic styles: solid fills, gradients (linear and axial exactly, with LibreOffice's multi-colour stops; the radial family as circular radial gradients), hatches as lines clipped to the shape (a `VectorClipView`), bitmap fills (stretched, tiled or placed), fill opacity and opacity gradients (as `TransparencyData`), stroke colour / width / opacity / dashes / joins / caps, arrowheads mapped onto the model's gallery, shadows; shapes are filled even-odd (`VectorStyle::ShapeFillRule`), as LibreOffice fills them. Text in shapes and text boxes keeps its paragraphs, spans (font, size, weight, slant, colour, underline, strike-through), padding, alignment and LibreOffice's automatic font colour, wrapped to the frame on an estimate of the glyph widths. Layers keep their names, visibility and lock (one layer when their shapes interleave, to keep the stacking order); master-page objects are drawn beneath; page size, background and `meta.xml`'s title, description and author are read. Writing: one `draw:layer` per model layer, transforms folded into page coordinates (a turned rectangle or ellipse becomes a `draw:path`; a turned text or picture keeps a `draw:transform`), paths placed by their curve bounds and filled ones closed - LibreOffice fills a path only when every subpath is closed - text as auto-growing text boxes, pictures embedded under `Pictures/` (inline in `.fodg`), the page drawn 256 pixels on its long side as `Thumbnails/thumbnail.png` (what file managers and the Filer show without a reader), gradients with their stops moved onto ODF's axis, dashes, arrowheads (LibreOffice's marker names), flat and gradient transparency and shadows as named styles; straight lines in a clip view (a hatch read back) are clipped to the outline. Conical and mesh gradients, patterns, clip paths, masks, blends, moulds, width profiles and brushes are written as their nearest plain form and reported. |
 
 All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `DataFormats/UltraCanvasVectorPathOps.h`.
 
@@ -88244,7 +88772,12 @@ ghostscript), `MetafileWriterTest` (EMF/WMF record-walk structure plus
 LibreOffice rasterization, AI through ghostscript), `CADWriterTest` (DXF
 through ezdxf — the reference DXF implementation: strict read, clean audit,
 structure — plus LibreOffice; DWG through LibreDWG's dxf2dwg/dwgread when
-installed), and `VectorFormatsPluginTest` (the whole matrix through the
+installed), `ODGConverterTest` (the ODG writer and reader round trip as a
+package and as flat XML, LibreOffice Draw's own files in `media/vector/ODG`
+read with their custom shapes, rotation, gradients, hatch, transparency, text
+and picture where LibreOffice draws them, and hand-written enhanced geometry;
+`--render` draws any vector file to a PPM, `--convert` converts between
+formats by extension), and `VectorFormatsPluginTest` (the whole matrix through the
 plugin registry: save all ten formats via `SaveGraphicsFile`, load the
 readable ones back via `LoadGraphicsFile` with geometry/style round-trip
 checks, plus the supported-format inventory). `VectorModelTest` covers the shared model itself: `Matrix3x3` arithmetic and double precision, group/document bounds through nested transforms, hit testing through layer and group transforms, the unit helpers, and a DXF round trip of units and layer properties. `DWGReaderTest` covers the CAD import path: the DXF reader's block machinery on a synthetic drawing (nested, arrayed and mirrored inserts, dimension blocks, inheritance, visibility, geometry-derived extents) and the native DWG decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the framework's own test document converted with dxf2dwg; extra `.dwg` files on its command line are decoded and reported (`DWG_TEST_SVG_DIR` exports them as SVG). It also covers the family dispatch above: the fixture's own bytes must load under each of `.dwg`, `.dwt`, `.dws`, `.sv$` and `.bak`, and a `.bak` holding anything else must not be claimed.
@@ -94598,7 +95131,7 @@ UltraCanvasFileLoader::ConvertAudioFile("talk.flac", "talk.mp3", audioError);
 // ... or a UCAudio you hold: UltraCanvasFileLoader::SaveAudio(audio, "take.wav", audioError)
 
 // Parse a word-processing document into a UCRichDocument (ODT/DOCX/DOC/LaTeX/Markdown/TXT;
-// a PowerPoint deck, .pptx, as an outline of its slides).
+// a PowerPoint deck, .pptx, or an OpenDocument one, .odp / .fodp, as an outline of its slides).
 // A password-protected .docx asks for its password before it loads.
 UltraCanvasFileLoader::OpenTextDocument(opts, [](const FileLoadResult& r, std::shared_ptr<UCRichDocument> doc) {
     if (r.IsSuccess()) ShowDocument(doc);
@@ -94625,7 +95158,7 @@ indexer:
 
 | File | How it is read (`TextExtractionMethod`) |
 |---|---|
-| ODT, DOCX, LaTeX, a PowerPoint deck | `Document`: `LoadTextDocument`, then its plain text |
+| ODT, DOCX, LaTeX, a PowerPoint or OpenDocument deck | `Document`: `LoadTextDocument`, then its plain text |
 | PDF | `PDF`: the text of every page; a scanned PDF without any is rendered at 300 DPI and read by text recognition |
 | ODS, XLSX, XLS | `Spreadsheet`: every sheet, tab-separated, each under its name when there are several |
 | TXT, Markdown, CSV, code, any UTF-8 file | `PlainText`: as it is |
@@ -94928,7 +95461,7 @@ build is reported by `UltraCanvasSupportedFormats::GetAll()`. See
 **3D Models** (via plugins): STL, STEP, IGES, OBJ, PLY, 3DS, COLLADA, X3D/VRML (load + save); FBX, Alembic, DirectX `.x`, MilkShape 3D, Blender (load)
 **Audio** (miniaudio + optional codec libs): WAV (load + save); MP3, FLAC (load always, save with LAME / libFLAC); OGG Vorbis, Opus (load + save with libvorbis / opusfile + libopusenc)
 **Video** (platform backend): MP4, MOV, MKV, WebM, AVI — playback codec- and recording backend-dependent
-**Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
+**Documents:** PDF (load + save), DOCX/ODT (load + save), DOC (load), PPTX/ODP presentations (load, as an outline), Markdown, TXT, HTML, EPUB, FB2, MOBI/PRC/AZW/AZW3
 **Spreadsheets:** ODS, XLSX, CSV, TSV (load + save), XLS — Excel 97-2003 and 5.0/95 (load)
 
 **Layered images** (`MediaFormatCategory::LayeredImage`): `.ucd`, the UCD 2.1
@@ -95032,10 +95565,13 @@ framework was compiled and which plugins the application registers.
 Legend: ✅ supported · — not supported · † depends on the installed libvips
 build · ‡ requires the matching plugin to be compiled and registered ·
 § depends on the platform backend and installed codecs · ¶ also
-password-protected (*Encrypt with Password*, agile encryption, Office 2010 and
-later): read given the password, and written with one - see
+password-protected: an Office file (*Encrypt with Password*, agile encryption,
+Office 2010 and later) read given the password, and written with one; an
+OpenDocument file (*Save with password*, LibreOffice / OpenOffice.org 3.2 and
+later, AES-256 and PBKDF2) read given the password, not written with one - see
 `UltraCanvasFileLoader::RequestDocumentPassword` and
-`RequestNewDocumentPassword`.
+`RequestNewDocumentPassword`, [UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md)
+and [UltraCanvasOdfEncryption](../../UltraCanvas/UltraCanvasOdfEncryption.md).
 
 ### Bitmaps — libvips †
 
@@ -95075,11 +95611,12 @@ load through the ImageMagick delegate when libvips was built with it.
 | PostScript / EPS | `.eps`, `.ps` | ✅ † | — | libvips delegate |
 | AutoCAD DXF | `.dxf` | ✅ ‡ | ✅ ‡ | Vector plugin (built-in reader and writer) |
 | AutoCAD DWG | `.dwg`, `.dwt`, `.dws`, `.sv$` | ✅ ‡ | ✅ ‡ § | Vector plugin (native R13–R2018 decoder) |
+| OpenDocument Drawing (LibreOffice Draw) | `.odg`, `.otg`, `.fodg` | ✅ ‡ | ✅ ‡ | Vector plugin (built-in reader and writer; miniz + tinyxml2) |
 
 There is no SVG *writer* in the image pipeline — SVG is load-only. EPS/PS load
 only when libvips was built with a PostScript loader (Ghostscript delegate).
 The Vector plugin writes the whole matrix it reads and more (SVG, XAR, EPS,
-CDR, PDF, EMF, WMF, AI, DXF, DWG) once `RegisterVectorFormatsPlugin()` has
+CDR, PDF, EMF, WMF, AI, DXF, ODG, DWG) once `RegisterVectorFormatsPlugin()` has
 been called — see
 [UltraCanvasVectorConverters](../../UltraCanvas/UltraCanvasVectorConverters.md).
 Those converters read into an editable `VectorDocument` rather than pixels and
@@ -95128,8 +95665,9 @@ the Vector plugin's drawing reader.
 |--------|--------------|:----:|:----:|----------|
 | PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF |
 | Word (OOXML) | `.docx` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2) |
-| OpenDocument Text | `.odt` | ✅ | ✅ | built-in (miniz + tinyxml2) |
-| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.potx` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
+| OpenDocument Text | `.odt` | ✅ ¶ | ✅ | built-in (miniz + tinyxml2) |
+| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.ppsm`, `.potx`, `.potm` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
+| OpenDocument Presentation | `.odp`, `.otp`, `.fodp` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
 | Word 97-2003 | `.doc` | ✅ | — | built-in OLE2/CFB parser (text import only) |
 | Markdown | `.md`, `.markdown` | ✅ | ✅ | built-in Markdown engine |
 | Plain text | `.txt` | ✅ | ✅ | built-in |
@@ -95145,7 +95683,7 @@ engines linked into the binary are reported. RTF is **not** supported.
 
 | Format | Extension(s) | Load | Save |
 |--------|--------------|:----:|:----:|
-| OpenDocument Spreadsheet | `.ods` | ✅ | ✅ |
+| OpenDocument Spreadsheet | `.ods` | ✅ ¶ | ✅ |
 | Excel workbook (OOXML) | `.xlsx` | ✅ ¶ | ✅ ¶ |
 | Excel 97-2003 workbook | `.xls` | ✅ | — |
 | Comma-separated values | `.csv` | ✅ | ✅ |
@@ -101150,10 +101688,11 @@ FILE: Docs/Modules/UltraCrypt/README.md
 
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
-**Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
+**Status:** Stages 1, 2 and 5 implemented and under test; stages 3 and 4 in
+progress (§8).
 **Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-10-21
+**Last Modified:** 2026-11-18
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
@@ -101176,9 +101715,14 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
+Argon2id key derivation (one lane through libsodium; more - what files
+written elsewhere record, LibreOffice's ODF 1.4 encryption 4 - through the
+module's own RFC 9106 implementation on libsodium's BLAKE2b,
+`UltraCryptArgon2.cpp`, checked against libargon2), HKDF-SHA-256/512, Ed25519 signatures (§5.8),
 X25519 key agreement (§5.8.1),
-AES-128/192/256-CBC and -CTR and PBKDF2-HMAC-SHA-256/512 for foreign
+AES-128/192/256-CBC and -CTR, AES-GCM decryption on the same portable AES
+(`UltraCrypt_AesGcmDecrypt`, every CPU, the GCM specification's vectors) and
+PBKDF2-HMAC-SHA-256/512 (and -SHA-1, legacy-gated) for foreign
 formats (§5.9, §5.10), and X.509 certificates with their trust check, CMS
 signed and enveloped data and PKCS #12 (§5.11) - the one part on a second,
 optional backend, OpenSSL 3, since libsodium has nothing of public-key
@@ -101197,11 +101741,15 @@ therefore in place.
 **Notes on two of these.** SHA-1 is vendored (~150 lines in
 `UltraCryptCore.cpp`) because libsodium omits it; `UltraCrypt_Hash` refuses it
 unless `UltraCryptHashOptions::allowLegacy` is set, while `UltraCrypt_Hmac`
-accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. One caller
-sets `allowLegacy`: the reader of password-protected Office files
+accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. Two callers
+set `allowLegacy`, each for a password hash and key derivation, which SHA-1's
+collisions do not reach: the reader of password-protected Office files
 (`UltraCanvasOfficeEncryption.cpp`), because Office 2010 derives its keys with
-SHA-1 - a password hash and key derivation, which SHA-1's collisions do not
-reach. It writes SHA-512, so nothing UltraCanvas writes depends on SHA-1. HKDF is
+SHA-1, and the reader of password-protected OpenDocument files
+(`UltraCanvasOdfEncryption.cpp`), because ODF's PBKDF2 is HMAC-SHA-1 -
+`UltraCrypt_DeriveKeyPbkdf2` takes SHA-1 only with `allowLegacy`, and checks
+it against RFC 6070. Office's writer uses SHA-512 and nothing writes ODF
+encryption, so nothing UltraCanvas writes depends on SHA-1. HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
 which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18. AES is
 vendored too (`UltraCryptAes.cpp`, ~470 lines), because libsodium has no AES
@@ -101219,29 +101767,31 @@ BLAKE3-256, once listed as optional, has been dropped altogether (§9).
 
 ## 1. Why this module exists
 
-There is currently **no sanctioned way for UltraCanvas code to compute a hash,
-an HMAC, derive a key, or encrypt a blob.** Outside vendored third-party
-code, only three files in the repository touch a crypto library, and all three
-are TLS backends doing TLS.
+Before this module there was **no sanctioned way for UltraCanvas code to
+compute a hash, an HMAC, derive a key, or encrypt a blob.** Outside vendored
+third-party code, only three files in the repository touched a crypto
+library, and all three were TLS backends doing TLS.
 
-The result is that every component needing cryptography has independently
-hand-rolled one, reached around the rules, or stalled at design stage:
+The result was that every component needing cryptography had independently
+hand-rolled one, reached around the rules, or stalled at design stage. The
+last column says where each stands now:
 
 | Consumer | Requires | State today |
 |---|---|---|
-| **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Fully specified; **none of the primitives exist**, so the format cannot be implemented as written |
-| **UltraCanvasDocument** (UCD v1 encryption) | AEAD + password KDF | **Fixed** — now uses UltraCrypt through `UCDCryptoEnvelope`; see §1.1 for what it was |
+| **UCD file format v2** ([spec](../../UltraCanvas/UCD-FileFormat-v2.md) §4.3–4.4) | XChaCha20-Poly1305, Argon2id, HKDF-SHA256, SHA-256, CSPRNG (file UUID, salts, nonces) | Was fully specified with **none of the primitives in existence**. Now implemented as far as the container and its password protection: sections sealed with XChaCha20-Poly1305 under an Argon2id key (`UltraCanvasUCDContainer.h`, `UCDContainerTest`). SuperVault (§4.4) is still to come |
+| **UltraCanvasDocument** (UCD v1 encryption) | AEAD + password KDF | **Resolved** — the cryptography is `UCDCryptoEnvelope`, on UltraCrypt; the v1 document code itself has since been removed. See §1.1 for what it was |
 | **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. `Apps/AnchorPoint/net/Sha256.h` has been deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
-| **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Design doc only |
-| **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
-| **UltraAuthenticator** ([investigation](../../UltraAuthenticator/UltraAuthenticator-Investigation.md)) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare, secure memory | Blocked |
+| **UltraVault** ([design](../../../UltraAI/Docs/UltraVault.md)) | AEAD + password KDF for its file-backed fallback backend | Was a design document only. v0.1 has shipped with a Memory and a File backend, the file sealed with XChaCha20-Poly1305 under an Argon2id key; native keyring backends are still planned |
+| **UltraDatabase** | At-rest encryption | ✅ Done for SQLite: every page of the database, its WAL and its journal sealed with XChaCha20-Poly1305 (`UltraDatabaseEncryption.h`) |
+| **UltraAuthenticator** ([investigation](../../UltraAuthenticator/UltraAuthenticator-Investigation.md)) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare, secure memory | ✅ Unblocked and built on UltraCrypt: the OTP engine (since moved here, §5.13), its vault, its account layer and the application |
 
-Six consumers, one missing service. That is the case for building it once.
+Six consumers, one missing service. That was the case for building it once.
 
 ### 1.1 What the absence already produced
 
 `UltraCanvas/Plugins/Documents/UltraCanvasDocument.cpp` is the cautionary
-example. Its `EncryptData` / `DecryptData` are guarded by
+example. (The file was removed on 2026-11-18 - see the end of this section;
+what follows describes it as it was.) Its `EncryptData` / `DecryptData` are guarded by
 `#ifdef ULTRACANVAS_USE_OPENSSL`, **a macro no build file anywhere defines**.
 The branch that actually compiles is:
 
@@ -101269,19 +101819,23 @@ Plausible, well-intentioned security code that silently does nothing.
 `UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.{h,cpp}`, which depends only
 on UltraCrypt and is therefore compiled and unit-tested on its own
 (`Tests/UCDCryptoEnvelopeTests.cpp`) rather than reviewed by eye.
-`UltraCanvasDocument::EncryptData` / `DecryptData` are now thin adapters over
-it, `SetPassword` / `VerifyPassword` use Argon2id with a constant-time
+`UltraCanvasDocument::EncryptData` / `DecryptData` became thin adapters over
+it, `SetPassword` / `VerifyPassword` used Argon2id with a constant-time
 comparison instead of a bare SHA-256 with a `std::hash` fallback, and
-`GeneratePasswordHash` / `GenerateSalt` are gone. Every regression test in that
+`GeneratePasswordHash` / `GenerateSalt` went. Every regression test in that
 suite fails against the old implementation.
 
 Two caveats stated plainly:
 
-1. `UltraCanvasDocument.cpp` **still does not compile**, for reasons unrelated
-   to cryptography — it references undeclared types (`UCComponentData`,
-   `UltraCanvasWindow`) and defines `GetCurrentDateTime` twice. It therefore
-   remains out of the build, and the crypto changes inside it are verified by
-   inspection, while the logic they delegate to is verified by tests.
+1. `UltraCanvasDocument.{h,cpp}` **never compiled**, for reasons unrelated
+   to cryptography — it referenced undeclared types (`UCComponentData` before
+   its definition, an `UltraCanvasWindow` the framework does not have),
+   defined `GetCurrentDateTime` twice and included a JSON library the build
+   does not carry: 11 errors in the header and 88 in the source when it was
+   last tried. It was never in the build, so the crypto changes inside it
+   were verified by inspection alone, and the pair was **removed on
+   2026-11-18**. What remains is what was verified by tests: the envelope,
+   which UltraAuthenticator's account export uses as well.
 2. Because the old code never produced ciphertext, **no readable encrypted
    `.ucd` file can exist**, so the new envelope carries no backward-compatibility
    burden and none is implemented.
@@ -101727,7 +102281,9 @@ public:
 void UltraCrypt_SecureZero(void* data, size_t size);
 
 // Length-independent comparison. Use for every MAC / tag / digest check.
-bool UltraCrypt_ConstantTimeEquals(const void* a, const void* b, size_t size);
+// False when the sizes differ.
+bool UltraCrypt_ConstantTimeEquals(const void* a, size_t aSize,
+                                   const void* b, size_t bSize);
 ```
 
 ### 5.2 Hashing
@@ -101743,16 +102299,15 @@ enum class UltraCryptHashAlgorithm : uint8_t {
 };
 
 struct UltraCryptHashOptions {
-    bool allowLegacy = false;    // required to use SHA1 as a plain digest
+    bool allowLegacy = false;    // UltraCrypt_Hash refuses SHA1 without it
 };
 
 class UltraCryptHasher {          // streaming; for files and large payloads
 public:
-    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm,
-                              const UltraCryptHashOptions& options =
-                                  UltraCryptHashOptions());
+    // Takes the algorithm alone: no options, so - unlike UltraCrypt_Hash -
+    // nothing here asks for allowLegacy before SHA1. Neither copied nor moved.
+    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm);
     ~UltraCryptHasher();
-    UltraCryptHasher(UltraCryptHasher&&) noexcept;
     UltraCryptHasher(const UltraCryptHasher&) = delete;
 
     void Update(const void* data, size_t size);
@@ -101761,7 +102316,7 @@ public:
     void Reset();
 
     size_t GetDigestSize() const;
-    bool   IsValid() const;       // false when the algorithm is unavailable
+    bool   IsValid() const;       // false when there is no backend to hash with
 };
 
 size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm);
@@ -101789,18 +102344,7 @@ checksums.
 ### 5.3 HMAC
 
 ```cpp
-class UltraCryptHmacHasher {      // streaming, same shape as UltraCryptHasher
-public:
-    UltraCryptHmacHasher(UltraCryptHashAlgorithm algorithm,
-                         const UltraCryptSecureBuffer& key);
-    ~UltraCryptHmacHasher();
-    void Update(const void* data, size_t size);
-    std::vector<uint8_t> Final();
-    void Reset();                 // keeps the key
-    size_t GetDigestSize() const;
-    bool   IsValid() const;
-};
-
+// Accepts keys of any length (the standard HMAC key schedule is applied).
 // SHA1 is permitted here without allowLegacy: HMAC-SHA-1 remains sound and
 // TOTP interoperability requires it.
 UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
@@ -101808,6 +102352,10 @@ UltraCryptResult UltraCrypt_Hmac(UltraCryptHashAlgorithm algorithm,
                                  const void* data, size_t size,
                                  std::vector<uint8_t>& outMac);
 ```
+
+One call over the whole message: there is no streaming HMAC. (The proposal
+had a `UltraCryptHmacHasher` class of the shape of `UltraCryptHasher`; no
+consumer needed one - an OTP counter is eight bytes - and it was not built.)
 
 *Serves:* UltraAuthenticator (RFC 4226 / 6238), any future signed-manifest work.
 
@@ -102193,13 +102741,24 @@ UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
                                           const void* ciphertext, size_t size,
                                           UltraCryptSecureBuffer& outPlaintext);
 
-// SHA256 or SHA512 (SHA1 is refused); iterations >= 1; salt may be empty.
+// SHA256 or SHA512; SHA1 only with options.allowLegacy (OpenDocument's
+// password key); iterations >= 1; salt may be empty.
 UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm algorithm,
                                             const UltraCryptSecureBuffer& password,
                                             const std::vector<uint8_t>& salt,
                                             uint32_t iterations,
                                             size_t outputLength,
-                                            UltraCryptSecureBuffer& outKey);
+                                            UltraCryptSecureBuffer& outKey,
+                                            const UltraCryptHashOptions& options =
+                                                UltraCryptHashOptions());
+
+// AES-GCM decryption (interop only): the module's own AES and GHASH, every
+// CPU. The ciphertext ends with the 16-byte tag, checked before anything is
+// released (AuthenticationFailed, output empty).
+UltraCryptResult UltraCrypt_AesGcmDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptGcmParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
 ```
 
 The IV is the first counter block, and each next block adds one to it as a
@@ -102255,11 +102814,20 @@ UltraCryptResult UltraCrypt_ImportPkcs12(const std::vector<uint8_t>& pkcs12,
 // (detached, SHA-256, the chain carried); enveloped data made (AES-256-CBC)
 // and opened.
 UltraCryptCmsType UltraCrypt_CmsTypeOf(const std::vector<uint8_t>& der);
-UltraCryptResult UltraCrypt_CmsVerifyDetached(content, signatureDer, UltraCryptCmsSignature& out);
-UltraCryptResult UltraCrypt_CmsVerifyAttached(signedDer, outContent, UltraCryptCmsSignature& out);
-UltraCryptResult UltraCrypt_CmsSignDetached(content, const UltraCryptX509Identity& signer, outSignatureDer);
-UltraCryptResult UltraCrypt_CmsEncrypt(content, recipientsPem, outEnvelopedDer);
-UltraCryptResult UltraCrypt_CmsDecrypt(envelopedDer, const UltraCryptX509Identity& recipient,
+UltraCryptResult UltraCrypt_CmsVerifyDetached(const std::vector<uint8_t>& content,
+                                              const std::vector<uint8_t>& signatureDer,
+                                              UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsVerifyAttached(const std::vector<uint8_t>& signedDer,
+                                              std::vector<uint8_t>& outContent,
+                                              UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsSignDetached(const std::vector<uint8_t>& content,
+                                            const UltraCryptX509Identity& signer,
+                                            std::vector<uint8_t>& outSignatureDer);
+UltraCryptResult UltraCrypt_CmsEncrypt(const std::vector<uint8_t>& content,
+                                       const std::vector<std::string>& recipientsPem,
+                                       std::vector<uint8_t>& outEnvelopedDer);
+UltraCryptResult UltraCrypt_CmsDecrypt(const std::vector<uint8_t>& envelopedDer,
+                                       const UltraCryptX509Identity& recipient,
                                        UltraCryptSecureBuffer& outContent);
 ```
 
@@ -102330,14 +102898,22 @@ bool UltraCrypt_IsRsaEcdsaAvailable();
 
 // RS256: RSASSA-PKCS1-v1_5 with SHA-256. The key as a JWK's n and e
 // (big-endian bytes); below 2048 bits it is InvalidKeySize.
-UltraCryptResult UltraCrypt_CheckRsaPublicKey(modulus, exponent);
-UltraCryptResult UltraCrypt_VerifyRsaPkcs1Sha256(modulus, exponent, data, size, signature);
+UltraCryptResult UltraCrypt_CheckRsaPublicKey(const std::vector<uint8_t>& modulus,
+                                              const std::vector<uint8_t>& exponent);
+UltraCryptResult UltraCrypt_VerifyRsaPkcs1Sha256(const std::vector<uint8_t>& modulus,
+                                                 const std::vector<uint8_t>& exponent,
+                                                 const void* data, size_t size,
+                                                 const std::vector<uint8_t>& signature);
 
 // ES256: ECDSA on P-256 with SHA-256. The key as a JWK's x and y (32 bytes
 // each; a point off the curve is InvalidArgument); the signature as r || s,
 // 64 bytes, as JWS gives it - converted to DER inside.
-UltraCryptResult UltraCrypt_CheckP256PublicKey(x, y);
-UltraCryptResult UltraCrypt_VerifyEcdsaP256Sha256(x, y, data, size, signature);
+UltraCryptResult UltraCrypt_CheckP256PublicKey(const std::vector<uint8_t>& x,
+                                               const std::vector<uint8_t>& y);
+UltraCryptResult UltraCrypt_VerifyEcdsaP256Sha256(const std::vector<uint8_t>& x,
+                                                  const std::vector<uint8_t>& y,
+                                                  const void* data, size_t size,
+                                                  const std::vector<uint8_t>& signature);
 ```
 
 Checks only; a signature that does not hold is `SignatureInvalid`, whichever
@@ -102362,6 +102938,7 @@ coordinates and signatures.
 de-facto `otpauth://` key URI an authenticator scans from a QR code. Until
 2026-11 the files were UltraAuthenticator's (`Apps/UltraAuthenticator/otp/`).
 
+<!-- doc-check: int64_t unixTime; std::string typed; uint64_t lastAcceptedStep; -->
 ```cpp
 namespace Otp = UltraCanvas::Otp;
 Otp::Parameters params;                         // TOTP, SHA-1, 6 digits, 30 s
@@ -102397,6 +102974,7 @@ use, the digit count, a short secret.
 
 **UCD v2 section encryption (§4.3 pipeline):**
 
+<!-- doc-check: std::vector<uint8_t> sectionHeaderBytes; std::vector<uint8_t> payload; -->
 ```cpp
 UltraCryptKdfParams kdf =
     UltraCrypt_RecommendedKdfParams(UltraCryptKdfAlgorithm::Argon2id);
@@ -102414,6 +102992,7 @@ if (!UltraCrypt_AeadSeal(key, aead, payload.data(), payload.size(), ciphertext))
 
 **UCD v2 SuperVault subkey (§4.4 step 6):**
 
+<!-- doc-check: std::string kSvltInfoPrefix; std::string fileUuid; UltraCryptSecureBuffer serviceKeyMaterial; std::vector<uint8_t> kdfSalt; -->
 ```cpp
 std::vector<uint8_t> info(kSvltInfoPrefix.begin(), kSvltInfoPrefix.end());
 info.insert(info.end(), fileUuid.begin(), fileUuid.end());
@@ -102425,6 +103004,7 @@ UltraCrypt_DeriveKeyHkdf(UltraCryptHashAlgorithm::SHA256, serviceKeyMaterial,
 
 **TOTP code (RFC 6238):**
 
+<!-- doc-check: int64_t unixTimeUtc; uint64_t period; -->
 ```cpp
 uint64_t counter = static_cast<uint64_t>(unixTimeUtc) / period;
 uint8_t  message[8];
@@ -102488,7 +103068,7 @@ is part of the deliverable, not a follow-up:
 |---|---|
 | **1** | ✅ **Done** — backend ratified (libsodium); `UltraCryptSecureBuffer`, `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`, random, SHA-1/SHA-2 hashing, HMAC-SHA-1/SHA-2, published test vectors |
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
-| **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
+| **3** | ◐ **All but one item** — the v1 document encryption rewritten on UltraCrypt as `UCDCryptoEnvelope` (§1.1), `AnchorPoint/net/Sha256.h` retired, the UCD v2 container written with its password protection (`UltraCanvasUCDContainer.h`), SQLite files encrypted at rest (`UltraDatabaseEncryption.h`), UltraVault's file backend shipped. Still to do: UCD v2's SuperVault key source (spec §4.4), which the container refuses to open so far |
 | **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog; AES-CBC for foreign formats (§5.9). Still optional: XChaCha20-Poly1305 at volume, key agreement |
 | **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME; RSA / ECDSA checks (§5.12), for the UltraDBAdmin relay's sign-in |
 
@@ -102513,6 +103093,7 @@ storage layer and the UCD v2 format.
 - ~~`UltraCanvasDocument`'s dormant encryption~~ — **leave it.** The file is
   out of the build and likely to be deleted; its encryption path was already
   superseded by `UCDCryptoEnvelope` (§1.1). Nothing further is to be done to it.
+  *(Deleted on 2026-11-18.)*
 - ~~Naming convention~~ — **keep the `UltraCrypt_` prefix** and the global
   namespace, matching UltraNet and UltraDatabase. The framework accepts having
   both patterns.
@@ -104015,6 +104596,34 @@ process.
   answer within 45 s (`SetStepTimeout` for tests) fails with `Timeout`
   saying what TDLib was doing, instead of leaving the application waiting;
   the step's state change still arrives as an event if it completes later.
+- **The proxy:** TDLib connects by itself - nothing of UltraNet's is
+  between it and Telegram - so the provider tells it the proxy every
+  application shares (`UltraCanvasProxySettings.h`; what
+  `UltraNet_ResolveTunnelProxy` answers for `telegram.org` on port 443,
+  where Telegram's servers are reached - the rule IRC and XMPP follow too):
+  the proxy chosen in the settings, the operating system's SOCKS proxy or,
+  where it names no other, its web proxy (by CONNECT), or none - and none
+  for Telegram when the exceptions name `telegram.org`. A SOCKS 5 or an
+  HTTP proxy goes to TDLib as `addProxy`
+  with its sign-in, no proxy as `disableProxy`, and both **before**
+  `setTdlibParameters`: TDLib holds them until the parameters are in, so its
+  first connection is already the right one. While the session is open the
+  setting is looked at again every three seconds (`SetProxyCheckInterval`
+  for tests) and TDLib told when it has changed - it reconnects by itself,
+  and the state reads `Reconnecting` with "Connecting to the proxy
+  socks5h://127.0.0.1:10808" until it is through. TDLib keeps the proxy it
+  uses in its own database (encrypted with the vault's key), password
+  included, also one the proxy settings were told not to remember; every
+  other proxy it kept is removed (`getProxies`, `removeProxy`) each time it
+  is told one. TDLib has no SOCKS 4 and no proxy reached over TLS: with
+  such a setting a sign-in fails at once with `Unsupported`, naming the
+  proxy, and nothing is started; set while signed in - or when TDLib
+  refuses the proxy it is given - Telegram is taken off the network
+  (`setNetworkType` none, state `Error` saying why) rather than left to
+  connect directly, and comes back by itself once the setting names a proxy
+  it can use. `addProxy` is written in both forms it has had (`proxy` as an
+  object, which TDLib 1.8.69 takes, and its fields beside `enable`, as
+  before), since TDLib ignores the fields it does not know.
 - **Diagnostics:** the provider writes what it sends and receives (object
   types and TDLib's errors, never a phone number, code, password or message)
   to the framework's debug stream (`ULTRACANVAS_DEBUG_LOG`, ChatCube
@@ -104078,10 +104687,14 @@ libtdjson stand-in that keeps a small Telegram in memory (several providers
 in one process talk through it; files - profile photos, photos, videos and
 documents sent, `downloadFile` - as paths, nothing read or written;
 `FAKE_TDJSON_ACCOUNTS` and an `echobot`
-account for trying ChatCube on it); `Tests/UltraIM/TelegramTdlibTests.cpp`
+account for trying ChatCube on it; the proxy requests kept per database
+directory, `fakeProxyState` to read them); `Tests/UltraIM/TelegramTdlibTests.cpp`
 hands every request the provider builds to the real TDLib, offline - it
 answers a request it cannot parse at once, so anything else means TDLib's
-names and fields are right. The library is the one the configure step
+names and fields are right - and holds the proxy requests to more than
+that, since a wrongly shaped `addProxy` parses and adds nothing: a proxy
+told before the parameters is the one in use after them, and is listed,
+replaced, turned off and removed. The library is the one the configure step
 fetched, or the one `ULTRAIM_TDJSON_PATH` names; CI sets
 `ULTRAIM_TEST_TDLIB_REQUIRED`, so no library there is a failure.
 
@@ -104269,6 +104882,42 @@ signal-cli is not bundled.
   `signal-cli/bin/signal-cli` beside the provider modules, or the `PATH`,
   started with its data under `<dataDirectory>/signal/signal-cli` on a free
   loopback port, and stopped at `Shutdown`. Neither: `CapabilityMissing`.
+  The provider's own daemon gone while signed in (it ended, it was killed)
+  is started again. When that fails - Java no longer there, say - the state
+  is `Error` with what the start said (signal-cli's own lines of that
+  start), told once for one reason; the tries go on behind it, each failure
+  in a row doubling the wait before the next (`SignalTimings::retryMs`, up
+  to a minute), and the state is `Connected` again once one works.
+- **The proxy**: signal-cli connects to Signal by itself - nothing of
+  UltraNet's is between it and Signal's servers - so the provider's own
+  daemon is started for the proxy every application shares
+  (`UltraCanvasProxySettings.h`; what `UltraNet_ResolveProxy` answers for
+  `https://chat.signal.org:443/`), handed to it where signal-cli reads one:
+  Java's proxy properties (`https.proxyHost` / `socksProxyHost` and their
+  ports), which signal-cli 0.13.13 and later passes on to its network
+  library as well. They go in `JAVA_TOOL_OPTIONS` in the daemon's
+  environment, after what that variable already holds, so the setting wins
+  over a proxy named there; options the environment gives signal-cli's own
+  start script (`JAVA_OPTS`, `SIGNAL_CLI_OPTS`) come later still and are
+  left alone. An HTTP proxy (it tunnels) or a SOCKS 5 one is passed, "no
+  proxy" as options that take out one the environment names, and nothing
+  when the setting is the operating system's and it names none for Signal
+  (`DaemonProxy`, `DaemonProxyFor`). When the setting changes while signed
+  in the daemon is started again for it within a receive cycle (seconds;
+  the state reads `Reconnecting`, then `Connected`) - the link and the
+  account are signal-cli's files and stay. Nothing is left to connect
+  directly: a proxy signal-cli has no means for - one that asks for a user
+  name and password (signal-cli passes none on), SOCKS 4, one reached over
+  TLS - and a signal-cli that would not send everything through one - no
+  Java runtime starts it (its native build: the runtime's `Picked up
+  JAVA_TOOL_OPTIONS` line is missing from the daemon's log, so nothing
+  shows the options were read), or its `version` call names one older than
+  0.13.13 (`SignalCliTakesProxy`) - answer a sign-in with `Unsupported`,
+  saying why, and while signed in stop the daemon with that as its `Error`
+  state until the setting changes. With no proxy to use, either is started
+  as before. A daemon the user
+  runs (`credentials.server`) connects as the user started it - with a
+  proxy, by the same Java options.
 - **Sign-in** (`UltraIMLoginType::QRCode`): an account linked before and
   still in the daemon signs in at once. Otherwise `startLink` makes a
   `sgnl://linkdevice?...` link: `SignIn` answers `NeedsInput`, the step is
@@ -104296,8 +104945,15 @@ JSON-RPC): no signal-cli (`CapabilityMissing`), linking by QR (a link that
 expires and a new one), the link kept, texts both ways and one typed on the
 phone, a reply, an edit, a remote delete, receipts, typing, a picture, a
 file and a voice note byte for byte, history and search, a group made and
-left, and a daemon the provider starts and stops itself. Skips without python3 unless
-`ULTRAIM_TEST_SIGNAL_REQUIRED` is set.
+left, and a daemon the provider starts and stops itself; the proxy setting
+as Java options for every kind of setting, the daemon started again when
+the setting changes while signed in (another proxy, none) with the account
+kept, stopped with the reason for a proxy signal-cli cannot use, and
+stand-ins for the native build and for signal-cli 0.13.12 refused for a
+proxy. Skips without python3 unless
+`ULTRAIM_TEST_SIGNAL_REQUIRED` is set. The real signal-cli is not part of
+the tests: that it takes its proxy from Java's properties is its own source
+(`Utils.getHttpsProxy`, `SignalDependencies.setSignalNetworkProxy`).
 
 ## Provider: XMPP
 
@@ -104331,6 +104987,13 @@ tinyxml2's, cut into elements from the TCP byte stream by `XmppSplitter`.
   iteration count - not the password - and `SignIn` with no credentials
   uses them; a server with PLAIN alone keeps nothing. A changed password:
   `AuthRequire`.
+- **The proxy**: the TCP connection goes through the proxy the applications
+  share (`UltraNet_ResolveTunnelProxy`): the one chosen in the settings,
+  the operating system's SOCKS proxy, or - where it names no other - its
+  web proxy, as a CONNECT tunnel with STARTTLS or TLS inside it; a proxy
+  that refuses the tunnel fails the sign-in naming the proxy, it is not
+  gone around. Never for this computer or an exception. The WebSocket
+  binding takes the web's proxy as any web address does.
 - **Conversations**: a 1:1 chat's id is the contact's bare JID, the
   contacts the roster (RFC 6121) with their presence; a group is a
   multi-user chat room (XEP-0045), its id the room's JID, the rooms the
@@ -104379,7 +105042,14 @@ openssl).
   password, channels and open private chats are kept in UltraVault;
   `SignIn` with no credentials joins them again. Silence pings after 90 s;
   a lost connection reconnects with a doubling delay (2 s to 120 s).
-  `SetTlsOptions` takes a CA bundle or a client certificate.
+  `SetTlsOptions` takes a CA bundle or a client certificate. The connection
+  goes through the proxy the applications share
+  (`UltraNet_ResolveTunnelProxy`): the one chosen in the settings, the
+  operating system's SOCKS proxy, or - where it names no other - its web
+  proxy, as a CONNECT tunnel; a proxy that refuses the tunnel (one that
+  lets only port 443 through, say) fails the sign-in naming the proxy, it
+  is not gone around - an exception for the server in the proxy settings
+  connects directly.
 - **Conversations**: a channel's id is its name folded by the server's
   CASEMAPPING (`#ultracanvas`), its topic the `description`, its members
   nicks; a private chat's id the folded nick; `*server`, titled by the
@@ -105384,6 +106054,9 @@ ULTRANET_PROBE(kArea, UltraNet_HttpGet) {
 }
 ```
 
+<!-- doc-check: namespace ultranet_apistatus { struct Outcome; Outcome Implemented(std::string detail); }
+#define ULTRANET_PROBE_NAMED(areaName, displayName, uniqueId) static ::ultranet_apistatus::Outcome ultranet_probe_##uniqueId()
+-->
 Rules that keep the report trustworthy:
 
 * `PROBE_EXPECT` failing means the API misbehaved → `BROKEN`, never
@@ -105464,10 +106137,11 @@ engine changes (subject to the id-mapping question in §4).
 ### 3.1 No JSON library in the build (blocking)
 
 UltraNet has **no JSON parser/serializer**. Notably,
-`Plugins/Documents/UltraCanvasDocument.cpp` already `#include`s
+`Plugins/Documents/UltraCanvasDocument.cpp` (never in the build, and removed
+on 2026-11-18) `#include`d
 `<nlohmann/json.hpp>` ("assuming we have a JSON library"), but nlohmann/json is
 neither vendored under `third_party/` nor referenced by any CMakeLists — that
-include only compiles where the system happens to provide it.
+include only compiled where the system happened to provide it.
 
 Options:
 
@@ -105780,6 +106454,7 @@ App / Module (UltraCanvas, UltraAI, IODeviceManager, ...)
 
 ## Quick examples
 
+<!-- doc-check: std::string accessToken; -->
 ```cpp
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetHttp.h>
@@ -105794,9 +106469,10 @@ if (UltraNet_HttpGet("https://api.example.com/v1/health", r)) {
 UltraNetHttpRequest req;
 req.url    = "https://api.example.com/v1/items";
 req.method = UltraNetHttpMethod::Post;
-req.headers.Set("authorization", "Bearer " + token);
+req.headers.Set("authorization", "Bearer " + accessToken);
 req.headers.Set("content-type", "application/json");
-req.body   = SerializeJson(payload);
+const std::string json = R"({"name":"example"})";
+req.body.assign(json.begin(), json.end());      // the body is bytes
 
 UltraNetHandle h = UltraNet_HttpRequestAsync(req,
     [](const UltraNetResponse& resp) {
@@ -105829,8 +106505,9 @@ dl.options.stallTimeoutMs     = 60000;  // Timeout when nothing moves for 60 s
 dl.onHeaders = [](const UltraNetResponse& head) {
     // The final response's headers, before any body: 206 means the rest of
     // the file is coming, 200 that the server sent it all and the partial
-    // file was replaced. Return false to end the transfer (Cancelled).
-    return head.contentLength <= kMaxPackageBytes;
+    // file was replaced. Return false to end the transfer (Cancelled) -
+    // here for anything over 512 MB.
+    return head.contentLength <= 512LL * 1024 * 1024;
 };
 dl.onDownloadProgress = [](int64_t now, int64_t total) {
     // Figures of the whole file, the resumed bytes included.
@@ -105903,6 +106580,7 @@ std::string host;
 UltraNet_DnsReverseLookup("9.9.9.9", host, options);
 ```
 
+<!-- doc-check: std::string clientId; std::atomic<bool> dialogClosed; -->
 ```cpp
 #include <UltraNet/UltraNetOAuth2.h>
 
@@ -106048,6 +106726,25 @@ only would otherwise cut off a mail server that was reached directly. A
 proxy set explicitly (`Http`, `Socks5`, ...) carries everything, the HTTP
 kind as a CONNECT tunnel.
 
+A program that is to follow the proxy setting in everything it does asks
+`UltraNet_ResolveTunnelProxy(host, port)` for its connections that are not
+the web's: the proxy `tcp://host:port` resolves to (the one chosen, the
+system's SOCKS proxy), and where that is none the one `https://host:port`
+resolves to - the web's proxy, as a tunnel. With nothing but a web proxy set
+in the system such a connection then goes through it and not past it, and a
+proxy that will not tunnel to that port fails it by name
+(`UltraNet_TcpOpen`'s error) - the caller's choice of "through the proxy or
+not at all" over "directly where the proxy is the web's". ChatCube's
+networks do: IRC and XMPP over TCP hand the answer to
+`UltraNetSocketOptions::proxy`, Telegram tells it to TDLib.
+
+```cpp
+UltraNetSocketOptions options;
+options.proxy = UltraNet_ResolveTunnelProxy("irc.libera.chat", 6697);   // NoProxy: directly
+UltraNetHandle connection = UltraNetInvalidHandle;
+UltraNetResult opened = UltraNet_TcpOpen("irc.libera.chat", 6697, options, connection);
+```
+
 `UltraNetProxyConfig::autoConfigUrl` names a PAC script to run instead of
 the system's settings, where this build can (`UltraNet_CanEvaluateProxyScript`:
 Windows and macOS).
@@ -106083,12 +106780,13 @@ case UltraDatabase uses it for (`UltraDatabaseSshTunnel.h`). The `ssh`
 plug-in (libssh) does the work and is loaded on first use; without it the
 call fails with `PluginNotFound`.
 
+<!-- doc-check: std::vector<uint8_t> key; std::string trusted; -->
 ```cpp
 #include <UltraNet/UltraNetSsh.h>
 
 UltraNetSshTunnelOptions tunnel;
 tunnel.url = "ssh://deploy@bastion.example.com";
-tunnel.remote.privateKeyPem = key;     // or remote.credentials.password; neither: the agent, the default keys
+tunnel.remote.privateKeyPem = key;     // the key file's bytes - or remote.credentials.password; neither: the agent, the default keys
 tunnel.remote.hostKeyFingerprint = trusted;   // "SHA256:..."
 tunnel.targetHost = "db.internal";
 tunnel.targetPort = 5432;
@@ -106176,6 +106874,7 @@ Command:  MLSD
 Error:    Connection timed out after 30 seconds of inactivity   (transportCode 28)
 ```
 
+<!-- doc-check: std::string secret; void Show(UltraNetFtpLogKind kind, const std::string& text, int replyCode, int transportCode); -->
 ```cpp
 UltraNetFtpOptions opt;
 opt.credentials.username = "erika";
@@ -106338,8 +107037,8 @@ architecture.
   `UltraNetResultCode::Cancelled` once it says true. UltraFiler's drive
   worker uses it so that quitting does not wait for a large upload to
   finish. Asynchronous requests are cancelled with `UltraNet_CancelRequest`.
-* **Reserved:** never write `HttpClient`, `Connect()`, `Download()`,
-  `ResolveHost()` etc. at module level — always go through the
+* **Reserved:** never write `HttpClient`, `Connect`, `Download`,
+  `ResolveHost` etc. at module level — always go through the
   `UltraNet_*` API. (Full reserved-pattern list lives in the master
   registry.)
 
@@ -110721,11 +111420,11 @@ wrapped-engines rule, or stalled at design stage.
 
 | Consumer | Needs | Current state |
 |---|---|---|
-| **UCD file format v2** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`) | XChaCha20-Poly1305, Argon2id, HKDF, SHA-256 (cipher and KDF fixed to one each by the 2026-08-10 ruling) | **Specified in detail; none of the primitives exist.** §4.3 defines the per-section compress→encrypt pipeline, §4.4 the SuperVault remote-authorization record. The format cannot be implemented as written. |
-| **UltraCanvasDocument** (v1 doc encryption) | AES-256, PBKDF2, password hashing | Implemented by `#include <openssl/aes.h>` **directly inside a plugin** — a house-rule violation — and the implementation is broken (see below) |
+| **UCD file format v2** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`) | XChaCha20-Poly1305, Argon2id, HKDF, SHA-256 (cipher and KDF fixed to one each by the 2026-08-10 ruling) | Was specified in detail with none of the primitives in existence (§4.3 the per-section compress→encrypt pipeline, §4.4 the SuperVault remote-authorization record). The container and its password protection have since been implemented on UltraCrypt (`UltraCanvasUCDContainer.h`); SuperVault is still to come |
+| **UltraCanvasDocument** (v1 doc encryption) | AES-256, PBKDF2, password hashing | Was implemented by `#include <openssl/aes.h>` **directly inside a plugin** — a house-rule violation — and broken (see below). Since rewritten on UltraCrypt as `UCDCryptoEnvelope`; the file itself, which never compiled, is removed |
 | **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. The hand-rolled `Apps/AnchorPoint/net/Sha256.h` is deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
 | **UltraVault** | KDF + AEAD for its file-backed fallback backend, per-platform keyring glue | Was design doc only; v0.1 has since shipped with Memory and File backends built on UltraCrypt. Native keyring backends still planned |
-| **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
+| **UltraDatabase** | At-rest encryption | Was listed as a Stage 3 item, unstarted; SQLite files are now encrypted at rest on UltraCrypt (`UltraDatabaseEncryption.h`) |
 | **UltraAuthenticator** (this app) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare | ✅ Unblocked and built on UltraCrypt: OTP engine, vault, account layer and app shell |
 
 **Correction (2026-08-10):** an earlier revision of this document stated that
@@ -110741,6 +111440,10 @@ decision, not a free one; the options and a recommendation are in
 [UltraCrypt](../Modules/UltraCrypt/README.md) §3.
 
 #### Cautionary tale: what the missing API already produced
+
+*(Since then: the encryption was rewritten on UltraCrypt as
+`UCDCryptoEnvelope`, and the file described here, which never compiled, was
+removed on 2026-11-18. The account below is of the file as it was found.)*
 
 `UltraCanvas/Plugins/Documents/UltraCanvasDocument.cpp` is the clearest
 argument for a shared API. It implements document password protection like
@@ -111450,29 +112153,6 @@ encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
 
 ==============================================================================
-FILE: Docs/UltraClipboard/changelog.d/row-age-right-icons-clear-of-preview.md
-==============================================================================
-
-- **Tidier rows.** A text entry no longer lists its lines and size under its
-  title ("Formatted text · 1 line · 230 bytes" is "Formatted text"), and the
-  time ("vor 4 Std.", "5 min ago") stands at the right end of the row.
-- **The row's icons stay in reach while a preview is open.** The preview
-  covers the right part of the list, and with it the icons at the row's right
-  edge; the selected row and the previewed one now show Copy, Edit, Save as
-  and Delete just left of the preview.
-- **Spreadsheets and documents in the preview.** Resting on copied files
-  previews a spreadsheet (.ods, .xlsx, .xls, .csv) in the viewer, scrollable,
-  and a word-processing document (.odt, .docx, .doc) as its first page, laid
-  out with its fonts, pictures and tables. The page is drawn in the
-  background and the preview opens when it is ready (once per document, again
-  after it is saved); a PDF was previewed already.
-- **Slides in the preview.** A copied PowerPoint deck (.pptx, .pptm, .ppsx,
-  .potx) previews its slides as they are laid out - titles, bullets, colours,
-  shapes, pictures and tables - drawn in the background; *1 / 12* in the
-  preview's info line says which, and PageUp / PageDown (or a click on the
-  picture's left or right) turn them.
-
-==============================================================================
 FILE: Docs/UltraNotifications/README.md
 ==============================================================================
 
@@ -111622,6 +112302,12 @@ was done (the whole path in its tooltip):
 | Open folder | | the saved file's folder in the file manager |
 | Edit in UltraPaint | | the saved picture in UltraPaint (saved first when it was not) |
 
+The picture is shown whole, and never larger than it was taken. The mouse
+wheel zooms it about the cursor; once it is larger than the window, drag it
+to move it - as far as its edges, no further. A double-click shows it whole
+again. From 200 % on, each pixel is drawn as a sharp square, so a
+snip can be read pixel by pixel.
+
 ## Videos
 
 With *Video* chosen, the area you pick is recorded instead:
@@ -111682,6 +112368,21 @@ change is kept in the settings folder and shows at the next start.
 | `ui/UltraSnipRecordingBar.*` | The floating bar: a notification-type window (above everything, never taking the keyboard) with the time, Pause / Resume and Stop |
 | `ui/UltraSnipWindow.*` | The window: the bar (`UltraCanvasButton`, two `UltraCanvasSegmentedControl`s, an `UltraCanvasDropdown`), the result (`UltraCanvasImageElement` / `UltraCanvasMediaViewer`), the actions and the Settings button, and the capture step by step |
 | `main.cpp` | The command line and the single instance |
+
+==============================================================================
+FILE: Docs/UltraSnip/changelog.d/zoomable-picture.md
+==============================================================================
+
+- **The picture zooms and moves.** The mouse wheel zooms the snip shown in
+  the window about the cursor, up to forty times; once it is larger than the
+  pane, dragging moves it, as far as its edges and no further, and the cursor
+  shows four arrows only while there is somewhere to move it to. A
+  double-click shows it whole again. A snip smaller than the pane still
+  starts at its own size, as before, and its tooltip says how.
+- **Zoomed in, the pixels are sharp.** From 200 % on, each pixel of the snip
+  is drawn as a hard-edged square instead of being blurred into its
+  neighbours, so text and edges can be read pixel by pixel. Below 200 % the
+  picture stays smooth.
 
 ==============================================================================
 FILE: Docs/UltraToDo/README.md
@@ -111946,6 +112647,70 @@ Listed so the next session does not rediscover them:
 - **Animation frames** (GIF / WebP animation as a frame timeline).
 - **Plugins.** A filter-plugin interface so third parties can add entries to
   `PaintFilterCatalogue()` without recompiling the app.
+
+==============================================================================
+FILE: Docs/UltraPaint/changelog.d/scale-image-resampling.md
+==============================================================================
+
+- **Scale Image lets you choose how the pixels are worked out.** A new
+  *Resampling* list offers Lanczos 3 (the sharpest, still the default),
+  Lanczos 2, Mitchell (clean edges with hardly any halo), Bicubic, Bilinear
+  and Nearest (hard pixels: pixel art, icons and screenshots at 200 %, 300 %
+  or 400 %, every pixel copied exactly). Its tooltip says which to pick for
+  what.
+- **Sharpen after scaling.** A checkbox runs an unsharp mask after the scale,
+  sized to the enlargement, to win back some of the crispness an enlarged
+  picture loses. It sharpens the colour only, so an edge against
+  transparency gets no fringe, and it is greyed out for Nearest.
+- **Scale Image remembers** the method and the sharpening you chose last, for
+  as long as the window is open.
+
+==============================================================================
+FILE: Docs/UltraPaint/changelog.d/settings-blend-fatal-translated.md
+==============================================================================
+
+- **The settings window's choices wrap.** "Show the magnification glass", the
+  three magnifications and the two toolbar kinds break onto a second line
+  when a translation is longer than the page is wide, instead of being cut
+  off.
+- **The blend mode has a row of its own** in the Layers panel, under the
+  opacity, with a "Blend mode" caption and a list as wide as the panel, so a
+  long mode name (Negativ multiplizieren, Superposition ...) shows whole and
+  the opacity slider keeps its length.
+- **Undo, Redo and the colour picker in your language.** The steps the
+  framework names (Rename Layer, Scale Image, Layer Opacity, Hide Layer ...)
+  and the colour picker's Channels line, design names and tooltips are now
+  translated too.
+- **The start-up error box on Windows** is in your language and shows any
+  script correctly: it goes through the framework's native error dialog
+  (Unicode), not the ANSI message box. An error before the translations are
+  loaded still reads in English.
+- **Layer names and file errors in your language.** A new image's
+  background layer, new layers ("Ebene 2"), a pasted layer and the last
+  copied image are named in your language, and so are the messages when an
+  image or a project cannot be opened or saved.
+
+==============================================================================
+FILE: Docs/UltraPaint/changelog.d/translated.md
+==============================================================================
+
+- **UltraPaint speaks your language.** Every text it shows - the menus, the
+  toolbar and layer buttons' tooltips, the tool names, hints and options, the
+  filters and adjustments, the dialogs, the settings window and the status
+  line - now goes through the framework's translation, and the catalogues of
+  all 30 languages UltraCanvas ships (Arabic to Vietnamese) translate them.
+  They are machine drafts, marked so in each file, for a native speaker to
+  review. A message with a number in it is one whole sentence, so a language
+  can put the number where it belongs, and a count takes the plural form the
+  language needs.
+- **Undo and Redo name the step in your language** for UltraPaint's own steps
+  (the tools, the selections, the filters, the text); the few steps the
+  framework itself names, such as renaming a layer, still read in English.
+- **Longer words fit.** The captions of the tool options, the Opacity label
+  beside the layers, the picture's size in the status line, the Colour to
+  Alpha captions and the settings window's "Window size" grow to a longer
+  translation instead of cutting it off; the buttons of the Colour to Alpha
+  and settings windows grow to their text.
 
 ==============================================================================
 FILE: Docs/DeviceExplorer/README.md

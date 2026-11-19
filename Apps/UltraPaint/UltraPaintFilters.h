@@ -3,9 +3,13 @@
 // operation with a small parameter list, plus the dialog that edits the
 // parameters with a live preview on the canvas. The catalogue is data:
 // the Adjust and Filter menus are generated from it, so adding a filter is
-// one entry here.
+// one entry here (and one line in PaintFilterDisplayText for each new text).
+// The catalogue's texts are English: the undo label and the comparisons use
+// them. What a person reads comes from DisplayName() / DisplayCategory() /
+// DisplayTitle(), in their language, made when it is shown.
+// Version: 1.1.0 - the shown texts in the person's language (DisplayName, DisplayCategory, DisplayTitle)
 // Version: 1.0.0
-// Last Modified: 2026-09-06
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,25 +32,39 @@
 namespace UltraCanvas {
 
 struct PaintFilterParam {
-    std::string name;
+    std::string name;       // English; the dialog shows DisplayName()
     float minValue = 0.0f;
     float maxValue = 1.0f;
     float value = 0.0f;
     float step = 0.01f;
     bool integer = false;
+
+    // The caption in the parameter dialog, in the person's language.
+    std::string DisplayName() const;
 };
 
 struct PaintFilter {
     std::string id;         // stable key
-    std::string name;       // menu label
-    std::string category;   // "Adjust", "Blur", "Sharpen", "Edges", "Noise", "Stylize", "Morphology"
+    std::string name;       // menu label in English ("Gamma...") - the undo label; shown through DisplayName()
+    std::string category;   // "Adjust", "Blur", "Sharpen", "Edges", "Noise", "Stylize", "Morphology" - compared; shown through DisplayCategory()
     std::vector<PaintFilterParam> params;
 #ifdef HAS_LIBVIPS
     // The operation: a 4-band uchar sRGB image in, same size out.
     std::function<PixelFX::PFXImage(const PixelFX::PFXImage&, const std::vector<float>&)> apply;
 #endif
     bool HasParams() const { return !params.empty(); }
+
+    // In the person's language, made when called (never cached, so a
+    // language picked while UltraPaint runs shows in the next menu built):
+    std::string DisplayName() const;       // the menu item: "Gamma..."
+    std::string DisplayTitle() const;      // without the trailing "...": a dialog title, a message
+    std::string DisplayCategory() const;   // the menu header: "Blur"
 };
+
+// The text the catalogue shows for one of its English names, categories or
+// parameter captions, in the person's language; `english` itself for a text
+// it does not list.
+std::string PaintFilterDisplayText(const std::string& english);
 
 // Every filter in menu order; categories group them.
 const std::vector<PaintFilter>& PaintFilterCatalogue();

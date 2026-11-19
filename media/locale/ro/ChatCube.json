@@ -107,7 +107,6 @@
   "Could not leave {0}: {1}": "Nu s-a putut părăsi {0}: {1}",
   "Could not load the messages: {0}": "Mesajele nu au putut fi încărcate: {0}",
   "Could not open the chat: {0}": "Chatul nu a putut fi deschis: {0}",
-  "Could not open {0}": "{0} nu a putut fi deschis",
   "Could not remove {0}: {1}": "{0} nu a putut fi eliminat: {1}",
   "Could not rename the group: {0}": "Grupul nu a putut fi redenumit: {0}",
   "Could not save the description: {0}": "Descrierea nu a putut fi salvată: {0}",

@@ -1198,8 +1198,13 @@ set(ULTRACANVAS_CORE_SOURCES
         # Password-protected .xlsx / .docx (ECMA-376 agile encryption), on
         # UltraCrypt - linked below, after the module is defined
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeEncryption.cpp
-        # PowerPoint (.pptx) decks read as text: slides, shapes, tables, notes
+        # Password-protected OpenDocument packages (.odt / .ods / .odp): per-entry
+        # AES-CBC keyed with PBKDF2, on UltraCrypt
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOdfEncryption.cpp
+        # PowerPoint (.pptx) and OpenDocument (.odp / .fodp) decks read as
+        # text: slides, shapes, tables, notes
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptx.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdp.cpp
         # ... and a slide drawn as a picture from what it reads (previews)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPptxSlideRender.cpp
         # UCRichDocument: the block/run document model + its Markdown/HTML/plain
@@ -3296,6 +3301,9 @@ set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(uc-crypt STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptAes.cpp
+    # Argon2id with more than one lane (libsodium's has one): LibreOffice's
+    # ODF 1.4 encryption uses four
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptArgon2.cpp
     # HOTP / TOTP (RFC 4226 / 6238) and the otpauth:// URI: UltraAuthenticator
     # shows the codes, ChatCube Direct checks them at sign-in.
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraOtp.cpp
@@ -3355,7 +3363,8 @@ set(ULTRACANVAS_CRYPT_HAS_OPENSSL ${_uc_crypt_openssl} CACHE INTERNAL
     "UltraCrypt has its OpenSSL 3 backend (UltraCryptX509.h, UltraCryptPublicKey.h)")
 _ultracanvas_module_home(UltraCrypt uc-crypt)
 # The core itself uses it: UltraCanvasOfficeEncryption.cpp decrypts
-# password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC.
+# password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC,
+# UltraCanvasOdfEncryption.cpp OpenDocument ones with its AES-CBC and PBKDF2.
 # Absorbed whole into a shared core by the _ultracanvas_absorb_modules call
 # below; a static core links the home, which is the archive, PUBLIC.
 if(NOT ULTRACANVAS_BUILD_SHARED)
@@ -4939,7 +4948,8 @@ endif()
 # ULTRAIM_FETCH_TDLIB, ULTRAIM_TDJSON_FILE), so a build ships with it where
 # a prebuilt one exists. The application's API credentials from
 # my.telegram.org can be built in; otherwise the relay hands them out
-# (ChatCube), or the user gives them.
+# (ChatCube), or the user gives them. TDLib's networking is its own: the
+# provider hands it the proxy the applications share (UltraNet_ResolveTunnelProxy).
 # Not in WebAssembly: there is no libtdjson to load there, and no loadable
 # provider module either.
 set(ULTRAIM_TELEGRAM_API_ID "" CACHE STRING "Telegram API ID (my.telegram.org) built into the Telegram provider")
@@ -4956,6 +4966,12 @@ elseif(TARGET UltraIM AND TARGET UltraVault AND TARGET UltraCrypt)
     target_compile_features(UltraIMTelegramCore PUBLIC cxx_std_20)
     target_include_directories(UltraIMTelegramCore PUBLIC ${_ultraim_telegram_dir})
     target_link_libraries(UltraIMTelegramCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraVault UltraCrypt)
+    # UltraNet for the proxy setting alone (UltraNet_ResolveTunnelProxy): TDLib
+    # connects by itself and has to be told which proxy the applications
+    # share. Without UltraNet there is no such setting, and none is told.
+    if(TARGET UltraNet)
+        target_link_libraries(UltraIMTelegramCore PUBLIC UltraNet)
+    endif()
     if(UNIX)
         target_link_libraries(UltraIMTelegramCore PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
     endif()

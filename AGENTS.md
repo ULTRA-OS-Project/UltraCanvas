@@ -472,7 +472,11 @@ that is not installed: CI's Linux list (`.github/workflows/build.yml`) under
 Ubuntu 24.04's names, with 24.04's own MuPDF, libopusenc and c-ares where CI
 builds them from source - the libraries of the MQTT, AMQP, CoAP, SNMP and
 SSH plug-ins among them, which neither installed until 2026-10, so a change
-to one of those five compiled nowhere. Without it, UltraCrypt built without libsodium and
+to one of those five compiled nowhere, and Avahi's client library, without
+which the mDNS plug-in was not built here. It also installs Python's
+`websockets` package with pip, as CI does - not from that list: the loopback
+server of UltraNet's WebSocket tests needs the package's 13.0 API and
+Ubuntu's own is older - so those twelve tests run here instead of skipping. Without it, UltraCrypt built without libsodium and
 every credential-vault test failed here while passing in CI, and VideoFX, the
 PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
 were not built at all. A cold container takes about a minute, a warm one a
@@ -957,7 +961,8 @@ and never introduce a new literal copy of one:
    field or signature the headers don't have (Linux, clang++). All
    `*Examples.md` docs pass it. CI runs it over every doc under
    `Docs/UltraCanvas/` but the changelog, and over the module docs listed in
-   `CHECKED_MODULE_DOCS` in the script (`Docs/Modules/FileLoader/` so far)
+   `CHECKED_MODULE_DOCS` in the script (`Docs/Modules/` FileLoader,
+   UltraCrypt, UltraLocalisation, UltraNet and UltraSite so far)
    (`--all --strict`, `doc-examples.yml`) whenever a doc or a public header
    changes, and fails on any finding a component doc has. A module doc
    joins that list once its examples compile, and is fixed, not baselined. The design documents (a Proposal,

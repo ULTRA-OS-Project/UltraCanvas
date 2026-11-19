@@ -1,7 +1,9 @@
 # UltraCanvas Document File Format v2.0 (UCD v2)
 
-Status: **Draft specification** — reference for the v2 implementation of
-`UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`. Revision **2.1** adds
+Status: **Draft specification** — reference for the v2 implementation. (It
+was first written for `UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`,
+the v1 document code: that pair never compiled and was removed on
+2026-11-18; what v2 has is named below.) Revision **2.1** adds
 layered images (§4.7: the `LAYR` layer stack, several `BMAP` sections, text
 frames that stay text) and pins down what 2.0 left open — the `INDX` layout
 (§4.2.1) and the deflate and gzip stream formats (§2.3). Revision **2.2**
@@ -190,8 +192,8 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `INDX` | Section index: array of (type ID, absolute offset, stored length, uncompressed length) — layout in 4.2.1 | Optional but recommended as the **first** section; enables random access without scanning. Stored uncompressed and unencrypted. |
 | `META` | Document metadata: title, author, dates, custom properties, file UUID (random, set at creation), default locale (see 4.6) | May be left unencrypted in an `ENCRYPTED` file unless `PRIVATE` is set. |
 | `STYL` | Stylesheet: named styles for fonts, padding, margins, colors — CSS-like, referencing the `UltraCanvas::CSSLayout` property set | Shared styles referenced by ID from pages/components. |
-| `WNDW` | Window definitions (`UCWindowData`) | IDE templates / window content. |
-| `PAGE` | One page (`UCPageData`) including its component tree | One section per page → per-page random access. |
+| `WNDW` | Window definitions: per window its id, title, size and position, its properties, the order of its pages with bookmarks and a table of contents, and the transition between pages | IDE templates / window content. Not implemented yet; the fields are those of the removed v1 code's `UCWindowData`. |
+| `PAGE` | One page - id, name, number, size, background, margins, header and footer, the ids of the pages before and after it and of its media - including its component tree (per component: its type, id, properties, validation rules and children) | One section per page → per-page random access. Not implemented yet; the fields are those of the removed v1 code's `UCPageData` and `UCComponentData`. |
 | `FORM` | Form field definitions, validation rules, saved field values | |
 | `VECT` | Vector graphics document (serialized `VectorStorage::VectorDocument`: layers, paths, gradients, masks, filters, text-on-path …) | XAR-like feature set. Payload starts with the sub-format preamble (4.5). |
 | `MEDI` | One embedded media resource (image/audio/video/font), MIME-typed | One section per resource; already-compressed media should set compression `0` (none). |

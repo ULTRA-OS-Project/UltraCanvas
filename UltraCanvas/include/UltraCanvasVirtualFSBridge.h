@@ -31,15 +31,14 @@ namespace VirtualFS {
 namespace UltraCanvas {
 
 // ============================================================================
-// COMPRESSION TYPES (Extended from existing UltraCanvas types)
+// COMPRESSION TYPES
 // ============================================================================
 
 /**
  * @enum UCVFSCompressionType
- * @brief Extended compression types available through VirtualFS
+ * @brief Compression types available through VirtualFS
  * 
- * Extends the existing UCCompressionType and UCACompressionType enums
- * with additional algorithms available through VirtualFS/libarchive
+ * zlib's own (Deflate, GZIP) and the algorithms VirtualFS / libarchive add.
  */
 enum class UCVFSCompressionType {
     Uncompressed = 0,           // No compression (store)

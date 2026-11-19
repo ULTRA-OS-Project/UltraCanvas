@@ -1,5 +1,6 @@
 // UltraCanvasVectorRenderer.cpp
 // Vector Graphics Rendering for UltraCanvas
+// Version: 2.4.0 - a shape's fill honours VectorStyle::ShapeFillRule (even-odd)
 // Version: 2.3.0 - RenderText: a span with a colour of its own (VectorTextStyle::FillColor)
 //                  is painted in it
 // Version: 2.2.0 - RenderText: the anchor places each text chunk (a span with a Position of
@@ -308,7 +309,7 @@ namespace UltraCanvas {
         const Rect2Dd bounds = ctx->GetPathExtents();
         if (HasFill(style)) {
             ApplyFill(style.Fill.value(), bounds, style.FillOpacity);
-            ctx->FillPathPreserve();
+            FillCurrentPath(style);
         }
         if (!st->HasWidthProfile() && !st->HasBrush()) {
             ApplyStroke(*st, bounds, style.StrokeOpacity);
@@ -316,6 +317,14 @@ namespace UltraCanvas {
         }
         ctx->ClearPath();
         RenderLineGallery(element, *st, bounds, style.StrokeOpacity);
+    }
+
+    // Fills the current path, keeping it, under the style's fill rule.
+    void VectorRenderer::FillCurrentPath(const VectorStyle &style) {
+        const bool evenOdd = style.ShapeFillRule == VectorStorage::FillRule::EvenOdd;
+        if (evenOdd) ctx->SetFillRule(UltraCanvas::FillRule::EvenOdd);
+        ctx->FillPathPreserve();
+        if (evenOdd) ctx->SetFillRule(UltraCanvas::FillRule::NonZero);
     }
 
     // Fills and strokes the current path. Object-bounding-box gradients
@@ -335,7 +344,7 @@ namespace UltraCanvas {
         const Rect2Dd bounds = ctx->GetPathExtents();
         if (fill) {
             ApplyFill(style.Fill.value(), bounds, style.FillOpacity);
-            ctx->FillPathPreserve();
+            FillCurrentPath(style);
         }
         if (stroke) {
             ApplyStroke(style.Stroke.value(), bounds, style.StrokeOpacity);

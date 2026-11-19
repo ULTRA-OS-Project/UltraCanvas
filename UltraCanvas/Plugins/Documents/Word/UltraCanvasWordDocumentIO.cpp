@@ -2,10 +2,11 @@
 // Format detection and load/save dispatch for word-processing documents.
 // The per-format readers/writers live in UltraCanvasOdtFormat.cpp,
 // UltraCanvasDocxFormat.cpp and Plugins/Documents/LaTeX/.
+// Version: 1.3.2 - Load passes the password to an .odt (a password-protected one opens)
 // Version: 1.3.1 - A .docx is recognised by its main document part as the package's
 //                  relationships name it (word/document2.xml, say)
 // Version: 1.3.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -112,7 +113,7 @@ bool UCWordDocumentIO::LoadByFormat(const std::string& filePath, UCRichDocument&
                                     std::string& outError, const std::string& password) {
     switch (DetectWordDocumentFormat(filePath)) {
         case WordDocumentFormat::Odt:
-            return LoadOdt(filePath, outDocument, outError);
+            return LoadOdt(filePath, outDocument, outError, password);
         case WordDocumentFormat::Docx:
             return LoadDocx(filePath, outDocument, outError);
         case WordDocumentFormat::LegacyDoc: {

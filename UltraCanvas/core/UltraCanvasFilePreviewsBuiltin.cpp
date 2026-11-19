@@ -2,7 +2,7 @@
 // The preview providers of the formats compiled into the framework
 // (UltraCanvasFilePreviews.h): a PDF's first page, an e-book's cover, a
 // video's poster frame, a word-processing document's first page and its text,
-// a PowerPoint deck's text. Each
+// a PowerPoint or OpenDocument deck's text. Each
 // was a function inside the Filer until the registry existed; it is the same
 // code, registered under the format's extensions instead of called by name.
 //
@@ -10,13 +10,15 @@
 // and a format that moves into a runtime module takes its provider with it
 // and registers it from the module's init.
 //
+// Version: 1.3.0 - an OpenDocument presentation (.odp, .otp, .fodp) previews its slides' text,
+//                  like a PowerPoint deck
 // Version: 1.2.0 - a word-processing document (.odt, .docx, .doc) draws its first page as the
 //                  document lays it out - its fonts, pictures, colours, header and footer - not
 //                  a page of its text lines: the "word-processing" provider renders thumbnails
 // Version: 1.1.0 - a PDF's first page on white paper: the page the engine left transparent showed
 //                  the tile under it (a dark page with white patches on a dark tile)
 // Version: 1.0.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilePreviews.h"
@@ -26,6 +28,7 @@
 #include "UltraCanvasVideoThumbnail.h"
 #include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasPresentationPptx.h"
+#include "UltraCanvasPresentationOdp.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "Documents/eBook/EPUBEngine.h"
 #include "Documents/eBook/MOBIEngine.h"
@@ -253,13 +256,15 @@ std::shared_ptr<UCPixmap> RenderWordFirstPage(const std::string& path, const Fil
     return pixmap;
 }
 
-// ===== PowerPoint: the slide outline =====
+// ===== PowerPoint and OpenDocument decks: the slide outline =====
 // Each slide's number and title, then its bullets, tables and notes, as
 // UltraCanvasPresentationPptx outlines a deck. A protected deck answers false.
 bool ReadPresentation(const std::string& path, UCRichDocument& document) {
     PptxPresentation deck;
     std::string error;
-    if (!ReadPptxPresentation(path, deck, error)) return false;
+    const bool read = IsOdpExtension(path) ? ReadOdpPresentation(path, deck, error)
+                                           : ReadPptxPresentation(path, deck, error);
+    if (!read) return false;
     document = PptxPresentationToRichDocument(deck);
     return true;
 }
@@ -312,7 +317,7 @@ void RegisterBuiltinFilePreviewProviders() {
 
         FilePreviewProvider deck;
         deck.name = "powerpoint";
-        deck.documentExtensions = {"pptx", "pptm", "ppsx", "ppsm", "potx", "potm"};
+        deck.documentExtensions = {"pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp"};
         deck.ReadDocument = ReadPresentation;
         RegisterFilePreviewProvider(std::move(deck));
     });

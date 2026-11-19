@@ -23,7 +23,11 @@ told apart:
 * API listings - declarations copied from a class
   (`void SetText(const std::string& text);`). Each must be a member of a
   class the doc uses, or a free function (in the namespace the listing is
-  written in, `namespace QRCodeUtils { ... }`), with that exact signature.
+  written in, `namespace QRCodeUtils { ... }`; written in none, in
+  UltraCanvas or in the global namespace, where the modules with a prefix
+  have theirs - `UltraCrypt_Hash`, `UltraNet_HttpGet`), with that exact
+  signature. A constructor listed as `= delete` must be one the class does
+  not have.
   A block of only fields (`std::function<void()> onClick;`) is a listing
   when most of its names are members of the doc's classes, and local
   variables of an example otherwise.
@@ -112,6 +116,13 @@ per doc rather than per file, so a merge that brings another doc's
 rewritten block from main stays valid. The entries are a multiset (a
 message a doc repeats is listed as often), which a hand merge loses first.
 """
+# Version: 1.11.0 - a listed free function may be the global namespace's (the
+#                 modules whose functions carry a prefix, not a namespace:
+#                 all 66 of the UltraCrypt README's were reported as unknown);
+#                 a constructor listed `= delete` is checked to be absent,
+#                 not present; the UltraCrypt module docs are checked
+# Version: 1.10.1 - the UltraNet module docs are checked (CHECKED_MODULE_DOCS):
+#                 its README's examples had six mistakes nothing compiled
 # Version: 1.10.0 - UltraAI/include is on the include path and in the
 #                 header index, for the UltraAI module docs
 # Version: 1.9.0 - the baseline is signed per doc, and --update-baseline is
@@ -218,6 +229,9 @@ GEN = "__gen__"          # #line file name of generated lines
 # conditionals, so that another platform's code drops out, and macros.
 PP_IN_PLACE = re.compile(r"\s*#\s*(if|ifdef|ifndef|elif|elifdef|elifndef|else|endif|define|undef)\b")
 DOC_CHECK = re.compile(r"<!--\s*doc-check:(.*?)-->", re.S)
+# The "owner" of a listed free function found in the global namespace (None
+# is one found in the namespace the listing is written in).
+GLOBAL_NS = ""
 
 
 # --------------------------------------------------------------------------
@@ -1156,6 +1170,9 @@ class Doc:
                 top = written and inside not in self.index.namespaces and written in self.index.namespaces
                 for d in listing[0] + listing[1]:
                     d["ns"] = written if top else inside
+                    # Written in no namespace: a free function of it may be
+                    # the global namespace's as well as UltraCanvas'.
+                    d["global_too"] = not written
                 self.listing(b, line, s, listing, None)
 
     def type_copy(self, b, i, j, text):
@@ -1554,6 +1571,13 @@ class Doc:
                 where[n] = (k, None)
                 src.append('#line %d "%s"' % (n, GEN))
                 src.append("using ::%s::%s;" % (d.get("ns", "UltraCanvas"), d["name"]))
+                # (A block that is all declarations names no namespace at
+                # all - no "ns" - and is as much the global one's.)
+                if d.get("global_too", "ns" not in d):
+                    n += 1
+                    where[n] = (k, GLOBAL_NS)
+                    src.append('#line %d "%s"' % (n, GEN))
+                    src.append("using ::%s;" % d["name"])
         src.append("}")
         errors = run_clang(self.args.clang, self.report_flags, self.pch, "\n".join(src) + "\n", self.work,
                            self.tag + "_m")
@@ -1631,13 +1655,17 @@ class Doc:
             cv = " const" if d["const"] else ""
             if q is None:
                 checks = ["static_cast<%s (*)(%s)>(&::%s::%s)" % (ret, params, d.get("ns", "UltraCanvas"), d["name"])]
+            elif q == GLOBAL_NS:
+                checks = ["static_cast<%s (*)(%s)>(&::%s)" % (ret, params, d["name"])]
             elif what == "ctor":
-                checks = ["__dc_ctor<::%s, void(%s)>::value" % (q, params)]
+                # `= delete` says the class cannot be made that way.
+                deleted = re.search(r"=\s*delete\s*$", d["text"])
+                checks = ["%s__dc_ctor<::%s, void(%s)>::value" % ("!" if deleted else "", q, params)]
             else:
                 checks = ["static_cast<%s (::%s::*)(%s)%s>(&::%s::%s)" % (ret, q, params, cv, q, d["name"])]
                 if "static" in d["pre"] or not d["const"]:
                     checks.append("static_cast<%s (*)(%s)>(&::%s::%s)" % (ret, params, q, d["name"]))
-            ns = self.namespace_of(q) if q else d.get("ns", "UltraCanvas")
+            ns = self.namespace_of(q) if q else GLOBAL_NS if q == GLOBAL_NS else d.get("ns", "UltraCanvas")
             for check in checks:
                 n += 1
                 where[n] = (k, q)
@@ -1653,6 +1681,8 @@ class Doc:
                     src.append("namespace %s { struct __dc_s%d : ::%s { %s }; }" % (ns, n, q, body))
                 elif what == "ctor":
                     src.append("namespace %s { %s }" % (ns, body))
+                elif ns == GLOBAL_NS:
+                    src.append("struct __dc_s%d { %s };" % (n, body))
                 else:
                     src.append("namespace %s { struct __dc_s%d { %s }; }" % (ns, n, body))
         if n == 0:
@@ -1738,8 +1768,14 @@ SIGNATURE_PREFIX = "# signature "
 # component docs. A module joins once its examples compile: its findings are
 # mistakes in a description of an API that exists, not a design document's
 # unwritten one, so they are fixed, never baselined. The FileLoader README had
-# eight broken examples for months because nothing compiled it.
-CHECKED_MODULE_DOCS = ["FileLoader", "UltraLocalisation", "UltraSite"]
+# eight broken examples for months because nothing compiled it, and UltraNet's
+# six (an SSH key assigned as text among them, which no reader could build).
+# UltraNet's README there is the mirror of UltraNet/README.md
+# (scripts/generate_llms_txt.py): a finding in it is fixed in that file.
+# UltraCrypt's listed twelve functions and constructors as the headers do
+# not have them - a comparison with one size where there are two, a hasher
+# with options it does not take.
+CHECKED_MODULE_DOCS = ["FileLoader", "UltraCrypt", "UltraLocalisation", "UltraNet", "UltraSite"]
 
 
 def component_docs():

@@ -1,6 +1,7 @@
 // UltraCanvasLabeledToggleBase.h
 // Abstract base for labeled toggle controls (checkbox, radio, switch).
 // Owns label/layout/event/state plumbing; subclasses provide indicator drawing.
+// Version: 1.4.0 - SetLabelWrap: a label longer than the toggle is wide wraps onto more lines
 // Version: 1.3.0 - LabeledToggleVisualStyle::FromTheme: the label, the focus ring and the body font from the theme
 // Version: 1.2.0 - toggles take the keyboard focus (Tab reaches them, Space activates
 //                 them, a click focuses them); SetAcceptsFocus(false) opts one out
@@ -70,6 +71,8 @@ namespace UltraCanvas {
         std::string text;
         CheckedState checkState = CheckedState::Unchecked;
         bool acceptsFocus = true;
+        bool labelWrap = false;          // SetLabelWrap
+        bool labelWrapped = false;       // the label takes more than one line now
 
         // Layout
         bool layoutDirty = true;
@@ -81,7 +84,9 @@ namespace UltraCanvas {
         void CalculateLayout(IRenderContext* ctx);
         // Measures the natural content size (indicator + spacing + label). Measure
         // only — must not mutate this element's size (the block measure owns that).
-        Size2Df MeasureContentSize(IRenderContext* ctx) const;
+        // `availableWidth` > 0: the content width it has, at which a wrapping
+        // label (SetLabelWrap) breaks into lines.
+        Size2Df MeasureContentSize(IRenderContext* ctx, float availableWidth = -1.0f) const;
         void DrawLabel(IRenderContext* ctx);
 
         // Subclass hooks
@@ -109,6 +114,14 @@ namespace UltraCanvas {
         // ===== TEXT/LAYOUT =====
         void SetText(const std::string& labelText);
         std::string GetText() const { return text; }
+        // Whether the label wraps onto more lines when the toggle is narrower
+        // than it - a long caption, or a translation longer than the English.
+        // Off (one line, as before) unless set. Give such a toggle a width
+        // (or let its container stretch it) and an Auto height: it grows a
+        // line at a time, and the box, dot or track sits level with the
+        // label's first line.
+        void SetLabelWrap(bool wrap);
+        bool GetLabelWrap() const { return labelWrap; }
 
         // ===== ACCESSIBILITY =====
         // A checkbox (radio button, switch: see the subclasses), named by

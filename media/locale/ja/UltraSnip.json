@@ -60,6 +60,7 @@
   "Save the recording as": "録画の保存形式",
   "saved": "保存済み",
   "Saved as {0}": "{0} として保存しました",
+  "Scroll to zoom, drag to move, double-click to fit": "スクロールで拡大縮小、ドラッグで移動、ダブルクリックで全体表示",
   "Settings for .{0}": ".{0} の設定",
   "settings page|Saving": "保存",
   "Settings: the picture type and folder, the recording's type and frame rate, what happens after a snip": "設定: 画像の形式とフォルダー、録画の形式とフレームレート、キャプチャ後の動作",

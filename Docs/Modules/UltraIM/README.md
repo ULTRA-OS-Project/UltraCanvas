@@ -753,6 +753,34 @@ process.
   answer within 45 s (`SetStepTimeout` for tests) fails with `Timeout`
   saying what TDLib was doing, instead of leaving the application waiting;
   the step's state change still arrives as an event if it completes later.
+- **The proxy:** TDLib connects by itself - nothing of UltraNet's is
+  between it and Telegram - so the provider tells it the proxy every
+  application shares (`UltraCanvasProxySettings.h`; what
+  `UltraNet_ResolveTunnelProxy` answers for `telegram.org` on port 443,
+  where Telegram's servers are reached - the rule IRC and XMPP follow too):
+  the proxy chosen in the settings, the operating system's SOCKS proxy or,
+  where it names no other, its web proxy (by CONNECT), or none - and none
+  for Telegram when the exceptions name `telegram.org`. A SOCKS 5 or an
+  HTTP proxy goes to TDLib as `addProxy`
+  with its sign-in, no proxy as `disableProxy`, and both **before**
+  `setTdlibParameters`: TDLib holds them until the parameters are in, so its
+  first connection is already the right one. While the session is open the
+  setting is looked at again every three seconds (`SetProxyCheckInterval`
+  for tests) and TDLib told when it has changed - it reconnects by itself,
+  and the state reads `Reconnecting` with "Connecting to the proxy
+  socks5h://127.0.0.1:10808" until it is through. TDLib keeps the proxy it
+  uses in its own database (encrypted with the vault's key), password
+  included, also one the proxy settings were told not to remember; every
+  other proxy it kept is removed (`getProxies`, `removeProxy`) each time it
+  is told one. TDLib has no SOCKS 4 and no proxy reached over TLS: with
+  such a setting a sign-in fails at once with `Unsupported`, naming the
+  proxy, and nothing is started; set while signed in - or when TDLib
+  refuses the proxy it is given - Telegram is taken off the network
+  (`setNetworkType` none, state `Error` saying why) rather than left to
+  connect directly, and comes back by itself once the setting names a proxy
+  it can use. `addProxy` is written in both forms it has had (`proxy` as an
+  object, which TDLib 1.8.69 takes, and its fields beside `enable`, as
+  before), since TDLib ignores the fields it does not know.
 - **Diagnostics:** the provider writes what it sends and receives (object
   types and TDLib's errors, never a phone number, code, password or message)
   to the framework's debug stream (`ULTRACANVAS_DEBUG_LOG`, ChatCube
@@ -816,10 +844,14 @@ libtdjson stand-in that keeps a small Telegram in memory (several providers
 in one process talk through it; files - profile photos, photos, videos and
 documents sent, `downloadFile` - as paths, nothing read or written;
 `FAKE_TDJSON_ACCOUNTS` and an `echobot`
-account for trying ChatCube on it); `Tests/UltraIM/TelegramTdlibTests.cpp`
+account for trying ChatCube on it; the proxy requests kept per database
+directory, `fakeProxyState` to read them); `Tests/UltraIM/TelegramTdlibTests.cpp`
 hands every request the provider builds to the real TDLib, offline - it
 answers a request it cannot parse at once, so anything else means TDLib's
-names and fields are right. The library is the one the configure step
+names and fields are right - and holds the proxy requests to more than
+that, since a wrongly shaped `addProxy` parses and adds nothing: a proxy
+told before the parameters is the one in use after them, and is listed,
+replaced, turned off and removed. The library is the one the configure step
 fetched, or the one `ULTRAIM_TDJSON_PATH` names; CI sets
 `ULTRAIM_TEST_TDLIB_REQUIRED`, so no library there is a failure.
 
@@ -1007,6 +1039,42 @@ signal-cli is not bundled.
   `signal-cli/bin/signal-cli` beside the provider modules, or the `PATH`,
   started with its data under `<dataDirectory>/signal/signal-cli` on a free
   loopback port, and stopped at `Shutdown`. Neither: `CapabilityMissing`.
+  The provider's own daemon gone while signed in (it ended, it was killed)
+  is started again. When that fails - Java no longer there, say - the state
+  is `Error` with what the start said (signal-cli's own lines of that
+  start), told once for one reason; the tries go on behind it, each failure
+  in a row doubling the wait before the next (`SignalTimings::retryMs`, up
+  to a minute), and the state is `Connected` again once one works.
+- **The proxy**: signal-cli connects to Signal by itself - nothing of
+  UltraNet's is between it and Signal's servers - so the provider's own
+  daemon is started for the proxy every application shares
+  (`UltraCanvasProxySettings.h`; what `UltraNet_ResolveProxy` answers for
+  `https://chat.signal.org:443/`), handed to it where signal-cli reads one:
+  Java's proxy properties (`https.proxyHost` / `socksProxyHost` and their
+  ports), which signal-cli 0.13.13 and later passes on to its network
+  library as well. They go in `JAVA_TOOL_OPTIONS` in the daemon's
+  environment, after what that variable already holds, so the setting wins
+  over a proxy named there; options the environment gives signal-cli's own
+  start script (`JAVA_OPTS`, `SIGNAL_CLI_OPTS`) come later still and are
+  left alone. An HTTP proxy (it tunnels) or a SOCKS 5 one is passed, "no
+  proxy" as options that take out one the environment names, and nothing
+  when the setting is the operating system's and it names none for Signal
+  (`DaemonProxy`, `DaemonProxyFor`). When the setting changes while signed
+  in the daemon is started again for it within a receive cycle (seconds;
+  the state reads `Reconnecting`, then `Connected`) - the link and the
+  account are signal-cli's files and stay. Nothing is left to connect
+  directly: a proxy signal-cli has no means for - one that asks for a user
+  name and password (signal-cli passes none on), SOCKS 4, one reached over
+  TLS - and a signal-cli that would not send everything through one - no
+  Java runtime starts it (its native build: the runtime's `Picked up
+  JAVA_TOOL_OPTIONS` line is missing from the daemon's log, so nothing
+  shows the options were read), or its `version` call names one older than
+  0.13.13 (`SignalCliTakesProxy`) - answer a sign-in with `Unsupported`,
+  saying why, and while signed in stop the daemon with that as its `Error`
+  state until the setting changes. With no proxy to use, either is started
+  as before. A daemon the user
+  runs (`credentials.server`) connects as the user started it - with a
+  proxy, by the same Java options.
 - **Sign-in** (`UltraIMLoginType::QRCode`): an account linked before and
   still in the daemon signs in at once. Otherwise `startLink` makes a
   `sgnl://linkdevice?...` link: `SignIn` answers `NeedsInput`, the step is
@@ -1034,8 +1102,15 @@ JSON-RPC): no signal-cli (`CapabilityMissing`), linking by QR (a link that
 expires and a new one), the link kept, texts both ways and one typed on the
 phone, a reply, an edit, a remote delete, receipts, typing, a picture, a
 file and a voice note byte for byte, history and search, a group made and
-left, and a daemon the provider starts and stops itself. Skips without python3 unless
-`ULTRAIM_TEST_SIGNAL_REQUIRED` is set.
+left, and a daemon the provider starts and stops itself; the proxy setting
+as Java options for every kind of setting, the daemon started again when
+the setting changes while signed in (another proxy, none) with the account
+kept, stopped with the reason for a proxy signal-cli cannot use, and
+stand-ins for the native build and for signal-cli 0.13.12 refused for a
+proxy. Skips without python3 unless
+`ULTRAIM_TEST_SIGNAL_REQUIRED` is set. The real signal-cli is not part of
+the tests: that it takes its proxy from Java's properties is its own source
+(`Utils.getHttpsProxy`, `SignalDependencies.setSignalNetworkProxy`).
 
 ## Provider: XMPP
 
@@ -1069,6 +1144,13 @@ tinyxml2's, cut into elements from the TCP byte stream by `XmppSplitter`.
   iteration count - not the password - and `SignIn` with no credentials
   uses them; a server with PLAIN alone keeps nothing. A changed password:
   `AuthRequire`.
+- **The proxy**: the TCP connection goes through the proxy the applications
+  share (`UltraNet_ResolveTunnelProxy`): the one chosen in the settings,
+  the operating system's SOCKS proxy, or - where it names no other - its
+  web proxy, as a CONNECT tunnel with STARTTLS or TLS inside it; a proxy
+  that refuses the tunnel fails the sign-in naming the proxy, it is not
+  gone around. Never for this computer or an exception. The WebSocket
+  binding takes the web's proxy as any web address does.
 - **Conversations**: a 1:1 chat's id is the contact's bare JID, the
   contacts the roster (RFC 6121) with their presence; a group is a
   multi-user chat room (XEP-0045), its id the room's JID, the rooms the
@@ -1117,7 +1199,14 @@ openssl).
   password, channels and open private chats are kept in UltraVault;
   `SignIn` with no credentials joins them again. Silence pings after 90 s;
   a lost connection reconnects with a doubling delay (2 s to 120 s).
-  `SetTlsOptions` takes a CA bundle or a client certificate.
+  `SetTlsOptions` takes a CA bundle or a client certificate. The connection
+  goes through the proxy the applications share
+  (`UltraNet_ResolveTunnelProxy`): the one chosen in the settings, the
+  operating system's SOCKS proxy, or - where it names no other - its web
+  proxy, as a CONNECT tunnel; a proxy that refuses the tunnel (one that
+  lets only port 443 through, say) fails the sign-in naming the proxy, it
+  is not gone around - an exception for the server in the proxy settings
+  connects directly.
 - **Conversations**: a channel's id is its name folded by the server's
   CASEMAPPING (`#ultracanvas`), its topic the `description`, its members
   nicks; a private chat's id the folded nick; `*server`, titled by the
