@@ -964,11 +964,18 @@ NO_LATEX_APPS=(UltraNetMonitor DeviceExplorer SmartHomeCenter UltraMail)
 #   DeviceExplorer  mdns: the DNS-SD browser behind its network printers
 #                   (IODeviceManager's IPP enumeration) and its eSCL
 #                   scanners, which it finds no other way.
+#   Texter, UltraFiler, UltraCanvasDemo
+#                   mdns: they print. The print dialog's choice is looked up
+#                   among IODeviceManager's printers, and the network
+#                   printers no CUPS queue reaches are browsed for through
+#                   mdns. Every app that prints (ShowPrintDialog,
+#                   PrintTextWithDialog, PrintDocumentWithDialog or
+#                   IODeviceManager's printers) gets at least mdns.
 # UltraNetMonitor loads none: it reads the system's socket table.
 ultranet_plugins_of() {
     case "$1" in
         UltraMail)      echo "all" ;;
-        DeviceExplorer) echo "mdns" ;;
+        DeviceExplorer|Texter|UltraFiler|UltraCanvasDemo) echo "mdns" ;;
     esac
 }
 

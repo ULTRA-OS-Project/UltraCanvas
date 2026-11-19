@@ -659,8 +659,11 @@ framework on top. The rules:
   On Linux and Windows every app finds every plug-in in one shared folder; a
   bundle carries only its own, so an app left out finds none - UltraMail
   reported no IMAP plug-in, DeviceExplorer found no network printer or eSCL
-  scanner. A plug-in the framework loads for an app (`mdns` for the print
-  dialog's network printers) counts as the app's.
+  scanner. A plug-in the framework loads for an app counts as the app's:
+  every app that prints (`ShowPrintDialog`, `PrintTextWithDialog`,
+  `PrintDocumentWithDialog`, or IODeviceManager's printers) names at least
+  `mdns`, the DNS-SD browse behind the network printers the print dialog's
+  choice is looked up among.
 - **An app published in UltraStore is cut out of the suite with
   `--store-app <App>`**, the one exception to the shared folder besides
   UltraCanvasStart: a bundle in `dist-store-macos/` with a
