@@ -40,7 +40,7 @@ birth, the email beyond its first two letters.
 |---|---|
 | anyone | sign up, verify, sign in, a forgotten password: the store on a machine, before it is signed in |
 | a signed-in store | `Authorization: Bearer <session token>`, the `us_…` token the sign-in answered with; a token not used for `ULTRASTORE_ACCOUNT_SESSION_IDLE_DAYS` (90) is signed out |
-| the operator | `Authorization: Bearer <operator token>` (`ULTRASTORE_ACCOUNT_OPERATOR_TOKEN`): the operator's window and command line, `ultrastoreop users` (`Apps/UltraStoreOperator`) |
+| the operator | `Authorization: Bearer <session or operator token>`: the operator's window and command line, `ultrastoreop users` (`Apps/UltraStoreOperator`). A session is the marketplace service's (`POST /v1/operators/signin` there), verified here with the secret both are configured with (`ULTRASTORE_ACCOUNT_OPERATOR_SESSION_SECRET` = the marketplace's `ULTRASTORE_MARKET_OPERATOR_SESSION_SECRET`; `ultrastore_db.operator_session`), so the operator's name and role reach this service from one sign-in: `support` reads and sends notices, signs out everywhere, releases an archive; `users.manage` (an admin) suspends, resets two-factor, deletes and runs the maintenance; `auditor` and `reviewer` read. `GET /v1/operators/me` says who the bearer is. The static `ULTRASTORE_ACCOUNT_OPERATOR_TOKEN` is the bootstrap admin. A role without the permission is refused with 403 `forbidden`; the audit log names the person. |
 
 ## API
 
@@ -119,7 +119,8 @@ production one. The tests hand `create_app` a mailer of their own.
 ```
 pip install -e ../UltraStoreDb[mysql] -e '.[mysql]'      # or [postgres]
 ULTRASTORE_ACCOUNT_DB=mysql://ultrastore_account:password@127.0.0.1:3306/ultrastore_account \
-ULTRASTORE_ACCOUNT_OPERATOR_TOKEN=... ULTRASTORE_ACCOUNT_LICENCE_KEY=<the payment service's GET /v1/keys> \
+ULTRASTORE_ACCOUNT_OPERATOR_TOKEN=... ULTRASTORE_ACCOUNT_OPERATOR_SESSION_SECRET=<the marketplace service's> \
+ULTRASTORE_ACCOUNT_LICENCE_KEY=<the payment service's GET /v1/keys> \
 ULTRASTORE_ACCOUNT_SMTP_URL=smtp://... .venv/bin/ultrastore-account
 ```
 
