@@ -97,7 +97,7 @@ struct NamedTextStyle {
     std::string parent;
 };
 
-enum class ListLabel { Bullet, Number, None };
+enum class ListLabel { Bullet, Number, NoLabel };   // not None: an X11 macro
 
 struct OdpContext {
     std::map<std::string, NamedTextStyle> textStyles;               // "<family>:<name>"
@@ -155,9 +155,9 @@ void CollectStyles(const tinyxml2::XMLElement* container, OdpContext& context, b
                 if (!TryParseFloat(levelText, number)) continue;
                 ListLabel label = ListLabel::Bullet;
                 if (Is(level, "list-level-style-number"))
-                    label = Attr(level, "num-format", "style").empty() ? ListLabel::None : ListLabel::Number;
+                    label = Attr(level, "num-format", "style").empty() ? ListLabel::NoLabel : ListLabel::Number;
                 else if (Is(level, "list-level-style-bullet"))
-                    label = Attr(level, "bullet-char", "text").empty() ? ListLabel::None : ListLabel::Bullet;
+                    label = Attr(level, "bullet-char", "text").empty() ? ListLabel::NoLabel : ListLabel::Bullet;
                 levels[static_cast<int>(number)] = label;
             }
             context.listStyles[Attr(s, "name", "style")] = std::move(levels);
@@ -341,7 +341,7 @@ private:
     void ReadParagraphs(const tinyxml2::XMLElement* container, std::vector<PptxParagraph>& out) {
         for (auto* e = container->FirstChildElement(); e; e = e->NextSiblingElement()) {
             if (Is(e, "p") || Is(e, "h")) {
-                out.push_back(ReadParagraph(e, 0, ListLabel::None));
+                out.push_back(ReadParagraph(e, 0, ListLabel::NoLabel));
             } else if (Is(e, "list")) {
                 ReadList(e, 0, std::string(), out);
             } else if (Is(e, "section")) {
@@ -358,7 +358,7 @@ private:
         for (auto* item = list->FirstChildElement(); item; item = item->NextSiblingElement()) {
             const bool header = Is(item, "list-header");
             if (!header && !Is(item, "list-item")) continue;
-            const ListLabel label = header ? ListLabel::None : LabelAt(listStyle, clamped);
+            const ListLabel label = header ? ListLabel::NoLabel : LabelAt(listStyle, clamped);
             for (auto* e = item->FirstChildElement(); e; e = e->NextSiblingElement()) {
                 if (Is(e, "p") || Is(e, "h")) out.push_back(ReadParagraph(e, clamped, label));
                 else if (Is(e, "list")) ReadList(e, level + 1, listStyle, out);
@@ -459,7 +459,7 @@ private:
     PptxParagraph ReadParagraph(const tinyxml2::XMLElement* p, int level, ListLabel label) {
         PptxParagraph paragraph;
         paragraph.level = level;
-        paragraph.bullet = label != ListLabel::None;
+        paragraph.bullet = label != ListLabel::NoLabel;
         paragraph.numbered = label == ListLabel::Number;
         Inline state;
         state.paragraph = &paragraph;
