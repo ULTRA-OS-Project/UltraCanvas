@@ -24,8 +24,9 @@ a merchant's program is [`Docs/UltraStoreAdmin/README.md`](../UltraStoreAdmin/RE
 | Question | Decision |
 |---|---|
 | Where is the state? | **Nowhere here.** Every record is the service's (its MySQL database); the window and the command line hold nothing but the settings and what they last fetched. Two operators at two machines see the same queue, and the audit log is one. |
-| How does the program speak to the service? | **With the operator token**, `Authorization: Bearer <token>` (the service's `ULTRASTORE_MARKET_OPERATOR_TOKEN`), over HTTPS; the HTTP call is the merchant backend's (`Market.h`, `MarketCall`), extended to `PUT`, so the tests use a fake service and nothing touches the network in a test. An action the service refuses (a release of a merchant not active, a decision in the wrong state) comes back as its `error_description`. |
-| Where are the settings? | **The program's own file**, `settings.json` under the data folder (`UltraStoreOperator/`), readable by the user alone: the service's URL, the token, the operator's name. `ULTRASTORE_OPERATOR_URL`, `_TOKEN` and `_NAME` in the environment override it; `--url` and `--token` on the command line override both. The name is shown in the window and is the assignee a report gets by default; the service records every action as `operator`. |
+| How does the program speak to the service? | **With the operator's bearer**, `Authorization: Bearer <token>`: the session a sign-in gave (an operator account at the service, *Who is signed in?*), or the service's static `ULTRASTORE_MARKET_OPERATOR_TOKEN`, the bootstrap admin; over HTTPS; the HTTP call is the merchant backend's (`Market.h`, `MarketCall`), extended to `PUT`, so the tests use a fake service and nothing touches the network in a test. An action the service refuses (a release of a merchant not active, a decision in the wrong state) comes back as its `error_description`. |
+| Where are the settings? | **The program's own file**, `settings.json` under the data folder (`UltraStoreOperator/`), readable by the user alone: the service's URL, the token (the static one, or the session), the operator's name and role, the account service's URL and token. `ULTRASTORE_OPERATOR_URL`, `_TOKEN`, `_NAME`, `_ACCOUNT_URL` and `_ACCOUNT_TOKEN` in the environment override it; `--url` and `--token` on the command line override both. The name is shown in the window and is the assignee a report gets by default. |
+| Who is signed in? | **An operator account with a role** (2026-11-19; the store's README, *The operator tier*, *Who sits at the operator's window?*). The Settings page's *Sign in* (or `ultrastoreop signin <email>`) sends the email and the password to the marketplace service, which answers a signed session that becomes the settings' token, with the account's name and role; the sidebar says *Signed in as Alex, admin*. The session lasts the service's hours (12) and reaches the account service too, which verifies it with the secret the two services share, so `account_token` is for the bootstrap admin only. The roles: `admin` everything, the accounts included; `reviewer` the review and the publish; `support` the reports, the notices, acting for a user; `auditor` reads, changes nothing. The service refuses what a role does not allow (its `error_description` names the role); the window hides the admin's controls on the *Operators* page from the others. With the static token the window is the bootstrap admin, whose one job is the first admin account. *Sign out* forgets the session here; it ends at the service by itself. |
 | What asks before it acts? | **Everything that cannot be taken back**: a release, a rejection, a warning (it is a strike), a suspension, a publish, a new terms version, a notice to every merchant, a dismissal. A request for changes, an assignment, a reinstatement and a resolution ask nothing: each is answered or undone by the next step. |
 | Who sees the reporter? | **The operator only**, as the service already holds it: the report's page shows the reporter beside a line saying so; the outcome the operator writes is the one line the reporter and the merchant learn. |
 
@@ -41,6 +42,8 @@ Apps/UltraStoreOperator/
                                the stat cards, the state pills
   ui/OperatorWindow.h/.cpp     the shell, the jobs on the worker, the Dashboard, the Audit log, the Settings
   ui/OperatorPages.cpp         Merchants, App review, Reports, Terms and notices
+  ui/OperatorUsersPage.cpp     Users, on the account service
+  ui/OperatorOperatorsPage.cpp the Settings page's sign-in, who is signed in, the Operators page
   ui/main.cpp                  the window, or the commands
 Tests/UltraStoreOperator/      the client against a fake service; the settings file; the age of a timestamp
 Docs/UltraStoreOperator/       this page, the changelog (its first line is the version)
@@ -167,5 +170,11 @@ its permissions, the age of a timestamp. The service's own tests
 3. **The applications for a shop** on the Merchants page: approve (the
    merchant registered with the key the application proved) or reject
    with a reason; `ultrastoreop merchant applications | approve |
-   reject`. Next: the payouts page, which needs the payment service's
-   figures per merchant.
+   reject`.
+4. **Operator accounts with roles** (the design's `SuperOperators`): the
+   sign-in on the Settings page with the session as the token and the role
+   in the sidebar, the *Operators* page (the accounts, a new one, a role
+   changed, disable and enable, one's own name and password), the account
+   service on the same session; `ultrastoreop signin | signout | whoami |
+   operator list | add | set | disable | enable`. Next: the payouts page,
+   which needs the payment service's figures per merchant.

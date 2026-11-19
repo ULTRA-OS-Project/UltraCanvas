@@ -54,6 +54,7 @@ over these.
 | `AccountPhoneProfile.dc.html` | the account on a phone: the profile head, the Premium card, the account sections, this device, sign out, the bottom tab bar with Account | 390 × 844 |
 | `AccountRecovery.dc.html` | reset the password (email, the email code and the two-factor code, the new password, done) and set up two-factor (the app, the QR code or the key, the recovery codes, on) - both step flows work in the script; the delete-account confirmation with what happens | page |
 | `SuperUsers.dc.html` | the operator's users: the counts with the data-archive and deletion requests, the table with a working status filter (active, suspended, deleting, with a request), one user's file with history and the actions (notice, sign out everywhere, reset two-factor, archive, suspend or reinstate, delete on request) and what the operator cannot see; a line under the title says what of it the account service backs | page |
+| `SuperOperators.dc.html` | the operator accounts: the sign-in (email and password at the marketplace service, the session as the window's token, who is signed in with the role - *Sign in* and *Sign out* work in the script and change the sidebar), the roles table (admin, reviewer, support, auditor: what each may and may not), the accounts table with a working role picker and disable/enable per account, a new account, one's own name and password; a line under the title says it is built | page |
 | `AccountPhoneSignIn.dc.html` | sign in on a phone: email and password, a passkey, or confirming on a signed-in machine nearby | 390 × 844 |
 | `BooksHome.dc.html` | the e-book and audiobook shop variant's home: the book of the month in both editions with the sample, continue listening and reading with the place kept between the editions, the genres, the editor's picks with the length badge, Books Plus (one credit a month, the book kept), a series with the next part on pre-order, short listens for tonight, why read and listen here | page |
 | `BooksDetail.dc.html` | a title (The Salt Garden): the cover, the sample and the first chapter, the narrator, ratings for narration and story, the chapters both editions share, reviews that say listened or read to the end; the editions (audiobook for a credit, e-book, both kept in step), buy, the return rule, and what of the price goes to the author, the narrator, the publisher and the store | page |
@@ -282,3 +283,11 @@ service's applications and the merchant's own profile. What the artboards
 draw that is not built: `SuperMerchants`' verification checklist (the
 register extract, the VAT id) and its payouts column, which need the
 payment service's figures per merchant.
+
+The operator accounts with roles (2026-11-19, the store's README, *Who
+sits at the operator's window?*) are **built**: `SuperOperators` is the
+operator window's *Operators* page and the sign-in section of its
+*Settings* page (`Apps/UltraStoreOperator/ui/OperatorOperatorsPage.cpp`), on
+the marketplace service's operator accounts and the session the account
+service verifies too. The sidebar's *Signed in as Alex, operator* on the
+other `Super*` pages predates the roles: the window now says the role.

@@ -5,6 +5,7 @@
 // checks and decisions, a report with its reporter, a notice, the policy,
 // the audit rows), the publish report, the settings file round trip and
 // the environment over it, the age of a timestamp.
+// Version: 0.2.0 - the sign-in, the session as the token, the operator accounts, the account service on the session
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -430,4 +431,80 @@ TEST(an_application_for_a_shop_is_listed_approved_and_rejected) {
     REQUIRE(rejected.Ok());
     REQUIRE_EQ(rejected.Value().state, std::string("rejected"));
     REQUIRE(fake.calls.back().find(R"({"message":"The name is another publisher's"})") != std::string::npos);
+}
+
+
+TEST(an_operator_signs_in_and_the_session_is_the_token_at_both_services) {
+    FakeService fake;
+    fake.answers["POST /v1/operators/signin"] = R"({"token":"op1.payload.mac","hours":12,"operator":{"id":"op-0001","email":"alex@ultra-os.example","name":"Alex","role":"admin",
+        "created_at":"2026-11-19T10:00:00Z","created_by":"operator","disabled_at":"","last_signin":"2026-11-19T12:00:00Z","active":true}})";
+    fake.answers["GET /v1/operators/me"] = R"({"id":"op-0001","name":"Alex","role":"admin","bootstrap":false,"permissions":["merchants.manage","operators.manage","publish"]})";
+    fake.answers["GET /v1/operators"] = R"({"operators":[{"id":"op-0001","email":"alex@ultra-os.example","name":"Alex","role":"admin","created_at":"2026-11-19T10:00:00Z","created_by":"operator","disabled_at":"","last_signin":"","active":true},
+        {"id":"op-0002","email":"sam@ultra-os.example","name":"Sam","role":"support","created_at":"2026-11-19T11:00:00Z","created_by":"Alex","disabled_at":"2026-11-19T13:00:00Z","last_signin":"","active":false}],"roles":["admin","reviewer","support","auditor"]})";
+    fake.answers["POST /v1/operators"] = R"({"id":"op-0003","email":"ada@ultra-os.example","name":"Ada","role":"auditor","created_at":"2026-11-19T14:00:00Z","created_by":"Alex","disabled_at":"","last_signin":"","active":true})";
+    fake.answers["PUT /v1/operators/op-0002"] = R"({"id":"op-0002","email":"sam@ultra-os.example","name":"Sam","role":"reviewer","created_at":"2026-11-19T11:00:00Z","created_by":"Alex","disabled_at":"","last_signin":"","active":true})";
+    fake.answers["GET /v1/users"] = R"({"users":[],"stats":{"accounts":0}})";
+
+    // The sign-in needs the URL alone, carries no bearer, and answers the session.
+    OperatorSettings s;
+    s.url = "https://market.example";
+    OperatorClient fresh(s, fake.Call());
+    REQUIRE(!fresh.SignIn("alex@ultra-os.example", "").Ok());
+    const auto in = fresh.SignIn("alex@ultra-os.example", "a long enough password");
+    REQUIRE(in.Ok());
+    REQUIRE_EQ(in.Value().token, std::string("op1.payload.mac"));
+    REQUIRE_EQ(in.Value().account.role, std::string("admin"));
+    REQUIRE_EQ(in.Value().hours, 12);
+    REQUIRE_EQ(fake.calls.back(), std::string(R"(POST https://market.example/v1/operators/signin |  | {"email":"alex@ultra-os.example","password":"a long enough password"})"));
+
+    // The session is the token from then on, and reaches the account service without a token of its own.
+    s.token = in.Value().token;
+    s.name = in.Value().account.Name();
+    s.role = in.Value().account.role;
+    s.accountUrl = "https://account.example";
+    REQUIRE(s.SignedIn());
+    REQUIRE(s.Accounts());
+    REQUIRE_EQ(s.AccountBearer(), std::string("op1.payload.mac"));
+    OperatorClient client(s, fake.Call());
+    REQUIRE(client.Users().Ok());
+    REQUIRE_EQ(fake.calls.back(), std::string("GET https://account.example/v1/users | Bearer op1.payload.mac | "));
+    s.accountToken = "account-secret";
+    REQUIRE_EQ(s.AccountBearer(), std::string("account-secret"));   // a token of its own wins
+    OperatorSettings plain = s;
+    plain.token = "op-static";
+    plain.accountToken.clear();
+    REQUIRE(!plain.SignedIn());
+    REQUIRE(!plain.Accounts());   // the static token is the marketplace's alone
+
+    const auto me = client.Me();
+    REQUIRE(me.Ok());
+    REQUIRE(!me.Value().bootstrap);
+    REQUIRE(me.Value().May("operators.manage"));
+    REQUIRE(!me.Value().May("users.manage"));
+    const auto list = client.Operators();
+    REQUIRE(list.Ok());
+    REQUIRE_EQ(list.Value().size(), size_t(2));
+    REQUIRE(list.Value()[0].active);
+    REQUIRE(!list.Value()[1].active);
+    REQUIRE_EQ(list.Value()[1].createdBy, std::string("Alex"));
+    const auto added = client.AddOperator("ada@ultra-os.example", "Ada", "auditor", "a long enough password");
+    REQUIRE(added.Ok());
+    REQUIRE_EQ(added.Value().id, std::string("op-0003"));
+    REQUIRE(fake.calls.back().find(R"({"email":"ada@ultra-os.example","name":"Ada","role":"auditor","password":"a long enough password"})") != std::string::npos);
+    const auto changed = client.UpdateOperator("op-0002", "", "reviewer", "", 0);
+    REQUIRE(changed.Ok());
+    REQUIRE_EQ(changed.Value().role, std::string("reviewer"));
+    REQUIRE(fake.calls.back().find(R"({"role":"reviewer","disabled":false})") != std::string::npos);
+    REQUIRE(client.UpdateOperator("op-0002", "Samira", "", "").Ok());
+    REQUIRE(fake.calls.back().find(R"({"name":"Samira"})") != std::string::npos);
+
+    // The settings file keeps the role with the session.
+    const std::string dir = TempDir();
+    const std::string path = dir + "/settings.json";
+    REQUIRE(s.Save(path).Ok());
+    const auto back = OperatorSettings::Load(path);
+    REQUIRE(back.Ok());
+    REQUIRE_EQ(back.Value().role, std::string("admin"));
+    REQUIRE_EQ(back.Value().token, std::string("op1.payload.mac"));
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 }

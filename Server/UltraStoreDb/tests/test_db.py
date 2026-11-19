@@ -66,3 +66,20 @@ def test_round_trip(db):
 def test_bad_scheme():
     with pytest.raises(RuntimeError, match="unknown database scheme"):
         Database("redis://x")
+
+
+def test_operator_session_round_trips_and_is_refused_when_forged_or_over():
+    from ultrastore_db.operator_session import ROLES, allowed, issue, verify
+    token = issue("s3cret", operator_id="op-1", name="Alex", role="reviewer", hours=1, now=1_700_000_000)
+    assert token.startswith("op1.")
+    data = verify("s3cret", token, now=1_700_000_100)
+    assert data == {"id": "op-1", "name": "Alex", "role": "reviewer", "exp": 1_700_003_600}
+    assert verify("other", token, now=1_700_000_100) is None
+    assert verify("s3cret", token, now=1_700_004_000) is None
+    assert verify("s3cret", token[:-2] + "00", now=1_700_000_100) is None
+    assert verify("", token, now=1_700_000_100) is None
+    assert verify("s3cret", "Bearer nope") is None
+    assert allowed("admin", "operators.manage") and not allowed("reviewer", "operators.manage")
+    assert allowed("support", "users.support") and not allowed("support", "users.manage")
+    assert allowed("auditor", "audit.read") and not allowed("auditor", "notices.send")
+    assert set(ROLES) == {"admin", "reviewer", "support", "auditor"}

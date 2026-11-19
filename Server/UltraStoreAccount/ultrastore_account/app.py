@@ -23,7 +23,9 @@ A signed-in store (Authorization: Bearer <session token>):
   GET  /v1/me/notices; POST /v1/me/notices/{id}/read
   POST /v1/me/archive                   the data archive requested and built; GET /v1/me/archive; GET /v1/me/archive/{id}/download (once, when released)
   POST /v1/me/delete                    {password}: deletion requested, carried out after the grace; POST /v1/me/delete/cancel
-The operator (Authorization: Bearer <operator token>):
+The operator (Authorization: Bearer <operator token or session>; the static token is the bootstrap admin, a session from the marketplace
+service's sign-in names the person and the role - a support role reads and sends notices, an admin suspends and deletes):
+  GET  /v1/operators/me                 who the bearer is
   GET  /v1/users?state=&q=              with the counts; GET /v1/users/{id} the file: devices, licences, notices, the history
   POST /v1/users/{id}/notice            {kind, subject, text}: written to the account and sent by mail
   POST /v1/users/{id}/signout-all; POST /v1/users/{id}/two-factor/reset {reason}
@@ -35,6 +37,7 @@ The operator (Authorization: Bearer <operator token>):
 
 Errors are {"error", "error_description"} with a 4xx status.
 
+Version: 0.2.0 - the operator sessions with their roles, verified with the shared secret
 Version: 0.1.0
 """
 
@@ -47,7 +50,10 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 
+from ultrastore_db.operator_session import allowed, verify as verify_session
+
 from . import __version__
+
 from .auth import (hash_password, hash_recovery, new_code, new_recovery_codes, new_token, new_totp_secret, otpauth_url, password_problems,
                    verify_password, verify_totp)
 from .config import Settings
@@ -176,11 +182,28 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
         return forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "")
 
     # ----- who is asking -----
-    def operator(authorization: str | None) -> str:
+    def whoami(authorization: str | None) -> dict:
+        """The person behind the bearer: the static token is the bootstrap
+        admin, a session (issued by the marketplace service's sign-in) names
+        the operator and the role."""
         token = (authorization or "").removeprefix("Bearer ").strip()
-        if not settings.operator_token or not hmac.compare_digest(token, settings.operator_token):
-            raise error(401, "unauthorized", "The operator token is missing or wrong")
-        return "operator"
+        if settings.operator_token and hmac.compare_digest(token, settings.operator_token):
+            return {"id": "", "name": "operator", "role": "admin", "bootstrap": True}
+        session = verify_session(settings.operator_session_secret, token)
+        if not session:
+            raise error(401, "unauthorized", "The operator token is missing or wrong, or the session is over: sign in again")
+        return {"id": str(session.get("id", "")), "name": str(session.get("name", "")) or "operator", "role": session["role"], "bootstrap": False}
+
+    def operator(authorization: str | None, permission: str = "users.read") -> str:
+        """The actor's name for the audit log, once the role allows the action."""
+        who = whoami(authorization)
+        if not allowed(who["role"], permission):
+            raise error(403, "forbidden", f"The role {who['role']} may not {permission.replace('.', ' ')}")
+        return who["name"]
+
+    @app.get("/v1/operators/me")
+    async def operator_me(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        return whoami(authorization)
 
     def signed_in(request: Request) -> tuple[User, Session]:
         token = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
@@ -623,7 +646,7 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
 
     @app.get("/v1/users")
     async def list_users(state: str = "", q: str = "", authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "users.read")
         maintenance("service")
         requests_open = {r.user_id for u in store.users() for r in store.archives_of(u.id) if not r.released_at}
         out = []
@@ -637,12 +660,12 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
 
     @app.get("/v1/users/{user_id}")
     async def get_user(user_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "users.read")
         return user_file(user_or_404(user_id))
 
     @app.post("/v1/users/{user_id}/notice")
     async def notify_user(user_id: str, body: UserNoticeBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "users.support")
         u = user_or_404(user_id)
         if body.kind not in NOTICE_KINDS:
             raise error(400, "bad_kind", "A notice is one of " + ", ".join(NOTICE_KINDS))
@@ -652,7 +675,7 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
 
     @app.post("/v1/users/{user_id}/signout-all")
     async def op_signout_all(user_id: str, body: ReasonBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "users.support")
         u = user_or_404(user_id)
         count = store.sign_out_all(u.id, reason="by the operator")
         store.audit(actor, "signout_all", "user", u.id, after={"reason": body.reason, "devices": count})
@@ -660,7 +683,7 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
 
     @app.post("/v1/users/{user_id}/two-factor/reset")
     async def op_tfa_reset(user_id: str, body: ReasonBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "users.manage")
         u = user_or_404(user_id)
         store.update_user(u.id, totp_secret="", totp_enabled_at="", recovery_codes=[])
         store.sign_out_all(u.id, reason="two-factor reset")
@@ -672,7 +695,7 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
 
     @app.post("/v1/users/{user_id}/suspend")
     async def op_suspend(user_id: str, body: SuspendBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "users.manage")
         u = user_or_404(user_id)
         u = store.suspend_user(u.id, reason=body.reason, days=body.days, actor=actor)
         store.add_notice(u.id, kind="suspension", subject="Your account is suspended", text=body.reason + (f"\nUntil {u.suspended_until}." if u.suspended_until else ""),
@@ -682,7 +705,7 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
 
     @app.post("/v1/users/{user_id}/reinstate")
     async def op_reinstate(user_id: str, body: ReasonBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "users.manage")
         u = user_or_404(user_id)
         if u.state != "suspended":
             raise error(409, "not_suspended", "The account is not suspended")
@@ -692,7 +715,7 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
 
     @app.post("/v1/users/{user_id}/delete")
     async def op_delete(user_id: str, body: ReasonBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "users.manage")
         u = user_or_404(user_id)
         if u.state != "deleting":
             raise error(409, "not_requested", "The person has not asked for the deletion: only a requested deletion is carried out")
@@ -701,7 +724,7 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
 
     @app.post("/v1/archives/{archive_id}/release")
     async def op_release_archive(archive_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        actor = operator(authorization)
+        actor = operator(authorization, "users.support")
         a = store.release_archive(archive_id, actor)
         if not a:
             raise error(404, "no_such_archive", "No such archive")
@@ -713,21 +736,21 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
 
     @app.post("/v1/maintenance")
     async def op_maintenance(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        return maintenance(operator(authorization))
+        return maintenance(operator(authorization, "users.manage"))
 
     @app.get("/v1/stats")
     async def stats(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "users.read")
         return store.stats()
 
     @app.get("/v1/audit")
     async def audit(since: int = 0, limit: int = 500, authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "audit.read")
         return {"audit": store.audit_since(since, min(max(limit, 1), 2000))}
 
     @app.get("/v1/audit/verify")
     async def audit_verify(authorization: str | None = Header(default=None)) -> dict[str, Any]:
-        operator(authorization)
+        operator(authorization, "audit.read")
         return store.verify_audit()
 
     @app.get("/healthz", response_class=PlainTextResponse)

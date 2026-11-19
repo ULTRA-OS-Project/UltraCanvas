@@ -40,6 +40,7 @@ add_executable(ultrastoreop
     ui/OperatorWindow.cpp
     ui/OperatorPages.cpp
     ui/OperatorUsersPage.cpp
+    ui/OperatorOperatorsPage.cpp
     cli/Commands.cpp
 )
 ultracanvas_single_instance(ultrastoreop)

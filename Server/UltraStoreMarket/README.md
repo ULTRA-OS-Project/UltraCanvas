@@ -31,7 +31,7 @@ payment credentials.
 
 | | |
 |---|---|
-| the operator | `Authorization: Bearer <operator token>` (`ULTRASTORE_MARKET_OPERATOR_TOKEN`): the operator's window and command line, `ultrastoreop` (`Apps/UltraStoreOperator`) |
+| the operator | `Authorization: Bearer <session or operator token>`: the operator's window and command line, `ultrastoreop` (`Apps/UltraStoreOperator`). A **session** comes from `POST /v1/operators/signin` with an operator account's email and password: `op1.<payload>.<hmac-sha256>` over the operator's id, name, role and the end (`ULTRASTORE_MARKET_OPERATOR_SESSION_HOURS`, 12), signed with `ULTRASTORE_MARKET_OPERATOR_SESSION_SECRET` (`ultrastore_db.operator_session`); the account service verifies the same session with the same secret, so one sign-in reaches both. The static `ULTRASTORE_MARKET_OPERATOR_TOKEN` is the **bootstrap admin** ("operator"): it makes the first account. Every operator call names a permission; a role without it is refused with 403 `forbidden`. The roles: `admin` everything (the accounts included), `reviewer` `review.decide` and `publish`, `support` `reports.handle`, `notices.send` and `users.support`, `auditor` reads only. The audit log names the person. |
 | a merchant | `Authorization: Merchant <id>:<timestamp>:<signature>`, the Ed25519 signature with the merchant's key over `<METHOD> <path>\n<timestamp>\n` and the body bytes (`auth.py`, `sign_request`); a timestamp outside the window (300 s) is refused, so a captured request is not replayed. The key is the one that signs the merchant's submissions, registered by the operator and rotated with `PUT /v1/merchants/{id}` |
 | anyone | the store's report form, the reporter's outcome line, the terms |
 
@@ -39,6 +39,16 @@ payment credentials.
 
 Requests and answers are JSON; errors are `{"error", "error_description"}`
 with a 4xx status.
+
+The operator accounts (`operators` table, schema 3): `POST /v1/operators/signin`
+`{email, password}` → `{token, operator, hours}` (401 `bad_credentials`; 503
+`not_configured` without the session secret); `GET /v1/operators/me` who the
+bearer is, with the permissions; `GET /v1/operators` the accounts and the
+roles; `POST /v1/operators` `{email, name, role, password}` (admin; a
+password is 12 characters or more, kept as scrypt); `PUT /v1/operators/{id}`
+`{name?, role?, password?, disabled?}` - anyone their own name and password,
+an admin the rest, never their own switch or admin role (409 `own_account`).
+A disabled account's session is refused from the next call on.
 
 **The operator**
 
@@ -145,7 +155,8 @@ python3 -m venv .venv && .venv/bin/pip install -e ../UltraStoreDb -e '.[test,mys
 .venv/bin/python -m pytest -q                                                          # on SQLite
 ULTRASTORE_MARKET_TEST_MYSQL_URL=mysql://ultrastore:ultrastore@127.0.0.1:3306/ultrastore_test \
 ULTRASTORE_MARKET_TEST_PG_URL=postgresql://... .venv/bin/python -m pytest -q           # and on MySQL and PostgreSQL
-ULTRASTORE_MARKET_DB=mysql://ultrastore_market:password@127.0.0.1:3306/ultrastore_market ULTRASTORE_MARKET_OPERATOR_TOKEN=... .venv/bin/ultrastore-market
+ULTRASTORE_MARKET_DB=mysql://ultrastore_market:password@127.0.0.1:3306/ultrastore_market ULTRASTORE_MARKET_OPERATOR_TOKEN=... \
+ULTRASTORE_MARKET_OPERATOR_SESSION_SECRET=<the same value as the account service's> .venv/bin/ultrastore-market
 ```
 
 The database and its user are made beforehand:
@@ -158,6 +169,11 @@ mysql -u root -e "CREATE DATABASE ultrastore_market CHARACTER SET utf8mb4;
 
 The service makes its tables on the first start. `deploy/`: the systemd
 unit, the nginx location, the environment file to fill in.
+
+The first operator account: with the static token, `ultrastoreop settings
+set token <ULTRASTORE_MARKET_OPERATOR_TOKEN>`, then `ultrastoreop operator
+add alex@example.org admin --name Alex` (asked for the password), then
+`ultrastoreop signin alex@example.org`; the static token goes into a drawer.
 
 ## What comes next
 

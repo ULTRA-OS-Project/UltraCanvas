@@ -17,6 +17,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi.testclient import TestClient
 
+from ultrastore_db.operator_session import issue
+
 from ultrastore_account.app import create_app
 from ultrastore_account.auth import hash_password, password_problems, totp_code, verify_password, verify_totp
 from ultrastore_account.config import Settings
@@ -81,7 +83,8 @@ class LicenceIssuer:
 def service(request, tmp_path):
     issuer = LicenceIssuer()
     outbox = Outbox()
-    settings = Settings(database=database_url(request.param, tmp_path), operator_token="op-token", licence_key=issuer.public_hex, default_seats=2)
+    settings = Settings(database=database_url(request.param, tmp_path), operator_token="op-token", operator_session_secret="shared-secret",
+                        licence_key=issuer.public_hex, default_seats=2)
     with TestClient(create_app(settings, mailer=outbox)) as client:
         client.outbox = outbox          # type: ignore[attr-defined]
         client.issuer = issuer          # type: ignore[attr-defined]
@@ -348,3 +351,27 @@ def test_audit_chain_shows_an_edit(service):
 def test_healthz_names_what_is_missing(tmp_path):
     with TestClient(create_app(Settings(database="sqlite:///" + str(tmp_path / "a.sqlite3")), mailer=Outbox())) as client:
         assert client.get("/healthz").text == "not configured: ULTRASTORE_ACCOUNT_OPERATOR_TOKEN, ULTRASTORE_ACCOUNT_LICENCE_KEY"
+
+
+def test_an_operator_session_from_the_marketplace_is_known_here_with_its_role(service):
+    s = signup(service)
+    uid = service.get("/v1/users", headers=OP).json()["users"][0]["id"]
+    support = {"Authorization": "Bearer " + issue("shared-secret", operator_id="op-0002", name="Sam", role="support")}
+    auditor = {"Authorization": "Bearer " + issue("shared-secret", operator_id="op-0003", name="Ada", role="auditor")}
+    forged = {"Authorization": "Bearer " + issue("other-secret", operator_id="op-0001", name="Mallory", role="admin")}
+    over = {"Authorization": "Bearer " + issue("shared-secret", operator_id="op-0001", name="Old", role="admin", hours=-1)}
+    assert service.get("/v1/operators/me", headers=OP).json() == {"id": "", "name": "operator", "role": "admin", "bootstrap": True}
+    assert service.get("/v1/operators/me", headers=support).json() == {"id": "op-0002", "name": "Sam", "role": "support", "bootstrap": False}
+    assert service.get("/v1/operators/me", headers=forged).status_code == 401
+    assert service.get("/v1/users", headers=over).status_code == 401
+    # Support reads and sends a notice, signed with their own name; cannot suspend. The auditor reads only.
+    assert service.get("/v1/users", headers=support).status_code == 200
+    r = service.post(f"/v1/users/{uid}/notice", json={"kind": "notice", "subject": "Hello", "text": "From Sam."}, headers=support)
+    assert r.status_code == 200, r.text
+    assert service.get("/v1/me/notices", headers=bearer(s["token"])).json()["notices"][0]["created_by"] == "Sam"
+    r = service.post(f"/v1/users/{uid}/suspend", json={"reason": "no", "days": 1}, headers=support)
+    assert r.status_code == 403 and r.json()["error"] == "forbidden"
+    assert service.get(f"/v1/users/{uid}", headers=auditor).status_code == 200
+    assert service.get("/v1/audit/verify", headers=auditor).json()["ok"] is True
+    assert service.post(f"/v1/users/{uid}/notice", json={"kind": "notice", "subject": "x", "text": "y"}, headers=auditor).status_code == 403
+    assert service.post("/v1/maintenance", headers=support).status_code == 403
