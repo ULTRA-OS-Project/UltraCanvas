@@ -137,6 +137,7 @@
   "no translation provider is available": "no hi ha cap proveïdor de traducció disponible",
   "None found": "Cap resultat",
   "Not available": "No disponible",
+  "Not saved yet": "Encara no desat",
   "One Column": "Una columna",
   "Open File(s)": "Obre fitxers",
   "Open File... (Ctrl+O)": "Obre un fitxer… (Ctrl+O)",
@@ -214,5 +215,9 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (ciríl·lic)",
   "Windows-1252 (Western)": "Windows-1252 (occidental)",
   "Word Wrap": "Ajust de línia",
-  "Zoom Level": "Nivell de zoom"
+  "Zoom Level": "Nivell de zoom",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} fitxer té canvis sense desar. Voleu desar-lo abans de tancar?",
+    "other": "{n} fitxers tenen canvis sense desar. Voleu desar-los abans de tancar?"
+  }
 }

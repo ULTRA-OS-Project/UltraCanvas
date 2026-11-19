@@ -136,6 +136,7 @@
   "no translation provider is available": "사용 가능한 번역 공급자가 없습니다",
   "None found": "찾을 수 없음",
   "Not available": "사용할 수 없음",
+  "Not saved yet": "아직 저장되지 않음",
   "One Column": "1단",
   "Open File(s)": "파일 열기",
   "Open File... (Ctrl+O)": "파일 열기... (Ctrl+O)",
@@ -213,5 +214,8 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (키릴 문자)",
   "Windows-1252 (Western)": "Windows-1252 (서유럽어)",
   "Word Wrap": "자동 줄 바꿈",
-  "Zoom Level": "확대/축소 수준"
+  "Zoom Level": "확대/축소 수준",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "other": "{n}개 파일에 저장되지 않은 변경 사항이 있습니다. 닫기 전에 저장하시겠습니까?"
+  }
 }

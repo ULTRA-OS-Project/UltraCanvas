@@ -137,6 +137,7 @@
   "no translation provider is available": "δεν υπάρχει διαθέσιμος πάροχος μετάφρασης",
   "None found": "Δεν βρέθηκε τίποτα",
   "Not available": "Μη διαθέσιμο",
+  "Not saved yet": "Δεν έχει αποθηκευτεί ακόμη",
   "One Column": "Μία στήλη",
   "Open File(s)": "Άνοιγμα αρχείων",
   "Open File... (Ctrl+O)": "Άνοιγμα αρχείου... (Ctrl+O)",
@@ -214,5 +215,9 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Κυριλλικά)",
   "Windows-1252 (Western)": "Windows-1252 (Δυτικοευρωπαϊκά)",
   "Word Wrap": "Αναδίπλωση λέξεων",
-  "Zoom Level": "Επίπεδο ζουμ"
+  "Zoom Level": "Επίπεδο ζουμ",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} αρχείο έχει μη αποθηκευμένες αλλαγές. Να αποθηκευτεί πριν από το κλείσιμο;",
+    "other": "{n} αρχεία έχουν μη αποθηκευμένες αλλαγές. Να αποθηκευτούν πριν από το κλείσιμο;"
+  }
 }

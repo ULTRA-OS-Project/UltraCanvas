@@ -137,6 +137,7 @@
   "no translation provider is available": "käännöspalvelua ei ole saatavilla",
   "None found": "Ei löytynyt",
   "Not available": "Ei saatavilla",
+  "Not saved yet": "Ei vielä tallennettu",
   "One Column": "Yksi palsta",
   "Open File(s)": "Avaa tiedostoja",
   "Open File... (Ctrl+O)": "Avaa tiedosto... (Ctrl+O)",
@@ -214,5 +215,9 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (kyrillinen)",
   "Windows-1252 (Western)": "Windows-1252 (länsieurooppalainen)",
   "Word Wrap": "Rivitys",
-  "Zoom Level": "Zoomaustaso"
+  "Zoom Level": "Zoomaustaso",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} tiedostossa on tallentamattomia muutoksia. Tallennetaanko se ennen sulkemista?",
+    "other": "{n} tiedostossa on tallentamattomia muutoksia. Tallennetaanko ne ennen sulkemista?"
+  }
 }
