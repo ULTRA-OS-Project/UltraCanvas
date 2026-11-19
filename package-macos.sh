@@ -1407,6 +1407,8 @@ STANDALONE_MEDIA=(fonts icons appicon lib microtex)
 STORE_MEDIA=(fonts icons appicon lib locale emoji microtex)
 STANDALONE_APP=""
 LAST_STANDALONE_APP=""
+# How long the proof run of an app on its own may take (build_standalone_app).
+STANDALONE_RUN_LIMIT=30
 
 # build_standalone_app NAME OUT_DIR MEDIA... - NAME.app out of the suite into
 # OUT_DIR, with its own Frameworks/ and the media folders named; the bundle
@@ -1551,8 +1553,45 @@ build_standalone_app() {
     codesign_bundle "$app"
 
     # Proof that the closure loads: the bundle runs from where it is.
+    # UltraCanvasStart answers --version and ends; an app that does not know
+    # the option (UltraMail, for --store-app) opens its window instead and
+    # never ends - which held a CI row for hours - so the program runs in the
+    # background and is stopped after STANDALONE_RUN_LIMIT seconds. The
+    # loader refusing a library fails the package either way; for any other
+    # app than UltraCanvasStart, not answering is not a failure: every
+    # reference was checked against the bundle above.
     echo "  Running the packaged application..."
-    "$contents/MacOS/$exe_name" --version | head -1
+    local run_out run_pid run_status=0 waited=0
+    run_out=$(mktemp)
+    "$contents/MacOS/$exe_name" --version > "$run_out" 2>&1 < /dev/null &
+    run_pid=$!
+    while kill -0 "$run_pid" 2>/dev/null && [ "$waited" -lt "$STANDALONE_RUN_LIMIT" ]; do
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if kill -0 "$run_pid" 2>/dev/null; then
+        kill "$run_pid" 2>/dev/null || true
+        sleep 2
+        kill -9 "$run_pid" 2>/dev/null || true
+    fi
+    wait "$run_pid" 2>/dev/null || run_status=$?
+    if grep -q 'Library not loaded\|Symbol not found' "$run_out"; then
+        echo "  ERROR: $exe_name does not load from its bundle:" >&2
+        cat "$run_out" >&2
+        rm -f "$run_out"
+        exit 1
+    fi
+    if [ "$run_status" -eq 0 ]; then
+        head -1 "$run_out"
+    elif [ "$exe_name" = "UltraCanvasStart" ]; then
+        echo "  ERROR: $exe_name --version ended with status $run_status:" >&2
+        cat "$run_out" >&2
+        rm -f "$run_out"
+        exit 1
+    else
+        echo "  $exe_name did not answer --version (status $run_status; stopped after ${STANDALONE_RUN_LIMIT}s if it was still running) - its references were checked against the bundle above"
+    fi
+    rm -f "$run_out"
 
     if $NOTARIZE; then
         notarize_bundle "$app"

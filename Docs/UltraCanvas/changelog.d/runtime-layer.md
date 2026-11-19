@@ -22,4 +22,8 @@
 - **`package-macos.sh --store-app <App>`** cuts any app of the suite out on
   its own, into `dist-store-macos/` - the rewrite `--start-app` makes for
   UltraCanvasStart, with the translations and emoji fonts kept and every
-  plug-in's closure in the bundle's own `Frameworks/` - for UltraStore.
+  plug-in's closure in the bundle's own `Frameworks/` - for UltraStore. The
+  proof run of an app on its own (`--version`) has a time limit now: an app
+  that does not know the option opens its window and never ends, and only
+  the loader refusing a library fails the package (UltraCanvasStart must
+  still answer).
