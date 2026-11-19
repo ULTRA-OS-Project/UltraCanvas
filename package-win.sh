@@ -502,14 +502,9 @@ echo "  none missing"
 mkdir -p $DIST_DIR/Resources/DemoApp
 cp -r media Docs $DIST_DIR/Resources
 
-# UltraFIBU's chart of accounts and tax keys, beside the executables: the
-# application looks for `data/` next to its own binary. Without them it starts
-# and can do nothing, because no chart of accounts means no Mandant. Only while
-# UltraFIBU is in the package, which for the moment it is not.
-if [ -e "$DIST_DIR/UltraFIBU.exe" ] && [ -d Apps/UltraFIBU/data ]; then
-    mkdir -p "$DIST_DIR/data"
-    cp -r Apps/UltraFIBU/data/. "$DIST_DIR/data/"
-fi
+# No `data/` folder in the package: it held only UltraFIBU's chart of
+# accounts and tax keys, and UltraFIBU is not distributed for the moment.
+# When it returns, copy Apps/UltraFIBU/data/. to "$DIST_DIR/data/" again.
 # Demo "View Source" loads files from Resources/DemoApp/ (see GetResourcesDir()
 # + the "DemoApp/..." paths registered in UltraCanvasDemo.cpp).
 cp -r Apps/DemoApp/*.cpp $DIST_DIR/Resources/DemoApp/
