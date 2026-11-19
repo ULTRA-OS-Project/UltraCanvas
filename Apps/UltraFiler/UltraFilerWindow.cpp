@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.46.0 - Settings > Display > Display mode: the settings are read before the window is
+//                  built and the mode is the theme policy, so the window is built in its look
 // Version: 1.45.4 - the path bars under Dark: dark grey segments, the current folder's segment in the
 //                  arrow's strong blue with white, the seams in the ground; set again by ApplyLook on
 //                  every theme change instead of following the theme themselves
@@ -142,7 +144,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -1334,6 +1336,14 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     config.resizable = true;
     config.type = WindowType::Standard;
 
+    // The persisted settings (the preview's transparent-image backdrop, the
+    // tree, the tabs ...) are read before anything is built: Display >
+    // Display mode decides the theme, and the window and every surface
+    // below take their colours from it as they are made. ApplySettings,
+    // further down, pushes the rest onto the widgets once they exist.
+    settings.Load();
+    ApplyDisplayMode();
+
     window = CreateWindow(config);
     if (!window || !window->IsCreated()) return false;
     // Quitting stops the remote drives' uploads and downloads: asked first.
@@ -1547,9 +1557,8 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // It overlays the folder preview rather than hiding behind it.
     folderPreviewPromoteButton->SetZIndex(OverlayZOrder::Overlays);
 
-    // Persisted settings (transparent-image backdrop of the preview, ...) and
-    // the recently used files / folders / applications behind the clock button.
-    settings.Load();
+    // The settings read at the top onto the widgets, and the recently used
+    // files / folders / applications behind the clock button.
     ApplySettings();
     // After ApplySettings(), which puts the History limit in force: a
     // list longer than the limit allows is then trimmed as the file is read,
@@ -2063,7 +2072,21 @@ void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target
     target.SetTarSettings(settings.tar);
 }
 
+void UltraFilerWindow::ApplyDisplayMode() {
+    UltraCanvasApplication* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    const ThemePolicy wanted =
+            settings.displayMode == FilerDisplayMode::Light ? ThemePolicy::Light
+          : settings.displayMode == FilerDisplayMode::Dark  ? ThemePolicy::Dark
+                                                            : ThemePolicy::FollowHost;
+    // Set only on a change: SetThemePolicy builds and applies the theme
+    // again, and every element of the window re-styles with it.
+    if (app->GetThemePolicy() != wanted) app->SetThemePolicy(wanted);
+}
+
 void UltraFilerWindow::ApplySettings() {
+    // Display > Display mode first, so what follows reads the new look.
+    ApplyDisplayMode();
     // Display > Tab style. The strip does not exist yet on the call during
     // start-up; BuildTabbedContainer applies the style itself then.
     ApplyTabStripStyle();

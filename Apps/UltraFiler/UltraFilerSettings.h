@@ -7,6 +7,8 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.24.0 - Display > Display mode: displayMode, the filer light or dark
+//                  whatever the desktop says, or following it (the default)
 // Version: 1.23.0 - Display > Path bar: pathBarVolumeNames, a drive named by its
 //                  volume on the path bar ("My Passport Ultra (D:)")
 // Version: 1.22.0 - networkServers: the computers opened by name in the Network section
@@ -23,7 +25,7 @@
 //                   passwords Unlock was given
 // Version: 1.16.0 - the shared settings folder, and the move of the old one into it
 // Version: 1.15.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -45,6 +47,13 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+// Display > Display mode: whether UltraFiler is light or dark.
+enum class FilerDisplayMode {
+    System,        // as the desktop says (and UOS-Settings' Look page), live
+    Light,         // always light
+    Dark           // always dark
+};
 
 // Display > New tab: what the "+" at the end of the folder tab strip shows.
 enum class FilerNewTabStart {
@@ -205,6 +214,13 @@ public:
     // thumbnail of their own content, and programs and shortcuts that carry
     // an icon inside them, are drawn the same way under both.
     FilerFileIconStyle fileIconStyle = FilerFileIconStyle::HostOperatingSystem;
+
+    // Display > Display mode: the filer's look - the desktop's light or
+    // dark (the default, and what every earlier release did), or always
+    // light, or always dark whatever the desktop says. Applied through the
+    // application's theme policy (FollowHost / Light / Dark), so the
+    // desktop's accent, fonts and high contrast still come with it.
+    FilerDisplayMode displayMode = FilerDisplayMode::System;
 
     // Display > Tab style: how the window's tab strip draws its tabs.
     // Modern is the capsule look (each tab a pill floating in the strip,
@@ -551,6 +567,13 @@ public:
         if (it != kv.end()) fileIconStyle = ParseFileIconStyle(it->second);
         it = kv.find("display.tabs.style");
         if (it != kv.end()) tabStripStyle = ParseTabStripStyle(it->second);
+        it = kv.find("display.mode");
+        if (it != kv.end()) {
+            const std::string mode = Trim(it->second);
+            displayMode = mode == "light" ? FilerDisplayMode::Light
+                        : mode == "dark"  ? FilerDisplayMode::Dark
+                                          : FilerDisplayMode::System;
+        }
         it = kv.find("display.files.show.hidden");
         if (it != kv.end())
             showHiddenFiles =
@@ -725,6 +748,11 @@ public:
              << FormatFileIconStyle(fileIconStyle) << "\n";
         file << "display.tabs.style = "
              << FormatTabStripStyle(tabStripStyle) << "\n";
+        file << "display.mode = "
+             << (displayMode == FilerDisplayMode::Light ? "light"
+               : displayMode == FilerDisplayMode::Dark  ? "dark"
+                                                        : "system")
+             << "\n";
         file << "display.files.show.hidden = "
              << (showHiddenFiles ? "true" : "false") << "\n";
         file << "display.ignored.builtin = "
