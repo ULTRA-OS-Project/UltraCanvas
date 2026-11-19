@@ -1,3 +1,7 @@
+#### 2026-11-19 *0.1.19*
+- **`account.url`**: the account service the store signs in to (`Server/UltraStoreAccount`), written into the catalog as `account_url` by `publish`; unset, the store shows no *Sign in*.
+- **A shop asked for from here** (`market apply <name> --contact <c> [--email] [--website] [--description]`): the application signed with this backend's key, its id and secret kept in `market.application_id` and `market.application_secret`; `market application` asks what became of it and sets `market.merchant_id` once the operator approved. **The profile the merchant edits itself** (`market profile [--name] [--contact] [--website] [--description]`), and the key rotated signed with the old one (`--rotate-key <id>`, then `market.key`). The window's *Marketplace* page (the design's `AdminMarketplace`): *Apply for a shop* and *Check the application* without a merchant id, *Your shop's profile* with one.
+
 #### 2026-11-19 *0.1.18*
 - **The suggested entry of a Linux package is its launcher.** For an archive
   laid out like the suite package - `<dir>/<name>`, the script that puts

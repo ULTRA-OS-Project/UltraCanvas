@@ -1,3 +1,7 @@
+#### 2026-11-19 *0.1.1*
+- **The applications for a shop** on the Merchants page: the queue with the name, contact, email, website, description and the key the application proved; *Approve* with the merchant id to give (or one made) and a message, *Reject* with the reason the applicant reads; the merchant file shows the profile. `ultrastoreop merchant applications [--state] | approve <application> [--id] [--message] | reject <application> --message`.
+- **The Users page** (the design's `SuperUsers`), on the account service (`Server/UltraStoreAccount`) with its own token - `account_url` and `account_token` in the settings, `ULTRASTORE_OPERATOR_ACCOUNT_URL` and `_ACCOUNT_TOKEN` in the environment: the counts (accounts and two-factor, the archive requests and those due, the deletion requests, the suspended), the users by state with a search, one user's file (the devices, the licences without their tokens, the archives, the notices, the history, the sign-ins) and the actions with their reason - a notice, sign out every device, reset two-factor after the identity was checked, release the archive, suspend or reinstate, delete on request. `ultrastoreop users list | show | stats | notice | signout | reset-2fa | suspend | reinstate | delete | release-archive | maintenance | audit`; *Check the account service* in Settings. The artboard now says on its face what of it the service backs.
+
 #### 2026-11-11 *0.1.0*
 - **The operator's window and command line.** `ultrastoreop`, the
   marketplace service's operator side (the design's `Super*` pages): the
