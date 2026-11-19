@@ -198,7 +198,8 @@ TEST(the_session_file_round_trips_and_is_the_owners_alone) {
 #endif
     AccountSession::Clear(root);
     REQUIRE(!AccountSession::Load(root).SignedIn());
-    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(root));
+    std::error_code ec;
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(root), ec);
 }
 
 TEST(the_licences_are_kept_in_step_both_ways) {
@@ -244,5 +245,8 @@ TEST(the_licences_are_kept_in_step_both_ways) {
     REQUIRE_EQ(again.Value().failed[0].first, "org.example.c");
     REQUIRE_EQ(again.Value().failed[1].first, "org.example.d");
     REQUIRE_EQ(again.Value().noSeat.size(), size_t(0));
-    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(root));
+    // The database is closed before its folder goes: Windows refuses to remove an open file.
+    registry.Close();
+    std::error_code ec;
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(root), ec);
 }
