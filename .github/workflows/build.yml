@@ -2493,7 +2493,7 @@ jobs:
             ColorPaletteManagerTest ColorPickerAutoHeightTest
             ColorPickerDesignSelectorTest ColorPickerDragTest
             ColorPickerModelDropdownTest DialogCloseAllTest DialogEscapeTest
-            DialogStackingTest ElementPressTakenTest FilerPaneDragTest
+            DialogStackingTest ElementPressTakenTest ExitDuringWarmUpTest FilerPaneDragTest
             ImageFileWatchDisplayTest LabelNaturalTextWidthTest
             LabelSelectionTest MediaViewerLoadingTest MouseClickBubblingTest
             PopupOwnWindowTest RichTextEditElementTest SessionLockTest

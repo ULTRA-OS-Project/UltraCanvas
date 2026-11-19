@@ -5947,6 +5947,39 @@ else()
     message(STATUS "  ClipboardTargetsTest skipped (UltraCanvas target not present, or not X11)")
 endif()
 
+# ===== EXIT DURING WARM-UP TEST =====
+# A program that starts the application and returns at once exits cleanly:
+# no thread of the framework is still loading libraries into the exit. Run
+# with ExitHoldAudit as LD_AUDIT (glibc), which holds the process right after
+# libgomp's finaliser, so the ImageMagick warm-up left running would abort the
+# exit in goacc_register every time instead of once in many runs, as it did
+# ClipboardTargetsTest's. Skips without DISPLAY.
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
+    message(STATUS "  Building ExitDuringWarmUpTest...")
+    add_library(ExitHoldAudit MODULE ${CMAKE_CURRENT_SOURCE_DIR}/ExitHoldAudit.cpp)
+    set_target_properties(ExitHoldAudit PROPERTIES
+        PREFIX "lib"
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_executable(ExitDuringWarmUpTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ExitDuringWarmUpTest.cpp
+    )
+    add_dependencies(ExitDuringWarmUpTest ExitHoldAudit)
+    target_include_directories(ExitDuringWarmUpTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ExitDuringWarmUpTest PRIVATE cxx_std_20)
+    target_link_libraries(ExitDuringWarmUpTest PRIVATE UltraCanvas)
+    set_target_properties(ExitDuringWarmUpTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ExitDuringWarmUpTest COMMAND ExitDuringWarmUpTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(ExitDuringWarmUpTest PROPERTIES
+        ENVIRONMENT "LD_AUDIT=$<TARGET_FILE:ExitHoldAudit>")
+    message(STATUS "    Test registered: ExitDuringWarmUpTest")
+else()
+    message(STATUS "  ExitDuringWarmUpTest skipped (UltraCanvas target not present, or not X11)")
+endif()
+
 # ===== CLIPBOARD INCR TEST =====
 # A copy too large for one X request travels in pieces (ICCCM INCR), both
 # ways; checked against xclip as well when it is installed. Skips without
