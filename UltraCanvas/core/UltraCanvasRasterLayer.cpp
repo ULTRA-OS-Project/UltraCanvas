@@ -317,6 +317,29 @@ void UCRasterLayer::ResampleBilinear(int newWidth, int newHeight) {
     width = next.width; height = next.height; pixels.swap(next.pixels);
 }
 
+void UCRasterLayer::ResampleNearest(int newWidth, int newHeight) {
+    newWidth = std::max(1, newWidth); newHeight = std::max(1, newHeight);
+    text.reset();
+    if (!IsValid()) { *this = UCRasterLayer(newWidth, newHeight, name); return; }
+    UCRasterLayer next(newWidth, newHeight, name);
+    // The old column of each new one, worked out once rather than per row
+    std::vector<int> columns(static_cast<size_t>(newWidth));
+    for (int x = 0; x < newWidth; ++x) {
+        const long long sx = (static_cast<long long>(x) * 2 + 1) * width / (static_cast<long long>(newWidth) * 2);
+        columns[static_cast<size_t>(x)] = static_cast<int>(std::min<long long>(sx, width - 1));
+    }
+    for (int y = 0; y < newHeight; ++y) {
+        const long long sy = (static_cast<long long>(y) * 2 + 1) * height / (static_cast<long long>(newHeight) * 2);
+        const uint8_t* s = Row(static_cast<int>(std::min<long long>(sy, height - 1)));
+        uint8_t* d = next.Row(y);
+        for (int x = 0; x < newWidth; ++x, d += 4) {
+            const uint8_t* p = s + static_cast<size_t>(columns[static_cast<size_t>(x)]) * 4;
+            d[0] = p[0]; d[1] = p[1]; d[2] = p[2]; d[3] = p[3];
+        }
+    }
+    width = next.width; height = next.height; pixels.swap(next.pixels);
+}
+
 Rect2Di UCRasterLayer::GetOpaqueBounds() const {
     int minX = width, minY = height, maxX = -1, maxY = -1;
     for (int y = 0; y < height; ++y) {

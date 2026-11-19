@@ -1,5 +1,6 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
+// Version: 1.11.0 - the design names, the Channels line and the tooltips in the person's language (Tr)
 // Version: 1.10.0 - SetSurfacePreview: a palette swatch hovered floods the surface
 // Version: 1.9.0 - SetShowBackgroundColor: a foreground-only picker
 // Version: 1.8.0 - the design selector offers the colour + brightness sliders too;
@@ -254,10 +255,10 @@ namespace UltraCanvas {
     void UltraCanvasColorPicker::BuildStyleSelector() {
         styleSelector = CreateDropdown(GetIdentifier() + "-design", 0, 0, 10, 10);
         const std::string icons = GetResourcesDir() + "media/icons/colorpicker/";
-        styleSelector->AddItem("Colour circle", "ring", NormalizePath(icons + "ring.svg"));
-        styleSelector->AddItem("Colour slider + square", "bar", NormalizePath(icons + "bar.svg"));
-        styleSelector->AddItem("Colour rectangle", "field", NormalizePath(icons + "field.svg"));
-        styleSelector->AddItem("Colour + brightness sliders", "sliders", NormalizePath(icons + "sliders.svg"));
+        styleSelector->AddItem(Tr("Colour circle"), "ring", NormalizePath(icons + "ring.svg"));
+        styleSelector->AddItem(Tr("Colour slider + square"), "bar", NormalizePath(icons + "bar.svg"));
+        styleSelector->AddItem(Tr("Colour rectangle"), "field", NormalizePath(icons + "field.svg"));
+        styleSelector->AddItem(Tr("Colour + brightness sliders"), "sliders", NormalizePath(icons + "sliders.svg"));
         styleSelector->SetTooltip(Tr("Colour picker design"));
         styleSelector->SetAccessibleName(Tr("Colour picker design"));
         // Raw `this`: the selector is our own child.
@@ -1197,8 +1198,8 @@ namespace UltraCanvas {
         SetFont(ctx, true);
         ctx->SetTextAlignment(TextAlignment::Left);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->DrawTextInRect(slidersExpanded ? "Channels" : ("Channels  (" +
-                            GetColor().ToHexStringWithAlpha() + ")"),
+        ctx->DrawTextInRect(slidersExpanded ? TrC("colour channels", "Channels")
+                                            : TrF("Channels  ({0})", GetColor().ToHexStringWithAlpha()),
                             Rect2Dd(hr.x + Scaled(18.0f), hr.y,
                                     hr.width - Scaled(20.0f), hr.height));
     }
@@ -1631,23 +1632,23 @@ namespace UltraCanvas {
 
     std::string UltraCanvasColorPicker::ModelTooltip(ColorPickerModel m) const {
         switch (m) {
-            case ColorPickerModel::HSV: return "HSV — Hue, Saturation, Value";
-            case ColorPickerModel::HSL: return "HSL — Hue, Saturation, Lightness";
-            case ColorPickerModel::RGB: return "RGB — Red, Green, Blue";
+            case ColorPickerModel::HSV: return Tr("HSV — Hue, Saturation, Value");
+            case ColorPickerModel::HSL: return Tr("HSL — Hue, Saturation, Lightness");
+            case ColorPickerModel::RGB: return Tr("RGB — Red, Green, Blue");
         }
         return "";
     }
 
     std::string UltraCanvasColorPicker::ChannelTooltip(const std::string& label) const {
-        if (label == "H")   return "Hue (0–360°)";
-        if (label == "S")   return "Saturation (0–100%)";
-        if (label == "V")   return "Value / Brightness (0–100%)";
-        if (label == "L")   return "Lightness (0–100%)";
-        if (label == "R")   return "Red (0–255)";
-        if (label == "G")   return "Green (0–255)";
-        if (label == "B")   return "Blue (0–255)";
-        if (label == "A")   return "Alpha / Opacity (0–255)";
-        if (label == "Hex") return "Hex colour code (#RRGGBB or #RRGGBBAA)";
+        if (label == "H")   return Tr("Hue (0–360°)");
+        if (label == "S")   return Tr("Saturation (0–100%)");
+        if (label == "V")   return Tr("Value / Brightness (0–100%)");
+        if (label == "L")   return Tr("Lightness (0–100%)");
+        if (label == "R")   return Tr("Red (0–255)");
+        if (label == "G")   return Tr("Green (0–255)");
+        if (label == "B")   return Tr("Blue (0–255)");
+        if (label == "A")   return Tr("Alpha / Opacity (0–255)");
+        if (label == "Hex") return Tr("Hex colour code (#RRGGBB or #RRGGBBAA)");
         return "";
     }
 

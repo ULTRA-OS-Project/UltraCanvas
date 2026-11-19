@@ -1499,6 +1499,80 @@ static void TestProtectedUCD() {
     std::filesystem::remove_all(dir);
 }
 
+// Scale Image by method: Nearest copies pixels exactly (with or without
+// libvips); every PixelFX method lands on the size asked; sharpening raises
+// the contrast at an edge and leaves the transparency alone.
+static void TestScaleMethods() {
+    {
+        UCRasterDocument doc(2, 2, RasterPixel(0, 0, 0, 0));
+        auto l = doc.GetLayer(0);
+        l->SetPixel(0, 0, RasterPixel(255, 0, 0, 255));
+        l->SetPixel(1, 0, RasterPixel(0, 255, 0, 255));
+        l->SetPixel(0, 1, RasterPixel(0, 0, 255, 128));
+        l->SetPixel(1, 1, RasterPixel(10, 20, 30, 0));
+        UCScaleImageOptions nearest;
+        nearest.method = UCResampleMethod::Nearest;
+        nearest.sharpen = 1.0;   // nothing to sharpen in hard pixels: still exact
+        doc.ScaleImage(6, 6, nearest);
+        auto s = doc.GetLayer(0);
+        CHECK(doc.GetWidth() == 6 && doc.GetHeight() == 6);
+        bool exact = true;
+        for (int y = 0; y < 6; ++y)
+            for (int x = 0; x < 6; ++x) {
+                const RasterPixel want = l->GetPixel(x / 3, y / 3);
+                const RasterPixel got = s->GetPixel(x, y);
+                exact = exact && got.r == want.r && got.g == want.g && got.b == want.b && got.a == want.a;
+            }
+        CHECK(exact);
+        doc.Undo();
+        CHECK(doc.GetWidth() == 2);
+    }
+    {
+        // Down by a non-whole factor: each new pixel one of the old ones
+        UCRasterLayer l(5, 1, RasterPixel(0, 0, 0, 255));
+        for (int x = 0; x < 5; ++x) l.SetPixel(x, 0, RasterPixel(static_cast<uint8_t>(x * 50), 0, 0, 255));
+        l.ResampleNearest(2, 1);
+        CHECK(l.GetWidth() == 2 && l.GetPixel(0, 0).r == 50 && l.GetPixel(1, 0).r == 150);
+    }
+#ifdef HAS_LIBVIPS
+    for (UCResampleMethod m : { UCResampleMethod::Bilinear, UCResampleMethod::Bicubic, UCResampleMethod::Mitchell,
+                                UCResampleMethod::Lanczos2, UCResampleMethod::Lanczos3 }) {
+        UCRasterDocument doc(8, 8, RasterPixel(200, 100, 50, 255));
+        UCScaleImageOptions o;
+        o.method = m;
+        doc.ScaleImage(20, 13, o);
+        CHECK(doc.GetWidth() == 20 && doc.GetHeight() == 13);
+        CHECK(doc.GetLayer(0)->GetWidth() == 20 && doc.GetLayer(0)->GetHeight() == 13);
+        CHECK_NEAR(doc.GetLayer(0)->GetPixel(10, 6).r, 200, 2);   // a flat colour stays flat
+    }
+    // A grey step, half see-through below: enlarged 4x with and without sharpening
+    auto scaled = [](double sharpen) {
+        UCRasterDocument doc(8, 8, RasterPixel(64, 64, 64, 255));
+        auto l = doc.GetLayer(0);
+        for (int y = 0; y < 8; ++y)
+            for (int x = 4; x < 8; ++x) l->SetPixel(x, y, RasterPixel(192, 192, 192, 255));
+        for (int y = 4; y < 8; ++y)
+            for (int x = 0; x < 8; ++x) {
+                RasterPixel p = l->GetPixel(x, y);
+                p.a = 128;
+                l->SetPixel(x, y, p);
+            }
+        UCScaleImageOptions o;
+        o.sharpen = sharpen;
+        doc.ScaleImage(32, 32, o);
+        return doc.GetLayer(0)->Clone();
+    };
+    auto soft = scaled(0.0), sharp = scaled(1.0);
+    // Just either side of the step (old column 4 starts at new x 16)
+    CHECK(sharp->GetPixel(14, 4).r < soft->GetPixel(14, 4).r);
+    CHECK(sharp->GetPixel(17, 4).r > soft->GetPixel(17, 4).r);
+    bool alphaKept = true;
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) alphaKept = alphaKept && sharp->GetPixel(x, y).a == soft->GetPixel(x, y).a;
+    CHECK(alphaKept);
+#endif
+}
+
 int main() {
 #ifdef HAS_LIBVIPS
     if (VIPS_INIT("RasterEditingTest")) { std::printf("vips init failed\n"); return 1; }
@@ -1512,6 +1586,7 @@ int main() {
     TestRasterPaint();
     TestLinesCurvesArrows();
     TestDocument();
+    TestScaleMethods();
     TestInstalledFontFamilies();
     TestTextLayers();
     TestSurfaceFollowsResize();

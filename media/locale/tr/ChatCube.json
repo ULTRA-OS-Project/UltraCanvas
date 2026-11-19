@@ -106,7 +106,6 @@
   "Could not leave {0}: {1}": "{0} grubundan ayrılınamadı: {1}",
   "Could not load the messages: {0}": "İletiler yüklenemedi: {0}",
   "Could not open the chat: {0}": "Sohbet açılamadı: {0}",
-  "Could not open {0}": "{0} açılamadı",
   "Could not remove {0}: {1}": "{0} kaldırılamadı: {1}",
   "Could not rename the group: {0}": "Grup yeniden adlandırılamadı: {0}",
   "Could not save the description: {0}": "Açıklama kaydedilemedi: {0}",

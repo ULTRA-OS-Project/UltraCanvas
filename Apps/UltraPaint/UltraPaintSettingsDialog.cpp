@@ -5,13 +5,17 @@
 // notes block at the foot that says what the setting does. The tree's root
 // row is hidden, so Display is the top level; selecting it moves on to its
 // first page.
+// Version: 1.3.0 - the choices wrap a longer translation onto another line (SetLabelWrap)
+// Version: 1.2.0 - every text in the person's language (Tr); the bottom buttons size to their text
 // Version: 1.1.0 - Display > Tool palette: an adaptive or a static toolbar
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #include "UltraPaintSettingsDialog.h"
 
 #include "UltraCanvasButton.h"
+#include "UltraPaintDialogs.h"   // UltraPaintDialogParts::SizeButtonToText
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <string>
 
@@ -65,15 +69,19 @@ namespace {
         style.base.textColor      = kTextColor;
         style.base.textHoverColor = kTextColor;
         radio->SetVisualStyle(style);
+        // A longer translation wraps onto a second line instead of being cut off
+        radio->SetLabelWrap(true);
         radio->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        radio->size.height = CSSLayout::Dimension::Px(kControlHeight);
+        radio->size.height = CSSLayout::Dimension::Auto();
+        radio->boxConstraints = CSSLayout::BoxConstraints{};
+        radio->boxConstraints->minHeight = CSSLayout::Dimension::Px(kControlHeight);
         radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         return radio;
     }
 }
 
 UltraPaintSettingsDialog::UltraPaintSettingsDialog(UltraPaintSettings* s) : UltraCanvasWindow(), settings(s) {
-    config_.title = "UltraPaint - Settings";
+    config_.title = Tr("UltraPaint - Settings");
     config_.width = 700; config_.height = 480;
     config_.minWidth = 600; config_.minHeight = 400;
     config_.resizable = true;
@@ -103,19 +111,19 @@ UltraPaintSettingsDialog::UltraPaintSettingsDialog(UltraPaintSettings* s) : Ultr
 
     TreeNodeData rootData;
     rootData.nodeId = "settings";
-    rootData.text = "Settings";
+    rootData.text = Tr("Settings");
     tree->SetRootNode(rootData);
     TreeNodeData display;
     display.nodeId = kPageDisplay;
-    display.text = "Display";
+    display.text = Tr("Display");
     tree->AddNode("settings", display);
     TreeNodeData magnifier;
     magnifier.nodeId = kPageMagnifier;
-    magnifier.text = "Mouse pointer magnification glass";
+    magnifier.text = Tr("Mouse pointer magnification glass");
     tree->AddNode(kPageDisplay, magnifier);
     TreeNodeData palette;
     palette.nodeId = kPagePalette;
-    palette.text = "Tool palette";
+    palette.text = Tr("Tool palette");
     tree->AddNode(kPageDisplay, palette);
     // After the nodes: hiding the root promotes its children to the top
     // level, which it can only do once they exist.
@@ -146,9 +154,9 @@ UltraPaintSettingsDialog::UltraPaintSettingsDialog(UltraPaintSettings* s) : Ultr
     bottom->SetPadding(8, 12, 8, 12);
     bottom->SetBorderTop(1, Color(225, 225, 230, 255));
 
-    auto restore = std::make_shared<UltraCanvasButton>("ups-restore", 0, 0, 150, 28, "Restore defaults");
+    auto restore = std::make_shared<UltraCanvasButton>("ups-restore", 0, 0, 150, 28, Tr("Restore defaults"));
     restore->SetFontSize(kTextFontSize);
-    restore->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    UltraPaintDialogParts::SizeButtonToText(restore);   // a longer translation widens it
     // The page shown goes back to its defaults; the other pages keep theirs.
     restore->onClick = [this]() {
         if (!settings) return;
@@ -163,9 +171,9 @@ UltraPaintSettingsDialog::UltraPaintSettingsDialog(UltraPaintSettings* s) : Ultr
     };
     bottom->AddChild(restore);
 
-    auto close = std::make_shared<UltraCanvasButton>("ups-close", 0, 0, 90, 28, "Close");
+    auto close = std::make_shared<UltraCanvasButton>("ups-close", 0, 0, 90, 28, Tr("Close"));
     close->SetFontSize(kTextFontSize);
-    close->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    UltraPaintDialogParts::SizeButtonToText(close);
     close->onClick = [this]() { Close(); };
     bottom->AddChild(close);
     AddChild(bottom);
@@ -197,12 +205,12 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildMagnifierPa
     page->layout.SetFlexColumn().SetFlexGap(0).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
 
-    auto title = MakeLabel(id + "-title", "Mouse pointer magnification glass", kTitleFontSize);
+    auto title = MakeLabel(id + "-title", Tr("Mouse pointer magnification glass"), kTitleFontSize);
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText(id + "-caption",
-            "A small view over the canvas that shows the pixels around the pointer enlarged, "
-            "with a crosshair on the pointer's own pixel, while the rectangle selection tool is active:");
+            Tr("A small view over the canvas that shows the pixels around the pointer enlarged, "
+               "with a crosshair on the pointer's own pixel, while the rectangle selection tool is active:"));
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
@@ -212,14 +220,17 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildMagnifierPa
     body->SetMargin(14, 0, 0, 0);
 
     magnifierBox = std::make_shared<UltraCanvasCheckbox>(id + "-enabled", 0, 0,
-            static_cast<float>(kTextWidth), static_cast<float>(kControlHeight), "Show the magnification glass");
+            static_cast<float>(kTextWidth), static_cast<float>(kControlHeight), Tr("Show the magnification glass"));
     magnifierBox->SetFontSize(kTextFontSize);
     CheckboxVisualStyle boxStyle = magnifierBox->GetVisualStyle();
     boxStyle.base.textColor      = kTextColor;
     boxStyle.base.textHoverColor = kTextColor;
     magnifierBox->SetVisualStyle(boxStyle);
+    magnifierBox->SetLabelWrap(true);   // a longer translation wraps instead of being cut off
     magnifierBox->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-    magnifierBox->size.height = CSSLayout::Dimension::Px(kControlHeight);
+    magnifierBox->size.height = CSSLayout::Dimension::Auto();
+    magnifierBox->boxConstraints = CSSLayout::BoxConstraints{};
+    magnifierBox->boxConstraints->minHeight = CSSLayout::Dimension::Px(kControlHeight);
     magnifierBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     magnifierBox->onStateChanged = [this](CheckedState, CheckedState now) {
         if (syncing || !settings) return;
@@ -228,10 +239,10 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildMagnifierPa
     };
     body->AddChild(magnifierBox);
 
-    auto factorCaption = MakeText(id + "-factor-caption", "Magnification, on top of the view's own zoom:");
+    auto factorCaption = MakeText(id + "-factor-caption", Tr("Magnification, on top of the view's own zoom:"));
     factorCaption->SetMargin(10, 0, 0, 0);
     body->AddChild(factorCaption);
-    const char* factorTexts[3] = { "2x - twice the size", "3x - three times the size", "4x - four times the size" };
+    const std::string factorTexts[3] = { Tr("2x - twice the size"), Tr("3x - three times the size"), Tr("4x - four times the size") };
     for (int i = 0; i < 3; ++i) {
         const int factor = UltraPaintSettings::kMinMagnifierFactor + i;
         factorRadios[i] = MakeChoice(id + "-factor-" + std::to_string(factor), factorTexts[i],
@@ -252,9 +263,17 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildMagnifierPa
     sizeRow->size.width  = CSSLayout::Dimension::Px(kTextWidth);
     sizeRow->size.height = CSSLayout::Dimension::Px(32);
     sizeRow->SetMargin(10, 0, 0, 0);
-    auto sizeLabel = MakeLabel(id + "-size-label", "Window size:");
-    sizeLabel->size.width  = CSSLayout::Dimension::Px(110);
+    auto sizeLabel = MakeLabel(id + "-size-label", Tr("Window size:"));
+    // 110 at least, wider for a longer caption in another language; the
+    // slider gives way to it
+    sizeLabel->size.width  = CSSLayout::Dimension::Auto();
     sizeLabel->size.height = CSSLayout::Dimension::Px(20);
+    {
+        CSSLayout::BoxConstraints limits = sizeLabel->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(110.0f);
+        sizeLabel->boxConstraints = limits;
+    }
+    sizeLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     sizeRow->AddChild(sizeLabel);
     sizeSlider = CreateSlider(id + "-size", 0, 0, 200, 24);
     sizeSlider->SetRange(static_cast<float>(UltraPaintSettings::kMinMagnifierSize),
@@ -263,7 +282,7 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildMagnifierPa
     sizeSlider->SetValue(static_cast<float>(settings ? settings->magnifierSize : UltraPaintSettings::kDefaultMagnifierSize));
     sizeSlider->size.width  = CSSLayout::Dimension::Px(200);
     sizeSlider->size.height = CSSLayout::Dimension::Px(24);
-    sizeSlider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    sizeSlider->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
     // Reported while the handle is dragged and when it is let go, so the
     // glass follows the slider instead of jumping at the end.
     auto sizeChanged = [this](float v) {
@@ -295,13 +314,13 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildMagnifierPa
     notes->SetBorderLeft(3, kNoteAccent);
     notes->SetPadding(10, 12, 10, 12);
     notes->AddChild(MakeText(id + "-note1",
-            "The glass sits in a corner of the canvas and moves to another one when the pointer "
-            "comes near it, so it never covers the spot being selected. Its crosshair leaves the "
-            "centre pixel clear: that pixel is the one under the pointer.",
+            Tr("The glass sits in a corner of the canvas and moves to another one when the pointer "
+               "comes near it, so it never covers the spot being selected. Its crosshair leaves the "
+               "centre pixel clear: that pixel is the one under the pointer."),
             kTextWidth - 10, kNoteFontSize, kNoteTextColor));
     notes->AddChild(MakeText(id + "-note2",
-            "The pixel grid appears in the glass from 8x, so at 4x it shows the pixel edges "
-            "whenever the view itself is at 200 % or more.",
+            Tr("The pixel grid appears in the glass from 8x, so at 4x it shows the pixel edges "
+               "whenever the view itself is at 200 % or more."),
             kTextWidth - 10, kNoteFontSize, kNoteTextColor));
     page->AddChild(notes);
 
@@ -315,13 +334,13 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildPalettePage
     page->layout.SetFlexColumn().SetFlexGap(0).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
 
-    auto title = MakeLabel(id + "-title", "Tool palette", kTitleFontSize);
+    auto title = MakeLabel(id + "-title", Tr("Tool palette"), kTitleFontSize);
     title->SetFontWeight(FontWeight::Bold);
     page->AddChild(title);
     auto caption = MakeText(id + "-caption",
-            "Tools of a kind share one button of the palette - the selections, the pens, the "
-            "shapes, the shading tools. Resting the pointer on it folds out a bar with all of "
-            "them. The button shows:");
+            Tr("Tools of a kind share one button of the palette - the selections, the pens, the "
+               "shapes, the shading tools. Resting the pointer on it folds out a bar with all of "
+               "them. The button shows:"));
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
@@ -330,8 +349,8 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildPalettePage
     body->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     body->SetMargin(14, 0, 0, 0);
     const bool adaptive = !settings || settings->paletteAdaptive;
-    adaptiveRadio = MakeChoice(id + "-adaptive", "Adaptive toolbar - the tool last picked from the bar", adaptive);
-    staticRadio = MakeChoice(id + "-static", "Static toolbar - always the group's main tool", !adaptive);
+    adaptiveRadio = MakeChoice(id + "-adaptive", Tr("Adaptive toolbar - the tool last picked from the bar"), adaptive);
+    staticRadio = MakeChoice(id + "-static", Tr("Static toolbar - always the group's main tool"), !adaptive);
     paletteGroup.AddRadioButton(adaptiveRadio);
     paletteGroup.AddRadioButton(staticRadio);
     body->AddChild(adaptiveRadio);
@@ -355,13 +374,13 @@ std::shared_ptr<UltraCanvasContainer> UltraPaintSettingsDialog::BuildPalettePage
     notes->SetBorderLeft(3, kNoteAccent);
     notes->SetPadding(10, 12, 10, 12);
     notes->AddChild(MakeText(id + "-note1",
-            "A small triangle in the corner of a button marks a group. A click on the button "
-            "picks the tool it shows; a click in the bar picks that tool. A tool's shortcut "
-            "key picks it as well.",
+            Tr("A small triangle in the corner of a button marks a group. A click on the button "
+               "picks the tool it shows; a click in the bar picks that tool. A tool's shortcut "
+               "key picks it as well."),
             kTextWidth - 10, kNoteFontSize, kNoteTextColor));
     notes->AddChild(MakeText(id + "-note2",
-            "With the static toolbar the button stays highlighted while any tool of its group "
-            "is in use, and the bar marks which one.",
+            Tr("With the static toolbar the button stays highlighted while any tool of its group "
+               "is in use, and the bar marks which one."),
             kTextWidth - 10, kNoteFontSize, kNoteTextColor));
     page->AddChild(notes);
 
