@@ -2493,7 +2493,7 @@ jobs:
             ColorPaletteManagerTest ColorPickerAutoHeightTest
             ColorPickerDesignSelectorTest ColorPickerDragTest
             ColorPickerModelDropdownTest DialogCloseAllTest DialogEscapeTest
-            DialogStackingTest ElementPressTakenTest FilerPaneDragTest
+            DialogStackingTest ElementPressTakenTest ExitDuringWarmUpTest FilerPaneDragTest
             ImageFileWatchDisplayTest LabelNaturalTextWidthTest
             LabelSelectionTest MediaViewerLoadingTest MouseClickBubblingTest
             PopupOwnWindowTest RichTextEditElementTest SessionLockTest
@@ -2914,7 +2914,7 @@ jobs:
       # so a PR still proves package-macos.sh runs end to end.
       - name: Package (macOS, unsigned - pull requests and manual runs)
         if: runner.os == 'macOS' && env.RELEASE_BUILD != 'true'
-        run: ./package-macos.sh --no-sign --dmg --start-app
+        run: ./package-macos.sh --no-sign --dmg --start-app --store-app UltraMail
 
       - name: Package (macOS, signed and notarized - push to main)
         if: runner.os == 'macOS' && env.RELEASE_BUILD == 'true'
@@ -2923,7 +2923,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        run: ./package-macos.sh --notarize --dmg --start-app
+        run: ./package-macos.sh --notarize --dmg --start-app --store-app UltraMail
 
       # Unconditional on macOS, and `|| true` inside: on a run that never
       # imported a certificate there is no keychain to delete, and this must
@@ -2932,6 +2932,33 @@ jobs:
         if: always() && runner.os == 'macOS'
         run: |
           security delete-keychain $RUNNER_TEMP/build.keychain || true
+
+      # UltraMail as an UltraStore package, cut out of the suite package just
+      # made with what it loads and checked from inside
+      # (scripts/package-store-app.sh; on macOS the bundle
+      # package-macos.sh --store-app cut out, zipped). It is the archive the
+      # ULTRA OS Project adds with `ultrastoreadmin package add` and submits
+      # to the marketplace like any merchant (Docs/UltraStore/README.md,
+      # *Packaging an application for the store*); the job summary carries
+      # the lines. On Linux and Windows the runtime layer too: the
+      # UltraCanvas runtime as a component of its own, and UltraMail on it -
+      # the app without what the runtime carries.
+      - name: Package UltraMail and the runtime for the store
+        run: |
+          have() { for f in "$1"/*.tar.xz "$1"/*.zip; do [ -e "$f" ] && return 0; done; return 1; }
+          scripts/package-store-app.sh UltraMail
+          if ! have dist-store; then
+            echo "::error::package-store-app.sh ended without an archive in dist-store/; its output should end with the ultrastoreadmin lines"
+            exit 1
+          fi
+          if [ "${{ runner.os }}" != "macOS" ]; then
+            scripts/package-store-app.sh --runtime --output dist-store-runtime
+            scripts/package-store-app.sh UltraMail --on-runtime --output dist-store-runtime
+            if [ "$(ls dist-store-runtime | wc -l)" -lt 2 ]; then
+              echo "::error::package-store-app.sh --runtime / --on-runtime left fewer than two archives in dist-store-runtime/"
+              exit 1
+            fi
+          fi
 
       - name: Upload build artifacts (Windows)
         if: runner.os == 'Windows'
@@ -3002,6 +3029,29 @@ jobs:
             dist-start/*.tar.xz
             dist-start/*.zip
             dist-start/*.dmg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload UltraMail for the store
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraMail-store-${{ runner.os }}-${{ matrix.arch_label }}
+          path: |
+            dist-store/*.tar.xz
+            dist-store/*.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload the runtime and UltraMail on it for the store
+        if: runner.os != 'macOS'
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvas-runtime-store-${{ runner.os }}-${{ matrix.arch_label }}
+          path: |
+            dist-store-runtime/*.tar.xz
+            dist-store-runtime/*.zip
           if-no-files-found: error
           compression-level: 0
           retention-days: 7

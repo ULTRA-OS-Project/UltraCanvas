@@ -109,6 +109,15 @@ namespace UltraCanvas {
     bool LaunchDetachedProcess(const std::vector<std::string>& argv,
                                const std::string& workingDirectory,
                                std::string& outError);
+    // The same, with `extraEnvironment` added to or replacing variables of
+    // the inherited environment for the started program alone (as
+    // RunProcessCaptured below takes it): UltraStore puts an application's
+    // runtime on its library path this way (kRuntimeDirVariable,
+    // UltraCanvasConfig.h).
+    bool LaunchDetachedProcess(const std::vector<std::string>& argv,
+                               const std::string& workingDirectory,
+                               const std::vector<std::pair<std::string, std::string>>& extraEnvironment,
+                               std::string& outError);
 
     // What a captured child process produced.
     struct ProcessOutput {

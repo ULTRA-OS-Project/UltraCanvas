@@ -209,7 +209,7 @@ private:
     void UpdateApp(const std::string& appId);
     void UpdateAll();
     void RemoveApp(const std::string& appId);
-    void LaunchApp(const AppListing& l);
+    void LaunchApp(const std::string& appId);   // its current version, on its runtime layer
     void Collect();
     void RefreshCatalog();
     void ReloadInstalled();

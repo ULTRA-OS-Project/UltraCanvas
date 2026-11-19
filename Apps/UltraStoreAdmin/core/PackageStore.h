@@ -5,6 +5,7 @@
 // hash and size are measured, never typed. The entry an app is started by
 // is suggested from the archive's listing (VirtualFS) and confirmed by the
 // admin.
+// Version: 0.3.1 - SuggestEntry: the launcher beside bin/ before the executable under it (Linux)
 // Version: 0.3.0 - ImportMediaVariants: the picture at the web store's sizes in AVIF and WebP, with the budgets
 // Version: 0.2.0 - ImportMedia, AdminStore, DefaultAdminStoreDir (shared by the commands and the window)
 // Version: 0.1.0
@@ -97,8 +98,11 @@ struct AdminStore {
 std::string DefaultAdminStoreDir();
 
 // The entry to start, guessed from the listing: on Windows the .exe at the
-// top or under bin/, on macOS the .app bundle, elsewhere a file under bin/
-// without an extension, else the one AppImage; "" when nothing fits.
+// top or under bin/, on macOS the .app bundle, elsewhere the one AppImage,
+// else a launcher beside bin/ (<dir>/<name> where <dir>/bin/<name> is in the
+// archive too: the script that puts <dir>/lib/ on the library path), else a
+// file under bin/ without an extension, else the one extension-less file at
+// the top; "" when nothing fits.
 std::string SuggestEntry(const std::vector<std::string>& entries, UltraStore::OS os);
 
 } // namespace UltraStoreAdmin

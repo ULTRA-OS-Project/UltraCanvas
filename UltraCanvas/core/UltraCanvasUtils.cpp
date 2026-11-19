@@ -1,5 +1,6 @@
 // core/UltraCanvasUtils.h
 // Utils
+// Version: 1.2.0 - LaunchDetachedProcess with an environment for the started program
 // Version: 1.1.0 - UltraCanvas_LibraryVersion(): the version, with C linkage
 // Version: 1.0.1 - NormalizePath: a '\' at the end is a separator only on Windows
 // Version: 1.0.0
@@ -517,8 +518,57 @@ namespace UltraCanvas {
 #endif
     }
 
+#if defined(_WIN32) || defined(_WIN64)
+    namespace {
+    // A child's environment block (CREATE_UNICODE_ENVIRONMENT): the parent's,
+    // with the extras replacing any variable of the same name - compared
+    // without regard to case, as Windows names them.
+    std::wstring ChildEnvironmentBlock(const std::vector<std::pair<std::string, std::string>>& extraEnvironment) {
+        std::wstring environmentBlock;
+        std::vector<std::wstring> entries;
+        if (LPWCH parentEnv = GetEnvironmentStringsW()) {
+            for (LPWCH scan = parentEnv; *scan; ) {
+                std::wstring entry(scan);
+                scan += entry.size() + 1;
+                const size_t eq = entry.find(L'=');
+                // A leading '=' marks Windows' per-drive current
+                // directories ("=C:=C:\\dir"); they are kept verbatim.
+                bool replaced = false;
+                if (eq != std::wstring::npos && eq != 0) {
+                    const std::wstring name = entry.substr(0, eq);
+                    for (const auto& extra : extraEnvironment) {
+                        if (_wcsicmp(name.c_str(), Utf8ToWide(extra.first).c_str()) == 0) {
+                            replaced = true;
+                            break;
+                        }
+                    }
+                }
+                if (!replaced) entries.push_back(entry);
+            }
+            FreeEnvironmentStringsW(parentEnv);
+        }
+        for (const auto& extra : extraEnvironment) {
+            entries.push_back(Utf8ToWide(extra.first) + L'=' + Utf8ToWide(extra.second));
+        }
+        for (const std::wstring& entry : entries) {
+            environmentBlock += entry;
+            environmentBlock.push_back(L'\0');
+        }
+        environmentBlock.push_back(L'\0');
+        return environmentBlock;
+    }
+    }  // namespace
+#endif
+
     bool LaunchDetachedProcess(const std::vector<std::string>& argv,
                                const std::string& workingDirectory,
+                               std::string& outError) {
+        return LaunchDetachedProcess(argv, workingDirectory, {}, outError);
+    }
+
+    bool LaunchDetachedProcess(const std::vector<std::string>& argv,
+                               const std::string& workingDirectory,
+                               const std::vector<std::pair<std::string, std::string>>& extraEnvironment,
                                std::string& outError) {
         outError.clear();
         if (argv.empty() || argv[0].empty()) {
@@ -555,9 +605,14 @@ namespace UltraCanvas {
         PROCESS_INFORMATION pi = {};
         std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
         mutableCmd.push_back(L'\0');
+        // The inherited environment as it is (nullptr), or a block with the
+        // extras in it.
+        std::wstring environmentBlock;
+        if (!extraEnvironment.empty()) environmentBlock = ChildEnvironmentBlock(extraEnvironment);
         if (!CreateProcessW(nullptr, mutableCmd.data(), nullptr, nullptr, FALSE,
-                            CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
-                            nullptr, dirW.empty() ? nullptr : dirW.c_str(),
+                            CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS | CREATE_UNICODE_ENVIRONMENT,
+                            environmentBlock.empty() ? nullptr : environmentBlock.data(),
+                            dirW.empty() ? nullptr : dirW.c_str(),
                             &si, &pi)) {
             outError = "Could not start \"" + argv[0] + "\".";
             return false;
@@ -584,6 +639,8 @@ namespace UltraCanvas {
                         // in the wrong folder still beats not starting it.
                     }
                 }
+                for (const auto& extra : extraEnvironment)
+                    ::setenv(extra.first.c_str(), extra.second.c_str(), 1);
                 std::vector<char*> args;
                 args.reserve(argv.size() + 1);
                 for (const std::string& a : argv)
@@ -747,39 +804,7 @@ namespace UltraCanvas {
 
         // A child environment block: the parent's, with the extras replacing
         // any variable of the same name.
-        std::wstring environmentBlock;
-        {
-            std::vector<std::wstring> entries;
-            if (LPWCH parentEnv = GetEnvironmentStringsW()) {
-                for (LPWCH scan = parentEnv; *scan; ) {
-                    std::wstring entry(scan);
-                    scan += entry.size() + 1;
-                    const size_t eq = entry.find(L'=');
-                    // A leading '=' marks Windows' per-drive current
-                    // directories ("=C:=C:\\dir"); they are kept verbatim.
-                    bool replaced = false;
-                    if (eq != std::wstring::npos && eq != 0) {
-                        const std::wstring name = entry.substr(0, eq);
-                        for (const auto& extra : extraEnvironment) {
-                            if (_wcsicmp(name.c_str(), Utf8ToWide(extra.first).c_str()) == 0) {
-                                replaced = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!replaced) entries.push_back(entry);
-                }
-                FreeEnvironmentStringsW(parentEnv);
-            }
-            for (const auto& extra : extraEnvironment) {
-                entries.push_back(Utf8ToWide(extra.first) + L'=' + Utf8ToWide(extra.second));
-            }
-            for (const std::wstring& entry : entries) {
-                environmentBlock += entry;
-                environmentBlock.push_back(L'\0');
-            }
-            environmentBlock.push_back(L'\0');
-        }
+        std::wstring environmentBlock = ChildEnvironmentBlock(extraEnvironment);
 
         STARTUPINFOW si = {};
         si.cb = sizeof(si);
