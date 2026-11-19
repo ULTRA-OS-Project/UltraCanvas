@@ -1,10 +1,11 @@
 // Apps/UltraPaint/UltraPaintFilters.cpp
 // The filter catalogue (PixelFX operations with parameters) and the
 // parameter dialog with live preview.
+// Version: 1.1.0 - the menu texts, dialog titles and parameter captions in the person's language
 // Version: 1.0.1 - Auto contrast counts with UltraCanvasHistogramModel and leaves transparent
 //                  pixels out of the stretch
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraPaintFilters.h"
@@ -14,6 +15,7 @@
 #include "UltraCanvasHistogramModel.h"
 
 #include "UltraCanvasLabel.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
 #include <array>
@@ -420,6 +422,90 @@ std::vector<std::string> PaintFilterCategories() {
     return cats;
 }
 
+// The shown texts. Each literal stands inside its own Tr, so
+// scripts/extract_ui_strings.py finds it; they are looked up when a menu or a
+// dialog is built, not when the catalogue is (a function-local static that
+// would keep the language of the first call).
+std::string PaintFilterDisplayText(const std::string& english) {
+    // ----- categories (menu headers) -----
+    if (english == "Adjust") return Tr("Adjust");
+    if (english == "Blur") return Tr("Blur");
+    if (english == "Sharpen") return Tr("Sharpen");
+    if (english == "Edges") return Tr("Edges");
+    if (english == "Noise") return Tr("Noise");
+    if (english == "Stylize") return Tr("Stylize");
+    if (english == "Morphology") return Tr("Morphology");
+    // ----- filters (menu items, dialog titles) -----
+    if (english == "Brightness / Contrast...") return Tr("Brightness / Contrast...");
+    if (english == "Hue / Saturation...") return Tr("Hue / Saturation...");
+    if (english == "Gamma...") return Tr("Gamma...");
+    if (english == "Levels...") return Tr("Levels...");
+    if (english == "Posterize...") return Tr("Posterize...");
+    if (english == "Threshold...") return Tr("Threshold...");
+    if (english == "Solarize...") return Tr("Solarize...");
+    if (english == "Invert") return Tr("Invert");
+    if (english == "Desaturate") return Tr("Desaturate");
+    if (english == "Sepia") return Tr("Sepia");
+    if (english == "Equalize") return Tr("Equalize");
+    if (english == "Auto Contrast") return Tr("Auto Contrast");
+    if (english == "Gaussian Blur...") return Tr("Gaussian Blur...");
+    if (english == "Box Blur...") return Tr("Box Blur...");
+    if (english == "Median (Despeckle)...") return Tr("Median (Despeckle)...");
+    if (english == "Motion Blur...") return Tr("Motion Blur...");
+    if (english == "Sharpen...") return Tr("Sharpen...");
+    if (english == "Unsharp Mask...") return Tr("Unsharp Mask...");
+    if (english == "Sobel Edges") return Tr("Sobel Edges");
+    if (english == "Laplacian Edges") return Tr("Laplacian Edges");
+    if (english == "Canny Edges...") return Tr("Canny Edges...");
+    if (english == "Emboss") return Tr("Emboss");
+    if (english == "Find Edges") return Tr("Find Edges");
+    if (english == "Add Noise...") return Tr("Add Noise...");
+    if (english == "Despeckle") return Tr("Despeckle");
+    if (english == "Pixelate...") return Tr("Pixelate...");
+    if (english == "Oil Paint...") return Tr("Oil Paint...");
+    if (english == "Erode (Shrink)...") return Tr("Erode (Shrink)...");
+    if (english == "Dilate (Grow)...") return Tr("Dilate (Grow)...");
+    // ----- parameters (dialog captions) -----
+    if (english == "Brightness") return Tr("Brightness");
+    if (english == "Contrast") return Tr("Contrast");
+    if (english == "Hue") return Tr("Hue");
+    if (english == "Saturation") return Tr("Saturation");
+    if (english == "Lightness") return Tr("Lightness");
+    if (english == "Gamma") return Tr("Gamma");
+    if (english == "Input black") return Tr("Input black");
+    if (english == "Input white") return Tr("Input white");
+    if (english == "Output black") return Tr("Output black");
+    if (english == "Output white") return Tr("Output white");
+    if (english == "Levels") return Tr("Levels");
+    if (english == "Level") return Tr("Level");
+    if (english == "Threshold") return Tr("Threshold");
+    if (english == "Radius") return Tr("Radius");
+    if (english == "Size") return Tr("Size");
+    if (english == "Length") return Tr("Length");
+    if (english == "Angle") return Tr("Angle");
+    if (english == "Amount") return Tr("Amount");
+    if (english == "Sigma") return Tr("Sigma");
+    if (english == "Block size") return Tr("Block size");
+    return english;
+}
+
+std::string PaintFilterParam::DisplayName() const { return PaintFilterDisplayText(name); }
+std::string PaintFilter::DisplayName() const { return PaintFilterDisplayText(name); }
+std::string PaintFilter::DisplayCategory() const { return PaintFilterDisplayText(category); }
+
+std::string PaintFilter::DisplayTitle() const {
+    // The menu's "..." (or a translation's ellipsis character) says a dialog follows;
+    // a title or a message has no use for it.
+    std::string text = DisplayName();
+    for (const std::string& ellipsis : { std::string("..."), std::string("\u2026") })
+        if (text.size() >= ellipsis.size() && text.compare(text.size() - ellipsis.size(), ellipsis.size(), ellipsis) == 0) {
+            text.erase(text.size() - ellipsis.size());
+            break;
+        }
+    while (!text.empty() && text.back() == ' ') text.pop_back();
+    return text;
+}
+
 // ===========================================================================
 // PARAMETER DIALOG
 // ===========================================================================
@@ -430,7 +516,7 @@ UltraPaintFilterDialog::UltraPaintFilterDialog(const PaintFilter& filter) : Ultr
         defaults.push_back(p.value);
         integerParam.push_back(p.integer);
     }
-    config_.title = filter.name.substr(0, filter.name.find("..."));
+    config_.title = filter.DisplayTitle();
     config_.width = 420;
     config_.height = static_cast<int>(96 + 30 * filter.params.size());
     config_.minWidth = 320;
@@ -485,7 +571,7 @@ void UltraPaintFilterDialog::BuildLayout(const PaintFilter& filter) {
             EmitPreview();
         };
 
-        AddFormRow(body, "upf-p" + std::to_string(i), p.name, cell);
+        AddFormRow(body, "upf-p" + std::to_string(i), p.DisplayName(), cell);
         sliders.push_back(slider);
         valueLabels.push_back(value);
     }
@@ -494,7 +580,7 @@ void UltraPaintFilterDialog::BuildLayout(const PaintFilter& filter) {
     row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    previewBox = std::make_shared<UltraCanvasCheckbox>("upf-preview", 0, 0, 0, 24, "Preview");
+    previewBox = std::make_shared<UltraCanvasCheckbox>("upf-preview", 0, 0, 0, 24, Tr("Preview"));
     previewBox->SetChecked(true);
     previewBox->onStateChanged = [this](CheckedState, CheckedState n) {
         previewEnabled = n == CheckedState::Checked;
@@ -504,17 +590,17 @@ void UltraPaintFilterDialog::BuildLayout(const PaintFilter& filter) {
     row->AddChild(previewBox);
     row->AddStretchSpacer(1);
 
-    resetButton = std::make_shared<UltraCanvasButton>("upf-reset", 0, 0, 80, 30, "Reset");
+    resetButton = std::make_shared<UltraCanvasButton>("upf-reset", 0, 0, 80, 30, Tr("Reset"));
     resetButton->onClick = [this]() { ResetValues(); };
     UltraPaintDialogParts::SizeButtonToText(resetButton);
     row->AddChild(resetButton);
 
-    cancelButton = std::make_shared<UltraCanvasButton>("upf-cancel", 0, 0, 80, 30, "Cancel");
+    cancelButton = std::make_shared<UltraCanvasButton>("upf-cancel", 0, 0, 80, 30, Tr("Cancel"));
     cancelButton->onClick = [this]() { Close(); };
     UltraPaintDialogParts::SizeButtonToText(cancelButton);
     row->AddChild(cancelButton);
 
-    okButton = std::make_shared<UltraCanvasButton>("upf-ok", 0, 0, 80, 30, "OK");
+    okButton = std::make_shared<UltraCanvasButton>("upf-ok", 0, 0, 80, 30, Tr("OK"));
     okButton->SetStyle(ButtonStyles::PrimaryStyle());
     okButton->onClick = [this]() {
         accepted = true;

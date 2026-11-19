@@ -1,5 +1,19 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.11.0 - a password-protected document or deck (.docx, .odt, .pptx, .odp) asks for its
+//                   password - the framework's prompt, asked again after a wrong one - and opens;
+//                   saved again as .docx it keeps the password, and an .odt with one is not saved
+//                   unprotected
+// Version: 2.10.1 - a password-protected .odt says so instead of opening as a hex dump
+// Version: 2.10.0 - a PowerPoint deck (.pptx and kin) or an OpenDocument presentation (.odp,
+//                   .otp, .fodp) opens as the outline of its slides, as the Open dialog's
+//                   "Documents" promised, not as a hex dump; saving one back to a deck type
+//                   is refused rather than writing plain text over the deck
+// Version: 2.9.0 - closing with unsaved files lists them (name, folder) in the question, as the file
+//                  display lists the files of a delete; saving them shows each file's tab before its
+//                  Save dialog (painted before the dialog opens), and a save that fails shows its tab
+//                  before saying so; closing one tab with unsaved changes shows that tab before asking
+//                  (the close stays in progress until the question is answered)
 // Version: 2.8.0 - a window started dark has dark chrome (the theme was only laid over it on a change);
 //                  View > Dark Mode: Document Background (dark / light grey / white text tabs under a dark look)
 // Version: 2.7.0 - the status bar shows which dictionary the active document is spell checked against; a click opens the Spelling menu
@@ -21,7 +35,7 @@
 // Version: 2.3.4 - Dark-theme menus take the dark menu style's separators, outline
 //                  and shortcut colours
 // Version: 2.3.3 - The profile folder and comment author read as UTF-8
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -38,6 +52,9 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasListModel.h"
+#include "UltraCanvasListDelegate.h"
 #include "UltraCanvasTextEditorHelpers.h"
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
@@ -67,6 +84,9 @@
 #include "UltraCanvasUtilsUtf8.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasFileError.h"   // FileWriteFailureReason
+#include "UltraCanvasPresentationPptx.h"   // IsPptxExtension
+#include "UltraCanvasPresentationOdp.h"    // IsOdpExtension
+#include "UltraCanvasOdfEncryption.h"      // IsEncryptedOdfPackage
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraCanvasLocalisationEditor.h"
 
@@ -79,6 +99,9 @@
 #endif
 
 namespace UltraCanvas {
+    // How long after a protected file is asked for the native password
+    // prompt comes up: long enough for the window to be on screen first.
+    constexpr unsigned int kPasswordPromptDelayMs = 300;
     std::string UltraCanvasTextEditor::version = ULTRATEXTER_VERSION;
     
 namespace {
@@ -1835,7 +1858,7 @@ namespace {
         return docIndex;
     }
 
-    int UltraCanvasTextEditor::OpenDocumentFromPath(const std::string& filePath) {
+    int UltraCanvasTextEditor::OpenDocumentFromPath(const std::string& filePath, const std::string& password) {
         // Already open: switch to that tab instead of opening a second one.
         const int openIndex = FindDocumentIndexByPath(filePath);
         if (openIndex >= 0) {
@@ -1843,22 +1866,56 @@ namespace {
             return openIndex;
         }
 
-        // Create new document
         std::filesystem::path p(UltraCanvas::PathFromUtf8(filePath));
+        std::string ext = PathToUtf8(p.extension());
+        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        const bool wordOrDeck = ext == "odt" || ext == "docx" || ext == "doc" || IsPptxExtension(ext) ||
+                                IsOdpExtension(ext);
+
+        // A password-protected document or deck (a .docx or .pptx saved with
+        // a password, an .odt or .odp LibreOffice saved with one) asks for it
+        // first - the framework's prompt, which checks it and asks again
+        // after a wrong one - and its tab opens once it is given.
+        if (wordOrDeck && password.empty()) {
+            std::string unused;
+            if (CheckOfficePassword(filePath, std::string(), unused) == OfficeDecryptStatus::PasswordRequired) {
+                // Asked from the event loop a moment later, not here: a file
+                // named on the command line or restored from the last
+                // session is opened before the window is on screen, and the
+                // native prompt blocks the loop - asked at once, it stood in
+                // front of an empty screen until it was answered.
+                std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+                auto ask = [this, self, filePath]() {
+                    if (self.expired()) return;
+                    UltraCanvasFileLoader::RequestDocumentPassword(filePath, this,
+                        [this, self, filePath](bool proceed, const std::string& typed) {
+                            if (self.expired() || !proceed || typed.empty()) return;
+                            OpenDocumentFromPath(filePath, typed);
+                        });
+                };
+                if (auto* app = UltraCanvasApplication::GetInstance()) {
+                    app->StartTimer(kPasswordPromptDelayMs, false, [ask](TimerId) { ask(); });
+                } else {
+                    ask();
+                }
+                return -1;
+            }
+        }
+
+        // Create new document
         int docIndex = CreateNewDocument(PathToUtf8(p.filename()));
 
         // PDFs take a separate codepath: the tab's textArea is swapped out
         // for a UltraCanvasPDFView. Word-processing documents (.odt/.docx/.doc)
-        // are converted to editable Markdown. Detect by extension
-        // (case-insensitive).
-        std::string ext = PathToUtf8(p.extension());
-        if (!ext.empty() && ext[0] == '.') ext = ext.substr(1);
-        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        // open in the rich document editor, and so does a presentation
+        // (.pptx and kin, .odp / .otp / .fodp) as the outline of its slides.
+        // Detect by extension (case-insensitive).
         bool ok;
         if (ext == "pdf") {
             ok = LoadPDFIntoDocument(docIndex, filePath);
-        } else if (ext == "odt" || ext == "docx" || ext == "doc") {
-            ok = LoadWordIntoDocument(docIndex, filePath);
+        } else if (wordOrDeck) {
+            ok = LoadWordIntoDocument(docIndex, filePath, password);
         } else {
             ok = LoadFileIntoDocument(docIndex, filePath);
         }
@@ -1935,6 +1992,12 @@ namespace {
                 }
                 isDocumentClosing = false;
             });
+            // The answer clears isDocumentClosing, not this: the question may
+            // still be open (it waits for a paint when the tab was not the
+            // current one), and RemoveTab must not find the flag down and
+            // close a second document - the one that took the closed tab's
+            // place - leaving its tab on screen with no document behind it.
+            return;
         } else {
             // No unsaved changes - close directly
             if (!doc->autosaveBackupPath.empty()) {
@@ -2458,7 +2521,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
-    bool UltraCanvasTextEditor::LoadWordIntoDocument(int docIndex, const std::string& filePath) {
+    bool UltraCanvasTextEditor::LoadWordIntoDocument(int docIndex, const std::string& filePath,
+                                                     const std::string& password) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
             return false;
         }
@@ -2467,14 +2531,22 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             // The element shares ownership of the document, so the tab can
             // hand the very same blocks back to the writer on save.
-            // Read through FileLoader - only a real word-processing file,
-            // so a damaged one still falls back to the plain view below
+            // Read through FileLoader - only a real word-processing file, so
+            // a damaged one still falls back to the plain view below. A
+            // presentation, by its extension, reads as the outline of its
+            // slides.
+            const bool presentation = IsPptxExtension(filePath) || IsOdpExtension(filePath);
             std::string loadError = "not a word-processing document";
             std::shared_ptr<UCRichDocument> document;
-            if (DetectWordDocumentFormat(filePath) != WordDocumentFormat::Unknown)
-                document = UltraCanvasFileLoader::LoadTextDocument(filePath, loadError);
+            if (presentation || DetectWordDocumentFormat(filePath) != WordDocumentFormat::Unknown)
+                document = UltraCanvasFileLoader::LoadTextDocument(filePath, loadError, password);
             if (!document) {
-                if (DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc) {
+                // A deck that cannot be read - protected or damaged - says
+                // why: its bytes would tell nobody anything. So does a .doc,
+                // a protected .docx, which is a compound file as a .doc is,
+                // and a protected .odt, whose content is encrypted.
+                if (presentation || DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc ||
+                    IsEncryptedOdfPackage(filePath)) {
                     UltraCanvasDialogManager::ShowError(loadError, Tr("Unsupported Format"),
                                                         nullptr, this);
                     return false;
@@ -2510,6 +2582,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->originalRawBytes.clear();
             doc->isWordDocument = true;
             doc->kind = DocumentKind::RichDocument;
+            // Kept to save it protected again (as .docx); never written out.
+            doc->password = password.empty()
+                ? nullptr
+                : std::make_shared<UltraCryptSecureBuffer>(password.data(), password.size());
             // Whatever currently fills the editor slot leaves it: the text area
             // on first load, an earlier rich editor when the tab is reloaded.
             std::shared_ptr<UltraCanvasUIElement> previousContent = doc->richEdit
@@ -2589,7 +2665,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 // fallback for corrupt/mislabeled packages (hex view).
                 "doc", "xls", "ppt",
                 // Office Open XML / OpenDocument (ZIP-based binary containers)
-                "docx", "xlsx", "pptx", "odt", "ods",
+                "docx", "xlsx", "pptx", "odt", "ods", "odp",
                 // Fonts
                 "ttf", "otf", "woff", "woff2", "eot",
                 // Database
@@ -2690,13 +2766,41 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             return false;
         }
 
+        // A presentation is read as an outline, never written: saving the
+        // outline under the deck's own name would put text over the slides.
+        if (IsPptxExtension(targetExtension) || IsOdpExtension(targetExtension)) {
+            const std::string reason =
+                Tr("Texter opens presentations as the outline of their slides and cannot save "
+                   "them as a presentation. Save the outline as .odt or .docx instead.");
+            UltraCanvasDialogManager::ShowError(reason, Tr("Unsupported Format"), nullptr, this);
+            lastSaveError = reason;
+            return false;
+        }
+
         if (targetExtension == "odt" || targetExtension == "docx") {
+            // A document opened with a password stays protected: a .docx is
+            // saved with it. An .odt cannot carry one here, so it is not
+            // saved - unprotected - under the protected file's name or any
+            // other; .docx keeps the password.
+            std::string password;
+            if (doc->password) password.assign(reinterpret_cast<const char*>(doc->password->Data()),
+                                               doc->password->GetSize());
+            if (!password.empty() && targetExtension == "odt") {
+                const std::string reason =
+                    Tr("This document was opened with a password. Texter cannot save an OpenDocument file "
+                       "with a password; save it as .docx to keep it protected.");
+                UltraCanvasDialogManager::ShowError(reason, Tr("Save Failed"), nullptr, this);
+                lastSaveError = reason;
+                return false;
+            }
             if (document->metadata.title.empty()) {
                 document->metadata.title =
                     PathToUtf8(PathFromUtf8(filePath).stem());
             }
             std::string saveError;
-            if (!UltraCanvasFileLoader::SaveTextDocument(*document, filePath, saveError)) {
+            const bool saved = UltraCanvasFileLoader::SaveTextDocument(*document, filePath, saveError, password);
+            UltraCrypt_SecureZero(password.data(), password.size());
+            if (!saved) {
                 debugOutput << "Failed to save document: " << saveError << std::endl;
                 lastSaveError = saveError;
                 UltraCanvasDialogManager::ShowError(saveError, Tr("Save Failed"),
@@ -5105,6 +5209,23 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             return;
         }
 
+        // The tab asked about is the one on show - closing a tab that is not
+        // the current one (its x) asked about a file behind another. Painted
+        // before the question opens: a native message box holds the event
+        // loop, and the window behind it would still show the old tab.
+        if (docIndex != activeDocumentIndex) {
+            SwitchToDocument(docIndex);
+            AfterRepaint([this, doc, onComplete]() {
+                auto it = std::find(documents.begin(), documents.end(), doc);
+                if (it == documents.end()) {
+                    if (onComplete) onComplete(false);
+                    return;
+                }
+                ConfirmSaveChanges(static_cast<int>(it - documents.begin()), onComplete);
+            });
+            return;
+        }
+
         std::string message = TrF("Save changes to \"{0}\"?", doc->fileName);
 
         UltraCanvasDialogManager::ShowMessage(
@@ -5170,6 +5291,15 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     void UltraCanvasTextEditor::OfferSaveAsAfterFailure(std::shared_ptr<DocumentTab> doc,
                                                         const std::string& failedPath,
                                                         std::function<void(bool)> onDone) {
+        // The file that failed is the one on show while it is asked about.
+        if (auto it = std::find(documents.begin(), documents.end(), doc); it != documents.end()) {
+            const int index = static_cast<int>(it - documents.begin());
+            if (index != activeDocumentIndex) {
+                SwitchToDocument(index);
+                AfterRepaint([this, doc, failedPath, onDone]() { OfferSaveAsAfterFailure(doc, failedPath, onDone); });
+                return;
+            }
+        }
         const std::string reason = lastSaveError.empty() ? Tr("The file could not be written.") : lastSaveError;
         const std::string message = "\"" + failedPath + "\" could not be saved.\n\n" + reason +
                                     "\n\nChoose another name or folder to save it.";
@@ -5229,15 +5359,37 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             return;
         }
 
-        std::string message = std::to_string(modifiedDocs.size()) +
-                              " file(s) have unsaved changes.\n\n" +
-                              "Save all before closing?";
+        // The question names the files: a list under it, in the shape of the
+        // file display's delete / copy / move questions - a header, striped
+        // rows, the caption size - with each file's folder beside its name
+        // (or that it was never saved) and the whole path as its tooltip.
+        std::vector<std::shared_ptr<DocumentTab>> listed;
+        for (int idx : modifiedDocs) listed.push_back(documents[idx]);
+        int listHeight = 0;
+        auto list = BuildUnsavedFileList(listed, listHeight);
 
-        UltraCanvasDialogManager::ShowMessage(
-                message,
-                Tr("Unsaved Changes"),
-                DialogType::Question,
-                DialogButtons::YesNoCancel,
+        DialogConfig cfg;
+        cfg.title = Tr("Unsaved Changes");
+        cfg.dialogType = DialogType::Question;
+        cfg.message = TrN("{n} file has unsaved changes. Save it before closing?",
+                          "{n} files have unsaved changes. Save them before closing?",
+                          static_cast<long long>(modifiedDocs.size()));
+        cfg.buttons = DialogButtons::YesNoCancel;
+        cfg.defaultButton = DialogButton::Yes;
+        cfg.width = 580;
+        // A starting height; the dialog fits itself to the message and to the
+        // list (which carries its own height).
+        cfg.height = 190 + (list ? listHeight + 8 : 0);
+
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        if (!dialog) {
+            if (onComplete) onComplete(false);
+            return;
+        }
+        if (list) dialog->AddDialogElement(list);
+
+        UltraCanvasDialogManager::ShowDialog(
+                dialog,
                 [this, modifiedDocs, onComplete](DialogResult result) {
                     if (result == DialogResult::Yes) {
                         // Documents with a file path first, then the new ones.
@@ -5270,6 +5422,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                             int idx = remaining->front();
                             remaining->erase(remaining->begin());
                             auto doc = documents[idx];
+                            // The file being saved is the one on show, so the
+                            // Save dialog (or a failure's) is plainly about it.
+                            SwitchToDocument(idx);
 
                             if (!doc->filePath.empty()) {
                                 SaveOrOfferSaveAs(idx, [savedFlag, saveNext](bool saved) {
@@ -5279,24 +5434,30 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                                 return;
                             }
 
-                            FileDialogOptions opts;
-                            opts.title = Tr("Save File");
-                            opts.filters = DialogFileFilters(true);
-                            opts.defaultFileName = doc->fileName;
-                            opts.parentWindow = GetWindow();
+                            AfterRepaint([this, idx, savedFlag, saveNext]() {
+                                if (idx >= static_cast<int>(documents.size())) {
+                                    (*saveNext)();
+                                    return;
+                                }
+                                FileDialogOptions opts;
+                                opts.title = Tr("Save File");
+                                opts.filters = DialogFileFilters(true);
+                                opts.defaultFileName = documents[idx]->fileName;
+                                opts.parentWindow = GetWindow();
 
-                            UltraCanvasFileLoader::SaveFileDialog(
-                                    opts,
-                                    [this, idx, remaining, savedFlag, onComplete, saveNext](DialogResult saveResult, const std::string& filePath) {
-                                        if (saveResult == DialogResult::OK && !filePath.empty()) {
-                                            if (!SaveDocumentAs(idx, filePath)) {
-                                                *savedFlag = false;
+                                UltraCanvasFileLoader::SaveFileDialog(
+                                        opts,
+                                        [this, idx, savedFlag, saveNext](DialogResult saveResult, const std::string& filePath) {
+                                            if (saveResult == DialogResult::OK && !filePath.empty()) {
+                                                if (!SaveDocumentAs(idx, filePath)) {
+                                                    *savedFlag = false;
+                                                }
                                             }
+                                            // Continue to next unsaved document (skip if user cancelled this one)
+                                            (*saveNext)();
                                         }
-                                        // Continue to next unsaved document (skip if user cancelled this one)
-                                        (*saveNext)();
-                                    }
-                            );
+                                );
+                            });
                         };
                         (*saveNext)();
                     } else if (result == DialogResult::No) {
@@ -5311,6 +5472,79 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 },
                 GetWindow()
         );
+    }
+
+    void UltraCanvasTextEditor::AfterRepaint(std::function<void()> task) {
+        // The event loop runs posted tasks before it paints its windows, so a
+        // task posted from a posted task runs after one paint: the window
+        // shows the tab just switched to before a dialog covers it. Opened at
+        // once, a native file dialog held the loop with the old tab on screen.
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) {
+            task();
+            return;
+        }
+        RequestRedraw();
+        app->PostToUIThread([app, task = std::move(task)]() mutable {
+            app->PostToUIThread(std::move(task));
+        });
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasTextEditor::BuildUnsavedFileList(
+            const std::vector<std::shared_ptr<DocumentTab>>& listed, int& outHeight) {
+        outHeight = 0;
+        if (listed.empty()) return nullptr;
+        // The file display's operation lists (UltraCanvasFilerWidget::
+        // BuildOperationEntryList): a header, rows of 22 px, at most eight
+        // rows on show and the rest scrolled to.
+        constexpr int kRowHeight = 22;
+        constexpr int kHeaderHeight = 24;
+        const int rows = static_cast<int>(std::min<size_t>(listed.size(), 8));
+        outHeight = kHeaderHeight + rows * kRowHeight + 2;
+
+        // The two columns fit the dialog's width (cfg.width in
+        // ConfirmCloseWithUnsavedChanges): wider, and a horizontal scroll bar
+        // covered the last row. A folder too long for its column keeps its
+        // end - the folders nearest the file - after a "…"; the row's tooltip
+        // has the whole path.
+        constexpr int kFolderChars = 34;
+        auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
+        model->AddColumn(ListColumnDef(Tr("Name"), 160));
+        model->AddColumn(ListColumnDef(Tr("Folder"), 300));
+        for (const auto& doc : listed) {
+            const bool onDisk = !doc->filePath.empty();
+            std::string folder = onDisk
+                    ? PathToUtf8(PathFromUtf8(doc->filePath).parent_path())
+                    : Tr("Not saved yet");
+            if (const int length = utf8_length(folder); onDisk && length > kFolderChars)
+                folder = "\xE2\x80\xA6" + folder.substr(utf8_cp_to_byte(folder, length - kFolderChars + 1));
+            MultiColumnListItem item({doc->fileName, folder});
+            item.tooltip = onDisk ? doc->filePath : doc->fileName;
+            model->AddItem(item);
+        }
+
+        auto list = std::make_shared<UltraCanvasListView>("TexterUnsavedList", 0, 0, 0, outHeight);
+        // Its shape over the theme's colours: a style set by hand stops a list
+        // following the theme, so one that was following takes it up again
+        // once its delegate is in (white rows in a dark dialog otherwise).
+        const bool followTheme = list->GetFollowTheme();
+        ListViewStyle listStyle = list->GetStyle();
+        listStyle.showHeader = true;
+        listStyle.headerHeight = kHeaderHeight;
+        listStyle.headerFontSize = 10;
+        listStyle.rowHeight = kRowHeight;
+        listStyle.alternateRowColors = true;
+        list->SetStyle(listStyle);
+        auto delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
+        delegate->SetFontSize(static_cast<float>(
+                UltraCanvasTheme::Current().FontSize(ThemeTextRole::Caption)));
+        delegate->SetRowHeight(kRowHeight);
+        list->SetModel(model);
+        list->SetDelegate(delegate);
+        if (followTheme) list->SetFollowTheme(true);
+        list->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return list;
     }
 
 // ===== PUBLIC API =====

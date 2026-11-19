@@ -12,14 +12,18 @@
 // server without it); search; WHOIS NotFound; CreateGroup with INVITE and an
 // invite-only channel refused; PART and a private chat hidden and back; no
 // files; the stored session resuming and rejoining; a dropped connection
-// reconnecting, rejoining and receiving what came meanwhile.
+// reconnecting, rejoining and receiving what came meanwhile. With nothing but
+// a web proxy set in the system, a server on another machine reached through
+// it (a CONNECT tunnel).
 // Skips without python3 and openssl, unless ULTRAIM_TEST_IRC_REQUIRED is set.
+// Version: 0.1.1 - IRC through the system's web proxy
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "IrcProvider.h"
 
+#include "ConnectProxy.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraIM/UltraIMCore.h"
 #include "UltraNet/UltraNetCore.h"
@@ -762,6 +766,31 @@ void TestEndToEnd(const FakeServer& server, const fs::path& base, const std::str
 }
 #endif
 
+#if defined(__linux__)
+// A server on another machine, with nothing but a web proxy set in the
+// system: IRC goes through that (a CONNECT tunnel), as the other networks do,
+// and no longer directly past it.
+void TestThroughTheSystemsWebProxy(const FakeServer& server, const fs::path& base) {
+    ConnectProxy proxy;
+    CHECK(proxy.Start());
+    SystemWebProxy system(proxy.port);
+    IrcTimings fast;
+    fast.reconnectMinMs = 500;
+    fast.readSliceMs = 50;
+    fast.requestTimeoutMs = 8000;
+    // A name that exists nowhere: only the proxy can reach it (it carries
+    // the connection to the fake server here).
+    const std::string target = "irc.proxied.test:" + std::to_string(server.plain);
+    Peer carol(base, "carol-proxied", fast, std::string());
+    const UltraIMResult r = carol.SignIn(Login("irc://" + target, "carol"));
+    CHECK(r.success);
+    CHECK(carol.p->GetConnectionState() == UltraIMConnectionState::Connected);
+    const std::vector<std::string> targets = proxy.Targets();
+    CHECK(targets.size() == 1 && targets.front() == target);
+    carol.p->Shutdown();
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -794,6 +823,9 @@ int main() {
     }
     std::printf("  server plain %d, tls %d, basic %d\n", server.plain, server.tls, server.basic);
     TestEndToEnd(server, base, cert);
+#if defined(__linux__)
+    TestThroughTheSystemsWebProxy(server, base);
+#endif
     server.Stop();
     fs::remove_all(base, ec);
 #endif

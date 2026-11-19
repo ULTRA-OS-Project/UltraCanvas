@@ -106,7 +106,6 @@
   "Could not leave {0}: {1}": "Det gick inte att lämna {0}: {1}",
   "Could not load the messages: {0}": "Det gick inte att läsa in meddelandena: {0}",
   "Could not open the chat: {0}": "Det gick inte att öppna chatten: {0}",
-  "Could not open {0}": "Det gick inte att öppna {0}",
   "Could not remove {0}: {1}": "Det gick inte att ta bort {0}: {1}",
   "Could not rename the group: {0}": "Det gick inte att byta namn på gruppen: {0}",
   "Could not save the description: {0}": "Kunde inte spara beskrivningen: {0}",

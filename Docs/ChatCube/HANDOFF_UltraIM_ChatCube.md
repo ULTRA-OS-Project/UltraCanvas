@@ -427,6 +427,13 @@ README; confirm exact signatures in the UltraNet master registry.
 ### 6.4 Everywhere
 
 - Proxy, TLS defaults, DNS cache: inherited from UltraNet — set nothing.
+  **Only for what connects through UltraNet.** A provider whose connections
+  are made by something else inherits none of it and has to hand the proxy
+  over itself, or it reaches its service directly whatever the settings
+  say: Telegram tells TDLib (`addProxy` / `disableProxy`), Signal starts
+  signal-cli with Java's proxy options. Both shipped without that at first
+  (corrected 2026-11-18); see *Provider: Telegram* and *Provider: Signal*
+  in [`Docs/Modules/UltraIM/README.md`](../Modules/UltraIM/README.md).
 - Cancellation on sign-out/shutdown: `UltraNet_CancelRequest()` for async
   requests; `UltraNet_SetThreadAbortCheck()` if any synchronous call remains.
 - Debug: `ULTRANET_CURL_VERBOSE=1` and `UltraNetResult::diagnostics`.

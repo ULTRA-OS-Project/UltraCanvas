@@ -41,8 +41,9 @@
 // Office 2010's files. Without a crypto backend every decryption reports
 // NoCryptoBackend and every encryption fails.
 //
+// Version: 1.3.0 - CheckOfficePassword checks an OpenDocument file's password too (UltraCanvasOdfEncryption.h)
 // Version: 1.2.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -97,7 +98,10 @@ OfficeDecryptStatus DecryptOfficePackageFile(const std::string& filePath,
 // password verifier only, for a prompt that asks again after a wrong one.
 // Decrypted here means "the password is right"; every other status is what
 // DecryptOfficePackageFile would return (Tampered excepted: the integrity
-// check needs the whole file and runs when it is opened).
+// check needs the whole file and runs when it is opened). For an OpenDocument
+// file - protected inside its ZIP package - it answers through
+// UltraCanvasOdfEncryption's CheckOdfPassword, so one password prompt serves
+// both kinds of file.
 OfficeDecryptStatus CheckOfficePassword(const std::string& filePath, const std::string& password,
                                         std::string& error);
 

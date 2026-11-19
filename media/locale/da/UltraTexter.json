@@ -137,6 +137,7 @@
   "no translation provider is available": "ingen oversættelsestjeneste er tilgængelig",
   "None found": "Ingen fundet",
   "Not available": "Ikke tilgængelig",
+  "Not saved yet": "Ikke gemt endnu",
   "One Column": "Én kolonne",
   "Open File(s)": "Åbn fil(er)",
   "Open File... (Ctrl+O)": "Åbn fil... (Ctrl+O)",
@@ -214,5 +215,9 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (kyrillisk)",
   "Windows-1252 (Western)": "Windows-1252 (vesteuropæisk)",
   "Word Wrap": "Tekstombrydning",
-  "Zoom Level": "Zoomniveau"
+  "Zoom Level": "Zoomniveau",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} fil har ændringer, der ikke er gemt. Vil du gemme den, før du lukker?",
+    "other": "{n} filer har ændringer, der ikke er gemt. Vil du gemme dem, før du lukker?"
+  }
 }

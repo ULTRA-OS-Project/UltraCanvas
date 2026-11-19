@@ -1,8 +1,12 @@
 // core/UltraCanvasImageViewer.cpp
 // Implementation of the reusable lightbox image viewer (zoom / pan image +
 // info panel in its own window). Shared by the markdown renderer and Album.
+// Version: 1.3.0 - ZoomPanImage: sharp pixels from SetSharpPixelsFrom on - the natural-size
+//   pixmap drawn with smoothing off, rather than one rasterised at the display size
+// Version: 1.2.0 - ZoomPanImage: SetFitEnlarges, SetPanKeptInView (the pan
+//   clamped to the image's edges, applied after every drag, zoom and resize)
 // Version: 1.1.0
-// Last Modified: 2026-07-12
+// Last Modified: 2026-11-18
 // V1.1.0: Animated images (GIF / animated WebP) now play in the lightbox — the
 //   zoom / pan surface steps them with a UCImageAnimationController and draws
 //   the controller's current frame, so zoom / pan apply to the live animation.
@@ -52,21 +56,35 @@ namespace UltraCanvas {
         if (image && image->IsValid()) {
             const double iw = std::max(1, image->GetWidth());
             const double ih = std::max(1, image->GetHeight());
-            const double fit = std::min(b.width / iw, b.height / ih);
+            const double fit = StartScale(b, iw, ih);
             if (needsFit) { zoom = 1.0; panX = panY = 0.0; needsFit = false; }
             const double s     = fit * zoom;
             const double dispW = iw * s;
             const double dispH = ih * s;
+            // A drag, a zoom or a smaller view may have taken it off the view
+            KeepPanInView(b, dispW, dispH);
             const double left  = b.width  * 0.5 + panX - dispW * 0.5;
             const double top   = b.height * 0.5 + panY - dispH * 0.5;
+            // Sharp pixels: the image's own pixels, scaled up by the context
+            // with smoothing off. (A pixmap made at the display size would
+            // already be smoothed, whatever the context's setting.)
+            const bool sharp = sharpPixelsFrom > 0.0 && s >= sharpPixelsFrom;
+            const bool smoothBefore = ctx->GetImageSmoothing();
+            if (sharp) ctx->SetImageSmoothing(false);
             if (auto framePm = animator.GetCurrentFramePixmap()) {
                 // Animated image: draw the controller's current frame; the
                 // zoom / pan transform applies to the running animation.
                 ctx->DrawPixmap(*framePm, Rect2Dd(left, top, dispW, dispH),
                                 ImageFitMode::Fill);
+            } else if (sharp) {
+                if (auto natural = image->GetPixmap(static_cast<int>(iw), static_cast<int>(ih),
+                                                    ImageFitMode::Fill, 1.0f)) {
+                    ctx->DrawPixmap(*natural, Rect2Dd(left, top, dispW, dispH), ImageFitMode::Fill);
+                }
             } else {
                 ctx->DrawImage(*image, Rect2Dd(left, top, dispW, dispH), ImageFitMode::Fill);
             }
+            if (sharp) ctx->SetImageSmoothing(smoothBefore);
         }
         ctx->PopState();
     }
@@ -94,6 +112,15 @@ namespace UltraCanvas {
                     panY += event.pointer.y - lastY;
                     lastX = event.pointer.x;
                     lastY = event.pointer.y;
+                    if (image && image->IsValid()) {
+                        // Clamped now, not only at the next frame, so a drag
+                        // past the edge does not have to be undone first
+                        const Rect2Df b = GetLocalBounds();
+                        const double iw = std::max(1, image->GetWidth());
+                        const double ih = std::max(1, image->GetHeight());
+                        const double s = StartScale(b, iw, ih) * zoom;
+                        KeepPanInView(b, iw * s, ih * s);
+                    }
                     RequestRedraw();
                     return true;
                 }
@@ -137,7 +164,7 @@ namespace UltraCanvas {
         const Rect2Df b = GetLocalBounds();
         const double iw = std::max(1, image->GetWidth());
         const double ih = std::max(1, image->GetHeight());
-        const double fit = std::min(b.width / iw, b.height / ih);
+        const double fit = StartScale(b, iw, ih);
         if (fit <= 0.0) return;
 
         const double sOld    = fit * zoom;
@@ -149,8 +176,11 @@ namespace UltraCanvas {
 
         double newZoom = std::max(1.0, std::min(zoom * factor, 40.0));
         // Cap the rasterized size so very large SVG zooms stay responsive.
+        // Sharp pixels are drawn from the natural-size pixmap, so nothing of
+        // the display size is rasterised and the cap does not apply there.
         const double maxDim = 8000.0;
-        if (iw * fit * newZoom > maxDim || ih * fit * newZoom > maxDim) {
+        const bool sharpThere = sharpPixelsFrom > 0.0 && fit * newZoom >= sharpPixelsFrom;
+        if (!sharpThere && (iw * fit * newZoom > maxDim || ih * fit * newZoom > maxDim)) {
             newZoom = std::max(1.0, std::min(maxDim / (iw * fit), maxDim / (ih * fit)));
         }
         if (newZoom == zoom) return;
@@ -159,6 +189,34 @@ namespace UltraCanvas {
         const double sNew = fit * zoom;
         panX = (cursor.x - b.width  * 0.5) - (imgX * sNew - iw * sNew * 0.5);
         panY = (cursor.y - b.height * 0.5) - (imgY * sNew - ih * sNew * 0.5);
+        KeepPanInView(b, iw * sNew, ih * sNew);
+    }
+
+    double UltraCanvasZoomPanImage::StartScale(const Rect2Df& b, double iw, double ih) const {
+        const double fit = std::min(b.width / iw, b.height / ih);
+        return fitEnlarges ? fit : std::min(fit, 1.0);
+    }
+
+    // On each axis: an image narrower than the view is centred on it, a wider
+    // one keeps its edges at or beyond the view's. The pan is the image
+    // centre's offset from the view centre, so the room on an axis is half
+    // of what the image overhangs the view by.
+    void UltraCanvasZoomPanImage::KeepPanInView(const Rect2Df& b, double shownW, double shownH) {
+        if (!panKeptInView) {
+            canPan = true;
+            return;
+        }
+        const double roomX = std::max(0.0, (shownW - b.width) * 0.5);
+        const double roomY = std::max(0.0, (shownH - b.height) * 0.5);
+        panX = std::clamp(panX, -roomX, roomX);
+        panY = std::clamp(panY, -roomY, roomY);
+        // Half a pixel of overhang is rounding, not something to drag
+        canPan = roomX > 0.5 || roomY > 0.5;
+    }
+
+    UCMouseCursor UltraCanvasZoomPanImage::GetMouseCursor() const {
+        if (panKeptInView && !canPan && !dragging) return UCMouseCursor::Default;
+        return UltraCanvasUIElement::GetMouseCursor();
     }
 
 // ===== LIGHTBOX VIEWER WINDOW =====

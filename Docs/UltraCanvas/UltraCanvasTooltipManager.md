@@ -1,7 +1,7 @@
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.6.0 - the tooltip is shown in a window of its own, above every other window (`SetUseOwnWindow`, `GetTooltipWindow`)  
-**Last Modified:** 2026-11-09  
+**Version:** 2.6.1 - the pointer leaving the window a tooltip belongs to, or that window losing the focus, takes the tooltip away (`PointerLeftWindow`)  
+**Last Modified:** 2026-11-18  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -287,6 +287,16 @@ the tooltip's window is no application window: it never keeps `Run()` going,
 is not counted by `ClosingEndsApplication`, is no jump target and is not
 reported to assistive technology.
 
+Because that window floats above every other, the tooltip goes as soon as
+the pointer leaves the window it belongs to or that window loses the focus
+(`PointerLeftWindow`, which `UltraCanvasApplication` calls on the window's
+`MouseLeave` and `WindowBlur`); a tooltip still waiting for its delay is not
+shown. The element the pointer was over gets its `MouseLeave` too, so the
+pointer back on it asks for its tooltip again - unless an element holds the
+pointer (a drag out of the window). Without this a tooltip stayed over another
+program's window that had come over its own, where, drawn inside its window,
+it had been covered with it.
+
 The window is opaque, so in it the tooltip has square corners and no soft
 shadow of its own; a compositing window manager gives a tooltip window a
 shadow. Drawn inside its window the tooltip keeps the style's
@@ -344,6 +354,7 @@ static bool GetUseOwnWindow();
 static UltraCanvasWindowBase* GetTooltipWindow();   // nullptr: drawn in its window, or none
 static void ForgetWindow(UltraCanvasWindowBase* win);        // a window is closing
 static void WindowScaleChanged(UltraCanvasWindowBase* win);  // a window changed monitor scale
+static void PointerLeftWindow(UltraCanvasWindowBase* win);   // the pointer left it, or it lost the focus
 
 // Rendering (called by the window compositor of the window the tooltip is
 // shown in: its own, or the one it belongs to)

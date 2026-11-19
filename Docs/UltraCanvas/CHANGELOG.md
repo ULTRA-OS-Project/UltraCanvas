@@ -1,3 +1,72 @@
+#### 2026-11-19 *0.9.576*
+- **Radar, bubble and stock charts in documents.** They were drawn as
+  columns from DOCX and as Writer's replacement picture from ODT. They are
+  now read as what they are (`RichChart::Kind::Radar`, `Bubble`, `Stock`;
+  `RichChartSeries::sizes`; `RichChart::filled`), drawn by the engine's
+  radar, scatter (size channel) and financial charts, and written back as
+  such to DOCX (`c:radarChart`, `c:bubbleChart`, `c:stockChart`) and ODT
+  (`chart:radar` / `chart:filled-radar`, `chart:bubble`, `chart:stock` - in
+  ODF's own order of a stock chart's series).
+- **Smoothed lines.** Word's `c:smooth` and ODF's `chart:interpolation` are
+  read (`RichChartSeries::smooth`) and written; a smoothed line chart is
+  drawn curved, and the engine's scatter chart draws a joined group as a
+  curve through its points (`EngineScatterGroup::smooth`, `SmoothThrough`).
+- A line, a radar line or a bubble without a stated colour is written to
+  DOCX in the office palette's colour it is shown in: Writer draws such a
+  series only where the file states one.
+- **The clipboard history's rows (UltraClipboard, UltraDesktop's quick
+  panel) are calmer.** A text's meta line no longer counts its lines and
+  characters or gives its size - "Formatted text · 1 line · 230 bytes" is
+  "Formatted text" - and the age ("5 min ago") stands at the right end of the
+  line instead of at the end of the text. `DescribeClipboardEntry` takes
+  `withAge` (default true) for a caller that places the age itself.
+- **`ClipboardHistoryRowDelegate::SetCoveredFrom(x, entryId)`**: when something
+  covers the rows' right part, the selected row's actions and those of
+  `entryId` stand just left of it instead of under it.
+- **PowerPoint slides drawn as pictures** (`UltraCanvasPptxSlideRender.h`, new):
+  `RenderPptxSlide(deck, index, widthPx)` draws a slide - its background,
+  rectangles, rounded rectangles and ellipses in their fills and outlines,
+  pictures, tables in the theme's accent, and text at its sizes, colours,
+  alignment, bullets and anchor, shrunk to fit in a placeholder too small for
+  it. UltraClipboard previews a copied deck's slides with it.
+- **The PowerPoint reader resolves what a slide is drawn with**
+  (`UltraCanvasPresentationPptx` 1.1.0): a placeholder without a place takes
+  its layout's or master's (`placeInherited`), a run's size and colour and a
+  paragraph's alignment come through the list styles, the master's text
+  styles and the theme's colours (`schemeClr` with `lumMod` / `lumOff` /
+  `tint` / `shade`), a shape keeps its fill, outline, geometry, anchor and
+  autofit scale, a slide its background, a table its column widths and row
+  heights, and a group's shapes are placed on the slide. `themeColors` on the
+  deck; `withPictures` keeps the pictures' bytes. Shapes with a fill and no
+  text are now in `shapes`.
+- **The engine's scatter chart joins a group's points.**
+  `EngineScatterGroup::joined` draws a straight line through the group's
+  points in the order they are given - each group over its own x values,
+  which need not rise - with `showMarkers`, `lineWidth`, `SetJoinLineWidth`
+  and `GroupLineRuns`.
+- **A document's scatter chart keeps its lines whatever its series' x
+  values.** A joined scatter chart was drawn by the line chart, which needs
+  one row of x values for all series; with different x values the lines were
+  dropped. Every scatter chart is now the engine's scatter chart.
+
+#### 2026-11-18 *0.9.575*
+- **A core built without charts links again.** With
+  `ULTRACANVAS_ENABLE_CHARTS=OFF` the bridge that draws a word-processing
+  document's chart with the chart engine (`UltraCanvasRichDocumentChart.cpp`)
+  still called the engine's charts, which that core leaves out, so no program
+  could link it (the Image codecs check on `main` failed this way). That core
+  now builds `UltraCanvasRichDocumentChartNone.cpp` in its place, which makes
+  no chart, and the rich text view draws the chart's shapes instead, as it
+  does for a chart the engine cannot draw.
+- **The file display's Compress and Extract dialog reads under a dark theme.**
+  Its Cancel button had a fixed light-grey face under the theme's ink, which a
+  dark theme makes near-white, so it showed as a blank grey block; the main
+  button was a fixed blue. Both are now the theme's button parts - Primary and
+  Standard - and re-style with a theme change while the dialog is open. The
+  panel's edge, the name field's resting border and the placeholder left
+  while the icon is dragged were black veils that vanished on a dark panel;
+  they are veils of the theme's ink now.
+
 #### 2026-11-18 *0.9.574*
 - **A paragraph in a table cell keeps its own proportional line height**
   (`RichTextRun::lineSpacing`, new): a card's heading set at 70% or 90% of its

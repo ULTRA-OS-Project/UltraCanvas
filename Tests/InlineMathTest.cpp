@@ -8,8 +8,9 @@
 // depends on it), so this is a real cross-module test: if the module or its
 // math font cannot be found the first section fails and says why.
 //
+// Version: 1.1.0 - backslash escapes inside emphasis (italic, bold, strike-through), not in code
 // Version: 1.0.0
-// Last Modified: 2026-09-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasInlineMath.h"
@@ -105,6 +106,26 @@ void TestParser() {
     int math = 0;
     for (const auto& r : runs) if (r.kind == TextAreaProbe::InlineRun::Math) ++math;
     Check(math == 2 && runs.size() == 3, "several formulas in one line, mixed with other runs");
+
+    // Backslash escapes inside emphasis are resolved as outside it - what
+    // UCRichDocument::ToMarkdown writes for an italic "[Picture: ...]".
+    visible.clear(); runs.clear(); cpMap.clear();
+    TextAreaProbe::ParseInlineMarkdownRuns("*\\[Picture: chart]*", visible, runs, &cpMap);
+    Check(visible == "[Picture: chart]" && runs.size() == 1 && runs[0].kind == TextAreaProbe::InlineRun::Italic &&
+              runs[0].startByte == 0 && runs[0].endByte == 16,
+          "an escape inside italics shows the character, not the backslash (\"" + visible + "\")");
+    Check(VisibleCpToSourceCp(cpMap, 0) == 2 && VisibleCpToSourceCp(cpMap, 1) == 3,
+          "...and the cursor map skips the marker and the backslash");
+    visible.clear(); runs.clear();
+    TextAreaProbe::ParseInlineMarkdownRuns("*x\\*y* z", visible, runs);
+    Check(visible == "x*y z" && runs.size() == 1 && runs[0].endByte == 3,
+          "an escaped star does not close the italic run");
+    visible.clear(); runs.clear();
+    TextAreaProbe::ParseInlineMarkdownRuns("**a\\_b** and ~~c\\~d~~", visible, runs);
+    Check(visible == "a_b and c~d" && runs.size() == 2, "bold and strike-through resolve escapes too");
+    visible.clear(); runs.clear();
+    TextAreaProbe::ParseInlineMarkdownRuns("`a\\b`", visible, runs);
+    Check(visible == "a\\b", "inline code keeps its backslash");
 }
 
 // Counts inked (clearly non-white) pixels in a rectangle of the surface; the

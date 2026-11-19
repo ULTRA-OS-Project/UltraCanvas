@@ -404,7 +404,9 @@ The full 3-OS dependency lists are in `.github/workflows/build.yml`. CI
 installs Ubuntu packages with `scripts/ci-apt.sh install`, not
 `sudo apt-get install`: it stops and retries a download that has stopped
 dead, which apt itself waits out for as long as the job lasts. The build's
-Linux legs also restore the packages the last run on `main` downloaded
+Linux legs, the Wayland row (`wayland-build.yml`) and both rows of
+`element-modules.yml` (one cache, which its static row saves, and the Wayland
+row's until it has one) also restore the packages the last run on `main` downloaded
 (`ci-apt.sh cache-in` / `cache-out`, saved on `main` only), so a slow mirror
 serves only what changed.
 The repository has 10 GB of Actions cache, and GitHub evicts past that.
@@ -470,7 +472,11 @@ that is not installed: CI's Linux list (`.github/workflows/build.yml`) under
 Ubuntu 24.04's names, with 24.04's own MuPDF, libopusenc and c-ares where CI
 builds them from source - the libraries of the MQTT, AMQP, CoAP, SNMP and
 SSH plug-ins among them, which neither installed until 2026-10, so a change
-to one of those five compiled nowhere. Without it, UltraCrypt built without libsodium and
+to one of those five compiled nowhere, and Avahi's client library, without
+which the mDNS plug-in was not built here. It also installs Python's
+`websockets` package with pip, as CI does - not from that list: the loopback
+server of UltraNet's WebSocket tests needs the package's 13.0 API and
+Ubuntu's own is older - so those twelve tests run here instead of skipping. Without it, UltraCrypt built without libsodium and
 every credential-vault test failed here while passing in CI, and VideoFX, the
 PDF plugin, UltraWin, UltraNet's resolver and UltraFIBU's multi-user server
 were not built at all. A cold container takes about a minute, a warm one a
@@ -972,7 +978,8 @@ and never introduce a new literal copy of one:
    field or signature the headers don't have (Linux, clang++). All
    `*Examples.md` docs pass it. CI runs it over every doc under
    `Docs/UltraCanvas/` but the changelog, and over the module docs listed in
-   `CHECKED_MODULE_DOCS` in the script (`Docs/Modules/FileLoader/` so far)
+   `CHECKED_MODULE_DOCS` in the script (`Docs/Modules/` FileLoader,
+   UltraCrypt, UltraLocalisation, UltraNet and UltraSite so far)
    (`--all --strict`, `doc-examples.yml`) whenever a doc or a public header
    changes, and fails on any finding a component doc has. A module doc
    joins that list once its examples compile, and is fixed, not baselined. The design documents (a Proposal,

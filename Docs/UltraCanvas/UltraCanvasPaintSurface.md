@@ -141,6 +141,25 @@ Two kinds of history entry keep memory in check:
 
 `SetUndoMemoryLimit()` bounds the history; the oldest entries go first.
 
+`ScaleImage(width, height, options)` resamples every layer by
+`UCScaleImageOptions`: `method` is a `UCResampleMethod` - `Lanczos3` (the
+default, the sharpest), `Lanczos2`, `Mitchell` (soft but clean, hardly any
+halo at hard edges), `Bicubic`, `Bilinear`, or `Nearest`, which copies the
+nearest old pixel and is the one for pixel art, icons and screenshots at a
+whole multiple - and `sharpen`, 0 to 1, an unsharp mask after the resample
+whose radius follows the enlargement. Sharpening works on the colour of the
+premultiplied pixels and leaves the alpha band as it was, so an edge against
+transparency gets no fringe; `Nearest` is never sharpened. Interpolation
+adds no detail: an enlarged picture looks soft with the smooth methods and
+blocky with `Nearest`, whichever is chosen.
+
+```cpp
+UCScaleImageOptions options;
+options.method = UCResampleMethod::Mitchell;
+options.sharpen = 0.5;
+document->ScaleImage(document->GetWidth() * 2, document->GetHeight() * 2, options);
+```
+
 A selection belongs to the canvas it was made on. The whole-image geometry
 operations (`CropTo`, `ScaleImage`, `ResizeCanvas`, `Rotate90`) re-shape it,
 which is a selection change like any other: they fire `onSelectionChanged()`
@@ -464,7 +483,8 @@ a single-threaded WebAssembly program, where it cannot run. There the layer,
 selection, document, brush engine and surface compile without
 `HAS_LIBVIPS`. What disappears is `ToPixelFX` / `FromPixelFX`,
 `ApplyFilter` / `PreviewFilter`, file load / save and layered files (`.ucd`, `.ucraster`);
-`ScaleImage` falls back to the layer's bilinear resample. Text layers are
+`ScaleImage` falls back to the layer's bilinear resample for every method
+but `Nearest`, and does not sharpen. Text layers are
 drawn without libvips (through the render context); only keeping them in a
 project needs it, as every project does.
 

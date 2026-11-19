@@ -60,6 +60,7 @@
   "Save the recording as": "Зберігати запис як",
   "saved": "збережено",
   "Saved as {0}": "Збережено як {0}",
+  "Scroll to zoom, drag to move, double-click to fit": "Прокручування — масштаб, перетягування — зсув, подвійне клацання — за розміром вікна",
   "Settings for .{0}": "Налаштування для .{0}",
   "settings page|Saving": "Збереження",
   "Settings: the picture type and folder, the recording's type and frame rate, what happens after a snip": "Налаштування: тип і папка зображень, тип і частота кадрів запису, що відбувається після знімка",

@@ -60,6 +60,7 @@
   "Save the recording as": "녹화 저장 형식",
   "saved": "저장됨",
   "Saved as {0}": "{0}(으)로 저장되었습니다",
+  "Scroll to zoom, drag to move, double-click to fit": "스크롤하여 확대/축소, 드래그하여 이동, 두 번 클릭하여 맞춤",
   "Settings for .{0}": ".{0} 설정",
   "settings page|Saving": "저장",
   "Settings: the picture type and folder, the recording's type and frame rate, what happens after a snip": "설정: 이미지 형식과 폴더, 녹화 형식과 프레임 속도, 캡처 후 동작",

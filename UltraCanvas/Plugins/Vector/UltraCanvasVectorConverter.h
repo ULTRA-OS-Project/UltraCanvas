@@ -1,5 +1,6 @@
 // UltraCanvasVectorConverter.h  
 // Vector Graphics Format Converter Interface for UltraCanvas
+// Version: 1.1.0 - VectorFormat::ODG
 // Version: 1.0.0
 // Last Modified: 2025-01-20
 // Author: UltraCanvas Framework
@@ -46,7 +47,10 @@ enum class VectorFormat {
     PostScript,    // PostScript
     
     // Internal format
-    UltraCanvas    // Native UltraCanvas format
+    UltraCanvas,   // Native UltraCanvas format
+
+    // Appended last so the values above keep their numbers.
+    ODG            // OpenDocument Drawing (LibreOffice Draw)
 };
 
 // ===== CONVERSION OPTIONS =====

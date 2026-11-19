@@ -136,6 +136,7 @@
   "no translation provider is available": "没有可用的翻译提供程序",
   "None found": "未找到",
   "Not available": "不可用",
+  "Not saved yet": "尚未保存",
   "One Column": "一栏",
   "Open File(s)": "打开文件",
   "Open File... (Ctrl+O)": "打开文件… (Ctrl+O)",
@@ -213,5 +214,8 @@
   "Windows-1251 (Cyrillic)": "Windows-1251（西里尔文）",
   "Windows-1252 (Western)": "Windows-1252（西欧）",
   "Word Wrap": "自动换行",
-  "Zoom Level": "缩放级别"
+  "Zoom Level": "缩放级别",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "other": "{n} 个文件有未保存的更改。关闭前保存吗?"
+  }
 }

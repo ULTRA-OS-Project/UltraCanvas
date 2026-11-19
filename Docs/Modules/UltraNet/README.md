@@ -160,6 +160,7 @@ App / Module (UltraCanvas, UltraAI, IODeviceManager, ...)
 
 ## Quick examples
 
+<!-- doc-check: std::string accessToken; -->
 ```cpp
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetHttp.h>
@@ -174,9 +175,10 @@ if (UltraNet_HttpGet("https://api.example.com/v1/health", r)) {
 UltraNetHttpRequest req;
 req.url    = "https://api.example.com/v1/items";
 req.method = UltraNetHttpMethod::Post;
-req.headers.Set("authorization", "Bearer " + token);
+req.headers.Set("authorization", "Bearer " + accessToken);
 req.headers.Set("content-type", "application/json");
-req.body   = SerializeJson(payload);
+const std::string json = R"({"name":"example"})";
+req.body.assign(json.begin(), json.end());      // the body is bytes
 
 UltraNetHandle h = UltraNet_HttpRequestAsync(req,
     [](const UltraNetResponse& resp) {
@@ -209,8 +211,9 @@ dl.options.stallTimeoutMs     = 60000;  // Timeout when nothing moves for 60 s
 dl.onHeaders = [](const UltraNetResponse& head) {
     // The final response's headers, before any body: 206 means the rest of
     // the file is coming, 200 that the server sent it all and the partial
-    // file was replaced. Return false to end the transfer (Cancelled).
-    return head.contentLength <= kMaxPackageBytes;
+    // file was replaced. Return false to end the transfer (Cancelled) -
+    // here for anything over 512 MB.
+    return head.contentLength <= 512LL * 1024 * 1024;
 };
 dl.onDownloadProgress = [](int64_t now, int64_t total) {
     // Figures of the whole file, the resumed bytes included.
@@ -283,6 +286,7 @@ std::string host;
 UltraNet_DnsReverseLookup("9.9.9.9", host, options);
 ```
 
+<!-- doc-check: std::string clientId; std::atomic<bool> dialogClosed; -->
 ```cpp
 #include <UltraNet/UltraNetOAuth2.h>
 
@@ -428,6 +432,25 @@ only would otherwise cut off a mail server that was reached directly. A
 proxy set explicitly (`Http`, `Socks5`, ...) carries everything, the HTTP
 kind as a CONNECT tunnel.
 
+A program that is to follow the proxy setting in everything it does asks
+`UltraNet_ResolveTunnelProxy(host, port)` for its connections that are not
+the web's: the proxy `tcp://host:port` resolves to (the one chosen, the
+system's SOCKS proxy), and where that is none the one `https://host:port`
+resolves to - the web's proxy, as a tunnel. With nothing but a web proxy set
+in the system such a connection then goes through it and not past it, and a
+proxy that will not tunnel to that port fails it by name
+(`UltraNet_TcpOpen`'s error) - the caller's choice of "through the proxy or
+not at all" over "directly where the proxy is the web's". ChatCube's
+networks do: IRC and XMPP over TCP hand the answer to
+`UltraNetSocketOptions::proxy`, Telegram tells it to TDLib.
+
+```cpp
+UltraNetSocketOptions options;
+options.proxy = UltraNet_ResolveTunnelProxy("irc.libera.chat", 6697);   // NoProxy: directly
+UltraNetHandle connection = UltraNetInvalidHandle;
+UltraNetResult opened = UltraNet_TcpOpen("irc.libera.chat", 6697, options, connection);
+```
+
 `UltraNetProxyConfig::autoConfigUrl` names a PAC script to run instead of
 the system's settings, where this build can (`UltraNet_CanEvaluateProxyScript`:
 Windows and macOS).
@@ -463,12 +486,13 @@ case UltraDatabase uses it for (`UltraDatabaseSshTunnel.h`). The `ssh`
 plug-in (libssh) does the work and is loaded on first use; without it the
 call fails with `PluginNotFound`.
 
+<!-- doc-check: std::vector<uint8_t> key; std::string trusted; -->
 ```cpp
 #include <UltraNet/UltraNetSsh.h>
 
 UltraNetSshTunnelOptions tunnel;
 tunnel.url = "ssh://deploy@bastion.example.com";
-tunnel.remote.privateKeyPem = key;     // or remote.credentials.password; neither: the agent, the default keys
+tunnel.remote.privateKeyPem = key;     // the key file's bytes - or remote.credentials.password; neither: the agent, the default keys
 tunnel.remote.hostKeyFingerprint = trusted;   // "SHA256:..."
 tunnel.targetHost = "db.internal";
 tunnel.targetPort = 5432;
@@ -556,6 +580,7 @@ Command:  MLSD
 Error:    Connection timed out after 30 seconds of inactivity   (transportCode 28)
 ```
 
+<!-- doc-check: std::string secret; void Show(UltraNetFtpLogKind kind, const std::string& text, int replyCode, int transportCode); -->
 ```cpp
 UltraNetFtpOptions opt;
 opt.credentials.username = "erika";
@@ -718,8 +743,8 @@ architecture.
   `UltraNetResultCode::Cancelled` once it says true. UltraFiler's drive
   worker uses it so that quitting does not wait for a large upload to
   finish. Asynchronous requests are cancelled with `UltraNet_CancelRequest`.
-* **Reserved:** never write `HttpClient`, `Connect()`, `Download()`,
-  `ResolveHost()` etc. at module level — always go through the
+* **Reserved:** never write `HttpClient`, `Connect`, `Download`,
+  `ResolveHost` etc. at module level — always go through the
   `UltraNet_*` API. (Full reserved-pattern list lives in the master
   registry.)
 

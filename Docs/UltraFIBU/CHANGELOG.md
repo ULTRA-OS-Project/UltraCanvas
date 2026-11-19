@@ -1,3 +1,13 @@
+#### 2026-11-18 *0.24.7*
+- **The program is called `UltraFIBU`, as the app is.** The binary was
+  `ultrafibu`; it is now `UltraFIBU` (`UltraFIBU.exe` and `UltraFIBU.com` on
+  Windows), and the help and the messages that name a command say
+  `UltraFIBU einrichten`, `UltraFIBU buchen` and so on.
+- **Not built and not packaged, for the moment.** `BUILD_ULTRAFIBU` is off
+  by default, and the Linux and Windows packages carry neither the program
+  nor its chart-of-accounts data. `-DBUILD_ULTRAFIBU=ON` builds it again. The
+  engine test suite still runs: it compiles the engine sources itself.
+
 #### 2026-10-22 *0.24.6*
 - **The start window is the framework's start page.** Title, the reason
   this window, *Zuletzt geöffnet*, the open button, the setup form and the

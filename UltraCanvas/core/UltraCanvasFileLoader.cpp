@@ -1,6 +1,9 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.12.1 - RequestDocumentPassword's prompt shows a lock centred above the field
+// Version: 1.12.0 - LoadTextDocument / OpenTextDocument read an OpenDocument presentation
+//                  (.odp, .otp, .fodp) as an outline, like a .pptx
 // Version: 1.11.0 - ConvertVideoFile, CanConvertVideoTo, GetVideoSaveExtensions, AddVideoSaveTypes
 // Version: 1.10.0 - SaveAudio, ConvertAudioFile
 // Version: 1.9.0 - SaveFile
@@ -15,7 +18,7 @@
 //                  GetVectorDocumentPixelSize, CanSaveImage, AddVectorDocumentSaveTypes,
 //                  AddImageSaveTypes
 // Version: 1.3.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
@@ -24,9 +27,11 @@
 #include "UltraCanvasAudio.h"
 #include "UltraCanvasMediaCodecRegistry.h"   // SaveAudio's encoders, ConvertVideoFile's converters
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasConfig.h"   // GetResourcesDir: the prompt's lock icon
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasOfficeEncryption.h"   // RequestDocumentPassword
 #include "UltraCanvasPresentationPptx.h"    // .pptx, read as an outline
+#include "UltraCanvasPresentationOdp.h"     // .odp / .otp / .fodp, the same
 #include "UltraCanvasVectorPreview.h"   // the Vector plugin's readers/writers, installed at start-up
 #include "UltraCanvasVectorRaster.h"    // RasterizeVectorDocument: a drawing saved as a bitmap
 #include "UltraCanvasRasterDocument.h"  // ... written through the image writer
@@ -621,7 +626,9 @@ namespace UltraCanvas {
             static const std::map<std::string, std::string> names = {
                 {"pdf", "PDF"}, {"ai", "Adobe Illustrator"}, {"eps", "EPS"}, {"ps", "PostScript"},
                 {"cdr", "CorelDRAW"}, {"svg", "SVG"}, {"svgz", "SVG (compressed)"}, {"xar", "Xara XAR"},
-                {"dxf", "DXF"}, {"dwg", "DWG"}, {"emf", "EMF"}, {"wmf", "WMF"}};
+                {"dxf", "DXF"}, {"dwg", "DWG"}, {"emf", "EMF"}, {"wmf", "WMF"},
+                {"odg", "OpenDocument Drawing"}, {"otg", "OpenDocument Drawing Template"},
+                {"fodg", "OpenDocument Drawing (flat XML)"}};
             auto it = names.find(ext);
             if (it != names.end()) return it->second;
             std::string upper = ext;
@@ -881,6 +888,12 @@ namespace UltraCanvas {
             if (!ReadPptxPresentation(filePath, deck, outError, password)) return nullptr;
             return std::make_shared<UCRichDocument>(PptxPresentationToRichDocument(deck));
         }
+        // An OpenDocument presentation the same way, by its content.
+        if (IsOdpPresentationFile(filePath)) {
+            PptxPresentation deck;
+            if (!ReadOdpPresentation(filePath, deck, outError, password)) return nullptr;
+            return std::make_shared<UCRichDocument>(PptxPresentationToRichDocument(deck));
+        }
 
         // Package formats (and renamed/legacy files) go by content signature.
         WordDocumentFormat format = DetectWordDocumentFormat(filePath);
@@ -890,6 +903,14 @@ namespace UltraCanvas {
                 return nullptr;
             }
             return document;
+        }
+
+        // A deck's name on a file that is no deck (damaged, or something
+        // else renamed) is not text to show.
+        if (IsPptxExtension(filePath) || IsOdpExtension(filePath)) {
+            outError = std::string("The file is not a valid ") +
+                       (IsPptxExtension(filePath) ? "PowerPoint" : "OpenDocument") + " presentation: " + filePath;
+            return nullptr;
         }
 
         // Everything else is treated as (markdown-flavored) text.
@@ -907,11 +928,11 @@ namespace UltraCanvas {
 
     namespace {
         // The document types LoadTextDocument reads: the Word document reader's
-        // (ODT, DOCX, DOC, LaTeX), PowerPoint decks as outlines, and the
+        // (ODT, DOCX, DOC, LaTeX), PowerPoint and OpenDocument decks as outlines, and the
         // Markdown text path's.
         bool TextDocumentReads(const MediaFormatInfo& format) {
             if (WordDocumentFormatFromExtension(format.extension) != WordDocumentFormat::Unknown) return true;
-            if (IsPptxExtension(format.extension)) return true;
+            if (IsPptxExtension(format.extension) || IsOdpExtension(format.extension)) return true;
             return format.extension == "md" || format.extension == "txt";
         }
 
@@ -984,7 +1005,13 @@ namespace UltraCanvas {
             const std::string name = PathToUtf8(PathFromUtf8(filePath).filename());
             const std::string prompt = (notice.empty() ? std::string() : notice + ".\n") +
                                        "\"" + name + "\" is password-protected. Password:";
-            UltraCanvasDialogManager::ShowInputDialog(prompt, "Password", "", InputType::Password,
+            InputDialogConfig ask;
+            ask.title = "Password";
+            ask.inputLabel = prompt;
+            ask.inputType = InputType::Password;
+            // The lock UltraViewer's Unlock shows, centred above the field.
+            ask.iconAboveInput = NormalizePath(GetResourcesDir() + "media/icons/unlock.svg");
+            UltraCanvasDialogManager::ShowInputDialog(ask,
                 [filePath, parent, onResult](DialogResult result, const std::string& password) {
                     if (result != DialogResult::OK) {
                         onResult(false, "");

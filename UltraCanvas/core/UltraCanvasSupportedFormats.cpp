@@ -10,6 +10,7 @@
 //                  once the host application registers the plugin).
 //   Model3D      — graphics plugin registry only (STL plugin et al.).
 //   Document     — MuPDF (compile-gated), the built-in ODT/DOCX/DOC engines,
+//                  the PowerPoint and OpenDocument presentation readers,
 //                  the Markdown/HTML text path, plus every extension the
 //                  eBook engine registry reports at runtime.
 //   Spreadsheet  — the built-in ODS/XLSX/XLS/CSV engines (always compiled in).
@@ -26,6 +27,8 @@
 //                  it (CanImagePipelineLoad stays false for every font).
 //   LayeredImage — UCRasterDocument's own files: the UCD 2.1 layered image
 //                  (no libvips needed) and the UltraPaint project (libvips).
+// Version: 1.5.0 - OpenDocument presentations (.odp, .otp, .fodp); PowerPoint lists .ppsm and
+//                  .potm, which its reader always took
 // Version: 1.4.0 - LayeredImage: *.ucd (UCD 2.1 layered image) and *.ucraster
 // Version: 1.3.0 - a bitmap's canLoad asks whether it can decode (no HEIC
 //                  without libheif's HEVC decoder, no AVIF without its AV1 one)
@@ -33,7 +36,7 @@
 //                  HEIC without libheif's encoder); ICO and QOI name the
 //                  framework's own plugins
 // Version: 1.1.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSupportedFormats.h"
@@ -225,11 +228,16 @@ namespace {
         out.push_back({ "docx", {}, "Word document (OOXML)",
                         MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)", "" });
-        out.push_back({ "pptx", { "pptm", "ppsx", "potx" }, "PowerPoint presentation (OOXML)",
+        out.push_back({ "pptx", { "pptm", "ppsx", "ppsm", "potx", "potm" }, "PowerPoint presentation (OOXML)",
                         MediaFormatCategory::Document, true, false,
                         "built-in (miniz + tinyxml2)",
                         "read as an outline: slide titles, text, tables, speaker notes; "
                         "no layout, pictures or writer" });
+        out.push_back({ "odp", { "otp", "fodp" }, "OpenDocument Presentation",
+                        MediaFormatCategory::Document, true, false,
+                        "built-in (miniz + tinyxml2)",
+                        "read as an outline: slide titles, text, tables, speaker notes; "
+                        "no layout, pictures, password-protected files or writer" });
         out.push_back({ "doc", {}, "Word 97-2003 document",
                         MediaFormatCategory::Document, true, false,
                         "built-in OLE2/CFB parser", "plain-text import only" });

@@ -1,5 +1,6 @@
 // UltraCanvasVectorStorage.h
 // Internal Vector Graphics Storage System for UltraCanvas
+// Version: 2.2.0 - VectorStyle::ShapeFillRule: a shape filled even-odd
 // Version: 2.1.0 - VectorTextStyle::FillColor: a span of a text in its own colour
 // Version: 2.0.0
 // Last Modified: 2026-11-04
@@ -460,6 +461,11 @@ namespace UltraCanvas {
             std::optional<std::string> ClipPath;
             std::optional<std::string> Mask;
             FillRule ClipRule = FillRule::NonZero;
+            // How the fill treats overlapping subpaths: NonZero fills a hole
+            // drawn in the same direction as its outline, EvenOdd leaves it
+            // open - which is how LibreOffice fills every shape, so a ring or
+            // a letter converted to curves needs it. Not inherited.
+            FillRule ShapeFillRule = FillRule::NonZero;
             std::vector<std::string> Filters;
             bool Visible = true;
             bool Display = true;

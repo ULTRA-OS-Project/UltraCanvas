@@ -1,5 +1,6 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasVectorFormatsPlugin.cpp
 // Implementation of the vector formats graphics plugin - see the header.
+// Version: 1.4.0 - OpenDocument Drawing (.odg / .otg / .fodg) read and written
 // Version: 1.3.0 - the preview provider reads from memory too (ImportFromString)
 // Version: 1.2.0
 // Last Modified: 2026-10-14
@@ -11,6 +12,7 @@
 #include "UltraCanvasCDRConverter.h"
 #include "UltraCanvasEPSConverter.h"
 #include "UltraCanvasMetafileConverters.h"
+#include "UltraCanvasODGConverter.h"
 #include "UltraCanvasXARConverter.h"
 #include "UltraCanvasVectorPreview.h"
 
@@ -57,6 +59,7 @@ std::vector<std::unique_ptr<IVectorFormatConverter>> AllConverters() {
     all.push_back(std::make_unique<AIConverter>());
     all.push_back(std::make_unique<DXFConverter>());
     all.push_back(std::make_unique<DWGConverter>());
+    all.push_back(std::make_unique<ODGConverter>());
     return all;
 }
 

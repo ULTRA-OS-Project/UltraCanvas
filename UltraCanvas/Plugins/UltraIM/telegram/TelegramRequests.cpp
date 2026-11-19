@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TelegramRequests.cpp
 // Telegram provider - the TDLib requests it sends
+// Version: 0.1.7 - AddProxy, DisableProxy, GetProxies, RemoveProxy, SetNetworkAvailable
 // Version: 0.1.6 - GetSupergroupMembers
 // Version: 0.1.5 - SetChatTitle, AddChatMembers, RemoveChatMember, LeaveChat, DeleteChatHistory, GetBasicGroupFullInfo
 // Version: 0.1.5 - SendVoiceNote
@@ -8,7 +9,7 @@
 // Version: 0.1.2 - RequestQrCode
 // Version: 0.1.1 - ResendCode
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "TelegramRequests.h"
@@ -342,6 +343,45 @@ TdObject GetSupergroupMembers(int64_t supergroupId, int32_t offset, int32_t limi
     o.Set("filter", Make("supergroupMembersFilterRecent"));
     o.Set("offset", TdObject(static_cast<int64_t>(offset)));
     o.Set("limit", TdObject(static_cast<int64_t>(limit)));
+    return o;
+}
+
+TdObject AddProxy(const Proxy& proxy) {
+    TdObject type = Make(proxy.kind == Proxy::Kind::Http ? "proxyTypeHttp" : "proxyTypeSocks5");
+    type.Set("username", TdObject(proxy.username));
+    type.Set("password", TdObject(proxy.password));
+    // Not an HTTP proxy for HTTP requests alone: one that tunnels.
+    if (proxy.kind == Proxy::Kind::Http) type.Set("http_only", TdObject(false));
+    TdObject described = Make("proxy");
+    described.Set("server", TdObject(proxy.server));
+    described.Set("port", TdObject(static_cast<int64_t>(proxy.port)));
+    described.Set("type", type);
+    TdObject o = Make("addProxy");
+    o.Set("proxy", described);
+    o.Set("server", TdObject(proxy.server));
+    o.Set("port", TdObject(static_cast<int64_t>(proxy.port)));
+    o.Set("type", type);
+    o.Set("enable", TdObject(true));
+    return o;
+}
+
+TdObject DisableProxy() {
+    return Make("disableProxy");
+}
+
+TdObject GetProxies() {
+    return Make("getProxies");
+}
+
+TdObject RemoveProxy(int32_t proxyId) {
+    TdObject o = Make("removeProxy");
+    o.Set("proxy_id", TdObject(static_cast<int64_t>(proxyId)));
+    return o;
+}
+
+TdObject SetNetworkAvailable(bool available) {
+    TdObject o = Make("setNetworkType");
+    o.Set("type", Make(available ? "networkTypeOther" : "networkTypeNone"));
     return o;
 }
 

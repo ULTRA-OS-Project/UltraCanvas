@@ -106,7 +106,6 @@
   "Could not leave {0}: {1}": "No s'ha pogut sortir de {0}: {1}",
   "Could not load the messages: {0}": "No s'han pogut carregar els missatges: {0}",
   "Could not open the chat: {0}": "No s'ha pogut obrir el xat: {0}",
-  "Could not open {0}": "No s'ha pogut obrir {0}",
   "Could not remove {0}: {1}": "No s'ha pogut eliminar {0}: {1}",
   "Could not rename the group: {0}": "No s'ha pogut canviar el nom del grup: {0}",
   "Could not save the description: {0}": "No s'ha pogut desar la descripció: {0}",

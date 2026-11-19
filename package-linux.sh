@@ -43,9 +43,8 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
     || echo "$(uname -m)-linux-gnu")"
 
 # Apps to include (executable target names, output to the build root).
-# `ultrafibu` is one program: the commands (`ultrafibu info buch.db`) and,
-# given none, the window. Built without the UI library it is the commands
-# alone, which is what a server installation runs.
+# UltraFIBU is left out of the package for the moment (BUILD_ULTRAFIBU is
+# off); add `UltraFIBU` back to APPS when it returns.
 # `ultramsg` is the UltraMessage command line (Apps/UltraMessageCli): post to,
 # follow and query the per-user message channel.
 # UltraAuthenticator and UltraPassword are built only when libsodium is found
@@ -58,13 +57,13 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # UltraWeb carries its WebAssembly engine (wasmtime) linked in statically.
 # UltraCanvasStart, the setup application, is in the bundle like every app;
 # scripts/package-ultracanvasstart.sh cuts it out of the bundle on its own.
-# `ultrapress` is one program too (Apps/UltraPress): the commands - a
+# `UltraPress` is one program too (Apps/UltraPress): the commands - a
 # starter site, the check, a page's HTML shadow, the static publish, the
 # WordPress import - and, given a site folder, the editor window. Outputs
 # to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
-      ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraNotifications UltraToDo UltraWeb UltraCanvasStart ultrapress
+      UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
+      UltraAuthenticator UltraPassword UltraClipboard UltraNotifications UltraToDo UltraWeb UltraCanvasStart UltraPress
       SmartHomeCenter UltraDBAdmin)
 
 # AnchorPoint is peer-to-peer file sharing: the window, and `anchorpoint-cli`,
@@ -337,16 +336,9 @@ cp -r "$PROJECTDIR/Docs"  "$PKG/share/Docs"
 mkdir -p "$PKG/share/DemoApp"
 cp "$PROJECTDIR"/Apps/DemoApp/*.cpp "$PKG/share/DemoApp/" 2>/dev/null || true
 
-# UltraFIBU's data files. Without them the application starts and can do
-# nothing: no chart of accounts means no Mandant, and shipping the binary
-# without them would be worse than not shipping it at all.
-if [ -d "$PROJECTDIR/Apps/UltraFIBU/data" ]; then
-    mkdir -p "$PKG/share/UltraFIBU"
-    cp -r "$PROJECTDIR/Apps/UltraFIBU/data" "$PKG/share/UltraFIBU/data"
-    # And beside the binary, so `bin/ultrafibu` run directly - without the
-    # wrapper that sets ULTRAFIBU_DATA_DIR - still finds them.
-    cp -r "$PROJECTDIR/Apps/UltraFIBU/data" "$PKG/bin/data"
-fi
+# No UltraFIBU data files in the package: UltraFIBU is not distributed for
+# the moment. When it returns, copy Apps/UltraFIBU/data to
+# "$PKG/share/UltraFIBU/data" and "$PKG/bin/data" again.
 
 # --- archive -----------------------------------------------------------------
 

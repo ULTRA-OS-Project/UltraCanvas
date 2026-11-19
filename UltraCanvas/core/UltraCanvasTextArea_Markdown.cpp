@@ -1,6 +1,11 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
+// Version: 2.8.4 - a table is sized to the visible width once it is known: without word wrap the
+//                  first layout ran before the visible area was measured, so tables kept their
+//                  100 px floor and broke header words ("Quar-ter") with room to spare
+// Version: 2.8.3 - a backslash escape inside bold, italic or strike-through is resolved, as outside
+//                  ("*\\[Picture]*" shows "[Picture]"), and an escaped marker does not close the run
 // Version: 2.8.2 - a table's separator row is only a small gap when there is no
 //                 line-number gutter (the rule under the header is drawn at its top)
 // Version: 2.8.1 - footnote, abbreviation and anchor tooltips are placed at the pointer
@@ -8,7 +13,7 @@
 // Version: 2.8.0 - GitHub-style heading anchors: [Section](#section) jumps without {#id}
 // Version: 2.7.1 - MarkdownHybridStyle::linkUnderline is honoured (links were always underlined)
 // Version: 2.7.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -611,8 +616,9 @@ namespace UltraCanvas {
 
     // Inline markdown scanner. Single-pass, not recursive — doesn't handle nested inline markers
     // (e.g. **bold _italic_**). Marker bytes (`*`, `_`, `` ` ``, `~`, `^`, `[`, `]`, `(`, `)`,
-    // `!`) are stripped from the visible output. A trailing `\` escapes the next literal
-    // character. Known `:shortcode:` names and word-boundary ASCII emoticons (`:-)`, `;)`,
+    // `!`) are stripped from the visible output. A `\` escapes the next literal
+    // character - inside bold, italic and strike-through too (not in inline code).
+    // Known `:shortcode:` names and word-boundary ASCII emoticons (`:-)`, `;)`,
     // `8-)`, `<3`, …) are expanded to their UTF-8 emoji inline, and typography markers
     // `(c)` / `(r)` / `(tm)` / `(p)` (case-insensitive) expand to © ® ™ ℗. Inline math
     // `$…$` runs LaTeX commands through SubstituteGreekLetters (`\alpha` → α, etc.).
@@ -684,6 +690,40 @@ namespace UltraCanvas {
             for (int j = from; j < n; j++) if (rawLine[j] == c) return j;
             return -1;
         };
+        // The same, stepping over a backslash-escaped character: "*\**" is an
+        // italic star, not an empty italic run and a stray marker.
+        auto scanPairUnescaped = [&](int from, char a, char b) -> int {
+            for (int j = from; j + 1 < n; j++) {
+                if (rawLine[j] == '\\') { j++; continue; }
+                if (rawLine[j] == a && rawLine[j + 1] == b) return j;
+            }
+            return -1;
+        };
+        auto scanCharUnescaped = [&](int from, char c) -> int {
+            for (int j = from; j < n; j++) {
+                if (rawLine[j] == '\\') { j++; continue; }
+                if (rawLine[j] == c) return j;
+            }
+            return -1;
+        };
+        // Appends rawLine[from, to) to the visible text with its backslash
+        // escapes resolved - "*\[Picture]*" shows "[Picture]" in italics, as
+        // outside emphasis. Each dropped backslash moves the source cursor
+        // and records a boundary, so a click inside the run still lands on
+        // its source column.
+        auto appendUnescaped = [&](int from, int to) {
+            for (int j = from; j < to;) {
+                if (rawLine[j] == '\\' && j + 1 < to) {
+                    i = j + 1;     // past the backslash
+                    noteVisStart();
+                    visibleText.push_back(rawLine[j + 1]);
+                    j += 2;
+                    continue;
+                }
+                visibleText.push_back(rawLine[j]);
+                ++j;
+            }
+        };
 
         while (i < n) {
             // Sync running cp counters and emit a boundary if the delta changed
@@ -704,12 +744,12 @@ namespace UltraCanvas {
 
             // Bold: **...** or __...__
             if (i + 1 < n && (c == '*' || c == '_') && rawLine[i + 1] == c) {
-                int close = scanPair(i + 2, c, c);
+                int close = scanPairUnescaped(i + 2, c, c);
                 if (close > i + 2) {
                     int s = (int)visibleText.size();
                     i += 2;        // skip opening **
                     noteVisStart();
-                    visibleText.append(rawLine, i, close - i);
+                    appendUnescaped(i, close);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Bold, {}, {}});
                     i = close + 2;
                     continue;
@@ -717,12 +757,12 @@ namespace UltraCanvas {
             }
             // Italic: *...* or _..._
             if (c == '*' || c == '_') {
-                int close = scanChar(i + 1, c);
+                int close = scanCharUnescaped(i + 1, c);
                 if (close > i + 1) {
                     int s = (int)visibleText.size();
                     i += 1;        // skip opening *
                     noteVisStart();
-                    visibleText.append(rawLine, i, close - i);
+                    appendUnescaped(i, close);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Italic, {}, {}});
                     i = close + 1;
                     continue;
@@ -743,12 +783,12 @@ namespace UltraCanvas {
             }
             // Strike: ~~...~~
             if (i + 1 < n && c == '~' && rawLine[i + 1] == '~') {
-                int close = scanPair(i + 2, '~', '~');
+                int close = scanPairUnescaped(i + 2, '~', '~');
                 if (close > i + 2) {
                     int s = (int)visibleText.size();
                     i += 2;        // skip opening ~~
                     noteVisStart();
-                    visibleText.append(rawLine, i, close - i);
+                    appendUnescaped(i, close);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Strike, {}, {}});
                     i = close + 2;
                     continue;
@@ -1146,6 +1186,7 @@ namespace UltraCanvas {
         constexpr int cellPadding = 4;
         constexpr int rowVerticalPad = 4;
         const float availWidth = std::max(100.0f, visibleTextArea.width);
+        tablesLaidOutWidth = visibleTextArea.width;
 
         int colCount = 0;
         for (int i = startLine; i <= endLine; i++) {

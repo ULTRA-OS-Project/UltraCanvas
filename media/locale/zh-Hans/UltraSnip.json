@@ -60,6 +60,7 @@
   "Save the recording as": "录像保存格式",
   "saved": "已保存",
   "Saved as {0}": "已保存为 {0}",
+  "Scroll to zoom, drag to move, double-click to fit": "滚动以缩放，拖动以移动，双击以适应窗口",
   "Settings for .{0}": ".{0} 的设置",
   "settings page|Saving": "保存",
   "Settings: the picture type and folder, the recording's type and frame rate, what happens after a snip": "设置：图片格式和文件夹、录像格式和帧率，以及截取后的操作",

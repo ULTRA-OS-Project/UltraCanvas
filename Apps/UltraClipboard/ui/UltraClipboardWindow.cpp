@@ -1,5 +1,11 @@
 // Apps/UltraClipboard/ui/UltraClipboardWindow.cpp
 // UltraClipboard's main window. See UltraClipboardWindow.h.
+// Version: 0.2.8 - a copied PowerPoint deck previews its slides, drawn on a worker
+//                  (UltraCanvasPptxSlideRender); PageUp / PageDown turn them
+// Version: 0.2.7 - the preview shows a copied spreadsheet in the viewer and a copied
+//                  word-processing document as its first page, drawn on a worker
+// Version: 0.2.6 - while the preview is open, the selected and the previewed row show their
+//                  icons just left of it, not under it (SetCoveredFrom)
 // Version: 0.2.5 - the look from the theme (UltraCanvasTheme roles): the bars, the
 //                  list and its rows, the icon buttons, the filter, the status line
 //                  and the preview frame follow a dark look, and a change while it
@@ -26,6 +32,9 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasFilePreviews.h"
+#include "UltraCanvasPptxSlideRender.h"
+#include "UltraCanvasPresentationPptx.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasLanguageDetect.h"
@@ -69,6 +78,11 @@ namespace {
 constexpr int kTickMs = 250;
 constexpr int kMessageTicks = 12;    // 3 s
 constexpr int kGenerationTicks = 4;  // the history changed elsewhere? once a second
+constexpr int kPagePollMs = 50;      // how often the first page drawn on a worker is looked for
+constexpr int kPageWidth = 1000;     // the box a document's first page is drawn into, in pixels:
+constexpr int kPageHeight = 1414;    // an A4 page's shape, large enough to zoom into
+constexpr int kSlideWidth = 1280;    // a deck's slides, in pixels (720 high at 16:9)
+constexpr size_t kMaxSlides = 100;   // a longer deck previews its first hundred
 constexpr int kPreviewDelayMs = 150; // the pointer rests on a thumbnail this long before the preview opens
 constexpr float kPreviewShare = 0.6f;  // of the list's width, at its right
 constexpr float kPreviewFrame = 12;    // the frame around the picture
@@ -173,6 +187,80 @@ std::filesystem::path ImageHandOffFolder() {
     return fs::is_directory(folder, ec) ? folder : fs::path();
 }
 
+#ifdef CAIRO_HAS_PNG_FUNCTIONS
+cairo_status_t AppendPng(void* closure, const unsigned char* data, unsigned int length) {
+    auto* out = static_cast<std::vector<uint8_t>*>(closure);
+    out->insert(out->end(), data, data + length);
+    return CAIRO_STATUS_SUCCESS;
+}
+#endif
+
+// A word-processing document the preview shows as its first page, or a deck
+// it shows as its slides: the viewer has no view of its own for either.
+bool IsPageDocument(const std::string& path) {
+    if (IsPptxExtension(path)) return true;
+    std::string extension = PathToUtf8(PathFromUtf8(path).extension());
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return (extension == ".odt" || extension == ".docx" || extension == ".doc") && CanRenderFileThumbnail(path);
+}
+
+// A pixmap as a PNG file; false when it could not be written.
+bool WritePng(const std::shared_ptr<UCPixmap>& pixmap, const std::filesystem::path& file) {
+    if (!pixmap || !pixmap->GetSurface()) return false;
+    std::vector<uint8_t> png;
+#ifdef CAIRO_HAS_PNG_FUNCTIONS
+    cairo_surface_flush(pixmap->GetSurface());
+    if (cairo_surface_write_to_png_stream(pixmap->GetSurface(), AppendPng, &png) != CAIRO_STATUS_SUCCESS)
+        return false;
+#else
+    return false;   // a cairo without PNG: no picture to show
+#endif
+    std::error_code ec;
+    std::filesystem::create_directories(file.parent_path(), ec);
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()));
+    out.close();
+    return static_cast<bool>(out);
+}
+
+
+// On a worker: a word-processing document's first page, or a deck's slides,
+// as PNGs in `folder`, under the document's name. The result names the
+// document and its time, and no pictures when it could not be drawn.
+UltraClipboardWindow::PagePicture DrawPages(UltraClipboardWindow::PagePicture job, std::filesystem::path folder) {
+    namespace fs = std::filesystem;
+    job.pictures.clear();
+    const std::string name = PathToUtf8(PathFromUtf8(job.source).filename());
+    if (IsPptxExtension(job.source)) {
+        PptxPresentation deck;
+        std::string error;
+        if (!ReadPptxPresentation(job.source, deck, error, "", true)) return job;   // a protected deck too
+        const size_t count = std::min(deck.slides.size(), kMaxSlides);
+        for (size_t i = 0; i < count; ++i) {
+            const std::shared_ptr<UCPixmap> slide = RenderPptxSlide(deck, i, kSlideWidth);
+            const fs::path file = folder / PathFromUtf8(name + " - " + std::to_string(i + 1) + ".png");
+            if (!WritePng(slide, file)) continue;
+            if (job.pictures.empty()) {
+                job.width = slide->GetRawWidth();
+                job.height = slide->GetRawHeight();
+            }
+            job.pictures.push_back(file);
+        }
+        return job;
+    }
+    FileThumbnailRequest request;
+    request.width = kPageWidth;
+    request.height = kPageHeight;
+    const std::shared_ptr<UCPixmap> page = RenderFileThumbnailFromProvider(job.source, request);
+    const fs::path file = folder / PathFromUtf8(name + ".png");
+    if (!WritePng(page, file)) return job;
+    job.pictures.push_back(file);
+    job.width = page->GetRawWidth();
+    job.height = page->GetRawHeight();
+    return job;
+}
+
 // A file name from an entry's title: its first line, without the characters
 // a file name cannot hold on some system, at most 60 bytes (not cutting a
 // character in two); `fallback` when nothing is left.
@@ -262,6 +350,11 @@ UltraClipboardWindow::~UltraClipboardWindow() {
     // (the UltraPaint hand-off shares it).
     std::error_code ec;
     for (const auto& [id, file] : previewFiles_) std::filesystem::remove(PathFromUtf8(file), ec);
+    if (pageTimer_) app_.StopTimer(pageTimer_);
+    if (pageRendering_.valid()) pageRendering_.wait();   // the worker writes into the folder below
+    for (const auto& [id, page] : pagePictures_) {
+        if (!page.pictures.empty()) std::filesystem::remove_all(page.pictures.front().parent_path(), ec);
+    }
     if (recorder_) recorder_->Detach();
     // A removal not undone is final now.
     if (history_ && history_->IsOpen()) history_->Prune();
@@ -700,6 +793,13 @@ bool UltraClipboardWindow::OnKey(const UCEvent& event) {
             }
             if (!searching) return false;
             search_->SetText("");
+            return true;
+        case UCKeys::PageUp:
+        case UCKeys::PageDown:
+            // An open preview of several pictures (a deck's slides) turns them.
+            if (previewId_ == 0 || !previewViewer_) return false;
+            if (event.virtualKey == UCKeys::PageUp) previewViewer_->Previous();
+            else previewViewer_->Next();
             return true;
         case UCKeys::Up: Move(-1); return true;
         case UCKeys::Down: Move(1); return true;
@@ -1389,6 +1489,8 @@ void UltraClipboardWindow::OnCellHovered(int row, const Point2Di& posInCell) {
         return;
     }
     previewWantedId_ = 0;
+    // A first page still being drawn opens while the pointer stays on its row.
+    if (!entry || entry->id != pageWantedId_) pageWantedId_ = 0;
     if (previewId_ == 0) return;
     if (entry && entry->id == previewId_) return;
     if (row < 0) {
@@ -1438,23 +1540,34 @@ void UltraClipboardWindow::ShowPreview(const ClipboardHistoryEntry& entry) {
     const std::string file = PreviewFileFor(entry);
     if (file.empty()) {
         HidePreview();
+        StartPagePreview(entry);   // a document whose first page is not drawn yet: opens when it is
         return;
     }
     previewId_ = entry.id;
     previewWidth_ = entry.kind == ClipboardEntryKind::Image ? entry.width : 0;
     previewHeight_ = entry.kind == ClipboardEntryKind::Image ? entry.height : 0;
+    std::vector<std::string> files = {file};
+    if (const auto page = pagePictures_.find(entry.id);
+        page != pagePictures_.end() && !page->second.pictures.empty() &&
+        PathToUtf8(page->second.pictures.front()) == file) {
+        previewWidth_ = page->second.width;
+        previewHeight_ = page->second.height;
+        files.clear();   // every slide, for the viewer to turn through
+        for (const auto& picture : page->second.pictures) files.push_back(PathToUtf8(picture));
+    }
     PlacePreview();
     preview_->SetVisible(true);
     // The row's tooltip (the entry's title) would sit on the thumbnail while
     // the picture itself is beside it; back when the preview goes.
     UltraCanvasTooltipManager::HideTooltip();
     list_->SetShowItemTooltips(false);
-    previewViewer_->SetFiles({file});
+    previewViewer_->SetFiles(files);
     window_->RequestRedraw();
 }
 
 void UltraClipboardWindow::HidePreview() {
     previewWantedId_ = 0;
+    pageWantedId_ = 0;
     previewLeaveCheck_ = false;
     if (previewTimer_) {
         app_.StopTimer(previewTimer_);
@@ -1465,6 +1578,7 @@ void UltraClipboardWindow::HidePreview() {
     if (list_) list_->SetShowItemTooltips(true);
     if (previewViewer_) previewViewer_->StopPlayback();
     if (preview_) preview_->SetVisible(false);
+    if (rows_ && rows_->SetCoveredFrom(0, 0) && list_) list_->RequestRedraw();
     if (window_) window_->RequestRedraw();
 }
 
@@ -1496,6 +1610,8 @@ void UltraClipboardWindow::PlacePreview() {
     at.top = CSSLayout::Dimension::Px(top);
     preview_->layoutItem.SetPositionInsets(at);
     preview_->SetElementSize(CSSLayout::Dimension::Px(width), CSSLayout::Dimension::Px(height));
+    // The selected row's icons and the previewed row's stand left of the frame, where they can be reached.
+    if (rows_ && rows_->SetCoveredFrom(static_cast<int>(left - list.x), previewId_)) list_->RequestRedraw();
 }
 
 std::string UltraClipboardWindow::PreviewFileFor(const ClipboardHistoryEntry& entry) {
@@ -1505,10 +1621,20 @@ std::string UltraClipboardWindow::PreviewFileFor(const ClipboardHistoryEntry& en
         const std::string first = entry.preview.substr(0, entry.preview.find('\n'));
         std::error_code ec;
         if (first.empty() || !fs::is_regular_file(PathFromUtf8(first), ec)) return "";
+        if (IsPageDocument(first)) {
+            // Its first page, once drawn (StartPagePreview) and while the document is as it was then.
+            const auto page = pagePictures_.find(entry.id);
+            if (page == pagePictures_.end() || page->second.pictures.empty() || page->second.source != first) return "";
+            const auto time = fs::last_write_time(PathFromUtf8(first), ec);
+            if (ec || time != page->second.sourceTime || !fs::is_regular_file(page->second.pictures.front(), ec))
+                return "";
+            return PathToUtf8(page->second.pictures.front());
+        }
         if (!UltraCanvasMediaViewer::IsSupportedMedia(first)) return "";
         switch (UltraCanvasMediaViewer::ClassifyFile(first)) {
             case MediaKind::Image:
             case MediaKind::Document:
+            case MediaKind::Sheet:     // a spreadsheet's first sheet, scrollable
             case MediaKind::Vector:
             case MediaKind::Model:
             case MediaKind::Video:
@@ -1541,6 +1667,60 @@ std::string UltraClipboardWindow::PreviewFileFor(const ClipboardHistoryEntry& en
     if (!out) return "";
     previewFiles_[entry.id] = file;
     return PathToUtf8(file);
+}
+
+bool UltraClipboardWindow::StartPagePreview(const ClipboardHistoryEntry& entry) {
+    namespace fs = std::filesystem;
+    if (entry.kind != ClipboardEntryKind::Files) return false;
+    const std::string first = entry.preview.substr(0, entry.preview.find('\n'));
+    if (first.empty() || !IsPageDocument(first)) return false;
+    std::error_code ec;
+    const fs::path source = PathFromUtf8(first);
+    const auto time = fs::last_write_time(source, ec);
+    if (ec) return false;
+    // Drawn before and could not be: not again until the document changes.
+    if (const auto page = pagePictures_.find(entry.id); page != pagePictures_.end() && page->second.source == first &&
+                                                         page->second.sourceTime == time && page->second.pictures.empty()) {
+        return false;
+    }
+    pageWantedId_ = entry.id;
+    if (pageRendering_.valid()) return true;   // the worker draws it next (FinishPagePreview)
+    if (previewFolder_.empty()) previewFolder_ = ImageHandOffFolder();
+    if (previewFolder_.empty()) {
+        pageWantedId_ = 0;
+        return false;
+    }
+    PagePicture job;
+    job.entryId = entry.id;
+    job.source = first;
+    job.sourceTime = time;
+    // A folder of its own, the pictures under the document's name, which the viewer's info line shows.
+    const fs::path folder = previewFolder_ / PathFromUtf8("page-" + std::to_string(entry.id));
+    pageRendering_ = std::async(std::launch::async, [job, folder]() { return DrawPages(job, folder); });
+    if (!pageTimer_) {
+        pageTimer_ = app_.StartTimer(kPagePollMs, true, [this](TimerId) {
+            if (pageRendering_.valid() && pageRendering_.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+                FinishPagePreview();
+        });
+    }
+    return true;
+}
+
+// The worker drew a first page: kept for the next time, and shown when the
+// pointer still waits on that entry - or the entry it moved on to is drawn next.
+void UltraClipboardWindow::FinishPagePreview() {
+    PagePicture done = pageRendering_.get();
+    const int64_t drawn = done.entryId;
+    pagePictures_[drawn] = std::move(done);
+    const int64_t wanted = pageWantedId_;
+    pageWantedId_ = 0;
+    if (wanted != 0 && model_) {
+        if (const ClipboardHistoryEntry* entry = model_->GetEntry(model_->FindRow(wanted))) ShowPreview(*entry);
+    }
+    if (!pageRendering_.valid() && pageTimer_) {
+        app_.StopTimer(pageTimer_);
+        pageTimer_ = 0;
+    }
 }
 
 } // namespace UltraClipboard

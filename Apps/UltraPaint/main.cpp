@@ -6,6 +6,8 @@
 // One UltraPaint per user: a second start hands its images to the running
 // copy, which opens each in a tab of the window used last (UltraCanvasSingleInstance.h);
 // --help and --version print and quit without asking it.
+// Version: 1.4.0 - the fatal-error box in the person's language and in Unicode (the native
+//                  dialog's MessageBoxW, not MessageBoxA)
 // Version: 1.3.0 - a second start's images open as tabs of the window used last
 // Version: 1.2.0 - one UltraPaint per user: a second start's images open in
 //                  the running copy, a start without images brings it forward
@@ -26,6 +28,7 @@
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraPaintWindow.h"
 
 // The 3D formats. Registering the plugin is what turns "UltraPaint reads STL"
@@ -48,10 +51,17 @@ using namespace UltraCanvas;
 
 static UltraCanvasApplication* g_app = nullptr;
 
-static void HandleFatalError(const std::string& error) {
-    debugOutput << "FATAL ERROR: " << error << std::endl;
+// `error` is already in the person's language (Tr); before the application
+// has loaded the catalogues, Tr answers in English, so the earliest failure
+// still says something. The log keeps `logText`, in English.
+static void HandleFatalError(const std::string& error, const std::string& logText) {
+    debugOutput << "FATAL ERROR: " << logText << std::endl;
 #ifdef _WIN32
-    MessageBoxA(nullptr, error.c_str(), "UltraPaint - Fatal Error", MB_ICONERROR | MB_OK);
+    // The native error box: MessageBoxW, so a translation in any script
+    // reads as it should (MessageBoxA would take it in the ANSI code page)
+    UltraCanvasNativeDialogs::ShowError(error, Tr("UltraPaint - Fatal Error"));
+#else
+    (void)error;
 #endif
     std::exit(EXIT_FAILURE);
 }
@@ -127,7 +137,8 @@ int main(int argc, char* argv[]) {
     try {
         debugOutput << "=== UltraPaint - Bitmap Editor ===" << std::endl;
         if (!app.Initialize("UltraPaint")) {
-            HandleFatalError("Failed to initialize UltraCanvas application");
+            HandleFatalError(Tr("Failed to initialize UltraCanvas application"),
+                             "Failed to initialize UltraCanvas application");
             return EXIT_FAILURE;
         }
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraPaint.png"));
@@ -156,7 +167,7 @@ int main(int argc, char* argv[]) {
         });
 
         if (!UltraPaintWindow::OpenWindow(pathsToOpen)) {
-            HandleFatalError("Failed to create main window");
+            HandleFatalError(Tr("Failed to create main window"), "Failed to create main window");
             return EXIT_FAILURE;
         }
 
@@ -164,10 +175,10 @@ int main(int argc, char* argv[]) {
         app.Run();
         instance.Close();   // no request reaches a window once they start to go
     } catch (const std::exception& e) {
-        HandleFatalError(std::string("Unhandled exception: ") + e.what());
+        HandleFatalError(TrF("Unhandled exception: {0}", e.what()), std::string("Unhandled exception: ") + e.what());
         return EXIT_FAILURE;
     } catch (...) {
-        HandleFatalError("Unknown exception occurred");
+        HandleFatalError(Tr("Unknown exception occurred"), "Unknown exception occurred");
         return EXIT_FAILURE;
     }
 

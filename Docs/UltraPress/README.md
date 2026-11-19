@@ -1,7 +1,7 @@
 # UltraPress
 
 **Status:** Phase 1 under way. UltraPress 0.8 is the headless engine, the
-`ultrapress` program - the commands and the editor window -, the block
+`UltraPress` program - the commands and the editor window -, the block
 renderer on real elements, the WordPress importer, the publisher onto
 web hosts and the media library: a site as a folder of JSON files, the
 block registry, the HTML shadow of every page, the static publish, every
@@ -34,12 +34,12 @@ This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
 ## The window
 
 ```bash
-ultrapress                    # the start window: open a site folder, or create a new site in one
-ultrapress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
-ultrapress mysite --check     # render every page without a window; element counts and warnings
+UltraPress                    # the start window: open a site folder, or create a new site in one
+UltraPress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
+UltraPress mysite --check     # render every page without a window; element counts and warnings
 ```
 
-`ultrapress` is one program: a command word first (`new`, `check`, `page`,
+`UltraPress` is one program: a command word first (`new`, `check`, `page`,
 `publish`, `import`, `hosts`, `help`) runs that command without a window, a
 site folder opens the editor. There is no second `UltraPress` binary: two
 names that differ only in case are one name on macOS and Windows. Started
@@ -63,7 +63,7 @@ host). An FTP / SFTP host is asked for its protocol, its name or address
 and its port (empty: the protocol's own), and its private key is chosen
 with a file dialog. The sign-in is reported on the console as it happens -
 where, as whom, the session's steps, how it ended and the transport's
-diagnostics - the way `ultrapress hosts add` reports one, so a host that
+diagnostics - the way `UltraPress hosts add` reports one, so a host that
 refused can be read step by step. Without a host of its own the site
 publishes to the default host; without any, Publish opens the dialog.
 
@@ -187,13 +187,13 @@ banner leads to the latest. **A blog** comes with any site that has posts:
   picture fetched first, a card's and a picture block's lazily;
 - WebP alone where the machine's image library writes no AVIF.
 
-`ultrapress docs` publishes a folder of Markdown on its own, with no
+`UltraPress docs` publishes a folder of Markdown on its own, with no
 UltraPress site around it. A link out of the folder goes to
 `--source-url` plus its path under `--source-root`, which is a
 repository's file view. This repository's own `Docs/` builds this way:
 
 ```bash
-ultrapress docs Docs out --name "UltraCanvas docs" --url https://docs.example.org \
+UltraPress docs Docs out --name "UltraCanvas docs" --url https://docs.example.org \
     --source-root . --source-url https://github.com/<owner>/<repo>/blob/main/ \
     --edit-url https://github.com/<owner>/<repo>/edit/main/Docs/ \
     --exclude CHANGELOG.md --exclude changelog.d --sizes
@@ -202,28 +202,28 @@ ultrapress docs Docs out --name "UltraCanvas docs" --url https://docs.example.or
 ## The command line
 
 ```bash
-ultrapress new mysite --name "My site" --url https://my.example   # a starter site
-ultrapress check mysite                                           # every problem, exit 1 when there is one
-ultrapress page mysite home                                       # the front page's HTML shadow, to stdout
-ultrapress publish mysite out                                     # the site's output, into out/
-ultrapress publish mysite out --sizes                             # and what every page and asset weighs
-ultrapress docs Docs out --name "My docs" --url https://docs.my.example   # a Markdown folder as a documentation site
-ultrapress serve mysite --port 3000                               # look at it on this computer: built, served on 127.0.0.1, rebuilt on a change
-ultrapress publish mysite out --precompress                       # with a .gz (and .br) copy beside every page, stylesheet and script
-ultrapress publish mysite out --output wasm --renderer ultrapress-0.1.0.js   # the WebAssembly output, the renderer referenced (later)
-ultrapress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
-ultrapress hosts                                                  # the hosts a site can be published to
-ultrapress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
-ultrapress hosts add ftp --server sftp://my.example --port 2222 --user me       # on a port that is not the protocol's own
-ultrapress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
-ultrapress publish mysite out --to site                           # write, then upload what changed onto the site's host
-ultrapress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
-ultrapress publish mysite out --to site --prune                   # and delete on the host what the site no longer has
-ultrapress hosts add ftp --server sftp://my.example --user me --key ~/.ssh/id_ed25519   # SFTP with a key (the password: its passphrase)
-ultrapress media mysite                                           # every file under media/: kind, size, uses
-ultrapress media mysite add ~/Pictures/launch.png                 # copied in as media/launch.png
-ultrapress media mysite remove media/launch.png                   # deleted, unless a page uses it
-ultrapress media mysite prune                                     # every unused file deleted
+UltraPress new mysite --name "My site" --url https://my.example   # a starter site
+UltraPress check mysite                                           # every problem, exit 1 when there is one
+UltraPress page mysite home                                       # the front page's HTML shadow, to stdout
+UltraPress publish mysite out                                     # the site's output, into out/
+UltraPress publish mysite out --sizes                             # and what every page and asset weighs
+UltraPress docs Docs out --name "My docs" --url https://docs.my.example   # a Markdown folder as a documentation site
+UltraPress serve mysite --port 3000                               # look at it on this computer: built, served on 127.0.0.1, rebuilt on a change
+UltraPress publish mysite out --precompress                       # with a .gz (and .br) copy beside every page, stylesheet and script
+UltraPress publish mysite out --output wasm --renderer ultrapress-0.1.0.js   # the WebAssembly output, the renderer referenced (later)
+UltraPress import export.xml mysite --media                       # a WordPress export as a site, attachments fetched
+UltraPress hosts                                                  # the hosts a site can be published to
+UltraPress hosts add ftp --server sftp://my.example --user me --folder /public_html   # a host; the password from --password or ULTRAPRESS_HOST_PASSWORD
+UltraPress hosts add ftp --server sftp://my.example --port 2222 --user me       # on a port that is not the protocol's own
+UltraPress hosts use mysite me-at-my.example --path /public_html  # remember it in site.json
+UltraPress publish mysite out --to site                           # write, then upload what changed onto the site's host
+UltraPress publish mysite out --to "me at sftp://my.example" --path /www --force   # onto a named host, everything
+UltraPress publish mysite out --to site --prune                   # and delete on the host what the site no longer has
+UltraPress hosts add ftp --server sftp://my.example --user me --key ~/.ssh/id_ed25519   # SFTP with a key (the password: its passphrase)
+UltraPress media mysite                                           # every file under media/: kind, size, uses
+UltraPress media mysite add ~/Pictures/launch.png                 # copied in as media/launch.png
+UltraPress media mysite remove media/launch.png                   # deleted, unless a page uses it
+UltraPress media mysite prune                                     # every unused file deleted
 ```
 
 `import` reads a WordPress export (Tools > Export in WordPress, the WXR
@@ -322,7 +322,7 @@ against it.
   blocks are the owner's own HTML and pass through.
 - `UltraPressSite.h` - the HTML + JavaScript output: `PublishHtml` through
   UltraSite (with the site's `docs/`), `Publish` (the site's output, or
-  `PublishOptions::output`), `PublishDocsFolder` (`ultrapress docs`),
+  `PublishOptions::output`), `PublishDocsFolder` (`UltraPress docs`),
   `ThemeTokens`, `BlockStylesheet`, `HasHtmlOutput`. `HtmlEmitter::Parts`
   gives it each page's body, title, description, social picture and
   structured data.
@@ -379,7 +379,7 @@ MKCOL, outermost first). A site names its host and the folder on it in
 "hosting": { "account": "ftp-me-my-example", "path": "/public_html" }
 ```
 
-`ultrapress hosts use` writes it; the window's Host… button does the same,
+`UltraPress hosts use` writes it; the window's Host… button does the same,
 from the protocol, server and port it asks for (`FtpServerUrl`); on the
 command line the port is `--port`, or part of the URL (`sftp://my.example:2222`),
 the two storing the same host. A server URL that is not FTP - `https://`,
@@ -408,7 +408,7 @@ copies the chosen file into `media/` under a clean name; **Remove** deletes
 a file nothing uses, **Remove unused** every such file; **Choose** puts the
 path into the property and the preview shows the picture in its own shape. **Media library…** in the side column opens the same
 dialog to browse.
-Without UltraCloud the program says so, and `ultrapress publish` still
+Without UltraCloud the program says so, and `UltraPress publish` still
 writes the folder to upload by other means.
 
 ## Not yet

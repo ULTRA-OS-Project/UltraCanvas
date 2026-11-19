@@ -51,6 +51,14 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.50.1 - a password-protected .ods keeps its type glyph rather than a page of its ciphertext
+// Version: 1.50.0 - an OpenDocument presentation (.odp, .otp, .fodp) is a document named
+//                  "OpenDocument" and previews its slides' text; .ppsm, .potm and the legacy
+//                  .ppt are named "PowerPoint"
+// Version: 1.49.2 - the Compress / Extract dialog follows the theme: its buttons are the theme's
+//                  Primary and Standard parts (Cancel was a fixed light-grey face under the theme's
+//                  ink - blank under a dark theme), and its panel edge, field border and drag
+//                  placeholder are veils of the ink rather than of black
 // Version: 1.49.1 - the move / copy / delete dialogs' entry list follows the theme: its rows and
 //                  header were the light look's white and grey under a dark theme (a style
 //                  set by hand had stopped the list following)
@@ -148,7 +156,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -201,6 +209,7 @@
 #include "UltraCanvasFilePreviews.h"   // thumbnails and preview text from the formats' providers
 #include "UltraCanvasRichDocument.h"   // a provider's preview document
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasOdfEncryption.h"   // a protected .ods has no preview page
 #include "Models/STL/UltraCanvasSTLLoader.h"
 #include "UltraCanvasModelPreview.h"
 #include "UltraCanvasVectorPreview.h"
@@ -566,6 +575,9 @@ namespace UltraCanvas {
                 {"dwt",  {"AutoCAD Template", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
                 {"dws",  {"AutoCAD Standards", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
                 {"sv$",  {"AutoCAD Autosave", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"odg",  {"OpenDocument Drawing", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"otg",  {"OpenDocument Drawing Template", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"fodg", {"OpenDocument Drawing", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
                 {"stl",  {"STL",  FilerFileCategory::Model3D, ColorFamily::Model3D, 2}},
                 {"obj",  {"Wavefront", FilerFileCategory::Model3D, ColorFamily::Model3D, 5}},
                 {"ply",  {"PLY",  FilerFileCategory::Model3D, ColorFamily::Model3D, 3}},
@@ -607,6 +619,12 @@ namespace UltraCanvas {
                 {"pptm", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
                 {"ppsx", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
                 {"potx", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"ppsm", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"potm", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"ppt",  {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 4}},
+                {"odp",  {"OpenDocument", FilerFileCategory::Document, ColorFamily::Document, 2}},
+                {"otp",  {"OpenDocument", FilerFileCategory::Document, ColorFamily::Document, 2}},
+                {"fodp", {"OpenDocument", FilerFileCategory::Document, ColorFamily::Document, 2}},
                 {"rtf",  {"RTF",  FilerFileCategory::Document, ColorFamily::Document, 5}},
                 {"md",   {"Markdown", FilerFileCategory::Document, ColorFamily::Document, 6}},
                 {"html", {"HTML", FilerFileCategory::Document, ColorFamily::Document, 6}},
@@ -1708,6 +1726,10 @@ namespace UltraCanvas {
                 if (!zip.Open(path)) return false;
                 tabular = true;
                 if (ext == "ods") {
+                    // A password-protected .ods keeps its type glyph: its
+                    // content.xml is ciphertext, and the preview has no
+                    // password to ask for.
+                    if (IsEncryptedOdfPackage(zip)) return false;
                     std::string contentXml;
                     if (!zip.ReadEntry("content.xml", contentXml)) return false;
                     OdsToPreviewLines(contentXml, lines);
@@ -9777,7 +9799,9 @@ namespace UltraCanvas {
         compressNameInput = CreateTextInput("filer-compress-name", 1, 1, 120, 26);
         TextInputStyle ts;
         ts.backgroundColor  = style.renameFieldColor;
-        ts.borderColor      = Color(0, 0, 0, 55);
+        // The resting border is a veil of the ink: a black one vanished on
+        // a dark dialog.
+        ts.borderColor      = style.textColor.WithAlpha(70);
         ts.focusBorderColor = style.renameBorderColor;
         ts.textColor        = style.textColor;
         ts.caretColor       = style.textColor;
@@ -9852,19 +9876,26 @@ namespace UltraCanvas {
             const std::string& identifier, const std::string& label, bool primary,
             std::function<void()> action) {
         auto button = CreateButton(identifier, 0, 0, 104, 30, label);
-        ButtonStyle bs;
-        bs.normalColor   = primary ? Color(66, 133, 244, 255) : Color(238, 238, 242, 255);
-        bs.hoverColor    = primary ? Color(90, 150, 250, 255) : Color(226, 226, 232, 255);
-        bs.pressedColor  = primary ? Color(52, 112, 214, 255) : Color(214, 214, 220, 255);
-        bs.normalTextColor = bs.hoverTextColor = bs.pressedTextColor =
-                primary ? Colors::White : style.textColor;
-        bs.borderColor = Color(0, 0, 0, 40);
-        bs.borderWidth = primary ? 0.0f : 1.0f;
-        bs.cornerRadius = 5.0f;
-        bs.fontFamily = style.fontFamily;
+        // The colours are the theme's button parts - the accent for the main
+        // action, the raised surface with the control border and the ink for
+        // Cancel - so both read in either look. Cancel had a fixed light-grey
+        // face under the theme's ink, which a dark theme makes near-white:
+        // a blank grey button.
+        const ButtonVariant variant = primary ? ButtonVariant::Primary
+                                              : ButtonVariant::Standard;
+        ButtonStyle shape = button->GetStyle();
+        shape.borderWidth = primary ? 0.0f : 1.0f;
+        shape.cornerRadius = 5.0f;
+        shape.fontWeight = FontWeight::Bold;
+        ButtonStyle bs = ButtonStyle::FromTheme(UltraCanvasTheme::Current(), shape, variant);
+        bs.fontFamily = bs.fontStyle.fontFamily = style.fontFamily;
         bs.fontSize = style.fontSize;
-        bs.fontWeight = FontWeight::Bold;
+        bs.fontStyle.fontSize = style.fontSize;
         button->SetStyle(bs);
+        button->SetThemeVariant(variant);
+        // A theme change while the dialog is open re-styles the buttons with
+        // the widget.
+        if (GetFollowTheme()) button->SetFollowTheme(true);
         // The name editor keeps the keyboard: a click on Compress / Cancel must
         // not pull the focus out of the field it is about to act on.
         button->SetAcceptsFocus(false);
@@ -10139,7 +10170,8 @@ namespace UltraCanvas {
         // Panel.
         ctx->SetFillPaint(style.backgroundColor);
         ctx->FillRoundedRectangle(Rect2Dd(d.panel), 10);
-        ctx->SetStrokePaint(Color(0, 0, 0, 45));
+        // Its edge is a veil of the ink, so it shows on a dark panel too.
+        ctx->SetStrokePaint(style.textColor.WithAlpha(45));
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawRoundedRectangle(Rect2Dd(d.panel), 10);
 
@@ -10156,7 +10188,7 @@ namespace UltraCanvas {
         // File-type icon on top. While being dragged a ghost follows the cursor
         // and the panel shows a faint placeholder in its place.
         if (d.draggingIcon) {
-            ctx->SetFillPaint(Color(0, 0, 0, 22));
+            ctx->SetFillPaint(style.textColor.WithAlpha(22));
             ctx->FillRoundedRectangle(Rect2Dd(d.iconRect), 4);
         } else {
             DrawEntryIcon(ctx, synth, d.iconRect);

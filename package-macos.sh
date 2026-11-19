@@ -1669,6 +1669,8 @@ VIEWER_DOC_TYPES='    <key>CFBundleDocumentTypes</key>
                 <string>public.audio</string>
                 <string>com.adobe.pdf</string>
                 <string>org.idpf.epub-container</string>
+                <string>org.openxmlformats.presentationml.presentation</string>
+                <string>org.oasis-open.opendocument.presentation</string>
                 <string>public.plain-text</string>
             </array>
         </dict>
@@ -1849,19 +1851,19 @@ package_if_built "UltraCanvasStart" build_app_bundle \
 # Package the UltraMessage command line (Apps/UltraMessageCli)
 package_if_built "ultramsg" build_cli_tool "ultramsg"
 
-# Package UltraPress (Apps/UltraPress). `ultrapress` is one program, the
+# Package UltraPress (Apps/UltraPress). `UltraPress` is one program, the
 # commands and the editor window (two names differing only in case are one
 # name on this filesystem): it goes into an app bundle, and beside it as a
 # command-line tool - a starter site, the check, a page's HTML shadow, the
 # static publish, the WordPress import.
-package_if_built "ultrapress" build_app_bundle \
-    "ultrapress" \
+package_if_built "UltraPress" build_app_bundle \
+    "UltraPress" \
     "UltraPress" \
     "com.cloverleaf.UltraPress" \
     "media/appicon/UltraPress.png" \
     "public.app-category.developer-tools" \
     ""
-package_if_built "ultrapress" build_cli_tool "ultrapress"
+package_if_built "UltraPress" build_cli_tool "UltraPress"
 
 # ── What was packaged ───────────────────────────────────────────────────────
 

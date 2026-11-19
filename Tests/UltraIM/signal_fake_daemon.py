@@ -66,7 +66,7 @@ ACCOUNTS = {}          # number -> {"uuid", "name", "username", "linked", "queue
 GROUPS = {}            # group id (base64) -> {"name", "members": [numbers], "admins": set, "revision"}
 LINKS = {}             # device link uri -> {"number": None | str, "expired": bool}
 ATTACHMENTS = {}       # attachment id -> path on disk
-CONFIG = {"dir": None, "attachments": None}
+CONFIG = {"dir": None, "attachments": None, "version": "0.13.24"}
 _LAST_MS = [0]
 
 
@@ -280,6 +280,11 @@ def send_from(sender, params, sync_copy=False):
 # ---------------------------------------------------------------------------
 # The JSON-RPC methods
 # ---------------------------------------------------------------------------
+
+def m_version(params):
+    # signal-cli's own number (--fake-version plays another one).
+    return {"version": CONFIG["version"]}
+
 
 def m_listAccounts(params):
     return [{"number": n, "aci": a["uuid"]} for n, a in ACCOUNTS.items() if a["linked"]]
@@ -626,7 +631,10 @@ def main():
     parser.add_argument("command", nargs="?", default=None)
     parser.add_argument("--http", default=None)
     parser.add_argument("--receive-mode", default=None)
+    parser.add_argument("--fake-version", default=None)
     args, _ = parser.parse_known_args()
+    if args.fake_version:
+        CONFIG["version"] = args.fake_version
 
     numbers = [n.strip() for n in args.accounts.split(",") if n.strip()]
     names = [n.strip() for n in args.names.split(",") if n.strip()]
@@ -662,8 +670,11 @@ def main():
     server.daemon_threads = True
     url = "http://127.0.0.1:%d" % server.server_address[1]
     if args.config:
+        # Also what a Java runtime would have been given (JAVA_TOOL_OPTIONS):
+        # the provider passes signal-cli its proxy there.
         with open(os.path.join(args.config, "fake-daemon.json"), "w") as f:
-            json.dump({"url": url, "pid": os.getpid()}, f)
+            json.dump({"url": url, "pid": os.getpid(),
+                       "java_tool_options": os.environ.get("JAVA_TOOL_OPTIONS", "")}, f)
     print(json.dumps({"url": url}), flush=True)
     server.serve_forever()
 

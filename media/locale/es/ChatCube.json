@@ -106,7 +106,6 @@
   "Could not leave {0}: {1}": "No se ha podido salir de {0}: {1}",
   "Could not load the messages: {0}": "No se han podido cargar los mensajes: {0}",
   "Could not open the chat: {0}": "No se ha podido abrir el chat: {0}",
-  "Could not open {0}": "No se ha podido abrir {0}",
   "Could not remove {0}: {1}": "No se ha podido quitar a {0}: {1}",
   "Could not rename the group: {0}": "No se ha podido cambiar el nombre del grupo: {0}",
   "Could not save the description: {0}": "No se pudo guardar la descripción: {0}",

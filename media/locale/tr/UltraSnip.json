@@ -60,6 +60,7 @@
   "Save the recording as": "Kayıt dosya türü",
   "saved": "kaydedildi",
   "Saved as {0}": "{0} olarak kaydedildi",
+  "Scroll to zoom, drag to move, double-click to fit": "Yakınlaştırmak için kaydırın, taşımak için sürükleyin, sığdırmak için çift tıklayın",
   "Settings for .{0}": ".{0} ayarları",
   "settings page|Saving": "Kaydetme",
   "Settings: the picture type and folder, the recording's type and frame rate, what happens after a snip": "Ayarlar: resim türü ve klasörü, kaydın türü ve kare hızı, alıntıdan sonra ne olacağı",

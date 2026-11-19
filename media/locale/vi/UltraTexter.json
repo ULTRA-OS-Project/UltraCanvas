@@ -136,6 +136,7 @@
   "no translation provider is available": "không có nhà cung cấp dịch thuật nào",
   "None found": "Không tìm thấy",
   "Not available": "Không có sẵn",
+  "Not saved yet": "Chưa lưu",
   "One Column": "Một cột",
   "Open File(s)": "Mở tệp",
   "Open File... (Ctrl+O)": "Mở tệp... (Ctrl+O)",
@@ -213,5 +214,8 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Kirin)",
   "Windows-1252 (Western)": "Windows-1252 (Phương Tây)",
   "Word Wrap": "Tự động xuống dòng",
-  "Zoom Level": "Mức thu phóng"
+  "Zoom Level": "Mức thu phóng",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "other": "{n} tệp có thay đổi chưa lưu. Lưu trước khi đóng?"
+  }
 }
