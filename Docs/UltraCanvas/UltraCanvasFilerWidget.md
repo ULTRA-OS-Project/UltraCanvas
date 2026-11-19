@@ -2673,15 +2673,21 @@ in the existing folder; a move removes the emptied source folder at the end
 first, with everything in it that the pasted one does not have, and the note
 says so with the count. `PasteConflictAction::Merge` is the enumerator.
 
-Under a file's question, a foldable **Replace options** panel says what
-*Replace* asks of the pasted file first (`PasteReplaceCondition`):
-**Replace always** (`Unconditionally`, the default), **only when the pasted
-file is newer** (`IfNewer`: modified later), **only when it is bigger**
+Under a file's question, a foldable **Options** panel says what *Replace*
+asks of the pasted file first (`PasteReplaceCondition`): **Replace always**
+(`Unconditionally`, the default), **only when the pasted file is newer**
+(`IfNewer`: modified later), **only when it is older** (`IfOlder`: an earlier
+version brought back from a backup), **only when it is bigger**
 (`IfLarger`), or **only when the files differ** - another size or another
-modified time (`IfDifferent`). Folded, its header still names the choice in
-force (*Replace options · when newer*). A file that does not win the
-comparison is left as it is and listed in the summary with why - *Kept: the
-existing file is not older*, *... not smaller*, *Kept: same size and date*.
+modified time (`IfDifferent`). A checkbox under them, **Keep both: skip
+files that are identical (same size and date)**, makes *Keep both* skip a
+pasted file the same as the one there (`PasteConflictAction::
+KeepBothUnlessIdentical`) - no duplicate of a file that is there, and
+nothing overwritten. Folded, the panel's header still names what is in force
+(*Options · replace when newer, keep both skips identical*). A file that does
+not win the comparison is left as it is and listed in the summary with why -
+*Kept: the existing file is not older*, *... not newer*, *... not smaller*,
+*Kept: same size and date*, *An identical file exists already*.
 With the scope checked the condition holds for the rest of the paste too, the
 files a folder merge brings in included; the panel opens with the last
 choice of the session, folded or open as it was left.
@@ -2722,9 +2728,10 @@ runs the same operation for just those entries, grouped by the folder they
 were headed for. When some were skipped because their name was taken, an
 open **Options for copying again** panel under the list says how the copy
 again answers them: **Ask about each file that exists already** (the
-default), **Keep both** (the copy gets a number, *photo (2).jpg*), **Replace
-always**, or replace only when the pasted file is **newer**, **bigger** or
-the files **differ**. That choice stands in for the host's conflict policy
+default), **Keep both** (the copy gets a number, *photo (2).jpg*), **Skip
+identical files, keep both for the rest**, **Replace always**, or replace
+only when the pasted file is **newer**, **older**, **bigger** or the files
+**differ**. That choice stands in for the host's conflict policy
 for the copy again - under `FilerConflictPolicy::Skip` the copy again would
 otherwise skip every one of them again. A Stop or a Cancel shows no summary — it already said what
 happened — and neither does an operation where nothing was skipped.

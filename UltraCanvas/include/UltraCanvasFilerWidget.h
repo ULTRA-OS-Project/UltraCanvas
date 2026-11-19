@@ -104,6 +104,8 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.54.0 - PasteReplaceCondition::IfOlder (bring an earlier version back);
+//                  PasteConflictAction::KeepBothUnlessIdentical (no duplicate of a file that is there)
 // Version: 1.53.0 - PasteReplaceCondition: Replace in the name-conflict question can replace only a
 //                  file that is newer, bigger or different, chosen in a foldable options panel;
 //                  the summary's "Copy skipped items again" has the same panel (ask, keep both,
@@ -236,7 +238,11 @@ namespace UltraCanvas {
         // taken there; nothing already in the existing folder is removed.
         // (Replace on a folder removes the existing folder first, with
         // everything in it that the pasted one does not have.)
-        Merge
+        Merge,
+        // Files only: Keep both, except for a pasted file identical to the
+        // existing one (the same size and modified time), which is skipped -
+        // no duplicate of a file that is there, and nothing overwritten.
+        KeepBothUnlessIdentical
     };
 
     // When Replace replaces a FILE whose name is taken: always, or only when
@@ -245,13 +251,15 @@ namespace UltraCanvas {
     // modified time). A file that does not win is left as it is and listed
     // in the summary at the end, with why. Folders are merged or replaced as
     // before; the files a merge brings in are compared one by one.
-    enum class PasteReplaceCondition { Unconditionally, IfNewer, IfLarger, IfDifferent };
+    // IfOlder is the other way round from IfNewer: the pasted file was
+    // modified earlier - an earlier version brought back from a backup.
+    enum class PasteReplaceCondition { Unconditionally, IfNewer, IfOlder, IfLarger, IfDifferent };
 
     // How the summary's "Copy skipped items again" answers a name that is
     // taken, chosen in its options panel: as the host's policy says (no
     // choice made), ask about each, keep both, or replace - unconditionally
     // or on a condition.
-    enum class FilerRetryConflicts { Policy, Ask, KeepBoth, Replace };
+    enum class FilerRetryConflicts { Policy, Ask, KeepBoth, KeepBothUnlessIdentical, Replace };
     struct FilerRetryConflictAnswer {
         FilerRetryConflicts how = FilerRetryConflicts::Policy;
         PasteReplaceCondition condition = PasteReplaceCondition::Unconditionally;
@@ -3901,6 +3909,8 @@ namespace UltraCanvas {
         // next question of the session: the replace condition, and whether
         // the panel was open.
         PasteReplaceCondition lastReplaceCondition = PasteReplaceCondition::Unconditionally;
+        // ... and whether its Keep both skips identical files.
+        bool lastKeepBothSkipsIdentical = false;
         bool replaceOptionsOpen = false;
         void ContinuePasteRetry();
 

@@ -18,3 +18,11 @@
 - **"File exists already"** is the reason the summary gives for a file
   skipped because its name was taken (it was "Skipped: the name is already
   taken").
+- **Replace when older; keep both but skip identical files.** The panel (now
+  titled *Options*) adds *Replace only when the pasted file is older*
+  (`PasteReplaceCondition::IfOlder`, for bringing an earlier version back
+  from a backup) and a checkbox *Keep both: skip files that are identical
+  (same size and date)* (`PasteConflictAction::KeepBothUnlessIdentical`): no
+  duplicate of a file that is there, nothing overwritten. The summary's copy
+  again offers both as well; a file skipped this way is listed as "An
+  identical file exists already".

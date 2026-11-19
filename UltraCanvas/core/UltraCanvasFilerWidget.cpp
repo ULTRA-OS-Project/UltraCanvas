@@ -51,6 +51,7 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.51.0 - Replace when the pasted file is older; Keep both that skips identical files
 // Version: 1.50.2 - the operation lists' "Reason" column header goes through Tr
 // Version: 1.50.1 - a password-protected .ods keeps its type glyph rather than a page of its ciphertext
 // Version: 1.50.0 - an OpenDocument presentation (.odp, .otp, .fodp) is a document named
@@ -6225,6 +6226,10 @@ namespace UltraCanvas {
                     if (!ec3 && !ec4 && srcTime > destTime) return true;
                     whyKept = Tr("Kept: the existing file is not older");
                     return false;
+                case PasteReplaceCondition::IfOlder:
+                    if (!ec3 && !ec4 && srcTime < destTime) return true;
+                    whyKept = Tr("Kept: the existing file is not newer");
+                    return false;
                 case PasteReplaceCondition::IfLarger:
                     if (!ec1 && !ec2 && srcSize > destSize) return true;
                     whyKept = Tr("Kept: the existing file is not smaller");
@@ -6241,13 +6246,31 @@ namespace UltraCanvas {
             }
         }
 
+        // Whether two files are the same as far as the conflict question
+        // tells them apart: the same size and the same modified time. What
+        // cannot be read is not called identical. Worker-side.
+        bool FilesIdentical(const fs::path& a, const fs::path& b) {
+            std::error_code ec1, ec2, ec3, ec4;
+            const auto sizeA = fs::file_size(a, ec1);
+            const auto sizeB = fs::file_size(b, ec2);
+            const auto timeA = fs::last_write_time(a, ec3);
+            const auto timeB = fs::last_write_time(b, ec4);
+            return !ec1 && !ec2 && !ec3 && !ec4 && sizeA == sizeB && timeA == timeB;
+        }
+
         // The controls of a dialog's foldable options panel, and the choice
         // they report: kept alive with the dialog (OperationDialogSpec::
-        // optionsState), since the group's handlers point into it.
+        // optionsState), since the group's handlers point into it. `flag` is
+        // an optional checkbox under the radios (Keep both: skip identical),
+        // and `detailSuffix` what it adds to the header's detail while on.
         struct OptionsPanelState {
             UltraCanvasRadioGroup group;
             std::vector<std::shared_ptr<UltraCanvasRadio>> radios;
             int choice = 0;
+            std::shared_ptr<UltraCanvasCheckbox> flagBox;
+            bool flag = false;
+            std::string detailSuffix;
+            std::function<std::string(int)> detailFor;
         };
 
         // A panel that folds to a header ("Replace options") over one radio
@@ -6285,18 +6308,19 @@ namespace UltraCanvas {
                 state->radios.push_back(radio);
                 body->AddChild(radio);
             }
-            auto detailFor = [details](int i) {
+            state->detailFor = [details](int i) {
                 return i >= 0 && static_cast<size_t>(i) < details.size()
                         ? details[static_cast<size_t>(i)] : std::string();
             };
-            panel->SetDetail(detailFor(initial));
+            panel->SetDetail(state->detailFor(initial));
             OptionsPanelState* raw = state.get();
             UltraCanvasCollapsiblePanel* rawPanel = panel.get();
-            state->group.onSelectionChanged = [raw, rawPanel, detailFor](
+            state->group.onSelectionChanged = [raw, rawPanel](
                     std::shared_ptr<UltraCanvasRadio> selected) {
                 for (size_t i = 0; i < raw->radios.size(); ++i)
                     if (raw->radios[i] == selected) raw->choice = static_cast<int>(i);
-                rawPanel->SetDetail(detailFor(raw->choice));
+                rawPanel->SetDetail(raw->detailFor(raw->choice) +
+                                    (raw->flag ? raw->detailSuffix : std::string()));
             };
             panel->SetExpandedHeight(static_cast<float>(choices.size()) * (kRow + 2.0f) + 14.0f
                                      + panel->GetStyle().headerHeight);
@@ -6305,6 +6329,35 @@ namespace UltraCanvas {
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
             outState = state;
             return panel;
+        }
+
+        // A checkbox under a choice panel's radios (`state->flag`), the
+        // panel made taller by its row; while it is on, the header's detail
+        // ends in `detailSuffix`.
+        void AddPanelFlag(UltraCanvasCollapsiblePanel& panel, OptionsPanelState& state,
+                          const std::string& id, const std::string& text,
+                          const std::string& detailSuffix, bool on, float fontSize) {
+            constexpr float kRow = 22.0f;
+            auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 560.0f, kRow, text);
+            if (fontSize > 0.0f) box->SetFontSize(fontSize);
+            box->SetChecked(on);
+            box->size.width = CSSLayout::Dimension::Px(560);
+            box->size.height = CSSLayout::Dimension::Px(kRow);
+            box->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            box->SetMargin(6, 0, 0, 0);
+            state.flag = on;
+            state.detailSuffix = detailSuffix;
+            OptionsPanelState* raw = &state;
+            UltraCanvasCollapsiblePanel* rawPanel = &panel;
+            box->onStateChanged = [raw, rawPanel](CheckedState, CheckedState now) {
+                raw->flag = (now == CheckedState::Checked);
+                rawPanel->SetDetail(raw->detailFor(raw->choice) +
+                                    (raw->flag ? raw->detailSuffix : std::string()));
+            };
+            panel.GetBody()->AddChild(box);
+            state.flagBox = box;
+            panel.SetExpandedHeight(panel.GetExpandedHeight() + kRow + 8.0f);
+            panel.SetDetail(state.detailFor(state.choice) + (on ? detailSuffix : std::string()));
         }
     }
 
@@ -6630,6 +6683,12 @@ namespace UltraCanvas {
                                                              : FilerConflictPolicy::Ask;
             pendingPaste->replaceCondition = chosen->condition;
         }
+        // Keep both but skip identical files is no host policy: it is set as
+        // the answer for every file conflict of the paste, as one is.
+        if (chosen && chosen->how == FilerRetryConflicts::KeepBothUnlessIdentical) {
+            pendingPaste->action = PasteConflictAction::KeepBothUnlessIdentical;
+            pendingPaste->applyToAll = true;
+        }
         // The host's standing answers, where it gave any: they stand in for
         // the first dialog of each kind, the way an "Apply to all" does.
         switch (policy) {
@@ -6786,6 +6845,16 @@ namespace UltraCanvas {
                 // pasted one wins the comparison; otherwise it is left as it
                 // is and listed, with why.
                 std::string whySkipped = Tr("File exists already");
+                // Keep both unless identical: a file the same as the one there
+                // is skipped, any other gets the next free name.
+                if (action == PasteConflictAction::KeepBothUnlessIdentical) {
+                    if (!bothFolders && FilesIdentical(from, PathFromUtf8(dest))) {
+                        action = PasteConflictAction::Skip;
+                        whySkipped = Tr("An identical file exists already");
+                    } else {
+                        action = PasteConflictAction::KeepBoth;
+                    }
+                }
                 if (action == PasteConflictAction::Replace && !bothFolders &&
                     !ReplaceConditionMet(pp->replaceCondition, from, PathFromUtf8(dest), whySkipped))
                     action = PasteConflictAction::Skip;
@@ -6908,11 +6977,14 @@ namespace UltraCanvas {
                         cut ? Tr("Options for moving again") : Tr("Options for copying again"),
                         {Tr("Ask about each file that exists already"),
                          Tr("Keep both - the copy gets a number, e.g. \"photo (2).jpg\""),
+                         Tr("Skip identical files (same size and date), keep both for the rest"),
                          Tr("Replace always"),
                          Tr("Replace only when the pasted file is newer"),
+                         Tr("Replace only when the pasted file is older"),
                          Tr("Replace only when the pasted file is bigger"),
                          Tr("Replace only when the files differ (other size or date)")},
-                        {Tr("ask"), Tr("keep both"), Tr("replace always"), Tr("replace when newer"),
+                        {Tr("ask"), Tr("keep both"), Tr("skip identical, keep both"),
+                         Tr("replace always"), Tr("replace when newer"), Tr("replace when older"),
                          Tr("replace when bigger"), Tr("replace when different")},
                         0, true, style.smallFontSize, state);
             }
@@ -6923,15 +6995,19 @@ namespace UltraCanvas {
                     [this, skipped, cut, chosen]() {
                         FilerRetryConflictAnswer answer;
                         if (chosen) {
-                            static const FilerRetryConflicts kHow[6] = {
+                            static const FilerRetryConflicts kHow[8] = {
                                 FilerRetryConflicts::Ask, FilerRetryConflicts::KeepBoth,
+                                FilerRetryConflicts::KeepBothUnlessIdentical,
                                 FilerRetryConflicts::Replace, FilerRetryConflicts::Replace,
-                                FilerRetryConflicts::Replace, FilerRetryConflicts::Replace };
-                            static const PasteReplaceCondition kCondition[6] = {
+                                FilerRetryConflicts::Replace, FilerRetryConflicts::Replace,
+                                FilerRetryConflicts::Replace };
+                            static const PasteReplaceCondition kCondition[8] = {
                                 PasteReplaceCondition::Unconditionally, PasteReplaceCondition::Unconditionally,
+                                PasteReplaceCondition::Unconditionally,
                                 PasteReplaceCondition::Unconditionally, PasteReplaceCondition::IfNewer,
-                                PasteReplaceCondition::IfLarger, PasteReplaceCondition::IfDifferent };
-                            const int i = std::clamp(chosen->choice, 0, 5);
+                                PasteReplaceCondition::IfOlder, PasteReplaceCondition::IfLarger,
+                                PasteReplaceCondition::IfDifferent };
+                            const int i = std::clamp(chosen->choice, 0, 7);
                             answer.how = kHow[i];
                             answer.condition = kCondition[i];
                         }
@@ -7399,20 +7475,27 @@ namespace UltraCanvas {
         }
         spec.width = 700;
 
-        // Files: the foldable replace options - what Replace asks of the
-        // pasted file before it replaces the existing one. They open as the
-        // last question left them.
+        // Files: the foldable options - what Replace asks of the pasted file
+        // before it replaces the existing one, and whether Keep both skips a
+        // file identical to the one there. They open as the last question
+        // left them.
         OptionsPanelState* replaceOptions = nullptr;
         if (!isDir) {
             std::shared_ptr<OptionsPanelState> state;
-            spec.options = BuildChoicePanel("FilerReplaceOptions", Tr("Replace options"),
+            spec.options = BuildChoicePanel("FilerReplaceOptions", Tr("Options"),
                     {Tr("Replace always"),
                      Tr("Replace only when the pasted file is newer"),
+                     Tr("Replace only when the pasted file is older"),
                      Tr("Replace only when the pasted file is bigger"),
                      Tr("Replace only when the files differ (other size or date)")},
-                    {Tr("always"), Tr("when newer"), Tr("when bigger"), Tr("when different")},
+                    {Tr("replace always"), Tr("replace when newer"), Tr("replace when older"),
+                     Tr("replace when bigger"), Tr("replace when different")},
                     static_cast<int>(lastReplaceCondition), replaceOptionsOpen,
                     style.smallFontSize, state);
+            AddPanelFlag(*spec.options, *state, "FilerKeepBothIdentical",
+                         Tr("Keep both: skip files that are identical (same size and date)"),
+                         ", " + Tr("keep both skips identical"), lastKeepBothSkipsIdentical,
+                         style.smallFontSize);
             spec.options->onExpandedChanged = [this](bool open) { replaceOptionsOpen = open; };
             replaceOptions = state.get();   // alive as long as the dialog (optionsState)
             spec.optionsState = state;
@@ -7427,7 +7510,7 @@ namespace UltraCanvas {
                     // for this file and - with the scope - for the rest.
                     if (!isDir && button == 1 && replaceOptions) {
                         const auto condition = static_cast<PasteReplaceCondition>(
-                                std::clamp(replaceOptions->choice, 0, 3));
+                                std::clamp(replaceOptions->choice, 0, 4));
                         q.replaceCondition = condition;
                         self->lastReplaceCondition = condition;
                     }
@@ -7441,7 +7524,14 @@ namespace UltraCanvas {
                     static const PasteConflictAction kFolder[3] = {
                         PasteConflictAction::Merge, PasteConflictAction::Replace,
                         PasteConflictAction::Skip };
-                    const PasteConflictAction action = isDir ? kFolder[button] : kFile[button];
+                    PasteConflictAction action = isDir ? kFolder[button] : kFile[button];
+                    // Keep both on a file: skipping an identical one when the
+                    // options say so (remembered for the next question).
+                    if (!isDir && replaceOptions) {
+                        self->lastKeepBothSkipsIdentical = replaceOptions->flag;
+                        if (button == 0 && replaceOptions->flag)
+                            action = PasteConflictAction::KeepBothUnlessIdentical;
+                    }
                     if (isDir) { q.folderAction = action; q.applyToAllFolders = all; }
                     else       { q.action = action;       q.applyToAll = all; }
                     // This one applies to the entry the worker stopped on; the
