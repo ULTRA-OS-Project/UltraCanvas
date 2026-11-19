@@ -174,6 +174,7 @@
   "Provider": "Provedor",
   "Public URL": "URL pública",
   "Rasterize Layer": "Rasterizar camada",
+  "Reason": "Motivo",
   "Rename": "Renomear",
   "Rename: the name is already taken": "Renomear: o nome já está em uso",
   "Replace deletes the existing file and gives \"{0}\" its name. This cannot be undone.": "\"Substituir\" exclui o arquivo existente e dá o nome dele a \"{0}\". Essa ação não pode ser desfeita.",

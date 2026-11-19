@@ -51,6 +51,7 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.50.2 - the operation lists' "Reason" column header goes through Tr
 // Version: 1.50.1 - a password-protected .ods keeps its type glyph rather than a page of its ciphertext
 // Version: 1.50.0 - an OpenDocument presentation (.odp, .otp, .fodp) is a document named
 //                  "OpenDocument" and previews its slides' text; .ppsm, .potm and the legacy
@@ -6231,7 +6232,7 @@ namespace UltraCanvas {
             model->AddColumn(ListColumnDef(Tr("Size"), 80, TextAlignment::Right));
             model->AddColumn(ListColumnDef(Tr("Modified"), 130));
         }
-        if (notes) model->AddColumn(ListColumnDef(details ? "" : "Reason", details ? 90 : 260));
+        if (notes) model->AddColumn(ListColumnDef(details ? "" : Tr("Reason"), details ? 90 : 260));
         for (size_t i = 0; i < listed.size(); ++i) {
             const FilerEntry& e = listed[i];
             std::vector<std::string> cells;
