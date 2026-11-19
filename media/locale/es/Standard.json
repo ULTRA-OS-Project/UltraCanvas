@@ -706,7 +706,7 @@
   "Size:": "Tamaño:",
   "Skip": "Omitir",
   "Skip All": "Omitir todo",
-  "Skip identical files (same size and date), keep both for the rest": "Omitir los archivos idénticos (mismo tamaño y fecha), conservar ambos en el resto",
+  "Skip identical files (same size and date), keep both for the rest": "Omitir idénticos (mismo tamaño y fecha), conservar ambos en el resto",
   "skip identical, keep both": "omitir idénticos, conservar ambos",
   "Skipped: the name is already taken": "Omitido: el nombre ya está en uso",
   "Skipped: write-protected": "Omitido: de solo lectura",

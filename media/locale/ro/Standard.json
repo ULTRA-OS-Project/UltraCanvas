@@ -724,7 +724,7 @@
   "Size:": "Dimensiune:",
   "Skip": "Omitere",
   "Skip All": "Omitere totală",
-  "Skip identical files (same size and date), keep both for the rest": "Omite fișierele identice (aceeași dimensiune și dată), păstrează-le pe amândouă pentru rest",
+  "Skip identical files (same size and date), keep both for the rest": "Omite identicele (aceeași dimensiune și dată), altfel păstrează-le pe ambele",
   "skip identical, keep both": "omite identicele, păstrează-le pe amândouă",
   "Skipped: the name is already taken": "Omis: numele este deja folosit",
   "Skipped: write-protected": "Omis: protejat la scriere",

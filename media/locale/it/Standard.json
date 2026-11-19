@@ -706,7 +706,7 @@
   "Size:": "Dimensione:",
   "Skip": "Salta",
   "Skip All": "Salta tutto",
-  "Skip identical files (same size and date), keep both for the rest": "Salta i file identici (stessa dimensione e data), mantieni entrambi per gli altri",
+  "Skip identical files (same size and date), keep both for the rest": "Salta i file identici (stessa dimensione e data), altrimenti mantieni entrambi",
   "skip identical, keep both": "salta identici, mantieni entrambi",
   "Skipped: the name is already taken": "Saltato: il nome è già in uso",
   "Skipped: write-protected": "Saltato: di sola lettura",

@@ -51,6 +51,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.51.1 - the summary's reason column takes the width the name leaves (a German reason was cut
+//                  off at 260 px), and the summary is 700 wide like the conflict question
 // Version: 1.51.0 - Replace when the pasted file is older; Keep both that skips identical files
 // Version: 1.50.2 - the operation lists' "Reason" column header goes through Tr
 // Version: 1.50.1 - a password-protected .ods keeps its type glyph rather than a page of its ciphertext
@@ -6207,6 +6209,7 @@ namespace UltraCanvas {
         };
 
         constexpr int kOperationListRowHeight = 22;
+        constexpr int kOperationSummaryWidth = 700;   // the summary at the end, as wide as a question
         constexpr int kOperationListHeaderHeight = 24;
 
         // Whether a Replace on `condition` replaces `dest` with `src` - and
@@ -6273,6 +6276,12 @@ namespace UltraCanvas {
             std::function<std::string(int)> detailFor;
         };
 
+        // The width of a row in an options panel of a dialog `dialogWidth`
+        // wide: the dialog's padding, the panel's border and the body's.
+        int OptionsRowWidth(int dialogWidth) {
+            return dialogWidth - 2 * static_cast<int>(ModalDialogStyle().padding) - 2 - 20;
+        }
+
         // A panel that folds to a header ("Replace options") over one radio
         // per choice, `initial` checked. The header's detail names the choice
         // in force (`details`, one per choice), so a folded panel still says
@@ -6282,7 +6291,7 @@ namespace UltraCanvas {
                 const std::string& id, const std::string& title,
                 const std::vector<std::string>& choices,
                 const std::vector<std::string>& details, int initial, bool open,
-                float fontSize, std::shared_ptr<OptionsPanelState>& outState) {
+                float fontSize, int rowWidth, std::shared_ptr<OptionsPanelState>& outState) {
             auto state = std::make_shared<OptionsPanelState>();
             state->choice = initial;
             auto panel = CreateCollapsiblePanel(id, title);
@@ -6301,7 +6310,9 @@ namespace UltraCanvas {
                     radio->SetVisualStyle(vs);
                     radio->SetFollowTheme(true);   // the theme's colours over the size
                 }
-                radio->size.width = CSSLayout::Dimension::Px(560);
+                // Radios do not wrap: a row takes the whole width the dialog
+                // gives the panel, so a long translation is not cut short.
+                radio->size.width = CSSLayout::Dimension::Px(rowWidth);
                 radio->size.height = CSSLayout::Dimension::Px(kRow);
                 radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                 state->group.AddRadioButton(radio);
@@ -6336,12 +6347,13 @@ namespace UltraCanvas {
         // ends in `detailSuffix`.
         void AddPanelFlag(UltraCanvasCollapsiblePanel& panel, OptionsPanelState& state,
                           const std::string& id, const std::string& text,
-                          const std::string& detailSuffix, bool on, float fontSize) {
+                          const std::string& detailSuffix, bool on, float fontSize, int rowWidth) {
             constexpr float kRow = 22.0f;
-            auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 560.0f, kRow, text);
+            auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, static_cast<float>(rowWidth),
+                                                             kRow, text);
             if (fontSize > 0.0f) box->SetFontSize(fontSize);
             box->SetChecked(on);
-            box->size.width = CSSLayout::Dimension::Px(560);
+            box->size.width = CSSLayout::Dimension::Px(rowWidth);
             box->size.height = CSSLayout::Dimension::Px(kRow);
             box->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
             box->SetMargin(6, 0, 0, 0);
@@ -6365,7 +6377,7 @@ namespace UltraCanvas {
             const std::string& id, const std::vector<FilerEntry>& listed,
             const std::vector<std::string>& rowNotes,
             const std::vector<std::string>& rowLabels, bool details,
-            int visibleRows, int& outHeight) {
+            int visibleRows, int& outHeight, int width) {
         outHeight = 0;
         if (listed.empty()) return nullptr;
         const bool labels = rowLabels.size() == listed.size();
@@ -6378,14 +6390,25 @@ namespace UltraCanvas {
         // columns of the Details view, formatted the same way - plus a label
         // column in front ("Existing" / "Pasted") and a note column after
         // ("newer", or why an entry was skipped) when the rows carry them.
+        // Name and reason alone (the summary): the name up to 45 % of the
+        // list, the reason the rest - a reason in German or Finnish runs far
+        // longer than "In use", and a fixed column cut it off mid-word.
+        int nameWidth = details ? (notes ? 230 : 270) : 280;
+        int reasonWidth = details ? 90 : 260;
+        if (notes && !details && !labels && width > 0) {
+            constexpr int kScrollbarAndBorder = 18;
+            const int room = std::max(300, width - kScrollbarAndBorder);
+            nameWidth = std::min(280, room * 45 / 100);
+            reasonWidth = room - nameWidth;
+        }
         auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
         if (labels) model->AddColumn(ListColumnDef("", 76));
-        model->AddColumn(ListColumnDef(Tr("Name"), details ? (notes ? 230 : 270) : 280));
+        model->AddColumn(ListColumnDef(Tr("Name"), nameWidth));
         if (details) {
             model->AddColumn(ListColumnDef(Tr("Size"), 80, TextAlignment::Right));
             model->AddColumn(ListColumnDef(Tr("Modified"), 130));
         }
-        if (notes) model->AddColumn(ListColumnDef(details ? "" : Tr("Reason"), details ? 90 : 260));
+        if (notes) model->AddColumn(ListColumnDef(details ? "" : Tr("Reason"), reasonWidth));
         for (size_t i = 0; i < listed.size(); ++i) {
             const FilerEntry& e = listed[i];
             std::vector<std::string> cells;
@@ -6436,9 +6459,11 @@ namespace UltraCanvas {
         if (spec.buttons.empty()) return false;
 
         int listHeight = 0;
+        // The room the list has: the dialog's width less its padding.
+        const int listWidth = spec.width - 2 * static_cast<int>(ModalDialogStyle().padding);
         auto list = BuildOperationEntryList("FilerOpList", spec.listed, spec.rowNotes,
                                             spec.rowLabels, spec.listDetails,
-                                            spec.listVisibleRows, listHeight);
+                                            spec.listVisibleRows, listHeight, listWidth);
 
         DialogConfig cfg;
         cfg.title = spec.title;
@@ -6986,7 +7011,7 @@ namespace UltraCanvas {
                         {Tr("ask"), Tr("keep both"), Tr("skip identical, keep both"),
                          Tr("replace always"), Tr("replace when newer"), Tr("replace when older"),
                          Tr("replace when bigger"), Tr("replace when different")},
-                        0, true, style.smallFontSize, state);
+                        0, true, style.smallFontSize, OptionsRowWidth(kOperationSummaryWidth), state);
             }
             OptionsPanelState* chosen = state.get();   // alive with the dialog (optionsState)
             ShowOperationSummary(cut ? Tr("Move finished") : Tr("Copy finished"), message, skipped,
@@ -7140,7 +7165,7 @@ namespace UltraCanvas {
         if (!retryLabel.empty() && onRetry)
             spec.buttons.push_back({retryLabel, DialogButtonRole::Normal});
         spec.buttons.push_back({Tr("Close"), DialogButtonRole::Default});
-        spec.width = 620;
+        spec.width = kOperationSummaryWidth;
         const bool hasRetry = !retryLabel.empty() && onRetry;
         if (!ShowOperationDialog(spec,
                 [hasRetry, onRetry](size_t button, bool) {
@@ -7491,11 +7516,11 @@ namespace UltraCanvas {
                     {Tr("replace always"), Tr("replace when newer"), Tr("replace when older"),
                      Tr("replace when bigger"), Tr("replace when different")},
                     static_cast<int>(lastReplaceCondition), replaceOptionsOpen,
-                    style.smallFontSize, state);
+                    style.smallFontSize, OptionsRowWidth(spec.width), state);
             AddPanelFlag(*spec.options, *state, "FilerKeepBothIdentical",
                          Tr("Keep both: skip files that are identical (same size and date)"),
                          ", " + Tr("keep both skips identical"), lastKeepBothSkipsIdentical,
-                         style.smallFontSize);
+                         style.smallFontSize, OptionsRowWidth(spec.width));
             spec.options->onExpandedChanged = [this](bool open) { replaceOptionsOpen = open; };
             replaceOptions = state.get();   // alive as long as the dialog (optionsState)
             spec.optionsState = state;

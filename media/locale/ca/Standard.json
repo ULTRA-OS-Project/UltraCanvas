@@ -706,7 +706,7 @@
   "Size:": "Mida:",
   "Skip": "Omet",
   "Skip All": "Omet-ho tot",
-  "Skip identical files (same size and date), keep both for the rest": "Ometre els fitxers idèntics (mateixa mida i data), conservar-los tots dos per a la resta",
+  "Skip identical files (same size and date), keep both for the rest": "Ometre els idèntics (mateixa mida i data), la resta: conservar-los tots dos",
   "skip identical, keep both": "ometre idèntics, conservar-los tots dos",
   "Skipped: the name is already taken": "Omès: el nom ja està en ús",
   "Skipped: write-protected": "Omès: de només lectura",

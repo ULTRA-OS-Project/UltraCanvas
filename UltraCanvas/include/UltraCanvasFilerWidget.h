@@ -104,6 +104,7 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.54.1 - BuildOperationEntryList: the summary's reason column takes the list's width
 // Version: 1.54.0 - PasteReplaceCondition::IfOlder (bring an earlier version back);
 //                  PasteConflictAction::KeepBothUnlessIdentical (no duplicate of a file that is there)
 // Version: 1.53.0 - PasteReplaceCondition: Replace in the name-conflict question can replace only a
@@ -4117,12 +4118,14 @@ namespace UltraCanvas {
                                 const std::string& from, const std::string& destDir);
         // The entry list the operation dialogs share (the delete confirmation's
         // list, generalised): at most kOperationListRows rows, `visibleRows`
-        // of them at a time, the rest behind a scrollbar.
+        // of them at a time, the rest behind a scrollbar. `width` is the room
+        // the list has (0: not known): a reason column takes what the name
+        // leaves of it, so a longer translation is not cut short.
         std::shared_ptr<UltraCanvasUIElement> BuildOperationEntryList(
                 const std::string& id, const std::vector<FilerEntry>& listed,
                 const std::vector<std::string>& rowNotes,
                 const std::vector<std::string>& rowLabels, bool details,
-                int visibleRows, int& outHeight);
+                int visibleRows, int& outHeight, int width = 0);
         // At most this many rows in an operation dialog's list.
         static constexpr size_t kOperationListRows = 200;
 
