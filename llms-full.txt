@@ -34311,7 +34311,19 @@ Notes:
   operations for programmatic use — `ExtractSelection()` asks (Keep both /
   Extract into the existing folder / Skip) when the destination folder name
   is already taken; `OpenExtractDialog()` opens the extract dialog the menu
-  uses.
+  uses, which asks the same when the folder named in it exists and one
+  archive is being extracted (several still go into numbered subfolders).
+  Under the question, a foldable **Options** panel says what *Extract into
+  existing* does with each file of the archive that is there already:
+  **Replace always** (the default), replace **only when the archive's file is
+  newer**, **older**, **bigger**, or **the files differ** (another size or
+  date - a ZIP's two-second times are allowed for), or **Skip identical files,
+  keep both for the rest** (an identical file stays; any other is written
+  beside it as *name (2).ext*). The files left as they were are listed when
+  the extract is through (*Extract finished · Existing files kept: 2*), each
+  with why. The choice, and whether the panel was open, last for the
+  session. The decision is made per file on the archive worker through
+  `UCVFSBridge::ExtractArchive`'s `onExistingFile`.
 - **Extract and Run** appears only when the one selected entry is a program
   inside an archive — see [Programs inside archives](#programs-inside-archives).
 - **Display > Thumbnails** switches thumbnails on and off per file kind, and
@@ -35892,6 +35904,18 @@ a dialog for every copied text file is worse than one that shows none. (Packing,
 ["Delete as administrator" helper run](#delete-problems-locked--failing-entries)
 open theirs immediately instead: none of those is ever the quick case, and the
 last one is waiting on a consent prompt the user has to answer.)
+
+The window shows the operation as its headline ("Copying"), the route as two
+chips (*ULTRA OS → Projekte*, *Downloads → Trash*), the file being handled, and
+a strip of **speed, time left, items and size** (a delete: items only; packing
+and unpacking: bytes only), with **Pause / Resume** beside Cancel. The worker
+counts what is done as it goes - one atomic add per file - and the totals come
+only from the counting it does anyway: a copy or delete of one entry counts it
+before starting on it, so "26 731 / 37 650" shows; several entries show what is
+done alone, since knowing their total would mean walking every tree first;
+moving to the Trash knows its total from the start (one move per entry). Pause
+holds the worker between files and between the chunks of a big file, and an
+archive job between its blocks; Cancel still gets through while paused.
 
 The window is the same for every route into these operations — Ctrl+V, the
 context menu, `Delete`, a drag & drop between panes, `Duplicate`,
@@ -63107,8 +63131,10 @@ FILE: Docs/UltraCanvas/UltraCanvasProgressDialog.md
 # UltraCanvasProgressDialog
 
 A modal window for an operation that takes long enough to need reporting: a
-circular progress ring with the percentage in its centre, a caption above it, a
-line naming what is being worked on right now, and a Cancel button.
+circular progress ring with the percentage in its centre; beside it a headline,
+where the work goes from and to (two chips), and what is being worked on right
+now; for a transfer, a strip of figures under them - speed, time left, items,
+size; and Cancel, with Pause / Resume where the work can wait.
 
 ```cpp
 #include "UltraCanvasProgressDialog.h"
@@ -63138,13 +63164,49 @@ dlg->Close();
 | `SetProgress(double fraction)` | `0..1`, clamped. A **negative** value means the total is not known: the ring shows a busy sweep and the centre reads `...` instead of inventing a percentage. |
 | `SetCaption(text)` | The line above the ring. |
 | `SetDetail(text)` | What is being worked on now. Long text is ellipsized from the left, so the window keeps the height it opened with. |
+| `Show(parent, title, caption, onCancel, ProgressDialogOptions)` | The same with the transfer layout (below): `from` / `to` for the route chips, `figures` for the strip with an Items cell (`items`) and a Size cell (`bytes`), `onPause` for a Pause / Resume button. With a route the window's title is the headline. |
+| `SetFigures(ProgressFigures)` | What is done (`doneItems`, `doneBytes`) and, where the work knows it, the total (`totalItems`, `totalBytes`; 0 = not known, and the cell shows what is done alone). Cheap on every tick. |
 | `IsCancelled()` | True once the user asked to cancel. |
+| `IsPaused()` | True while Pause is pressed. |
+| `FormatDuration(seconds)`, `FormatBytes(bytes)` | "9 s", "2 min", "1 h 5 min"; "742 MB", "1.2 GB" - as the window shows them. |
 | `Close()` | Takes the window down. Safe to call twice, and safe after the user closed it. |
 
 `onCancel` fires on the UI thread for every way out of the window — the button,
 Escape, the title bar. The dialog only *reports* the cancel; stopping the work
 is the caller's job, and so is deciding what a cancelled operation leaves
 behind.
+
+## The transfer layout
+
+```cpp
+ProgressDialogOptions options;
+options.from = "ULTRA OS";             // the chips: "ULTRA OS" -> "Projekte"
+options.to = "Projekte";
+options.figures = true;                // the strip: Speed, Time left ...
+options.items = true;                  // ... Items
+options.bytes = true;                  // ... Size; speed in bytes per second
+options.onPause = [&](bool paused) { job.paused = paused; };
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Copying", "", onCancel, options);
+// each tick: the figures first, then the reading that takes the sample
+dlg->SetFigures({job.doneItems, job.totalItems, job.doneBytes, job.totalBytes});
+dlg->SetProgress(job.fraction);
+```
+
+Everything the window shows is fixed when it opens, so its height never changes
+while it is up. **Time left** is worked out from the bytes where their total is
+known, from the items where theirs is, else from how fast the ring moves;
+**speed** is bytes (or, without `bytes`, items) per second. Both are averaged
+over the last three seconds and appear after the first second ("—" until then);
+a pause starts the averaging over.
+
+It is built to cost the work nothing measurable. The ring follows every
+`SetProgress`; the texts change at most four times a second and are plain
+labels, not a laid-out Markdown message. Nothing is counted for the window: the
+caller hands in what it counts anyway, and leaves a total at 0 where knowing it
+would mean walking a tree first. In the UltraFiler, a copy of 100,000 small
+files spent 1.5 - 1.9 % of one core on the window's thread with this layout,
+against 1.1 - 1.7 % with the ring and file name alone; the copy itself runs on
+another core.
 
 ## Worked example: a background job
 
@@ -111003,6 +111065,16 @@ direct zlib calls throughout the codebase.
   written through a symbolic link the archive created. Refused entries are
   skipped, the rest extracts, and the result is `InvalidPath` with the names
   in the provider's last error.
+* **A file that exists already is the caller's to decide.** Without
+  `VirtualFSExtractOptions::onExistingFile`, `ExtractAll` writes over a file
+  of the same name at the destination. With it, the callback is asked for
+  each regular-file entry whose file exists - on the extracting thread, with
+  the entry's name, the path it would go to, its size and its modification
+  time (`VirtualFSExistingFile`) - and answers `Overwrite`, `Skip` (the file
+  there stays, the entry is not written) or `WriteAs` (the entry goes to the
+  path the callback fills in, a free name beside it). UltraCanvas's
+  `UCVFSBridge::ExtractArchive` takes the same callback as its last argument
+  (`UCVFSExistingFileCallback`).
 * **An extracted file keeps its dates.** `ExtractAll` and `ExtractFile` write
   through libarchive's disk writer and give each file and folder the entry's
   modification date (`VirtualFSExtractOptions::preserveTimestamps`, on by
