@@ -18,6 +18,8 @@
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.h"
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEnginePieChart.h"
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEngineScatterChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineRadarChart.h"
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineFinancialChart.h"
 #include "UltraCanvasFontCoverage.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
@@ -2967,6 +2969,65 @@ int main() {
         TEST("A scatter chart of unjoined points is the engine's scatter chart",
              std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(CreateRichDocumentChart(points, 300, 200)) != nullptr);
         TEST("A frame without a chart has none to make", CreateRichDocumentChart(RichChart(), 300, 200) == nullptr);
+        // Joined points whose series have different x values: still the
+        // scatter chart, each series a joined group in the order of its points.
+        RichChart paths = chart;
+        paths.kind = RichChart::Kind::Scatter;
+        paths.series[0].xValues = {1.0, 10.0};
+        paths.series[1].xValues = {4.0, 2.0};           // turns back
+        paths.series[0].joined = paths.series[1].joined = true;
+        paths.series[0].marked = true;
+        paths.series[1].marked = false;
+        auto joinedChart = std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(CreateRichDocumentChart(paths, 300, 200));
+        TEST("Joined points over different x values are the scatter chart, its groups joined",
+             joinedChart && joinedChart->GetGroups().size() == 2 && joinedChart->GetGroups()[0].joined
+             && joinedChart->GetGroups()[0].showMarkers && joinedChart->GetGroups()[1].joined
+             && !joinedChart->GetGroups()[1].showMarkers);
+        TEST("...and no line is laid out before a paint", joinedChart && joinedChart->GroupLineRuns(0).empty());
+
+        // The other kinds: a radar chart, bubbles, a stock chart.
+        RichChart web = chart;
+        web.kind = RichChart::Kind::Radar;
+        web.categories = {"A", "B", "C"};
+        for (RichChartSeries& one : web.series) one.values = {3.0, 9.1, 5.0};
+        TEST("A radar chart is the engine's radar chart",
+             std::dynamic_pointer_cast<UltraCanvasEngineRadarChart>(CreateRichDocumentChart(web, 300, 200)) != nullptr);
+        web.categories = {"A", "B"};
+        for (RichChartSeries& one : web.series) one.values = {3.0, 9.1};
+        TEST("...which needs three spokes", CreateRichDocumentChart(web, 300, 200) == nullptr);
+        RichChart sized = points;
+        sized.kind = RichChart::Kind::Bubble;
+        for (RichChartSeries& one : sized.series) one.sizes = {4.0, 16.0};
+        auto bubbles = std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(CreateRichDocumentChart(sized, 300, 200));
+        TEST("A bubble chart is the engine's scatter chart, its points with sizes", bubbles && bubbles->GetGroups().size() == 2
+             && bubbles->GetGroups()[0].points.size() == 2 && bubbles->GetGroups()[0].points[1].size == 16.0
+             && !bubbles->GetGroups()[0].joined);
+        RichChart prices = chart;
+        prices.kind = RichChart::Kind::Stock;
+        prices.series.resize(3);
+        prices.series[0].values = {15.0, 14.0};      // high
+        prices.series[1].values = {8.0, 11.0};       // low
+        prices.series[2].values = {12.0, 13.0};      // close
+        TEST("A stock chart is the engine's financial chart",
+             std::dynamic_pointer_cast<UltraCanvasEngineFinancialChart>(CreateRichDocumentChart(prices, 300, 200)) != nullptr);
+        prices.series.resize(2);
+        TEST("...which needs a high, a low and a close", CreateRichDocumentChart(prices, 300, 200) == nullptr);
+
+        // A smoothed line goes through its points and stays between them.
+        {
+            const std::vector<Point2Dd> knots = {{10.0, 100.0}, {50.0, 40.0}, {40.0, 10.0}, {120.0, 60.0}};
+            const std::vector<Point2Dd> curve = UltraCanvasEngineScatterChart::SmoothThrough(knots);
+            size_t found = 0;
+            double left = 1e9, right = -1e9, top = 1e9, bottom = -1e9;
+            for (const Point2Dd& p : curve) {
+                for (const Point2Dd& knot : knots) found += std::hypot(p.x - knot.x, p.y - knot.y) < 1e-6 ? 1 : 0;
+                left = std::min(left, p.x); right = std::max(right, p.x);
+                top = std::min(top, p.y); bottom = std::max(bottom, p.y);
+            }
+            TEST("A smooth curve goes through every point: " + std::to_string(curve.size()) + " samples", curve.size() > 30 && found == knots.size());
+            TEST("...without swinging far past them", left > 0.0 && right < 130.0 && top > 0.0 && bottom < 110.0);
+            TEST("...and two points stay a straight line", UltraCanvasEngineScatterChart::SmoothThrough({knots[0], knots[1]}).size() == 2);
+        }
 
         // In the view: the frame's chart is drawn by an engine chart of the
         // frame's size, and takes its room in the line.
@@ -3019,6 +3080,37 @@ int main() {
         TEST("A second paint draws with the same chart", chartEdit->GetChartElementForTest(0) == drawn && drawn != nullptr);
         chartEdit->SetDocument(document);
         TEST("A document set anew makes its charts anew", chartEdit->GetChartElementForTest(0) == nullptr);
+
+        // Painted, a joined scatter group's line runs through its points in
+        // the order given - also where x turns back.
+        document->frames[0].chart = paths;
+        chartEdit->SetDocument(document);
+        window->UpdateAndRender();
+        auto painted = std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(chartEdit->GetChartElementForTest(0));
+        TEST("The view draws a joined scatter chart with the engine's scatter chart", painted != nullptr);
+        if (painted) {
+            const std::vector<ChartLineRun> forward = painted->GroupLineRuns(0), back = painted->GroupLineRuns(1);
+            TEST("...one unbroken line through each group's two points", forward.size() == 1 && back.size() == 1
+                 && forward[0].knots.size() == 2 && back[0].knots.size() == 2);
+            if (forward.size() == 1 && back.size() == 1 && forward[0].knots.size() == 2 && back[0].knots.size() == 2) {
+                TEST("...left to right where x rises, right to left where it turns back",
+                     forward[0].knots[1].x > forward[0].knots[0].x + 20.0 && back[0].knots[1].x < back[0].knots[0].x - 5.0);
+                // (9.1 at x 1 then 2.4 at x 10: the first group's line falls.)
+                TEST("...and through the values' heights", forward[0].knots[1].y > forward[0].knots[0].y + 20.0);
+            }
+        }
+        // Smoothed, a series of three points is drawn as a curve.
+        RichChart curved = paths;
+        curved.series.resize(1);
+        curved.series[0].values = {2.0, 8.0, 3.0};
+        curved.series[0].xValues = {1.0, 5.0, 9.0};
+        curved.series[0].smooth = true;
+        document->frames[0].chart = curved;
+        chartEdit->SetDocument(document);
+        window->UpdateAndRender();
+        auto smoothed = std::dynamic_pointer_cast<UltraCanvasEngineScatterChart>(chartEdit->GetChartElementForTest(0));
+        TEST("A smoothed scatter series is drawn as a curve through its points", smoothed && smoothed->GroupLineRuns(0).size() == 1
+             && smoothed->GroupLineRuns(0)[0].knots.size() == 3 && smoothed->GroupLineRuns(0)[0].points.size() > 20);
         window->RemoveChild(chartEdit);
     }
 

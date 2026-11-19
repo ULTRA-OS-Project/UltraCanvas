@@ -970,8 +970,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   UltraCanvasOfficeEncryption), `ReadPptxPresentationFromPackage`,
   `IsPptxPackage`, `IsPptxExtension`, `PptxPresentationToRichDocument` (an
   outline). `UltraCanvasFileLoader::LoadTextDocument` opens a deck that way.
-  No renderer, no writer. In `core/UltraCanvasPresentationPptx.cpp`.
+  For drawing it resolves places, text sizes / colours / alignment, fills and
+  backgrounds through the layout, master and theme (`themeColors`, and the
+  pictures' bytes `withPictures`). No writer. In
+  `core/UltraCanvasPresentationPptx.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
+- **UltraCanvasPptxSlideRender** (`UltraCanvasPptxSlideRender.h`) —
+  `RenderPptxSlide(deck, index, widthPx)`: a slide of a `PptxPresentation` as
+  a `UCPixmap` (background, shapes, pictures, tables, text shrunk to fit).
+  UltraClipboard's slide previews. In `core/UltraCanvasPptxSlideRender.cpp`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
@@ -22150,8 +22157,9 @@ listView->tooltipProvider = [rows = rows.get()](int row, int) {
   them for Up / Down; `FindRow(id)` keeps a selection across a reload.
 - **The row**: a thumbnail drawn by kind (an image's own thumbnail, a colour
   swatch, a code tile, a link tile, file sheets with a `+n` badge), the
-  title, a meta line (`DescribeClipboardEntry`: "Text · 2 lines · 29
-  characters · UltraMail · 5 min ago") and Copy, Edit and Delete -
+  title, a meta line (`DescribeClipboardEntry`: "Text · UltraMail", an
+  image's "Image · 1200 × 730 · 147 KB") with the age ("5 min ago") at its
+  right end, and Copy, Edit and Delete -
   `ClipboardRowStyle::saveAction` adds Save as between Edit and Delete
   (UltraClipboard). The actions stand at the row's right edge, or between the
   thumbnail and the text with `actionsLeftOfText` (`SetActionsLeftOfText`
@@ -22160,6 +22168,10 @@ listView->tooltipProvider = [rows = rows.get()](int row, int) {
   so the text does not move. The light style shows the actions on every row,
   the compact one on the hovered and selected rows only. `ShowCopied(id)` turns Copy into a check with a
   "Copied" pill for a moment; redraw while `IsShowingCopied()`.
+  `SetCoveredFrom(x, entryId)` says something covers the rows from `x`
+  rightwards (UltraClipboard's image preview): the selected row's actions,
+  and those of `entryId`, stand just left of it, where they can be reached;
+  `SetCoveredFrom(0, 0)` puts them back at the edge.
   `IsOverThumbnail(posInCell)` says whether a point of a row is on the
   thumbnail's column (the tile's width, the row's whole height, so a pointer
   resting there keeps its answer while the rows scroll under it); the caller
@@ -31966,7 +31978,7 @@ compared before the switch.
   usual `(id, x, y, w, h)` constructor (position and size default to 0, for a
   chart sized by its layout).
 
-**Version:** 1.2.0 (`UltraCanvasEngineBarChart`)
+**Version:** 1.3.0 (joined groups in the scatter chart)
 **Last Modified:** 2026-11-18
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
@@ -32191,6 +32203,29 @@ they are not wiped. It calls `RefreshHighlights()` when only its own
 highlights changed. The importance–performance chart
 ([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md))
 draws its zones this way.
+
+A group with `joined = true` gets a straight line through its points **in the
+order they are given** - an office scatter chart "with lines", where every
+series has its own x values and they need not rise (a loop, a path, a curve
+that turns back). A point that is not finite breaks the line.
+`showMarkers = false` leaves the line alone (a mark still shows under the
+pointer); `lineWidth` sets the group's line, `SetJoinLineWidth` the chart's;
+`GroupLineRuns(group)` gives the line as laid out. `smooth = true` draws the
+line as a curve through the points (a centripetal Catmull-Rom spline, which
+follows the points in their order whichever way they run and does not loop
+between them); `SmoothThrough(points)` is that curve for any screen points.
+
+```cpp
+auto trials = CreateEngineScatterChart("Trials", 0, 0, 640, 400);
+EngineScatterGroup path;
+path.name = "Trial 1";
+path.points = {{1.0, 2.0}, {4.0, 6.5}, {3.0, 8.0}, {0.5, 5.0}};   // x turns back
+path.joined = true;
+path.lineWidth = 1.5f;
+path.smooth = true;                            // a curve through the points
+trials->AddGroup(path);
+trials->SetJoinLineWidth(2.0f);
+```
 
 A point with a finite `size` turns the chart into a bubble chart: radii are
 area-proportional (`SetSizeScale(EngineBubbleScale::Diameter)` for the other
@@ -62363,7 +62398,7 @@ device's account lives in a store that is never written to disk.
 FILE: Docs/UltraCanvas/UltraCanvasPresentationPptx.md
 ==============================================================================
 
-# UltraCanvasPresentationPptx — PowerPoint decks (.pptx) as text
+# UltraCanvasPresentationPptx — PowerPoint decks (.pptx) as text and slides
 
 `UltraCanvasPresentationPptx.h` reads a PowerPoint presentation - `.pptx`,
 and `.pptm` / `.ppsx` / `.potx`, which are the same package - into a UI-free
@@ -62373,7 +62408,10 @@ and descriptions, speaker notes, and which slides are hidden. A
 password-protected deck is decrypted on the way in, through the same code as
 a protected `.xlsx` or `.docx` ([UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)).
 
-It is a reader of text, not a slide renderer. There is no writer.
+For drawing a slide it also resolves what each shape takes from its layout,
+master and theme - place, text sizes, colours and alignment, anchor, fill,
+outline, the background - and `UltraCanvasPptxSlideRender.h` draws a slide
+from that as a picture (*Drawing a slide*, below). There is no writer.
 
 ## Opening one as a document
 
@@ -62437,11 +62475,11 @@ UCRichDocument outline = PptxPresentationToRichDocument(deck);
 
 | Type | Holds |
 |---|---|
-| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order |
-| `PptxSlide` | `number` (1-based), `hidden`, `title`, `shapes` back to front, `notes` |
-| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`), `name`, `x` / `y` / `width` / `height` in EMU, `paragraphs`; a table's `rows` (cells, each a list of paragraphs); a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`) and `altText` |
-| `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`; `Text()` joins the runs |
-| `PptxRun` | `text` (`"\n"` for a line break), `bold`, `italic`, `underline` |
+| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `pictures` (bytes by part, read `withPictures`) |
+| `PptxSlide` | `number` (1-based), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black) |
+| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `placeholder` (its type), `anchor`, `fontScale` (autofit), `fill`, `line` and `lineWidthPt`, `geometry`, `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`) and `altText` |
+| `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`, `align`; `Text()` joins the runs |
+| `PptxRun` | `text` (`"\n"` for a line break), `bold`, `italic`, `underline`, `sizePt` and `color` (resolved; 0 / empty when nothing says) |
 
 `IsPptxPackage(path)` tells a deck by its content (a ZIP holding
 `ppt/presentation.xml`); a protected deck is a compound file instead, which
@@ -62458,13 +62496,53 @@ reads a package already in memory.
   paragraph says `buNone`. A text box is not bulleted unless it says `buChar`
   or `buAutoNum`. The date, footer and slide-number placeholders are slide
   furniture and left out.
-- Groups are read through, their shapes in order; their positions stay in the
-  group's own coordinates. A shape that takes its place from the layout has
-  none (0, 0, 0, 0).
+- Groups are read through, their shapes in order and placed on the slide (the
+  group's offset and scaling applied). A placeholder that names no place
+  takes its layout's, then its master's (matched by `idx`, then by type; a
+  centred title and a subtitle fall back to the master's title and body);
+  `placeInherited` says so. One found nowhere keeps 0, 0, 0, 0.
+- A run's size, colour and its paragraph's alignment resolve from the run,
+  then the shape's list style, the layout's and master's placeholder, the
+  master's title or body text style (a text box: the deck's default text
+  style), the colour of a shape's style (`fontRef`) coming before the master's.
+  Theme colours (`schemeClr`) go through the master's colour map and the
+  theme, with `lumMod`, `lumOff`, `tint` and `shade` applied. A shape with a
+  fill or outline and no text is kept (a coloured bar, a circle).
 - Speaker notes: the body placeholder of the slide's notes slide.
-- Not read: masters, layouts and themes as drawn (fonts, sizes, colours,
-  fills), charts, SmartArt, embedded objects, comments, animations and
-  transitions. Pictures are named, not decoded.
+- Not read: theme fonts, gradient, picture and pattern fills, effects,
+  charts, SmartArt, embedded objects, comments, animations and transitions.
+  Pictures are named; their bytes are kept with `withPictures`, not decoded.
+
+## Drawing a slide
+
+`RenderPptxSlide(deck, index, widthPx)` (`UltraCanvasPptxSlideRender.h`)
+draws a slide of a deck read `withPictures` as a `UCPixmap`, `widthPx` wide
+and as high as the deck's slide shape: the background, then the shapes back
+to front - rectangles, rounded rectangles and ellipses in their fill and
+outline, pictures stretched to their box (a grey box with the description
+when one cannot be decoded), tables in the theme's first accent (a header row
+and banded rows), and text in its box's insets at its sizes, colours and
+alignment, with bullets ("•", "–" on every second level) and numbers, at its
+anchor. Text in a placeholder too tall for its box is shrunk until it fits,
+down to 40 %. The text is set in the system font. UltraClipboard previews a
+copied deck's slides with it.
+
+<!-- doc-check: std::string path; void Show(std::shared_ptr<UltraCanvas::UCPixmap> slide); -->
+```cpp
+#include "UltraCanvasPptxSlideRender.h"
+
+using namespace UltraCanvas;
+
+PptxPresentation deck;
+std::string error;
+if (ReadPptxPresentation(path, deck, error, "", true)) {   // withPictures
+    for (size_t i = 0; i < deck.slides.size(); ++i)
+        Show(RenderPptxSlide(deck, i, 1280));                 // 1280 x 720 at 16:9
+}
+```
+
+It is callable from a worker thread: the drawing is serialized inside, as the
+file previews' pages are.
 
 ## Test
 
@@ -62474,7 +62552,11 @@ which python-pptx - an independent writer - builds from its default template
 order, titles, a subtitle, bullets on two levels with a bold run, a numbered
 pair, a text box at its place, speaker notes, a table, a picture's
 description and part, a hidden slide, sixty bullets, no slide-number text,
-and the outline. `office-agile-encrypted.pptx` is the same deck encrypted;
+and the outline; then what a slide is drawn with - the subtitle's place from
+its layout, the title's 44 pt and centring and the body's 32 / 28 pt from the
+master, the theme's colours, the master's background and text colour, the
+subtitle's tinted colour - and `RenderPptxSlide` drawing the first slide at
+640 x 360. `office-agile-encrypted.pptx` is the same deck encrypted;
 it is refused without the password, read with it, and opened by
 `UltraCanvasFileLoader::LoadTextDocument`. The same test checks UltraFiler's
 preview page: the plain deck's slides, titles first, and no page for the
@@ -67352,9 +67434,12 @@ same charts an application uses as elements
 | `RichChart::Kind` | Drawn by |
 |---|---|
 | `Column`, `Bar` (side by side, `stacked`, `percent`) | `UltraCanvasEngineBarChart` |
-| `Line`, `Area` | `UltraCanvasEngineLineChart` |
+| `Line`, `Area` | `UltraCanvasEngineLineChart` (`smooth`: a curved line) |
 | `Pie`, `Doughnut` | `UltraCanvasEnginePieChart` |
-| `Scatter` | `UltraCanvasEngineScatterChart`; the line chart over numeric x where the points are joined and the series share their x |
+| `Scatter` | `UltraCanvasEngineScatterChart`, each series over its own x values; a series with a line is a joined group, `smooth` a curve through its points |
+| `Bubble` | `UltraCanvasEngineScatterChart` with its size channel (`RichChartSeries::sizes`) |
+| `Radar` | `UltraCanvasEngineRadarChart`, the categories its spokes on one range (`filled`: the shapes filled) |
+| `Stock` | `UltraCanvasEngineFinancialChart`: series in the order high, low, close - bars - or open, high, low, close - candles |
 
 The chart is laid out for the frame's own size and scaled into its place, so
 it prints and exports as vectors and keeps its proportions under zoom. It is
@@ -84533,8 +84618,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
 
 # UltraCanvasTooltipManager Documentation
 
-**Version:** 2.6.0 - the tooltip is shown in a window of its own, above every other window (`SetUseOwnWindow`, `GetTooltipWindow`)  
-**Last Modified:** 2026-11-09  
+**Version:** 2.6.1 - the pointer leaving the window a tooltip belongs to, or that window losing the focus, takes the tooltip away (`PointerLeftWindow`)  
+**Last Modified:** 2026-11-18  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -84820,6 +84905,16 @@ the tooltip's window is no application window: it never keeps `Run()` going,
 is not counted by `ClosingEndsApplication`, is no jump target and is not
 reported to assistive technology.
 
+Because that window floats above every other, the tooltip goes as soon as
+the pointer leaves the window it belongs to or that window loses the focus
+(`PointerLeftWindow`, which `UltraCanvasApplication` calls on the window's
+`MouseLeave` and `WindowBlur`); a tooltip still waiting for its delay is not
+shown. The element the pointer was over gets its `MouseLeave` too, so the
+pointer back on it asks for its tooltip again - unless an element holds the
+pointer (a drag out of the window). Without this a tooltip stayed over another
+program's window that had come over its own, where, drawn inside its window,
+it had been covered with it.
+
 The window is opaque, so in it the tooltip has square corners and no soft
 shadow of its own; a compositing window manager gives a tooltip window a
 shadow. Drawn inside its window the tooltip keeps the style's
@@ -84877,6 +84972,7 @@ static bool GetUseOwnWindow();
 static UltraCanvasWindowBase* GetTooltipWindow();   // nullptr: drawn in its window, or none
 static void ForgetWindow(UltraCanvasWindowBase* win);        // a window is closing
 static void WindowScaleChanged(UltraCanvasWindowBase* win);  // a window changed monitor scale
+static void PointerLeftWindow(UltraCanvasWindowBase* win);   // the pointer left it, or it lost the focus
 
 // Rendering (called by the window compositor of the window the tooltip is
 // shown in: its own, or the one it belongs to)
@@ -94043,7 +94139,7 @@ View = `UltraCanvasRichTextEdit` draws it.
 | Floating pictures | yes | yes | yes | yes | yes | 2026-11. A floating run (`RichTextRun::imageWrap`, `imageFloatAlign`, offsets) placed from the paragraph, the page's text area or the page (`floatHorizontalFrom`, `floatVerticalFrom`, `floatVerticalAlign`): ODF `style:horizontal-rel` / `vertical-rel` and page-anchored frames, DOCX `wp:positionH` / `wp:positionV` `relativeFrom`, DOC OfficeArt shapes (`PlcSpaMom` anchors, `posrelh` / `posrelv`, BStore pictures). Page view puts them at their place on the page; text wraps beside a square-wrapped one, above and below a top-and-bottom one. Both writers save the placement. |
 | Text boxes and frames | yes | yes | yes | yes | yes | 2026-11. A text frame (`RichTextRun::frameIndex`, `UCRichDocument::frames`): its paragraphs, fill, border and padding, floating like a picture. ODF `draw:text-box` (Writer frames and drawing text boxes), DOCX `wps:txbx` and VML `v:textbox`, DOC text boxes (the text-box story, `PlcftxbxTxt`). A letterhead's sender block stands beside the address. Both writers save them; LibreOffice reads the saved files back with the frames in place. Markdown, HTML and plain text spell a frame's text before its paragraph. Frames and floating pictures in headers and footers float on every page, from that page, and the body wraps round them (DOC: `PlcSpaHdr` and the header text-box story) - a Word letterhead's logo and sender block. Frames in table cells are not drawn; see the gaps below. |
 | Shapes, lines, drawings (`draw:*`, DrawingML, OfficeArt) | yes | yes | yes | yes | yes | 2026-11. A drawing is a frame with shapes (`RichTextFrame::shapes`, `RichShape`): lines, rectangles, rounded rectangles, ellipses, outlines (straight and curved), groups, pictures in groups; fill, line colour and width, dashes, arrowheads, a turn and mirroring; words in a shape, centred or at the foot. ODF `draw:rect` / `ellipse` / `line` / `path` / `polygon` / `polyline` / `custom-shape` / `g`; DOCX `wps:wsp` (preset and custom outlines; theme colours through `wps:style` and `a:schemeClr` with their tint, shade and luminance changes), `wpg:wgp` groups with pictures and text boxes, and VML (`v:line`, `v:rect`, `v:roundrect`, `v:oval`, `v:shape` paths and types, `v:group`); DOC OfficeArt shapes and groups (shape types, freeform vertices, `FSPGR` / `FChildAnchor`). About forty of Word's named outlines (stars, arrows, flowchart symbols); others draw as their box. Both writers save drawings, and LibreOffice reads them back in place. Gradient fills (linear, axial, radial with their centre: ODF `draw:gradient`, DOCX `a:gradFill`, VML `v:fill`, DOC shades) are drawn and saved. Pattern fills draw as their pattern: DOCX `a:pattFill` (all of Word's presets), ODF `draw:hatch` (lines, single or crossed), DOC pattern bitmaps; saved to DOCX by name, to ODT as a hatch or, for dots and checks, as the pattern's tile. Picture fills (DOCX `a:blipFill`, ODF `draw:fill-image`, DOC textures and pictures) are drawn tiled or stretched and saved. Writer's DOC export keeps hatches as EMF textures, which are not decoded (they draw in the fill colour). No shadows, 3-D or WordArt. In page view a floating frame, drawing or picture is selected, moved by dragging and resized - in a header or footer while it is being edited; the new place and size are saved. |
-| Charts, embedded spreadsheets (OLE) | *partial* | *partial* | no | yes | yes | 2026-11. `RichTextFrame::chart` (`RichChart`): kind, categories, series, legend, title, stated axis ranges - columns and bars (side by side, stacked, per cent), lines, areas, pies and doughnuts, scatter charts. DOCX: read from the chart part (`c:chartSpace`) and written back as one. ODT: read from the chart object (`Object N/content.xml`, `chart:chart` with its own table) and written back as one. The view draws it with the chart engine (`UltraCanvasRichDocumentChart.h`); the frame holds it as drawn shapes too (`UCRichDocument::ChartAsShapes`). Other chart kinds (stock, radar, bubble, 3D) show Writer's replacement picture, or columns from DOCX. No editing of the data. Embedded spreadsheets: no. |
+| Charts, embedded spreadsheets (OLE) | *partial* | *partial* | no | yes | yes | 2026-11. `RichTextFrame::chart` (`RichChart`): kind, categories, series, legend, title, stated axis ranges - columns and bars (side by side, stacked, per cent), lines and areas, pies and doughnuts, scatter charts (joined, smoothed), bubble, radar and stock charts. DOCX: read from the chart part (`c:chartSpace`) and written back as one. ODT: read from the chart object (`Object N/content.xml`, `chart:chart` with its own table) and written back as one. The view draws it with the chart engine (`UltraCanvasRichDocumentChart.h`); the frame holds it as drawn shapes too (`UCRichDocument::ChartAsShapes` - a radar or stock chart as lines over its categories there). Surface and 3D charts show Writer's replacement picture, or columns from DOCX. No editing of the data. Embedded spreadsheets: no. |
 | Formulas | yes | yes | no | yes | yes | ODT MathML / DOCX OMML → LaTeX. |
 
 ### Page and document structure
@@ -111226,7 +111322,8 @@ listed in the settings are left out.
 **The list.** Pinned entries come first, then Today, Yesterday and Earlier.
 Every row has a thumbnail by kind (the picture itself for an image, the
 colour for a colour, a sheet with a `+n` badge for several files), the title,
-a line on what it is, which program it came from and when, and four buttons:
+a line on what it is and which program it came from, when at the right end
+of that line, and four buttons:
 
 | Button | Key | |
 |---|---|---|
@@ -111238,6 +111335,16 @@ a line on what it is, which program it came from and when, and four buttons:
 The buttons stand right of the entry's text, or left of it between the
 thumbnail and the text: Settings, *Display → Icons*. The desktop's quick
 panel follows the same setting.
+
+**The preview.** Rest the pointer on a thumbnail and the entry opens in a
+preview over the right part of the list: an image, or the first of copied
+files - a picture, a PDF, a spreadsheet (.ods, .xlsx, .xls, .csv) you can
+scroll, a word-processing document (.odt, .docx, .doc) as its first page, a
+PowerPoint deck (.pptx) as its slides - PageUp / PageDown, or a click on the
+picture's left or right, turns them - a drawing, a 3D model or a video's
+first frame. The wheel zooms. While it is
+open, the selected row's buttons and the previewed row's stand just left of
+it. Settings, *Display*, chooses how it looks.
 
 Right-click a row for the same, *Pin* / *Unpin* (Ctrl+P) and, on an image
 or copied files with words in them, *Extract text* (Ctrl+T).

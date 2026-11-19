@@ -139,6 +139,7 @@
   "no translation provider is available": "אין ספק תרגום זמין",
   "None found": "לא נמצא דבר",
   "Not available": "לא זמין",
+  "Not saved yet": "טרם נשמר",
   "One Column": "טור אחד",
   "Open File(s)": "פתיחת קבצים",
   "Open File... (Ctrl+O)": "פתיחת קובץ... (Ctrl+O)",
@@ -216,5 +217,11 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (קירילית)",
   "Windows-1252 (Western)": "Windows-1252 (מערבית)",
   "Word Wrap": "גלישת מילים",
-  "Zoom Level": "רמת זום"
+  "Zoom Level": "רמת זום",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "ב-{n} קובץ יש שינויים שלא נשמרו. לשמור אותו לפני הסגירה?",
+    "two": "ב-{n} קבצים יש שינויים שלא נשמרו. לשמור אותם לפני הסגירה?",
+    "many": "ב-{n} קבצים יש שינויים שלא נשמרו. לשמור אותם לפני הסגירה?",
+    "other": "ב-{n} קבצים יש שינויים שלא נשמרו. לשמור אותם לפני הסגירה?"
+  }
 }

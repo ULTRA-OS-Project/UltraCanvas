@@ -15,7 +15,9 @@
     "Find",
     "Find Next",
     "Find...",
+    "Folder",
     "Modified",
+    "Name",
     "New",
     "Open...",
     "Options",
@@ -179,6 +181,7 @@
   "no translation provider is available": "no translation provider is available",
   "None found": "None found",
   "Not available": "Not available",
+  "Not saved yet": "Not saved yet",
   "One Column": "One Column",
   "Open File(s)": "Open File(s)",
   "Open File... (Ctrl+O)": "Open File... (Ctrl+O)",
@@ -269,5 +272,9 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Cyrillic)",
   "Windows-1252 (Western)": "Windows-1252 (Western)",
   "Word Wrap": "Word Wrap",
-  "Zoom Level": "Zoom Level"
+  "Zoom Level": "Zoom Level",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} file has unsaved changes. Save it before closing?",
+    "other": "{n} files have unsaved changes. Save them before closing?"
+  }
 }

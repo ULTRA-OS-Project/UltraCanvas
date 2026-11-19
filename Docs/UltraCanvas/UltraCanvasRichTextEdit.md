@@ -837,9 +837,12 @@ same charts an application uses as elements
 | `RichChart::Kind` | Drawn by |
 |---|---|
 | `Column`, `Bar` (side by side, `stacked`, `percent`) | `UltraCanvasEngineBarChart` |
-| `Line`, `Area` | `UltraCanvasEngineLineChart` |
+| `Line`, `Area` | `UltraCanvasEngineLineChart` (`smooth`: a curved line) |
 | `Pie`, `Doughnut` | `UltraCanvasEnginePieChart` |
-| `Scatter` | `UltraCanvasEngineScatterChart`; the line chart over numeric x where the points are joined and the series share their x |
+| `Scatter` | `UltraCanvasEngineScatterChart`, each series over its own x values; a series with a line is a joined group, `smooth` a curve through its points |
+| `Bubble` | `UltraCanvasEngineScatterChart` with its size channel (`RichChartSeries::sizes`) |
+| `Radar` | `UltraCanvasEngineRadarChart`, the categories its spokes on one range (`filled`: the shapes filled) |
+| `Stock` | `UltraCanvasEngineFinancialChart`: series in the order high, low, close - bars - or open, high, low, close - candles |
 
 The chart is laid out for the frame's own size and scaled into its place, so
 it prints and exports as vectors and keeps its proportions under zoom. It is

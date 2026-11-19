@@ -784,8 +784,15 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   UltraCanvasOfficeEncryption), `ReadPptxPresentationFromPackage`,
   `IsPptxPackage`, `IsPptxExtension`, `PptxPresentationToRichDocument` (an
   outline). `UltraCanvasFileLoader::LoadTextDocument` opens a deck that way.
-  No renderer, no writer. In `core/UltraCanvasPresentationPptx.cpp`.
+  For drawing it resolves places, text sizes / colours / alignment, fills and
+  backgrounds through the layout, master and theme (`themeColors`, and the
+  pictures' bytes `withPictures`). No writer. In
+  `core/UltraCanvasPresentationPptx.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
+- **UltraCanvasPptxSlideRender** (`UltraCanvasPptxSlideRender.h`) —
+  `RenderPptxSlide(deck, index, widthPx)`: a slide of a `PptxPresentation` as
+  a `UCPixmap` (background, shapes, pictures, tables, text shrunk to fit).
+  UltraClipboard's slide previews. In `core/UltraCanvasPptxSlideRender.cpp`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
   presentations (`.odp`, `.otp` templates, flat `.fodp`) read as text into

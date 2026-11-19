@@ -336,17 +336,9 @@ cp -r "$PROJECTDIR/Docs"  "$PKG/share/Docs"
 mkdir -p "$PKG/share/DemoApp"
 cp "$PROJECTDIR"/Apps/DemoApp/*.cpp "$PKG/share/DemoApp/" 2>/dev/null || true
 
-# UltraFIBU's data files. Without them the application starts and can do
-# nothing: no chart of accounts means no Mandant, and shipping the binary
-# without them would be worse than not shipping it at all - and shipping
-# them without the binary is pointless, so only when it is packaged.
-if [ -x "$PKG/bin/UltraFIBU" ] && [ -d "$PROJECTDIR/Apps/UltraFIBU/data" ]; then
-    mkdir -p "$PKG/share/UltraFIBU"
-    cp -r "$PROJECTDIR/Apps/UltraFIBU/data" "$PKG/share/UltraFIBU/data"
-    # And beside the binary, so `bin/ultrafibu` run directly - without the
-    # wrapper that sets ULTRAFIBU_DATA_DIR - still finds them.
-    cp -r "$PROJECTDIR/Apps/UltraFIBU/data" "$PKG/bin/data"
-fi
+# No UltraFIBU data files in the package: UltraFIBU is not distributed for
+# the moment. When it returns, copy Apps/UltraFIBU/data to
+# "$PKG/share/UltraFIBU/data" and "$PKG/bin/data" again.
 
 # --- archive -----------------------------------------------------------------
 

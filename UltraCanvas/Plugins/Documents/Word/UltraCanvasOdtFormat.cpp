@@ -5,7 +5,8 @@
 // tinyxml2 with the conventional ODF namespace prefixes (office:, text:,
 // style:, fo:, draw:, table:, xlink:) — the same approach as the existing
 // ODS spreadsheet loader.
-// Version: 1.14.0 - a password-protected .odt opened with its password (UltraCanvasOdfEncryption.h)
+// Version: 1.15.0 - a password-protected .odt opened with its password (UltraCanvasOdfEncryption.h)
+// Version: 1.14.0 - chart objects: radar, bubble and stock charts; smoothed lines (chart:interpolation)
 // Version: 1.13.0 - charts as chart objects ("Object N/content.xml", chart:chart): written and read
 // Version: 1.12.3 - a heading's own font, size and spacing read and written
 // Version: 1.12.2 - a turned picture in the line (as-char with draw:transform) read and written
@@ -1526,7 +1527,7 @@ private:
         // The chart's automatic styles: what a series looks like, how the
         // plot is arranged, an axis' stated range.
         struct Look {
-            std::string fillColor, strokeColor, stroke, symbol;
+            std::string fillColor, strokeColor, stroke, symbol, interpolation;
             bool vertical = false, stacked = false, percentage = false;
             double minimum = std::numeric_limits<double>::quiet_NaN(), maximum = std::numeric_limits<double>::quiet_NaN();
         };
@@ -1542,6 +1543,7 @@ private:
                 }
                 if (auto* props = style->FirstChildElement("style:chart-properties")) {
                     look.symbol = Attr(props, "chart:symbol-type");
+                    look.interpolation = Attr(props, "chart:interpolation");
                     look.vertical = std::string(Attr(props, "chart:vertical")) == "true";
                     look.stacked = std::string(Attr(props, "chart:stacked")) == "true";
                     look.percentage = std::string(Attr(props, "chart:percentage")) == "true";
@@ -1626,11 +1628,18 @@ private:
         else if (kind == "chart:circle") data.kind = RichChart::Kind::Pie;
         else if (kind == "chart:ring") data.kind = RichChart::Kind::Doughnut;
         else if (kind == "chart:scatter") data.kind = RichChart::Kind::Scatter;
+        else if (kind == "chart:radar" || kind == "chart:filled-radar") data.kind = RichChart::Kind::Radar;
+        else if (kind == "chart:bubble") data.kind = RichChart::Kind::Bubble;
+        else if (kind == "chart:stock") data.kind = RichChart::Kind::Stock;
         else return false;
+        const bool radar = data.kind == RichChart::Kind::Radar, bubble = data.kind == RichChart::Kind::Bubble;
+        const bool stock = data.kind == RichChart::Kind::Stock;
+        data.filled = kind == "chart:filled-radar";
+        auto curved = [](const Look& look) { return !look.interpolation.empty() && look.interpolation != "none"; };
         const bool scatter = data.kind == RichChart::Kind::Scatter, line = data.kind == RichChart::Kind::Line;
         const bool pie = data.kind == RichChart::Kind::Pie || data.kind == RichChart::Kind::Doughnut;
-        data.percent = plotLook.percentage;
-        data.stacked = (plotLook.stacked || plotLook.percentage) && !scatter;
+        data.percent = plotLook.percentage && !scatter && !radar && !bubble && !stock;
+        data.stacked = (plotLook.stacked || plotLook.percentage) && !scatter && !radar && !bubble && !stock;
         data.legend = chart->FirstChildElement("chart:legend") != nullptr;
         if (auto* title = chart->FirstChildElement("chart:title")) {
             if (auto* words = title->FirstChildElement("text:p")) data.title = words->GetText() ? words->GetText() : "";
@@ -1641,8 +1650,10 @@ private:
             if (dimension == "x") {
                 if (auto* categories = axis->FirstChildElement("chart:categories")) {
                     for (const Cell& cell : cellsOf(Attr(categories, "table:cell-range-address"))) data.categories.push_back(cell.text);
+                    // (Rows past the last category's are values without a name.)
+                    while (!data.categories.empty() && data.categories.back().empty()) data.categories.pop_back();
                 }
-                if (scatter) { data.xMin = axisLook.minimum; data.xMax = axisLook.maximum; }
+                if (scatter || bubble) { data.xMin = axisLook.minimum; data.xMax = axisLook.maximum; }
             } else if (dimension == "y") {
                 data.valueMin = axisLook.minimum;
                 data.valueMax = axisLook.maximum;
@@ -1655,14 +1666,35 @@ private:
             const std::vector<Cell> label = cellsOf(Attr(ser, "chart:label-cell-address"));
             if (!label.empty()) one.name = label.front().text;
             const Look look = lookOf(ser);
-            if (scatter) {
-                if (auto* domain = ser->FirstChildElement("chart:domain")) one.xValues = numbersOf(Attr(domain, "table:cell-range-address"));
+            if (scatter || bubble) {
+                // The ranges the points stand over: a scatter series' x; a
+                // bubble series' y, then its x (its values are the sizes).
+                // A series without one shares the first series'.
+                std::vector<std::vector<double>> domains;
+                for (auto* domain = ser->FirstChildElement("chart:domain"); domain; domain = domain->NextSiblingElement("chart:domain")) {
+                    domains.push_back(numbersOf(Attr(domain, "table:cell-range-address")));
+                }
+                if (bubble) {
+                    if (domains.empty()) continue;
+                    one.sizes = one.values;
+                    one.values = domains[0];
+                    one.sizes.resize(one.values.size(), 1.0);
+                    if (domains.size() > 1) one.xValues = domains[1];
+                    one.joined = false;
+                    one.marked = true;
+                } else if (!domains.empty()) {
+                    one.xValues = domains[0];
+                }
+                if (one.xValues.empty() && !data.series.empty()) one.xValues = data.series.front().xValues;
                 if (one.xValues.size() != one.values.size()) one.xValues.clear();
             }
-            if (line || scatter) {
+            if (bubble) {
+                one.color = look.fillColor;
+            } else if (line || scatter || (radar && !data.filled)) {
                 one.color = !look.strokeColor.empty() ? look.strokeColor : look.fillColor;
                 one.joined = look.stroke != "none";
                 one.marked = look.symbol.empty() ? scatter : look.symbol != "none";
+                one.smooth = !radar && (curved(look) || curved(plotLook));
             } else {
                 one.color = look.fillColor;
             }
@@ -1675,6 +1707,23 @@ private:
             data.series.push_back(std::move(one));
         }
         if (data.series.empty()) return false;
+        if (stock) {
+            // ODF's order is (open,) low, high, close; the model's (open,) high, low, close.
+            if (data.series.size() >= 4) std::swap(data.series[1], data.series[2]);
+            else if (data.series.size() == 3) std::swap(data.series[0], data.series[1]);
+            else return false;
+            // (Writer keeps Word's order - high before low - in a chart it
+            // converted: where every "high" lies under its "low", they are
+            // the other way round.)
+            RichChartSeries& high = data.series[data.series.size() >= 4 ? 1 : 0];
+            RichChartSeries& low = data.series[data.series.size() >= 4 ? 2 : 1];
+            bool under = false, over = false;
+            for (size_t i = 0; i < high.values.size() && i < low.values.size(); i++) {
+                under = under || high.values[i] < low.values[i];
+                over = over || high.values[i] > low.values[i];
+            }
+            if (under && !over) std::swap(high, low);
+        }
 
         RichTextRun run;
         run.text = RichTextRun::kObjectReplacement;
@@ -3865,7 +3914,15 @@ private:
         const bool pie = chart.kind == Kind::Pie || chart.kind == Kind::Doughnut;
         const bool scatter = chart.kind == Kind::Scatter;
         const bool line = chart.kind == Kind::Line;
-        const char* kind = chart.kind == Kind::Line ? "chart:line" : chart.kind == Kind::Area ? "chart:area"
+        const bool radar = chart.kind == Kind::Radar, bubble = chart.kind == Kind::Bubble, stock = chart.kind == Kind::Stock;
+        // (ODF's stock series run (open,) low, high, close: the model's high and low change places.)
+        std::vector<RichChartSeries> ordered = chart.series;
+        if (stock && ordered.size() >= 4) std::swap(ordered[1], ordered[2]);
+        else if (stock && ordered.size() == 3) std::swap(ordered[0], ordered[1]);
+        bool anySmooth = false;
+        for (const RichChartSeries& one : ordered) anySmooth = anySmooth || one.smooth;
+        const char* kind = radar ? (chart.filled ? "chart:filled-radar" : "chart:radar") : bubble ? "chart:bubble" : stock ? "chart:stock"
+                         : chart.kind == Kind::Line ? "chart:line" : chart.kind == Kind::Area ? "chart:area"
                          : chart.kind == Kind::Pie ? "chart:circle" : chart.kind == Kind::Doughnut ? "chart:ring"
                          : scatter ? "chart:scatter" : "chart:bar";
         std::ostringstream styles, body, table;
@@ -3885,12 +3942,13 @@ private:
         auto range = [&](size_t col) {
             return "local-table.$" + column(col) + "$2:.$" + column(col) + "$" + std::to_string(rows + 1);
         };
-        std::vector<size_t> valueColumn, xColumn;
+        std::vector<size_t> valueColumn, xColumn, sizeColumn;
         size_t columns = 1;
-        for (const RichChartSeries& one : chart.series) {
-            const bool ownX = scatter && one.xValues.size() == one.values.size();
+        for (const RichChartSeries& one : ordered) {
+            const bool ownX = (scatter || bubble) && one.xValues.size() == one.values.size();
             xColumn.push_back(ownX ? columns++ : 0);
             valueColumn.push_back(columns++);
+            sizeColumn.push_back(bubble ? columns++ : 0);
         }
         auto words = [&](const std::string& text) {
             table << "<table:table-cell office:value-type=\"string\"><text:p>" << EscapeXml(text) << "</text:p></table:table-cell>";
@@ -3906,17 +3964,23 @@ private:
         table << "<table:table table:name=\"local-table\"><table:table-header-columns><table:table-column/></table:table-header-columns>"
                  "<table:table-columns><table:table-column table:number-columns-repeated=\"" << (columns - 1) << "\"/></table:table-columns>"
                  "<table:table-header-rows><table:table-row><table:table-cell><text:p/></table:table-cell>";
-        for (size_t s = 0; s < chart.series.size(); s++) {
+        for (size_t s = 0; s < ordered.size(); s++) {
             if (xColumn[s] != 0) words("x");
-            words(chart.series[s].name);
+            words(ordered[s].name);
+            if (sizeColumn[s] != 0) words(ordered[s].name);
         }
         table << "</table:table-row></table:table-header-rows><table:table-rows>";
         for (size_t r = 0; r < rows; r++) {
             table << "<table:table-row>";
-            words(r < chart.categories.size() ? chart.categories[r] : std::to_string(r + 1));
-            for (size_t s = 0; s < chart.series.size(); s++) {
-                if (xColumn[s] != 0) number(chart.series[s].xValues, r);
-                number(chart.series[s].values, r);
+            words(r < chart.categories.size() ? chart.categories[r] : std::string());
+            for (size_t s = 0; s < ordered.size(); s++) {
+                if (xColumn[s] != 0) number(ordered[s].xValues, r);
+                number(ordered[s].values, r);
+                if (sizeColumn[s] != 0) {
+                    std::vector<double> sizes = ordered[s].sizes;
+                    sizes.resize(ordered[s].values.size(), 1.0);
+                    number(sizes, r);
+                }
             }
             table << "</table:table-row>";
         }
@@ -3926,7 +3990,9 @@ private:
         styles << "<style:style style:name=\"plot\" style:family=\"chart\"><style:chart-properties"
                << (chart.kind == Kind::Bar ? " chart:vertical=\"true\"" : "")
                << (chart.percent ? " chart:percentage=\"true\"" : chart.stacked ? " chart:stacked=\"true\"" : "")
-               << (line || scatter ? " chart:lines=\"true\"" : "") << "/></style:style>";
+               << (line || scatter || radar ? " chart:lines=\"true\"" : "")
+               << (anySmooth && (line || scatter) ? " chart:interpolation=\"cubic-spline\"" : "")
+               << (stock && ordered.size() >= 4 ? " chart:japanese-candle-stick=\"true\"" : "") << "/></style:style>";
         auto axisStyle = [&](const char* name, double low, double high, bool show) {
             styles << "<style:style style:name=\"" << name << "\" style:family=\"chart\"><style:chart-properties chart:display-label=\""
                    << (show ? "true" : "false") << "\"";
@@ -3934,8 +4000,8 @@ private:
             if (std::isfinite(high)) styles << " chart:maximum=\"" << high << "\"";
             styles << "/></style:style>";
         };
-        axisStyle("axisX", scatter ? chart.xMin : std::numeric_limits<double>::quiet_NaN(),
-                  scatter ? chart.xMax : std::numeric_limits<double>::quiet_NaN(), !pie);
+        axisStyle("axisX", scatter || bubble ? chart.xMin : std::numeric_limits<double>::quiet_NaN(),
+                  scatter || bubble ? chart.xMax : std::numeric_limits<double>::quiet_NaN(), !pie);
         axisStyle("axisY", chart.valueMin, chart.valueMax, !pie);
         // No wall behind the plot, and a pale grid, as the view draws it.
         styles << "<style:style style:name=\"wall\" style:family=\"chart\"><style:graphic-properties draw:stroke=\"none\""
@@ -3948,15 +4014,17 @@ private:
         if (chart.legend) body << "<chart:legend chart:legend-position=\"end\"/>";
         body << "<chart:plot-area chart:style-name=\"plot\" chart:data-source-has-labels=\"both\">"
                 "<chart:axis chart:dimension=\"x\" chart:name=\"primary-x\" chart:style-name=\"axisX\">";
-        if (!scatter) body << "<chart:categories table:cell-range-address=\"" << range(0) << "\"/>";
+        if (!scatter && !bubble) body << "<chart:categories table:cell-range-address=\"" << range(0) << "\"/>";
         else body << "<chart:grid chart:class=\"major\" chart:style-name=\"grid\"/>";
         body << "</chart:axis><chart:axis chart:dimension=\"y\" chart:name=\"primary-y\" chart:style-name=\"axisY\">"
              << (pie ? "" : "<chart:grid chart:class=\"major\" chart:style-name=\"grid\"/>") << "</chart:axis>";
-        for (size_t s = 0; s < chart.series.size(); s++) {
-            const RichChartSeries& one = chart.series[s];
+        for (size_t s = 0; s < ordered.size(); s++) {
+            const RichChartSeries& one = ordered[s];
             const std::string name = "series" + std::to_string(s + 1);
             styles << "<style:style style:name=\"" << name << "\" style:family=\"chart\"><style:graphic-properties";
-            if (line || scatter) {
+            if (stock) {
+                styles << " draw:stroke=\"solid\"/><style:chart-properties chart:symbol-type=\"none\"/>";
+            } else if (line || scatter || (radar && !chart.filled)) {
                 styles << " draw:stroke=\"" << (one.joined ? "solid" : "none") << "\" svg:stroke-width=\"0.08cm\"";
                 if (stated(one.color)) styles << " svg:stroke-color=\"" << one.color << "\" draw:fill-color=\"" << one.color << "\"";
                 styles << "/><style:chart-properties chart:symbol-type=\"" << (one.marked ? "automatic" : "none") << "\"/>";
@@ -3966,9 +4034,12 @@ private:
                 styles << "/>";
             }
             styles << "</style:style>";
-            body << "<chart:series chart:style-name=\"" << name << "\" chart:values-cell-range-address=\"" << range(valueColumn[s])
+            // (A bubble series' values are its sizes; its y and then its x are the ranges it stands over.)
+            const size_t valuesAt = bubble ? sizeColumn[s] : valueColumn[s];
+            body << "<chart:series chart:style-name=\"" << name << "\" chart:values-cell-range-address=\"" << range(valuesAt)
                  << "\" chart:label-cell-address=\"local-table.$" << column(valueColumn[s]) << "$1\" chart:class=\"" << kind << "\">";
-            if (scatter) body << "<chart:domain table:cell-range-address=\"" << range(xColumn[s]) << "\"/>";
+            if (bubble) body << "<chart:domain table:cell-range-address=\"" << range(valueColumn[s]) << "\"/>";
+            if (scatter || bubble) body << "<chart:domain table:cell-range-address=\"" << range(xColumn[s]) << "\"/>";
             if (pie && s == 0) {
                 for (size_t i = 0; i < one.values.size(); i++) {
                     if (i < chart.pointColors.size() && stated(chart.pointColors[i])) {

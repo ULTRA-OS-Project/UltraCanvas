@@ -1,5 +1,7 @@
 // include/UltraCanvasTooltipManager.h
 // Updated tooltip system compatible with unified UltraCanvas architecture
+// Version: 2.5.3 - PointerLeftWindow: the tooltip of a window the pointer left, or that lost
+//                  the focus, goes (and one waiting to be shown is not shown)
 // Version: 2.5.2 - UpdateAndShowTooltip with no window shows nothing (it used to crash)
 // Version: 2.5.1 - on macOS too
 // Version: 2.5.0 - the tooltip is shown in a window of its own (WindowType::Tooltip), above
@@ -7,7 +9,7 @@
 //                  ForgetWindow, WindowScaleChanged
 // Version: 1.2.0 - SetStyle is the style every tooltip shown without one takes; GetStyle
 // Version: 2.1.1
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -181,6 +183,13 @@ namespace UltraCanvas {
         // it again at the new scale; any other hides the tooltip, whose
         // surface was made for the old one.
         static void WindowScaleChanged(UltraCanvasWindowBase* win);
+
+        // The pointer left a window, or the window lost the focus
+        // (UltraCanvasApplication calls this): a tooltip of that window goes
+        // at once, and one waiting for its delay is not shown. The tooltip's
+        // own window floats above every window, so a tooltip left standing
+        // stood over whatever window now covers the one it belongs to.
+        static void PointerLeftWindow(UltraCanvasWindowBase* win);
 
     private:
         static Rect2Di screenBounds;

@@ -137,6 +137,7 @@
   "no translation provider is available": "kullanılabilir çeviri sağlayıcısı yok",
   "None found": "Hiçbir şey bulunamadı",
   "Not available": "Kullanılamıyor",
+  "Not saved yet": "Henüz kaydedilmedi",
   "One Column": "Tek Sütun",
   "Open File(s)": "Dosya Aç",
   "Open File... (Ctrl+O)": "Dosya Aç... (Ctrl+O)",
@@ -214,5 +215,9 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Kiril)",
   "Windows-1252 (Western)": "Windows-1252 (Batı Avrupa)",
   "Word Wrap": "Sözcük Kaydırma",
-  "Zoom Level": "Yakınlaştırma Düzeyi"
+  "Zoom Level": "Yakınlaştırma Düzeyi",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} dosyada kaydedilmemiş değişiklikler var. Kapatmadan önce kaydedilsin mi?",
+    "other": "{n} dosyada kaydedilmemiş değişiklikler var. Kapatmadan önce kaydedilsinler mi?"
+  }
 }

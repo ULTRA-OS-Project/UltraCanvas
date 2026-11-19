@@ -138,6 +138,7 @@
   "no translation provider is available": "brak dostępnego dostawcy tłumaczenia",
   "None found": "Nic nie znaleziono",
   "Not available": "Niedostępne",
+  "Not saved yet": "Jeszcze nie zapisano",
   "One Column": "Jedna kolumna",
   "Open File(s)": "Otwórz pliki",
   "Open File... (Ctrl+O)": "Otwórz plik... (Ctrl+O)",
@@ -215,5 +216,10 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (cyrylica)",
   "Windows-1252 (Western)": "Windows-1252 (zachodnioeuropejski)",
   "Word Wrap": "Zawijanie wierszy",
-  "Zoom Level": "Poziom powiększenia"
+  "Zoom Level": "Poziom powiększenia",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} plik ma niezapisane zmiany. Zapisać go przed zamknięciem?",
+    "few": "{n} pliki mają niezapisane zmiany. Zapisać je przed zamknięciem?",
+    "many": "{n} plików ma niezapisane zmiany. Zapisać je przed zamknięciem?"
+  }
 }

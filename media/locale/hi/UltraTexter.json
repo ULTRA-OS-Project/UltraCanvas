@@ -137,6 +137,7 @@
   "no translation provider is available": "कोई अनुवाद प्रदाता उपलब्ध नहीं है",
   "None found": "कुछ नहीं मिला",
   "Not available": "उपलब्ध नहीं",
+  "Not saved yet": "अभी सहेजी नहीं गई",
   "One Column": "एक स्तंभ",
   "Open File(s)": "फ़ाइलें खोलें",
   "Open File... (Ctrl+O)": "फ़ाइल खोलें... (Ctrl+O)",
@@ -214,5 +215,9 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (सिरिलिक)",
   "Windows-1252 (Western)": "Windows-1252 (पश्चिमी)",
   "Word Wrap": "शब्द रैप",
-  "Zoom Level": "ज़ूम स्तर"
+  "Zoom Level": "ज़ूम स्तर",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} फ़ाइल में बिना सहेजे बदलाव हैं। बंद करने से पहले इसे सहेजें?",
+    "other": "{n} फ़ाइलों में बिना सहेजे बदलाव हैं। बंद करने से पहले इन्हें सहेजें?"
+  }
 }

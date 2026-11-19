@@ -18,7 +18,9 @@
 //     slide order and size, titles, bullets and levels, numbering, a text
 //     box, a table, a picture, notes, a hidden slide, the outline, and
 //     LoadTextDocument opening it, and UltraFiler's preview page showing its
-//     slide text (a protected deck or .docx keeping its type glyph); and
+//     slide text (a protected deck or .docx keeping its type glyph); what a
+//     slide is drawn with (places from the layout, sizes from the master,
+//     the theme's colours, the background) and RenderPptxSlide drawing it;
 //     mc:AlternateContent - the deck rebuilt with an equation shape, a newer
 //     chart with a picture as its fallback and an equation inside a
 //     paragraph, each read once, from its Choice or its Fallback;
@@ -31,7 +33,8 @@
 // rebuilds them and says what each holds). That msoffcrypto-tool decrypts
 // what EncryptOfficePackage writes was checked when the writer was made; the
 // test cannot run Python, so it checks the format against the reader here.
-// Version: 1.5.0 - mc:AlternateContent in a deck: Choice, else Fallback, never both
+// Version: 1.6.0 - mc:AlternateContent in a deck: Choice, else Fallback, never both
+// Version: 1.5.0 - the slide's drawing: inherited places, text sizes, theme colours, RenderPptxSlide
 // Version: 1.4.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -42,6 +45,7 @@
 #include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasPresentationPptx.h"
+#include "UltraCanvasPptxSlideRender.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasZipPackage.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -438,6 +442,27 @@ void TestPresentation() {
         tables += block.type == RichBlockType::Table;
     }
     Check(headings == 5 && tables == 1 && listItems >= 66, "one heading per slide, the table, the bullets");
+
+    // What a slide is drawn with, resolved through the layout, the master and the theme.
+    Check(subtitle && subtitle->placeInherited && subtitle->x == 1371600 && subtitle->width == 6400800,
+          "a placeholder without a place takes its layout's");
+    const PptxShape* title = FindShape(deck.slides[0], PptxShapeKind::Title);
+    Check(title && !title->paragraphs.empty() && !title->paragraphs[0].runs.empty() &&
+              title->paragraphs[0].runs[0].sizePt == 44.0f && title->paragraphs[0].align == PptxAlign::Center,
+          "the title's size and alignment from the master's title style");
+    if (body && body->paragraphs.size() == 6) {
+        Check(body->paragraphs[0].runs[0].sizePt == 32.0f && body->paragraphs[1].runs[0].sizePt == 28.0f,
+              "body levels 1 and 2 at the master's 32 and 28 pt");
+    }
+    Check(deck.themeColors["accent1"] == "4F81BD" && deck.themeColors["dk1"] == "000000",
+          "the theme's colours");
+    Check(deck.slides[0].background == "FFFFFF" && deck.slides[0].textColor == "000000",
+          "the master's background (bg1) and text colour (tx1)");
+    Check(subtitle && !subtitle->paragraphs.empty() && subtitle->paragraphs[0].runs[0].color == "404040",
+          "the subtitle's colour: tx1 at the layout's 75 % tint");
+    const std::shared_ptr<UCPixmap> drawn = RenderPptxSlide(deck, 0, 640);
+    Check(drawn && drawn->GetRawWidth() == 640 && drawn->GetRawHeight() == 360, "a slide drawn at 640 x 360");
+    Check(!RenderPptxSlide(deck, deck.slides.size(), 640), "no slide past the last");
 
     // Encrypted: the same deck behind the password.
     const std::string encrypted = Fixture("office-agile-encrypted.pptx");

@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.26.0 - the pointer leaving a window, or the window losing the focus, takes its
+//                  tooltip away (one waiting is not shown) and leaves the element it hovered
 // Version: 1.25.0 - the font aliases carry the families with stand-ins (GetFontFamilySubstitutes):
 //                  Helvetica is drawn in Arial on Windows, as Windows maps it itself
 // Version: 1.24.0 - the font aliases append "sans-serif" to a request without a generic family
@@ -53,7 +55,7 @@
 //                  the bundled fonts when the scan takes long (AdoptSystemFontsWithin);
 //                  Initialize() times each of its steps (GetStartupTimings)
 // Version: 1.5.2 - modal fixes: close transient children with parent, ignore unmapped modals, raise modal on outside click
-// Last Modified: 2026-11-13
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAppearanceSettings.h"
@@ -2191,6 +2193,28 @@ namespace UltraCanvas {
             if (event.type == UCEventType::KeyDown ||
                 event.type == UCEventType::KeyUp) {
                 targetWindow = GetFocusedWindow();
+            }
+        }
+
+        // The pointer out of a window, or the window no longer the active
+        // one: its tooltip goes, and the element it hovered is left. The
+        // tooltip has a window of its own above every other; left standing,
+        // it stood over the window that came over this one (another
+        // program's, say) until the pointer came back. The element is left
+        // as for a move onto another element, so the pointer back on it asks
+        // for its tooltip again - but not while an element holds the
+        // pointer (a drag out of the window), which still owns the hover.
+        if (targetWindow && (event.type == UCEventType::MouseLeave || event.type == UCEventType::WindowBlur)) {
+            UltraCanvasTooltipManager::PointerLeftWindow(targetWindow);
+            if (event.type == UCEventType::MouseLeave && !capturedElement &&
+                hoveredElement && hoveredElement->GetWindow() == targetWindow) {
+                UltraCanvasUIElement* left = hoveredElement;
+                hoveredElement = nullptr;
+                if (left->IsVisible()) {
+                    UCEvent leaveEvent = event;
+                    leaveEvent.pointer = { -1, -1 };
+                    DispatchEventToElement(left, leaveEvent);
+                }
             }
         }
 
