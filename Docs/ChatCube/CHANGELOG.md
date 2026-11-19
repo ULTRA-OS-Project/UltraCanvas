@@ -1,3 +1,35 @@
+#### 2026-11-19 *0.1.31*
+- **With "Use system proxy settings", every network takes the same way
+  out.** When the system names a web proxy and no SOCKS proxy, Telegram and
+  Signal went through it but IRC and XMPP connected directly past it. IRC
+  and XMPP now go through it too. If that proxy does not let a chat server
+  through (some allow only web addresses), signing in says so and names
+  the proxy: add the server under *No proxy for* to reach it directly.
+  Framework changelog: UltraNet_ResolveTunnelProxy.
+- **Signal says why it stopped.** If signal-cli ended and could not be
+  started again - Java removed, for instance - the Signal status stayed at
+  "reconnecting" without a reason. It now shows what signal-cli said, and
+  comes back by itself once it can be started. Framework changelog: UltraIM
+  Signal, a daemon that cannot be started again says why.
+- **Signal goes through the proxy.** Signal, like Telegram, connected
+  directly whatever Settings > Networks > Proxy said. ChatCube now starts
+  signal-cli for the proxy chosen there (HTTP or SOCKS) and starts it again
+  when you change the setting - you stay linked, no new QR code. signal-cli
+  cannot use a proxy that asks for a user name and password, and ChatCube
+  can hand a proxy only to signal-cli's Java version, 0.13.13 or later -
+  not to its native build or an older one: in those cases it says so on
+  the Signal status line instead of connecting directly. If you run the
+  signal-cli daemon yourself, its proxy is yours to set. Framework
+  changelog: UltraIM Signal, the proxy setting reaches signal-cli.
+- **Telegram goes through the proxy.** With a proxy chosen under Settings >
+  Networks > Proxy - or set in the system - ChatCube reached its relay and
+  Matrix through it, but Telegram still connected directly, so where
+  Telegram needs a proxy its messages were not delivered. Telegram now
+  uses the same proxy (SOCKS or HTTP, with its user name and password), from
+  its first connection on, and follows a change of the setting within a few
+  seconds without signing in again. Framework changelog: UltraIM Telegram,
+  the proxy setting reaches TDLib.
+
 #### 2026-11-18 *0.1.30*
 - **Only the networks you use are loaded.** ChatCube used to load every
   network's module at start - Telegram, Matrix, Signal and the rest - even

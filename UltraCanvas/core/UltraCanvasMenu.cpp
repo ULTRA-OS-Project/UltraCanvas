@@ -1,5 +1,6 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.17.2 - the scroll bar of a menu too long for the screen follows the theme (MenuStyle::FromTheme)
 // Version: 1.17.1 - the kept layout and width are one slot per entry, moved with the entries
 // Version: 1.17.0 - an entry's width is measured once and kept (CalculateItemWidth over MeasureItemWidth)
 // Version: 1.16.0 - the labels are shaped once and kept
@@ -1739,6 +1740,9 @@ namespace UltraCanvas {
         s.shortcutColor = r.inkMuted;
         s.disabledTextColor = r.inkFaint;
         s.headerTextColor = r.inkMuted;
+        // and the bar of a menu too long for the screen: the light look's
+        // grey bar stood out down the side of a dark menu
+        s.scrollbarStyle = ScrollbarStyle::FromTheme(theme, base.scrollbarStyle);
         return s;
     }
 }

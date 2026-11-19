@@ -61,17 +61,19 @@
 //                  note, apply-to-all and its four buttons), and so is the
 //                  progress window of a pack, an unpack or an administrator
 //                  delete (titles and captions)
-// Version: 1.50.3 - the context menu is translated whole (every entry, the Display
+// Version: 1.50.4 - the context menu is translated whole (every entry, the Display
 //                  submenu's sort fields, view types, file kinds, dataset fields,
 //                  badges, icon styles and switches - the public *Label functions
 //                  stay English names); the default names "New folder", "Pasted
 //                  image" and "Pasted text" are in the reader's language; every
 //                  error the widget reports is a translated sentence (paths as
 //                  {0}), RefuseWriteHere taking the whole refusal per command
-// Version: 1.50.2 - the Compress / Extract dialog is translated whole: its title,
+// Version: 1.50.3 - the Compress / Extract dialog is translated whole: its title,
 //                  buttons, "Location: {0}" line and archive count (TrN); the
 //                  default names ("archive", "Extracted") are in the reader's
 //                  language, in the dialog and in the direct Compress alike
+// Version: 1.50.2 - the hidden-files notice's and the empty filter's buttons are the theme's Primary
+//                  part, not a fixed blue (StyleThemedButton, shared with the Compress / Extract dialog)
 // Version: 1.50.1 - a password-protected .ods keeps its type glyph rather than a page of its ciphertext
 // Version: 1.50.0 - an OpenDocument presentation (.odp, .otp, .fodp) is a document named
 //                  "OpenDocument" and previews its slides' text; .ppsm, .potm and the legacy
@@ -276,6 +278,27 @@ namespace UltraCanvas {
     bool UltraCanvasFilerWidget::clipboardCut = false;
 
     namespace {
+        // A button of the display (a dialog's answer, the notice and filter
+        // strips' action) in the theme's colours for its part - the accent
+        // for the main action, the raised surface with the control border
+        // for the others - over the display's own shape and type, so it reads
+        // in a dark look too. Fixed light colours had made a Cancel button a
+        // blank grey block under the dark theme's near-white ink. A display
+        // that follows the theme keeps its buttons following it: a theme
+        // change while they are on show re-styles them, keeping their size.
+        void StyleThemedButton(UltraCanvasButton& button, ButtonVariant variant,
+                               float cornerRadius, const std::string& fontFamily,
+                               float fontSize, bool followTheme) {
+            ButtonStyle shape = button.GetStyle();
+            shape.borderWidth = variant == ButtonVariant::Standard ? 1.0f : 0.0f;
+            shape.cornerRadius = cornerRadius;
+            shape.fontWeight = FontWeight::Bold;
+            button.SetStyle(ButtonStyle::FromTheme(UltraCanvasTheme::Current(), shape, variant));
+            button.SetThemeVariant(variant);
+            button.SetFont(fontFamily, fontSize, FontWeight::Bold);
+            if (followTheme) button.SetFollowTheme(true);
+        }
+
         constexpr int kWheelStep = 64;                 // px per wheel notch
         constexpr uint64_t kDirSizeEntryCap = 50000;   // recursive-size safety cap
         constexpr int kDragStartSlop = 5;              // px before a press becomes a drag-out
@@ -2929,18 +2952,8 @@ namespace UltraCanvas {
             filterEmptyButton = CreateButton(
                     GetIdentifier() + "-filter-empty", 0, 0, 160, 30,
                     filterEmptyLabel);
-            ButtonStyle bs;
-            bs.normalColor  = Color(66, 133, 244, 255);
-            bs.hoverColor   = Color(90, 150, 250, 255);
-            bs.pressedColor = Color(52, 112, 214, 255);
-            bs.normalTextColor = bs.hoverTextColor = bs.pressedTextColor =
-                    Colors::White;
-            bs.borderWidth = 0.0f;
-            bs.cornerRadius = 5.0f;
-            bs.fontFamily = style.fontFamily;
-            bs.fontSize = style.fontSize;
-            bs.fontWeight = FontWeight::Bold;
-            filterEmptyButton->SetStyle(bs);
+            StyleThemedButton(*filterEmptyButton, ButtonVariant::Primary, 5.0f,
+                              style.fontFamily, style.fontSize, GetFollowTheme());
             // The search field keeps the keyboard while the user types the
             // filter; the click must not pull the focus away from it.
             filterEmptyButton->SetAcceptsFocus(false);
@@ -3068,18 +3081,8 @@ namespace UltraCanvas {
             hiddenNoticeButton = CreateButton(
                     GetIdentifier() + "-hidden-notice", 0, 0, 140, 24,
                     Tr("Show hidden files"));
-            ButtonStyle bs;
-            bs.normalColor  = Color(66, 133, 244, 255);
-            bs.hoverColor   = Color(90, 150, 250, 255);
-            bs.pressedColor = Color(52, 112, 214, 255);
-            bs.normalTextColor = bs.hoverTextColor = bs.pressedTextColor =
-                    Colors::White;
-            bs.borderWidth = 0.0f;
-            bs.cornerRadius = 4.0f;
-            bs.fontFamily = style.fontFamily;
-            bs.fontSize = style.smallFontSize;
-            bs.fontWeight = FontWeight::Bold;
-            hiddenNoticeButton->SetStyle(bs);
+            StyleThemedButton(*hiddenNoticeButton, ButtonVariant::Primary, 4.0f,
+                              style.fontFamily, style.smallFontSize, GetFollowTheme());
             // The strip is a notice, not a stop on the way through the
             // window: Tab must not land on it.
             hiddenNoticeButton->SetAcceptsFocus(false);
@@ -9940,26 +9943,8 @@ namespace UltraCanvas {
             const std::string& identifier, const std::string& label, bool primary,
             std::function<void()> action) {
         auto button = CreateButton(identifier, 0, 0, 104, 30, label);
-        // The colours are the theme's button parts - the accent for the main
-        // action, the raised surface with the control border and the ink for
-        // Cancel - so both read in either look. Cancel had a fixed light-grey
-        // face under the theme's ink, which a dark theme makes near-white:
-        // a blank grey button.
-        const ButtonVariant variant = primary ? ButtonVariant::Primary
-                                              : ButtonVariant::Standard;
-        ButtonStyle shape = button->GetStyle();
-        shape.borderWidth = primary ? 0.0f : 1.0f;
-        shape.cornerRadius = 5.0f;
-        shape.fontWeight = FontWeight::Bold;
-        ButtonStyle bs = ButtonStyle::FromTheme(UltraCanvasTheme::Current(), shape, variant);
-        bs.fontFamily = bs.fontStyle.fontFamily = style.fontFamily;
-        bs.fontSize = style.fontSize;
-        bs.fontStyle.fontSize = style.fontSize;
-        button->SetStyle(bs);
-        button->SetThemeVariant(variant);
-        // A theme change while the dialog is open re-styles the buttons with
-        // the widget.
-        if (GetFollowTheme()) button->SetFollowTheme(true);
+        StyleThemedButton(*button, primary ? ButtonVariant::Primary : ButtonVariant::Standard,
+                          5.0f, style.fontFamily, style.fontSize, GetFollowTheme());
         // The name editor keeps the keyboard: a click on Compress / Cancel must
         // not pull the focus out of the field it is about to act on.
         button->SetAcceptsFocus(false);

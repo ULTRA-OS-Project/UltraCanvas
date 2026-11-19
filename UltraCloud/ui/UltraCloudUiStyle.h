@@ -1,10 +1,15 @@
 // UltraCloud/ui/UltraCloudUiStyle.h
-// The palette and control styles shared by UltraCloud's dialogs, matched to
-// the ULTRA OS application look (white surfaces, hairline borders, one
-// filled accent button per dialog). Values only — every element is styled
-// through its own SetStyle API.
+// The palette and control styles shared by UltraCloud's dialogs (the account
+// form, the file picker), matched to the ULTRA OS application look: the
+// theme's surfaces and hairlines, one filled accent button per dialog. Values
+// only - every element is styled through its own SetStyle API.
+// Version: 0.3.0 - the colours are the current theme's roles, read when a dialog is built
+//                  (Surface(), TextPrimary() ...): the fixed light palette made the account
+//                  and picker dialogs white windows inside a dark UltraFiler or UltraPress,
+//                  with the theme-following dropdowns black on them and a checkbox's label
+//                  white on white; the buttons are the theme's Primary and Standard parts
 // Version: 0.2.0
-// Last Modified: 2026-09-22
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -14,25 +19,27 @@
 #include "UltraCanvasFormLayout.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTheme.h"
 
 #include <memory>
 
 namespace UltraCloud {
 namespace UiStyle {
 
-inline const UltraCanvas::Color kSurface       {255, 255, 255};
-inline const UltraCanvas::Color kBorder        {226, 229, 234};
-inline const UltraCanvas::Color kDivider       {234, 236, 240};
-inline const UltraCanvas::Color kHeader        {249, 250, 251};
-inline const UltraCanvas::Color kTextPrimary   { 24,  28,  35};
-inline const UltraCanvas::Color kTextSecondary {104, 112, 125};
-inline const UltraCanvas::Color kTextMuted     {142, 150, 163};
-inline const UltraCanvas::Color kDanger        {197,  48,  48};
-inline const UltraCanvas::Color kAccent        { 37,  99, 235};
-inline const UltraCanvas::Color kAccentHover   { 29,  78, 216};
-inline const UltraCanvas::Color kAccentPressed { 30,  64, 175};
-inline const UltraCanvas::Color kRowHover      {243, 245, 248};
-inline const UltraCanvas::Color kRowSelected   {226, 236, 253};
+// The colours: the theme's roles, light or dark, so a dialog built under a
+// dark look is dark.
+inline const UltraCanvas::ThemeRoles& Roles() { return UltraCanvas::UltraCanvasTheme::Current().roles; }
+inline UltraCanvas::Color Surface()       { return Roles().panel; }      // the dialog
+inline UltraCanvas::Color Border()        { return Roles().line; }
+inline UltraCanvas::Color Divider()       { return Roles().line; }
+inline UltraCanvas::Color Header()        { return Roles().raised; }     // a list's column header
+inline UltraCanvas::Color TextPrimary()   { return Roles().ink; }
+inline UltraCanvas::Color TextSecondary() { return Roles().inkMuted; }
+inline UltraCanvas::Color TextMuted()     { return Roles().inkFaint; }
+inline UltraCanvas::Color Danger()        { return Roles().danger; }
+inline UltraCanvas::Color Accent()        { return Roles().accent; }
+inline UltraCanvas::Color RowHover()      { return Roles().hover; }
+inline UltraCanvas::Color RowSelected()   { return Roles().accentSoft; }
 
 constexpr float kControlHeight = 32.0f;
 constexpr float kRadius        = 6.0f;
@@ -40,27 +47,21 @@ constexpr float kFontSize      = 13.0f;
 constexpr float kPadding       = 20.0f;
 constexpr float kGap           = 10.0f;
 
-inline UltraCanvas::ButtonStyle PrimaryButton() {
-    UltraCanvas::ButtonStyle s;
-    s.normalColor = kAccent; s.hoverColor = kAccentHover; s.pressedColor = kAccentPressed;
-    s.disabledColor = UltraCanvas::Color(191, 205, 235, 255);
-    s.normalTextColor = s.hoverTextColor = s.pressedTextColor = s.disabledTextColor =
-        UltraCanvas::Colors::White;
-    s.borderWidth = 0.0f; s.borderColor = kAccent;
-    s.cornerRadius = kRadius; s.fontSize = kFontSize;
+// The theme's button parts in the dialogs' shape: the accent for the one
+// action the dialog is for, the raised surface with the control border for
+// the others.
+inline UltraCanvas::ButtonStyle ThemedButton(UltraCanvas::ButtonVariant variant) {
+    UltraCanvas::ButtonStyle shape;
+    shape.cornerRadius = kRadius;
+    shape.borderWidth = variant == UltraCanvas::ButtonVariant::Standard ? 1.0f : 0.0f;
+    UltraCanvas::ButtonStyle s =
+        UltraCanvas::ButtonStyle::FromTheme(UltraCanvas::UltraCanvasTheme::Current(), shape, variant);
+    s.fontSize = kFontSize;
+    s.fontStyle.fontSize = kFontSize;
     return s;
 }
-
-inline UltraCanvas::ButtonStyle SecondaryButton() {
-    UltraCanvas::ButtonStyle s;
-    s.normalColor = kSurface; s.hoverColor = kRowHover; s.pressedColor = kRowSelected;
-    s.disabledColor = kHeader;
-    s.normalTextColor = s.hoverTextColor = s.pressedTextColor = kTextPrimary;
-    s.disabledTextColor = kTextMuted;
-    s.borderWidth = 1.0f; s.borderColor = kBorder;
-    s.cornerRadius = kRadius; s.fontSize = kFontSize;
-    return s;
-}
+inline UltraCanvas::ButtonStyle PrimaryButton()   { return ThemedButton(UltraCanvas::ButtonVariant::Primary); }
+inline UltraCanvas::ButtonStyle SecondaryButton() { return ThemedButton(UltraCanvas::ButtonVariant::Standard); }
 
 inline void StylePrimary(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& b) {
     if (b) b->SetStyle(PrimaryButton());
@@ -71,9 +72,10 @@ inline void StyleSecondary(const std::shared_ptr<UltraCanvas::UltraCanvasButton>
 
 inline void StyleInput(const std::shared_ptr<UltraCanvas::UltraCanvasTextInput>& in) {
     if (!in) return;
-    UltraCanvas::TextInputStyle s;
-    s.borderColor = kBorder; s.focusBorderColor = kAccent; s.validBorderColor = kBorder;
-    s.textColor = kTextPrimary; s.placeholderColor = kTextMuted;
+    // The theme's field (its well, ink, caret and selection) in the dialogs'
+    // shape; a default style kept the light look's white field.
+    UltraCanvas::TextInputStyle s = UltraCanvas::TextInputStyle::FromTheme();
+    s.validBorderColor = s.borderColor;
     s.borderRadius = static_cast<int>(kRadius);
     s.paddingLeft = 10; s.paddingRight = 10;
     s.fontStyle.fontSize = kFontSize;
@@ -88,17 +90,17 @@ inline std::shared_ptr<UltraCanvas::UltraCanvasLabel>
 MakeCaption(const std::string& id, const std::string& text) {
     auto label = UltraCanvas::CreateFormCaption(id, text);
     label->SetFontSize(kFontSize);
-    label->SetTextColor(kTextSecondary);
+    label->SetTextColor(TextSecondary());
     return label;
 }
 
 // The quiet list header used by the file picker.
 inline UltraCanvas::TreeColumnStyle ListHeader() {
-    UltraCanvas::TreeColumnStyle s;
+    UltraCanvas::TreeColumnStyle s = UltraCanvas::TreeColumnStyle::FromTheme();
     s.headerHeight      = 28;
-    s.headerBackground  = kHeader;
-    s.headerTextColor   = kTextSecondary;
-    s.headerBorderColor = kDivider;
+    s.headerBackground  = Header();
+    s.headerTextColor   = TextSecondary();
+    s.headerBorderColor = Divider();
     s.columnGap         = 10;
     return s;
 }
