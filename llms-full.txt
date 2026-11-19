@@ -106394,9 +106394,13 @@ planned (see the status table below).
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
 `UltraNet_RefreshPlugins()` from `UltraNet_GetPluginDirectory()`. Until an
-application sets another with `UltraNet_SetPluginDirectory()`, that is
-`Plugins/UltraNet` beside the executable, or one or two folders above it,
-whichever holds a plug-in. It is never the working directory, unless the
+application sets another with `UltraNet_SetPluginDirectory()`, that is, the
+first that holds a plug-in: inside a macOS bundle `Contents/PlugIns/UltraNet`
+(where `package-macos.sh` puts them); `Plugins/UltraNet` beside the
+executable, or one or two folders above it; then the runtime's, when the
+application runs on one (`ULTRACANVAS_RUNTIME_DIR`, which UltraStore sets:
+its `bin/Plugins/UltraNet` on Linux, `Plugins/UltraNet` on Windows); else the
+folder beside the executable. It is never the working directory, unless the
 executable's own path is unknown: a packaged Windows application starts in
 System32. A plug-in reaches the core **only through the host
 table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
@@ -112873,6 +112877,17 @@ asks, one printer after another, and the answer follows its other sections:
 | A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
 | *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
 | A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB, it does not speak IPP, or a firewall blocks port 631. |
+
+==============================================================================
+FILE: Docs/DeviceExplorer/changelog.d/macos-network-devices.md
+==============================================================================
+
+- **Network printers and eSCL scanners are found on macOS.** The macOS
+  bundle came without UltraNet's `mdns` plug-in, the DNS-SD browser that the
+  IPP printer and eSCL scanner discovery runs on, so on a Mac neither found
+  anything on the network: printers came only from CUPS, eSCL scanners not
+  at all. The bundle carries it now (`package-macos.sh`,
+  `ultranet_plugins_of`).
 
 ==============================================================================
 FILE: Docs/UltraDesktop/Manual.md
