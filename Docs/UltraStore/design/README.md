@@ -22,8 +22,9 @@ over these.
 | `AdminSales.dc.html` | the sales ledger with its filters, totals and *Record a sale by hand* | page |
 | `AdminFinance.dc.html` | the monthly statement, net by month, revenue by app, the affiliate report, VAT by country, the archive | page |
 | `AdminPublish.dc.html` | Publish: the changes since the last sequence, the check's warnings, sign and publish, upload, history | page |
+| `AdminMarketplace.dc.html` | the merchant's Marketplace page with its three states stacked: apply for a shop (name, contact, email, website, about the publisher, signed with the key), waiting for the operator with *Check the application*, the shop open with the profile the merchant edits itself and the key that signs; the notices, the terms, a release submitted, the submissions | page |
 | `SuperDashboard.dc.html` | the operator's (super admin's) dashboard: merchants, review queue, reports, compliance, operator actions | page |
-| `SuperMerchants.dc.html` | the merchants: verification requests, the table with terms, warnings, reports, payouts and status | page |
+| `SuperMerchants.dc.html` | the merchants: the applications for a shop with *Approve* (the merchant id, a message) and *Reject* (the reason), verification requests, the table with terms, warnings, reports, payouts and status | page |
 | `SuperMerchantDetail.dc.html` | one merchant's file: apps, history, compliance, money, open reports, with the Suspend dialog open | page |
 | `SuperReview.dc.html` | app review and release: the queue, the automatic checks, the reviewer's checklist, the store card, the decision | page |
 | `SuperReports.dc.html` | reports from users and merchants about apps and merchants, one opened with findings and actions | page |
@@ -271,3 +272,13 @@ reviews and releases their submissions with the catalog publish, handles
 reports, warns, suspends and reinstates merchants and apps, and keeps every
 merchant on the current terms. The dark sidebar marks that tier; every
 merchant, user, report and figure on those pages is invented sample data.
+
+The merchant's self-service (2026-11-19, the store's README, *The operator
+tier*, *How does a merchant join?*) is **built**: `AdminMarketplace` is the
+admin backend's *Marketplace* page (`Apps/UltraStoreAdmin/ui/AdminWindow.cpp`)
+and the applications section of `SuperMerchants` is the operator's
+(`Apps/UltraStoreOperator/ui/OperatorPages.cpp`), both on the marketplace
+service's applications and the merchant's own profile. What the artboards
+draw that is not built: `SuperMerchants`' verification checklist (the
+register extract, the VAT id) and its payouts column, which need the
+payment service's figures per merchant.
