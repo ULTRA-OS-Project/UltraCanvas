@@ -48,6 +48,8 @@
 // strip under the picture chooses it, and the choice is saved from there.
 // Version: 1.22.0 - Display > Display mode: UltraFiler light, dark, or as the desktop says;
 //                  the window's own switches follow a theme change (FollowKitLook)
+// Version: 1.21.2 - Display > Thumbnails / Detail view name the file kinds in the reader's
+//                  language (UltraCanvasFilerWidget::PreviewTypeText), no longer in English
 // Version: 1.21.1 - the kit's colours and sizes as functions (UltraCanvasSettingsPageKit 1.2.0)
 // Version: 1.21.0 - Display > Path bar: a drive named by its volume on the path bar, or by its letter alone
 // Version: 1.20.2 - the texts left in English go through Tr too: captions, tooltips, the cache figures (counts through TrN), the TAR labels; the conflict choices get ids that do not change with the language
@@ -868,7 +870,7 @@ namespace {
             const std::string kindId = idBase + "-kind-" +
                     std::to_string(static_cast<uint32_t>(kind));
             auto kindBox = MakeCheckbox(kindId,
-                    UltraCanvasFilerWidget::PreviewTypeLabel(kind), 300,
+                    UltraCanvasFilerWidget::PreviewTypeText(kind), 300,
                     (mask & static_cast<uint32_t>(kind)) != 0,
                     [d, target, kind](bool on) {
                 if (!d->settings) return;

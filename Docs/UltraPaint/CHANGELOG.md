@@ -1,3 +1,54 @@
+#### 2026-11-19 *0.2.39*
+- **Scale Image lets you choose how the pixels are worked out.** A new
+  *Resampling* list offers Lanczos 3 (the sharpest, still the default),
+  Lanczos 2, Mitchell (clean edges with hardly any halo), Bicubic, Bilinear
+  and Nearest (hard pixels: pixel art, icons and screenshots at 200 %, 300 %
+  or 400 %, every pixel copied exactly). Its tooltip says which to pick for
+  what.
+- **Sharpen after scaling.** A checkbox runs an unsharp mask after the scale,
+  sized to the enlargement, to win back some of the crispness an enlarged
+  picture loses. It sharpens the colour only, so an edge against
+  transparency gets no fringe, and it is greyed out for Nearest.
+- **Scale Image remembers** the method and the sharpening you chose last, for
+  as long as the window is open.
+- **The settings window's choices wrap.** "Show the magnification glass", the
+  three magnifications and the two toolbar kinds break onto a second line
+  when a translation is longer than the page is wide, instead of being cut
+  off.
+- **The blend mode has a row of its own** in the Layers panel, under the
+  opacity, with a "Blend mode" caption and a list as wide as the panel, so a
+  long mode name (Negativ multiplizieren, Superposition ...) shows whole and
+  the opacity slider keeps its length.
+- **Undo, Redo and the colour picker in your language.** The steps the
+  framework names (Rename Layer, Scale Image, Layer Opacity, Hide Layer ...)
+  and the colour picker's Channels line, design names and tooltips are now
+  translated too.
+- **The start-up error box on Windows** is in your language and shows any
+  script correctly: it goes through the framework's native error dialog
+  (Unicode), not the ANSI message box. An error before the translations are
+  loaded still reads in English.
+- **Layer names and file errors in your language.** A new image's
+  background layer, new layers ("Ebene 2"), a pasted layer and the last
+  copied image are named in your language, and so are the messages when an
+  image or a project cannot be opened or saved.
+- **UltraPaint speaks your language.** Every text it shows - the menus, the
+  toolbar and layer buttons' tooltips, the tool names, hints and options, the
+  filters and adjustments, the dialogs, the settings window and the status
+  line - now goes through the framework's translation, and the catalogues of
+  all 30 languages UltraCanvas ships (Arabic to Vietnamese) translate them.
+  They are machine drafts, marked so in each file, for a native speaker to
+  review. A message with a number in it is one whole sentence, so a language
+  can put the number where it belongs, and a count takes the plural form the
+  language needs.
+- **Undo and Redo name the step in your language** for UltraPaint's own steps
+  (the tools, the selections, the filters, the text); the few steps the
+  framework itself names, such as renaming a layer, still read in English.
+- **Longer words fit.** The captions of the tool options, the Opacity label
+  beside the layers, the picture's size in the status line, the Colour to
+  Alpha captions and the settings window's "Window size" grow to a longer
+  translation instead of cutting it off; the buttons of the Colour to Alpha
+  and settings windows grow to their text.
+
 #### 2026-11-14 *0.2.38*
 - **The side panel's page follows the look**: dark under a dark theme, under the framework's section cards that now are dark there too.
 

@@ -670,10 +670,15 @@ namespace UltraCanvas {
     // Spreadsheet, Bitmap, Vector, Audio, Video) is installed by the widget and
     // can be replaced via SetNewDocumentTypes().
     struct FilerNewDocumentType {
-        std::string label;          // menu label, e.g. "Spreadsheet"
+        std::string label;          // menu label, e.g. "Spreadsheet" - the text
+                                    // shown, so already in the reader's language
         std::string extension;      // created file extension, e.g. "ods"
         std::string templatePath;   // optional file copied as the new document;
                                     // empty = an empty file is created
+        std::string fileName;       // the new file's name without extension, e.g.
+                                    // TrC("file name", "New spreadsheet"); empty =
+                                    // TrF("New {0}", label). A whole name per kind
+                                    // translates; "New " + a label does not
     };
 
     // ===== A FINISHED COPY / MOVE =====
@@ -1610,9 +1615,12 @@ namespace UltraCanvas {
         std::vector<std::string> GetDisabledDetailViewFormats() const;
         void SetDisabledDetailViewFormats(const std::vector<std::string>& exts);
 
-        // The menu label of a preview kind ("Vector graphics"), shared by the
-        // Display submenus and by an application listing the formats.
+        // The English name of a preview kind ("Vector graphics"): a stable
+        // name for tests, logs and identifiers - never shown as it is.
         static const char* PreviewTypeLabel(FilerPreviewType type);
+        // The same name in the reader's language (Tr), as the Display
+        // submenus show it - what an application listing the formats shows.
+        static std::string PreviewTypeText(FilerPreviewType type);
         // The eight kinds in the order the menus and lists show them.
         static const std::vector<FilerPreviewType>& AllPreviewTypes();
 
@@ -3049,14 +3057,16 @@ namespace UltraCanvas {
         // Refuses a command that would write into the listing on screen when
         // that listing cannot be written to - today, a remote drive: the
         // widget can browse one (remoteListing) but has no way to change it.
-        // Reports through ReportError and answers true when it refused, so a
-        // command reads `if (RefuseWriteHere("delete")) return;`.
+        // Reports `refusal` - the whole translated sentence for the command,
+        // "Cannot rename on a drive: ..." - followed by what a drive can do,
+        // through ReportError, and answers true when it refused, so a command
+        // reads `if (RefuseWriteHere(Tr("Cannot ... on a drive: ..."))) return;`.
         //
         // Without this the command would reach std::filesystem with a path
         // like "ultracloud://acc/x", which resolves to nothing: the operation
         // fails anyway, but with an error about a missing file rather than an
         // answer about where it was pointed.
-        bool RefuseWriteHere(const char* what);
+        bool RefuseWriteHere(const std::string& refusal);
 
         // True while the listing on screen is a remote drive's.
         bool ShowingRemoteFolder() const;

@@ -14,3 +14,9 @@ published catalog (the server is `ULTRASTORE_SERVERS`'s default,
 `Apps/UltraStore/CMakeLists.txt`). A second publishing machine adds a second
 file. A key is retired by deleting its file and releasing the store without
 it; the catalog cannot remove a compiled-in key, by design.
+
+The public catalog moves to the marketplace (decided 2026-11-18,
+`Docs/UltraStore/README.md`, *The operator tier*): the operator's key
+signs it from then on. Its public half joins this folder as `market.pub`,
+and `publish.pub` stays until the stores already installed have accepted a
+catalog signed with it that announces the operator's key.

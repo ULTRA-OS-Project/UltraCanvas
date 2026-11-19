@@ -69,6 +69,8 @@
 //                  without ImDisk) no longer shows the system drive's pie: "No size of its own"
 // Version: 1.46.0 - Settings > Display > Display mode: the settings are read before the window is
 //                  built and the mode is the theme policy, so the window is built in its look
+// Version: 1.45.5 - the "New ▾" button's Folder entry is translated, like the context
+//                  menu's New > Folder
 // Version: 1.45.4 - the path bars under Dark: dark grey segments, the current folder's segment in the
 //                  arrow's strong blue with white, the seams in the ground; set again by ApplyLook on
 //                  every theme change instead of following the theme themselves
@@ -2969,7 +2971,7 @@ void UltraFilerWindow::ShowNewEntryMenu() {
     // Mirror of the filer context menu's "New >" submenu: the folder first,
     // set apart from the document kinds.
     newEntryMenu->AddItem(MenuItemData::ActionWithShortcut(
-            "Folder", "Ctrl+F", [this]() { CreateNewFolderCommand(); }));
+            Tr("Folder"), "Ctrl+F", [this]() { CreateNewFolderCommand(); }));
     if (filer) {
         newEntryMenu->AddItem(MenuItemData::Separator());
         for (const FilerNewDocumentType& t : filer->GetNewDocumentTypes()) {

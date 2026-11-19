@@ -95,9 +95,13 @@ planned (see the status table below).
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
 `UltraNet_RefreshPlugins()` from `UltraNet_GetPluginDirectory()`. Until an
-application sets another with `UltraNet_SetPluginDirectory()`, that is
-`Plugins/UltraNet` beside the executable, or one or two folders above it,
-whichever holds a plug-in. It is never the working directory, unless the
+application sets another with `UltraNet_SetPluginDirectory()`, that is, the
+first that holds a plug-in: inside a macOS bundle `Contents/PlugIns/UltraNet`
+(where `package-macos.sh` puts them); `Plugins/UltraNet` beside the
+executable, or one or two folders above it; then the runtime's, when the
+application runs on one (`ULTRACANVAS_RUNTIME_DIR`, which UltraStore sets:
+its `bin/Plugins/UltraNet` on Linux, `Plugins/UltraNet` on Windows); else the
+folder beside the executable. It is never the working directory, unless the
 executable's own path is unknown: a packaged Windows application starts in
 System32. A plug-in reaches the core **only through the host
 table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:

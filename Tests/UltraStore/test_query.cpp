@@ -231,6 +231,76 @@ TEST(labels) {
     REQUIRE(LaunchPath(r).empty());
 }
 
+TEST(the_launch_puts_the_runtime_layer_on_the_library_path) {
+    // UltraMail 1.0 on runtime 0.9.600 and VideoFX 0.12, which needs the
+    // same runtime; an older runtime installed beside for another app.
+    InstalledRecord mail = Rec("org.ultraos.ultramail", "1.0");
+    mail.entry = "UltraMail/UltraMail";
+    mail.depends = {{"org.ultraos.lib.videofx", "0.12"}, {"org.ultraos.runtime", "0.9.600"}};
+    InstalledRecord fx = Rec("org.ultraos.lib.videofx", "0.12", ComponentKind::Library);
+    fx.folder = "/store/components/org.ultraos.lib.videofx/0.12";
+    fx.depends = {{"org.ultraos.runtime", "0.9.600"}};
+    InstalledRecord runtime = Rec("org.ultraos.runtime", "0.9.600", ComponentKind::Runtime);
+    runtime.folder = "/store/components/org.ultraos.runtime/0.9.600";
+    InstalledRecord older = Rec("org.ultraos.runtime", "0.9.500", ComponentKind::Runtime);
+    older.folder = "/store/components/org.ultraos.runtime/0.9.500";
+    const std::vector<InstalledRecord> installed = {mail, older, runtime, fx};
+
+    const LaunchPlan onLinux = PlanLaunch(mail, installed, OS::Linux, "/opt/x/lib");
+    REQUIRE_EQ(onLinux.argv.size(), size_t(1));
+    REQUIRE_EQ(onLinux.argv[0], LaunchPath(mail));
+    REQUIRE_EQ(onLinux.workingDirectory, mail.folder);
+    REQUIRE_EQ(onLinux.environment.size(), size_t(2));
+    REQUIRE_EQ(onLinux.environment[0].first, std::string("LD_LIBRARY_PATH"));
+    // The app's own depends in their order, each once, the exact versions,
+    // then what was there before.
+    REQUIRE_EQ(onLinux.environment[0].second,
+               std::string("/store/components/org.ultraos.lib.videofx/0.12/lib:"
+                           "/store/components/org.ultraos.runtime/0.9.600/lib:/opt/x/lib"));
+    REQUIRE_EQ(onLinux.environment[1].first, std::string("ULTRACANVAS_RUNTIME_DIR"));
+    REQUIRE_EQ(onLinux.environment[1].second, runtime.folder);
+
+    // Windows: the component's folder holds the DLLs; PATH, ';'.
+    const LaunchPlan onWindows = PlanLaunch(mail, installed, OS::Windows, "");
+    REQUIRE_EQ(onWindows.environment[0].first, std::string("PATH"));
+    REQUIRE_EQ(onWindows.environment[0].second,
+               std::string("/store/components/org.ultraos.lib.videofx/0.12;/store/components/org.ultraos.runtime/0.9.600"));
+
+    // A folder recorded with a trailing separator gets one, not two.
+    InstalledRecord slash = runtime;
+    slash.folder += "/";
+    InstalledRecord onSlash = Rec("org.ultraos.slash", "1");
+    onSlash.depends = {{"org.ultraos.runtime", "0.9.600"}};
+    REQUIRE_EQ(PlanLaunch(onSlash, {onSlash, slash}, OS::Linux, "").environment[0].second,
+               std::string("/store/components/org.ultraos.runtime/0.9.600/lib"));
+
+    // A runtime reached only through a library still counts.
+    InstalledRecord video = Rec("org.ultraos.ultravideo", "0.2");
+    video.depends = {{"org.ultraos.lib.videofx", "0.12"}};
+    const LaunchPlan throughLibrary = PlanLaunch(video, installed, OS::Linux, "");
+    REQUIRE_EQ(throughLibrary.environment.size(), size_t(2));
+    REQUIRE_EQ(throughLibrary.environment[1].second, runtime.folder);
+
+    // A self-contained app (no depends), a dependency not installed, and
+    // macOS (bundles; `open` passes no environment) change nothing.
+    REQUIRE(PlanLaunch(Rec("org.ultraos.alone", "1"), installed, OS::Linux, "/opt/x/lib").environment.empty());
+    InstalledRecord orphan = Rec("org.ultraos.orphan", "1");
+    orphan.depends = {{"org.ultraos.runtime", "0.1.0"}};
+    REQUIRE(PlanLaunch(orphan, installed, OS::Linux, "").environment.empty());
+    InstalledRecord macApp = mail;
+    macApp.entry = "UltraMail.app";
+    const LaunchPlan mac = PlanLaunch(macApp, installed, OS::MacOS, "");
+    REQUIRE(mac.environment.empty());
+    REQUIRE_EQ(mac.argv.size(), size_t(2));
+    REQUIRE_EQ(mac.argv[0], std::string("open"));
+
+    // Nothing to start.
+    InstalledRecord none = mail;
+    none.entry.clear();
+    REQUIRE(PlanLaunch(none, installed, OS::Linux, "").argv.empty());
+    REQUIRE_EQ(LibraryPathVariable(OS::MacOS), std::string("DYLD_LIBRARY_PATH"));
+}
+
 TEST(language_from_locale) {
     REQUIRE_EQ(LanguageFromLocale("de_AT.UTF-8"), std::string("de"));
     REQUIRE_EQ(LanguageFromLocale("pt-BR"), std::string("pt"));

@@ -34462,6 +34462,12 @@ Notes:
   the Details and List rows keeps the type glyph, so a folder listing does not
   read every document in it, and a font specimen squeezed into an icon slot is
   not shown as a smear of ink.
+- The *Menu label* column is the kind's English name,
+  `UltraCanvasFilerWidget::PreviewTypeLabel(kind)` - a stable name for tests,
+  logs and element identifiers. What a person reads is
+  `UltraCanvasFilerWidget::PreviewTypeText(kind)`, the same name through `Tr`:
+  the Display submenus show it, and an application listing the kinds (UltraFiler's
+  Settings > Display > Thumbnails / Detail view) shows it too.
 - `FilerPreviewType` values are a bitmask; `GetThumbnailKinds()` /
   `GetDetailViewKinds()` return the current sets and `kFilerAllPreviewTypes` is
   the default of both. The preview kinds do not map one to one onto
@@ -36124,6 +36130,22 @@ split button lists exactly these. Each entry may name a
 `templatePath` that is copied instead of creating an empty file, and
 `onNewDocument` lets the application take over creation entirely (return `true`
 when handled). A freshly created document goes straight into rename mode.
+
+The entry's `label` is the menu text and its `fileName` the new file's name
+without the extension (`New spreadsheet.ods`, numbered `New spreadsheet (2).ods`
+when taken). Both are what a person reads, so a host passes them translated -
+the name as a whole, through `TrC("file name", ...)`: "New " + a translated
+label is not how most languages name a new file ("Neue Tabelle", "Nouvelle
+feuille de calcul"). The defaults do this. An entry without a `fileName` falls
+back to `TrF("New {0}", label)`, which a translator can only reorder.
+
+```cpp
+filer->SetNewDocumentTypes({
+    {Tr("Spreadsheet"), "ods", "", TrC("file name", "New spreadsheet")},
+    {Tr("Presentation"), "odp", "/usr/share/templates/blank.odp",
+     TrC("file name", "New presentation")},
+});
+```
 
 The **New >** submenu opens with **Folder** — above the document kinds and set
 apart from them by a separator — bound to **Ctrl+F**. `CreateNewFolder()` is the
@@ -106394,9 +106416,13 @@ planned (see the status table below).
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
 `UltraNet_RefreshPlugins()` from `UltraNet_GetPluginDirectory()`. Until an
-application sets another with `UltraNet_SetPluginDirectory()`, that is
-`Plugins/UltraNet` beside the executable, or one or two folders above it,
-whichever holds a plug-in. It is never the working directory, unless the
+application sets another with `UltraNet_SetPluginDirectory()`, that is, the
+first that holds a plug-in: inside a macOS bundle `Contents/PlugIns/UltraNet`
+(where `package-macos.sh` puts them); `Plugins/UltraNet` beside the
+executable, or one or two folders above it; then the runtime's, when the
+application runs on one (`ULTRACANVAS_RUNTIME_DIR`, which UltraStore sets:
+its `bin/Plugins/UltraNet` on Linux, `Plugins/UltraNet` on Windows); else the
+folder beside the executable. It is never the working directory, unless the
 executable's own path is unknown: a packaged Windows application starts in
 System32. A plug-in reaches the core **only through the host
 table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
@@ -112370,21 +112396,6 @@ change is kept in the settings folder and shows at the next start.
 | `main.cpp` | The command line and the single instance |
 
 ==============================================================================
-FILE: Docs/UltraSnip/changelog.d/zoomable-picture.md
-==============================================================================
-
-- **The picture zooms and moves.** The mouse wheel zooms the snip shown in
-  the window about the cursor, up to forty times; once it is larger than the
-  pane, dragging moves it, as far as its edges and no further, and the cursor
-  shows four arrows only while there is somewhere to move it to. A
-  double-click shows it whole again. A snip smaller than the pane still
-  starts at its own size, as before, and its tooltip says how.
-- **Zoomed in, the pixels are sharp.** From 200 % on, each pixel of the snip
-  is drawn as a hard-edged square instead of being blurred into its
-  neighbours, so text and edges can be read pixel by pixel. Below 200 % the
-  picture stays smooth.
-
-==============================================================================
 FILE: Docs/UltraToDo/README.md
 ==============================================================================
 
@@ -112649,70 +112660,6 @@ Listed so the next session does not rediscover them:
   `PaintFilterCatalogue()` without recompiling the app.
 
 ==============================================================================
-FILE: Docs/UltraPaint/changelog.d/scale-image-resampling.md
-==============================================================================
-
-- **Scale Image lets you choose how the pixels are worked out.** A new
-  *Resampling* list offers Lanczos 3 (the sharpest, still the default),
-  Lanczos 2, Mitchell (clean edges with hardly any halo), Bicubic, Bilinear
-  and Nearest (hard pixels: pixel art, icons and screenshots at 200 %, 300 %
-  or 400 %, every pixel copied exactly). Its tooltip says which to pick for
-  what.
-- **Sharpen after scaling.** A checkbox runs an unsharp mask after the scale,
-  sized to the enlargement, to win back some of the crispness an enlarged
-  picture loses. It sharpens the colour only, so an edge against
-  transparency gets no fringe, and it is greyed out for Nearest.
-- **Scale Image remembers** the method and the sharpening you chose last, for
-  as long as the window is open.
-
-==============================================================================
-FILE: Docs/UltraPaint/changelog.d/settings-blend-fatal-translated.md
-==============================================================================
-
-- **The settings window's choices wrap.** "Show the magnification glass", the
-  three magnifications and the two toolbar kinds break onto a second line
-  when a translation is longer than the page is wide, instead of being cut
-  off.
-- **The blend mode has a row of its own** in the Layers panel, under the
-  opacity, with a "Blend mode" caption and a list as wide as the panel, so a
-  long mode name (Negativ multiplizieren, Superposition ...) shows whole and
-  the opacity slider keeps its length.
-- **Undo, Redo and the colour picker in your language.** The steps the
-  framework names (Rename Layer, Scale Image, Layer Opacity, Hide Layer ...)
-  and the colour picker's Channels line, design names and tooltips are now
-  translated too.
-- **The start-up error box on Windows** is in your language and shows any
-  script correctly: it goes through the framework's native error dialog
-  (Unicode), not the ANSI message box. An error before the translations are
-  loaded still reads in English.
-- **Layer names and file errors in your language.** A new image's
-  background layer, new layers ("Ebene 2"), a pasted layer and the last
-  copied image are named in your language, and so are the messages when an
-  image or a project cannot be opened or saved.
-
-==============================================================================
-FILE: Docs/UltraPaint/changelog.d/translated.md
-==============================================================================
-
-- **UltraPaint speaks your language.** Every text it shows - the menus, the
-  toolbar and layer buttons' tooltips, the tool names, hints and options, the
-  filters and adjustments, the dialogs, the settings window and the status
-  line - now goes through the framework's translation, and the catalogues of
-  all 30 languages UltraCanvas ships (Arabic to Vietnamese) translate them.
-  They are machine drafts, marked so in each file, for a native speaker to
-  review. A message with a number in it is one whole sentence, so a language
-  can put the number where it belongs, and a count takes the plural form the
-  language needs.
-- **Undo and Redo name the step in your language** for UltraPaint's own steps
-  (the tools, the selections, the filters, the text); the few steps the
-  framework itself names, such as renaming a layer, still read in English.
-- **Longer words fit.** The captions of the tool options, the Opacity label
-  beside the layers, the picture's size in the status line, the Colour to
-  Alpha captions and the settings window's "Window size" grow to a longer
-  translation instead of cutting it off; the buttons of the Colour to Alpha
-  and settings windows grow to their text.
-
-==============================================================================
 FILE: Docs/DeviceExplorer/README.md
 ==============================================================================
 
@@ -112952,6 +112899,17 @@ asks, one printer after another, and the answer follows its other sections:
 | A network printer never appears | DNS-SD does not cross routers: name it in `ULTRACANVAS_IPP_PRINTERS=ipp://<address>/ipp/print`. A printer that offers only `ipps://` with a self-signed certificate, or asks for a password, is not supported yet. |
 | *Could not ask the printer* | The printer did not answer the status request: switched off, unreachable, or (CUPS) the queue was deleted. The reason line says which. |
 | A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB, it does not speak IPP, or a firewall blocks port 631. |
+
+==============================================================================
+FILE: Docs/DeviceExplorer/changelog.d/macos-network-devices.md
+==============================================================================
+
+- **Network printers and eSCL scanners are found on macOS.** The macOS
+  bundle came without UltraNet's `mdns` plug-in, the DNS-SD browser that the
+  IPP printer and eSCL scanner discovery runs on, so on a Mac neither found
+  anything on the network: printers came only from CUPS, eSCL scanners not
+  at all. The bundle carries it now (`package-macos.sh`,
+  `ultranet_plugins_of`).
 
 ==============================================================================
 FILE: Docs/UltraDesktop/Manual.md

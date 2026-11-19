@@ -1,4 +1,6 @@
 // UltraCloud/ui/UltraCloudPickerDialog.cpp
+// Version: 0.4.2 - the colours are the theme's (UiStyle 0.3.0): a dark dialog with readable rows,
+//                  status and ".." entry under a dark look
 // Version: 0.4.1 - a failed listing, upload or link says why in a translated
 //                  sentence by its result code (DescribeResult); the
 //                  technical message is the status line's tooltip
@@ -107,7 +109,7 @@ void Post(std::function<void()> fn) {
 void SetStatus(const std::shared_ptr<PickerState>& st, const std::string& text, bool error = false,
                const std::string& detail = std::string()) {
     if (!st->status) return;
-    st->status->SetTextColor(error ? Color(180, 40, 40, 255) : Color(60, 60, 60, 255));
+    st->status->SetTextColor(error ? UiStyle::Danger() : UiStyle::TextPrimary());
     st->status->SetText(text);
     st->status->SetTooltip(detail);
 }
@@ -128,7 +130,7 @@ void FillList(const std::shared_ptr<PickerState>& st) {
     st->list->SetRootNode(root);
     if (st->path != "/") {
         TreeNodeData up(kUpId, "..");
-        up.textColor = Color(90, 90, 90, 255);
+        up.textColor = UiStyle::TextSecondary();
         st->list->AddNode(kRootId, up);
     }
     for (std::size_t i = 0; i < st->entries.size(); ++i) {
@@ -285,7 +287,7 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSer
                   .SetFlexGap(UiStyle::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(UiStyle::kPadding);
-    dialog->SetBackgroundColor(UiStyle::kSurface);
+    dialog->SetBackgroundColor(UiStyle::Surface());
 
     // The two captioned rows share one grid, so "Account" and "Folder" line up
     // without either caption carrying a width of its own, and neither row can
@@ -309,7 +311,7 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSer
                                       static_cast<int>(UiStyle::kControlHeight));
     st->pathLabel = CreateLabel("cloudPickPath", 0, 0, 0, UiStyle::kControlHeight, "/");
     st->pathLabel->SetFontSize(UiStyle::kFontSize);
-    st->pathLabel->SetTextColor(UiStyle::kTextPrimary);
+    st->pathLabel->SetTextColor(UiStyle::TextPrimary());
     pathCell->AddChild(st->pathLabel);
     st->pathLabel->layoutItem.SetFlexGrow(1);
     st->upBtn = CreateButton("cloudPickUp", 0, 0, 64, UiStyle::kControlHeight, "↑ " + Tr("Up"));
@@ -331,17 +333,17 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSer
     st->list->SetRootVisible(false);
     st->list->SetRowHeight(28);
     st->list->SetFontSize(UiStyle::kFontSize);
-    st->list->SetSelectionColor(UiStyle::kRowSelected);
-    st->list->SetHoverColor(UiStyle::kRowHover);
+    st->list->SetSelectionColor(UiStyle::RowSelected());
+    st->list->SetHoverColor(UiStyle::RowHover());
     st->list->SetLineColor(Colors::Transparent);
-    st->list->SetBorders(1.0f, UiStyle::kBorder, UiStyle::kRadius);
+    st->list->SetBorders(1.0f, UiStyle::Border(), UiStyle::kRadius);
     st->list->SetColumns({
         { "name",     Tr("Name"),     0,   160, 1.0f, TextAlignment::Left,
-          Color(30, 30, 30), Colors::Transparent, 0, /*isTreeColumn=*/true },
+          UiStyle::TextPrimary(), Colors::Transparent, 0, /*isTreeColumn=*/true },
         { "size",     Tr("Size"),     90,  0,   1.0f, TextAlignment::Right,
-          Color(90, 90, 90), Colors::Transparent, 0, false },
+          UiStyle::TextSecondary(), Colors::Transparent, 0, false },
         { "modified", Tr("Modified"), 170, 0,   1.0f, TextAlignment::Left,
-          Color(90, 90, 90), Colors::Transparent, 0, false },
+          UiStyle::TextSecondary(), Colors::Transparent, 0, false },
     });
     st->list->SetColumnStyle(UiStyle::ListHeader());
     dialog->AddChild(st->list);
@@ -349,7 +351,7 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, std::shared_ptr<CloudSer
 
     st->status = CreateLabel("cloudPickStatus", 0, 0, 0, 22, "");
     st->status->SetFontSize(UiStyle::kFontSize);
-    st->status->SetTextColor(UiStyle::kTextSecondary);
+    st->status->SetTextColor(UiStyle::TextSecondary());
     dialog->AddChild(st->status);
 
     // Buttons: the status line stays visible on the left, Cancel then the

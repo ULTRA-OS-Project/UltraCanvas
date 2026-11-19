@@ -234,6 +234,13 @@ the store does, and only then records the sequence. The store fetches
 `https://store.example/v1/catalog.json`, trusts `production.pub`, and lists
 Hello.
 
+That is a store of one's own. The public UltraStore catalog is the
+marketplace's, and every merchant reaches it with `market submit` - the
+ULTRA OS Project's own apps too (decided 2026-11-18, the store's README,
+*The operator tier*). The archive for `package add` comes from
+`scripts/package-store-app.sh <App>`, cut out of the suite package (the
+store's README, *Packaging an application for the store*).
+
 ## What publish checks
 
 - The catalog parses with the store's `ParseCatalog`: every id is reverse

@@ -3,6 +3,7 @@
 // (Apps/UltraFiler/UltraFilerSettingsDialog.cpp), where it was written
 // first; UltraSnip copied it, and the copy became this kit.
 // Version: 1.3.0 - FollowKitLook: every element built here takes its roles again on a theme change
+// Version: 1.2.1 - a scrolling page keeps the theme's scroll bar (MakePage built a fresh ContainerStyle)
 // Version: 1.2.0 - the colours and sizes are the theme's (UltraCanvasSettingsPageKit.h)
 // Version: 1.1.0 - ShowSaveSettingsDialog
 // Version: 1.0.0
@@ -163,7 +164,10 @@ PageParts MakePage(const std::string& id, const std::string& title, const std::s
         // asked. Vertically only: the vertical bar narrows the viewport,
         // which would otherwise fabricate a horizontal overflow of its own
         // width.
-        ContainerStyle cs;
+        // The page's own style with scrolling on: a fresh ContainerStyle
+        // put the light look's scroll bar back over the theme's, a light
+        // grey bar down a dark settings page.
+        ContainerStyle cs = parts.page->GetContainerStyle();
         cs.autoShowScrollbars = true;
         cs.autoShowHorizontalScrollbar = false;
         parts.page->SetContainerStyle(cs);

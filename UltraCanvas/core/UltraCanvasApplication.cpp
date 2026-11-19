@@ -1,5 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.26.1 - the destructor waits for the ImageMagick warm-up (FinishImageMagickWarmUp):
+//                  a program done before it was left it running into exit
 // Version: 1.26.0 - the pointer leaving a window, or the window losing the focus, takes its
 //                  tooltip away (one waiting is not shown) and leaves the element it hovered
 // Version: 1.25.0 - the font aliases carry the families with stand-ins (GetFontFamilySubstitutes):
@@ -158,6 +160,12 @@ namespace UltraCanvas {
     }
 
     UltraCanvasApplicationBase::~UltraCanvasApplicationBase() {
+        // The ImageMagick warm-up started at launch ends before the program
+        // does, also for one that never ran the main loop (whose end calls
+        // ShutdownImageSubsysterm): left running into exit, it loaded
+        // ImageMagick's coders after libgomp's finaliser and aborted the
+        // exit in goacc_register (UCImageRaster::FinishImageMagickWarmUp).
+        UCImage::FinishImageMagickWarmUp();
         if (themeHandler != 0) UltraCanvasTheme::RemoveChangeHandler(themeHandler);
         themeHandler = 0;
         UltraCanvasApplicationBase* expected = this;

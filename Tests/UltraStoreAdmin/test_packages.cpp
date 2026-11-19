@@ -49,6 +49,17 @@ TEST(the_entry_is_suggested_from_the_listing) {
     using UltraStore::OS;
     const std::vector<std::string> linuxZip = {"README.txt", "bin/", "bin/hello", "lib/libx.so", "share/icon.png"};
     REQUIRE_EQ(SuggestEntry(linuxZip, OS::Linux), std::string("bin/hello"));
+    // The launcher beside bin/ (the suite's and package-store-app.sh's
+    // layout) wins over the executable it starts, which alone does not
+    // find lib/: at the top, and inside the archive's one folder.
+    const std::vector<std::string> launcherTar = {"UltraMail/", "UltraMail/UltraMail", "UltraMail/bin/", "UltraMail/bin/UltraMail",
+                                                  "UltraMail/bin/Plugins/UltraNet/imap.so", "UltraMail/lib/libUltraCanvas.so.1"};
+    REQUIRE_EQ(SuggestEntry(launcherTar, OS::Linux), std::string("UltraMail/UltraMail"));
+    const std::vector<std::string> launcherTop = {"bin/hello", "hello", "lib/libx.so"};
+    REQUIRE_EQ(SuggestEntry(launcherTop, OS::Linux), std::string("hello"));
+    // A file of another name at the top is not a launcher of bin/hello.
+    const std::vector<std::string> otherTop = {"bin/hello", "LICENSE", "lib/libx.so"};
+    REQUIRE_EQ(SuggestEntry(otherTop, OS::Linux), std::string("bin/hello"));
     const std::vector<std::string> windowsZip = {"Hello/", "Hello/Hello.exe", "Hello/uninstall.exe", "Hello/lib.dll"};
     REQUIRE_EQ(SuggestEntry(windowsZip, OS::Windows), std::string("Hello/Hello.exe"));
     const std::vector<std::string> macZip = {"Hello.app/", "Hello.app/Contents/Info.plist", "Hello.app/Contents/MacOS/Hello"};

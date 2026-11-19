@@ -1,3 +1,40 @@
+#### 2026-11-19 *1.86*
+- **Closing Texter with unsaved files names them.** The question listed only a
+  count ("3 file(s) have unsaved changes"); it now shows the files in a list -
+  each one's name and folder, or "Not saved yet" for a new one, the whole path
+  as its tooltip - in the shape of UltraFiler's delete question, and it follows
+  a dark look.
+- **Saving them shows each file first.** Answering Yes saves the files one by
+  one; Texter now switches to each file's tab before it is saved, so the Save
+  dialog a new file needs, or the message about a file that could not be
+  written, is plainly about the file on screen.
+- **Closing one tab shows it before asking.** Closing a tab that is not the
+  current one (with its x) asked "Save changes to …?" over another file; Texter
+  now switches to that tab first.
+- **A password-protected document opens: Texter asks for the password.** A
+  `.docx`, `.odt`, `.pptx` or `.odp` saved with a password (Word, PowerPoint,
+  LibreOffice, ODF 1.4's encryption included) brings up the framework's
+  password prompt - asked again after a wrong one - and opens once it is
+  given, where before it only said the file was protected. The question comes
+  a moment after the window shows, so a protected file named on the command
+  line or restored from the last session is asked for in front of Texter, not
+  of an empty screen. The password is kept with the tab while it is open:
+  saved again as `.docx` the document stays protected, and an `.odt` opened
+  with one is not written back without it - Save As `.docx` keeps it.
+- **A PowerPoint deck or an OpenDocument presentation opens as the outline of
+  its slides, not as a hex dump.** The Open dialog's "Documents" offered
+  `.pptx` since FileLoader read decks, but Texter sent anything but `.odt`,
+  `.docx` and `.doc` to its text loader, which showed a deck's bytes. A
+  `.pptx`, `.pptm`, `.ppsx`, `.ppsm`, `.potx`, `.potm`, `.odp`, `.otp` or
+  `.fodp` now opens in the document editor as each slide's number and title,
+  its bullets, tables, pictures' descriptions and speaker notes; a protected
+  or damaged deck says why. Saving the outline back under a deck's name is
+  refused - it would have written plain text over the slides - and *Save As*
+  `.odt` or `.docx` keeps it.
+- **A password-protected `.odt` says so** instead of opening as a hex dump.
+  (Texter still asks no password; open it in a program that does, or see the
+  framework's `RequestDocumentPassword`.)
+
 #### 2026-11-16 *1.85*
 - **A tall caret beside a table at the top of a document is gone.** A
   document that opens with a table (an ODT letter's address block) showed a

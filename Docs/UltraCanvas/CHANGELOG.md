@@ -1,3 +1,412 @@
+#### 2026-11-19 *0.9.577*
+- **UltraNet: `UltraNet_ResolveTunnelProxy`; IRC, XMPP and Telegram take
+  the system's web proxy where it names no other.** With "the system's
+  proxy" chosen and nothing but a web proxy set in the system, ChatCube's
+  networks did not agree: Telegram and Signal went through it, IRC and XMPP
+  over TCP connected directly past it (a raw connection took only the
+  system's SOCKS proxy). `UltraNet_ResolveTunnelProxy(host, port)` answers
+  for a connection that is not the web's what a program following the
+  setting in everything wants: the proxy `tcp://host:port` resolves to (the
+  one chosen, the system's SOCKS proxy), else the one `https://host:port`
+  resolves to - the web's proxy, as a CONNECT tunnel. IRC (`IrcConnection`)
+  and XMPP over TCP (`XmppTcpConnection`) hand it to
+  `UltraNetSocketOptions::proxy`, and Telegram takes its proxy by the same
+  rule. A proxy that refuses the tunnel - one that lets only port 443
+  through - fails the sign-in naming the proxy; an exception for the
+  server connects directly. `useProxySetting` is unchanged (SOCKS alone
+  under the system's settings), for mail and devices. Tested in
+  `UltraNetTests` (the order, the exceptions, a connection opened through
+  the system's web proxy) and, signing in through a web proxy that carries
+  the connection to the test server, in `IrcProviderTests` and
+  `XmppProviderTests` (`Tests/UltraIM/ConnectProxy.h`).
+- **The docs check knows functions outside the `UltraCanvas` namespace, and
+  the UltraCrypt README's listings match the headers.**
+  `scripts/check_doc_examples.py` (1.11.0) looked for a listed free function
+  in `UltraCanvas` alone, so every function of a module that carries a
+  prefix instead of a namespace was reported as unknown - all 66 of the
+  UltraCrypt README's `UltraCrypt_` functions, which is why nothing could be
+  read from its 70 findings. A listing written in no namespace is now tried
+  in the global one as well, with its signature compared there, and a
+  constructor listed `= delete` is checked to be absent rather than present.
+  What was left were real differences, and they are corrected:
+  `UltraCrypt_ConstantTimeEquals` takes two sizes, not one;
+  `UltraCryptHasher` takes no options and cannot be moved; the CMS functions
+  and the RSA / ECDSA checks are written with their parameter types instead
+  of as sketches; and `UltraCryptHmacHasher`, a streaming HMAC class the
+  README and the module registry both listed, was proposed and never built
+  - HMAC is the one call `UltraCrypt_Hmac`. The examples' variables have
+  their types, so the examples are compiled in full. `UltraCrypt` joins
+  `CHECKED_MODULE_DOCS`, and `doc-examples.yml` starts for a change under
+  `Docs/Modules/UltraCrypt/`; the README passes under clang 18 and under
+  clang 14 with libstdc++ 12.
+- **CI: the element-modules rows keep their apt packages between runs**, as
+  `build.yml`'s Linux rows do: the packages and lists the last run on `main`
+  installed are restored before anything is installed (`ci-apt.sh cache-in`),
+  so a slow mirror serves only what changed. On 2026-11-18 both rows ran out
+  of their 45 minutes in the dependency step, downloading the same packages as
+  every run before. Both rows share one cache (`apt-debs-element-modules-ubuntu-24.04-`),
+  saved by the static row on `main` only.
+  Until that cache exists, the Wayland row's serves (same image; its packages
+  are these but `ninja-build`).
+- **Markdown tables use the width they have.** A text area without word wrap
+  (the media viewer's text view, which shows a deck's outline, Texter's
+  Markdown tabs with wrap off) built its line layouts before it had measured
+  its visible area, so every table was sized to the 100 px floor and broke
+  its header words over two lines ("Quar-ter", "Reven-ue") with the whole view
+  to spare - and nothing laid it out again. The area now remembers the width
+  its tables were sized to and lays the lines out once more when the visible
+  width turns out different (the first frame, a resize, a scrollbar coming or
+  going). `TextAreaDetachedTest` checks a table is sized to its area's width.
+- **UltraCanvasMediaViewer shows presentations.** A `.pptx` (and `.pptm`,
+  `.ppsx`, `.ppsm`, `.potx`, `.potm`) or an `.odp` (and `.otp`, `.fodp`) opens
+  in the read-only text view as the outline of its slides, read by
+  `UltraCanvasFileLoader::LoadTextDocument` and rendered as Markdown, the way
+  a `.tex` is (`IsPresentationFile`, classified before text so a flat `.fodp`
+  is not shown as XML). The info bar says *PRESENTATION*. A
+  password-protected deck is locked like a PDF (`MediaLock::Presentation`):
+  the note, **Unlock**, a wrong password told from a deck that will not open,
+  the password kept for the folder. `MediaViewerToolsTest` walks a plain
+  `.pptx`, `.odp` and `.fodp`, and a protected `.pptx` and `.odp`.
+- **Markdown view: a backslash escape inside bold, italic or strike-through
+  is resolved**, as outside them (`UltraCanvasTextArea`'s hybrid Markdown):
+  `*\[Picture: chart]*`, which `UCRichDocument::ToMarkdown` writes for an
+  italic "[Picture: chart]", showed its backslash; and an escaped marker no
+  longer closes the run. Inline code keeps its backslashes. `InlineMathTest`
+  checks the runs and the cursor map.
+- **Password-protected OpenDocument files open: `.odt`, `.ods` and `.odp`.**
+  `UltraCanvasOdfEncryption.h` (new) reads what LibreOffice and
+  OpenOffice.org 3.2+ write with *Save with password*: each package entry
+  deflated, then AES-256-CBC keyed by PBKDF2-HMAC-SHA-1 (100 000 rounds) from
+  the SHA-256 of the UTF-8 password, checked by the SHA-256 of its first
+  kilobyte. `DecryptOdfPackage` / `DecryptOdfPackageFile` rebuild an ordinary
+  package in memory; `CheckOdfPassword` checks a password with one key
+  derivation; the statuses are `OfficeDecryptStatus`. Blowfish (OpenOffice.org
+  1 to 3.1), AES-GCM, Argon2id and ODF 1.4's whole-package encryption are
+  refused, each by name. There is no writer.
+  - `UCWordDocumentIO::Load` / `LoadOdt`, `UltraCanvasSpreadsheet::LoadFromFile`
+    / `LoadODS` and `ReadOdpPresentation` / `ReadOdpPresentationFromMemory`
+    take the password; `UltraCanvasFileLoader::LoadTextDocument` and
+    `ExtractText` pass it on. `CheckOfficePassword` answers for an
+    OpenDocument file, so `RequestDocumentPassword` and `OpenTextDocument`
+    prompt for a protected `.odt` or `.odp` as for a `.docx`.
+  - UltraFiler's preview leaves a protected `.ods` its type glyph instead of a
+    page of its ciphertext.
+  - UltraCrypt: `UltraCrypt_DeriveKeyPbkdf2` takes `UltraCryptHashOptions`,
+    and PBKDF2-HMAC-SHA-1 with `allowLegacy` (ODF names no other PRF), on the
+    module's own SHA-1, each round two compressions of a block padded once.
+    Checked against RFC 6070.
+  - `UCZipInflateRaw` (`UltraCanvasZipPackage.h`): a raw deflate stream.
+  - `Tests/OdfEncryptionTest.cpp` reads an `.odt`, an `.ods` and an `.odp` that
+    LibreOffice 24.2 saved with a non-ASCII password
+    (`make-odf-encrypted-fixtures.py`, through its UNO API): no, wrong and
+    right passwords, each reader against the unencrypted original, a damaged
+    byte, and the refused ciphers.
+- **ODF 1.4's password encryption opens: the whole package in one entry,
+  AES-256-GCM, Argon2id with four lanes** - what LibreOffice 24.2 writes when it
+  saves ODF 1.4 in experimental mode. `UltraCanvasOdfEncryption` decrypts the
+  `encrypted-package` (the 12-byte IV in front, the tag at the end) and hands
+  back the package inside; every reader that takes a password - `.odt`, `.ods`,
+  `.odp` - opens it. A wrong password, and a changed byte, fail the GCM tag. An
+  Argon2id cost past 1 GiB, 64 passes or 64 lanes is refused before any memory
+  is taken.
+  - UltraCrypt: `UltraCrypt_AesGcmDecrypt`, AES-GCM on the module's own
+    constant-time AES with a masked GHASH, so it works on CPUs without AES
+    instructions (libsodium's AES-GCM needs them); checked against the GCM
+    specification's test cases and against what libsodium seals.
+  - UltraCrypt: Argon2id with more than one lane (`UltraCryptKdfParams::parallelism`),
+    an RFC 9106 implementation on libsodium's BLAKE2b (libsodium computes one
+    lane), checked against libargon2 for 2, 3 and 4 lanes and LibreOffice's
+    64 MiB. Before, any parallelism but 1 was refused.
+  - `Tests/fixtures/make-odf-encrypted-fixtures.py` writes `odf14-encrypted.odt`,
+    `.ods` and `.odp` from a LibreOffice profile set to ODF 1.4 and experimental
+    mode before it starts; `OdfEncryptionTest` reads them.
+- **OpenDocument Drawing (`.odg`, `.otg`, `.fodg`) is a vector format, read
+  and written like SVG and XAR.** LibreOffice Draw's files open as an editable
+  `VectorDocument` through `UltraCanvasFileLoader::LoadVectorDocument`, the
+  media viewer and the Filer, and any drawing saves as one - the new
+  `ODGConverter` (`Plugins/Vector/UltraCanvasODGConverter.h`) joins the Vector
+  plugin's matrix, so every application that registers the plugin offers it
+  in its Open and Save dialogs with no list edited.
+  - Reading takes the package, its template and the flat XML form, and the
+    first page of the drawing (other pages are reported). LibreOffice draws
+    most of its shapes - the basic shapes, stars, arrows, flowchart and
+    callout shapes - as `draw:custom-shape`s whose outline is a program, not
+    a path: the reader evaluates their `draw:enhanced-geometry` (every
+    enhanced-path command, the equations and their functions, the
+    modifiers, stretch points and mirroring), so they arrive as editable
+    paths where LibreOffice draws them. Styles resolve through the default
+    style, the parent chain and the automatic styles: fills, gradients,
+    hatches, bitmap fills, transparency, dashes, arrowheads, shadows; text
+    in shapes and text boxes keeps its paragraphs and spans; layers, the
+    master page's objects, the page size and background and the document's
+    title and author are read.
+  - Writing produces a package LibreOffice opens as it was drawn: one layer
+    per model layer, transforms folded into the geometry, text as text
+    boxes, pictures embedded, gradients, dashes, arrowheads and
+    transparency as named styles.
+  - Checked against LibreOffice 24.2 both ways: its own files (two samples
+    in `media/vector/ODG`, 57 shapes of every kind) render here as
+    LibreOffice renders them, and what the writer produces - from those
+    files and from the SVG samples - renders in LibreOffice as the source
+    did. `Tests/ODGConverterTest.cpp` holds the round trip, the samples and
+    the custom-shape geometry; the flat form joins `VectorLocaleTest`.
+- **A vector shape can be filled even-odd.** `VectorStyle::ShapeFillRule`
+  (non-zero by default) is honoured by the renderer; a ring, a donut or a
+  letter converted to curves read from an ODG drawing keeps its hole, since
+  LibreOffice fills every shape that way.
+- `.odg`, `.otg` and `.fodg` are vector files in the graphics plugin
+  system's format table, the Filer's type names and the Save dialog's type
+  names.
+- **The Filer and the media viewer show an `.odg` / `.otg` from the
+  thumbnail it carries** (`Thumbnails/thumbnail.png`, which LibreOffice
+  writes) where no Vector plugin is registered to draw it - the same
+  embedded-preview path as Xara, CorelDRAW and EPS files
+  (`UltraCanvasEmbeddedPreview.h`). The ODG writer stores one as well: the
+  page drawn 256 pixels on its long side, so a drawing saved here has a
+  preview in LibreOffice's dialogs, desktop file managers and every
+  application that has no reader for it.
+- **OpenDocument presentations (.odp) open - as text, like a PowerPoint
+  deck.** `UltraCanvasPresentationOdp.h` (new) reads an Impress `.odp`, a
+  template `.otp` and the flat `.fodp` into UltraCanvasPresentationPptx's
+  model, so the same outline, preview and text extraction serve both kinds of
+  deck: titles, subtitles, outline and text-box paragraphs with their list
+  levels, bullets and numbering (from the list styles), bold / italic /
+  underline through the style parents, groups and hyperlinked shapes, tables,
+  pictures' parts and descriptions, speaker notes, hidden slides, and the
+  slide size from the master's page layout. Slide furniture, prompting
+  placeholders, embedded objects and page comments are left out; a
+  password-protected deck is refused with a reason.
+  - `UltraCanvasFileLoader::LoadTextDocument` / `OpenTextDocument` open one by
+    its content, the Open dialog's "Documents" offer it, `ExtractText` reads
+    it, the format inventory lists "OpenDocument Presentation", and
+    UltraFiler names the type and previews the slides' text.
+  - A file named like a deck (`.pptx` and kin, `.odp`, `.fodp`) that is no
+    deck is refused by `LoadTextDocument` rather than read as Markdown text.
+  - The format inventory lists `.ppsm` and `.potm` with PowerPoint, which its
+    reader always took, so the Open dialog offers them; UltraFiler names them
+    and the legacy `.ppt` "PowerPoint".
+  - `Tests/PresentationOdpTest.cpp` reads the PowerPoint test deck as
+    LibreOffice converts it (`Tests/fixtures/office-pptx-sample.odp`, made by
+    `make-odp-fixtures.py`) and checks it slide by slide against the `.pptx`
+    reader's view of the original, and a hand-written flat deck
+    (`presentation-features.fodp`) for white space, lists, styles, groups,
+    tables, pictures and what is left out.
+- **PowerPoint text inside `mc:AlternateContent` is read.** PowerPoint wraps
+  what an older reader may not know - equations, newer charts, 3D models,
+  ink - in Markup Compatibility's `mc:AlternateContent`, and the `.pptx`
+  reader skipped the whole element, so an equation's text box vanished from
+  the outline. It now reads the first `mc:Choice` that gives a shape (or,
+  inside a paragraph, text), else the `mc:Fallback` - never both. An equation
+  (`a14:m`) reads as its text, a chart it cannot read as its fallback
+  picture. `OfficeEncryptionTest` rebuilds the PowerPoint fixture with the
+  three cases.
+- **`FilePreviewsTest`: "the text is drawn" no longer depends on the font.**
+  The word-processing first-page check counted pixels darker than a fixed
+  dark grey. At 96 px the fixture's Liberation Serif drawn unhinted (a cloud
+  session has Liberation, installed with LibreOffice, and an image-wide
+  fontconfig rule that turns hinting off) gave 10 and 17 such pixels against
+  the 20 asked, while CI, without Liberation, draws DejaVu and gave 26-36. It
+  counts neutral grey darker than mid-grey now (80-290 across those setups;
+  a blank page has none), and leaves the page's red box and highlight out.
+- **`UCRasterDocument::ScaleImage` takes the resampling method and a
+  sharpening pass.** `ScaleImage(width, height, UCScaleImageOptions)`:
+  `method` is a `UCResampleMethod` (`Nearest`, `Bilinear`, `Bicubic`,
+  `Mitchell`, `Lanczos2`, `Lanczos3` - the default, as before), and `sharpen`
+  (0 to 1) is an unsharp mask after the resample, with a radius that follows
+  the enlargement. It works on the colour of the premultiplied pixels and
+  joins the alpha band back untouched, so an edge against transparency gets
+  no fringe. `Nearest` is done by the new `UCRasterLayer::ResampleNearest`, an
+  exact copy of pixels with or without libvips, and is never sharpened. The
+  two-argument call is unchanged.
+- **UltraIM Signal: a daemon that cannot be started again says why.**
+  When the provider's own signal-cli ended while signed in and could not be
+  started again - Java gone, the program removed - the outcome of the
+  restart was dropped: the state stayed `Reconnecting` for ever, with a new
+  try (a Java runtime started) every two seconds. The state is now `Error`
+  with what the start said, told once for one reason - and what it quotes
+  from signal-cli's log is that start's own lines, not the end of the whole
+  log, so the same failure reads the same each time. The tries go on behind
+  it, each failure in a row doubling the wait before the next
+  (`SignalTimings::retryMs`, up to a minute), and the state is `Connected`
+  again once one works. Tested in `SignalProviderTests`.
+- **UltraIM Signal: the proxy setting reaches signal-cli.** The Signal
+  provider started signal-cli with nothing said about a proxy, and
+  signal-cli connects to Signal by itself, past UltraNet - so, as with
+  Telegram, ChatCube's proxy setting did not apply to it. The provider's own
+  daemon is now started for the setting (`UltraNet_ResolveProxy` for
+  `https://chat.signal.org:443/`): an HTTP or a SOCKS 5 proxy as Java's
+  proxy properties (`https.proxyHost` / `socksProxyHost`), which signal-cli
+  0.13.13 and later also passes to its network library, "no proxy" as
+  options that take out one the environment names, and nothing when the
+  operating system's settings name none. They are appended to
+  `JAVA_TOOL_OPTIONS` in the daemon's environment (`SignalDaemon::Start`
+  takes variables for it, on POSIX and on Windows). When the setting changes
+  while signed in the daemon is started again for it, on the link it kept.
+  A proxy signal-cli has no means for (one that asks for a user name and
+  password, SOCKS 4, one reached over TLS) and a signal-cli that would
+  not send everything through one - no Java runtime starts it (its native
+  build: the runtime's acknowledgement of the options is missing from the
+  daemon's log), or it says it is older than 0.13.13 - fail the sign-in
+  with `Unsupported`, or stop the daemon with the reason as the `Error`
+  state, rather than connect directly. A daemon the user runs is not
+  touched.
+  Tested in `SignalProviderTests` with the stand-in daemon, and by a Java
+  runtime started through the same path selecting the proxy; signal-cli
+  itself against Signal's servers was not run. See
+  `Docs/Modules/UltraIM/README.md`, *Provider: Signal*.
+- **The ChatCube handoff no longer says every provider inherits the
+  proxy.** `Docs/ChatCube/HANDOFF_UltraIM_ChatCube.md` (6.4) said "Proxy
+  ... inherited from UltraNet - set nothing"; that holds only for what
+  connects through UltraNet, and it now says so and names the two providers
+  that hand the proxy over themselves.
+- **UltraIM Telegram: the proxy setting reaches TDLib.** The Telegram
+  provider connected directly whatever the proxy settings said: TDLib does
+  its own networking, past UltraNet, and was never told a proxy - so in
+  ChatCube everything went through the proxy but Telegram, whose messages
+  then stayed undelivered where Telegram is only reachable through one. The
+  provider now tells TDLib what the shared setting says for Telegram
+  (`UltraNet_ResolveTunnelProxy` for `telegram.org` on port 443: the proxy
+  chosen, the operating system's SOCKS proxy or else its web proxy, or
+  none): a SOCKS 5 or an HTTP proxy as
+  `addProxy` with its sign-in, none as `disableProxy`, both before
+  `setTdlibParameters`, so the first connection is already the right one. It
+  looks at the setting again every three seconds while a session is open and
+  tells TDLib when it changed, and removes from TDLib's database every proxy
+  no longer in use. A proxy TDLib has no means for (SOCKS 4, one reached
+  over TLS) fails the sign-in with `Unsupported` and starts nothing; set
+  while signed in, or refused by TDLib, it takes Telegram off the network
+  with the reason as its `Error` state instead of connecting directly, until
+  the setting names one it can use. While TDLib connects to the proxy the
+  state says so and names it. `UltraIMTelegramCore` links UltraNet for the
+  setting. Tested in `TelegramProviderTests` (FakeTdJson now keeps the proxy
+  requests) and, against the real TDLib 1.8.69, in `TelegramTdlibTests`. See
+  `Docs/Modules/UltraIM/README.md`, *Provider: Telegram*.
+- **A checkbox, radio button or switch can wrap its label.**
+  `SetLabelWrap(true)` on any `UltraCanvasLabeledToggleBase` breaks a label
+  longer than the toggle is wide into lines at its width: the toggle grows a
+  line at a time, the box, dot or track sits level with the first line, and
+  its min-content width is its longest word. Off by default, so every toggle
+  in the framework and the applications stays one line as before. It is what
+  keeps a translation that runs longer than the English from being cut off
+  in a fixed-width settings page.
+- **The bitmap editor's undo steps are named in the person's language.**
+  `UCRasterDocument` names its steps through `Tr` - Duplicate, Delete, Move,
+  Show, Hide, Lock, Unlock and Rename Layer, Layer Opacity and Blend Mode,
+  Merge Down, Flatten Image, Rasterize Layer, Scale Image, Canvas Size,
+  Crop, the flips and turns, Delete, Fill, Add Layer and Selection - so an
+  application's Undo / Redo tooltip reads in that language. The turns are
+  now "Rotate 90° Clockwise" / "Counter-clockwise", as the menus say them.
+  `AddLayer` and `CommitSelectionChange` take an empty label for their
+  default ("Add Layer", "Selection") instead of a default English one.
+- **The colour picker speaks the person's language.** The four design names
+  in its selector, the "Channels" heading of its sliders and the tooltips of
+  its models and channels go through `Tr`; the channel letters (H, S, V, R,
+  G, B, A) and the model names (HSV, HSL, RGB) stay as they are.
+- All of these texts are in the standard set, translated in every language.
+- **The bitmap document's layer names and errors are translated.** A new
+  image's "Background", "Layer N", the flattened layer and a layer whose
+  project names none take the person's language when they are made (a layer
+  keeps the name it was saved with). Every load and save error
+  `UCRasterDocument` reports - a missing or corrupt project, a damaged
+  UltraCanvas document, a file name without a type, a build without libvips -
+  is a whole sentence through `Tr` / `TrF`. The reason
+  `FileWriteFailureReason` adds (`UltraCanvasFileError.h`) is still English:
+  that header is dependency-free by design.
+- **A tooltip no longer floats over another program's window.** Since the
+  tooltip got a window of its own above every other (so UltraDesktop's bar
+  tooltips are not covered), nothing took it away when the pointer left the
+  window it belongs to: a tooltip of UltraClipboard stayed standing over the
+  window that had come over UltraClipboard - and one still waiting for its
+  delay appeared there afterwards. Drawn inside its window it used to be
+  covered with it. The pointer leaving that window (`MouseLeave`), or the
+  window losing the focus (`WindowBlur`), now hides its tooltip at once and
+  cancels one still waiting (`UltraCanvasTooltipManager::PointerLeftWindow`),
+  and the element the pointer was over is left, so coming back to it shows
+  its tooltip again; an element holding the pointer (a drag) keeps its hover.
+- **The UltraCrypt README says where its consumers stand now.** Its rollout
+  table still listed the UCD v2 writer and reader as to do, and its table of
+  consumers still called UCD v2 unimplementable for want of primitives,
+  UltraVault a design document, UltraDatabase's at-rest encryption unstarted
+  and UltraAuthenticator blocked - the state before the module existed, in a
+  column headed "State today". All four are built on it: the UCD v2
+  container with password protection (`UltraCanvasUCDContainer.h`),
+  UltraVault's file backend, SQLite files encrypted at rest
+  (`UltraDatabaseEncryption.h`) and UltraAuthenticator. The tables say so,
+  the problem statement around them is in the past tense, the status line
+  names the stages that are done (1, 2 and 5), and stage 3 is down to one
+  item: UCD v2's SuperVault key source, which the container refuses to open
+  so far. The same two stale rows in
+  `Docs/UltraAuthenticator/UltraAuthenticator-Investigation.md` are corrected.
+- **UltraNet's docs are compiled by the docs check, and the mistakes it
+  found in them are fixed.** Nothing compiled the examples of
+  `UltraNet/README.md`, and six had drifted from the headers or never built:
+  a request body assigned as text (it is bytes), a bearer token written as
+  the token object, a size limit and a cancel flag from nowhere, a log
+  callback and the names the module reserves written as calls of functions
+  no header has. With the examples' variables given their types a seventh
+  showed, hidden until then: the SSH tunnel's private key is bytes
+  (`std::vector<uint8_t>`), not text. `Docs/Modules/UltraNet/ApiStatus.md`
+  named two things of the status tool's own header without saying so. All
+  pass now - under clang 18 and under clang 14 with libstdc++ 12, CI's pair
+  - and `UltraNet` is in `CHECKED_MODULE_DOCS` (`check_doc_examples.py`
+  1.10.1), so `doc-examples.yml` fails a change that breaks one; the
+  workflow starts for a change under `Docs/Modules/UltraNet/` and, which it
+  did not, under `Docs/Modules/UltraLocalisation/`, a module already checked.
+- **Cloud sessions run UltraNet's WebSocket tests and build its mDNS
+  plug-in.** `.claude/hooks/session-start.sh` (1.9.0) installs Python's
+  `websockets` package with pip, as CI does - Ubuntu 24.04's own is too old
+  for the server the tests start - and `libavahi-client-dev`, which CI
+  installs and the hook's list lacked. `UltraNetTests` skipped 22 tests in a
+  cloud session; 13 of them now run (the twelve WebSocket tests and the mDNS
+  plug-in's), and the nine left need what a session does not have: DNS
+  outside the sandbox and a started SSH server.
+- **The Unlock dialog shows a lock.** `InputDialogConfig::iconAboveInput` (and
+  `iconAboveInputSize`) puts a picture centred above an input dialog's field,
+  drawn in the dialog's text colour so it follows a light or dark theme, and
+  `UltraCanvasDialogManager::ShowInputDialog(config, onResult, parent)` shows a
+  dialog from a whole config. UltraCanvasMediaViewer's Unlock dialog (what
+  UltraViewer and UltraFiler's preview ask with) and
+  `UltraCanvasFileLoader::RequestDocumentPassword`'s prompt show the lock of
+  the Unlock button above the password field. `InputDialogPromptTest` checks
+  its place, size and ink, and that a missing picture leaves no gap.
+- **The v1 document code is removed.**
+  `UltraCanvas/Plugins/Documents/UltraCanvasDocument.h` and `.cpp` - the first
+  UCD format's reader and writer, with a template manager and a form
+  renderer - were never in the build and could not have been: the header
+  used a type before declaring it and a window class the framework does not
+  have (11 errors), the source another 88, and it included a JSON library
+  the build does not carry. Its one part worth keeping left it long ago -
+  the encryption, rewritten on UltraCrypt as `UCDCryptoEnvelope`, compiled,
+  tested and used by UltraAuthenticator - and the format itself was replaced
+  by UCD v2 (`UltraCanvasUCDContainer.h`). The decision notes in
+  `Docs/Modules/UltraCrypt/README.md` already called the file likely to be
+  deleted; it is, 2,059 lines. What other documents took from it they now
+  carry themselves: the UCD v2 specification says what a `WNDW` and a `PAGE`
+  section hold instead of naming the removed structs, the ODT / DOCX
+  proposal describes the media-resource shape it meant to reuse, and the
+  UltraCrypt, UltraAuthenticator and JMAP notes that tell the file's story
+  say that it is gone. `UltraCanvasVirtualFSBridge.h`'s comment no longer
+  says its compression types extend two enums, one of which was only in
+  that file and the other nowhere. The docs check no longer notes a header
+  it cannot compile.
+- **`UltraCanvasZoomPanImage` can keep the image in view and leave a small
+  one at its own size.** `SetPanKeptInView(true)` holds the pan to the
+  image's edges after every drag, wheel step and resize: an axis on which the
+  image fits stays centred, so an image shown whole does not move and a
+  zoomed one moves only as far as its edges, and the cursor is the four
+  arrows only while there is room to drag. `SetFitEnlarges(false)` starts an
+  image smaller than the view at 1:1, as `ImageFitMode::ScaleDown` shows it,
+  instead of blowing it up to fill the view. `GetZoom()` reads the zoom. Both
+  options are off by default, so the lightbox and the Album keep their
+  behaviour. UltraSnip shows its picture with both on.
+- **`UltraCanvasZoomPanImage` can show sharp pixels.**
+  `SetSharpPixelsFrom(2.0)` draws every image pixel as a hard-edged square
+  once it covers two screen pixels or more: the natural-size pixmap scaled by
+  the context with smoothing off, since a pixmap made at the display size is
+  already smoothed. Off (0) by default. While it is on, the cap that keeps a
+  vector source's re-rasterising quick does not stop zooming past that
+  point. UltraSnip turns it on at 200 %.
+
 #### 2026-11-19 *0.9.576*
 - **Radar, bubble and stock charts in documents.** They were drawn as
   columns from DOCX and as Writer's replacement picture from ODT. They are

@@ -1,5 +1,6 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
+// Version: 1.12.0 - UCImageRaster::FinishImageMagickWarmUp: the warm-up ends before the process does
 // Version: 1.11.0 - UCImageRaster::WarmUpImageMagickInBackground
 // Version: 1.10.0 - UCPixmapCairo::IsOpaque, Init(w, h, opaque): a picture without
 //                   an alpha channel is an RGB24 pixmap
@@ -372,6 +373,17 @@ namespace VectorStorage { class VectorDocument; }
         // command-line tool that reads no such pictures does not.
         // ShutdownImageSubsysterm waits for it.
         static void WarmUpImageMagickInBackground();
+        // Waits for that warm-up to end, when one runs; at once otherwise.
+        // A process must not exit under it: glibc's exit runs each library's
+        // finaliser and marks it uninitialised, and a dlopen of ImageMagick's
+        // coders after libgomp's finaliser ran starts libgomp a second time -
+        // "goacc_register: Assertion `!dispatchers[disp->type]' failed"
+        // (ClipboardTargetsTest, a program done in under a second). So
+        // ShutdownImageSubsysterm calls it, the application's destructor does
+        // for a program that never ran the main loop, and on POSIX an exit
+        // handler registered with the warm-up does for one that calls exit():
+        // exit handlers run before the libraries' finalisers.
+        static void FinishImageMagickWarmUp();
         static void ShutdownImageSubsysterm();
     };
 

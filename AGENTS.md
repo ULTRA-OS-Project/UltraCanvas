@@ -651,6 +651,26 @@ framework on top. The rules:
   the local-network reason and `NSBonjourServices`, because any app that
   prints browses for IPP printers. A new Bonjour service type the framework
   browses goes into `BONJOUR_SERVICES` there.
+- **An app that loads UltraNet's plug-ins (IMAP, SMTP, mDNS, ...) gets a line
+  in `ultranet_plugins_of`** in `package-macos.sh`, naming the plug-ins it
+  loads (`all`, or names such as `mdns`): its bundle gets them from
+  `<build>/Plugins/UltraNet/` in `Contents/PlugIns/UltraNet/`, where UltraNet
+  looks inside a bundle, with their libraries in the shared `Frameworks/`.
+  On Linux and Windows every app finds every plug-in in one shared folder; a
+  bundle carries only its own, so an app left out finds none - UltraMail
+  reported no IMAP plug-in, DeviceExplorer found no network printer or eSCL
+  scanner. A plug-in the framework loads for an app counts as the app's:
+  every app that prints (`ShowPrintDialog`, `PrintTextWithDialog`,
+  `PrintDocumentWithDialog`, or IODeviceManager's printers) names at least
+  `mdns`, the DNS-SD browse behind the network printers the print dialog's
+  choice is looked up among.
+- **An app published in UltraStore is cut out of the suite with
+  `--store-app <App>`**, the one exception to the shared folder besides
+  UltraCanvasStart: a bundle in `dist-store-macos/` with a
+  `Contents/Frameworks/` of its own holding exactly what it loads, which
+  `scripts/package-store-app.sh <App>` zips (`Docs/UltraStore/README.md`,
+  *Packaging an application for the store*). It is never put back into the
+  suite.
 - **A library a new app needs goes into `MacOS/deps/vcpkg.json`**, not into
   a `brew install` in CI: the libraries CI bundles are built with vcpkg for
   that macOS (`MacOS/deps/README.md`), and one taken from Homebrew carries the
