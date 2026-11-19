@@ -203,16 +203,16 @@ class AccountStore:
         db.script([
             f"CREATE TABLE IF NOT EXISTS meta ({self._key} {tk} PRIMARY KEY, value TEXT NOT NULL)",
             f"CREATE TABLE IF NOT EXISTS users (id {tk} PRIMARY KEY, email {tk} NOT NULL, email_verified INTEGER NOT NULL DEFAULT 0,"
-            " password_hash TEXT NOT NULL DEFAULT '', display_name TEXT NOT NULL DEFAULT '', handle TEXT NOT NULL DEFAULT '',"
+            f" password_hash TEXT NOT NULL DEFAULT '', display_name TEXT NOT NULL DEFAULT '', handle {tk} NOT NULL DEFAULT '',"
             " language TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '', year_of_birth INTEGER NOT NULL DEFAULT 0,"
             " about TEXT NOT NULL DEFAULT '', state TEXT NOT NULL, created_at TEXT NOT NULL, password_changed_at TEXT NOT NULL DEFAULT '',"
             " totp_secret TEXT NOT NULL DEFAULT '', totp_enabled_at TEXT NOT NULL DEFAULT '', recovery_codes TEXT NOT NULL DEFAULT '[]',"
             " settings TEXT NOT NULL DEFAULT '{}', deletion_requested_at TEXT NOT NULL DEFAULT '', delete_after TEXT NOT NULL DEFAULT '',"
             " suspended_reason TEXT NOT NULL DEFAULT '', suspended_until TEXT NOT NULL DEFAULT '')",
-            f"CREATE TABLE IF NOT EXISTS codes (id {db.serial} PRIMARY KEY, user_id {tk} NOT NULL, purpose TEXT NOT NULL, code_hash TEXT NOT NULL,"
+            f"CREATE TABLE IF NOT EXISTS codes (id {db.serial} PRIMARY KEY, user_id {tk} NOT NULL, purpose {tk} NOT NULL, code_hash TEXT NOT NULL,"
             " salt TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '', expires_at TEXT NOT NULL, used_at TEXT NOT NULL DEFAULT '',"
             " created_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0)",
-            f"CREATE TABLE IF NOT EXISTS sessions (id {tk} PRIMARY KEY, user_id {tk} NOT NULL, token_hash {tk} NOT NULL,"
+            f"CREATE TABLE IF NOT EXISTS sessions (seq {db.serial} PRIMARY KEY, id {tk} NOT NULL, user_id {tk} NOT NULL, token_hash {tk} NOT NULL,"
             " device_name TEXT NOT NULL DEFAULT '', os TEXT NOT NULL DEFAULT '', client TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,"
             " last_seen TEXT NOT NULL, last_ip TEXT NOT NULL DEFAULT '', signed_out_at TEXT NOT NULL DEFAULT '')",
             f"CREATE TABLE IF NOT EXISTS signins (id {db.serial} PRIMARY KEY, user_id {tk} NOT NULL, at TEXT NOT NULL, ip TEXT NOT NULL DEFAULT '',"
@@ -232,7 +232,7 @@ class AccountStore:
             " state_after TEXT NOT NULL DEFAULT '', acted_on TEXT NOT NULL DEFAULT '', prev_hash TEXT NOT NULL, hash TEXT NOT NULL)",
         ])
         for name, table, cols in (("users_email", "users", "email"), ("users_handle", "users", "handle"), ("codes_user", "codes", "user_id, purpose"),
-                                  ("sessions_user", "sessions", "user_id"), ("sessions_token", "sessions", "token_hash"), ("signins_user", "signins", "user_id"),
+                                  ("sessions_id", "sessions", "id"), ("sessions_user", "sessions", "user_id"), ("sessions_token", "sessions", "token_hash"), ("signins_user", "signins", "user_id"),
                                   ("licences_user", "licences", "user_id"), ("installs_licence", "installs", "licence_id, session_id"),
                                   ("notices_user", "notices", "user_id"), ("archives_user", "archives", "user_id")):
             db.create_index(name, table, cols)
@@ -431,7 +431,7 @@ class AccountStore:
         return self._session(r)
 
     def sessions_of(self, user_id: str, *, active_only: bool = True) -> list[Session]:
-        rows = self._db.fetchall("SELECT * FROM sessions WHERE user_id = ? ORDER BY last_seen DESC, created_at DESC, id DESC", (user_id,))
+        rows = self._db.fetchall("SELECT * FROM sessions WHERE user_id = ? ORDER BY last_seen DESC, seq DESC", (user_id,))
         return [self._session(r) for r in rows if not active_only or not r["signed_out_at"]]
 
     def rename_session(self, sid: str, name: str) -> None:
