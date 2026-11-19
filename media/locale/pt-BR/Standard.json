@@ -110,6 +110,7 @@
   "File": "Arquivo",
   "File extensions": "Extensões de arquivo",
   "File icons": "Ícones de arquivo",
+  "file name|archive": "arquivo compactado",
   "File Not Found": "Arquivo não encontrado",
   "File:": "Arquivo:",
   "Files": "Arquivos",
@@ -134,6 +135,7 @@
   "Loading": "Carregando",
   "Loading {0}…": "Carregando {0}…",
   "Location": "Local",
+  "Location: {0}": "Local: {0}",
   "Media": "Mídia",
   "Merge": "Mesclar",
   "Merge copies the {0} into the existing folder and asks about any name that is taken inside it. Replace deletes the existing folder and its {1} first.": "\"Mesclar\" copia o conteúdo ({0}) para a pasta existente e pergunta o que fazer com cada nome que já esteja em uso dentro dela. \"Substituir\" exclui primeiro a pasta existente e o conteúdo dela ({1}).",
@@ -275,6 +277,10 @@
   "{0} of {n} item moved to \"{1}\" ({2} skipped)": {
     "one": "{0} de {n} item movido para \"{1}\" ({2} pulado)",
     "other": "{0} de {n} itens movidos para \"{1}\" ({2} pulados)"
+  },
+  "{n} archive": {
+    "one": "{n} arquivo compactado",
+    "other": "{n} arquivos compactados"
   },
   "{n} file": {
     "one": "{n} arquivo",

@@ -51,6 +51,27 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.52.0 - FilerNewDocumentType::fileName: a new document is named as a
+//                  whole per kind (TrC("file name", "New spreadsheet")), its
+//                  fallback TrF("New {0}", label); the default kinds' labels and
+//                  names are translated
+// Version: 1.51.0 - PreviewTypeText: a preview kind's translated name, shared by
+//                  the Display submenus and an application's settings; the
+//                  extract-conflict dialog is translated whole (captions,
+//                  note, apply-to-all and its four buttons), and so is the
+//                  progress window of a pack, an unpack or an administrator
+//                  delete (titles and captions)
+// Version: 1.50.4 - the context menu is translated whole (every entry, the Display
+//                  submenu's sort fields, view types, file kinds, dataset fields,
+//                  badges, icon styles and switches - the public *Label functions
+//                  stay English names); the default names "New folder", "Pasted
+//                  image" and "Pasted text" are in the reader's language; every
+//                  error the widget reports is a translated sentence (paths as
+//                  {0}), RefuseWriteHere taking the whole refusal per command
+// Version: 1.50.3 - the Compress / Extract dialog is translated whole: its title,
+//                  buttons, "Location: {0}" line and archive count (TrN); the
+//                  default names ("archive", "Extracted") are in the reader's
+//                  language, in the dialog and in the direct Compress alike
 // Version: 1.50.2 - the hidden-files notice's and the empty filter's buttons are the theme's Primary
 //                  part, not a fixed blue (StyleThemedButton, shared with the Compress / Extract dialog)
 // Version: 1.50.1 - a password-protected .ods keeps its type glyph rather than a page of its ciphertext
@@ -1943,31 +1964,51 @@ namespace UltraCanvas {
             return false;
         }
 
-        const char* SortFieldLabel(FilerSortField f) {
+        // The context menu's entries, in the reader's language. The public
+        // *Label functions (PreviewTypeLabel, ExtensionBadgeLabel,
+        // FileIconStyleLabel) stay English: tests and applications use them
+        // as names and identifiers; a preview kind's translated name is the
+        // public PreviewTypeText, which an application's settings share.
+        std::string SortFieldMenuText(FilerSortField f) {
             switch (f) {
-                case FilerSortField::Name:         return "Name";
-                case FilerSortField::Size:         return "Size";
-                case FilerSortField::Type:         return "Type";
-                case FilerSortField::ModifiedDate: return "Modified";
-                case FilerSortField::CreatedDate:  return "Created";
+                case FilerSortField::Name:         return Tr("Name");
+                case FilerSortField::Size:         return Tr("Size");
+                case FilerSortField::Type:         return Tr("Type");
+                case FilerSortField::ModifiedDate: return Tr("Modified");
+                case FilerSortField::CreatedDate:  return Tr("Created");
             }
-            return "";
+            return std::string();
         }
 
-        const char* ViewTypeLabel(FilerViewType v) {
+        std::string ViewTypeMenuText(FilerViewType v) {
             switch (v) {
-                case FilerViewType::Details:             return "Details";
-                case FilerViewType::List:                return "List";
-                case FilerViewType::ThumbnailsSmall:     return "Thumbnails, small";
-                case FilerViewType::ThumbnailsMedium:    return "Thumbnails, medium";
-                case FilerViewType::ThumbnailsBig:       return "Thumbnails, big";
-                case FilerViewType::ThumbnailsMaximized: return "Thumbnails, maximized";
-                case FilerViewType::BarSize:             return "Bar size";
-                case FilerViewType::TreeMap:             return "Treemap";
-                case FilerViewType::GourceTree:          return "Force-directed tree";
-                case FilerViewType::View3D:              return "3D";
+                case FilerViewType::Details:             return Tr("Details");
+                case FilerViewType::List:                return Tr("List");
+                case FilerViewType::ThumbnailsSmall:     return Tr("Thumbnails, small");
+                case FilerViewType::ThumbnailsMedium:    return Tr("Thumbnails, medium");
+                case FilerViewType::ThumbnailsBig:       return Tr("Thumbnails, big");
+                case FilerViewType::ThumbnailsMaximized: return Tr("Thumbnails, maximized");
+                case FilerViewType::BarSize:             return Tr("Bar size");
+                case FilerViewType::TreeMap:             return Tr("Treemap");
+                case FilerViewType::GourceTree:          return Tr("Force-directed tree");
+                case FilerViewType::View3D:              return Tr("3D");
             }
-            return "";
+            return std::string();
+        }
+
+        std::string ExtensionBadgeMenuText(FilerExtensionBadge badge) {
+            switch (badge) {
+                case FilerExtensionBadge::Bar:  return TrC("file extension tag", "Bar");
+                case FilerExtensionBadge::Icon: return Tr("Icon");
+                default:                        return Tr("None");
+            }
+        }
+
+        std::string FileIconStyleMenuText(FilerFileIconStyle style) {
+            switch (style) {
+                case FilerFileIconStyle::HostOperatingSystem: return Tr("Host OS icons");
+                default:                                      return Tr("UltraFiler simple");
+            }
         }
 
         // The icon of a context-menu entry: a file of media/icons/menu/, drawn
@@ -2407,14 +2448,17 @@ namespace UltraCanvas {
         BindScrollAnimators();
         EnsureDetailsColumnWidths();
 
+        // Each kind names its new file as a whole, in the reader's language:
+        // "New " + a translated label is not a name any language but English
+        // builds that way.
         newDocumentTypes = {
-            {"Text",        "txt", ""},
-            {"Doc",         "odt", ""},
-            {"Spreadsheet", "ods", ""},
-            {"Bitmap",      "png", ""},
-            {"Vector",      "svg", ""},
-            {"Audio",       "wav", ""},
-            {"Video",       "mp4", ""},
+            {Tr("Text"),        "txt", "", TrC("file name", "New text document")},
+            {Tr("Doc"),         "odt", "", TrC("file name", "New document")},
+            {Tr("Spreadsheet"), "ods", "", TrC("file name", "New spreadsheet")},
+            {Tr("Bitmap"),      "png", "", TrC("file name", "New image")},
+            {Tr("Vector"),      "svg", "", TrC("file name", "New drawing")},
+            {Tr("Audio"),       "wav", "", TrC("file name", "New audio file")},
+            {Tr("Video"),       "mp4", "", TrC("file name", "New video file")},
         };
 
         // Parse the OS association database on its background worker while
@@ -3557,7 +3601,7 @@ namespace UltraCanvas {
         return base;   // a thousand of them: let the server object
     }
 
-    bool UltraCanvasFilerWidget::RefuseWriteHere(const char* what) {
+    bool UltraCanvasFilerWidget::RefuseWriteHere(const std::string& refusal) {
         if (currentPath.empty() || !isRemotePath || !isRemotePath(currentPath))
             return false;
         // What a drive CAN do from here is the provider's verb list: upload,
@@ -3566,10 +3610,8 @@ namespace UltraCanvas {
         // provider offers) and writing a fresh file's bytes - so the message
         // says which those are rather than claiming a drive is read-only,
         // which it has not been since uploads landed.
-        ReportError(std::string("Cannot ") + what +
-                    " on a drive: there is no single server operation for it. "
-                    "Files can be copied to and from a drive, renamed and "
-                    "deleted, and folders created.");
+        ReportError(refusal + " " + Tr("Files can be copied to and from a drive, renamed and "
+                                       "deleted, and folders created."));
         return true;
     }
 
@@ -3874,8 +3916,8 @@ namespace UltraCanvas {
             // as empty, so make sure it ran (idempotent, cheap after the
             // first call).
             if (!UltraCanvasVirtualFSBridge::Initialize()) {
-                ReportError("VirtualFS unavailable: "
-                            + UltraCanvasVirtualFSBridge::GetLastError());
+                ReportError(TrF("Archives cannot be read: {0}",
+                                UltraCanvasVirtualFSBridge::GetLastError()));
             }
             for (const VirtualFS::VirtualFSEntry& v
                  : VirtualFS::VirtualFS_ListDirectory(currentPath)) {
@@ -3911,7 +3953,7 @@ namespace UltraCanvas {
                 auto resolved = VirtualFS::VirtualFSPath::Resolve(currentPath);
                 if (!resolved.archiveStack.empty() && !resolved.isInsideArchive &&
                     VirtualFS::VirtualFS_GetArchiveInfo(currentPath).path.empty()) {
-                    ReportError("Cannot read archive: " + currentPath);
+                    ReportError(TrF("Cannot read the archive {0}", currentPath));
                 }
             }
         }
@@ -4363,6 +4405,22 @@ namespace UltraCanvas {
             case FilerPreviewType::Audio:          return "Audio";
             case FilerPreviewType::Fonts:          return "Fonts";
             default:                               return "";
+        }
+    }
+
+    std::string UltraCanvasFilerWidget::PreviewTypeText(FilerPreviewType type) {
+        switch (type) {
+            case FilerPreviewType::Bitmaps:        return Tr("Bitmaps");
+            case FilerPreviewType::VectorGraphics: return Tr("Vector graphics");
+            case FilerPreviewType::Models3D:       return Tr("3D");
+            case FilerPreviewType::PDF:            return "PDF";
+            case FilerPreviewType::Text:           return Tr("Text");
+            case FilerPreviewType::Docs:           return Tr("Docs");
+            case FilerPreviewType::Spreadsheets:   return Tr("Spreadsheets");
+            case FilerPreviewType::Videos:         return Tr("Videos");
+            case FilerPreviewType::Audio:          return Tr("Audio");
+            case FilerPreviewType::Fonts:          return Tr("Fonts");
+            default:                               return std::string();
         }
     }
 
@@ -4979,8 +5037,8 @@ namespace UltraCanvas {
         // rather than offered: a cut that ghosts the entries and then cannot
         // complete is worse than one that never starts. Copy, then delete.
         if (ShowingRemoteFolder()) {
-            ReportError("Cannot cut from a drive - copy the files, then delete "
-                        "them once they have arrived.");
+            ReportError(Tr("Cannot cut from a drive - copy the files, then delete "
+                           "them once they have arrived."));
             return;
         }
         SelectionToClipboard(true);
@@ -5397,7 +5455,7 @@ namespace UltraCanvas {
         if (paths.empty()) return;
         const std::string folder = destDir.empty() ? currentPath : destDir;
         if (!remoteUpload) {
-            ReportError("Cannot upload to this drive.");
+            ReportError(Tr("Cannot upload to this drive."));
             return;
         }
         // The host queues what it can and names the first thing it could
@@ -5405,7 +5463,7 @@ namespace UltraCanvas {
         // accepted it is the part worth saying while the rest goes up.
         std::string error;
         const bool any = remoteUpload(folder, paths, error);
-        if (!any) ReportError(error.empty() ? "Cannot upload to this drive." : error);
+        if (!any) ReportError(error.empty() ? Tr("Cannot upload to this drive.") : error);
         else if (!error.empty()) ReportError(error);
     }
 
@@ -5413,12 +5471,12 @@ namespace UltraCanvas {
             const std::vector<std::string>& paths, const std::string& destDir) {
         if (paths.empty()) return;
         if (!remoteDownload) {
-            ReportError("Cannot copy files off this drive.");
+            ReportError(Tr("Cannot copy files off this drive."));
             return;
         }
         std::error_code ec;
         if (!fs::is_directory(UltraCanvas::PathFromUtf8(destDir), ec)) {
-            ReportError("Drop target is not a folder: " + destDir);
+            ReportError(TrF("Cannot drop here: {0} is not a folder", destDir));
             return;
         }
         // Same contract as the upload side: the host queues what it can and
@@ -5426,7 +5484,7 @@ namespace UltraCanvas {
         // of five are coming" read differently.
         std::string error;
         const bool any = remoteDownload(destDir, paths, error);
-        if (!any) ReportError(error.empty() ? "Cannot copy files off this drive."
+        if (!any) ReportError(error.empty() ? Tr("Cannot copy files off this drive.")
                                             : error);
         else if (!error.empty()) ReportError(error);
     }
@@ -5439,13 +5497,13 @@ namespace UltraCanvas {
         // copy between two places on a drive is not a provider verb yet. Said
         // so, rather than "not a folder", which it plainly is.
         if (isRemotePath && isRemotePath(destDir)) {
-            ReportError("Moving or copying within a drive is not supported yet - "
-                        "drop files from a local folder to upload them.");
+            ReportError(Tr("Moving or copying within a drive is not supported yet - "
+                           "drop files from a local folder to upload them."));
             return;
         }
         std::error_code ec;
         if (!fs::is_directory(UltraCanvas::PathFromUtf8(destDir), ec)) {
-            ReportError("Drop target is not a folder: " + destDir);
+            ReportError(TrF("Cannot drop here: {0} is not a folder", destDir));
             return;
         }
         fs::path canonicalDest = fs::weakly_canonical(PathFromUtf8(destDir), ec);
@@ -6116,7 +6174,7 @@ namespace UltraCanvas {
             // No files on either clipboard: paste raw clipboard data (an
             // image or text copied in another program) as a new file. That
             // writes with std::filesystem, so a drive cannot take it.
-            if (RefuseWriteHere("paste")) return;
+            if (RefuseWriteHere(Tr("Cannot paste on a drive: there is no single server operation for it."))) return;
             PasteClipboardDataAsFile();
             return;
         }
@@ -6126,8 +6184,8 @@ namespace UltraCanvas {
         // could not do what the mouse already did.
         if (ShowingRemoteFolder()) {
             if (AnyRemotePath(paths)) {
-                ReportError("Moving or copying within a drive is not supported "
-                            "yet - copy the files to this computer first.");
+                ReportError(Tr("Moving or copying within a drive is not supported "
+                               "yet - copy the files to this computer first."));
                 return;
             }
             UploadDroppedFiles(paths);
@@ -6466,7 +6524,7 @@ namespace UltraCanvas {
         }
         std::error_code ec;
         if (!fs::is_directory(PathFromUtf8(folder), ec)) {
-            ReportError("Paste target is not a writable folder: " + folder);
+            ReportError(TrF("Cannot paste here: {0} is not a writable folder", folder));
             if (onDone) onDone(false);
             return;
         }
@@ -6595,7 +6653,7 @@ namespace UltraCanvas {
                 if (op) {
                     std::lock_guard<std::mutex> lk(op->mutex);
                     op->deferredErrors.push_back(
-                            "Cannot paste a folder into itself: " + src);
+                            TrF("Cannot paste a folder into itself: {0}", src));
                 }
                 advance();
                 continue;
@@ -6932,7 +6990,7 @@ namespace UltraCanvas {
                     // Nothing of a move that did not happen stays behind.
                     std::error_code cleanup;
                     fs::remove_all(PathFromUtf8(dest), cleanup);
-                    whyFailed = credit.Cancelled() ? std::string("cancelled")
+                    whyFailed = credit.Cancelled() ? Tr("cancelled")
                                                    : renameError.message();
                     return false;
                 }
@@ -6961,7 +7019,7 @@ namespace UltraCanvas {
                 // "Try again" of the problem dialog paste alongside it.
                 std::error_code cleanup;
                 fs::remove_all(PathFromUtf8(dest), cleanup);
-                whyFailed = ec ? ec.message() : std::string("cancelled");
+                whyFailed = ec ? ec.message() : Tr("cancelled");
                 return false;
             }
         }
@@ -7060,8 +7118,8 @@ namespace UltraCanvas {
                 },
                 [self]() { self->FinishPendingPaste(); });
         if (!shown) {   // dialogs disabled — the old fixed behavior
-            ReportError((moving ? std::string("Move") : std::string("Copy"))
-                        + " failed for " + src + ": " + reason);
+            ReportError(moving ? TrF("Moving {0} failed: {1}", src, reason)
+                               : TrF("Copying {0} failed: {1}", src, reason));
             pendingPaste->skipped.push_back({src, why, folder});
             ++pendingPaste->next;
             pendingPaste->currentRetried = false;
@@ -7275,7 +7333,7 @@ namespace UltraCanvas {
 
         std::error_code ec;
         if (!fs::is_directory(UltraCanvas::PathFromUtf8(currentPath), ec)) {
-            ReportError("Paste target is not a writable folder: " + currentPath);
+            ReportError(TrF("Cannot paste here: {0} is not a writable folder", currentPath));
             return false;
         }
 
@@ -7286,9 +7344,10 @@ namespace UltraCanvas {
         std::string mimeType;
         if (cb->GetImage(imageData, mimeType) && !imageData.empty()) {
             std::string dest =
-                    UniqueChildPath("Pasted image." + ImageMimeExtension(mimeType));
+                    UniqueChildPath(TrC("file name", "Pasted image") + "."
+                                    + ImageMimeExtension(mimeType));
             if (!WriteFileBytes(dest, imageData.data(), imageData.size())) {
-                ReportError("Paste failed for clipboard image: " + dest);
+                ReportError(TrF("The clipboard image could not be pasted as {0}", dest));
                 return false;
             }
             Refresh();
@@ -7298,9 +7357,9 @@ namespace UltraCanvas {
 
         std::string text;
         if (cb->GetText(text) && !text.empty()) {
-            std::string dest = UniqueChildPath("Pasted text.txt");
+            std::string dest = UniqueChildPath(TrC("file name", "Pasted text") + ".txt");
             if (!WriteFileBytes(dest, text.data(), text.size())) {
-                ReportError("Paste failed for clipboard text: " + dest);
+                ReportError(TrF("The clipboard text could not be pasted as {0}", dest));
                 return false;
             }
             Refresh();
@@ -7452,9 +7511,9 @@ namespace UltraCanvas {
         if (ShowingRemoteFolder()) {
             std::string error;
             if (!remoteDelete) {
-                ReportError("Cannot delete on this drive.");
+                ReportError(Tr("Cannot delete on this drive."));
             } else if (!remoteDelete(victims, error)) {
-                ReportError(error.empty() ? "Cannot delete on this drive." : error);
+                ReportError(error.empty() ? Tr("Cannot delete on this drive.") : error);
             }
             // No local change either way, so the caller hears "nothing moved";
             // what did happen arrives with the refresh.
@@ -7540,8 +7599,8 @@ namespace UltraCanvas {
             auto result = VirtualFS::VirtualFS_DeleteFromArchive(
                     archive, archiveVictims[archive]);
             if (result != VirtualFS::VirtualFSResult::Ok) {
-                ReportError("Delete failed in " + archive + ": " +
-                            VirtualFS::VirtualFSResultToString(result));
+                ReportError(TrF("Deleting inside {0} failed: {1}", archive,
+                                VirtualFS::VirtualFSResultToString(result)));
                 continue;
             }
             for (const std::string& folder : archiveParents[archive])
@@ -7826,10 +7885,11 @@ namespace UltraCanvas {
         for (const FilerEntry& v : pd.elevatedVictims) paths.push_back(v.path);
 
         const std::string caption = paths.size() == 1
-                ? "Windows is asking for permission to delete \""
-                          + pd.elevatedVictims.front().name + "\"."
-                : "Windows is asking for permission to delete "
-                          + std::to_string(paths.size()) + " items.";
+                ? TrF("Windows is asking for permission to delete \"{0}\".",
+                      pd.elevatedVictims.front().name)
+                : TrN("Windows is asking for permission to delete {n} item.",
+                      "Windows is asking for permission to delete {n} items.",
+                      static_cast<long long>(paths.size()));
         auto result = std::make_shared<ElevatedFileOperations::ElevatedDeleteResult>();
         auto work = [paths, result](const ArchiveProgressReporter&) {
             // Blocks for the consent prompt and the helper; that is why it
@@ -7848,7 +7908,7 @@ namespace UltraCanvas {
             FinishElevatedDeletes(*result);
             return;
         }
-        StartArchiveJob("Deleting as Administrator", caption, "", false,
+        StartArchiveJob(Tr("Deleting as Administrator"), caption, "", false,
                         std::move(work),
                         [this, result](bool, bool) { FinishElevatedDeletes(*result); });
     }
@@ -8230,7 +8290,7 @@ namespace UltraCanvas {
                 pendingDelete->currentDecided = true;
                 pendingDelete->currentAction = DeleteProblemAction::Delete;
             } else {
-                ReportError("Delete failed for " + entry.path + ": " + reason);
+                ReportError(TrF("Deleting {0} failed: {1}", entry.path, reason));
                 pendingDelete->skipped.push_back({entry.path, why, {}});
                 AdvancePendingDelete();
             }
@@ -8485,7 +8545,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DuplicateSelection() {
-        if (RefuseWriteHere("duplicate")) return;
+        if (RefuseWriteHere(Tr("Cannot duplicate on a drive: there is no single server operation for it."))) return;
         std::vector<FilerEntry> sources = GetSelectedEntries();
         if (sources.empty()) return;
         std::vector<std::string> paths;
@@ -8505,10 +8565,10 @@ namespace UltraCanvas {
         // type a new name that goes nowhere.
         if (ShowingRemoteFolder()) {
             if (!CanRenameHere()) {
-                ReportError("Cannot rename on this drive.");
+                ReportError(Tr("Cannot rename on this drive."));
                 return;
             }
-        } else if (RefuseWriteHere("rename")) {
+        } else if (RefuseWriteHere(Tr("Cannot rename on a drive: there is no single server operation for it."))) {
             return;
         }
         if (entryIndex >= entries.size()) return;
@@ -8603,9 +8663,9 @@ namespace UltraCanvas {
         if (ShowingRemoteFolder()) {
             std::string error;
             if (!remoteRename) {
-                ReportError("Cannot rename on this drive.");
+                ReportError(Tr("Cannot rename on this drive."));
             } else if (!remoteRename(oldPath, newName, error)) {
-                ReportError(error.empty() ? "Cannot rename on this drive." : error);
+                ReportError(error.empty() ? Tr("Cannot rename on this drive.") : error);
             }
             RequestRedraw();
             return;
@@ -8653,7 +8713,7 @@ namespace UltraCanvas {
         ec.clear();
         fs::rename(UltraCanvas::PathFromUtf8(oldPath), UltraCanvas::PathFromUtf8(targetPath), ec);
         if (ec) {
-            ReportError("Rename failed for " + oldPath + ": " + ec.message());
+            ReportError(TrF("Renaming {0} failed: {1}", oldPath, ec.message()));
             // Nothing moved: the entry keeps its old name, so put the
             // selection back on it rather than leaving the user with none.
             if (wasOnlySelection) selectAfterScanPath = oldPath;
@@ -8731,15 +8791,15 @@ namespace UltraCanvas {
                     UCImage::ReleaseCachedFiles();
                     RemoveFileSystemTree(PathFromUtf8(targetPath), rec);
                     if (rec) {
-                        self->ReportError("Rename could not replace " + targetPath
-                                          + ": " + rec.message());
+                        self->ReportError(TrF("Renaming could not replace {0}: {1}",
+                                              targetPath, rec.message()));
                         return;
                     }
                     self->PerformRename(oldPath, targetPath);
                 },
                 [self]() { self->RequestRedraw(); });
         if (!shown) {   // dialogs disabled — refuse, the old fixed behavior
-            ReportError("Rename failed: \"" + newName + "\" already exists");
+            ReportError(TrF("Cannot rename: \"{0}\" already exists", newName));
             RequestRedraw();
         }
     }
@@ -9536,7 +9596,7 @@ namespace UltraCanvas {
         std::string base = (targets.size() == 1)
                 ? ArchiveBaseNameOf(targets[0].name, targets[0].isDirectory)
                 : PathToUtf8(PathFromUtf8(currentPath).filename());
-        if (base.empty()) base = "archive";
+        if (base.empty()) base = TrC("file name", "archive");
         // The extension drives the archive format chosen by the VirtualFS bridge.
         std::string ext = extension.empty() ? std::string("zip") : extension;
         if (!ext.empty() && ext.front() == '.') ext.erase(ext.begin());
@@ -9547,7 +9607,7 @@ namespace UltraCanvas {
         UCVFSBridge::Initialize();
         const std::string archiveName = PathToUtf8(PathFromUtf8(dest).filename());
         const UCVFSCompressionOptions options = CompressOptionsFor(ext, tarSettings);
-        StartArchiveJob("Compressing", "Creating \"" + archiveName + "\"",
+        StartArchiveJob(Tr("Compressing"), TrF("Creating \"{0}\"", archiveName),
                         dest, /*packing=*/true,
                         [dest, paths, options](const ArchiveProgressReporter& report) {
             return UCVFSBridge::CreateArchive(dest, paths, options,
@@ -9557,13 +9617,13 @@ namespace UltraCanvas {
             });
         },
                         [this, dest](bool ok, bool cancelled) {
-            if (!ok && !cancelled) ReportError("Compression failed for " + dest);
+            if (!ok && !cancelled) ReportError(TrF("Compressing into {0} failed", dest));
             Refresh();
             if (ok) NotifyFolderModified(PathToUtf8(PathFromUtf8(dest).parent_path()));
         });
 #else
         (void)extension;
-        ReportError("Compress requires the VirtualFS module");
+        ReportError(Tr("Compressing needs the VirtualFS module, which this program was built without."));
 #endif
     }
 
@@ -9578,7 +9638,7 @@ namespace UltraCanvas {
         pendingExtract->archives = std::move(archives);
         ContinuePendingExtract();
 #else
-        ReportError("Extract requires the VirtualFS module");
+        ReportError(Tr("Extracting needs the VirtualFS module, which this program was built without."));
 #endif
     }
 
@@ -9637,7 +9697,7 @@ namespace UltraCanvas {
         // Written by the worker, read by the completion callback once the job
         // is over: what went wrong, in the extractor's words.
         auto detail = std::make_shared<std::string>();
-        StartArchiveJob("Extracting", "Unpacking \"" + archiveName + "\"",
+        StartArchiveJob(Tr("Extracting"), TrF("Unpacking \"{0}\"", archiveName),
                         destDir, /*packing=*/false,
                         [archivePath, destDir, detail](const ArchiveProgressReporter& report) {
             return UCVFSBridge::ExtractArchive(archivePath, destDir,
@@ -9677,18 +9737,18 @@ namespace UltraCanvas {
         spec.title = Tr("Extract: the folder name is already taken");
         spec.type = DialogType::Question;
         spec.question = cfg.message;
-        spec.facts = "**Archive:** " + FactPath(archive.path)
-                   + "\n\n**Folder:** " + FactPath(PathToUtf8(
+        spec.facts = "**" + Tr("Archive:") + "** " + FactPath(archive.path)
+                   + "\n\n**" + Tr("Folder:") + "** " + FactPath(PathToUtf8(
                              PathFromUtf8(archive.path).parent_path() / folderName));
-        spec.note = "Keep both extracts into a renamed folder; Extract into existing "
-                    "adds the archive's entries to the folder that is there.";
+        spec.note = Tr("Keep both extracts into a renamed folder; Extract into existing "
+                       "adds the archive's entries to the folder that is there.");
         if (pendingExtract->archives.size() > pendingExtract->next + 1)
-            spec.applyToAllLabel = "Apply to all remaining archives";
+            spec.applyToAllLabel = Tr("Apply to all remaining archives");
         spec.applyToAllChecked = pendingExtract->applyToAll;
-        spec.buttons = {{"Keep both", DialogButtonRole::Default},
-                        {"Extract into existing", DialogButtonRole::Normal},
-                        {"Skip", DialogButtonRole::Normal},
-                        {"Stop", DialogButtonRole::Cancel}};
+        spec.buttons = {{Tr("Keep both"), DialogButtonRole::Default},
+                        {Tr("Extract into existing"), DialogButtonRole::Normal},
+                        {Tr("Skip"), DialogButtonRole::Normal},
+                        {Tr("Stop"), DialogButtonRole::Cancel}};
         spec.width = 640;
         const bool shown = ShowOperationDialog(spec,
                 [self](size_t button, bool all) {
@@ -9750,10 +9810,12 @@ namespace UltraCanvas {
         std::string base = (targets.size() == 1)
                 ? ArchiveBaseNameOf(targets[0].name, targets[0].isDirectory)
                 : PathToUtf8(PathFromUtf8(currentPath).filename());
-        if (base.empty()) base = "archive";
+        // The fallback is a name a person reads in the field and keeps on
+        // disk, so it is in their language, as the desktops name it.
+        if (base.empty()) base = TrC("file name", "archive");
         compressDlg.destDir = currentPath;
 
-        OpenArchiveDialogChrome(base, "Compress");
+        OpenArchiveDialogChrome(base, Tr("Compress"));
     }
 
     void UltraCanvasFilerWidget::OpenExtractDialog() {
@@ -9779,14 +9841,16 @@ namespace UltraCanvas {
         }
         compressDlg.formatLabel = (archives.size() == 1)
                 ? archives[0].name
-                : std::to_string(archives.size()) + " archives";
+                : TrN("{n} archive", "{n} archives", static_cast<long long>(archives.size()));
 
         // Default destination folder: the archive's own name without its
-        // suffix — what the direct ExtractSelection() would pick.
-        std::string base = (archives.size() == 1) ? firstBase : std::string("Extracted");
-        if (base.empty()) base = "Extracted";
+        // suffix — what the direct ExtractSelection() would pick. The
+        // fallback is a folder name the person reads and keeps, so it is
+        // in their language.
+        std::string base = (archives.size() == 1) ? firstBase : std::string();
+        if (base.empty()) base = TrC("folder name", "Extracted");
 
-        OpenArchiveDialogChrome(base, "Extract");
+        OpenArchiveDialogChrome(base, Tr("Extract"));
     }
 
     void UltraCanvasFilerWidget::OpenArchiveDialogChrome(const std::string& defaultName,
@@ -9843,7 +9907,7 @@ namespace UltraCanvas {
                 "filer-compress-ok", okLabel, true,
                 [this]() { CommitCompressDialog(); });
         compressCancelButton = MakeCompressButton(
-                "filer-compress-cancel", "Cancel", false,
+                "filer-compress-cancel", Tr("Cancel"), false,
                 [this]() { CloseCompressDialog(); });
 
         InstallCompressKeyFilter();
@@ -9956,12 +10020,12 @@ namespace UltraCanvas {
         const std::string src = jobs[index].first;
         const std::string dest = jobs[index].second;
         const std::string caption = jobs.size() > 1
-                ? "Unpacking \"" + PathToUtf8(PathFromUtf8(src).filename()) + "\" (" +
-                  std::to_string(index + 1) + " of " + std::to_string(jobs.size()) + ")"
-                : "Unpacking \"" + PathToUtf8(PathFromUtf8(src).filename()) + "\"";
+                ? TrF("Unpacking \"{0}\" ({1} of {2})", PathToUtf8(PathFromUtf8(src).filename()),
+                      index + 1, jobs.size())
+                : TrF("Unpacking \"{0}\"", PathToUtf8(PathFromUtf8(src).filename()));
         UCVFSBridge::Initialize();
         auto detail = std::make_shared<std::string>();   // see ExtractCurrentAndAdvance
-        StartArchiveJob("Extracting", caption, dest, /*packing=*/false,
+        StartArchiveJob(Tr("Extracting"), caption, dest, /*packing=*/false,
                         [src, dest, detail](const ArchiveProgressReporter& report) {
             return UCVFSBridge::ExtractArchive(src, dest,
                     [&report](uint64_t done, uint64_t total,
@@ -10001,7 +10065,8 @@ namespace UltraCanvas {
         size_t last  = baseName.find_last_not_of(' ');
         baseName = (first == std::string::npos)
                  ? std::string() : baseName.substr(first, last - first + 1);
-        if (baseName.empty()) baseName = d.extractMode ? "Extracted" : "archive";
+        if (baseName.empty()) baseName = d.extractMode ? TrC("folder name", "Extracted")
+                                                       : TrC("file name", "archive");
 
         std::error_code ec;
         fs::path dir = PathFromUtf8(d.destDir.empty() ? currentPath : d.destDir);
@@ -10015,7 +10080,7 @@ namespace UltraCanvas {
                 target = dir / PathFromUtf8(baseName + " (" + std::to_string(n++) + ")");
             fs::create_directories(UltraCanvas::PathFromUtf8(target), ec);
             if (ec || !fs::is_directory(UltraCanvas::PathFromUtf8(target), ec)) {
-                ReportError("Extraction failed: cannot create " + PathToUtf8(target));
+                ReportError(TrF("Extracting failed: the folder {0} cannot be created", PathToUtf8(target)));
                 return;
             }
             std::vector<std::pair<std::string, std::string>> jobs;
@@ -10026,7 +10091,7 @@ namespace UltraCanvas {
                     // their contents cannot collide.
                     std::string stem =
                             ArchiveBaseNameOf(PathToUtf8(PathFromUtf8(src).filename()), false);
-                    if (stem.empty()) stem = "archive";
+                    if (stem.empty()) stem = TrC("file name", "archive");
                     dest = target / PathFromUtf8(stem);
                     int m = 2;
                     while (fs::exists(UltraCanvas::PathFromUtf8(dest), ec))
@@ -10057,8 +10122,8 @@ namespace UltraCanvas {
         UCVFSBridge::Initialize();
         const std::vector<std::string> sources = d.sourcePaths;
         const UCVFSCompressionOptions options = CompressOptionsFor(ext, tarSettings);
-        StartArchiveJob("Compressing",
-                        "Creating \"" + PathToUtf8(candidate.filename()) + "\"",
+        StartArchiveJob(Tr("Compressing"),
+                        TrF("Creating \"{0}\"", PathToUtf8(candidate.filename())),
                         dest, /*packing=*/true,
                         [dest, sources, options](const ArchiveProgressReporter& report) {
             return UCVFSBridge::CreateArchive(dest, sources, options,
@@ -10068,14 +10133,15 @@ namespace UltraCanvas {
             });
         },
                         [this, dest](bool ok, bool cancelled) {
-            if (!ok && !cancelled) ReportError("Compression failed for " + dest);
+            if (!ok && !cancelled) ReportError(TrF("Compressing into {0} failed", dest));
             Refresh();
             // The archive can be written into a folder the icon was dragged onto.
             if (ok) NotifyFolderModified(PathToUtf8(PathFromUtf8(dest).parent_path()));
         });
 #else
-        ReportError(std::string(d.extractMode ? "Extract" : "Compress") +
-                    " requires the VirtualFS module");
+        ReportError(d.extractMode
+                ? Tr("Extracting needs the VirtualFS module, which this program was built without.")
+                : Tr("Compressing needs the VirtualFS module, which this program was built without."));
 #endif
     }
 
@@ -10167,7 +10233,7 @@ namespace UltraCanvas {
         titleFont.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(titleFont);
         ctx->SetTextPaint(style.textColor);
-        ctx->DrawText(d.extractMode ? "Extract" : "Compress",
+        ctx->DrawText(d.extractMode ? Tr("Extract") : Tr("Compress"),
                       Point2Dd(d.panel.x + 16, d.panel.y + 12));
 
         // File-type icon on top. While being dragged a ghost follows the cursor
@@ -10241,7 +10307,7 @@ namespace UltraCanvas {
         ctx->SetFontStyle(smallFont);
         ctx->SetTextPaint(style.secondaryTextColor);
         std::string dir = d.destDir.empty() ? currentPath : d.destDir;
-        std::string pathText = "Location:  " + dir;
+        std::string pathText = TrF("Location: {0}", dir);
         pathText = EllipsizeText(ctx, pathText, d.panel.width - 32);
         ctx->DrawText(pathText,
                       Point2Dd(d.panel.x + 16, d.nameRect.y + d.nameRect.height + 8));
@@ -10354,7 +10420,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewDocument(const FilerNewDocumentType& type) {
-        if (RefuseWriteHere("create a file")) return;
+        if (RefuseWriteHere(Tr("Cannot create a file on a drive: there is no single server operation for it."))) return;
         // The fresh document lands in the shown folder and has to be visible
         // there (with its rename editor reachable): a file-list (search
         // result) display returns to the folder first, and an active name
@@ -10368,16 +10434,18 @@ namespace UltraCanvas {
         }
         std::error_code ec;
         if (!fs::is_directory(UltraCanvas::PathFromUtf8(currentPath), ec)) {
-            ReportError("Cannot create a document here: " + currentPath);
+            ReportError(TrF("Cannot create a document in {0}", currentPath));
             return;
         }
-        std::string dest = UniqueChildPath("New " + type.label + "." + type.extension);
+        const std::string stem = type.fileName.empty() ? TrF("New {0}", type.label)
+                                                       : type.fileName;
+        std::string dest = UniqueChildPath(stem + "." + type.extension);
         if (!type.templatePath.empty() && fs::exists(UltraCanvas::PathFromUtf8(type.templatePath), ec)) {
             fs::copy_file(UltraCanvas::PathFromUtf8(type.templatePath), UltraCanvas::PathFromUtf8(dest), ec);
-            if (ec) { ReportError("New document failed: " + ec.message()); return; }
+            if (ec) { ReportError(TrF("Creating the document failed: {0}", ec.message())); return; }
         } else {
             std::ofstream out(UltraCanvas::PathFromUtf8(dest), std::ios::binary);
-            if (!out) { ReportError("New document failed: " + dest); return; }
+            if (!out) { ReportError(TrF("Creating the document {0} failed", dest)); return; }
         }
         Refresh();
         NotifyFolderModified();
@@ -10395,18 +10463,18 @@ namespace UltraCanvas {
         // answered and the refresh has landed. Renaming it afterwards works.
         if (ShowingRemoteFolder()) {
             if (!remoteMakeDirectory) {
-                ReportError("Cannot create a folder on this drive.");
+                ReportError(Tr("Cannot create a folder on this drive."));
                 return;
             }
             std::string error;
-            const std::string name = UniqueRemoteChildName("New folder");
+            const std::string name = UniqueRemoteChildName(TrC("folder name", "New folder"));
             if (!remoteMakeDirectory(currentPath, name, error)) {
-                ReportError(error.empty() ? "Cannot create a folder on this drive."
+                ReportError(error.empty() ? Tr("Cannot create a folder on this drive.")
                                           : error);
             }
             return;
         }
-        if (RefuseWriteHere("create a folder")) return;
+        if (RefuseWriteHere(Tr("Cannot create a folder on a drive: there is no single server operation for it."))) return;
         // Same as CreateNewDocument: the fresh folder must be visible in the
         // folder display, so the search-result display and the name filter
         // both end here.
@@ -10414,13 +10482,13 @@ namespace UltraCanvas {
         else SetNameFilter("");
         std::error_code ec;
         if (!fs::is_directory(UltraCanvas::PathFromUtf8(currentPath), ec)) {
-            ReportError("Cannot create a folder here: " + currentPath);
+            ReportError(TrF("Cannot create a folder in {0}", currentPath));
             return;
         }
-        const std::string dest = UniqueChildPath("New folder");
+        const std::string dest = UniqueChildPath(TrC("folder name", "New folder"));
         fs::create_directory(UltraCanvas::PathFromUtf8(dest), ec);
         if (ec) {
-            ReportError("New folder failed: " + ec.message());
+            ReportError(TrF("Creating the folder failed: {0}", ec.message()));
             return;
         }
         Refresh();
@@ -10517,12 +10585,12 @@ namespace UltraCanvas {
         const std::string name = RepairLegacyEncodedName(
                 PathToUtf8(PathFromUtf8(archivePath).filename()));
         if (!IsPartialExtraction(detail)) {
-            ReportError("Extraction failed for " + archivePath +
-                        (detail.empty() ? std::string() : ": " + detail));
+            ReportError(detail.empty() ? TrF("Extracting {0} failed", archivePath)
+                                       : TrF("Extracting {0} failed: {1}", archivePath, detail));
             return;
         }
         // One line for the status bar, and the list where it can be read.
-        ReportError("\"" + name + "\" was extracted only in part - some entries were skipped");
+        ReportError(TrF("\"{0}\" was extracted only in part - some entries were skipped", name));
 
         // The extractor's text: a heading per kind of problem, ending in ':',
         // then one entry per line. The heading is the reason beside each of
@@ -10540,7 +10608,7 @@ namespace UltraCanvas {
                 reason = line.substr(0, line.size() - 1);
             } else {
                 skipped.push_back({RepairLegacyEncodedName(line),
-                                   reason.empty() ? std::string("skipped") : reason,
+                                   reason.empty() ? Tr("skipped") : reason,
                                    std::string()});
             }
         }
@@ -10549,8 +10617,8 @@ namespace UltraCanvas {
             ReportError(message + " " + detail);
             return;
         }
-        ShowOperationSummary("Extraction incomplete", message, skipped,
-                             "**Archive:** " + FactPath(archivePath),
+        ShowOperationSummary(Tr("Extraction incomplete"), message, skipped,
+                             "**" + Tr("Archive:") + "** " + FactPath(archivePath),
                              std::string(), nullptr);
     }
 
@@ -10574,8 +10642,8 @@ namespace UltraCanvas {
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         if (!CanExtractAndRun(e)) return;
         if (archiveJob) {   // one pack / unpack at a time
-            ReportError("Wait until the archive being packed or unpacked is done, "
-                        "then run \"" + e.name + "\" again");
+            ReportError(TrF("Wait until the archive being packed or unpacked is done, "
+                            "then run \"{0}\" again", e.name));
             return;
         }
         // The archive the program is directly in - the innermost one, for a
@@ -10589,7 +10657,7 @@ namespace UltraCanvas {
         if (resolved.fullPath.size() <= archive.size() + 1 ||
             resolved.fullPath.compare(0, archive.size(), archive) != 0 ||
             resolved.fullPath[archive.size()] != '/') {
-            ReportError("Cannot find \"" + e.name + "\" in its archive");
+            ReportError(TrF("Cannot find \"{0}\" in its archive", e.name));
             return;
         }
         const std::string inner = resolved.fullPath.substr(archive.size() + 1);
@@ -10618,8 +10686,8 @@ namespace UltraCanvas {
         const std::string programName = e.name;
         auto detail = std::make_shared<std::string>();   // see ReportExtractionProblem
 
-        StartArchiveJob("Extract and Run",
-                        "Unpacking \"" + archiveName + "\" to run \"" + programName + "\"",
+        StartArchiveJob(Tr("Extract and Run"),
+                        TrF("Unpacking \"{0}\" to run \"{1}\"", archiveName, programName),
                         folder, /*packing=*/false,
                         [archive, folder, root, downloaded, detail](
                                 const ArchiveProgressReporter& report) {
@@ -10647,7 +10715,7 @@ namespace UltraCanvas {
             if (!ok) ReportExtractionProblem(archive, *detail);
             std::error_code ec;
             if (!fs::is_regular_file(PathFromUtf8(program), ec)) {
-                if (ok) ReportError("\"" + programName + "\" could not be unpacked");
+                if (ok) ReportError(TrF("\"{0}\" could not be unpacked", programName));
                 RemoveArchiveRunFolder(folder);
                 return;
             }
@@ -10655,7 +10723,7 @@ namespace UltraCanvas {
         });
 #else
         (void)e;
-        ReportError("Extract and Run requires the VirtualFS module");
+        ReportError(Tr("Extract and Run needs the VirtualFS module, which this program was built without."));
 #endif
     }
 
@@ -16391,7 +16459,7 @@ namespace UltraCanvas {
                         [this]() { OpenSelectionWithChooser(); }));
             }
             if (openItems.empty()) {
-                MenuItemData none = MenuItemData::Action("(no applications)", []() {});
+                MenuItemData none = MenuItemData::Action(Tr("(no applications)"), []() {});
                 none.enabled = false;
                 openItems.push_back(none);
             }
@@ -16407,7 +16475,7 @@ namespace UltraCanvas {
         // noise in the menu of every file.
         if (singleSel && CanExtractAndRun(targets.front())) {
             const FilerEntry program = targets.front();
-            addAction("Extract and Run", "run.svg", true,
+            addAction(Tr("Extract and Run"), "run.svg", true,
                       [this, program]() { ExtractAndRunEntry(program); });
         }
         menu.AddItem(MenuItemData::Separator());
@@ -16426,29 +16494,29 @@ namespace UltraCanvas {
             menu.AddItem(MenuItemData::Separator());
         }
 
-        addAction("Copy", "copy.svg", hasSel, [this]() { CopySelection(); }, "Ctrl+C");
+        addAction(Tr("Copy"), "copy.svg", hasSel, [this]() { CopySelection(); }, "Ctrl+C");
         // Cut and Duplicate are greyed out on a drive rather than offered and
         // then refused: a move off a drive is a download plus a destructive
         // delete, and a duplicate is a server-side copy no provider has.
         // Paste stays live - into a drive it uploads, out of one it downloads.
-        addAction("Cut", "cut.svg", hasSel && !ShowingRemoteFolder(),
+        addAction(Tr("Cut"), "cut.svg", hasSel && !ShowingRemoteFolder(),
                   [this]() { CutSelection(); }, "Ctrl+X");
-        addAction("Paste", "paste.svg", ClipboardHasContent(),
+        addAction(Tr("Paste"), "paste.svg", ClipboardHasContent(),
                   [this]() { Paste(); }, "Ctrl+V");
         // Rename and the deletes are greyed out on a drive the host cannot
         // carry them out on, rather than offered and then refused.
-        addAction("Delete", "delete.svg", hasSel && CanDeleteHere(), [this]() {
+        addAction(Tr("Delete"), "delete.svg", hasSel && CanDeleteHere(), [this]() {
             DeleteSelection(FilerDeleteMode::MoveToTrash);
         }, "Del");
-        addAction("Delete Permanently", "delete-permanently.svg",
+        addAction(Tr("Delete Permanently"), "delete-permanently.svg",
                   hasSel && CanDeleteHere(), [this]() {
             DeleteSelection(FilerDeleteMode::Permanently);
         }, "Shift+Del");
-        addAction("Duplicate", "duplicate.svg", hasSel && !ShowingRemoteFolder(),
+        addAction(Tr("Duplicate"), "duplicate.svg", hasSel && !ShowingRemoteFolder(),
                   [this]() { DuplicateSelection(); }, "Ctrl+D");
         {
             size_t renameIdx = singleSel ? selection.front() : 0;
-            addAction("Rename", "rename.svg", singleSel && CanRenameHere(),
+            addAction(Tr("Rename"), "rename.svg", singleSel && CanRenameHere(),
                       [this, renameIdx]() { StartRename(renameIdx); }, "F2");
         }
         menu.AddItem(MenuItemData::Separator());
@@ -16459,7 +16527,7 @@ namespace UltraCanvas {
             // A folder first, above the document kinds and set apart from them
             // — it is the entry this submenu is opened for most often.
             newItems.push_back(MenuItemData::ActionWithShortcut(
-                    "Folder", "Ctrl+F", [this]() { CreateNewFolder(); }));
+                    Tr("Folder"), "Ctrl+F", [this]() { CreateNewFolder(); }));
             newItems.push_back(MenuItemData::Separator());
             for (const FilerNewDocumentType& t : newDocumentTypes) {
                 FilerNewDocumentType copy = t;
@@ -16515,10 +16583,10 @@ namespace UltraCanvas {
             compressSub.enabled = canCompress;
             menu.AddItem(compressSub);
         }
-        addAction("Extract", "extract.svg", anyArchive, [this]() { OpenExtractDialog(); });
+        addAction(Tr("Extract"), "extract.svg", anyArchive, [this]() { OpenExtractDialog(); });
         menu.AddItem(MenuItemData::Separator());
 
-        addAction("Print", "print.svg", static_cast<bool>(onPrint), [this]() {
+        addAction(Tr("Print"), "print.svg", static_cast<bool>(onPrint), [this]() {
             if (onPrint) onPrint(SelectionOrAll());
         }, "Ctrl+P");
         menu.AddItem(MenuItemData::Separator());
@@ -16579,7 +16647,7 @@ namespace UltraCanvas {
             };
             for (FilerSortField f : fields) {
                 sortItems.push_back(MenuItemData::Radio(
-                        SortFieldLabel(f), 1, sortField == f,
+                        SortFieldMenuText(f), 1, sortField == f,
                         [this, f]() { SetSortField(f); }));
             }
             sortItems.push_back(MenuItemData::Separator());
@@ -16600,7 +16668,7 @@ namespace UltraCanvas {
             };
             for (FilerViewType v : views) {
                 MenuItemData typeItem = MenuItemData::Radio(
-                        ViewTypeLabel(v), 3, viewType == v,
+                        ViewTypeMenuText(v), 3, viewType == v,
                         [this, v]() { SetViewType(v); });
                 typeItem.iconPath = ViewTypeIconPath(v);
                 typeItems.push_back(std::move(typeItem));
@@ -16608,14 +16676,14 @@ namespace UltraCanvas {
 
             // Dataset > extra per-file facts under thumbnail captions.
             std::vector<MenuItemData> datasetItems;
-            struct DatasetOption { const char* label; FilerDatasetField field; };
-            static const DatasetOption datasetOptions[] = {
-                {"Size",                   FilerDatasetField::Size},
-                {"Edit date",              FilerDatasetField::ModifiedDate},
-                {"Creation date",          FilerDatasetField::CreatedDate},
-                {"Attributes",             FilerDatasetField::Attributes},
-                {"Length (audio/video)",   FilerDatasetField::Length},
-                {"Dimensions (bitmaps)",   FilerDatasetField::Dimensions},
+            struct DatasetOption { std::string label; FilerDatasetField field; };
+            const DatasetOption datasetOptions[] = {
+                {Tr("Size"),                 FilerDatasetField::Size},
+                {Tr("Edit date"),            FilerDatasetField::ModifiedDate},
+                {Tr("Creation date"),        FilerDatasetField::CreatedDate},
+                {Tr("Attributes"),           FilerDatasetField::Attributes},
+                {Tr("Length (audio/video)"), FilerDatasetField::Length},
+                {Tr("Dimensions (bitmaps)"), FilerDatasetField::Dimensions},
             };
             for (const DatasetOption& o : datasetOptions) {
                 FilerDatasetField f = o.field;
@@ -16634,10 +16702,10 @@ namespace UltraCanvas {
             std::vector<MenuItemData> detailViewItems;
             for (FilerPreviewType t : AllPreviewTypes()) {
                 thumbnailItems.push_back(MenuItemData::Checkbox(
-                        PreviewTypeLabel(t), IsThumbnailKindEnabled(t),
+                        PreviewTypeText(t), IsThumbnailKindEnabled(t),
                         [this, t](bool on) { SetThumbnailKind(t, on); }));
                 detailViewItems.push_back(MenuItemData::Checkbox(
-                        PreviewTypeLabel(t), IsDetailViewKindEnabled(t),
+                        PreviewTypeText(t), IsDetailViewKindEnabled(t),
                         [this, t](bool on) { SetDetailViewKind(t, on); }));
             }
             // The host's own entry point into the per-format lists, appended
@@ -16668,7 +16736,7 @@ namespace UltraCanvas {
             extensionItems.push_back(MenuItemData::Separator());
             for (FilerExtensionBadge b : AllExtensionBadges()) {
                 extensionItems.push_back(MenuItemData::Radio(
-                        ExtensionBadgeLabel(b), 4, extensionBadge == b,
+                        ExtensionBadgeMenuText(b), 4, extensionBadge == b,
                         [this, b]() { SetExtensionBadge(b); }));
             }
 
@@ -16680,7 +16748,7 @@ namespace UltraCanvas {
             if (AreHostFileIconsAvailable()) {
                 for (FilerFileIconStyle s : AllFileIconStyles()) {
                     fileIconItems.push_back(MenuItemData::Radio(
-                            FileIconStyleLabel(s), 5, fileIconStyle == s,
+                            FileIconStyleMenuText(s), 5, fileIconStyle == s,
                             [this, s]() { SetFileIconStyle(s); }));
                 }
             }
@@ -16691,7 +16759,7 @@ namespace UltraCanvas {
             // the choice is greyed out rather than offered and ignored.
             // The switches carry an icon as well as their tick, so every label
             // of this submenu starts behind the same two columns.
-            auto addSwitch = [&displayItems](const char* label, const char* icon,
+            auto addSwitch = [&displayItems](const std::string& label, const char* icon,
                                              bool on, std::function<void(bool)> cb) {
                 MenuItemData item = MenuItemData::Checkbox(label, on, std::move(cb));
                 item.iconPath = MenuIconPath(icon);
@@ -16716,26 +16784,26 @@ namespace UltraCanvas {
                     Tr("Detail view"), MenuIconPath("detail-view.svg"), detailViewItems));
             displayItems.push_back(MenuItemData::Submenu(
                     Tr("Dataset"), MenuIconPath("dataset.svg"), datasetItems));
-            addSwitch("Icon-Menu", "icon-menu.svg", hoverIconMenu,
+            addSwitch(Tr("Icon-Menu"), "icon-menu.svg", hoverIconMenu,
                       [this](bool on) { SetHoverIconMenuEnabled(on); });
             // The first pictures inside a folder peeking out of its icon.
-            addSwitch("Folder previews", "folder-previews.svg", folderPreviews,
+            addSwitch(Tr("Folder previews"), "folder-previews.svg", folderPreviews,
                       [this](bool on) { SetFolderPreviewsEnabled(on); });
             // Left out where the host shows the same line in its own status
             // bar (SetInfoBarMenuItemVisible) - switching the bar back on
             // there would only say it twice.
             if (showInfoBarMenuItem)
-                addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
+                addSwitch(Tr("Info-Bar"), "info-bar.svg", showSelectionInfo,
                           [this](bool on) { SetSelectionInfoVisible(on); });
             // "Show me everything": hidden entries, and the full physical
             // listing of a curated home folder (SetCuratedHomeFolder).
-            addSwitch("Hidden files", "hidden-files.svg", showHiddenFiles,
+            addSwitch(Tr("Hidden files"), "hidden-files.svg", showHiddenFiles,
                       [this](bool on) { SetShowHiddenFiles(on); });
             menu.AddItem(MenuItemData::Submenu(Tr("Display"), MenuIconPath("display.svg"),
                                                displayItems));
         }
 
-        addAction("Settings", "settings.svg", static_cast<bool>(onSettings), [this]() {
+        addAction(Tr("Settings"), "settings.svg", static_cast<bool>(onSettings), [this]() {
             if (onSettings) onSettings();
         });
 

@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.45.5 - the "New ▾" button's Folder entry is translated, like the context
+//                  menu's New > Folder
 // Version: 1.45.4 - the path bars under Dark: dark grey segments, the current folder's segment in the
 //                  arrow's strong blue with white, the seams in the ground; set again by ApplyLook on
 //                  every theme change instead of following the theme themselves
@@ -2944,7 +2946,7 @@ void UltraFilerWindow::ShowNewEntryMenu() {
     // Mirror of the filer context menu's "New >" submenu: the folder first,
     // set apart from the document kinds.
     newEntryMenu->AddItem(MenuItemData::ActionWithShortcut(
-            "Folder", "Ctrl+F", [this]() { CreateNewFolderCommand(); }));
+            Tr("Folder"), "Ctrl+F", [this]() { CreateNewFolderCommand(); }));
     if (filer) {
         newEntryMenu->AddItem(MenuItemData::Separator());
         for (const FilerNewDocumentType& t : filer->GetNewDocumentTypes()) {
