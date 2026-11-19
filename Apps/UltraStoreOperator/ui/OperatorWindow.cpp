@@ -29,6 +29,7 @@ constexpr const char* kMerchants = "merchants";
 constexpr const char* kReview = "review";
 constexpr const char* kReports = "reports";
 constexpr const char* kTerms = "terms";
+constexpr const char* kUsers = "users";
 constexpr const char* kAudit = "audit";
 constexpr const char* kSettings = "settings";
 
@@ -114,6 +115,7 @@ void OperatorWindow::BuildShell() {
     sidebar_->AddItem(kReview, Tr("App review"), Theme::Icon("list-check.svg"));
     sidebar_->AddItem(kReports, Tr("Reports"), Theme::Icon("envelope.svg"));
     sidebar_->AddItem(kTerms, Tr("Terms and notices"), Theme::Icon("clipboard-list.svg"));
+    sidebar_->AddItem(kUsers, Tr("Users"), Theme::Icon("user-plus.svg"));
     sidebar_->AddItem(kAudit, Tr("Audit log"), Theme::Icon("clock-five.svg"));
     sidebar_->AddItem(kSettings, Tr("Settings"), Theme::Icon("settings.svg"));
     sidebar_->onSelectionChanged = [this](const std::string& id) { if (currentPage_ != id) ShowPage(id); };
@@ -138,6 +140,7 @@ void OperatorWindow::BuildShell() {
     BuildReviewPage();
     BuildReportsPage();
     BuildTermsPage();
+    BuildUsersPage();
     BuildAuditPage();
     BuildSettingsPage();
 
@@ -189,6 +192,7 @@ void OperatorWindow::ShowPage(const std::string& id) {
         else if (id == kReview) RefreshReview();
         else if (id == kReports) RefreshReports();
         else if (id == kTerms) RefreshTerms();
+        else if (id == kUsers) RefreshUsers();
         else if (id == kAudit) RefreshAudit();
     }
     Relayout();
@@ -547,6 +551,24 @@ void OperatorWindow::BuildSettingsPage() {
     surface->AddChild(Theme::Field("uoS.nameRow", Tr("Your name"), sName_));
     settingsInfo_ = Theme::Caption("uoS.info", "");
     surface->AddChild(settingsInfo_);
+    auto accounts = Theme::Section("uoS.accounts", Tr("The account service"));
+    accounts->AddChild(Theme::Caption("uoS.accounts.hint", Tr("The Users page drives the account service (Server/UltraStoreAccount) with its own operator token; both empty when the store runs no accounts.")));
+    sAccountUrl_ = Theme::Pin(CreateTextInput("uoS.accountUrl", 0, 0, 480, Theme::kControlHeight));
+    sAccountUrl_->SetPlaceholder("https://store.example/account");
+    accounts->AddChild(Theme::Field("uoS.accountUrlRow", Tr("Account service URL"), sAccountUrl_));
+    sAccountToken_ = Theme::Pin(CreatePasswordInput("uoS.accountToken", 0, 0, 480, Theme::kControlHeight));
+    sAccountToken_->SetPlaceholder(Tr("the service's ULTRASTORE_ACCOUNT_OPERATOR_TOKEN"));
+    accounts->AddChild(Theme::Field("uoS.accountTokenRow", Tr("Account operator token"), sAccountToken_));
+    auto checkAccounts = Theme::Button("uoS.checkAccounts", Tr("Check the account service"), 190);
+    checkAccounts->onClick = [this]() {
+        SaveSettingsPage();
+        OperatorClient client(settings_);
+        Fetch<std::string>(Tr("Asking the account service"), [client]() { return client.AccountHealth(); }, [this](const std::string& health) {
+            SetStatus(health == "ok" ? Tr("The account service answers: ok") : TrF("The account service answers: {0}", health), health != "ok");
+        });
+    };
+    accounts->AddChild(checkAccounts);
+    body->AddChild(accounts);
     auto buttons = Theme::Row("uoS.buttons", Theme::kInnerGap, true);
     auto save = Theme::Button("uoS.save", Tr("Save"), 100, Theme::ButtonKind::Primary);
     save->onClick = [this]() { SaveSettingsPage(); };
@@ -570,6 +592,8 @@ void OperatorWindow::LoadSettingsPage() {
     sUrl_->SetText(settings_.url);
     sToken_->SetText(settings_.token);
     sName_->SetText(settings_.name);
+    if (sAccountUrl_) sAccountUrl_->SetText(settings_.accountUrl);
+    if (sAccountToken_) sAccountToken_->SetText(settings_.accountToken);
     settingsInfo_->SetText(settings_.Complete() ? "" : Tr("Both the URL and the token are needed before any page can ask the service."));
 }
 
@@ -578,6 +602,9 @@ void OperatorWindow::SaveSettingsPage() {
     settings_.token = sToken_->GetText();
     settings_.name = sName_->GetText();
     while (!settings_.url.empty() && settings_.url.back() == '/') settings_.url.pop_back();
+    if (sAccountUrl_) settings_.accountUrl = sAccountUrl_->GetText();
+    if (sAccountToken_) settings_.accountToken = sAccountToken_->GetText();
+    while (!settings_.accountUrl.empty() && settings_.accountUrl.back() == '/') settings_.accountUrl.pop_back();
     if (const auto saved = settings_.Save(settingsPath_); !saved) { SetStatus(saved.error.message, true); return; }
     settingsInfo_->SetText(settings_.Complete() ? "" : Tr("Both the URL and the token are needed before any page can ask the service."));
     SetStatus(Tr("Settings saved"));

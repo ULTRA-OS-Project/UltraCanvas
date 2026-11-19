@@ -29,6 +29,12 @@
 //  - Settings (StoreSettingsPage.cpp): channel, language, servers, the keys
 //    the user trusts beside the compiled-in ones, the machine the store
 //    detected, the catalog's state, the store folder.
+//  - Sign in and Account (StoreAccountPage.cpp): the account service the
+//    catalog names (Account.h) - sign in, create an account with the
+//    mailed code, the second factor; the account page with its rail:
+//    profile, security and sign-in, devices, purchases and licences,
+//    notifications, privacy and data. The licences of this machine go up
+//    to the account and the account's come down (the AccountSync job).
 //
 // Jobs (StoreJobs.cpp): Refresh (the catalog from the servers), Reload
 // (what is installed), Install, Update, UpdateAll, Remove, Collect; queued,
@@ -38,6 +44,7 @@
 //
 // Pictures (icons, screenshots) come through AssetCache on a second thread
 // and are set on the cards when they arrive.
+// Version: 0.6.0 - the account: Sign in, the account page, the licences kept in step with it
 // Version: 0.5.0 - the shop design: the header, the Discover sections, the Categories filters, the app page
 // Version: 0.4.0 - the open order resumed, the update terms
 // Version: 0.3.0 - Buy through the payment service; the licences
@@ -46,6 +53,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "Account.h"
 #include "AssetCache.h"
 #include "Catalog.h"
 #include "CatalogClient.h"
@@ -220,7 +228,7 @@ private:
     void StopPictureThread();
 
     // ===== jobs (StoreJobs.cpp) =====
-    enum class JobKind { Refresh, Reload, Install, Update, UpdateAll, Remove, Collect, Buy };
+    enum class JobKind { Refresh, Reload, Install, Update, UpdateAll, Remove, Collect, Buy, AccountSync };
     struct Job {
         uint64_t id = 0;
         JobKind kind = JobKind::Reload;
@@ -267,6 +275,43 @@ private:
     bool HasJobFor(const std::string& appId) const;
     void StopJobThread();
 
+    // ===== the account (StoreAccountPage.cpp) =====
+    std::string AccountUrl() const;          // the setting, else the catalog's account_url
+    AccountClient AccountClientNow() const;
+    DeviceInfo ThisDevice() const;
+    void BuildSignInPage();
+    void BuildAccountPage();
+    void OpenAccount();                      // the header pill: the account page, or Sign in
+    void ShowSignIn(const std::string& mode);   // "signin", "signup", "verify", "twofactor", "reset", "done"
+    void RebuildSignIn();
+    void RebuildAccount();
+    void ShowAccountSection(const std::string& section);
+    void RefreshMe();                        // GET /v1/me on a thread, then the page
+    void FinishSignIn(const SignedIn& signedIn);
+    void SignOutAccount(bool everywhere);
+    void ForgetAccount(const std::string& why);   // the session is gone: the file removed, the pill reset
+    void UpdateAccountPill();
+    void SyncAccountLicences();              // the AccountSync job
+    // One request on a thread, its value handled on the UI thread; a
+    // failure goes to the status line, a "signed_out" answer forgets the session.
+    template <class T>
+    void AccountTask(const std::string& status, std::function<Result<T>()> work, std::function<void(const T&)> done) {
+        SetStatus(status);
+        std::weak_ptr<int> token = alive_;
+        std::thread([this, token, work, done]() {
+            const Result<T> r = work();
+            app_.PostToUIThread([this, token, r, done]() {
+                if (!token.lock()) return;
+                if (!r) {
+                    if (r.error.detail == "signed_out") { ForgetAccount(r.error.message); return; }
+                    SetStatus(r.error.message, true);
+                    return;
+                }
+                if (done) done(r.Value());
+            });
+        }).detach();
+    }
+
     // ===== settings page (StoreSettingsPage.cpp) =====
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSettingsPage();
     void LoadSettingsIntoPage();
@@ -310,6 +355,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> refreshButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> settingsButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> accountButton_;
     static constexpr int kHeaderLevels = 4;
     static constexpr float kSearchMinWidth = 120.0f;
     int headerLevel_ = 0;
@@ -352,6 +398,27 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> reportKind_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> reportText_;
     bool reportOpen_ = false;
+    // The account
+    AccountSession account_;                 // this machine's session, from <root>/account.json
+    std::optional<Me> me_;                   // as last fetched
+    std::vector<AccountNotice> notices_;
+    std::string signInMode_ = "signin";
+    std::string signInEmail_;                // carried between the steps
+    std::string signInHint_;                 // what the last step said
+    std::vector<std::string> recoveryCodes_; // shown once after two-factor went on
+    TwoFactorSetup twoFactorSetup_;          // while the app is being set up
+    std::string accountSection_ = "profile";
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> signInBody_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> accountRail_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> accountBody_;
+    std::map<std::string, std::shared_ptr<UltraCanvas::UltraCanvasButton>> railButtons_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> siEmail_, siPassword_, siCode_, siYear_, siTotp_, siNewPassword_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> siCountry_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> siConsent_, siMarketing_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> apName_, apHandle_, apLanguage_, apCountry_, apYear_, apEmail_, apEmailPassword_, apEmailCode_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> apAbout_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> apCurrentPassword_, apNewPassword_, apTotpCode_, apDeletePassword_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> accountUrlInput_;
     // Settings
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> channelDropdown_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> languageInput_;

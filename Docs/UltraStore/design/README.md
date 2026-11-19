@@ -52,7 +52,7 @@ over these.
 | `AccountBilling.dc.html` | payment methods (a reference to the method, the billing address, VAT); subscriptions (switch, cancel, resume); purchases and licences with seats and *Install on a machine*; orders and invoices (PDF, XRechnung, returns, credit notes) | page |
 | `AccountPhoneProfile.dc.html` | the account on a phone: the profile head, the Premium card, the account sections, this device, sign out, the bottom tab bar with Account | 390 × 844 |
 | `AccountRecovery.dc.html` | reset the password (email, the email code and the two-factor code, the new password, done) and set up two-factor (the app, the QR code or the key, the recovery codes, on) - both step flows work in the script; the delete-account confirmation with what happens | page |
-| `SuperUsers.dc.html` | the operator's users: the counts with the data-archive and deletion requests, the table with a working status filter (active, suspended, deleting, with a request), one user's file with history and the actions (notice, sign out everywhere, reset two-factor, archive, suspend or reinstate, delete on request) and what the operator cannot see | page |
+| `SuperUsers.dc.html` | the operator's users: the counts with the data-archive and deletion requests, the table with a working status filter (active, suspended, deleting, with a request), one user's file with history and the actions (notice, sign out everywhere, reset two-factor, archive, suspend or reinstate, delete on request) and what the operator cannot see; a line under the title says what of it the account service backs | page |
 | `AccountPhoneSignIn.dc.html` | sign in on a phone: email and password, a passkey, or confirming on a signed-in machine nearby | 390 × 844 |
 | `BooksHome.dc.html` | the e-book and audiobook shop variant's home: the book of the month in both editions with the sample, continue listening and reading with the place kept between the editions, the genres, the editor's picks with the length badge, Books Plus (one credit a month, the book kept), a series with the next part on pre-order, short listens for tonight, why read and listen here | page |
 | `BooksDetail.dc.html` | a title (The Salt Garden): the cover, the sample and the first chapter, the narrator, ratings for narration and story, the chapters both editions share, reviews that say listened or read to the end; the editions (audiobook for a credit, e-book, both kept in step), buy, the return rule, and what of the price goes to the author, the narrator, the publisher and the store | page |
@@ -213,23 +213,33 @@ placeholders.
 
 The `Account*` pages are the **account** every shop on the canvas shares:
 sign up, sign in and the profile, security, devices, notifications,
-privacy, payment methods, subscriptions, licences and orders. They are a
-**proposal**: [the store's README](../README.md) says the store has no
-accounts - a licence lives in `registry.sqlite` on the machine it was
-bought on, and the payment service sells without one. An account service
-would tie licences and their seats, subscriptions, the library (wish
-list, playlists, watch later, saved games) and, for the marketplace, the
-reporter's identity to a person across machines; installing a free app
-would still need none. The operator's `SuperUsers` page is the
-other side: accounts as far as the store needs them, suspend and
-reinstate with a reason in the audit log, the data-archive and deletion
-requests with their deadlines, and never the password, the payment
-method or the listening history. Two-factor sign-in is UltraAuthenticator or any
-TOTP app, passkeys where the machine has them, recovery codes in
-UltraPassword if wanted; payment stays on Skrill Quick Checkout's page
-through the store's payment service, the account keeping only a reference
-to the method. Every person, device, order and figure is invented sample
-data.
+privacy, payment methods, subscriptions, licences and orders. **Built**
+(2026-11-19, the store's README, *The account tier*): the account service
+`Server/UltraStoreAccount` holds the person, the sessions as devices, the
+second factor, the licences with their seats, the notices, the archive and
+the deletion; the store's window has the *Sign in* pill, the sign-in page
+with its steps and the account page with its rail
+(`Apps/UltraStore/ui/StoreAccountPage.cpp`); the operator's window has the
+*Users* page (`Apps/UltraStoreOperator/ui/OperatorUsersPage.cpp`). What the
+pages draw that is not built: passkeys (WebAuthn needs the platform's
+authenticator), the avatar, the sign-in location, and the payment methods,
+subscriptions and orders pages - those are the payment service's, which
+does not yet record the account at checkout; the account page shows the
+licences it holds instead. An account service ties licences and their
+seats, subscriptions and the library (wish list, playlists, watch later,
+saved games) to a person across machines; installing a free app still
+needs none. The operator's `SuperUsers` page is the other side: accounts as
+far as the store needs them, suspend and reinstate with a reason in the
+audit log, the data-archive and deletion requests with their deadlines, and
+never the password, the payment method or the listening history; the
+artboard says on its face what of it the service backs. Two-factor sign-in
+is UltraAuthenticator or any TOTP app, recovery codes in UltraPassword if
+wanted; payment stays on Skrill Quick Checkout's page through the store's
+payment service, the account keeping only a reference to the method.
+Customer messaging is a notice on the account, written by the operator or
+the service and sent by mail; a merchant's message to a buyer is relayed
+through the marketplace service later. Every person, device, order and
+figure is invented sample data.
 
 The `Books*` pages are the **e-book and audiobook shop variant**: the
 shop's chrome as a book shop in the manner of Audible, with both editions

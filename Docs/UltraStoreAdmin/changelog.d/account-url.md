@@ -1,0 +1,1 @@
+- **`account.url`**: the account service the store signs in to (`Server/UltraStoreAccount`), written into the catalog as `account_url` by `publish`; unset, the store shows no *Sign in*.

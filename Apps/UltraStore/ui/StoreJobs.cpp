@@ -299,6 +299,25 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
                              (catalog->licenceKey.empty() ? " " + Tr("(the licence is kept unverified: the catalog names no licence key)") : std::string());
             return result;
         }
+        case JobKind::AccountSync: {
+            if (!account_.SignedIn()) return fail(Error{ErrorCode::NotAvailable, Tr("Not signed in")});
+            progress(Tr("Licences in step with the account"), -1.0);
+            const AccountClient client(account_.url);
+            const auto sync = SyncLicencesWithAccount(engine_->Registry(), client, account_.token, catalog ? catalog->licenceKey : std::string());
+            if (!sync) return fail(sync.error);
+            // A licence fetched gets its file beside the app's versions, as a purchase here would.
+            for (const std::string& app : sync.Value().fetched) {
+                if (const auto record = engine_->Registry().GetLicence(app)) WriteLicenceFile(LicenceFilePath(engine_->Root(), app), record.Value().token);
+            }
+            if (const auto all = engine_->Registry().Licences()) { result.licences = all.Value(); result.haveLicences = true; }
+            std::string message;
+            if (!sync.Value().attached.empty()) message += TrN("{n} licence attached to the account.", "{n} licences attached to the account.", static_cast<long long>(sync.Value().attached.size()));
+            if (!sync.Value().fetched.empty()) message += (message.empty() ? "" : " ") + TrN("{n} licence fetched from the account.", "{n} licences fetched from the account.", static_cast<long long>(sync.Value().fetched.size()));
+            if (!sync.Value().noSeat.empty()) message += (message.empty() ? "" : " ") + TrN("{n} licence has no seat left for this machine.", "{n} licences have no seat left for this machine.", static_cast<long long>(sync.Value().noSeat.size()));
+            if (!sync.Value().failed.empty()) message += (message.empty() ? "" : " ") + TrF("{0}: {1}", sync.Value().failed.front().first, sync.Value().failed.front().second.message);
+            result.message = message.empty() ? Tr("The licences are in step with the account") : message;
+            return result;
+        }
         case JobKind::Collect: {
             progress(Tr("Looking for unused components"), -1.0);
             const auto removed = engine_->CollectGarbage();

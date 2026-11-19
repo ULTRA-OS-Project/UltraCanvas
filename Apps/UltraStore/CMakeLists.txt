@@ -81,6 +81,7 @@ add_library(UltraStoreCore STATIC
     core/StoreSettings.cpp
     core/Purchase.cpp
     core/Report.cpp
+    core/Account.cpp
 )
 set_target_properties(UltraStoreCore PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -104,6 +105,7 @@ add_executable(ultrastore
     ui/StoreWindow.cpp
     ui/StoreJobs.cpp
     ui/StoreSettingsPage.cpp
+    ui/StoreAccountPage.cpp
     cli/Commands.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h).

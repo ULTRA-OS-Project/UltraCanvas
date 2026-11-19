@@ -5,6 +5,7 @@
 // component versions it was built against (depends), so an install is the
 // app plus whatever of those the machine does not have yet.
 // Version: 0.8.0 - icon_variants / screenshot_variants: a picture at fixed sizes and browser formats, for the web store
+// Version: 0.7.2 - account_url: the account service the store signs in to
 // Version: 0.7.1 - market_url: the marketplace service the app page reports a problem to
 // Version: 0.7.0 - categories from one fixed list (StoreCategories), read case-insensitively
 // Version: 0.6.0 - featured: the admin's pick for the store's hero and Editor's picks
@@ -230,6 +231,9 @@ struct Catalog {
     // The marketplace service (Server/UltraStoreMarket) the store's app page
     // reports a problem to; empty when the publisher runs no operator tier.
     std::string marketUrl;
+    // The account service (Server/UltraStoreAccount) the store signs in to;
+    // empty when the publisher runs none (the store then has no Sign in).
+    std::string accountUrl;
     std::vector<Publisher> publishers;
     std::vector<Component> apps;        // kind == App
     std::vector<Component> components;  // kind == Runtime or Library
