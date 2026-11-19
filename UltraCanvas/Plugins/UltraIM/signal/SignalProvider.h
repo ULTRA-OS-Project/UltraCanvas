@@ -16,6 +16,25 @@
 // SignIn answers CapabilityMissing. Every call is a JSON-RPC 2.0 request
 // POSTed to <daemon>/api/v1/rpc naming its "account".
 //
+// The proxy: signal-cli connects to Signal by itself, so the provider's own
+// daemon is started with the proxy every UltraCanvas application shares
+// (UltraCanvasProxySettings.h) as Java's proxy options (DaemonProxy,
+// SignalDaemon.h), and started again when the setting changes while signed
+// in - the link and the account stay. A proxy signal-cli has no means for
+// (one that asks for a user name and password, SOCKS 4, one reached over
+// TLS), or a signal-cli that would not send everything through one - no Java
+// runtime starts it (its native build: nothing shows it reads the options),
+// or it is older than 0.13.13 (its network library was told of no proxy) -
+// is not left to connect directly: SignIn answers Unsupported, saying why,
+// and while signed in the daemon is stopped and the state is Error until the
+// setting changes. A daemon the user runs (credentials.server) connects as
+// the user started it.
+//
+// Our own daemon gone while signed in (it ended, it was killed) is started
+// again; when that fails - no Java any more, say - the state is Error with
+// what the start said, told once, and the tries go on behind it, each
+// failure in a row doubling the wait before the next (up to a minute).
+//
 // Sign-in links this device to the phone (UltraIMLoginType::QRCode): when
 // the account linked before (UltraVault: its number, and the daemon's
 // address when it was given) is still in the daemon's listAccounts, SignIn
@@ -57,9 +76,11 @@
 //     LeaveConversation leaves a group (quitGroup), or hides a 1:1 one on
 //     this device until its next message. No calls, stickers or reactions.
 //
+// Version: 0.2.1 - a daemon that cannot be started again says why (Error, once) and is tried less often
+// Version: 0.2.0 - the provider's own daemon follows the shared proxy setting
 // Version: 0.1.1 - a receipt that comes before the send is recorded is kept and applied, not lost
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -70,6 +91,7 @@
 #include "DataFormats/UltraCanvasJSON.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -218,6 +240,15 @@ private:
     SignalResponse Rpc(const std::string& method, const UltraCanvas::JSONValue& params, int timeoutMs = 30000);
     bool DaemonAnswers(const std::string& url, int timeoutMs);
     UltraIMResult EnsureDaemon(const std::string& server);
+    // Our own daemon was started for another proxy than the setting names now.
+    bool DaemonProxyChanged() const;
+    // The worker: our own daemon started again - `forProxy`, for a setting
+    // that changed; else because it is gone. A failure reaches the state
+    // (Error, with what EnsureDaemon said), once for one reason.
+    void RestartDaemon(uint64_t generation, bool forProxy);
+    // How long after a try to start the gone daemon the next may follow:
+    // nothing after a success, then retryMs doubled per failure in a row.
+    int RestartDelayMs() const;
     std::string DataPath(const std::string& name) const;
     std::string ConfigDirectory() const;
 
@@ -270,10 +301,17 @@ private:
 
     SignalDaemon daemon_;               // the provider's own signal-cli, when it started one
     std::atomic<uint64_t> rpcId_{0};
+    std::atomic<int> daemonFailures_{0};                        // restarts failed in a row
+    std::chrono::steady_clock::time_point lastRestartAt_;       // the listener's: when it last asked for one
 
     mutable std::mutex mutex_;          // everything below
     std::string daemonUrl_;             // "http://127.0.0.1:7583"
     bool        ownDaemon_ = false;     // daemonUrl_ is daemon_'s
+    DaemonProxy daemonProxy_;           // what daemon_ was last started for (or not started, when unusable)
+    // A signal-cli found unfit for a proxy (no Java runtime, too old), and
+    // why: not started again for one until a sign-in is asked for.
+    std::string unfitProgram_, unfitWhy_;
+    std::string daemonError_;           // why the last restart failed, as the state told it; "" = it did not
     std::string account_;               // the number, else the ACI: every call's "account"
     std::string number_, aci_;
     UltraIMAuthStep authStep_ = UltraIMAuthStep::Idle;

@@ -9,7 +9,12 @@
 // answers failing with Timeout instead of hanging; a contact's profile
 // picture fetched, a photo, a video and a file sent and received - the photo
 // and the video's preview picture arriving by themselves, the video when
-// asked for.
+// asked for. The proxy the applications share: told to TDLib before its
+// parameters, followed when it changes while signed in (another proxy, none),
+// the ones no longer used taken out of TDLib's database; a kind TDLib has
+// none of, or a proxy it refuses, takes Telegram off the network instead of
+// connecting directly, and fails a sign-in before anything is started.
+// Version: 0.1.9 - the proxy setting
 // Version: 0.1.8 - a supergroup: its members (a page of 200 out of more) and creator, and the count after one leaves
 // Version: 0.1.7 - a group after it is made: its members and creator, renamed, a member taken out (by its
 //                  creator alone) and added back, left; a private chat deleted on one side
@@ -20,7 +25,7 @@
 // Version: 0.1.2 - the code asked for another way
 // Version: 0.1.1 - the step timeout
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
@@ -28,6 +33,9 @@
 
 #include "UltraCanvasPathUtf8.h"
 #include "UltraIM/UltraIMCore.h"
+#ifdef ULTRACANVAS_HAS_NET
+#include "UltraNet/UltraNetCore.h"      // the proxy setting the provider follows
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -850,10 +858,159 @@ void TestTelegram() {
     fs::remove_all(base, ec);
 }
 
+#ifdef ULTRACANVAS_HAS_NET
+
+// What the fake's database at a provider's data directory keeps of the
+// network (fakeProxyState).
+TdObject ProxyState(const fs::path& dir) {
+    TdObject r = TdObject::MakeObject();
+    r.Set("@type", TdObject("fakeProxyState"));
+    r.Set("database_directory", TdObject(UltraCanvas::PathToUtf8(dir / "telegram" / "td")));
+    return TdJsonLibrary::Instance().Execute(r);
+}
+
+bool Eventually(const std::function<bool()>& holds, int seconds = 10) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+    while (!holds()) {
+        if (std::chrono::steady_clock::now() >= until) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return true;
+}
+
+// The module-wide proxy setting, as an application's proxy settings set it.
+void SetProxy(UltraNetProxyType type, const std::string& host, int port, const std::string& user = std::string(),
+              const std::string& password = std::string()) {
+    UltraNetProxyConfig proxy;
+    proxy.type = type;
+    proxy.host = host;
+    proxy.port = port;
+    if (!user.empty()) {
+        proxy.credentials.type = UltraNetAuthType::Basic;
+        proxy.credentials.username = user;
+        proxy.credentials.password = password;
+    }
+    UltraNet_SetGlobalProxy(proxy);
+}
+
+bool IsStateWith(const UltraIMEvent& e, UltraIMConnectionState state, const std::string& text) {
+    return e.type == UltraIMEventType::ConnectionStateChange && e.connectionState == state &&
+           e.errorText.find(text) != std::string::npos;
+}
+
+// TDLib connects by itself, so the proxy setting has to be told to it.
+void TestProxy() {
+    AddAccount("15550007", "Grace", "grace", "");
+    const fs::path base = fs::temp_directory_path() / ("ultraim-telegram-proxy-" + std::to_string(::rand()));
+    std::error_code ec;
+    fs::remove_all(base, ec);
+    auto server = [&]() { return ProxyState(base)["server"].GetString(); };
+    auto enabled = [&]() { return ProxyState(base)["enabled"].GetBoolean(false); };
+    auto kept = [&]() { return ProxyState(base)["count"].GetInteger(-1); };
+    auto network = [&]() { return ProxyState(base)["network"].GetString(); };
+
+    // A SOCKS 5 proxy chosen before the sign-in: TDLib has it before its
+    // parameters, which is before it connects anywhere.
+    SetProxy(UltraNetProxyType::Socks5, "127.0.0.1", 10808);
+    Events events;
+    auto grace = Device(base, events);
+    grace->SetProxyCheckInterval(50);
+    UltraIMResult r = SignIn(*grace, Phone("+1 555 0007"));
+    CHECK(!r && r.code == UltraIMResultCode::NeedsInput);
+    CHECK(SignIn(*grace, Code("12345")));
+    TdObject state = ProxyState(base);
+    CHECK(state["enabled"].GetBoolean(false));
+    CHECK(state["server"].GetString() == "127.0.0.1" && state["port"].GetInteger(0) == 10808);
+    CHECK(state["type"].GetString() == "proxyTypeSocks5");
+    CHECK(state["username"].GetString().empty() && state["password"].GetString().empty());
+    CHECK(state["early"].GetBoolean(false));
+    CHECK(state["tellings"].GetInteger(0) == 1);
+
+    // Another proxy while signed in - an HTTP one with a sign-in: TDLib is
+    // told within the check interval, says it is connecting to it, and the
+    // one before leaves its database.
+    SetProxy(UltraNetProxyType::Http, "proxy.example", 3128, "grace", "secret");
+    CHECK(Eventually([&]() { return server() == "proxy.example"; }));
+    state = ProxyState(base);
+    CHECK(state["type"].GetString() == "proxyTypeHttp" && state["port"].GetInteger(0) == 3128);
+    CHECK(state["username"].GetString() == "grace" && state["password"].GetString() == "secret");
+    CHECK(!state["early"].GetBoolean(true));
+    CHECK(Eventually([&]() { return kept() == 1; }));
+    CHECK(events.WaitFor([](const UltraIMEvent& e) {
+        return IsStateWith(e, UltraIMConnectionState::Reconnecting, "http://proxy.example:3128");
+    }));
+    CHECK(Eventually([&]() { return grace->GetConnectionState() == UltraIMConnectionState::Connected; }));
+    // The setting as it stands is not told again.
+    const int64_t tellings = ProxyState(base)["tellings"].GetInteger(0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    CHECK(ProxyState(base)["tellings"].GetInteger(0) == tellings);
+
+    // No proxy: directly, and nothing kept.
+    UltraNet_DisableProxy();
+    CHECK(Eventually([&]() { return !enabled() && kept() == 0; }));
+
+    // A kind TDLib has none of (SOCKS 4): not directly instead - off the
+    // network, saying why - and back on it once the setting names one it takes.
+    SetProxy(UltraNetProxyType::Socks4, "127.0.0.1", 1080);
+    CHECK(Eventually([&]() { return network() == "networkTypeNone"; }));
+    CHECK(events.WaitFor([](const UltraIMEvent& e) { return IsStateWith(e, UltraIMConnectionState::Error, "SOCKS 5"); }));
+    CHECK(Eventually([&]() { return grace->GetConnectionState() == UltraIMConnectionState::Error; }));
+    CHECK(!enabled());
+    SetProxy(UltraNetProxyType::Socks5, "127.0.0.1", 10808);
+    CHECK(Eventually([&]() { return network() == "networkTypeOther" && server() == "127.0.0.1"; }));
+    CHECK(Eventually([&]() { return grace->GetConnectionState() == UltraIMConnectionState::Connected; }));
+
+    // A proxy TDLib refuses (the fake: port 1): it would go on through the
+    // one before, so it is off the network here too.
+    SetProxy(UltraNetProxyType::Socks5, "127.0.0.1", 1);
+    CHECK(Eventually([&]() { return network() == "networkTypeNone"; }));
+    CHECK(events.WaitFor([](const UltraIMEvent& e) {
+        return IsStateWith(e, UltraIMConnectionState::Error, "did not take the proxy");
+    }));
+    CHECK(Eventually([&]() { return grace->GetConnectionState() == UltraIMConnectionState::Error; }));
+    UltraNet_DisableProxy();
+    CHECK(Eventually([&]() { return network() == "networkTypeOther" && !enabled() && kept() == 0; }));
+    CHECK(Eventually([&]() { return grace->GetConnectionState() == UltraIMConnectionState::Connected; }));
+    grace->Shutdown();
+
+    // At a sign-in such a proxy fails it, saying why, and TDLib is told
+    // nothing and given no parameters: it never starts.
+    SetProxy(UltraNetProxyType::Socks4, "127.0.0.1", 1080);
+    Events resumedEvents;
+    auto resumed = Device(base, resumedEvents);
+    const int64_t before = ProxyState(base)["tellings"].GetInteger(0);
+    r = SignIn(*resumed, UltraIMCredentials());
+    CHECK(!r && r.code == UltraIMResultCode::Unsupported);
+    CHECK(r.message.find("socks4a://127.0.0.1:1080") != std::string::npos);
+    CHECK(resumed->GetConnectionState() == UltraIMConnectionState::Error);
+    CHECK(ProxyState(base)["tellings"].GetInteger(0) == before);
+    // The setting put right: the stored session resumes, through the proxy.
+    SetProxy(UltraNetProxyType::Socks5, "127.0.0.1", 10808, "grace", "secret");
+    CHECK(SignIn(*resumed, UltraIMCredentials()));
+    state = ProxyState(base);
+    CHECK(state["enabled"].GetBoolean(false) && state["early"].GetBoolean(false));
+    CHECK(state["type"].GetString() == "proxyTypeSocks5" && state["port"].GetInteger(0) == 10808);
+    CHECK(state["username"].GetString() == "grace" && state["password"].GetString() == "secret");
+    CHECK(Eventually([&]() { return kept() == 1; }));
+    resumed->Shutdown();
+
+    UltraNet_DisableProxy();
+    fs::remove_all(base, ec);
+}
+
+#endif // ULTRACANVAS_HAS_NET
+
 } // namespace
 
 int main() {
+#ifdef ULTRACANVAS_HAS_NET
+    // Whatever proxy this machine is set to is not part of the tests.
+    UltraNet_DisableProxy();
+#endif
     TestTelegram();
+#ifdef ULTRACANVAS_HAS_NET
+    TestProxy();
+#endif
     std::printf("TelegramProviderTests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -1,8 +1,14 @@
 // Plugins/UltraIM/signal/SignalProvider.cpp
 // Signal - signal-cli's accounts, contacts and groups as UltraIM conversations
+// Version: 0.2.1 - our daemon gone and not to be started again: the state says why (Error, once for one
+//                  reason) instead of "reconnecting" for ever, and each failure in a row doubles the wait
+// Version: 0.2.0 - the provider's own daemon is started for the shared proxy setting (Java's proxy options in
+//                  its environment) and started again when the setting changes; a proxy signal-cli cannot
+//                  use, or a signal-cli that would not send everything through one (no Java runtime, older
+//                  than 0.13.13), is not left to connect directly
 // Version: 0.1.1 - a receipt that comes before the send is recorded is kept and applied, not lost
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "SignalProvider.h"
@@ -20,6 +26,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <system_error>
+#include <utility>
 
 namespace UltraIMSignal {
 
@@ -177,9 +184,12 @@ UltraIMEvent EventOf(UltraIMEventType type, const std::string& providerId, const
     return e;
 }
 
-std::string ReadTail(const std::string& path, size_t maxBytes) {
+// The end of a text file - of what it holds from `from` on (a log that is
+// appended to: what one start wrote, not the starts before it).
+std::string ReadTail(const std::string& path, size_t maxBytes, uint64_t from = 0) {
     std::FILE* f = UltraCanvas::OpenFileUtf8(path, "rb");
     if (!f) return std::string();
+    if (from > 0 && from <= 0x7fffffffu) std::fseek(f, static_cast<long>(from), SEEK_SET);
     std::string text;
     char buffer[4096];
     size_t n = 0;
@@ -457,19 +467,48 @@ UltraIMResult SignalProvider::EnsureDaemon(const std::string& server) {
         ownDaemon_ = false;
         return UltraIMResult::Ok();
     }
+    // Our own daemon connects as the proxy setting says, or is not started:
+    // signal-cli reaches Signal by itself, past UltraNet.
+    const DaemonProxy proxy = ChooseDaemonProxy();
     {
         std::string running;
+        bool sameProxy = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (ownDaemon_) running = daemonUrl_;
+            sameProxy = daemonProxy_ == proxy;
         }
-        if (!running.empty() && daemon_.IsRunning() && DaemonAnswers(running, 3000)) return UltraIMResult::Ok();
+        if (!running.empty() && sameProxy && daemon_.IsRunning() && DaemonAnswers(running, 3000)) return UltraIMResult::Ok();
+    }
+    {
+        // What this start is for, however it ends: DaemonProxyChanged asks
+        // for another only when the setting has moved on from it.
+        std::lock_guard<std::mutex> lock(mutex_);
+        daemonProxy_ = proxy;
+    }
+    if (proxy.kind == DaemonProxy::Kind::Unusable) {
+        // One started for the setting before does not go on connecting its way.
+        daemon_.Stop();
+        return UltraIMResult::Error(UltraIMResultCode::Unsupported, proxy.text);
     }
     const std::string program = FindSignalCli(config_.pluginDirectory);
     if (program.empty())
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
                                     "Signal needs signal-cli (which needs Java 21): install it, or give the address "
                                     "of a running signal-cli daemon (signal-cli daemon --http 127.0.0.1:7583)");
+    // A signal-cli found unfit for a proxy before (below) is not started
+    // again for one: every retry would start and stop it.
+    if (proxy.kind == DaemonProxy::Kind::Through) {
+        std::string why;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (unfitProgram_ == program) why = unfitWhy_;
+        }
+        if (!why.empty()) {
+            daemon_.Stop();
+            return UltraIMResult::Error(UltraIMResultCode::Unsupported, why);
+        }
+    }
     const int port = FreeLoopbackPort();
     if (port <= 0) return UltraIMResult::Error(UltraIMResultCode::NetworkError, "No free port for signal-cli");
     const std::string configDir = ConfigDirectory();
@@ -477,9 +516,15 @@ UltraIMResult SignalProvider::EnsureDaemon(const std::string& server) {
     std::filesystem::create_directories(UltraCanvas::PathFromUtf8(configDir), ec);
     const std::string logPath = DataPath("signal-cli.log");
     const std::string address = "127.0.0.1:" + std::to_string(port);
+    std::vector<std::pair<std::string, std::string>> environment;
+    if (!proxy.jvmOptions.empty()) environment.emplace_back("JAVA_TOOL_OPTIONS", JavaToolOptionsWith(proxy.jvmOptions));
+    // Where this start's lines begin in the log (it is appended to).
+    std::error_code sizeError;
+    const auto logSize = std::filesystem::file_size(UltraCanvas::PathFromUtf8(logPath), sizeError);
+    const uint64_t logStart = sizeError ? 0 : static_cast<uint64_t>(logSize);
     std::string error;
     if (!daemon_.Start(program, {"--config", configDir, "daemon", "--http", address, "--receive-mode=manual"}, logPath,
-                       error))
+                       error, environment))
         return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing, error);
     const std::string url2 = "http://" + address;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timings_.daemonStartMs);
@@ -489,21 +534,95 @@ UltraIMResult SignalProvider::EnsureDaemon(const std::string& server) {
             return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Shutting down");
         }
         if (!daemon_.IsRunning()) {
-            const std::string tail = ReadTail(logPath, 400);
+            // What this start wrote: the same failure then reads the same
+            // each time, and is told once (RestartDaemon).
+            const std::string tail = ReadTail(logPath, 400, logStart);
             return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
                                         "signal-cli did not start (it needs Java 21)" +
                                             (tail.empty() ? std::string() : ": " + tail));
         }
         if (DaemonAnswers(url2, 1000)) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                daemonUrl_ = url2;
+                ownDaemon_ = true;
+            }
+            if (proxy.kind != DaemonProxy::Kind::Through) return UltraIMResult::Ok();
+            // It answers - but will all of it go through the proxy? The proxy
+            // reaches signal-cli as Java options: for one no Java runtime
+            // starts (its native build) nothing shows they are read, and one
+            // older than 0.13.13 tells its network library nothing of them.
+            // Either would reach Signal directly, so it is stopped instead.
+            std::string why;
+            if (!JvmTookOptions(logPath, logStart)) {
+                why = "this signal-cli (" + program + ") is not run by Java, which is where it takes a proxy from. "
+                      "Install signal-cli's Java distribution";
+            } else {
+                const std::string version = Rpc("version", JSONValue(), 10000).result["version"].GetString();
+                if (!SignalCliTakesProxy(version))
+                    why = "signal-cli " + (version.empty() ? std::string("(of a version it does not tell)") : version) +
+                          " sends only part of what it does through a proxy. Install signal-cli 0.13.13 or later";
+            }
+            if (why.empty()) return UltraIMResult::Ok();
+            why = "Signal cannot connect through the proxy " + proxy.text + ": " + why +
+                  ", or run the daemon yourself and give its address.";
+            daemon_.Stop();
             std::lock_guard<std::mutex> lock(mutex_);
-            daemonUrl_ = url2;
-            ownDaemon_ = true;
-            return UltraIMResult::Ok();
+            daemonUrl_.clear();
+            unfitProgram_ = program;
+            unfitWhy_ = why;
+            return UltraIMResult::Error(UltraIMResultCode::Unsupported, why);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
     daemon_.Stop();
     return UltraIMResult::Error(UltraIMResultCode::Timeout, "signal-cli did not answer in time (see " + logPath + ")");
+}
+
+bool SignalProvider::DaemonProxyChanged() const {
+    DaemonProxy started;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!ownDaemon_) return false;
+        started = daemonProxy_;
+    }
+    return !(ChooseDaemonProxy() == started);
+}
+
+void SignalProvider::RestartDaemon(uint64_t generation, bool forProxy) {
+    if (listenGeneration_.load() != generation) return;
+    // Asked for more than once while the first was under way: done already.
+    if (forProxy ? !DaemonProxyChanged() : daemon_.IsRunning()) return;
+    if (forProxy) SetState(UltraIMConnectionState::Reconnecting, "The proxy setting changed: signal-cli is started again");
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        daemonUrl_.clear();
+    }
+    const UltraIMResult started = EnsureDaemon(std::string());
+    if (listenGeneration_.load() != generation) return;
+    if (started) {
+        daemonFailures_ = 0;
+        std::lock_guard<std::mutex> lock(mutex_);
+        daemonError_.clear();
+        return;     // (Connected once receive answers again)
+    }
+    ++daemonFailures_;
+    // Why, where the person looks - once for one reason: the tries go on
+    // behind it, and would otherwise say it again every time.
+    bool news = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        news = daemonError_ != started.message;
+        daemonError_ = started.message;
+    }
+    if (news || state_.load() != UltraIMConnectionState::Error) SetState(UltraIMConnectionState::Error, started.message);
+}
+
+int SignalProvider::RestartDelayMs() const {
+    const int failures = daemonFailures_.load();
+    if (failures <= 0) return 0;
+    const int64_t base = std::max(200, timings_.retryMs);
+    return static_cast<int>(std::min<int64_t>(60000, base << std::min(failures - 1, 8)));
 }
 
 // ============================================================================
@@ -575,6 +694,14 @@ void SignalProvider::SignInOnWorker(UltraIMCredentials credentials, UltraIMResul
             if (onResult) onResult(UltraIMResult::Error(UltraIMResultCode::NeedsInput, hint));
             return;
         }
+    }
+    {
+        // A sign-in asked for tries the signal-cli there is now afresh.
+        std::lock_guard<std::mutex> lock(mutex_);
+        unfitProgram_.clear();
+        unfitWhy_.clear();
+        daemonError_.clear();
+        daemonFailures_ = 0;
     }
     const UltraIMResult daemon = EnsureDaemon(credentials.server);
     if (!daemon) return fail(daemon);
@@ -1120,6 +1247,18 @@ void SignalProvider::ReceiveOnListener(uint64_t generation) {
         SetListenMode(ListenMode::Idle);
         return;
     }
+    // Our daemon connects as the proxy setting said when it was started: the
+    // setting changed, it is started again for it (signal-cli keeps the link
+    // and the account on disk). When it cannot be - a proxy signal-cli has
+    // no means for - it stays stopped, and the state says why.
+    if (DaemonProxyChanged()) {
+        Enqueue([this, generation]() { RestartDaemon(generation, true); });
+        std::unique_lock<std::mutex> lock(listenMutex_);
+        listenWake_.wait_for(lock, std::chrono::milliseconds(std::max(200, timings_.retryMs)), [this, generation]() {
+            return stopFlag_.load() || listenGeneration_.load() != generation;
+        });
+        return;
+    }
     const int timeout = std::clamp(timings_.receiveTimeoutSec, 1, 5);
     JSONValue params = JSONValue::MakeObject();
     params.Set("account", JSONValue(account));
@@ -1137,16 +1276,13 @@ void SignalProvider::ReceiveOnListener(uint64_t generation) {
             std::lock_guard<std::mutex> lock(mutex_);
             own = ownDaemon_;
         }
-        if (own && r.status == 0 && !daemon_.IsRunning()) {
-            // Our daemon is gone: started again (on another port).
-            Enqueue([this, generation]() {
-                if (listenGeneration_.load() != generation) return;
-                {
-                    std::lock_guard<std::mutex> lock(mutex_);
-                    daemonUrl_.clear();
-                }
-                EnsureDaemon(std::string());
-            });
+        // Our daemon is gone: started again (on another port). Not at every
+        // look when that keeps failing - each try starts a Java runtime.
+        const auto now = std::chrono::steady_clock::now();
+        if (own && r.status == 0 && !daemon_.IsRunning() &&
+            now - lastRestartAt_ >= std::chrono::milliseconds(RestartDelayMs())) {
+            lastRestartAt_ = now;
+            Enqueue([this, generation]() { RestartDaemon(generation, false); });
         }
         std::unique_lock<std::mutex> lock(listenMutex_);
         listenWake_.wait_for(lock, std::chrono::milliseconds(std::max(200, timings_.retryMs)), [this, generation]() {
@@ -1154,7 +1290,17 @@ void SignalProvider::ReceiveOnListener(uint64_t generation) {
         });
         return;
     }
-    if (state_.load() == UltraIMConnectionState::Reconnecting) SetState(UltraIMConnectionState::Connected);
+    // (Error: the daemon could not be started again, or was stopped for a
+    // proxy it could not use.)
+    const UltraIMConnectionState state = state_.load();
+    if (state == UltraIMConnectionState::Reconnecting || state == UltraIMConnectionState::Error) {
+        daemonFailures_ = 0;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            daemonError_.clear();
+        }
+        SetState(UltraIMConnectionState::Connected);
+    }
     for (const JSONValue& item : r.result.GetElements()) {
         std::vector<UltraIMEvent> events;
         std::vector<UltraIMMessage> media;

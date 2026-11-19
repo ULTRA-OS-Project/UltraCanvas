@@ -141,6 +141,9 @@ ULTRANET_PROBE(kArea, UltraNet_HttpGet) {
 }
 ```
 
+<!-- doc-check: namespace ultranet_apistatus { struct Outcome; Outcome Implemented(std::string detail); }
+#define ULTRANET_PROBE_NAMED(areaName, displayName, uniqueId) static ::ultranet_apistatus::Outcome ultranet_probe_##uniqueId()
+-->
 Rules that keep the report trustworthy:
 
 * `PROBE_EXPECT` failing means the API misbehaved → `BROKEN`, never

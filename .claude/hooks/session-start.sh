@@ -50,6 +50,9 @@
 # current for any branch, and the branch the session starts on has its copy
 # fetched here - both hooks then see the branch as it is on origin.
 #
+# Version: 1.9.0 - Python's websockets package (pip, as CI): the loopback server of UltraNet's
+#                  WebSocket tests, twelve of which skipped here; libavahi-client-dev, without
+#                  which the mDNS plug-in was not built
 # Version: 1.8.0 - libc++'s headers unpacked privately for scripts/check_libcxx_syntax.py (the
 #                  Windows rows' library); not installed: libc++-dev removes libunwind-dev, and GStreamer with it
 # Version: 1.7.0 - xvfb, xauth and xclip, for the window tests CI runs on a virtual display
@@ -62,7 +65,7 @@
 # Version: 1.1.1 - Hunspell and the en_US dictionary, as CI now installs
 # Version: 1.1.0 - every library CI installs, not only libsodium
 # Version: 1.0.0
-# Last Modified: 2026-11-17
+# Last Modified: 2026-11-18
 # Author: UltraCanvas Framework
 set -u
 
@@ -103,6 +106,10 @@ PACKAGES=(
     # CoAP (libcoap3), SNMP (net-snmp), SSH (libssh) - as CI installs since
     # 2026-10; without them a change to one of the five compiled nowhere
     libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
+    # and its mDNS plug-in (ChatCube's people on the local network), which
+    # builds on Avahi's client library - the library alone: the Avahi daemon
+    # is one of the services not started here, and what needs it skips
+    libavahi-client-dev
     # UltraCrypt (credential vaults), UltraDatabase (SQLite, PostgreSQL client)
     libsodium-dev libsqlite3-dev libpq-dev libmariadb-dev
     # an sshd to run the SSH tunnel tests against (a private one, on a high
@@ -185,6 +192,34 @@ fetch_libcxx_headers() {
              "scripts/check_libcxx_syntax.py cannot run in this session."
 }
 fetch_libcxx_headers
+
+# ---- Python's `websockets`, for UltraNet's WebSocket tests -----------------
+#
+# UltraNetTests starts a loopback WebSocket server in Python for its
+# ws_loopback_* and ws_* tests (Tests/UltraNet/test_websocket.cpp), and CI
+# installs the package it is written with ("Install python websockets
+# package" in build.yml). Without it those tests skip - twelve of them here,
+# checked 2026-11-18 - and the receiver thread, the frame handling, the
+# pings and the size limit ran nowhere in a cloud session. It is installed
+# with pip, as CI does, not from PACKAGES: the server uses the package's
+# asyncio API (websockets.asyncio.server, 13.0 and later), and Ubuntu 24.04's
+# python3-websockets is 10.4, which imports and then cannot start it. For the
+# user, no root: nothing of the system's Python is changed. A few seconds the
+# first time; nothing once it imports.
+install_python_websockets() {
+    command -v python3 >/dev/null 2>&1 || return 0
+    python3 -c 'from websockets.asyncio.server import serve' >/dev/null 2>&1 && return 0
+    local log="${TMPDIR:-/tmp}/ultracanvas-session-start.log"
+    if command -v pip3 >/dev/null 2>&1 &&
+       { timeout 120 pip3 install --user --quiet --break-system-packages websockets >>"$log" 2>&1 ||
+         timeout 120 pip3 install --user --quiet websockets >>"$log" 2>&1; } &&
+       python3 -c 'from websockets.asyncio.server import serve' >/dev/null 2>&1; then
+        return 0
+    fi
+    echo "Cloud setup: Python's websockets package could not be installed (see $log);" \
+         "UltraNet's WebSocket tests skip in this session."
+}
+install_python_websockets
 
 mapfile -t missing < <(missing_packages)
 need_locale=0

@@ -3,7 +3,10 @@
 // the request's own, the exceptions, the machine itself always direct, the
 // operating system's proxy read from the environment (Linux), the global
 // source hook - and an HTTP request that really goes through a proxy: a
-// one-shot fake proxy on 127.0.0.1 answers it.
+// one-shot fake proxy on 127.0.0.1 answers it. UltraNet_ResolveTunnelProxy:
+// the proxy for a connection that is not the web's - the system's SOCKS
+// proxy first, its web proxy where there is no other - and a TCP connection
+// opened through the system's web proxy that way.
 #include "test_framework.h"
 
 #include <UltraNet/UltraNetCore.h>
@@ -173,6 +176,75 @@ TEST(proxy_system_reads_the_environment_per_scheme) {
     REQUIRE(mailDirect);
     REQUIRE(exceptionDirect);
     REQUIRE(mailSocks);
+}
+
+// The environment's proxy variables set aside for a test, and put back.
+struct ProxyEnvironment {
+    std::vector<std::pair<std::string, std::string>> saved;
+    ProxyEnvironment() {
+        for (const char* n : Names()) {
+            if (const char* v = std::getenv(n)) saved.emplace_back(n, v);
+            ::unsetenv(n);
+        }
+    }
+    ~ProxyEnvironment() {
+        for (const char* n : Names()) ::unsetenv(n);
+        for (const auto& kv : saved) ::setenv(kv.first.c_str(), kv.second.c_str(), 1);
+    }
+    static std::vector<const char*> Names() {
+        return {"http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy",
+                "ALL_PROXY",  "ftp_proxy",  "FTP_PROXY",   "no_proxy",    "NO_PROXY"};
+    }
+};
+
+TEST(proxy_tunnel_takes_the_web_proxy_where_there_is_no_other) {
+    GlobalProxyGuard guard;
+    UltraNetProxyConfig web, socks, both, excepted, own, chosen, chosenExcepted, none, loopback, v6;
+    {
+        ProxyEnvironment environment;
+        ::setenv("https_proxy", "http://web.proxy.test:3128", 1);
+        ::setenv("no_proxy", "skip.test", 1);
+        UltraNet_SetGlobalProxy(UltraNetProxyConfig::FromSystem());
+        // The system names a web proxy only: a chat server on its own port
+        // goes through that (UltraNet_ResolveProxy alone connects directly).
+        own = UltraNet_ResolveProxy("tcp://irc.example.org:6697");
+        web = UltraNet_ResolveTunnelProxy("irc.example.org", 6697);
+        excepted = UltraNet_ResolveTunnelProxy("irc.skip.test", 6697);
+        loopback = UltraNet_ResolveTunnelProxy("127.0.0.1", 6697);
+        v6 = UltraNet_ResolveTunnelProxy("2001:db8::1", 5222);
+        // A SOCKS proxy as well: that one, it carries anything.
+        ::setenv("all_proxy", "socks5h://socks.proxy.test:1080", 1);
+        UltraNet_ForgetSystemProxy();
+        both = UltraNet_ResolveTunnelProxy("irc.example.org", 6697);
+        ::unsetenv("https_proxy");
+        UltraNet_ForgetSystemProxy();
+        socks = UltraNet_ResolveTunnelProxy("irc.example.org", 6697);
+        // A proxy the person chose is the one, whatever the system says.
+        UltraNetProxyConfig manual = Manual(UltraNetProxyType::Http, "chosen.test", 8080);
+        manual.noProxyHosts = {"*.internal.test"};
+        UltraNet_SetGlobalProxy(manual);
+        chosen = UltraNet_ResolveTunnelProxy("irc.example.org", 6697);
+        chosenExcepted = UltraNet_ResolveTunnelProxy("chat.internal.test", 5222);
+        // "No proxy" is no proxy.
+        ::setenv("https_proxy", "http://web.proxy.test:3128", 1);
+        UltraNet_DisableProxy();
+        UltraNet_ForgetSystemProxy();
+        none = UltraNet_ResolveTunnelProxy("irc.example.org", 6697);
+    }
+    REQUIRE(!own.IsEnabled());
+    REQUIRE(web.type == UltraNetProxyType::Http);
+    REQUIRE_EQ(web.host, std::string("web.proxy.test"));
+    REQUIRE_EQ(web.port, 3128);
+    REQUIRE(!excepted.IsEnabled());
+    REQUIRE(!loopback.IsEnabled());
+    REQUIRE(v6.type == UltraNetProxyType::Http);
+    REQUIRE(both.type == UltraNetProxyType::Socks5);
+    REQUIRE_EQ(both.host, std::string("socks.proxy.test"));
+    REQUIRE(socks.type == UltraNetProxyType::Socks5);
+    REQUIRE(chosen.type == UltraNetProxyType::Http);
+    REQUIRE_EQ(chosen.host, std::string("chosen.test"));
+    REQUIRE(!chosenExcepted.IsEnabled());
+    REQUIRE(!none.IsEnabled());
 }
 #endif
 
@@ -426,6 +498,36 @@ TEST(proxy_tcp_http_connect_407) {
     REQUIRE(!r.success);
     REQUIRE(r.code == UltraNetResultCode::AuthenticationRequired);
 }
+
+#if defined(__linux__)
+// A connection of its own protocol through the system's web proxy: the
+// answer of UltraNet_ResolveTunnelProxy as the socket's proxy.
+TEST(proxy_tcp_through_the_systems_web_proxy) {
+    GlobalProxyGuard guard;
+    std::string request;
+    ScriptedServer proxy;
+    REQUIRE(proxy.Start([&](int c) {
+        request = ReadUntil(c, "\r\n\r\n");
+        SendText(c, "HTTP/1.1 200 Connection established\r\n\r\n:irc.test NOTICE * :hello\r\n");
+    }));
+    UltraNetResult opened;
+    UltraNetHandle h = UltraNetInvalidHandle;
+    {
+        ProxyEnvironment environment;
+        ::setenv("https_proxy", ("http://127.0.0.1:" + std::to_string(proxy.port)).c_str(), 1);
+        UltraNet_SetGlobalProxy(UltraNetProxyConfig::FromSystem());
+        UltraNetSocketOptions o;
+        o.connectTimeoutMs = 5000;
+        o.proxy = UltraNet_ResolveTunnelProxy("irc.target.invalid", 6697);
+        opened = UltraNet_TcpOpen("irc.target.invalid", 6697, o, h);
+    }
+    REQUIRE(opened.success);
+    REQUIRE_EQ(ReceiveText(h), std::string(":irc.test NOTICE * :hello\r\n"));
+    UltraNet_SocketClose(h);
+    proxy.Join();
+    REQUIRE(request.rfind("CONNECT irc.target.invalid:6697 HTTP/1.1\r\n", 0) == 0);
+}
+#endif
 
 TEST(proxy_tcp_direct_by_default_and_detach) {
     GlobalProxyGuard guard;

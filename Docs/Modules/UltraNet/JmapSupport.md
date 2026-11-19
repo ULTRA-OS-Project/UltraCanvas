@@ -61,10 +61,11 @@ engine changes (subject to the id-mapping question in §4).
 ### 3.1 No JSON library in the build (blocking)
 
 UltraNet has **no JSON parser/serializer**. Notably,
-`Plugins/Documents/UltraCanvasDocument.cpp` already `#include`s
+`Plugins/Documents/UltraCanvasDocument.cpp` (never in the build, and removed
+on 2026-11-18) `#include`d
 `<nlohmann/json.hpp>` ("assuming we have a JSON library"), but nlohmann/json is
 neither vendored under `third_party/` nor referenced by any CMakeLists — that
-include only compiles where the system happens to provide it.
+include only compiled where the system happened to provide it.
 
 Options:
 

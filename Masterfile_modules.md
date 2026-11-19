@@ -1887,7 +1887,9 @@ future.
   challenge and collects the code, and the exchange and the refresh go
   through the service, which adds the secret. UltraMail signs in through
   `https://oauth-callback.ultraos.eu` this way
-- `UltraNet_ResolveProxy`, `UltraNet_DetectSystemProxy`,
+- `UltraNet_ResolveProxy`, `UltraNet_ResolveTunnelProxy` (a connection that
+  is not the web's: the system's SOCKS proxy, else its web proxy as a
+  tunnel - IRC, XMPP, Telegram), `UltraNet_DetectSystemProxy`,
   `UltraNet_DetectSystemProxyFor`, `UltraNet_CanEvaluateProxyScript`,
   `UltraNet_SetGlobalProxy`, `UltraNet_GetGlobalProxy`, `UltraNet_DisableProxy`,
   `UltraNet_SetGlobalProxySource`, `UltraNet_ForgetSystemProxy`,
@@ -2178,7 +2180,9 @@ backing library is never visible in a public header.
   codes, ChatCube Direct's sign-in checks them (until 2026-11 in
   `Apps/UltraAuthenticator/otp/`)
 
-Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
+Streaming class: `UltraCryptHasher` (HMAC is the one call
+`UltraCrypt_Hmac`; a streaming `UltraCryptHmacHasher` was proposed and not
+built).
 
 UltraCrypt is the required cryptographic module for the UCD v2 file format,
 UltraVault, UltraDatabase at-rest encryption, UltraAuthenticator and any
@@ -3022,7 +3026,10 @@ Telegram (`UltraCanvas/Plugins/UltraIM/telegram/`, module `ultraim_telegram`)
 on TDLib's JSON interface, loaded at run time (not linked): sign-in in steps
 (`UltraIMAuthStep`, result `NeedsInput`), the main chat list, private chats
 and groups, replies, edits, deletion, read marks, typing, presence, history,
-people by username or phone number. Provider: Mastodon
+people by username or phone number; TDLib connects by itself, so the
+provider tells it the proxy the applications share (`addProxy` /
+`disableProxy` before its parameters, and again when the setting changes).
+Provider: Mastodon
 (`UltraCanvas/Plugins/UltraIM/mastodon/`, module `ultraim_mastodon`): the
 direct messages of a Mastodon server over its REST API - browser sign-in
 (OAuth with PKCE, `UltraIMAuthStep::Browser`), a chat per set of people
@@ -3036,7 +3043,9 @@ thread replies, files, edits, deletes. Provider: Zulip
 group messages and stream topics of a Zulip organization - password or API
 key; the event queue; uploads, edits, deletes. Provider: Signal
 (`UltraCanvas/Plugins/UltraIM/signal/`, module `ultraim_signal`): through a
-signal-cli daemon (the user's, or one it starts) - linked to the phone by
+signal-cli daemon (the user's, or one it starts - for the proxy the
+applications share, as Java's proxy options, and again when the setting
+changes) - linked to the phone by
 QR code; 1:1 chats and groups, quotes, edits, deletes, receipts, typing,
 attachments. Provider: XMPP (`UltraCanvas/Plugins/UltraIM/xmpp/`, module
 `ultraim_xmpp`): any XMPP server over TCP (STARTTLS or direct TLS, found by

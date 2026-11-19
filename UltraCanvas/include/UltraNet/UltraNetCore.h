@@ -3,6 +3,8 @@
 // configuration, credentials, proxy descriptor, transfer stats, and the
 // initialize/shutdown/version entrypoints. Full surface defined in the
 // UltraNet Master Registry v1.0.0.
+// Version: 0.3.1 - UltraNet_ResolveTunnelProxy: the proxy for a connection that is
+//                  not the web's, the web's proxy taken where there is no other
 // Version: 0.3.0 - proxies: the system's by default (UltraNetProxyType::System,
 //                  the default of UltraNetConfig::proxy), Direct for one
 //                  request, a PAC address, SOCKS name resolution at the proxy;
@@ -380,6 +382,20 @@ void UltraNet_SetGlobalProxySource(std::function<UltraNetProxyConfig()> source);
 // which here means "connect directly". Never System or Direct.
 UltraNetProxyConfig UltraNet_ResolveProxy(const std::string& url,
                                           const UltraNetProxyConfig& requested = UltraNetProxyConfig());
+// The proxy for a connection to host:port that is not the web's - a chat
+// protocol on its own port, a client library's own transport - of a program
+// that is to follow the proxy setting in everything it does: the one
+// UltraNet_ResolveProxy gives "tcp://host:port" (a proxy the person chose;
+// under System the operating system's SOCKS proxy or all_proxy, which carry
+// anything), and where that is none the one it gives "https://host:port" -
+// the web's proxy, which carries such a connection as a CONNECT tunnel. So
+// with nothing but a web proxy set in the system the connection goes
+// through that, where UltraNet_ResolveProxy for "tcp://" alone would connect
+// directly; a proxy that tunnels to port 443 only then refuses it, and the
+// caller says so (UltraNet_TcpOpen's error names the proxy) rather than
+// connect directly. Hand it to UltraNetSocketOptions::proxy. The exceptions
+// and the machine itself are taken out as ever; NoProxy means directly.
+UltraNetProxyConfig UltraNet_ResolveTunnelProxy(const std::string& host, int port);
 // Forgets what the operating system's proxy was found to be, so the next
 // connection asks again (after the system settings changed).
 void UltraNet_ForgetSystemProxy();

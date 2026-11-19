@@ -4,8 +4,9 @@
 // When ULTRACRYPT_HAVE_SODIUM is not defined the module still compiles, but
 // every operation returns BackendUnavailable. That is deliberate: the failure
 // mode this module exists to prevent is security code that silently does
-// nothing (see UltraCanvasDocument's dormant #ifdef ULTRACANVAS_USE_OPENSSL
-// fallback, which returned success while passing plaintext through). Nothing
+// nothing (the former UltraCanvasDocument's dormant #ifdef
+// ULTRACANVAS_USE_OPENSSL fallback, which returned success while passing
+// plaintext through - Docs/Modules/UltraCrypt/README.md, 1.1). Nothing
 // here ever reports success without doing the work.
 //
 // Version: 0.4.0

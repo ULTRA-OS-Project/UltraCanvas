@@ -14,7 +14,14 @@ UltraNet follows the setting on every connection it makes through libcurl -
 HTTP and HTTPS (and so every UltraAI provider), WebSocket, FTP / SFTP, the
 IMAP, SMTP, POP3, WebDAV, LDAP, Telnet, RTSP and gRPC plug-ins, and SSH
 (the SSH plug-in is handed a connection made through the proxy); UltraClaude
-passes it to the `claude` CLI in its environment. How UltraNet
+passes it to the `claude` CLI in its environment, and two UltraIM providers
+hand it to the program that connects for them: Telegram tells it to TDLib,
+Signal starts signal-cli with it as Java's proxy options
+(`Docs/Modules/UltraIM/README.md`, *Provider: Telegram* and *Provider:
+Signal*). IRC and XMPP over TCP go through it as well - and, like
+Telegram, through the system's web proxy where it names no SOCKS proxy
+(`UltraNet_ResolveTunnelProxy`), so that with "the system's proxy" chosen
+every network of ChatCube takes the same way out. How UltraNet
 decides, and what "the operating system's proxy" is on each platform, is
 the UltraNet module's *Proxies* section (`Docs/Modules/UltraNet/README.md`).
 
@@ -206,7 +213,10 @@ for a sign-in (HTTP 407) is named as such.
   (`CanUseAutoConfigUrl`, Linux and the BSDs); the system's own automatic
   setting still applies there through GIO.
 - A password that is not remembered is used only by the application it was
-  typed into, until it ends: another application connects without it.
+  typed into, until it ends: another application connects without it. One
+  exception: ChatCube's Telegram network hands the proxy to TDLib, which
+  keeps the proxy it uses - the password with it - in its own encrypted
+  database until it is told another.
 - `ProxySettingsTest` (`Tests/ProxySettingsTest.cpp`) covers the file, the
   vault, UltraNet following a change another application saved, and the
   check through a proxy on 127.0.0.1; `UltraNetTests` (`test_proxy.cpp`)
