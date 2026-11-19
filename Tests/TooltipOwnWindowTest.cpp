@@ -8,12 +8,17 @@
 // These tests open a window, cover it with a second one, show a tooltip of
 // the first and read the screen back: the tooltip must be on top, outside the
 // window it belongs to where there is room, let the pointer through, and go
-// when that window closes, so it never keeps the application running.
+// when that window closes, so it never keeps the application running. And,
+// floating above every window, it must go when the pointer leaves the window
+// it belongs to or that window loses the focus: left standing, it stood over
+// another program's window that had come over its own.
 //
 // X11 only (it reads the X server's stacking order and the screen's pixels);
 // runs headless under Xvfb. Skips - rather than fails - without a display.
+// Version: 1.1.0 - the pointer leaving the window, or the window losing the focus, takes
+//                  its tooltip away (and a tooltip waiting for its delay is not shown)
 // Version: 1.0.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -231,6 +236,39 @@ int main() {
          XGetWindowAttributes(display, tooltipX, &attributes) && attributes.map_state == IsUnmapped);
     UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(target.get(), "Shown again", pointer, style);
     TEST("shown again: in the same window", UltraCanvasTooltipManager::GetTooltipWindow() == tooltipWindow);
+
+    // The pointer leaves the window the tooltip belongs to (another
+    // program's window came over it, or the pointer went there): it goes.
+    auto leaveOf = [](UltraCanvasWindowBase* window, UCEventType type) {
+        UCEvent event;
+        event.type = type;
+        event.targetWindow = window->GetWindowWeakPtr();
+        event.nativeWindowHandle = window->GetNativeHandle();
+        return event;
+    };
+    app.DispatchEvent(leaveOf(cover.get(), UCEventType::MouseLeave));
+    TEST("the pointer leaving another window leaves the tooltip shown",
+         UltraCanvasTooltipManager::GetTooltipWindow() == tooltipWindow);
+    app.DispatchEvent(leaveOf(target.get(), UCEventType::MouseLeave));
+    XSync(display, False);
+    TEST("the pointer leaving its window hides the tooltip", !UltraCanvasTooltipManager::IsVisible() &&
+                                                             UltraCanvasTooltipManager::GetTooltipWindow() == nullptr);
+    TEST("the pointer leaving its window unmaps the tooltip's window",
+         XGetWindowAttributes(display, tooltipX, &attributes) && attributes.map_state == IsUnmapped);
+
+    // One still waiting for its delay is not shown when the delay is up
+    UltraCanvasTooltipManager::UpdateAndShowTooltip(target.get(), "Waiting", pointer, style);
+    TEST("a tooltip waits for its delay", UltraCanvasTooltipManager::IsPending());
+    app.DispatchEvent(leaveOf(target.get(), UCEventType::MouseLeave));
+    TEST("the pointer leaving its window cancels a tooltip still waiting",
+         !UltraCanvasTooltipManager::IsPending() && !UltraCanvasTooltipManager::IsVisible());
+
+    // The window losing the focus (another program activated) takes it too
+    UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(target.get(), "Focus", pointer, style);
+    TEST("shown again before the focus goes", UltraCanvasTooltipManager::GetTooltipWindow() == tooltipWindow);
+    app.DispatchEvent(leaveOf(target.get(), UCEventType::WindowBlur));
+    TEST("its window losing the focus hides the tooltip", !UltraCanvasTooltipManager::IsVisible() &&
+                                                          UltraCanvasTooltipManager::GetTooltipWindow() == nullptr);
 
     // Turned off, it is drawn inside the window it belongs to, as before
     UltraCanvasTooltipManager::SetUseOwnWindow(false);

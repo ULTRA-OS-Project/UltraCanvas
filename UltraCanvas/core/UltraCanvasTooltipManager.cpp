@@ -1,5 +1,8 @@
 // UltraCanvasTooltipManager.cpp
 // Implementation of tooltip system for UltraCanvas
+// Version: 2.5.3 - PointerLeftWindow: the pointer leaving the window a tooltip belongs to,
+//                  or the window losing the focus, takes the tooltip away - shown in its
+//                  own window above every other, it stayed over the window that covered it
 // Version: 2.5.2 - an element with no window (and a program with no application) asks for
 //                  a tooltip without crashing: nothing is shown
 // Version: 2.5.1 - in a window of its own on macOS too
@@ -13,7 +16,7 @@
 //                  clear of the line under it (below the pointer's arrow only
 //                  when there is no room above)
 // Version: 2.3.0
-// Last Modified: 2026-11-09
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTooltipManager.h"
@@ -604,6 +607,12 @@ namespace UltraCanvas {
             }
             CloseOwnWindow();
         }
+    }
+
+    void UltraCanvasTooltipManager::PointerLeftWindow(UltraCanvasWindowBase* win) {
+        if (!win || win != targetWindow) return;
+        if (!visible && !pendingShow) return;
+        HideTooltipImmediately();
     }
 
     void UltraCanvasTooltipManager::WindowScaleChanged(UltraCanvasWindowBase* win) {
