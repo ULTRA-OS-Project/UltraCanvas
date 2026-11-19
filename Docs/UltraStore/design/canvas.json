@@ -283,6 +283,50 @@
       "h": 844,
       "title": "Video phone: Watch",
       "radius": 44
+    },
+    "MusicHome.dc.html": {
+      "x": 0,
+      "y": 28300,
+      "w": 1440,
+      "h": 2000,
+      "title": "Music: Home",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MusicAlbum.dc.html": {
+      "x": 1520,
+      "y": 28300,
+      "w": 1440,
+      "h": 1800,
+      "title": "Music: Album (Low Tide)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MusicArtist.dc.html": {
+      "x": 3040,
+      "y": 28300,
+      "w": 1440,
+      "h": 1900,
+      "title": "Music: Artist (Kesselhaus Quartet)",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MusicSearch.dc.html": {
+      "x": 0,
+      "y": 30700,
+      "w": 1440,
+      "h": 1700,
+      "title": "Music: Search and browse",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "MusicPhoneNowPlaying.dc.html": {
+      "x": 1520,
+      "y": 30700,
+      "w": 390,
+      "h": 844,
+      "title": "Music phone: Now playing",
+      "radius": 44
     }
   },
   "order": [
@@ -316,7 +360,12 @@
     "VideoWatch.dc.html",
     "VideoChannel.dc.html",
     "VideoStudio.dc.html",
-    "VideoPhoneWatch.dc.html"
+    "VideoPhoneWatch.dc.html",
+    "MusicHome.dc.html",
+    "MusicAlbum.dc.html",
+    "MusicArtist.dc.html",
+    "MusicSearch.dc.html",
+    "MusicPhoneNowPlaying.dc.html"
   ],
   "notes": {
     "desk": {
@@ -423,6 +472,20 @@
       "w": 420,
       "text": "A variant as a video portal in the manner of YouTube or Vimeo: the home with the sections rail, topic chips, the video grid with durations and the watched bar, Shorts, live with a viewer count; the watch page on the UltraCanvas video element (chapters on the seek bar, captions, quality, speed, picture in picture, theatre), the channel with subscribe and support, the description with chapters, comments with a creator's reply, up next and the transcript; the channel page with working sort and kind filters; the Studio with the upload (format check, chapters from UltraVideo's markers, captions from the subtitle track, visibility, licence), the channel figures and the videos table with a copyright claim; the phone's watch page. The accent is red #DC2626 (a prop). What exists: the video element plays a file or a URL (GStreamer, Media Foundation, AVFoundation), poster frames, the codec registry; UltraVideo exports MP4 and WebM. What does not: a portal service (channels, uploads, renditions, comments, subscriptions, support payments through the store's payment service). Every channel, video, count and figure is invented sample data; the ULTRA OS Project channel is the team's own, its videos invented; the pictures are [THUMBNAIL] placeholders.",
       "fill": "blue"
+    },
+    "music": {
+      "x": 0,
+      "y": 28000,
+      "text": "UltraStore - music streaming variant",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "musicnote": {
+      "x": 4560,
+      "y": 28300,
+      "w": 420,
+      "text": "A variant as a music streaming service in the manner of Spotify: the home with the library rail (playlists, artists, podcasts, downloads), the jump-back-in tiles, mixes made for you, new releases, the charts, podcasts; an album page with the track table, plays, likes, durations, the credits and the artist's share of the subscription; an artist page with popular songs, a working discography filter (albums, singles, live, appears on; newest or oldest), about, tour dates and fans also like; search with working type and genre filters and browse-all; the phone's Now playing with lyrics. The now-playing bar on every desktop page: shuffle, repeat, position, lyrics, queue, the playing device, the quality mark. The accent is green #16A34A (a prop). What exists: UltraCanvas Audio plays WAV, MP3 and FLAC always, OGG, Opus and AAC with the system codecs, gapless through miniaudio, with the audio player element and the analysis for visualisation; subscriptions (monthly, yearly) exist in the store and its payment service. What does not: a streaming service (catalogue, licences, renditions, mixes, downloads, the artists' share). Every artist, album, song, count and figure is invented sample data; the covers are [COVER] placeholders.",
+      "fill": "green"
     }
   },
   "designSystems": []

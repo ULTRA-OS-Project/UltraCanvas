@@ -42,6 +42,11 @@ over these.
 | `VideoChannel.dc.html` | a channel (ULTRA OS Project): banner, avatar, handle and counts, Subscribe and Support, the tabs, search in the channel; the sort (Latest, Popular, Oldest) and the kind (All, Videos, Live, Shorts) filters work (state in the script); an upcoming stream and a short in the grid | page |
 | `VideoStudio.dc.html` | the creator's Studio: the channel figures, an upload in progress with the format check, chapters from UltraVideo's markers and captions from the subtitle track, the details form (title, description, thumbnail, playlist, language, visibility, audience, licence), the videos table with visibility, views, comments, likes and a copyright claim | page |
 | `VideoPhoneWatch.dc.html` | the watch page on a phone: the player on top, title, channel and Subscribe, the action chips, the current chapter, comments, up next, the bottom tab bar with Upload | 390 × 844 |
+| `MusicHome.dc.html` | the music streaming variant's home: the library rail with playlists, artists, podcasts and downloads, the jump-back-in tiles, mixes made for you, new releases, the charts with movement, podcasts with the position, why listen here; the now-playing bar | page |
+| `MusicAlbum.dc.html` | an album (Low Tide): the cover and facts, play, shuffle, saved, downloaded, the artist's share of the subscription, the track table with plays, likes and durations, the credits and the quality, more by the artist | page |
+| `MusicArtist.dc.html` | an artist (Kesselhaus Quartet): the header with monthly listeners, follow and support, popular songs; the discography's kind (albums, singles and EPs, live, appears on) and sort (newest, oldest) filters work (state in the script); about, on tour, fans also like | page |
+| `MusicSearch.dc.html` | search: the type (songs, artists, albums, playlists, podcasts) and genre filters work over a sample result set (state in the script), the top result with songs, the result grid, browse all by genre | page |
+| `MusicPhoneNowPlaying.dc.html` | Now playing on a phone: the cover, title, like, the position, shuffle, previous, play, next, repeat, the playing device and quality, share and queue, lyrics | 390 × 844 |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -177,6 +182,22 @@ store's own payment service. The portal is UltraStore's own business, not
 UltraPress's. Every channel, video, count and figure is invented sample
 data; the ULTRA OS Project channel is the team's own, its videos invented;
 the pictures are drawn `[THUMBNAIL]` placeholders.
+
+The `Music*` pages are the **music streaming variant**: the shop's chrome
+as a streaming service in the manner of Spotify, with the library rail,
+mixes, albums, artists, playlists, podcasts, downloads and the now-playing
+bar on every desktop page, the accent green `#16A34A` (the `accent`
+prop). What exists in the repository: UltraCanvas Audio plays WAV, MP3
+and FLAC always and OGG, Opus and AAC with the system codecs, gapless
+through miniaudio, with the audio player element and the analysis for
+visualisation ([`UltraCanvasAudio.md`](../../UltraCanvas/UltraCanvasAudio.md)),
+and the store sells subscriptions (`monthly`, `yearly`) through its own
+payment service, which is what Premium would be. What does not exist: a
+streaming service with a catalogue, licences, renditions, mixes computed
+on the machine, downloads and the artists' share. The service is
+UltraStore's own business, not UltraPress's. Every artist, album, song,
+count and figure is invented sample data; the covers are drawn `[COVER]`
+placeholders.
 
 The `Super*` pages are a **proposal** for a third tier, later: the operator
 of UltraStore running a marketplace in which other publishers (merchants)
