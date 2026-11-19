@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "Kibontás: a mappanév már foglalt",
   "Extras": "Extrák",
   "Failed": "Sikertelen",
+  "Failed to open presentation: {0} ({1})": "A bemutató nem nyitható meg: {0} ({1})",
   "File": "Fájl",
   "File extensions": "Fájlkiterjesztések",
   "File icons": "Fájlikonok",

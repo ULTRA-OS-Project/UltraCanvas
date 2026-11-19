@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "Extreu: el nom de la carpeta ja està en ús",
   "Extras": "Extres",
   "Failed": "Ha fallat",
+  "Failed to open presentation: {0} ({1})": "No s'ha pogut obrir la presentació: {0} ({1})",
   "File": "Fitxer",
   "File extensions": "Extensions de fitxer",
   "File icons": "Icones de fitxer",

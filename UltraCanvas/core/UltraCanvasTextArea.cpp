@@ -1,5 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.13.1 - Render lays the lines out again when tables were sized before the visible width
+//                  was known (no word wrap: the first frame, a resize, a scrollbar)
 // Version: 3.13.0 - a right-click on a read-only or display-only area the host and the
 //                 spell checker leave alone opens Copy / Select All
 // Version: 3.12.1 - Markdown tables: the grid in the border colour on pixel centres, the
@@ -1150,6 +1152,15 @@ namespace UltraCanvas {
             ctx->PopState();
             // Wrap width probably changed — let UpdateLineLayouts detect and reset.
             isNeedRecalculateVisibleArea = false;
+            // Tables are as wide as the visible area. Without word wrap the
+            // layouts above were built before it was measured (the first
+            // frame, a resize, a scrollbar coming or going): lay them out
+            // again at the width now known, or a table keeps the 100 px
+            // floor and wraps its header words.
+            if (tablesLaidOutWidth >= 0.0f && tablesLaidOutWidth != visibleTextArea.width) {
+                isNeedRebuildLineLayouts = true;
+                UpdateLineLayouts(ctx);
+            }
         }
 
         // A relayout (smaller font, wider wrap) can shrink the content below
@@ -3949,6 +3960,7 @@ namespace UltraCanvas {
 
         // Pass 2: normalize per-table column widths. Updates each cell's layout wrap width,
         // finalBounds.x / width, and the row's finalBounds.height (so Pass 3 sees correct heights).
+        tablesLaidOutWidth = -1.0f;   // set again by every table sized
         for (auto [s, e] : tableSpans) {
             NormalizeTableGroupWidths(s, e);
         }

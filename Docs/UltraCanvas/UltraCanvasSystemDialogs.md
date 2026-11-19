@@ -116,6 +116,25 @@ UltraCanvasDialogManager::ShowInputDialog("Name of the new folder:", "New folder
 `InputType::Password` masks the field. Native message dialogs block and call
 the callback before returning; the framework's do not block.
 
+What the short form cannot say goes in an `InputDialogConfig`, shown with
+`ShowInputDialog(config, onResult, parent)`. `iconAboveInput` puts a picture
+(an SVG or bitmap path) centred above the field, drawn in the dialog's text
+colour so it follows the theme - the lock of UltraViewer's Unlock dialog and
+of `UltraCanvasFileLoader::RequestDocumentPassword`; `iconAboveInputSize` is
+its side (48 by default). A picture that cannot be read leaves no gap. With
+native dialogs on, the native dialog is shown without it.
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasWindow> window; std::string resources; -->
+```cpp
+InputDialogConfig unlock;
+unlock.title = "Unlock report.odt";
+unlock.inputLabel = "Password for report.odt:";
+unlock.inputType = InputType::Password;
+unlock.iconAboveInput = resources + "media/icons/unlock.svg";
+UltraCanvasDialogManager::ShowInputDialog(unlock,
+    [](DialogResult r, const std::string& password) { /* ... */ }, window.get());
+```
+
 ## See also
 
 - `UltraCanvasModalDialog.h` — `UltraCanvasDialogManager`, `UltraCanvasFileDialog`, `UltraCanvasInputDialog`

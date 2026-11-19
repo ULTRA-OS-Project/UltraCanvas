@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "Uitpakken: de mapnaam is al in gebruik",
   "Extras": "Extra's",
   "Failed": "Mislukt",
+  "Failed to open presentation: {0} ({1})": "Presentatie kan niet worden geopend: {0} ({1})",
   "File": "Bestand",
   "File extensions": "Bestandsextensies",
   "File icons": "Bestandspictogrammen",

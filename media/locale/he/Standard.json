@@ -290,6 +290,7 @@
   "Extract: the folder name is already taken": "חילוץ: שם התיקייה כבר תפוס",
   "Extras": "תוספות",
   "Failed": "נכשל",
+  "Failed to open presentation: {0} ({1})": "לא ניתן לפתוח את המצגת: {0} ({1})",
   "File": "קובץ",
   "File extensions": "סיומות קבצים",
   "File icons": "סמלי קבצים",

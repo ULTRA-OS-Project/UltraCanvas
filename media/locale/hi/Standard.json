@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "एक्सट्रैक्ट करें: फ़ोल्डर का नाम पहले से उपयोग में है",
   "Extras": "अतिरिक्त",
   "Failed": "विफल",
+  "Failed to open presentation: {0} ({1})": "प्रस्तुति नहीं खोली जा सकी: {0} ({1})",
   "File": "फ़ाइल",
   "File extensions": "फ़ाइल एक्सटेंशन",
   "File icons": "फ़ाइल आइकन",

@@ -36,6 +36,8 @@
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.13.0 - presentations: .pptx / .odp / .fodp as their outline; a protected .pptx and
+//                  .odp unlocked like a PDF, the kept password opening the second
 // Version: 1.12.0 - FileAssociations::RunsCodeWhenOpened, what an attachment link will not open
 // Version: 1.11.0 - Outlook .msg messages, attachments listed with Open and Save
 // Version: 1.10.0 - Apple Mail .emlx; saved web pages (.mht) from their own parts
@@ -53,7 +55,7 @@
 // Version: 1.2.0 - layered *.ucd images: full size; protected: the thumbnail
 // Version: 1.1.0 - one toolbar row; Details is in the info bar only
 // Version: 1.0.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
@@ -711,6 +713,60 @@ int main() {
                   "pdf-aes256-locked.pdf: the session locked - closed again, its note back");
             NotifySessionLockChanged(false);
         }
+    }
+
+    // ----- Presentations: the outline of their slides -----
+    std::cout << "\nPresentations\n";
+    {
+        const fs::path fixtures = PathFromUtf8(UC_FIXTURE_DIR);
+        auto textOf = [&viewer]() {
+            auto* ta = dynamic_cast<UltraCanvasTextArea*>(viewer->FindChildById("MV_Text"));
+            return ta ? ta->GetText() : std::string();
+        };
+        Check(UltraCanvasMediaViewer::IsSupportedMedia("deck.pptx") &&
+                  UltraCanvasMediaViewer::IsSupportedMedia("deck.ODP") &&
+                  UltraCanvasMediaViewer::IsSupportedMedia("deck.fodp") &&
+                  UltraCanvasMediaViewer::IsPresentationFile("x.potm") &&
+                  !UltraCanvasMediaViewer::IsPresentationFile("x.odt"),
+              "decks are supported media");
+        const std::string pptx = PathToUtf8(fixtures / "office-pptx-sample.pptx");
+        const std::string odp = PathToUtf8(fixtures / "office-pptx-sample.odp");
+        const std::string fodp = PathToUtf8(fixtures / "presentation-features.fodp");
+        viewer->SetFiles({pptx, odp, fodp});
+        Check(Shown(*viewer, "MV_Text") && !viewer->IsLocked() && Has(textOf(), "Agenda") &&
+                  Has(textOf(), "Revenue up") && Has(textOf(), "Remember the Q3 numbers."),
+              "office-pptx-sample.pptx: the outline of its slides in the text view");
+        viewer->Next();
+        Check(Shown(*viewer, "MV_Text") && Has(textOf(), "Agenda") && Has(textOf(), "Item 60"),
+              "office-pptx-sample.odp: the same outline");
+        viewer->Next();
+        Check(Shown(*viewer, "MV_Text") && Has(textOf(), "Welcome") && !Has(textOf(), "<office:document"),
+              "presentation-features.fodp: the outline, not its XML");
+
+        // Password-protected: the Unlock note, as for a PDF; the same
+        // password opens the second deck in the folder without asking.
+        const std::string lockedPptx = PathToUtf8(fixtures / "office-agile-encrypted.pptx");
+        const std::string lockedOdp = PathToUtf8(fixtures / "odf-encrypted.odp");
+        const std::string password = "\xC3\x9Cltra-P\xC3\xA4ssw\xC3\xB6rt 1";
+        viewer->ForgetPasswords();
+        viewer->SetFiles({lockedPptx, lockedOdp});
+        Check(viewer->IsLocked() && Shown(*viewer, "MV_Note") && viewer->GetAvailableTools().unlock,
+              "office-agile-encrypted.pptx: locked, its note, Unlock offered");
+        Check(Has(InfoText(*viewer), "PRESENTATION   \xC2\xB7   password-protected"),
+              "office-agile-encrypted.pptx: the info bar says so (" + InfoText(*viewer) + ")");
+        std::string why;
+        Check(viewer->UnlockWithPassword("wrong", why) == MediaUnlockResult::WrongPassword && viewer->IsLocked(),
+              "office-agile-encrypted.pptx: a wrong password leaves it locked");
+        Check(viewer->UnlockWithPassword(password, why) == MediaUnlockResult::Unlocked && !viewer->IsLocked(),
+              "office-agile-encrypted.pptx: the right password opens it (" + why + ")");
+        Check(Shown(*viewer, "MV_Text") && !Shown(*viewer, "MV_Note") && Has(textOf(), "Item 60"),
+              "office-agile-encrypted.pptx: its outline, the note gone");
+        Check(viewer->IsUnlocked() && Has(InfoText(*viewer), "PRESENTATION   \xC2\xB7   unlocked"),
+              "office-agile-encrypted.pptx: marked unlocked (" + InfoText(*viewer) + ")");
+        viewer->Next();
+        Check(!viewer->IsLocked() && Shown(*viewer, "MV_Text") && Has(textOf(), "Remember the Q3 numbers."),
+              "odf-encrypted.odp: opened with the password kept for the folder");
+        viewer->ForgetPasswords();
     }
 
     // ----- A host's settings, behind the gear in the info bar -----

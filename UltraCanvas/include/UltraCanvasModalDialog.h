@@ -1,6 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.14.0 - InputDialogConfig::iconAboveInput: a picture centred above the input field (the
+//                  Unlock dialog's lock), in the dialog's text colour; ShowInputDialog(config, ...)
 // Version: 3.13.0 - SetStyle: a change of type sizes only keeps the dialog following the theme, and
 //                  ApplyTheme keeps the sizes set; OnThemeChanged keeps the message on the panel
 // Version: 3.12.0 - DestructiveOutlineStyle: a destructive answer beside the default one follows the
@@ -30,6 +32,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasImageElement.h"   // the input dialog's icon above its field
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasDropdown.h"
@@ -210,6 +213,13 @@ namespace UltraCanvas {
         std::string defaultValue;
         std::string validationPattern; // Regex pattern
         std::string validationMessage = "Invalid input";
+
+        // A picture centred above the field (its caption included), e.g. the
+        // lock of an Unlock dialog: a file path (SVG or bitmap), drawn as a
+        // mask in the dialog's text colour so it follows the theme. Empty:
+        // none. `iconAboveInputSize` is its width and height.
+        std::string iconAboveInput;
+        float iconAboveInputSize = 48.0f;
 
         // Input constraints
         int minLength = 0;
@@ -625,6 +635,13 @@ namespace UltraCanvas {
                                     const std::string& defaultValue, InputType type,
                                     std::function<void(DialogResult, const std::string&)> onResult,
                                     UltraCanvasWindowBase* parent = nullptr);
+        // The same from a whole config (the prompt is its inputLabel) - for
+        // what the short form cannot say, such as iconAboveInput. With native
+        // dialogs on, the native one is shown (title, prompt, default value,
+        // type) and the rest of the config is not.
+        static void ShowInputDialog(const InputDialogConfig& config,
+                                    std::function<void(DialogResult, const std::string&)> onResult,
+                                    UltraCanvasWindowBase* parent = nullptr);
 
         // File-selection dialogs (Open/Save/SelectFolder/OpenMultiple) live on
         // UltraCanvasFileLoader — see include/UltraCanvasFileLoader.h.
@@ -694,6 +711,7 @@ namespace UltraCanvas {
         InputDialogConfig inputConfig;
         std::shared_ptr<UltraCanvasTextInput> textInput;
         std::shared_ptr<UltraCanvasLabel> inputLabel;
+        std::shared_ptr<UltraCanvasImageElement> inputIcon;   // InputDialogConfig::iconAboveInput
         std::string inputValue;
         bool isValid;
 
@@ -716,6 +734,9 @@ namespace UltraCanvas {
         // The field is what the user came to type into, so it takes the focus
         // instead of the default button.
         void FocusInitialElement() override;
+    public:
+        // The base's theme, and the icon above the field in the new text colour.
+        void ApplyTheme(const UltraCanvasTheme& theme) override;
     };
 
 // ===== FILE DIALOG CLASS =====

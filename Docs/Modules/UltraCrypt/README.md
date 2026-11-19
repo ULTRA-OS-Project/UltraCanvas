@@ -27,9 +27,14 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
+Argon2id key derivation (one lane through libsodium; more - what files
+written elsewhere record, LibreOffice's ODF 1.4 encryption 4 - through the
+module's own RFC 9106 implementation on libsodium's BLAKE2b,
+`UltraCryptArgon2.cpp`, checked against libargon2), HKDF-SHA-256/512, Ed25519 signatures (§5.8),
 X25519 key agreement (§5.8.1),
-AES-128/192/256-CBC and -CTR and PBKDF2-HMAC-SHA-256/512 for foreign
+AES-128/192/256-CBC and -CTR, AES-GCM decryption on the same portable AES
+(`UltraCrypt_AesGcmDecrypt`, every CPU, the GCM specification's vectors) and
+PBKDF2-HMAC-SHA-256/512 (and -SHA-1, legacy-gated) for foreign
 formats (§5.9, §5.10), and X.509 certificates with their trust check, CMS
 signed and enveloped data and PKCS #12 (§5.11) - the one part on a second,
 optional backend, OpenSSL 3, since libsodium has nothing of public-key
@@ -48,11 +53,15 @@ therefore in place.
 **Notes on two of these.** SHA-1 is vendored (~150 lines in
 `UltraCryptCore.cpp`) because libsodium omits it; `UltraCrypt_Hash` refuses it
 unless `UltraCryptHashOptions::allowLegacy` is set, while `UltraCrypt_Hmac`
-accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. One caller
-sets `allowLegacy`: the reader of password-protected Office files
+accepts it freely since HMAC-SHA-1 is sound and TOTP requires it. Two callers
+set `allowLegacy`, each for a password hash and key derivation, which SHA-1's
+collisions do not reach: the reader of password-protected Office files
 (`UltraCanvasOfficeEncryption.cpp`), because Office 2010 derives its keys with
-SHA-1 - a password hash and key derivation, which SHA-1's collisions do not
-reach. It writes SHA-512, so nothing UltraCanvas writes depends on SHA-1. HKDF is
+SHA-1, and the reader of password-protected OpenDocument files
+(`UltraCanvasOdfEncryption.cpp`), because ODF's PBKDF2 is HMAC-SHA-1 -
+`UltraCrypt_DeriveKeyPbkdf2` takes SHA-1 only with `allowLegacy`, and checks
+it against RFC 6070. Office's writer uses SHA-512 and nothing writes ODF
+encryption, so nothing UltraCanvas writes depends on SHA-1. HKDF is
 built on the HMAC primitives rather than libsodium's `crypto_kdf_hkdf_*`,
 which only exists from 1.0.19 — the current Ubuntu LTS ships 1.0.18. AES is
 vendored too (`UltraCryptAes.cpp`, ~470 lines), because libsodium has no AES
@@ -1044,13 +1053,24 @@ UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
                                           const void* ciphertext, size_t size,
                                           UltraCryptSecureBuffer& outPlaintext);
 
-// SHA256 or SHA512 (SHA1 is refused); iterations >= 1; salt may be empty.
+// SHA256 or SHA512; SHA1 only with options.allowLegacy (OpenDocument's
+// password key); iterations >= 1; salt may be empty.
 UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm algorithm,
                                             const UltraCryptSecureBuffer& password,
                                             const std::vector<uint8_t>& salt,
                                             uint32_t iterations,
                                             size_t outputLength,
-                                            UltraCryptSecureBuffer& outKey);
+                                            UltraCryptSecureBuffer& outKey,
+                                            const UltraCryptHashOptions& options =
+                                                UltraCryptHashOptions());
+
+// AES-GCM decryption (interop only): the module's own AES and GHASH, every
+// CPU. The ciphertext ends with the 16-byte tag, checked before anything is
+// released (AuthenticationFailed, output empty).
+UltraCryptResult UltraCrypt_AesGcmDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptGcmParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
 ```
 
 The IV is the first counter block, and each next block adds one to it as a

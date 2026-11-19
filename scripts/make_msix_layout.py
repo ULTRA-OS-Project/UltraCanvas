@@ -86,6 +86,7 @@ MEDIA_TYPES = FileTypes("ultracanvas.media", "Images, video, audio and documents
     ".mp4", ".mov", ".mkv", ".webm", ".avi",
     ".mp3", ".wav", ".flac", ".ogg", ".opus", ".m4a",
     ".pdf", ".epub", ".ucd",
+    ".pptx", ".ppsx", ".odp",
 ])
 
 # Explorer's "Open with", by program. A package declares file types by

@@ -756,8 +756,25 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `UltraCanvasFileLoader::RequestDocumentPassword`, which prompts for it; and
   by the writers `SaveToFile` / `SaveXLSX`, `UCWordDocumentIO::Save` /
   `SaveDocx`, `UltraCanvasFileLoader::SaveTextDocument`, with
-  `RequestNewDocumentPassword` to ask for a new one.
+  `RequestNewDocumentPassword` to ask for a new one. `CheckOfficePassword`
+  answers for an OpenDocument file through UltraCanvasOdfEncryption.
   See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+- **UltraCanvasOdfEncryption** (`UltraCanvasOdfEncryption.h`) — password-protected
+  OpenDocument files (`.odt`, `.ods`, `.odp`) as LibreOffice and
+  OpenOffice.org 3.2+ save them: each package entry deflated, then
+  AES-256-CBC keyed by PBKDF2-HMAC-SHA-1 from a SHA-256 (or SHA-1) start key,
+  checked by its 1K checksum. `IsEncryptedOdfPackage`, `DecryptOdfPackage` /
+  `DecryptOdfPackageFile` (an ordinary package rebuilt in memory, statuses
+  `OfficeDecryptStatus`), `CheckOdfPassword` (one key derivation, for the
+  prompt). ODF 1.4's encryption too - the whole package in one
+  `encrypted-package`, AES-256-GCM, Argon2id with its lanes (what LibreOffice
+  writes for ODF 1.4 in experimental mode). Blowfish is refused by name. No writer. Used by the `.odt` reader
+  (`UCWordDocumentIO::Load` / `LoadOdt` with a password), the `.ods` loader
+  (`UltraCanvasSpreadsheet::LoadFromFile` / `LoadODS`), `ReadOdpPresentation`,
+  and `CheckOfficePassword` - so `RequestDocumentPassword` prompts for them.
+  In `core/UltraCanvasOdfEncryption.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasOdfEncryption.md`.
 
 - **UltraCanvasPresentationPptx** (`UltraCanvasPresentationPptx.h`) — PowerPoint
   decks (`.pptx`, `.pptm`, `.ppsx`, `.potx`) read as text into a UI-free model:
@@ -777,6 +794,22 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `RenderPptxSlide(deck, index, widthPx)`: a slide of a `PptxPresentation` as
   a `UCPixmap` (background, shapes, pictures, tables, text shrunk to fit).
   UltraClipboard's slide previews. In `core/UltraCanvasPptxSlideRender.cpp`.
+
+- **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
+  presentations (`.odp`, `.otp` templates, flat `.fodp`) read as text into
+  UltraCanvasPresentationPptx's model (`PptxPresentation` and the rest), so
+  `PptxPresentationToRichDocument` outlines either kind of deck:
+  `ReadOdpPresentation`, `ReadOdpPresentationFromMemory` (a package or a flat
+  file's XML), `IsOdpPresentationFile` (by content), `IsOdpExtension`. Titles,
+  subtitles, outline and text-box paragraphs with list levels, bullets and
+  numbering from the list styles, bold / italic / underline through the style
+  parents, groups, tables (covered cells kept as empty cells), pictures,
+  speaker notes, hidden slides, the slide size from the master's page layout;
+  slide furniture, prompting placeholders, embedded objects and page comments
+  left out. A password-protected deck opens with its password
+  (UltraCanvasOdfEncryption). No renderer,
+  no writer. In `core/UltraCanvasPresentationOdp.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationOdp.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
   workbooks (`.xls`): Excel 97-2003 (BIFF8) and 5.0/95 (BIFF5), plus the HTML
@@ -2149,9 +2182,12 @@ backing library is never visible in a public header.
   constant-time portable software, independent of libsodium)
 - `UltraCrypt_AesCtrEncrypt`, `UltraCrypt_AesCtrDecrypt` (AES-CTR, interop
   only - Matrix key exports and attachments, WebCrypto)
-- `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
+- `UltraCrypt_AesGcmDecrypt` (AES-GCM, interop only: portable, every CPU)
+- `UltraCrypt_DeriveKeyFromPassword` (Argon2id; `parallelism` above 1 through
+  the module's own RFC 9106 lanes), `UltraCrypt_DeriveKeyHkdf`,
   `UltraCrypt_RecommendedKdfParams`, `UltraCrypt_DeriveKeyPbkdf2`
-  (PBKDF2-HMAC-SHA-256/512, interop only)
+  (PBKDF2-HMAC-SHA-256/512, and -SHA-1 with `allowLegacy` for OpenDocument;
+  interop only)
 - `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
   `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
   `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`

@@ -297,13 +297,15 @@ std::string ShiftFormulaReferences(const std::string& formula, int rowDelta, int
 
 ```cpp
 // Format chosen automatically from the file extension. `password` opens a
-// password-protected .xlsx (see UltraCanvasOfficeEncryption.md); other
-// formats ignore it.
+// password-protected .xlsx (see UltraCanvasOfficeEncryption.md) or .ods
+// (UltraCanvasOdfEncryption.md); other formats ignore it.
 bool LoadFromFile(const std::string& filePath, const std::string& password = std::string());
 // With a password: a password-protected .xlsx; any other format with one is refused.
 bool SaveToFile(const std::string& filePath, const std::string& password = std::string());
 
-bool LoadODS(const std::string& filePath);
+// `password` opens a password-protected .ods (LibreOffice's "Save with
+// password", ODF 1.2 and 1.4 - see UltraCanvasOdfEncryption.md).
+bool LoadODS(const std::string& filePath, const std::string& password = std::string());
 bool SaveODS(const std::string& filePath);
 bool LoadXLSX(const std::string& filePath, const std::string& password = std::string());
 bool SaveXLSX(const std::string& filePath, const std::string& password = std::string());

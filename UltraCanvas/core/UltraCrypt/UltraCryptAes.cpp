@@ -1,6 +1,7 @@
 // core/UltraCrypt/UltraCryptAes.cpp
 // AES (FIPS 197) and the CBC and CTR modes (NIST SP 800-38A), for reading and
-// writing formats defined elsewhere that use them.
+// writing formats defined elsewhere that use them; and GCM (SP 800-38D),
+// for reading them.
 //
 // libsodium has no AES block cipher at all (its AES-256-GCM is AES-NI only
 // and does not expose the block function), so this one is ours, like SHA-1.
@@ -15,10 +16,14 @@
 // together - CBC decryption and CTR use all four, CBC encryption (a serial
 // chain) only the first.
 //
+// Version: 0.5.0 - UltraCrypt_AesGcmDecrypt: AES-GCM (SP 800-38D) on this AES and a masked
+//                  GHASH, every CPU, decryption only (interop)
 // Version: 0.4.0
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace {
@@ -565,6 +570,164 @@ UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
                                        "could not allocate plaintext buffer");
     }
     CtrXor(key, params.iv, plain.Data(), size);
+    outPlaintext = std::move(plain);
+    return UltraCryptResult::Ok();
+}
+
+// ============================================================================
+// AES-GCM decryption (NIST SP 800-38D), interop only
+// ============================================================================
+namespace {
+
+constexpr size_t kGcmTag = 16;
+
+struct Gf128 {
+    uint64_t hi = 0, lo = 0;   // the block as two big-endian halves
+};
+
+Gf128 LoadGf(const uint8_t* p) {
+    Gf128 x;
+    for (int i = 0; i < 8; ++i) x.hi = (x.hi << 8) | p[i];
+    for (int i = 8; i < 16; ++i) x.lo = (x.lo << 8) | p[i];
+    return x;
+}
+
+void StoreGf(const Gf128& x, uint8_t* p) {
+    for (int i = 0; i < 8; ++i) p[i] = static_cast<uint8_t>(x.hi >> (56 - 8 * i));
+    for (int i = 0; i < 8; ++i) p[8 + i] = static_cast<uint8_t>(x.lo >> (56 - 8 * i));
+}
+
+// X * H in GF(2^128) with GCM's bit order (SP 800-38D §6.3, algorithm 1),
+// without a branch or a table on any bit: every step is masked.
+Gf128 GfMultiply(const Gf128& x, const Gf128& h) {
+    Gf128 z, v = h;
+    for (int i = 0; i < 128; ++i) {
+        const uint64_t word = i < 64 ? x.hi : x.lo;
+        const uint64_t bit = (word >> (63 - (i & 63))) & 1;
+        const uint64_t mask = 0 - bit;
+        z.hi ^= v.hi & mask;
+        z.lo ^= v.lo & mask;
+        const uint64_t carry = 0 - (v.lo & 1);
+        v.lo = (v.lo >> 1) | (v.hi << 63);
+        v.hi = (v.hi >> 1) ^ (0xE100000000000000ull & carry);
+    }
+    return z;
+}
+
+// GHASH over `data`, zero-padded to whole blocks, folded into `y`.
+void GhashAbsorb(Gf128& y, const Gf128& h, const uint8_t* data, size_t size) {
+    for (size_t off = 0; off < size; off += kAesBlock) {
+        uint8_t block[kAesBlock] = {};
+        const size_t take = std::min(kAesBlock, size - off);
+        std::memcpy(block, data + off, take);
+        const Gf128 b = LoadGf(block);
+        y.hi ^= b.hi;
+        y.lo ^= b.lo;
+        y = GfMultiply(y, h);
+    }
+}
+
+void GhashLengths(Gf128& y, const Gf128& h, uint64_t aadBytes, uint64_t dataBytes) {
+    uint8_t block[kAesBlock];
+    for (int i = 0; i < 8; ++i) block[i] = static_cast<uint8_t>((aadBytes * 8) >> (56 - 8 * i));
+    for (int i = 0; i < 8; ++i) block[8 + i] = static_cast<uint8_t>((dataBytes * 8) >> (56 - 8 * i));
+    GhashAbsorb(y, h, block, kAesBlock);
+}
+
+// Adds one to the low 32 bits of a counter block (GCM's inc32).
+void Increment32(uint8_t counter[kAesBlock]) {
+    for (size_t i = kAesBlock; i-- > kAesBlock - 4;) {
+        if (++counter[i] != 0) break;
+    }
+}
+
+} // namespace
+
+UltraCryptResult UltraCrypt_AesGcmDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptGcmParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext) {
+    outPlaintext.Clear();
+    auto check = CheckCommon(key, ciphertext, size);
+    if (!check) return check;
+    if (params.iv.empty()) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidNonceSize, "the GCM IV is empty");
+    }
+    if (size < kGcmTag) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "the ciphertext is shorter than the GCM tag");
+    }
+    const size_t length = size - kGcmTag;
+    const uint8_t* input = static_cast<const uint8_t*>(ciphertext);
+
+    AesKeySchedule ks;
+    ExpandKey(key.Data(), key.GetSize(), ks);
+
+    // H, the hash key: E(K, 0^128).
+    uint8_t hBytes[kAesBlock] = {};
+    EncryptBlocks(ks, hBytes, 1);
+    const Gf128 h = LoadGf(hBytes);
+
+    // J0: the IV and a counter of 1 for a 12-byte IV, else GHASH of the IV.
+    uint8_t j0[kAesBlock] = {};
+    if (params.iv.size() == 12) {
+        std::memcpy(j0, params.iv.data(), 12);
+        j0[15] = 1;
+    } else {
+        Gf128 y;
+        GhashAbsorb(y, h, params.iv.data(), params.iv.size());
+        GhashLengths(y, h, 0, params.iv.size());
+        StoreGf(y, j0);
+    }
+
+    // The tag first: GHASH over the associated data and the ciphertext,
+    // XORed with E(K, J0).
+    Gf128 y;
+    GhashAbsorb(y, h, params.associatedData.data(), params.associatedData.size());
+    GhashAbsorb(y, h, input, length);
+    GhashLengths(y, h, params.associatedData.size(), length);
+    uint8_t tag[kAesBlock];
+    StoreGf(y, tag);
+    uint8_t mask[kAesBlock];
+    std::memcpy(mask, j0, kAesBlock);
+    EncryptBlocks(ks, mask, 1);
+    for (size_t i = 0; i < kAesBlock; ++i) tag[i] ^= mask[i];
+    const bool authentic = UltraCrypt_ConstantTimeEquals(tag, kGcmTag, input + length, kGcmTag);
+    UltraCrypt_SecureZero(tag, sizeof(tag));
+    UltraCrypt_SecureZero(mask, sizeof(mask));
+    UltraCrypt_SecureZero(hBytes, sizeof(hBytes));
+    if (!authentic) {
+        WipeSchedule(ks);
+        UltraCrypt_SecureZero(j0, sizeof(j0));
+        return UltraCryptResult::Error(UltraCryptResultCode::AuthenticationFailed,
+                                       "the GCM tag does not match: a wrong key, or changed data");
+    }
+
+    // Then the plaintext: CTR from inc32(J0), four blocks a pass.
+    UltraCryptSecureBuffer plain(input, length);
+    if (plain.GetSize() != length) {
+        WipeSchedule(ks);
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "could not allocate plaintext buffer");
+    }
+    uint8_t counter[kAesBlock];
+    std::memcpy(counter, j0, kAesBlock);
+    Increment32(counter);
+    uint8_t stream[kAesBlock * kLanesPerPass];
+    for (size_t off = 0; off < length; off += sizeof(stream)) {
+        const size_t bytes = std::min(sizeof(stream), length - off);
+        const size_t blocks = (bytes + kAesBlock - 1) / kAesBlock;
+        for (size_t b = 0; b < blocks; ++b) {
+            std::memcpy(stream + b * kAesBlock, counter, kAesBlock);
+            Increment32(counter);
+        }
+        EncryptBlocks(ks, stream, blocks);
+        for (size_t i = 0; i < bytes; ++i) plain.Data()[off + i] ^= stream[i];
+    }
+    UltraCrypt_SecureZero(stream, sizeof(stream));
+    UltraCrypt_SecureZero(counter, sizeof(counter));
+    UltraCrypt_SecureZero(j0, sizeof(j0));
+    WipeSchedule(ks);
     outPlaintext = std::move(plain);
     return UltraCryptResult::Ok();
 }

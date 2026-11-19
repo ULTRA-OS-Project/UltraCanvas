@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "Ayıklama: klasör adı zaten kullanılıyor",
   "Extras": "Ekstralar",
   "Failed": "Başarısız",
+  "Failed to open presentation: {0} ({1})": "Sunu açılamadı: {0} ({1})",
   "File": "Dosya",
   "File extensions": "Dosya uzantıları",
   "File icons": "Dosya simgeleri",

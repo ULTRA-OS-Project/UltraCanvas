@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "Extrahera: mappnamnet används redan",
   "Extras": "Extra",
   "Failed": "Misslyckades",
+  "Failed to open presentation: {0} ({1})": "Det gick inte att öppna presentationen: {0} ({1})",
   "File": "Fil",
   "File extensions": "Filnamnstillägg",
   "File icons": "Filikoner",

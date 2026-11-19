@@ -2,11 +2,13 @@
 // ECMA-376 agile decryption and encryption of password-protected Office
 // packages. See UltraCanvasOfficeEncryption.h; [MS-OFFCRYPTO] 2.3.4.10-2.3.4.15
 // is the specification each step below names.
+// Version: 1.3.0 - CheckOfficePassword answers for an OpenDocument file through CheckOdfPassword
 // Version: 1.2.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasCompoundFile.h"
+#include "UltraCanvasOdfEncryption.h"   // CheckOfficePassword answers for ODF too
 #include "UltraCanvasTextUtils.h"
 #include "UltraCrypt/UltraCryptCore.h"
 #include "UltraCanvasPathUtf8.h"   // OpenFileUtf8
@@ -645,7 +647,9 @@ OfficeDecryptStatus DecryptOfficePackageFile(const std::string& filePath,
 OfficeDecryptStatus CheckOfficePassword(const std::string& filePath, const std::string& password,
                                         std::string& error) {
     error.clear();
-    if (!UCCompoundFileReader::HasSignature(filePath)) return OfficeDecryptStatus::NotEncrypted;
+    // An OpenDocument file is protected inside its ZIP package, not in a
+    // compound file: UltraCanvasOdfEncryption checks its password.
+    if (!UCCompoundFileReader::HasSignature(filePath)) return CheckOdfPassword(filePath, password, error);
     UCCompoundFileReader cfb;
     if (!cfb.Open(filePath)) {
         error = cfb.GetLastError();

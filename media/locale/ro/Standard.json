@@ -280,6 +280,7 @@
   "Extract: the folder name is already taken": "Extragere: numele dosarului este deja folosit",
   "Extras": "Suplimente",
   "Failed": "Eșuat",
+  "Failed to open presentation: {0} ({1})": "Prezentarea nu a putut fi deschisă: {0} ({1})",
   "File": "Fișier",
   "File extensions": "Extensii de fișier",
   "File icons": "Pictograme de fișier",

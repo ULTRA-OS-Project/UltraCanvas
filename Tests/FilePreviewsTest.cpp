@@ -10,9 +10,12 @@
 // and a PowerPoint deck's text preview, an encrypted one refused; a
 // word-processing document's first page as its thumbnail. Headless.
 //
+// Version: 1.1.1 - "the text is drawn": grey pixels darker than mid-grey, not darker than a fixed
+//                  dark grey - at 96 px a thin face (Liberation, unhinted) drew 10 such pixels
+//                  where DejaVu drew 36, and the check failed on the font, not the page
 // Version: 1.1.0 - a word-processing document's first page (odt, docx, doc)
 // Version: 1.0.0
-// Last Modified: 2026-11-10
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFilePreviews.h"
@@ -234,18 +237,25 @@ int main() {
             Check(h == 96 && w < h && w > 48,
                   what + ": a portrait page fitted to the box (" + std::to_string(w) + " x " +
                           std::to_string(h) + ")");
+            // Ink: neutral grey darker than mid-grey. At this size a line of
+            // text is antialiased grey, and how dark depends on the face
+            // and hinting fontconfig picks - the fixture's Liberation Serif
+            // drawn unhinted gives 80-110 such pixels, DejaVu (where
+            // Liberation is not installed) 225-290. The red box and the
+            // yellow highlight on the page are no text, so colours do not count.
             int seeThrough = 0, ink = 0;
             for (int y = 0; y < h; ++y) {
                 for (int x = 0; x < w; ++x) {
                     const uint32_t p = page->GetPixel(x, y);
                     if ((p >> 24) != 255) ++seeThrough;
                     const int r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
-                    if (r + g + b < 3 * 160) ++ink;
+                    const int spread = std::max({r, g, b}) - std::min({r, g, b});
+                    if (r + g + b < 3 * 200 && spread < 40) ++ink;
                 }
             }
             Check(seeThrough == 0, what + ": the page is opaque paper");
             Check((page->GetPixel(1, 1) & 0xFFFFFF) == 0xFFFFFF, what + ": the margin is white paper");
-            Check(ink > 20, what + ": the text is drawn on it (" + std::to_string(ink) + " dark pixels)");
+            Check(ink > 40, what + ": the text is drawn on it (" + std::to_string(ink) + " grey pixels)");
         }
         Check(!RenderFileThumbnailFromProvider(fixtures + "/office-agile-encrypted.docx", request),
               "an encrypted .docx has no page (it keeps its type glyph)");

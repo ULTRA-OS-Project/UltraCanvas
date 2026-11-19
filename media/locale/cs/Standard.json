@@ -280,6 +280,7 @@
   "Extract: the folder name is already taken": "Rozbalení: název složky je již obsazen",
   "Extras": "Doplňky",
   "Failed": "Selhalo",
+  "Failed to open presentation: {0} ({1})": "Prezentaci nelze otevřít: {0} ({1})",
   "File": "Soubor",
   "File extensions": "Přípony souborů",
   "File icons": "Ikony souborů",

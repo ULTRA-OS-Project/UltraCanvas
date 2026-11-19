@@ -260,6 +260,7 @@
   "Extract: the folder name is already taken": "압축 풀기: 폴더 이름이 이미 사용 중입니다",
   "Extras": "기타",
   "Failed": "실패",
+  "Failed to open presentation: {0} ({1})": "프레젠테이션을 열지 못했습니다: {0} ({1})",
   "File": "파일",
   "File extensions": "파일 확장명",
   "File icons": "파일 아이콘",

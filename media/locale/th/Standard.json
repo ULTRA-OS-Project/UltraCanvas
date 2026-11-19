@@ -260,6 +260,7 @@
   "Extract: the folder name is already taken": "แตกไฟล์: มีชื่อโฟลเดอร์นี้อยู่แล้ว",
   "Extras": "ส่วนเสริม",
   "Failed": "ล้มเหลว",
+  "Failed to open presentation: {0} ({1})": "ไม่สามารถเปิดงานนำเสนอ: {0} ({1})",
   "File": "ไฟล์",
   "File extensions": "นามสกุลไฟล์",
   "File icons": "ไอคอนไฟล์",

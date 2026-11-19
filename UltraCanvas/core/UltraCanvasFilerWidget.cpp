@@ -51,6 +51,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.50.1 - a password-protected .ods keeps its type glyph rather than a page of its ciphertext
+// Version: 1.50.0 - an OpenDocument presentation (.odp, .otp, .fodp) is a document named
+//                  "OpenDocument" and previews its slides' text; .ppsm, .potm and the legacy
+//                  .ppt are named "PowerPoint"
 // Version: 1.49.2 - the Compress / Extract dialog follows the theme: its buttons are the theme's
 //                  Primary and Standard parts (Cancel was a fixed light-grey face under the theme's
 //                  ink - blank under a dark theme), and its panel edge, field border and drag
@@ -152,7 +156,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -205,6 +209,7 @@
 #include "UltraCanvasFilePreviews.h"   // thumbnails and preview text from the formats' providers
 #include "UltraCanvasRichDocument.h"   // a provider's preview document
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasOdfEncryption.h"   // a protected .ods has no preview page
 #include "Models/STL/UltraCanvasSTLLoader.h"
 #include "UltraCanvasModelPreview.h"
 #include "UltraCanvasVectorPreview.h"
@@ -614,6 +619,12 @@ namespace UltraCanvas {
                 {"pptm", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
                 {"ppsx", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
                 {"potx", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"ppsm", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"potm", {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"ppt",  {"PowerPoint", FilerFileCategory::Document, ColorFamily::Document, 4}},
+                {"odp",  {"OpenDocument", FilerFileCategory::Document, ColorFamily::Document, 2}},
+                {"otp",  {"OpenDocument", FilerFileCategory::Document, ColorFamily::Document, 2}},
+                {"fodp", {"OpenDocument", FilerFileCategory::Document, ColorFamily::Document, 2}},
                 {"rtf",  {"RTF",  FilerFileCategory::Document, ColorFamily::Document, 5}},
                 {"md",   {"Markdown", FilerFileCategory::Document, ColorFamily::Document, 6}},
                 {"html", {"HTML", FilerFileCategory::Document, ColorFamily::Document, 6}},
@@ -1715,6 +1726,10 @@ namespace UltraCanvas {
                 if (!zip.Open(path)) return false;
                 tabular = true;
                 if (ext == "ods") {
+                    // A password-protected .ods keeps its type glyph: its
+                    // content.xml is ciphertext, and the preview has no
+                    // password to ask for.
+                    if (IsEncryptedOdfPackage(zip)) return false;
                     std::string contentXml;
                     if (!zip.ReadEntry("content.xml", contentXml)) return false;
                     OdsToPreviewLines(contentXml, lines);

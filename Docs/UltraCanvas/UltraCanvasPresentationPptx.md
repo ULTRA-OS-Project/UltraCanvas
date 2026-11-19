@@ -1,7 +1,8 @@
 # UltraCanvasPresentationPptx — PowerPoint decks (.pptx) as text and slides
 
 `UltraCanvasPresentationPptx.h` reads a PowerPoint presentation - `.pptx`,
-and `.pptm` / `.ppsx` / `.potx`, which are the same package - into a UI-free
+and `.pptm` / `.ppsx` / `.ppsm` / `.potx` / `.potm`, which are the same
+package - into a UI-free
 model of its slides' text: titles, the paragraphs of every placeholder and
 text box with their outline levels and bullets, tables, the pictures' names
 and descriptions, speaker notes, and which slides are hidden. A
@@ -12,6 +13,10 @@ For drawing a slide it also resolves what each shape takes from its layout,
 master and theme - place, text sizes, colours and alignment, anchor, fill,
 outline, the background - and `UltraCanvasPptxSlideRender.h` draws a slide
 from that as a picture (*Drawing a slide*, below). There is no writer.
+
+An OpenDocument presentation (`.odp`, `.otp`, `.fodp`) is read into the same
+model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), so the
+outline, the preview and the text extraction below serve both kinds of deck.
 
 ## Opening one as a document
 
@@ -43,7 +48,12 @@ speaker notes as a block quote opening "Notes:"; a rule between slides.
 UltraFiler's preview page (`UltraCanvasFilerWidget::TextPreviewLines`) shows
 the same outline: the first page of a deck's slide text on its tile and in
 the detail pane. A protected deck keeps its type glyph, since the preview has
-no password to ask for.
+no password to ask for. UltraTexter opens a deck as the outline in its
+document editor, and refuses to save it back as a deck.
+
+A file named `.pptx` (or `.odp`) that is no deck - damaged, or something else
+renamed - is refused by `LoadTextDocument` ("The file is not a valid
+PowerPoint presentation") rather than read as text.
 
 ## Reading the model
 
@@ -109,6 +119,12 @@ reads a package already in memory.
   theme, with `lumMod`, `lumOff`, `tint` and `shade` applied. A shape with a
   fill or outline and no text is kept (a coloured bar, a circle).
 - Speaker notes: the body placeholder of the slide's notes slide.
+- `mc:AlternateContent` (Markup Compatibility, ECMA-376 Part 3), which
+  PowerPoint wraps around what an older reader may not know - an equation,
+  a newer chart, a 3D model, ink: the first `mc:Choice` that gives a shape
+  (or, inside a paragraph, text) is read, else the `mc:Fallback`; never both.
+  An equation (`a14:m`) reads as the text of its `m:t` runs ("p=r−c"), a
+  chart the reader cannot read as the picture its Fallback holds.
 - Not read: theme fonts, gradient, picture and pattern fills, effects,
   charts, SmartArt, embedded objects, comments, animations and transitions.
   Pictures are named; their bytes are kept with `withPictures`, not decoded.
@@ -156,7 +172,9 @@ and the outline; then what a slide is drawn with - the subtitle's place from
 its layout, the title's 44 pt and centring and the body's 32 / 28 pt from the
 master, the theme's colours, the master's background and text colour, the
 subtitle's tinted colour - and `RenderPptxSlide` drawing the first slide at
-640 x 360. `office-agile-encrypted.pptx` is the same deck encrypted;
+640 x 360; and the same deck rebuilt in memory with an equation shape, a
+chart with a picture as its fallback and an equation inside a paragraph,
+each read once. `office-agile-encrypted.pptx` is the same deck encrypted;
 it is refused without the password, read with it, and opened by
 `UltraCanvasFileLoader::LoadTextDocument`. The same test checks UltraFiler's
 preview page: the plain deck's slides, titles first, and no page for the

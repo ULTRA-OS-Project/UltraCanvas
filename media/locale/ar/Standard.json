@@ -310,6 +310,7 @@
   "Extract: the folder name is already taken": "استخراج: اسم المجلد مستخدم بالفعل",
   "Extras": "إضافات",
   "Failed": "فشل",
+  "Failed to open presentation: {0} ({1})": "تعذّر فتح العرض التقديمي: {0} ({1})",
   "File": "ملف",
   "File extensions": "امتدادات الملفات",
   "File icons": "أيقونات الملفات",

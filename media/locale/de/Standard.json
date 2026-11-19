@@ -270,6 +270,7 @@
   "Extract: the folder name is already taken": "Entpacken: der Ordnername ist bereits vergeben",
   "Extras": "Extras",
   "Failed": "Fehlgeschlagen",
+  "Failed to open presentation: {0} ({1})": "Präsentation konnte nicht geöffnet werden: {0} ({1})",
   "File": "Datei",
   "File extensions": "Dateiendungen",
   "File icons": "Dateisymbole",
