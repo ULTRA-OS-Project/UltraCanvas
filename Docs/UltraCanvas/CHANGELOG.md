@@ -1,3 +1,242 @@
+#### 2026-11-19 *0.9.578*
+- **Scroll bars are dark in a dark menu, dropdown list and settings page.**
+  `MenuStyle::FromTheme` and `DropdownStyle::FromTheme` themed everything but
+  the scroll bar, and `SettingsPageKit::MakePage` turned scrolling on with a
+  fresh `ContainerStyle`, putting the light look's bar back. A long context
+  menu, a long dropdown list and a scrolling settings page (UltraFiler,
+  UltraMail, ChatCube, UltraSnip, UltraAI) showed a light grey bar down a dark
+  panel; they now take the theme's.
+- **The cloud account and file picker dialogs follow the theme.** UltraCloud's
+  dialog palette (`UltraCloudUiStyle.h`) was a fixed light one, so adding an
+  FTP / SFTP or cloud drive in UltraFiler or UltraPress opened a white window
+  in a dark app, its dropdowns black on it and the "Use as the default cloud
+  account" checkbox's label white on white. The colours are the theme's roles
+  now, and the buttons the theme's Primary and Standard parts.
+- **The file display's notice and filter buttons are the theme's accent.**
+  "Show hidden files" and the empty filter's "Scan sub folder" were a fixed
+  blue; they take the theme's main-action button, as the Compress / Extract
+  dialog's do.
+- **The Filer's Compress / Extract dialog showed English beside a translated
+  hint.** Its title, the Compress / Extract and Cancel buttons, the
+  "Location:" line and the "N archives" label were bare literals, so a German
+  desktop read "Extract" and "Location:  C:\…" above "Ziehen Sie das Symbol auf
+  einen Ordner…". They go through `Tr` / `TrF` / `TrN` now
+  (`UltraCanvasFilerWidget`), and the default names a person reads in the
+  name field and keeps on disk - `archive` for a selection with no name to
+  borrow, `Extracted` for several archives unpacked at once - are translated
+  as file and folder names (`TrC("file name", ...)`, `TrC("folder name", ...)`),
+  the same in the dialog, its commit and the direct Compress.
+  - Standard set: `Extract` moves up from the Computer base set (every
+    language keeps its translation), and `Location: {0}`, `{n} archive` and
+    the two default names arrive drafted in every language under
+    `media/locale/` (machine draft, reviewed by -).
+- **The Filer's context menu, default names and error messages were English on
+  every desktop.** `UltraCanvasFilerWidget` now translates them all:
+  - **Context menu:** every entry (Extract and Run, Copy, Cut, Paste, Delete,
+    Delete Permanently, Duplicate, Rename, New > Folder, Extract, Print,
+    Settings, "(no applications)") and the Display submenu's sort fields,
+    view types, thumbnail / detail-view file kinds, dataset fields,
+    extension tags, file-icon styles and switches. The public
+    `PreviewTypeLabel` / `ExtensionBadgeLabel` / `FileIconStyleLabel` stay
+    English: tests and UltraFiler use them as names and identifiers.
+  - **Default names** a person reads and keeps on disk - "New folder",
+    "Pasted image", "Pasted text" - are translated as file and folder names
+    (`TrC("folder name", ...)`, `TrC("file name", ...)`).
+  - **Errors:** every `ReportError` message is a whole translated sentence,
+    with paths and system errors as `{0}` / `{1}`; the extraction summary's
+    title, caption and "skipped" / "cancelled" reasons too.
+    `RefuseWriteHere` takes the whole refusal for its command
+    (`Tr("Cannot rename on a drive: ...")`) instead of an English verb
+    spliced into an English sentence.
+  - Standard set: the new texts arrive drafted in every language under
+    `media/locale/` (machine draft, reviewed by -); "List", "Treemap",
+    "Audio", "3D", "Docs", "Spreadsheets", "Bar size" and "Hidden files"
+    move up from the UltraFiler / UltraDesktop / ChatCube / demo catalogues
+    and the Computer base set, keeping their translations.
+  - **`UltraCanvasFilerWidget::PreviewTypeText(kind)`** (new): a preview kind's
+    name in the reader's language, shared by the Display submenus and an
+    application's settings; `PreviewTypeLabel` stays the English name.
+  - The extract-conflict dialog (captions, note, "Apply to all remaining
+    archives", Keep both / Extract into existing / Skip / Stop) and the
+    progress window of a pack, an unpack, Extract and Run and an
+    administrator delete (titles, "Unpacking \"{0}\" (1 of 3)" captions,
+    the Windows permission line) are translated too.
+  - **`FilerNewDocumentType::fileName`** (new): New > Spreadsheet created
+    "New Spreadsheet.ods" on every desktop - "New " + the label, a name no
+    translation can build. Each kind now names its file as a whole
+    (`TrC("file name", "New spreadsheet")` → "Neue Tabelle.ods"), the default
+    kinds' labels are translated, and an entry a host gives no `fileName`
+    falls back to `TrF("New {0}", label)`.
+- **The "Reason" column of a finished copy, move or delete is translated.**
+  The list of skipped items in the *Copy finished* / *Move finished* /
+  *Delete finished* window headed its second column "Reason" in English in
+  every language. It now goes through `Tr`, with the word in the standard set
+  in all 30 languages (UltraMail's own "Reason" now takes it from there).
+- **Replace when newer, bigger or different.** The file display's question for
+  a name that is taken ("photo.jpg already exists in ...") has a foldable
+  **Replace options** panel under the two files: Replace always (as before),
+  or only when the pasted file is newer, bigger, or different (another size
+  or date) - `PasteReplaceCondition`. A file that does not win is left as it
+  is and listed in the summary with why ("Kept: the existing file is not
+  older"). With "Apply to all remaining conflicts" the condition holds for
+  the rest of the paste, a merged folder's files included. Folded, the
+  panel's header still names the choice in force, and the next question of
+  the session opens with it.
+- **Copy skipped items again can replace.** The summary at the end of a copy
+  or move that skipped files whose name was taken has an **Options for
+  copying again** panel: ask about each file, keep both (the copy gets a
+  number, "photo (2).jpg"), replace always, or replace when newer, bigger or
+  different. The choice stands in for the host's conflict policy: under a
+  standing Skip (UltraFiler's Settings > Handling > File operations) the copy
+  again used to skip every file again.
+- **"File exists already"** is the reason the summary gives for a file
+  skipped because its name was taken (it was "Skipped: the name is already
+  taken").
+- **Replace when older; keep both but skip identical files.** The panel (now
+  titled *Options*) adds *Replace only when the pasted file is older*
+  (`PasteReplaceCondition::IfOlder`, for bringing an earlier version back
+  from a backup) and a checkbox *Keep both: skip files that are identical
+  (same size and date)* (`PasteConflictAction::KeepBothUnlessIdentical`): no
+  duplicate of a file that is there, nothing overwritten. The summary's copy
+  again offers both as well; a file skipped this way is listed as "An
+  identical file exists already".
+- **A longer reason is no longer cut off in the summary.** The list in the
+  *Copy / Move / Delete finished* window gave the reason a fixed 260 px, so a
+  German "Übersprungen: der Name ist bereits vergeben" ended in "bereit…".
+  The reason now takes the width the name leaves (the name up to 45 % of the
+  list), the window is 700 px wide like the name-conflict question, and the
+  rows of its options panel use the dialog's whole width.
+- **Every macOS app that prints carries UltraNet's `mdns` plug-in.** Texter,
+  UltraFiler and UltraCanvasDemo print through the framework's print dialog,
+  whose choice is looked up among IODeviceManager's printers. Their bundles
+  carried no UltraNet plug-in, so there IODeviceManager listed only CUPS's
+  queues: the network printers CUPS does not reach (IPP enumeration) and
+  the demo's eSCL scanners, both found by browsing DNS-SD through `mdns`,
+  were missing, while Linux and Windows give every app every plug-in from
+  one shared folder. The macOS print panel itself offers CUPS's queues, which
+  the CUPS backend finds without it. `package-macos.sh` now names `mdns` for
+  them in `ultranet_plugins_of`, beside DeviceExplorer (`mdns`) and
+  UltraMail (all), and `AGENTS.md` makes it the rule for any app that prints.
+- **DeviceExplorer finds network printers and eSCL scanners on macOS.** Its
+  bundle carried no UltraNet plug-in, so the DNS-SD browse behind both - the
+  `mdns` plug-in, loaded by IODeviceManager's IPP and eSCL enumeration -
+  found nothing there, while Linux and Windows give every app every plug-in
+  from one shared folder. `package-macos.sh` names the plug-ins each app
+  loads (`ultranet_plugins_of`: UltraMail all of them, DeviceExplorer
+  `mdns`) and puts only those into its `Contents/PlugIns/UltraNet/`; a
+  plug-in named and not built fails the packaging. UltraNetMonitor loads
+  none - it reads the system's socket table - and stays as it was;
+  `package-linux.sh`'s comment that named it among the plug-ins' users is
+  corrected.
+- **`scripts/check_libcxx_syntax.py` takes a build outside the checkout.**
+  `--db` pointing there stopped with a `ValueError` (a message named the
+  folder relative to the checkout). A build configured without the database
+  was configured again under the path as it was given, so one reached
+  through a symbolic link had the link's path recorded as its home and no
+  longer built from its own folder. It is now configured under the folders
+  its own `CMakeCache.txt` names; a build whose cache names another folder
+  (moved, or re-homed) is refused with what to do, instead of compiles
+  started in a folder that is not there; a database the cache promises and
+  the folder lacks is said, not a traceback; and the sources the checked
+  build generated are left out wherever it is, not only under `build/`.
+  `scripts/tests/test_check_libcxx_syntax.py` holds each case.
+- **`scripts/package-store-app.sh <App>`: one application as an UltraStore
+  package**, the app on its own: everything it loads in one folder, so it
+  starts in any store, one from before the runtime layer too. The script
+  cuts it out of the suite
+  package `package-linux.sh` or `package-win.sh` made, the way
+  `package-ultracanvasstart.sh` cuts UltraCanvasStart: the executable and
+  its launcher, the plug-in families it loads (UltraIM with ChatCube alone),
+  the closure the loader resolves inside the suite with libvips', libheif's
+  and ImageMagick's run-time modules where those are in it, the media the
+  framework loads and the application's own data. It checks the package
+  from inside (every library resolves within it; an application that
+  answers `--version` runs from it) and ends with the `ultrastoreadmin`
+  lines, the entry and the glibc variant spelled out. The version is line 1
+  of the application's changelog, the id `org.ultraos.<app>`.
+  - CI's Linux and Windows builds make UltraMail's package on every run and
+    upload it as `UltraMail-store-<os>-<arch>`.
+- **`package-store-app.sh --runtime` and `<App> --on-runtime`**: the
+  UltraCanvas runtime as the store component `org.ultraos.runtime` at the
+  framework's version - the core library and its closure, the plug-in
+  families every app may load, the run-time modules and the media, laid out
+  at the top of the archive as the component's folder - and an app without
+  what that runtime carries, its release depending on it: a few megabytes
+  instead of a hundred. The app's launcher takes libvips', libheif's and
+  ImageMagick's module folders from the runtime's (`ULTRACANVAS_RUNTIME_DIR`)
+  when it has none of its own, and an app on the runtime is run from the
+  staged runtime with the environment the store gives it before the package
+  is declared done. On macOS the script zips the bundle `package-macos.sh
+  --store-app` made, checks its signature and prints its `--min-os`.
+  - CI makes UltraMail's package on macOS too, and on Linux and Windows the
+    runtime and UltraMail on it (`UltraCanvas-runtime-store-<os>-<arch>`).
+- **The progress window's percentage reads under a dark theme.** The ring of
+  `UltraCanvasProgressDialog` - UltraFiler's copy, move, compress and extract
+  window, UltraVideo's export - had fixed light-theme colours: the percentage
+  in its middle was dark grey, nearly invisible on the dark dialog, and the
+  track a light grey band. The arc now takes the theme's accent, the track its
+  hairline colour and the percentage its ink, and a theme change while the
+  window is open is taken at once.
+- **An application can run on a runtime it does not carry**
+  (`ULTRACANVAS_RUNTIME_DIR`, `kRuntimeDirVariable` in
+  `UltraCanvasConfig.h`). UltraStore installs an app beside the runtime
+  component it was built against and names that folder when it starts it;
+  `GetResourcesDir()` takes the runtime's `share/` (`Resources/` on Windows)
+  when the app's own folders have no `media/`, and UltraNet's default
+  plug-in folder the runtime's `bin/Plugins/UltraNet` (`Plugins/UltraNet`
+  on Windows) when the app's have no plug-in. The app's own come first.
+- **`LaunchDetachedProcess` takes an environment for the started program**
+  (an overload, as `RunProcessCaptured` takes it): set in the detached child
+  on POSIX, an environment block on Windows. The Windows block is built by
+  one helper for both.
+- **UltraNet looks in a macOS bundle's `Contents/PlugIns/UltraNet`** before
+  the folders beside the executable: where `package-macos.sh` now puts the
+  plug-ins, spelled with its capital I, which the walk up from the
+  executable found only on a volume that ignores case.
+- **UltraMail is in the macOS suite** (`package-macos.sh`), with UltraNet's
+  plug-ins in its `Contents/PlugIns/UltraNet/` (`ultranet_plugins_of`) and
+  their libraries in the shared `Frameworks/`; it had been built on macOS and
+  never packaged. Every Mach-O file under a bundle's `PlugIns/` is signed,
+  not only the top-level `.dylib`.
+- **`package-macos.sh --store-app <App>`** cuts any app of the suite out on
+  its own, into `dist-store-macos/` - the rewrite `--start-app` makes for
+  UltraCanvasStart, with the translations and emoji fonts kept and every
+  plug-in's closure in the bundle's own `Frameworks/` - for UltraStore. The
+  proof run of an app on its own (`--version`) has a time limit now: an app
+  that does not know the option opens its window and never ends, and only
+  the loader refusing a library fails the package (UltraCanvasStart must
+  still answer).
+- **A settings window left open follows a theme change.** The settings page
+  kit (`UltraCanvasSettingsPageKit`) read the theme's colours and sizes only
+  when it built a window, so a window open while the desktop - or an
+  application's own light / dark setting - changed kept its old look: light
+  backgrounds and buttons around dark text, and a note's grey turned to full
+  ink. Every element the kit builds now remembers which roles it took and
+  takes them again after the change: the window, the sidebar, the tree, the
+  page area, the notes block, the buttons, the choices and checkboxes with
+  their boxes, and the colour boxes' frames. A label follows as the role its
+  colour and size were; one of the page's own stays as given. A control an
+  application styles in the kit's look itself registers with the new
+  `FollowKitLook(element, restyle)`. UltraFiler, UltraSnip and UOS-Settings
+  get it for the controls they build from the kit.
+- **A program done before the ImageMagick warm-up no longer aborts on its
+  way out.** The application starts ImageMagick's warm-up on a thread of its
+  own at launch, and only the end of the main loop waited for it; a program
+  that never ran the loop - a test, a tool - detached it and exited under it.
+  glibc's exit runs each library's finaliser and marks the library
+  uninitialised, so the warm-up's dlopen of ImageMagick's coders, landing
+  after libgomp's finaliser, ran libgomp's constructor a second time:
+  "goacc_register: Assertion `!dispatchers[disp->type]' failed".
+  ClipboardTargetsTest aborted so on the Linux x86_64 row once in many runs,
+  after all its checks had passed. `UCImageRaster::FinishImageMagickWarmUp`
+  waits for the warm-up; the application's destructor calls it, and on POSIX
+  so does an exit handler registered with the warm-up (exit handlers run
+  before the libraries' finalisers), for a program that calls `exit()`.
+  - `ExitDuringWarmUpTest` starts the application and returns at once, run
+    with `ExitHoldAudit` as `LD_AUDIT`, which holds the process right after
+    libgomp's finaliser: without the fix it aborts in 7 of 10 runs, with it
+    none. It runs with the framework's other window tests on a display.
+
 #### 2026-11-19 *0.9.577*
 - **UltraNet: `UltraNet_ResolveTunnelProxy`; IRC, XMPP and Telegram take
   the system's web proxy where it names no other.** With "the system's
