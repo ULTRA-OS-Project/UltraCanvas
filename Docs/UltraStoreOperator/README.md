@@ -7,7 +7,9 @@ OS Project runs as the operator of a store in which other publishers
 the merchants and where they stand with the terms, the review of what they
 submit and the publish that releases it into the one signed catalog, the
 reports from users and merchants, the notices and the strikes, the terms
-and the enforcement policy, the audit log. One program, `ultrastoreop`:
+and the enforcement policy, the audit log - and, with its own token, of
+the account service ([`Server/UltraStoreAccount`](../../Server/UltraStoreAccount/README.md)):
+the people with an account, their requests, the actions on them. One program, `ultrastoreop`:
 the window when started plainly, the commands when given one. The design
 it follows is the `Super*` pages of
 [`Docs/UltraStore/design/README.md`](../UltraStore/design/README.md);
@@ -65,15 +67,16 @@ Every text goes through `Tr`.
 | App review | the catalog's last publish and how many released apps go into the next one; the submissions by *Waiting*, *Changes requested*, *Released*, *All*; one submission: the automatic checks with their outcomes, the card as the store will show it, the packages, the decisions so far | *Publish the catalog*; *Start the review*, *Request changes*, *Approve and release* (a sequence of your own, or the next), *Reject*, each with the message to the merchant; a release of a submission with a failed check needs a message saying why |
 | Reports | the reports by *Open*, *Mine*, *Closed*, *All*; one report: where it came from, the reporter (the operator's to see), the text and the attachments, the findings and the outcome once closed | *Assign*; *Resolve as upheld* or *Dismiss*, with the findings for the file and the outcome line for the reporter; *Open a report from mail* |
 | Terms and notices | the versions with who accepted them and which is current; the merchants not on the version in force; the enforcement policy; the notices sent | *Publish this version* (the text, what changed, the day it comes into force); *Save the policy*; *Send* a notice to named merchants or everyone, a warning with its clause |
+| Users | the design's `SuperUsers`, on the account service: the counts (accounts and two-factor, the archive requests and those due, the deletion requests, the suspended), the users by *All*, *Active*, *Suspended*, *Deleting*, *With a request* with a search; one user's file: the devices, the licences without their tokens, the archives, the notices, the history and the sign-ins, and what the operator cannot see | *Open file*; a notice (the kind, the subject, the text); *Sign out every device*; *Reset two-factor (identity checked)*; *Release* an archive; *Suspend the account* (the reason, the days) or *Reinstate*; *Delete now* for a deletion the person asked for - each with the reason, which goes into the account service's audit log |
 | Audit log | the latest rows, newest first | *Verify the chain*: the service walks the hashes and names the first row that does not fit |
-| Settings | the service's URL, the token, the operator's name | *Save*; *Check the service* (`GET /healthz`) |
+| Settings | the service's URL, the token, the operator's name; the account service's URL and its operator token | *Save*; *Check the service* (`GET /healthz`); *Check the account service* |
 
 ## The command line
 
 ```
 ultrastoreop [--settings <file>] [--url <base>] [--token <t>] <command>
 
-settings [set url|token|name <value>]                    the settings file
+settings [set url|token|name|account_url|account_token <value>]   the settings file
 health                                                   the service's healthz
 merchant list | show <id>                                every merchant; one with its file
 merchant add <name> --key <hex> [--id <id>] [--contact <c>]
@@ -93,7 +96,18 @@ terms [add <in-force-from> <text|@file> [--changes <c>] [--version <n>]]
 policy [set <key> <value>]                               strike_expiry_days strikes_before_suspension suspension_days
                                                          answer_deadline_days clauses_that_suspend ("9.1 12", "-" for none)
 audit [--since <id>] [--limit <n>] | audit verify
+users list [--state active|suspended|deleting|requests] [--q <text>] | show <id> | stats
+users notice <id> <subject> [--kind notice|security|warning|information_request] [--text <t|@file>]
+users signout <id> [--reason <r>] | reset-2fa <id> [--reason <r>]
+users suspend <id> [--reason <r>] [--days <n>] | reinstate <id> [--reason <r>]
+users delete <id> [--reason <r>]                         a deletion the person asked for, carried out now
+users release-archive <archive-id> | maintenance | audit [--since <id>] [--limit <n>] | audit verify
 ```
+
+The `users` commands drive the account service, named by `account_url`
+and `account_token` in the settings (`ULTRASTORE_OPERATOR_ACCOUNT_URL`
+and `_ACCOUNT_TOKEN` in the environment); without them the Users page
+says so and the commands refuse before any call.
 
 The command line stays English: it runs before any language is loaded.
 Notice kinds: `announcement`, `reminder`, `information_request`,
@@ -143,3 +157,10 @@ its permissions, the age of a timestamp. The service's own tests
    scans, the entry, the smoke run, the listing), and the payouts and
    users pages of the design, which need the payment service's figures
    per merchant.
+
+2. **The users page** (the design's `SuperUsers`), on the account service
+   with its own token: the counts, the states and the search, the file,
+   the notice, sign out everywhere, reset two-factor, the archive released,
+   suspend and reinstate, the deletion on request; `ultrastoreop users`.
+   Next: the payouts page, which needs the payment service's figures per
+   merchant.

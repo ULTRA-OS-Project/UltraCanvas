@@ -48,7 +48,7 @@ int UltraStoreOperator::Cli::Usage(FILE* to) {
         "  ultrastoreop [--settings <file>] [--page <id>]         the window (on the page: dashboard merchants review reports terms audit settings)\n"
         "  ultrastoreop [--settings <file>] [--url <base>] [--token <t>] <command>\n"
         "\n"
-        "  settings [set url|token|name <value>]\n"
+        "  settings [set url|token|name|account_url|account_token <value>]\n"
         "  health\n"
         "  merchant list | show <id> | add <name> --key <hex> [--id <id>] [--contact <c>]\n"
         "  merchant set <id> [--name <n>] [--contact <c>] [--key <hex>]\n"
@@ -63,10 +63,16 @@ int UltraStoreOperator::Cli::Usage(FILE* to) {
         "  terms [add <in-force-from> <text|@file> [--changes <c>] [--version <n>]]\n"
         "  policy [set strike_expiry_days|strikes_before_suspension|suspension_days|answer_deadline_days|clauses_that_suspend <value>]\n"
         "  audit [--since <id>] [--limit <n>] | audit verify\n"
+        "  users list [--state active|suspended|deleting|requests] [--q <text>] | show <id> | stats\n"
+        "  users notice <id> <subject> [--kind notice|security|warning|information_request] [--text <t>]\n"
+        "  users signout <id> [--reason <r>] | reset-2fa <id> [--reason <r>] | suspend <id> [--reason <r>] [--days <n>] | reinstate <id> [--reason <r>]\n"
+        "  users delete <id> [--reason <r>]       a deletion the person asked for, carried out now\n"
+        "  users release-archive <archive-id> | maintenance | audit [--since <id>] [--limit <n>] | audit verify\n"
         "  --version | --help\n"
         "\n"
         "The settings file (settings.json under the data folder) keeps the service's URL, the operator token and your name;\n"
-        "ULTRASTORE_OPERATOR_URL and ULTRASTORE_OPERATOR_TOKEN override it. Notice kinds: announcement reminder information_request warning suspension.\n",
+        "ULTRASTORE_OPERATOR_URL and ULTRASTORE_OPERATOR_TOKEN override it; the account service (users) is account_url and account_token,\n"
+        "ULTRASTORE_OPERATOR_ACCOUNT_URL and _ACCOUNT_TOKEN. Notice kinds: announcement reminder information_request warning suspension.\n",
         ULTRASTOREOPERATOR_VERSION);
     return to == stdout ? 0 : 2;
 }
@@ -160,7 +166,8 @@ int CmdSettings(const std::string& path, const std::vector<std::string>& args) {
         return 0;
     }
     if (pos.size() != 1) return Usage(stderr);
-    std::printf("settings %s\nurl    %s\ntoken  %s\nname   %s\n", path.c_str(), Or(s.url, "(not set)"), s.token.empty() ? "(not set)" : "(set)", Or(s.name, "(not set)"));
+    std::printf("settings %s\nurl    %s\ntoken  %s\nname   %s\naccount_url    %s\naccount_token  %s\n", path.c_str(), Or(s.url, "(not set)"), s.token.empty() ? "(not set)" : "(set)",
+                Or(s.name, "(not set)"), Or(s.accountUrl, "(not set)"), s.accountToken.empty() ? "(not set)" : "(set)");
     return 0;
 }
 
@@ -452,6 +459,116 @@ int CmdAudit(const OperatorClient& client, const std::vector<std::string>& args)
     return 0;
 }
 
+
+// ----- the users (the account service) -----
+void PrintUser(const User& u) {
+    std::printf("%-10s %-24s %-28s %-10s %-3s since %s  2fa %-3s  %d device(s) %d licence(s)%s%s\n", u.id.c_str(), u.Name().c_str(), u.email.c_str(), u.state.c_str(), u.country.c_str(),
+                u.createdAt.substr(0, 10).c_str(), u.twoFactor ? "on" : "off", u.devices, u.licences, u.request.empty() ? "" : ("  request: " + u.request).c_str(),
+                u.state == "deleting" ? ("  deleted on " + u.deleteAfter).c_str() : "");
+}
+
+int CmdUsers(const OperatorClient& client, const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    const std::string& what = pos[1];
+    if (what == "list") {
+        const auto page = client.Users(Option(args, "--state"), Option(args, "--q"));
+        if (!page) return Fail(page.error);
+        const UserStats& s = page.Value().stats;
+        std::printf("%d accounts (+%d in 30 days, %d %% with two-factor), %d archive request(s) (%d due), %d deletion request(s), %d suspended\n",
+                    s.accounts, s.newIn30Days, s.twoFactorPercent, s.archiveRequests, s.archiveRequestsDue, s.deletionRequests, s.suspended);
+        for (const User& u : page.Value().users) PrintUser(u);
+        return 0;
+    }
+    if (what == "stats") {
+        const auto s = client.GetUserStats();
+        if (!s) return Fail(s.error);
+        std::printf("accounts %d  new_in_30_days %d  two_factor_percent %d  archive_requests %d  archive_requests_due %d  deletion_requests %d  suspended %d\n",
+                    s.Value().accounts, s.Value().newIn30Days, s.Value().twoFactorPercent, s.Value().archiveRequests, s.Value().archiveRequestsDue, s.Value().deletionRequests, s.Value().suspended);
+        return 0;
+    }
+    if (what == "maintenance") {
+        const auto m = client.AccountMaintenance();
+        if (!m) return Fail(m.error);
+        std::printf("%d deleted, %d reinstated\n", m.Value().first, m.Value().second);
+        return 0;
+    }
+    if (what == "release-archive") {
+        if (pos.size() < 3) return Usage(stderr);
+        const auto a = client.ReleaseArchive(pos[2]);
+        if (!a) return Fail(a.error);
+        std::printf("archive %s %s\n", a.Value().id.c_str(), a.Value().state.c_str());
+        return 0;
+    }
+    if (what == "audit") {
+        if (pos.size() >= 3 && pos[2] == "verify") {
+            const auto c = client.VerifyAccountAudit();
+            if (!c) return Fail(c.error);
+            if (c.Value().ok) std::printf("ok: %lld rows, last hash %s\n", static_cast<long long>(c.Value().rows), c.Value().lastHash.c_str());
+            else std::printf("BROKEN at row %lld of %lld\n", static_cast<long long>(c.Value().brokenAt), static_cast<long long>(c.Value().rows));
+            return c.Value().ok ? 0 : 1;
+        }
+        const auto page = client.AccountAudit(Number(Option(args, "--since")), Number(Option(args, "--limit"), 100));
+        if (!page) return Fail(page.error);
+        for (const AuditRow& r : page.Value().rows) std::printf("%lld  %s\n", static_cast<long long>(r.id), r.Line().c_str());
+        return 0;
+    }
+    if (pos.size() < 3) return Usage(stderr);
+    const std::string& id = pos[2];
+    if (what == "show") {
+        const auto file = client.GetUser(id);
+        if (!file) return Fail(file.error);
+        const UserFile& f = file.Value();
+        PrintUser(f.user);
+        for (const UserDevice& d : f.devices) std::printf("  device %s %s · %s · %s · last seen %s\n", d.id.c_str(), d.name.c_str(), d.os.c_str(), d.client.c_str(), d.lastSeen.c_str());
+        for (const UserLicence& l : f.licences) std::printf("  licence %s %s · bought %s · seats %d of %d\n", l.id.c_str(), l.app.c_str(), l.issued.c_str(), l.seatsUsed, l.seats);
+        for (const UserArchive& a : f.archives) std::printf("  archive %s %s · requested %s · due %s\n", a.id.c_str(), a.state.c_str(), a.requestedAt.c_str(), a.due.c_str());
+        for (const UserNotice& n : f.notices) std::printf("  notice %s %s · %s · %s%s\n", n.id.c_str(), n.createdAt.substr(0, 10).c_str(), n.kind.c_str(), n.subject.c_str(), n.readAt.empty() ? " · unread" : "");
+        for (const AuditRow& r : f.history) std::printf("  %s\n", r.Line().c_str());
+        for (const UserSignIn& si : f.signIns) std::printf("  sign-in %s %s %s %s\n", si.at.c_str(), si.ok ? "ok" : ("refused " + si.reason).c_str(), si.device.c_str(), si.ip.c_str());
+        return 0;
+    }
+    const std::string reason = Option(args, "--reason");
+    if (what == "notice") {
+        if (pos.size() < 4) return Usage(stderr);
+        const auto n = client.NotifyUser(id, Option(args, "--kind", "notice"), pos[3], TextOrFile(Option(args, "--text")));
+        if (!n) return Fail(n.error);
+        std::printf("notice %s sent to %s\n", n.Value().id.c_str(), id.c_str());
+        return 0;
+    }
+    if (what == "signout") {
+        const auto n = client.SignOutUser(id, reason);
+        if (!n) return Fail(n.error);
+        std::printf("%d device(s) signed out\n", n.Value());
+        return 0;
+    }
+    if (what == "reset-2fa") {
+        const auto r = client.ResetUserTwoFactor(id, reason);
+        if (!r) return Fail(r.error);
+        std::printf("two-factor reset for %s; the person signs in with the password and sets it up again\n", id.c_str());
+        return 0;
+    }
+    if (what == "suspend") {
+        const auto u = client.SuspendUser(id, reason, Number(Option(args, "--days")));
+        if (!u) return Fail(u.error);
+        std::printf("suspended %s%s\n", id.c_str(), u.Value().suspendedUntil.empty() ? " until reinstated" : (" until " + u.Value().suspendedUntil).c_str());
+        return 0;
+    }
+    if (what == "reinstate") {
+        const auto u = client.ReinstateUser(id, reason);
+        if (!u) return Fail(u.error);
+        std::printf("reinstated %s\n", id.c_str());
+        return 0;
+    }
+    if (what == "delete") {
+        const auto r = client.DeleteUser(id, reason);
+        if (!r) return Fail(r.error);
+        std::printf("deleted %s\n", id.c_str());
+        return 0;
+    }
+    return Usage(stderr);
+}
+
 } // namespace
 
 int UltraStoreOperator::Cli::Run(const std::vector<std::string>& argsIn) {
@@ -494,6 +611,7 @@ int UltraStoreOperator::Cli::Run(const std::vector<std::string>& argsIn) {
     if (cmd == "terms")    return CmdTerms(client, args);
     if (cmd == "policy")   return CmdPolicy(client, args);
     if (cmd == "audit")    return CmdAudit(client, args);
+    if (cmd == "users")    return CmdUsers(client, args);
     std::fprintf(stderr, "ultrastoreop: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
 }

@@ -12,6 +12,7 @@
 // ULTRASTORE_SERVERS, through the generated UltraStoreBuiltin.h. Until the
 // admin backend publishes the first catalog both are empty, and the window
 // says so on its Discover page.
+// Version: 0.5.0 - the account service of one's own
 // Version: 0.4.0 - the reports sent to the marketplace service
 // Version: 0.3.0 - the open order
 // Version: 0.2.0 - the code in force
@@ -33,6 +34,7 @@ struct StoreSettings {
     std::string language;                 // "de"; empty: the system's (SystemLanguage())
     std::vector<std::string> servers;     // base URLs, tried in order; empty: the built-in ones
     std::vector<std::string> extraKeys;   // hex public keys the user added
+    std::string accountUrl;               // the account service to sign in to; empty: the catalog's (account_url)
     bool refreshOnStart = true;
     int windowWidth = 1180;
     int windowHeight = 760;

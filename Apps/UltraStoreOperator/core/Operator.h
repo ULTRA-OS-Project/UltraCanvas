@@ -13,6 +13,7 @@
 // the program's own file (settings.json under the data folder, readable by
 // the user alone), overridden by ULTRASTORE_OPERATOR_URL and _TOKEN; the
 // window and the command line read the same file.
+// Version: 0.2.0 - the users of the account service: the records, the calls with the account token
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -42,11 +43,17 @@ struct OperatorSettings {
     std::string url;     // the service's base, https://market.example
     std::string token;   // ULTRASTORE_MARKET_OPERATOR_TOKEN at the service
     std::string name;    // who sits at the window: shown, never sent (the service records "operator")
+    // The account service (Server/UltraStoreAccount) the Users page drives,
+    // and its own operator token (ULTRASTORE_ACCOUNT_OPERATOR_TOKEN); both
+    // empty when the operator runs no accounts.
+    std::string accountUrl, accountToken;
+    bool Accounts() const { return !accountUrl.empty() && !accountToken.empty(); }
 
     static std::string DefaultPath();                           // <data folder>/UltraStoreOperator/settings.json
     static Result<OperatorSettings> Load(const std::string& pathUtf8);   // empty settings when the file is not there
     Result<void> Save(const std::string& pathUtf8) const;               // the folder made; the file the user's alone
-    // The environment over the file: ULTRASTORE_OPERATOR_URL, _TOKEN, _NAME.
+    // The environment over the file: ULTRASTORE_OPERATOR_URL, _TOKEN, _NAME,
+    // _ACCOUNT_URL, _ACCOUNT_TOKEN.
     OperatorSettings WithEnvironment() const;
     bool Complete() const { return !url.empty() && !token.empty(); }
 };
@@ -144,6 +151,57 @@ struct AuditPage {
     int64_t next = 0;
 };
 
+// ----- the account service's users (its operator API) -----
+struct User {
+    std::string id, email, displayName, handle, language, country, state, createdAt;   // the email masked by the service
+    std::string deletionRequestedAt, deleteAfter, suspendedReason, suspendedUntil;
+    std::string request;    // "", "archive", "deletion" - what the person asked of the operator (the list)
+    bool emailVerified = false, twoFactor = false;
+    int devices = 0, licences = 0;   // counted (the list)
+    std::string Name() const { return displayName.empty() ? (handle.empty() ? email : "@" + handle) : displayName; }
+};
+
+struct UserStats {
+    int accounts = 0, newIn30Days = 0, twoFactorPercent = 0, archiveRequests = 0, archiveRequestsDue = 0, deletionRequests = 0, suspended = 0;
+};
+
+struct UsersPage {
+    std::vector<User> users;
+    UserStats stats;
+};
+
+struct UserDevice {
+    std::string id, name, os, client, lastSeen, lastIp;
+};
+
+struct UserLicence {
+    std::string id, app, order, issued, validUntil;
+    int seats = 0, seatsUsed = 0;
+};
+
+struct UserNotice {
+    std::string id, kind, subject, text, createdAt, createdBy, readAt;
+};
+
+struct UserArchive {
+    std::string id, state, due, requestedAt, releasedAt;
+};
+
+struct UserSignIn {
+    std::string at, ip, device, reason;
+    bool ok = false;
+};
+
+struct UserFile {
+    User user;
+    std::vector<UserDevice> devices;
+    std::vector<UserLicence> licences;
+    std::vector<UserNotice> notices;
+    std::vector<UserArchive> archives;
+    std::vector<AuditRow> history;
+    std::vector<UserSignIn> signIns;
+};
+
 struct AuditCheck {
     bool ok = false;
     int64_t rows = 0, brokenAt = 0;
@@ -237,10 +295,29 @@ public:
     Result<AuditPage> Audit(int64_t since = 0, int limit = 500) const;
     Result<AuditCheck> VerifyAudit() const;
 
+    // ----- the users (the account service, with its own token) -----
+    Result<std::string> AccountHealth() const;
+    // state: "", active, suspended, deleting, requests; query: a part of the email, handle or name.
+    Result<UsersPage> Users(const std::string& state = {}, const std::string& query = {}) const;
+    Result<UserFile> GetUser(const std::string& id) const;
+    Result<UserStats> GetUserStats() const;
+    // kind: notice, security, warning, suspension, information_request.
+    Result<UserNotice> NotifyUser(const std::string& id, const std::string& kind, const std::string& subject, const std::string& text) const;
+    Result<int> SignOutUser(const std::string& id, const std::string& reason) const;            // the devices signed out
+    Result<void> ResetUserTwoFactor(const std::string& id, const std::string& reason) const;    // after the identity was checked
+    Result<User> SuspendUser(const std::string& id, const std::string& reason, int days) const;  // 0: until reinstated
+    Result<User> ReinstateUser(const std::string& id, const std::string& reason) const;
+    Result<void> DeleteUser(const std::string& id, const std::string& reason) const;            // only a deletion the person asked for
+    Result<UserArchive> ReleaseArchive(const std::string& archiveId) const;
+    Result<std::pair<int, int>> AccountMaintenance() const;                                     // deleted, reinstated
+    Result<AuditPage> AccountAudit(int64_t since = 0, int limit = 500) const;
+    Result<AuditCheck> VerifyAccountAudit() const;
+
     const OperatorSettings& Settings() const { return settings_; }
 
 private:
     Result<UltraCanvas::JSONValue> Ask(const std::string& method, const std::string& path, const std::string& jsonBody = {}) const;
+    Result<UltraCanvas::JSONValue> AskAccount(const std::string& method, const std::string& path, const std::string& jsonBody = {}) const;
 
     OperatorSettings settings_;
     MarketCall call_;
@@ -253,6 +330,9 @@ Report ReportOf(const UltraCanvas::JSONValue& v);
 Notice NoticeOf(const UltraCanvas::JSONValue& v);
 Suspension SuspensionOf(const UltraCanvas::JSONValue& v);
 AuditRow AuditRowOf(const UltraCanvas::JSONValue& v);
+User UserOf(const UltraCanvas::JSONValue& v);
+UserFile UserFileOf(const UltraCanvas::JSONValue& v);
+UserStats UserStatsOf(const UltraCanvas::JSONValue& v);
 Policy PolicyOf(const UltraCanvas::JSONValue& v);
 UltraCanvas::JSONValue PolicyJson(const Policy& p);
 

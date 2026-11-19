@@ -138,6 +138,16 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::BuildSettingsPage() {
     catalog->AddChild(buttons);
     scroll->AddChild(catalog);
 
+    // ----- the account -----
+    auto account = Theme::Surface("usS.account", Theme::kGap);
+    account->AddChild(Theme::Text("usS.account.title", Tr("Account"), 14.0f, FontWeight::Bold));
+    accountUrlInput_ = Theme::Pin(CreateTextInput("usS.accountUrl", 0, 0, 360, Theme::kControlHeight));
+    accountUrlInput_->SetPlaceholder(Tr("the catalog's account service"));
+    account->AddChild(FieldRow("usS.accountUrlRow", Tr("Account service"), accountUrlInput_));
+    account->AddChild(Theme::Caption("usS.accountHint",
+        Tr("Empty uses the account service the catalog names (account_url). A service of your own is for a test store; the session kept in the store folder belongs to the service it came from.")));
+    scroll->AddChild(account);
+
     // ----- this machine and the store -----
     auto info = Theme::Surface("usS.info", Theme::kGap);
     info->AddChild(Theme::Text("usS.info.title", Tr("This machine and the store"), 14.0f, FontWeight::Bold));
@@ -172,6 +182,7 @@ void StoreWindow::LoadSettingsIntoPage() {
     if (!channelDropdown_) return;
     channelDropdown_->SetSelectedIndex(settings_.channel == "beta" ? 1 : 0, false);
     languageInput_->SetText(settings_.language);
+    if (accountUrlInput_) accountUrlInput_->SetText(settings_.accountUrl);
     serversArea_->SetText(Joined(settings_.servers), false);
     keysArea_->SetText(Joined(settings_.extraKeys), false);
     refreshOnStartBox_->SetChecked(settings_.refreshOnStart);
@@ -213,6 +224,12 @@ void StoreWindow::SaveSettingsFromPage() {
         }
     }
     s.refreshOnStart = refreshOnStartBox_->IsChecked();
+    s.accountUrl = accountUrlInput_ ? accountUrlInput_->GetText() : s.accountUrl;
+    while (!s.accountUrl.empty() && s.accountUrl.back() == '/') s.accountUrl.pop_back();
+    if (!s.accountUrl.empty() && s.accountUrl.rfind("https://", 0) != 0 && s.accountUrl.rfind("http://", 0) != 0) {
+        Alert(TrF("The account service is a URL starting with https://, not \"{0}\".", s.accountUrl));
+        return;
+    }
     settings_ = s;
     if (!settings_.Save()) {
         Alert(TrF("The settings could not be written to {0}", UltraCanvasAppSettings("UltraStore").File()));
@@ -221,6 +238,7 @@ void StoreWindow::SaveSettingsFromPage() {
     if (options_.channel.empty()) channel_ = settings_.channel;
     ApplySettings();
     LoadSettingsIntoPage();
+    UpdateAccountPill();
     RebuildAllPages();
     SetStatus(Tr("Settings saved"));
 }

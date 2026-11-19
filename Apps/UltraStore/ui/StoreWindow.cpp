@@ -369,8 +369,14 @@ void StoreWindow::BuildHeader() {
     header_->AddChild(refresh);
     refreshButton_ = refresh;
 
-    // Where the design puts "Sign in": the store has no accounts, so the
-    // settings live here instead.
+    // "Sign in", as the design puts it, when the catalog names an account
+    // service; the person's initials and name once signed in.
+    accountButton_ = Theme::Button("usAccount", Tr("Sign in"), 104, Theme::ButtonKind::Secondary);
+    accountButton_->SetTooltip(Tr("Sign in to your UltraStore account, or create one"));
+    accountButton_->onClick = [this]() { OpenAccount(); };
+    accountButton_->SetVisible(false);
+    header_->AddChild(accountButton_);
+
     auto settings = Theme::Button("usSettings", Tr("Settings"), 104, Theme::ButtonKind::Secondary);
     settings->SetTooltip(Tr("Settings"));
     settings->onClick = [this]() {
@@ -428,6 +434,13 @@ void StoreWindow::ApplyHeaderLevel(int level) {
         const bool iconOnly = headerLevel_ >= 2;
         logoButton_->SetText(iconOnly ? std::string() : std::string("UltraStore"));
         logoButton_->SetElementSize(CSSLayout::Dimension::Px(iconOnly ? 48.0f : 164.0f), CSSLayout::Dimension::Px(48.0f));
+    }
+    if (accountButton_ && account_.SignedIn()) {
+        AccountProfile p;
+        p.displayName = me_ ? me_->profile.displayName : account_.displayName;
+        p.email = account_.email;
+        accountButton_->SetText(headerLevel_ >= 3 ? p.Initials() : p.Initials() + "  " + p.Name());
+        accountButton_->SetElementSize(CSSLayout::Dimension::Px(headerLevel_ >= 3 ? height + 8.0f : 104.0f), CSSLayout::Dimension::Px(height));
     }
     if (settingsButton_) {
         const bool iconOnly = headerLevel_ >= 3;
@@ -549,6 +562,9 @@ void StoreWindow::BuildShell() {
     {
         BuildScrollPage(kUpdates, updatesBody_);
     }
+    // Sign in, and the account.
+    BuildSignInPage();
+    BuildAccountPage();
     // Settings.
     {
         auto page = BuildSettingsPage();
@@ -700,6 +716,7 @@ void StoreWindow::OpenStore() {
         if (const auto bought = engine_->Registry().Licences()) licences_ = bought.Value();
     }
     assets_ = std::make_unique<AssetCache>(PathToUtf8(PathFromUtf8(engine_->CacheDir()) / "assets"));
+    account_ = AccountSession::Load(engine_->Root());
     ApplySettings();
 
     if (!options_.catalogFile.empty()) {
@@ -923,6 +940,7 @@ Licence StoreWindow::PurchaseOf(const std::string& appId) const {
 void StoreWindow::SetCatalog(std::shared_ptr<const Catalog> catalog, const std::string& note) {
     catalog_ = std::move(catalog);
     catalogNote_ = note;
+    UpdateAccountPill();
     // A paid app's package is fetched through the URL the payment service
     // signs for the buyer: the signer runs on the job thread with the
     // registry's licence of the app.

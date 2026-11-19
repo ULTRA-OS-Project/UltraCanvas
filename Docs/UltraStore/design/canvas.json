@@ -388,6 +388,47 @@
       "h": 844,
       "title": "Account phone: Sign in",
       "radius": 44
+    },
+    "BooksHome.dc.html": {
+      "x": 0,
+      "y": 38200,
+      "w": 1440,
+      "h": 2420,
+      "title": "Books: Discover",
+      "expand": "fill"
+    },
+    "BooksDetail.dc.html": {
+      "x": 1520,
+      "y": 38200,
+      "w": 1440,
+      "h": 2180,
+      "title": "Books: A title (The Salt Garden)",
+      "expand": "fill"
+    },
+    "BooksBrowse.dc.html": {
+      "x": 3040,
+      "y": 38200,
+      "w": 1440,
+      "h": 1640,
+      "title": "Books: Browse",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "BooksLibrary.dc.html": {
+      "x": 0,
+      "y": 41000,
+      "w": 1440,
+      "h": 1760,
+      "title": "Books: Your library",
+      "expand": "fill"
+    },
+    "BooksPhoneListen.dc.html": {
+      "x": 1520,
+      "y": 41000,
+      "w": 390,
+      "h": 844,
+      "title": "Books phone: Listening",
+      "radius": 44
     }
   },
   "order": [
@@ -433,7 +474,12 @@
     "AccountPhoneProfile.dc.html",
     "AccountRecovery.dc.html",
     "SuperUsers.dc.html",
-    "AccountPhoneSignIn.dc.html"
+    "AccountPhoneSignIn.dc.html",
+    "BooksHome.dc.html",
+    "BooksDetail.dc.html",
+    "BooksBrowse.dc.html",
+    "BooksLibrary.dc.html",
+    "BooksPhoneListen.dc.html"
   ],
   "notes": {
     "desk": {
@@ -575,6 +621,20 @@
       "text": "UltraStore account - recovery, the operator's users, phone sign-in",
       "kind": "title1",
       "maxW": 4480
+    },
+    "books": {
+      "x": 0,
+      "y": 37900,
+      "text": "UltraStore - e-book and audiobook shop variant",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "booksnote": {
+      "x": 4560,
+      "y": 38200,
+      "w": 420,
+      "text": "A variant as an e-book and audiobook shop in the manner of Audible: the home with the book of the month in both editions, continue listening and reading with the place kept between the audiobook and the e-book, the genres, the editor's picks, Books Plus (one credit a month through the store's subscription, the book kept), a series with the next part on pre-order, short listens; a title's page with the editions (audiobook, e-book, both kept in step), the narrator, chapters shared by both editions, reviews that say listened or read to the end, the author's and narrator's share of the price; browse with working format, genre, language and Plus filters; the library with progress, the device the place was last kept on, bookmarks and highlights, the files on the machine, this year's hours and pages; the phone's listening screen with chapters, 30-second skips, speed, the sleep timer, bookmark and 'read here'. What exists: UltraViewer reads EPUB, FB2, MOBI, PRC, AZW and AZW3 (UltraCanvasEBookViewer with the chapter toolbar and the table of contents) and PDF; UltraCanvas Audio plays MP3, M4A/M4B (AAC with FAAD2, fdk-aac or the GStreamer plugins) and the rest; the store sells subscriptions through its own payment service and Skrill Quick Checkout. What does not: a book catalogue with editions, narrators, chapters, credits, the kept place and the publishers' share. The shop is UltraStore's own business. Every book, author, narrator, review and figure is invented sample data; the covers are drawn [COVER] placeholders.",
+      "fill": "yellow"
     }
   },
   "designSystems": []
