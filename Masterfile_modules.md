@@ -38,7 +38,7 @@ the backing implementation can be replaced without affecting callers.
 - **UltraCanvasVectorStorage** (`DataFormats/UltraCanvasVectorStorage.h`) — the
   framework's universal 2D vector document structure,
   `VectorStorage::VectorDocument`: the in-memory drawing every vector file
-  format reads into and writes out of (SVG, XAR, EMF, WMF, DXF, DWG read;
+  format reads into and writes out of (SVG, XAR, EMF, WMF, DXF, DWG, ODG read;
   those plus PDF, AI, EPS, CDR written — the converters are the Vector
   plugin, `Plugins/Vector/`, documented in
   `Docs/UltraCanvas/UltraCanvasVectorConverters.md`). Core rather than
@@ -58,7 +58,8 @@ the backing implementation can be replaced without affecting callers.
     `Id`, `Style` (`FillData` variant of colour / gradient / pattern,
     `StrokeData` with the line gallery — `StartArrow` / `EndArrow`,
     `WidthProfile`, `Brush` — opacities, blend, an optional Xara-style
-    `Transparency` ramp with its mix, clip, mask), `Effects` (optional
+    `Transparency` ramp with its mix, clip, mask, `ShapeFillRule` - non-zero
+    or even-odd), `Effects` (optional
     `ShadowEffect`, `FeatherEffect`, `ContourEffect` and `BevelEffect`),
     an optional double-precision `Matrix3x3` `Transform`,
     `GetBoundingBox()` in its parent's space and `Clone()`. The Xara-class

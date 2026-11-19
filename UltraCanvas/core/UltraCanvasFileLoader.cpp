@@ -621,7 +621,9 @@ namespace UltraCanvas {
             static const std::map<std::string, std::string> names = {
                 {"pdf", "PDF"}, {"ai", "Adobe Illustrator"}, {"eps", "EPS"}, {"ps", "PostScript"},
                 {"cdr", "CorelDRAW"}, {"svg", "SVG"}, {"svgz", "SVG (compressed)"}, {"xar", "Xara XAR"},
-                {"dxf", "DXF"}, {"dwg", "DWG"}, {"emf", "EMF"}, {"wmf", "WMF"}};
+                {"dxf", "DXF"}, {"dwg", "DWG"}, {"emf", "EMF"}, {"wmf", "WMF"},
+                {"odg", "OpenDocument Drawing"}, {"otg", "OpenDocument Drawing Template"},
+                {"fodg", "OpenDocument Drawing (flat XML)"}};
             auto it = names.find(ext);
             if (it != names.end()) return it->second;
             std::string upper = ext;
