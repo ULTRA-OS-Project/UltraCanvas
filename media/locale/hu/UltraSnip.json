@@ -60,6 +60,7 @@
   "Save the recording as": "A felvétel mentési típusa",
   "saved": "mentve",
   "Saved as {0}": "Mentve: {0}",
+  "Scroll to zoom, drag to move, double-click to fit": "Görgetés: nagyítás, húzás: mozgatás, dupla kattintás: illesztés",
   "Settings for .{0}": ".{0} beállításai",
   "settings page|Saving": "Mentés",
   "Settings: the picture type and folder, the recording's type and frame rate, what happens after a snip": "Beállítások: a kép típusa és mappája, a felvétel típusa és képkockasebessége, mi történjen a kivágás után",

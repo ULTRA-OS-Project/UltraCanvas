@@ -3841,6 +3841,104 @@ int main(int argc, char** argv) {
                           "docx: ...each over its own x: " + std::to_string(firstGap) + " and " + std::to_string(secondGap));
                 CHECK_MSG(std::abs((markY[0] - markY[1]) / (markY[1] - markY[2]) - 0.5f) < 0.02f, "docx: ...and at its value's height");
             }
+
+            // Radar, bubble and stock charts, and smoothed lines: read from
+            // DOCX as what they are, and kept through DOCX and ODT.
+            {
+                auto chartOf = [&](const std::string& name, const std::string& plot) {
+                    const std::string part =
+                        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                        "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+                        "xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><c:chart><c:plotArea>" + plot
+                        + "</c:plotArea><c:legend><c:legendPos val=\"r\"/></c:legend></c:chart></c:chartSpace>";
+                    writePackage(TmpPath("kind-" + name + ".docx"), part);
+                    auto document = std::make_shared<UCRichDocument>();
+                    std::string error;
+                    CHECK_MSG(UCWordDocumentIO::Load(TmpPath("kind-" + name + ".docx"), *document, error), error);
+                    return document;
+                };
+                auto chartIn = [](const UCRichDocument& document) -> const RichChart* {
+                    for (const RichTextFrame& frame : document.frames) if (frame.chart.IsChart()) return &frame.chart;
+                    return nullptr;
+                };
+                auto sameData = [](const RichChart& a, const RichChart& b) {
+                    if (a.kind != b.kind || a.filled != b.filled || a.series.size() != b.series.size() || a.categories != b.categories) return false;
+                    for (size_t s = 0; s < a.series.size(); s++) {
+                        if (a.series[s].name != b.series[s].name || a.series[s].values != b.series[s].values
+                            || a.series[s].xValues != b.series[s].xValues || a.series[s].sizes != b.series[s].sizes
+                            || a.series[s].smooth != b.series[s].smooth) return false;
+                    }
+                    return true;
+                };
+                auto keeps = [&](const std::string& name, const UCRichDocument& document) {
+                    const RichChart* before = chartIn(document);
+                    for (const char* ext : {".docx", ".odt"}) {
+                        const std::string saved = TmpPath("kind-" + name + "-saved" + ext);
+                        UCRichDocument again;
+                        std::string error;
+                        CHECK_MSG(UCWordDocumentIO::Save(saved, document, error) && UCWordDocumentIO::Load(saved, again, error), error);
+                        const RichChart* after = chartIn(again);
+                        CHECK_MSG(before && after && sameData(*before, *after), "a " + name + " chart keeps its kind and data when saved as " + ext);
+                    }
+                };
+                const std::string two = seriesXml("Column 1", "004586", "9.1 2.4 5.5") + seriesXml("Column 2", "ff420e", "3.2 8.8 1.5");
+
+                auto radar = chartOf("radar", "<c:radarChart><c:radarStyle val=\"filled\"/>" + two + "</c:radarChart>");
+                const RichChart* web = chartIn(*radar);
+                CHECK_MSG(web && web->kind == RichChart::Kind::Radar && web->filled && web->series.size() == 2
+                              && web->series[1].values == std::vector<double>({3.2, 8.8, 1.5}), "docx: a radar chart is read as one, filled");
+                keeps("radar", *radar);
+
+                auto bubble = chartOf("bubble", "<c:bubbleChart><c:ser><c:tx><c:v>Sizes</c:v></c:tx>" + points("c:xVal", "1 2 10")
+                                      + points("c:yVal", "2 4 8") + points("c:bubbleSize", "5 20 10") + "</c:ser></c:bubbleChart>");
+                const RichChart* bubbles = chartIn(*bubble);
+                CHECK_MSG(bubbles && bubbles->kind == RichChart::Kind::Bubble && bubbles->series.size() == 1
+                              && bubbles->series[0].xValues == std::vector<double>({1.0, 2.0, 10.0})
+                              && bubbles->series[0].values == std::vector<double>({2.0, 4.0, 8.0})
+                              && bubbles->series[0].sizes == std::vector<double>({5.0, 20.0, 10.0})
+                              && !bubbles->series[0].joined, "docx: a bubble chart's points have their x, y and size");
+                keeps("bubble", *bubble);
+
+                auto stock = chartOf("stock", "<c:stockChart>" + seriesXml("Open", "000000", "10 12") + seriesXml("High", "000000", "15 14")
+                                     + seriesXml("Low", "000000", "8 11") + seriesXml("Close", "000000", "12 13") + "</c:stockChart>");
+                const RichChart* prices = chartIn(*stock);
+                CHECK_MSG(prices && prices->kind == RichChart::Kind::Stock && prices->series.size() == 4
+                              && prices->series[1].name == "High" && prices->series[1].values == std::vector<double>({15.0, 14.0})
+                              && prices->series[2].name == "Low" && prices->series[3].values == std::vector<double>({12.0, 13.0}),
+                          "docx: a stock chart's open, high, low and close");
+                keeps("stock", *stock);
+                {
+                    // In ODF the series run open, low, high, close.
+                    std::string error, content;
+                    UCZipPackageReader zip;
+                    const bool opened = zip.Open(TmpPath("kind-stock-saved.odt")) && zip.ReadEntry("Object 1/content.xml", content);
+                    const size_t lowAt = content.find("<text:p>Low</text:p>"), highAt = content.find("<text:p>High</text:p>");
+                    CHECK_MSG(opened && content.find("chart:class=\"chart:stock\"") != std::string::npos
+                                  && lowAt != std::string::npos && lowAt < highAt, "odt: a stock chart is written in ODF's order (low before high)");
+                }
+
+                auto smooth = chartOf("smooth", "<c:scatterChart><c:scatterStyle val=\"smoothMarker\"/><c:ser>" + points("c:xVal", "1 2 10")
+                                      + points("c:yVal", "2 4 8") + "<c:smooth val=\"1\"/></c:ser><c:ser>" + points("c:xVal", "1 2 10")
+                                      + points("c:yVal", "3 1 2") + "<c:smooth val=\"0\"/></c:ser></c:scatterChart>");
+                const RichChart* curve = chartIn(*smooth);
+                CHECK_MSG(curve && curve->kind == RichChart::Kind::Scatter && curve->series.size() == 2 && curve->series[0].smooth
+                              && !curve->series[1].smooth, "docx: c:smooth makes a scatter series a curve, each series for itself");
+                {
+                    std::string error;
+                    UCRichDocument again;
+                    CHECK_MSG(UCWordDocumentIO::Save(TmpPath("kind-smooth-saved.docx"), *smooth, error)
+                                  && UCWordDocumentIO::Load(TmpPath("kind-smooth-saved.docx"), again, error), error);
+                    const RichChart* kept = chartIn(again);
+                    CHECK_MSG(kept && kept->series.size() == 2 && kept->series[0].smooth && !kept->series[1].smooth,
+                              "saved as docx: each series' smoothing is kept");
+                    // (ODF smooths a chart's lines together: one curved series makes them all curves.)
+                    UCRichDocument viaOdt;
+                    CHECK_MSG(UCWordDocumentIO::Save(TmpPath("kind-smooth-saved.odt"), *smooth, error)
+                                  && UCWordDocumentIO::Load(TmpPath("kind-smooth-saved.odt"), viaOdt, error), error);
+                    const RichChart* odt = chartIn(viaOdt);
+                    CHECK_MSG(odt && odt->series.size() == 2 && odt->series[0].smooth, "saved as odt: the chart's lines are curves");
+                }
+            }
         }
 
         // The chart's data is in its frame, for the view's chart engine.
@@ -3911,6 +4009,38 @@ int main(int argc, char** argv) {
             CHECK_MSG(Lower(chart->series[0].color) == "#004586" && Lower(chart->series[1].color) == "#ff420e",
                       "odt: ...and their colours (" + chart->series[0].color + ", " + chart->series[1].color + ")");
             CHECK_MSG(at && at->imageWidthPt > 100.0f && at->imageHeightPt > 50.0f, "odt: ...in a frame of the object's size");
+        }
+    }
+#endif
+
+    // ===== WRITER'S OWN STOCK AND BUBBLE CHARTS =====
+    // word-chart-stock.odt and word-chart-bubble.odt were converted from DOCX
+    // by LibreOffice Writer: the stock chart's series still in Word's order
+    // (open, high, low, close), the bubble series' values its sizes, standing
+    // over its y and then its x.
+#ifdef WORDTEST_FIXTURE_DIR
+    {
+        auto chartOf = [](const std::string& file, UCRichDocument& doc) -> const RichChart* {
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Load(std::string(WORDTEST_FIXTURE_DIR) + "/" + file, doc, err), err);
+            for (const RichTextFrame& frame : doc.frames) if (frame.chart.IsChart()) return &frame.chart;
+            return nullptr;
+        };
+        UCRichDocument stockDoc, bubbleDoc;
+        const RichChart* stock = chartOf("word-chart-stock.odt", stockDoc);
+        CHECK_MSG(stock && stock->kind == RichChart::Kind::Stock && stock->series.size() == 4, "odt: Writer's stock chart is read as one");
+        if (stock && stock->series.size() == 4) {
+            CHECK_MSG(stock->series[0].values == std::vector<double>({10.0, 12.0}) && stock->series[1].values == std::vector<double>({15.0, 14.0})
+                          && stock->series[2].values == std::vector<double>({8.0, 11.0}) && stock->series[3].values == std::vector<double>({12.0, 13.0}),
+                      "odt: ...its open, high, low and close, the high over the low");
+            CHECK_MSG(stock->categories == std::vector<std::string>({"Row 1", "Row 2"}), "odt: ...and its categories");
+        }
+        const RichChart* bubble = chartOf("word-chart-bubble.odt", bubbleDoc);
+        CHECK_MSG(bubble && bubble->kind == RichChart::Kind::Bubble && bubble->series.size() == 1, "odt: Writer's bubble chart is read as one");
+        if (bubble && bubble->series.size() == 1) {
+            CHECK_MSG(bubble->series[0].xValues == std::vector<double>({1.0, 2.0, 10.0})
+                          && bubble->series[0].values == std::vector<double>({2.0, 4.0, 8.0})
+                          && bubble->series[0].sizes == std::vector<double>({5.0, 20.0, 10.0}), "odt: ...its points' x, y and size");
         }
     }
 #endif

@@ -3,8 +3,9 @@
 // framework's plugin registry, so every vector format is reachable through
 // LoadGraphicsFile / SaveGraphicsFile and the FileLoader format inventory.
 //
-// Loading covers the formats with a reader (SVG, XAR, EMF, WMF, AI, DXF and
-// the DWG family - .dwg, .dwt, .dws, .sv$ and a .bak that carries a drawing)
+// Loading covers the formats with a reader (SVG, XAR, EMF, WMF, AI, DXF,
+// OpenDocument Drawing - .odg, .otg, .fodg - and the DWG family - .dwg,
+// .dwt, .dws, .sv$ and a .bak that carries a drawing)
 // and produces an UltraCanvasVectorElement holding the parsed
 // VectorDocument - an editable model, unlike the render-only elements of
 // the dedicated XAR/EPS/CDR plugins. Register this plugin alongside those:
@@ -13,7 +14,7 @@
 // it is the only one that writes vector formats.
 //
 // Saving covers the whole matrix (SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI,
-// DXF, DWG*) from any UltraCanvasVectorElement. The save list names .dwg
+// DXF, ODG, DWG*) from any UltraCanvasVectorElement. The save list names .dwg
 // alone: the alias suffixes are what drawings arrive under, not what a
 // "save as" offers.
 // (*) DWG needs GNU LibreDWG's command-line tools - see

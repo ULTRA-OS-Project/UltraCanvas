@@ -137,6 +137,7 @@
   "no translation provider is available": "er is geen vertaalprovider beschikbaar",
   "None found": "Niets gevonden",
   "Not available": "Niet beschikbaar",
+  "Not saved yet": "Nog niet opgeslagen",
   "One Column": "Eén kolom",
   "Open File(s)": "Bestand(en) openen",
   "Open File... (Ctrl+O)": "Bestand openen… (Ctrl+O)",
@@ -214,5 +215,9 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Cyrillisch)",
   "Windows-1252 (Western)": "Windows-1252 (West-Europees)",
   "Word Wrap": "Regelterugloop",
-  "Zoom Level": "Zoomniveau"
+  "Zoom Level": "Zoomniveau",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} bestand heeft niet-opgeslagen wijzigingen. Opslaan voordat het wordt gesloten?",
+    "other": "{n} bestanden hebben niet-opgeslagen wijzigingen. Opslaan voordat ze worden gesloten?"
+  }
 }

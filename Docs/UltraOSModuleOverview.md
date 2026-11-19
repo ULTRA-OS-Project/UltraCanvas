@@ -38,6 +38,7 @@ how UltraCanvas compares with Qt, GTK and others, see
 | [UltraCloud](#ultracloud) | Cloud storage accounts, uploads and share links | ✅ |
 | [UltraAI](#ultraai) | Provider-agnostic AI: LLM, speech, vision, generation | ✅ |
 | [UltraMessage](#ultramessage) | Messages, notifications and commands between applications | 🟡 |
+| [UltraIM](#ultraim) | Instant messaging: one API over ChatCube Direct, Matrix, Telegram, Mastodon, Mattermost, Zulip, Signal, XMPP and IRC | ✅ |
 | [WasmHost](#wasmhost) | Sandboxed WebAssembly runtime for applications | 🟡 |
 | [UltraWin](#ultrawin) | Windows applications on Linux as native windows | 🟡 |
 | [UltraAndroid](#ultraandroid) | Android applications on Linux as native windows | 📝 |
@@ -377,6 +378,23 @@ use it.
 
 **Docs:** `Docs/Modules/UltraMessage/`.
 
+### UltraIM
+
+**Purpose:** instant messaging without a UI of its own: one API
+(`UltraIM_*`) over every network, each network a provider module loaded on
+demand - the networks in use at start (`ultraim-providers.txt` in the data
+folder), the others when they are asked for.
+
+**Capabilities:** sign-in in steps (codes, a QR code, the browser), the
+conversations of every network merged, messages, replies, edits, deletes,
+attachments with progress, ticks, typing, presence, search, groups, calls
+where the network has them; events through one dispatcher onto the UI
+thread. Providers: ChatCube Direct (its own relay and peer to peer), Matrix,
+Telegram (TDLib), Mastodon, Mattermost, Zulip, Signal (signal-cli), XMPP
+(TCP or WebSocket) and IRC, each tested against a stand-in server.
+
+**Docs:** `Docs/Modules/UltraIM/README.md`.
+
 ### WasmHost
 
 **Purpose:** runs WebAssembly modules for UltraCanvas applications, safely.
@@ -466,6 +484,7 @@ more detail in [UltraOSApplicationOverview.md](UltraOSApplicationOverview.md).
 | UltraMail | Mail client | UltraNet, UltraDatabase, UltraVault, UltraCloud |
 | EmailCleaner | Clean-up of large, old mailboxes | UltraNet, UltraDatabase |
 | UltraSocial | Posting to social networks | UltraNet, UltraDatabase, UltraVault, UltraCrypt |
+| ChatCube | Messenger: its own encrypted chats and calls, and eight more networks | UltraIM, UltraRTC, UltraNet, UltraVault |
 | UltraWeb | Browser for web pages and WebAssembly apps | HTMLReader, WasmHost |
 | UltraPress | Website and shop builder that publishes WebAssembly | UltraNet, UltraCloud |
 | UltraAIApp | Dashboard for the AI services | UltraAI |

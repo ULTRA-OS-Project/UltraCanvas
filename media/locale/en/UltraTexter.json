@@ -15,7 +15,9 @@
     "Find",
     "Find Next",
     "Find...",
+    "Folder",
     "Modified",
+    "Name",
     "New",
     "Open...",
     "Options",
@@ -179,6 +181,7 @@
   "no translation provider is available": "no translation provider is available",
   "None found": "None found",
   "Not available": "Not available",
+  "Not saved yet": "Not saved yet",
   "One Column": "One Column",
   "Open File(s)": "Open File(s)",
   "Open File... (Ctrl+O)": "Open File... (Ctrl+O)",
@@ -233,6 +236,7 @@
   "Subscript (~text~)": "Subscript (~text~)",
   "Superscript (^text^)": "Superscript (^text^)",
   "Texter cannot save the Word 97-2003 (.doc) format.": "Texter cannot save the Word 97-2003 (.doc) format.",
+  "Texter opens presentations as the outline of their slides and cannot save them as a presentation. Save the outline as .odt or .docx instead.": "Texter opens presentations as the outline of their slides and cannot save them as a presentation. Save the outline as .odt or .docx instead.",
   "The document could not be written.": "The document could not be written.",
   "The document has no file name yet.": "The document has no file name yet.",
   "The file could not be opened for writing.": "The file could not be opened for writing.",
@@ -243,6 +247,7 @@
   "The {0} dictionary could not be loaded.\n\nSpell checking has no dictionary loaded.": "The {0} dictionary could not be loaded.\n\nSpell checking has no dictionary loaded.",
   "The {0} dictionary could not be loaded.\n\nSpell checking is still using {1}.": "The {0} dictionary could not be loaded.\n\nSpell checking is still using {1}.",
   "This build of UltraTexter has no UltraAI module to translate with.": "This build of UltraTexter has no UltraAI module to translate with.",
+  "This document was opened with a password. Texter cannot save an OpenDocument file with a password; save it as .docx to keep it protected.": "This document was opened with a password. Texter cannot save an OpenDocument file with a password; save it as .docx to keep it protected.",
   "Three Columns": "Three Columns",
   "Toggle Theme": "Toggle Theme",
   "Track Changes": "Track Changes",
@@ -267,5 +272,9 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (Cyrillic)",
   "Windows-1252 (Western)": "Windows-1252 (Western)",
   "Word Wrap": "Word Wrap",
-  "Zoom Level": "Zoom Level"
+  "Zoom Level": "Zoom Level",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} file has unsaved changes. Save it before closing?",
+    "other": "{n} files have unsaved changes. Save them before closing?"
+  }
 }

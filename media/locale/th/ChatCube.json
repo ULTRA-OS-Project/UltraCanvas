@@ -104,7 +104,6 @@
   "Could not leave {0}: {1}": "ไม่สามารถออกจาก {0} ได้: {1}",
   "Could not load the messages: {0}": "ไม่สามารถโหลดข้อความได้: {0}",
   "Could not open the chat: {0}": "ไม่สามารถเปิดแชทได้: {0}",
-  "Could not open {0}": "ไม่สามารถเปิด {0} ได้",
   "Could not remove {0}: {1}": "ไม่สามารถเอา {0} ออกได้: {1}",
   "Could not rename the group: {0}": "ไม่สามารถเปลี่ยนชื่อกลุ่มได้: {0}",
   "Could not save the description: {0}": "บันทึกคำอธิบายไม่ได้: {0}",

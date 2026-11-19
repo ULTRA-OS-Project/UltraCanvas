@@ -60,6 +60,7 @@
   "Save the recording as": "บันทึกวิดีโอเป็น",
   "saved": "บันทึกแล้ว",
   "Saved as {0}": "บันทึกเป็น {0} แล้ว",
+  "Scroll to zoom, drag to move, double-click to fit": "เลื่อนลูกกลิ้งเพื่อซูม ลากเพื่อย้าย ดับเบิลคลิกเพื่อให้พอดี",
   "Settings for .{0}": "การตั้งค่าสำหรับ .{0}",
   "settings page|Saving": "การบันทึก",
   "Settings: the picture type and folder, the recording's type and frame rate, what happens after a snip": "การตั้งค่า: ประเภทและโฟลเดอร์ของรูปภาพ ประเภทและอัตราเฟรมของการบันทึกวิดีโอ และสิ่งที่เกิดขึ้นหลังการจับภาพ",

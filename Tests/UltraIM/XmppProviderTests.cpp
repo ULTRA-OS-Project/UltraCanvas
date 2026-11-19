@@ -21,17 +21,21 @@
 // this computer, the endpoint kept and signed in to again, a drop over TCP
 // reconnecting, a quiet server pinged and answering (the connection kept), a
 // server fallen silent with its socket open found by the unanswered ping.
+// With nothing but a web proxy set in the system, a server on another
+// machine reached through it (a CONNECT tunnel, STARTTLS inside it).
 // Skips without python3, unless ULTRAIM_TEST_XMPP_REQUIRED is set; the TLS
 // part needs openssl as well.
+// Version: 0.3.1 - XMPP over TCP through the system's web proxy
 // Version: 0.3.0 - the XMPP ping over TCP: answered, and unanswered (a silent server)
 // Version: 0.2.0 - the TCP binding: splitter, endpoints, SRV order, STARTTLS / direct TLS end to end
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "XmppProvider.h"
 #include "XmppTcp.h"
 
+#include "ConnectProxy.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraIM/UltraIMCore.h"
 #include "UltraNet/UltraNetCore.h"
@@ -1123,6 +1127,30 @@ void TestTcp(const FakeServer& server, const fs::path& base, const std::string& 
     CHECK(e.GetConnectionState() == UltraIMConnectionState::Disconnected);
 }
 
+#if defined(__linux__)
+// A server on another machine, with nothing but a web proxy set in the
+// system: XMPP over TCP goes through that (a CONNECT tunnel, STARTTLS inside
+// it, the certificate still verified for the domain), as the other networks
+// do, and no longer directly past it.
+void TestTcpThroughTheSystemsWebProxy(const FakeServer& server, const fs::path& base, const std::string& caFile) {
+    ConnectProxy proxy;
+    CHECK(proxy.Start());
+    SystemWebProxy system(proxy.port);
+    // A name that exists nowhere: only the proxy can reach it (it carries
+    // the connection to the fake server here).
+    const std::string target = "xmpp.proxied.test:" + std::to_string(server.tcp);
+    auto gina = NewTcpClient(base / "gina-proxied", caFile);
+    const UltraIMResult r = SignIn(*gina->p, Password("xmpp://" + target, "gina"));
+    CHECK(r.success);
+    CHECK(gina->p->GetConnectionState() == UltraIMConnectionState::Connected);
+    CHECK(gina->p->GetEndpoint() == "xmpp://" + target);
+    CHECK(gina->p->GetBoundJid().rfind("gina@example.org/ChatCube-", 0) == 0);
+    const std::vector<std::string> targets = proxy.Targets();
+    CHECK(!targets.empty() && targets.front() == target);
+    gina->p->Shutdown();
+}
+#endif
+
 // Without a certificate: plain TCP to this computer, no TLS to verify.
 void TestTcpPlain(const FakeServer& server, const fs::path& base) {
     auto plain = NewTcpClient(base / "plain", std::string());
@@ -1168,6 +1196,9 @@ int main() {
     TestEndToEnd(server.url, base);
     if (haveOpenssl) {
         TestTcp(server, base, cert);
+#if defined(__linux__)
+        TestTcpThroughTheSystemsWebProxy(server, base, cert);
+#endif
     } else {
         std::printf("  TLS over TCP: %s (no openssl)\n", required ? "FAIL" : "SKIP");
         if (required) ++g_failures;

@@ -41,6 +41,10 @@
 // stays while the pointer is on that row or on the preview itself, where
 // the wheel zooms; it follows the wheel scrolling the list; Escape or
 // moving elsewhere closes it.
+// Version: 0.2.5 - a PowerPoint deck (.pptx ...) previews its slides (PageUp / PageDown)
+// Version: 0.2.4 - the preview shows a copied spreadsheet (.ods, .xlsx, .xls, .csv) in the viewer
+//                  and a word-processing document (.odt, .docx, .doc) as its first page, drawn
+//                  on a worker (StartPagePreview)
 // Version: 0.2.3 - ApplyLook: the colours it sets by hand follow the theme
 // Version: 0.2.2 - Extract text says which UltraAI provider read a picture
 // Version: 0.2.1 - Extract text
@@ -87,6 +91,17 @@ namespace UltraClipboard {
 
 class UltraClipboardWindow {
 public:
+    // A copied document's first page, drawn for the preview (StartPagePreview).
+    struct PagePicture {
+        int64_t entryId = 0;
+        std::string source;              // the document, UTF-8
+        std::filesystem::file_time_type sourceTime{};   // as it was drawn: a later save draws it again
+        std::vector<std::filesystem::path> pictures;   // PNG: a document's first page, a deck's slides;
+                                                       // none when it could not be drawn
+        int width = 0;                   // the first picture's
+        int height = 0;
+    };
+
     explicit UltraClipboardWindow(UltraCanvas::UltraCanvasApplication& app);
     ~UltraClipboardWindow();
 
@@ -159,6 +174,13 @@ private:
     // hand-off folder (once per entry), the first of copied files when the
     // viewer can show it; "" when there is nothing to preview.
     std::string PreviewFileFor(const UltraCanvas::ClipboardHistoryEntry& entry);
+    // A copied word-processing document or PowerPoint deck has no view of its
+    // own in the viewer: its first page, or its slides, are drawn as pictures
+    // on a worker, and the preview opens when they are there, if the pointer
+    // still rests on the entry. True when that is under way (the entry is such
+    // a document).
+    bool StartPagePreview(const UltraCanvas::ClipboardHistoryEntry& entry);
+    void FinishPagePreview();
 
     UltraCanvas::UltraCanvasApplication& app_;
     std::unique_ptr<UltraCanvas::UltraCanvasClipboardHistory> history_;
@@ -216,6 +238,10 @@ private:
     UltraCanvas::Point2Di pointer_;      // where the pointer last was, in window coordinates
     std::filesystem::path previewFolder_;
     std::map<int64_t, std::filesystem::path> previewFiles_;   // images written for the viewer
+    std::map<int64_t, PagePicture> pagePictures_;   // first pages drawn, by entry
+    std::future<PagePicture> pageRendering_;        // valid while a worker draws one
+    int64_t pageWantedId_ = 0;           // the entry whose page the preview waits for; 0: none
+    UltraCanvas::TimerId pageTimer_ = 0; // watches the worker
 };
 
 } // namespace UltraClipboard

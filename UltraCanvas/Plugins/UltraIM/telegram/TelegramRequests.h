@@ -2,6 +2,8 @@
 // Telegram provider - the TDLib requests it sends, built in one place (td_api
 // names and fields), so the tests can hand every one of them to a real TDLib
 // and have it say whether it parses.
+// Version: 0.1.8 - the proxy TDLib connects through: AddProxy, DisableProxy, GetProxies, RemoveProxy;
+//                  SetNetworkAvailable
 // Version: 0.1.7 - GetSupergroupMembers (a page of them, the recent ones first)
 // Version: 0.1.6 - a group after it is made: SetChatTitle, AddChatMembers, RemoveChatMember, LeaveChat,
 //                  DeleteChatHistory, GetBasicGroupFullInfo
@@ -12,7 +14,7 @@
 // Version: 0.1.2 - RequestQrCode
 // Version: 0.1.1 - ResendCode
 // Version: 0.1.0
-// Last Modified: 2026-11-12
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -40,6 +42,34 @@ struct Parameters {
 
 TdObject GetVersion();          // getOption "version": what starts a client
 TdObject SetTdlibParameters(const Parameters& p);
+// The proxy TDLib connects through - its networking is its own, so a proxy
+// is named to it: SOCKS 5, or an HTTP proxy that tunnels (CONNECT), with the
+// sign-in the proxy asks for ("" for none). TDLib takes no other kind.
+struct Proxy {
+    enum class Kind { Socks5, Http };
+    Kind        kind = Kind::Socks5;
+    std::string server;         // a name or an address
+    int32_t     port = 0;
+    std::string username;
+    std::string password;
+
+    bool operator==(const Proxy&) const = default;
+};
+// Adds the proxy to the ones TDLib's database keeps (the same one again is
+// the one already there) and connects through it from now on; the answer's
+// `id` names it. TDLib takes it before setTdlibParameters and applies it
+// with them, so no connection is made without it. Written in both forms the
+// request has had - `proxy` as an object (what TDLib 1.8.69, the one the
+// build fetches, takes) and its fields beside `enable` (earlier ones): TDLib
+// reads the fields it knows and ignores the rest.
+TdObject AddProxy(const Proxy& proxy);
+TdObject DisableProxy();        // every connection direct; the proxies stay in the database
+TdObject GetProxies();          // the proxies in the database, each with its `id`
+TdObject RemoveProxy(int32_t proxyId);
+// TDLib on the network or off it (setNetworkType: networkTypeOther /
+// networkTypeNone): off, it makes no connection at all until it is told
+// otherwise.
+TdObject SetNetworkAvailable(bool available);
 TdObject SetPhoneNumber(const std::string& phone);
 TdObject RequestQrCode();       // requestQrCodeAuthentication: a link to scan from a signed-in app, instead of the number
 TdObject CheckCode(const std::string& code);

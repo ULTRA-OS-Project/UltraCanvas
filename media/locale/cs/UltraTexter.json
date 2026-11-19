@@ -138,6 +138,7 @@
   "no translation provider is available": "není k dispozici žádný poskytovatel překladu",
   "None found": "Nic nenalezeno",
   "Not available": "Není k dispozici",
+  "Not saved yet": "Dosud neuloženo",
   "One Column": "Jeden sloupec",
   "Open File(s)": "Otevřít soubory",
   "Open File... (Ctrl+O)": "Otevřít soubor... (Ctrl+O)",
@@ -215,5 +216,10 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (cyrilice)",
   "Windows-1252 (Western)": "Windows-1252 (západoevropské)",
   "Word Wrap": "Zalamování řádků",
-  "Zoom Level": "Úroveň přiblížení"
+  "Zoom Level": "Úroveň přiblížení",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} soubor obsahuje neuložené změny. Uložit jej před zavřením?",
+    "few": "{n} soubory obsahují neuložené změny. Uložit je před zavřením?",
+    "other": "{n} souborů obsahuje neuložené změny. Uložit je před zavřením?"
+  }
 }

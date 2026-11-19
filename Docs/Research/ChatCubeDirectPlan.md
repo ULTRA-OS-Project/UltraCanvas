@@ -19,7 +19,9 @@ The first deliverable is **an ULTRA OS native messenger**, ChatCube Direct:
 - **voice and video calls**.
 
 Clients for Matrix, Telegram and the other messengers with an open API come
-afterwards, as further provider plug-ins of the same framework.
+afterwards, as further provider plug-ins of the same framework. (They did:
+Matrix, Telegram, Mastodon, Mattermost, Zulip, Signal, XMPP and IRC - see
+[`Docs/Modules/UltraIM/README.md`](../Modules/UltraIM/README.md).)
 
 ## 2. Decisions
 

@@ -87,6 +87,9 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.30.0 - a presentation (.pptx and kin, .odp / .otp / .fodp) opens in the text view as the
+//                   outline of its slides (IsPresentationFile); a password-protected one shows
+//                   the Unlock note and opens with its password, as a protected PDF does
 // Version: 1.29.0 - Save as for a video the player opened: another type FileLoader's
 //                   ConvertVideoFile writes (VideoFX's converter, where the application
 //                   registered it), on a thread of its own with a progress ring and Cancel
@@ -133,7 +136,7 @@
 // Version: 1.13.0 - one compact toolbar row (flat, 16 px icons, scrolls when
 //                   narrow); Details only in the info bar
 // Version: 1.12.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -763,6 +766,12 @@ public:
     // sheets and pictures read from the archive's own parts. False without
     // UltraNet's MIME reader, as IsMailMessageFile.
     static bool IsWebArchiveFile(const std::string& path);
+    // PowerPoint (.pptx, .pptm, .ppsx, .ppsm, .potx, .potm) and OpenDocument
+    // (.odp, .otp, .fodp) decks, by name. Shown in the text view as the
+    // outline of their slides - each slide's number and title, its bullets,
+    // tables and notes - as UltraCanvasFileLoader::LoadTextDocument reads
+    // them; a password-protected one is locked until Unlock, as a PDF is.
+    static bool IsPresentationFile(const std::string& path);
 
     // ===== DETAILS PANEL =====
     // The panel the "Details" button opens over the display area: a group box
@@ -828,6 +837,8 @@ private:
     void AskForPassword(const std::string& note);
     // What a locked PDF shows: a note in the text view.
     void ShowLockedPDFNote(const std::string& path);
+    // A deck's outline (Markdown) in the read-only text view.
+    void ShowOutlineInTextView(const std::string& markdown);
     // Shows `plain` - "Key: value" lines, as the Details panel takes them -
     // in noteView, in place of the text view.
     void ShowNote(const std::string& plain);
@@ -1029,7 +1040,7 @@ private:
 
     // The shown file is password-protected and not unlocked: which kind,
     // so Unlock knows how to open it (see IsLocked()).
-    enum class MediaLock { NotLocked, UCDImage, PDF };
+    enum class MediaLock { NotLocked, UCDImage, PDF, Presentation };
     MediaLock locked = MediaLock::NotLocked;
     bool unlocked = false;            // ... or it is, and was opened with its password (IsUnlocked)
     bool askingForPassword = false;   // Unlock's question is up

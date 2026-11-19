@@ -4,17 +4,19 @@
 // one), a spreadsheet, a text file, a picture (text recognition) and a
 // recording (speech to text). The two recognition engines are hooks a plugin
 // or the application installs (SetImageTextRecognizer, SetSpeechTranscriber).
+// Version: 1.4.0 - an OpenDocument presentation (.odp, .otp, .fodp) reads as a document
 // Version: 1.3.0 - GetSpeechTranscriber
 // Version: 1.2.0 - GetImageTextRecognizer
 // Version: 1.1.0 - the messages in the person's language (Tr)
 // Version: 1.0.0
-// Last Modified: 2026-11-06
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasPresentationPptx.h"
+#include "UltraCanvasPresentationOdp.h"
 #include "UltraCanvasRichDocument.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasSupportedFormats.h"
@@ -281,7 +283,7 @@ namespace UltraCanvas {
         if (extension == "csv" || extension == "tsv" || extension == "txt" || extension == "md" ||
             extension == "markdown")
             return TextExtractionMethod::PlainText;
-        if (IsPptxExtension(extension)) return TextExtractionMethod::Document;
+        if (IsPptxExtension(extension) || IsOdpExtension(extension)) return TextExtractionMethod::Document;
         if (WordDocumentFormatFromExtension(extension) != WordDocumentFormat::Unknown)
             return TextExtractionMethod::Document;
         if (const std::optional<MediaFormatInfo> format = UltraCanvasSupportedFormats::FindByExtension(extension)) {

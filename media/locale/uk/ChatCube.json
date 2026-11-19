@@ -107,7 +107,6 @@
   "Could not leave {0}: {1}": "Не вдалося покинути {0}: {1}",
   "Could not load the messages: {0}": "Не вдалося завантажити повідомлення: {0}",
   "Could not open the chat: {0}": "Не вдалося відкрити чат: {0}",
-  "Could not open {0}": "Не вдалося відкрити {0}",
   "Could not remove {0}: {1}": "Не вдалося вилучити {0}: {1}",
   "Could not rename the group: {0}": "Не вдалося перейменувати групу: {0}",
   "Could not save the description: {0}": "Не вдалося зберегти опис: {0}",

@@ -138,6 +138,7 @@
   "no translation provider is available": "nu este disponibil niciun furnizor de traducere",
   "None found": "Nu s-a găsit nimic",
   "Not available": "Indisponibil",
+  "Not saved yet": "Încă nesalvat",
   "One Column": "O coloană",
   "Open File(s)": "Deschidere fișier(e)",
   "Open File... (Ctrl+O)": "Deschidere fișier... (Ctrl+O)",
@@ -215,5 +216,10 @@
   "Windows-1251 (Cyrillic)": "Windows-1251 (chirilic)",
   "Windows-1252 (Western)": "Windows-1252 (vest-european)",
   "Word Wrap": "Încadrare cuvinte",
-  "Zoom Level": "Nivel de zoom"
+  "Zoom Level": "Nivel de zoom",
+  "{n} file has unsaved changes. Save it before closing?": {
+    "one": "{n} fișier are modificări nesalvate. Îl salvați înainte de închidere?",
+    "few": "{n} fișiere au modificări nesalvate. Le salvați înainte de închidere?",
+    "other": "{n} de fișiere au modificări nesalvate. Le salvați înainte de închidere?"
+  }
 }

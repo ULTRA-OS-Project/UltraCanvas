@@ -18,7 +18,12 @@
 //     slide order and size, titles, bullets and levels, numbering, a text
 //     box, a table, a picture, notes, a hidden slide, the outline, and
 //     LoadTextDocument opening it, and UltraFiler's preview page showing its
-//     slide text (a protected deck or .docx keeping its type glyph);
+//     slide text (a protected deck or .docx keeping its type glyph); what a
+//     slide is drawn with (places from the layout, sizes from the master,
+//     the theme's colours, the background) and RenderPptxSlide drawing it;
+//     mc:AlternateContent - the deck rebuilt with an equation shape, a newer
+//     chart with a picture as its fallback and an equation inside a
+//     paragraph, each read once, from its Choice or its Fallback;
 //   * writing: UCCompoundFileWriter read back, EncryptOfficePackage round
 //     trips (a package in the mini stream, one past the header's 109 FAT
 //     sectors), fresh salts on every save, a changed byte caught, and the
@@ -28,8 +33,10 @@
 // rebuilds them and says what each holds). That msoffcrypto-tool decrypts
 // what EncryptOfficePackage writes was checked when the writer was made; the
 // test cannot run Python, so it checks the format against the reader here.
+// Version: 1.6.0 - mc:AlternateContent in a deck: Choice, else Fallback, never both
+// Version: 1.5.0 - the slide's drawing: inherited places, text sizes, theme colours, RenderPptxSlide
 // Version: 1.4.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCompoundFile.h"
@@ -38,6 +45,7 @@
 #include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasPresentationPptx.h"
+#include "UltraCanvasPptxSlideRender.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasZipPackage.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
@@ -435,6 +443,27 @@ void TestPresentation() {
     }
     Check(headings == 5 && tables == 1 && listItems >= 66, "one heading per slide, the table, the bullets");
 
+    // What a slide is drawn with, resolved through the layout, the master and the theme.
+    Check(subtitle && subtitle->placeInherited && subtitle->x == 1371600 && subtitle->width == 6400800,
+          "a placeholder without a place takes its layout's");
+    const PptxShape* title = FindShape(deck.slides[0], PptxShapeKind::Title);
+    Check(title && !title->paragraphs.empty() && !title->paragraphs[0].runs.empty() &&
+              title->paragraphs[0].runs[0].sizePt == 44.0f && title->paragraphs[0].align == PptxAlign::Center,
+          "the title's size and alignment from the master's title style");
+    if (body && body->paragraphs.size() == 6) {
+        Check(body->paragraphs[0].runs[0].sizePt == 32.0f && body->paragraphs[1].runs[0].sizePt == 28.0f,
+              "body levels 1 and 2 at the master's 32 and 28 pt");
+    }
+    Check(deck.themeColors["accent1"] == "4F81BD" && deck.themeColors["dk1"] == "000000",
+          "the theme's colours");
+    Check(deck.slides[0].background == "FFFFFF" && deck.slides[0].textColor == "000000",
+          "the master's background (bg1) and text colour (tx1)");
+    Check(subtitle && !subtitle->paragraphs.empty() && subtitle->paragraphs[0].runs[0].color == "404040",
+          "the subtitle's colour: tx1 at the layout's 75 % tint");
+    const std::shared_ptr<UCPixmap> drawn = RenderPptxSlide(deck, 0, 640);
+    Check(drawn && drawn->GetRawWidth() == 640 && drawn->GetRawHeight() == 360, "a slide drawn at 640 x 360");
+    Check(!RenderPptxSlide(deck, deck.slides.size(), 640), "no slide past the last");
+
     // Encrypted: the same deck behind the password.
     const std::string encrypted = Fixture("office-agile-encrypted.pptx");
     PptxPresentation locked;
@@ -592,6 +621,90 @@ void TestSaving() {
 
 } // namespace
 
+// mc:AlternateContent: the PowerPoint fixture rebuilt in memory with slide 2
+// holding what PowerPoint wraps for older readers - an equation in a text box
+// (its Fallback a picture of it, with stand-in text), a newer chart (chartex,
+// no table: its Fallback the picture of it), and an equation inside a
+// paragraph (its Fallback a plain run).
+void TestPresentationAlternateContent() {
+    std::cout << "\n=== PowerPoint mc:AlternateContent ===\n";
+    UCZipPackageReader source;
+    if (!source.Open(Fixture("office-pptx-sample.pptx"))) {
+        Check(false, "the .pptx fixture opens");
+        return;
+    }
+    const std::string mc = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+    const std::string shapes =
+        "<mc:AlternateContent xmlns:mc=\"" + mc + "\" xmlns:a14=\"http://schemas.microsoft.com/office/drawing/2010/main\">"
+        "<mc:Choice Requires=\"a14\"><p:sp><p:nvSpPr><p:cNvPr id=\"10\" name=\"Equation 9\"/><p:cNvSpPr txBox=\"1\"/>"
+        "<p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:p><a:r><a:t>Margin: </a:t></a:r><a14:m>"
+        "<m:oMathPara xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"><m:oMath>"
+        "<m:r><m:t>p=r</m:t></m:r><m:r><m:t>\xE2\x88\x92" "c</m:t></m:r></m:oMath></m:oMathPara></a14:m></a:p>"
+        "</p:txBody></p:sp></mc:Choice>"
+        "<mc:Fallback><p:sp><p:nvSpPr><p:cNvPr id=\"10\" name=\"Equation 9\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/>"
+        "</p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:p><a:r><a:t>Margin (picture)</a:t></a:r></a:p></p:txBody>"
+        "</p:sp></mc:Fallback></mc:AlternateContent>"
+        "<mc:AlternateContent xmlns:mc=\"" + mc + "\"><mc:Choice Requires=\"cx1\"><p:graphicFrame><p:nvGraphicFramePr>"
+        "<p:cNvPr id=\"11\" name=\"Chart 10\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm/>"
+        "<a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/drawing/2014/chartex\"/></a:graphic>"
+        "</p:graphicFrame></mc:Choice><mc:Fallback><p:pic><p:nvPicPr><p:cNvPr id=\"11\" name=\"Chart 10\" "
+        "descr=\"Waterfall chart\"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip/></p:blipFill><p:spPr/>"
+        "</p:pic></mc:Fallback></mc:AlternateContent>"
+        "<p:sp><p:nvSpPr><p:cNvPr id=\"12\" name=\"TextBox 11\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr><p:spPr/>"
+        "<p:txBody><a:bodyPr/><a:p><a:r><a:t>Total </a:t></a:r><mc:AlternateContent xmlns:mc=\"" + mc + "\" "
+        "xmlns:a14=\"http://schemas.microsoft.com/office/drawing/2010/main\"><mc:Choice Requires=\"a14\"><a14:m>"
+        "<m:oMath xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\"><m:r><m:t>x\xC2\xB2</m:t>"
+        "</m:r></m:oMath></a14:m></mc:Choice><mc:Fallback><a:r><a:t>[x squared]</a:t></a:r></mc:Fallback>"
+        "</mc:AlternateContent><a:r><a:t> each</a:t></a:r></a:p></p:txBody></p:sp>";
+
+    UCZipPackageWriter rebuilt;
+    rebuilt.OpenInMemory();
+    for (const std::string& name : source.EntryNames()) {
+        std::string data;
+        if (!source.ReadEntry(name, data)) continue;
+        if (name == "ppt/slides/slide2.xml") {
+            const size_t end = data.rfind("</p:spTree>");
+            if (end != std::string::npos) data.insert(end, shapes);
+        }
+        rebuilt.AddEntry(name, data);
+    }
+    rebuilt.Finalize();
+
+    PptxPresentation deck;
+    std::string error;
+    const bool ok = ReadPptxPresentationFromPackage(rebuilt.TakeBytes(), deck, error);
+    Check(ok && deck.slides.size() == 5, "the rebuilt deck reads");
+    if (!ok || deck.slides.size() != 5) {
+        std::cout << "         " << error << "\n";
+        return;
+    }
+    const PptxSlide& slide = deck.slides[1];
+    std::string all;
+    const PptxShape* equation = nullptr;
+    const PptxShape* chart = nullptr;
+    const PptxShape* total = nullptr;
+    size_t named = 0;
+    for (const PptxShape& shape : slide.shapes) {
+        for (const PptxParagraph& p : shape.paragraphs) all += p.Text() + "\n";
+        if (shape.name == "Equation 9") { equation = &shape; ++named; }
+        if (shape.name == "Chart 10") { chart = &shape; ++named; }
+        if (shape.name == "TextBox 11") total = &shape;
+    }
+    Check(equation && equation->kind == PptxShapeKind::Text && equation->paragraphs.size() == 1 &&
+              equation->paragraphs[0].Text() == "Margin: p=r\xE2\x88\x92" "c",
+          "an equation shape from its Choice, the equation as its text");
+    Check(chart && chart->kind == PptxShapeKind::Picture && chart->altText == "Waterfall chart",
+          "a chart the reader cannot read: its Fallback picture");
+    Check(named == 2 && !Contains(all, "Margin (picture)"), "each read once - never Choice and Fallback both");
+    Check(total && total->paragraphs.size() == 1 && total->paragraphs[0].Text() == "Total x\xC2\xB2 each" &&
+              !Contains(all, "[x squared]"),
+          "an equation inside a paragraph, from its Choice");
+    Check(slide.title == "Agenda" && FindShape(slide, PptxShapeKind::Body) != nullptr,
+          "the slide's own shapes are untouched");
+    Check(Contains(PptxPresentationToRichDocument(deck).ToPlainText(), "[Picture: Waterfall chart]"),
+          "the outline names the chart's picture");
+}
+
 int main() {
     TestDecryptor();
     TestSpreadsheet();
@@ -599,6 +712,7 @@ int main() {
     TestSha1();
     TestStandard();
     TestPresentation();
+    TestPresentationAlternateContent();
     TestCompoundFileWriter();
     TestEncryptor();
     TestSaving();

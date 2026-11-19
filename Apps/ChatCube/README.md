@@ -174,8 +174,8 @@ The first ChatCube draft, which this replaces, is kept under
    or a file copied in a file manager, and so do files dropped on the
    window (on a chat in the list, that chat opens and takes them; anywhere
    else, the open chat does) - each with a × to take it out again;
-   Enter or the send button sends them to the open chat (ChatCube Direct,
-   Telegram and Matrix, encrypted rooms included), with what you typed as
+   Enter or the send button sends them to the open chat (every network but
+   IRC; Mastodon takes pictures, videos and sound only), with what you typed as
    the caption of the first picture or video. A photo shows as its picture,
    a video as its preview under a play mark with its length, a file as its
    name and size - an SVG drawing, which goes as a file, with its picture
@@ -223,7 +223,8 @@ The first ChatCube draft, which this replaces, is kept under
    it, **Cancel** throws it away. Both need a microphone (and a camera) the
    system lets ChatCube use. On Matrix and Telegram a voice message is
    theirs too (Telegram's needs the recording in Ogg Opus, which ChatCube
-   writes when this build has the Opus encoder; otherwise it goes as a file).
+   writes when this build has the Opus encoder; otherwise it goes as a file);
+   the other networks get it as a sound file, and IRC takes neither.
 
 6. **Call** rings the open contact, **Video** makes it a video call (1:1;
    the buttons are off for groups and while not connected). A bar across
@@ -237,7 +238,7 @@ The first ChatCube draft, which this replaces, is kept under
    open chat as it is. Every chat: *Open*, *Mark as read* / *Mark as
    unread* (a dot until you open it) and *Pin to top* / *Unpin* (pinned
    chats stay first, with a pin). A person: *Voice call*, *Video call*,
-   *Copy ChatCube ID* (*Copy address* on Matrix and Telegram), *Add to
+   *Copy ChatCube ID* (*Copy address* on the other networks), *Add to
    group* and *Delete chat* - the chat and its messages go from this
    computer; they keep theirs. A group: *Members*, each with *Send a
    message*, *Copy ID* and, for the group's owner, *Remove from group*;
@@ -265,12 +266,36 @@ The first ChatCube draft, which this replaces, is kept under
    typing shows in the chat's header and in its row of the list, in the
    accent colour - in a group with their name ("Anna is typing…", "Anna and
    Ben are typing…").
-   *Networks*: where each network stands, your ChatCube ID to copy, signing
-   out of Matrix or Telegram, and whether the people on this network are
+   *Networks*: where each network stands (and the version of its module),
+   your ChatCube ID to copy, signing out of any other network you are signed
+   in to, and whether the people on this network are
    listed in the sidebar. *Extras*: the data folder, to open or copy, and the
    version. A change applies at once and is kept in
    `<settings folder>/ChatCube/settings.json` (`~/.config/UltraCanvas`,
    `%APPDATA%\UltraCanvas`, `~/Library/Application Support/UltraCanvas`).
+
+## The networks at a glance
+
+What each network does in ChatCube - ✓ yes, – not there (the network has
+no such thing, or ChatCube does not do it yet):
+
+| Network | Sign-in | Files | Edit, delete | Replies | Typing | Read ticks | Groups | Calls | End-to-end | Search |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ChatCube Direct | your key on this computer | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ voice, video | ✓ | ✓ |
+| Matrix | homeserver, user, password | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ rooms | – | ✓ encrypted rooms | ✓ |
+| Telegram | phone number, code | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | – | ✓ |
+| Mastodon | the server's page in the browser | pictures, videos, sound | ✓ | ✓ | – | – | ✓ several people | – | – | ✓ |
+| Mattermost | server, user, password (MFA) | ✓ | ✓ | ✓ threads | ✓ | – | ✓ channels | – | – | ✓ |
+| Zulip | organization, e-mail, password | ✓ | ✓ | – (quotes) | ✓ | – | ✓ stream topics | – | – | ✓ |
+| Signal | QR code (signal-cli) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | what this ChatCube saw |
+| XMPP | address, password | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ rooms | – | – (TLS to the server) | ✓ |
+| IRC | server, nickname | – | – | ✓ | ✓ | – | ✓ channels | – | – | ✓ |
+
+What to type in *Add* for each: a ChatCube ID; `@name:server` (Matrix);
+`@user`, `+49 …` or a t.me link (Telegram); `@user@server` (Mastodon);
+`@user` or an e-mail (Mattermost); an e-mail (Zulip); `+49 …` or a
+username `name.01` (Signal); `name@domain` (XMPP); `#channel` or a nickname
+(IRC). An address more than one signed-in network takes asks which.
 
 ## Building and running
 

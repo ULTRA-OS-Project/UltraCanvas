@@ -104,7 +104,6 @@
   "Could not leave {0}: {1}": "{0}에서 나갈 수 없습니다: {1}",
   "Could not load the messages: {0}": "메시지를 불러올 수 없습니다: {0}",
   "Could not open the chat: {0}": "채팅을 열 수 없습니다: {0}",
-  "Could not open {0}": "{0}을(를) 열 수 없습니다",
   "Could not remove {0}: {1}": "{0}을(를) 제거할 수 없습니다: {1}",
   "Could not rename the group: {0}": "그룹 이름을 바꿀 수 없습니다: {0}",
   "Could not save the description: {0}": "설명을 저장할 수 없습니다: {0}",

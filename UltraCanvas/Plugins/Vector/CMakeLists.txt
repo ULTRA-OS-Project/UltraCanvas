@@ -35,6 +35,8 @@ set(VECTOR_PLUGIN_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasDWGDecoder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasEMFReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasWMFReader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasODGConverter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasODGReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorFormatsPlugin.cpp
 )
 
@@ -45,6 +47,7 @@ set(VECTOR_PLUGIN_SOURCES
 set(VECTOR_PLUGIN_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorConverter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorFormatsPlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasODGConverter.h
 )
 
 # ===== BUILD STATIC LIBRARY =====

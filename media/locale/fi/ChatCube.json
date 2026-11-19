@@ -105,7 +105,6 @@
   "Could not leave {0}: {1}": "Ryhmästä {0} ei voitu poistua: {1}",
   "Could not load the messages: {0}": "Viestejä ei voitu ladata: {0}",
   "Could not open the chat: {0}": "Keskustelua ei voitu avata: {0}",
-  "Could not open {0}": "Kohdetta {0} ei voitu avata",
   "Could not remove {0}: {1}": "Kohdetta {0} ei voitu poistaa: {1}",
   "Could not rename the group: {0}": "Ryhmää ei voitu nimetä uudelleen: {0}",
   "Could not save the description: {0}": "Kuvausta ei voitu tallentaa: {0}",

@@ -32,6 +32,7 @@ first lines as of 2026-10-18.
 | [UltraMail](#ultramail) | Email client | 0.10.59 | UltraNet, UltraDatabase, UltraVault, UltraMessage |
 | [EmailCleaner](#emailcleaner) | Mailbox analysis and clean-up | 0.4.8 | UltraMail engine, UltraDatabase |
 | [UltraSocial](#ultrasocial) | Cross-posting to social networks | 0.2.2 | UltraNet, UltraDatabase, UltraVault |
+| [ChatCube](#chatcube) | Messenger: its own encrypted chats and calls, and nine networks in one window | 0.1.30 | UltraIM, UltraRTC, UltraNet, UltraVault |
 | **Security** | | | |
 | [UltraPassword](#ultrapassword) | Password vault | 0.1.4 | UltraCrypt |
 | [UltraAuthenticator](#ultraauthenticator) | TOTP / HOTP two-factor codes | 0.2.8 | UltraCrypt |
@@ -333,6 +334,34 @@ mail, for cleaning up cluttered or spam-heavy accounts.
 **Version:** 0.2.2 (2026-10-12).
 **Notes:** Instagram, Reddit media, LinkedIn images and AI adaptation of
 drafts are still open.
+
+### ChatCube
+
+**Purpose:** the ULTRA OS messenger - its own end-to-end encrypted chats and
+calls, and the other messengers in the same window.
+
+**Capabilities:**
+- ChatCube Direct: an ID that is a key made on the computer, chats peer to
+  peer when both sides are online and through a relay otherwise, groups
+  (public ones too), voice and video calls, a password and authenticator
+  code to protect the ID, recovery by e-mail.
+- Eight more networks, each a module loaded only once it is used: Matrix
+  (encrypted rooms included), Telegram, Mastodon direct messages, the team
+  chats Mattermost and Zulip, Signal (as a linked device through
+  signal-cli), XMPP (TLS or WebSocket) and IRC (IRCv3, TLS).
+- Texts, replies, edits, deletes, pictures, videos, files, voice and video
+  messages with a progress bar; ticks, typing (in the list too, with names
+  in groups), search through a chat's history and filters for pictures,
+  videos, sound, files and links.
+- An address in *Add* goes to the network it belongs to, and asks which when
+  more than one could take it; a status line says where each network stands.
+
+**Built on:** UltraIM (the provider modules), UltraRTC (calls), UltraNet,
+UltraVault, FileLoader, the QR code element.
+**Version:** 0.1.30 (2026-11-18).
+**Notes:** Signal needs signal-cli installed; calls are ChatCube Direct's
+only. The relay server is `Server/ChatCubeRelay`. Docs:
+`Apps/ChatCube/README.md`, `Docs/Modules/UltraIM/README.md`.
 
 ---
 
