@@ -36370,8 +36370,11 @@ the same size and date are called *identical*, and the default moves to Skip.
 The answers are the buttons:
 
 - **Keep both** (the default) — the pasted entry takes the next free " (2)"
-  style name, what a conflict-free paste always does
-- **Replace** — the existing file is removed first
+  style name, what a conflict-free paste always does: `photo.jpg` arrives
+  as `photo (2).jpg`, or `photo (3).jpg` when that is taken too; the
+  existing file is not touched
+- **Replace** — the existing file is removed first, on the condition the
+  replace options hold (below)
 - **Skip** — the entry is not pasted (and is listed in the summary)
 - **Stop** — keeps what was already pasted and drops the rest
 
@@ -36384,6 +36387,25 @@ in the existing folder; a move removes the emptied source folder at the end
 (an entry that was skipped keeps it). *Replace* deletes the existing folder
 first, with everything in it that the pasted one does not have, and the note
 says so with the count. `PasteConflictAction::Merge` is the enumerator.
+
+Under a file's question, a foldable **Options** panel says what *Replace*
+asks of the pasted file first (`PasteReplaceCondition`): **Replace always**
+(`Unconditionally`, the default), **only when the pasted file is newer**
+(`IfNewer`: modified later), **only when it is older** (`IfOlder`: an earlier
+version brought back from a backup), **only when it is bigger**
+(`IfLarger`), or **only when the files differ** - another size or another
+modified time (`IfDifferent`). A checkbox under them, **Keep both: skip
+files that are identical (same size and date)**, makes *Keep both* skip a
+pasted file the same as the one there (`PasteConflictAction::
+KeepBothUnlessIdentical`) - no duplicate of a file that is there, and
+nothing overwritten. Folded, the panel's header still names what is in force
+(*Options · replace when newer, keep both skips identical*). A file that does
+not win the comparison is left as it is and listed in the summary with why -
+*Kept: the existing file is not older*, *... not newer*, *... not smaller*,
+*Kept: same size and date*, *An identical file exists already*.
+With the scope checked the condition holds for the rest of the paste too, the
+files a folder merge brings in included; the panel opens with the last
+choice of the session, folded or open as it was left.
 
 The checkbox beside the buttons, **"Apply to all 7 remaining conflicts"**,
 counts the entries still to come whose name is taken (folders and files are
@@ -36414,10 +36436,19 @@ A paste or delete that ran to its end with entries left behind — skipped by
 hand, by a policy, or because they failed — ends on one **summary** instead of
 nothing: *Copied 137 of 140 items. 3 were skipped.*, the destination, and the
 skipped entries in a list with the reason beside each (*In use by another
-program*, *Skipped: the name is already taken*, *Skipped: write-protected*).
+program*, *File exists already*, *Kept: the existing file is not older*,
+*Skipped: write-protected*).
 **Close** is the default; **Copy skipped items again** (*Move …*, *Delete …*)
 runs the same operation for just those entries, grouped by the folder they
-were headed for. A Stop or a Cancel shows no summary — it already said what
+were headed for. When some were skipped because their name was taken, an
+open **Options for copying again** panel under the list says how the copy
+again answers them: **Ask about each file that exists already** (the
+default), **Keep both** (the copy gets a number, *photo (2).jpg*), **Skip
+identical files, keep both for the rest**, **Replace always**, or replace
+only when the pasted file is **newer**, **older**, **bigger** or the files
+**differ**. That choice stands in for the host's conflict policy
+for the copy again - under `FilerConflictPolicy::Skip` the copy again would
+otherwise skip every one of them again. A Stop or a Cancel shows no summary — it already said what
 happened — and neither does an operation where nothing was skipped.
 
 A **move, a rename and a delete** all need the file to themselves: a rename is
@@ -63197,6 +63228,12 @@ The ring is an `UltraCanvasCircularProgressChart` in `SingleRing` style, so it
 carries the framework's chart styling rather than a hand-drawn arc. Nothing in
 this dialog is painted directly.
 
+Its colours are the current theme's: the arc is the accent, the track the
+hairline colour (`line`), the percentage the ink - so the reading is white on
+a dark dialog and dark on a light one. The chart keeps the colours it is
+given rather than following the theme itself, so the dialog sets them again
+when the theme changes while it is open.
+
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPropertyList.md
 ==============================================================================
@@ -72116,6 +72153,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSettingsPageKit.md
 - [The window](#the-window)
 - [A page](#a-page)
 - [The controls](#the-controls)
+  - [Following a theme change](#following-a-theme-change)
 - [Usage](#usage)
 - [Related](#related)
 
@@ -72183,9 +72221,38 @@ Heading, Body and Caption sizes (the desktop's interface font size and the
 ratios of [`UltraCanvasTheme.md`](UltraCanvasTheme.md)); `TextColor()`,
 `NoteTextColor()`, `NoteBackground()`, `NoteAccent()`, `WindowBackground()`,
 `TreeBackground()`, `PageBackground()`, `ButtonFace()`, `ButtonHover()`
-and `Rule()` are its roles, so a settings window is dark on a dark desktop
-and a window built after the theme changed takes the new look. The page
-geometry (`kTextWidth`, `kControlHeight`, ...) stays constant.
+and `Rule()` are its roles, so a settings window is dark on a dark desktop.
+The page geometry (`kTextWidth`, `kControlHeight`, ...) stays constant.
+
+### Following a theme change
+
+A settings window left open switches with the application when the theme
+changes - a desktop going dark, or an application's own light / dark
+setting. Every element the kit builds remembers which roles it took and
+takes them again after the change: the window, the sidebar, the tree and
+the page area, the notes block, the buttons, the choices and checkboxes
+(their boxes too), the colour boxes' frames. A label follows as the role
+its colour and size were - `TextColor()` / `NoteTextColor()`,
+`TitleFontSize()` / `TextFontSize()` / `NoteFontSize()`; a colour or size
+of the page's own stays as given.
+
+A control a page styles in the kit's look itself registers the same way,
+with `FollowKitLook(element, restyle)`: `restyle` is called with the
+element after every theme change, once the application has passed the
+change to its windows, and sets the kit's colours again. The element is
+held weakly, so one that is gone is dropped.
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasSwitch> sw; -->
+```cpp
+using namespace UltraCanvas::SettingsPageKit;
+FollowKitLook(sw, [](UltraCanvasUIElement& e) {
+    auto& s = static_cast<UltraCanvasSwitch&>(e);
+    SwitchVisualStyle themed = SwitchVisualStyle::FromTheme(UltraCanvasTheme::Current(), s.GetVisualStyle());
+    themed.base.fontSize = TextFontSize();
+    themed.base.textColor = TextColor();
+    s.SetVisualStyle(themed);
+});
+```
 
 ## Usage
 
