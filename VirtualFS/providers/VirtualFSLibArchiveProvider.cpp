@@ -1,5 +1,7 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
 // libarchive-based provider implementation
+// Version: 1.8.0 - ExtractAll asks VirtualFSExtractOptions::onExistingFile about each regular file
+//                  that exists already: write over it, skip the entry, or write it under another name
 // Version: 1.7.0 - an extracted file keeps its dates: ExtractFile writes through
 //                  libarchive's disk writer (it wrote the bytes only, dated now),
 //                  ExtractAll follows preserveTimestamps, and a ZIP's or 7z's
@@ -1200,6 +1202,31 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
             SetEntryDiskHardlink(entry, dest + "/" + relativeTarget);
         }
         SetEntryDiskPath(entry, dest + "/" + relative);
+        // A regular file whose name is taken at the destination: the caller
+        // decides - write over it, leave it and skip the entry, or write the
+        // entry beside it under another name.
+        if (options.onExistingFile && linkTarget.empty() &&
+            archive_entry_filetype(entry) == AE_IFREG) {
+            const std::string diskPath = dest + "/" + relative;
+            std::error_code existsEc;
+            if (std::filesystem::is_regular_file(PathFromUtf8(diskPath), existsEc)) {
+                VirtualFSExistingFile existing;
+                existing.entryPath = currentPath;
+                existing.destPath = diskPath;
+                existing.entrySize = archive_entry_size_is_set(entry)
+                        ? static_cast<uint64_t>(archive_entry_size(entry)) : 0;
+                existing.entryModifiedTime = archive_entry_mtime_is_set(entry)
+                        ? static_cast<int64_t>(archive_entry_mtime(entry)) : 0;
+                std::string writeAs;
+                const VirtualFSExistingFileAction action = options.onExistingFile(existing, writeAs);
+                if (action == VirtualFSExistingFileAction::Skip) {
+                    archive_read_data_skip(a);
+                    continue;
+                }
+                if (action == VirtualFSExistingFileAction::WriteAs && !writeAs.empty())
+                    SetEntryDiskPath(entry, writeAs);
+            }
+        }
         CreationDateFromFormat(a, entry);
         
         // ARCHIVE_WARN: written, with something minor lost (an owner that

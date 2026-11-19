@@ -431,6 +431,16 @@ direct zlib calls throughout the codebase.
   written through a symbolic link the archive created. Refused entries are
   skipped, the rest extracts, and the result is `InvalidPath` with the names
   in the provider's last error.
+* **A file that exists already is the caller's to decide.** Without
+  `VirtualFSExtractOptions::onExistingFile`, `ExtractAll` writes over a file
+  of the same name at the destination. With it, the callback is asked for
+  each regular-file entry whose file exists - on the extracting thread, with
+  the entry's name, the path it would go to, its size and its modification
+  time (`VirtualFSExistingFile`) - and answers `Overwrite`, `Skip` (the file
+  there stays, the entry is not written) or `WriteAs` (the entry goes to the
+  path the callback fills in, a free name beside it). UltraCanvas's
+  `UCVFSBridge::ExtractArchive` takes the same callback as its last argument
+  (`UCVFSExistingFileCallback`).
 * **An extracted file keeps its dates.** `ExtractAll` and `ExtractFile` write
   through libarchive's disk writer and give each file and folder the entry's
   modification date (`VirtualFSExtractOptions::preserveTimestamps`, on by

@@ -425,7 +425,6 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "Mode llarg de Zstandard: coincidències en 128 MB (zstd --long=27)",
   "{0} (default)": "{0} (per defecte)",
   "{0} - not supported by this build": "{0} - no compatible amb aquesta compilació",
-  "{0} min": "{0} min",
   "{0}, {1} (room for {2})": "{0}, {1} (espai per a {2})",
   "{n} download is still running or waiting — quit anyway?": {
     "one": "{n} baixada encara està en curs o en espera — voleu sortir igualment?",

@@ -13,7 +13,9 @@
     "Settings",
     "Start",
     "Today",
-    "Yesterday"
+    "Yesterday",
+    "{0} h {1} min",
+    "{0} min"
   ],
   "\"{0}\" has reached its planned end ({1}).": "\"{0}\" has reached its planned end ({1}).",
   "\"{0}\" is back in the list of tasks to do.": "\"{0}\" is back in the list of tasks to do.",
@@ -104,10 +106,8 @@
   "{0} d": "{0} d",
   "{0} d {1} h": "{0} d {1} h",
   "{0} h": "{0} h",
-  "{0} h {1} min": "{0} h {1} min",
   "{0} late": "{0} late",
   "{0} left": "{0} left",
-  "{0} min": "{0} min",
   "{0}, {1}": "{0}, {1}",
   "{n} open task": {
     "one": "{n} open task",

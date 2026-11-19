@@ -61,6 +61,7 @@
     "Unpin",
     "Video",
     "View",
+    "{0} min",
     "{n} file",
     "{n} folder",
     "{n} line",
@@ -538,7 +539,6 @@
   "{0} (default)": "{0} (default)",
   "{0} - not supported by this build": "{0} - not supported by this build",
   "{0} is free now.": "{0} is free now.",
-  "{0} min": "{0} min",
   "{0}, {1} (room for {2})": "{0}, {1} (room for {2})",
   "{n} download is still running or waiting — quit anyway?": {
     "one": "{n} download is still running or waiting — quit anyway?",

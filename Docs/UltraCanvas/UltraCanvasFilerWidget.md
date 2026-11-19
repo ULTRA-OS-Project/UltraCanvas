@@ -618,7 +618,19 @@ Notes:
   operations for programmatic use — `ExtractSelection()` asks (Keep both /
   Extract into the existing folder / Skip) when the destination folder name
   is already taken; `OpenExtractDialog()` opens the extract dialog the menu
-  uses.
+  uses, which asks the same when the folder named in it exists and one
+  archive is being extracted (several still go into numbered subfolders).
+  Under the question, a foldable **Options** panel says what *Extract into
+  existing* does with each file of the archive that is there already:
+  **Replace always** (the default), replace **only when the archive's file is
+  newer**, **older**, **bigger**, or **the files differ** (another size or
+  date - a ZIP's two-second times are allowed for), or **Skip identical files,
+  keep both for the rest** (an identical file stays; any other is written
+  beside it as *name (2).ext*). The files left as they were are listed when
+  the extract is through (*Extract finished · Existing files kept: 2*), each
+  with why. The choice, and whether the panel was open, last for the
+  session. The decision is made per file on the archive worker through
+  `UCVFSBridge::ExtractArchive`'s `onExistingFile`.
 - **Extract and Run** appears only when the one selected entry is a program
   inside an archive — see [Programs inside archives](#programs-inside-archives).
 - **Display > Thumbnails** switches thumbnails on and off per file kind, and
@@ -2199,6 +2211,18 @@ a dialog for every copied text file is worse than one that shows none. (Packing,
 ["Delete as administrator" helper run](#delete-problems-locked--failing-entries)
 open theirs immediately instead: none of those is ever the quick case, and the
 last one is waiting on a consent prompt the user has to answer.)
+
+The window shows the operation as its headline ("Copying"), the route as two
+chips (*ULTRA OS → Projekte*, *Downloads → Trash*), the file being handled, and
+a strip of **speed, time left, items and size** (a delete: items only; packing
+and unpacking: bytes only), with **Pause / Resume** beside Cancel. The worker
+counts what is done as it goes - one atomic add per file - and the totals come
+only from the counting it does anyway: a copy or delete of one entry counts it
+before starting on it, so "26 731 / 37 650" shows; several entries show what is
+done alone, since knowing their total would mean walking every tree first;
+moving to the Trash knows its total from the start (one move per entry). Pause
+holds the worker between files and between the chunks of a big file, and an
+archive job between its blocks; Cancel still gets through while paused.
 
 The window is the same for every route into these operations — Ctrl+V, the
 context menu, `Delete`, a drag & drop between panes, `Duplicate`,

@@ -429,7 +429,6 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "Modul lung Zstandard: potriviri pe 128 MB (zstd --long=27)",
   "{0} (default)": "{0} (implicit)",
   "{0} - not supported by this build": "{0} - neacceptat de această versiune",
-  "{0} min": "{0} min",
   "{0}, {1} (room for {2})": "{0}, {1} (loc pentru {2})",
   "{n} download is still running or waiting — quit anyway?": {
     "one": "{n} descărcare este încă în curs sau în așteptare — ieșiți oricum?",

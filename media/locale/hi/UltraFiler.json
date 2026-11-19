@@ -425,7 +425,6 @@
   "Zstandard long mode: matches across 128 MB (zstd --long=27)": "Zstandard लॉन्ग मोड: 128 MB तक मिलान (zstd --long=27)",
   "{0} (default)": "{0} (डिफ़ॉल्ट)",
   "{0} - not supported by this build": "{0} - यह बिल्ड समर्थित नहीं करता",
-  "{0} min": "{0} मिनट",
   "{0}, {1} (room for {2})": "{0}, {1} ({2} की जगह)",
   "{n} download is still running or waiting — quit anyway?": {
     "one": "{n} डाउनलोड अभी भी चल रहा है या प्रतीक्षा में है — फिर भी बाहर निकलें?",
