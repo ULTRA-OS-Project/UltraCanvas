@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Books - Home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#b45309}a:hover{color:#92400e}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="border-bottom: 1px solid #e2e8f0; background: #ffffff">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 24px; flex-wrap: wrap">
+<a href="BooksHome.dc.html" aria-label="UltraStore Books home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Books</span>
+</a>
+<nav aria-label="Store sections" style="display: flex; gap: 4px; flex-wrap: wrap">
+<a href="BooksHome.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 600; color: #b45309; background: #fef3c7">Discover</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Browse</a>
+<a href="BooksLibrary.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Library <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #0f172a; color: #ffffff; font-size: 12px; font-weight: 700">2</span></a>
+<a href="#wishlist" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Wish list</a>
+</nav>
+<form role="search" style="flex: 1 1 240px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9; border: 1px solid transparent">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-books" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search books</label>
+<input id="search-books" type="search" placeholder="Title, author, narrator, series" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+</form>
+<a href="#plus" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; text-decoration: none; font-weight: 700; font-size: 13px">Books Plus · 1 credit left</a>
+<button type="button" aria-label="Account" style="width: 44px; height: 44px; border-radius: 999px; border: 0; background: #fef3c7; color: #b45309; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">AK</button>
+</div>
+</header>
+
+<main>
+
+<section aria-labelledby="hero-title" style="max-width: 1280px; margin: 0 auto; padding: 32px 32px 0; box-sizing: border-box">
+<div style="background: #0b1220; color: #ffffff; border-radius: 28px; padding: 48px; display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 40px; align-items: center; overflow: hidden; position: relative">
+<span aria-hidden="true" style="position: absolute; right: -120px; top: -140px; width: 480px; height: 480px; border-radius: 999px; background: radial-gradient(closest-side, rgba(217,119,6,0.45), rgba(217,119,6,0))"></span>
+<div style="display: flex; flex-direction: column; gap: 18px; position: relative; min-width: 0">
+<span style="display: inline-flex; align-items: center; align-self: flex-start; height: 30px; padding: 0 12px; border-radius: 999px; background: #78350f; color: #fde68a; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Book of the month</span>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 id="hero-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 46px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05">The Salt Garden</h1>
+<span style="color: #fcd34d; font-size: 16px; font-weight: 600">Mira Holt · read by Carla Brandt · 9 h 42 min</span>
+</div>
+<p style="margin: 0; font-size: 18px; line-height: 1.5; color: #cbd5e1; max-width: 52ch">A gardener on the North Sea coast inherits a plot the sea wants back. Three summers, one family, and the slow work of deciding what to keep. Read it, listen to it, or both: the book remembers where you are.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center">
+<a href="BooksDetail.dc.html" style="display: inline-flex; align-items: center; gap: 10px; height: 52px; padding: 0 24px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 16px"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6l-5 4z"></path><path d="M16 9a4 4 0 0 1 0 6"></path></svg>Listen to a sample</a>
+<a href="BooksDetail.dc.html" style="display: inline-flex; align-items: center; height: 52px; padding: 0 22px; border-radius: 999px; border: 1px solid #334155; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px">Get with your credit</a>
+<span style="color: #94a3b8; font-size: 13px">Audiobook 19.95 EUR or 1 credit · e-book 9.99 EUR · both 24.95 EUR</span>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px">
+<li style="height: 28px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; background: #1e293b; color: #cbd5e1; font-size: 12px; font-weight: 600">Literary fiction</li>
+<li style="height: 28px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; background: #1e293b; color: #cbd5e1; font-size: 12px; font-weight: 600">EPUB, no DRM</li>
+<li style="height: 28px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; background: #1e293b; color: #cbd5e1; font-size: 12px; font-weight: 600">M4B, chapters</li>
+<li style="height: 28px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: 8px; background: #1e293b; color: #cbd5e1; font-size: 12px; font-weight: 600">English · Deutsch</li>
+</ul>
+</div>
+<div aria-hidden="true" style="position: relative; display: flex; justify-content: center; align-items: flex-end; gap: 0; height: 320px">
+<span style="position: absolute; left: 30px; bottom: 10px; width: 170px; height: 255px; border-radius: 8px; background: linear-gradient(160deg, #7c2d12, #431407); transform: rotate(-8deg); box-shadow: 0 20px 40px rgba(0,0,0,0.4); opacity: 0.8"></span>
+<span style="position: relative; width: 210px; height: 315px; border-radius: 10px; background: linear-gradient(160deg, #fde68a 0%, #d97706 45%, #78350f 100%); box-shadow: 0 24px 60px rgba(0,0,0,0.5); display: flex; flex-direction: column; justify-content: space-between; padding: 22px 20px; box-sizing: border-box"><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 26px; line-height: 1.05; color: #431407; letter-spacing: -0.02em">The<br>Salt<br>Garden</span><span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13px; font-weight: 700; color: #431407">Mira Holt</span><span style="font-size: 10px; color: #78350f">[COVER 1600 × 2400]</span></span></span>
+<span style="position: absolute; right: 30px; bottom: 10px; width: 170px; height: 255px; border-radius: 8px; background: linear-gradient(160deg, #1e3a8a, #0f172a); transform: rotate(8deg); box-shadow: 0 20px 40px rgba(0,0,0,0.4); opacity: 0.8"></span>
+</div>
+</div>
+</section>
+
+<section aria-labelledby="continue-title" style="max-width: 1280px; margin: 0 auto; padding: 40px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<h2 id="continue-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Continue</h2>
+<a href="BooksLibrary.dc.html" style="font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; height: 44px">Your library <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></a>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+<a href="BooksLibrary.dc.html" style="display: flex; gap: 16px; align-items: center; padding: 16px; border-radius: 20px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a">
+<span aria-hidden="true" style="width: 72px; height: 108px; border-radius: 6px; background: linear-gradient(160deg, #1e3a8a, #0f172a); flex: 0 0 auto; display: flex; align-items: flex-end; padding: 8px; box-sizing: border-box"><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 11px; color: #bfdbfe; line-height: 1.1">Deep Water Season</span></span>
+<span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<span style="font-weight: 700; font-size: 16px">Deep Water Season</span>
+<span style="font-size: 13px; color: #64748b">Erik Lund · Kessel Files 3 · read by Jonas Feld</span>
+<span style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #64748b"><span style="flex: 1 1 auto; height: 6px; border-radius: 999px; background: #f1f5f9; overflow: hidden"><span style="display: block; width: 58%; height: 100%; background: #d97706"></span></span>Chapter 14 · 4 h 51 min left</span>
+<span style="font-size: 12px; color: #15803d; font-weight: 600">Listening on Anna's phone 2 h ago · the e-book opens at the same place</span>
+</span>
+<span aria-hidden="true" style="width: 48px; height: 48px; border-radius: 999px; background: {{accent}}; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg width="18" height="18" viewBox="0 0 24 24" fill="#ffffff"><path d="M8 5v14l11-7z"></path></svg></span>
+</a>
+<a href="#reading" style="display: flex; gap: 16px; align-items: center; padding: 16px; border-radius: 20px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a">
+<span aria-hidden="true" style="width: 72px; height: 108px; border-radius: 6px; background: linear-gradient(160deg, #ddd6fe, #6d28d9); flex: 0 0 auto; display: flex; align-items: flex-end; padding: 8px; box-sizing: border-box"><span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 11px; color: #ffffff; line-height: 1.1">Learning Rust the Slow Way</span></span>
+<span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<span style="font-weight: 700; font-size: 16px">Learning Rust the Slow Way</span>
+<span style="font-size: 13px; color: #64748b">Ada Novak · e-book · 412 pages</span>
+<span style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #64748b"><span style="flex: 1 1 auto; height: 6px; border-radius: 999px; background: #f1f5f9; overflow: hidden"><span style="display: block; width: 31%; height: 100%; background: #d97706"></span></span>Page 128 of 412 · about 6 h left</span>
+<span style="font-size: 12px; color: #64748b">Reading in UltraViewer on this laptop, yesterday · 14 highlights</span>
+</span>
+<span aria-hidden="true" style="width: 48px; height: 48px; border-radius: 999px; border: 1px solid #cbd5e1; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h12v14H4z"></path><path d="M18 7h2v12h-2"></path></svg></span>
+</a>
+</div>
+</section>
+
+<section aria-label="Browse by genre" style="max-width: 1280px; margin: 0 auto; padding: 40px 32px 0; box-sizing: border-box">
+<div style="display: flex; flex-wrap: wrap; gap: 10px">
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Fiction</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Crime</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Science fiction</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Non-fiction</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">History</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Biography</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Business</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Technology</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Children</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Cooking</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Sleep and wellbeing</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #e2e8f0; background: #ffffff; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Podcasts and originals</a>
+</div>
+</section>
+
+<section aria-labelledby="picks-title" style="max-width: 1280px; margin: 0 auto; padding: 48px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="picks-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Editor's picks</h2>
+<p style="margin: 0; color: #64748b">New this month, in both editions where the publisher has them.</p>
+</div>
+<a href="BooksBrowse.dc.html" style="font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; height: 44px">See all <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></a>
+</div>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 18px">
+
+<article style="display: flex; flex-direction: column; gap: 10px">
+<a href="BooksDetail.dc.html" aria-label="The Salt Garden" style="position: relative; display: block; aspect-ratio: 2 / 3; border-radius: 10px; background: linear-gradient(160deg, #fde68a 0%, #d97706 45%, #78350f 100%); box-shadow: 0 10px 24px rgba(15,23,42,0.15); text-decoration: none; overflow: hidden"><span aria-hidden="true" style="position: absolute; left: 14px; top: 14px; right: 14px; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 18px; line-height: 1.05; color: #431407; letter-spacing: -0.02em">The Salt Garden</span><span aria-hidden="true" style="position: absolute; left: 14px; bottom: 12px; font-size: 11px; font-weight: 700; color: #431407">Mira Holt</span><span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.8); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6l-5 4z"></path></svg>9 h 42</span></a>
+<div style="display: flex; flex-direction: column; gap: 2px"><a href="BooksDetail.dc.html" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none; line-height: 1.3">The Salt Garden</a><span style="font-size: 12px; color: #64748b">Mira Holt · Carla Brandt</span><span style="font-size: 12px; font-weight: 700; color: #b45309">1 credit · 19.95 EUR · e-book 9.99</span></div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 10px">
+<a href="#deep-water" aria-label="Deep Water Season" style="position: relative; display: block; aspect-ratio: 2 / 3; border-radius: 10px; background: linear-gradient(160deg, #1e3a8a, #0f172a); box-shadow: 0 10px 24px rgba(15,23,42,0.15); text-decoration: none; overflow: hidden"><span aria-hidden="true" style="position: absolute; left: 14px; top: 14px; right: 14px; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 18px; line-height: 1.05; color: #bfdbfe; letter-spacing: -0.02em">Deep Water Season</span><span aria-hidden="true" style="position: absolute; left: 14px; bottom: 12px; font-size: 11px; font-weight: 700; color: #93c5fd">Erik Lund · Kessel Files 3</span><span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.8); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6l-5 4z"></path></svg>11 h 20</span></a>
+<div style="display: flex; flex-direction: column; gap: 2px"><a href="#deep-water" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none; line-height: 1.3">Deep Water Season</a><span style="font-size: 12px; color: #64748b">Erik Lund · Jonas Feld</span><span style="font-size: 12px; font-weight: 700; color: #15803d">In your library</span></div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 10px">
+<a href="#tired-parents" aria-label="Tactics for Tired Parents" style="position: relative; display: block; aspect-ratio: 2 / 3; border-radius: 10px; background: linear-gradient(160deg, #fecaca, #dc2626); box-shadow: 0 10px 24px rgba(15,23,42,0.15); text-decoration: none; overflow: hidden"><span aria-hidden="true" style="position: absolute; left: 14px; top: 14px; right: 14px; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 18px; line-height: 1.05; color: #7f1d1d; letter-spacing: -0.02em">Tactics for Tired Parents</span><span aria-hidden="true" style="position: absolute; left: 14px; bottom: 12px; font-size: 11px; font-weight: 700; color: #7f1d1d">Dr. Anna Reuter</span><span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.8); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6l-5 4z"></path></svg>6 h 05</span></a>
+<div style="display: flex; flex-direction: column; gap: 2px"><a href="#tired-parents" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none; line-height: 1.3">Tactics for Tired Parents</a><span style="font-size: 12px; color: #64748b">Dr. Anna Reuter · read by the author</span><span style="font-size: 12px; font-weight: 700; color: #b45309">Included with Plus</span></div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 10px">
+<a href="#elbe" aria-label="A Short History of the Elbe" style="position: relative; display: block; aspect-ratio: 2 / 3; border-radius: 10px; background: linear-gradient(160deg, #a7f3d0, #065f46); box-shadow: 0 10px 24px rgba(15,23,42,0.15); text-decoration: none; overflow: hidden"><span aria-hidden="true" style="position: absolute; left: 14px; top: 14px; right: 14px; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 18px; line-height: 1.05; color: #ffffff; letter-spacing: -0.02em">A Short History of the Elbe</span><span aria-hidden="true" style="position: absolute; left: 14px; bottom: 12px; font-size: 11px; font-weight: 700; color: #d1fae5">Prof. Heike Vogt</span><span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.8); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6l-5 4z"></path></svg>14 h 10</span></a>
+<div style="display: flex; flex-direction: column; gap: 2px"><a href="#elbe" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none; line-height: 1.3">A Short History of the Elbe</a><span style="font-size: 12px; color: #64748b">Heike Vogt · Martin Kessler</span><span style="font-size: 12px; font-weight: 700; color: #b45309">1 credit · 24.95 EUR · e-book 14.99</span></div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 10px">
+<a href="#pi-garden" aria-label="The Pi Garden" style="position: relative; display: block; aspect-ratio: 2 / 3; border-radius: 10px; background: linear-gradient(160deg, #bae6fd, #0369a1); box-shadow: 0 10px 24px rgba(15,23,42,0.15); text-decoration: none; overflow: hidden"><span aria-hidden="true" style="position: absolute; left: 14px; top: 14px; right: 14px; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 18px; line-height: 1.05; color: #ffffff; letter-spacing: -0.02em">The Pi Garden</span><span aria-hidden="true" style="position: absolute; left: 14px; bottom: 12px; font-size: 11px; font-weight: 700; color: #e0f2fe">Tom Aalto · ages 6 to 9</span><span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.8); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6l-5 4z"></path></svg>1 h 48</span></a>
+<div style="display: flex; flex-direction: column; gap: 2px"><a href="#pi-garden" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none; line-height: 1.3">The Pi Garden</a><span style="font-size: 12px; color: #64748b">Tom Aalto · read by the author</span><span style="font-size: 12px; font-weight: 700; color: #b45309">7.95 EUR · e-book 4.99</span></div>
+</article>
+
+<article style="display: flex; flex-direction: column; gap: 10px">
+<a href="#blue-hour-book" aria-label="Beyond the Blue Hour" style="position: relative; display: block; aspect-ratio: 2 / 3; border-radius: 10px; background: linear-gradient(160deg, #c4b5fd, #4c1d95); box-shadow: 0 10px 24px rgba(15,23,42,0.15); text-decoration: none; overflow: hidden"><span aria-hidden="true" style="position: absolute; left: 14px; top: 14px; right: 14px; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 18px; line-height: 1.05; color: #ffffff; letter-spacing: -0.02em">Beyond the Blue Hour</span><span aria-hidden="true" style="position: absolute; left: 14px; bottom: 12px; font-size: 11px; font-weight: 700; color: #ede9fe">Noor Haddad</span><span style="position: absolute; right: 8px; bottom: 8px; height: 22px; padding: 0 6px; border-radius: 5px; background: rgba(15,23,42,0.8); color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h12v14H4z"></path><path d="M18 7h2v12h-2"></path></svg>380 p</span></a>
+<div style="display: flex; flex-direction: column; gap: 2px"><a href="#blue-hour-book" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none; line-height: 1.3">Beyond the Blue Hour</a><span style="font-size: 12px; color: #64748b">Noor Haddad · e-book only</span><span style="font-size: 12px; font-weight: 700; color: #b45309">11.99 EUR</span></div>
+</article>
+
+</div>
+</section>
+
+<section aria-labelledby="plus-title" style="max-width: 1280px; margin: 48px auto 0; padding: 0 32px; box-sizing: border-box">
+<div style="border-radius: 28px; background: #fffbeb; border: 1px solid #fde68a; padding: 40px; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 32px; align-items: center">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<span style="font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #b45309">Books Plus</span>
+<h2 id="plus-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">One credit a month, any audiobook, yours to keep</h2>
+<p style="margin: 0; color: #334155; max-width: 60ch">9.90 EUR a month through the store's subscription. A credit buys any audiobook at any price, and the book stays in your library if you ever stop. The Plus shelf, 1,800 titles, is included while you subscribe. Cancel any month; unused credits keep for a year.</p>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px">
+<li style="height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; background: #ffffff; border: 1px solid #fde68a; color: #92400e; font-size: 13px; font-weight: 600">Files you keep: EPUB and M4B without DRM</li>
+<li style="height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; background: #ffffff; border: 1px solid #fde68a; color: #92400e; font-size: 13px; font-weight: 600">Read and listen, one place kept</li>
+<li style="height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border-radius: 999px; background: #ffffff; border: 1px solid #fde68a; color: #92400e; font-size: 13px; font-weight: 600">The author's share printed on every page</li>
+</ul>
+<div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center">
+<a href="#plus" style="display: inline-flex; align-items: center; height: 48px; padding: 0 22px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700">Try Plus free for 30 days</a>
+<span style="font-size: 13px; color: #64748b">Anna has 1 credit left this month</span>
+</div>
+</div>
+<div aria-hidden="true" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px">
+<span style="aspect-ratio: 2 / 3; border-radius: 6px; background: linear-gradient(160deg, #fecaca, #dc2626)"></span>
+<span style="aspect-ratio: 2 / 3; border-radius: 6px; background: linear-gradient(160deg, #a7f3d0, #065f46)"></span>
+<span style="aspect-ratio: 2 / 3; border-radius: 6px; background: linear-gradient(160deg, #e9d5ff, #7e22ce)"></span>
+<span style="aspect-ratio: 2 / 3; border-radius: 6px; background: linear-gradient(160deg, #fde68a, #b45309)"></span>
+<span style="aspect-ratio: 2 / 3; border-radius: 6px; background: linear-gradient(160deg, #bae6fd, #0369a1)"></span>
+<span style="aspect-ratio: 2 / 3; border-radius: 6px; background: linear-gradient(160deg, #e2e8f0, #334155)"></span>
+<span style="aspect-ratio: 2 / 3; border-radius: 6px; background: linear-gradient(160deg, #fbcfe8, #9d174d)"></span>
+<span style="aspect-ratio: 2 / 3; border-radius: 6px; background: linear-gradient(160deg, #d9f99d, #3f6212)"></span>
+</div>
+</div>
+</section>
+
+<section aria-labelledby="series-title" style="max-width: 1280px; margin: 0 auto; padding: 48px 32px 0; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<h2 id="series-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Kessel Files, the series</h2>
+<ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden">
+<li style="display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid #f1f5f9"><span style="width: 20px; color: #94a3b8; font-weight: 700; text-align: center">1</span><span aria-hidden="true" style="width: 36px; height: 54px; border-radius: 4px; background: linear-gradient(160deg, #60a5fa, #1e3a8a); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25"><a href="#kf1" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none">The Border Fence</a><span style="font-size: 12px; color: #64748b">Erik Lund · 9 h 50 min</span></span><span style="font-size: 12px; color: #15803d; font-weight: 700">Finished</span></li>
+<li style="display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid #f1f5f9"><span style="width: 20px; color: #94a3b8; font-weight: 700; text-align: center">2</span><span aria-hidden="true" style="width: 36px; height: 54px; border-radius: 4px; background: linear-gradient(160deg, #3b82f6, #1e3a8a); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25"><a href="#kf2" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none">Harbour Watch</a><span style="font-size: 12px; color: #64748b">Erik Lund · 10 h 30 min</span></span><span style="font-size: 12px; color: #15803d; font-weight: 700">Finished</span></li>
+<li style="display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid #f1f5f9; background: #fffbeb"><span style="width: 20px; color: #94a3b8; font-weight: 700; text-align: center">3</span><span aria-hidden="true" style="width: 36px; height: 54px; border-radius: 4px; background: linear-gradient(160deg, #1e3a8a, #0f172a); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25"><a href="#deep-water" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none">Deep Water Season</a><span style="font-size: 12px; color: #64748b">Erik Lund · 11 h 20 min · listening, 58 %</span></span><span style="font-size: 12px; color: #b45309; font-weight: 700">Now</span></li>
+<li style="display: flex; align-items: center; gap: 14px; padding: 12px 16px"><span style="width: 20px; color: #94a3b8; font-weight: 700; text-align: center">4</span><span aria-hidden="true" style="width: 36px; height: 54px; border-radius: 4px; background: linear-gradient(160deg, #94a3b8, #1e293b); flex: 0 0 auto"></span><span style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25"><a href="#kf4" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none">Ice on the Spree</a><span style="font-size: 12px; color: #64748b">Erik Lund · out 12 Feb 2027 · pre-order with a credit</span></span><button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: #fef3c7; color: #b45309; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer">Pre-order</button></li>
+</ol>
+</div>
+<div style="display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Short listens for tonight</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<a href="#sleep" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: #f8fafc; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(160deg, #1e1b4b, #0f172a)"></span><span style="font-size: 13px; font-weight: 700; line-height: 1.3">Sleep Stories, vol. 2</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">2 h 10 · Plus</span></a>
+<a href="#numbers" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: #f8fafc; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(160deg, #fde68a, #f59e0b)"></span><span style="font-size: 13px; font-weight: 700; line-height: 1.3">Numbers for Little Ears</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">48 min · 3.99 EUR</span></a>
+<a href="#kesselhaus-nights" style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px; background: #f8fafc; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(160deg, #f9a8d4, #581c87)"></span><span style="font-size: 13px; font-weight: 700; line-height: 1.3">Kesselhaus Nights</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">3 h 30 · 1 credit</span></a>
+</div>
+</div>
+</section>
+
+<section aria-labelledby="why-title" style="max-width: 1280px; margin: 0 auto; padding: 64px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px">
+<h2 id="why-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em">Why read and listen on UltraStore</h2>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 24px; border-radius: 20px; background: #f8fafc"><span style="width: 44px; height: 44px; border-radius: 12px; background: #fef3c7; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h12v14H4z"></path><path d="M18 7h2v12h-2"></path><path d="M8 10l4 2.5L8 15z"></path></svg></span><h3 style="margin: 0; font-size: 16px; font-weight: 700">Files you keep</h3><p style="margin: 0; color: #475569; font-size: 14px">E-books as EPUB, audiobooks as M4B with chapters, both without DRM, downloaded to your machine; UltraViewer opens them even if the shop is gone one day.</p></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 24px; border-radius: 20px; background: #f8fafc"><span style="width: 44px; height: 44px; border-radius: 12px; background: #dbeafe; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.3-5.7"></path><path d="M4 4v5h5"></path><path d="M12 8v4l3 2"></path></svg></span><h3 style="margin: 0; font-size: 16px; font-weight: 700">Read and listen, one place</h3><p style="margin: 0; color: #475569; font-size: 14px">Own both editions and the shop keeps your place: stop listening in the car at chapter 14, open the e-book at chapter 14.</p></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 24px; border-radius: 20px; background: #f8fafc"><span style="width: 44px; height: 44px; border-radius: 12px; background: #dcfce7; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg></span><h3 style="margin: 0; font-size: 16px; font-weight: 700">Authors and narrators get the larger share</h3><p style="margin: 0; color: #475569; font-size: 14px">Of every purchase and every credit, the share that goes to the author, the narrator and the publisher is printed on the book's page.</p></div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 24px; border-radius: 20px; background: #f8fafc"><span style="width: 44px; height: 44px; border-radius: 12px; background: #fce7f3; display: inline-flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#be185d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg></span><h3 style="margin: 0; font-size: 16px; font-weight: 700">Samples before money</h3><p style="margin: 0; color: #475569; font-size: 14px">Ten minutes of every audiobook and the first chapter of every e-book, no account needed; a credit can be taken back within 7 days if you stopped in the first hour.</p></div>
+</div>
+</section>
+
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px"><img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px"><span style="font-weight: 600; color: #0f172a">UltraStore Books</span><span>· e-books and audiobooks for ULTRA OS</span></div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px"><a href="#publishers" style="color: #475569; text-decoration: none; font-weight: 500">For publishers and authors</a><a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a><a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a><a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a><a href="#language" style="color: #475569; text-decoration: none; font-weight: 500">English</a></nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#d97706","options":["#d97706","#2563eb","#0f172a","#7c3aed"]},"$preview":{"width":1440,"height":2420}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#d97706' };
+  }
+}
+</script>
+</body>
+</html>

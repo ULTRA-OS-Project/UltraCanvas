@@ -54,6 +54,11 @@ over these.
 | `AccountRecovery.dc.html` | reset the password (email, the email code and the two-factor code, the new password, done) and set up two-factor (the app, the QR code or the key, the recovery codes, on) - both step flows work in the script; the delete-account confirmation with what happens | page |
 | `SuperUsers.dc.html` | the operator's users: the counts with the data-archive and deletion requests, the table with a working status filter (active, suspended, deleting, with a request), one user's file with history and the actions (notice, sign out everywhere, reset two-factor, archive, suspend or reinstate, delete on request) and what the operator cannot see | page |
 | `AccountPhoneSignIn.dc.html` | sign in on a phone: email and password, a passkey, or confirming on a signed-in machine nearby | 390 × 844 |
+| `BooksHome.dc.html` | the e-book and audiobook shop variant's home: the book of the month in both editions with the sample, continue listening and reading with the place kept between the editions, the genres, the editor's picks with the length badge, Books Plus (one credit a month, the book kept), a series with the next part on pre-order, short listens for tonight, why read and listen here | page |
+| `BooksDetail.dc.html` | a title (The Salt Garden): the cover, the sample and the first chapter, the narrator, ratings for narration and story, the chapters both editions share, reviews that say listened or read to the end; the editions (audiobook for a credit, e-book, both kept in step), buy, the return rule, and what of the price goes to the author, the narrator, the publisher and the store | page |
+| `BooksBrowse.dc.html` | browse: the format (audiobooks, e-books, both editions), genre, language and *Included with Plus* filters work over a sample catalogue (state in the script), the cover grid with length and price | page |
+| `BooksLibrary.dc.html` | your library: the sections rail (in progress, finished, on this machine, borrowed from Plus) with collections and the download folder, the titles in progress with the device the place was last kept on, bookmarks, highlights and the files, the table of all titles, this year's hours, pages and the authors' share | page |
+| `BooksPhoneListen.dc.html` | listening on a phone: the cover, the chapter picker, the position in the chapter and what is left in the book, 30-second skips, previous and next chapter, speed, the sleep timer, bookmark, *read here* in the e-book, downloaded and the place kept with the laptop | 390 × 844 |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -225,6 +230,28 @@ UltraPassword if wanted; payment stays on Skrill Quick Checkout's page
 through the store's payment service, the account keeping only a reference
 to the method. Every person, device, order and figure is invented sample
 data.
+
+The `Books*` pages are the **e-book and audiobook shop variant**: the
+shop's chrome as a book shop in the manner of Audible, with both editions
+of a title, the place kept between listening and reading, a library of
+files the buyer keeps, and Books Plus, the accent amber `#D97706` (the
+`accent` prop). What exists in the repository: UltraViewer reads EPUB,
+FB2, MOBI, PRC, AZW and AZW3 in `UltraCanvasEBookViewer` (the chapter
+toolbar, the table of contents, reflowing content) and PDF in
+`UltraCanvasPDFView`
+([`UltraCanvasMediaViewer.md`](../../UltraCanvas/UltraCanvasMediaViewer.md)),
+UltraCanvas Audio plays MP3, WAV and FLAC always and M4A/M4B (AAC) with
+FAAD2, fdk-aac or the GStreamer plugins
+([`UltraCanvasAudio.md`](../../UltraCanvas/UltraCanvasAudio.md)), and the
+store sells subscriptions (`monthly`, `yearly`) through its own payment
+service and Skrill Quick Checkout, which is what Books Plus would be. What
+does not exist: a book catalogue with editions, narrators, chapters shared
+by the audiobook and the e-book, the place kept across machines, credits,
+pre-orders and the publishers' share. The files are the buyer's: EPUB and
+M4B without DRM, so UltraViewer and any other reader open them. The shop
+is UltraStore's own business, not UltraPress's. Every book, author,
+narrator, review, count and figure is invented sample data; the covers are
+drawn `[COVER]` placeholders.
 
 The `Super*` pages are a **proposal** for a third tier, later: the operator
 of UltraStore running a marketplace in which other publishers (merchants)
