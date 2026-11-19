@@ -47,6 +47,8 @@ OperatorSettings TestSettings() {
     s.url = "https://market.example/";
     s.token = "op-secret";
     s.name = "Alex";
+    s.accountUrl = "https://account.example/";
+    s.accountToken = "account-secret";
     return s;
 }
 
@@ -306,12 +308,17 @@ TEST(the_settings_file_round_trips_and_the_environment_overrides_it) {
     s.url = "https://market.example/";
     s.token = "tok";
     s.name = "Alex";
+    s.accountUrl = "https://account.example/";
+    s.accountToken = "acc";
     REQUIRE(s.Save(path).Ok());
     const auto back = OperatorSettings::Load(path);
     REQUIRE(back.Ok());
     REQUIRE_EQ(back.Value().url, std::string("https://market.example"));   // the trailing slash dropped
     REQUIRE_EQ(back.Value().token, std::string("tok"));
     REQUIRE_EQ(back.Value().name, std::string("Alex"));
+    REQUIRE_EQ(back.Value().accountUrl, std::string("https://account.example"));
+    REQUIRE_EQ(back.Value().accountToken, std::string("acc"));
+    REQUIRE(back.Value().Accounts());
     REQUIRE(back.Value().Complete());
 #ifndef _WIN32
     const auto perms = std::filesystem::status(UltraCanvas::PathFromUtf8(path)).permissions();
@@ -334,4 +341,67 @@ TEST(the_age_of_a_timestamp) {
     const int64_t now = midnight;
     REQUIRE_EQ(Age("not a time", now), std::string());
     REQUIRE_EQ(Age("", now), std::string());
+}
+
+TEST(the_users_are_read_from_the_account_service_with_its_own_token) {
+    FakeService fake;
+    fake.answers["GET /v1/users?state=suspended&q=anna"] = R"({"users":[{"id":"u-1","email":"an***@example.org","display_name":"Anna K.","handle":"annak","country":"DE","state":"suspended",
+        "created_at":"2026-11-01T10:00:00Z","two_factor":true,"devices":3,"licences":2,"request":"archive","suspended_reason":"review spam","suspended_until":"2026-12-19"}],
+        "stats":{"accounts":48212,"new_in_30_days":1204,"two_factor_percent":61,"archive_requests":2,"archive_requests_due":1,"deletion_requests":1,"suspended":6}})";
+    fake.answers["GET /v1/users/u-1"] = R"({"id":"u-1","email":"an***@example.org","display_name":"Anna K.","handle":"annak","state":"active","created_at":"2026-11-01T10:00:00Z","two_factor":false,
+        "devices":[{"id":"d-1","device_name":"Anna's laptop","os":"linux","client":"UltraStore 0.2","last_seen":"2026-11-19T09:00:00Z","last_ip":"10.0.0.1"}],
+        "licences":[{"id":"lic-1","app":"org.example.app","order":"o-1","issued":"2026-11-11","seats":3,"seats_used":1}],
+        "notices":[{"id":"n-1","kind":"notice","subject":"About your review","text":"Thank you.","created_at":"2026-11-18T10:00:00Z","created_by":"operator","read_at":""}],
+        "archives":[{"id":"a-1","state":"built","due":"2026-11-20","requested_at":"2026-11-19T08:00:00Z","released_at":""}],
+        "history":[{"id":7,"at":"2026-11-18T10:00:00Z","actor":"operator","action":"notify","target_kind":"user","target":"u-1","hash":"x"}],
+        "sign_ins":[{"at":"2026-11-19T09:00:00Z","ip":"10.0.0.1","device":"Anna's laptop","ok":true,"reason":""}]})";
+    fake.answers["POST /v1/users/u-1/suspend"] = R"({"user":{"id":"u-1","state":"suspended","suspended_until":"2026-12-19"}})";
+    fake.answers["POST /v1/users/u-1/notice"] = R"({"notice":{"id":"n-2","kind":"warning","subject":"Review spam","text":"Stop.","created_at":"2026-11-19T10:00:00Z","created_by":"operator"}})";
+    fake.answers["POST /v1/users/u-1/signout-all"] = R"({"signed_out":3})";
+    fake.answers["POST /v1/archives/a-1/release"] = R"({"archive":{"id":"a-1","state":"released","due":"2026-11-20"}})";
+    fake.answers["POST /v1/users/u-1/delete"] = R"({"deleted":true})";
+    OperatorClient client(TestSettings(), fake.Call());
+
+    const auto page = client.Users("suspended", "anna");
+    REQUIRE(page.Ok());
+    REQUIRE_EQ(fake.calls.back(), std::string("GET https://account.example/v1/users?state=suspended&q=anna | Bearer account-secret | "));
+    REQUIRE_EQ(page.Value().users.size(), size_t(1));
+    const User& u = page.Value().users[0];
+    REQUIRE_EQ(u.Name(), std::string("Anna K."));
+    REQUIRE_EQ(u.email, std::string("an***@example.org"));
+    REQUIRE(u.twoFactor && u.devices == 3 && u.licences == 2 && u.request == "archive");
+    REQUIRE_EQ(u.suspendedUntil, std::string("2026-12-19"));
+    REQUIRE_EQ(page.Value().stats.accounts, 48212);
+    REQUIRE_EQ(page.Value().stats.twoFactorPercent, 61);
+
+    const auto file = client.GetUser("u-1");
+    REQUIRE(file.Ok());
+    REQUIRE_EQ(file.Value().devices.size(), size_t(1));
+    REQUIRE_EQ(file.Value().devices[0].name, std::string("Anna's laptop"));
+    REQUIRE_EQ(file.Value().licences[0].seatsUsed, 1);
+    REQUIRE_EQ(file.Value().notices[0].createdBy, std::string("operator"));
+    REQUIRE_EQ(file.Value().archives[0].state, std::string("built"));
+    REQUIRE_EQ(file.Value().history[0].action, std::string("notify"));
+    REQUIRE(file.Value().signIns[0].ok);
+    REQUIRE_EQ(file.Value().user.devices, 1);   // counted from the list in the file
+
+    const auto suspended = client.SuspendUser("u-1", "review spam", 30);
+    REQUIRE(suspended.Ok());
+    REQUIRE(fake.calls.back().find(R"({"reason":"review spam","days":30})") != std::string::npos);
+    REQUIRE_EQ(suspended.Value().state, std::string("suspended"));
+    const auto notice = client.NotifyUser("u-1", "warning", "Review spam", "Stop.");
+    REQUIRE(notice.Ok() && notice.Value().id == "n-2");
+    REQUIRE(fake.calls.back().find(R"("kind":"warning")") != std::string::npos);
+    const auto out = client.SignOutUser("u-1", "stolen laptop");
+    REQUIRE(out.Ok() && out.Value() == 3);
+    const auto released = client.ReleaseArchive("a-1");
+    REQUIRE(released.Ok() && released.Value().state == "released");
+    REQUIRE(client.DeleteUser("u-1", "requested").Ok());
+
+    // No account service: refused before any call, the marketplace untouched.
+    OperatorSettings s = TestSettings();
+    s.accountUrl.clear();
+    const size_t calls = fake.calls.size();
+    REQUIRE(!OperatorClient(s, fake.Call()).Users().Ok());
+    REQUIRE_EQ(fake.calls.size(), calls);
 }

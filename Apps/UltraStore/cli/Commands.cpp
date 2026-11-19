@@ -27,6 +27,12 @@
 //   ultrastore remove <app-id> [--root <dir>] removes an app and what only it needed
 //   ultrastore installed [--root <dir>]       what is installed
 //   ultrastore gc [--root <dir>]              removes components nothing depends on
+//   ultrastore account signup <email> [--country DE] [--year 1990] [--marketing]
+//                                             an account: the password asked for, a code mailed
+//   ultrastore account verify <email> <code>  the code; this machine signed in
+//   ultrastore account signin <email> [--totp <code> | --recovery <code>]
+//   ultrastore account signout [--everywhere] | me | devices | licences | notices | sync
+//                                             the account signed in on this machine (--root)
 //   ultrastore --version | --help
 //
 //   ultrastore [--catalog <catalog.json>] [--root <dir>] [--channel beta]
@@ -34,6 +40,7 @@
 //
 // --root is the store's folder; without it UltraCanvasLocalDataFolderRoot()/UltraStore.
 //
+// Version: 0.8.0 - account: signup, verify, signin, signout, me, devices, licences, notices, sync
 // Version: 0.7.0 - report, reports: a problem to the marketplace service, the outcomes
 // Version: 0.6.0 - licences --sync, unsubscribe; a subscription's day on licence
 // Version: 0.5.0 - licence
@@ -46,6 +53,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Commands.h"
 
+#include "Account.h"
 #include "Catalog.h"
 #include "CatalogClient.h"
 #include "PackageResolver.h"
@@ -58,6 +66,8 @@
 #include "Verifier.h"
 
 #include "UltraCanvasDataFolder.h"
+
+#include <iostream>
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 
@@ -103,6 +113,13 @@ int UltraStore::Cli::Usage(FILE* to) {
         "  ultrastore code [<CODE> | clear] [--cache <dir>]\n"
         "                                     the discount or partner code in force (30 days), checked against the cached catalog\n"
         "  ultrastore ultrastore://code/<CODE>  the same, from a QR code or a page: opens the window with it\n"
+        "  ultrastore account signup <email> [--country DE] [--year 1990] [--marketing] [--url <service>] [--root <dir>]\n"
+        "                                     an account at the catalog's account service: the password from ULTRASTORE_PASSWORD or a line on stdin, a code mailed\n"
+        "  ultrastore account verify <email> <code> [--url <service>] [--root <dir>]\n"
+        "                                     the mailed code; this machine is signed in and its licences go up to the account\n"
+        "  ultrastore account signin <email> [--totp <code> | --recovery <code>] [--url <service>] [--root <dir>]\n"
+        "  ultrastore account signout [--everywhere] | me | devices | licences | notices | sync   [--root <dir>]\n"
+        "                                     the account this machine is signed in to; sync brings the licences in step\n"
         "  ultrastore --version | --help\n",
         ULTRASTORE_VERSION);
     return to == stdout ? 0 : 2;
@@ -632,6 +649,151 @@ int CmdUnsubscribe(const std::vector<std::string>& args) {
     return 0;
 }
 
+// ----- the account -----
+std::string PasswordFromEnvOrStdin() {
+    std::string p = UltraCanvas::GetEnvUtf8("ULTRASTORE_PASSWORD");   // path-string-ok: GetEnvUtf8 is the UTF-8 read
+    if (!p.empty()) return p;
+    std::fprintf(stderr, "password: ");
+    std::getline(std::cin, p);
+    return p;
+}
+
+DeviceInfo CliDevice() {
+    DeviceInfo d;
+    d.name = DefaultDeviceName();
+    d.os = PlatformInfo::Detect().Describe();
+    d.client = std::string("ultrastore ") + ULTRASTORE_VERSION;
+    return d;
+}
+
+// The service: --url, else the settings' account.url, else the session's,
+// else the cached catalog's account_url.
+std::string AccountServiceUrl(const std::vector<std::string>& args, const AccountSession& session) {
+    std::string url = Option(args, "--url");
+    if (url.empty()) url = StoreSettings::Load().accountUrl;
+    if (url.empty()) url = session.url;
+    if (url.empty()) {
+        StoreSettings settings = StoreSettings::Load();
+        CatalogClientConfig config;
+        config.baseUrls = settings.Servers();
+        config.trustedKeys = settings.TrustedKeys();
+        CatalogClient client(config);
+        if (const auto cached = client.LoadCached()) url = cached.Value().accountUrl;
+    }
+    return url;
+}
+
+int CmdAccount(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    const std::string root = StoreRoot(args);
+    AccountSession session = AccountSession::Load(root);
+    const std::string url = AccountServiceUrl(args, session);
+    if (url.empty()) return Fail("No account service: the catalog names none (account_url); --url names one");
+    const AccountClient client(url);
+    const std::string& what = pos[1];
+    if (what == "signup") {
+        if (pos.size() < 3) return Usage(stderr);
+        const std::string password = PasswordFromEnvOrStdin();
+        const auto r = client.SignUp(pos[2], password, Option(args, "--country"), std::atoi(Option(args, "--year", "0").c_str()),   // locale-ok: digits only
+                                     StoreSettings::Load().Language(), std::find(args.begin(), args.end(), "--marketing") != args.end());
+        if (!r) return Fail(r.error);
+        std::printf("a code was mailed to %s: ultrastore account verify %s <code>\n", pos[2].c_str(), pos[2].c_str());
+        return 0;
+    }
+    auto keep = [&](const SignedIn& s) -> int {
+        session.url = url; session.token = s.token; session.userId = s.profile.id; session.email = s.profile.email;
+        session.displayName = s.profile.displayName; session.deviceId = s.device.id;
+        if (const auto saved = session.Save(root); !saved) return Fail(saved.error);
+        std::printf("signed in as %s on %s (%s)\n", s.profile.email.c_str(), s.device.name.c_str(), s.device.id.c_str());
+        StoreEngine engine(root);
+        if (engine.Open()) {
+            const auto sync = SyncLicencesWithAccount(engine.Registry(), client, session.token, "");
+            if (sync) std::printf("%zu licence(s) attached to the account; `ultrastore account sync` fetches the account's with a catalog\n", sync.Value().attached.size());
+        }
+        return 0;
+    };
+    if (what == "verify") {
+        if (pos.size() < 4) return Usage(stderr);
+        const auto r = client.VerifySignUp(pos[2], pos[3], CliDevice());
+        if (!r) return Fail(r.error);
+        return keep(r.Value());
+    }
+    if (what == "signin") {
+        if (pos.size() < 3) return Usage(stderr);
+        const auto r = client.SignIn(pos[2], PasswordFromEnvOrStdin(), CliDevice(), Option(args, "--totp"), Option(args, "--recovery"));
+        if (!r) return Fail(r.error);
+        return keep(r.Value());
+    }
+    if (!session.SignedIn()) return Fail("Not signed in on this machine: ultrastore account signin <email>");
+    if (what == "signout") {
+        if (std::find(args.begin(), args.end(), "--everywhere") != args.end()) {
+            if (const auto r = client.SignOutOthers(session.token); !r) return Fail(r.error);
+        }
+        if (const auto r = client.SignOut(session.token); !r && r.error.detail != "signed_out") return Fail(r.error);
+        AccountSession::Clear(root);
+        std::printf("signed out\n");
+        return 0;
+    }
+    if (what == "me") {
+        const auto r = client.GetMe(session.token);
+        if (!r) return Fail(r.error);
+        const Me& me = r.Value();
+        std::printf("%s  %s  @%s  %s  since %s\n  two-factor %s, %d recovery codes left  ·  %zu device(s), %zu licence(s), %d unread notice(s)\n",
+                    me.profile.id.c_str(), me.profile.email.c_str(), me.profile.handle.c_str(), me.profile.Name().c_str(), me.profile.createdAt.substr(0, 10).c_str(),
+                    me.profile.twoFactor ? "on" : "off", me.profile.recoveryCodesLeft, me.devices.size(), me.licences.size(), me.unreadNotices);
+        if (me.profile.state == "deleting") std::printf("  deletion requested: the account is deleted on %s\n", me.profile.deleteAfter.c_str());
+        return 0;
+    }
+    if (what == "devices") {
+        const auto r = client.Devices(session.token);
+        if (!r) return Fail(r.error);
+        for (const AccountDevice& d : r.Value())
+            std::printf("%-14s %-28s %-36s last seen %s%s\n", d.id.c_str(), d.name.c_str(), d.os.c_str(), d.lastSeen.c_str(), d.current ? "  (this machine)" : "");
+        return 0;
+    }
+    if (what == "licences") {
+        const auto r = client.Licences(session.token);
+        if (!r) return Fail(r.error);
+        if (r.Value().empty()) { std::printf("no licence on the account\n"); return 0; }
+        for (const AccountLicence& l : r.Value())
+            std::printf("%-32s %s  bought %s  seats %d of %d%s\n", l.app.c_str(), l.id.c_str(), l.issued.c_str(), l.seatsUsed, l.seats, l.InstalledOn(session.deviceId) ? "  (a seat here)" : "");
+        return 0;
+    }
+    if (what == "notices") {
+        const auto r = client.Notices(session.token);
+        if (!r) return Fail(r.error);
+        if (r.Value().empty()) { std::printf("no notices\n"); return 0; }
+        for (const AccountNotice& n : r.Value())
+            std::printf("%s  %s  %-12s %s%s\n%s%s", n.readAt.empty() ? "*" : " ", n.createdAt.substr(0, 10).c_str(), n.kind.c_str(), n.subject.c_str(),
+                        n.createdBy == "operator" ? "  (from the operator)" : "", n.text.empty() ? "" : ("    " + n.text + "\n").c_str(), "");
+        return 0;
+    }
+    if (what == "sync") {
+        StoreEngine engine(root);
+        if (const auto opened = engine.Open(); !opened) return Fail(opened.error);
+        std::string licenceKey;
+        {
+            StoreSettings settings = StoreSettings::Load();
+            CatalogClientConfig config;
+            config.baseUrls = settings.Servers();
+            config.trustedKeys = settings.TrustedKeys();
+            CatalogClient catalogClient(config);
+            if (const auto cached = catalogClient.LoadCached()) licenceKey = cached.Value().licenceKey;
+        }
+        const auto sync = SyncLicencesWithAccount(engine.Registry(), client, session.token, licenceKey);
+        if (!sync) return Fail(sync.error);
+        for (const std::string& app : sync.Value().fetched) {
+            if (const auto record = engine.Registry().GetLicence(app)) WriteLicenceFile(LicenceFilePath(root, app), record.Value().token);
+        }
+        std::printf("%zu attached, %zu fetched, %zu without a seat here, %zu failed\n", sync.Value().attached.size(), sync.Value().fetched.size(),
+                    sync.Value().noSeat.size(), sync.Value().failed.size());
+        for (const auto& [app, error] : sync.Value().failed) std::printf("  %s: %s\n", app.c_str(), error.message.c_str());
+        return sync.Value().failed.empty() ? 0 : 1;
+    }
+    return Usage(stderr);
+}
+
 // code [<CODE> | clear]: the code in force, checked against the cached
 // catalog with the settings' keys, kept in the settings file for 30 days.
 int CmdCode(const std::vector<std::string>& args) {
@@ -692,6 +854,7 @@ int UltraStore::Cli::Run(const std::vector<std::string>& args) {
     if (cmd == "installed") return CmdInstalled(args);
     if (cmd == "gc")       return CmdGc(args);
     if (cmd == "code")     return CmdCode(args);
+    if (cmd == "account")  return CmdAccount(args);
     if (cmd == "buy")      return CmdBuy(args);
     if (cmd == "licences") return CmdLicences(args);
     if (cmd == "licence")  return CmdLicence(args);

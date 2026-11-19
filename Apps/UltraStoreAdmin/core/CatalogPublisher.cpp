@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/core/CatalogPublisher.cpp
 // Version: 0.6.0 - the mark for the pages under go/
 // Version: 0.5.0 - a restricted package on an app with a trial
+// Version: 0.4.2 - account_url from the settings
 // Version: 0.4.1 - market_url from the settings
 // Version: 0.4.0 - payment_url and licence_key from the settings
 // Version: 0.3.0 - the codes, their landing pages
@@ -90,6 +91,7 @@ Result<Catalog> BuildCatalog(const AdminDatabase& db, const PublishOptions& opti
     catalog.paymentUrl = TrimSlash(db.Setting("payment.url"));
     catalog.licenceKey = db.Setting("payment.licence_key");
     catalog.marketUrl = TrimSlash(db.Setting("market.url"));   // where the store's app page reports a problem
+    catalog.accountUrl = TrimSlash(db.Setting("account.url")); // where the store signs in (Server/UltraStoreAccount)
     if (!catalog.paymentUrl.empty() && catalog.licenceKey.empty()) warn.push_back("payment.url is set but payment.licence_key is not: the store cannot verify the licences");
     // Every active key may sign the next catalog (schema 2's trusted_keys):
     // a new key is announced by the first publish after it is made and

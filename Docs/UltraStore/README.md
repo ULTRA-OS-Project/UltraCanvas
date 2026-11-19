@@ -104,6 +104,7 @@ so a mirror or a proxy serving yesterday's file cannot roll anyone back.
   "payment_url": "https://store.example",
   "licence_key": "e52d4fca…40c1ab",
   "market_url": "https://store.example/market",
+  "account_url": "https://store.example/account",
   "publishers": [{ "id": "ultra-os-project", "name": "ULTRA OS Project", "url": "https://ultraos.eu" }],
   "components": [
     { "id": "org.ultraos.runtime", "kind": "runtime", "name": "UltraCanvas runtime",
@@ -646,8 +647,9 @@ ink text, the UltraStore blue of the app icon as the one accent, Manrope
 for display text over Inter for body text (both in `media/fonts`), 20 px
 card corners, pill buttons and chips (`StoreTheme.h`). A header carries
 the wordmark (the way home), the sections as pills - Discover, Categories,
-Installed, Updates with its count - the search pill, Refresh and Settings
-(where the design has *Sign in*: the store has no accounts). The download
+Installed, Updates with its count - the search pill, Refresh, *Sign in*
+(the person's initials and name once signed in; the pill is there when the
+catalog names an account service, *The account tier*) and Settings. The download
 queue sits in a collapsible panel along the bottom
 (`UltraCanvasCollapsiblePanel`), a status line under it. Every operation
 goes through the core - the same `StoreEngine`, `CatalogClient`,
@@ -661,9 +663,14 @@ line never disagree; the pages are `StoreQuery::ListApps` with its filters.
 | Installed | the installed apps as cards, then the runtimes and libraries under them | Open, Remove, Reload, Clean up (the garbage collector) |
 | Updates | the installed apps a newer release has a package for; the count in the header pill | Update one, Update all |
 | App page | the shop's app page: the breadcrumb (the section it came from, the category, the name), the icon, the name, the summary, the publisher (a link when the catalog has their page), the facts as pills (the trial, open source and the licence, the systems, the age rating, the account, the update period, a purchase, a code in force), the actions, what this machine downloads (the plan: the layers already there, the ones added, the bytes); the screenshots side by side; *About this app*; *What's new* with the release notes and the version history; *What it installs* step by step with the sizes; the information column (publisher, licence, price, trial, updates, languages, age rating, the links); *More from* the publisher | the same actions; the breadcrumb is the way back |
-| Settings | channel, the texts' language, the servers, the keys trusted beside the compiled-in ones, fetch at start; this machine, the store folder, the settings file, the catalog's state, what is installed | Save, Revert, Refresh catalog now, Clean up, Reload installed |
+| Settings | channel, the texts' language, the servers, the keys trusted beside the compiled-in ones, fetch at start; the account service of one's own; this machine, the store folder, the settings file, the catalog's state, what is installed | Save, Revert, Refresh catalog now, Clean up, Reload installed |
+| Sign in | the design's `AccountSignUp`: sign in (email, password; the second factor asked for when the account has one), create an account (email, password, country, year of birth, consent), the mailed code, a forgotten password, the welcome | Sign in, Create an account, Verify, Send it again, Set the password; a sign-in attaches this machine's licences to the account and fetches the account's (`StoreAccountPage.cpp`, Account.h) |
+| Account | the design's `AccountProfile` with its rail: profile (display name, handle, language, country, year of birth, about; the email moved after a code), security and sign-in (the password, two-factor with the app's key and the recovery codes shown once), devices (the machines signed in with the seats they hold), purchases and licences (seats taken or freed for this machine), notifications (the settings, the notices with the operator's), privacy and data (the history switch, the public profile, the data archive, the deletion with its grace) | Save, Change, Turn on / off, Rename, Sign out, Take a seat here, Request the archive, Download, Delete my account, Keep my account |
 
-Not in the window, of the design: *Sign in* (no accounts), the share and
+Not in the window, of the design: the account's payment methods,
+subscriptions and orders pages (the payment service's; the licences page
+shows what of them the account holds), passkeys and the avatar (*The
+account tier*, what comes next), the share and
 wish-list buttons of the app page, and the footer's links (for publishers,
 support, privacy, terms: the catalog carries no store-wide pages). The
 phone artboards are a web shop's; the admin and operator artboards belong
@@ -728,6 +735,10 @@ ultrastore report <catalog.json> <app-id> <kind> <text>   a problem with an app 
 ultrastore reports <catalog.json>                         what became of the reports sent from this machine
 ultrastore licence <app-id> [--root <dir>] [--key <hex>]    one purchase's terms; with the key, the licence file verified
 ultrastore code [<CODE> | clear] [--cache <dir>]          the code in force
+ultrastore account signup <email> [--country DE] [--year 1990] [--marketing]   an account at the catalog's account service; the password from ULTRASTORE_PASSWORD or stdin
+ultrastore account verify <email> <code>                  the mailed code; this machine signed in, its licences attached
+ultrastore account signin <email> [--totp <code> | --recovery <code>]
+ultrastore account signout [--everywhere] | me | devices | licences | notices | sync
 ultrastore --version | --help
 ```
 
@@ -849,6 +860,47 @@ review with its decisions and the publish, the reports with the reporter
 the operator alone sees, the notices, the terms and the policy, the audit
 log verified. Still to come: the packages uploaded with a submission, the
 review pipeline behind the checks marked *not run*.
+
+## The account tier
+
+Everything above a person does without an account: a free app installs,
+a purchase is a licence in `registry.sqlite` on the machine it was bought
+on, the payment service sells without one. The design's `Account*` pages
+(`design/README.md`) draw what follows a person from machine to machine;
+this section settles where it lives, and what of it is built.
+
+| Question | Decision |
+|---|---|
+| Where does a person's identity live? | **In an account service, `Server/UltraStoreAccount`, beside the payment service and the marketplace service** (built 2026-11-19, its own README): one HTTPS service the ULTRA OS Project runs, its own database on MySQL (the shared layer `Server/UltraStoreDb`; SQLite for tests and development). It holds the email, the password as an scrypt hash, the display name and handle, the language, the country (VAT, currency) and the year of birth (age ratings, never shown), the second factor, the sessions, the licences attached, the notices, the archives, the audit log. The store's window and command line are its clients (`Account.h`); the catalog names it (`account_url`), the way it names the payment and marketplace services. |
+| What is a device? | **A session**: one per machine signed in, with the machine's name, system and store version, ended by the person from any machine, by the operator, or by 90 days unused. The store keeps the session token in `<root>/account.json`, readable by the owner alone, and sends it as a bearer token; a token the service no longer knows signs the store out. |
+| How does a licence follow a person? | **Attached to the account, verified, counted in seats.** A licence the payment service issued (`ULIC1.…`, its signature checked with the licence key) is attached to the account the store is signed in to, and each machine it is installed on takes a seat (the licence's number, else the service's default of 3). At a sign-in the store sends every licence of its registry up and takes a seat, and fetches every licence the account holds that the registry lacks, verified against the catalog's `licence_key`, into the registry and its licence file; signing a machine out frees its seats. The order secret stays on the machine that bought: the receipt and the cancel go through it, the app does not need it. |
+| Who signs up, and how is an address proven? | **Anyone, with a mailed six-digit code**, good for ten minutes; the address is the sign-in name. An address with an account gets the same answer as a new one and a mail to its owner, so the service tells a stranger nothing. A password is twelve characters or more. |
+| What is the second factor? | **TOTP** - UltraAuthenticator or any authenticator app - **with recovery codes** (eight, hashed, each good once, shown once; a new set from Security). The service asks for it at sign-in and at a password reset; the operator can reset it after checking the person's identity another way, and the person is told. Passkeys are drawn and come later: WebAuthn needs the platform's authenticator on each machine. |
+| What does the operator see, and do? | **Accounts as far as the store needs them**: the email masked, the name and handle, the country, the state, two-factor on or off, the devices and licences counted, the requests; one user's file with the devices, the licences without their tokens, the notices, the archives, the sign-ins and the history. Never the password hash, the year of birth, a payment method, the listening and watch history. The actions - a notice, sign out everywhere, reset two-factor, release the archive, suspend with a reason and days, reinstate, delete - are rows in the account service's own hash-chained audit log, and a notice to the person where one is due. A deletion the person did not ask for is refused. |
+| How does the operator reach a buyer, and a merchant? | **Customer messaging is a notice on the account** (decided 2026-11-19): written once by the operator (`POST /v1/users/{id}/notice`: notice, security, warning, suspension, information request), kept on the account under Notifications until read, and sent by mail. The service itself writes the security notices (a new sign-in, a password change, a recovery code used). **A merchant never reaches a buyer directly**: the merchant has no buyer identity (the marketplace service hides the reporter, the payment service names no account). A merchant's message to a buyer goes through the marketplace service with the order as the key, relayed by the operator's services into a notice on the account the order belongs to, the buyer's identity never given to the merchant - decided, built later, once the payment service records the account at checkout. Until then the report's outcome line is the merchant-to-buyer channel, as today. |
+| What does the person take with them, and how does it end? | **A data archive and a grace.** The archive is everything the account holds of the person as one JSON file, built at once when asked for, released by the operator within a day, downloaded once. The deletion is asked for with the password, carried out after 30 days unless cancelled - by the daily maintenance, or by the operator on the person's request - and leaves the row under its id with the email replaced, so the audit rows still name a target and the address is free again; the invoices are the payment service's and stay as the law asks. |
+| Does the store need an account to install? | **No.** A free app installs without one, as before; an account is for what follows the person. The store's window shows *Sign in* only when the catalog names the service. |
+
+**Built so far** (`Server/UltraStoreAccount`, its README): the service with
+all of the above - sign up with the mailed code, sign in with the password
+and the second factor, the sessions as devices, the profile and the
+settings, the email moved after a code, the password changed with the other
+machines signed out, two-factor with the recovery codes, the licences
+attached and their seats, the notices, the archive released by the operator
+and downloaded once, the deletion with its grace, the operator's users list
+with the counts and the states, the file, the actions and the audit log
+verified; `POST /v1/maintenance` for the daily timer. The store's side
+(`Apps/UltraStore/core/Account.h`): the session file, the client, the
+licences kept in step both ways (`SyncLicencesWithAccount`); the window's
+*Sign in* pill, the sign-in page with its steps and the account page with
+its rail (`ui/StoreAccountPage.cpp`); `ultrastore account`. The operator's
+side (`Apps/UltraStoreOperator`, [its README](../UltraStoreOperator/README.md)):
+the *Users* page after the design's `SuperUsers` on the account service
+with its own token, and `ultrastoreop users`. The admin backend's publish
+writes `account_url` from the setting `account.url`. What comes next: the
+payment service told the account at checkout (an order on the account
+without the store attaching the licence), passkeys, the avatar, the
+merchant's message relayed to a buyer.
 
 ## Packaging an application for the store
 
@@ -978,3 +1030,14 @@ UltraMail on it (`UltraCanvas-runtime-store-<os>-<arch>`).
    which the admin backend cannot do yet. The store starts an app on its
    runtime layer after 0.1.21 (*Packaging an application for the store*),
    so an app's package can leave the runtime out.
+
+9. **The account tier** (*The account tier*): the account service
+   (`Server/UltraStoreAccount`) - sign up with the mailed code, sign in
+   with the password and the second factor, the devices, the licences
+   attached with their seats, the notices, the archive and the deletion,
+   the operator's users API with its audit log; the store's *Sign in* and
+   account page with the licences kept in step both ways, `ultrastore
+   account`; the operator's *Users* page and `ultrastoreop users`; the
+   catalog's `account_url`. Next: the payment service told the account at
+   checkout, passkeys, the avatar, the merchant's message relayed to a
+   buyer through the marketplace service.

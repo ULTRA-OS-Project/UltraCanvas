@@ -98,6 +98,12 @@ private:
     void BuildTermsPage();
     void RefreshTerms();
     void ShowTerms();
+    // (OperatorUsersPage.cpp: the account service's users)
+    void BuildUsersPage();
+    void RefreshUsers();
+    void ShowUsers();
+    void OpenUser(const std::string& id);
+    void ShowUserFile();
 
     // ----- jobs -----
     struct JobOutcome {
@@ -176,6 +182,17 @@ private:
     std::shared_ptr<TextInput> pExpiry_, pStrikes_, pDays_, pDeadline_, pClauses_;
     std::shared_ptr<Dropdown> nKind_;
     std::shared_ptr<TextInput> nTo_, nSubject_, nClause_;
+    // users
+    std::vector<User> users_;
+    UserStats userStats_;
+    UserFile userFile_;
+    bool haveUserFile_ = false;
+    std::string usersFilter_ = "all";
+    std::shared_ptr<Container> uStats_, uFilters_, usersList_, userFileBox_;
+    std::shared_ptr<TextInput> uSearch_, uReason_, uSubject_, uDays_;
+    std::shared_ptr<TextArea> uText_;
+    std::shared_ptr<Dropdown> uKind_;
+    std::shared_ptr<TextInput> sAccountUrl_, sAccountToken_;
     // audit
     std::shared_ptr<Container> auditList_;
     std::shared_ptr<Label> auditCheck_;

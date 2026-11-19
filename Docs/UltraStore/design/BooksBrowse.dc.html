@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Books - Browse</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#b45309}a:hover{color:#92400e}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="border-bottom: 1px solid #e2e8f0; background: #ffffff">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 24px; flex-wrap: wrap">
+<a href="BooksHome.dc.html" aria-label="UltraStore Books home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Books</span>
+</a>
+<nav aria-label="Store sections" style="display: flex; gap: 4px; flex-wrap: wrap">
+<a href="BooksHome.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Discover</a>
+<a href="BooksBrowse.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 600; color: #b45309; background: #fef3c7">Browse</a>
+<a href="BooksLibrary.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Library <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #0f172a; color: #ffffff; font-size: 12px; font-weight: 700">2</span></a>
+<a href="#wishlist" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Wish list</a>
+</nav>
+<form role="search" style="flex: 1 1 240px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9; border: 1px solid transparent">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-browse" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search books</label>
+<input id="search-browse" type="search" placeholder="Title, author, narrator, series" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+</form>
+<a href="#plus" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; text-decoration: none; font-weight: 700; font-size: 13px">Books Plus · 1 credit left</a>
+<button type="button" aria-label="Account" style="width: 44px; height: 44px; border-radius: 999px; border: 0; background: #fef3c7; color: #b45309; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">AK</button>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 32px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px">
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 36px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1">{{heading}}</h1>
+<p style="margin: 0; color: #64748b">{{count}} titles · the catalogue is sample data; the filters work</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div role="group" aria-label="Format" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+<span style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; width: 80px">Format</span>
+<sc-for list="{{formats}}" as="f" hint-placeholder-count="4">
+<button type="button" onClick="{{f.pick}}" aria-pressed="{{f.selected}}" style="{{f.style}}">{{f.label}} <span style="{{f.countStyle}}">{{f.count}}</span></button>
+</sc-for>
+</div>
+<div role="group" aria-label="Genre" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+<span style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; width: 80px">Genre</span>
+<sc-for list="{{genres}}" as="g" hint-placeholder-count="8">
+<button type="button" onClick="{{g.pick}}" aria-pressed="{{g.selected}}" style="{{g.style}}">{{g.label}}</button>
+</sc-for>
+</div>
+<div role="group" aria-label="Language and more" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+<span style="font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; width: 80px">Language</span>
+<sc-for list="{{langs}}" as="l" hint-placeholder-count="3">
+<button type="button" onClick="{{l.pick}}" aria-pressed="{{l.selected}}" style="{{l.style}}">{{l.label}}</button>
+</sc-for>
+<span aria-hidden="true" style="width: 1px; height: 24px; background: #e2e8f0; margin: 0 6px"></span>
+<button type="button" onClick="{{plusOnly.pick}}" aria-pressed="{{plusOnly.selected}}" style="{{plusOnly.style}}">Included with Plus</button>
+<label style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #64748b">Sort <select style="height: 36px; padding: 0 10px; border-radius: 10px; border: 1px solid #e2e8f0; font: inherit; font-size: 13px; color: #0f172a; background: #ffffff"><option>Bestselling</option><option>Newest</option><option>Rating</option><option>Length, short first</option><option>Price, low first</option></select></label>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 20px">
+<sc-for list="{{items}}" as="b" hint-placeholder-count="12">
+<article style="display: flex; flex-direction: column; gap: 10px">
+<a href="{{b.href}}" aria-label="{{b.title}}" style="{{b.coverStyle}}"><span aria-hidden="true" style="position: absolute; left: 14px; top: 14px; right: 14px; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 17px; line-height: 1.05; color: rgba(255,255,255,0.92); letter-spacing: -0.02em; text-shadow: 0 1px 2px rgba(0,0,0,0.25)">{{b.title}}</span></a>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<a href="{{b.href}}" style="font-weight: 700; font-size: 14px; color: #0f172a; text-decoration: none; line-height: 1.3">{{b.title}}</a>
+<span style="font-size: 12px; color: #64748b">{{b.meta}}</span>
+<span style="font-size: 12px; color: #64748b">{{b.length}}</span>
+<span style="{{b.priceStyle}}">{{b.price}}</span>
+</div>
+</article>
+</sc-for>
+</div>
+<sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+<div style="padding: 48px 24px; border-radius: 20px; background: #f8fafc; text-align: center; color: #64748b">Nothing matches. Try another format, genre or language.</div>
+</sc-if>
+
+<nav aria-label="Pages" style="display: flex; justify-content: center; gap: 6px; padding-top: 8px">
+<span aria-current="page" style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 999px; background: #0f172a; color: #ffffff; font-weight: 700; font-size: 14px">1</span>
+<a href="#p2" style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 999px; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">2</a>
+<a href="#p3" style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 999px; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">3</a>
+<span style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; color: #94a3b8">…</span>
+<a href="#p40" style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 999px; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">40</a>
+</nav>
+
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px"><img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px"><span style="font-weight: 600; color: #0f172a">UltraStore Books</span><span>· e-books and audiobooks for ULTRA OS</span></div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px"><a href="#publishers" style="color: #475569; text-decoration: none; font-weight: 500">For publishers and authors</a><a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a><a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a><a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a><a href="#language" style="color: #475569; text-decoration: none; font-weight: 500">English</a></nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#d97706","options":["#d97706","#2563eb","#0f172a","#7c3aed"]},"$preview":{"width":1440,"height":1640}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { format: 'all', genre: 'all', lang: 'all', plus: false };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#d97706';
+    // Sample catalogue. fmt: 'both' | 'audio' | 'ebook'; lang: 'en' | 'de'
+    const BOOKS = [
+      { id: 'salt', title: 'The Salt Garden', author: 'Mira Holt', narrator: 'Carla Brandt', fmt: 'both', genre: 'fiction', lang: 'en', hours: '9 h 42 min', pages: 328, price: '1 credit · 19.95 EUR', plus: false, grad: 'linear-gradient(160deg, #fde68a, #78350f)', href: 'BooksDetail.dc.html' },
+      { id: 'deep', title: 'Deep Water Season', author: 'Erik Lund', narrator: 'Jonas Feld', fmt: 'both', genre: 'crime', lang: 'en', hours: '11 h 20 min', pages: 410, price: 'In your library', owned: true, plus: false, grad: 'linear-gradient(160deg, #1e3a8a, #0f172a)' },
+      { id: 'parents', title: 'Tactics for Tired Parents', author: 'Dr. Anna Reuter', narrator: 'the author', fmt: 'audio', genre: 'nonfiction', lang: 'en', hours: '6 h 05 min', price: 'Included with Plus', plus: true, grad: 'linear-gradient(160deg, #fecaca, #dc2626)' },
+      { id: 'elbe', title: 'A Short History of the Elbe', author: 'Heike Vogt', narrator: 'Martin Kessler', fmt: 'both', genre: 'history', lang: 'en', hours: '14 h 10 min', pages: 520, price: '1 credit · 24.95 EUR', plus: false, grad: 'linear-gradient(160deg, #a7f3d0, #065f46)' },
+      { id: 'pi', title: 'The Pi Garden', author: 'Tom Aalto', narrator: 'the author', fmt: 'both', genre: 'children', lang: 'en', hours: '1 h 48 min', pages: 96, price: '7.95 EUR', plus: false, grad: 'linear-gradient(160deg, #bae6fd, #0369a1)' },
+      { id: 'blue', title: 'Beyond the Blue Hour', author: 'Noor Haddad', fmt: 'ebook', genre: 'scifi', lang: 'en', pages: 380, price: '11.99 EUR', plus: false, grad: 'linear-gradient(160deg, #c4b5fd, #4c1d95)' },
+      { id: 'rust', title: 'Learning Rust the Slow Way', author: 'Ada Novak', fmt: 'ebook', genre: 'technology', lang: 'en', pages: 412, price: 'In your library', owned: true, plus: false, grad: 'linear-gradient(160deg, #ddd6fe, #6d28d9)' },
+      { id: 'salz', title: 'Der Salzgarten', author: 'Mira Holt', narrator: 'Nina Weiss', fmt: 'both', genre: 'fiction', lang: 'de', hours: '10 h 05 min', pages: 352, price: '1 credit · 19.95 EUR', plus: false, grad: 'linear-gradient(160deg, #fde68a, #92400e)' },
+      { id: 'grenze', title: 'Der Grenzzaun', author: 'Erik Lund', narrator: 'Till Brandes', fmt: 'audio', genre: 'crime', lang: 'de', hours: '9 h 50 min', price: 'Included with Plus', plus: true, grad: 'linear-gradient(160deg, #60a5fa, #1e3a8a)' },
+      { id: 'sleep', title: 'Sleep Stories, vol. 2', author: 'Various', narrator: 'Lena Marlow', fmt: 'audio', genre: 'wellbeing', lang: 'en', hours: '2 h 10 min', price: 'Included with Plus', plus: true, grad: 'linear-gradient(160deg, #1e1b4b, #0f172a)' },
+      { id: 'kessel', title: 'Kesselhaus Nights', author: 'Paul Reiter', narrator: 'Paul Reiter', fmt: 'audio', genre: 'fiction', lang: 'en', hours: '3 h 30 min', price: '1 credit · 12.95 EUR', plus: false, grad: 'linear-gradient(160deg, #f9a8d4, #581c87)' },
+      { id: 'orchard', title: 'The Orchard Year', author: 'Ines Baum', narrator: 'Carla Brandt', fmt: 'both', genre: 'nonfiction', lang: 'en', hours: '7 h 05 min', pages: 260, price: 'Included with Plus', plus: true, grad: 'linear-gradient(160deg, #d9f99d, #3f6212)' },
+      { id: 'light', title: 'The Last Lighthouse Keeper', author: 'Ewan Marsh', narrator: 'Ewan Marsh', fmt: 'both', genre: 'fiction', lang: 'en', hours: '10 h 40 min', pages: 388, price: '1 credit · 21.95 EUR', plus: false, grad: 'linear-gradient(160deg, #e2e8f0, #334155)' },
+      { id: 'ferry', title: 'Ferry at Six', author: 'Jo Lindqvist', fmt: 'ebook', genre: 'crime', lang: 'en', pages: 290, price: '7.99 EUR', plus: false, grad: 'linear-gradient(160deg, #bae6fd, #0c4a6e)' },
+      { id: 'numbers', title: 'Numbers for Little Ears', author: 'Tom Aalto', narrator: 'Tom Aalto', fmt: 'audio', genre: 'children', lang: 'en', hours: '48 min', price: '3.99 EUR', plus: false, grad: 'linear-gradient(160deg, #fde68a, #f59e0b)' },
+      { id: 'mars', title: 'Mars, Second Winter', author: 'Noor Haddad', narrator: 'Sam Okafor', fmt: 'both', genre: 'scifi', lang: 'en', hours: '12 h 30 min', pages: 440, price: '1 credit · 22.95 EUR', plus: false, grad: 'linear-gradient(160deg, #fca5a5, #7f1d1d)' },
+      { id: 'hanse', title: 'Die Hanse in zwölf Städten', author: 'Heike Vogt', fmt: 'ebook', genre: 'history', lang: 'de', pages: 480, price: '14.99 EUR', plus: false, grad: 'linear-gradient(160deg, #fdba74, #9a3412)' },
+      { id: 'kueche', title: 'Die Winterküche', author: 'Mira Holt', fmt: 'ebook', genre: 'cooking', lang: 'de', pages: 210, price: '8.99 EUR', plus: false, grad: 'linear-gradient(160deg, #e2e8f0, #334155)' },
+      { id: 'breath', title: 'Breath, Slowly', author: 'Dr. Jan Moser', narrator: 'the author', fmt: 'audio', genre: 'wellbeing', lang: 'en', hours: '4 h 15 min', price: 'Included with Plus', plus: true, grad: 'linear-gradient(160deg, #99f6e4, #134e4a)' },
+      { id: 'ledger', title: 'The Honest Ledger', author: 'Priya Sen', narrator: 'Priya Sen', fmt: 'both', genre: 'business', lang: 'en', hours: '8 h 20 min', pages: 300, price: '1 credit · 19.95 EUR', plus: false, grad: 'linear-gradient(160deg, #fef08a, #854d0e)' },
+      { id: 'git', title: 'Git for the Rest of Us', author: 'Ada Novak', narrator: 'Ada Novak', fmt: 'both', genre: 'technology', lang: 'en', hours: '5 h 40 min', pages: 220, price: 'Included with Plus', plus: true, grad: 'linear-gradient(160deg, #a5b4fc, #312e81)' },
+      { id: 'queen', title: 'The Queen of Lübeck', author: 'Ewan Marsh', narrator: 'Carla Brandt', fmt: 'both', genre: 'history', lang: 'en', hours: '13 h 05 min', pages: 460, price: '1 credit · 24.95 EUR', plus: false, grad: 'linear-gradient(160deg, #fbcfe8, #9d174d)' },
+      { id: 'rezepte', title: 'Rezepte vom Deich', author: 'Ines Baum', narrator: 'Ines Baum', fmt: 'both', genre: 'cooking', lang: 'de', hours: '3 h 10 min', pages: 180, price: '9.95 EUR', plus: false, grad: 'linear-gradient(160deg, #bbf7d0, #166534)' },
+      { id: 'whale', title: 'The Whale Who Counted', author: 'Tom Aalto', fmt: 'ebook', genre: 'children', lang: 'en', pages: 48, price: '3.49 EUR', plus: false, grad: 'linear-gradient(160deg, #7dd3fc, #075985)' }
+    ];
+    const s = this.state;
+    const chip = (on) => 'display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 0; ' + (on ? 'background: #0f172a; color: #ffffff' : 'background: #f1f5f9; color: #0f172a');
+    const outline = (on) => chip(on).replace('border: 0; ', 'border: 1px solid ' + (on ? '#0f172a' : '#e2e8f0') + '; ').replace('background: #f1f5f9', 'background: #ffffff');
+    const matchFmt = (b, f) => f === 'all' || b.fmt === 'both' || b.fmt === f;
+    const matchRest = (b) => (s.genre === 'all' || b.genre === s.genre) && (s.lang === 'all' || b.lang === s.lang) && (!s.plus || b.plus);
+    const formats = [
+      { id: 'all', label: 'All' },
+      { id: 'audio', label: 'Audiobooks' },
+      { id: 'ebook', label: 'E-books' },
+      { id: 'both', label: 'Both editions' }
+    ].map((f) => {
+      const on = f.id === s.format;
+      const count = BOOKS.filter((b) => matchFmt(b, f.id) && matchRest(b)).length;
+      return { ...f, selected: on, count, style: chip(on), countStyle: 'font-size: 12px; font-weight: 700; ' + (on ? 'color: #cbd5e1' : 'color: #64748b'), pick: () => this.setState({ format: f.id }) };
+    });
+    const GENRES = [
+      { id: 'all', label: 'Any genre' },
+      { id: 'fiction', label: 'Fiction' },
+      { id: 'crime', label: 'Crime' },
+      { id: 'scifi', label: 'Science fiction' },
+      { id: 'nonfiction', label: 'Non-fiction' },
+      { id: 'history', label: 'History' },
+      { id: 'business', label: 'Business' },
+      { id: 'technology', label: 'Technology' },
+      { id: 'children', label: 'Children' },
+      { id: 'cooking', label: 'Cooking' },
+      { id: 'wellbeing', label: 'Sleep and wellbeing' }
+    ];
+    const genres = GENRES.map((g) => {
+      const on = g.id === s.genre;
+      return { ...g, selected: on, style: outline(on), pick: () => this.setState({ genre: g.id }) };
+    });
+    const LANGS = [ { id: 'all', label: 'Any language' }, { id: 'en', label: 'English' }, { id: 'de', label: 'Deutsch' } ];
+    const langs = LANGS.map((l) => {
+      const on = l.id === s.lang;
+      return { ...l, selected: on, style: outline(on), pick: () => this.setState({ lang: l.id }) };
+    });
+    const plusOnly = { selected: s.plus, style: outline(s.plus).replace('#e2e8f0', '#fcd34d').replace('background: #ffffff', 'background: ' + (s.plus ? '#0f172a' : '#fffbeb')), pick: () => this.setState({ plus: !s.plus }) };
+    const list = BOOKS.filter((b) => matchFmt(b, s.format) && matchRest(b));
+    const items = list.map((b) => {
+      const hasAudio = b.fmt !== 'ebook';
+      const hasEbook = b.fmt !== 'audio';
+      const meta = b.author + (hasAudio && b.narrator ? ' · read by ' + b.narrator : '');
+      const length = [hasAudio ? b.hours : null, hasEbook ? b.pages + ' pages' : null].filter(Boolean).join(' · ') + (b.fmt === 'both' ? ' · both editions' : hasAudio ? ' · audiobook' : ' · e-book');
+      return {
+        ...b,
+        href: b.href || ('#' + b.id),
+        meta,
+        length,
+        priceStyle: 'font-size: 12px; font-weight: 700; color: ' + (b.owned ? '#15803d' : b.plus ? '#92400e' : '#b45309'),
+        coverStyle: 'position: relative; display: block; aspect-ratio: 2 / 3; border-radius: 10px; box-shadow: 0 10px 24px rgba(15,23,42,0.15); text-decoration: none; overflow: hidden; background: ' + b.grad
+      };
+    });
+    const genreLabel = GENRES.find((g) => g.id === s.genre).label;
+    const fmtLabel = formats.find((f) => f.id === s.format).label;
+    return {
+      accent,
+      formats,
+      genres,
+      langs,
+      plusOnly,
+      items,
+      count: items.length,
+      empty: items.length === 0,
+      heading: (s.genre === 'all' ? (s.format === 'all' ? 'All books' : fmtLabel) : genreLabel + (s.format === 'all' ? '' : ' · ' + fmtLabel.toLowerCase())) + (s.lang === 'all' ? '' : ' · ' + LANGS.find((l) => l.id === s.lang).label) + (s.plus ? ' · in Plus' : '')
+    };
+  }
+}
+</script>
+</body>
+</html>

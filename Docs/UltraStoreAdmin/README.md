@@ -113,6 +113,7 @@ The settings in `admin.sqlite`:
 |---|---|
 | `catalog.base_url` | where `catalog.json` will be served: `https://store.example/v1` |
 | `packages.base_url` | where `packages/` and `restricted/` are served; the catalog's URL when unset |
+| `account.url` | the account service the store signs in to (`Server/UltraStoreAccount`), written into the catalog as `account_url`; unset, the store has no *Sign in* |
 | `store.contact` | how a future partner reaches the store's team to sign up (an address, a page); printed on the partners' join pages and the web store's |
 | `web.output` | which web store `publish` lays beside the catalog. `html` is the store as HTML + JavaScript (`WebStoreHtml.h`). `wasm` is the WebAssembly store from `web.site_dir`. `off` writes none. Unset, a store with `web.site_dir` keeps the WebAssembly store and any other gets the HTML one |
 | `web.site_dir` | the web store build's `site/` folder (`Apps/UltraStore/web`, built under emcmake - or `site/` of a `wasm-build.yml` run's `ultrastore-web-dynamic` artifact): the WebAssembly store's module, loader and runtime, which `web.output` `wasm` lays beside the catalog with the HTML shadow pages |

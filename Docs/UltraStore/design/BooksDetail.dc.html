@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Books - The Salt Garden</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#b45309}a:hover{color:#92400e}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+
+<header style="border-bottom: 1px solid #e2e8f0; background: #ffffff">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 24px; flex-wrap: wrap">
+<a href="BooksHome.dc.html" aria-label="UltraStore Books home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Books</span>
+</a>
+<nav aria-label="Store sections" style="display: flex; gap: 4px; flex-wrap: wrap">
+<a href="BooksHome.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Discover</a>
+<a href="BooksBrowse.dc.html" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Browse</a>
+<a href="BooksLibrary.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Library <span style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; background: #0f172a; color: #ffffff; font-size: 12px; font-weight: 700">2</span></a>
+<a href="#wishlist" style="display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 999px; text-decoration: none; font-weight: 500; color: #334155">Wish list</a>
+</nav>
+<form role="search" style="flex: 1 1 240px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #f1f5f9; border: 1px solid transparent">
+<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<label for="search-book" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search books</label>
+<input id="search-book" type="search" placeholder="Title, author, narrator, series" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+</form>
+<a href="#plus" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; text-decoration: none; font-weight: 700; font-size: 13px">Books Plus · 1 credit left</a>
+<button type="button" aria-label="Account" style="width: 44px; height: 44px; border-radius: 999px; border: 0; background: #fef3c7; color: #b45309; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer">AK</button>
+</div>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 24px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 40px">
+
+<nav aria-label="Breadcrumb" style="font-size: 13px; color: #64748b; display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+<a href="BooksHome.dc.html" style="color: #475569; text-decoration: none; font-weight: 500">Books</a><span aria-hidden="true">/</span>
+<a href="BooksBrowse.dc.html" style="color: #475569; text-decoration: none; font-weight: 500">Fiction</a><span aria-hidden="true">/</span>
+<a href="BooksBrowse.dc.html" style="color: #475569; text-decoration: none; font-weight: 500">Literary fiction</a><span aria-hidden="true">/</span>
+<span style="color: #0f172a; font-weight: 600">The Salt Garden</span>
+</nav>
+
+<section aria-labelledby="book-title" style="display: grid; grid-template-columns: 300px minmax(0, 1fr) 340px; gap: 32px; align-items: flex-start">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<span aria-hidden="true" style="position: relative; display: block; aspect-ratio: 2 / 3; border-radius: 12px; background: linear-gradient(160deg, #fde68a 0%, #d97706 45%, #78350f 100%); box-shadow: 0 20px 48px rgba(15,23,42,0.25)"><span style="position: absolute; left: 24px; top: 26px; right: 24px; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 34px; line-height: 1.05; color: #431407; letter-spacing: -0.02em">The Salt Garden</span><span style="position: absolute; left: 24px; bottom: 24px; font-size: 15px; font-weight: 700; color: #431407">Mira Holt</span><span style="position: absolute; right: 12px; bottom: 10px; font-size: 10px; color: #78350f">[COVER 1600 × 2400]</span></span>
+<button type="button" style="display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 48px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6l-5 4z"></path><path d="M16 9a4 4 0 0 1 0 6"></path></svg>Listen to a sample · 10 min</button>
+<button type="button" style="display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 48px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h12v14H4z"></path><path d="M18 7h2v12h-2"></path></svg>Read the first chapter</button>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 id="book-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05">The Salt Garden</h1>
+<p style="margin: 0; font-size: 18px; color: #475569">By <a href="#mira-holt" style="font-weight: 600; text-decoration: none">Mira Holt</a> · read by <a href="#carla-brandt" style="font-weight: 600; text-decoration: none">Carla Brandt</a> · Fjordlicht Verlag, 2026</p>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px">
+<span aria-label="4.7 out of 5 stars" style="color: #f59e0b; letter-spacing: 1px; font-size: 16px">★★★★★</span>
+<a href="#reviews" style="font-weight: 600; text-decoration: none">4.7 · 1,812 ratings</a>
+<span style="color: #cbd5e1">|</span>
+<span style="color: #64748b">Narration 4.9 · Story 4.6</span>
+</div>
+<ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px">
+<li style="height: 30px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 999px; background: #fef3c7; color: #92400e; font-size: 13px; font-weight: 700">Literary fiction</li>
+<li style="height: 30px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 999px; background: #f1f5f9; color: #334155; font-size: 13px; font-weight: 600">Audiobook 9 h 42 min · unabridged</li>
+<li style="height: 30px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 999px; background: #f1f5f9; color: #334155; font-size: 13px; font-weight: 600">E-book 328 pages</li>
+<li style="height: 30px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 999px; background: #f1f5f9; color: #334155; font-size: 13px; font-weight: 600">English · Deutsch (Der Salzgarten)</li>
+<li style="height: 30px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 999px; background: #f1f5f9; color: #334155; font-size: 13px; font-weight: 600">No DRM</li>
+</ul>
+<p style="margin: 0; color: #334155; font-size: 16px; max-width: 68ch">When Hanne inherits her grandmother's garden on the dyke, the sea has already taken the first beds. Over three summers she learns what grows in salt, who stays in a village that is being moved inland, and which of her grandmother's stories were true. A quiet novel about keeping things, and letting them go.</p>
+<p style="margin: 0; color: #334155; font-size: 16px; max-width: 68ch">Carla Brandt's reading won the audiobook prize of the Hamburg book fair; the e-book carries the author's six photographs of the real garden.</p>
+<a href="#more" style="font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; height: 44px">Read more</a>
+
+<section aria-labelledby="chapters-title" style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 20px; background: #f8fafc">
+<div style="display: flex; justify-content: space-between; align-items: baseline"><h2 id="chapters-title" style="margin: 0; font-size: 16px; font-weight: 700">Chapters</h2><span style="font-size: 13px; color: #64748b">22 chapters · the audiobook and the e-book share them</span></div>
+<ol style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 24px; font-size: 14px">
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e2e8f0"><span><span style="color: #94a3b8; font-weight: 700; margin-right: 8px">1</span>The first bed</span><span style="color: #64748b; font-variant-numeric: tabular-nums">24:10</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e2e8f0"><span><span style="color: #94a3b8; font-weight: 700; margin-right: 8px">2</span>Salt</span><span style="color: #64748b; font-variant-numeric: tabular-nums">31:42</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e2e8f0"><span><span style="color: #94a3b8; font-weight: 700; margin-right: 8px">3</span>The village meeting</span><span style="color: #64748b; font-variant-numeric: tabular-nums">28:05</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e2e8f0"><span><span style="color: #94a3b8; font-weight: 700; margin-right: 8px">4</span>What grows in salt</span><span style="color: #64748b; font-variant-numeric: tabular-nums">26:48</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e2e8f0"><span><span style="color: #94a3b8; font-weight: 700; margin-right: 8px">5</span>Grandmother's photographs</span><span style="color: #64748b; font-variant-numeric: tabular-nums">22:30</span></li>
+<li style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e2e8f0"><span><span style="color: #94a3b8; font-weight: 700; margin-right: 8px">6</span>The second summer</span><span style="color: #64748b; font-variant-numeric: tabular-nums">29:15</span></li>
+</ol>
+<a href="#all-chapters" style="font-size: 13px; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; height: 32px">All 22 chapters</a>
+</section>
+
+<section id="reviews" aria-labelledby="reviews-title" style="display: flex; flex-direction: column; gap: 14px">
+<h2 id="reviews-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Reviews</h2>
+<article style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 14px; border-bottom: 1px solid #f1f5f9">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px">JM</span><span style="font-weight: 600">Jonas M.</span><span style="color: #15803d; font-weight: 600">Listened to the end</span><span style="color: #64748b">· 9 Nov 2026</span></div>
+<div style="display: flex; align-items: center; gap: 8px"><span aria-label="5 out of 5 stars" style="color: #f59e0b; letter-spacing: 1px">★★★★★</span><span style="font-weight: 700">Brandt reads it like she planted it</span></div>
+<p style="margin: 0; color: #334155; font-size: 14px; max-width: 70ch">I bought the e-book after the audiobook to read the photographs' captions. Switching between the two is seamless: the reader opened exactly where the car had stopped.</p>
+</article>
+<article style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 999px; background: #fce7f3; color: #be185d; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px">SK</span><span style="font-weight: 600">Sofia K.</span><span style="color: #15803d; font-weight: 600">Read to the end</span><span style="color: #64748b">· 2 Nov 2026 · German edition</span></div>
+<div style="display: flex; align-items: center; gap: 8px"><span aria-label="4 out of 5 stars" style="color: #f59e0b; letter-spacing: 1px">★★★★☆</span><span style="font-weight: 700">Slow, in the good way</span></div>
+<p style="margin: 0; color: #334155; font-size: 14px; max-width: 70ch">The German translation keeps the dialect of the village. The middle summer drags a little; the last thirty pages make up for it.</p>
+</article>
+<a href="#all-reviews" style="font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; height: 44px">All 412 reviews</a>
+</section>
+</div>
+
+<aside aria-label="Buy" style="display: flex; flex-direction: column; gap: 18px">
+<section style="display: flex; flex-direction: column; gap: 12px; padding: 22px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0; background: #ffffff; box-shadow: 0 12px 32px rgba(15,23,42,0.08)">
+<h2 style="margin: 0; font-size: 16px; font-weight: 700">Editions</h2>
+<label style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 2px solid #0f172a; cursor: pointer">
+<input type="radio" name="ed" checked style="width: 18px; height: 18px; margin: 0; accent-color: #d97706">
+<span style="flex: 1 1 auto; display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">Audiobook</span><span style="font-size: 12px; color: #64748b">M4B, 9 h 42 min, 290 MB · chapters · no DRM</span></span>
+<span style="display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2"><span style="font-weight: 800; font-family: Manrope, Inter, sans-serif">1 credit</span><span style="font-size: 12px; color: #64748b">or 19.95 EUR</span></span>
+</label>
+<label style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid #cbd5e1; cursor: pointer">
+<input type="radio" name="ed" style="width: 18px; height: 18px; margin: 0; accent-color: #d97706">
+<span style="flex: 1 1 auto; display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">E-book</span><span style="font-size: 12px; color: #64748b">EPUB 3, 328 pages, 6 MB · no DRM</span></span>
+<span style="font-weight: 800; font-family: Manrope, Inter, sans-serif">9.99 EUR</span>
+</label>
+<label style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; border: 1px solid #fcd34d; background: #fffbeb; cursor: pointer">
+<input type="radio" name="ed" style="width: 18px; height: 18px; margin: 0; accent-color: #d97706">
+<span style="flex: 1 1 auto; display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">Both, kept in step</span><span style="font-size: 12px; color: #92400e">Read and listen, one place</span></span>
+<span style="display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2"><span style="font-weight: 800; font-family: Manrope, Inter, sans-serif">1 credit + 4.99</span><span style="font-size: 12px; color: #64748b">or 24.95 EUR</span></span>
+</label>
+<button type="button" style="height: 52px; border-radius: 999px; border: 0; background: {{accent}}; color: #ffffff; font: inherit; font-weight: 700; font-size: 16px; cursor: pointer">Get with your credit</button>
+<button type="button" style="height: 48px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; color: #0f172a; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer">Buy · 19.95 EUR</button>
+<div style="display: flex; gap: 8px"><button type="button" style="flex: 1 1 0; height: 40px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer">Wish list</button><button type="button" style="flex: 1 1 0; height: 40px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-weight: 600; font-size: 13px; cursor: pointer">Give as a gift</button></div>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; padding-top: 10px; border-top: 1px solid #e2e8f0">
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Credit</dt><dd style="margin: 0; font-weight: 600">1 left this month</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Returns</dt><dd style="margin: 0; font-weight: 600">7 days, under 1 hour listened</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Plays in</dt><dd style="margin: 0; font-weight: 600">UltraViewer, the Books app, any player</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Of 19.95 EUR</dt><dd style="margin: 0; font-weight: 600; text-align: right">author 6.40 · narrator 2.20 · publisher 6.20 · store 5.15</dd></div>
+</dl>
+</section>
+<section aria-labelledby="facts-title" style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 20px; border: 1px solid #e2e8f0">
+<h2 id="facts-title" style="margin: 0; font-size: 16px; font-weight: 700">Details</h2>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Published</dt><dd style="margin: 0; font-weight: 600">14 Oct 2026</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Publisher</dt><dd style="margin: 0; font-weight: 600">Fjordlicht Verlag</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">ISBN</dt><dd style="margin: 0; font-weight: 600">978-3-00-000000-0</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Series</dt><dd style="margin: 0; font-weight: 600">–</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Age</dt><dd style="margin: 0; font-weight: 600">Adults</dd></div>
+<div style="display: flex; justify-content: space-between; gap: 12px"><dt style="color: #64748b">Accessibility</dt><dd style="margin: 0; font-weight: 600; text-align: right">EPUB with image descriptions, reflowable</dd></div>
+</dl>
+</section>
+<section aria-labelledby="also-title" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="also-title" style="margin: 0; font-size: 16px; font-weight: 700">Also by Mira Holt</h2>
+<a href="#tideline-book" style="display: flex; gap: 12px; align-items: center; padding: 8px; border-radius: 14px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="width: 40px; height: 60px; border-radius: 4px; background: linear-gradient(160deg, #a7f3d0, #065f46); flex: 0 0 auto"></span><span style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700; font-size: 14px">Low Water</span><span style="font-size: 12px; color: #64748b">2023 · 8 h 10 · 1 credit</span></span></a>
+<a href="#winter" style="display: flex; gap: 12px; align-items: center; padding: 8px; border-radius: 14px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="width: 40px; height: 60px; border-radius: 4px; background: linear-gradient(160deg, #e2e8f0, #334155); flex: 0 0 auto"></span><span style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700; font-size: 14px">The Winter Kitchen</span><span style="font-size: 12px; color: #64748b">2021 · e-book · 8.99 EUR</span></span></a>
+</section>
+</aside>
+</section>
+
+<section aria-labelledby="similar-title" style="display: flex; flex-direction: column; gap: 16px">
+<h2 id="similar-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Listeners also enjoyed</h2>
+<div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px">
+<a href="#elbe" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(160deg, #a7f3d0, #065f46)"></span><span style="font-size: 13px; font-weight: 700; line-height: 1.3">A Short History of the Elbe</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">14 h 10 · 1 credit</span></a>
+<a href="#kesselhaus-nights" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(160deg, #f9a8d4, #581c87)"></span><span style="font-size: 13px; font-weight: 700; line-height: 1.3">Kesselhaus Nights</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">3 h 30 · 1 credit</span></a>
+<a href="#orchard" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(160deg, #d9f99d, #3f6212)"></span><span style="font-size: 13px; font-weight: 700; line-height: 1.3">The Orchard Year</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">7 h 05 · Plus</span></a>
+<a href="#lighthouse" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(160deg, #e2e8f0, #334155)"></span><span style="font-size: 13px; font-weight: 700; line-height: 1.3">The Last Lighthouse Keeper</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">10 h 40 · 1 credit</span></a>
+<a href="#ferry" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(160deg, #bae6fd, #0369a1)"></span><span style="font-size: 13px; font-weight: 700; line-height: 1.3">Ferry at Six</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">e-book · 7.99 EUR</span></a>
+<a href="#tideline-book" style="display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: #0f172a"><span aria-hidden="true" style="aspect-ratio: 2 / 3; border-radius: 8px; background: linear-gradient(160deg, #fecaca, #7f1d1d)"></span><span style="font-size: 13px; font-weight: 700; line-height: 1.3">Low Water</span><span style="font-size: 12px; color: #64748b; margin-top: -4px">8 h 10 · 1 credit</span></a>
+</div>
+</section>
+
+</main>
+
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px"><img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px"><span style="font-weight: 600; color: #0f172a">UltraStore Books</span><span>· e-books and audiobooks for ULTRA OS</span></div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px"><a href="#publishers" style="color: #475569; text-decoration: none; font-weight: 500">For publishers and authors</a><a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a><a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a><a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a><a href="#language" style="color: #475569; text-decoration: none; font-weight: 500">English</a></nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#d97706","options":["#d97706","#2563eb","#0f172a","#7c3aed"]},"$preview":{"width":1440,"height":2180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#d97706' };
+  }
+}
+</script>
+</body>
+</html>
