@@ -1141,7 +1141,10 @@ TDLib (Windows x64, macOS arm64 - no library there is a failure);
 sign in to a python stand-in (Signal, IRC, XMPP, Mastodon, Mattermost,
 Zulip) on the Apple silicon row, where no python3 or openssl is a failure.
 Windows cannot run those (they fork), and the Intel macOS runner is too
-slow for suites that wait on clocks.
+slow for suites that wait on clocks. The stand-ins listen through
+`Tests/UltraIM/local_http_server.py`: Python's own `HTTPServer` looks up the
+name of `127.0.0.1` at every start, which stalls for fifteen seconds and
+more on a macOS runner.
 
 ## Provider: XMPP
 

@@ -37,3 +37,17 @@
     suites that fork (they print "skipped"), and the Intel macOS row for
     the ones that wait on clocks (its runner is five to ten times slower).
     `TelegramProviderTests` may take 300 s like the other providers' suites.
+    Every suite is run before the step fails, so one run says all that is
+    wrong on a row.
+  - **The python stand-in servers start at once on macOS**
+    (`Tests/UltraIM/local_http_server.py`, used by the Mastodon, Mattermost,
+    Signal, XMPP and Zulip stand-ins). Python's `HTTPServer` asks for the
+    name of the address it listens on when it starts - a reverse DNS lookup
+    that stalls for fifteen seconds and more on a macOS runner
+    (`Tests/IODeviceScannerESCLLiveScanner.py` had met it). It was paid at
+    every start, and `SignalProviderTests` starts its stand-in a dozen
+    times: on its first run on the Apple silicon row it ran past its 300
+    seconds, failing first where a restarted daemon is given 20 seconds.
+    The name is used for nothing, so it is not asked. With the lookup
+    slowed to 22 seconds on Linux the old stand-in fails on the same lines
+    and the new one passes in its usual 26 seconds.

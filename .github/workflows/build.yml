@@ -2205,6 +2205,13 @@ jobs:
       #
       # One ctest call a suite: a name that matches nothing is an error
       # (--no-tests=error), where a list would quietly run what is left of it.
+      # Every suite is run before the step fails, so one run says all that is
+      # wrong on a row - the first run here stopped at SignalProviderTests and
+      # told nothing of the five suites after it.
+      #
+      # The python stand-ins listen through Tests/UltraIM/local_http_server.py:
+      # http.server's own start asks for the name of 127.0.0.1, a lookup that
+      # stalls for fifteen seconds and more on a macOS runner, at every start.
       - name: Run the chat-network tests (macOS/Windows)
         if: runner.os != 'Linux'
         working-directory: build
@@ -2225,9 +2232,14 @@ jobs:
             suites="$suites SignalProviderTests IrcProviderTests XmppProviderTests"
             suites="$suites MastodonProviderTests MattermostProviderTests ZulipProviderTests"
           fi
+          failed=""
           for suite in $suites; do
-            ctest --output-on-failure --no-tests=error --timeout 300 -R "^$suite\$"
+            ctest --output-on-failure --no-tests=error --timeout 300 -R "^$suite\$" || failed="$failed $suite"
           done
+          if [ -n "$failed" ]; then
+            echo "::error::chat-network suites that failed on ${{ matrix.os }}:$failed"
+            exit 1
+          fi
 
       # The Win32 backend of the desktop shell module (UltraDesktop's window
       # list, monitor, screen edges, hot keys, screenshot and Start menu)

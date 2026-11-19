@@ -43,7 +43,9 @@ import sys
 import threading
 import time
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from local_http_server import LocalHTTPServer    # no name lookup at start (see there)
 
 LOCK = threading.Lock()
 USERS = {}             # id -> user (with "_password", "_mfa")
@@ -640,7 +642,7 @@ def main():
             add_post(c, uid, "%s joined the channel." % USERS[uid]["username"], kind="system_join_channel")
         for uid in USERS:
             MEMBERS[(c["id"], uid)] = {"msg_count": c["total_msg_count"], "last_viewed_at": now_ms()}
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = LocalHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
     print(json.dumps({"url": "http://127.0.0.1:%d" % server.server_address[1]}), flush=True)
     server.serve_forever()

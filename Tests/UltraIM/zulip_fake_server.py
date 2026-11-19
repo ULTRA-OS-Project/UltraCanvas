@@ -33,7 +33,9 @@ import secrets
 import threading
 import time
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from local_http_server import LocalHTTPServer    # no name lookup at start (see there)
 
 LOCK = threading.Lock()
 WAKE = threading.Condition(LOCK)     # a long-poll waits on it; a new event wakes it
@@ -457,7 +459,7 @@ def main():
     bot = 9
     USERS[bot] = {"id": bot, "name": "welcome-bot", "email": "welcome-bot@example.org", "full_name": "Welcome Bot",
                   "key": "bot-key", "password": None, "is_bot": True}
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = LocalHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
     print(json.dumps({"url": "http://127.0.0.1:%d" % server.server_address[1]}), flush=True)
     server.serve_forever()
