@@ -1,3 +1,8 @@
+#### 2026-11-20 *0.1.13*
+- **Copied slides preview as they look**: their fonts, spacing and bullets,
+  turned and freeform shapes, gradients, connectors and arrowheads, styled
+  tables with merged cells, cropped pictures, charts and SmartArt.
+
 #### 2026-11-19 *0.1.12*
 - **Tidier rows.** A text entry no longer lists its lines and size under its
   title ("Formatted text · 1 line · 230 bytes" is "Formatted text"), and the
