@@ -7,6 +7,12 @@
 // for the document views; UltraCanvasFileLoader::LoadTextDocument opens a
 // deck that way.
 //
+// WritePptxPresentation writes the model back as a package PowerPoint,
+// LibreOffice and this reader open (with a password: encrypted, as
+// PowerPoint's "Encrypt with Password" writes it), and
+// PptxPresentationFromRichDocument lays a word-processing document out as a
+// deck - a slide per first-level heading.
+//
 // A password-protected deck is decrypted on the way in
 // (UltraCanvasOfficeEncryption.h), like a protected .xlsx or .docx.
 //
@@ -31,9 +37,11 @@
 //
 // What is not read: effects (shadows, glow, 3D), pattern and picture fills,
 // animations, transitions, comments, embedded objects (beyond the picture
-// they show), video and audio (beyond the poster frame). There is no writer.
+// they show), video and audio (beyond the poster frame).
 //
 // Specification: ECMA-376 Part 1, PresentationML (§19) and DrawingML (§20-21).
+// Version: 1.4.0 - WritePptxPresentation / WritePptxPresentationToPackage (the writer, .pptx and kin,
+//                  with a password too) and PptxPresentationFromRichDocument
 // Version: 1.3.0 - what a slide looks like: fonts, spacing, indents, bullet characters and numbering
 //                  schemes, insets, rotation and mirroring, preset and custom outlines, gradients,
 //                  dashes and arrowheads, connectors, merged and styled table cells, picture crops,
@@ -223,5 +231,41 @@ bool ReadPptxPresentationFromPackage(std::vector<uint8_t> package, PptxPresentat
 // a block quote; slides separated by a rule. Hidden slides are included and
 // marked "(hidden)".
 UCRichDocument PptxPresentationToRichDocument(const PptxPresentation& presentation);
+
+// ----- Writing -----
+// Writes `deck` as a PowerPoint package to `filePath` (UTF-8): the slides in
+// order with their size, background and hidden flag, every shape kind with
+// its place, turn, mirroring, outline (preset or custom), fill (solid or
+// gradient), line (dash, arrowheads) and text (insets, wrap, vertical, anchor,
+// autofit scale; paragraphs with their level, alignment, spacing, margin,
+// indent and bullet or numbering; runs with size, colour, typeface, bold,
+// italic, underline, strike, baseline, capitals, highlight and hyperlinks -
+// "#slideN" as a jump to that slide), placeholders for the title, subtitle
+// and content; tables with their cells' merges, fills, borders, margins and
+// anchors (a table without cell looks takes PowerPoint's default style);
+// pictures from `deck.pictures` with their crop (a picture whose bytes were
+// not kept is written as a grey box with its description); charts
+// (UltraCanvasDrawingML's chart parts); speaker notes; the theme's colours and
+// heading and body fonts. The extension names the package kind: .pptx,
+// .potx (a template), .ppsx (a show), and their macro-enabled .pptm / .potm
+// / .ppsm, which carry no macros. With a `password` the package is
+// encrypted (UltraCanvasOfficeEncryption.h), as PowerPoint's "Encrypt with
+// Password" saves it. False with a reason in `error` a user can be shown.
+bool WritePptxPresentation(const PptxPresentation& deck, const std::string& filePath, std::string& error,
+                           const std::string& password = std::string());
+// The same package in memory (unencrypted); `extension` names its kind.
+bool WritePptxPresentationToPackage(const PptxPresentation& deck, std::vector<uint8_t>& out, std::string& error,
+                                    const std::string& extension = "pptx");
+
+// A word-processing document laid out as a deck (16:9): each first-level
+// heading starts a slide and is its title (a rule or a page break starts an
+// untitled one; the document's title heads the first). Paragraphs, list
+// items (levels, numbering, bullets), headings below the first level (bold),
+// code (Courier New) and block quotes (italic) go into the slide's content
+// placeholder; tables and pictures stand one under the other below it. A
+// deck's own outline (PptxPresentationToRichDocument) reads back as its
+// slides: "1. Title (hidden)" as the title of a hidden slide, a "Notes:"
+// quote as the speaker notes.
+PptxPresentation PptxPresentationFromRichDocument(const UCRichDocument& document);
 
 } // namespace UltraCanvas

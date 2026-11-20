@@ -4,6 +4,7 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.17.0 - SaveTextDocument writes a .pptx (the document laid out as a deck); SavePresentation
 // Version: 1.16.0 - LoadTextDocument / OpenTextDocument read an OpenDocument presentation
 //                  (.odp, .otp, .fodp) as an outline
 // Version: 1.15.0 - ConvertVideoFile, CanConvertVideoTo, GetVideoSaveExtensions,
@@ -48,6 +49,7 @@ namespace UltraCanvas {
     using UCImage = UCImageRaster;
     class UCAudio;
     class UCRichDocument;
+    struct PptxPresentation;
     namespace VectorStorage { class VectorDocument; }
     namespace UCImageSave { struct ImageExportOptions; }
 
@@ -328,10 +330,19 @@ namespace UltraCanvas {
         // LaTeX, Markdown, plain text), then each under its name.
         // OpenTextDocument offers these when it is given no filters.
         static void AddTextDocumentLoadTypes(FileDialogOptions& opts);
-        // Writes `document` as the type its path names: .odt or .docx.
-        // `password` saves a password-protected .docx (UCWordDocumentIO::Save);
-        // an .odt with a password is refused, not saved unprotected.
+        // Writes `document` as the type its path names: .odt, .docx, or a
+        // PowerPoint deck (.pptx and kin) laid out from it - a slide per
+        // first-level heading (PptxPresentationFromRichDocument).
+        // `password` saves a password-protected .docx or .pptx; an .odt with
+        // a password is refused, not saved unprotected.
         static bool SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
+                                     std::string& outError,
+                                     const std::string& password = std::string());
+        // Writes a deck (UltraCanvasPresentationPptx.h's model: one read,
+        // changed, or built) as the PowerPoint kind its path names - .pptx,
+        // .potx, .ppsx (and .pptm / .potm / .ppsm, without macros);
+        // `password` saves it encrypted. Any other extension is refused.
+        static bool SavePresentation(const PptxPresentation& deck, const std::string& filePath,
                                      std::string& outError,
                                      const std::string& password = std::string());
         // The Save dialog's file types for SaveTextDocument, each under its

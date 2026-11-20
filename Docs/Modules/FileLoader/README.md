@@ -126,7 +126,8 @@ with `(true, "")` for a file that has none. Pass what it hands back to the
 loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
 `LoadFromFile(path, password)`. Saving works the same way:
 `RequestNewDocumentPassword(parent, onResult)` asks for a new password twice,
-and `SaveTextDocument(document, path, error, password)` or a spreadsheet's
+and `SaveTextDocument(document, path, error, password)`,
+`SavePresentation(deck, path, error, password)` or a spreadsheet's
 `SaveToFile(path, password)` writes the file encrypted. See
 [UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
 
@@ -391,7 +392,8 @@ UltraCanvasFileLoader::AddSaveTypes(save, MediaFormatCategory::Spreadsheet);
 
 // A text document: what LoadTextDocument reads (ODT, DOCX, DOC, LaTeX,
 // Markdown, text - not the PDFs and e-books the Document category also
-// holds) and what SaveTextDocument writes (ODT, DOCX)
+// holds) and what SaveTextDocument writes (ODT, DOCX, and PPTX - the
+// document laid out as a deck, a slide per first-level heading)
 FileDialogOptions saveLetter;
 saveLetter.SetDefaultFileName("letter.odt");
 UltraCanvasFileLoader::AddTextDocumentSaveTypes(saveLetter);

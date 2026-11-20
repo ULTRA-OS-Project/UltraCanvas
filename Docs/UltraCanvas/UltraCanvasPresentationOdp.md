@@ -10,7 +10,9 @@ tables, the pictures' parts and descriptions, speaker notes, and which slides
 are hidden. One model means one outline, one preview and one text extractor
 for both kinds of deck.
 
-It is a reader of text, not a slide renderer. There is no writer. A
+It reads text, tables and pictures; `RenderPptxSlide` draws what it reads.
+There is no OpenDocument writer: a deck read from an `.odp` is saved as a
+PowerPoint file (`WritePptxPresentation`). A
 password-protected `.odp` opens with its password
 ([UltraCanvasOdfEncryption](UltraCanvasOdfEncryption.md)); without it, or
 with a wrong one, it is refused with a reason.

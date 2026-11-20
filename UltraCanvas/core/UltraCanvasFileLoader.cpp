@@ -936,10 +936,12 @@ namespace UltraCanvas {
             return format.extension == "md" || format.extension == "txt";
         }
 
-        // ... and the ones SaveTextDocument writes.
+        // ... and the ones SaveTextDocument writes: a document, or the
+        // document laid out as a PowerPoint deck.
         bool TextDocumentWrites(const MediaFormatInfo& format) {
             const WordDocumentFormat type = WordDocumentFormatFromExtension(format.extension);
-            return format.canSave && (type == WordDocumentFormat::Odt || type == WordDocumentFormat::Docx);
+            return format.canSave && (type == WordDocumentFormat::Odt || type == WordDocumentFormat::Docx ||
+                                      IsPptxExtension(format.extension));
         }
     } // namespace
 
@@ -957,7 +959,21 @@ namespace UltraCanvas {
 
     bool UltraCanvasFileLoader::SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
                                                  std::string& outError, const std::string& password) {
+        // A PowerPoint path: the document laid out as a deck, a slide per
+        // first-level heading.
+        if (IsPptxExtension(filePath))
+            return SavePresentation(PptxPresentationFromRichDocument(document), filePath, outError, password);
         return UCWordDocumentIO::Save(filePath, document, outError, password);
+    }
+
+    bool UltraCanvasFileLoader::SavePresentation(const PptxPresentation& deck, const std::string& filePath,
+                                                 std::string& outError, const std::string& password) {
+        outError.clear();
+        if (!IsPptxExtension(filePath)) {
+            outError = "Presentations are saved as PowerPoint files (.pptx, .potx, .ppsx): " + filePath;
+            return false;
+        }
+        return WritePptxPresentation(deck, filePath, outError, password);
     }
 
     void UltraCanvasFileLoader::AddTextDocumentSaveTypes(FileDialogOptions& opts) {

@@ -15,7 +15,8 @@ indents and bullets, anchor and insets, fill, outline, outline shape, turn
 and mirroring, the background - and reads connectors, styled tables with
 merged cells, cropped pictures, charts and SmartArt.
 `UltraCanvasPptxSlideRender.h` draws a slide from that as a picture
-(*Drawing a slide*, below). There is no writer.
+(*Drawing a slide*, below), and `WritePptxPresentation` writes the model
+back (*Writing a deck*, below).
 
 An OpenDocument presentation (`.odp`, `.otp`, `.fodp`) is read into the same
 model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), so the
@@ -52,7 +53,8 @@ UltraFiler's preview page (`UltraCanvasFilerWidget::TextPreviewLines`) shows
 the same outline in the detail pane; the file's thumbnail is its first slide
 as drawn. A protected deck keeps its type glyph, since the preview has no
 password to ask for. UltraTexter opens a deck as the outline in its document
-editor, and refuses to save it back as a deck. UltraViewer (MediaViewer)
+editor; saved as a new `.pptx` the outline comes back as its slides, and it
+is never written over the deck it was opened from. UltraViewer (MediaViewer)
 shows a deck as its slides, through
 [UltraCanvasPresentationPages](UltraCanvasPresentationPages.md), with a
 slide show.
@@ -220,6 +222,75 @@ if (ReadPptxPresentation(path, deck, error, "", true)) {   // withPictures
 It is callable from a worker thread: the drawing is serialized inside, as the
 file previews' pages are.
 
+## Writing a deck
+
+<!-- doc-check: std::string path; std::string outPath; void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasPresentationPptx.h"
+#include "UltraCanvasFileLoader.h"
+
+using namespace UltraCanvas;
+
+PptxPresentation deck;
+std::string error;
+if (ReadPptxPresentation(path, deck, error, "", true)) {   // withPictures: they are written back
+    deck.slides[0].title = "Revised";
+    deck.slides[0].hidden = false;
+    if (!UltraCanvasFileLoader::SavePresentation(deck, outPath, error))   // or WritePptxPresentation
+        ShowError(error);
+}
+
+// A document as a deck: a slide per first-level heading.
+UCRichDocument document;
+PptxPresentation laidOut = PptxPresentationFromRichDocument(document);
+```
+
+`WritePptxPresentation(deck, path, error, password)` writes the model as a
+package PowerPoint, LibreOffice and the reader open:
+
+- the slides in order, their size, background and hidden flag; a theme with
+  the deck's colours and heading and body fonts; one slide master and a
+  "Title and Content" layout;
+- every shape kind at its place, turned and mirrored, in its preset or custom
+  outline, solid or gradient fill and line (width, dash, arrowheads);
+  titles, subtitles and content as placeholders (with their place written
+  out, so they stand where they stood whatever layout they were read with);
+- text with its insets, wrap, vertical text, anchor and autofit scale;
+  paragraphs with level, alignment, spacing, margin, indent and bullet
+  (character, font, colour, size) or numbering (scheme, start); runs with
+  size, colour, typeface, bold, italic, underline, strike, baseline,
+  capitals, highlight and hyperlinks (`#slideN` as a jump to that slide);
+- tables with their cells' merges (`gridSpan`, `rowSpan`, `hMerge`, `vMerge`),
+  fills, borders, margins and anchors; a table without cell looks (from the
+  OpenDocument reader) takes PowerPoint's default table style;
+- pictures from `deck.pictures` with their crop - read the deck
+  `withPictures`, or a picture is written as a grey box with its
+  description; charts as chart parts ([UltraCanvasDrawingML](UltraCanvasDrawingML.md)'s
+  `WriteDrawingMLChart`, values as literals, no workbook); speaker notes.
+
+The extension names the package kind: `.pptx`, `.potx` (a template),
+`.ppsx` (a show), `.pptm` / `.potm` / `.ppsm` (macro-enabled, with no
+macros). With a password the package is encrypted as PowerPoint's *Encrypt
+with Password* saves it ([UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)).
+`WritePptxPresentationToPackage` gives the package in memory.
+`UltraCanvasFileLoader::SavePresentation` writes a deck through the file
+loader, and `SaveTextDocument` with a `.pptx` path lays the document out
+first.
+
+`PptxPresentationFromRichDocument(document)` lays a document out as a 16:9
+deck: each first-level heading starts a slide and is its title (a rule or a
+page break starts an untitled one; the document's title heads the first);
+paragraphs, list items (levels; numbering in its scheme; a list's own bullet
+character), lower headings (bold), code (Courier New) and block quotes
+(italic) fill the content placeholder - set smaller when they would not fit,
+as PowerPoint's autofit sets them - and tables and pictures stand one under
+the other below it. A deck's own outline reads back as its slides: "1. Title
+(hidden)" as the title of a hidden slide, a "Notes:" quote as its speaker
+notes.
+
+Not written: effects, animations, transitions, comments, embedded objects
+and media (they are not in the model).
+
 ## Test
 
 `Tests/OfficeEncryptionTest.cpp` reads `Tests/fixtures/office-pptx-sample.pptx`,
@@ -252,3 +323,15 @@ header row; a chart; a cropped picture. A deck rebuilt in memory adds a
 SmartArt diagram with its drawing, a hyperlink to another slide and a table
 style from `ppt/tableStyles.xml`. Each slide is drawn and looked at where the
 shapes are (`UC_PPTX_TEST_DUMP=<dir>` writes the drawn slides out).
+
+The same test writes decks and reads them back: the feature deck field by
+field (fonts, effects, bullets, spacing, insets, vertical text, the star's
+turn, gradient and dashes, the connector's arrowhead, the freeform, the
+merged and styled table cells, the chart, the cropped picture's bytes) and
+drawn - each slide drawn from the written deck is the same picture; the
+python-pptx sample's titles, hidden slide, notes and outline; a copy saved
+with a password (refused without it); a template's content type; an empty
+deck; a document laid out as a deck, and a deck's outline laid out as its
+slides again; `UltraCanvasFileLoader::SaveTextDocument` writing a `.pptx`.
+The decks it writes open in python-pptx and LibreOffice
+(`UC_PPTX_TEST_DUMP=<dir>` keeps them).

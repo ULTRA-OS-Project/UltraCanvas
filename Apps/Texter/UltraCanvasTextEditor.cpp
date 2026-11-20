@@ -1,5 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
+// Version: 2.12.0 - a document saved as .pptx is laid out as a deck (a slide per first-level heading);
+//                   the deck a tab was opened from is not written over with its outline
 // Version: 2.11.0 - a password-protected document or deck (.docx, .odt, .pptx, .odp) asks for its
 //                   password - the framework's prompt, asked again after a wrong one - and opens;
 //                   saved again as .docx it keeps the password, and an .odt with one is not saved
@@ -2766,18 +2768,34 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             return false;
         }
 
-        // A presentation is read as an outline, never written: saving the
-        // outline under the deck's own name would put text over the slides.
-        if (IsPptxExtension(targetExtension) || IsOdpExtension(targetExtension)) {
+        // A presentation: a .pptx is the document laid out as a deck, a slide
+        // per first-level heading - but never over the deck this tab was
+        // opened from, whose slides the outline would replace. An .odp has
+        // no writer.
+        if (IsOdpExtension(targetExtension)) {
             const std::string reason =
-                Tr("Texter opens presentations as the outline of their slides and cannot save "
-                   "them as a presentation. Save the outline as .odt or .docx instead.");
+                Tr("Texter cannot save OpenDocument presentations. Save as .pptx, .odt or .docx instead.");
             UltraCanvasDialogManager::ShowError(reason, Tr("Unsupported Format"), nullptr, this);
             lastSaveError = reason;
             return false;
         }
+        if (IsPptxExtension(targetExtension)) {
+            const bool fromDeck = IsPptxExtension(doc->filePath) || IsOdpExtension(doc->filePath);
+            std::error_code ec;
+            const bool samePath = !doc->filePath.empty() &&
+                                  (doc->filePath == filePath ||
+                                   std::filesystem::equivalent(PathFromUtf8(doc->filePath), PathFromUtf8(filePath), ec));
+            if (fromDeck && samePath) {
+                const std::string reason =
+                    Tr("This tab shows the outline of the presentation's slides. Saving it under the "
+                       "presentation's own name would replace the slides with the outline; save it under a new name.");
+                UltraCanvasDialogManager::ShowError(reason, Tr("Save Failed"), nullptr, this);
+                lastSaveError = reason;
+                return false;
+            }
+        }
 
-        if (targetExtension == "odt" || targetExtension == "docx") {
+        if (targetExtension == "odt" || targetExtension == "docx" || IsPptxExtension(targetExtension)) {
             // A document opened with a password stays protected: a .docx is
             // saved with it. An .odt cannot carry one here, so it is not
             // saved - unprotected - under the protected file's name or any
