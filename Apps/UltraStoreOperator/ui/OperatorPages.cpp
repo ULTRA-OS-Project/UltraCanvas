@@ -32,6 +32,18 @@ constexpr const char* kTerms = "terms";
 
 bool Waiting(const Submission& s) { return s.state == "checked" || s.state == "failed_checks" || s.state == "in_review"; }
 
+// The automatic checks for a person.
+std::string CheckWord(const std::string& name) {
+    if (name == "signature") return Tr("Signature - the component signed with the merchant's key");
+    if (name == "merchant_standing") return Tr("Merchant standing");
+    if (name == "packages") return Tr("Packages - named by hash and size, in the package store");
+    if (name == "scans") return Tr("Scans - the archives walked, the virus scanner");
+    if (name == "entry") return Tr("Entry - the file the store launches is in the archive");
+    if (name == "smoke") return Tr("Smoke run - the build started in the sandbox");
+    if (name == "listing") return Tr("Listing - what the store's page needs");
+    return name;
+}
+
 int Number(const std::string& text, int fallback = 0) {
     if (text.empty()) return fallback;
     return std::atoi(text.c_str());   // locale-ok: digits only
@@ -465,19 +477,45 @@ void OperatorWindow::ShowSubmission() {
     submissionBox_->AddChild(Theme::Caption("uoRS.facts", TrF("{0} · {1} · {2} · submitted {3}{4}", s.id, s.app, s.merchant, s.createdAt,
                                                              s.answers.empty() ? "" : " · " + TrF("answers {0}", s.answers))));
 
-    // The automatic checks
+    // The automatic checks, each with the pipeline's findings under it
     int passed = 0;
     for (const auto& [name, outcome] : s.checks) if (outcome == "ok") ++passed;
-    submissionBox_->AddChild(Theme::Text("uoRS.checks.title", TrF("Automatic checks · {0} of {1}", passed, s.checks.size()), 13.0f, FontWeight::Bold));
+    auto checksHead = Theme::Row("uoRS.checks.head", Theme::kInnerGap, true);
+    auto checksTitle = Theme::Text("uoRS.checks.title", TrF("Automatic checks · {0} of {1}", passed, s.checks.size()), 13.0f, FontWeight::Bold);
+    checksTitle->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    checksHead->AddChild(checksTitle);
+    if (!s.checkedAt.empty()) checksHead->AddChild(Theme::Caption("uoRS.checks.at", TrF("pipeline ran {0} ago", Age(s.checkedAt))));
+    if (Waiting(s)) {
+        auto again = Theme::Button("uoRS.checks.again", Tr("Run the checks again"), 150);
+        again->onClick = [this, sid = s.id]() {
+            Fetch<Submission>(Tr("Running the review pipeline"), [client = Client(), sid]() { return client.RunChecks(sid); }, [this](const Submission& updated) {
+                submission_ = updated;
+                haveSubmission_ = true;
+                SetStatus(updated.ChecksFailed() ? Tr("The pipeline ran: a check failed, see its findings") : Tr("The pipeline ran"));
+                ShowSubmission();
+            });
+        };
+        checksHead->AddChild(again);
+    }
+    submissionBox_->AddChild(checksHead);
     int n = 0;
     for (const auto& [name, outcome] : s.checks) {
         const std::string id = "uoRS.c" + std::to_string(n++);
         auto row = Theme::Row(id, Theme::kInnerGap);
-        row->AddChild(Theme::Pill(id + ".p", outcome == "ok" ? Tr("ok") : outcome == "failed" ? Tr("failed") : outcome == "not run" ? Tr("not run") : outcome,
+        row->AddChild(Theme::Pill(id + ".p", outcome == "ok" ? Tr("ok") : outcome == "failed" ? Tr("failed") : outcome == "not run" ? Tr("not run") : outcome == "waiting" ? Tr("waiting") : outcome,
                                   outcome == "ok" ? Theme::Tint::Green : outcome == "failed" ? Theme::Tint::Red : Theme::Tint::Amber));
-        auto label = Theme::Caption(id + ".t", name);
-        label->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        row->AddChild(label);
+        auto text = Theme::Column(id + ".c", 2);
+        text->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        text->AddChild(Theme::Caption(id + ".t", CheckWord(name)));
+        if (const std::vector<std::string>* lines = s.FindingsOf(name)) {
+            int k = 0;
+            for (const std::string& line : *lines) {
+                auto finding = Theme::Text(id + ".f" + std::to_string(k++), line, 12.0f, FontWeight::Normal, outcome == "failed" ? Theme::kDanger : Theme::kTextSecondary);
+                finding->SetWrap(TextWrap::WrapWord);
+                text->AddChild(finding);
+            }
+        }
+        row->AddChild(text);
         submissionBox_->AddChild(row);
     }
 

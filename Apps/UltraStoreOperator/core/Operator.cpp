@@ -236,6 +236,12 @@ Submission SubmissionOf(const JSONValue& v) {
     s.decidedAt = v.Get("decided_at").GetString();
     s.releasedSequence = static_cast<int>(v.Get("released_sequence").GetInteger(0));
     for (const JSONValue::Member& m : v.Get("checks").GetMembers()) s.checks.emplace_back(m.first, m.second.GetString());
+    for (const JSONValue::Member& m : v.Get("findings").GetMembers()) {
+        std::vector<std::string> lines;
+        for (const JSONValue& line : m.second.GetElements()) lines.push_back(line.GetString());
+        s.findings.emplace_back(m.first, std::move(lines));
+    }
+    s.checkedAt = v.Get("checked_at").GetString();
     for (const JSONValue& d : v.Get("decisions").GetElements()) s.decisions.push_back(DecisionOf(d));
     s.component = v.Get("component");
     s.packages = v.Get("packages");
@@ -245,6 +251,11 @@ Submission SubmissionOf(const JSONValue& v) {
 bool Submission::ChecksFailed() const {
     for (const auto& [name, outcome] : checks) if (outcome == "failed") return true;
     return false;
+}
+
+const std::vector<std::string>* Submission::FindingsOf(const std::string& check) const {
+    for (const auto& [name, lines] : findings) if (name == check) return &lines;
+    return nullptr;
 }
 
 std::string Submission::Name() const {
@@ -860,6 +871,13 @@ Result<DownloadedPackage> OperatorClient::DownloadPackage(const std::string& sub
     out.fileUtf8 = UltraCanvas::PathToUtf8(file);
     out.size = fs::is_regular_file(file, ec) ? static_cast<uint64_t>(fs::file_size(file, ec)) : 0;
     return R::Succeed(out);
+}
+
+Result<Submission> OperatorClient::RunChecks(const std::string& id) const {
+    using R = Result<Submission>;
+    const auto v = Ask("POST", "/v1/submissions/" + Encode(id) + "/checks", "{}");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(SubmissionOf(v.Value()));
 }
 
 Result<Released> OperatorClient::GetReleased() const {
