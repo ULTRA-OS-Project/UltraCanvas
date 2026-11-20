@@ -1,6 +1,5 @@
 // Tests/EMFPlusTest.cpp
-// EMF+ in the EMF reader, the EMF a WMF carries, and the natural size of a
-// drawing rasterized from a file.
+// EMF+ in the EMF reader, and the EMF a WMF carries.
 //
 // A dual EMF is built here record by record, as GDI+ writes one: each EMF+
 // drawing is followed by a GDI copy for players without EMF+, drawn
@@ -12,9 +11,7 @@
 //     to draw it, and is reported;
 //   - an EMF+-only file keeps what it can draw;
 //   - a WMF carrying that EMF in META_ESCAPE_ENHANCED_METAFILE records is
-//     read from it;
-//   - InspectVectorFile reports the EMF's page as its natural size, and
-//     RasterizeVectorFile scales the drawing to the width asked for.
+//     read from it.
 //
 // Usage: EMFPlusTest
 // Exit code is the number of failed checks.
@@ -27,13 +24,10 @@
 #include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasRasterLayer.h"
 #include "UltraCanvasImage.h"
-#include "UltraCanvasPathUtf8.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
 #include <string>
 #include <variant>
 #include <vector>
@@ -305,34 +299,6 @@ void TestWmf() {
     Check(doc && paths == 1 && polygons == 0 && alpha, "read from the EMF: the translucent square, not the WMF copy");
 }
 
-void TestNaturalSize() {
-    std::printf("--- rasterizing the file ---\n");
-    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "uc-emfplus-test";
-    std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
-    const std::string path = PathToUtf8(dir / "dual.emf");
-    {
-        const std::string bytes = DualEmf();
-        std::ofstream(PathFromUtf8(path), std::ios::binary).write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-    }
-    const VectorSourceInfo info = InspectVectorFile(path);
-    Check(info.ok && info.naturalWidth == 150 && info.naturalHeight == 75,
-          "the page is the natural size: " + std::to_string(info.naturalWidth) + " x " +
-                  std::to_string(info.naturalHeight) + " (150 x 75 pt)");
-    VectorRasterOptions o;
-    o.width = 300;
-    o.background = RasterPixel(255, 255, 255, 255);
-    std::string error;
-    auto layer = RasterizeVectorFile(path, o, error);
-    Check(layer && layer->GetWidth() == 300 && layer->GetHeight() == 150,
-          "300 px wide keeps the shape: " + (layer ? std::to_string(layer->GetWidth()) + " x " +
-                                                             std::to_string(layer->GetHeight())
-                                                     : error));
-    // 1.5 pixels a device pixel: the square (10..60) covers 15..90.
-    Check(layer && HalfRed(layer->GetPixel(80, 80)), "and the drawing is scaled to it");
-    std::filesystem::remove_all(dir, ec);
-}
-
 }   // namespace
 
 int main() {
@@ -341,7 +307,6 @@ int main() {
     TestDual();
     TestPlusOnly();
     TestWmf();
-    TestNaturalSize();
     std::printf("%d failure(s)\n", failures);
     return failures;
 }

@@ -89,9 +89,8 @@ if(TARGET UltraCanvasVectorPlugin)
 endif()
 
 # EMFPlusTest: EMF+ records in the EMF reader (alpha kept, the GDI copy of a
-# dual file not drawn twice, a fallback to it for what is not read), the EMF
-# a WMF carries, and the natural size and scale of a drawing rasterized from
-# a file (InspectVectorFile / RasterizeVectorFile).
+# dual file not drawn twice, a fallback to it for what is not read), and the
+# EMF a WMF carries.
 if(TARGET UltraCanvasVectorPlugin)
     message(STATUS "  Building EMFPlusTest...")
     add_executable(EMFPlusTest

@@ -7,9 +7,6 @@
 // Both render *at* the requested size rather than rendering small and
 // scaling up: the whole point of a vector source is that the resolution is
 // chosen at rasterization time.
-// Version: 1.4.0 - a drawing a reader turns into a document (EMF, WMF, DXF, ODG...) reports
-//                  its page as its natural size and is drawn scaled to the pixels asked for;
-//                  the plugin's element left it 0 x 0, so a square canvas, drawing unscaled
 // Version: 1.3.1 - RasterizeVectorElements: the area holds every line (PaintBounds) and
 //                  reaches as far as the shadows, glows, feathers, contours and outer
 //                  bevels do
@@ -17,7 +14,7 @@
 //                  one needed or wrong (an /Encrypt dictionary behind a refusal)
 // Version: 1.2.0 - RasterizeVectorDocument: a whole page at any size
 // Version: 1.1.0 - RasterizeVectorElements
-// Last Modified: 2026-11-20
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorRaster.h"
@@ -28,7 +25,6 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasDebug.h"
-#include "UltraCanvasVectorPreview.h"       // the document seam: LoadVectorPreviewDocument
 #include "DataFormats/UltraCanvasVectorEdit.h"       // PaintBounds, ParentToDocument
 #include "DataFormats/UltraCanvasVectorRenderer.h"
 
@@ -247,13 +243,6 @@ namespace {
         return layer;
     }
 
-    // A document's page: its view box, else its size.
-    Rect2Dd PageOf(const VectorStorage::VectorDocument& doc) {
-        Rect2Dd page = doc.ViewBox;
-        if (!(page.width > 0) || !(page.height > 0)) page = Rect2Dd(0, 0, doc.Size.width, doc.Size.height);
-        return page;
-    }
-
     // ===== THE OFFSCREEN PATH =====
     // A plugin element knows how to draw itself into an IRenderContext, so an
     // offscreen context of the target size plus a read-back is all a
@@ -434,17 +423,6 @@ VectorSourceInfo InspectVectorFile(const std::string& path, const std::string& p
         info.source = VectorRasterSource::GraphicsPlugin;
         info.naturalWidth = std::max(0, fileInfo.width);
         info.naturalHeight = std::max(0, fileInfo.height);
-        // A plugin that reports no size, for a format a reader turns into a
-        // document: the document's page is the size.
-        if ((info.naturalWidth <= 0 || info.naturalHeight <= 0) && CanPreviewVectorExtension(path)) {
-            if (auto doc = LoadVectorPreviewDocument(path)) {
-                const Rect2Dd page = PageOf(*doc);
-                if (page.width > 0 && page.height > 0 && std::isfinite(page.width) && std::isfinite(page.height)) {
-                    info.naturalWidth = std::max(1, static_cast<int>(std::lround(page.width)));
-                    info.naturalHeight = std::max(1, static_cast<int>(std::lround(page.height)));
-                }
-            }
-        }
         info.provider = plugin->GetPluginName();
         return info;
     }
@@ -457,20 +435,6 @@ std::shared_ptr<UCRasterLayer> RasterizeVectorFile(const std::string& path,
                                                    const VectorRasterOptions& options,
                                                    std::string& error) {
     error.clear();
-    // A format the image pipeline does not take but a reader turns into a
-    // document: read once, drawn at its page's size or scaled to the one
-    // asked for. A plugin's element knows neither.
-    {
-        const PipelineKind kind = PipelineKindOf(LowerExt(path));
-        const bool pipeline = kind != PipelineKind::NotPipeline && PipelineCanLoad(LowerExt(path));
-        if (!pipeline && VectorPluginFor(path) && CanPreviewVectorExtension(path)) {
-            if (auto doc = LoadVectorPreviewDocument(path)) {
-                auto layer = RasterizeVectorDocument(*doc, options, error);
-                if (layer) layer->name = StemOf(path);
-                return layer;
-            }
-        }
-    }
     const VectorSourceInfo info = InspectVectorFile(path, options.password);
     if (!info.ok) {
         error = info.error.empty() ? ("Cannot rasterize " + path) : info.error;

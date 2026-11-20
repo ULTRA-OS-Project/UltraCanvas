@@ -39,7 +39,7 @@ applies (`VectorSourceInfo::source`) and who does the work
 | `VectorRasterSource` | Formats | How |
 |---|---|---|
 | `ImagePipeline` | `.svg`, `.svgz`, `.pdf`, `.ai`, `.eps`, `.ps` | libvips: `svgload` (librsvg), `pdfload` (poppler/pdfium), the PostScript delegate. Rendered at the resolution that produces the requested size — `PixelFX::FileIO::LoadSvg` / `LoadPdf` underneath. |
-| `GraphicsPlugin` | whatever a registered `IGraphicsPlugin` claims and `GraphicsFormatDetector` files as `Vector` — the [Vector plugin](UltraCanvasVectorConverters.md)'s DXF / DWG (including the drawing family's `.dwt`, `.dws` and `.sv$`) / EMF / WMF / XAR, the CDR and XAR viewer plugins | a format a reader turns into a document (the Vector plugin's, through the vector preview seam, `UltraCanvasVectorPreview.h`) is read once and drawn by `RasterizeVectorDocument`: its page is the natural size, and the drawing is scaled to the pixels asked for. Anything else a plugin claims has its element given the target bounds and rendered into an offscreen `IRenderContext`; the premultiplied ARGB32 pixels are read back and un-premultiplied into the layer. |
+| `GraphicsPlugin` | whatever a registered `IGraphicsPlugin` claims and `GraphicsFormatDetector` files as `Vector` — the [Vector plugin](UltraCanvasVectorConverters.md)'s DXF / DWG (including the drawing family's `.dwt`, `.dws` and `.sv$`) / EMF / WMF / XAR, the CDR and XAR viewer plugins | the plugin's element is given the target bounds and rendered into an offscreen `IRenderContext`; the premultiplied ARGB32 pixels are read back and un-premultiplied into the layer. |
 | `Unsupported` | everything else | nothing in this build reads it; `VectorSourceInfo::error` says so. |
 
 Both halves are **runtime** answers. The libvips half depends on how libvips
@@ -60,8 +60,7 @@ particular process can actually do, which is what a file filter should show.
 | both | exactly that, aspect ratio ignored |
 
 The natural size is what the artwork asks for: SVG user units, PDF points at
-72 dpi, the page of a drawing a reader turns into a document (an EMF's frame, a
-DXF's extents) in points. A print-resolution raster is that size scaled — `width =
+72 dpi. A print-resolution raster is that size scaled — `width =
 naturalWidth * dpi / 72` for a PDF page, so a 595 × 842 pt A4 page at 300 dpi
 is 2480 × 3508.
 
@@ -221,10 +220,6 @@ side following the page's shape, a size in another shape, both backgrounds,
 and the refusals. A password-protected PDF (`Tests/fixtures/pdf-aes256-locked.pdf`)
 reports a missing and a wrong password as such, is refused without one, and
 measures and rasterizes with the right one.
-
-`Tests/EMFPlusTest.cpp` (CTest target `EMFPlusTest`) rasterizes an EMF from
-the file: its page is the natural size, and a width alone keeps the page's
-shape with the drawing scaled to it.
 
 ## See also
 

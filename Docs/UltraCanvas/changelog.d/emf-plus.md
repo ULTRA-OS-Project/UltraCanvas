@@ -19,4 +19,4 @@
     files: same positions, same translucency.
   - New `EMFPlusTest` builds a dual EMF record by record: alpha kept, the
     GDI copy not drawn twice, the fallback, an EMF+-only file and the WMF
-    wrapper (7 checks fail on the old reader).
+    wrapper (7 of its 10 checks fail on the old reader).
