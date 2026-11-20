@@ -147,6 +147,7 @@ TEST(a_submission_carries_its_checks_and_decisions) {
                             R"("summary":{"en":"Sheet music library"},"pricing":{"model":"paid","price":"24.90","currency":"EUR","trial_days":14}},)"
                             R"("signature":"ab","packages":[{"file":"packages/a.zip","sha256":"ff","size":2800000}],)"
                             R"("checks":{"signature":"ok","standing":"active","packages":"ok","scans":"not run","privacy_url":"failed"},)"
+                            R"j("findings":{"scans":["no package store: the packages stay on the merchant's server, unscanned"],"listing":["no category","1 screenshot(s)"]},"checked_at":"2026-11-10T07:59:00Z",)j"
                             R"("state":"in_review","answers":"","created_at":"2026-11-09T09:14:00Z","decided_at":"","released_sequence":0,)"
                             R"("decisions":[{"action":"start_review","message":"","actor":"operator","at":"2026-11-10T08:00:00Z","sequence":0}]})";
     fake.answers["GET /v1/submissions?state=in_review"] = "{\"submissions\":[" + sub + "]}";
@@ -165,6 +166,19 @@ TEST(a_submission_carries_its_checks_and_decisions) {
     REQUIRE_EQ(s.decisions[0].action, std::string("start_review"));
     REQUIRE_EQ(s.packages.GetSize(), size_t(1));
     REQUIRE_EQ(s.component.Get("pricing").Get("trial_days").GetInteger(0), int64_t(14));
+    // The pipeline's findings per check, and when it ran.
+    REQUIRE_EQ(s.findings.size(), size_t(2));
+    REQUIRE(s.FindingsOf("listing") != nullptr);
+    REQUIRE_EQ(s.FindingsOf("listing")->size(), size_t(2));
+    REQUIRE_EQ((*s.FindingsOf("listing"))[0], std::string("no category"));
+    REQUIRE(s.FindingsOf("entry") == nullptr);
+    REQUIRE_EQ(s.checkedAt, std::string("2026-11-10T07:59:00Z"));
+    // The pipeline run again: a POST with an empty body, the submission back.
+    fake.answers["POST /v1/submissions/s-00000007/checks"] = sub;
+    const auto again = client.RunChecks("s-00000007");
+    REQUIRE(again.Ok());
+    REQUIRE_EQ(again.Value().id, std::string("s-00000007"));
+    REQUIRE_EQ(fake.calls.back(), std::string("POST https://market.example/v1/submissions/s-00000007/checks | Bearer op-secret | {}"));
 
     REQUIRE(client.Decide("s-00000007", "request_changes", "the privacy policy link answers 404", 0).Ok());
     REQUIRE_EQ(fake.calls.back().substr(fake.calls.back().rfind(" | ") + 3),

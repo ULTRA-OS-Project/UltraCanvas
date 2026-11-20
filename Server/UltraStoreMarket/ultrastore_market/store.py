@@ -7,6 +7,7 @@ the strikes they count, the suspensions, the terms versions and the
 acceptances, the enforcement policy, and the audit log - append-only,
 hash-chained, never edited (the store's README, *The operator tier*).
 
+Version: 0.5.0 - the review pipeline's findings on a submission (schema 4)
 Version: 0.4.0 - the packages uploaded into the package store; the operators' second factor and reset codes
 Version: 0.3.0 - the operators with their roles
 Version: 0.2.0 - the applications, the merchant's website and description (schema 2, the columns added to a 0.1 database)
@@ -25,7 +26,7 @@ from typing import Any
 from ultrastore_db import Database
 from ultrastore_db.totp import hash_code
 
-SCHEMA = 3
+SCHEMA = 4
 
 DEFAULT_POLICY: dict[str, Any] = {
     "strike_expiry_days": 365,          # a warning counts as a strike this long
@@ -186,12 +187,14 @@ class Submission:
     decided_at: str = ""
     released_sequence: int = 0
     decisions: list[dict] = field(default_factory=list)
+    findings: dict = field(default_factory=dict)   # check name -> the pipeline's lines (checks.py)
+    checked_at: str = ""                           # when the pipeline last ran
 
     def public(self, *, for_merchant: bool = False) -> dict:
         out = {"id": self.id, "merchant": self.merchant_id, "app": self.app_id, "version": self.version, "component": self.component,
                "signature": self.signature, "packages": self.packages, "checks": self.checks, "state": self.state, "answers": self.answers,
                "created_at": self.created_at, "decided_at": self.decided_at, "released_sequence": self.released_sequence,
-               "decisions": self.decisions}
+               "decisions": self.decisions, "findings": self.findings, "checked_at": self.checked_at}
         return out
 
 
@@ -329,6 +332,11 @@ class MarketStore:
         db.create_index("applications_key", "applications", "key_hex")
         db.create_index("operators_email", "operators", "email")
         db.create_index("operator_codes_operator", "operator_codes", "operator_id, purpose")
+        # A database from 0.4: the pipeline's findings on a submission.
+        have = db.columns("submissions")
+        for column, default in (("findings", "'{}'"), ("checked_at", "''")):
+            if column not in have:
+                db.execute(f"ALTER TABLE submissions ADD COLUMN {column} TEXT NOT NULL DEFAULT {default}")
         # A database from 0.4: the operators' second factor.
         have = db.columns("operators")
         for column, default in (("totp_secret", "''"), ("totp_enabled_at", "''"), ("recovery_codes", "'[]'")):
@@ -736,7 +744,8 @@ class MarketStore:
     def _submission(r: dict) -> Submission:
         return Submission(id=r["id"], merchant_id=r["merchant_id"], app_id=r["app_id"], version=r["version"], component=_json(r["component"], {}),
                           signature=r["signature"], packages=_json(r["packages"], []), checks=_json(r["checks"], {}), state=r["state"], answers=r["answers"],
-                          created_at=r["created_at"], decided_at=r["decided_at"], released_sequence=r["released_sequence"])
+                          created_at=r["created_at"], decided_at=r["decided_at"], released_sequence=r["released_sequence"],
+                          findings=_json(r.get("findings", "{}"), {}), checked_at=r.get("checked_at", ""))
 
     def add_submission(self, *, merchant_id: str, component: dict, signature: str, packages: list, checks: dict, answers: str) -> Submission:
         sid = f"s-{self.next_number('submission_no'):08d}"
@@ -762,6 +771,32 @@ class MarketStore:
             state = "checked"
         self._db.execute("UPDATE submissions SET packages = ?, checks = ?, state = ? WHERE id = ?", (canonical(packages), canonical(checks), state, sid))
         self.audit(actor, "upload_package", "submission", sid, before={"state": s.state}, after={"state": state, "sha256": sha256, "packages": checks.get("packages")})
+        return self.get_submission(sid)
+
+    @staticmethod
+    def blocked(checks: dict) -> bool:
+        """What keeps a submission from the review's release: the signature
+        or the standing anything but ok, the packages anything but ok or
+        waiting, the scans or the entry failed."""
+        if checks.get("signature") != "ok" or checks.get("merchant_standing") != "ok":
+            return True
+        if checks.get("packages") not in ("ok", "waiting"):
+            return True
+        return any(checks.get(k) == "failed" for k in ("scans", "entry"))
+
+    def set_checks(self, sid: str, checks: dict, findings: dict, *, actor: str) -> Submission | None:
+        """The pipeline's results kept: a failed blocking check makes a
+        waiting submission failed_checks, all of them passing makes it checked
+        again; one in review or decided keeps its state."""
+        s = self.get_submission(sid)
+        if not s:
+            return None
+        state = s.state
+        if state in ("checked", "failed_checks"):
+            state = "failed_checks" if self.blocked(checks) else "checked"
+        self._db.execute("UPDATE submissions SET checks = ?, findings = ?, checked_at = ?, state = ? WHERE id = ?",
+                         (canonical(checks), canonical(findings), now_iso(), state, sid))
+        self.audit(actor, "run_checks", "submission", sid, before={"state": s.state}, after={"state": state, "checks": {k: checks.get(k) for k in ("scans", "entry", "smoke", "listing")}})
         return self.get_submission(sid)
 
     def get_submission(self, sid: str) -> Submission | None:

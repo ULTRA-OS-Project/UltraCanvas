@@ -1,0 +1,1 @@
+- **The review pipeline's findings**: each automatic check on the review page shows the pipeline's lines under it, with when it last ran and *Run the checks again*; `ultrastoreop review show` prints the findings, `review checks <submission>` runs the pipeline again.

@@ -61,6 +61,24 @@ the sign-in then takes `totp` (the app's six digits) or `recovery_code`
 recovery_code?}`. An admin's `PUT /v1/operators/{id} {two_factor: false}`
 clears another's second factor, never their own.
 
+**The review pipeline** (`checks.py`): once a submission's packages are
+all in the store the service runs, in the background, the checks behind
+the ones it makes at once - `scans` (the archives walked: paths that
+escape, links outside, a zip bomb, an installer inside; each file handed
+to `ULTRASTORE_MARKET_SCAN_COMMAND` when set, `{file}` in its text, exit 0
+clean and 1 found as clamscan does), `entry` (the file the store launches
+is in the archive, the package's or one found by the admin backend's
+rules), `smoke` (`ULTRASTORE_MARKET_SMOKE_COMMAND`, a sandbox runner with
+`{file}`, `{entry}`, `{os}`, `{arch}`, exit 0 a pass; *not run* without
+one) and `listing` (what the store's page needs). Each is `ok`, `failed`
+or `not run`, with `findings` (lines per check) and `checked_at` on the
+submission. A failed `scans` or `entry` makes it `failed_checks`; the
+listing is also checked at submit time without a package store. `POST
+/v1/submissions/{id}/checks` (`review.decide`) runs the pipeline again
+and answers with the submission. 7z and tar.zst packages need the `scan`
+extra (`py7zr`, `zstandard`); without it that package is *not run*, said
+so. `ULTRASTORE_MARKET_CHECK_TIMEOUT` (120 s) bounds each external run.
+
 **The package store** (`ULTRASTORE_MARKET_PACKAGE_DIR`): with one, a
 submission's `packages` check is `waiting` until the merchant has sent every
 package's bytes - `POST /v1/submissions/{id}/packages/{sha256}`, the body
@@ -207,7 +225,8 @@ add alex@example.org admin --name Alex` (asked for the password), then
 
 ## What comes next
 
-The review pipeline behind the checks marked *not run* (the scans, the
-entry, the smoke run, the listing), on the packages the store now holds. The operator's window
+The merchant's media and the web store's pages through this service, which
+today publishes the catalog and the packages alone (the merchant backend's
+publish still produces the pictures and the pages). The operator's window
 and command line on this API are `Apps/UltraStoreOperator`
 ([its README](../../Docs/UltraStoreOperator/README.md)).

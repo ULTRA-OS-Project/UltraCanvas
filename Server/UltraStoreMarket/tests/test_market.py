@@ -10,6 +10,7 @@ and reinstatements, and the audit chain that shows an edit."""
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 
@@ -77,7 +78,7 @@ class MerchantClient:
 @pytest.fixture(params=database_urls())
 def service(request, tmp_path):
     settings = Settings(database=database_url(request.param, tmp_path), operator_token="op-token", operator_session_secret="shared-secret",
-                        publish_dir=str(tmp_path / "publish"),
+                        publish_dir=str(tmp_path / "publish"), checks_inline=True,
                         payment_url="https://pay.example", licence_key="ab" * 32, public_base_url="https://market.example",
                         trusted_keys=["cd" * 32])
     mails: list[tuple[str, str, str]] = []
@@ -168,8 +169,11 @@ def test_submissions_are_checked_reviewed_released_and_withdrawn(service):
     # The real one: checked, in review, released with the next catalog sequence.
     good = anna.request("POST", "/v1/submissions", {"component": comp, "signature": anna.sign_component(comp), "packages": packages}).json()
     assert good["state"] == "checked" and good["version"] == "1.0.0" and good["app"] == "org.example.hello"
+    # Without a package store the pipeline checks the listing alone; the rest says why it did not run.
     assert good["checks"] == {"signature": "ok", "merchant_standing": "ok", "packages": "ok", "scans": "not run", "entry": "not run",
-                              "smoke": "not run", "listing": "not run"}
+                              "smoke": "not run", "listing": "failed"}
+    assert good["findings"]["scans"] == ["no package store: the packages stay on the merchant's server, unscanned"]
+    assert "no summary: the store's card shows one line under the name" in good["findings"]["listing"] and good["checked_at"]
     sid = good["id"]
     assert client.post(f"/v1/submissions/{sid}/decide", json={"action": "fly"}, headers=OP).status_code == 400
     assert client.post(f"/v1/submissions/{bad['id']}/decide", json={"action": "release"}, headers=OP).status_code == 409   # failed the checks
@@ -204,8 +208,9 @@ def test_submissions_are_checked_reviewed_released_and_withdrawn(service):
     # The released list still names 1.0.0; the history shows the merchant every step.
     assert client.get("/v1/released", headers=OP).json()["released"][0]["component"]["releases"][0]["version"] == "1.0.0"
     history = anna.request("GET", "/v1/merchants/me/history").json()["history"]
-    assert [h["action"] for h in history] == ["register", "submit", "submit", "start_review", "release", "submit", "request_changes", "withdraw"]
-    assert history[4]["after"] == {"state": "released", "message": "fine", "sequence": 1}
+    assert [h["action"] for h in history] == ["register", "submit", "run_checks", "submit", "run_checks", "start_review", "release", "submit", "run_checks",
+                                              "request_changes", "withdraw"]
+    assert history[6]["after"] == {"state": "released", "message": "fine", "sequence": 1}
     # A suspended app leaves the released list; reinstated, it is back. A paused merchant too.
     assert client.post("/v1/apps/org.example.hello/suspend", json={"clause": "3.2", "reason": "malware report", "days": 0}, headers=OP).status_code == 200
     assert client.get("/v1/released", headers=OP).json()["released"] == []
@@ -650,3 +655,127 @@ def test_an_operator_turns_on_two_factor_and_resets_a_forgotten_password(service
     actions = [a["action"] for a in service.get("/v1/audit", headers=OP).json()["audit"]]
     assert {"enable_two_factor", "new_recovery_codes", "reset_password", "reset_two_factor", "disable_two_factor"} <= set(actions)
     assert service.get("/v1/audit/verify", headers=OP).json()["ok"] is True
+
+
+def _zip(path, members: dict, *, symlink: dict | None = None, executable: tuple = ()):
+    """A zip with the members given; a symlink member points where the dict says."""
+    import zipfile
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in members.items():
+            info = zipfile.ZipInfo(name)
+            info.external_attr = (0o100755 if name in executable else 0o100644) << 16
+            z.writestr(info, data)
+        for name, target in (symlink or {}).items():
+            info = zipfile.ZipInfo(name)
+            info.external_attr = 0o120777 << 16
+            z.writestr(info, target)
+    return path.read_bytes()
+
+
+def _listed(client, anna, comp, raw, *, access=""):
+    sha = hashlib.sha256(raw).hexdigest()
+    comp = json.loads(json.dumps(comp))
+    comp["releases"][0]["packages"][0].update({"sha256": sha, "size": len(raw), "url": f"https://anna.example/packages/{sha}.zip"})
+    entry = {"file": f"packages/{sha}.zip", "sha256": sha, "size": len(raw), "format": "zip"}
+    if access:
+        entry["access"] = access
+    sub = anna.request("POST", "/v1/submissions", {"component": comp, "signature": anna.sign_component(comp), "packages": [entry]}).json()
+    assert sub["checks"]["packages"] in ("waiting", "ok"), sub
+    if sub["checks"]["packages"] == "waiting":
+        sub = anna.upload(f"/v1/submissions/{sub['id']}/packages/{sha}", raw).json()
+    return sub
+
+
+def test_the_review_pipeline_scans_the_archives_finds_the_entry_and_checks_the_listing(tmp_path):
+    scanner = tmp_path / "scan.sh"
+    scanner.write_text("#!/bin/sh\nif grep -q EICAR \"$1\"; then echo \"$1: Eicar-Test-Signature FOUND\"; exit 1; fi\nexit 0\n")
+    runner = tmp_path / "smoke.sh"
+    runner.write_text("#!/bin/sh\ncase \"$2\" in bin/hello|hello|Hello.exe|Hello.app) echo \"window shown after 2 s\"; exit 0;; esac\necho \"no window\" >&2; exit 3\n")
+    scanner.chmod(0o755); runner.chmod(0o755)
+    settings = Settings(database="sqlite:///" + str(tmp_path / "m.sqlite3"), operator_token="op-token", publish_dir=str(tmp_path / "publish"),
+                        package_dir=str(tmp_path / "store"), catalog_url="https://store.example/v1", checks_inline=True,
+                        scan_command=f"{scanner} {{file}}", smoke_command=f"{runner} {{file}} {{entry}}", payment_url="https://pay.example",
+                        licence_key="ab" * 32, public_base_url="https://market.example")
+    with TestClient(create_app(settings)) as client:
+        anna = register(client)
+        good = {"id": "org.example.hello", "name": "Hello", "publisher": "anna-co", "summary": {"en": "Says hello", "de": "Sagt hallo"},
+                "description": {"en": "A longer text."}, "categories": ["utilities"], "icon": "media/org.example.hello/icon.png",
+                "screenshots": ["media/org.example.hello/1.png"], "pricing": {"model": "free"}, "age_rating": "3", "homepage": "https://anna.example",
+                "releases": [{"version": "1.0.0", "channel": "stable", "packages": [{"os": "linux", "arch": "x86_64", "format": "zip", "entry": "bin/hello"}]}]}
+        # A clean archive with the named entry: every check passes, the findings say what was seen.
+        raw = _zip(tmp_path / "good.zip", {"README": "hi", "bin/hello": "#!/bin/sh\necho hello\n", "share/data.txt": "x" * 1000}, executable=("bin/hello",))
+        sub = _listed(client, anna, good, raw)
+        assert sub["state"] == "checked", sub
+        assert {k: sub["checks"][k] for k in ("scans", "entry", "smoke", "listing")} == {"scans": "ok", "entry": "ok", "smoke": "ok", "listing": "ok"}
+        assert any("virus scanner found nothing" in f for f in sub["findings"]["scans"])
+        assert sub["findings"]["entry"] == [f"linux/x86_64 {hashlib.sha256(raw).hexdigest()[:12]}: the entry bin/hello is in the archive"]
+        assert any("window shown" in f for f in sub["findings"]["smoke"])
+        assert "summary in de, en" in sub["findings"]["listing"] and "1 screenshot(s)" in sub["findings"]["listing"]
+        # A release is allowed; the operator may run the pipeline again, and it is audited.
+        assert client.post(f"/v1/submissions/{sub['id']}/checks", json={}, headers=OP).json()["checks"]["scans"] == "ok"
+        # No entry named: found by the rules (the launcher beside bin/); a Windows exe likewise.
+        unnamed = json.loads(json.dumps(good)); del unnamed["releases"][0]["packages"][0]["entry"]
+        raw2 = _zip(tmp_path / "unnamed.zip", {"hello": "#!/bin/sh\n", "bin/hello": "x"}, executable=("hello", "bin/hello"))
+        sub2 = _listed(client, anna, unnamed, raw2)
+        assert sub2["checks"]["entry"] == "ok" and "hello found by the store's rules" in sub2["findings"]["entry"][0]
+        windows = json.loads(json.dumps(unnamed)); windows["releases"][0]["packages"][0]["os"] = "windows"
+        raw3 = _zip(tmp_path / "win.zip", {"Hello/Uninstall.exe": "MZ", "Hello/Hello.exe": "MZ", "Hello/data/x.dll": "MZ"})
+        sub3 = _listed(client, anna, windows, raw3)
+        assert sub3["checks"]["entry"] == "ok" and "Hello/Hello.exe found" in sub3["findings"]["entry"][0]
+        # The named entry missing: failed_checks, which cannot be released.
+        wrong = json.loads(json.dumps(good)); wrong["releases"][0]["packages"][0]["entry"] = "bin/nope"
+        sub4 = _listed(client, anna, wrong, _zip(tmp_path / "wrong.zip", {"bin/hello": "x"}, executable=("bin/hello",)))
+        assert sub4["state"] == "failed_checks" and sub4["checks"]["entry"] == "failed"
+        assert "the entry bin/nope is not in the archive (found bin/hello instead)" in sub4["findings"]["entry"][0]
+        assert client.post(f"/v1/submissions/{sub4['id']}/decide", json={"action": "release"}, headers=OP).status_code == 409
+        # The scans: a path that escapes, a link outside, an installer, and the scanner's find.
+        sub5 = _listed(client, anna, good, _zip(tmp_path / "slip.zip", {"../etc/cron.d/x": "bad", "bin/hello": "x"}))
+        assert sub5["checks"]["scans"] == "failed" and any("would escape the install folder" in f for f in sub5["findings"]["scans"])
+        sub6 = _listed(client, anna, good, _zip(tmp_path / "link.zip", {"bin/hello": "x"}, symlink={"etc": "/etc"}))
+        assert sub6["checks"]["scans"] == "failed" and any("points outside the archive" in f for f in sub6["findings"]["scans"])
+        sub7 = _listed(client, anna, good, _zip(tmp_path / "installer.zip", {"setup.exe": "MZ", "bin/hello": "x"}))
+        assert sub7["checks"]["scans"] == "failed" and any("is an installer" in f for f in sub7["findings"]["scans"])
+        sub8 = _listed(client, anna, good, _zip(tmp_path / "virus.zip", {"bin/hello": "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"}))
+        assert sub8["checks"]["scans"] == "failed" and any("Eicar-Test-Signature FOUND" in f for f in sub8["findings"]["scans"])
+        assert sub8["state"] == "failed_checks"
+        # The smoke run failing is a finding the reviewer weighs, not a block.
+        other = json.loads(json.dumps(good)); other["releases"][0]["packages"][0]["entry"] = "bin/other"
+        sub9 = _listed(client, anna, other, _zip(tmp_path / "other.zip", {"bin/other": "x"}, executable=("bin/other",)))
+        assert sub9["checks"]["smoke"] == "failed" and "no window" in sub9["findings"]["smoke"][0] and sub9["state"] == "checked"
+        # The listing: a paid app without a price, a bad age rating, a URL that is not one, a restricted package on a trial.
+        bad = json.loads(json.dumps(good))
+        bad.update({"summary": {}, "pricing": {"model": "one-time", "trial_days": 14}, "age_rating": "21", "support_url": "mailto:x", "categories": []})
+        sub10 = _listed(client, anna, bad, _zip(tmp_path / "bad.zip", {"bin/hello": "x"}, executable=("bin/hello",)), access="restricted")
+        assert sub10["checks"]["listing"] == "failed" and sub10["state"] == "checked"   # the listing does not block
+        lines = "\n".join(sub10["findings"]["listing"])
+        for expected in ("no summary", "no category", "without a price and a currency", "age rating '21'", "support_url is not an http(s) URL",
+                         "a restricted package on an app with a trial"):
+            assert expected in lines, lines
+        # A tarball with a link that stays inside is fine; a 7z without py7zr is not run, said so.
+        import tarfile
+        tgz = tmp_path / "ok.tar.gz"
+        with tarfile.open(tgz, "w:gz") as t:
+            data = b"#!/bin/sh\n"
+            info = tarfile.TarInfo("app/bin/hello"); info.size = len(data); info.mode = 0o755
+            t.addfile(info, io.BytesIO(data))
+            link = tarfile.TarInfo("app/hello"); link.type = tarfile.SYMTYPE; link.linkname = "bin/hello"
+            t.addfile(link)
+        tar_comp = json.loads(json.dumps(good)); tar_comp["releases"][0]["packages"][0].update({"format": "tar.gz", "entry": "app/bin/hello"})
+        sha = hashlib.sha256(tgz.read_bytes()).hexdigest()
+        tar_comp["releases"][0]["packages"][0].update({"sha256": sha, "size": tgz.stat().st_size, "url": f"https://anna.example/packages/{sha}.tar.gz"})
+        sub11 = anna.request("POST", "/v1/submissions", {"component": tar_comp, "signature": anna.sign_component(tar_comp),
+                                                        "packages": [{"file": f"packages/{sha}.tar.gz", "sha256": sha, "size": tgz.stat().st_size, "format": "tar.gz"}]}).json()
+        sub11 = anna.upload(f"/v1/submissions/{sub11['id']}/packages/{sha}", tgz.read_bytes()).json()
+        assert sub11["checks"]["scans"] == "ok" and sub11["checks"]["entry"] == "ok", sub11["findings"]
+        assert client.get("/v1/audit/verify", headers=OP).json()["ok"] is True
+
+
+def test_the_pipeline_helpers():
+    from ultrastore_market.checks import Entry, find_entry, link_escapes, unsafe_path
+    assert unsafe_path("/etc/passwd") == "an absolute path" and unsafe_path("C:\\x") == "an absolute path"
+    assert unsafe_path("a/../../b") == "a path with .." and unsafe_path("a/b") == ""
+    assert link_escapes("a/b/link", "../../../x") and not link_escapes("a/b/link", "../c") and link_escapes("x", "/etc")
+    mac = [Entry("Hello.app/Contents/MacOS/Hello"), Entry("Hello.app/Contents/Info.plist")]
+    assert find_entry(mac, "macos") == "Hello.app"
+    assert find_entry([Entry("Hello-1.0.AppImage", executable=True)], "linux") == "Hello-1.0.AppImage"
+    assert find_entry([Entry("readme.txt")], "linux") == ""

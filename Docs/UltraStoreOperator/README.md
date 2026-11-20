@@ -183,5 +183,11 @@ its permissions, the age of a timestamp. The service's own tests
    password (`password forgot | reset`), an admin's *Reset 2FA*
    (`operator reset-2fa`); the review's *Download build* per uploaded
    package (`review download <submission>`, into the builds folder under
-   the data folder), a package not yet uploaded marked so. Next: the
-   payouts page, which needs the payment service's figures per merchant.
+   the data folder), a package not yet uploaded marked so.
+6. **The review pipeline's findings** (2026-11-20): each automatic check
+   on the review page carries the pipeline's lines under it (what the
+   scans walked, the entry found, the smoke run's answer, what the listing
+   lacks), when the pipeline last ran, and *Run the checks again*;
+   `ultrastoreop review show` prints the findings, `review checks
+   <submission>` runs the pipeline again. Next: the payouts page, which
+   needs the payment service's figures per merchant.
