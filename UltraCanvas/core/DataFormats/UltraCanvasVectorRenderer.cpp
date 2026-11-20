@@ -1,5 +1,7 @@
 // UltraCanvasVectorRenderer.cpp
 // Vector Graphics Rendering for UltraCanvas
+// Version: 2.5.0 - gradients honour their Transform (SVG gradientTransform, elliptical
+//                  radials) and their spread method (pad / reflect / repeat)
 // Version: 2.4.0 - a shape's fill honours VectorStyle::ShapeFillRule (even-odd)
 // Version: 2.3.0 - RenderText: a span with a colour of its own (VectorTextStyle::FillColor)
 //                  is painted in it
@@ -662,37 +664,93 @@ namespace UltraCanvas {
         else ctx->SetFillPaint(pattern);
     }
 
+    namespace {
+        PatternExtend ExtendFor(GradientSpreadMethod spread) {
+            switch (spread) {
+                case GradientSpreadMethod::Reflect: return PatternExtend::Reflect;
+                case GradientSpreadMethod::Repeat:  return PatternExtend::Repeat;
+                default:                            return PatternExtend::Pad;
+            }
+        }
+
+        // Where a gradient with a Transform of its own (SVG's gradientTransform,
+        // an elliptical gradient a reader builds as a scaled circle) lies: its
+        // geometry stays in gradient space and the pattern is placed by
+        // user = BBox * Transform * p - the bounding box's unit square mapped
+        // onto the box first for ObjectBoundingBox units, as SVG orders them.
+        // False when there is nothing to place (no Transform) or no box to
+        // place it in (a degenerate one, which has no inverse).
+        bool GradientPlacement(const std::optional<Matrix3x3>& transform, GradientUnits units, const Rect2Dd& b,
+                               Matrix3x3& placement) {
+            if (!transform) return false;
+            placement = *transform;
+            if (units == GradientUnits::ObjectBoundingBox) {
+                if (!(std::fabs(b.width) > 1e-12) || !(std::fabs(b.height) > 1e-12)) return false;
+                placement = Matrix3x3::Translate(b.x, b.y) * Matrix3x3::Scale(b.width, b.height) * placement;
+            }
+            return std::fabs(placement.Determinant()) > 1e-18;
+        }
+
+        void Place(const std::shared_ptr<IPaintPattern>& pattern, const Matrix3x3& m) {
+            pattern->SetMatrix(m.m[0][0], m.m[1][0], m.m[0][1], m.m[1][1], m.m[0][2], m.m[1][2]);
+        }
+    }
+
     std::shared_ptr<IPaintPattern> VectorRenderer::MakeLinearGradient(const LinearGradientData &g, const Rect2Dd &b,
                                                                       float opacity) {
-        Point2Dd start, end;
-        if (g.Units == GradientUnits::ObjectBoundingBox) {
-            start = {b.x + g.Start.x * b.width, b.y + g.Start.y * b.height};
-            end = {b.x + g.End.x * b.width, b.y + g.End.y * b.height};
+        std::shared_ptr<IPaintPattern> pattern;
+        Matrix3x3 placement;
+        if (GradientPlacement(g.Transform, g.Units, b, placement)) {
+            pattern = ctx->CreateLinearGradientPattern(g.Start.x, g.Start.y, g.End.x, g.End.y,
+                                                       StopsWithOpacity(g.Stops, opacity));
+            if (pattern) Place(pattern, placement);
         } else {
-            start = g.Start;
-            end = g.End;
+            Point2Dd start, end;
+            if (g.Units == GradientUnits::ObjectBoundingBox) {
+                start = {b.x + g.Start.x * b.width, b.y + g.Start.y * b.height};
+                end = {b.x + g.End.x * b.width, b.y + g.End.y * b.height};
+            } else {
+                start = g.Start;
+                end = g.End;
+            }
+            pattern = ctx->CreateLinearGradientPattern(start.x, start.y, end.x, end.y, StopsWithOpacity(g.Stops, opacity));
         }
-        return ctx->CreateLinearGradientPattern(start.x, start.y, end.x, end.y, StopsWithOpacity(g.Stops, opacity));
+        if (pattern) pattern->SetExtend(ExtendFor(g.SpreadMethod));
+        return pattern;
     }
 
     std::shared_ptr<IPaintPattern> VectorRenderer::MakeRadialGradient(const RadialGradientData &g, const Rect2Dd &b,
                                                                       float opacity) {
-        Point2Dd center, focal;
-        double radius, focalRadius;
-        if (g.Units == GradientUnits::ObjectBoundingBox) {
-            center = {b.x + g.Center.x * b.width, b.y + g.Center.y * b.height};
-            focal = {b.x + g.FocalPoint.x * b.width, b.y + g.FocalPoint.y * b.height};
-            const double k = std::max(b.width, b.height);
-            radius = g.Radius * k;
-            focalRadius = g.FocalRadius * k;
+        std::shared_ptr<IPaintPattern> pattern;
+        Matrix3x3 placement;
+        if (GradientPlacement(g.Transform, g.Units, b, placement)) {
+            // In gradient space the circle is a circle; the placement stretches
+            // it into the ellipse an ObjectBoundingBox box or a non-uniform
+            // gradientTransform makes of it.
+            pattern = ctx->CreateRadialGradientPattern(g.FocalPoint.x, g.FocalPoint.y, g.FocalRadius,
+                                                       g.Center.x, g.Center.y, g.Radius,
+                                                       StopsWithOpacity(g.Stops, opacity));
+            if (pattern) Place(pattern, placement);
         } else {
-            center = g.Center;
-            focal = g.FocalPoint;
-            radius = g.Radius;
-            focalRadius = g.FocalRadius;
+            Point2Dd center, focal;
+            double radius, focalRadius;
+            if (g.Units == GradientUnits::ObjectBoundingBox) {
+                center = {b.x + g.Center.x * b.width, b.y + g.Center.y * b.height};
+                focal = {b.x + g.FocalPoint.x * b.width, b.y + g.FocalPoint.y * b.height};
+                const double k = std::max(b.width, b.height);
+                radius = g.Radius * k;
+                focalRadius = g.FocalRadius * k;
+            } else {
+                center = g.Center;
+                focal = g.FocalPoint;
+                radius = g.Radius;
+                focalRadius = g.FocalRadius;
+            }
+            pattern = ctx->CreateRadialGradientPattern(focal.x, focal.y, focalRadius, center.x, center.y, radius,
+                                                       StopsWithOpacity(g.Stops, opacity));
         }
-        return ctx->CreateRadialGradientPattern(focal.x, focal.y, focalRadius, center.x, center.y, radius,
-                                                StopsWithOpacity(g.Stops, opacity));
+        if (pattern) pattern->SetExtend(ExtendFor(g.SpreadMethod));
+        return pattern;
     }
 
     // Every command kind - relative forms, H/V lines, smooth cubics and

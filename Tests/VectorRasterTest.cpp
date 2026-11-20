@@ -21,6 +21,7 @@
 // A password-protected PDF (Tests/fixtures/pdf-aes256-locked.pdf, "tulip"):
 // without its password it reports passwordRequired - not just "damaged" -
 // a wrong one passwordWrong, and the right one measures and rasterizes it.
+// Version: 1.4.0 - gradients drawn with their Transform and spread method
 // Version: 1.3.0 - a password-protected PDF
 // Version: 1.2.0 - RasterizeVectorDocument
 // Version: 1.1.0 - RasterizeVectorElements
@@ -30,7 +31,9 @@
 #include "UltraCanvasVectorRaster.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 
+#include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -249,10 +252,93 @@ void TestDocument() {
 
 } // namespace
 
+// Gradients drawn as their data says: a Transform of their own (SVG's
+// gradientTransform, the scaled circle an elliptical gradient is) and their
+// spread method. The renderer used to drop both, so an ellipse came out a
+// circle, a rotated ramp unrotated, and a repeating one padded.
+void TestGradients() {
+    using namespace UltraCanvas::VectorStorage;
+    std::cout << "--- gradient transforms and spread ---\n";
+    auto page = [](FillData fill) {
+        VectorDocument doc;
+        doc.Size = Size2Dd{200, 100};
+        doc.ViewBox = Rect2Dd{0, 0, 200, 100};
+        auto box = std::make_shared<VectorRect>();
+        box->Bounds = Rect2Dd(0, 0, 200, 100);
+        box->Style.Fill = fill;
+        doc.AddLayer("Layer 1")->AddChild(box);
+        std::string error;
+        return RasterizeVectorDocument(doc, VectorRasterOptions(), error);
+    };
+    auto grey = [](const RasterPixel& p) { return static_cast<int>(p.r); };
+    const std::vector<GradientStop> blackToWhite = {GradientStop(0, Color(0, 0, 0, 255)),
+                                                    GradientStop(1, Color(255, 255, 255, 255))};
+
+    // A radius-1 circle at the origin, placed by its Transform as a 100 x 50
+    // ellipse at the page's centre: 0.6 of the way out is the same grey along
+    // both axes - 60 units right, 30 units down.
+    RadialGradientData ellipse;
+    ellipse.Units = GradientUnits::UserSpaceOnUse;
+    ellipse.Center = ellipse.FocalPoint = Point2Dd(0, 0);
+    ellipse.Radius = 1;
+    ellipse.Stops = blackToWhite;
+    ellipse.Transform = Matrix3x3::Translate(100, 50) * Matrix3x3::Scale(100, 50);
+    if (auto img = page(FillData(GradientData(ellipse)))) {
+        const int across = grey(img->GetPixel(160, 50)), down = grey(img->GetPixel(100, 80));
+        Check(std::abs(across - 153) <= 12 && std::abs(down - 153) <= 12,
+              "an elliptical radial: 0.6 of each radius is the same grey (" + std::to_string(across) + ", " +
+                  std::to_string(down) + ", 153 expected)");
+        Check(grey(img->GetPixel(100, 50)) < 10, "black at its centre");
+    } else {
+        Check(false, "the elliptical radial draws");
+    }
+
+    // A left-to-right ramp in the bounding box, turned a quarter about the
+    // box's centre by its gradientTransform: it runs top to bottom.
+    LinearGradientData turned;
+    turned.Units = GradientUnits::ObjectBoundingBox;
+    turned.Start = Point2Dd(0, 0);
+    turned.End = Point2Dd(1, 0);
+    turned.Stops = blackToWhite;
+    turned.Transform = Matrix3x3::Translate(0.5, 0.5) * Matrix3x3::RotateDegrees(90) * Matrix3x3::Translate(-0.5, -0.5);
+    if (auto img = page(FillData(GradientData(turned)))) {
+        const int top = grey(img->GetPixel(100, 5)), bottom = grey(img->GetPixel(100, 95));
+        const int left = grey(img->GetPixel(5, 50)), right = grey(img->GetPixel(195, 50));
+        Check(top < 30 && bottom > 225, "a bounding-box ramp turned a quarter runs top to bottom (" +
+                                            std::to_string(top) + " .. " + std::to_string(bottom) + ")");
+        Check(std::abs(left - right) <= 4, "and is level across");
+    } else {
+        Check(false, "the turned ramp draws");
+    }
+
+    // A 20-unit ramp repeated across the page: a quarter into its second
+    // cycle is a quarter grey, where padding would have left it white.
+    LinearGradientData repeated;
+    repeated.Units = GradientUnits::UserSpaceOnUse;
+    repeated.Start = Point2Dd(0, 0);
+    repeated.End = Point2Dd(20, 0);
+    repeated.Stops = blackToWhite;
+    repeated.SpreadMethod = GradientSpreadMethod::Repeat;
+    if (auto img = page(FillData(GradientData(repeated)))) {
+        const int v = grey(img->GetPixel(25, 50));
+        Check(std::abs(v - 64) <= 16, "spreadMethod repeat starts the ramp over (" + std::to_string(v) + ", 64 expected)");
+    } else {
+        Check(false, "the repeating ramp draws");
+    }
+    repeated.SpreadMethod = GradientSpreadMethod::Reflect;
+    if (auto img = page(FillData(GradientData(repeated)))) {
+        const int v = grey(img->GetPixel(25, 50));
+        Check(std::abs(v - 191) <= 16, "spreadMethod reflect runs it back (" + std::to_string(v) + ", 191 expected)");
+    } else {
+        Check(false, "the reflected ramp draws");
+    }
+}
+
 int main() {
     std::cout << "=== UltraCanvasVectorRaster ===\n";
     TestElements();
     TestDocument();
+    TestGradients();
 
     const std::string svgPath = WriteTempSvg();
     const std::vector<std::string> extensions = GetVectorRasterExtensions();

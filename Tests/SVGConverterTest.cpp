@@ -14,10 +14,12 @@
 // width profiles and brushes go out as what they draw and come back as
 // strokes. Export() to a file is staged: saving over a file replaces it
 // only once the new one is written, leaves no temporary file, and a save that
-// fails says why and keeps what was there.
+// fails says why and keeps what was there. A radial gradient stretched by
+// its gradientTransform round-trips and is drawn as the ellipse it is.
 //
 // Usage: SVGConverterTest [output.svg]
 // Exit code is the number of failed checks.
+// Version: 1.7.0 - gradientTransform and spreadMethod read, written and drawn by the renderer
 // Version: 1.6.0
 // Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
@@ -26,6 +28,8 @@
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasVectorRaster.h"
+#include "UltraCanvasRasterLayer.h"
 
 #include <chrono>
 #include <cmath>
@@ -34,6 +38,7 @@
 #include <iterator>
 #include <functional>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -885,5 +890,49 @@ int main(int argc, char** argv) {
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
+    // ===== GRADIENT TRANSFORMS =====
+    // gradientTransform and spreadMethod survive the round trip, and the
+    // framework's own renderer draws them: a unit circle stretched into a
+    // 100 x 50 ellipse is the same grey 0.6 of the way out along both axes.
+    {
+        std::printf("--- gradientTransform ---\n");
+        const std::string ellipseSvg =
+            "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='100' viewBox='0 0 200 100'>"
+            "<defs><radialGradient id='e' gradientUnits='userSpaceOnUse' cx='0' cy='0' r='1'"
+            " gradientTransform='translate(100 50) scale(100 50)' spreadMethod='reflect'>"
+            "<stop offset='0' stop-color='#000'/><stop offset='1' stop-color='#fff'/></radialGradient></defs>"
+            "<rect width='200' height='100' fill='url(#e)'/></svg>";
+        auto e = converter.ImportFromString(ellipseSvg, options);
+        const VectorStorage::RadialGradientData* radial = nullptr;
+        // The importer resolves url(#e) into the shape's own fill.
+        if (e && !e->Layers.empty() && !e->Layers[0]->Children.empty()) {
+            const auto& fill = e->Layers[0]->Children[0]->Style.Fill;
+            if (fill)
+                if (auto* gd = std::get_if<VectorStorage::GradientData>(&*fill))
+                    radial = std::get_if<VectorStorage::RadialGradientData>(gd);
+        }
+        Check(radial && radial->Transform && std::fabs(radial->Transform->m[0][0] - 100) < 1e-6 &&
+                  std::fabs(radial->Transform->m[1][1] - 50) < 1e-6 &&
+                  radial->SpreadMethod == VectorStorage::GradientSpreadMethod::Reflect,
+              "gradientTransform and spreadMethod are read");
+        if (e) {
+            const std::string again = converter.ExportToString(*e, options);
+            Check(again.find("gradientTransform=") != std::string::npos && again.find("spreadMethod=\"reflect\"") != std::string::npos,
+                  "and written back");
+            VectorRasterOptions ro;
+            ro.background = RasterPixel(255, 255, 255, 255);
+            std::string error;
+            auto img = RasterizeVectorDocument(*e, ro, error);
+            if (img) {
+                const int across = img->GetPixel(160, 50).r, down = img->GetPixel(100, 80).r;
+                Check(std::abs(across - 153) <= 12 && std::abs(down - 153) <= 12,
+                      "drawn as the ellipse it is (" + std::to_string(across) + ", " + std::to_string(down) +
+                          ", 153 expected)");
+            } else {
+                Check(false, "the gradient document draws: " + error);
+            }
+        }
+    }
+
     return failures;
 }

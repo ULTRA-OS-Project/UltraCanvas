@@ -21,6 +21,7 @@
 //        ODGConverterTest --convert in out     read one vector format, write
 //                                              another (by extension)
 // Exit code is the number of failed checks.
+// Version: 1.2.0 - LibreOffice's gradient styles: ellipsoids read elliptical and turned, written back
 // Version: 1.1.0 - the package's thumbnail
 // Version: 1.0.0
 // Last Modified: 2026-11-18
@@ -510,6 +511,49 @@ void TestPresetShapes(const std::string& dir) {
           "the cube's top lighter and its side darker, as LibreOffice shades them");
 }
 
+// LibreOffice's gradient styles (gradients.odg): five 6 x 3 cm rectangles
+// filled ellipsoid at 0 and 30 degrees, rectangular, square and radial. An
+// ellipsoid is read as a unit circle its Transform stretches to the box's
+// width and height over the square root of two and turns counter-clockwise,
+// and written back as an ellipsoid at the same angle.
+void TestGradientStyles(const std::string& dir) {
+    std::printf("--- LibreOffice Draw: gradients.odg ---\n");
+    ODGConverter odg;
+    ConversionOptions quiet;
+    auto doc = odg.Import(dir + "/gradients.odg", quiet);
+    Check(doc != nullptr, "gradients.odg reads");
+    if (!doc) return;
+    std::vector<const RadialGradientData*> radials;
+    for (auto& e : All(*doc))
+        if (e->Style.Fill)
+            if (auto* g = std::get_if<GradientData>(&*e->Style.Fill))
+                if (auto* r = std::get_if<RadialGradientData>(g)) radials.push_back(r);
+    Check(radials.size() == 5, "five radial-family gradients (" + std::to_string(radials.size()) + ")");
+    if (radials.size() != 5) return;
+    auto axes = [](const RadialGradientData& r, double& rx, double& ry, double& turn) {
+        const Matrix3x3 t = r.Transform.value_or(Matrix3x3::Identity());
+        rx = std::hypot(t.m[0][0], t.m[1][0]) * r.Radius;
+        ry = std::hypot(t.m[0][1], t.m[1][1]) * r.Radius;
+        turn = -std::atan2(t.m[1][0], t.m[0][0]) * 180.0 / kPi;   // counter-clockwise on the page
+    };
+    double rx, ry, turn;
+    axes(*radials[0], rx, ry, turn);
+    Check(radials[0]->Transform && Near(rx, 6 * kCm / std::sqrt(2.0), 0.05) && Near(ry, 3 * kCm / std::sqrt(2.0), 0.05) &&
+              Near(turn, 0, 0.01),
+          "the ellipsoid is the ellipse of the box over the square root of two");
+    axes(*radials[1], rx, ry, turn);
+    Check(radials[1]->Transform && Near(rx / ry, 2, 0.001) && Near(turn, 30, 0.01),
+          "the second turned 30 degrees counter-clockwise (" + std::to_string(turn) + ")");
+    Check(!radials[4]->Transform && Near(radials[4]->Radius, std::hypot(6.0, 3.0) / 2 * kCm, 0.05),
+          "the radial one a circle of half the diagonal");
+
+    const std::string flat = odg.ExportFlatXml(*doc, quiet);
+    Check(flat.find("draw:style=\"ellipsoid\" draw:angle=\"0deg\"") != std::string::npos &&
+              flat.find("draw:style=\"ellipsoid\" draw:angle=\"30deg\"") != std::string::npos &&
+              flat.find("draw:style=\"radial\"") != std::string::npos,
+          "written back as ellipsoids at 0 and 30 degrees and a radial");
+}
+
 // ===== HAND-WRITTEN GEOMETRY =====
 
 std::string FlatDocument(const std::string& shapes, const std::string& styles = {}) {
@@ -678,6 +722,7 @@ int main(int argc, char** argv) {
     TestRoundTrip();
     TestLibreOfficeSample(std::string(VECTOR_SAMPLES_DIR) + "/ODG");
     TestPresetShapes(std::string(VECTOR_SAMPLES_DIR) + "/ODG");
+    TestGradientStyles(std::string(VECTOR_SAMPLES_DIR) + "/ODG");
     TestGeometry();
     TestDispatch();
     std::printf("%d failure(s)\n", failures);
