@@ -31,10 +31,25 @@ class Settings:
     # (a key being rotated in), the payment service the catalog names and
     # its licence key.
     publish_dir: str = ""
+    # The package store (the packages a merchant uploads with a submission,
+    # under their hash): where they are kept, the largest one taken, and
+    # the public base the publish folder is served at, so the catalog can
+    # name the packages the publish lays out beside it (packages/,
+    # restricted/). Empty package_dir: the packages stay where the
+    # merchants' URLs name them, and nothing is uploaded.
+    package_dir: str = ""
+    max_package_mb: int = 512
+    catalog_url: str = ""
     signing_seed: str = ""
     trusted_keys: list[str] = field(default_factory=list)
     payment_url: str = ""
     licence_key: str = ""
+    # The mail an operator's password-reset code goes out by:
+    # smtp://user:password@host:587 (STARTTLS), smtps://...:465, or empty to
+    # print it to the log (a development machine); how long a code lives.
+    smtp_url: str = ""
+    mail_from: str = "UltraStore operations <noreply@localhost>"
+    code_minutes: int = 10
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -49,6 +64,12 @@ class Settings:
         s.operator_session_hours = int(env("ULTRASTORE_MARKET_OPERATOR_SESSION_HOURS", s.operator_session_hours))
         s.request_window_seconds = int(env("ULTRASTORE_MARKET_REQUEST_WINDOW", s.request_window_seconds))
         s.publish_dir = env("ULTRASTORE_MARKET_PUBLISH_DIR", "")
+        s.package_dir = env("ULTRASTORE_MARKET_PACKAGE_DIR", "")
+        s.max_package_mb = int(env("ULTRASTORE_MARKET_MAX_PACKAGE_MB", s.max_package_mb))
+        s.catalog_url = env("ULTRASTORE_MARKET_CATALOG_URL", "").rstrip("/")
+        s.smtp_url = env("ULTRASTORE_MARKET_SMTP_URL", "").strip()
+        s.mail_from = env("ULTRASTORE_MARKET_MAIL_FROM", s.mail_from)
+        s.code_minutes = int(env("ULTRASTORE_MARKET_CODE_MINUTES", s.code_minutes))
         s.signing_seed = env("ULTRASTORE_MARKET_SIGNING_SEED", "").strip()
         s.trusted_keys = [k.strip() for k in env("ULTRASTORE_MARKET_TRUSTED_KEYS", "").split(",") if k.strip()]
         s.payment_url = env("ULTRASTORE_MARKET_PAYMENT_URL", "").rstrip("/")

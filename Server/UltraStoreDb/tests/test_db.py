@@ -83,3 +83,16 @@ def test_operator_session_round_trips_and_is_refused_when_forged_or_over():
     assert allowed("support", "users.support") and not allowed("support", "users.manage")
     assert allowed("auditor", "audit.read") and not allowed("auditor", "notices.send")
     assert set(ROLES) == {"admin", "reviewer", "support", "auditor"}
+
+
+def test_totp_and_the_codes():
+    from ultrastore_db.totp import hash_code, hash_recovery, new_code, new_recovery_codes, new_totp_secret, otpauth_url, totp_code, verify_totp
+    secret = new_totp_secret()
+    assert len(secret) == 32 and "secret=" + secret in otpauth_url(secret, "alex@example.org")
+    assert verify_totp(secret, totp_code(secret, 1_700_000_000), at=1_700_000_000)
+    assert verify_totp(secret, totp_code(secret, 1_700_000_000), at=1_700_000_030)     # one step of drift
+    assert not verify_totp(secret, totp_code(secret, 1_700_000_000), at=1_700_000_090)
+    assert verify_totp("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", "287082", at=59)              # RFC 6238's SHA-1 vector, 20-byte key
+    codes = new_recovery_codes()
+    assert len(codes) == 8 and all(len(c) == 8 for c in codes) and hash_recovery(" " + codes[0].upper()) == hash_recovery(codes[0])
+    assert len(new_code()) == 6 and hash_code("123456", "s") != hash_code("123456", "t")

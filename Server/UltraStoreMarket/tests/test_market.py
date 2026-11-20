@@ -9,6 +9,7 @@ and reinstatements, and the audit chain that shows an edit."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 
@@ -22,9 +23,10 @@ from ultrastore_market.auth import public_hex, sign_request, verify_request
 from ultrastore_market.config import Settings
 from ultrastore_market.publish import SigningKey
 from ultrastore_market.store import MarketStore, add_days, canonical, today
+from ultrastore_db.totp import totp_code
 
 OP = {"Authorization": "Bearer op-token"}
-TABLES = ["operators", "applications", "audit", "suspensions", "notice_acks", "notices", "reports", "decisions", "submissions", "terms_acceptances", "terms_versions", "merchants", "meta"]
+TABLES = ["operator_codes", "operators", "applications", "audit", "suspensions", "notice_acks", "notices", "reports", "decisions", "submissions", "terms_acceptances", "terms_versions", "merchants", "meta"]
 
 
 def database_urls() -> list[str]:
@@ -67,6 +69,10 @@ class MerchantClient:
             headers["Content-Type"] = "application/json"
         return self.client.request(method, path, content=raw, headers=headers)
 
+    def upload(self, path: str, raw: bytes):
+        headers = {"Authorization": sign_request(self.seed, self.id, "POST", path, raw), "Content-Type": "application/octet-stream"}
+        return self.client.post(path, content=raw, headers=headers)
+
 
 @pytest.fixture(params=database_urls())
 def service(request, tmp_path):
@@ -74,7 +80,9 @@ def service(request, tmp_path):
                         publish_dir=str(tmp_path / "publish"),
                         payment_url="https://pay.example", licence_key="ab" * 32, public_base_url="https://market.example",
                         trusted_keys=["cd" * 32])
-    with TestClient(create_app(settings)) as client:
+    mails: list[tuple[str, str, str]] = []
+    with TestClient(create_app(settings, mailer=lambda to, subject, text: mails.append((to, subject, text)))) as client:
+        client.mails = mails   # type: ignore[attr-defined]
         yield client
 
 
@@ -507,3 +515,138 @@ def test_signin_needs_the_session_secret(tmp_path):
         client.post("/v1/operators", json={"email": "a@b.example", "role": "admin", "password": "a long enough password"}, headers=OP)
         r = client.post("/v1/operators/signin", json={"email": "a@b.example", "password": "a long enough password"})
         assert r.status_code == 503 and r.json()["error"] == "not_configured"
+
+
+def test_a_package_is_uploaded_with_the_submission_downloaded_by_the_operator_and_laid_out_by_the_publish(tmp_path):
+    settings = Settings(database="sqlite:///" + str(tmp_path / "m.sqlite3"), operator_token="op-token", publish_dir=str(tmp_path / "publish"),
+                        package_dir=str(tmp_path / "store"), catalog_url="https://store.example/v1", max_package_mb=1, payment_url="https://pay.example",
+                        licence_key="ab" * 32, public_base_url="https://market.example")
+    with TestClient(create_app(settings)) as client:
+        anna = register(client)
+        free = b"PK\x03\x04 the free one"
+        paid = b"PK\x03\x04 the paid one, no trial"
+        comp = component("org.example.hello", "1.0.0")
+        comp["releases"][0]["packages"] = [{"os": "linux", "arch": "x86_64", "format": "zip", "sha256": hashlib.sha256(free).hexdigest(), "size": len(free),
+                                           "url": "https://anna.example/packages/" + hashlib.sha256(free).hexdigest() + ".zip"},
+                                          {"os": "windows", "arch": "x86_64", "format": "zip", "sha256": hashlib.sha256(paid).hexdigest(), "size": len(paid),
+                                           "url": "https://anna.example/restricted/" + hashlib.sha256(paid).hexdigest() + ".zip"}]
+        packages = [{"file": "packages/" + hashlib.sha256(free).hexdigest() + ".zip", "sha256": hashlib.sha256(free).hexdigest(), "size": len(free), "format": "zip"},
+                    {"file": "restricted/" + hashlib.sha256(paid).hexdigest() + ".zip", "sha256": hashlib.sha256(paid).hexdigest(), "size": len(paid),
+                     "format": "zip", "access": "restricted"}]
+        # Submitted: the packages wait for their bytes; a release is refused until they are there.
+        sub = anna.request("POST", "/v1/submissions", {"component": comp, "signature": anna.sign_component(comp), "packages": packages}).json()
+        assert sub["state"] == "checked" and sub["checks"]["packages"] == "waiting" and not any(p.get("uploaded") for p in sub["packages"])
+        sid = sub["id"]
+        r = client.post(f"/v1/submissions/{sid}/decide", json={"action": "release"}, headers=OP)
+        assert r.status_code == 409 and r.json()["error"] == "packages_missing"
+        # The wrong bytes, the wrong size, a hash the submission does not name, another merchant: refused.
+        sha_free, sha_paid = hashlib.sha256(free).hexdigest(), hashlib.sha256(paid).hexdigest()
+        assert anna.upload(f"/v1/submissions/{sid}/packages/{sha_free}", paid).json()["error"] == "hash_mismatch"
+        assert anna.upload(f"/v1/submissions/{sid}/packages/{'0' * 64}", free).json()["error"] == "no_such_package"
+        assert anna.upload(f"/v1/submissions/{sid}/packages/{sha_free}", b"x" * (1 << 20) + b"y").status_code == 413
+        bob = register(client, "Bob")
+        assert bob.upload(f"/v1/submissions/{sid}/packages/{sha_free}", free).status_code == 404
+        assert client.post(f"/v1/submissions/{sid}/packages/{sha_free}", content=free).status_code == 401
+        # The right bytes: one waiting still, then ok; the files under their hash.
+        after = anna.upload(f"/v1/submissions/{sid}/packages/{sha_free.upper()}", free).json()
+        assert after["checks"]["packages"] == "waiting" and [p.get("uploaded", False) for p in after["packages"]] == [True, False]
+        assert (tmp_path / "store" / (sha_free + ".zip")).read_bytes() == free
+        after = anna.upload(f"/v1/submissions/{sid}/packages/{sha_paid}", paid).json()
+        assert after["checks"]["packages"] == "ok" and after["state"] == "checked"
+        assert (tmp_path / "store" / (sha_paid + ".zip")).read_bytes() == paid
+        assert anna.upload(f"/v1/submissions/{sid}/packages/{sha_free}", free).json()["checks"]["packages"] == "ok"   # again: harmless
+        # The operator downloads the build; a stranger does not; a package not uploaded is 404.
+        r = client.get(f"/v1/submissions/{sid}/packages/{sha_free}", headers=OP)
+        assert r.status_code == 200 and r.content == free and r.headers["content-type"].startswith("application/octet-stream")
+        assert sha_free + ".zip" in r.headers.get("content-disposition", "")
+        assert client.get(f"/v1/submissions/{sid}/packages/{sha_free}").status_code == 401
+        assert client.get(f"/v1/submissions/{sid}/packages/{'0' * 64}", headers=OP).status_code == 404
+        # Released and published: the packages beside the catalog, the catalog naming them; the restricted one under restricted/.
+        assert client.post(f"/v1/submissions/{sid}/decide", json={"action": "release"}, headers=OP).json()["state"] == "released"
+        report = client.post("/v1/publish", headers=OP).json()
+        assert report["packages"] == 2 and any(f.endswith("packages/" + sha_free + ".zip") for f in report["files"])
+        catalog = json.loads((tmp_path / "publish" / "catalog.json").read_bytes())
+        urls = [p["url"] for p in catalog["apps"][0]["releases"][0]["packages"]]
+        assert urls == ["https://store.example/v1/packages/" + sha_free + ".zip", "https://store.example/v1/restricted/" + sha_paid + ".zip"]
+        assert (tmp_path / "publish" / "packages" / (sha_free + ".zip")).read_bytes() == free
+        assert (tmp_path / "publish" / "restricted" / (sha_paid + ".zip")).read_bytes() == paid
+        # The stored submission still carries the merchant's URLs; a released submission takes no more packages.
+        assert client.get(f"/v1/submissions/{sid}", headers=OP).json()["component"]["releases"][0]["packages"][0]["url"].startswith("https://anna.example/")
+        assert anna.upload(f"/v1/submissions/{sid}/packages/{sha_free}", free).status_code == 409
+        # A new submission naming bytes already in the store needs no upload.
+        comp2 = component("org.example.hello", "1.1.0")
+        comp2["releases"][0]["packages"] = comp["releases"][0]["packages"][:1]
+        sub2 = anna.request("POST", "/v1/submissions", {"component": comp2, "signature": anna.sign_component(comp2), "packages": packages[:1]}).json()
+        assert sub2["checks"]["packages"] == "ok" and sub2["packages"][0]["uploaded"] is True
+        # The audit names the upload.
+        assert [a["action"] for a in client.get("/v1/audit", headers=OP).json()["audit"]].count("upload_package") == 3
+        assert client.get("/v1/audit/verify", headers=OP).json()["ok"] is True
+
+
+def test_no_package_store_takes_no_upload(service):
+    anna = register(service)
+    comp = component("org.example.hello", "1.0.0")
+    packages = [{"file": "packages/" + "a" * 64 + ".zip", "sha256": "a" * 64, "size": 10}]
+    sub = anna.request("POST", "/v1/submissions", {"component": comp, "signature": anna.sign_component(comp), "packages": packages}).json()
+    assert sub["checks"]["packages"] == "ok"
+    assert anna.upload(f"/v1/submissions/{sub['id']}/packages/{'a' * 64}", b"0123456789").status_code == 503
+
+
+def test_an_operator_turns_on_two_factor_and_resets_a_forgotten_password(service):
+    service.post("/v1/operators", json={"email": "alex@ultra-os.example", "name": "Alex", "role": "admin", "password": "a long enough password"}, headers=OP)
+    service.post("/v1/operators", json={"email": "sam@ultra-os.example", "name": "Sam", "role": "support", "password": "another long password"}, headers=OP)
+    token = service.post("/v1/operators/signin", json={"email": "alex@ultra-os.example", "password": "a long enough password"}).json()["token"]
+    alex = {"Authorization": "Bearer " + token}
+    # The static token has no account to set a second factor on.
+    assert service.post("/v1/operators/me/two-factor/setup", headers=OP).json()["error"] == "bootstrap"
+    # Setup, a wrong code, the right one: on, with the recovery codes shown once.
+    setup = service.post("/v1/operators/me/two-factor/setup", headers=alex).json()
+    assert len(setup["secret"]) == 32 and setup["otpauth_url"].startswith("otpauth://totp/UltraStore%20operations:alex%40ultra-os.example?")
+    assert service.post("/v1/operators/me/two-factor/enable", json={"code": "000000"}, headers=alex).json()["error"] == "bad_code"
+    enabled = service.post("/v1/operators/me/two-factor/enable", json={"code": totp_code(setup["secret"])}, headers=alex).json()
+    assert enabled["two_factor"] is True and len(enabled["recovery_codes"]) == 8
+    me = service.get("/v1/operators", headers=alex).json()["operators"][0]
+    assert me["two_factor"] is True and me["recovery_codes_left"] == 8
+    assert service.post("/v1/operators/me/two-factor/setup", headers=alex).json()["error"] == "two_factor_on"
+    # The sign-in now wants the code; a recovery code works once.
+    r = service.post("/v1/operators/signin", json={"email": "alex@ultra-os.example", "password": "a long enough password"})
+    assert r.status_code == 401 and r.json()["error"] == "two_factor_required"
+    assert service.post("/v1/operators/signin", json={"email": "alex@ultra-os.example", "password": "a long enough password", "totp": "000000"}).status_code == 401
+    assert service.post("/v1/operators/signin", json={"email": "alex@ultra-os.example", "password": "a long enough password", "totp": totp_code(setup["secret"])}).status_code == 200
+    assert service.post("/v1/operators/signin", json={"email": "alex@ultra-os.example", "password": "a long enough password", "recovery_code": enabled["recovery_codes"][0]}).status_code == 200
+    assert service.post("/v1/operators/signin", json={"email": "alex@ultra-os.example", "password": "a long enough password", "recovery_code": enabled["recovery_codes"][0]}).status_code == 401
+    assert service.get("/v1/operators", headers=alex).json()["operators"][0]["recovery_codes_left"] == 7
+    fresh = service.post("/v1/operators/me/two-factor/recovery-codes", json={"code": totp_code(setup["secret"])}, headers=alex).json()["recovery_codes"]
+    assert len(fresh) == 8 and fresh[0] not in enabled["recovery_codes"]
+    # Forgotten password: a code by mail (the answer gives nothing away), the reset with the second factor, the old password gone.
+    assert service.post("/v1/operators/password/forgot", json={"email": "nobody@ultra-os.example"}).json()["sent"] is True
+    assert len(service.mails) == 0
+    assert service.post("/v1/operators/password/forgot", json={"email": "ALEX@ultra-os.example"}).json()["sent"] is True
+    to, subject, text = service.mails[-1]
+    assert to == "alex@ultra-os.example" and "reset code" in subject
+    code = text.split("Your code is ")[1][:6]
+    assert service.post("/v1/operators/password/reset", json={"email": "alex@ultra-os.example", "code": "000000", "new_password": "a brand new password"}).json()["error"] == "bad_code"
+    r = service.post("/v1/operators/password/reset", json={"email": "alex@ultra-os.example", "code": code, "new_password": "a brand new password"})
+    assert r.status_code == 401 and r.json()["error"] == "two_factor_required"
+    # The code was used up by the attempt that reached the second factor: ask for a new one.
+    service.post("/v1/operators/password/forgot", json={"email": "alex@ultra-os.example"})
+    code = service.mails[-1][2].split("Your code is ")[1][:6]
+    r = service.post("/v1/operators/password/reset", json={"email": "alex@ultra-os.example", "code": code, "new_password": "a brand new password", "totp": totp_code(setup["secret"])})
+    assert r.status_code == 200, r.text
+    assert service.mails[-1][1].endswith("your password was changed")
+    assert service.post("/v1/operators/signin", json={"email": "alex@ultra-os.example", "password": "a long enough password", "totp": totp_code(setup["secret"])}).status_code == 401
+    assert service.post("/v1/operators/signin", json={"email": "alex@ultra-os.example", "password": "a brand new password", "totp": totp_code(setup["secret"])}).status_code == 200
+    assert service.post("/v1/operators/password/reset", json={"email": "alex@ultra-os.example", "code": code, "new_password": "a brand new password"}).json()["error"] == "bad_code"   # used
+    # An admin resets another's second factor, never their own; Sam's own two-factor request from the static token is refused.
+    sam = {"Authorization": "Bearer " + service.post("/v1/operators/signin", json={"email": "sam@ultra-os.example", "password": "another long password"}).json()["token"]}
+    sam_setup = service.post("/v1/operators/me/two-factor/setup", headers=sam).json()
+    service.post("/v1/operators/me/two-factor/enable", json={"code": totp_code(sam_setup["secret"])}, headers=sam)
+    assert service.put("/v1/operators/op-0001", json={"two_factor": False}, headers=sam).status_code == 403
+    assert service.put("/v1/operators/op-0001", json={"two_factor": False}, headers=alex).status_code == 400   # one's own
+    assert service.put("/v1/operators/op-0002", json={"two_factor": False}, headers=alex).json()["two_factor"] is False
+    assert service.post("/v1/operators/signin", json={"email": "sam@ultra-os.example", "password": "another long password"}).status_code == 200
+    # Off again with the code.
+    assert service.post("/v1/operators/me/two-factor/disable", json={"code": totp_code(setup["secret"])}, headers=alex).json()["two_factor"] is False
+    actions = [a["action"] for a in service.get("/v1/audit", headers=OP).json()["audit"]]
+    assert {"enable_two_factor", "new_recovery_codes", "reset_password", "reset_two_factor", "disable_two_factor"} <= set(actions)
+    assert service.get("/v1/audit/verify", headers=OP).json()["ok"] is True
