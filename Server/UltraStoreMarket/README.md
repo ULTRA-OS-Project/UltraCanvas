@@ -136,7 +136,8 @@ merchants' names (and the contact as the URL when it is one); the
 `trusted_keys` - the operator's signing key and `ULTRASTORE_MARKET_TRUSTED_KEYS`
 (a key being rotated in); `payment_url` and `licence_key` from
 `ULTRASTORE_MARKET_PAYMENT_URL` and `_LICENCE_KEY`; `market_url`, this
-service, where the store's app page reports a problem; `codes` empty (the
+service's public URL (`ULTRASTORE_MARKET_BASE_URL`, ending in `/market`
+behind the deploy folder's nginx location), where the store's app page reports a problem; `codes` empty (the
 codes are the merchants' own stores'). The sequence counts up past the
 last publish and the last release. The catalog and `catalog.json.sig`
 (the Ed25519 signature over the exact bytes, hex) go into
