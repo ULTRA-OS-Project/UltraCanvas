@@ -1,6 +1,6 @@
 # Tests/VectorFormatsTests.cmake
 # VectorFormatsPluginTest (every vector converter, and detailed.cdr through
-# the patched libcdr), ODGConverterTest, VectorFillRuleTest, CDRWriterTest and
+# the patched libcdr), ODGConverterTest, VectorFillRuleTest, EMFPlusTest, CDRWriterTest and
 # CDRPluginRenderTest. Included by Tests/CMakeLists.txt
 # under BUILD_TESTS, and by the top-level CMakeLists.txt on its own under
 # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS - so platforms that build no full
@@ -86,6 +86,26 @@ if(TARGET UltraCanvasVectorPlugin)
     add_test(NAME VectorFillRuleTest COMMAND VectorFillRuleTest
              WORKING_DIRECTORY ${_VFT_BIN_DIR})
     message(STATUS "    Test registered: VectorFillRuleTest")
+endif()
+
+# EMFPlusTest: EMF+ records in the EMF reader (alpha kept, the GDI copy of a
+# dual file not drawn twice, a fallback to it for what is not read), the EMF
+# a WMF carries, and the natural size and scale of a drawing rasterized from
+# a file (InspectVectorFile / RasterizeVectorFile).
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building EMFPlusTest...")
+    add_executable(EMFPlusTest
+        ${_VFT_DIR}/EMFPlusTest.cpp
+    )
+    target_include_directories(EMFPlusTest PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(EMFPlusTest PRIVATE cxx_std_20)
+    target_link_libraries(EMFPlusTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(EMFPlusTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+    add_test(NAME EMFPlusTest COMMAND EMFPlusTest
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
+    message(STATUS "    Test registered: EMFPlusTest")
 endif()
 
 # Round-trips a VectorDocument through the Vector plugin's CDR writer and the
