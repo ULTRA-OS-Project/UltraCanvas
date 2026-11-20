@@ -10,7 +10,7 @@
 //   - AddTextDocumentLoadTypes / AddTextDocumentSaveTypes: what
 //     LoadTextDocument reads and SaveTextDocument writes - no PDF or e-book
 //     the text reader cannot open;
-//   - SaveTextDocument writes ODT and DOCX that LoadTextDocument reads back,
+//   - SaveTextDocument writes ODT, DOCX and PPTX that LoadTextDocument reads back,
 //     and refuses a type it does not write, with a reason;
 //   - PixelFX's GetSupportedLoadFormats / GetSupportedSaveFormats are these
 //     lists, not a fixed one of its own;
@@ -20,6 +20,7 @@
 //     size of test_small.png, and not black).
 //
 // Headless.
+// Version: 1.3.0 - the document Save types end with PowerPoint (SaveTextDocument lays a document out as a deck)
 // Version: 1.2.0 - PixelFX's format lists are FileLoader's
 // Version: 1.1.0 - HEIC and AVIF offered where they decode
 // Version: 1.0.0
@@ -129,7 +130,8 @@ int main() {
     FileDialogOptions docx;
     docx.SetDefaultFileName("letter.docx");
     UltraCanvasFileLoader::AddTextDocumentSaveTypes(docx);
-    Check(docx.filters.size() == 2 && Holds(docx.filters[0], "docx") && Holds(docx.filters[1], "odt"),
+    Check(docx.filters.size() == 3 && Holds(docx.filters[0], "docx") && Holds(docx.filters[1], "odt") &&
+              Holds(docx.filters[2], "pptx"),
           "... the text document types too");
 
     // ----- a codec the application brings joins both -----
@@ -171,15 +173,16 @@ int main() {
 
     FileDialogOptions docSave;
     UltraCanvasFileLoader::AddTextDocumentSaveTypes(docSave);
-    Check(docSave.filters.size() == 2 && Holds(docSave.filters[0], "odt") && Holds(docSave.filters[1], "docx"),
-          "AddTextDocumentSaveTypes: ODT, then DOCX - what SaveTextDocument writes");
+    Check(docSave.filters.size() == 3 && Holds(docSave.filters[0], "odt") && Holds(docSave.filters[1], "docx") &&
+              Holds(docSave.filters[2], "pptx") && Holds(docSave.filters[2], "potx"),
+          "AddTextDocumentSaveTypes: ODT, DOCX, then PowerPoint - what SaveTextDocument writes");
 
     const fs::path dir = fs::temp_directory_path() / "uc-fileloader-type-lists";
     std::error_code ec;
     fs::remove_all(dir, ec);
     fs::create_directories(dir, ec);
     const UCRichDocument document = UCRichDocument::FromMarkdown("# A heading\n\nA paragraph of text.\n");
-    for (const char* name : {"saved.odt", "saved.docx"}) {
+    for (const char* name : {"saved.odt", "saved.docx", "saved.pptx"}) {
         const std::string path = PathToUtf8(dir / name);
         std::string error;
         Check(UltraCanvasFileLoader::SaveTextDocument(document, path, error), std::string("SaveTextDocument writes ") +
