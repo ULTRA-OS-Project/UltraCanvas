@@ -392,8 +392,8 @@ UltraCanvasFileLoader::AddSaveTypes(save, MediaFormatCategory::Spreadsheet);
 
 // A text document: what LoadTextDocument reads (ODT, DOCX, DOC, LaTeX,
 // Markdown, text - not the PDFs and e-books the Document category also
-// holds) and what SaveTextDocument writes (ODT, DOCX, and PPTX - the
-// document laid out as a deck, a slide per first-level heading)
+// holds) and what SaveTextDocument writes (ODT, DOCX, and PPTX or ODP -
+// the document laid out as a deck, a slide per first-level heading)
 FileDialogOptions saveLetter;
 saveLetter.SetDefaultFileName("letter.odt");
 UltraCanvasFileLoader::AddTextDocumentSaveTypes(saveLetter);

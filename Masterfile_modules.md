@@ -814,6 +814,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   decks report `NeedsPassword` / `WrongPassword`. Read-only. MediaViewer's
   slides and slide show. In `core/UltraCanvasPresentationPages.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationPages.md`.
+- **UltraCanvasOdfChart** (`UltraCanvasOdfChart.h`) — OpenDocument chart
+  objects for every ODF format: `WriteOdfChartObject` (a `RichChart` as an
+  `office:chart` document with its series, styles and table) and
+  `ReadOdfChartObject` (back, and LibreOffice's). The `.odt` reader and
+  writer, the `.odp` reader and writer. In `core/UltraCanvasOdfChart.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasOdfChart.md`.
 - **UltraCanvasDrawingML** (`UltraCanvasDrawingML.h`) — DrawingML read once
   for every Office format: `ReadDrawingMLChart` (a `c:chartSpace` chart part
   into `RichChart` - kind, series, colours, categories, title, legend, axis
@@ -835,8 +841,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   speaker notes, hidden slides, the slide size from the master's page layout;
   slide furniture, prompting placeholders, embedded objects and page comments
   left out. A password-protected deck opens with its password
-  (UltraCanvasOdfEncryption). No renderer,
-  no writer. In `core/UltraCanvasPresentationOdp.cpp`.
+  (UltraCanvasOdfEncryption). Charts are read as chart objects
+  (UltraCanvasOdfChart). Writer: `WriteOdpPresentation` /
+  `WriteOdpPresentationToMemory` - the deck model as an Impress deck (.odp,
+  .otp, flat .fodp): presentation frames, custom shapes turned and mirrored,
+  fills, gradients, markers, connectors, pictures, tables, chart objects,
+  list-styled bullets and numbering, notes; no password. In
+  `core/UltraCanvasPresentationOdp.cpp` and `core/UltraCanvasPresentationOdpWriter.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationOdp.md`.
 
 - **UltraCanvasSpreadsheetXls** (`UltraCanvasSpreadsheetXls.h`) — legacy Excel
