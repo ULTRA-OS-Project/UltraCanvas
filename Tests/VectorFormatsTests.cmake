@@ -162,3 +162,22 @@ if(TARGET UltraCanvasCDRPlugin)
 else()
     message(STATUS "  CDRPluginRenderTest skipped (needs UltraCanvasCDRPlugin)")
 endif()
+
+# VectorFileSizeTest: a drawing written in each format the Vector plugin
+# writes and reads, rasterized from the file - its page is the natural size
+# (InspectVectorFile, GetFileInfo), and RasterizeVectorFile scales it.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorFileSizeTest...")
+    add_executable(VectorFileSizeTest
+        ${_VFT_DIR}/VectorFileSizeTest.cpp
+    )
+    target_include_directories(VectorFileSizeTest PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(VectorFileSizeTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorFileSizeTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorFileSizeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+    add_test(NAME VectorFileSizeTest COMMAND VectorFileSizeTest
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
+    message(STATUS "    Test registered: VectorFileSizeTest")
+endif()
