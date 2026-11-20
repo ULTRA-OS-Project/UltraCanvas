@@ -39,6 +39,7 @@
     "Network",
     "Never",
     "Paste",
+    "Paused",
     "Pin",
     "Pinned",
     "Proxy",
@@ -50,6 +51,7 @@
     "Restore defaults",
     "Run",
     "Settings",
+    "Show",
     "Show hidden files",
     "Size",
     "Size:",
@@ -539,6 +541,7 @@
   "{0} (default)": "{0} (default)",
   "{0} - not supported by this build": "{0} - not supported by this build",
   "{0} is free now.": "{0} is free now.",
+  "{0} items": "{0} items",
   "{0}, {1} (room for {2})": "{0}, {1} (room for {2})",
   "{n} download is still running or waiting — quit anyway?": {
     "one": "{n} download is still running or waiting — quit anyway?",

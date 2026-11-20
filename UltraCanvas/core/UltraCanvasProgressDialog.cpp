@@ -1,12 +1,13 @@
 // core/UltraCanvasProgressDialog.cpp
 // Implementation of the modal progress window.
 // See UltraCanvasProgressDialog.h for the contract.
+// Version: 2.1.0 - Run in background (ProgressDialogOptions::onBackground)
 // Version: 2.0.0 - the transfer layout: route chips, the strip of figures, the percentage alone in
 //                  the ring, Pause / Resume; plain labels refreshed at most four times a second
 // Version: 1.2.0 - the ring's colours are the theme's (accent, line, ink), again on a theme change
 // Version: 1.1.0 - the Cancel button goes through Tr
 // Version: 1.0.0
-// Last Modified: 2026-11-19
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasProgressDialog.h"
@@ -139,11 +140,23 @@ namespace UltraCanvas {
         self->BuildContent(title, caption, options);
 
         std::weak_ptr<UltraCanvasProgressDialog> weak = self;
+        if (options.onBackground) {
+            const ModalDialogStyle& style = modal->GetStyle();
+            self->backgroundButton = std::make_shared<UltraCanvasButton>(
+                    "ProgressBackground", 0, 0, 170, static_cast<long>(style.buttonHeight));
+            self->backgroundButton->SetText(Tr("Run in background"));
+            if (style.buttonFontSize > 0.0f) self->backgroundButton->SetFontSize(style.buttonFontSize);
+            self->backgroundButton->onClick = [weak]() {
+                if (auto me = weak.lock()) me->SendToBackground();
+            };
+            modal->AddFooterElement(self->backgroundButton);
+        }
         if (options.onPause) {
             const ModalDialogStyle& style = modal->GetStyle();
             self->pauseButton = std::make_shared<UltraCanvasButton>(
                     "ProgressPause", 0, 0, 100, static_cast<long>(style.buttonHeight));
-            self->pauseButton->SetText(Tr("Pause"));
+            self->paused = options.startPaused;
+            self->pauseButton->SetText(self->paused ? Tr("Resume") : Tr("Pause"));
             if (style.buttonFontSize > 0.0f) self->pauseButton->SetFontSize(style.buttonFontSize);
             self->pauseButton->onClick = [weak]() {
                 if (auto me = weak.lock()) me->TogglePause();
@@ -156,6 +169,7 @@ namespace UltraCanvas {
         modal->onResult = [weak](DialogResult) {
             auto me = weak.lock();
             if (!me || me->cancelled) return;
+            if (me->backgrounded) return;   // closed by Run in background: no cancel
             me->cancelled = true;
             me->closed = true;          // the dialog closes itself on a result
             // A paused worker must hear the cancel: it waits on the pause.
@@ -401,6 +415,23 @@ namespace UltraCanvas {
                     ? FormatBytes(figures.doneBytes) + " / " + FormatBytes(figures.totalBytes)
                     : FormatBytes(figures.doneBytes));
         }
+    }
+
+    void UltraCanvasProgressDialog::SendToBackground() {
+        if (closed || backgrounded || !options.onBackground) return;
+        backgrounded = true;
+        // Held: the callback may drop the caller's last reference to this
+        // window while it is still closing.
+        auto keep = shared_from_this();
+        auto modal = dialog;
+        closed = true;
+        if (themeHandler != 0) {
+            UltraCanvasTheme::RemoveChangeHandler(themeHandler);
+            themeHandler = 0;
+        }
+        dialog.reset();
+        if (modal) modal->CloseDialog(DialogResult::Close);
+        options.onBackground();
     }
 
     void UltraCanvasProgressDialog::TogglePause() {

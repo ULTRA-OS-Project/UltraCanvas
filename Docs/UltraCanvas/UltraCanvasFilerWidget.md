@@ -102,6 +102,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [Keyboard](#keyboard)
 - [Directory scanning](#directory-scanning)
 - [Folder modifications](#folder-modifications)
+  - [Operations in the background](#operations-in-the-background)
   - [Finished copies and moves](#finished-copies-and-moves)
 - [File list (search results)](#file-list-search-results)
   - [Growing a file list while it is produced](#growing-a-file-list-while-it-is-produced)
@@ -3140,6 +3141,29 @@ filer->onFolderModified      = [this](const std::string& f) { tree.Resync(f); hi
 filer->onFolderChangedOnDisk = [this](const std::string& f) { tree.Resync(f); };
 ```
 
+### Operations in the background
+
+A host that sets `onBackgroundProgress` gets a **Run in background** button in
+the progress window of a copy, move, delete, pack or unpack. Pressed, the
+window closes and the work goes on; from then on the widget calls
+`onBackgroundProgress(progress)` on every tick (ten times a second) with a
+`FilerBackgroundProgress`: `active`, `title` ("Copying", "Extracting"), the
+route `from` / `to`, `fraction` (0..1; negative when no total is known),
+`currentFile`, the `figures` (`ProgressFigures`) and `paused`. Once more with
+`active == false` when the operation ends or its window is brought back.
+`HasBackgroundOperation()` tells whether one is running there;
+`BringOperationToFront()` opens its window again (paused work opens paused).
+The next archives of an extract queue start in the background too, until the
+queue is through. Without `onBackgroundProgress` the button is not offered.
+
+```cpp
+filer->onBackgroundProgress = [this](const FilerBackgroundProgress& p) {
+    statusGauge->SetVisible(p.active);
+    if (p.active) statusGauge->SetValue(p.fraction < 0 ? 0 : 100.0 * p.fraction);
+};
+showButton->onClick = [this]() { filer->BringOperationToFront(); };
+```
+
 ### Finished copies and moves
 
 `onTransferFinished(result)` fires once a paste, a drop or a Move to / Copy to
@@ -3331,6 +3355,7 @@ reports what the system hides, not what the host asked for.
 | `onFolderChangedOnDisk(folderPath)` | The folder watch saw the shown folder change on disk and the display re-listed it: another program's change, an entry deleted here that Windows listed until a program let go, or the folder itself gone (the display has moved up) — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
+| `onBackgroundProgress(progress)` | An operation sent to the background from its progress window: its progress on every tick, and once with `active == false` at its end - see [Operations in the background](#operations-in-the-background) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |

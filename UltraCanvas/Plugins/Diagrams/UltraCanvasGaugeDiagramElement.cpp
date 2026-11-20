@@ -1,10 +1,11 @@
 // Plugins/Diagrams/UltraCanvasGaugeDiagramElement.cpp
 // Implementation of comprehensive gauge element with 17 visual modes
+// Version: 2.13.0 - LinearBar's track takes SetTrackColor (it was a fixed light grey)
 // Version: 2.12.0 - SetRingCompact / SetRingValueText: CircularRing as a small inline marker (the ring
 //                  fills the element, no padding or minimum radius; the centre value can be left out)
 // Version: 2.11.0 - the analog clock's hands, ticks, rim and numbers in settable colours
 // Version: 2.10.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 // V2.10.0 changelog: LinearBar low-value fixes and warnings:
 //   - The fill pill keeps the bar's full corner radius at every value: it
@@ -1785,7 +1786,8 @@ void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
     // The track's ends are half circles of the bar's thickness - the shorter
     // side. Half the longer side, as the vertical bar used, is more than a
     // rectangle can round and drew past the element.
-    ctx->SetFillPaint(Color(225, 226, 235, 255));
+    // SetTrackColor: a fixed light grey glared on a dark status bar.
+    ctx->SetFillPaint(trackColor);
     ctx->FillRoundedRectangle(Rect2Df(barX, barY, barW, barH), std::min(barW, barH) / 2.0f);
 
     // Diameter of a rounded end = the bar's cross dimension, no more than its length.

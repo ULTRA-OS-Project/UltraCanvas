@@ -51,6 +51,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.57.0 - Run in background: the progress window's button, onBackgroundProgress on every
+//                  tick, BringOperationToFront; queued archive jobs stay in the background
 // Version: 1.56.0 - the progress window's figures, route and Pause: copies, moves and deletes count the
 //                  files and bytes done (totals only from the counting the work does anyway), archive
 //                  jobs report bytes; the window's titles are translated ("Copying" was English)
@@ -189,7 +191,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -2503,6 +2505,9 @@ namespace UltraCanvas {
         StopHostIconWorker();
         StopFolderWatchTimer();     // its callback captures `this`
         folderWatcher.Stop();       // joins its thread; its callback too
+        // Nothing reaches the host from here on: a background operation
+        // ended by the widget going away is not news for its status bar.
+        onBackgroundProgress = nullptr;
         // A pack / unpack still running: ask it to stop, then wait for it. The
         // worker holds no widget state, but its thread must not outlive the
         // widget whose poll timer would report it.
@@ -9729,7 +9734,7 @@ namespace UltraCanvas {
         const bool stretchEnded = op->running.load() && op->finished.load();
 
         if (!stretchEnded && op->running.load() && !op->dialogDue &&
-            !op->cancelled.load()) {
+            !op->cancelled.load() && !op->background) {
             const auto elapsed = std::chrono::steady_clock::now() - op->started;
             if (elapsed >= std::chrono::milliseconds(progressWindowDelayMs)) {
                 op->dialogDue = true;
@@ -9746,6 +9751,15 @@ namespace UltraCanvas {
                 options.items = true;
                 options.bytes = op->countsBytes;
                 options.onPause = [this](bool paused) { if (fileOp) fileOp->paused.store(paused); };
+                options.startPaused = op->paused.load();   // paused, then sent to the background
+                // "Run in background" only where the host can show the
+                // progress somewhere else.
+                if (onBackgroundProgress)
+                    options.onBackground = [this]() {
+                        if (!fileOp) return;
+                        fileOp->background = true;
+                        fileOp->dialog.reset();   // closed by the window itself
+                    };
                 op->dialog = UltraCanvasProgressDialog::Show(
                         GetWindow(), op->title, op->caption,
                         [this]() { if (fileOp) fileOp->cancelled.store(true); },
@@ -9775,6 +9789,27 @@ namespace UltraCanvas {
                 file = op->currentFile;
             }
             op->dialog->SetDetail(file);
+        } else if (op->background && !stretchEnded && op->running.load()) {
+            // In the background: the same numbers to the host's status bar.
+            ProgressFigures figures;
+            figures.doneItems = op->doneItems.load(std::memory_order_relaxed);
+            figures.doneBytes = op->doneBytes.load(std::memory_order_relaxed);
+            if (op->totalsKnown.load()) {
+                figures.totalItems = op->totalItems.load();
+                figures.totalBytes = op->totalBytes.load();
+            }
+            const uint64_t total = op->totalUnits.load();
+            const uint64_t done = op->doneUnits.load();
+            std::string file;
+            {
+                std::lock_guard<std::mutex> lk(op->mutex);
+                file = op->currentFile;
+            }
+            ReportBackgroundProgress(true, op->title, op->routeFrom, op->routeTo,
+                    total > 0 ? std::min(1.0, static_cast<double>(done) /
+                                              static_cast<double>(total))
+                              : -1.0,
+                    file, figures, op->paused.load());
         }
         if (!stretchEnded) return;
 
@@ -9787,7 +9822,7 @@ namespace UltraCanvas {
         op->finished.store(false);
         if (op->worker.joinable()) op->worker.join();
         if (op->dialog) { op->dialog->Close(); op->dialog.reset(); }
-        op->paused.store(false);   // a new window starts running
+        if (!op->background) op->paused.store(false);   // a new window starts running
         op->dialogDue = false;   // the next stretch may open its own window
         FlushFileOperationErrors();
         std::function<void()> stretchDone;
@@ -9820,8 +9855,48 @@ namespace UltraCanvas {
         if (op->worker.joinable()) op->worker.join();
         if (op->dialog) { op->dialog->Close(); op->dialog.reset(); }
         if (auto* win = GetWindow()) win->HideBusyPointer();
+        const bool wasBackground = op->background;
         FlushFileOperationErrors();
         fileOp.reset();
+        if (wasBackground) ReportBackgroundProgress(false, {}, {}, {}, -1.0, {}, {}, false);
+    }
+
+    void UltraCanvasFilerWidget::ReportBackgroundProgress(
+            bool active, const std::string& title, const std::string& from,
+            const std::string& to, double fraction, const std::string& file,
+            const ProgressFigures& figures, bool paused) {
+        if (!onBackgroundProgress) return;
+        FilerBackgroundProgress progress;
+        progress.active = active;
+        progress.title = title;
+        progress.from = from;
+        progress.to = to;
+        progress.fraction = fraction;
+        progress.currentFile = file;
+        progress.figures = figures;
+        progress.paused = paused;
+        onBackgroundProgress(progress);
+    }
+
+    bool UltraCanvasFilerWidget::HasBackgroundOperation() const {
+        return (fileOp && fileOp->background) || (archiveJob && archiveJob->background);
+    }
+
+    void UltraCanvasFilerWidget::BringOperationToFront() {
+        if (fileOp && fileOp->background) {
+            // The window opens on the next tick, with no wait: the operation
+            // is long past its first two seconds.
+            fileOp->background = false;
+            fileOp->dialogDue = false;
+            ReportBackgroundProgress(false, {}, {}, {}, -1.0, {}, {}, false);
+            return;
+        }
+        if (archiveJob && archiveJob->background) {
+            archiveJob->background = false;
+            archiveJobsInBackground = false;
+            OpenArchiveJobDialog(archiveJob.get());
+            ReportBackgroundProgress(false, {}, {}, {}, -1.0, {}, {}, false);
+        }
     }
 
     // ===== ARCHIVE WORKER =====
@@ -9848,22 +9923,17 @@ namespace UltraCanvas {
         job->destination = destination;
         job->packing = packing;
         job->onFinished = std::move(onFinished);
+        job->title = title;
+        job->caption = caption;
+        job->routeFrom = look.from;
+        job->routeTo = look.to;
+        job->showFigures = look.figures;
+        job->pausable = look.pausable;
 
-        // The window is optional: without it (dialogs disabled, no parent) the
-        // work still runs, it just runs unannounced.
-        // No severity badge on the pack / unpack window: the progress ring is
-        // its graphic, and the icon column would push the ring off centre.
-        ProgressDialogOptions options;
-        options.from = look.from;
-        options.to = look.to;
-        options.figures = look.figures;
-        options.bytes = look.figures;   // archives report bytes, not items
-        if (look.pausable)
-            options.onPause = [job](bool paused) { job->paused.store(paused); };
-        job->dialog = UltraCanvasProgressDialog::Show(
-                GetWindow(), title, caption,
-                [this]() { if (archiveJob) archiveJob->cancelRequested.store(true); },
-                options);
+        // A job queued behind one sent to the background (the next archive of
+        // an extract) starts there too.
+        if (archiveJobsInBackground && onBackgroundProgress) job->background = true;
+        else OpenArchiveJobDialog(job);
 
         // The reporter is the worker's only way to talk to the UI: it stores
         // numbers the poll timer reads, and answers whether to keep going.
@@ -9898,6 +9968,32 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasFilerWidget::OpenArchiveJobDialog(ArchiveJob* job) {
+        // The window is optional: without it (dialogs disabled, no parent) the
+        // work still runs, it just runs unannounced.
+        // No severity badge on the pack / unpack window: the progress ring is
+        // its graphic, and the icon column would push the ring off centre.
+        ProgressDialogOptions options;
+        options.from = job->routeFrom;
+        options.to = job->routeTo;
+        options.figures = job->showFigures;
+        options.bytes = job->showFigures;   // archives report bytes, not items
+        if (job->pausable)
+            options.onPause = [job](bool paused) { job->paused.store(paused); };
+        options.startPaused = job->paused.load();
+        if (onBackgroundProgress)
+            options.onBackground = [this]() {
+                if (!archiveJob) return;
+                archiveJob->background = true;
+                archiveJob->dialog.reset();   // closed by the window itself
+                archiveJobsInBackground = true;
+            };
+        job->dialog = UltraCanvasProgressDialog::Show(
+                GetWindow(), job->title, job->caption,
+                [this]() { if (archiveJob) archiveJob->cancelRequested.store(true); },
+                options);
+    }
+
     void UltraCanvasFilerWidget::PollArchiveJob() {
         if (!archiveJob) return;
         ArchiveJob* job = archiveJob.get();
@@ -9920,6 +10016,20 @@ namespace UltraCanvas {
                 file = job->currentFile;
             }
             job->dialog->SetDetail(PathToUtf8(PathFromUtf8(file).filename()));
+        } else if (job->background && !job->finished.load()) {
+            const uint64_t total = job->totalBytes.load();
+            const uint64_t done = job->doneBytes.load();
+            ProgressFigures figures;
+            figures.doneBytes = done;
+            figures.totalBytes = total;
+            std::string file;
+            {
+                std::lock_guard<std::mutex> lk(job->fileMutex);
+                file = job->currentFile;
+            }
+            ReportBackgroundProgress(true, job->title, job->routeFrom, job->routeTo,
+                    total > 0 ? static_cast<double>(done) / static_cast<double>(total) : -1.0,
+                    PathToUtf8(PathFromUtf8(file).filename()), figures, job->paused.load());
         }
         if (job->finished.load()) FinishArchiveJob();
     }
@@ -9947,6 +10057,12 @@ namespace UltraCanvas {
             fs::remove(PathFromUtf8(job->destination), ec);
         }
         if (job->onFinished) job->onFinished(ok, cancelled);
+        // The queue is through (no next job started): the status bar lets go,
+        // and the next archive job opens its window again.
+        if (!archiveJob) {
+            archiveJobsInBackground = false;
+            if (job->background) ReportBackgroundProgress(false, {}, {}, {}, -1.0, {}, {}, false);
+        }
     }
 
     namespace {

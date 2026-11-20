@@ -1,9 +1,10 @@
 // Plugins/Gauges/UltraCanvasGaugeDiagramElement.h
 // Comprehensive gauge element supporting analog, digital, progress, and specialized gauge modes
+// Version: 2.6.0 - LinearBar's track takes SetTrackColor too
 // Version: 2.5.0 - SetRingCompact / SetRingValueText: CircularRing as a small inline marker
 // Version: 2.4.0 - SetClockHandColor / SetClockTickColor: an analog clock on a dark face
 // Version: 2.3.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 // V2.3.0 changelog: the six linear (bar) modes fit the box they are given.
 //   One layout for all of them: the full card (title, bar, value line) where
