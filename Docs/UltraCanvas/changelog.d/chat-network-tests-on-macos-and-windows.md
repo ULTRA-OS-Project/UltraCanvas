@@ -31,8 +31,9 @@
     ship a TDLib (Windows x64, macOS arm64 - there no library is a failure,
     not a skip); `DirectProviderTests` on Windows, for its envelopes and
     store; and on the Apple silicon row the suites that sign in to a python
-    stand-in - Signal, IRC, XMPP, Mastodon, Mattermost, Zulip - with a
-    missing python3 or openssl a failure. Each suite is one `ctest` call, so
+    stand-in - Signal, IRC, Mastodon, Zulip, and XMPP and Mattermost where
+    UltraNet has WebSockets (below) - with a missing python3 or openssl a
+    failure. Each suite is one `ctest` call, so
     a name that matches nothing is an error. Not there: Windows for the
     suites that fork (they print "skipped"), and the Intel macOS row for
     the ones that wait on clocks (its runner is five to ten times slower).
@@ -51,3 +52,21 @@
     The name is used for nothing, so it is not asked. With the lookup
     slowed to 22 seconds on Linux the old stand-in fails on the same lines
     and the new one passes in its usual 26 seconds.
+  - **Found by it: UltraNet opens no WebSocket on the macOS 15 runner.**
+    `XmppProviderTests` and `MattermostProviderTests` failed there at their
+    first WebSocket, twice: the test's own `UltraNet_WebSocketConnect`
+    returns no handle, and Mattermost's event socket never opens. UltraNet's
+    WebSocket client is libcurl's, the macOS build links Apple's own
+    libcurl, and `UltraNet_WebSocketConnect` refuses on a libcurl that lists
+    neither `ws` nor `wss`; UltraNet's own WebSocket tests skip on that
+    condition, which is how it went unseen (and the build prints
+    "WebSocket: OK" for macOS and Windows without asking the library, as it
+    does on Linux). On such a macOS everything on that call is without a
+    connection: ChatCube Direct's relay, Mattermost's events, XMPP over
+    WebSocket, UltraWeb's sockets, the UltraAI transport, the UltraDatabase
+    relay. **Not fixed here** - it is a change to which libcurl UltraNet
+    uses on macOS, and gets a pull request of its own. Until then the step
+    prints the libcurl the build links and the protocols it lists, puts a
+    warning on the run where there is no `ws`, and does not ask for the two
+    suites there; where the libcurl lists `ws` they are asked by
+    themselves.
