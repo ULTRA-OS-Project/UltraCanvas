@@ -104,6 +104,8 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.57.0 - Run in background: onBackgroundProgress, HasBackgroundOperation,
+//                  BringOperationToFront - a long operation's window gives way to the host's status bar
 // Version: 1.56.0 - the progress window's figures: FileOperation and ArchiveJob count what is done
 //                  (items, bytes) and take totals only from the counting the work does anyway;
 //                  the route and Pause (FileOperation::paused, ArchiveJob::paused; ArchiveJobLook)
@@ -181,10 +183,11 @@
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 #pragma once
 
+#include "UltraCanvasProgressDialog.h"   // ProgressFigures (FilerBackgroundProgress)
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
@@ -692,6 +695,21 @@ namespace UltraCanvas {
     // UltraCanvasFilerWidget::onTransferFinished once the operation is over
     // (its windows closed, the folders refreshed). The counts are of the
     // entries the user chose - a folder is one item however much it holds.
+    // A long operation sent to the background from its progress window ("Run
+    // in background"): what the host shows of it instead - a status-bar gauge
+    // and a line - reported on every tick while it runs, and once more with
+    // `active` false when it has ended or come back to its window.
+    struct FilerBackgroundProgress {
+        bool active = false;
+        std::string title;          // "Copying", "Extracting"
+        std::string from;           // the route: "ULTRA OS" -> "Projekte"
+        std::string to;
+        double fraction = -1.0;     // 0..1; negative: no total known
+        std::string currentFile;
+        ProgressFigures figures;
+        bool paused = false;        // paused before it went to the background
+    };
+
     struct FilerTransferResult {
         bool moved = false;          // a move; false = a copy
         bool cancelled = false;      // stopped from the progress window
@@ -1959,6 +1977,15 @@ namespace UltraCanvas {
         // confirmation on the host's status line; the widget shows nothing
         // of its own beyond the summary window for skipped entries.
         std::function<void(const FilerTransferResult&)> onTransferFinished;
+        // A copy, move, delete, pack or unpack whose window the user sent to
+        // the background: its progress, for the host's status bar (see
+        // FilerBackgroundProgress). Without a handler the window offers no
+        // "Run in background" button - there would be nowhere to show it.
+        std::function<void(const FilerBackgroundProgress&)> onBackgroundProgress;
+        // An operation runs in the background now, and the call that opens
+        // its window again (the host's "Show" beside its gauge).
+        bool HasBackgroundOperation() const;
+        void BringOperationToFront();
         // The same for a delete (see FilerDeleteResult). A delete on a remote
         // drive is the host's own and does not report here.
         std::function<void(const FilerDeleteResult&)> onDeleteFinished;
@@ -3789,6 +3816,9 @@ namespace UltraCanvas {
             // Pause in the window: the worker waits between files and between
             // the chunks of a big one (FileOpItemCredit::Cancelled).
             std::atomic<bool> paused{false};
+            // "Run in background": no window opens again; the host hears the
+            // progress through onBackgroundProgress instead.
+            bool background = false;
             std::mutex mutex;
             std::string currentFile;                  // guarded by mutex
             std::vector<std::string> deferredErrors;  // guarded by mutex
@@ -4370,6 +4400,14 @@ namespace UltraCanvas {
             std::atomic<uint64_t> doneBytes{0};
             std::atomic<uint64_t> totalBytes{0};
             std::atomic<bool>     paused{false};   // the reporter waits while set
+            bool                  background = false;   // Run in background: no window
+            // What its window shows, to open it again (BringOperationToFront).
+            std::string           title;
+            std::string           caption;
+            std::string           routeFrom;
+            std::string           routeTo;
+            bool                  showFigures = true;
+            bool                  pausable = true;
             std::mutex            fileMutex;
             std::string           currentFile;      // guarded by fileMutex
             std::string           destination;      // archive path / target folder
@@ -4412,6 +4450,18 @@ namespace UltraCanvas {
                              std::function<bool(const ArchiveProgressReporter&)> work,
                              std::function<void(bool ok, bool cancelled)> onFinished);
         void PollArchiveJob();      // UI timer: ring, detail line, completion
+        // The archive job's progress window, opened at its start and again
+        // when it is brought back from the background.
+        void OpenArchiveJobDialog(ArchiveJob* job);
+        // Set by "Run in background" on an archive job: the jobs that follow
+        // it in the same queue (the next archive of an extract) start in the
+        // background too, until the queue is through.
+        bool archiveJobsInBackground = false;
+        // The host's report for an operation in the background.
+        void ReportBackgroundProgress(bool active, const std::string& title,
+                                      const std::string& from, const std::string& to,
+                                      double fraction, const std::string& file,
+                                      const ProgressFigures& figures, bool paused);
         void FinishArchiveJob();    // joins the worker and closes the window
         // Unpacks (archive -> destination folder) pairs one job at a time,
         // each behind its own progress window, then refreshes and reports

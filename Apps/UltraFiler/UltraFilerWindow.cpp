@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.47.0 - Run in background: the operation on the status bar (words, bar, Show), its
+//                  bar's track in the theme's colour
 // Version: 1.46.1 - the Computer page's card of a RAM disc without a size of its own (Windows
 //                  without ImDisk) no longer shows the system drive's pie: "No size of its own"
 // Version: 1.46.0 - Settings > Display > Display mode: the settings are read before the window is
@@ -148,7 +150,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-11-19
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -1658,9 +1660,22 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     statusProgress->SetTitle("");             // no caption: the label is the caption
     statusProgress->SetUnit("");
     statusProgress->SetGaugeColor(Look().accent);
+    statusProgress->SetTrackColor(Look().line);   // the gauge's own light track glares on dark
     statusProgress->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     statusProgress->SetVisible(false);
     statusRow->AddChild(statusProgress);
+
+    // Beside the bar while a copy, delete, pack or unpack runs in the
+    // background: opens its progress window again.
+    statusShowButton = std::make_shared<UltraCanvasButton>("ufl-status-show", 0, 0, 64, 18);
+    statusShowButton->SetText(Tr("Show"));
+    statusShowButton->SetFontSize(UiFontSize());
+    statusShowButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    statusShowButton->SetVisible(false);
+    statusShowButton->onClick = [this]() {
+        if (backgroundOpSource) backgroundOpSource->BringOperationToFront();
+    };
+    statusRow->AddChild(statusShowButton);
 
     window->AddChild(statusRow);
 
@@ -1727,7 +1742,10 @@ void UltraFilerWindow::ApplyLook() {
     if (statusSelectionLabel) statusSelectionLabel->SetTextColor(look.inkFaint);
     if (statusLabel) statusLabel->SetTextColor(statusNoteIsError ? look.danger : look.inkMuted);
     UpdateStatusBar();   // the left line's markup carries the quiet grey itself
-    if (statusProgress) statusProgress->SetGaugeColor(look.accent);
+    if (statusProgress) {
+        statusProgress->SetGaugeColor(look.accent);
+        statusProgress->SetTrackColor(look.line);
+    }
     ApplyTreeColors();   // the default drive rows have a light and a dark tint
     if (computerPane) computerPane->SetBackgroundColor(look.panel);
     ApplyTabStripStyle();   // the strips' colours are the theme's
@@ -8703,8 +8721,20 @@ void UltraFilerWindow::UpdateRemoteProgressBar() {
     if (!statusProgress) return;
     // Only a transfer gets a bar: a listing or a rename is one round trip
     // with nothing to count.
-    const bool show = remoteActivity.IsTransfer();
+    const bool remote = remoteActivity.IsTransfer();
+    // A transfer to a drive has the bar first; else an operation running in
+    // the background.
+    const bool background = !remote && backgroundOp.active;
+    const bool show = remote || background;
     if (statusProgress->IsVisible() != show) statusProgress->SetVisible(show);
+    if (statusShowButton && statusShowButton->IsVisible() != backgroundOp.active)
+        statusShowButton->SetVisible(backgroundOp.active);
+    if (background) {
+        statusProgress->SetIndeterminate(backgroundOp.fraction < 0.0);
+        if (backgroundOp.fraction >= 0.0)
+            statusProgress->SetValue(std::min(100.0, 100.0 * backgroundOp.fraction));
+        return;
+    }
     if (!show) {
         // Stops the gauge's slide timer as well, so a bar nobody can see is
         // not being animated.
@@ -9046,6 +9076,9 @@ void UltraFilerWindow::UpdateStatusBar() {
     // read ahead has none of its own to report.
     const std::string treeWait = TreeFetchStatus();
     bool pendingSaid = false;
+    // An operation the user sent to the background leads: it is the one thing
+    // running that has no window of its own.
+    addNote(DescribeBackgroundOperation());
     if (const std::string activity = DescribeRemoteActivity(); !activity.empty()) {
         addNote(activity);
         if (remoteActivity.kind != RemoteActivity::Kind::Listing) {
@@ -9317,6 +9350,49 @@ void UltraFilerWindow::WireTransferNotice(UltraCanvasFilerWidget* target) {
     target->onDeleteFinished = [this](const FilerDeleteResult& result) {
         ShowTransferNote(result.message);
     };
+    target->onBackgroundProgress = [this, target](const FilerBackgroundProgress& progress) {
+        ShowBackgroundProgress(target, progress);
+    };
+}
+
+void UltraFilerWindow::ShowBackgroundProgress(UltraCanvasFilerWidget* source,
+                                              const FilerBackgroundProgress& progress) {
+    if (!progress.active) {
+        // Only the operation on show lets go of the bar.
+        if (source != backgroundOpSource) return;
+        backgroundOp = FilerBackgroundProgress();
+        backgroundOpSource = nullptr;
+        UpdateStatusBar();
+        return;
+    }
+    const bool fresh = !backgroundOp.active || source != backgroundOpSource;
+    backgroundOp = progress;
+    backgroundOpSource = source;
+    // The bar follows every tick; the words - and the rest of the status
+    // line they are composed with - at most four times a second.
+    const auto now = std::chrono::steady_clock::now();
+    if (fresh || now - backgroundNoteAt >= std::chrono::milliseconds(250)) {
+        backgroundNoteAt = now;
+        UpdateStatusBar();
+    } else {
+        UpdateRemoteProgressBar();
+    }
+}
+
+std::string UltraFilerWindow::DescribeBackgroundOperation() const {
+    if (!backgroundOp.active) return {};
+    // "Copying ULTRA OS → Projekte · 42 %", "Deleting Fotos · 1,204 items"
+    std::string text = backgroundOp.title;
+    if (!backgroundOp.from.empty()) {
+        text += " " + backgroundOp.from;
+        if (!backgroundOp.to.empty()) text += " \u2192 " + backgroundOp.to;
+    }
+    if (backgroundOp.fraction >= 0.0)
+        text += "  \u00b7  " + std::to_string(static_cast<int>(backgroundOp.fraction * 100.0 + 0.5)) + " %";
+    else if (backgroundOp.figures.doneItems > 0)
+        text += "  \u00b7  " + TrF("{0} items", std::to_string(backgroundOp.figures.doneItems));
+    if (backgroundOp.paused) text += "  \u00b7  " + Tr("Paused");
+    return text;
 }
 
 void UltraFilerWindow::ShowTransferNote(const std::string& message) {
