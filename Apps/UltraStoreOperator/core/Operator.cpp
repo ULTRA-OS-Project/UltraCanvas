@@ -843,7 +843,7 @@ Result<DownloadedPackage> OperatorClient::DownloadPackage(const std::string& sub
     const fs::path folder = UltraCanvas::PathFromUtf8(folderUtf8);
     fs::create_directories(folder, ec);
     if (ec) return R::Failure(ErrorCode::IoError, "Cannot create " + folderUtf8, ec.message());
-    const fs::path file = folder / PackageFileName(package);
+    const fs::path file = folder / UltraCanvas::PathFromUtf8(PackageFileName(package));
     const MarketReply reply = download_(settings_.url + "/v1/submissions/" + Encode(submissionId) + "/packages/" + Encode(sha), "Bearer " + settings_.token,
                                         UltraCanvas::PathToUtf8(file));
     if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The marketplace service could not be reached", reply.error);

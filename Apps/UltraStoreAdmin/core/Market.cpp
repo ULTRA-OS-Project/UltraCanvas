@@ -389,7 +389,7 @@ Result<SubmissionReceipt> MarketClient::Submit(const UltraStore::Component& comp
 
 std::string LocalPackageFile(const std::string& packagesDirUtf8, const UltraStore::Package& p) {
     if (packagesDirUtf8.empty() || p.sha256.empty()) return {};
-    const fs::path file = UltraCanvas::PathFromUtf8(packagesDirUtf8) / (p.sha256 + "." + (p.format.empty() ? std::string("zip") : p.format));
+    const fs::path file = UltraCanvas::PathFromUtf8(packagesDirUtf8) / UltraCanvas::PathFromUtf8(p.sha256 + "." + (p.format.empty() ? std::string("zip") : p.format));
     std::error_code ec;
     return fs::is_regular_file(file, ec) ? UltraCanvas::PathToUtf8(file) : std::string();
 }
