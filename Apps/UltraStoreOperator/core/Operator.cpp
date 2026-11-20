@@ -5,7 +5,10 @@
 
 #include "UltraCanvasDataFolder.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetHttp.h"
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <ctime>
@@ -420,7 +423,45 @@ std::string Age(const std::string& at, int64_t now) {
 // ===========================================================================
 // The client
 // ===========================================================================
-OperatorClient::OperatorClient(OperatorSettings settings, MarketCall call) : settings_(std::move(settings)), call_(std::move(call)) {
+DownloadCall UltraNetDownloadCall() {
+    return [](const std::string& url, const std::string& authorization, const std::string& destinationUtf8) {
+        MarketReply out;
+        if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+        UltraNetHttpRequest request;
+        request.url = url;
+        request.method = UltraNetHttpMethod::Get;
+        request.options.httpsOnlyRedirects = true;
+        request.options.outputFilePath = destinationUtf8;
+        request.options.timeoutMs = 0;
+        if (!authorization.empty()) request.headers.Set("Authorization", authorization);
+        UltraNetResponse response;
+        const UltraNetResult r = UltraNet_HttpRequest(request, response);
+        out.status = response.statusCode;
+        out.body = response.GetBodyAsString();   // the error JSON, when the service refused
+        if (!r && r.code != UltraNetResultCode::HttpError) out.error = r.message.empty() ? "no answer" : r.message;
+        if (!response.IsComplete()) out.error = response.transferError;
+        return out;
+    };
+}
+
+std::string PackageFileName(const JSONValue& package) {
+    std::string sha = package.Get("sha256").GetString();
+    for (char& c : sha) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::string format = package.Get("format").GetString();
+    if (format.empty()) {
+        std::string name = package.Get("file").GetString(package.Get("url").GetString());
+        name = name.substr(name.rfind('/') == std::string::npos ? 0 : name.rfind('/') + 1);
+        for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        for (const char* known : {"tar.zst", "tar.gz", "tar.xz", "tgz", "zip", "7z", "appimage"}) {
+            const std::string suffix = std::string(".") + known;
+            if (name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) { format = known; break; }
+        }
+    }
+    return sha + "." + (format.empty() ? std::string("bin") : format);
+}
+
+OperatorClient::OperatorClient(OperatorSettings settings, MarketCall call, DownloadCall download)
+    : settings_(std::move(settings)), call_(std::move(call)), download_(std::move(download)) {
     settings_.url = TrimSlash(settings_.url);
     settings_.accountUrl = TrimSlash(settings_.accountUrl);
 }
@@ -466,6 +507,8 @@ OperatorAccount OperatorAccountOf(const JSONValue& v) {
     a.disabledAt = v.Get("disabled_at").GetString();
     a.lastSignin = v.Get("last_signin").GetString();
     a.active = v.Get("active").GetBoolean(a.disabledAt.empty());
+    a.twoFactor = v.Get("two_factor").GetBoolean(false);
+    a.recoveryCodesLeft = static_cast<int>(v.Get("recovery_codes_left").GetInteger(0));
     return a;
 }
 
@@ -476,29 +519,118 @@ bool WhoAmI::May(const std::string& permission) const {
     return false;
 }
 
-Result<OperatorSignIn> OperatorClient::SignIn(const std::string& email, const std::string& password) const {
-    using R = Result<OperatorSignIn>;
+// A six-digit code is the authenticator's; anything else a recovery code.
+static void SetSecondFactor(JSONValue& body, const std::string& code) {
+    if (code.empty()) return;
+    std::string plain;
+    for (char c : code) if (c != ' ') plain.push_back(c);
+    const bool digits = plain.size() == 6 && std::all_of(plain.begin(), plain.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; });
+    body.Set(digits ? "totp" : "recovery_code", JSONValue(plain));
+}
+
+// A call without a bearer (the sign-in, a forgotten password): the answer
+// parsed, a refusal's error code as the failure's detail.
+Result<JSONValue> OperatorClient::Open(const std::string& path, const std::string& jsonBody) const {
+    using R = Result<JSONValue>;
     if (settings_.url.empty()) return R::Failure(ErrorCode::InvalidArgument, "No marketplace service URL: `settings set url <https://...>`");
-    if (email.empty() || password.empty()) return R::Failure(ErrorCode::InvalidArgument, "The sign-in needs the email and the password");
-    JSONValue body = JSONValue::MakeObject();
-    body.Set("email", JSONValue(email));
-    body.Set("password", JSONValue(password));
-    const MarketReply reply = call_("POST", settings_.url + "/v1/operators/signin", {}, UltraCanvas::JSON::Serialize(body));
+    const MarketReply reply = call_("POST", settings_.url + path, {}, jsonBody);
     if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The marketplace service could not be reached", reply.error);
     UltraCanvas::JSONParseResult parse;
     const JSONValue v = UltraCanvas::JSON::Parse(reply.body, &parse);
     if (reply.status < 200 || reply.status >= 300) {
         const std::string description = parse.success && v.IsObject() ? v.Get("error_description").GetString() : std::string();
+        const std::string code = parse.success && v.IsObject() ? v.Get("error").GetString() : std::string();
         return R::Failure(reply.status == 401 ? ErrorCode::SignatureInvalid : ErrorCode::NetworkError,
-                          description.empty() ? "The marketplace service answered HTTP " + std::to_string(reply.status) : description, "HTTP " + std::to_string(reply.status));
+                          description.empty() ? "The marketplace service answered HTTP " + std::to_string(reply.status) : description,
+                          code.empty() ? "HTTP " + std::to_string(reply.status) : code);
     }
     if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, "The marketplace service's answer is not JSON", parse.errorMessage);
+    return R::Succeed(v);
+}
+
+Result<OperatorSignIn> OperatorClient::SignIn(const std::string& email, const std::string& password, const std::string& code) const {
+    using R = Result<OperatorSignIn>;
+    if (email.empty() || password.empty()) return R::Failure(ErrorCode::InvalidArgument, "The sign-in needs the email and the password");
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("email", JSONValue(email));
+    body.Set("password", JSONValue(password));
+    SetSecondFactor(body, code);
+    const auto answer = Open("/v1/operators/signin", UltraCanvas::JSON::Serialize(body));
+    if (!answer) return R::Failure(answer.error.code, answer.error.message, answer.error.detail);
+    const JSONValue& v = answer.Value();
     OperatorSignIn in;
     in.token = v.Get("token").GetString();
     in.account = OperatorAccountOf(v.Get("operator"));
     in.hours = static_cast<int>(v.Get("hours").GetInteger(0));
     if (in.token.empty()) return R::Failure(ErrorCode::ParseError, "The sign-in answered no session");
     return R::Succeed(in);
+}
+
+Result<TwoFactorSetup> OperatorClient::TwoFactorSetup() const {
+    using R = Result<struct TwoFactorSetup>;
+    const auto v = Ask("POST", "/v1/operators/me/two-factor/setup", "{}");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    struct TwoFactorSetup setup;
+    setup.secret = v.Value().Get("secret").GetString();
+    setup.otpauthUrl = v.Value().Get("otpauth_url").GetString();
+    return R::Succeed(setup);
+}
+
+static Result<std::vector<std::string>> RecoveryCodesOf(const Result<JSONValue>& v) {
+    using R = Result<std::vector<std::string>>;
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    std::vector<std::string> codes;
+    for (const JSONValue& c : v.Value().Get("recovery_codes").GetElements()) codes.push_back(c.GetString());
+    return R::Succeed(codes);
+}
+
+static std::string CodeBody(const std::string& code) {
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("code", JSONValue(code));
+    return UltraCanvas::JSON::Serialize(body);
+}
+
+Result<std::vector<std::string>> OperatorClient::TwoFactorEnable(const std::string& code) const {
+    return RecoveryCodesOf(Ask("POST", "/v1/operators/me/two-factor/enable", CodeBody(code)));
+}
+
+Result<void> OperatorClient::TwoFactorDisable(const std::string& code) const {
+    const auto v = Ask("POST", "/v1/operators/me/two-factor/disable", CodeBody(code));
+    if (!v) return Result<void>::Failure(v.error.code, v.error.message, v.error.detail);
+    return Result<void>::Succeed();
+}
+
+Result<std::vector<std::string>> OperatorClient::NewRecoveryCodes(const std::string& code) const {
+    return RecoveryCodesOf(Ask("POST", "/v1/operators/me/two-factor/recovery-codes", CodeBody(code)));
+}
+
+Result<int> OperatorClient::ForgotPassword(const std::string& email) const {
+    using R = Result<int>;
+    if (email.empty()) return R::Failure(ErrorCode::InvalidArgument, "The email of the account");
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("email", JSONValue(email));
+    const auto v = Open("/v1/operators/password/forgot", UltraCanvas::JSON::Serialize(body));
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(static_cast<int>(v.Value().Get("minutes").GetInteger(10)));
+}
+
+Result<void> OperatorClient::ResetPassword(const std::string& email, const std::string& code, const std::string& newPassword, const std::string& code2) const {
+    if (email.empty() || code.empty() || newPassword.size() < 12) return Result<void>::Failure(ErrorCode::InvalidArgument, "The email, the mailed code and a new password of 12 characters or more");
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("email", JSONValue(email));
+    body.Set("code", JSONValue(code));
+    body.Set("new_password", JSONValue(newPassword));
+    SetSecondFactor(body, code2);
+    const auto v = Open("/v1/operators/password/reset", UltraCanvas::JSON::Serialize(body));
+    if (!v) return Result<void>::Failure(v.error.code, v.error.message, v.error.detail);
+    return Result<void>::Succeed();
+}
+
+Result<OperatorAccount> OperatorClient::ResetOperatorTwoFactor(const std::string& id) const {
+    using R = Result<OperatorAccount>;
+    const auto v = Ask("PUT", "/v1/operators/" + Encode(id), R"({"two_factor":false})");
+    if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
+    return R::Succeed(OperatorAccountOf(v.Value()));
 }
 
 Result<WhoAmI> OperatorClient::Me() const {
@@ -699,6 +831,35 @@ Result<Submission> OperatorClient::Decide(const std::string& id, const std::stri
     const auto v = Ask("POST", "/v1/submissions/" + Encode(id) + "/decide", UltraCanvas::JSON::Serialize(body));
     if (!v) return R::Failure(v.error.code, v.error.message, v.error.detail);
     return R::Succeed(SubmissionOf(v.Value()));
+}
+
+Result<DownloadedPackage> OperatorClient::DownloadPackage(const std::string& submissionId, const JSONValue& package, const std::string& folderUtf8) const {
+    using R = Result<DownloadedPackage>;
+    if (settings_.url.empty()) return R::Failure(ErrorCode::InvalidArgument, "No marketplace service URL: `settings set url <https://...>`");
+    if (settings_.token.empty()) return R::Failure(ErrorCode::InvalidArgument, "No operator token: sign in first");
+    const std::string sha = package.Get("sha256").GetString();
+    if (sha.empty()) return R::Failure(ErrorCode::InvalidArgument, "The package names no SHA-256");
+    std::error_code ec;
+    const fs::path folder = UltraCanvas::PathFromUtf8(folderUtf8);
+    fs::create_directories(folder, ec);
+    if (ec) return R::Failure(ErrorCode::IoError, "Cannot create " + folderUtf8, ec.message());
+    const fs::path file = folder / PackageFileName(package);
+    const MarketReply reply = download_(settings_.url + "/v1/submissions/" + Encode(submissionId) + "/packages/" + Encode(sha), "Bearer " + settings_.token,
+                                        UltraCanvas::PathToUtf8(file));
+    if (!reply.error.empty() || reply.status == 0) return R::Failure(ErrorCode::NetworkError, "The marketplace service could not be reached", reply.error);
+    if (reply.status < 200 || reply.status >= 300) {
+        fs::remove(file, ec);
+        UltraCanvas::JSONParseResult parse;
+        const JSONValue v = UltraCanvas::JSON::Parse(reply.body, &parse);
+        const std::string description = parse.success && v.IsObject() ? v.Get("error_description").GetString() : std::string();
+        return R::Failure(reply.status == 404 ? ErrorCode::NotFound : reply.status == 401 ? ErrorCode::SignatureInvalid : ErrorCode::NetworkError,
+                          description.empty() ? "The marketplace service answered HTTP " + std::to_string(reply.status) : description, "HTTP " + std::to_string(reply.status));
+    }
+    DownloadedPackage out;
+    out.sha256 = sha;
+    out.fileUtf8 = UltraCanvas::PathToUtf8(file);
+    out.size = fs::is_regular_file(file, ec) ? static_cast<uint64_t>(fs::file_size(file, ec)) : 0;
+    return R::Succeed(out);
 }
 
 Result<Released> OperatorClient::GetReleased() const {

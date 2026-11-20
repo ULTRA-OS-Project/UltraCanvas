@@ -109,6 +109,9 @@ private:
     void ShowOperators();
     void SignInNow();
     void SignOutNow();
+    void ForgotPasswordNow();
+    void ResetPasswordNow();
+    void ShowTwoFactor(const std::shared_ptr<Container>& into);   // one's own second factor on the Operators page
     void BuildUsersPage();
     void RefreshUsers();
     void ShowUsers();
@@ -210,7 +213,8 @@ private:
     std::vector<OperatorAccount> operators_;
     std::shared_ptr<Container> operatorsList_, operatorsAdd_;
     std::shared_ptr<Label> signInInfo_;
-    std::shared_ptr<TextInput> sEmail_, sPassword_, oEmail_, oName_, oPassword_;
+    std::shared_ptr<TextInput> sEmail_, sPassword_, sCode_, sResetCode_, sResetPassword_, oEmail_, oName_, oPassword_;
+    std::shared_ptr<Container> resetBox_;
     std::shared_ptr<Dropdown> oRole_;
     // audit
     std::shared_ptr<Container> auditList_;

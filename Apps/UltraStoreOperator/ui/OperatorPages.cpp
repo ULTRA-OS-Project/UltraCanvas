@@ -10,6 +10,9 @@
 
 #include "OperatorTheme.h"
 
+#include "UltraCanvasDataFolder.h"
+#include "UltraCanvasPathUtf8.h"
+
 #include "UltraLocalisation/UltraLocalisation.h"
 
 #include <algorithm>
@@ -498,9 +501,27 @@ void OperatorWindow::ShowSubmission() {
     if (s.packages.GetSize() > 0) {
         submissionBox_->AddChild(Theme::Text("uoRS.pk.title", TrN("{n} package", "{n} packages", static_cast<long long>(s.packages.GetSize())), 13.0f, FontWeight::Bold));
         n = 0;
-        for (const JSONValue& p : s.packages.GetElements())
-            submissionBox_->AddChild(Theme::Caption("uoRS.pk" + std::to_string(n++), p.Get("file").GetString(p.Get("url").GetString()) + "  " + p.Get("sha256").GetString() + "  " +
-                                                                                        std::to_string(p.Get("size").GetInteger(0)) + " B"));
+        for (const JSONValue& p : s.packages.GetElements()) {
+            const std::string id = "uoRS.pk" + std::to_string(n++);
+            auto row = Theme::Row(id, Theme::kInnerGap, true);
+            auto label = Theme::Caption(id + ".t", p.Get("file").GetString(p.Get("url").GetString()) + "  " + p.Get("sha256").GetString() + "  " +
+                                                       std::to_string(p.Get("size").GetInteger(0)) + " B");
+            label->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(label);
+            if (p.Get("uploaded").GetBoolean(false)) {
+                // The build the merchant uploaded into the package store, for the review.
+                auto download = Theme::Button(id + ".dl", Tr("Download build"), 120);
+                download->onClick = [this, sid = s.id, package = p]() {
+                    const std::string folder = UltraCanvas::PathToUtf8(UltraCanvas::UltraCanvasDataFolderRoot() / "UltraStoreOperator" / "builds" / sid);
+                    Fetch<DownloadedPackage>(Tr("Downloading the build"), [client = Client(), sid, package, folder]() { return client.DownloadPackage(sid, package, folder); },
+                                             [this](const DownloadedPackage& d) { SetStatus(TrF("Saved {0} ({1} bytes)", d.fileUtf8, d.size)); });
+                };
+                row->AddChild(download);
+            } else {
+                row->AddChild(Theme::Pill(id + ".wait", Tr("not uploaded"), Theme::Tint::Amber));
+            }
+            submissionBox_->AddChild(row);
+        }
     }
 
     // The decisions so far
