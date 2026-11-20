@@ -13,8 +13,14 @@
 //     PowerPoint saves beside it, a hyperlink to another slide, and a table
 //     style from ppt/tableStyles.xml;
 //   * PptxNumberLabel's schemes;
-//   * each slide drawn (RenderPptxSlide) and looked at where the shapes are.
-// UC_PPTX_TEST_DUMP=<dir> writes the drawn slides there as .ppm, to look at.
+//   * each slide drawn (RenderPptxSlide) and looked at where the shapes are;
+//   * the writer: the fixture, the python-pptx sample and a protected copy
+//     written and read back, field by field and drawn side by side; the
+//     package kinds; a document laid out as a deck and a deck's outline read
+//     back as its slides; UltraCanvasFileLoader saving a document as .pptx.
+// UC_PPTX_TEST_DUMP=<dir> writes the drawn slides there as .ppm, and the
+// written decks as .pptx, to look at (or open in PowerPoint / LibreOffice).
+// Version: 1.1.0 - the writer: round trips, a password, the package kinds, a document as a deck
 // Version: 1.0.0
 // Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
@@ -22,6 +28,11 @@
 #include "UltraCanvasPptxSlideRender.h"
 #include "UltraCanvasPresentationPptx.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasOfficeEncryption.h"
+#include "UltraCanvasPathUtf8.h"
+
+#include <filesystem>
 
 #include <cmath>
 #include <cstdio>
@@ -366,12 +377,286 @@ void TestRebuilt() {
     }
 }
 
+
+// ----- The writer -----
+
+std::string TempDir() {
+    std::error_code ec;
+    const std::filesystem::path dir = std::filesystem::temp_directory_path(ec) / "uc-pptx-writer-test";
+    std::filesystem::create_directories(dir, ec);
+    return PathToUtf8(dir);
+}
+
+void DumpDeck(const std::vector<uint8_t>& package, const std::string& name) {
+    const char* dir = std::getenv("UC_PPTX_TEST_DUMP");
+    if (!dir || !*dir) return;
+    std::ofstream out(std::string(dir) + "/" + name, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(package.data()), static_cast<std::streamsize>(package.size()));
+}
+
+// How much two drawings of a slide differ: the mean absolute channel difference.
+double Difference(const UCPixmap& a, const UCPixmap& b) {
+    if (a.GetRawWidth() != b.GetRawWidth() || a.GetRawHeight() != b.GetRawHeight()) return 255;
+    double total = 0;
+    for (int y = 0; y < a.GetRawHeight(); ++y)
+        for (int x = 0; x < a.GetRawWidth(); ++x) {
+            const Rgb p = PixelAt(a, x, y), q = PixelAt(b, x, y);
+            total += std::abs(p.r - q.r) + std::abs(p.g - q.g) + std::abs(p.b - q.b);
+        }
+    return total / (3.0 * a.GetRawWidth() * a.GetRawHeight());
+}
+
+bool RoundTrip(const PptxPresentation& deck, PptxPresentation& back, const std::string& dumpName,
+               const std::string& extension = "pptx") {
+    std::vector<uint8_t> package;
+    std::string error;
+    if (!WritePptxPresentationToPackage(deck, package, error, extension)) {
+        std::cout << "         write: " << error << "\n";
+        return false;
+    }
+    DumpDeck(package, dumpName);
+    if (!ReadPptxPresentationFromPackage(package, back, error, true)) {
+        std::cout << "         read back: " << error << "\n";
+        return false;
+    }
+    return true;
+}
+
+void TestWriterFeatures() {
+    std::cout << "\n=== Writer: pptx-features.pptx written and read back ===\n";
+    PptxPresentation deck, back;
+    std::string error;
+    if (!ReadPptxPresentation(Fixture("pptx-features.pptx"), deck, error, "", true)) {
+        Check(false, "the fixture reads (" + error + ")");
+        return;
+    }
+    Check(RoundTrip(deck, back, "written-features.pptx") && back.slides.size() == deck.slides.size(),
+          "written, and read back: the same three slides");
+    if (back.slides.size() != 3) return;
+    Check(back.slideWidth == deck.slideWidth && back.slideHeight == deck.slideHeight, "the slide size");
+    Check(back.majorFont == deck.majorFont && back.minorFont == deck.minorFont &&
+              back.themeColors["accent1"] == deck.themeColors["accent1"],
+          "the theme's fonts and colours");
+    for (size_t i = 0; i < 3; ++i)
+        Check(back.slides[i].title == deck.slides[i].title && back.slides[i].shapes.size() == deck.slides[i].shapes.size(),
+              "slide " + std::to_string(i + 1) + ": its title and its " + std::to_string(deck.slides[i].shapes.size()) +
+                  " shapes (" + std::to_string(back.slides[i].shapes.size()) + ")");
+
+    const PptxShape* box = Named(back.slides[0], "TextBox 2");
+    if (box && box->paragraphs.size() == 4 && box->paragraphs[0].runs.size() == 6) {
+        const auto& runs = box->paragraphs[0].runs;
+        Check(runs[0].font == "DejaVu Serif" && runs[1].strike && runs[2].baseline == 30 && runs[3].allCaps &&
+                  runs[4].highlight == "FFFF00" && runs[5].hyperlink == "https://example.org/",
+              "runs: typeface, strike, superscript, capitals, highlight, hyperlink");
+        const PptxParagraph& square = box->paragraphs[1];
+        Check(square.bullet && square.bulletChar == "\xC2\xA7" && square.bulletFont == "Wingdings" &&
+                  square.bulletColor == "00B050" && std::abs(square.bulletSizePercent - 80.0f) < 0.01f &&
+                  square.marginLeft == 457200 && square.indent == -228600 &&
+                  std::abs(square.spaceBefore.points - 12.0f) < 0.01f &&
+                  std::abs(square.lineSpacing.percent - 1.5f) < 0.001f,
+              "a paragraph's bullet, margin, indent and spacing");
+        Check(box->paragraphs[2].numbered && box->paragraphs[2].numberScheme == "alphaLcParenR" &&
+                  box->paragraphs[2].numberStartAt == 3,
+              "the numbering scheme and its start");
+        Check(box->insetLeft == 182880 && box->insetBottom == 182880, "the insets");
+    } else {
+        Check(false, "the text box and its paragraphs");
+    }
+    const PptxShape* vertical = Named(back.slides[0], "TextBox 3");
+    Check(vertical && vertical->textRotation == 270 && !vertical->wrap, "vertical text on one line");
+
+    const PptxShape* star = nullptr;
+    const PptxShape* arrow = nullptr;
+    const PptxShape* freeform = nullptr;
+    for (const PptxShape& shape : back.slides[1].shapes) {
+        if (shape.geometry == "star5") star = &shape;
+        if (shape.kind == PptxShapeKind::Connector && shape.arrowEnd) arrow = &shape;
+        if (!shape.customPath.empty()) freeform = &shape;
+    }
+    Check(star && std::abs(star->rotationDeg - 30.0) < 0.01 && star->flipH && star->gradientStops.size() == 2 &&
+              star->gradientStops[1].color == "0000FF" && std::abs(star->gradientAngleDeg - 270.0) < 0.01 &&
+              star->dash == RichShape::Dash::Dashed && std::abs(star->lineWidthPt - 2.0) < 0.01,
+          "the star: turned, mirrored, its gradient and dashed outline");
+    Check(arrow && arrow->line == "0070C0" && !arrow->arrowStart, "the connector and its arrowhead");
+    Check(freeform && freeform->customPath.size() >= 4 && freeform->fill == "00B050", "the freeform's outline");
+
+    const PptxShape* table = OfKind(back.slides[2], PptxShapeKind::Table);
+    Check(table && table->cellStyles.size() == 3 && table->cellStyles[1][0].gridSpan == 2 &&
+              table->cellStyles[1][1].mergedAway && table->cellStyles[2][2].fill == "FF0000" &&
+              table->cellStyles[2][2].bottom.color == "0000FF",
+          "the table: the merge, the red cell and its blue border");
+    const PptxShape* chart = OfKind(back.slides[2], PptxShapeKind::Chart);
+    Check(chart && chart->chart.kind == RichChart::Kind::Column && chart->chart.title == "Sales" &&
+              chart->chart.series.size() == 2 && chart->chart.series[1].values.size() == 3 &&
+              chart->chart.series[1].values[2] == 4.0 && chart->chart.categories.size() == 3,
+          "the chart: its kind, title, series and categories");
+    const PptxShape* picture = OfKind(back.slides[2], PptxShapeKind::Picture);
+    const PptxShape* original = OfKind(deck.slides[2], PptxShapeKind::Picture);
+    Check(picture && original && std::abs(picture->cropLeft - 0.25) < 0.001 &&
+              back.pictures[picture->pictureTarget] == deck.pictures.at(original->pictureTarget),
+          "the picture: its crop and the same bytes");
+
+    // Drawn, the written deck looks as the one it came from.
+    for (size_t i = 0; i < 3; ++i) {
+        const auto before = RenderPptxSlide(deck, i, 500), after = RenderPptxSlide(back, i, 500);
+        const double diff = before && after ? Difference(*before, *after) : 255;
+        if (before && after) {
+            Dump(*before, "roundtrip-" + std::to_string(i + 1) + "-before");
+            Dump(*after, "roundtrip-" + std::to_string(i + 1) + "-after");
+        }
+        Check(diff < 1.0, "slide " + std::to_string(i + 1) + " drawn from the written deck looks the same (" +
+                              std::to_string(diff) + ")");
+    }
+}
+
+void TestWriterSample() {
+    std::cout << "\n=== Writer: the python-pptx sample, notes, a hidden slide, a password ===\n";
+    PptxPresentation deck, back;
+    std::string error;
+    if (!ReadPptxPresentation(Fixture("office-pptx-sample.pptx"), deck, error, "", true)) {
+        Check(false, "the sample reads (" + error + ")");
+        return;
+    }
+    Check(RoundTrip(deck, back, "written-sample.pptx") && back.slides.size() == deck.slides.size(),
+          "written and read back: its slides");
+    if (back.slides.size() != deck.slides.size()) return;
+    bool titles = true, notes = true, hidden = true, text = true;
+    for (size_t i = 0; i < deck.slides.size(); ++i) {
+        titles = titles && back.slides[i].title == deck.slides[i].title;
+        hidden = hidden && back.slides[i].hidden == deck.slides[i].hidden;
+        notes = notes && back.slides[i].notes.size() == deck.slides[i].notes.size();
+        text = text && PptxPresentationToRichDocument(back).ToPlainText() == PptxPresentationToRichDocument(deck).ToPlainText();
+    }
+    Check(titles && hidden && notes, "titles, the hidden slide and the speaker notes");
+    Check(text, "the outline of the written deck is the original's");
+
+    // With a password: encrypted, refused without it.
+    const std::string path = TempDir() + "/protected.pptx";
+    Check(WritePptxPresentation(deck, path, error, "s3cret \xC3\xBC") && IsEncryptedOfficePackage(path),
+          "written with a password: an encrypted package (" + error + ")");
+    PptxPresentation locked;
+    Check(!ReadPptxPresentation(path, locked, error) && Contains(error, "password"), "without it, refused");
+    Check(ReadPptxPresentation(path, locked, error, "s3cret \xC3\xBC") && locked.slides.size() == deck.slides.size(),
+          "with it, read");
+
+    // The package kinds.
+    std::vector<uint8_t> package;
+    Check(WritePptxPresentationToPackage(deck, package, error, "potx"), "written as a template");
+    UCZipPackageReader zip;
+    std::string types;
+    Check(zip.OpenFromMemory(package) && zip.ReadEntry("[Content_Types].xml", types) &&
+              Contains(types, "presentationml.template.main+xml"),
+          "a template names itself one");
+    PptxPresentation empty;
+    Check(WritePptxPresentationToPackage(empty, package, error) && ReadPptxPresentationFromPackage(package, back, error) &&
+              back.slides.empty(),
+          "a deck of no slides is written and read");
+}
+
+void TestDocumentAsDeck() {
+    std::cout << "\n=== A document laid out as a deck ===\n";
+    UCRichDocument document;
+    document.metadata.title = "Plan";
+    auto block = [](RichBlockType type, const std::string& text) {
+        RichDocBlock b;
+        b.type = type;
+        RichTextRun run;
+        run.text = text;
+        b.runs.push_back(run);
+        return b;
+    };
+    document.blocks.push_back(block(RichBlockType::Paragraph, "Opening words"));
+    RichDocBlock h1 = block(RichBlockType::Heading, "Agenda");
+    h1.headingLevel = 1;
+    document.blocks.push_back(h1);
+    RichDocBlock item = block(RichBlockType::ListItem, "First");
+    document.blocks.push_back(item);
+    item = block(RichBlockType::ListItem, "Second, deeper");
+    item.listLevel = 1;
+    document.blocks.push_back(item);
+    item = block(RichBlockType::ListItem, "Third");
+    item.orderedList = true;
+    item.numberFormat = RichNumberFormat::LowerRoman;
+    item.listStartNumber = 2;
+    document.blocks.push_back(item);
+    RichDocBlock table;
+    table.type = RichBlockType::Table;
+    for (int r = 0; r < 2; ++r) {
+        RichTableRow row;
+        row.header = r == 0;
+        for (int c = 0; c < 2; ++c) {
+            RichTableCell cell;
+            RichTextRun run;
+            run.text = "R" + std::to_string(r) + "C" + std::to_string(c);
+            cell.runs.push_back(run);
+            row.cells.push_back(cell);
+        }
+        table.tableRows.push_back(row);
+    }
+    document.blocks.push_back(table);
+    RichDocBlock h2 = block(RichBlockType::Heading, "Numbers");
+    h2.headingLevel = 1;
+    document.blocks.push_back(h2);
+    RichDocBlock code = block(RichBlockType::CodeBlock, "x = 1");
+    document.blocks.push_back(code);
+    RichDocBlock rule;
+    rule.type = RichBlockType::HorizontalRule;
+    document.blocks.push_back(rule);
+    document.blocks.push_back(block(RichBlockType::Paragraph, "After the rule"));
+
+    const PptxPresentation deck = PptxPresentationFromRichDocument(document);
+    Check(deck.slides.size() == 4, "four slides: the opening, two headings, after the rule (" +
+                                       std::to_string(deck.slides.size()) + ")");
+    if (deck.slides.size() != 4) return;
+    Check(deck.slides[0].title == "Plan" && deck.slides[1].title == "Agenda" && deck.slides[2].title == "Numbers" &&
+              deck.slides[3].title.empty(),
+          "the document's title, then the headings as titles");
+    const PptxShape* body = OfKind(deck.slides[1], PptxShapeKind::Body);
+    Check(body && body->paragraphs.size() == 3 && body->paragraphs[0].bullet && body->paragraphs[1].level == 1 &&
+              body->paragraphs[2].numbered && body->paragraphs[2].numberScheme == "romanLcPeriod" &&
+              body->paragraphs[2].numberStartAt == 2,
+          "the list: bullets, a deeper level, a roman numbering from ii");
+    const PptxShape* table2 = OfKind(deck.slides[1], PptxShapeKind::Table);
+    Check(table2 && body && table2->rows.size() == 2 && table2->y >= body->y + body->height &&
+              table2->rows[0][0][0].runs[0].bold,
+          "the table below the text, its header row bold");
+    const PptxShape* code2 = OfKind(deck.slides[2], PptxShapeKind::Body);
+    Check(code2 && !code2->paragraphs.empty() && code2->paragraphs[0].runs[0].font == "Courier New",
+          "code in Courier New");
+
+    PptxPresentation back;
+    Check(RoundTrip(deck, back, "written-document.pptx") && back.slides.size() == 4 && back.slides[1].title == "Agenda",
+          "the deck written and read back");
+
+    // A deck's outline reads back as its slides.
+    PptxPresentation sample;
+    std::string error;
+    if (ReadPptxPresentation(Fixture("office-pptx-sample.pptx"), sample, error)) {
+        const PptxPresentation again = PptxPresentationFromRichDocument(PptxPresentationToRichDocument(sample));
+        bool same = again.slides.size() == sample.slides.size();
+        for (size_t i = 0; same && i < sample.slides.size(); ++i)
+            same = again.slides[i].title == sample.slides[i].title && again.slides[i].hidden == sample.slides[i].hidden &&
+                   again.slides[i].notes.size() == sample.slides[i].notes.size();
+        Check(same, "the sample's outline laid out again: its titles, hidden slide and notes");
+    }
+
+    // Through the file loader: a document saved as .pptx, opened again.
+    const std::string path = TempDir() + "/document.pptx";
+    Check(UltraCanvasFileLoader::SaveTextDocument(document, path, error), "SaveTextDocument writes a .pptx (" + error + ")");
+    auto opened = UltraCanvasFileLoader::LoadTextDocument(path, error);
+    Check(opened && Contains(opened->ToPlainText(), "2. Agenda") && Contains(opened->ToPlainText(), "Second, deeper"),
+          "LoadTextDocument opens it as its slides' outline");
+}
+
 } // namespace
 
 int main() {
     TestNumberLabels();
     TestFixture();
     TestRebuilt();
+    TestWriterFeatures();
+    TestWriterSample();
+    TestDocumentAsDeck();
     std::cout << "\n" << (g_failures == 0 ? "All checks passed" : "FAILURES: " + std::to_string(g_failures)) << "\n";
     return g_failures == 0 ? 0 : 1;
 }

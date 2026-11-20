@@ -2,6 +2,7 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.18.1 - a chart part is written by UltraCanvasDrawingML (WriteDrawingMLChart) too
 // Version: 1.18.0 - a chart part and a DrawingML colour are read by UltraCanvasDrawingML (core, shared
 //                   with the PowerPoint reader)
 // Version: 1.17.0 - charts: radar, bubble and stock charts; smoothed lines (c:smooth)
@@ -4392,150 +4393,9 @@ private:
 
     // A drawing as Word draws one: a lone shape as a wps shape (its frame's
     // words in its text box); several shapes, or a group, as a wpg group.
-    // A chart's part (word/charts/chartN.xml): its kind, categories and
-    // series, the values as literals (there is no workbook behind them).
-    static std::string BuildChartPartXml(const RichChart& chart) {
-        using Kind = RichChart::Kind;
-        std::ostringstream xml;
-        xml.imbue(std::locale::classic());
-        xml.precision(15);
-        auto color = [](const std::string& hex) {        // "#RRGGBB" -> a:solidFill
-            return hex.size() == 7 && hex[0] == '#'
-                ? "<a:solidFill><a:srgbClr val=\"" + hex.substr(1) + "\"/></a:solidFill>" : std::string();
-        };
-        auto numbers = [&](const char* tag, const std::vector<double>& values) {
-            xml << "<" << tag << "><c:numLit><c:formatCode>General</c:formatCode><c:ptCount val=\"" << values.size() << "\"/>";
-            for (size_t i = 0; i < values.size(); i++) {
-                if (std::isfinite(values[i])) xml << "<c:pt idx=\"" << i << "\"><c:v>" << values[i] << "</c:v></c:pt>";
-            }
-            xml << "</c:numLit></" << tag << ">";
-        };
-        auto names = [&]() {
-            if (chart.categories.empty()) return;
-            xml << "<c:cat><c:strLit><c:ptCount val=\"" << chart.categories.size() << "\"/>";
-            for (size_t i = 0; i < chart.categories.size(); i++) {
-                xml << "<c:pt idx=\"" << i << "\"><c:v>" << EscapeXml(chart.categories[i]) << "</c:v></c:pt>";
-            }
-            xml << "</c:strLit></c:cat>";
-        };
-        const bool pie = chart.kind == Kind::Pie || chart.kind == Kind::Doughnut;
-        const bool scatter = chart.kind == Kind::Scatter;
-        const bool line = chart.kind == Kind::Line;
-        const bool bars = chart.kind == Kind::Column || chart.kind == Kind::Bar;
-        const bool radar = chart.kind == Kind::Radar, bubble = chart.kind == Kind::Bubble, stock = chart.kind == Kind::Stock;
-        const char* tag = radar ? "c:radarChart" : bubble ? "c:bubbleChart" : stock ? "c:stockChart"
-                        : pie ? (chart.kind == Kind::Doughnut ? "c:doughnutChart" : "c:pieChart")
-                        : scatter ? "c:scatterChart" : line ? "c:lineChart"
-                        : chart.kind == Kind::Area ? "c:areaChart" : "c:barChart";
-        xml << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-               "<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\""
-               " xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\""
-               " xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
-               "<c:roundedCorners val=\"0\"/><c:chart>";
-        if (!chart.title.empty()) {
-            xml << "<c:title><c:tx><c:rich><a:bodyPr/><a:p><a:r><a:t>" << EscapeXml(chart.title)
-                << "</a:t></a:r></a:p></c:rich></c:tx><c:overlay val=\"0\"/></c:title>";
-        }
-        xml << "<c:autoTitleDeleted val=\"" << (chart.title.empty() ? 1 : 0) << "\"/><c:plotArea><c:layout/><" << tag << ">";
-        if (bars) xml << "<c:barDir val=\"" << (chart.kind == Kind::Bar ? "bar" : "col") << "\"/>";
-        bool anySmooth = false, anyRadarMark = false;
-        for (const RichChartSeries& one : chart.series) {
-            anySmooth = anySmooth || one.smooth;
-            anyRadarMark = anyRadarMark || one.marked;
-        }
-        if (scatter) xml << "<c:scatterStyle val=\"" << (anySmooth ? "smoothMarker" : "lineMarker") << "\"/>";
-        if (radar) xml << "<c:radarStyle val=\"" << (chart.filled ? "filled" : anyRadarMark ? "marker" : "standard") << "\"/>";
-        if (bars) xml << "<c:grouping val=\"" << (chart.percent ? "percentStacked" : chart.stacked ? "stacked" : "clustered") << "\"/>";
-        else if (!pie && !scatter && !radar && !bubble && !stock) xml << "<c:grouping val=\"" << (chart.percent ? "percentStacked" : chart.stacked ? "stacked" : "standard") << "\"/>";
-        if (!stock) xml << "<c:varyColors val=\"" << (pie ? 1 : 0) << "\"/>";
-        bool anyMarked = false;
-        for (size_t s = 0; s < chart.series.size(); s++) {
-            const RichChartSeries& one = chart.series[s];
-            anyMarked = anyMarked || one.marked;
-            xml << "<c:ser><c:idx val=\"" << s << "\"/><c:order val=\"" << s << "\"/>";
-            if (!one.name.empty()) xml << "<c:tx><c:v>" << EscapeXml(one.name) << "</c:v></c:tx>";
-            std::string fill = color(one.color);
-            // (Writer draws a line or a bubble only in a colour the file
-            // states: one without takes the office palette's, as it shows.)
-            static const char* const kOffice[] = {"#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47"};
-            if (fill.empty() && (line || scatter || bubble || (radar && !chart.filled))) fill = color(kOffice[s % 6]);
-            if (stock) {
-                // High, low and close are marks of the bars, not lines.
-                xml << "<c:spPr><a:ln><a:noFill/></a:ln></c:spPr><c:marker><c:symbol val=\"none\"/></c:marker>";
-            } else if (line || scatter || (radar && !chart.filled)) {
-                if (!one.joined) xml << "<c:spPr><a:ln><a:noFill/></a:ln></c:spPr>";
-                else if (!fill.empty()) xml << "<c:spPr><a:ln w=\"28575\">" << fill << "</a:ln></c:spPr>";
-                xml << "<c:marker><c:symbol val=\"" << (one.marked ? "circle" : "none") << "\"/>";
-                if (one.marked && !fill.empty()) xml << "<c:spPr>" << fill << "</c:spPr>";
-                xml << "</c:marker>";
-            } else if (!fill.empty()) {
-                xml << "<c:spPr>" << fill << "</c:spPr>";
-            }
-            if (pie && s == 0) {
-                for (size_t i = 0; i < chart.pointColors.size(); i++) {
-                    const std::string slice = color(chart.pointColors[i]);
-                    if (!slice.empty()) xml << "<c:dPt><c:idx val=\"" << i << "\"/><c:bubble3D val=\"0\"/><c:spPr>" << slice << "</c:spPr></c:dPt>";
-                }
-            }
-            if (scatter || bubble) {
-                if (one.xValues.size() == one.values.size()) numbers("c:xVal", one.xValues);
-                numbers("c:yVal", one.values);
-                if (bubble) {
-                    std::vector<double> sizes = one.sizes;
-                    sizes.resize(one.values.size(), 1.0);
-                    numbers("c:bubbleSize", sizes);
-                    xml << "<c:bubble3D val=\"0\"/>";
-                } else {
-                    xml << "<c:smooth val=\"" << (one.smooth ? 1 : 0) << "\"/>";
-                }
-            } else {
-                names();
-                numbers("c:val", one.values);
-                if (line || stock) xml << "<c:smooth val=\"" << (one.smooth && line ? 1 : 0) << "\"/>";
-            }
-            xml << "</c:ser>";
-        }
-        if (bars && chart.stacked) xml << "<c:overlap val=\"100\"/>";
-        if (line) xml << "<c:marker val=\"" << (anyMarked ? 1 : 0) << "\"/>";
-        if (bubble) xml << "<c:bubbleScale val=\"100\"/>";
-        if (stock) {
-            // The bar from low to high; with an opening value, the box
-            // between it and the close.
-            const char* ink = "<c:spPr><a:ln w=\"9525\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill></a:ln></c:spPr>";
-            xml << "<c:hiLowLines>" << ink << "</c:hiLowLines>";
-            if (chart.series.size() >= 4) {
-                xml << "<c:upDownBars><c:gapWidth val=\"150\"/>"
-                       "<c:upBars><c:spPr><a:solidFill><a:srgbClr val=\"FFFFFF\"/></a:solidFill><a:ln w=\"9525\"><a:solidFill>"
-                       "<a:srgbClr val=\"000000\"/></a:solidFill></a:ln></c:spPr></c:upBars>"
-                       "<c:downBars><c:spPr><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill><a:ln w=\"9525\"><a:solidFill>"
-                       "<a:srgbClr val=\"000000\"/></a:solidFill></a:ln></c:spPr></c:downBars></c:upDownBars>";
-            }
-        }
-        if (pie) {
-            xml << "<c:firstSliceAng val=\"0\"/>";
-            if (chart.kind == Kind::Doughnut) xml << "<c:holeSize val=\"50\"/>";
-        } else {
-            xml << "<c:axId val=\"1\"/><c:axId val=\"2\"/>";
-        }
-        xml << "</" << tag << ">";
-        if (!pie) {
-            // The axis the categories (a scatter chart's x) run along, and
-            // the values' - at the left and foot for bars lying down.
-            const bool lying = chart.kind == Kind::Bar;
-            const char* across = scatter || bubble ? "c:valAx" : "c:catAx";
-            xml << "<" << across << "><c:axId val=\"1\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
-                   "<c:delete val=\"0\"/><c:axPos val=\"" << (lying ? "l" : "b") << "\"/>"
-                << (scatter || bubble || radar ? "<c:majorGridlines/>" : "")
-                << "<c:tickLblPos val=\"nextTo\"/><c:crossAx val=\"2\"/></" << across << ">"
-                   "<c:valAx><c:axId val=\"2\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>"
-                   "<c:delete val=\"0\"/><c:axPos val=\"" << (lying ? "b" : "l") << "\"/><c:majorGridlines/>"
-                   "<c:tickLblPos val=\"nextTo\"/><c:crossAx val=\"1\"/></c:valAx>";
-        }
-        xml << "</c:plotArea>";
-        if (chart.legend) xml << "<c:legend><c:legendPos val=\"r\"/><c:overlay val=\"0\"/></c:legend>";
-        xml << "<c:plotVisOnly val=\"1\"/></c:chart></c:chartSpace>";
-        return xml.str();
-    }
+    // A chart's part (word/charts/chartN.xml): UltraCanvasDrawingML writes it,
+    // as it writes the PowerPoint writer's.
+    static std::string BuildChartPartXml(const RichChart& chart) { return WriteDrawingMLChart(chart); }
     std::vector<std::string> chartParts_;         // word/charts/chart<n>.xml, n from 1 (relationship rIdChart<n>)
 
     void WriteDrawingFrame(std::ostringstream& xml, const RichTextRun& run, const RichTextFrame& frame) {

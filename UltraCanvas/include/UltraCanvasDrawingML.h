@@ -13,6 +13,7 @@
 // Elements are matched by their local name, whatever prefix a part binds the
 // namespace to (c:, a:, cdr:, ns0:...).
 //
+// Version: 1.1.0 - WriteDrawingMLChart: a RichChart as a chart part (moved from the .docx writer)
 // Version: 1.0.0 - ReadDrawingMLChart and DrawingMLColor, moved out of the .docx reader
 // Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
@@ -54,5 +55,11 @@ std::string DrawingMLColor(const tinyxml2::XMLElement* holder,
 // the XML does not parse or holds no series with values.
 bool ReadDrawingMLChart(const std::string& chartXml, const std::map<std::string, std::string>& themeColors,
                         RichChart& out);
+
+// The chart part (c:chartSpace) for `chart`, as Word and PowerPoint read it:
+// its kind, series with their values as literals (no workbook behind them),
+// colours where the series state one, categories, title, legend, the axes
+// and the ranges the chart states. ReadDrawingMLChart reads it back.
+std::string WriteDrawingMLChart(const RichChart& chart);
 
 } // namespace UltraCanvas

@@ -51,6 +51,17 @@ It answers false - and leaves `out` alone - when the XML does not parse or
 holds no series with a value. Elements are matched by their local name,
 whatever prefix the part binds the namespace to (`c:`, `ch:`, `ns0:` ...).
 
+## Writing a chart
+
+`WriteDrawingMLChart(chart)` gives the chart part for a `RichChart` - the
+`.docx` and the PowerPoint writers both call it: the kind, each series' name,
+values as literals (there is no workbook behind them; Word and PowerPoint show
+the chart and offer no data to edit), its colour where it states one (lines,
+scatter points and bubbles without one take the Office palette's), a pie's
+slice colours, the categories, the title, the legend, the axes and the ranges
+the chart states (`valueMin` / `valueMax`, a scatter chart's `xMin` / `xMax`).
+`ReadDrawingMLChart` reads it back as it was.
+
 ## Colours
 
 <!-- doc-check: const tinyxml2::XMLElement* solidFill; std::map<std::string, std::string> theme; -->

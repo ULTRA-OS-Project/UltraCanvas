@@ -791,7 +791,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   layout, master and theme (`themeColors`, `majorFont` / `minorFont`, and the
   pictures' bytes `withPictures`); connectors, styled tables with merged cells
   (`PptxCellStyle`), picture crops, hyperlinks, charts (UltraCanvasDrawingML)
-  and SmartArt (its drawing part); `PptxNumberLabel`. No writer. In
+  and SmartArt (its drawing part); `PptxNumberLabel`. Writer:
+  `WritePptxPresentation` / `WritePptxPresentationToPackage` (every shape
+  kind, tables, pictures, charts, notes, the theme; .pptx / .potx / .ppsx and
+  the macro-enabled kinds; a password encrypts it), and
+  `PptxPresentationFromRichDocument` (a document laid out as a deck, a slide
+  per first-level heading; a deck's outline back as its slides). In
+  `core/UltraCanvasPresentationPptxWriter.cpp` and
   `core/UltraCanvasPresentationPptx.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
 - **UltraCanvasPptxSlideRender** (`UltraCanvasPptxSlideRender.h`) —

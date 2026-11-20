@@ -3623,6 +3623,15 @@ int main(int argc, char** argv) {
                                       DrawingMLDefaultThemeColors(), untouched) && untouched.title == "kept",
                   "drawingml: a chart without series is refused and leaves the model alone");
         CHECK_MSG(!ReadDrawingMLChart("not xml <", DrawingMLDefaultThemeColors(), untouched), "drawingml: broken XML refused");
+        // Written by WriteDrawingMLChart and read back: the same chart, its
+        // stated axis range kept.
+        RichChart again;
+        CHECK_MSG(ReadDrawingMLChart(WriteDrawingMLChart(chart), DrawingMLDefaultThemeColors(), again) &&
+                      again.kind == chart.kind && again.stacked && again.title == chart.title &&
+                      again.series.size() == 2 && again.series[0].values == chart.series[0].values &&
+                      again.series[0].color == chart.series[0].color && again.categories == chart.categories &&
+                      again.valueMin == 0.0 && again.valueMax == 10.0 && again.legend,
+                  "drawingml: written and read back, the axis range too");
     }
 
     // Every paragraph with borders of "nil", headings in a numbering whose

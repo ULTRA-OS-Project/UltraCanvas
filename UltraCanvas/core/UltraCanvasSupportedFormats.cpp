@@ -229,15 +229,15 @@ namespace {
                         MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)", "" });
         out.push_back({ "pptx", { "pptm", "ppsx", "ppsm", "potx", "potm" }, "PowerPoint presentation (OOXML)",
-                        MediaFormatCategory::Document, true, false,
+                        MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)",
-                        "read as an outline: slide titles, text, tables, speaker notes; "
-                        "no layout, pictures or writer" });
+                        "slides read and drawn, or opened as an outline; written from the deck model or from a "
+                        "document (a slide per heading); password-protected files read and written" });
         out.push_back({ "odp", { "otp", "fodp" }, "OpenDocument Presentation",
                         MediaFormatCategory::Document, true, false,
                         "built-in (miniz + tinyxml2)",
-                        "read as an outline: slide titles, text, tables, speaker notes; "
-                        "no layout, pictures, password-protected files or writer" });
+                        "slides read and drawn (text, tables, pictures), or opened as an outline; "
+                        "password-protected files read; no writer" });
         out.push_back({ "doc", {}, "Word 97-2003 document",
                         MediaFormatCategory::Document, true, false,
                         "built-in OLE2/CFB parser", "plain-text import only" });

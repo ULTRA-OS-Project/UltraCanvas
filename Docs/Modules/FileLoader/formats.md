@@ -125,8 +125,8 @@ the Vector plugin's drawing reader.
 | PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF |
 | Word (OOXML) | `.docx` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2) |
 | OpenDocument Text | `.odt` | ✅ ¶ | ✅ | built-in (miniz + tinyxml2) |
-| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.ppsm`, `.potx`, `.potm` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
-| OpenDocument Presentation | `.odp`, `.otp`, `.fodp` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
+| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.ppsm`, `.potx`, `.potm` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline; written from the deck model (`SavePresentation`) or from a document laid out as a deck (`SaveTextDocument`) |
+| OpenDocument Presentation | `.odp`, `.otp`, `.fodp` | ✅ ¶ | — | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline |
 | Word 97-2003 | `.doc` | ✅ | — | built-in OLE2/CFB parser (text import only) |
 | Markdown | `.md`, `.markdown` | ✅ | ✅ | built-in Markdown engine |
 | Plain text | `.txt` | ✅ | ✅ | built-in |

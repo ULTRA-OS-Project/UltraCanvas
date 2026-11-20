@@ -37,8 +37,14 @@ This app versions itself: [`Docs/Texter/CHANGELOG.md`](../../Docs/Texter/CHANGEL
   `.ppsx`, `.ppsm`, `.potx`, `.potm`) or an OpenDocument one (`.odp`, `.otp`,
   `.fodp`) opens in the same editor as the outline of its slides - each
   slide's number and title, its bullets, tables, pictures' descriptions and
-  speaker notes. It can be saved as `.odt`, `.docx`, Markdown or text; saving
-  it back as a deck is refused, so the deck is never overwritten.
+  speaker notes. It can be saved as `.odt`, `.docx`, Markdown or text, or as
+  a new `.pptx`; saving the outline under the deck's own name is refused, so
+  the deck's slides are never replaced by their outline.
+- **Documents as presentations.** Any document saved as `.pptx` is laid out
+  as a deck: each first-level heading starts a slide and is its title, the
+  paragraphs and lists below it are the slide's text, tables and pictures
+  stand under them. A deck's own outline saved this way comes back as its
+  slides, hidden slides and speaker notes included.
 - **Password-protected documents.** A `.docx`, `.odt`, `.pptx` or `.odp`
   saved with a password (Word, PowerPoint, LibreOffice - its ODF 1.4
   encryption too) asks for the password and opens; a wrong one is asked
