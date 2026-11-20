@@ -20,6 +20,7 @@
 //  - Text becomes TEXT entities per line, one text STYLE per font family.
 //  - DXF transparency predates most consumers; opacity is reported through
 //    the warning callback and colours stay at full strength.
+// Version: 1.1.0 - a non-zero fill's hatch keeps only the subpaths that bound it (odd parity)
 // Version: 1.0.0
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
@@ -27,6 +28,7 @@
 #include "UltraCanvasCADConverters.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
+#include "UltraCanvasVectorFillRule.h"
 #include "UltraCanvasTextUtils.h"   // FormatFixedClassic - dot-decimal, fixed point
 
 #include <algorithm>
@@ -630,6 +632,20 @@ private:
         auto subs = SubPaths(segs, ctm);
         if (subs.empty()) return;
 
+        // A hatch fills by odd parity (style 75 = 0, "normal"): an even-odd
+        // shape as it is, a non-zero one by the subpaths that bound its fill
+        // (UltraCanvasVectorFillRule.h). The outline below keeps them all.
+        std::vector<DxfSub> fillSubs;
+        if (filled) {
+            if (style.ShapeFillRule == VectorStorage::FillRule::EvenOdd) {
+                fillSubs = subs;
+            } else {
+                bool exact = true;
+                fillSubs = SubPaths(NonZeroAsEvenOdd(segs, &exact), ctm);
+                if (!exact) warn("DXF export: a non-zero fill whose subpaths cross is written by odd parity");
+            }
+            if (fillSubs.empty()) filled = false;
+        }
         if (filled) {
             Color fc = ResolveFill(*style.Fill);
             NoteOpacity(style, fc.a);
@@ -639,8 +655,8 @@ private:
             T(entities, 10, 0.0); T(entities, 20, 0.0); T(entities, 30, 0.0);
             T(entities, 210, 0.0); T(entities, 220, 0.0); T(entities, 230, 1.0);
             T(entities, 2, "SOLID"); T(entities, 70, 1); T(entities, 71, 0);
-            T(entities, 91, static_cast<int>(subs.size()));
-            for (const auto& sp : subs) {
+            T(entities, 91, static_cast<int>(fillSubs.size()));
+            for (const auto& sp : fillSubs) {
                 T(entities, 92, 0);   // edge-defined boundary
                 bool needsClose =
                         std::fabs(sp.segs.front().a.x - sp.segs.back().b.x) > 1e-9 ||

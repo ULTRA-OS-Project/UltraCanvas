@@ -1,6 +1,7 @@
 # Tests/VectorFormatsTests.cmake
 # VectorFormatsPluginTest (every vector converter, and detailed.cdr through
-# the patched libcdr), ODGConverterTest, CDRWriterTest and CDRPluginRenderTest. Included by Tests/CMakeLists.txt
+# the patched libcdr), ODGConverterTest, VectorFillRuleTest, CDRWriterTest and
+# CDRPluginRenderTest. Included by Tests/CMakeLists.txt
 # under BUILD_TESTS, and by the top-level CMakeLists.txt on its own under
 # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS - so platforms that build no full
 # test suite (Windows CI) still run the CorelDRAW path on real files.
@@ -65,6 +66,26 @@ if(TARGET UltraCanvasVectorPlugin)
     add_test(NAME ODGConverterTest COMMAND ODGConverterTest
              WORKING_DIRECTORY ${_VFT_BIN_DIR})
     message(STATUS "    Test registered: ODGConverterTest")
+endif()
+
+# ===== FILL RULE =====
+# VectorFillRuleTest: a shape's even-odd / non-zero fill through every writer
+# with a reader (EMF, WMF, DXF, XAR, CDR, ODG, SVG), drawn after the round
+# trip, and the non-zero-as-even-odd subpath helper.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorFillRuleTest...")
+    add_executable(VectorFillRuleTest
+        ${_VFT_DIR}/VectorFillRuleTest.cpp
+    )
+    target_include_directories(VectorFillRuleTest PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(VectorFillRuleTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorFillRuleTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorFillRuleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+    add_test(NAME VectorFillRuleTest COMMAND VectorFillRuleTest
+             WORKING_DIRECTORY ${_VFT_BIN_DIR})
+    message(STATUS "    Test registered: VectorFillRuleTest")
 endif()
 
 # Round-trips a VectorDocument through the Vector plugin's CDR writer and the

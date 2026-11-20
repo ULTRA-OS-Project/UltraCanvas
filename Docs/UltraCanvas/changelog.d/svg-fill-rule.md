@@ -7,8 +7,8 @@
   model does not inherit the rule. The writer puts it on shapes only, never
   on a group whose children would then inherit what the model never gave
   them. The PDF writer (and so AI) fills such a shape with `f*` / `B*`, the
-  EPS writer with `eofill`. XAR, CDR, DXF, DWG, EMF and WMF still fill
-  non-zero whatever the rule.
+  EPS writer with `eofill`; the other writers follow in
+  `vector-fill-rule-writers.md`.
   - Checked in `SVGConverterTest`: an even-odd ring reads, draws with its
     hole open and round-trips; the rule inherits from a group and applies
     from a stylesheet; it is written on the shape alone; PDF and EPS write

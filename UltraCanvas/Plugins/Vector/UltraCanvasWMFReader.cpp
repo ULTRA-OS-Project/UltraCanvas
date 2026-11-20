@@ -12,6 +12,7 @@
 // into one text element with spans). WMF has no bezier record, so curves
 // arrive as the polylines the producer flattened them to. Unknown record
 // types are counted and reported through the warning callback.
+// Version: 1.1.0 - SETPOLYFILLMODE read into ShapeFillRule (ALTERNATE, GDI's default, is even-odd)
 // Version: 1.0.0
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
@@ -150,6 +151,9 @@ private:
     WmfBrush curBrush;
     WmfFont curFont;
     Color textColor = Color(0, 0, 0, 255);
+    // SETPOLYFILLMODE: GDI starts in ALTERNATE, the even-odd rule; WINDING
+    // (2) is non-zero.
+    VectorStorage::FillRule polyFill = VectorStorage::FillRule::EvenOdd;
     uint16_t textAlign = 0;
     Point2Dd curPos{0, 0};   // units
     std::shared_ptr<VectorText> chainedText;
@@ -181,6 +185,7 @@ private:
 
     void ApplyFillStroke(VectorStyle& style) const {
         if (!curBrush.null) style.Fill = curBrush.color;
+        style.ShapeFillRule = polyFill;
         if (!curPen.null) style.Stroke = PenStroke();
     }
 
@@ -197,7 +202,10 @@ private:
     void Record(uint16_t func, size_t b, size_t len) {
         switch (func) {
             case 0x0103: break;   // SETMAPMODE
-            case 0x0102: case 0x0106: break;   // SETBKMODE / SETPOLYFILLMODE
+            case 0x0102: break;   // SETBKMODE
+            case 0x0106:          // SETPOLYFILLMODE
+                polyFill = U16(b) == 2 ? VectorStorage::FillRule::NonZero : VectorStorage::FillRule::EvenOdd;
+                break;
             case 0x020B: orgY += I16(b); orgX += I16(b + 2); break;  // SETWINDOWORG (y,x)
             case 0x020C: winExtY = I16(b); winExtX = I16(b + 2); break;  // SETWINDOWEXT
             case 0x0209: textColor = FromColorRef(U32(b)); break;    // SETTEXTCOLOR

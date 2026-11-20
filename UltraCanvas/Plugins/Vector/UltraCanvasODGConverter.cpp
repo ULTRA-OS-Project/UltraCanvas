@@ -10,6 +10,7 @@
 // picture that is rotated keeps a draw:transform as LibreOffice writes one.
 // Numbers go through FormatFixedClassic: centimetres to four places (a
 // micrometre) for lengths, path data in 1/100 mm like LibreOffice's own.
+// Version: 1.3.0 - a non-zero shape is written by the subpaths that bound its fill (LibreOffice fills even-odd)
 // Version: 1.2.0 - a radial gradient placed as an ellipse is written as an ellipsoid with its angle
 // Version: 1.1.0 - the package carries Thumbnails/thumbnail.png, the page at 256 pixels
 // Version: 1.0.0
@@ -18,6 +19,7 @@
 
 #include "UltraCanvasODGConverter.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
+#include "UltraCanvasVectorFillRule.h"
 #include "UltraCanvasZipPackage.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
@@ -564,6 +566,29 @@ private:
 
     void WritePath(const VectorElement& e, const PathData& local, const Matrix3x3& m, const std::string& layer,
                    double opacity) {
+        // LibreOffice fills every shape even-odd. A non-zero one goes by the
+        // subpaths that bound its fill (UltraCanvasVectorFillRule.h); when
+        // that drops some, the fill and the full outline are two shapes.
+        if (e.Style.Fill && !std::holds_alternative<std::monostate>(*e.Style.Fill) &&
+            e.Style.ShapeFillRule != VectorStorage::FillRule::EvenOdd) {
+            const auto segs = PathOps::NormalizePath(local);
+            bool exact = true;
+            const auto boundary = NonZeroAsEvenOdd(segs, &exact);
+            if (!exact) Skip("non-zero fill whose subpaths cross (written even-odd)");
+            if (boundary.size() != segs.size()) {
+                auto fill = e.Clone();
+                fill->Style.Stroke.reset();
+                fill->Style.ShapeFillRule = VectorStorage::FillRule::EvenOdd;
+                WritePath(*fill, PathOps::SegsToPathData(boundary), m, layer, opacity);
+                if (e.Style.Stroke && e.Style.Stroke->Width > 0) {
+                    auto outline = e.Clone();
+                    outline->Id.clear();
+                    outline->Style.Fill = FillData(std::monostate{});
+                    WritePath(*outline, local, m, layer, opacity);
+                }
+                return;
+            }
+        }
         // The path on the page, absolute moves, lines and cubics.
         PathData page;
         bool closed = false;

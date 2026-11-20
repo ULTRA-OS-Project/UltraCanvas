@@ -28,6 +28,7 @@
 // are off or frozen, invisible entities and paper-space entities (when the
 // model space has content) are not imported; unsupported entity types are
 // counted and reported, never dropped silently.
+// Version: 1.2.0 - a hatch is filled even-odd (odd parity), as CAD programs fill it
 // Version: 1.1.0
 // Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
@@ -1527,6 +1528,11 @@ private:
         }
         if (!emitted) return;
         path->Style.Fill = EntityColor(e, layer, ctx);
+        // Hatch style 75: 0 "normal" and 1 "outer" fill by odd parity - a
+        // loop inside a loop is a hole - which is the even-odd rule; 2
+        // "ignore" fills the outer boundary whole, as non-zero (the default)
+        // does for loops wound alike.
+        if (FI(e, 75) != 2) path->Style.ShapeFillRule = VectorStorage::FillRule::EvenOdd;
         AddTo(e, ctx, path);
     }
 
