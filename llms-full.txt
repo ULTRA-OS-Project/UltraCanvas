@@ -988,15 +988,37 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   UltraCanvasOfficeEncryption), `ReadPptxPresentationFromPackage`,
   `IsPptxPackage`, `IsPptxExtension`, `PptxPresentationToRichDocument` (an
   outline). `UltraCanvasFileLoader::LoadTextDocument` opens a deck that way.
-  For drawing it resolves places, text sizes / colours / alignment, fills and
-  backgrounds through the layout, master and theme (`themeColors`, and the
-  pictures' bytes `withPictures`). No writer. In
+  For drawing it resolves places, text sizes / colours / fonts / alignment /
+  spacing / indents / bullets, insets, turn and mirroring, preset and custom
+  outlines, gradients, dashes and arrowheads, fills and backgrounds through the
+  layout, master and theme (`themeColors`, `majorFont` / `minorFont`, and the
+  pictures' bytes `withPictures`); connectors, styled tables with merged cells
+  (`PptxCellStyle`), picture crops, hyperlinks, charts (UltraCanvasDrawingML)
+  and SmartArt (its drawing part); `PptxNumberLabel`. No writer. In
   `core/UltraCanvasPresentationPptx.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
 - **UltraCanvasPptxSlideRender** (`UltraCanvasPptxSlideRender.h`) —
   `RenderPptxSlide(deck, index, widthPx)`: a slide of a `PptxPresentation` as
-  a `UCPixmap` (background, shapes, pictures, tables, text shrunk to fit).
-  UltraClipboard's slide previews. In `core/UltraCanvasPptxSlideRender.cpp`.
+  a `UCPixmap` (background; shapes turned and mirrored in their outlines,
+  fills, gradients, dashes and arrowheads; cropped pictures; styled and merged
+  tables; charts through the chart engine; text in its fonts, spacing, indents
+  and bullets, shrunk to fit). UltraClipboard's slide previews, UltraViewer's
+  slides, the Filer's deck thumbnails. In `core/UltraCanvasPptxSlideRender.cpp`.
+- **UltraCanvasPresentationPages** (`UltraCanvasPresentationPages.h`) — a deck's
+  slides (`.pptx` and kin, `.odp` / `.otp` / `.fodp`) as an `IPDFDocument`'s
+  pages: `UltraCanvasPDFView` shows them as a PDF's - zoom, thumbnails, page
+  keys, search framed on the shapes; `GetNotes`, `GetPresentation`; protected
+  decks report `NeedsPassword` / `WrongPassword`. Read-only. MediaViewer's
+  slides and slide show. In `core/UltraCanvasPresentationPages.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPages.md`.
+- **UltraCanvasDrawingML** (`UltraCanvasDrawingML.h`) — DrawingML read once
+  for every Office format: `ReadDrawingMLChart` (a `c:chartSpace` chart part
+  into `RichChart` - kind, series, colours, categories, title, legend, axis
+  ranges), `DrawingMLColor` (srgb / sys / scrgb / preset / scheme colours with
+  tint, shade and luminance), `DrawingMLDefaultThemeColors`. Local names, any
+  prefix. The `.docx` reader's and the PowerPoint reader's charts. In
+  `core/UltraCanvasDrawingML.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasDrawingML.md`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
   presentations (`.odp`, `.otp` templates, flat `.fodp`) read as text into
@@ -29192,6 +29214,97 @@ tornadoChart->AddDataRow("Variable C", {{"Negative Impact", -30}, {"Positive Imp
 - Mouse interaction is handled through the base class event system
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasDrawingML.md
+==============================================================================
+
+# UltraCanvasDrawingML — charts and colours from Office files
+
+Word, PowerPoint and Excel keep a chart the same way: a DrawingML chart part
+(`c:chartSpace` - `word/charts/chart1.xml`, `ppt/charts/chart1.xml`,
+`xl/charts/chart1.xml`) holding its kind, its series with the values the
+file last calculated, its categories, title, legend and axes. Colours are
+written the same way in all three too (`a:srgbClr`, `a:schemeClr` with
+`a:lumMod` ...). `UltraCanvasDrawingML.h` reads both once, for every format:
+the `.docx` reader and the PowerPoint reader
+([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)) call it, and
+an `.xlsx` chart view would.
+
+Header: `UltraCanvasDrawingML.h`. It returns UCRichDocument's chart model,
+`RichChart` (`UltraCanvasRichDocument.h`), which
+`UCRichDocument::ChartAsShapes` draws as shapes and
+`DrawRichDocumentChart` (`UltraCanvasRichDocumentChart.h`) draws with the
+chart engine.
+
+## Reading a chart
+
+<!-- doc-check: std::string chartXml; void Show(const UltraCanvas::RichChart& chart); -->
+```cpp
+#include "UltraCanvasDrawingML.h"
+
+using namespace UltraCanvas;
+
+// chartXml: a chart part's XML, read from its package (UCZipPackageReader).
+RichChart chart;
+if (ReadDrawingMLChart(chartXml, DrawingMLDefaultThemeColors(), chart)) {
+    Show(chart);   // e.g. DrawRichDocumentChart into a slide or a page
+}
+```
+
+`ReadDrawingMLChart(xml, themeColors, out)` reads:
+
+- the kind: columns (side by side, stacked, stacked to 100 %), bars lying
+  down (`c:barDir="bar"`), lines, areas, pies and doughnuts (`c:ofPieChart`
+  as a pie), scatter and bubble charts, radar charts (filled or marked) and
+  stock charts; any other kind reads as columns of its series;
+- each series' name, values (`c:val`, or a scatter chart's `c:yVal`), the
+  x of each point (`c:xVal`) and a bubble's size (`c:bubbleSize`), whether
+  its points are joined and marked, smoothed lines (`c:smooth`), and its
+  colour where the file states one - a series without one is left to the
+  viewer's palette;
+- a pie's slices in their own colours (`c:dPt`);
+- the categories, the title (its runs joined), whether there is a legend,
+  and the ranges the file states for its value axes (`c:min` / `c:max`, a
+  scatter chart's x axis apart).
+
+It answers false - and leaves `out` alone - when the XML does not parse or
+holds no series with a value. Elements are matched by their local name,
+whatever prefix the part binds the namespace to (`c:`, `ch:`, `ns0:` ...).
+
+## Colours
+
+<!-- doc-check: const tinyxml2::XMLElement* solidFill; std::map<std::string, std::string> theme; -->
+```cpp
+#include "UltraCanvasDrawingML.h"
+
+using namespace UltraCanvas;
+
+// theme: the package's theme colours, "accent1" -> "4472C4" (from its theme part).
+std::string hex = DrawingMLColor(solidFill, theme);            // "#RRGGBB", or empty
+std::string office = DrawingMLColor(solidFill, DrawingMLDefaultThemeColors());
+```
+
+`DrawingMLColor(holder, themeColors, placeholder)` gives the colour an
+element holding one names (`a:solidFill`, a series' `c:spPr` fill ...) as
+`"#RRGGBB"`: `a:srgbClr`, `a:sysClr` (its `lastClr`), `a:scrgbClr` (linear
+light, converted), `a:prstClr` (the common names) and `a:schemeClr` through
+`themeColors` (`bg1` / `tx1` / `bg2` / `tx2` read as `lt1` / `dk1` / `lt2` /
+`dk2`; `phClr` is `placeholder`, a style reference's colour), with
+`a:shade`, `a:tint`, `a:lumMod` and `a:lumOff` applied. Empty when it names
+none of these. `DrawingMLDefaultThemeColors()` is Office's own scheme, for a
+package without a theme.
+
+## Test
+
+`Tests/WordFormatsTest.cpp` reads charts through the `.docx` reader (columns,
+bars, lines, areas, pies, doughnuts, scatter, bubble, radar and stock
+charts, written and read back), and `ReadDrawingMLChart` directly: a part
+that binds the chart namespace to another prefix, a theme colour darkened
+with `a:lumMod`, an unstated colour left empty, stated axis ranges, the
+title's runs joined; a chart without series and broken XML refused, the
+model left alone. `Tests/PresentationPptxTest.cpp` reads a PowerPoint chart
+python-pptx wrote.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasDrawnMarks.md
 ==============================================================================
 
@@ -33548,7 +33661,7 @@ framework, once, on the first query:
 | `ebook-cover` | the cover the book declares | `epub`, `mobi`, `prc`, `azw`, `azw3` |
 | `video-poster` | a frame a short way into the clip | the containers the media codec registry decodes |
 | `word-processing` | a thumbnail: the first page as the document lays it out (`odt`, `docx`, `doc`); a preview document: the document, the first page's header and footer inline (those and `tex`) | `odt`, `docx`, `doc`, `tex` |
-| `powerpoint` | each slide's number and title, bullets, tables and notes | `pptx`, `pptm`, `ppsx`, `ppsm`, `potx`, `potm` |
+| `powerpoint` | a thumbnail: the first slide as drawn (`RenderPptxSlide`), as large as fits the tile at the slide's shape; a preview document: each slide's number and title, bullets, tables and notes | `pptx`, `pptm`, `ppsx`, `ppsm`, `potx`, `potm`, `odp`, `otp`, `fodp` |
 
 The Filer draws its own styling over these: an outline round a PDF page, a
 shaded edge on a book cover and on a document's page.
@@ -52024,7 +52137,8 @@ tool and a missing plugin should stop it running.
 | `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
-| `Text` | txt, md, json, xml, source code, tex, … and presentations: pptx, pptm, ppsx, ppsm, potx, potm, odp, otp, fodp | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset; a deck (`IsPresentationFile`, classified before text so a flat `.fodp` is not shown as XML) as the outline of its slides - each slide's number and title, its bullets, tables, pictures' descriptions and notes - read by `UltraCanvasFileLoader::LoadTextDocument` ([PowerPoint](UltraCanvasPresentationPptx.md), [OpenDocument](UltraCanvasPresentationOdp.md)) and rendered as Markdown; the info bar says *PRESENTATION*) |
+| `Document` (slides) | presentations: pptx, pptm, ppsx, ppsm, potx, potm, odp, otp, fodp | **Their slides**, as pages in the `UltraCanvasPDFView` ([UltraCanvasPresentationPages](UltraCanvasPresentationPages.md): each slide drawn by `RenderPptxSlide`, the thumbnail strip, zoom, the page keys, search); the info bar names the slide and its speaker notes. **O** shows the outline in the text view instead (`SetPresentationOutline`); **F5** / **Shift+F5** start the slide show (*Presentations* below). Builds without the PDF view show the outline |
+| `Text` | txt, md, json, xml, source code, tex, … and presentations as their outline | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset; a deck (`IsPresentationFile`, classified before text so a flat `.fodp` is not shown as XML) as the outline of its slides - each slide's number and title, its bullets, tables, pictures' descriptions and notes - read by `UltraCanvasFileLoader::LoadTextDocument` ([PowerPoint](UltraCanvasPresentationPptx.md), [OpenDocument](UltraCanvasPresentationOdp.md)) and rendered as Markdown; the info bar says *PRESENTATION*) |
 | `Text` (pages) | html, htm, xhtml, xht, shtml, and an `.xml` that holds XHTML | **Rendered**, as a browser shows the page, in an `UltraCanvasWebView` in the text view's place (*HTML pages* below) - not its source, which is the Texter's to show |
 | `Text` (messages) | eml, emlx, msg | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
 | `Text` (saved pages) | mht, mhtml | **The page it saved**, its style sheets and pictures read from the archive's own parts (*Saved web pages* below) |
@@ -52357,8 +52471,28 @@ and as an icon in the toolbar; **Enter** does the same. Unlock
 asks for the password over the viewer's window - its dialog shows the
 button's lock centred above the password field - - again, saying so, when it
 is not right - and then shows the file whole: the image at full size with
-its layers composited, the PDF in its view with every page, the deck as the
-outline of its slides.
+its layers composited, the PDF in its view with every page, the deck as its
+slides (or, with the outline chosen, the outline of its slides).
+
+## Presentations
+
+A deck opens as its slides in the document view: each slide drawn as the
+PowerPoint reader resolves it ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)),
+the thumbnail strip, zoom, Page Up / Page Down and search over the slides'
+words. The info bar reads *name · PRESENTATION · slide 2 / 12 · size ·
+place in the folder · Notes: ...* - the speaker notes of the slide shown, on
+one line.
+
+- **O** (`SetPresentationOutline(true)`) shows the deck as the outline of its
+  slides in the text view - titles, bullets, tables, notes - and O again
+  brings the slides back. The choice stays for the decks that follow.
+- **F5** starts the slide show from the first slide, **Shift+F5** from the
+  slide shown (`StartPresenting(fromCurrentSlide)`): the window goes full
+  screen, the bars and the thumbnail strip are put away and each slide fills
+  the screen. **→ ↓ Space Return Page Down N** go forward, **← ↑ Page Up
+  Backspace P** back, **Home** / **End** to the first and last; every other
+  key is swallowed. **Escape** (`StopPresenting`) ends it and restores the
+  bars, the strip and the window. Moving to another file ends it too.
 
 Nothing asks on its own: browsing a folder of protected files never pops up
 a prompt. The info bar says *password-protected*, and the Details panel adds
@@ -62939,6 +63073,81 @@ preview page take the new types - and that an `.odp` or `.pptx` that is no
 deck is refused rather than read as text.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasPresentationPages.md
+==============================================================================
+
+# UltraCanvasPresentationPages — a deck's slides as a document's pages
+
+`UltraCanvasPresentationPages` is an `IPDFDocument` (`UltraCanvasPDF.h`)
+whose pages are a presentation's slides. Whatever shows a PDF through that
+interface shows a deck the same way: `UltraCanvasPDFView` draws each slide at
+its zoom, lists them in its thumbnail strip, moves through them with its page
+keys and searches their text, each hit framed on its shape. UltraViewer
+(MediaViewer) opens decks this way.
+
+Header: `UltraCanvasPresentationPages.h`. It reads a PowerPoint deck (`.pptx`
+and kin, [UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md), with
+its pictures) or an OpenDocument presentation (`.odp`, `.otp`, `.fodp`,
+[UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md)); each slide is
+drawn by `RenderPptxSlide`.
+
+## Showing one
+
+<!-- doc-check: std::string path; std::string password; std::shared_ptr<UltraCanvas::UltraCanvasPDFView> view; void AskForPassword(); void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasPresentationPages.h"
+#include "Plugins/Documents/UltraCanvasPDFView.h"
+
+using namespace UltraCanvas;
+
+auto pages = std::make_unique<UltraCanvasPresentationPages>();
+if (pages->Open(path, password)) {
+    view->SetDocument(std::move(pages));
+    view->SetZoomMode(UltraCanvasPDFView::ZoomMode::FitPage);
+} else if (pages->GetLastOpenError() == PDFOpenError::NeedsPassword ||
+           pages->GetLastOpenError() == PDFOpenError::WrongPassword) {
+    AskForPassword();                        // protected: ask (again)
+} else {
+    ShowError(pages->GetLastErrorText());    // damaged, or no deck
+}
+```
+
+| Member | Gives |
+|---|---|
+| `Open(path, password)` / `OpenInMemory` | reads the deck; no file handle is kept. `GetLastOpenError` is `NeedsPassword` for a protected deck opened without its password, `WrongPassword` with a wrong one, `Failed` otherwise, `GetLastErrorText` the reader's sentence |
+| `OpenFromBytes(package)` | a `.pptx` package already in memory |
+| `GetPageCount` / `GetPageInfo(n)` | the slides; every page the deck's slide size in points, its label the slide's number |
+| `RenderPage(n, settings)` / `RenderThumbnail(n, maxDim)` | the slide drawn at the settings' DPI and zoom, or fitted into `maxDim`, as plain RGBA |
+| `GetPageText(n)` | the slide's text in reading order - paragraphs, table cells, a chart's title - then its speaker notes after a blank line |
+| `ExtractTextRuns(n)` / `Search(query, options)` | one run per paragraph or cell, framed on its shape (points); hits found case-insensitively, or as whole words, in a page range |
+| `ListImages(n)` / `ExtractImageBytes(ref)` | the slide's pictures, framed on their shapes, and their bytes |
+| `GetPresentation()` / `GetNotes(n)` | the deck as read, and a slide's speaker notes as text |
+
+Every write (`Save`, `DeletePage`, `AddTextAnnotation` ...) answers false,
+and `ExtractTextChars` gives nothing: a slide's text is selected by searching,
+not by dragging across it. Hidden slides are pages like the others.
+
+## In UltraViewer
+
+MediaViewer shows a deck as its slides in its document view, the info bar
+naming the slide shown and its speaker notes ("slide 2 / 5 · Notes: ..."). The
+O key shows the deck's outline in the text view instead, and back
+(`SetPresentationOutline`). F5 starts the slide show from the first slide,
+Shift+F5 from the one shown (`StartPresenting`): the window fills the screen,
+the bars and the thumbnail strip are put away, each slide fills it; the
+arrows, Space, Return, Page Up / Down, N and P move, Home and End go to the
+first and last, and Escape (`StopPresenting`) brings everything back. A
+protected deck is locked with the Unlock button, as a PDF is. See
+[UltraCanvasMediaViewer](UltraCanvasMediaViewer.md).
+
+## Test
+
+`Tests/MediaViewerToolsTest.cpp` opens `.pptx`, `.odp` and `.fodp` decks as
+slides - the page count, the slides' text, the info bar's slide and notes, a
+search - starts and stops the slide show, shows the outline instead and back,
+and unlocks protected decks.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPresentationPptx.md
 ==============================================================================
 
@@ -62954,9 +63163,12 @@ password-protected deck is decrypted on the way in, through the same code as
 a protected `.xlsx` or `.docx` ([UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)).
 
 For drawing a slide it also resolves what each shape takes from its layout,
-master and theme - place, text sizes, colours and alignment, anchor, fill,
-outline, the background - and `UltraCanvasPptxSlideRender.h` draws a slide
-from that as a picture (*Drawing a slide*, below). There is no writer.
+master and theme - place, the text's size, colour, font, alignment, spacing,
+indents and bullets, anchor and insets, fill, outline, outline shape, turn
+and mirroring, the background - and reads connectors, styled tables with
+merged cells, cropped pictures, charts and SmartArt.
+`UltraCanvasPptxSlideRender.h` draws a slide from that as a picture
+(*Drawing a slide*, below). There is no writer.
 
 An OpenDocument presentation (`.odp`, `.otp`, `.fodp`) is read into the same
 model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), so the
@@ -62990,10 +63202,13 @@ its header), a line `[Picture: <description>]` for each picture, and the
 speaker notes as a block quote opening "Notes:"; a rule between slides.
 
 UltraFiler's preview page (`UltraCanvasFilerWidget::TextPreviewLines`) shows
-the same outline: the first page of a deck's slide text on its tile and in
-the detail pane. A protected deck keeps its type glyph, since the preview has
-no password to ask for. UltraTexter opens a deck as the outline in its
-document editor, and refuses to save it back as a deck.
+the same outline in the detail pane; the file's thumbnail is its first slide
+as drawn. A protected deck keeps its type glyph, since the preview has no
+password to ask for. UltraTexter opens a deck as the outline in its document
+editor, and refuses to save it back as a deck. UltraViewer (MediaViewer)
+shows a deck as its slides, through
+[UltraCanvasPresentationPages](UltraCanvasPresentationPages.md), with a
+slide show.
 
 A file named `.pptx` (or `.odp`) that is no deck - damaged, or something else
 renamed - is refused by `LoadTextDocument` ("The file is not a valid
@@ -63029,11 +63244,16 @@ UCRichDocument outline = PptxPresentationToRichDocument(deck);
 
 | Type | Holds |
 |---|---|
-| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `pictures` (bytes by part, read `withPictures`) |
+| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `majorFont` / `minorFont` (the theme's heading and body typefaces), `pictures` (bytes by part, read `withPictures`) |
 | `PptxSlide` | `number` (1-based), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black) |
-| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `placeholder` (its type), `anchor`, `fontScale` (autofit), `fill`, `line` and `lineWidthPt`, `geometry`, `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`) and `altText` |
-| `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`, `align`; `Text()` joins the runs |
-| `PptxRun` | `text` (`"\n"` for a line break), `bold`, `italic`, `underline`, `sizePt` and `color` (resolved; 0 / empty when nothing says) |
+| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`, `Connector`, `Chart`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `rotationDeg`, `flipH` / `flipV`, `placeholder` (its type), `anchor`, `fontScale` (autofit), the text's `insetLeft` ... `insetBottom` (EMU, -1: PowerPoint's own), `wrap`, `textRotation` (90 / 270 for vertical text), `fill` (and a gradient's `gradientStops`, `gradientAngleDeg`, `gradientRadial`), `line`, `lineWidthPt`, `dash`, `arrowStart` / `arrowEnd`, `geometry` (the preset) or `customPath` (a freeform's outline, 0..1 across the box), `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `cellStyles` (`PptxCellStyle` each), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`), `altText` and crop (`cropLeft` ... `cropBottom`, a share of the picture); a chart's `chart` (`RichChart`) |
+| `PptxCellStyle` | a table cell's `fill`, `textColor` and `bold` (from the table style), its four borders (`color`, `widthPt`), `gridSpan` / `rowSpan`, `mergedAway` (covered by a merged cell), insets and `anchor` |
+| `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`, `align`, `spaceBefore` / `spaceAfter` / `lineSpacing` (`PptxSpacing`: a share of a line or points), `marginLeft` and `indent` (EMU), `bulletChar`, `bulletFont`, `bulletColor`, `bulletSizePercent`, `numberScheme` (`a:buAutoNum`'s type) and `numberStartAt`; `Text()` joins the runs |
+| `PptxRun` | `text` (`"\n"` for a line break), `bold`, `italic`, `underline`, `strike`, `baseline` (per cent: > 0 superscript, < 0 subscript), `allCaps` / `smallCaps`, `highlight`, `hyperlink` (a URL, or `#slide3` for a jump within the deck), `sizePt`, `color` and `font` (resolved; 0 / empty when nothing says) |
+
+`PptxNumberLabel(scheme, n)` gives the label PowerPoint shows for item `n`
+of a numbering scheme: `"3."` (`arabicPeriod`), `"c)"` (`alphaLcParenR`),
+`"(iv)"` (`romanLcParenBoth`), `"BB."` for the 28th of `alphaUcPeriod`.
 
 `IsPptxPackage(path)` tells a deck by its content (a ZIP holding
 `ppt/presentation.xml`); a protected deck is a compound file instead, which
@@ -63051,17 +63271,48 @@ reads a package already in memory.
   or `buAutoNum`. The date, footer and slide-number placeholders are slide
   furniture and left out.
 - Groups are read through, their shapes in order and placed on the slide (the
-  group's offset and scaling applied). A placeholder that names no place
+  group's offset and scaling applied). Connectors (`p:cxnSp`) are read as
+  lines: their outline (`line`, a bent or curved connector's preset), dash
+  and arrowheads. A placeholder that names no place
   takes its layout's, then its master's (matched by `idx`, then by type; a
   centred title and a subtitle fall back to the master's title and body);
   `placeInherited` says so. One found nowhere keeps 0, 0, 0, 0.
-- A run's size, colour and its paragraph's alignment resolve from the run,
-  then the shape's list style, the layout's and master's placeholder, the
-  master's title or body text style (a text box: the deck's default text
-  style), the colour of a shape's style (`fontRef`) coming before the master's.
+- A run's size, colour, typeface, bold and italic, and its paragraph's
+  alignment, spacing, margin, indent and bullet (`buNone`, `buChar` with its
+  `buFont`, `buClr` and `buSzPct`, `buAutoNum` with its scheme and start)
+  resolve from the run and paragraph, then the shape's list style, the
+  layout's and master's placeholder, the master's title or body text style
+  (a text box: the deck's default text style), the colour of a shape's style
+  (`fontRef`) coming before the master's. `+mj-lt` and `+mn-lt` name the
+  theme's heading and body fonts; a run with no typeface anywhere takes the
+  body font.
   Theme colours (`schemeClr`) go through the master's colour map and the
   theme, with `lumMod`, `lumOff`, `tint` and `shade` applied. A shape with a
   fill or outline and no text is kept (a coloured bar, a circle).
+- A shape's turn and mirroring (`a:xfrm` `rot`, `flipH`, `flipV`), its
+  preset outline or its custom one (`a:custGeom`: lines, curves and arcs, as
+  one path), a gradient fill (`a:gradFill`: its stops, a linear angle or a
+  round one), its outline's dash (`a:prstDash`) and arrowheads (`headEnd`,
+  `tailEnd`), and its text's insets, `wrap="none"` and vertical text
+  (`vert`).
+- Tables: the table style the table names (`a:tableStyleId`, read from
+  `ppt/tableStyles.xml`; one the package does not define is PowerPoint's
+  built-in *Medium Style 2* in the accent its id names), its parts as the
+  table's flags (`firstRow`, `bandRow` ...) switch them on - whole table,
+  bands, edge columns, edge rows, the narrower over the wider - then each
+  cell's own fill, borders (`a:lnL` ...), margins and anchor; `gridSpan`,
+  `rowSpan`, `hMerge` and `vMerge` for merged cells.
+- Pictures: their crop (`a:srcRect`), outline and outline shape. A picture
+  in a placeholder, or the picture an embedded object (OLE) shows, too.
+- Charts (`c:chart` in a graphic frame): the chart part read by
+  [UltraCanvasDrawingML](UltraCanvasDrawingML.md), as the `.docx` reader
+  reads its charts - kind, series, categories, title, legend, axis ranges.
+- SmartArt: the drawing PowerPoint saves beside a diagram's data (the
+  `dsp:drawing` part the data model's `dsp:dataModelExt` names), read as
+  ordinary shapes placed in the diagram's frame. A diagram saved without
+  that drawing shows nothing.
+- Hyperlinks (`a:hlinkClick`): an external target as its URL, a jump to
+  another slide as `#slide<n>`.
 - Speaker notes: the body placeholder of the slide's notes slide.
 - `mc:AlternateContent` (Markup Compatibility, ECMA-376 Part 3), which
   PowerPoint wraps around what an older reader may not know - an equation,
@@ -63069,23 +63320,41 @@ reads a package already in memory.
   (or, inside a paragraph, text) is read, else the `mc:Fallback`; never both.
   An equation (`a14:m`) reads as the text of its `m:t` runs ("p=r−c"), a
   chart the reader cannot read as the picture its Fallback holds.
-- Not read: theme fonts, gradient, picture and pattern fills, effects,
-  charts, SmartArt, embedded objects, comments, animations and transitions.
-  Pictures are named; their bytes are kept with `withPictures`, not decoded.
+- Not read: picture and pattern fills, effects (shadows, glow, 3D), comments,
+  animations and transitions, embedded objects beyond the picture they show,
+  video and audio beyond the poster frame. Pictures are named; their bytes
+  are kept with `withPictures`, not decoded.
 
 ## Drawing a slide
 
 `RenderPptxSlide(deck, index, widthPx)` (`UltraCanvasPptxSlideRender.h`)
 draws a slide of a deck read `withPictures` as a `UCPixmap`, `widthPx` wide
 and as high as the deck's slide shape: the background, then the shapes back
-to front - rectangles, rounded rectangles and ellipses in their fill and
-outline, pictures stretched to their box (a grey box with the description
-when one cannot be decoded), tables in the theme's first accent (a header row
-and banded rows), and text in its box's insets at its sizes, colours and
-alignment, with bullets ("•", "–" on every second level) and numbers, at its
-anchor. Text in a placeholder too tall for its box is shrunk until it fits,
-down to 40 %. The text is set in the system font. UltraClipboard previews a
-copied deck's slides with it.
+to front, each turned and mirrored as it says:
+
+- outlines from `RichShape::ApplyPreset` (rectangles, rounded rectangles,
+  ellipses, triangles, arrows, stars, polygons, callouts, flowchart shapes,
+  bent and curved connectors) or the shape's custom path, in a solid or
+  gradient fill, outlined solid, dashed or dotted, with arrowheads on a
+  line's ends;
+- pictures cropped as the deck crops them, clipped to their outline (a grey
+  box with the description when one cannot be decoded);
+- tables in their cells' fills and borders, merged cells spanning;
+- charts drawn by the chart engine (`DrawRichDocumentChart`), laid out at
+  their size on the slide and scaled; a build without the engine draws a box
+  with the chart's title;
+- text in its box's insets at its sizes, colours and typefaces, aligned,
+  spaced and indented as its paragraphs say, the bullet in its character
+  (a Wingdings or Symbol code drawn as the Unicode character it shows), colour
+  and size hanging in the indent, numbers in their scheme; strike, super- and
+  subscript, capitals, highlight, and links in the theme's link colour,
+  underlined; vertical text turned, `wrap="none"` text on one line. Text in a
+  placeholder too tall for its box is shrunk until it fits, down to 40 %.
+
+A typeface the system does not have falls back as the text layout's font
+matching chooses. UltraClipboard previews a copied deck's slides with it,
+UltraViewer shows them, and the Filer's thumbnail of a deck is its first
+slide.
 
 <!-- doc-check: std::string path; void Show(std::shared_ptr<UltraCanvas::UCPixmap> slide); -->
 ```cpp
@@ -63123,6 +63392,19 @@ it is refused without the password, read with it, and opened by
 `UltraCanvasFileLoader::LoadTextDocument`. The same test checks UltraFiler's
 preview page: the plain deck's slides, titles first, and no page for the
 protected deck or a protected `.docx`.
+
+`Tests/PresentationPptxTest.cpp` reads `Tests/fixtures/pptx-features.pptx`,
+which python-pptx writes (`Tests/fixtures/make-pptx-features-fixture.py`):
+typefaces and the theme's body font, strike, superscript, capitals, a
+highlight, a hyperlink, a Wingdings bullet with its colour and size, an
+alphabetic numbering from 3, spacing, margins and hanging indents, insets,
+vertical text; a star turned, mirrored, filled with a gradient and outlined in
+dashes; a connector with an arrowhead and a bent one; a freeform outline; a
+table with merged cells, a filled cell with its own border and its style's
+header row; a chart; a cropped picture. A deck rebuilt in memory adds a
+SmartArt diagram with its drawing, a hyperlink to another slide and a table
+style from `ppt/tableStyles.xml`. Each slide is drawn and looked at where the
+shapes are (`UC_PPTX_TEST_DUMP=<dir>` writes the drawn slides out).
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasProgressDialog.md
@@ -112316,6 +112598,14 @@ without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the
 encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
+
+==============================================================================
+FILE: Docs/UltraClipboard/changelog.d/slide-previews-as-drawn.md
+==============================================================================
+
+- **Copied slides preview as they look**: their fonts, spacing and bullets,
+  turned and freeform shapes, gradients, connectors and arrowheads, styled
+  tables with merged cells, cropped pictures, charts and SmartArt.
 
 ==============================================================================
 FILE: Docs/UltraNotifications/README.md

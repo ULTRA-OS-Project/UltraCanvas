@@ -2,6 +2,8 @@
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
+// Version: 1.10.0 - ApplyPreset: connectors (bent, curved), double and notched arrows, stars of 6 to 32 points,
+//                   hepta-, deca- and dodecagons, snipped and rounded rectangles, callouts, more flowchart shapes
 // Version: 1.9.1 - ChartAsShapes: bubble, radar and stock charts
 // Version: 1.9.0 - ChartAsShapes: a chart's data as drawn shapes (moved from the DOCX reader)
 // Version: 1.8.0 - WithFramesInline: a frame's or nested table's words in a table cell's lines
@@ -1412,6 +1414,118 @@ bool RichShape::ApplyPreset(const std::string& preset) {
         polygon({{0.5f, 0}, {0.6f, 0.4f}, {1, 0.5f}, {0.6f, 0.6f}, {0.5f, 1}, {0.4f, 0.6f}, {0, 0.5f}, {0.4f, 0.4f}});
         return true;
     }
+    // Lines that turn, as connectors draw them: open, never filled.
+    auto open = [&](std::initializer_list<std::pair<float, float>> points) {
+        kind = Kind::Path;
+        bool first = true;
+        for (const auto& [x, y] : points) {
+            PathPoint point;
+            point.op = first ? Op::Move : Op::Line;
+            point.x = x;
+            point.y = y;
+            path.push_back(point);
+            first = false;
+        }
+    };
+    if (preset == "bentConnector2") { open({{0, 0}, {1, 0}, {1, 1}}); return true; }
+    if (preset.rfind("bentConnector", 0) == 0) { open({{0, 0}, {0.5f, 0}, {0.5f, 1}, {1, 1}}); return true; }
+    if (preset.rfind("curvedConnector", 0) == 0) {
+        kind = Kind::Path;
+        PathPoint start;
+        start.op = Op::Move;
+        path.push_back(start);
+        PathPoint curve;
+        curve.op = Op::Curve;
+        curve.c1x = 0.5f;
+        curve.c2x = 0.5f;
+        curve.c2y = 1;
+        curve.x = 1;
+        curve.y = 1;
+        path.push_back(curve);
+        return true;
+    }
+    if (preset == "leftRightArrow") {
+        polygon({{0, 0.5f}, {0.2f, 0}, {0.2f, 0.25f}, {0.8f, 0.25f}, {0.8f, 0}, {1, 0.5f}, {0.8f, 1}, {0.8f, 0.75f},
+                 {0.2f, 0.75f}, {0.2f, 1}});
+        return true;
+    }
+    if (preset == "upDownArrow") {
+        polygon({{0.5f, 0}, {1, 0.2f}, {0.75f, 0.2f}, {0.75f, 0.8f}, {1, 0.8f}, {0.5f, 1}, {0, 0.8f}, {0.25f, 0.8f},
+                 {0.25f, 0.2f}, {0, 0.2f}});
+        return true;
+    }
+    if (preset == "notchedRightArrow") {
+        polygon({{0, 0.25f}, {0.6f, 0.25f}, {0.6f, 0}, {1, 0.5f}, {0.6f, 1}, {0.6f, 0.75f}, {0, 0.75f}, {0.12f, 0.5f}});
+        return true;
+    }
+    // Regular stars and polygons, their points round the box.
+    auto ring = [&](int corners, float inner) {
+        kind = Kind::Path;
+        const int points = inner > 0 ? corners * 2 : corners;
+        for (int i = 0; i < points; ++i) {
+            const double angle = -3.14159265358979323846 / 2 + 2 * 3.14159265358979323846 * i / points;
+            const double reach = inner > 0 && i % 2 ? inner : 1.0;
+            PathPoint point;
+            point.op = i == 0 ? Op::Move : Op::Line;
+            point.x = static_cast<float>(0.5 + 0.5 * reach * std::cos(angle));
+            point.y = static_cast<float>(0.5 + 0.5 * reach * std::sin(angle));
+            path.push_back(point);
+        }
+        PathPoint close;
+        close.op = Op::Close;
+        path.push_back(close);
+    };
+    if (preset == "star6") { ring(6, 0.58f); return true; }
+    if (preset == "star7") { ring(7, 0.6f); return true; }
+    if (preset == "star8") { ring(8, 0.62f); return true; }
+    if (preset == "star10") { ring(10, 0.7f); return true; }
+    if (preset == "star12") { ring(12, 0.75f); return true; }
+    if (preset == "star16" || preset == "star24" || preset == "star32") { ring(16, 0.8f); return true; }
+    if (preset == "heptagon") { ring(7, 0); return true; }
+    if (preset == "decagon") { ring(10, 0); return true; }
+    if (preset == "dodecagon") { ring(12, 0); return true; }
+    if (preset == "snip1Rect") { polygon({{0, 0}, {0.83f, 0}, {1, 0.17f}, {1, 1}, {0, 1}}); return true; }
+    if (preset == "snip2SameRect") { polygon({{0.17f, 0}, {0.83f, 0}, {1, 0.17f}, {1, 1}, {0, 1}, {0, 0.17f}}); return true; }
+    if (preset == "plaque" || preset == "round1Rect" || preset == "round2SameRect" || preset == "round2DiagRect"
+        || preset == "snipRoundRect") {
+        kind = Kind::RoundRectangle;
+        return true;
+    }
+    if (preset == "flowChartManualInput") { polygon({{0, 0.2f}, {1, 0}, {1, 1}, {0, 1}}); return true; }
+    if (preset == "flowChartManualOperation") { polygon({{0, 0}, {1, 0}, {0.8f, 1}, {0.2f, 1}}); return true; }
+    if (preset == "flowChartOffpageConnector") { polygon({{0, 0}, {1, 0}, {1, 0.8f}, {0.5f, 1}, {0, 0.8f}}); return true; }
+    if (preset == "flowChartPunchedCard") { polygon({{0.2f, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0.2f}}); return true; }
+    if (preset == "flowChartPredefinedProcess" || preset == "flowChartInternalStorage") return true;   // a box
+    if (preset == "flowChartDocument" || preset == "flowChartMultidocument") {
+        kind = Kind::Path;
+        auto add = [&](Op op, float x, float y) {
+            PathPoint point;
+            point.op = op;
+            point.x = x;
+            point.y = y;
+            path.push_back(point);
+        };
+        add(Op::Move, 0, 0);
+        add(Op::Line, 1, 0);
+        add(Op::Line, 1, 0.83f);
+        PathPoint wave;
+        wave.op = Op::Curve;
+        wave.c1x = 0.7f;
+        wave.c1y = 0.67f;
+        wave.c2x = 0.3f;
+        wave.c2y = 1.08f;
+        wave.x = 0;
+        wave.y = 0.87f;
+        path.push_back(wave);
+        add(Op::Close, 0, 0);
+        return true;
+    }
+    if (preset == "wedgeRectCallout" || preset == "wedgeRoundRectCallout" || preset == "wedgeEllipseCallout") {
+        // The box and its tail, pointing down to the left.
+        polygon({{0, 0}, {1, 0}, {1, 0.8f}, {0.42f, 0.8f}, {0.29f, 1}, {0.25f, 0.8f}, {0, 0.8f}});
+        return true;
+    }
+    if (preset == "can" || preset == "cube" || preset == "bevel" || preset == "foldedCorner") return true;   // a box
     return false;
 }
 

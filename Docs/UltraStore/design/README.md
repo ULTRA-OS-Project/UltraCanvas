@@ -26,7 +26,7 @@ over these.
 | `SuperDashboard.dc.html` | the operator's (super admin's) dashboard: merchants, review queue, reports, compliance, operator actions | page |
 | `SuperMerchants.dc.html` | the merchants: the applications for a shop with *Approve* (the merchant id, a message) and *Reject* (the reason), verification requests, the table with terms, warnings, reports, payouts and status | page |
 | `SuperMerchantDetail.dc.html` | one merchant's file: apps, history, compliance, money, open reports, with the Suspend dialog open | page |
-| `SuperReview.dc.html` | app review and release: the queue, the automatic checks, the reviewer's checklist, the store card, the decision | page |
+| `SuperReview.dc.html` | app review and release: the queue, the automatic checks, the reviewer's checklist, the store card, the decision; *Download build* fetches the package the merchant uploaded into the package store (built 2026-11-20) | page |
 | `SuperReports.dc.html` | reports from users and merchants about apps and merchants, one opened with findings and actions | page |
 | `SuperTerms.dc.html` | the merchant terms by version and who accepted, the enforcement policy, warnings by clause, notices sent, send a notice | page |
 | `GamesHome.dc.html` | the games shop variant's Discover: game of the week, the genre tiles, Editor's picks with covers, New releases, Learning games by age, Retro corner and Board games, Free to play, why play from UltraStore | page |
@@ -290,4 +290,5 @@ operator window's *Operators* page and the sign-in section of its
 *Settings* page (`Apps/UltraStoreOperator/ui/OperatorOperatorsPage.cpp`), on
 the marketplace service's operator accounts and the session the account
 service verifies too. The sidebar's *Signed in as Alex, operator* on the
-other `Super*` pages predates the roles: the window now says the role.
+other `Super*` pages now says *admin*, and every one of them has the
+*Operators* item (2026-11-20).

@@ -13,7 +13,7 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "cryptography>=42",
-    "ultrastore-db>=0.3",
+    "ultrastore-db>=0.4",
 ]
 
 [project.optional-dependencies]

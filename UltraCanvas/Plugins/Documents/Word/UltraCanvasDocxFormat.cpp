@@ -2,6 +2,8 @@
 // Word 2007+ (.docx, OOXML WordprocessingML) reader and writer for
 // UCRichDocument. DOCX is an OPC ZIP package: [Content_Types].xml, _rels
 // relationship parts, word/document.xml plus styles/numbering/media parts.
+// Version: 1.18.0 - a chart part and a DrawingML colour are read by UltraCanvasDrawingML (core, shared
+//                   with the PowerPoint reader)
 // Version: 1.17.0 - charts: radar, bubble and stock charts; smoothed lines (c:smooth)
 // Version: 1.16.0 - the chart's drawn shapes are made by UCRichDocument::ChartAsShapes (shared with ODT)
 // Version: 1.15.0 - a chart's data is read into RichTextFrame::chart and written back as a chart part (word/charts)
@@ -38,6 +40,7 @@
 #include "UltraCanvasMathToLatex.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasDrawingML.h"
 #include "UltraCanvasOfficeEncryption.h"
 #include "UltraCanvasTextUtils.h"
 
@@ -1501,10 +1504,7 @@ private:
 
     void LoadTheme() {
         // Office's own scheme, for a package without a theme.
-        themeColors_ = {{"dk1", "000000"}, {"lt1", "FFFFFF"}, {"dk2", "44546A"}, {"lt2", "E7E6E6"},
-                        {"accent1", "4472C4"}, {"accent2", "ED7D31"}, {"accent3", "A5A5A5"},
-                        {"accent4", "FFC000"}, {"accent5", "5B9BD5"}, {"accent6", "70AD47"},
-                        {"hlink", "0563C1"}, {"folHlink", "954F72"}};
+        themeColors_ = DrawingMLDefaultThemeColors();
         std::string path = partFolder_ + "theme/theme1.xml";
         for (const auto& [id, rel] : relationships_) {
             if (rel.type.size() >= 6 && rel.type.compare(rel.type.size() - 6, 6, "/theme") == 0) {
@@ -1537,94 +1537,7 @@ private:
     // as "#RRGGBB", its tint, shade and luminance changes applied; `placeholder`
     // is the colour a style reference passes in (a:schemeClr val="phClr").
     std::string DrawingColor(tinyxml2::XMLElement* holder, const std::string& placeholder = "") const {
-        if (!holder) return "";
-        tinyxml2::XMLElement* colour = nullptr;
-        std::string hex;
-        for (auto* child = holder->FirstChildElement(); child && hex.empty(); child = child->NextSiblingElement()) {
-            const std::string tag = child->Name() ? child->Name() : "";
-            colour = child;
-            if (tag == "a:srgbClr") hex = Attr(child, "val");
-            else if (tag == "a:sysClr") hex = Attr(child, "lastClr");
-            else if (tag == "a:scrgbClr") {
-                auto channel = [&](const char* name) {
-                    const float linear = std::clamp(child->FloatAttribute(name, 0.0f) / 100000.0f, 0.0f, 1.0f);
-                    const float value = linear <= 0.0031308f ? linear * 12.92f
-                                                             : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
-                    return static_cast<int>(std::lround(value * 255.0f));
-                };
-                char buffer[8];
-                std::snprintf(buffer, sizeof buffer, "%02X%02X%02X", channel("r"), channel("g"), channel("b"));
-                hex = buffer;
-            } else if (tag == "a:schemeClr") {
-                std::string name = Attr(child, "val");
-                if (name == "phClr") {
-                    hex = placeholder.size() == 7 ? placeholder.substr(1) : "";
-                    continue;
-                }
-                if (name == "bg1") name = "lt1";
-                else if (name == "tx1") name = "dk1";
-                else if (name == "bg2") name = "lt2";
-                else if (name == "tx2") name = "dk2";
-                auto found = themeColors_.find(name);
-                if (found != themeColors_.end()) hex = found->second;
-            } else if (tag == "a:prstClr") {
-                static const std::map<std::string, std::string> named = {
-                    {"black", "000000"}, {"white", "FFFFFF"}, {"red", "FF0000"}, {"green", "008000"},
-                    {"blue", "0000FF"}, {"yellow", "FFFF00"}, {"gray", "808080"}, {"orange", "FFA500"}};
-                auto found = named.find(Attr(child, "val"));
-                if (found != named.end()) hex = found->second;
-            }
-        }
-        if (hex.size() != 6 || !colour) return "";
-        float rgb[3];
-        for (int i = 0; i < 3; ++i) {
-            rgb[i] = static_cast<float>(std::strtol(hex.substr(static_cast<size_t>(i) * 2, 2).c_str(), nullptr, 16)) / 255.0f;
-        }
-        for (auto* change = colour->FirstChildElement(); change; change = change->NextSiblingElement()) {
-            const std::string tag = change->Name() ? change->Name() : "";
-            const float amount = change->FloatAttribute("val", 100000.0f) / 100000.0f;
-            if (tag == "a:shade") {
-                for (float& c : rgb) c *= amount;
-            } else if (tag == "a:tint") {
-                for (float& c : rgb) c = c + (1.0f - c) * (1.0f - amount);
-            } else if (tag == "a:lumMod" || tag == "a:lumOff") {
-                // In HSL: lightness times lumMod, plus lumOff.
-                const float hi = std::max({rgb[0], rgb[1], rgb[2]}), lo = std::min({rgb[0], rgb[1], rgb[2]});
-                float l = (hi + lo) * 0.5f;
-                float sat = 0.0f, hue = 0.0f;
-                if (hi > lo) {
-                    const float d = hi - lo;
-                    sat = l > 0.5f ? d / (2.0f - hi - lo) : d / (hi + lo);
-                    if (hi == rgb[0]) hue = (rgb[1] - rgb[2]) / d + (rgb[1] < rgb[2] ? 6.0f : 0.0f);
-                    else if (hi == rgb[1]) hue = (rgb[2] - rgb[0]) / d + 2.0f;
-                    else hue = (rgb[0] - rgb[1]) / d + 4.0f;
-                    hue /= 6.0f;
-                }
-                l = std::clamp(tag == "a:lumMod" ? l * amount : l + amount, 0.0f, 1.0f);
-                auto toRgb = [](float p, float q, float t) {
-                    if (t < 0.0f) t += 1.0f;
-                    if (t > 1.0f) t -= 1.0f;
-                    if (t < 1.0f / 6.0f) return p + (q - p) * 6.0f * t;
-                    if (t < 0.5f) return q;
-                    if (t < 2.0f / 3.0f) return p + (q - p) * (2.0f / 3.0f - t) * 6.0f;
-                    return p;
-                };
-                if (sat <= 0.0f) {
-                    rgb[0] = rgb[1] = rgb[2] = l;
-                } else {
-                    const float q = l < 0.5f ? l * (1.0f + sat) : l + sat - l * sat;
-                    const float p2 = 2.0f * l - q;
-                    rgb[0] = toRgb(p2, q, hue + 1.0f / 3.0f);
-                    rgb[1] = toRgb(p2, q, hue);
-                    rgb[2] = toRgb(p2, q, hue - 1.0f / 3.0f);
-                }
-            }
-        }
-        char out[8];
-        std::snprintf(out, sizeof out, "#%02X%02X%02X", static_cast<int>(std::lround(std::clamp(rgb[0], 0.0f, 1.0f) * 255.0f)),
-                      static_cast<int>(std::lround(std::clamp(rgb[1], 0.0f, 1.0f) * 255.0f)),
-                      static_cast<int>(std::lround(std::clamp(rgb[2], 0.0f, 1.0f) * 255.0f)));
-        return out;
+        return DrawingMLColor(holder, themeColors_, placeholder);
     }
 
     // A wps:wsp that is a plain text box: a rectangle with words, drawn as a
@@ -2554,21 +2467,6 @@ private:
     // stacked to 100%), bars lying down for a bar chart, lines for a line or
     // area chart, slices for a pie or doughnut; any other kind is drawn as
     // columns of its series.
-    static void CollectChartPoints(tinyxml2::XMLElement* from, std::vector<std::string>& out) {
-        for (auto* child = from ? from->FirstChildElement() : nullptr; child; child = child->NextSiblingElement()) {
-            if (std::string(child->Name() ? child->Name() : "") == "c:pt") {
-                const size_t index = static_cast<size_t>(std::max(0, child->IntAttribute("idx", static_cast<int>(out.size()))));
-                if (index < 4096) {
-                    if (out.size() <= index) out.resize(index + 1);
-                    auto* value = child->FirstChildElement("c:v");
-                    out[index] = value && value->GetText() ? value->GetText() : "";
-                }
-            } else {
-                CollectChartPoints(child, out);
-            }
-        }
-    }
-
     bool ParseChart(tinyxml2::XMLElement* drawing, tinyxml2::XMLElement* graphicData, InlineContext& ctx) {
         auto* reference = FindDescendant(graphicData, "c:chart");
         if (!reference) return false;
@@ -2576,190 +2474,9 @@ private:
         if (relation == relationships_.end()) return false;
         std::string xml;
         if (!zip_.ReadEntry(ResolvePartPath(relation->second.target), xml)) return false;
-        tinyxml2::XMLDocument chart;
-        if (chart.Parse(xml.c_str()) != tinyxml2::XML_SUCCESS || !chart.RootElement()) return false;
-        auto* plot = FindDescendant(chart.RootElement(), "c:plotArea");
-        if (!plot) return false;
-
-        struct Series {
-            std::string name, color;
-            std::vector<double> values;
-            bool stated = false;                // the file states its colour
-            std::vector<double> across;         // a scatter chart's x of each value
-            bool joined = true, marked = true;  // ...and whether its points are joined by a line, and marked
-            std::vector<double> sizes;          // a bubble chart's size of each point
-            bool smooth = false;                // a curve through the points
-        };
-        std::vector<Series> series;
-        std::vector<std::string> categories;
-        bool lines = false, pie = false, horizontal = false, stacked = false, percent = false, scatter = false;
-        bool area = false, doughnut = false, lineMarkers = false;
-        bool radar = false, radarFilled = false, radarMarkers = false, bubble = false, stock = false;
-        std::vector<std::string> pointColors;       // a pie's slices, where the file colours them
-        static const char* const kPalette[] = {"#4472C4", "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47"};
-        for (auto* kind = plot->FirstChildElement(); kind; kind = kind->NextSiblingElement()) {
-            const std::string tag = kind->Name() ? kind->Name() : "";
-            if (tag.size() < 7 || tag.compare(tag.size() - 5, 5, "Chart") != 0) continue;
-            if (series.empty()) {
-                lines = tag == "c:lineChart" || tag == "c:areaChart" || tag == "c:scatterChart";
-                scatter = tag == "c:scatterChart";
-                radar = tag == "c:radarChart";
-                bubble = tag == "c:bubbleChart";
-                stock = tag == "c:stockChart";
-                if (auto* style = kind->FirstChildElement("c:radarStyle")) {
-                    radarFilled = std::string(Attr(style, "val")) == "filled";
-                    radarMarkers = std::string(Attr(style, "val")) == "marker";
-                }
-                area = tag == "c:areaChart" || tag == "c:area3DChart";
-                doughnut = tag == "c:doughnutChart";
-                if (auto* marker = kind->FirstChildElement("c:marker")) lineMarkers = std::string(Attr(marker, "val")) != "0";
-                pie = tag == "c:pieChart" || tag == "c:pie3DChart" || tag == "c:doughnutChart" || tag == "c:ofPieChart";
-                if (auto* direction = kind->FirstChildElement("c:barDir")) horizontal = std::string(Attr(direction, "val")) == "bar";
-                if (auto* grouping = kind->FirstChildElement("c:grouping")) {
-                    const std::string how = Attr(grouping, "val");
-                    percent = how == "percentStacked";
-                    stacked = (!lines || area) && (how == "stacked" || percent);
-                }
-            }
-            for (auto* ser = kind->FirstChildElement("c:ser"); ser; ser = ser->NextSiblingElement("c:ser")) {
-                Series one;
-                auto* title = ser->FirstChildElement("c:tx");       // (a series need not have a name)
-                if (auto* name = title ? FindDescendant(title, "c:v") : nullptr) one.name = name->GetText() ? name->GetText() : "";
-                if (auto* look = ser->FirstChildElement("c:spPr")) {
-                    auto* fill = look->FirstChildElement("a:solidFill");
-                    if (!fill) {
-                        auto* line = look->FirstChildElement("a:ln");
-                        fill = line ? line->FirstChildElement("a:solidFill") : nullptr;
-                    }
-                    if (fill) one.color = DrawingColor(fill);
-                }
-                one.stated = !one.color.empty();
-                if (one.color.empty()) one.color = kPalette[series.size() % 6];
-                if (pie && series.empty()) {
-                    for (auto* point = ser->FirstChildElement("c:dPt"); point; point = point->NextSiblingElement("c:dPt")) {
-                        auto* index = point->FirstChildElement("c:idx");
-                        auto* look = point->FirstChildElement("c:spPr");
-                        auto* fill = look ? look->FirstChildElement("a:solidFill") : nullptr;
-                        const size_t at = static_cast<size_t>(std::max(0, index ? index->IntAttribute("val", 0) : 0));
-                        if (!fill || at >= 4096) continue;
-                        if (pointColors.size() <= at) pointColors.resize(at + 1);
-                        pointColors[at] = DrawingColor(fill);
-                    }
-                }
-                std::vector<std::string> points;
-                auto* values = ser->FirstChildElement("c:val");
-                if (!values) values = ser->FirstChildElement("c:yVal");
-                CollectChartPoints(values, points);
-                for (const std::string& point : points) {
-                    double value = 0.0;
-                    if (!point.empty()) WordFormatInternal::ReadNumberAt(point, 0, value);
-                    one.values.push_back(value);
-                }
-                if (auto* curve = ser->FirstChildElement("c:smooth")) one.smooth = std::string(Attr(curve, "val")) != "0";
-                if (tag == "c:scatterChart" || tag == "c:bubbleChart") {
-                    // Each point's own x (its number in the row where the
-                    // file gives none or words), and how the points show.
-                    std::vector<std::string> xs;
-                    CollectChartPoints(ser->FirstChildElement("c:xVal"), xs);
-                    for (size_t i = 0; i < one.values.size(); i++) {
-                        double x = static_cast<double>(i + 1);
-                        if (i < xs.size() && !xs[i].empty()) {
-                            size_t end = WordFormatInternal::ReadNumberAt(xs[i], 0, x);
-                            if (end == 0) x = static_cast<double>(i + 1);
-                        }
-                        one.across.push_back(x);
-                    }
-                    auto* look = ser->FirstChildElement("c:spPr");
-                    auto* line = look ? look->FirstChildElement("a:ln") : nullptr;
-                    one.joined = !(line && line->FirstChildElement("a:noFill"));
-                    if (auto* style = kind->FirstChildElement("c:scatterStyle")) {
-                        if (std::string(Attr(style, "val")) == "marker") one.joined = false;
-                    }
-                    if (auto* marker = ser->FirstChildElement("c:marker")) {
-                        auto* symbol = marker->FirstChildElement("c:symbol");
-                        if (symbol && std::string(Attr(symbol, "val")) == "none") one.marked = false;
-                        auto* markerLook = marker->FirstChildElement("c:spPr");
-                        auto* fill = markerLook ? markerLook->FirstChildElement("a:solidFill") : nullptr;
-                        if (fill && !(look && (look->FirstChildElement("a:solidFill") || (line && line->FirstChildElement("a:solidFill"))))) {
-                            one.color = DrawingColor(fill);
-                            one.stated = true;
-                        }
-                    }
-                    if (tag == "c:bubbleChart") {
-                        // Bubbles: each point's size, no line.
-                        std::vector<std::string> sizes;
-                        CollectChartPoints(ser->FirstChildElement("c:bubbleSize"), sizes);
-                        for (size_t i = 0; i < one.values.size(); i++) {
-                            double size = 1.0;
-                            if (i < sizes.size() && !sizes[i].empty()) WordFormatInternal::ReadNumberAt(sizes[i], 0, size);
-                            one.sizes.push_back(size);
-                        }
-                        one.joined = false;
-                        one.marked = true;
-                        if (look && look->FirstChildElement("a:solidFill")) one.color = DrawingColor(look->FirstChildElement("a:solidFill"));
-                    }
-                    if (!one.joined && !one.marked) one.marked = true;      // something to see
-                }
-                if (categories.empty()) CollectChartPoints(ser->FirstChildElement("c:cat"), categories);
-                if (tag != "c:scatterChart" && tag != "c:bubbleChart") {
-                    if (auto* marker = ser->FirstChildElement("c:marker")) {
-                        auto* symbol = marker->FirstChildElement("c:symbol");
-                        if (symbol && std::string(Attr(symbol, "val")) == "none") one.marked = false;
-                    }
-                }
-                if (!one.values.empty()) series.push_back(std::move(one));
-            }
-        }
-        if (series.empty()) return false;
         // The chart's data, for the view's chart engine...
         RichChart data;
-        data.kind = radar ? RichChart::Kind::Radar : bubble ? RichChart::Kind::Bubble : stock ? RichChart::Kind::Stock
-                  : pie ? (doughnut ? RichChart::Kind::Doughnut : RichChart::Kind::Pie)
-                  : scatter ? RichChart::Kind::Scatter
-                  : area ? RichChart::Kind::Area
-                  : lines ? RichChart::Kind::Line
-                  : horizontal ? RichChart::Kind::Bar : RichChart::Kind::Column;
-        data.stacked = stacked && !radar && !bubble && !stock;
-        data.percent = percent && !radar && !bubble && !stock;
-        data.filled = radarFilled;
-        data.legend = FindDescendant(chart.RootElement(), "c:legend") != nullptr;
-        data.categories = categories;
-        data.pointColors = pointColors;
-        if (auto* title = FindDescendant(chart.RootElement(), "c:title")) {
-            std::vector<tinyxml2::XMLElement*> open{title};
-            while (!open.empty()) {              // its a:t texts, in document order
-                auto* at = open.back();
-                open.pop_back();
-                if (at->Name() && std::string(at->Name()) == "a:t" && at->GetText()) data.title += at->GetText();
-                std::vector<tinyxml2::XMLElement*> children;
-                for (auto* child = at->FirstChildElement(); child; child = child->NextSiblingElement()) children.push_back(child);
-                open.insert(open.end(), children.rbegin(), children.rend());
-            }
-        }
-        for (const Series& one : series) {
-            RichChartSeries kept;
-            kept.name = one.name;
-            kept.color = one.stated ? one.color : std::string();
-            kept.values = one.values;
-            kept.xValues = one.across;
-            kept.joined = scatter || bubble ? one.joined : true;
-            kept.marked = scatter || bubble ? one.marked : radar ? (radarMarkers && one.marked)
-                        : (lines && !area && lineMarkers && one.marked);
-            kept.sizes = one.sizes;
-            kept.smooth = one.smooth && (scatter || (lines && !area));
-            data.series.push_back(std::move(kept));
-        }
-        // What the file states for its value axes: the one at the foot or
-        // top of a scatter chart is its points' x, any other the values'.
-        for (auto* ax = plot->FirstChildElement("c:valAx"); ax; ax = ax->NextSiblingElement("c:valAx")) {
-            auto* side = ax->FirstChildElement("c:axPos");
-            const std::string pos = side ? Attr(side, "val") : "";
-            const bool along = (scatter || bubble) && (pos == "b" || pos == "t");
-            auto* scaling = ax->FirstChildElement("c:scaling");
-            if (!scaling) continue;
-            if (auto* least = scaling->FirstChildElement("c:min")) (along ? data.xMin : data.valueMin) = least->DoubleAttribute("val", 0.0);
-            if (auto* most = scaling->FirstChildElement("c:max")) (along ? data.xMax : data.valueMax) = most->DoubleAttribute("val", 0.0);
-        }
+        if (!ReadDrawingMLChart(xml, themeColors_, data)) return false;
 
         RichTextRun run;
         run.text = RichTextRun::kObjectReplacement;

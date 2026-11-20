@@ -2,7 +2,7 @@
 // The preview providers of the formats compiled into the framework
 // (UltraCanvasFilePreviews.h): a PDF's first page, an e-book's cover, a
 // video's poster frame, a word-processing document's first page and its text,
-// a PowerPoint or OpenDocument deck's text. Each
+// a PowerPoint or OpenDocument deck's first slide and its text. Each
 // was a function inside the Filer until the registry existed; it is the same
 // code, registered under the format's extensions instead of called by name.
 //
@@ -10,6 +10,8 @@
 // and a format that moves into a runtime module takes its provider with it
 // and registers it from the module's init.
 //
+// Version: 1.4.0 - a deck's thumbnail is its first slide as drawn (RenderPptxSlide), not a page of
+//                  its outline
 // Version: 1.3.0 - an OpenDocument presentation (.odp, .otp, .fodp) previews its slides' text,
 //                  like a PowerPoint deck
 // Version: 1.2.0 - a word-processing document (.odt, .docx, .doc) draws its first page as the
@@ -28,6 +30,7 @@
 #include "UltraCanvasVideoThumbnail.h"
 #include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasPresentationPptx.h"
+#include "UltraCanvasPptxSlideRender.h"
 #include "UltraCanvasPresentationOdp.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "Documents/eBook/EPUBEngine.h"
@@ -269,6 +272,21 @@ bool ReadPresentation(const std::string& path, UCRichDocument& document) {
     return true;
 }
 
+// ...and its first slide as drawn, for the thumbnail: as wide as fits the
+// tile at the slide's shape. A protected deck answers null (the type glyph).
+std::shared_ptr<UCPixmap> RenderDeckFirstSlide(const std::string& path, const FileThumbnailRequest& r) {
+    if (r.width <= 0 || r.height <= 0) return nullptr;
+    PptxPresentation deck;
+    std::string error;
+    const bool read = IsOdpExtension(path) ? ReadOdpPresentation(path, deck, error)
+                                           : ReadPptxPresentation(path, deck, error, "", true);
+    if (!read || deck.slides.empty()) return nullptr;
+    const double slideW = deck.slideWidth > 0 ? static_cast<double>(deck.slideWidth) : 12192000.0;
+    const double slideH = deck.slideHeight > 0 ? static_cast<double>(deck.slideHeight) : 6858000.0;
+    const double fitWidth = std::min(static_cast<double>(r.width), r.height * slideW / slideH);
+    return RenderPptxSlide(deck, 0, DeviceEdge(static_cast<int>(std::lround(fitWidth)), r.scale));
+}
+
 } // namespace
 
 void RegisterBuiltinFilePreviewProviders() {
@@ -319,6 +337,8 @@ void RegisterBuiltinFilePreviewProviders() {
         deck.name = "powerpoint";
         deck.documentExtensions = {"pptx", "pptm", "ppsx", "ppsm", "potx", "potm", "odp", "otp", "fodp"};
         deck.ReadDocument = ReadPresentation;
+        deck.thumbnailExtensions = deck.documentExtensions;
+        deck.RenderThumbnail = RenderDeckFirstSlide;
         RegisterFilePreviewProvider(std::move(deck));
     });
 }

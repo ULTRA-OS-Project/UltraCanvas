@@ -1853,7 +1853,7 @@ void AdminWindow::BuildMarketPage() {
 
     auto submit = Theme::Surface("uaM.submit", Theme::kInnerGap);
     submit->AddChild(Theme::Text("uaM.submit.title", Tr("Submit a release"), 14.0f, FontWeight::Bold));
-    submit->AddChild(Theme::Caption("uaM.submit.hint", Tr("The app as it is saved here goes to the review, signed; the packages are named by their hashes.")));
+    submit->AddChild(Theme::Caption("uaM.submit.hint", Tr("The app as it is saved here goes to the review, signed; the packages are named by their hashes and, when the operator keeps a package store, uploaded from this store's packages folder.")));
     submitApp_ = Theme::Pin(CreateDropdown("uaM.app", 0, 0, 320, Theme::kControlHeight));
     submit->AddChild(Theme::Field("uaM.appRow", Tr("App"), submitApp_));
     submitAnswers_ = Theme::Pin(CreateTextInput("uaM.answers", 0, 0, 200, Theme::kControlHeight));
@@ -1870,12 +1870,21 @@ void AdminWindow::BuildMarketPage() {
         if (!seed) { SetStatus(seed.error.message, true); return; }
         MarketClient client(MarketSettings::From(db_), seed.Value());
         const std::string answers = submitAnswers_->GetText();
-        RunJob(TrF("Submitting {0}", appId), [client, c = component.Value(), answers]() {
+        RunJob(TrF("Submitting {0}", appId), [client, c = component.Value(), answers, packagesDir = store_.PackagesDir()]() {
             JobOutcome out;
             const auto sent = client.Submit(c, answers);
             if (!sent) { out.ok = false; out.message = sent.error.message; return out; }
             out.message = TrF("Submitted {0} {1} as {2}: {3}", sent.Value().app, sent.Value().version, sent.Value().id, sent.Value().state);
-            for (const auto& [name, outcome] : sent.Value().checks) out.lines.push_back(name + ": " + outcome);
+            bool waiting = false;
+            for (const auto& [name, outcome] : sent.Value().checks) { out.lines.push_back(name + ": " + outcome); if (name == "packages" && outcome == "waiting") waiting = true; }
+            if (waiting) {
+                // The packages into the operator's package store.
+                const auto ups = client.UploadPackages(sent.Value().id, c, packagesDir, [&out](const PackageUpload& up) {
+                    out.lines.push_back(up.skipped ? TrF("{0}: not in the package store, its URL stays", up.fileName)
+                                                   : TrF("{0} uploaded ({1} bytes): packages {2}, {3}", up.fileName, up.size, up.packagesCheck, up.state));
+                });
+                if (!ups) { out.ok = false; out.message = ups.error.message; return out; }
+            }
             return out;
         }, [this](const JobOutcome& out) { if (out.ok) { submitAnswers_->SetText(""); RefreshMarketPage(); } });
     };

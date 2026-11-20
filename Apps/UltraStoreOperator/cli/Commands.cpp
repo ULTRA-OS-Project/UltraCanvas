@@ -3,7 +3,10 @@
 // same OperatorClient the window uses, so the two never disagree.
 //
 //   ultrastoreop settings [set url|token|name|account_url|account_token <value>]
-//   ultrastoreop signin <email> [--password <p>] | signout | whoami
+//   ultrastoreop signin <email> [--password <p>] [--code <totp|recovery>] | signout | whoami
+//   ultrastoreop twofactor setup | enable <code> | disable <code> | recovery-codes <code>
+//   ultrastoreop password forgot <email> | reset <email> <mailed code> [--password <p>] [--code <totp|recovery>]
+//   ultrastoreop review download <submission> [--to <folder>]      the uploaded packages, under their hash
 //   ultrastoreop operator list | add <email> <role> --password <p> [--name <n>] | set <id> [--name <n>] [--role <r>] [--password <p>] | disable <id> | enable <id>
 //   ultrastoreop health
 //   ultrastoreop merchant list | show <id> | add <name> --key <hex> [--id <id>] [--contact <c>]
@@ -21,6 +24,7 @@
 //   ultrastoreop audit [--since <id>] [--limit <n>] | verify
 //
 // The command line stays English: it runs before any language is loaded.
+// Version: 0.3.0 - the second factor, the password reset, the review's download
 // Version: 0.2.0 - the sign-in and the operator accounts; users in the usage
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -28,6 +32,7 @@
 
 #include "Operator.h"
 
+#include "UltraCanvasDataFolder.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <cstdio>
@@ -52,9 +57,13 @@ int UltraStoreOperator::Cli::Usage(FILE* to) {
         "  ultrastoreop [--settings <file>] [--url <base>] [--token <t>] <command>\n"
         "\n"
         "  settings [set url|token|name|account_url|account_token <value>]\n"
-        "  signin <email> [--password <p>]       an operator account at the service; the session becomes the token (asked for the password when not given)\n"
+        "  signin <email> [--password <p>] [--code <c>]   an operator account at the service; the session becomes the token (asked for the password\n"
+        "                                        when not given; --code the authenticator's six digits or a recovery code when the account has a second factor)\n"
         "  signout | whoami\n"
+        "  twofactor setup | enable <code> | disable <code> | recovery-codes <code>   your own second factor (an authenticator app)\n"
+        "  password forgot <email> | reset <email> <mailed code> [--password <p>] [--code <c>]\n"
         "  operator list | add <email> <role> --password <p> [--name <n>] | set <id> [--name <n>] [--role <r>] [--password <p>] | disable <id> | enable <id>\n"
+        "  operator reset-2fa <id>               another operator's second factor cleared, after the identity was checked another way\n"
         "  health\n"
         "  merchant list | show <id> | add <name> --key <hex> [--id <id>] [--contact <c>]\n"
         "  merchant set <id> [--name <n>] [--contact <c>] [--key <hex>]\n"
@@ -63,6 +72,7 @@ int UltraStoreOperator::Cli::Usage(FILE* to) {
         "  app suspend <app-id> [--clause <c>] [--reason <r>] [--days <n>] | reinstate <app-id> [--reason <r>]\n"
         "  review list [--state <s>] [--merchant <id>] [--app <id>] | show <submission>\n"
         "  review start | release | changes | reject <submission> [--message <m>] [--sequence <n>]\n"
+        "  review download <submission> [--to <folder>]   the packages the merchant uploaded, under their hash (the builds folder under the data folder)\n"
         "  released | publish | key\n"
         "  report list [--state <s>] | show <id> | open app|release|merchant <target> <kind> <text> [--reporter <r>]\n"
         "  report assign <id> <assignee> | resolve <id> [--findings <f>] [--outcome <o>] | dismiss <id> [--findings <f>] [--outcome <o>]\n"
@@ -195,8 +205,8 @@ std::string AskPassword(const char* prompt) {
 }
 
 void PrintOperator(const OperatorAccount& a) {
-    std::printf("%-10s %-10s %-9s %-32s %-24s made %s by %s%s\n", a.id.c_str(), a.role.c_str(), a.active ? "active" : "disabled", a.email.c_str(), a.name.c_str(),
-                a.createdAt.substr(0, 10).c_str(), Or(a.createdBy, "-"), a.lastSignin.empty() ? "" : ("  last sign-in " + a.lastSignin).c_str());
+    std::printf("%-10s %-10s %-9s %-7s %-32s %-24s made %s by %s%s\n", a.id.c_str(), a.role.c_str(), a.active ? "active" : "disabled", a.twoFactor ? "2fa" : "",
+                a.email.c_str(), a.name.c_str(), a.createdAt.substr(0, 10).c_str(), Or(a.createdBy, "-"), a.lastSignin.empty() ? "" : ("  last sign-in " + a.lastSignin).c_str());
 }
 
 int CmdSignIn(const std::string& path, OperatorSettings settings, const std::vector<std::string>& args) {
@@ -205,7 +215,12 @@ int CmdSignIn(const std::string& path, OperatorSettings settings, const std::vec
     std::string password = Option(args, "--password");
     if (password.empty()) password = AskPassword("Password: ");
     const OperatorClient client(settings);
-    const auto in = client.SignIn(pos[1], password);
+    std::string code = Option(args, "--code");
+    auto in = client.SignIn(pos[1], password, code);
+    if (!in && in.error.detail == "two_factor_required" && code.empty()) {
+        code = AskPassword("Code from your authenticator app (or a recovery code): ");
+        in = client.SignIn(pos[1], password, code);
+    }
     if (!in) return Fail(in.error);
     settings.token = in.Value().token;
     settings.name = in.Value().account.Name();
@@ -223,6 +238,69 @@ int CmdSignOut(const std::string& path, OperatorSettings settings) {
     if (const auto saved = settings.Save(path); !saved) return Fail(saved.error);
     std::printf("Signed out; the session is forgotten here\n");
     return 0;
+}
+
+void PrintRecoveryCodes(const std::vector<std::string>& codes) {
+    std::printf("Recovery codes - each signs you in once when the app is gone; keep them somewhere safe, they are not shown again:\n");
+    for (const std::string& c : codes) std::printf("  %s\n", c.c_str());
+}
+
+int CmdTwoFactor(const OperatorClient& client, const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    if (pos[1] == "setup") {
+        const auto setup = client.TwoFactorSetup();
+        if (!setup) return Fail(setup.error);
+        std::printf("Add the account to your authenticator app (UltraAuthenticator or any other):\n  secret  %s\n  URL     %s\nthen `twofactor enable <the app's code>`.\n",
+                    setup.Value().secret.c_str(), setup.Value().otpauthUrl.c_str());
+        return 0;
+    }
+    if (pos.size() < 3) return Usage(stderr);
+    if (pos[1] == "enable") {
+        const auto codes = client.TwoFactorEnable(pos[2]);
+        if (!codes) return Fail(codes.error);
+        std::printf("Two-factor sign-in is on.\n");
+        PrintRecoveryCodes(codes.Value());
+        return 0;
+    }
+    if (pos[1] == "disable") {
+        if (const auto r = client.TwoFactorDisable(pos[2]); !r) return Fail(r.error);
+        std::printf("Two-factor sign-in is off.\n");
+        return 0;
+    }
+    if (pos[1] == "recovery-codes") {
+        const auto codes = client.NewRecoveryCodes(pos[2]);
+        if (!codes) return Fail(codes.error);
+        PrintRecoveryCodes(codes.Value());
+        return 0;
+    }
+    return Usage(stderr);
+}
+
+int CmdPassword(const OperatorClient& client, const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 3) return Usage(stderr);
+    if (pos[1] == "forgot") {
+        const auto sent = client.ForgotPassword(pos[2]);
+        if (!sent) return Fail(sent.error);
+        std::printf("If %s is an operator's, a code is on its way; it is good for %d minutes: `password reset %s <code>`.\n", pos[2].c_str(), sent.Value(), pos[2].c_str());
+        return 0;
+    }
+    if (pos[1] == "reset") {
+        if (pos.size() < 4) return Usage(stderr);
+        std::string password = Option(args, "--password");
+        if (password.empty()) password = AskPassword("New password (12 characters or more): ");
+        std::string code = Option(args, "--code");
+        auto r = client.ResetPassword(pos[2], pos[3], password, code);
+        if (!r && r.error.detail == "two_factor_required" && code.empty()) {
+            code = AskPassword("Code from your authenticator app (or a recovery code): ");
+            r = client.ResetPassword(pos[2], pos[3], password, code);
+        }
+        if (!r) return Fail(r.error);
+        std::printf("The password is changed; sign in with it.\n");
+        return 0;
+    }
+    return Usage(stderr);
 }
 
 int CmdWhoAmI(const OperatorClient& client) {
@@ -266,6 +344,13 @@ int CmdOperator(const OperatorClient& client, const std::vector<std::string>& ar
         const auto a = client.UpdateOperator(pos[2], "", "", "", pos[1] == "disable" ? 1 : 0);
         if (!a) return Fail(a.error);
         PrintOperator(a.Value());
+        return 0;
+    }
+    if (pos[1] == "reset-2fa") {
+        const auto a = client.ResetOperatorTwoFactor(pos[2]);
+        if (!a) return Fail(a.error);
+        PrintOperator(a.Value());
+        std::printf("The second factor is cleared: the next sign-in takes the password alone, and the person sets a new one up.\n");
         return 0;
     }
     return Usage(stderr);
@@ -386,6 +471,22 @@ int CmdReview(const OperatorClient& client, const std::vector<std::string>& args
         for (const Submission& s : list.Value()) PrintSubmission(s);
         return 0;
     }
+    if (pos[1] == "download") {
+        if (pos.size() < 3) return Usage(stderr);
+        const auto sub = client.GetSubmission(pos[2]);
+        if (!sub) return Fail(sub.error);
+        const std::string folder = Option(args, "--to", UltraCanvas::PathToUtf8(UltraCanvas::UltraCanvasDataFolderRoot() / "UltraStoreOperator" / "builds" / pos[2]));
+        int got = 0;
+        for (const UltraCanvas::JSONValue& p : sub.Value().packages.GetElements()) {
+            if (!p.Get("uploaded").GetBoolean(false)) { std::printf("  %s: not uploaded by the merchant\n", p.Get("sha256").GetString().c_str()); continue; }
+            const auto d = client.DownloadPackage(pos[2], p, folder);
+            if (!d) return Fail(d.error);
+            std::printf("  %s (%llu bytes)\n", d.Value().fileUtf8.c_str(), static_cast<unsigned long long>(d.Value().size));
+            ++got;
+        }
+        std::printf("%d package(s) in %s\n", got, folder.c_str());
+        return 0;
+    }
     if (pos[1] == "show") {
         if (pos.size() < 3) return Usage(stderr);
         const auto sub = client.GetSubmission(pos[2]);
@@ -395,8 +496,8 @@ int CmdReview(const OperatorClient& client, const std::vector<std::string>& args
         std::printf("  %s by %s%s\n", s.Name().c_str(), s.merchant.c_str(), s.answers.empty() ? "" : ("  answers " + s.answers).c_str());
         for (const auto& [name, outcome] : s.checks) std::printf("  %-18s %s\n", name.c_str(), outcome.c_str());
         for (const UltraCanvas::JSONValue& p : s.packages.GetElements())
-            std::printf("  package %s %s %lld bytes\n", p.Get("file").GetString(p.Get("url").GetString()).c_str(), p.Get("sha256").GetString().c_str(),
-                        static_cast<long long>(p.Get("size").GetInteger(0)));
+            std::printf("  package %s %s %lld bytes%s\n", p.Get("file").GetString(p.Get("url").GetString()).c_str(), p.Get("sha256").GetString().c_str(),
+                        static_cast<long long>(p.Get("size").GetInteger(0)), p.Get("uploaded").GetBoolean(false) ? "  uploaded" : "  not uploaded");
         for (const Decision& d : s.decisions)
             std::printf("  %s  %s by %s%s%s\n", d.at.c_str(), d.action.c_str(), d.actor.c_str(), d.sequence > 0 ? ("  sequence " + std::to_string(d.sequence)).c_str() : "",
                         d.message.empty() ? "" : ("\n    " + d.message).c_str());
@@ -722,6 +823,8 @@ int UltraStoreOperator::Cli::Run(const std::vector<std::string>& argsIn) {
     if (cmd == "signout") return CmdSignOut(settingsPath, settings);
     const OperatorClient client(settings);
     if (cmd == "whoami")   return CmdWhoAmI(client);
+    if (cmd == "twofactor") return CmdTwoFactor(client, args);
+    if (cmd == "password") return CmdPassword(client, args);
     if (cmd == "operator") return CmdOperator(client, args);
     if (cmd == "health") {
         const auto h = client.Health();

@@ -2429,6 +2429,7 @@ if(TINYXML2_TEST_FOUND AND TARGET uc-crypt)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
+        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasDrawingML.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasCompoundFile.cpp
         ${WORD_ENCRYPTION_SOURCES}
@@ -2553,6 +2554,7 @@ if(TINYXML2_TEST_FOUND AND TARGET uc-crypt)
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasDrawingML.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasCompoundFile.cpp
         ${WORD_ENCRYPTION_SOURCES}
@@ -5645,6 +5647,30 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: SpreadsheetXlsFileTest")
 else()
     message(STATUS "  SpreadsheetXlsFileTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== POWERPOINT LOOK TEST =====
+# What the PowerPoint reader and the slide renderer make of a deck's look:
+# fonts, spacing, bullets, outlines, gradients, connectors, tables, charts,
+# SmartArt, cropped pictures - read from a python-pptx fixture and a deck
+# rebuilt in memory, then each slide drawn and looked at.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PresentationPptxTest...")
+    add_executable(PresentationPptxTest ${CMAKE_CURRENT_SOURCE_DIR}/PresentationPptxTest.cpp)
+    target_include_directories(PresentationPptxTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PresentationPptxTest PRIVATE cxx_std_20)
+    target_link_libraries(PresentationPptxTest PRIVATE UltraCanvas)
+    target_compile_definitions(PresentationPptxTest PRIVATE
+        PPTXTEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(PresentationPptxTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PresentationPptxTest COMMAND PresentationPptxTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PresentationPptxTest")
+else()
+    message(STATUS "  PresentationPptxTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== OFFICE ENCRYPTION TEST =====

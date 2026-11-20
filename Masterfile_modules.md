@@ -785,15 +785,37 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   UltraCanvasOfficeEncryption), `ReadPptxPresentationFromPackage`,
   `IsPptxPackage`, `IsPptxExtension`, `PptxPresentationToRichDocument` (an
   outline). `UltraCanvasFileLoader::LoadTextDocument` opens a deck that way.
-  For drawing it resolves places, text sizes / colours / alignment, fills and
-  backgrounds through the layout, master and theme (`themeColors`, and the
-  pictures' bytes `withPictures`). No writer. In
+  For drawing it resolves places, text sizes / colours / fonts / alignment /
+  spacing / indents / bullets, insets, turn and mirroring, preset and custom
+  outlines, gradients, dashes and arrowheads, fills and backgrounds through the
+  layout, master and theme (`themeColors`, `majorFont` / `minorFont`, and the
+  pictures' bytes `withPictures`); connectors, styled tables with merged cells
+  (`PptxCellStyle`), picture crops, hyperlinks, charts (UltraCanvasDrawingML)
+  and SmartArt (its drawing part); `PptxNumberLabel`. No writer. In
   `core/UltraCanvasPresentationPptx.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
 - **UltraCanvasPptxSlideRender** (`UltraCanvasPptxSlideRender.h`) —
   `RenderPptxSlide(deck, index, widthPx)`: a slide of a `PptxPresentation` as
-  a `UCPixmap` (background, shapes, pictures, tables, text shrunk to fit).
-  UltraClipboard's slide previews. In `core/UltraCanvasPptxSlideRender.cpp`.
+  a `UCPixmap` (background; shapes turned and mirrored in their outlines,
+  fills, gradients, dashes and arrowheads; cropped pictures; styled and merged
+  tables; charts through the chart engine; text in its fonts, spacing, indents
+  and bullets, shrunk to fit). UltraClipboard's slide previews, UltraViewer's
+  slides, the Filer's deck thumbnails. In `core/UltraCanvasPptxSlideRender.cpp`.
+- **UltraCanvasPresentationPages** (`UltraCanvasPresentationPages.h`) — a deck's
+  slides (`.pptx` and kin, `.odp` / `.otp` / `.fodp`) as an `IPDFDocument`'s
+  pages: `UltraCanvasPDFView` shows them as a PDF's - zoom, thumbnails, page
+  keys, search framed on the shapes; `GetNotes`, `GetPresentation`; protected
+  decks report `NeedsPassword` / `WrongPassword`. Read-only. MediaViewer's
+  slides and slide show. In `core/UltraCanvasPresentationPages.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasPresentationPages.md`.
+- **UltraCanvasDrawingML** (`UltraCanvasDrawingML.h`) — DrawingML read once
+  for every Office format: `ReadDrawingMLChart` (a `c:chartSpace` chart part
+  into `RichChart` - kind, series, colours, categories, title, legend, axis
+  ranges), `DrawingMLColor` (srgb / sys / scrgb / preset / scheme colours with
+  tint, shade and luminance), `DrawingMLDefaultThemeColors`. Local names, any
+  prefix. The `.docx` reader's and the PowerPoint reader's charts. In
+  `core/UltraCanvasDrawingML.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasDrawingML.md`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
   presentations (`.odp`, `.otp` templates, flat `.fodp`) read as text into

@@ -27,6 +27,7 @@
 //   ultrastoreadmin market application        what became of the application; approved sets market.merchant_id
 //   ultrastoreadmin market profile [--name <n>] [--contact <c>] [--website <w>] [--description <d|@file>] [--rotate-key <id>]
 //   ultrastoreadmin market standing | submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]
+//   ultrastoreadmin market upload <submission> <app-id>      the app's packages from the package store into the operator's, again
 //   ultrastoreadmin market submissions | withdraw <submission> | notices [--all] | ack <notice> | terms [accept <version> --by <name>] | reports
 //   ultrastoreadmin --version | --help
 //
@@ -34,6 +35,7 @@
 // a line on standard input.
 //
 // Version: 0.7.0 - finance report / statement / periods, sale reversal / reversals, sync pulls the reversals, affiliate payout
+// Version: 0.8.0 - market submit uploads the packages into the operator's package store; market upload
 // Version: 0.7.0 - market apply, application, profile: a shop asked for, the profile the merchant edits itself, the key rotated
 // Version: 0.6.0 - market: the marketplace service (submit, notices, terms, standing, reports)
 // Version: 0.5.1 - categories from the store's fixed list only (UltraStore::StoreCategories)
@@ -121,6 +123,7 @@ int UltraStoreAdmin::Cli::Usage(FILE* to) {
         "  finance report [<YYYY-MM>|<YYYY>] | periods | statement [<YYYY-MM>|<YYYY>] [-o <file.csv>]\n"
         "  market apply <name> --contact <c> [--email <e>] [--website <w>] [--description <d|@file>] [--key <id>] [--passphrase <p>]\n"
         "  market application                     what became of it; approved sets market.merchant_id\n"
+        "  market upload <submission> <app-id>    the app's packages from the package store into the operator's (submit does it; this again)\n"
         "  market profile [--name <n>] [--contact <c>] [--website <w>] [--description <d|@file>] [--rotate-key <id>]\n"
         "  market standing | submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]\n"
         "  market submissions | withdraw <submission> | notices [--all] | ack <notice> | terms [accept <version> --by <name>] | reports\n"
@@ -1093,6 +1096,26 @@ int CmdMarket(Store& store, const std::vector<std::string>& args) {
         if (!sent) return Fail(sent.error);
         std::printf("submitted %s %s as %s: %s\n", sent.Value().app.c_str(), sent.Value().version.c_str(), sent.Value().id.c_str(), sent.Value().state.c_str());
         for (const auto& [name, outcome] : sent.Value().checks) std::printf("  %-18s %s\n", name.c_str(), outcome.c_str());
+        // The packages into the operator's package store, when it keeps one.
+        bool waiting = false;
+        for (const auto& [name, outcome] : sent.Value().checks) if (name == "packages" && outcome == "waiting") waiting = true;
+        if (!waiting) return 0;
+        const auto ups = client.UploadPackages(sent.Value().id, component.Value(), store.PackagesDir(), [](const PackageUpload& up) {
+            if (up.skipped) std::printf("  package %s not in %s: its URL stays as it is\n", up.fileName.c_str(), "the package store");
+            else std::printf("  uploaded %s (%llu bytes): packages %s, %s\n", up.fileName.c_str(), static_cast<unsigned long long>(up.size), up.packagesCheck.c_str(), up.state.c_str());
+        });
+        if (!ups) return Fail(ups.error);
+        return 0;
+    }
+    if (pos[1] == "upload") {
+        if (pos.size() < 4) return Usage(stderr);
+        const auto component = store.db.GetComponent(pos[3]);
+        if (!component) return Fail(component.error);
+        const auto ups = client.UploadPackages(pos[2], component.Value(), store.PackagesDir(), [](const PackageUpload& up) {
+            if (up.skipped) std::printf("  package %s not in the package store: its URL stays as it is\n", up.fileName.c_str());
+            else std::printf("  uploaded %s (%llu bytes): packages %s, %s\n", up.fileName.c_str(), static_cast<unsigned long long>(up.size), up.packagesCheck.c_str(), up.state.c_str());
+        });
+        if (!ups) return Fail(ups.error);
         return 0;
     }
     if (pos[1] == "submissions") {

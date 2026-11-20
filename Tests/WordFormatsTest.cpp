@@ -15,6 +15,7 @@
 #include "UltraCanvasRichDocumentEditor.h"
 #include "UltraCanvasZipPackage.h"
 #include "UltraCanvasWordFormatInternal.h"
+#include "UltraCanvasDrawingML.h"
 
 #include <algorithm>
 #include <cassert>
@@ -3583,6 +3584,47 @@ int main(int argc, char** argv) {
     }
 
     // ===== A document the way Writer saves it as DOCX =====
+    // The shared DrawingML chart reader directly: a part that binds the chart
+    // namespace to another prefix, a theme colour with a luminance change,
+    // stated axis ranges and a title.
+    {
+        std::cout << "\n--- DrawingML chart reader (UltraCanvasDrawingML) ---\n";
+        const std::string xml =
+            "<ch:chartSpace xmlns:ch=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "
+            "xmlns:dm=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><ch:chart>"
+            "<ch:title><ch:tx><ch:rich><dm:p><dm:r><dm:t>Sales </dm:t></dm:r><dm:r><dm:t>2026</dm:t></dm:r></dm:p>"
+            "</ch:rich></ch:tx></ch:title><ch:plotArea><ch:barChart><ch:barDir val=\"bar\"/><ch:grouping val=\"stacked\"/>"
+            "<ch:ser><ch:tx><ch:strRef><ch:strCache><ch:pt idx=\"0\"><ch:v>North</ch:v></ch:pt></ch:strCache></ch:strRef></ch:tx>"
+            "<ch:spPr><dm:solidFill><dm:schemeClr val=\"accent2\"><dm:lumMod val=\"50000\"/></dm:schemeClr></dm:solidFill></ch:spPr>"
+            "<ch:cat><ch:strRef><ch:strCache><ch:pt idx=\"0\"><ch:v>Q1</ch:v></ch:pt><ch:pt idx=\"1\"><ch:v>Q2</ch:v></ch:pt>"
+            "</ch:strCache></ch:strRef></ch:cat>"
+            "<ch:val><ch:numRef><ch:numCache><ch:pt idx=\"0\"><ch:v>1.5</ch:v></ch:pt><ch:pt idx=\"1\"><ch:v>2.25</ch:v></ch:pt>"
+            "</ch:numCache></ch:numRef></ch:val></ch:ser>"
+            "<ch:ser><ch:val><ch:numRef><ch:numCache><ch:pt idx=\"0\"><ch:v>3</ch:v></ch:pt><ch:pt idx=\"1\"><ch:v>4</ch:v></ch:pt>"
+            "</ch:numCache></ch:numRef></ch:val></ch:ser></ch:barChart>"
+            "<ch:valAx><ch:scaling><ch:min val=\"0\"/><ch:max val=\"10\"/></ch:scaling><ch:axPos val=\"b\"/></ch:valAx>"
+            "</ch:plotArea><ch:legend/></ch:chart></ch:chartSpace>";
+        RichChart chart;
+        CHECK_MSG(ReadDrawingMLChart(xml, DrawingMLDefaultThemeColors(), chart), "drawingml: a chart with another prefix reads");
+        CHECK_MSG(chart.kind == RichChart::Kind::Bar && chart.stacked && !chart.percent, "drawingml: stacked bars lying down");
+        CHECK_MSG(chart.title == "Sales 2026" && chart.legend, "drawingml: the title's runs joined, the legend");
+        CHECK_MSG(chart.categories.size() == 2 && chart.categories[1] == "Q2", "drawingml: the categories");
+        CHECK_MSG(chart.series.size() == 2 && chart.series[0].name == "North"
+                  && chart.series[0].values.size() == 2 && chart.series[0].values[1] == 2.25,
+                  "drawingml: the series' names and values");
+        // accent2 ED7D31 at half its lightness.
+        CHECK_MSG(chart.series.size() == 2 && chart.series[0].color == "#843C0B" && chart.series[1].color.empty(),
+                  "drawingml: a stated theme colour resolved, an unstated one left to the viewer (" +
+                  (chart.series.empty() ? std::string() : chart.series[0].color) + ")");
+        CHECK_MSG(chart.valueMin == 0.0 && chart.valueMax == 10.0, "drawingml: the value axis' stated range");
+        RichChart untouched;
+        untouched.title = "kept";
+        CHECK_MSG(!ReadDrawingMLChart("<c:chartSpace xmlns:c=\"x\"><c:chart><c:plotArea/></c:chart></c:chartSpace>",
+                                      DrawingMLDefaultThemeColors(), untouched) && untouched.title == "kept",
+                  "drawingml: a chart without series is refused and leaves the model alone");
+        CHECK_MSG(!ReadDrawingMLChart("not xml <", DrawingMLDefaultThemeColors(), untouched), "drawingml: broken XML refused");
+    }
+
     // Every paragraph with borders of "nil", headings in a numbering whose
     // levels show nothing, fonts named with their alternatives, and a chart.
     {

@@ -1,7 +1,11 @@
 """The HTTP API of the marketplace service.
 
 The operator (Authorization: Bearer <operator token or session>; the static token is the bootstrap admin, a session comes from the sign-in and names the person and the role):
-  POST /v1/operators/signin             {email, password} -> {token, operator, hours}; GET /v1/operators/me
+  POST /v1/operators/signin             {email, password, totp?, recovery_code?} -> {token, operator, hours}; 401 two_factor_required without the code
+  GET  /v1/operators/me; POST /v1/operators/me/two-factor/setup -> {secret, otpauth_url}; .../enable {code} -> {recovery_codes};
+                                        .../disable {code}; .../recovery-codes {code} -> a new set
+  POST /v1/operators/password/forgot    {email}: a code by mail; POST /v1/operators/password/reset {email, code, new_password, totp?, recovery_code?}
+  GET  /v1/submissions/{id}/packages/{sha256}   the uploaded package (the review's Download build)
   GET  /v1/operators; POST /v1/operators {email, name, role, password}; PUT /v1/operators/{id} {name?, role?, password?, disabled?}
   POST /v1/merchants                    register a merchant with its key; GET /v1/merchants, GET /v1/merchants/{id}, PUT /v1/merchants/{id}
   POST /v1/merchants/{id}/suspend       {clause, reason, days}; POST /v1/merchants/{id}/reinstate {reason}
@@ -20,6 +24,8 @@ A merchant (Authorization: Merchant <id>:<timestamp>:<signature>, auth.py):
   GET  /v1/merchants/me                 the standing, the strikes, the terms
   PUT  /v1/merchants/me                 {name?, contact?, website?, description?, key?}: the merchant's own profile; a key given is the rotation, signed with the old one
   POST /v1/submissions                  {component, signature, packages, answers?}; GET /v1/merchants/me/submissions
+  POST /v1/submissions/{id}/packages/{sha256}   the package's bytes (the body, signed like every request): into the package store;
+                                        checks.packages goes from waiting to ok once every package named is there
   POST /v1/submissions/{id}/withdraw
   GET  /v1/merchants/me/notices; POST /v1/notices/{id}/ack
   GET  /v1/merchants/me/reports         the reports about the merchant and its apps, the reporter removed
@@ -37,6 +43,8 @@ Public:
 
 Errors are {"error", "error_description"} with a 4xx status.
 
+Version: 0.5.0 - the package store: a package uploaded with a submission, the operator's download, the release gate, the publish laying them out;
+               the operators' second factor and the password reset by mail
 Version: 0.4.0 - the operators with their roles: sign-in, the signed session, a permission on every operator call
 Version: 0.3.0 - the applications; the merchant's own profile
 Version: 0.2.0 - the publish, the signing key
@@ -45,21 +53,25 @@ Version: 0.1.0
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import secrets
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
-from . import __version__
 from ultrastore_db.operator_session import ROLES, allowed, issue, verify as verify_session
+from ultrastore_db.totp import hash_recovery, new_code, new_recovery_codes, new_totp_secret, otpauth_url, verify_totp
 
+from . import __version__
 from .auth import hash_password, parse_merchant_header, verify_bytes, verify_password, verify_request
 from .config import Settings
+from .mail import Mailer, mailer_from_settings
 from .publish import SigningKey, publish
-from .store import NOTICE_KINDS, MarketStore, Merchant, canonical, today
+from .store import NOTICE_KINDS, MarketStore, Merchant, canonical, package_file_name, today
 
 
 class MerchantBody(BaseModel):
@@ -93,6 +105,24 @@ class ApplyBody(BaseModel):
 class OperatorSigninBody(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=256)
+    totp: str = ""
+    recovery_code: str = ""
+
+
+class CodeBody(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+
+
+class ForgotBody(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
+class ResetBody(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    code: str = Field(min_length=1, max_length=16)
+    new_password: str = Field(min_length=12, max_length=256)
+    totp: str = ""
+    recovery_code: str = ""
 
 
 class OperatorBody(BaseModel):
@@ -107,6 +137,7 @@ class OperatorUpdate(BaseModel):
     role: str | None = Field(default=None, max_length=20)
     password: str | None = Field(default=None, min_length=12, max_length=256)
     disabled: bool | None = None
+    two_factor: bool | None = None   # False only: an admin resets another's second factor after the identity was checked
 
 
 class ApproveBody(BaseModel):
@@ -179,9 +210,10 @@ class AcceptBody(BaseModel):
     accepted_by: str = ""
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -> FastAPI:
     settings = settings or Settings.from_environment()
     store = MarketStore(settings.database)
+    mail = mailer or mailer_from_settings(settings.smtp_url, settings.mail_from)
     # The operator's signing key: from the environment, else made once and kept.
     if settings.signing_seed:
         signing = SigningKey(bytes.fromhex(settings.signing_seed))
@@ -232,9 +264,90 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         op = store.operator_by_email(body.email)
         if not op or not op.active or not verify_password(body.password, op.password_hash):
             raise error(401, "bad_credentials", "The email or the password is wrong")
+        second_factor(op, body.totp, body.recovery_code)
         store.record_operator_signin(op.id)
         token = issue(settings.operator_session_secret, operator_id=op.id, name=op.name or op.email, role=op.role, hours=settings.operator_session_hours)
         return {"token": token, "operator": op.public(), "hours": settings.operator_session_hours}
+
+    def second_factor(op, totp: str, recovery_code: str) -> None:
+        """The second factor checked when the account has one; a recovery
+        code is used up."""
+        if not op.two_factor:
+            return
+        if totp and verify_totp(op.totp_secret, totp):
+            return
+        if recovery_code and store.use_operator_recovery_code(op.id, hash_recovery(recovery_code)):
+            return
+        raise error(401, "two_factor_required", "The six-digit code from your authenticator app, or a recovery code")
+
+    def own_account(authorization: str | None):
+        who = whoami(authorization)
+        if who["bootstrap"]:
+            raise error(409, "bootstrap", "The static token has no account: sign in with one")
+        return store.get_operator(who["id"])
+
+    @app.post("/v1/operators/me/two-factor/setup")
+    async def two_factor_setup(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        op = own_account(authorization)
+        if op.two_factor:
+            raise error(409, "two_factor_on", "Two-factor sign-in is on: turn it off first to change the app")
+        secret = new_totp_secret()
+        store.set_operator_two_factor(op.id, actor=op.name or op.email, secret=secret)
+        return {"secret": secret, "otpauth_url": otpauth_url(secret, op.email, issuer="UltraStore operations")}
+
+    @app.post("/v1/operators/me/two-factor/enable")
+    async def two_factor_enable(body: CodeBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        op = own_account(authorization)
+        if not op.totp_secret or op.two_factor:
+            raise error(409, "no_setup", "Set the authenticator up first" if not op.totp_secret else "Two-factor sign-in is on already")
+        if not verify_totp(op.totp_secret, body.code):
+            raise error(400, "bad_code", "The code is not the authenticator's")
+        codes = new_recovery_codes()
+        store.set_operator_two_factor(op.id, actor=op.name or op.email, enabled=True, recovery_hashes=[hash_recovery(c) for c in codes], audit_action="enable_two_factor")
+        return {"two_factor": True, "recovery_codes": codes}
+
+    @app.post("/v1/operators/me/two-factor/disable")
+    async def two_factor_disable(body: CodeBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        op = own_account(authorization)
+        if not op.two_factor:
+            raise error(409, "two_factor_off", "Two-factor sign-in is off")
+        if not verify_totp(op.totp_secret, body.code):
+            raise error(400, "bad_code", "The code is not the authenticator's")
+        store.set_operator_two_factor(op.id, actor=op.name or op.email, enabled=False, audit_action="disable_two_factor")
+        return {"two_factor": False}
+
+    @app.post("/v1/operators/me/two-factor/recovery-codes")
+    async def two_factor_recovery_codes(body: CodeBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        op = own_account(authorization)
+        if not op.two_factor or not verify_totp(op.totp_secret, body.code):
+            raise error(400, "bad_code", "Two-factor sign-in is on and the code is the authenticator's, or no new set")
+        codes = new_recovery_codes()
+        store.set_operator_two_factor(op.id, actor=op.name or op.email, recovery_hashes=[hash_recovery(c) for c in codes], audit_action="new_recovery_codes")
+        return {"recovery_codes": codes}
+
+    @app.post("/v1/operators/password/forgot")
+    async def operator_forgot(body: ForgotBody) -> dict[str, Any]:
+        """A code to the account's mailbox; the answer says nothing about
+        whether the address is an operator's."""
+        op = store.operator_by_email(body.email)
+        if op and op.active:
+            code = new_code()
+            store.add_operator_code(op.id, "reset", code, minutes=settings.code_minutes)
+            mail(op.email, "UltraStore operations: your password reset code",
+                 f"Your code is {code}. It is good for {settings.code_minutes} minutes. If you did not ask for it, tell another admin: "
+                 "someone typed your address at the operator's sign-in.")
+        return {"sent": True, "minutes": settings.code_minutes}
+
+    @app.post("/v1/operators/password/reset")
+    async def operator_reset(body: ResetBody) -> dict[str, Any]:
+        op = store.operator_by_email(body.email)
+        if not op or not op.active or not store.take_operator_code(op.id, "reset", body.code):
+            raise error(400, "bad_code", "The code is wrong, over, or was tried too often: ask for a new one")
+        second_factor(op, body.totp, body.recovery_code)
+        store.set_operator_password(op.id, hash_password(body.new_password), actor=op.name or op.email)
+        mail(op.email, "UltraStore operations: your password was changed", "The password of your operator account was just reset with a mailed code. "
+             "If that was not you, tell another admin at once.")
+        return {"reset": True}
 
     @app.get("/v1/operators/me")
     async def operator_me(authorization: str | None = Header(default=None)) -> dict[str, Any]:
@@ -263,8 +376,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         who = whoami(authorization)
         own = who["id"] == op_id
         # Anyone may change their own name and password; the role and the switch are an admin's.
-        if (body.role is not None or body.disabled is not None or not own) and not allowed(who["role"], "operators.manage"):
-            raise error(403, "forbidden", "Only an admin changes another operator, a role or the switch")
+        if (body.role is not None or body.disabled is not None or body.two_factor is not None or not own) and not allowed(who["role"], "operators.manage"):
+            raise error(403, "forbidden", "Only an admin changes another operator, a role, the switch or another's second factor")
+        if body.two_factor is not None:
+            if body.two_factor or own:
+                raise error(400, "bad_request", "An admin resets another operator's second factor (two_factor: false), after the identity was checked; one's own is set up by oneself")
+            if not store.set_operator_two_factor(op_id, actor=who["name"], enabled=False, audit_action="reset_two_factor"):
+                raise error(404, "no_such_operator", "No such operator")
         if body.role is not None and body.role not in ROLES:
             raise error(400, "bad_role", "The role is one of " + ", ".join(ROLES))
         if own and body.disabled:
@@ -476,11 +594,67 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         checks = {
             "signature": "ok" if verify_bytes(m.key_hex, body.signature, canonical(body.component).encode()) else "failed",
             "merchant_standing": "ok" if m.standing == "active" else m.standing,
-            "packages": "ok" if body.packages and all(_package_ok(p) for p in body.packages) else "failed",
+            "packages": ("waiting" if settings.package_dir else "ok") if body.packages and all(_package_ok(p) for p in body.packages) else "failed",
             "scans": "not run", "entry": "not run", "smoke": "not run", "listing": "not run",
         }
-        return store.add_submission(merchant_id=m.id, component=body.component, signature=body.signature, packages=body.packages, checks=checks,
+        packages = [{k: v for k, v in p.items() if k != "uploaded"} for p in body.packages]
+        if settings.package_dir:
+            # A package already in the store (the same bytes in an earlier submission) needs no second upload.
+            for p in packages:
+                if _package_ok(p) and (Path(settings.package_dir) / package_file_name(p)).is_file():
+                    p["uploaded"] = True
+            if checks["packages"] == "waiting" and all(p.get("uploaded") for p in packages):
+                checks["packages"] = "ok"
+        return store.add_submission(merchant_id=m.id, component=body.component, signature=body.signature, packages=packages, checks=checks,
                                     answers=body.answers).public(for_merchant=True)
+
+    @app.post("/v1/submissions/{sid}/packages/{sha256}")
+    async def upload_package(sid: str, sha256: str, request: Request) -> dict[str, Any]:
+        """The package's bytes, into the package store under their hash; the
+        request is signed over them like every merchant request."""
+        if not settings.package_dir:
+            raise error(503, "not_configured", "The service keeps no packages (ULTRASTORE_MARKET_PACKAGE_DIR): the catalog names the merchant's URLs")
+        m = await merchant(request)
+        s = store.get_submission(sid)
+        if not s or s.merchant_id != m.id:
+            raise error(404, "no_such_submission", "No such submission of this merchant")
+        if s.state not in ("checked", "failed_checks", "in_review"):
+            raise error(409, "wrong_state", f"A submission {s.state} takes no package")
+        sha256 = sha256.lower()
+        named = next((p for p in s.packages if str(p.get("sha256", "")).lower() == sha256), None)
+        if not named:
+            raise error(404, "no_such_package", "The submission names no package with that hash")
+        body = await request.body()
+        if len(body) > settings.max_package_mb << 20:
+            raise error(413, "too_large", f"A package is at most {settings.max_package_mb} MB")
+        if hashlib.sha256(body).hexdigest() != sha256:
+            raise error(400, "hash_mismatch", "The bytes do not hash to the package's SHA-256")
+        if int(named.get("size", 0)) != len(body):
+            raise error(400, "size_mismatch", f"The submission says {named.get('size')} bytes, the upload is {len(body)}")
+        folder = Path(settings.package_dir)
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / package_file_name(named)
+        if not target.is_file():
+            tmp = target.with_name(target.name + ".part")
+            tmp.write_bytes(body)
+            tmp.replace(target)
+        packages = [{**p, "uploaded": True} if p is named else p for p in s.packages]
+        checks = dict(s.checks)
+        if checks.get("packages") in ("waiting", "ok") and all(p.get("uploaded") for p in packages):
+            checks["packages"] = "ok"
+        return store.update_submission_packages(sid, packages, checks, actor=m.id, sha256=sha256).public(for_merchant=True)   # type: ignore[union-attr]
+
+    @app.get("/v1/submissions/{sid}/packages/{sha256}")
+    async def download_package(sid: str, sha256: str, authorization: str | None = Header(default=None)) -> FileResponse:
+        operator(authorization, "review.read")
+        s = store.get_submission(sid)
+        if not s:
+            raise error(404, "no_such_submission", "No such submission")
+        named = next((p for p in s.packages if str(p.get("sha256", "")).lower() == sha256.lower()), None)
+        path = Path(settings.package_dir) / package_file_name(named) if named and settings.package_dir else None
+        if not named or not named.get("uploaded") or not path or not path.is_file():
+            raise error(404, "not_uploaded", "The merchant has not uploaded that package")
+        return FileResponse(str(path), media_type="application/octet-stream", filename=path.name)
 
     def _package_ok(p: dict) -> bool:
         sha = str(p.get("sha256", ""))
@@ -518,6 +692,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             m = store.get_merchant(s.merchant_id)
             if not m or m.standing != "active":
                 raise error(409, "merchant_not_active", f"The merchant is {m.standing if m else 'gone'}")
+            if s.checks.get("packages") != "ok":
+                raise error(409, "packages_missing", "Not every package the submission names is in the package store yet")
         return store.decide(sid, body.action, message=body.message, actor=actor, sequence=body.sequence).public()   # type: ignore[union-attr]
 
     @app.post("/v1/submissions/{sid}/withdraw")
@@ -544,9 +720,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not settings.publish_dir:
             raise error(503, "not_configured", "ULTRASTORE_MARKET_PUBLISH_DIR names where the catalog goes")
         report = publish(store, signing, settings.publish_dir, day=today(), extra_trusted_keys=settings.trusted_keys, payment_url=settings.payment_url,
-                         licence_key=settings.licence_key, market_url=settings.public_base_url, actor=actor)
+                         licence_key=settings.licence_key, market_url=settings.public_base_url, actor=actor, package_dir=settings.package_dir,
+                         catalog_url=settings.catalog_url)
         return {"sequence": report.sequence, "apps": report.apps, "components": report.components, "publishers": report.publishers,
-                "left_out": report.left_out, "files": report.files, "public_key": report.public_key}
+                "left_out": report.left_out, "files": report.files, "public_key": report.public_key, "packages": report.packages_laid_out}
 
     @app.get("/v1/publish/key")
     async def publish_key() -> dict[str, Any]:

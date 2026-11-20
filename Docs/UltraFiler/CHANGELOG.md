@@ -1,3 +1,8 @@
+#### 2026-11-20 *1.107.23*
+- **A presentation's thumbnail is its first slide**, drawn - for `.pptx`
+  and its kin and for `.odp`, `.otp` and `.fodp` - instead of a page of its
+  outline. A password-protected deck keeps its type glyph.
+
 #### 2026-11-20 *1.107.22*
 - **Extract into a folder that exists already, with the same options as
   copying.** When the folder named in the Extract dialog is there, UltraFiler
