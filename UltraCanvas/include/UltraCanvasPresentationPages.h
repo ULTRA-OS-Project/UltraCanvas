@@ -75,7 +75,7 @@ public:
     bool MergeFrom(IPDFDocument&, int, int, int) override { return false; }
     bool AddTextAnnotation(int, const Rect2Df&, const std::string&) override { return false; }
     bool RedactRect(int, const Rect2Df&) override { return false; }
-    bool ReplaceText(const PDFTextRun&, const std::string&) override { return false; }
+    bool ReplaceText(const PDFTextRun&, const std::string&) override { return false; }   // win32-name-ok: overrides IPDFDocument::ReplaceText, whose name the interface fixes
     bool ApplyPendingRedactions(int) override { return false; }
     std::vector<PDFAnnotation> ListAnnotations(int) override { return {}; }
     bool DeleteAnnotation(int, int) override { return false; }

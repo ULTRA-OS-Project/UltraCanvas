@@ -83,7 +83,8 @@ tool and a missing plugin should stop it running.
 | `Sheet` | ODS, XLSX, XLS (Excel 97-2003 and 5.0/95 — see [`UltraCanvasSpreadsheetXls`](UltraCanvasSpreadsheetXls.md)), CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
-| `Text` | txt, md, json, xml, source code, tex, … and presentations: pptx, pptm, ppsx, ppsm, potx, potm, odp, otp, fodp | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset; a deck (`IsPresentationFile`, classified before text so a flat `.fodp` is not shown as XML) as the outline of its slides - each slide's number and title, its bullets, tables, pictures' descriptions and notes - read by `UltraCanvasFileLoader::LoadTextDocument` ([PowerPoint](UltraCanvasPresentationPptx.md), [OpenDocument](UltraCanvasPresentationOdp.md)) and rendered as Markdown; the info bar says *PRESENTATION*) |
+| `Document` (slides) | presentations: pptx, pptm, ppsx, ppsm, potx, potm, odp, otp, fodp | **Their slides**, as pages in the `UltraCanvasPDFView` ([UltraCanvasPresentationPages](UltraCanvasPresentationPages.md): each slide drawn by `RenderPptxSlide`, the thumbnail strip, zoom, the page keys, search); the info bar names the slide and its speaker notes. **O** shows the outline in the text view instead (`SetPresentationOutline`); **F5** / **Shift+F5** start the slide show (*Presentations* below). Builds without the PDF view show the outline |
+| `Text` | txt, md, json, xml, source code, tex, … and presentations as their outline | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset; a deck (`IsPresentationFile`, classified before text so a flat `.fodp` is not shown as XML) as the outline of its slides - each slide's number and title, its bullets, tables, pictures' descriptions and notes - read by `UltraCanvasFileLoader::LoadTextDocument` ([PowerPoint](UltraCanvasPresentationPptx.md), [OpenDocument](UltraCanvasPresentationOdp.md)) and rendered as Markdown; the info bar says *PRESENTATION*) |
 | `Text` (pages) | html, htm, xhtml, xht, shtml, and an `.xml` that holds XHTML | **Rendered**, as a browser shows the page, in an `UltraCanvasWebView` in the text view's place (*HTML pages* below) - not its source, which is the Texter's to show |
 | `Text` (messages) | eml, emlx, msg | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
 | `Text` (saved pages) | mht, mhtml | **The page it saved**, its style sheets and pictures read from the archive's own parts (*Saved web pages* below) |
@@ -416,8 +417,28 @@ and as an icon in the toolbar; **Enter** does the same. Unlock
 asks for the password over the viewer's window - its dialog shows the
 button's lock centred above the password field - - again, saying so, when it
 is not right - and then shows the file whole: the image at full size with
-its layers composited, the PDF in its view with every page, the deck as the
-outline of its slides.
+its layers composited, the PDF in its view with every page, the deck as its
+slides (or, with the outline chosen, the outline of its slides).
+
+## Presentations
+
+A deck opens as its slides in the document view: each slide drawn as the
+PowerPoint reader resolves it ([UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md)),
+the thumbnail strip, zoom, Page Up / Page Down and search over the slides'
+words. The info bar reads *name · PRESENTATION · slide 2 / 12 · size ·
+place in the folder · Notes: ...* - the speaker notes of the slide shown, on
+one line.
+
+- **O** (`SetPresentationOutline(true)`) shows the deck as the outline of its
+  slides in the text view - titles, bullets, tables, notes - and O again
+  brings the slides back. The choice stays for the decks that follow.
+- **F5** starts the slide show from the first slide, **Shift+F5** from the
+  slide shown (`StartPresenting(fromCurrentSlide)`): the window goes full
+  screen, the bars and the thumbnail strip are put away and each slide fills
+  the screen. **→ ↓ Space Return Page Down N** go forward, **← ↑ Page Up
+  Backspace P** back, **Home** / **End** to the first and last; every other
+  key is swallowed. **Escape** (`StopPresenting`) ends it and restores the
+  bars, the strip and the window. Moving to another file ends it too.
 
 Nothing asks on its own: browsing a folder of protected files never pops up
 a prompt. The info bar says *password-protected*, and the Details panel adds

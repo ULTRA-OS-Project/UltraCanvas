@@ -87,6 +87,9 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.31.0 - a presentation opens as its slides in the document view (UltraCanvasPresentationPages),
+//                   the info bar naming the slide and its speaker notes; SetPresentationOutline (O);
+//                   StartPresenting / StopPresenting (F5 / Shift+F5, Escape): the slide show
 // Version: 1.30.0 - a presentation (.pptx and kin, .odp / .otp / .fodp) opens in the text view as the
 //                   outline of its slides (IsPresentationFile); a password-protected one shows
 //                   the Unlock note and opens with its password, as a protected PDF does

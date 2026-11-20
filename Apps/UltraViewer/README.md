@@ -19,7 +19,7 @@ This app versions itself: [`Docs/UltraViewer/CHANGELOG.md`](../../Docs/UltraView
 | Documents | PDF | `UltraCanvasPDFView` (MuPDF) |
 | e-books | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapters, TOC, reflowing text) |
 | Spreadsheets | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
-| Presentations | PPTX (and PPTM, PPSX, PPSM, POTX, POTM), ODP (and OTP, FODP) | The outline of the slides - titles, bullets, tables, pictures' descriptions, speaker notes - in the read-only `UltraCanvasTextArea` |
+| Presentations | PPTX (and PPTM, PPSX, PPSM, POTX, POTM), ODP (and OTP, FODP) | The slides, drawn, as pages in `UltraCanvasPDFView` (thumbnails, zoom, search, the speaker notes on the info bar); **F5** a full-screen slide show; **O** the outline of the slides instead |
 | 3D models | STL, and with the Models plugin OBJ, PLY, 3DS, STEP, FBX, COLLADA, Alembic, … | `UltraCanvasSTLElement` (OpenGL viewer) |
 | Text / source / markdown | txt, md, json, xml, source code, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown rendering) |
 | UltraCanvas Documents | `*.ucd` (UCD v2 containers) | Embedded preview thumbnail + container details (full rendering arrives with the UCD v2 engine) |
@@ -54,6 +54,10 @@ the front; a start without arguments just brings it forward
   or several files to view just those.
 - **e-books:** PageUp / PageDown switch chapters, the TOC panel toggles from
   the reading toolbar.
+- **Presentations:** a deck shows its slides; **F5** starts the slide show
+  from the first slide (**Shift+F5** from the one shown) - full screen, the
+  arrows, Space and Page Up / Down to move, **Escape** to leave. **O** shows
+  the outline of the slides instead.
 - **Password-protected files:** a protected PDF, UltraCanvas image or
   presentation (.pptx, .odp) shows
   an **Unlock** button (Enter does the same); its password is kept while
