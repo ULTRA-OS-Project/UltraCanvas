@@ -45,6 +45,21 @@ else()
     message(STATUS "  VectorFormatsPluginTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# VectorExportFixtures: not a test on its own - the drawings, and the
+# manifest of what must be where, that scripts/check_libreoffice_render.py
+# has LibreOffice draw (.github/workflows/vector-libreoffice.yml).
+if(TARGET UltraCanvasVectorPlugin)
+    add_executable(VectorExportFixtures
+        ${_VFT_DIR}/VectorExportFixtures.cpp
+    )
+    target_include_directories(VectorExportFixtures PRIVATE ${_VFT_INCLUDE_DIR})
+    target_compile_features(VectorExportFixtures PRIVATE cxx_std_20)
+    target_link_libraries(VectorExportFixtures PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorExportFixtures PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_VFT_BIN_DIR}
+    )
+endif()
+
 # ===== OPENDOCUMENT DRAWING =====
 # ODGConverterTest: the .odg / .fodg writer and reader round trip, LibreOffice
 # Draw's own sample files (media/vector/ODG) and hand-written custom-shape
