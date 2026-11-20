@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ultrastore-market"
-version = "0.5.0"
+version = "0.6.0"
 description = "The UltraStore marketplace service: the operator tier's merchants, submissions, reports, notices, terms and the hash-chained audit log"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,6 +20,7 @@ dependencies = [
 test = ["pytest>=8", "httpx>=0.27"]
 postgres = ["psycopg[binary]>=3.1"]
 mysql = ["PyMySQL>=1.1"]
+scan = ["py7zr>=0.21", "zstandard>=0.22"]   # the review pipeline opens 7z and tar.zst packages
 
 [project.scripts]
 ultrastore-market = "ultrastore_market.__main__:main"
