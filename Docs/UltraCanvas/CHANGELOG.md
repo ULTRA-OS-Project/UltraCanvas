@@ -1,3 +1,172 @@
+#### 2026-11-20 *0.9.581*
+- **CI: the chat-network (UltraIM) tests run on the macOS and Windows rows,
+  and the Signal provider's daemon process has a test that runs on
+  Windows.** Every UltraIM suite was built on all six rows and run on the
+  two Linux ones only, so what is written per platform was run where it
+  cannot differ - and the Windows half of `SignalDaemon`, which hands the
+  proxy to signal-cli through the child's environment, had been compiled
+  and never run.
+  - **`SignalDaemonTests`** (new, `Tests/UltraIM/`): `SignalDaemon` on its
+    own, with the test as its own child program (no python). The variables
+    handed to `Start` arrive exactly - Java options with spaces, quotes,
+    `|`, `&`, Thai - one the environment already has is replaced and not
+    doubled (whatever its spelling on Windows), the rest is kept; arguments
+    arrive exactly (a folder with spaces and a trailing backslash, quotes,
+    an empty one, Thai); output and error are appended to a log named in
+    Thai; the same through a wrapper script as signal-cli is one (a `.bat`
+    run by `cmd.exe`, a shell script elsewhere); `Stop` ends the script and
+    the program it started; a program that ends by itself, and one that is
+    not there. 72 checks on Linux; the Windows build of it, run under Wine
+    here, 73 - and each of eight deliberate breaks of the two branches
+    fails it.
+  - **Two things it found in the Windows branch**, both corrected:
+    a process that had ended by itself kept its id and its handles until
+    the next start (`ProcessId()` went on naming it, where POSIX reports 0),
+    and a `.bat` was run by a bare `cmd.exe`, which Windows looks for in the
+    program's own folder and the current one before the system's - it is
+    named by its full path now (`GetSystemDirectoryW`).
+  - **The build workflow** (`.github/workflows/build.yml`, "Run the
+    chat-network tests (macOS/Windows)"): `UltraIMTests`,
+    `MatrixCryptoTests`, `SignalDaemonTests` and `TelegramProviderTests` on
+    every Windows and macOS row; `TelegramTdlibTests` where the packages
+    ship a TDLib (Windows x64, macOS arm64 - there no library is a failure,
+    not a skip); `DirectProviderTests` on Windows, for its envelopes and
+    store; and on the Apple silicon row the suites that sign in to a python
+    stand-in - Signal, IRC, Mastodon, Zulip, and XMPP and Mattermost where
+    UltraNet has WebSockets (below) - with a missing python3 or openssl a
+    failure. Each suite is one `ctest` call, so
+    a name that matches nothing is an error. Not there: Windows for the
+    suites that fork (they print "skipped"), and the Intel macOS row for
+    the ones that wait on clocks (its runner is five to ten times slower).
+    `TelegramProviderTests` may take 300 s like the other providers' suites.
+    Every suite is run before the step fails, so one run says all that is
+    wrong on a row.
+  - **The python stand-in servers start at once on macOS**
+    (`Tests/UltraIM/local_http_server.py`, used by the Mastodon, Mattermost,
+    Signal, XMPP and Zulip stand-ins). Python's `HTTPServer` asks for the
+    name of the address it listens on when it starts - a reverse DNS lookup
+    that stalls for fifteen seconds and more on a macOS runner
+    (`Tests/IODeviceScannerESCLLiveScanner.py` had met it). It was paid at
+    every start, and `SignalProviderTests` starts its stand-in a dozen
+    times: on its first run on the Apple silicon row it ran past its 300
+    seconds, failing first where a restarted daemon is given 20 seconds.
+    The name is used for nothing, so it is not asked. With the lookup
+    slowed to 22 seconds on Linux the old stand-in fails on the same lines
+    and the new one passes in its usual 26 seconds.
+  - **Found by it: UltraNet opens no WebSocket on the macOS 15 runner.**
+    `XmppProviderTests` and `MattermostProviderTests` failed there at their
+    first WebSocket, twice: the test's own `UltraNet_WebSocketConnect`
+    returns no handle, and Mattermost's event socket never opens. UltraNet's
+    WebSocket client is libcurl's, the macOS build links Apple's own
+    libcurl, and `UltraNet_WebSocketConnect` refuses on a libcurl that lists
+    neither `ws` nor `wss`; UltraNet's own WebSocket tests skip on that
+    condition, which is how it went unseen (and the build prints
+    "WebSocket: OK" for macOS and Windows without asking the library, as it
+    does on Linux). On such a macOS everything on that call is without a
+    connection: ChatCube Direct's relay, Mattermost's events, XMPP over
+    WebSocket, UltraWeb's sockets, the UltraAI transport, the UltraDatabase
+    relay. **Not fixed here** - it is a change to which libcurl UltraNet
+    uses on macOS, and gets a pull request of its own. Until then the step
+    prints the libcurl the build links and the protocols it lists, puts a
+    warning on the run where there is no `ws`, and does not ask for the two
+    suites there; where the libcurl lists `ws` they are asked by
+    themselves.
+- **PowerPoint writer.** `WritePptxPresentation` (`UltraCanvasPresentationPptx.h`)
+  writes a deck as a package PowerPoint, LibreOffice and the reader open:
+  every shape kind at its place, turned and mirrored, with its outline, fill
+  and line; text with its fonts, effects, spacing, indents, bullets and
+  numbering; styled and merged table cells; pictures with their crop; charts;
+  speaker notes; the theme's colours and fonts. `.pptx`, `.potx` and `.ppsx`
+  (and the macro-enabled kinds) by their extension; a password encrypts it.
+  A deck read and written again draws the same.
+- **A document laid out as a deck.** `PptxPresentationFromRichDocument` makes a
+  slide per first-level heading - the paragraphs and lists as its text, the
+  tables and pictures below them - and reads a deck's own outline back as its
+  slides, hidden slides and speaker notes included.
+  `UltraCanvasFileLoader::SaveTextDocument` writes a `.pptx` this way, and the
+  new `SavePresentation` writes a deck model; the Save dialog's document types
+  offer PowerPoint.
+- **`WriteDrawingMLChart`**: the chart part writer moved from the `.docx`
+  writer into `UltraCanvasDrawingML.h`, shared with the PowerPoint writer; it
+  now writes the axis ranges a chart states.
+- **Run in background.** The progress window of a copy, move, delete, pack or
+  unpack in `UltraCanvasFilerWidget` offers "Run in background" when the host
+  sets `onBackgroundProgress`: the window closes, the work goes on, and the
+  host hears its progress on every tick (`FilerBackgroundProgress`) until it
+  ends; `BringOperationToFront()` opens the window again.
+  `UltraCanvasProgressDialog` has the button for any caller
+  (`ProgressDialogOptions::onBackground`, `IsInBackground()`) and opens on
+  paused work with Resume (`startPaused`). A LinearBar gauge's track takes
+  `SetTrackColor` (it was a fixed light grey, glaring on a dark bar).
+- **UltraCrypt: SHA-1 as a plain digest is refused in all three ways to one,
+  not in one of them.** `UltraCrypt_Hash` has always refused
+  `UltraCryptHashAlgorithm::SHA1` unless `UltraCryptHashOptions::allowLegacy`
+  is set - SHA-1 is collision-broken and is there for HMAC-SHA-1 (TOTP) and
+  two foreign file formats. `UltraCrypt_HashFile` and the streaming
+  `UltraCryptHasher` took no options and computed it for anyone, so the
+  refusal was passed by hashing a file or feeding the same bytes in pieces.
+  - Both take `UltraCryptHashOptions` now (last parameter, defaulted - code
+    that hashes with SHA-256 or SHA-512 is unchanged). `UltraCrypt_HashFile`
+    returns `NotSupported` for SHA-1 without `allowLegacy`, before the file
+    is opened; a `UltraCryptHasher` made that way reports `IsValid() ==
+    false`, takes no data and returns an empty digest from `Final()`.
+  - Nothing in the tree hashed a file or a stream with SHA-1; HMAC-SHA-1,
+    PBKDF2-HMAC-SHA-1 with `allowLegacy` and the Office and OpenDocument
+    readers are as they were. Code of yours that did must pass
+    `allowLegacy`. `UltraCryptTests` covers the refusal and the digests in
+    all three (`UltraCrypt_HashFile` had no test before).
+- **UltraNet: WebSockets on every system - a client of its own where libcurl
+  has none (macOS through 15).** `UltraNet_WebSocket*` was libcurl's
+  `curl_ws_*` and nothing else, and `UltraNet_WebSocketConnect` refused on a
+  libcurl that lists neither `ws` nor `wss`. Apple's own libcurl, which the
+  macOS build links, lists none through macOS 15 - so on such a Mac
+  everything on a WebSocket had no connection: ChatCube Direct's relay,
+  Mattermost's events, XMPP over WebSocket, UltraWeb's sockets, the UltraAI
+  transport, the UltraDatabase relay. Nothing said so: UltraNet's WebSocket
+  tests skipped there ("libcurl built without --enable-websockets"), and the
+  build printed "WebSocket: OK" for macOS without asking the library. The
+  chat-network tests' first run on a macOS runner (#1337) found it.
+  - **The own client** (`core/UltraNet/UltraNetWebSocketOwn.{h,cpp}`, internal):
+    RFC 6455 on UltraNet's own sockets and TLS - `UltraNet_TcpOpen` through
+    the proxy setting (SOCKS, or an HTTP proxy as a `CONNECT` tunnel) and
+    `UltraNet_TlsWrap` for `wss://` (OpenSSL, Schannel, SecureTransport), so
+    macOS keeps the system's TLS and certificates and the HTTP side is
+    untouched. `UltraNet_WebSocketConnect` uses it where libcurl has no
+    WebSockets, and with `ULTRANET_WEBSOCKET_CLIENT=own` in the environment
+    anywhere. The public API is unchanged and behaves the same on both:
+    handles, callbacks, PINGs answered, `pingIntervalMs`, `maxMessageBytes`
+    (a frame over it is refused by its header, before any of it is kept).
+  - **What differs**, for `wss://` only: the own client verifies the
+    certificate as `UltraNet_TlsWrap` does (the system's roots,
+    `UltraNet_TlsSetCABundle`, `UltraNet_TlsAddTrustedCert`), libcurl's
+    against libcurl's roots; and a proxy reached over TLS (`Https`) is one
+    only libcurl's client goes through. The own client offers no extension
+    (no `permessage-deflate`) and follows no redirect in the upgrade's
+    answer.
+  - **Tests.** `test_websocket_own.cpp`, 13 tests of the client by its
+    internal class, on every system: the address, the accept key (the RFC's
+    example), SHA-1, the upgrade as asked and every answer that is no
+    upgrade, fragments with a ping between them, lengths of every encoding
+    both ways, frames that are not the protocol, a frame over the allowance,
+    idle / partial / closed, `wss://` - a certificate nobody vouches for
+    refused, one added as trusted taken - and the proxy setting (an HTTP
+    proxy gone through as a tunnel, this machine reached without it),
+    against a scripted server. Three more through `UltraNet_WebSocket*` hold
+    for either client (a message from fragments; `wss://`; the proxy
+    setting). CTest's new `UltraNetOwnWebSocket` runs all 16 `ws_` tests on
+    the own client on every platform. Seven deliberate breaks of the client
+    each fail them. Also run on it here: `XmppProviderTests` (342 checks),
+    `MattermostProviderTests` (294), `MastodonProviderTests` (154) and
+    `DirectProviderTests` end to end against the real relay (1158).
+  - **No more silent skips.** A WebSocket test with no connection to its own
+    server fails instead of skipping; CI's "Run UltraNet tests" sets
+    `ULTRANET_TEST_NO_SKIP` so the WebSocket tests run or the step fails
+    (`test_framework.h`: that switch, and `ULTRANET_TEST_FILTER`). The
+    chat-network step asks the Apple silicon row for `XmppProviderTests` and
+    `MattermostProviderTests` again, without the check for a libcurl with
+    no `ws` that #1337 put there; the build's status line says which client
+    is used instead of "OK".
+
 #### 2026-11-20 *0.9.580*
 - **PowerPoint slides are read and drawn as they look.** The reader
   (`UltraCanvasPresentationPptx.h`) now resolves each run's typeface (the

@@ -1,3 +1,6 @@
+#### 2026-11-20 *0.1.4*
+- **The review pipeline's findings**: each automatic check on the review page shows the pipeline's lines under it, with when it last ran and *Run the checks again*; `ultrastoreop review show` prints the findings, `review checks <submission>` runs the pipeline again.
+
 #### 2026-11-20 *0.1.3*
 - **Two-factor sign-in and the forgotten password**: the authenticator set up and turned on from *Your own account* on the Operators page (the recovery codes shown once), the sign-in's *Authenticator code* field, *Forgot the password* on Settings with the mailed code and the new password, an admin's *Reset 2FA* on another account; `ultrastoreop signin --code`, `twofactor setup | enable | disable | recovery-codes`, `password forgot | reset`, `operator reset-2fa <id>`.
 - **Download build**: a package the merchant uploaded into the package store is fetched per package from the submission (into the builds folder under the data folder); one not yet uploaded is marked so; `ultrastoreop review download <submission> [--to <folder>]`.
