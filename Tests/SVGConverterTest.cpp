@@ -15,16 +15,19 @@
 // strokes. Export() to a file is staged: saving over a file replaces it
 // only once the new one is written, leaves no temporary file, and a save that
 // fails says why and keeps what was there. A radial gradient stretched by
-// its gradientTransform round-trips and is drawn as the ellipse it is.
+// its gradientTransform round-trips and is drawn as the ellipse it is, and an
+// even-odd ring keeps its hole through SVG, PDF and EPS.
 //
 // Usage: SVGConverterTest [output.svg]
 // Exit code is the number of failed checks.
+// Version: 1.8.0 - fill-rule: read (inherited, CSS), written on shapes, drawn; PDF f*, EPS eofill
 // Version: 1.7.0 - gradientTransform and spreadMethod read, written and drawn by the renderer
 // Version: 1.6.0
 // Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
+#include "UltraCanvasEPSConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasPathUtf8.h"
@@ -931,6 +934,85 @@ int main(int argc, char** argv) {
             } else {
                 Check(false, "the gradient document draws: " + error);
             }
+        }
+    }
+
+    // ===== FILL-RULE =====
+    // A ring - two circles drawn the same way round in one path - keeps its
+    // hole only filled even-odd. The rule is read from the attribute, from a
+    // group (it is inherited) and from the stylesheet, written back on the
+    // shape (never a group, whose children the model does not hand it to),
+    // and drawn; the PDF and EPS writers fill such a shape with f* / eofill.
+    {
+        std::printf("--- fill-rule ---\n");
+        const std::string ring = "M 50 0 A 50 50 0 1 1 50 100 A 50 50 0 1 1 50 0 Z "
+                                 "M 50 25 A 25 25 0 1 1 50 75 A 25 25 0 1 1 50 25 Z";
+        auto doc1 = [&](const std::string& body, const std::string& css = {}) {
+            return converter.ImportFromString(
+                "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'>" +
+                    (css.empty() ? std::string() : "<style>" + css + "</style>") + body + "</svg>",
+                options);
+        };
+        auto firstPath = [](const std::shared_ptr<VectorStorage::VectorDocument>& d)
+                -> std::shared_ptr<VectorStorage::VectorElement> {
+            std::function<std::shared_ptr<VectorStorage::VectorElement>(const std::shared_ptr<VectorStorage::VectorElement>&)> find =
+                [&](const std::shared_ptr<VectorStorage::VectorElement>& e) -> std::shared_ptr<VectorStorage::VectorElement> {
+                if (!e) return nullptr;
+                if (e->Type == VectorStorage::VectorElementType::Path) return e;
+                if (VectorStorage::IsGroupType(e->Type))
+                    for (const auto& c : std::static_pointer_cast<VectorStorage::VectorGroup>(e)->Children)
+                        if (auto f = find(c)) return f;
+                return nullptr;
+            };
+            if (!d) return nullptr;
+            for (const auto& l : d->Layers)
+                if (auto f = find(l)) return f;
+            return nullptr;
+        };
+        auto centre = [](const std::shared_ptr<VectorStorage::VectorDocument>& d, int x, int y) {
+            VectorRasterOptions ro;
+            ro.background = RasterPixel(255, 255, 255, 255);
+            std::string error;
+            auto img = d ? RasterizeVectorDocument(*d, ro, error) : nullptr;
+            return img ? img->GetPixel(x, y) : RasterPixel(1, 2, 3, 0);
+        };
+        const auto EO = VectorStorage::FillRule::EvenOdd;
+
+        auto own = doc1("<path fill='#000' fill-rule='evenodd' d='" + ring + "'/>");
+        auto ownPath = firstPath(own);
+        Check(ownPath && ownPath->Style.ShapeFillRule == EO, "fill-rule=evenodd is read");
+        const RasterPixel hole = centre(own, 50, 50), band = centre(own, 50, 12);
+        Check(hole.r > 240 && band.r < 15, "and drawn with its hole open (centre " + std::to_string(hole.r) +
+                                               ", ring " + std::to_string(band.r) + ")");
+        auto plain = doc1("<path fill='#000' d='" + ring + "'/>");
+        Check(firstPath(plain) && firstPath(plain)->Style.ShapeFillRule != EO && centre(plain, 50, 50).r < 15,
+              "without it the ring is filled solid (non-zero)");
+
+        auto grouped = doc1("<g fill-rule='evenodd'><path fill='#000' d='" + ring + "'/></g>");
+        Check(firstPath(grouped) && firstPath(grouped)->Style.ShapeFillRule == EO, "a group's fill-rule is inherited");
+        auto styled = doc1("<path class='eo' fill='#000' d='" + ring + "'/>", ".eo { fill-rule: evenodd }");
+        Check(firstPath(styled) && firstPath(styled)->Style.ShapeFillRule == EO, "and the stylesheet's applies");
+
+        if (grouped) {
+            const std::string out = converter.ExportToString(*grouped, options);
+            const size_t at = out.find("fill-rule=\"evenodd\"");
+            const size_t path = out.find("<path");
+            Check(at != std::string::npos && path != std::string::npos && at > path &&
+                      out.find("fill-rule", at + 1) == std::string::npos,
+                  "written once, on the shape and not on its group");
+            auto again = converter.ImportFromString(out, options);
+            Check(firstPath(again) && firstPath(again)->Style.ShapeFillRule == EO, "and read back");
+
+            VectorConverter::PDFVectorConverter pdf;
+            const std::string p = pdf.ExportToString(*grouped, options);
+            Check(p.find("f*\n") != std::string::npos || p.find("B*\n") != std::string::npos,
+                  "the PDF writer fills it with f* / B*");
+            VectorConverter::EPSConverter eps;
+            const std::string e = eps.ExportToString(*grouped, options);
+            Check(e.find(" eofill") != std::string::npos, "the EPS writer with eofill");
+            const std::string pn = pdf.ExportToString(*plain, options), en = eps.ExportToString(*plain, options);
+            Check(pn.find("f*\n") == std::string::npos && en.find(" eofill") == std::string::npos,
+                  "and a non-zero shape with f / fill");
         }
     }
 

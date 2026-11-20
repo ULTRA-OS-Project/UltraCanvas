@@ -6,6 +6,7 @@
 // emitted coordinates (EPS could carry matrices, but baked points keep the
 // output trivially portable and share the PathOps normalisation), and the
 // Y axis flips from the document's Y-down points to PostScript's Y-up.
+// Version: 1.1.0 - an even-odd shape is filled with eofill
 // Version: 1.0.0
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
@@ -309,8 +310,10 @@ namespace UltraCanvas {
                     if (filled) {
                         Color fc = FlattenFill(*style.Fill);
                         float fo = style.Opacity * style.FillOpacity;
-                        if (stroked) out << "gsave " << Rgb(fc, fo) << " fill grestore\n";
-                        else out << Rgb(fc, fo) << " fill\n";
+                        // eofill: the even-odd rule (VectorStyle::ShapeFillRule).
+                        const char* fillOp = style.ShapeFillRule == VectorStorage::FillRule::EvenOdd ? " eofill" : " fill";
+                        if (stroked) out << "gsave " << Rgb(fc, fo) << fillOp << " grestore\n";
+                        else out << Rgb(fc, fo) << fillOp << "\n";
                     }
                     if (stroked) {
                         const StrokeData& st = *style.Stroke;
