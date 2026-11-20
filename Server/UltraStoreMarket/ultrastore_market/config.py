@@ -40,6 +40,16 @@ class Settings:
     package_dir: str = ""
     max_package_mb: int = 512
     catalog_url: str = ""
+    # The review pipeline (checks.py) on the uploaded packages: a virus
+    # scanner to hand each file to ({file}; exit 0 clean, 1 found, as
+    # clamscan does), a sandbox runner that starts the build ({file},
+    # {entry}, {os}, {arch}; exit 0 when it showed a window), how long each
+    # may take, and whether the pipeline runs inside the request (the tests)
+    # or in the background after the last upload.
+    scan_command: str = ""
+    smoke_command: str = ""
+    check_timeout_seconds: int = 120
+    checks_inline: bool = False
     signing_seed: str = ""
     trusted_keys: list[str] = field(default_factory=list)
     payment_url: str = ""
@@ -67,6 +77,9 @@ class Settings:
         s.package_dir = env("ULTRASTORE_MARKET_PACKAGE_DIR", "")
         s.max_package_mb = int(env("ULTRASTORE_MARKET_MAX_PACKAGE_MB", s.max_package_mb))
         s.catalog_url = env("ULTRASTORE_MARKET_CATALOG_URL", "").rstrip("/")
+        s.scan_command = env("ULTRASTORE_MARKET_SCAN_COMMAND", "").strip()
+        s.smoke_command = env("ULTRASTORE_MARKET_SMOKE_COMMAND", "").strip()
+        s.check_timeout_seconds = int(env("ULTRASTORE_MARKET_CHECK_TIMEOUT", s.check_timeout_seconds))
         s.smtp_url = env("ULTRASTORE_MARKET_SMTP_URL", "").strip()
         s.mail_from = env("ULTRASTORE_MARKET_MAIL_FROM", s.mail_from)
         s.code_minutes = int(env("ULTRASTORE_MARKET_CODE_MINUTES", s.code_minutes))

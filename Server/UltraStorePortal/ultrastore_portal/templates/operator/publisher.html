@@ -1,0 +1,44 @@
+{% extends "operator/base.html" %}
+{% block title %}{{ publisher.name }} - Operator{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ publisher.name }}</h1>{% include "_state.html" with state=publisher.state label=publisher.get_state_display %}</div>
+<div class="panels">
+<div class="panel">
+  <dl class="facts">
+    <dt>Publisher id</dt><dd class="mono">{{ publisher.slug }}</dd>
+    <dt>Website</dt><dd>{% if publisher.website %}<a href="{{ publisher.website }}" rel="nofollow noopener">{{ publisher.website }}</a>{% else %}-{% endif %}</dd>
+    <dt>Contact</dt><dd>{{ publisher.support_email }}</dd>
+    <dt>About</dt><dd>{{ publisher.description|linebreaksbr|default:"-" }}</dd>
+    <dt>People</dt><dd>{% for member in members %}{{ member.user.display_name }} &lt;{{ member.user.email }}&gt; ({{ member.role }}){% if not member.user.email_verified %} - address not confirmed{% endif %}<br>{% endfor %}</dd>
+    <dt>Applied</dt><dd>{{ publisher.created|date:"j F Y, H:i" }}</dd>
+    <dt>Terms</dt><dd>{% if publisher.terms_version %}Version {{ publisher.terms_version }} accepted {{ publisher.terms_accepted_at|date:"j F Y" }}{% else %}-{% endif %}</dd>
+    {% if publisher.decision_message %}<dt>Last message</dt><dd>{{ publisher.decision_message|linebreaksbr }}</dd>{% endif %}
+  </dl>
+</div>
+<div class="panel form wide">
+  <h2>Decision</h2>
+  <form method="post">
+    {% csrf_token %}
+    <div class="field"><label for="message">Message to the publisher</label><textarea id="message" name="message" rows="4"></textarea>
+      <div class="help">Mailed to the publisher. Needed to reject or suspend.</div></div>
+    <div class="row">
+      {% if publisher.state == "applied" or publisher.state == "rejected" %}<button class="button" name="action" value="approve">Approve</button>{% endif %}
+      {% if publisher.state == "applied" %}<button class="button danger" name="action" value="reject">Reject</button>{% endif %}
+      {% if publisher.state == "approved" %}<button class="button danger" name="action" value="suspend">Suspend</button>{% endif %}
+      {% if publisher.state == "suspended" %}<button class="button" name="action" value="reinstate">Reinstate</button>{% endif %}
+    </div>
+  </form>
+</div>
+<div class="panel">
+  <h2>Apps</h2>
+  <table>
+    {% for app in apps %}<tr><td><b>{{ app.name }}</b></td><td class="mono">{{ app.app_id }}</td><td>{% if app.is_public %}<a href="{{ app.get_absolute_url }}">In the store</a>{% else %}<span class="muted">Not public</span>{% endif %}</td></tr>
+    {% empty %}<tr><td class="muted">No app yet.</td></tr>{% endfor %}
+  </table>
+</div>
+<div class="panel">
+  <h2>History</h2>
+  <table>{% for entry in history %}<tr><td class="muted">{{ entry.created|date:"j M Y, H:i" }}</td><td>{{ entry.actor_name }}</td><td class="mono">{{ entry.action }}</td><td>{{ entry.detail.message }}</td></tr>{% endfor %}</table>
+</div>
+</div>
+{% endblock %}

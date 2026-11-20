@@ -74,6 +74,7 @@ set(ULTRANET_TEST_SOURCES
     test_extra_plugins.cpp
     test_sse.cpp
     test_websocket.cpp
+    test_websocket_own.cpp
     test_tls_pin.cpp
     test_socket_errors.cpp
 )
@@ -255,6 +256,14 @@ target_compile_definitions(UltraNetApiStatus PRIVATE
 
 include(CTest)
 add_test(NAME UltraNet COMMAND UltraNetTests)
+# The WebSocket tests once more on UltraNet's own client (UltraNetWebSocketOwn.h),
+# which a build whose libcurl has WebSockets would otherwise never run through
+# UltraNet_WebSocket*: only where libcurl has none is it the client by itself
+# (macOS through 15). The same binary, told to take the own client and to run
+# the ws_ tests alone.
+add_test(NAME UltraNetOwnWebSocket COMMAND UltraNetTests)
+set_tests_properties(UltraNetOwnWebSocket PROPERTIES
+    ENVIRONMENT "ULTRANET_WEBSOCKET_CLIENT=own;ULTRANET_TEST_FILTER=ws_")
 # Fails only on BROKEN entries — IMPLEMENTED / NOT IMPLEMENTED are legitimate
 # states for this environment, not test failures.
 add_test(NAME UltraNetApiStatus COMMAND UltraNetApiStatus)

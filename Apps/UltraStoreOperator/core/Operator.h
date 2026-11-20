@@ -13,6 +13,7 @@
 // the program's own file (settings.json under the data folder, readable by
 // the user alone), overridden by ULTRASTORE_OPERATOR_URL and _TOKEN; the
 // window and the command line read the same file.
+// Version: 0.6.0 - the review pipeline's findings on a submission, the checks run again
 // Version: 0.5.0 - the second factor and the password reset by mail; the build downloaded from the package store
 // Version: 0.4.0 - the operator accounts with their roles: the sign-in, the session in the settings, the account service on the same session
 // Version: 0.3.0 - the applications for a shop, the merchant's website and description
@@ -106,9 +107,12 @@ struct Submission {
     std::string id, merchant, app, version, state, answers, createdAt, decidedAt;
     int releasedSequence = 0;
     std::vector<std::pair<std::string, std::string>> checks;   // name -> ok / failed / not run / a standing
+    std::vector<std::pair<std::string, std::vector<std::string>>> findings;   // check name -> the pipeline's lines
+    std::string checkedAt;                                     // when the pipeline last ran; empty: not yet
     std::vector<Decision> decisions;
     UltraCanvas::JSONValue component, packages;
     bool ChecksFailed() const;
+    const std::vector<std::string>* FindingsOf(const std::string& check) const;
     std::string Name() const;   // the component's name, the app id when none
 };
 
@@ -360,6 +364,8 @@ public:
     Result<Submission> GetSubmission(const std::string& id) const;
     // action: start_review, release (sequence 0: the next), request_changes, reject.
     Result<Submission> Decide(const std::string& id, const std::string& action, const std::string& message, int sequence = 0) const;
+    // The review pipeline run again on the packages in the store (scans, entry, smoke, listing); the findings come back with the submission.
+    Result<Submission> RunChecks(const std::string& id) const;
     // A package the merchant uploaded into the package store, into the
     // folder, under <sha256>.<format> (the review's Download build).
     Result<DownloadedPackage> DownloadPackage(const std::string& submissionId, const UltraCanvas::JSONValue& package, const std::string& folderUtf8) const;

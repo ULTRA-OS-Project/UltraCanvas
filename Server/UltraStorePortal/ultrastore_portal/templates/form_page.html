@@ -1,0 +1,14 @@
+{% extends layout|default:"base.html" %}
+{% block title %}{{ title }} - UltraStore{% endblock %}
+{% block content %}
+<div class="{% if layout %}panel form{% else %}narrow{% endif %}">
+  <h1>{{ title }}</h1>
+  {% if lead %}<p class="muted">{{ lead }}</p>{% endif %}
+  <form method="post" enctype="multipart/form-data" class="stack" style="margin-top:20px">
+    {% csrf_token %}
+    {% include "_form.html" %}
+    <button class="button big" type="submit">{{ submit|default:"Save" }}</button>
+  </form>
+  {% if below %}<div class="below">{% for text, label, href in below %}<div>{{ text }} <a href="{{ href }}">{{ label }}</a></div>{% endfor %}</div>{% endif %}
+</div>
+{% endblock %}

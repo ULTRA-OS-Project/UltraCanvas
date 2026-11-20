@@ -9,11 +9,17 @@
 // (pingIntervalMs), a peer that stops answering taken as gone, and sends
 // from several threads while the receiver reads (one libcurl handle).
 //
-// Two preconditions must be satisfied or the tests SKIP cleanly:
-//   1. libcurl built with --enable-websockets (Ubuntu 24.04's stock build
-//      does NOT have this; vcpkg curl[websockets], brew curl, and modern
-//      MSYS2 builds do).
-//   2. The Python `websockets` package is installed on PATH python3.
+// They run on whichever client UltraNet uses here - libcurl's, or its own
+// where libcurl has no WebSockets (UltraNetWebSocketOwn.h) - and CTest's
+// UltraNetOwnWebSocket runs them once more on the own client everywhere
+// (ULTRANET_WEBSOCKET_CLIENT=own). test_websocket_own.cpp has what is the
+// own client's alone.
+//
+// They skip without the Python `websockets` package on the PATH's python3
+// (ULTRANET_TEST_NO_SKIP=ws_ makes that a failure, as CI sets it). No
+// connection to the test's own server is a failure, never a skip: until
+// 2026-11 it was skipped as "libcurl built without --enable-websockets",
+// which is how a macOS without WebSockets went unseen.
 #include "test_framework.h"
 
 #include <UltraNet/UltraNetCore.h>
@@ -39,6 +45,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
+
+// UltraNet has a WebSocket client on every system: no connection to the
+// test's own server is the test's failure.
+#define NO_CONNECTION() REQUIRE(!"a WebSocket connection to the test's own server")
 
 namespace {
 
@@ -180,13 +190,8 @@ TEST(ws_loopback_connect_open_close) {
     UltraNet_Initialize();
     if (!StartWsServer()) SKIP("python3 + websockets package not available");
 
-    // Probe libcurl WS support: a real connect against the live server. If
-    // libcurl was built without --enable-websockets, Connect returns
-    // InvalidHandle synchronously.
     UltraNetHandle h = UltraNet_WebSocketConnect(EchoUrl());
-    if (h == UltraNetInvalidHandle) {
-        SKIP("libcurl built without --enable-websockets");
-    }
+    REQUIRE(h != UltraNetInvalidHandle);
     CHECK(UltraNet_WebSocketIsOpen(h));
     REQUIRE_EQ(UltraNet_WebSocketGetState(h),
                UltraNetWebSocketState::Open);
@@ -218,7 +223,7 @@ TEST(ws_loopback_text_round_trip) {
     UltraNetHandle h = UltraNet_WebSocketConnect(EchoUrl());
     if (h == UltraNetInvalidHandle) {
         UltraNet_WebSocketSetCallbacks(prev);
-        SKIP("libcurl built without --enable-websockets");
+        NO_CONNECTION();
     }
 
     auto sent = UltraNet_WebSocketSendText(h, "hello-ultranet");
@@ -261,7 +266,7 @@ TEST(ws_loopback_binary_round_trip) {
     UltraNetHandle h = UltraNet_WebSocketConnect(EchoUrl());
     if (h == UltraNetInvalidHandle) {
         UltraNet_WebSocketSetCallbacks(prev);
-        SKIP("libcurl built without --enable-websockets");
+        NO_CONNECTION();
     }
     std::vector<uint8_t> payload = {0x01, 0x02, 0xff, 0x00, 0x7e, 0x80};
     auto sent = UltraNet_WebSocketSendBinary(h, payload);
@@ -308,7 +313,7 @@ TEST(ws_loopback_server_initiated_close_fires_callback) {
     UltraNetHandle h = UltraNet_WebSocketConnect(CloseUrl());
     if (h == UltraNetInvalidHandle) {
         UltraNet_WebSocketSetCallbacks(prev);
-        SKIP("libcurl built without --enable-websockets");
+        NO_CONNECTION();
     }
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -345,7 +350,7 @@ TEST(ws_loopback_close_from_own_callback) {
     UltraNetHandle h = UltraNet_WebSocketConnect(EchoUrl());
     if (h == UltraNetInvalidHandle) {
         UltraNet_WebSocketSetCallbacks(prev);
-        SKIP("libcurl built without --enable-websockets");
+        NO_CONNECTION();
     }
     REQUIRE(bool(UltraNet_WebSocketSendText(h, "close-me")));
 
@@ -372,7 +377,7 @@ TEST(ws_loopback_shutdown_closes_open_sockets) {
     UltraNet_Initialize();
 
     UltraNetHandle h = UltraNet_WebSocketConnect(EchoUrl());
-    if (h == UltraNetInvalidHandle) SKIP("libcurl built without --enable-websockets");
+    REQUIRE(h != UltraNetInvalidHandle);
     REQUIRE(UltraNet_WebSocketIsOpen(h));
 
     UltraNet_Shutdown();
@@ -443,7 +448,7 @@ TEST(ws_answers_the_servers_pings) {
     watch.handle = UltraNet_WebSocketConnect(StrictUrl());
     if (watch.handle == UltraNetInvalidHandle) {
         watch.Uninstall();
-        SKIP("libcurl built without --enable-websockets");
+        NO_CONNECTION();
     }
     // Idle for three seconds: six pings, each closing the connection after
     // half a second unanswered. Before 0.4.0 nothing answered them.
@@ -470,7 +475,7 @@ TEST(ws_pings_at_its_interval) {
     watch.handle = UltraNet_WebSocketConnect(EchoUrl(), options);
     if (watch.handle == UltraNetInvalidHandle) {
         watch.Uninstall();
-        SKIP("libcurl built without --enable-websockets");
+        NO_CONNECTION();
     }
     // The option was read by nothing before 0.4.0: no ping, so no pong.
     CHECK(WaitFor([&]() { return watch.pongs.load() >= 3; }, 3000));
@@ -492,7 +497,7 @@ TEST(ws_takes_a_silent_peer_as_gone) {
     watch.handle = UltraNet_WebSocketConnect(SilentUrl(), options);
     if (watch.handle == UltraNetInvalidHandle) {
         watch.Uninstall();
-        SKIP("libcurl built without --enable-websockets");
+        NO_CONNECTION();
     }
     CHECK(UltraNet_WebSocketIsOpen(watch.handle));
     // No pong and nothing else for two intervals: gone, said once, so the
@@ -518,7 +523,7 @@ TEST(ws_sends_from_many_threads_while_receiving) {
     watch.handle = UltraNet_WebSocketConnect(StrictUrl(), options);
     if (watch.handle == UltraNetInvalidHandle) {
         watch.Uninstall();
-        SKIP("libcurl built without --enable-websockets");
+        NO_CONNECTION();
     }
     // Four threads sending while the receiver reads the echoes and the
     // server's pings arrive: one libcurl handle, which is not thread-safe.
@@ -555,7 +560,7 @@ TEST(ws_delivers_a_large_frame_whole) {
     watch.handle = UltraNet_WebSocketConnect(EchoUrl());
     if (watch.handle == UltraNetInvalidHandle) {
         watch.Uninstall();
-        SKIP("libcurl built without --enable-websockets");
+        NO_CONNECTION();
     }
     // Larger than a read: libcurl hands one frame over in parts (bytesleft),
     // which are not fragments (CURLWS_CONT). Before 0.4.0 each part went out
@@ -588,7 +593,7 @@ TEST(ws_refuses_a_message_over_its_limit) {
     watch.handle = UltraNet_WebSocketConnect(EchoUrl(), options);
     if (watch.handle == UltraNetInvalidHandle) {
         watch.Uninstall();
-        SKIP("libcurl built without --enable-websockets");
+        NO_CONNECTION();
     }
     // Under the limit: delivered.
     CHECK(bool(UltraNet_WebSocketSendText(watch.handle, std::string(5000, 'a'))));

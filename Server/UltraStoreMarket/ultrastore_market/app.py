@@ -6,6 +6,7 @@ The operator (Authorization: Bearer <operator token or session>; the static toke
                                         .../disable {code}; .../recovery-codes {code} -> a new set
   POST /v1/operators/password/forgot    {email}: a code by mail; POST /v1/operators/password/reset {email, code, new_password, totp?, recovery_code?}
   GET  /v1/submissions/{id}/packages/{sha256}   the uploaded package (the review's Download build)
+  POST /v1/submissions/{id}/checks       the review pipeline run again (scans, entry, smoke, listing), the findings in the answer
   GET  /v1/operators; POST /v1/operators {email, name, role, password}; PUT /v1/operators/{id} {name?, role?, password?, disabled?}
   POST /v1/merchants                    register a merchant with its key; GET /v1/merchants, GET /v1/merchants/{id}, PUT /v1/merchants/{id}
   POST /v1/merchants/{id}/suspend       {clause, reason, days}; POST /v1/merchants/{id}/reinstate {reason}
@@ -43,6 +44,7 @@ Public:
 
 Errors are {"error", "error_description"} with a 4xx status.
 
+Version: 0.6.0 - the review pipeline (checks.py): the scans, the entry, the smoke run and the listing, after the last upload and on demand
 Version: 0.5.0 - the package store: a package uploaded with a submission, the operator's download, the release gate, the publish laying them out;
                the operators' second factor and the password reset by mail
 Version: 0.4.0 - the operators with their roles: sign-in, the signed session, a permission on every operator call
@@ -59,7 +61,7 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -68,6 +70,7 @@ from ultrastore_db.totp import hash_recovery, new_code, new_recovery_codes, new_
 
 from . import __version__
 from .auth import hash_password, parse_merchant_header, verify_bytes, verify_password, verify_request
+from .checks import run_checks
 from .config import Settings
 from .mail import Mailer, mailer_from_settings
 from .publish import SigningKey, publish
@@ -578,9 +581,39 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
         actor = operator(authorization, "merchants.manage")
         return {"lifted": store.reinstate("app", app_id, actor=actor, reason=body.reason)}
 
+    # ----- the review pipeline -----
+    def run_pipeline(sid: str, actor: str) -> None:
+        """The checks behind the ones the service makes at once, kept with
+        their findings; after the last upload, and on the operator's word."""
+        s = store.get_submission(sid)
+        if not s:
+            return
+        results = run_checks(s.component, s.packages, package_dir=settings.package_dir, scan_command=settings.scan_command,
+                             smoke_command=settings.smoke_command, timeout=settings.check_timeout_seconds)
+        checks = dict(s.checks)
+        findings = dict(s.findings)
+        for name, outcome in results.items():
+            checks[name] = outcome.outcome
+            findings[name] = outcome.findings
+        store.set_checks(sid, checks, findings, actor=actor)
+
+    def schedule_pipeline(background: BackgroundTasks, sid: str, actor: str) -> None:
+        if settings.checks_inline:
+            run_pipeline(sid, actor)
+        else:
+            background.add_task(run_pipeline, sid, actor)
+
+    @app.post("/v1/submissions/{sid}/checks")
+    async def rerun_checks(sid: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        actor = operator(authorization, "review.decide")
+        if not store.get_submission(sid):
+            raise error(404, "no_such_submission", "No such submission")
+        run_pipeline(sid, actor)
+        return store.get_submission(sid).public()   # type: ignore[union-attr]
+
     # ----- submissions -----
     @app.post("/v1/submissions")
-    async def submit(request: Request, body: SubmissionBody) -> dict[str, Any]:
+    async def submit(request: Request, body: SubmissionBody, background: BackgroundTasks) -> dict[str, Any]:
         m = await merchant(request)
         app_id = str(body.component.get("id", ""))
         if not app_id:
@@ -605,11 +638,14 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
                     p["uploaded"] = True
             if checks["packages"] == "waiting" and all(p.get("uploaded") for p in packages):
                 checks["packages"] = "ok"
-        return store.add_submission(merchant_id=m.id, component=body.component, signature=body.signature, packages=packages, checks=checks,
-                                    answers=body.answers).public(for_merchant=True)
+        sub = store.add_submission(merchant_id=m.id, component=body.component, signature=body.signature, packages=packages, checks=checks,
+                                   answers=body.answers)
+        # The pipeline runs once the packages are in; the listing is checked at once either way.
+        schedule_pipeline(background, sub.id, m.id)
+        return store.get_submission(sub.id).public(for_merchant=True)   # type: ignore[union-attr]
 
     @app.post("/v1/submissions/{sid}/packages/{sha256}")
-    async def upload_package(sid: str, sha256: str, request: Request) -> dict[str, Any]:
+    async def upload_package(sid: str, sha256: str, request: Request, background: BackgroundTasks) -> dict[str, Any]:
         """The package's bytes, into the package store under their hash; the
         request is signed over them like every merchant request."""
         if not settings.package_dir:
@@ -640,9 +676,13 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
             tmp.replace(target)
         packages = [{**p, "uploaded": True} if p is named else p for p in s.packages]
         checks = dict(s.checks)
-        if checks.get("packages") in ("waiting", "ok") and all(p.get("uploaded") for p in packages):
+        complete = all(p.get("uploaded") for p in packages)
+        if checks.get("packages") in ("waiting", "ok") and complete:
             checks["packages"] = "ok"
-        return store.update_submission_packages(sid, packages, checks, actor=m.id, sha256=sha256).public(for_merchant=True)   # type: ignore[union-attr]
+        store.update_submission_packages(sid, packages, checks, actor=m.id, sha256=sha256)
+        if complete:
+            schedule_pipeline(background, sid, m.id)
+        return store.get_submission(sid).public(for_merchant=True)   # type: ignore[union-attr]
 
     @app.get("/v1/submissions/{sid}/packages/{sha256}")
     async def download_package(sid: str, sha256: str, authorization: str | None = Header(default=None)) -> FileResponse:

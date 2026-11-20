@@ -1,0 +1,53 @@
+{% extends "operator/base.html" %}
+{% block title %}Order {{ order.public_id }} - Operator{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{{ order.app_name }}</h1><span class="muted">{{ order.amount }} {{ order.currency }}</span>{% include "_state.html" with state=order.status label=order.get_status_display %}</div>
+<div class="panels">
+<div class="panel">
+  <dl class="facts">
+    <dt>Order</dt><dd class="mono">{{ order.public_id }}</dd>
+    <dt>App</dt><dd>{{ order.app_name }} <span class="mono">{{ order.app.app_id }}</span> - <a href="{% url 'operator:publisher' order.app.publisher.slug %}">{{ order.app.publisher.name }}</a></dd>
+    <dt>Opened</dt><dd>{{ order.created|date:"j F Y, H:i" }} UTC, from the {{ order.source }}</dd>
+    <dt>Provider</dt><dd>{{ order.provider }} <span class="mono">{{ order.provider_transaction }}</span></dd>
+    <dt>Buyer</dt><dd>{{ order.payer_email|default:"-" }}</dd>
+    {% if order.paid_at %}<dt>Paid</dt><dd>{{ order.paid_at|date:"j F Y, H:i" }} UTC, receipt no. {{ order.receipt_no }}</dd>
+    <dt>Licence</dt><dd class="mono">{{ order.licence_id }}</dd>
+    <dt>Includes</dt><dd>updates: {{ order.updates }}{% if order.updates_until %} until {{ order.updates_until }}{% endif %}</dd>{% endif %}
+    {% if order.cycle %}<dt>Subscription</dt><dd>every {{ order.cycle }}, {{ order.subscription_status }}; paid until {{ order.paid_until }}, licence valid until {{ order.valid_until }}</dd>{% endif %}
+    {% if order.revoked %}<dt>Taken back</dt><dd>{{ order.revoked_at|date:"j F Y" }} - {{ order.revoked_reason }}</dd>{% endif %}
+    <dt>Refunded</dt><dd>{{ order.refunded }} {{ order.currency }}</dd>
+    {% if order.notes %}<dt>Notes</dt><dd>{{ order.notes|linebreaksbr }}</dd>{% endif %}
+  </dl>
+</div>
+<div class="panel">
+  <h2>Payments</h2>
+  <table>
+    <tr><th>Date</th><th>What</th><th class="num">Amount</th><th class="num">Receipt</th><th>Provider's transaction</th><th>Note</th></tr>
+    {% for payment in payments %}
+    <tr><td>{{ payment.at|date:"j M Y, H:i" }}</td><td>{{ payment.get_kind_display }}</td><td class="num">{{ payment.signed_amount }} {{ payment.currency }}</td>
+      <td class="num">{{ payment.receipt_no|default:"" }}</td><td class="mono">{{ payment.provider_transaction }}{% if payment.reverses %} (takes back {{ payment.reverses }}){% endif %}</td><td>{{ payment.note }}</td></tr>
+    {% empty %}<tr><td colspan="6" class="muted">No money moved on this order.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% if order.paid_at and left > 0 %}
+<div class="panel form wide">
+  <h2>Refund</h2>
+  <p class="muted">Through the payment provider, of the latest payment. {{ left }} {{ order.currency }} is left to give back.</p>
+  <form method="post" onsubmit="return confirm('Give the money back?')">
+    {% csrf_token %}
+    <div class="field"><label for="amount">Amount</label><input id="amount" type="text" name="amount" placeholder="The whole payment" inputmode="decimal">
+      <div class="help">Empty refunds the whole payment.</div></div>
+    <div class="field"><label for="revoke">The licence</label>
+      <select id="revoke" name="revoke"><option value="">Take it back when everything paid is refunded</option><option value="yes">Take it back now</option><option value="no">Leave it</option></select></div>
+    <div class="field"><label for="note">Note</label><input id="note" type="text" name="note" maxlength="250"></div>
+    <button class="button danger">Refund</button>
+  </form>
+</div>
+{% endif %}
+<div class="panel">
+  <h2>History</h2>
+  <table>{% for entry in history %}<tr><td class="muted">{{ entry.created|date:"j M Y, H:i" }}</td><td>{{ entry.actor_name }}</td><td class="mono">{{ entry.action }}</td><td class="mono muted">{{ entry.detail|truncatechars:120 }}</td></tr>{% endfor %}</table>
+</div>
+</div>
+{% endblock %}

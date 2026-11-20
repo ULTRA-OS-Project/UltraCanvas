@@ -3532,8 +3532,10 @@ if(ULTRACANVAS_ENABLE_NET)
     # When the found libcurl can't satisfy both needs we fall back to building
     # the vendored copy in third_party/curl and (Linux) stamp it with the
     # distro's symbol version node, making it a drop-in superset for everything.
-    # CI runners all ship a WebSocket-capable, correctly-versioned system
-    # libcurl, so this fallback never activates there (asserted in build.yml).
+    # (Where a libcurl has no WebSockets UltraNet has a client of its own,
+    # core/UltraNet/UltraNetWebSocketOwn.h, so nothing is without a WebSocket
+    # for want of this fallback. It is kept as it is: libcurl's client is the
+    # one in use wherever libcurl has one.)
     #
     # NOTE: the probe below deliberately uses find_library/find_path rather than
     # find_package(CURL) — find_package creates the imported CURL::libcurl
@@ -3610,7 +3612,13 @@ if(ULTRACANVAS_ENABLE_NET)
     else()
         find_package(CURL REQUIRED)
         set(UC_CURL_LINK CURL::libcurl)
-        message(STATUS "  [i] UltraNet libcurl: SYSTEM ${CURL_VERSION_STRING} (WebSocket: OK)")
+        # Whether this libcurl has WebSockets is not asked here (it is on
+        # Linux, above, where the answer chooses the library): Apple's own
+        # lists none through macOS 15. UltraNet connects either way - by
+        # libcurl's client where it has one, by its own where it has not
+        # (core/UltraNet/UltraNetWebSocketOwn.h).
+        message(STATUS "  [i] UltraNet libcurl: SYSTEM ${CURL_VERSION_STRING} "
+                       "(WebSocket: libcurl's where it has them, UltraNet's own otherwise)")
     endif()
     # OpenSSL is the TLS backend for UltraNet_TlsWrap on Linux and Android
     # (which reuses the Linux implementation). Windows and macOS use
@@ -3646,6 +3654,7 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2Apps.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetOAuth2Service.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetWebSocket.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetWebSocketOwn.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetFtp.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetSocket.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetTls.cpp

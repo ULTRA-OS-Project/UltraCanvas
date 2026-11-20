@@ -994,7 +994,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   layout, master and theme (`themeColors`, `majorFont` / `minorFont`, and the
   pictures' bytes `withPictures`); connectors, styled tables with merged cells
   (`PptxCellStyle`), picture crops, hyperlinks, charts (UltraCanvasDrawingML)
-  and SmartArt (its drawing part); `PptxNumberLabel`. No writer. In
+  and SmartArt (its drawing part); `PptxNumberLabel`. Writer:
+  `WritePptxPresentation` / `WritePptxPresentationToPackage` (every shape
+  kind, tables, pictures, charts, notes, the theme; .pptx / .potx / .ppsx and
+  the macro-enabled kinds; a password encrypts it), and
+  `PptxPresentationFromRichDocument` (a document laid out as a deck, a slide
+  per first-level heading; a deck's outline back as its slides). In
+  `core/UltraCanvasPresentationPptxWriter.cpp` and
   `core/UltraCanvasPresentationPptx.cpp`.
   See `Docs/UltraCanvas/UltraCanvasPresentationPptx.md`.
 - **UltraCanvasPptxSlideRender** (`UltraCanvasPptxSlideRender.h`) —
@@ -2441,7 +2447,9 @@ backing library is never visible in a public header.
   codes, ChatCube Direct's sign-in checks them (until 2026-11 in
   `Apps/UltraAuthenticator/otp/`)
 
-Streaming class: `UltraCryptHasher` (HMAC is the one call
+Streaming class: `UltraCryptHasher` (SHA-1 as a plain digest only with
+`UltraCryptHashOptions::allowLegacy`, as in `UltraCrypt_Hash` and
+`UltraCrypt_HashFile`; HMAC is the one call
 `UltraCrypt_Hmac`; a streaming `UltraCryptHmacHasher` was proposed and not
 built).
 
@@ -29270,6 +29278,17 @@ It answers false - and leaves `out` alone - when the XML does not parse or
 holds no series with a value. Elements are matched by their local name,
 whatever prefix the part binds the namespace to (`c:`, `ch:`, `ns0:` ...).
 
+## Writing a chart
+
+`WriteDrawingMLChart(chart)` gives the chart part for a `RichChart` - the
+`.docx` and the PowerPoint writers both call it: the kind, each series' name,
+values as literals (there is no workbook behind them; Word and PowerPoint show
+the chart and offer no data to edit), its colour where it states one (lines,
+scatter points and bubbles without one take the Office palette's), a pie's
+slice colours, the categories, the title, the legend, the axes and the ranges
+the chart states (`valueMin` / `valueMax`, a scatter chart's `xMin` / `xMax`).
+`ReadDrawingMLChart` reads it back as it was.
+
 ## Colours
 
 <!-- doc-check: const tinyxml2::XMLElement* solidFill; std::map<std::string, std::string> theme; -->
@@ -33908,6 +33927,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [Keyboard](#keyboard)
 - [Directory scanning](#directory-scanning)
 - [Folder modifications](#folder-modifications)
+  - [Operations in the background](#operations-in-the-background)
   - [Finished copies and moves](#finished-copies-and-moves)
 - [File list (search results)](#file-list-search-results)
   - [Growing a file list while it is produced](#growing-a-file-list-while-it-is-produced)
@@ -36946,6 +36966,29 @@ filer->onFolderModified      = [this](const std::string& f) { tree.Resync(f); hi
 filer->onFolderChangedOnDisk = [this](const std::string& f) { tree.Resync(f); };
 ```
 
+### Operations in the background
+
+A host that sets `onBackgroundProgress` gets a **Run in background** button in
+the progress window of a copy, move, delete, pack or unpack. Pressed, the
+window closes and the work goes on; from then on the widget calls
+`onBackgroundProgress(progress)` on every tick (ten times a second) with a
+`FilerBackgroundProgress`: `active`, `title` ("Copying", "Extracting"), the
+route `from` / `to`, `fraction` (0..1; negative when no total is known),
+`currentFile`, the `figures` (`ProgressFigures`) and `paused`. Once more with
+`active == false` when the operation ends or its window is brought back.
+`HasBackgroundOperation()` tells whether one is running there;
+`BringOperationToFront()` opens its window again (paused work opens paused).
+The next archives of an extract queue start in the background too, until the
+queue is through. Without `onBackgroundProgress` the button is not offered.
+
+```cpp
+filer->onBackgroundProgress = [this](const FilerBackgroundProgress& p) {
+    statusGauge->SetVisible(p.active);
+    if (p.active) statusGauge->SetValue(p.fraction < 0 ? 0 : 100.0 * p.fraction);
+};
+showButton->onClick = [this]() { filer->BringOperationToFront(); };
+```
+
 ### Finished copies and moves
 
 `onTransferFinished(result)` fires once a paste, a drop or a Move to / Copy to
@@ -37137,6 +37180,7 @@ reports what the system hides, not what the host asked for.
 | `onFolderChangedOnDisk(folderPath)` | The folder watch saw the shown folder change on disk and the display re-listed it: another program's change, an entry deleted here that Windows listed until a program let go, or the folder itself gone (the display has moved up) — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
+| `onBackgroundProgress(progress)` | An operation sent to the background from its progress window: its progress on every tick, and once with `active == false` at its end - see [Operations in the background](#operations-in-the-background) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
@@ -62930,7 +62974,9 @@ tables, the pictures' parts and descriptions, speaker notes, and which slides
 are hidden. One model means one outline, one preview and one text extractor
 for both kinds of deck.
 
-It is a reader of text, not a slide renderer. There is no writer. A
+It reads text, tables and pictures; `RenderPptxSlide` draws what it reads.
+There is no OpenDocument writer: a deck read from an `.odp` is saved as a
+PowerPoint file (`WritePptxPresentation`). A
 password-protected `.odp` opens with its password
 ([UltraCanvasOdfEncryption](UltraCanvasOdfEncryption.md)); without it, or
 with a wrong one, it is refused with a reason.
@@ -63168,7 +63214,8 @@ indents and bullets, anchor and insets, fill, outline, outline shape, turn
 and mirroring, the background - and reads connectors, styled tables with
 merged cells, cropped pictures, charts and SmartArt.
 `UltraCanvasPptxSlideRender.h` draws a slide from that as a picture
-(*Drawing a slide*, below). There is no writer.
+(*Drawing a slide*, below), and `WritePptxPresentation` writes the model
+back (*Writing a deck*, below).
 
 An OpenDocument presentation (`.odp`, `.otp`, `.fodp`) is read into the same
 model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), so the
@@ -63205,7 +63252,8 @@ UltraFiler's preview page (`UltraCanvasFilerWidget::TextPreviewLines`) shows
 the same outline in the detail pane; the file's thumbnail is its first slide
 as drawn. A protected deck keeps its type glyph, since the preview has no
 password to ask for. UltraTexter opens a deck as the outline in its document
-editor, and refuses to save it back as a deck. UltraViewer (MediaViewer)
+editor; saved as a new `.pptx` the outline comes back as its slides, and it
+is never written over the deck it was opened from. UltraViewer (MediaViewer)
 shows a deck as its slides, through
 [UltraCanvasPresentationPages](UltraCanvasPresentationPages.md), with a
 slide show.
@@ -63373,6 +63421,75 @@ if (ReadPptxPresentation(path, deck, error, "", true)) {   // withPictures
 It is callable from a worker thread: the drawing is serialized inside, as the
 file previews' pages are.
 
+## Writing a deck
+
+<!-- doc-check: std::string path; std::string outPath; void ShowError(const std::string& message); -->
+```cpp
+#include "UltraCanvasPresentationPptx.h"
+#include "UltraCanvasFileLoader.h"
+
+using namespace UltraCanvas;
+
+PptxPresentation deck;
+std::string error;
+if (ReadPptxPresentation(path, deck, error, "", true)) {   // withPictures: they are written back
+    deck.slides[0].title = "Revised";
+    deck.slides[0].hidden = false;
+    if (!UltraCanvasFileLoader::SavePresentation(deck, outPath, error))   // or WritePptxPresentation
+        ShowError(error);
+}
+
+// A document as a deck: a slide per first-level heading.
+UCRichDocument document;
+PptxPresentation laidOut = PptxPresentationFromRichDocument(document);
+```
+
+`WritePptxPresentation(deck, path, error, password)` writes the model as a
+package PowerPoint, LibreOffice and the reader open:
+
+- the slides in order, their size, background and hidden flag; a theme with
+  the deck's colours and heading and body fonts; one slide master and a
+  "Title and Content" layout;
+- every shape kind at its place, turned and mirrored, in its preset or custom
+  outline, solid or gradient fill and line (width, dash, arrowheads);
+  titles, subtitles and content as placeholders (with their place written
+  out, so they stand where they stood whatever layout they were read with);
+- text with its insets, wrap, vertical text, anchor and autofit scale;
+  paragraphs with level, alignment, spacing, margin, indent and bullet
+  (character, font, colour, size) or numbering (scheme, start); runs with
+  size, colour, typeface, bold, italic, underline, strike, baseline,
+  capitals, highlight and hyperlinks (`#slideN` as a jump to that slide);
+- tables with their cells' merges (`gridSpan`, `rowSpan`, `hMerge`, `vMerge`),
+  fills, borders, margins and anchors; a table without cell looks (from the
+  OpenDocument reader) takes PowerPoint's default table style;
+- pictures from `deck.pictures` with their crop - read the deck
+  `withPictures`, or a picture is written as a grey box with its
+  description; charts as chart parts ([UltraCanvasDrawingML](UltraCanvasDrawingML.md)'s
+  `WriteDrawingMLChart`, values as literals, no workbook); speaker notes.
+
+The extension names the package kind: `.pptx`, `.potx` (a template),
+`.ppsx` (a show), `.pptm` / `.potm` / `.ppsm` (macro-enabled, with no
+macros). With a password the package is encrypted as PowerPoint's *Encrypt
+with Password* saves it ([UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)).
+`WritePptxPresentationToPackage` gives the package in memory.
+`UltraCanvasFileLoader::SavePresentation` writes a deck through the file
+loader, and `SaveTextDocument` with a `.pptx` path lays the document out
+first.
+
+`PptxPresentationFromRichDocument(document)` lays a document out as a 16:9
+deck: each first-level heading starts a slide and is its title (a rule or a
+page break starts an untitled one; the document's title heads the first);
+paragraphs, list items (levels; numbering in its scheme; a list's own bullet
+character), lower headings (bold), code (Courier New) and block quotes
+(italic) fill the content placeholder - set smaller when they would not fit,
+as PowerPoint's autofit sets them - and tables and pictures stand one under
+the other below it. A deck's own outline reads back as its slides: "1. Title
+(hidden)" as the title of a hidden slide, a "Notes:" quote as its speaker
+notes.
+
+Not written: effects, animations, transitions, comments, embedded objects
+and media (they are not in the model).
+
 ## Test
 
 `Tests/OfficeEncryptionTest.cpp` reads `Tests/fixtures/office-pptx-sample.pptx`,
@@ -63405,6 +63522,18 @@ header row; a chart; a cropped picture. A deck rebuilt in memory adds a
 SmartArt diagram with its drawing, a hyperlink to another slide and a table
 style from `ppt/tableStyles.xml`. Each slide is drawn and looked at where the
 shapes are (`UC_PPTX_TEST_DUMP=<dir>` writes the drawn slides out).
+
+The same test writes decks and reads them back: the feature deck field by
+field (fonts, effects, bullets, spacing, insets, vertical text, the star's
+turn, gradient and dashes, the connector's arrowhead, the freeform, the
+merged and styled table cells, the chart, the cropped picture's bytes) and
+drawn - each slide drawn from the written deck is the same picture; the
+python-pptx sample's titles, hidden slide, notes and outline; a copy saved
+with a password (refused without it); a template's content type; an empty
+deck; a document laid out as a deck, and a deck's outline laid out as its
+slides again; `UltraCanvasFileLoader::SaveTextDocument` writing a `.pptx`.
+The decks it writes open in python-pptx and LibreOffice
+(`UC_PPTX_TEST_DUMP=<dir>` keeps them).
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasProgressDialog.md
@@ -63446,10 +63575,11 @@ dlg->Close();
 | `SetProgress(double fraction)` | `0..1`, clamped. A **negative** value means the total is not known: the ring shows a busy sweep and the centre reads `...` instead of inventing a percentage. |
 | `SetCaption(text)` | The line above the ring. |
 | `SetDetail(text)` | What is being worked on now. Long text is ellipsized from the left, so the window keeps the height it opened with. |
-| `Show(parent, title, caption, onCancel, ProgressDialogOptions)` | The same with the transfer layout (below): `from` / `to` for the route chips, `figures` for the strip with an Items cell (`items`) and a Size cell (`bytes`), `onPause` for a Pause / Resume button. With a route the window's title is the headline. |
+| `Show(parent, title, caption, onCancel, ProgressDialogOptions)` | The same with the transfer layout (below): `from` / `to` for the route chips, `figures` for the strip with an Items cell (`items`) and a Size cell (`bytes`), `onPause` for a Pause / Resume button (`startPaused` when the work is paused already), `onBackground` for a "Run in background" button (below). With a route the window's title is the headline. |
 | `SetFigures(ProgressFigures)` | What is done (`doneItems`, `doneBytes`) and, where the work knows it, the total (`totalItems`, `totalBytes`; 0 = not known, and the cell shows what is done alone). Cheap on every tick. |
 | `IsCancelled()` | True once the user asked to cancel. |
 | `IsPaused()` | True while Pause is pressed. |
+| `IsInBackground()` | True once "Run in background" closed the window. |
 | `FormatDuration(seconds)`, `FormatBytes(bytes)` | "9 s", "2 min", "1 h 5 min"; "742 MB", "1.2 GB" - as the window shows them. |
 | `Close()` | Takes the window down. Safe to call twice, and safe after the user closed it. |
 
@@ -63457,6 +63587,23 @@ dlg->Close();
 Escape, the title bar. The dialog only *reports* the cancel; stopping the work
 is the caller's job, and so is deciding what a cancelled operation leaves
 behind.
+
+## Run in background
+
+With `ProgressDialogOptions::onBackground` set, a **Run in background** button
+sits beside Pause. It closes the window without cancelling: `onCancel` does not
+fire, `IsInBackground()` turns true, and `onBackground` is called once the
+window is gone. The work goes on; showing its progress elsewhere (a status
+bar) is the caller's job, and so is opening a new window when the user wants
+it back - with `startPaused = true` if the work was paused meanwhile, so the
+button reads Resume.
+
+```cpp
+ProgressDialogOptions options;
+options.onPause = [&](bool paused) { job.paused = paused; };
+options.onBackground = [&]() { job.inBackground = true; };   // the status bar takes over
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Copying", "", onCancel, options);
+```
 
 ## The transfer layout
 
@@ -95579,7 +95726,8 @@ with `(true, "")` for a file that has none. Pass what it hands back to the
 loader: `LoadTextDocument(path, error, password)`, or a spreadsheet's
 `LoadFromFile(path, password)`. Saving works the same way:
 `RequestNewDocumentPassword(parent, onResult)` asks for a new password twice,
-and `SaveTextDocument(document, path, error, password)` or a spreadsheet's
+and `SaveTextDocument(document, path, error, password)`,
+`SavePresentation(deck, path, error, password)` or a spreadsheet's
 `SaveToFile(path, password)` writes the file encrypted. See
 [UltraCanvasOfficeEncryption](../../UltraCanvas/UltraCanvasOfficeEncryption.md).
 
@@ -95844,7 +95992,8 @@ UltraCanvasFileLoader::AddSaveTypes(save, MediaFormatCategory::Spreadsheet);
 
 // A text document: what LoadTextDocument reads (ODT, DOCX, DOC, LaTeX,
 // Markdown, text - not the PDFs and e-books the Document category also
-// holds) and what SaveTextDocument writes (ODT, DOCX)
+// holds) and what SaveTextDocument writes (ODT, DOCX, and PPTX - the
+// document laid out as a deck, a slide per first-level heading)
 FileDialogOptions saveLetter;
 saveLetter.SetDefaultFileName("letter.odt");
 UltraCanvasFileLoader::AddTextDocumentSaveTypes(saveLetter);
@@ -96099,8 +96248,8 @@ the Vector plugin's drawing reader.
 | PDF | `.pdf` | ✅ ‡ | ✅ ‡ | MuPDF |
 | Word (OOXML) | `.docx` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2) |
 | OpenDocument Text | `.odt` | ✅ ¶ | ✅ | built-in (miniz + tinyxml2) |
-| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.ppsm`, `.potx`, `.potm` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
-| OpenDocument Presentation | `.odp`, `.otp`, `.fodp` | ✅ ¶ | — | built-in (miniz + tinyxml2), read as an outline of the slides' text |
+| PowerPoint (OOXML) | `.pptx`, `.pptm`, `.ppsx`, `.ppsm`, `.potx`, `.potm` | ✅ ¶ | ✅ ¶ | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline; written from the deck model (`SavePresentation`) or from a document laid out as a deck (`SaveTextDocument`) |
+| OpenDocument Presentation | `.odp`, `.otp`, `.fodp` | ✅ ¶ | — | built-in (miniz + tinyxml2): slides read and drawn, or opened as an outline |
 | Word 97-2003 | `.doc` | ✅ | — | built-in OLE2/CFB parser (text import only) |
 | Markdown | `.md`, `.markdown` | ✅ | ✅ | built-in Markdown engine |
 | Plain text | `.txt` | ✅ | ✅ | built-in |
@@ -102125,7 +102274,7 @@ FILE: Docs/Modules/UltraCrypt/README.md
 progress (§8).
 **Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-11-18
+**Last Modified:** 2026-11-19
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
@@ -102732,14 +102881,19 @@ enum class UltraCryptHashAlgorithm : uint8_t {
 };
 
 struct UltraCryptHashOptions {
-    bool allowLegacy = false;    // UltraCrypt_Hash refuses SHA1 without it
+    // Every way to a plain digest refuses SHA1 without it: UltraCrypt_Hash,
+    // UltraCrypt_HashFile and UltraCryptHasher.
+    bool allowLegacy = false;
 };
 
 class UltraCryptHasher {          // streaming; for files and large payloads
 public:
-    // Takes the algorithm alone: no options, so - unlike UltraCrypt_Hash -
-    // nothing here asks for allowLegacy before SHA1. Neither copied nor moved.
-    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm);
+    // A constructor returns nothing, so a refusal shows in IsValid(): made
+    // for SHA1 without allowLegacy, the hasher takes no data and Final()
+    // returns an empty digest. Neither copied nor moved.
+    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm,
+                              const UltraCryptHashOptions& options =
+                                  UltraCryptHashOptions());
     ~UltraCryptHasher();
     UltraCryptHasher(const UltraCryptHasher&) = delete;
 
@@ -102749,7 +102903,9 @@ public:
     void Reset();
 
     size_t GetDigestSize() const;
-    bool   IsValid() const;       // false when there is no backend to hash with
+    // False when there is no backend to hash with, and when SHA1 was asked
+    // for without allowLegacy.
+    bool   IsValid() const;
 };
 
 size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm);
@@ -102761,10 +102917,12 @@ UltraCryptResult UltraCrypt_Hash(
         std::vector<uint8_t>& outDigest,
         const UltraCryptHashOptions& options = UltraCryptHashOptions());
 
+// NotSupported for SHA1 without allowLegacy, before the file is opened.
 UltraCryptResult UltraCrypt_HashFile(
         UltraCryptHashAlgorithm algorithm,
         const std::string& filePath,
-        std::vector<uint8_t>& outDigest);
+        std::vector<uint8_t>& outDigest,
+        const UltraCryptHashOptions& options = UltraCryptHashOptions());
 
 std::string UltraCrypt_ToHex(const std::vector<uint8_t>& bytes);
 bool        UltraCrypt_FromHex(const std::string& hex,
@@ -105388,6 +105546,46 @@ proxy. Skips without python3 unless
 the tests: that it takes its proxy from Java's properties is its own source
 (`Utils.getHttpsProxy`, `SignalDependencies.setSignalNetworkProxy`).
 
+`Tests/UltraIM/SignalDaemonTests.cpp` is `SignalDaemon` on its own - the one
+part of the provider written per platform - and the Signal test that runs
+on Windows: the fake daemon above is a shell script's child, so there the
+whole of `SignalProviderTests` is skipped. The test is its own child program
+(no python): started through `SignalDaemon::Start`, it reports the
+environment and arguments it was given. Checked on every platform: the
+variables handed to `Start` arrive exactly (Java options with spaces,
+quotes, `|`, `&`, Thai), one the environment already has is replaced and
+not doubled (on Windows whatever its spelling: names there have no case),
+the rest is kept; arguments arrive exactly (a folder with spaces and a
+trailing backslash, quotes, an empty one, Thai); standard output and error
+are appended to a log named in Thai; the same through a wrapper script as
+signal-cli is one (a `.bat` run by `cmd.exe` on Windows, a shell script
+elsewhere, in a folder with a space and Thai in its name); `Stop` ends the
+script *and* the program it started (the job object, the process group); a
+program that ends by itself is let go of (`ProcessId()` 0), one that is not
+there never shows as running; `FindSignalCli`, `JavaToolOptionsWith`,
+`JvmTookOptions`.
+
+CI runs the chat-network suites on Linux in the full pass, and since
+2026-11 on the other rows too ("Run the chat-network tests
+(macOS/Windows)" in `.github/workflows/build.yml`): `UltraIMTests`,
+`MatrixCryptoTests`, `SignalDaemonTests` and `TelegramProviderTests` on
+every Windows and macOS row; `TelegramTdlibTests` where the packages ship a
+TDLib (Windows x64, macOS arm64 - no library there is a failure);
+`DirectProviderTests`' envelopes and store on Windows; and the suites that
+sign in to a python stand-in (Signal, IRC, XMPP, Mastodon, Mattermost,
+Zulip) on the Apple silicon row, where no python3 or openssl is a failure.
+`XmppProviderTests` and `MattermostProviderTests` were what showed, on their
+first run there, that UltraNet opened no WebSocket on the macOS 15 runner:
+the build links Apple's libcurl, which lists no `ws`. UltraNet has a
+WebSocket client of its own for such a libcurl since (see *Two clients
+behind the one API* in `UltraNet/README.md`), and on that row the two
+suites - and with them ChatCube Direct's relay connection - run on it.
+Windows cannot run those (they fork), and the Intel macOS runner is too
+slow for suites that wait on clocks. The stand-ins listen through
+`Tests/UltraIM/local_http_server.py`: Python's own `HTTPServer` looks up the
+name of `127.0.0.1` at every start, which stalls for fifteen seconds and
+more on a macOS runner.
+
 ## Provider: XMPP
 
 `UltraCanvas/Plugins/UltraIM/xmpp/` (module `ultraim_xmpp`, provider id
@@ -106993,6 +107191,28 @@ assembled. Reconnecting is the owner's - a handle is one connection - on
 `onClose` / `onError`. Sends from any thread are safe while the
 receiver reads: one mutex covers every read and write of the connection.
 
+**Two clients behind the one API.** Where the libcurl in use has WebSockets,
+`UltraNet_WebSocket*` is libcurl's `curl_ws_*`. Where it has none, it is
+UltraNet's own client (`core/UltraNet/UltraNetWebSocketOwn.h`): RFC 6455 on
+`UltraNet_TcpOpen` - through the proxy setting, a SOCKS proxy or an HTTP
+proxy as a `CONNECT` tunnel - and on `UltraNet_TlsWrap` for `wss://`. A
+libcurl without WebSockets is not rare: **Apple's own libcurl, which the
+macOS build links, lists neither `ws` nor `wss` through macOS 15**, and
+several distributions build theirs without (Ubuntu 24.04's). Until 2026-11
+`UltraNet_WebSocketConnect` refused there, and with it everything on a
+WebSocket had no connection on such a system - ChatCube Direct's relay,
+Mattermost's events, XMPP over WebSocket. What a caller sees is the same on
+both: handles, callbacks, PINGs answered, the message limit. Two things
+differ, both for `wss://` - the certificate is verified by libcurl against
+libcurl's roots, and by the own client as `UltraNet_TlsWrap` verifies
+(the system's roots, `UltraNet_TlsSetCABundle`,
+`UltraNet_TlsAddTrustedCert`); and a proxy reached over TLS (`Https`) is one
+only libcurl's client goes through. The own client offers no extension (no
+`permessage-deflate`) and follows no redirect in the upgrade's answer.
+`ULTRANET_WEBSOCKET_CLIENT=own` in the environment takes the own client
+where libcurl would do too - the tests run their whole WebSocket suite on it
+that way (`ctest -R UltraNetOwnWebSocket`), on every platform.
+
 ```cpp
 #include <UltraNet/UltraNetDns.h>
 
@@ -107487,7 +107707,7 @@ architecture.
 |---|---|
 | Public API (master registry) | Locked at v1.0.0 |
 | Core implementation | Stage 2/3 on libcurl: sync + async HTTP, chunked streaming, SSE, WebSocket, sessions, TLS, DNS |
-| Linux / macOS / Windows backends | Working (system or vendored libcurl; WebSocket needs libcurl >= 7.86 with ws) |
+| Linux / macOS / Windows backends | Working (system or vendored libcurl; WebSocket on libcurl >= 7.86 with ws, and on UltraNet's own client where the libcurl has none - macOS through 15) |
 | ULTRA OS native backend | Planned |
 | Plugins (SMTP, MQTT, SSH, ...) | Tracked separately |
 
@@ -112598,14 +112818,6 @@ without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the
 encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
-
-==============================================================================
-FILE: Docs/UltraClipboard/changelog.d/slide-previews-as-drawn.md
-==============================================================================
-
-- **Copied slides preview as they look**: their fonts, spacing and bullets,
-  turned and freeform shapes, gradients, connectors and arrowheads, styled
-  tables with merged cells, cropped pictures, charts and SmartArt.
 
 ==============================================================================
 FILE: Docs/UltraNotifications/README.md

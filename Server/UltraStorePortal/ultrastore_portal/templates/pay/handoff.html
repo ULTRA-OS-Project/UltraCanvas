@@ -1,0 +1,16 @@
+{% extends "pay/base.html" %}
+{% block title %}Paying for {{ order.app_name }} - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>{{ order.app_name }}</h1>
+  <p style="font:800 30px var(--title);color:var(--ink);margin:14px 0">{{ amount }} {{ order.currency }}</p>
+  {% if order.cycle %}<p class="muted">A subscription: {{ list_price }} {{ order.currency }} every {{ order.cycle }} after this payment, until you cancel it in UltraStore or in your Skrill account.</p>{% endif %}
+  <p>You are being taken to Skrill to pay. Skrill takes cards and the local payment methods of your country; the store never sees your card.</p>
+  <form id="pay" method="post" action="{{ pay_url }}">
+    {% for name, value in fields.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">
+    {% endfor %}
+    <button class="button big" type="submit">Continue to Skrill</button>
+  </form>
+  <script>document.getElementById('pay').submit();</script>
+</div>
+{% endblock %}

@@ -25,7 +25,9 @@ import sys
 import threading
 import time
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from local_http_server import LocalHTTPServer    # no name lookup at start (see there)
 
 LOCK = threading.Lock()
 IDS = itertools.count(100000000000000000)
@@ -350,7 +352,7 @@ def main():
     for name in args.users.split(","):
         ACCOUNTS[name] = {"id": next_id()}
         TOKENS[name + "-token"] = name
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = LocalHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
     BASE = "http://127.0.0.1:%d" % server.server_address[1]
     print(json.dumps({"url": BASE}), flush=True)

@@ -7,6 +7,7 @@
 //   ultrastoreop twofactor setup | enable <code> | disable <code> | recovery-codes <code>
 //   ultrastoreop password forgot <email> | reset <email> <mailed code> [--password <p>] [--code <totp|recovery>]
 //   ultrastoreop review download <submission> [--to <folder>]      the uploaded packages, under their hash
+//   ultrastoreop review checks <submission>                        the review pipeline run again; the findings
 //   ultrastoreop operator list | add <email> <role> --password <p> [--name <n>] | set <id> [--name <n>] [--role <r>] [--password <p>] | disable <id> | enable <id>
 //   ultrastoreop health
 //   ultrastoreop merchant list | show <id> | add <name> --key <hex> [--id <id>] [--contact <c>]
@@ -24,6 +25,7 @@
 //   ultrastoreop audit [--since <id>] [--limit <n>] | verify
 //
 // The command line stays English: it runs before any language is loaded.
+// Version: 0.4.0 - the review pipeline's findings shown, run again
 // Version: 0.3.0 - the second factor, the password reset, the review's download
 // Version: 0.2.0 - the sign-in and the operator accounts; users in the usage
 // Version: 0.1.0
@@ -73,6 +75,7 @@ int UltraStoreOperator::Cli::Usage(FILE* to) {
         "  review list [--state <s>] [--merchant <id>] [--app <id>] | show <submission>\n"
         "  review start | release | changes | reject <submission> [--message <m>] [--sequence <n>]\n"
         "  review download <submission> [--to <folder>]   the packages the merchant uploaded, under their hash (the builds folder under the data folder)\n"
+        "  review checks <submission>            the review pipeline run again (the scans, the entry, the smoke run, the listing); the findings\n"
         "  released | publish | key\n"
         "  report list [--state <s>] | show <id> | open app|release|merchant <target> <kind> <text> [--reporter <r>]\n"
         "  report assign <id> <assignee> | resolve <id> [--findings <f>] [--outcome <o>] | dismiss <id> [--findings <f>] [--outcome <o>]\n"
@@ -461,6 +464,15 @@ int CmdApp(const OperatorClient& client, const std::vector<std::string>& args) {
 }
 
 // ----- the review -----
+void PrintChecks(const Submission& s) {
+    if (!s.checkedAt.empty()) std::printf("  checks (the pipeline ran %s):\n", s.checkedAt.c_str());
+    for (const auto& [name, outcome] : s.checks) {
+        std::printf("  %-18s %s\n", name.c_str(), outcome.c_str());
+        if (const std::vector<std::string>* lines = s.FindingsOf(name))
+            for (const std::string& line : *lines) std::printf("      - %s\n", line.c_str());
+    }
+}
+
 int CmdReview(const OperatorClient& client, const std::vector<std::string>& args) {
     const auto pos = Positional(args);
     if (pos.size() < 2) return Usage(stderr);
@@ -469,6 +481,14 @@ int CmdReview(const OperatorClient& client, const std::vector<std::string>& args
         if (!list) return Fail(list.error);
         if (list.Value().empty()) { std::printf("no submissions\n"); return 0; }
         for (const Submission& s : list.Value()) PrintSubmission(s);
+        return 0;
+    }
+    if (pos[1] == "checks") {
+        if (pos.size() < 3) return Usage(stderr);
+        const auto sub = client.RunChecks(pos[2]);
+        if (!sub) return Fail(sub.error);
+        PrintSubmission(sub.Value());
+        PrintChecks(sub.Value());
         return 0;
     }
     if (pos[1] == "download") {
@@ -494,7 +514,7 @@ int CmdReview(const OperatorClient& client, const std::vector<std::string>& args
         const Submission& s = sub.Value();
         PrintSubmission(s);
         std::printf("  %s by %s%s\n", s.Name().c_str(), s.merchant.c_str(), s.answers.empty() ? "" : ("  answers " + s.answers).c_str());
-        for (const auto& [name, outcome] : s.checks) std::printf("  %-18s %s\n", name.c_str(), outcome.c_str());
+        PrintChecks(s);
         for (const UltraCanvas::JSONValue& p : s.packages.GetElements())
             std::printf("  package %s %s %lld bytes%s\n", p.Get("file").GetString(p.Get("url").GetString()).c_str(), p.Get("sha256").GetString().c_str(),
                         static_cast<long long>(p.Get("size").GetInteger(0)), p.Get("uploaded").GetBoolean(false) ? "  uploaded" : "  not uploaded");

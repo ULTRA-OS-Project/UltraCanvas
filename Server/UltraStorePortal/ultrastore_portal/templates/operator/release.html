@@ -1,0 +1,70 @@
+{% extends "operator/base.html" %}
+{% block title %}Review {{ app.name }} {{ release.version }} - Operator{% endblock %}
+{% block content %}
+<div class="page-head">
+  {% if app.icon %}<img class="icon s64" src="{{ app.icon.url }}" alt="" width="64" height="64">{% else %}<span class="icon s64">{{ app.name|slice:":1" }}</span>{% endif %}
+  <div><h1>{{ app.name }} {{ release.version }}</h1><span class="mono muted">{{ app.app_id }}</span> - <a href="{% url 'operator:publisher' app.publisher.slug %}">{{ app.publisher.name }}</a></div>
+  {% include "_state.html" with state=release.state label=release.get_state_display %}
+</div>
+<div class="panels">
+<div class="panel">
+  <h2>Automatic checks</h2>
+  <table>
+    <tr><td>Publisher in good standing</td><td>{% if app.publisher.approved %}<span class="badge green">ok</span>{% else %}<span class="badge red">{{ app.publisher.get_state_display }}</span>{% endif %}</td></tr>
+    <tr><td>Listing and packages complete</td><td>{% if problems %}<span class="badge red">{{ problems|join:" " }}</span>{% else %}<span class="badge green">ok</span>{% endif %}</td></tr>
+    <tr><td>Dependencies published</td><td>{% if missing %}<span class="badge red">missing {{ missing|join:", " }}</span>{% else %}<span class="badge green">ok</span>{% endif %}</td></tr>
+    <tr><td>Packages are readable archives with their entry, hashed on upload</td><td><span class="badge green">ok</span></td></tr>
+    <tr><td>Malware scan, smoke run</td><td><span class="badge">not run - download the build and check by hand</span></td></tr>
+  </table>
+</div>
+<div class="panel">
+  <h2>Packages</h2>
+  <table>
+    <tr><th>System</th><th>Processor</th><th>Needs</th><th>Entry</th><th>SHA-256</th><th class="num">Size</th><th></th></tr>
+    {% for package in packages %}
+    <tr><td>{{ package.os_name }}</td><td>{{ package.arch }}</td><td>{% if package.min_os %}{{ package.min_os }}+{% endif %} {{ package.variant }}</td>
+      <td class="mono">{{ package.entry }}</td><td class="mono">{{ package.sha256 }}</td><td class="num">{{ package.size|filesizeformat }}</td>
+      <td class="num"><a class="button soft small" href="{% url 'operator:package' package.pk %}">Download build</a></td></tr>
+    {% endfor %}
+  </table>
+</div>
+<div class="panel">
+  <h2>The store listing</h2>
+  <p><b>{{ app.name }}</b> - {{ app.summary }}</p>
+  <div class="thumbs" style="margin-bottom:14px">{% for shot in app.screenshots.all %}<img src="{{ shot.image.url }}" alt="Screenshot {{ forloop.counter }}">{% endfor %}</div>
+  <div class="prose">{{ app.description|linebreaks }}</div>
+  <dl class="facts">
+    <dt>Kind</dt><dd>{{ app.get_kind_display }}</dd>
+    <dt>Category</dt><dd>{{ app.category_name|default:"-" }}</dd>
+    <dt>Price</dt><dd>{{ app.price_label }}{% if app.trial_days %}, {{ app.trial_days }} days trial{% endif %}</dd>
+    <dt>Licence</dt><dd>{{ app.license|default:"-" }}</dd>
+    <dt>Age</dt><dd>{{ app.get_age_rating_display }}</dd>
+    <dt>Visibility</dt><dd>{{ app.visibility }}, {{ app.lifecycle }}</dd>
+    <dt>Links</dt><dd>{{ app.homepage }} {{ app.support_url }} {{ app.privacy_url }} {{ app.source_url }}</dd>
+    <dt>Depends on</dt><dd>{{ release.depends_text|default:"Nothing" }}</dd>
+    <dt>What's new</dt><dd>{{ release.notes|linebreaksbr|default:"-" }}</dd>
+  </dl>
+</div>
+{% if release.state == "submitted" %}
+<div class="panel form wide">
+  <h2>Decision</h2>
+  <form method="post">
+    {% csrf_token %}
+    <div class="field"><label for="message">Message to the publisher</label><textarea id="message" name="message" rows="4"></textarea>
+      <div class="help">Mailed to the publisher and shown on the release. Needed to request changes or reject.</div></div>
+    <div class="row">
+      <button class="button" name="action" value="approve">Approve and publish</button>
+      <button class="button soft" name="action" value="request_changes">Request changes</button>
+      <button class="button danger" name="action" value="reject">Reject</button>
+    </div>
+  </form>
+</div>
+{% elif release.review_message %}
+<div class="panel"><h2>Decision</h2><p>{{ release.review_message|linebreaksbr }}</p><p class="muted small">{{ release.reviewed_by }} - {{ release.reviewed_at|date:"j F Y, H:i" }}</p></div>
+{% endif %}
+<div class="panel">
+  <h2>Other releases of this app</h2>
+  <table>{% for other in earlier %}<tr><td><a href="{% url 'operator:release' other.pk %}">{{ other.version }}</a></td><td>{% include "_state.html" with state=other.state label=other.get_state_display %}</td><td class="muted">{{ other.created|date:"j M Y" }}</td></tr>{% empty %}<tr><td class="muted">This is the first.</td></tr>{% endfor %}</table>
+</div>
+</div>
+{% endblock %}

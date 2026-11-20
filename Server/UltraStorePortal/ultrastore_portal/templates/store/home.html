@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+{% if hero %}
+<section class="hero">
+  <div>
+    <span class="badge blue">{% if hero.featured %}Editor's pick{% else %}New in the store{% endif %}</span>
+    <h1>{{ hero.name }}</h1>
+    <p>{{ hero.summary }}</p>
+    <div class="row" style="margin-top:22px">
+      <a class="button big" href="{{ hero.get_absolute_url }}">{% if hero.is_free %}Get it free{% else %}{{ hero.price_label }}{% endif %}</a>
+      <span class="muted">by {{ hero.publisher.name }}</span>
+    </div>
+  </div>
+  {% with shot=hero.screenshots.first %}
+    {% if shot %}<img class="shot" src="{{ shot.image.url }}" alt="{{ hero.name }}">
+    {% elif hero.icon %}<img class="shot icon" src="{{ hero.icon.url }}" alt="{{ hero.name }}">{% endif %}
+  {% endwith %}
+</section>
+{% else %}
+<section class="empty">
+  <h2>The store is open, the shelves are still empty</h2>
+  <p style="margin-top:10px">No app is published yet. <a href="{% url 'console:home' %}">Publish the first one</a>.</p>
+</section>
+{% endif %}
+
+{% if categories_in_use %}
+<section>
+  <div class="section-head"><h2>Browse by category</h2><a href="{% url 'store:browse' %}">All apps</a></div>
+  <div class="chips">{% for id, name in categories_in_use %}<a class="chip" href="{% url 'store:category' id %}">{{ name }}</a>{% endfor %}</div>
+</section>
+{% endif %}
+
+{% if featured %}
+<section>
+  <div class="section-head"><h2>Editor's picks</h2></div>
+  <div class="cards">{% for app in featured %}{% include "_app_card.html" %}{% endfor %}</div>
+</section>
+{% endif %}
+
+{% if latest %}
+<section>
+  <div class="section-head"><h2>New and updated</h2><a href="{% url 'store:browse' %}?sort=updated">See all</a></div>
+  <div class="cards">{% for app in latest %}{% include "_app_card.html" %}{% endfor %}</div>
+</section>
+{% endif %}
+
+{% if free %}
+<section>
+  <div class="section-head"><h2>Free essentials</h2><a href="{% url 'store:browse' %}?price=free">See all</a></div>
+  <div class="cards">{% for app in free %}{% include "_app_card.html" %}{% endfor %}</div>
+</section>
+{% endif %}
+
+{% for id, name, row in by_category %}
+<section>
+  <div class="section-head"><h2>{{ name }}</h2><a href="{% url 'store:category' id %}">See all</a></div>
+  <div class="cards">{% for app in row %}{% include "_app_card.html" %}{% endfor %}</div>
+</section>
+{% endfor %}
+{% endblock %}

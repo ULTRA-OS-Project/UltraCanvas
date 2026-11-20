@@ -1,0 +1,76 @@
+{% extends "console/base.html" %}
+{% block title %}{{ app.name }} {{ release.version }} - Developer console{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ app.name }} {{ release.version }}</h1><a class="small" href="{% url 'console:app' app.app_id %}">All releases</a></div>
+  {% include "_state.html" with state=release.state label=release.get_state_display %}
+  <span class="badge">{{ release.get_channel_display }}</span>
+  <div class="right row">
+    {% if release.editable %}
+      <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'submit' %}">{% csrf_token %}<button class="button"{% if problems %} disabled title="See what is missing below" style="opacity:.5;cursor:not-allowed"{% endif %}>Send for review</button></form>
+    {% endif %}
+    {% if release.state == "submitted" %}
+      <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'withdraw' %}">{% csrf_token %}<button class="button plain">Withdraw from review</button></form>
+    {% endif %}
+    {% if release.state == "published" %}
+      <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'withdraw' %}" onsubmit="return confirm('Take this version out of the store?')">{% csrf_token %}<button class="button danger">Unpublish</button></form>
+    {% endif %}
+    {% if release.editable or release.state == "rejected" or release.state == "withdrawn" %}
+      <form method="post" action="{% url 'console:release_action' app.app_id release.pk 'delete' %}" onsubmit="return confirm('Delete this release and its packages?')">{% csrf_token %}<button class="button danger">Delete</button></form>
+    {% endif %}
+  </div>
+</div>
+<div class="panels">
+{% if release.review_message %}
+  <div class="note {% if release.state == 'published' %}success{% else %}warning{% endif %}"><b>The reviewer wrote{% if release.reviewed_at %} on {{ release.reviewed_at|date:"j F Y" }}{% endif %}:</b><br>{{ release.review_message|linebreaksbr }}</div>
+{% endif %}
+{% if release.state == "submitted" %}<div class="note">In review since {{ release.submitted_at|date:"j F Y, H:i" }}. The release cannot be changed while the review runs; withdraw it to edit.</div>{% endif %}
+{% if release.state == "published" %}<div class="note success">Published {{ release.published_at|date:"j F Y" }}. A published release is never changed: a fix is a new version.</div>{% endif %}
+{% if problems %}
+  <div class="note warning"><b>Before this release can go to review:</b><ul>{% for problem in problems %}<li>{{ problem }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<div class="panel">
+  <h2>Packages</h2>
+  {% if packages %}
+  <table>
+    <tr><th>System</th><th>Processor</th><th>Needs</th><th>Entry</th><th>File</th><th class="num">Size</th><th></th></tr>
+    {% for package in packages %}
+    <tr>
+      <td>{{ package.os_name }}</td><td>{{ package.arch }}</td>
+      <td>{% if package.min_os %}{{ package.min_os }}+{% endif %} {{ package.variant }}</td>
+      <td class="mono">{{ package.entry }}</td>
+      <td><div>{{ package.original_name }}</div><div class="mono muted">sha256 {{ package.sha256 }}</div></td>
+      <td class="num">{{ package.size|filesizeformat }}</td>
+      <td class="num">{% if release.editable %}<form method="post" action="{% url 'console:package_delete' app.app_id release.pk package.pk %}">{% csrf_token %}<button class="link">Remove</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">No package yet. Add one archive per system and processor.</p>{% endif %}
+  {% if package_form %}
+  <form method="post" enctype="multipart/form-data" action="{% url 'console:package_add' app.app_id release.pk %}" class="form wide" style="margin-top:22px">
+    {% csrf_token %}
+    <fieldset><legend>Add a package</legend>
+      {% include "_form.html" with form=package_form %}
+    </fieldset>
+    <button class="button soft">Upload package</button>
+    <span class="small muted" style="margin-left:10px">Up to {{ max_mb }} MB. The store checks the archive and records its SHA-256.</span>
+  </form>
+  {% endif %}
+</div>
+
+<div class="panel form wide">
+  <h2>Release details</h2>
+  {% if form %}
+  <form method="post" class="stack">{% csrf_token %}{% include "_form.html" %}<button class="button">Save</button></form>
+  {% else %}
+  <dl class="facts">
+    <dt>Version</dt><dd>{{ release.version }}</dd>
+    <dt>Channel</dt><dd>{{ release.get_channel_display }}</dd>
+    <dt>Depends on</dt><dd>{{ release.depends_text|default:"Nothing: the app carries everything itself" }}</dd>
+    <dt>What's new</dt><dd>{{ release.notes|linebreaksbr|default:"-" }}</dd>
+  </dl>
+  {% endif %}
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+# The UltraStore portal (Server/UltraStorePortal): its tests on every change
+# to it, on SQLite (tests and development), on MySQL (production) and on
+# PostgreSQL, the latter two as service containers; and a check that the
+# models and the committed migrations agree.
+name: UltraStore portal
+
+on:
+  push:
+    branches: [main]
+    paths: ['Server/UltraStorePortal/**', '.github/workflows/ultrastore-portal.yml']
+  pull_request:
+    paths: ['Server/UltraStorePortal/**', '.github/workflows/ultrastore-portal.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ultrastore
+          MYSQL_DATABASE: ultrastore
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pultrastore"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ultrastore
+          POSTGRES_PASSWORD: ultrastore
+          POSTGRES_DB: ultrastore
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ultrastore"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: Server/UltraStorePortal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: What mysqlclient builds against
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq default-libmysqlclient-dev pkg-config
+      - run: pip install -e '.[mysql,postgres]'
+      - name: The migrations match the models
+        run: python manage.py makemigrations --check --dry-run
+        env:
+          ULTRASTORE_PORTAL_DEBUG: '1'
+      - name: Tests on SQLite
+        run: python manage.py test
+      - name: Tests on MySQL
+        run: python manage.py test
+        env:
+          # root: Django makes and drops the test database itself
+          ULTRASTORE_PORTAL_DB: mysql://root:ultrastore@127.0.0.1:3306/ultrastore
+      - name: Tests on PostgreSQL
+        run: python manage.py test
+        env:
+          ULTRASTORE_PORTAL_DB: postgresql://ultrastore:ultrastore@127.0.0.1:5432/ultrastore

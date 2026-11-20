@@ -81,6 +81,7 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.39.0 - ShowBackgroundProgress, statusShowButton: an operation run in the background
 // Version: 1.38.1 - ComputerDriveCard::noOwnSize: a RAM disc with no size of its own
 // Version: 1.38.0 - ApplyDisplayMode: Settings > Display > Display mode through the theme policy
 // Version: 1.37.0 - ApplyLook: the filer's own surfaces from the theme, again on every theme change
@@ -117,7 +118,7 @@
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-11-19
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1086,6 +1087,12 @@ private:
     // kTransferNoteMs (onTransferFinished / onDeleteFinished of every
     // folder display).
     void WireTransferNotice(UltraCanvasFilerWidget* target);
+    // A copy / move / delete / pack / unpack sent to the background from its
+    // progress window: its progress on the status bar (gauge and words) and
+    // the Show button that brings the window back.
+    void ShowBackgroundProgress(UltraCanvasFilerWidget* source,
+                                const FilerBackgroundProgress& progress);
+    std::string DescribeBackgroundOperation() const;
     void ShowTransferNote(const std::string& message);
     void ClearTransferNote();
     // Whether a file on a remote drive is previewed: pictures, vector
@@ -1331,6 +1338,12 @@ private:
     // which is the framework's progress bar. Short enough that the gauge
     // drops its caption and value line and is simply the bar.
     std::shared_ptr<UltraCanvasGaugeDiagramElement> statusProgress;
+    // The operation running in the background (ShowBackgroundProgress), the
+    // widget it runs in, and the button beside the bar that opens its window.
+    FilerBackgroundProgress backgroundOp;
+    UltraCanvasFilerWidget* backgroundOpSource = nullptr;
+    std::shared_ptr<UltraCanvasButton> statusShowButton;
+    std::chrono::steady_clock::time_point backgroundNoteAt{};
     // The log window while it is open; it owns itself (deleteOnClose).
     std::weak_ptr<UltraFilerConnectionLogWindow> connectionLogWindow;
     TimerId connectionLogRefreshTimer = InvalidTimerId;

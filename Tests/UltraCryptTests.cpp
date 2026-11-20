@@ -33,10 +33,13 @@
 #include "UltraCrypt/UltraCryptCore.h"
 #include "UltraCrypt/UltraCryptPublicKey.h"
 #include "UltraCrypt/UltraCryptX509.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextUtils.h"
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -783,10 +786,49 @@ static void TestSha1() {
              "SHA-1 of the 56-byte FIPS vector");
 
     std::string million(1000000, 'a');
-    UltraCryptHasher hasher(UltraCryptHashAlgorithm::SHA1);
+    UltraCryptHasher hasher(UltraCryptHashAlgorithm::SHA1, legacy);
+    Check(hasher.IsValid(), "a streaming SHA-1 hasher is made with allowLegacy");
     hasher.Update(million.data(), million.size());
     CheckHex(hasher.Final(), "34aa973cd4c4daa4f61eeb2bdbad27316534016f",
              "streaming SHA-1 of one million 'a'");
+
+    // The same refusal in the other two ways to a plain digest: neither
+    // gives a SHA-1 where UltraCrypt_Hash gives none.
+    UltraCryptHasher refusedHasher(UltraCryptHashAlgorithm::SHA1);
+    Check(!refusedHasher.IsValid(), "a streaming SHA-1 hasher is refused without allowLegacy");
+    refusedHasher.Update("abc", 3);
+    Check(refusedHasher.Final().empty(), "a refused hasher returns no digest");
+    refusedHasher.Reset();
+    refusedHasher.Update("abc", 3);
+    Check(refusedHasher.Final().empty(), "a refused hasher returns none after Reset either");
+
+    const std::filesystem::path sha1File =
+        std::filesystem::temp_directory_path() / UltraCanvas::PathFromUtf8("ultracrypt-sha1-ไฟล์.bin");
+    {
+        std::ofstream out(sha1File, std::ios::binary);
+        out << "abc";
+    }
+    const std::string sha1Path = UltraCanvas::PathToUtf8(sha1File);
+    digest.assign(20, 0xAA);
+    auto fileRefused = UltraCrypt_HashFile(UltraCryptHashAlgorithm::SHA1, sha1Path, digest);
+    Check(!fileRefused && fileRefused.code == UltraCryptResultCode::NotSupported,
+          "SHA-1 of a file is refused without allowLegacy");
+    Check(digest.empty(), "the refusal leaves no digest behind");
+    Check(static_cast<bool>(UltraCrypt_HashFile(UltraCryptHashAlgorithm::SHA1, sha1Path, digest, legacy)),
+          "SHA-1 of a file succeeds with allowLegacy");
+    CheckHex(digest, "a9993e364706816aba3e25717850c26c9cd0d89d", "SHA-1 of a file holding \"abc\"");
+    // The refusal comes before the file is looked at: a file that is not
+    // there is still "not supported", not "could not open".
+    auto missingRefused = UltraCrypt_HashFile(UltraCryptHashAlgorithm::SHA1, sha1Path + ".missing", digest);
+    Check(!missingRefused && missingRefused.code == UltraCryptResultCode::NotSupported,
+          "the refusal does not depend on the file");
+    // The digests nothing is asked about are as they were.
+    Check(static_cast<bool>(UltraCrypt_HashFile(UltraCryptHashAlgorithm::SHA256, sha1Path, digest)),
+          "SHA-256 of a file needs no option");
+    CheckHex(digest, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+             "SHA-256 of a file holding \"abc\"");
+    std::error_code removeError;
+    std::filesystem::remove(sha1File, removeError);
 
     // HMAC-SHA-1 needs no opt-in: RFC 2202 case 1.
     UltraCryptSecureBuffer key =

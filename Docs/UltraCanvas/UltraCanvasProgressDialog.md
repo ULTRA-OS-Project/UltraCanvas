@@ -34,10 +34,11 @@ dlg->Close();
 | `SetProgress(double fraction)` | `0..1`, clamped. A **negative** value means the total is not known: the ring shows a busy sweep and the centre reads `...` instead of inventing a percentage. |
 | `SetCaption(text)` | The line above the ring. |
 | `SetDetail(text)` | What is being worked on now. Long text is ellipsized from the left, so the window keeps the height it opened with. |
-| `Show(parent, title, caption, onCancel, ProgressDialogOptions)` | The same with the transfer layout (below): `from` / `to` for the route chips, `figures` for the strip with an Items cell (`items`) and a Size cell (`bytes`), `onPause` for a Pause / Resume button. With a route the window's title is the headline. |
+| `Show(parent, title, caption, onCancel, ProgressDialogOptions)` | The same with the transfer layout (below): `from` / `to` for the route chips, `figures` for the strip with an Items cell (`items`) and a Size cell (`bytes`), `onPause` for a Pause / Resume button (`startPaused` when the work is paused already), `onBackground` for a "Run in background" button (below). With a route the window's title is the headline. |
 | `SetFigures(ProgressFigures)` | What is done (`doneItems`, `doneBytes`) and, where the work knows it, the total (`totalItems`, `totalBytes`; 0 = not known, and the cell shows what is done alone). Cheap on every tick. |
 | `IsCancelled()` | True once the user asked to cancel. |
 | `IsPaused()` | True while Pause is pressed. |
+| `IsInBackground()` | True once "Run in background" closed the window. |
 | `FormatDuration(seconds)`, `FormatBytes(bytes)` | "9 s", "2 min", "1 h 5 min"; "742 MB", "1.2 GB" - as the window shows them. |
 | `Close()` | Takes the window down. Safe to call twice, and safe after the user closed it. |
 
@@ -45,6 +46,23 @@ dlg->Close();
 Escape, the title bar. The dialog only *reports* the cancel; stopping the work
 is the caller's job, and so is deciding what a cancelled operation leaves
 behind.
+
+## Run in background
+
+With `ProgressDialogOptions::onBackground` set, a **Run in background** button
+sits beside Pause. It closes the window without cancelling: `onCancel` does not
+fire, `IsInBackground()` turns true, and `onBackground` is called once the
+window is gone. The work goes on; showing its progress elsewhere (a status
+bar) is the caller's job, and so is opening a new window when the user wants
+it back - with `startPaused = true` if the work was paused meanwhile, so the
+button reads Resume.
+
+```cpp
+ProgressDialogOptions options;
+options.onPause = [&](bool paused) { job.paused = paused; };
+options.onBackground = [&]() { job.inBackground = true; };   // the status bar takes over
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Copying", "", onCancel, options);
+```
 
 ## The transfer layout
 

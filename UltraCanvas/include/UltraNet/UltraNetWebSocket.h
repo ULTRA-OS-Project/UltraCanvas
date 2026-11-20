@@ -1,6 +1,17 @@
 // include/UltraNet/UltraNetWebSocket.h
-// WebSocket client surface (ws:// and wss://). Backed by libcurl's native
-// curl_ws_* API (libcurl >= 7.86; the Stage-3 CI/dev requirement).
+// WebSocket client surface (ws:// and wss://). On libcurl's native curl_ws_*
+// API where the libcurl in use has WebSockets, and on UltraNet's own client
+// (RFC 6455 on UltraNet's sockets and TLS) where it has not - Apple's own
+// libcurl lists no ws through macOS 15, and some distributions' builds leave
+// it out. The surface is the same on both: a caller need not know which.
+// What differs is where a wss:// certificate is verified: libcurl's client
+// against libcurl's roots, the own client as UltraNet_TlsWrap does (the
+// system's roots, UltraNet_TlsSetCABundle, UltraNet_TlsAddTrustedCert) - and
+// a proxy reached over TLS (Https), which only libcurl's client goes through.
+// ULTRANET_WEBSOCKET_CLIENT=own in the environment takes the own client where
+// libcurl would do too.
+// Version: 0.5.0 - UltraNet's own client where libcurl has no WebSockets: UltraNet_WebSocketConnect
+//                  connects on every system
 // Version: 0.4.1 - maxMessageBytes (the incoming message's limit, 64 MB) in place of maxFrameSize, which
 //                  nothing read; autoReconnect, maxReconnectAttempts and reconnectDelayMs removed (nothing
 //                  read them either - an owner reconnects on onClose / onError)

@@ -29,6 +29,8 @@
 // hardware-gated; AES-CBC and AES-CTR (and the PBKDF2 those formats key them
 // with) exist only for foreign formats and are portable.
 //
+// Version: 0.6.1 - UltraCrypt_HashFile and UltraCryptHasher take UltraCryptHashOptions and refuse
+//                  SHA1 without allowLegacy, as UltraCrypt_Hash always did
 // Version: 0.6.0 - UltraCrypt_AesGcmDecrypt (portable AES-GCM, interop); Argon2id with more than
 //                  one lane (UltraCryptKdfParams::parallelism), for files written elsewhere
 // Version: 0.5.0 - UltraCrypt_DeriveKeyPbkdf2 takes UltraCryptHashOptions: PBKDF2-HMAC-SHA-1 with
@@ -149,7 +151,8 @@ bool UltraCrypt_ConstantTimeEquals(const void* a, size_t aSize,
 enum class UltraCryptHashAlgorithm : uint8_t {
     // LEGACY. Provided for HMAC-SHA-1 only, which TOTP requires for issuer
     // compatibility and where SHA-1's collision weakness does not apply. As a
-    // plain digest it is collision-broken: UltraCrypt_Hash refuses it unless
+    // plain digest it is collision-broken: UltraCrypt_Hash, UltraCrypt_HashFile
+    // and UltraCryptHasher all refuse it unless
     // UltraCryptHashOptions::allowLegacy is set. Two readers set it, for
     // interop, each for a key derivation, which collisions do not reach:
     // UltraCanvasOfficeEncryption, to read the Office 2010 files whose
@@ -175,18 +178,28 @@ UltraCryptResult UltraCrypt_Hash(UltraCryptHashAlgorithm algorithm,
                                  const UltraCryptHashOptions& options =
                                      UltraCryptHashOptions());
 
+// The digest of a file's bytes, read in pieces. SHA1 is refused without
+// options.allowLegacy, as UltraCrypt_Hash refuses it (NotSupported).
 UltraCryptResult UltraCrypt_HashFile(UltraCryptHashAlgorithm algorithm,
                                      const std::string& filePath,
-                                     std::vector<uint8_t>& outDigest);
+                                     std::vector<uint8_t>& outDigest,
+                                     const UltraCryptHashOptions& options =
+                                         UltraCryptHashOptions());
 
 std::string UltraCrypt_ToHex(const std::vector<uint8_t>& bytes);
 bool        UltraCrypt_FromHex(const std::string& hex,
                                std::vector<uint8_t>& outBytes);
 
-// Streaming hash, for files and large payloads.
+// Streaming hash, for files and large payloads. A constructor reports
+// nothing, so a hasher that cannot be used says so through IsValid(): one for
+// SHA1 made without options.allowLegacy (the refusal UltraCrypt_Hash makes),
+// or one made where there is no backend. It then takes no data and Final()
+// returns an empty digest - never the digest of something else.
 class UltraCryptHasher {
 public:
-    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm);
+    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm,
+                              const UltraCryptHashOptions& options =
+                                  UltraCryptHashOptions());
     ~UltraCryptHasher();
     UltraCryptHasher(const UltraCryptHasher&) = delete;
     UltraCryptHasher& operator=(const UltraCryptHasher&) = delete;

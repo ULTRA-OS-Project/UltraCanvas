@@ -58,7 +58,9 @@ import sys
 import threading
 import time
 import uuid as uuidlib
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from local_http_server import LocalHTTPServer    # no name lookup at start (see there)
 
 LOCK = threading.Lock()
 CHANGED = threading.Condition(LOCK)
@@ -666,7 +668,7 @@ def main():
     if args.http:
         h, _, p = args.http.rpartition(":")
         host, port = (h or "127.0.0.1"), int(p)
-    server = ThreadingHTTPServer((host, port), Handler)
+    server = LocalHTTPServer((host, port), Handler)
     server.daemon_threads = True
     url = "http://127.0.0.1:%d" % server.server_address[1]
     if args.config:

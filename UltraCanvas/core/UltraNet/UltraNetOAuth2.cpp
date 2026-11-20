@@ -5,9 +5,10 @@
 // on UltraNet_Tcp*, and the token exchange on UltraNet_HttpPost. The token
 // JSON is a flat object, so the focused scanner in UltraNetFlatJson.h extracts
 // the standard fields without pulling a JSON engine into the UltraNet target.
+// Version: 0.3.1 - FillRandom shared (UltraNetRandom.h) with UltraNet's own WebSocket client
 // Version: 0.3.0 - the flat-JSON scanner moved to UltraNetFlatJson.h, shared with the service client
 // Version: 0.2.0 - the redirect wait can be called off (isCancelled)
-// Last Modified: 2026-10-15
+// Last Modified: 2026-11-20
 // Author: UltraCanvas Framework / ULTRA OS
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -22,6 +23,7 @@
 #include "UltraNet/UltraNetSocket.h"
 #include "UltraNet/UltraNetUrl.h"
 #include "UltraNetFlatJson.h"
+#include "UltraNetRandom.h"
 #include "UltraNetSha256.h"
 
 #include <algorithm>
@@ -54,13 +56,20 @@ bool RandomBytes(uint8_t* out, std::size_t n) {
 #endif
 }
 
-void FillRandom(uint8_t* out, std::size_t n) {
+} // namespace
+
+// (Shared with UltraNet's own WebSocket client: UltraNetRandom.h.)
+void ultranet_internal::FillRandom(uint8_t* out, std::size_t n) {
     if (RandomBytes(out, n)) return;
     std::random_device rd;
     for (std::size_t i = 0; i < n; ++i) {
         out[i] = static_cast<uint8_t>(rd());
     }
 }
+
+namespace {
+
+using ultranet_internal::FillRandom;
 
 using ultranet_internal::ForEachTopLevelField;
 using ultranet_internal::Sha256;
