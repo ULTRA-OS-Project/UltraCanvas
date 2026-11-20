@@ -1207,6 +1207,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdp.cpp
         # ... and a slide drawn as a picture from what it reads (previews)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPptxSlideRender.cpp
+        # ... and the slides as a document's pages, for the page views (UltraViewer)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPages.cpp
         # UCRichDocument: the block/run document model + its Markdown/HTML/plain
         # serializers. Lives in core (not the Word plugin) because framework
         # elements edit it - see UltraCanvasRichTextEdit / UCRichDocumentEditor.

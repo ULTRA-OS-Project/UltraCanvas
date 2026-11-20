@@ -539,6 +539,23 @@ public:
     void SetSlideshowIntervalSeconds(double sec);
     double GetSlideshowIntervalSeconds() const { return slideshowIntervalSec; }
 
+    // ===== PRESENTATIONS =====
+    // A deck (.pptx, .odp ...) is shown as its slides, drawn as pages in the
+    // document view - zoom, the thumbnail strip, the page keys, search - its
+    // speaker notes on the info bar. With the outline chosen it is shown as
+    // the outline of its slides in the text view instead (the O key toggles).
+    // Builds without the PDF view always show the outline.
+    void SetPresentationOutline(bool outline);
+    bool GetPresentationOutline() const { return presentationOutline; }
+    // The slide show: the deck's slides one at a time, the whole screen,
+    // no bars (F5 from the first slide, Shift+F5 from the one shown). The
+    // arrows, Space, Page Up / Down, Home and End move through the slides;
+    // Escape (or StopPresenting) ends it and restores the window. False
+    // when the shown file is no deck shown as its slides.
+    bool StartPresenting(bool fromCurrentSlide = false);
+    void StopPresenting();
+    bool IsPresenting() const { return presenting; }
+
     void SetTransition(MediaTransition t) { transition = t; }
     MediaTransition GetTransition() const { return transition; }
 
@@ -965,6 +982,13 @@ private:
     std::vector<std::string> playlist;
     size_t currentIndex = 0;
     std::string currentFolder;     // folder the breadcrumb reflects
+    bool presentationOutline = false;   // decks as their outline, not their slides
+    // The slide show, and what it put aside to fill the screen.
+    bool presenting = false;
+    bool presentingRestoreTopBars = true, presentingRestoreInfoBar = true, presentingRestoreThumbs = true;
+    bool presentingRestoreFullscreen = false;
+    // A deck shown as its slides (not locked, not as its outline).
+    bool ShowingSlides() const;
     bool topBarsVisible = true;    // breadcrumb + toolbars above the surface
     bool infoBarVisible = true;    // the info bar under it
 
