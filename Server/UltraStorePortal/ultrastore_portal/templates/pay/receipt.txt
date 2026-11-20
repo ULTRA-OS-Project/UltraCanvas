@@ -1,0 +1,8 @@
+UltraStore - {% if is_reversal %}{{ payment.get_kind_display }}{% else %}Receipt{% endif %} no. {{ payment.receipt_no|default:"-" }}
+Date:      {{ payment.at|date:"Y-m-d" }}
+For:       {{ order.app_name }} ({{ order.app.app_id }}){% if payment.kind == "renewal" %} - renewal{% endif %}
+Publisher: {{ order.app.publisher.name }}
+Amount:    {{ payment.signed_amount }} {{ payment.currency }}
+Order:     {{ order.public_id }}
+Licence:   {{ order.licence_id }}
+A receipt of the payment, not a tax invoice.

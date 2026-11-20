@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ publisher.name }} - UltraStore{% endblock %}
+{% block content %}
+<h1>{{ publisher.name }}</h1>
+{% if publisher.website %}<p style="margin-top:8px"><a href="{{ publisher.website }}" rel="nofollow noopener">{{ publisher.website }}</a></p>{% endif %}
+{% if publisher.description %}<div class="prose" style="margin-top:14px">{{ publisher.description|linebreaks }}</div>{% endif %}
+<section>
+  <div class="section-head"><h2>Apps</h2></div>
+  {% if apps %}<div class="cards">{% for app in apps %}{% include "_app_card.html" %}{% endfor %}</div>
+  {% else %}<div class="empty">No app published yet.</div>{% endif %}
+</section>
+{% endblock %}

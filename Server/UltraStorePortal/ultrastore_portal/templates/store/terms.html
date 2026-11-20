@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Publisher terms - UltraStore{% endblock %}
+{% block content %}
+<div class="prose" style="margin:0 auto">
+  <h1>Publisher terms</h1>
+  {% if terms %}
+    <p class="muted" style="margin-top:8px">Version {{ terms.version }}, in force from {{ terms.in_force_from|date:"j F Y" }}.</p>
+    {{ terms.text|linebreaks }}
+  {% else %}
+    <p class="muted" style="margin-top:8px">No terms are in force yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

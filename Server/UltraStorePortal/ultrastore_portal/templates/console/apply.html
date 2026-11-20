@@ -1,0 +1,22 @@
+{% extends "console/base.html" %}
+{% block title %}Become a publisher - UltraStore{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Become a publisher</h1></div>
+<div class="panel form wide">
+  <p class="muted">A publisher account is what your apps are published under. Tell us who you are; the store's operator looks at every application and mails you the decision.</p>
+  <form method="post" class="stack" style="margin-top:18px">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="note error">{{ form.non_field_errors }}</div>{% endif %}
+    {% for field in form.visible_fields %}
+      {% if field.name == "accept_terms" %}
+        <div class="panel" style="max-height:220px;overflow:auto;background:var(--admin-ground)">
+          <h3>Publisher terms, version {{ terms.version }}</h3>
+          <div class="small" style="margin-top:8px">{{ terms.text|linebreaks }}</div>
+        </div>
+      {% endif %}
+      {% include "_field.html" %}
+    {% endfor %}
+    <button class="button big">Send the application</button>
+  </form>
+</div>
+{% endblock %}

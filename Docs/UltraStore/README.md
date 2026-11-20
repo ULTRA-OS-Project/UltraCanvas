@@ -779,6 +779,27 @@ run built*). Both trust the keys of `keys/*.pub`
 fixture - natively added to the program, under emcmake built into a second
 module, `ultrastore-web-test.wasm`, so that `site/`'s never carries one.
 
+## The portal
+
+The store's server side is being gathered into **one application, the
+UltraStore portal** (`Server/UltraStorePortal`,
+[its README](../../Server/UltraStorePortal/README.md); started 2026-11-20):
+a Django project under the one root `https://store.ultraos.eu` with the
+developer console (register a publisher, publish an app), the operator's
+review, the store's web pages, buying and the catalog as a JSON service. It is to
+replace the services and tools the two sections below describe - the
+marketplace, account and payment services, `ultrastoreadmin` and
+`ultrastoreop` - and it changes three of their decisions: there is **one
+store and one catalog**, with no private or per-merchant catalog and no
+merchant key (a publisher is an account, the operator's key signs); **every
+URL sits under the one root**; and nothing of the earlier services' APIs is
+kept, since none was in use. What stays is this page's *Catalog*: the
+portal publishes the same signed `catalog.json`, so the store's core reads
+it unchanged - and *Payment*: the portal sells with the protocol and the
+licence that section describes (its 0.2.0), on MySQL. Until the portal has
+taken over buyer accounts, the sections below remain the record of how
+those were designed.
+
 ## The operator tier (later)
 
 Everything above is one publisher running one store: the admin backend

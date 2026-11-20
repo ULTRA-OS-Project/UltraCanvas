@@ -1,0 +1,11 @@
+Thank you for buying {{ order.app_name }}.
+
+Receipt no. {{ order.receipt_no }}: {{ amount }} {{ order.currency }}{% if order.cycle %}, then {{ order.list_price }} {{ order.currency }} every {{ order.cycle }} until you cancel{% endif %}.
+
+Your purchase - the licence, the receipt and the downloads - is here. Keep this link to yourself: it is the key to the purchase.
+
+{{ link }}
+
+If you bought inside the UltraStore app, there is nothing more to do: it has installed the licence already.
+
+UltraStore

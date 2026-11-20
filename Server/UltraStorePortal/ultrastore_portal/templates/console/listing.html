@@ -1,0 +1,39 @@
+{% extends "console/base.html" %}
+{% block title %}Store listing of {{ app.name }} - Developer console{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Store listing</h1><span class="muted">{{ app.name }}</span></div>
+<div class="panels">
+{% if app.is_public %}<div class="note">This app is in the store: what you save here is live at once.</div>{% endif %}
+<div class="panel">
+  <h2>Screenshots</h2>
+  <div class="thumbs">
+    {% for shot in app.screenshots.all %}
+    <figure><img src="{{ shot.image.url }}" alt="Screenshot {{ forloop.counter }}">
+      <form method="post" action="{% url 'console:screenshot_delete' app.app_id shot.pk %}">{% csrf_token %}<button class="link small">Remove</button></form></figure>
+    {% empty %}<p class="muted">None yet. An app needs at least one to go to review.</p>
+    {% endfor %}
+  </div>
+  <form method="post" enctype="multipart/form-data" action="{% url 'console:screenshot_add' app.app_id %}" class="row" style="margin-top:16px">
+    {% csrf_token %}
+    <div class="field" style="margin:0;flex:1;min-width:240px"><label for="{{ shot_form.image.id_for_label }}" hidden>Screenshot</label>{{ shot_form.image }}</div>
+    <button class="button soft">Add screenshot</button>
+  </form>
+  <p class="help small muted" style="margin-top:8px">PNG, JPEG or WebP, 320 px or more on each side, up to {{ max_screenshots }} pictures.</p>
+</div>
+<div class="panel form wide">
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="note error">{{ form.non_field_errors }}</div>{% endif %}
+    {% for title, fields in form.grouped %}
+    <fieldset><legend>{{ title }}</legend>
+      {% for field in fields %}
+        {% if field.name == "icon" and app.icon %}<div class="row" style="margin-bottom:8px"><img class="icon s64" src="{{ app.icon.url }}" alt="The current icon" width="64" height="64"><span class="muted small">The current icon. Choose a file to replace it.</span></div>{% endif %}
+        {% include "_field.html" %}
+      {% endfor %}
+    </fieldset>
+    {% endfor %}
+    <button class="button big">Save the listing</button>
+  </form>
+</div>
+</div>
+{% endblock %}

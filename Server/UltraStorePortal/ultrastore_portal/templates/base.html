@@ -1,0 +1,51 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}UltraStore{% endblock %}</title>
+<meta name="description" content="{% block description %}UltraStore: the apps of ULTRA OS and UltraCanvas for Linux, Windows and macOS.{% endblock %}">
+{% block meta %}{% endblock %}
+<link rel="stylesheet" href="{% static 'portal/portal.css' %}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<header class="top">
+  <div class="column">
+    <a class="brand" href="{% url 'store:home' %}"><span class="mark">U</span>UltraStore</a>
+    <form class="search" action="{% url 'store:browse' %}" method="get" role="search">
+      <label class="small" for="q" hidden>Search apps</label>
+      <input id="q" type="search" name="q" value="{{ q|default:'' }}" placeholder="Search apps" aria-label="Search apps">
+    </form>
+    <nav class="nav" aria-label="Main">
+      <a href="{% url 'store:browse' %}">Apps</a>
+      {% if user.is_authenticated %}
+        <a href="{% url 'console:home' %}">Developer console</a>
+        {% if user.is_staff %}<a href="{% url 'operator:home' %}">Operator</a>{% endif %}
+        <a href="{% url 'account:profile' %}">{{ user.display_name }}</a>
+        <form class="inline" method="post" action="{% url 'account:signout' %}">{% csrf_token %}<button class="button plain small">Sign out</button></form>
+      {% else %}
+        <a href="{% url 'console:home' %}">Publish an app</a>
+        <a class="button small" href="{% url 'account:signin' %}">Sign in</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+{% block shell %}
+<main>
+  <div class="column">
+    {% include "_messages.html" %}
+    {% block content %}{% endblock %}
+  </div>
+</main>
+{% endblock %}
+<footer>
+  <div class="column">
+    <span>UltraStore - ULTRA OS Project</span>
+    <a href="{% url 'store:terms' %}">Publisher terms</a>
+    <a href="{% url 'console:home' %}">Developer console</a>
+    <a href="{% url 'api:catalog' %}">catalog.json</a>
+    {% if store_download_url %}<a href="{{ store_download_url }}">Get the UltraStore app</a>{% endif %}
+  </div>
+</footer>
+</body>
+</html>
