@@ -1,6 +1,6 @@
 [Unit]
 Description=UltraStore portal
-After=network.target postgresql.service
+After=network.target mysql.service mariadb.service
 
 [Service]
 User=ultrastore

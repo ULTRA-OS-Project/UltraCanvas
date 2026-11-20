@@ -28,9 +28,10 @@
     <div class="actions">
       <a class="button big" href="{{ deep_link }}">{% if app.is_free %}Install{% elif app.trial_days %}Try {{ app.trial_days }} days{% else %}Buy {{ app.price_label }}{% endif %}</a>
       {% if not app.is_free %}<span class="price">{{ app.price_label }}</span>{% endif %}
+      {% if can_buy %}<a class="button soft big" href="{% url 'store:buy' app.app_id %}" rel="nofollow">Buy on the web</a>{% endif %}
       {% if store_download_url %}<a class="button soft big" href="{{ store_download_url }}">Get the UltraStore app</a>{% endif %}
     </div>
-    <p class="small muted" style="margin-top:10px">Install opens the UltraStore app, which picks the right build for your machine and keeps it up to date.</p>
+    <p class="small muted" style="margin-top:10px">{% if app.is_free %}Install opens{% else %}The first button opens{% endif %} the UltraStore app, which picks the right build for your machine{% if not app.is_free %}, installs the licence{% endif %} and keeps it up to date.</p>
   </div>
 </section>
 

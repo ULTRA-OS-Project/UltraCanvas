@@ -96,6 +96,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "ultrastore_portal.accounts",
     "ultrastore_portal.store",
+    "ultrastore_portal.billing",
 ]
 
 MIDDLEWARE = [
@@ -198,10 +199,40 @@ def _under_root(name: str) -> str:
 
 # Everything the catalog names lives under the one root, and all of it is
 # the portal's own: the catalog (<root>/v1/catalog.json, the packages beside
-# it), the app pages, the reports (<root>/v1/reports). The portal replaces
-# the earlier store services and names none of them.
+# it), the app pages, the reports (<root>/v1/reports), the checkout
+# (<root>/v1/checkout). The portal replaces the earlier store services and
+# names none of them.
 CATALOG_URL = BASE_URL + "/v1"
 MARKET_URL = BASE_URL
+
+# Buying (billing/services.py). The provider: "skrill" (Skrill Quick
+# Checkout, Paysafe), "test" (a button in the provider's place - a
+# developer's machine and the tests only), or empty: the store sells
+# nothing, shows the prices and names no payment service in the catalog.
+PAYMENT_PROVIDER = env("PAYMENT_PROVIDER").lower()
+if PAYMENT_PROVIDER not in ("", "skrill", "test"):
+    raise ImproperlyConfigured(f"ULTRASTORE_PORTAL_PAYMENT_PROVIDER is skrill, test or empty: {PAYMENT_PROVIDER}")
+if PAYMENT_PROVIDER == "test" and not (DEBUG or RUNNING_TESTS):
+    raise ImproperlyConfigured("ULTRASTORE_PORTAL_PAYMENT_PROVIDER=test sells for nothing: it runs only with ULTRASTORE_PORTAL_DEBUG=1")
+# The Skrill merchant account: where the money goes, the secret word the
+# status reports are signed with, the merchant id, and the API password for
+# refunds and for ending a recurring payment (the merchant portal, Developer
+# settings).
+SKRILL_PAY_TO_EMAIL = env("SKRILL_PAY_TO_EMAIL")
+SKRILL_SECRET_WORD = env("SKRILL_SECRET_WORD")
+SKRILL_MERCHANT_ID = env("SKRILL_MERCHANT_ID")
+SKRILL_API_PASSWORD = env("SKRILL_API_PASSWORD")
+SKRILL_PAY_URL = env("SKRILL_PAY_URL", "https://pay.skrill.com")
+SKRILL_API_URL = env("SKRILL_API_URL", "https://www.skrill.com/app")
+# The licence key's seed (32 bytes, hex; empty: made on the first sale and
+# kept in the database), the days a subscription's licence outlasts its paid
+# period while the provider retries a failed renewal, and the secret and the
+# lifetime of a buyer's download link (nginx secure_link_md5 on
+# /v1/restricted/, deploy/nginx.conf - the same secret there).
+LICENCE_SEED = env("LICENCE_SEED")
+GRACE_DAYS = int(env("GRACE_DAYS", "7"))
+RESTRICTED_SECRET = env("RESTRICTED_SECRET") or ("development-only-link-secret" if (DEBUG or RUNNING_TESTS) else "")
+RESTRICTED_TTL = int(env("RESTRICTED_TTL", "600"))
 # Where a visitor without the native store gets it (the app page's link): a
 # path under the root as well.
 STORE_DOWNLOAD_URL = _under_root("STORE_DOWNLOAD_PATH")

@@ -8,8 +8,9 @@ from django.contrib import admin
 from django.urls import include, path, register_converter
 from django.views.static import serve
 
+from .api import billing as buying
 from .api import views as api
-from .web import account, console, operator, storefront
+from .web import account, console, operator, pay, storefront
 
 
 class AppId:
@@ -31,6 +32,7 @@ store_patterns = ([
     path("apps/<appid:app_id>/", storefront.app_detail, name="app"),
     path("apps/<appid:app_id>/download/<int:pk>/", storefront.download, name="download"),
     path("apps/<appid:app_id>/report/", storefront.report, name="report"),
+    path("apps/<appid:app_id>/buy/", pay.buy, name="buy"),
     path("reports/<str:public_id>/", storefront.report_outcome, name="report_outcome"),
     path("publisher/<slug:slug>/", storefront.publisher_page, name="publisher"),
     path("terms/", storefront.terms, name="terms"),
@@ -51,8 +53,20 @@ account_patterns = ([
     path("", account.profile, name="profile"),
 ], "account")
 
+pay_patterns = ([
+    path("pay/<str:public_id>/", pay.handoff, name="handoff"),
+    path("pay/<str:public_id>/test/", pay.test_pay, name="test"),
+    path("pay/<str:public_id>/return/", pay.returned, name="return"),
+    path("pay/<str:public_id>/cancel/", pay.cancelled, name="cancel"),
+    path("orders/<str:public_id>/", pay.order_page, name="order"),
+    path("orders/<str:public_id>/licence.ulic", pay.order_licence, name="licence"),
+    path("orders/<str:public_id>/download/<int:pk>/", pay.order_download, name="download"),
+    path("orders/<str:public_id>/unsubscribe/", pay.order_unsubscribe, name="unsubscribe"),
+], "pay")
+
 console_patterns = ([
     path("", console.home, name="home"),
+    path("sales/", console.sales, name="sales"),
     path("apply/", console.apply, name="apply"),
     path("publisher/", console.publisher_profile, name="publisher"),
     path("terms/accept/", console.accept_terms, name="accept_terms"),
@@ -77,6 +91,8 @@ operator_patterns = ([
     path("apps/", operator.apps, name="apps"),
     path("apps/<appid:app_id>/<slug:action>/", operator.app_action, name="app_action"),
     path("reports/<int:pk>/", operator.report, name="report"),
+    path("orders/", operator.orders, name="orders"),
+    path("orders/<int:pk>/", operator.order, name="order"),
     path("publish/", operator.publish, name="publish"),
     path("audit/", operator.audit, name="audit"),
 ], "operator")
@@ -92,10 +108,20 @@ api_patterns = ([
     path("terms/current", api.terms_current, name="terms_current"),
     path("reports", api.reports, name="reports"),
     path("reports/<str:public_id>/outcome", api.report_outcome, name="report_outcome"),
+    path("checkout", buying.checkout, name="checkout"),
+    path("orders/<str:public_id>", buying.order, name="order"),
+    path("orders/<str:public_id>/receipt", buying.receipt, name="receipt"),
+    path("orders/<str:public_id>/download", buying.download, name="download"),
+    path("orders/<str:public_id>/subscription/cancel", buying.subscription_cancel, name="subscription_cancel"),
+    path("licences/<str:licence_id>", buying.licence, name="licence"),
+    path("keys", buying.keys, name="keys"),
+    path("skrill/status", buying.skrill_status, name="skrill_status"),
+    path("skrill/recurring", buying.skrill_recurring, name="skrill_recurring"),
 ], "api")
 
 urlpatterns = [
     path("", include(store_patterns)),
+    path("", include(pay_patterns)),
     path("account/", include(account_patterns)),
     path("console/", include(console_patterns)),
     path("operator/", include(operator_patterns)),
@@ -107,8 +133,9 @@ urlpatterns = [
 if settings.DEBUG:
     # A developer's machine has no web server in front: the pictures and the
     # published packages from the folders nginx serves in production
-    # (deploy/nginx.conf). restricted/ is served by nobody here either.
+    # (deploy/nginx.conf), restricted/ behind the same signed link.
     urlpatterns += [
         path("media/<path:path>", serve, {"document_root": settings.MEDIA_ROOT}),
         path("v1/packages/<path:path>", serve, {"document_root": settings.PUBLISH_DIR / "v1" / "packages"}),
+        path("v1/restricted/<path:path>", pay.restricted_file),
     ]

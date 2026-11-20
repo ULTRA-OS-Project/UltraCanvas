@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
+from ..billing import services as billing
 from ..store import constants
 from ..store.models import App, Package, Publisher, Release, Report, TermsVersion
 from ..store.queries import listed_apps, search_apps
@@ -78,6 +79,7 @@ def app_detail(request, app_id: str):
         "systems": sorted({p.os_name for p in packages}),
         "direct_download": not app.restricted_packages,
         "more": more, "similar": similar,
+        "can_buy": not app.is_free and billing.selling(),
         "deep_link": f"ultrastore://app/{app.app_id}",
     })
 

@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{# No page here is for a search engine. The site's Referrer-Policy (same-origin, settings.py) keeps an order's link from other sites; a stricter one here would blank the Origin of this page's own forms, which the CSRF check needs. #}
+{% block meta %}<meta name="robots" content="noindex">{% endblock %}

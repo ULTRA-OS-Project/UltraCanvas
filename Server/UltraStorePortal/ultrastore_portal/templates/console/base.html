@@ -7,6 +7,7 @@
     <a href="{% url 'console:home' %}"{% if not app and request.resolver_match.url_name == 'home' %} class="on"{% endif %}>All apps</a>
     {% if my_publisher.approved %}
       <a href="{% url 'console:app_new' %}"{% if request.resolver_match.url_name == 'app_new' %} class="on"{% endif %}>Create an app</a>
+      <a href="{% url 'console:sales' %}"{% if request.resolver_match.url_name == 'sales' %} class="on"{% endif %}>Sales</a>
       <a href="{% url 'console:publisher' %}"{% if request.resolver_match.url_name == 'publisher' %} class="on"{% endif %}>Publisher profile</a>
     {% endif %}
     {% if app %}

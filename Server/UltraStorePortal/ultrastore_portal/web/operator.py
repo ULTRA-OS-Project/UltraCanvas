@@ -13,6 +13,8 @@ from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from ..billing import services as billing
+from ..billing.models import Order
 from ..store import catalog, services
 from ..store.models import App, AuditEntry, Package, Publisher, Release, Report
 from ..store.packages import package_path
@@ -33,6 +35,7 @@ def home(request):
             "suspended": App.objects.filter(suspended=True).count() + Publisher.objects.filter(state=Publisher.SUSPENDED).count(),
         },
         "recent": AuditEntry.objects.all()[:12],
+        "selling_missing": billing.missing_settings(),
     })
 
 
@@ -127,6 +130,36 @@ def report(request, pk: int):
             messages.error(request, str(refused))
     return render(request, "operator/report.html", {"report": subject, "form": form,
                                                     "app": App.objects.filter(app_id=subject.target).first()})
+
+
+@operator_required
+def orders(request):
+    state = request.GET.get("state", "")
+    found = Order.objects.select_related("app__publisher")
+    if state in dict(Order.STATES):
+        found = found.filter(status=state)
+    else:
+        found = found.exclude(status__in=[Order.OPEN, Order.CANCELLED])   # what money moved on
+    page = Paginator(found, 50).get_page(request.GET.get("page"))
+    return render(request, "operator/orders.html", {"page": page, "state": state, "states": Order.STATES,
+                                                    "missing": billing.missing_settings()})
+
+
+@operator_required
+def order(request, pk: int):
+    subject = get_object_or_404(Order.objects.select_related("app__publisher"), pk=pk)
+    if request.method == "POST":
+        revoke = {"yes": True, "no": False}.get(request.POST.get("revoke", ""))
+        try:
+            billing.refund(subject, request.user, amount=request.POST.get("amount", "").strip(), revoke=revoke, note=request.POST.get("note", "").strip())
+            messages.success(request, "The refund is made.")
+            return redirect("operator:order", pk)
+        except billing.BillingError as refused:
+            messages.error(request, refused.description)
+    subject.refresh_from_db()
+    paid = billing.paid_total(subject)
+    return render(request, "operator/order.html", {"order": subject, "payments": subject.payments.all(), "left": paid - subject.refunded,
+                                                   "history": AuditEntry.objects.filter(target_kind="order", target=subject.public_id)[:30]})
 
 
 @require_POST

@@ -199,6 +199,13 @@ def build_catalog(key: SigningKey) -> dict:
         "components": components,
         "apps": apps,
     }
+    # The store names itself as the payment service once it can sell; a
+    # catalog without payment_url sends Buy to the publisher's page.
+    from ..billing import services as billing   # billing reads the store's models
+
+    if billing.selling():
+        catalog["payment_url"] = settings.BASE_URL
+        catalog["licence_key"] = billing.licence_key().public_hex
     return catalog
 
 

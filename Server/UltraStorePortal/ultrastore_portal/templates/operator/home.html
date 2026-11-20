@@ -3,6 +3,7 @@
 {% block content %}
 <div class="page-head"><h1>Review queue</h1></div>
 <div class="panels">
+{% if selling_missing %}<div class="note warning"><b>The store is not selling:</b> paid apps show their price and nothing can be bought. Missing: {{ selling_missing|join:", " }}</div>{% endif %}
 <div class="tiles">
   <div class="tile"><span class="muted">Releases in review</span><b>{{ queue|length }}</b></div>
   <div class="tile"><span class="muted">Publisher applications</span><b>{{ applications|length }}</b></div>

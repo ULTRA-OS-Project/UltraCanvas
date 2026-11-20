@@ -5,9 +5,10 @@
   <aside class="side">
     <div class="who"><span class="small muted">Operator</span><b>{{ user.display_name }}</b></div>
     {% with name=request.resolver_match.url_name %}
-    <a href="{% url 'operator:home' %}"{% if name == 'home' or name == 'release' or name == 'report' %} class="on"{% endif %}>Review queue</a>
+    <a href="{% url 'operator:home' %}"{% if request.resolver_match.namespace == 'operator' %}{% if name == 'home' or name == 'release' or name == 'report' %} class="on"{% endif %}{% endif %}>Review queue</a>
     <a href="{% url 'operator:publishers' %}"{% if name == 'publishers' or name == 'publisher' %} class="on"{% endif %}>Publishers</a>
     <a href="{% url 'operator:apps' %}"{% if name == 'apps' %} class="on"{% endif %}>Apps</a>
+    <a href="{% url 'operator:orders' %}"{% if name == 'orders' or name == 'order' %} class="on"{% endif %}>Orders</a>
     <a href="{% url 'operator:audit' %}"{% if name == 'audit' %} class="on"{% endif %}>Audit log</a>
     {% endwith %}
     <div class="sub">Records</div>

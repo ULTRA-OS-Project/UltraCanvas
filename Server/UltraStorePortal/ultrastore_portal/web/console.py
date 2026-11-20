@@ -14,6 +14,7 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
+from ..billing.models import Payment
 from ..store import services
 from ..store.models import App, Package, Release, Screenshot, TermsVersion
 from ..store.packages import store_upload
@@ -70,6 +71,23 @@ def publisher_profile(request):
         messages.success(request, "Saved.")
         return redirect("console:publisher")
     return render(request, "console/publisher.html", {"form": form, "publisher": request.publisher, "terms_due": request.publisher.terms_due()})
+
+
+@publisher_required
+def sales(request):
+    """What the publisher's apps sold: every payment and every reversal,
+    and the net per currency."""
+    payments = (Payment.objects.filter(order__app__publisher=request.publisher).select_related("order__app").order_by("-at", "-id"))
+    totals: dict[str, dict] = {}
+    for payment in payments:
+        row = totals.setdefault(payment.currency, {"currency": payment.currency, "sold": 0, "reversed": 0, "net": 0, "sales": 0})
+        if payment.kind in (Payment.SALE, Payment.RENEWAL):
+            row["sold"] += payment.amount
+            row["sales"] += 1
+        else:
+            row["reversed"] += payment.amount
+        row["net"] += payment.signed_amount
+    return render(request, "console/sales.html", {"payments": payments[:500], "totals": list(totals.values())})
 
 
 @require_POST
