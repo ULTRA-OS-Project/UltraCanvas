@@ -234,10 +234,11 @@ namespace {
                         "slides read and drawn, or opened as an outline; written from the deck model or from a "
                         "document (a slide per heading); password-protected files read and written" });
         out.push_back({ "odp", { "otp", "fodp" }, "OpenDocument Presentation",
-                        MediaFormatCategory::Document, true, false,
+                        MediaFormatCategory::Document, true, true,
                         "built-in (miniz + tinyxml2)",
-                        "slides read and drawn (text, tables, pictures), or opened as an outline; "
-                        "password-protected files read; no writer" });
+                        "slides read and drawn (text, tables, pictures, charts), or opened as an outline; written "
+                        "from the deck model or from a document (a slide per heading); password-protected files "
+                        "read, not written" });
         out.push_back({ "doc", {}, "Word 97-2003 document",
                         MediaFormatCategory::Document, true, false,
                         "built-in OLE2/CFB parser", "plain-text import only" });

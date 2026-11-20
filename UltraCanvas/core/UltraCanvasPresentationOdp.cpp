@@ -1,10 +1,12 @@
 // core/UltraCanvasPresentationOdp.cpp
 // OpenDocument presentation (.odp / .otp / .fodp) reader - see UltraCanvasPresentationOdp.h.
+// Version: 1.2.0 - charts (chart objects, UltraCanvasOdfChart): a package's "Object N" and a flat file's inline one
 // Version: 1.1.0 - a password-protected deck opened with its password (UltraCanvasOdfEncryption.h)
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
 #include "UltraCanvasPresentationOdp.h"
+#include "UltraCanvasOdfChart.h"
 #include "UltraCanvasOdfEncryption.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextUtils.h"
@@ -16,6 +18,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <set>
@@ -106,6 +109,8 @@ struct OdpContext {
     std::map<std::string, std::string> masterLayouts;                // master page -> page layout
     std::map<std::string, std::pair<int64_t, int64_t>> pageLayouts;  // page layout -> width, height
     std::string firstMaster;
+    // A part of the package by its path ("Object 1/content.xml"); none for a flat file.
+    std::function<bool(const std::string&, std::string&)> readEntry;
 };
 
 TextLook LookOf(const tinyxml2::XMLElement* textProperties) {
@@ -293,9 +298,26 @@ private:
             shape.kind = PptxShapeKind::Table;
             ReadRows(table, shape.rows);
             out.push_back(std::move(shape));
-        } else if (Child(frame, "object") || Child(frame, "object-ole") || Child(frame, "plugin") ||
-                   Child(frame, "applet") || Child(frame, "floating-frame")) {
-            return;   // a chart or another embedded object: not read
+        } else if (const tinyxml2::XMLElement* object = Child(frame, "object")) {
+            // A chart object: the package's "Object N/content.xml", or a flat
+            // file's chart document inline. Any other object is not read.
+            std::string xml;
+            if (const tinyxml2::XMLElement* inline_ = Child(object, "document")) {
+                tinyxml2::XMLPrinter printer;
+                inline_->Accept(&printer);
+                xml = printer.CStr();
+            } else if (context_.readEntry) {
+                std::string href = Attr(object, "href", "xlink");
+                if (href.rfind("./", 0) == 0) href = href.substr(2);
+                if (!href.empty() && !context_.readEntry(href + "/content.xml", xml)) xml.clear();
+            }
+            if (!xml.empty() && ReadOdfChartObject(xml, shape.chart)) {
+                shape.kind = PptxShapeKind::Chart;
+                out.push_back(std::move(shape));
+            }
+        } else if (Child(frame, "object-ole") || Child(frame, "plugin") || Child(frame, "applet") ||
+                   Child(frame, "floating-frame")) {
+            return;   // another embedded object: not read
         } else if (const tinyxml2::XMLElement* image = Child(frame, "image")) {
             shape.kind = PptxShapeKind::Picture;
             shape.pictureTarget = Attr(image, "href", "xlink");   // empty for a flat file's inline picture
@@ -479,13 +501,15 @@ const tinyxml2::XMLElement* PresentationBody(const tinyxml2::XMLElement* root) {
 }
 
 bool ReadDocuments(const tinyxml2::XMLElement* contentRoot, const tinyxml2::XMLElement* stylesRoot,
-                   PptxPresentation& out, std::string& error) {
+                   PptxPresentation& out, std::string& error,
+                   std::function<bool(const std::string&, std::string&)> readEntry = nullptr) {
     const tinyxml2::XMLElement* presentation = PresentationBody(contentRoot);
     if (!presentation) {
         error = "The file is not an OpenDocument presentation - it has no presentation body";
         return false;
     }
     OdpContext context;
+    context.readEntry = std::move(readEntry);
     // Common styles first, then the automatic ones the content uses. A
     // separate styles.xml's automatic styles belong to its master pages:
     // only their page layouts are taken, since their names may repeat the
@@ -564,7 +588,8 @@ bool ReadPackage(const UCZipPackageReader& zip, PptxPresentation& out, std::stri
     const bool hasStyles = zip.ReadEntry("styles.xml", stylesXml) &&
                            styles.Parse(stylesXml.c_str(), stylesXml.size()) == tinyxml2::XML_SUCCESS &&
                            styles.RootElement();
-    return ReadDocuments(content.RootElement(), hasStyles ? styles.RootElement() : nullptr, out, error);
+    return ReadDocuments(content.RootElement(), hasStyles ? styles.RootElement() : nullptr, out, error,
+                         [&zip](const std::string& part, std::string& xml) { return zip.ReadEntry(part, xml); });
 }
 
 bool ReadFlat(const char* xml, size_t size, PptxPresentation& out, std::string& error) {

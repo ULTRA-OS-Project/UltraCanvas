@@ -4,6 +4,7 @@
 // UltraCanvasNativeDialogs. NotifyRecentFile is implemented per-platform.
 // Save settings (SAVE SETTINGS below): what each format's writer can be
 // told, described and kept per format - see UltraCanvasFileSaveSettings.h.
+// Version: 1.18.0 - SaveTextDocument and SavePresentation write .odp / .otp / .fodp too
 // Version: 1.17.0 - SaveTextDocument writes a .pptx (the document laid out as a deck); SavePresentation
 // Version: 1.16.0 - LoadTextDocument / OpenTextDocument read an OpenDocument presentation
 //                  (.odp, .otp, .fodp) as an outline
@@ -331,17 +332,20 @@ namespace UltraCanvas {
         // OpenTextDocument offers these when it is given no filters.
         static void AddTextDocumentLoadTypes(FileDialogOptions& opts);
         // Writes `document` as the type its path names: .odt, .docx, or a
-        // PowerPoint deck (.pptx and kin) laid out from it - a slide per
-        // first-level heading (PptxPresentationFromRichDocument).
-        // `password` saves a password-protected .docx or .pptx; an .odt with
-        // a password is refused, not saved unprotected.
+        // deck - PowerPoint (.pptx and kin) or OpenDocument (.odp, .otp,
+        // .fodp) - laid out from it, a slide per first-level heading
+        // (PptxPresentationFromRichDocument). `password` saves a
+        // password-protected .docx or .pptx; an .odt or .odp with a password
+        // is refused, not saved unprotected.
         static bool SaveTextDocument(const UCRichDocument& document, const std::string& filePath,
                                      std::string& outError,
                                      const std::string& password = std::string());
         // Writes a deck (UltraCanvasPresentationPptx.h's model: one read,
-        // changed, or built) as the PowerPoint kind its path names - .pptx,
-        // .potx, .ppsx (and .pptm / .potm / .ppsm, without macros);
-        // `password` saves it encrypted. Any other extension is refused.
+        // changed, or built) as the kind its path names - PowerPoint .pptx,
+        // .potx, .ppsx (and .pptm / .potm / .ppsm, without macros), or
+        // OpenDocument .odp, .otp, .fodp. `password` saves a PowerPoint file
+        // encrypted; an OpenDocument one with a password is refused. Any other
+        // extension is refused.
         static bool SavePresentation(const PptxPresentation& deck, const std::string& filePath,
                                      std::string& outError,
                                      const std::string& password = std::string());
