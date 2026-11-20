@@ -147,7 +147,7 @@ TEST(a_submission_carries_its_checks_and_decisions) {
                             R"("summary":{"en":"Sheet music library"},"pricing":{"model":"paid","price":"24.90","currency":"EUR","trial_days":14}},)"
                             R"("signature":"ab","packages":[{"file":"packages/a.zip","sha256":"ff","size":2800000}],)"
                             R"("checks":{"signature":"ok","standing":"active","packages":"ok","scans":"not run","privacy_url":"failed"},)"
-                            R"("findings":{"scans":["no package store: the packages stay on the merchant's server, unscanned"],"listing":["no category","1 screenshot(s)"]},"checked_at":"2026-11-10T07:59:00Z",)"
+                            R"j("findings":{"scans":["no package store: the packages stay on the merchant's server, unscanned"],"listing":["no category","1 screenshot(s)"]},"checked_at":"2026-11-10T07:59:00Z",)j"
                             R"("state":"in_review","answers":"","created_at":"2026-11-09T09:14:00Z","decided_at":"","released_sequence":0,)"
                             R"("decisions":[{"action":"start_review","message":"","actor":"operator","at":"2026-11-10T08:00:00Z","sequence":0}]})";
     fake.answers["GET /v1/submissions?state=in_review"] = "{\"submissions\":[" + sub + "]}";
