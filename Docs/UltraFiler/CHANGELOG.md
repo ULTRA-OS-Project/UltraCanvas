@@ -1,3 +1,18 @@
+#### 2026-11-20 *1.107.22*
+- **Extract into a folder that exists already, with the same options as
+  copying.** When the folder named in the Extract dialog is there, UltraFiler
+  now asks instead of quietly making "name (2)": *Keep both* (the numbered
+  folder, as before), *Extract into existing*, or *Skip*. A foldable
+  *Options* panel says what happens to a file of the archive that is in the
+  folder already - replace always, only when the archive's file is newer,
+  older, bigger or different, or skip identical files and keep both for the
+  rest. The files left as they were are listed at the end.
+- **The copy, move, delete, pack and unpack window shows more, and can
+  pause.** Beside the ring: what is happening, where from and to, and the file
+  being handled; under it the speed, the time left, the items and the size
+  done (with the totals when one folder or file is copied or deleted); and a
+  Pause / Resume button. The window costs the copy nothing measurable.
+
 #### 2026-11-19 *1.107.21*
 - **Dark mode across the dialogs.** Adding an FTP / SFTP or cloud drive opens
   a dark form under a dark look (it was a white window, its checkbox label
