@@ -5649,6 +5649,30 @@ else()
     message(STATUS "  SpreadsheetXlsFileTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== POWERPOINT LOOK TEST =====
+# What the PowerPoint reader and the slide renderer make of a deck's look:
+# fonts, spacing, bullets, outlines, gradients, connectors, tables, charts,
+# SmartArt, cropped pictures - read from a python-pptx fixture and a deck
+# rebuilt in memory, then each slide drawn and looked at.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PresentationPptxTest...")
+    add_executable(PresentationPptxTest ${CMAKE_CURRENT_SOURCE_DIR}/PresentationPptxTest.cpp)
+    target_include_directories(PresentationPptxTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PresentationPptxTest PRIVATE cxx_std_20)
+    target_link_libraries(PresentationPptxTest PRIVATE UltraCanvas)
+    target_compile_definitions(PresentationPptxTest PRIVATE
+        PPTXTEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    )
+    set_target_properties(PresentationPptxTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PresentationPptxTest COMMAND PresentationPptxTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PresentationPptxTest")
+else()
+    message(STATUS "  PresentationPptxTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== OFFICE ENCRYPTION TEST =====
 # Password-protected .xlsx / .docx (ECMA-376 agile encryption): the decryptor
 # against fixtures msoffcrypto-tool encrypted - right, wrong and missing
