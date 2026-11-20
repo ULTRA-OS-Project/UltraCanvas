@@ -13,6 +13,7 @@
 // merge back into one text element with spans. Unknown record types are
 // counted and reported through the warning callback, never dropped
 // silently.
+// Version: 1.1.0 - SETPOLYFILLMODE read into ShapeFillRule (ALTERNATE, GDI's default, is even-odd)
 // Version: 1.0.0
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
@@ -129,6 +130,9 @@ private:
     EmfFont curFont;
     Color textColor = Color(0, 0, 0, 255);
     uint32_t textAlign = 0;
+    // SETPOLYFILLMODE: GDI starts every device context in ALTERNATE, the
+    // even-odd rule; WINDING (2) is non-zero.
+    VectorStorage::FillRule polyFill = VectorStorage::FillRule::EvenOdd;
 
     bool inPath = false;
     std::shared_ptr<VectorPath> path;
@@ -169,7 +173,10 @@ private:
             case 11: vpExtX = I32(b); vpExtY = I32(b + 4); break;     // SETVIEWPORTEXTEX
             case 12: vpOrgX = I32(b); vpOrgY = I32(b + 4); break;     // SETVIEWPORTORGEX
             case 14: break;   // EOF
-            case 17: case 18: case 19: break;   // mapmode/bkmode/polyfill
+            case 17: case 18: break;   // SETMAPMODE / SETBKMODE
+            case 19:   // SETPOLYFILLMODE
+                polyFill = U32(b) == 2 ? VectorStorage::FillRule::NonZero : VectorStorage::FillRule::EvenOdd;
+                break;
             case 22: textAlign = U32(b); break;                       // SETTEXTALIGN
             case 24: textColor = FromColorRef(U32(b)); break;         // SETTEXTCOLOR
             case 25: break;   // SETBKCOLOR
@@ -367,6 +374,7 @@ private:
 
     void ApplyFillStroke(VectorStyle& style) {
         if (!curBrush.null) style.Fill = curBrush.color;
+        style.ShapeFillRule = polyFill;
         if (!curPen.null) style.Stroke = PenStroke();
     }
 
@@ -396,6 +404,7 @@ private:
     void PaintPath(bool fill, bool stroke) {
         if (!path) return;
         if (fill && !curBrush.null) path->Style.Fill = curBrush.color;
+        path->Style.ShapeFillRule = polyFill;
         if (stroke && !curPen.null) path->Style.Stroke = PenStroke();
         bool any = path->Style.Fill.has_value() || path->Style.Stroke.has_value();
         if (any && !path->Path.commands.empty()) layer->AddChild(path);

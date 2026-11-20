@@ -10,6 +10,8 @@
 // picture that is rotated keeps a draw:transform as LibreOffice writes one.
 // Numbers go through FormatFixedClassic: centimetres to four places (a
 // micrometre) for lengths, path data in 1/100 mm like LibreOffice's own.
+// Version: 1.3.0 - a non-zero shape is written by the subpaths that bound its fill (LibreOffice fills even-odd)
+// Version: 1.2.0 - a radial gradient placed as an ellipse is written as an ellipsoid with its angle
 // Version: 1.1.0 - the package carries Thumbnails/thumbnail.png, the page at 256 pixels
 // Version: 1.0.0
 // Last Modified: 2026-11-18
@@ -17,6 +19,7 @@
 
 #include "UltraCanvasODGConverter.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
+#include "UltraCanvasVectorFillRule.h"
 #include "UltraCanvasZipPackage.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
@@ -327,30 +330,61 @@ private:
         }
         if (const auto* r = std::get_if<RadialGradientData>(&g)) {
             if (r->Stops.empty() || b.width <= 0 || b.height <= 0) return {};
-            Point2Dd c = r->Center;
+            // The circle's centre and its two radii as vectors, carried onto
+            // the page: through the bounding box (ObjectBoundingBox units),
+            // the gradient's own Transform and the element's placement. Equal
+            // and square to each other, it is still a circle; otherwise the
+            // ellipse it has become.
+            // As the renderer draws it (MakeRadialGradient): a bounding-box
+            // radial with no Transform is the circle of the box's longer side,
+            // one with a Transform the box's unit square stretched.
+            Matrix3x3 place = m;
+            Point2Dd centre = r->Center;
             double radius = r->Radius;
-            if (r->Units == GradientUnits::ObjectBoundingBox) {
-                c = Point2Dd(localBox_.x + c.x * localBox_.width, localBox_.y + c.y * localBox_.height);
+            const bool box = r->Units == GradientUnits::ObjectBoundingBox;
+            if (r->Transform) {
+                place = place * *r->Transform;
+                if (box)
+                    place = place * Matrix3x3::Translate(localBox_.x, localBox_.y) *
+                            Matrix3x3::Scale(localBox_.width, localBox_.height);
+            } else if (box) {
+                centre = Point2Dd(localBox_.x + centre.x * localBox_.width, localBox_.y + centre.y * localBox_.height);
                 radius *= std::max(localBox_.width, localBox_.height);
             }
-            if (r->Transform) { c = r->Transform->Transform(c); radius *= Scale(*r->Transform); }
-            c = m.Transform(c);
-            radius *= Scale(m);
-            const double reach = std::hypot(b.width, b.height) / 2;   // ODF's radius: half the diagonal
-            if (radius < 1e-9 || reach < 1e-9) return {};
+            const Point2Dd c = place.Transform(centre);
+            const Point2Dd ax{place.m[0][0] * radius, place.m[1][0] * radius};
+            const Point2Dd ay{place.m[0][1] * radius, place.m[1][1] * radius};
+            const double rx = std::hypot(ax.x, ax.y), ry = std::hypot(ay.x, ay.y);
+            if (rx < 1e-9 || ry < 1e-9) return {};
+            const bool elliptical = std::fabs(rx - ry) > 1e-3 * std::max(rx, ry);
+            if (elliptical && std::fabs(ax.x * ay.x + ax.y * ay.y) > 1e-3 * rx * ry)
+                Skip("sheared radial gradient (written as the ellipse of its axes)");
+            // ODF's reach: half the diagonal for a radial gradient, the box's
+            // width and height over the square root of two for an ellipsoid
+            // (UltraCanvasODGReader.cpp) - the stops are moved onto it.
+            const double scale = elliptical ? std::sqrt((rx * ry) / ((b.width / std::sqrt(2.0)) * (b.height / std::sqrt(2.0))))
+                                            : rx / (std::hypot(b.width, b.height) / 2);
             std::vector<GradientStop> stops = r->Stops;
             std::sort(stops.begin(), stops.end(), [](auto& a, auto& b2) { return a.position < b2.position; });
             // ODF offset 0 is the outside (start colour), 1 the centre.
             std::vector<GradientStop> mapped;
-            mapped.emplace_back(0.0, ColorAt(stops, reach / radius));
+            mapped.emplace_back(0.0, ColorAt(stops, 1.0 / scale));
             for (auto it = stops.rbegin(); it != stops.rend(); ++it) {
-                const double o = 1.0 - it->position * radius / reach;
+                const double o = 1.0 - it->position * scale;
                 if (o > 0 && o < 1) mapped.emplace_back(o, it->color);
             }
             mapped.emplace_back(1.0, stops.front().color);
             const double cx = (c.x - b.x) / b.width, cy = (c.y - b.y) / b.height;
+            // The ellipse's turn, counter-clockwise on the page as draw:angle
+            // counts it: its first axis's direction, negated for y-down.
+            std::string shape = " draw:style=\"radial\"";
+            if (elliptical) {
+                const double angle = -std::atan2(ax.y, ax.x) * 180.0 / kPi;
+                shape = " draw:style=\"ellipsoid\" draw:angle=\"" +
+                        FormatFixedClassic(std::fmod(angle + 360.0, 360.0), 2) + "deg\"";
+            }
             return Named("gradient", "Gradient", [&](const std::string& name) {
-                return "<draw:gradient draw:name=\"" + name + "\" draw:style=\"radial\" draw:cx=\"" + Pct(cx) +
+                return "<draw:gradient draw:name=\"" + name + "\"" + shape + " draw:cx=\"" + Pct(cx) +
                        "\" draw:cy=\"" + Pct(cy) + "\" draw:start-color=\"" + Hex(mapped.front().color) +
                        "\" draw:end-color=\"" + Hex(mapped.back().color) +
                        "\" draw:start-intensity=\"100%\" draw:end-intensity=\"100%\" draw:border=\"0%\">" +
@@ -532,6 +566,29 @@ private:
 
     void WritePath(const VectorElement& e, const PathData& local, const Matrix3x3& m, const std::string& layer,
                    double opacity) {
+        // LibreOffice fills every shape even-odd. A non-zero one goes by the
+        // subpaths that bound its fill (UltraCanvasVectorFillRule.h); when
+        // that drops some, the fill and the full outline are two shapes.
+        if (e.Style.Fill && !std::holds_alternative<std::monostate>(*e.Style.Fill) &&
+            e.Style.ShapeFillRule != VectorStorage::FillRule::EvenOdd) {
+            const auto segs = PathOps::NormalizePath(local);
+            bool exact = true;
+            const auto boundary = NonZeroAsEvenOdd(segs, &exact);
+            if (!exact) Skip("non-zero fill whose subpaths cross (written even-odd)");
+            if (boundary.size() != segs.size()) {
+                auto fill = e.Clone();
+                fill->Style.Stroke.reset();
+                fill->Style.ShapeFillRule = VectorStorage::FillRule::EvenOdd;
+                WritePath(*fill, PathOps::SegsToPathData(boundary), m, layer, opacity);
+                if (e.Style.Stroke && e.Style.Stroke->Width > 0) {
+                    auto outline = e.Clone();
+                    outline->Id.clear();
+                    outline->Style.Fill = FillData(std::monostate{});
+                    WritePath(*outline, local, m, layer, opacity);
+                }
+                return;
+            }
+        }
         // The path on the page, absolute moves, lines and cubics.
         PathData page;
         bool closed = false;

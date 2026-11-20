@@ -20,6 +20,7 @@
 //    turning it counter-clockwise), at the edges of an axial one and on the
 //    outside of the radial family, the end colour opposite; draw:border is
 //    the share of the axis held at the start colour.
+// Version: 1.1.0 - ellipsoid gradients drawn elliptical and turned (a placed unit circle)
 // Version: 1.0.0
 // Last Modified: 2026-11-18
 // Author: UltraCanvas Framework
@@ -1320,18 +1321,38 @@ private:
             return GradientData(g);
         }
         // The radial family: the start colour outside, the end colour at the
-        // centre. Ellipsoid, square and rectangular are drawn as the radial
-        // gradient of the same reach (the model's radial is circular).
+        // centre. Radial is a circle of half the box's diagonal, exactly.
+        // Ellipsoid's outer contour is the ellipse of the box's width and
+        // height over the square root of two, turned by draw:angle - a unit
+        // circle the gradient's Transform places, which the renderer draws as
+        // that ellipse. LibreOffice then shrinks both radii by the same
+        // length, so its inner contours narrow to a line, where a radial
+        // gradient's stay the same shape: the outline and the turn are
+        // LibreOffice's, the middle is rounder (checked against LibreOffice
+        // 24.2's rendering). Rectangular has the same reach with rectangular
+        // contours, square a square of the diagonal; they are drawn as the
+        // ellipse and the circle of that reach.
         RadialGradientData g;
         g.Units = GradientUnits::UserSpaceOnUse;
         const double cx = PercentOr(p.Attr(e, "draw:cx"), 0.5), cy = PercentOr(p.Attr(e, "draw:cy"), 0.5);
-        g.Center = g.FocalPoint = Point2Dd(b.x + cx * b.width, b.y + cy * b.height);
-        double radius = std::hypot(b.width, b.height) / 2;
-        if (style != "radial") radius = std::sqrt(b.width * b.height) / std::sqrt(2.0);
-        g.Radius = static_cast<float>(std::max(radius, 1e-3));
+        const Point2Dd centre(b.x + cx * b.width, b.y + cy * b.height);
+        const bool elliptical = style == "ellipsoid" || style == "rectangular";
+        if (elliptical && b.width > 1e-6 && b.height > 1e-6) {
+            g.Center = g.FocalPoint = Point2Dd(0, 0);
+            g.Radius = 1;
+            // draw:angle turns counter-clockwise on the page: Rotate(-angle) in
+            // the model's y-down space, as draw:transform's rotate.
+            g.Transform = Matrix3x3::Translate(centre.x, centre.y) * Matrix3x3::RotateDegrees(-angle) *
+                          Matrix3x3::Scale(b.width / std::sqrt(2.0), b.height / std::sqrt(2.0));
+        } else {
+            g.Center = g.FocalPoint = centre;
+            g.Radius = static_cast<float>(std::max(std::hypot(b.width, b.height) / 2, 1e-3));
+        }
         for (auto r = ramp.rbegin(); r != ramp.rend(); ++r)
             g.Stops.emplace_back((1 - border) * (1 - r->position), r->color);
-        if (style != "radial") Skip("ellipsoid, square or rectangular gradient (drawn radial)");
+        if (style == "ellipsoid") Skip("ellipsoid gradient (its outline and angle kept, its middle drawn rounder)");
+        if (style == "rectangular") Skip("rectangular gradient (drawn as the ellipse of its reach)");
+        if (style == "square") Skip("square gradient (drawn as the circle of its reach)");
         return GradientData(g);
     }
 

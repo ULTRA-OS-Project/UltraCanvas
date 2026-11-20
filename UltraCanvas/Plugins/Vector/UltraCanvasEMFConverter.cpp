@@ -14,6 +14,8 @@
 // GDI metafiles have no alpha channel (that arrived with GDI+ "EMF+"
 // records), so opacity flattens toward the white page with a warning, and
 // gradients fall back to the blend of their end stops.
+// Version: 1.1.0 - each filled shape's fill rule (SETPOLYFILLMODE ALTERNATE / WINDING), and a
+//                  non-zero shape as the subpaths that bound its fill, for readers that ignore WINDING
 // Version: 1.0.0
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
@@ -21,6 +23,7 @@
 #include "UltraCanvasMetafileConverters.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
+#include "UltraCanvasVectorFillRule.h"
 
 #include <cmath>
 #include <cstring>
@@ -191,6 +194,7 @@ private:
     size_t nBytesOffset = 0, nRecordsOffset = 0, nHandlesOffset = 0;
     uint32_t records = 0;
     uint32_t nextHandle = 1;
+    uint32_t polyFillMode = 2;   // the mode in force: 1 ALTERNATE (even-odd), 2 WINDING (non-zero)
     bool warnedAlpha = false, warnedGradient = false, warnedAnchor = false;
 
     template <typename Fn>
@@ -416,8 +420,36 @@ private:
         bool stroked = HasVisibleStroke(style);
         if (!filled && !stroked) return;
 
+        // EMF sets the rule (SETPOLYFILLMODE), but LibreOffice, among
+        // others, ignores WINDING and fills every polygon even-odd. A
+        // non-zero shape is therefore also written as the subpaths that
+        // bound its fill (UltraCanvasVectorFillRule.h), which fill alike by
+        // either rule when they nest; when that drops some and the shape is
+        // outlined, the fill and the full outline are two shapes.
+        if (filled && style.ShapeFillRule != VectorStorage::FillRule::EvenOdd) {
+            bool exact = true;
+            std::vector<FlatSeg> boundary = NonZeroAsEvenOdd(segs, &exact);
+            if (boundary.size() != segs.size()) {
+                VectorStyle fillOnly = style;
+                fillOnly.Stroke.reset();
+                EmitPath(boundary, fillOnly, ctm, true);
+                if (stroked) {
+                    VectorStyle outlineOnly = style;
+                    outlineOnly.Fill = FillData(std::monostate{});
+                    EmitPath(segs, outlineOnly, ctm, false);
+                }
+                return;
+            }
+        }
+
         uint32_t brush = 0, pen = 0;
         if (filled) {
+            // The shape's fill rule, set when it differs from the one in force.
+            const uint32_t mode = style.ShapeFillRule == VectorStorage::FillRule::EvenOdd ? 1 : 2;
+            if (mode != polyFillMode) {
+                Rec(EMR_SETPOLYFILLMODE, [&](EmfBuf& b) { b.U32(mode); });
+                polyFillMode = mode;
+            }
             brush = CreateBrush(FlattenFill(*style.Fill,
                                             style.Opacity * style.FillOpacity));
             Select(brush);

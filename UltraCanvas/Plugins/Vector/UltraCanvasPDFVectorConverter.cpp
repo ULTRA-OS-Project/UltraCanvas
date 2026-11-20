@@ -15,6 +15,7 @@
 // back to the blend of their end stops (no shading dictionaries yet), and
 // centre/right text anchoring is approximated from an average glyph width
 // (exact metrics would need embedded font programs) - each warned.
+// Version: 1.2.0 - an even-odd shape is filled with f* / B*
 // Version: 1.1.0
 // Last Modified: 2026-09-19
 // Author: UltraCanvas Framework
@@ -496,8 +497,10 @@ private:
             if (s.closeAfter) content << "h\n";
         }
 
-        if (filled && stroked) content << "B\n";
-        else if (filled) content << "f\n";
+        // B* / f*: filled by the even-odd rule (VectorStyle::ShapeFillRule).
+        const bool evenOdd = style.ShapeFillRule == VectorStorage::FillRule::EvenOdd;
+        if (filled && stroked) content << (evenOdd ? "B*\n" : "B\n");
+        else if (filled) content << (evenOdd ? "f*\n" : "f\n");
         else content << "S\n";
         content << "Q\n";
     }

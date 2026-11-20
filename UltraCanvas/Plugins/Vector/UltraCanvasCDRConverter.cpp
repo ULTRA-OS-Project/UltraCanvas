@@ -21,11 +21,13 @@
 // Y-up system; the document tree is flattened with transforms baked into
 // the points (same walk as the XAR and EPS writers, sharing PathOps).
 // Objects are written topmost-first because libcdr draws them in reverse.
+// Version: 1.1.0 - a non-zero shape is written by the subpaths that bound its fill (CorelDRAW fills even-odd)
 // Version: 1.0.0
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCDRConverter.h"
+#include "UltraCanvasVectorFillRule.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
@@ -427,6 +429,29 @@ namespace UltraCanvas {
                     bool filled = fillable && HasVisibleFill(style);
                     bool stroked = HasVisibleStroke(style);
                     if (!filled && !stroked) return;
+
+                    // CorelDRAW (and libcdr) fill a curve even-odd. A non-zero
+                    // shape goes by the subpaths that bound its fill
+                    // (UltraCanvasVectorFillRule.h); when that drops some and
+                    // the shape is outlined, the fill and the full outline
+                    // are two objects.
+                    if (filled && style.ShapeFillRule != VectorStorage::FillRule::EvenOdd) {
+                        bool exact = true;
+                        std::vector<FlatSeg> boundary = NonZeroAsEvenOdd(segs, &exact);
+                        if (!exact) warn("CDR export: a non-zero fill whose subpaths cross is written even-odd");
+                        if (boundary.size() != segs.size()) {
+                            VectorStyle fillOnly = style;
+                            fillOnly.ShapeFillRule = VectorStorage::FillRule::EvenOdd;
+                            fillOnly.Stroke.reset();
+                            AddObject(boundary, fillOnly, ctm, true);
+                            if (stroked) {
+                                VectorStyle outlineOnly = style;
+                                outlineOnly.Fill = FillData(std::monostate{});
+                                AddObject(segs, outlineOnly, ctm, false);
+                            }
+                            return;
+                        }
+                    }
 
                     // Geometry: point list + per-point type bytes.
                     // 0x00 move, 0x40 line, 0xC0 control point, 0x80 cubic

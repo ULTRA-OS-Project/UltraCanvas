@@ -148,7 +148,7 @@ enum class XARTransparencyMix {
     Luminosity = 9, Hue = 10
 };
 
-enum class XARWindingRule { NonZero = 0, EvenOdd = 2 };
+enum class XARWindingRule { EvenOdd, NonZero };   // TAG_WINDINGRULE byte 0 is EvenOdd (see below)
 
 enum class XARNodeType {
     Document, Chapter, Spread, Layer, Page,
@@ -274,7 +274,7 @@ the way Xara draws it. Do not assume non-zero: Xara writes each subpath of a
 glyph outline in the same direction, so under non-zero a letter's counters
 fill solid instead of punching through (the "B" and "9" on `Midget.xar`'s
 number plate). Byte 0 on the record, the value both samples use throughout,
-is the even-odd rule.
+is the even-odd rule. The Vector plugin's XAR converter carries it into the model (`VectorStyle::ShapeFillRule`), and writes a non-zero shape as the subpaths that bound its fill, since Xara fills even-odd (see *Fill rule* in [UltraCanvasVectorConverters](UltraCanvasVectorConverters.md)).
 
 **Text kerns.** `TAG_TEXT_KERN`'s eight bytes are *not* a `Coord`. Only the
 first INT32 is the kern, in millipoints, and it is horizontal; applying the
@@ -313,7 +313,7 @@ public:
     XARFillAttribute fill;
     XARTransparencyAttribute transparency;
     XARLineAttribute line;
-    XARWindingRule windingRule = XARWindingRule::NonZero;
+    XARWindingRule windingRule = XARWindingRule::EvenOdd;   // Xara's default
     XARTextAttribute textAttr;
     bool hasFill = false;
     bool hasLine = false;

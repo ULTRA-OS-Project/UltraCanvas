@@ -1,5 +1,7 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasXARConverter.cpp
 // XAR (Xara) Vector Format Converter - Specification-Compliant Implementation
+// Version: 2.1.0 - the winding rule both ways: read into ShapeFillRule; a non-zero shape
+//                  written by the subpaths that bound its fill (Xara fills even-odd)
 // Version: 2.0.0
 // Last Modified: 2025-01-20
 // Author: UltraCanvas Framework
@@ -8,6 +10,7 @@
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / FormatFloatClassic
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
+#include "UltraCanvasVectorFillRule.h"
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
 #include "XAR/UltraCanvasXARPlugin.h"
 #endif
@@ -1109,6 +1112,12 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
                 void ApplyAttributes(const UltraCanvas::XARNode& n, VectorStyle& st, bool allowFill, bool allowStroke) {
                     if (allowFill && n.hasFill) st.Fill = FillFrom(n.fill);
                     else st.Fill.reset();
+                    // The winding rule in force (TAG_WINDINGRULE, or Xara's
+                    // even-odd default): a letter's counters, wound like its
+                    // outline, stay open only even-odd (Midget.xar).
+                    st.ShapeFillRule = n.windingRule == UltraCanvas::XARWindingRule::NonZero
+                                               ? VectorStorage::FillRule::NonZero
+                                               : VectorStorage::FillRule::EvenOdd;
                     if (allowStroke && n.hasLine && n.line.hasColor) st.Stroke = StrokeFrom(n.line);
                     else st.Stroke.reset();
                     if (n.hasTransparency) ApplyTransparency(n.transparency, st);
@@ -2210,6 +2219,30 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
 
                     bool filled = fillable && HasVisibleFill(style);
                     bool stroked = HasVisibleStroke(style);
+
+                    // Xara fills even-odd (its default, and what the winding
+                    // record's byte 0 says - XARFidelityTest). A non-zero
+                    // shape goes by the subpaths that bound its fill
+                    // (UltraCanvasVectorFillRule.h); when that drops some
+                    // and the shape is outlined, the fill and the full
+                    // outline are two objects.
+                    if (filled && style.ShapeFillRule != VectorStorage::FillRule::EvenOdd) {
+                        bool exact = true;
+                        std::vector<XarPathSeg> boundary = NonZeroAsEvenOdd(segs, &exact);
+                        if (!exact) warn("XAR export: a non-zero fill whose subpaths cross is written even-odd");
+                        if (boundary.size() != segs.size()) {
+                            VectorStyle fillOnly = style;
+                            fillOnly.ShapeFillRule = VectorStorage::FillRule::EvenOdd;
+                            fillOnly.Stroke.reset();
+                            EmitPathRecord(boundary, fillOnly, ctm, true);
+                            if (stroked) {
+                                VectorStyle outlineOnly = style;
+                                outlineOnly.Fill = FillData(std::monostate{});
+                                EmitPathRecord(segs, outlineOnly, ctm, false);
+                            }
+                            return;
+                        }
+                    }
                     uint32_t tag = filled && stroked ? XarOut::PathFilledStroked
                                  : filled           ? XarOut::PathFilled
                                  : stroked          ? XarOut::PathStroked
