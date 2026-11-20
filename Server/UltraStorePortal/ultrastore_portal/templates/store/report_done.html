@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Report sent - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Thank you, the report is with the operator</h1>
+  <p>Keep this link: it shows what became of your report about {{ app.name }}.</p>
+  <p class="mono"><a href="{{ outcome_url }}">{{ outcome_url }}</a></p>
+  <p><a class="button soft" href="{{ app.get_absolute_url }}">Back to {{ app.name }}</a></p>
+</div>
+{% endblock %}

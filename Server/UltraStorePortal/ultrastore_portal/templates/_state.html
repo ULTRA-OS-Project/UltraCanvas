@@ -1,0 +1,1 @@
+<span class="badge {% if state == 'published' or state == 'approved' or state == 'resolved' %}green{% elif state == 'submitted' or state == 'applied' or state == 'open' %}amber{% elif state == 'rejected' or state == 'suspended' or state == 'changes_requested' %}red{% elif state == 'withdrawn' or state == 'dismissed' %}{% else %}blue{% endif %}">{{ label }}</span>

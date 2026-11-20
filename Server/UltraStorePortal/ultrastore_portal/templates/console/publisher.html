@@ -1,0 +1,16 @@
+{% extends "console/base.html" %}
+{% block title %}Publisher profile - UltraStore{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Publisher profile</h1>{% include "_state.html" with state=publisher.state label=publisher.get_state_display %}</div>
+<div class="panel form wide">
+  <dl class="facts" style="margin-bottom:22px">
+    <dt>Publisher id</dt><dd class="mono">{{ publisher.slug }}</dd>
+    <dt>Store page</dt><dd><a href="{{ publisher.get_absolute_url }}">{{ base_url }}{{ publisher.get_absolute_url }}</a></dd>
+    <dt>Terms accepted</dt><dd>{% if publisher.terms_version %}Version {{ publisher.terms_version }}, {{ publisher.terms_accepted_at|date:"j F Y" }}{% else %}None in force{% endif %}</dd>
+  </dl>
+  <form method="post" class="stack">
+    {% csrf_token %}{% include "_form.html" %}
+    <button class="button">Save</button>
+  </form>
+</div>
+{% endblock %}

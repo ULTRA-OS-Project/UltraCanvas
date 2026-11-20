@@ -1,0 +1,24 @@
+[Unit]
+Description=UltraStore portal
+After=network.target postgresql.service
+
+[Service]
+User=ultrastore
+Group=ultrastore
+EnvironmentFile=/etc/ultrastore-portal.env
+WorkingDirectory=/opt/ultrastore-portal
+# The schema and the stylesheet follow the code on every start.
+ExecStartPre=/opt/ultrastore-portal/.venv/bin/ultrastore-portal migrate --noinput
+ExecStartPre=/opt/ultrastore-portal/.venv/bin/ultrastore-portal collectstatic --noinput
+# A package upload is read and hashed inside one request: threads, and time for 512 MB.
+ExecStart=/opt/ultrastore-portal/.venv/bin/gunicorn ultrastore_portal.wsgi --bind 127.0.0.1:8794 --workers 3 --threads 4 --timeout 600
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ultrastore-portal
+
+[Install]
+WantedBy=multi-user.target

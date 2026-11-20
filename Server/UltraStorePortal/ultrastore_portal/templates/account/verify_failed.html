@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}The link does not work - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>This link does not work any more</h1>
+  <p>A confirmation link is good for two days and for the address it was mailed to.</p>
+  <p><a class="button" href="{% url 'account:resend' %}">Send a new link</a></p>
+</div>
+{% endblock %}

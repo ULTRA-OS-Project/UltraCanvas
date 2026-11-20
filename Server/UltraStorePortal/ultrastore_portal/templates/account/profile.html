@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Your account - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Your account</h1>
+  <p class="muted">Signed in as {{ user.email }}.</p>
+  <form method="post" class="stack" style="margin-top:20px">
+    {% csrf_token %}{% include "_form.html" %}
+    <button class="button">Save</button>
+  </form>
+  <div class="below">
+    <div><a href="{% url 'account:password_change' %}">Change the password</a></div>
+    <div><a href="{% url 'console:home' %}">Developer console</a></div>
+  </div>
+</div>
+{% endblock %}

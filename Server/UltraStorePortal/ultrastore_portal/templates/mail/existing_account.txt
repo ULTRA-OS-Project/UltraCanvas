@@ -1,0 +1,9 @@
+Hello {{ user.display_name }},
+
+someone tried to create an UltraStore account with this address, which already has one. If that was you, sign in with your password, or choose a new one here:
+
+{{ link }}
+
+If it was not you, nothing was changed and there is nothing to do.
+
+UltraStore

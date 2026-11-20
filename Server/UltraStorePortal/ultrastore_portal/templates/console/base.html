@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block body_class %}admin{% endblock %}
+{% block shell %}
+<div class="shell">
+  <aside class="side">
+    <div class="who"><span class="small muted">Developer console</span><b>{{ my_publisher.name|default:"No publisher yet" }}</b></div>
+    <a href="{% url 'console:home' %}"{% if not app and request.resolver_match.url_name == 'home' %} class="on"{% endif %}>All apps</a>
+    {% if my_publisher.approved %}
+      <a href="{% url 'console:app_new' %}"{% if request.resolver_match.url_name == 'app_new' %} class="on"{% endif %}>Create an app</a>
+      <a href="{% url 'console:publisher' %}"{% if request.resolver_match.url_name == 'publisher' %} class="on"{% endif %}>Publisher profile</a>
+    {% endif %}
+    {% if app %}
+      <div class="sub">{{ app.name }}</div>
+      <a href="{% url 'console:app' app.app_id %}"{% if request.resolver_match.url_name == 'app' %} class="on"{% endif %}>Overview and releases</a>
+      <a href="{% url 'console:listing' app.app_id %}"{% if request.resolver_match.url_name == 'listing' %} class="on"{% endif %}>Store listing</a>
+      {% if app.is_public %}<a href="{{ app.get_absolute_url }}">View in the store</a>{% endif %}
+    {% endif %}
+    <div class="sub">Help</div>
+    <a href="{% url 'store:terms' %}">Publisher terms</a>
+  </aside>
+  <div>
+    {% include "_messages.html" %}
+    {% block content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

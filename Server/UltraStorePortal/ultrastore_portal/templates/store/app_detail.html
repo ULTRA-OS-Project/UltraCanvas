@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{{ app.name }} - UltraStore{% endblock %}
+{% block description %}{{ app.summary }}{% endblock %}
+{% block meta %}
+<meta property="og:title" content="{{ app.name }}">
+<meta property="og:description" content="{{ app.summary }}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ base_url }}{{ app.get_absolute_url }}">
+{% if app.icon %}<meta property="og:image" content="{{ base_url }}{{ app.icon.url }}">{% endif %}
+{% if app.visibility != "listed" %}<meta name="robots" content="noindex">{% endif %}
+{% endblock %}
+{% block content %}
+<section class="app-head">
+  {% if app.icon %}<img class="icon s160" src="{{ app.icon.url }}" alt="" width="160" height="160">{% else %}<span class="icon s160">{{ app.name|slice:":1" }}</span>{% endif %}
+  <div style="flex:1;min-width:260px">
+    <h1>{{ app.name }}</h1>
+    <a class="by" href="{{ app.publisher.get_absolute_url }}">{{ app.publisher.name }}</a>
+    <p style="font-size:17px;margin-top:10px">{{ app.summary }}</p>
+    <div class="row" style="gap:8px">
+      {% if app.category_name %}<a class="badge blue" href="{% url 'store:category' app.category %}">{{ app.category_name }}</a>{% endif %}
+      {% if app.age_rating %}<span class="badge">{{ app.age_rating }}+</span>{% endif %}
+      {% if app.open_source %}<span class="badge green">Open source</span>{% endif %}
+      {% if release and release.channel == "beta" %}<span class="badge purple">Beta</span>{% endif %}
+      {% if app.lifecycle == "deprecated" %}<span class="badge amber">Deprecated</span>{% endif %}
+      {% if app.lifecycle == "withdrawn" %}<span class="badge red">Withdrawn</span>{% endif %}
+      {% for system in systems %}<span class="badge">{{ system }}</span>{% endfor %}
+    </div>
+    <div class="actions">
+      <a class="button big" href="{{ deep_link }}">{% if app.is_free %}Install{% elif app.trial_days %}Try {{ app.trial_days }} days{% else %}Buy {{ app.price_label }}{% endif %}</a>
+      {% if not app.is_free %}<span class="price">{{ app.price_label }}</span>{% endif %}
+      {% if store_download_url %}<a class="button soft big" href="{{ store_download_url }}">Get the UltraStore app</a>{% endif %}
+    </div>
+    <p class="small muted" style="margin-top:10px">Install opens the UltraStore app, which picks the right build for your machine and keeps it up to date.</p>
+  </div>
+</section>
+
+{% if app.screenshots.all %}
+<section>
+  <div class="shots">{% for shot in app.screenshots.all %}<img src="{{ shot.image.url }}" alt="{{ app.name }} screenshot {{ forloop.counter }}" loading="lazy">{% endfor %}</div>
+</section>
+{% endif %}
+
+<section class="two">
+  <div class="stack">
+    <div>
+      <h2 style="margin-bottom:12px">About this app</h2>
+      <div class="prose">{{ app.description|linebreaks }}</div>
+      {% if app.tag_list %}<div class="row" style="gap:8px">{% for tag in app.tag_list %}<a class="badge" href="{% url 'store:browse' %}?q={{ tag|urlencode }}">{{ tag }}</a>{% endfor %}</div>{% endif %}
+    </div>
+    {% if release %}
+    <div>
+      <h2 style="margin-bottom:12px">What's new</h2>
+      <p class="muted small">Version {{ release.version }}{% if release.published_at %} - {{ release.published_at|date:"j F Y" }}{% endif %}</p>
+      <div class="prose">{{ release.notes|default:"No notes for this version."|linebreaks }}</div>
+    </div>
+    {% endif %}
+    {% if packages and direct_download %}
+    <div>
+      <h2 style="margin-bottom:12px">Direct downloads</h2>
+      <p class="muted small">For a machine without the UltraStore app. Check the SHA-256 after the download.</p>
+      <div class="card scroll" style="padding:6px 14px">
+      <table>
+        <tr><th>System</th><th>Processor</th><th>Needs</th><th class="num">Size</th><th></th></tr>
+        {% for package in packages %}
+        <tr>
+          <td>{{ package.os_name }}</td><td>{{ package.arch }}</td>
+          <td>{% if package.min_os %}{{ package.os_name }} {{ package.min_os }}+{% endif %} {{ package.variant }}</td>
+          <td class="num">{{ package.size|filesizeformat }}</td>
+          <td class="num"><a class="button soft small" href="{% url 'store:download' app.app_id package.pk %}" rel="nofollow">Download .{{ package.format }}</a></td>
+        </tr>
+        <tr><td colspan="5" class="muted" style="padding-top:0"><span class="mono">sha256 {{ package.sha256 }}</span></td></tr>
+        {% endfor %}
+      </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <aside class="card">
+    <h3 style="margin-bottom:14px">Information</h3>
+    <dl class="facts">
+      <dt>Publisher</dt><dd><a href="{{ app.publisher.get_absolute_url }}">{{ app.publisher.name }}</a></dd>
+      {% if release %}<dt>Version</dt><dd>{{ release.version }}</dd>
+      <dt>Updated</dt><dd>{{ release.published_at|date:"j M Y" }}</dd>{% endif %}
+      <dt>Price</dt><dd>{{ app.price_label }}</dd>
+      {% if app.license %}<dt>Licence</dt><dd>{{ app.license }}</dd>{% endif %}
+      <dt>Age</dt><dd>{{ app.get_age_rating_display }}</dd>
+      {% if release.depends %}<dt>Installs with</dt><dd>{% for dep in release.depends %}{{ dep.id }} {{ dep.version }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</dd>{% endif %}
+      <dt>Id</dt><dd class="mono">{{ app.app_id }}</dd>
+      {% if app.homepage %}<dt>Website</dt><dd><a href="{{ app.homepage }}" rel="nofollow noopener">{{ app.homepage }}</a></dd>{% endif %}
+      {% if app.support_url %}<dt>Support</dt><dd><a href="{{ app.support_url }}" rel="nofollow noopener">{{ app.support_url }}</a></dd>{% endif %}
+      {% if app.privacy_url %}<dt>Privacy</dt><dd><a href="{{ app.privacy_url }}" rel="nofollow noopener">Privacy policy</a></dd>{% endif %}
+      {% if app.source_url %}<dt>Source</dt><dd><a href="{{ app.source_url }}" rel="nofollow noopener">{{ app.source_url }}</a></dd>{% endif %}
+    </dl>
+    <p style="margin:18px 0 0"><a class="small" href="{% url 'store:report' app.app_id %}" rel="nofollow">Report a problem</a></p>
+  </aside>
+</section>
+
+{% if more %}
+<section>
+  <div class="section-head"><h2>More from {{ app.publisher.name }}</h2><a href="{{ app.publisher.get_absolute_url }}">See all</a></div>
+  <div class="cards">{% for app in more %}{% include "_app_card.html" %}{% endfor %}</div>
+</section>
+{% endif %}
+{% if similar %}
+<section>
+  <div class="section-head"><h2>Similar apps</h2></div>
+  <div class="cards">{% for app in similar %}{% include "_app_card.html" %}{% endfor %}</div>
+</section>
+{% endif %}
+{% endblock %}
