@@ -34,6 +34,7 @@ set(VECTOR_PLUGIN_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasDWGConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasDWGDecoder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasEMFReader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasEMFPlus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasWMFReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasODGConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasODGReader.cpp
