@@ -2238,7 +2238,9 @@ backing library is never visible in a public header.
   codes, ChatCube Direct's sign-in checks them (until 2026-11 in
   `Apps/UltraAuthenticator/otp/`)
 
-Streaming class: `UltraCryptHasher` (HMAC is the one call
+Streaming class: `UltraCryptHasher` (SHA-1 as a plain digest only with
+`UltraCryptHashOptions::allowLegacy`, as in `UltraCrypt_Hash` and
+`UltraCrypt_HashFile`; HMAC is the one call
 `UltraCrypt_Hmac`; a streaming `UltraCryptHmacHasher` was proposed and not
 built).
 

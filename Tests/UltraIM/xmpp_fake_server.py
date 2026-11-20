@@ -52,7 +52,9 @@ import threading
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+
+from local_http_server import LocalHTTPServer    # no name lookup at start (see there)
 
 DOMAIN = "example.org"
 MUC = "conference.example.org"
@@ -1339,7 +1341,7 @@ def main():
         name = name.strip().lower()
         if name:
             set_password(name + "@" + DOMAIN, name + "-pass")
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = LocalHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
     BASE["url"] = "http://127.0.0.1:%d" % server.server_address[1]
     ports = {"url": BASE["url"], "tcp": listen_tcp(False)}

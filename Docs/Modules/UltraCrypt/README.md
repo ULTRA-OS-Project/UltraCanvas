@@ -4,7 +4,7 @@
 progress (§8).
 **Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-11-18
+**Last Modified:** 2026-11-19
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
@@ -611,14 +611,19 @@ enum class UltraCryptHashAlgorithm : uint8_t {
 };
 
 struct UltraCryptHashOptions {
-    bool allowLegacy = false;    // UltraCrypt_Hash refuses SHA1 without it
+    // Every way to a plain digest refuses SHA1 without it: UltraCrypt_Hash,
+    // UltraCrypt_HashFile and UltraCryptHasher.
+    bool allowLegacy = false;
 };
 
 class UltraCryptHasher {          // streaming; for files and large payloads
 public:
-    // Takes the algorithm alone: no options, so - unlike UltraCrypt_Hash -
-    // nothing here asks for allowLegacy before SHA1. Neither copied nor moved.
-    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm);
+    // A constructor returns nothing, so a refusal shows in IsValid(): made
+    // for SHA1 without allowLegacy, the hasher takes no data and Final()
+    // returns an empty digest. Neither copied nor moved.
+    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm,
+                              const UltraCryptHashOptions& options =
+                                  UltraCryptHashOptions());
     ~UltraCryptHasher();
     UltraCryptHasher(const UltraCryptHasher&) = delete;
 
@@ -628,7 +633,9 @@ public:
     void Reset();
 
     size_t GetDigestSize() const;
-    bool   IsValid() const;       // false when there is no backend to hash with
+    // False when there is no backend to hash with, and when SHA1 was asked
+    // for without allowLegacy.
+    bool   IsValid() const;
 };
 
 size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm);
@@ -640,10 +647,12 @@ UltraCryptResult UltraCrypt_Hash(
         std::vector<uint8_t>& outDigest,
         const UltraCryptHashOptions& options = UltraCryptHashOptions());
 
+// NotSupported for SHA1 without allowLegacy, before the file is opened.
 UltraCryptResult UltraCrypt_HashFile(
         UltraCryptHashAlgorithm algorithm,
         const std::string& filePath,
-        std::vector<uint8_t>& outDigest);
+        std::vector<uint8_t>& outDigest,
+        const UltraCryptHashOptions& options = UltraCryptHashOptions());
 
 std::string UltraCrypt_ToHex(const std::vector<uint8_t>& bytes);
 bool        UltraCrypt_FromHex(const std::string& hex,

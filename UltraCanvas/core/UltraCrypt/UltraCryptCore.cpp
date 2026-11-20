@@ -403,6 +403,22 @@ bool UltraCrypt_IsHashAvailable(UltraCryptHashAlgorithm algorithm) {
     return EnsureReady();
 }
 
+namespace {
+// SHA-1 as a plain digest, asked for without allowLegacy: the one refusal of
+// UltraCrypt_Hash, UltraCrypt_HashFile and UltraCryptHasher.
+bool LegacyDigestRefused(UltraCryptHashAlgorithm algorithm,
+                         const UltraCryptHashOptions& options) {
+    return algorithm == UltraCryptHashAlgorithm::SHA1 && !options.allowLegacy;
+}
+
+UltraCryptResult LegacyDigestRefusal() {
+    return UltraCryptResult::Error(
+        UltraCryptResultCode::NotSupported,
+        "SHA-1 is collision-broken and is provided for HMAC-SHA-1 only; "
+        "set UltraCryptHashOptions::allowLegacy to use it as a digest");
+}
+} // namespace
+
 UltraCryptResult UltraCrypt_Hash(UltraCryptHashAlgorithm algorithm,
                                  const void* data, size_t size,
                                  std::vector<uint8_t>& outDigest,
@@ -412,12 +428,7 @@ UltraCryptResult UltraCrypt_Hash(UltraCryptHashAlgorithm algorithm,
                                        "null data with non-zero size");
     }
     if (algorithm == UltraCryptHashAlgorithm::SHA1) {
-        if (!options.allowLegacy) {
-            return UltraCryptResult::Error(
-                UltraCryptResultCode::NotSupported,
-                "SHA-1 is collision-broken and is provided for HMAC-SHA-1 only; "
-                "set UltraCryptHashOptions::allowLegacy to use it as a digest");
-        }
+        if (LegacyDigestRefused(algorithm, options)) return LegacyDigestRefusal();
         outDigest.assign(20, 0);
         const uint8_t empty = 0;
         Sha1OneShot(data ? static_cast<const uint8_t*>(data) : &empty, size,
@@ -455,7 +466,14 @@ UltraCryptResult UltraCrypt_Hash(UltraCryptHashAlgorithm algorithm,
 
 UltraCryptResult UltraCrypt_HashFile(UltraCryptHashAlgorithm algorithm,
                                      const std::string& filePath,
-                                     std::vector<uint8_t>& outDigest) {
+                                     std::vector<uint8_t>& outDigest,
+                                     const UltraCryptHashOptions& options) {
+    // Before the file is touched, and whatever the backend: the caller
+    // asked for a digest it must opt into.
+    if (LegacyDigestRefused(algorithm, options)) {
+        outDigest.clear();
+        return LegacyDigestRefusal();
+    }
     if (!EnsureReady()) return NoBackend();
 
     std::ifstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
@@ -463,7 +481,7 @@ UltraCryptResult UltraCrypt_HashFile(UltraCryptHashAlgorithm algorithm,
         return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
                                        "could not open file: " + filePath);
     }
-    UltraCryptHasher hasher(algorithm);
+    UltraCryptHasher hasher(algorithm, options);
     if (!hasher.IsValid()) return NoBackend();
 
     std::vector<char> chunk(64 * 1024);
@@ -519,8 +537,12 @@ struct HasherState {
 } // namespace
 #endif
 
-UltraCryptHasher::UltraCryptHasher(UltraCryptHashAlgorithm algorithm)
+UltraCryptHasher::UltraCryptHasher(UltraCryptHashAlgorithm algorithm,
+                                   const UltraCryptHashOptions& options)
     : algorithm_(algorithm) {
+    // Refused as UltraCrypt_Hash refuses it: no state, so IsValid() is false,
+    // Update() takes nothing and Final() returns no digest.
+    if (LegacyDigestRefused(algorithm, options)) return;
 #ifdef ULTRACRYPT_HAVE_SODIUM
     if (!EnsureReady()) return;
     auto* s = new (std::nothrow) HasherState();

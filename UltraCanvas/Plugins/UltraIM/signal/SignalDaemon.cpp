@@ -1,10 +1,12 @@
 // Plugins/UltraIM/signal/SignalDaemon.cpp
 // signal-cli found, started as the provider's child process and stopped again
+// Version: 0.2.1 - Windows: a process that ended by itself is let go of (ProcessId() 0, as on POSIX);
+//                  cmd.exe by its full path
 // Version: 0.2.0 - the proxy setting as Java options (DaemonProxyFor, ChooseDaemonProxy,
 //                  JavaToolOptionsWith, JvmTookOptions, SignalCliTakesProxy); Start sets variables in
 //                  the child's environment
 // Version: 0.1.0
-// Last Modified: 2026-11-18
+// Last Modified: 2026-11-19
 // Author: UltraCanvas Framework
 
 #include "SignalDaemon.h"
@@ -263,6 +265,16 @@ std::wstring EntryName(const std::wstring& entry) {
     return name;
 }
 
+// cmd.exe by its full path. A bare "cmd.exe" is looked for in this program's
+// own folder and in the current one before the system's, so a file of that
+// name left in either would be run instead.
+std::wstring CommandInterpreter() {
+    wchar_t folder[MAX_PATH + 1] = {};
+    const UINT n = GetSystemDirectoryW(folder, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return L"cmd.exe";
+    return std::wstring(folder, n) + L"\\cmd.exe";
+}
+
 // This process's environment block with `environment` set in it, sorted by
 // name as Windows keeps it. Empty when there is nothing to set: the child
 // then inherits ours.
@@ -304,7 +316,7 @@ bool SignalDaemon::Start(const std::string& program, const std::vector<std::stri
     for (wchar_t& c : ext) c = static_cast<wchar_t>(towlower(c));
     if (ext == L".bat" || ext == L".cmd") {
         // A batch file runs in cmd.exe.
-        AppendQuoted(line, L"cmd.exe");
+        AppendQuoted(line, CommandInterpreter());
         line += L" /d /s /c \"";
         std::wstring inner;
         AppendQuoted(inner, Wide(program));
@@ -374,7 +386,18 @@ void SignalDaemon::Stop(int graceMs) {
 
 bool SignalDaemon::IsRunning() {
     std::lock_guard<std::mutex> lock(mutex_);
-    return process_ && WaitForSingleObject(static_cast<HANDLE>(process_), 0) == WAIT_TIMEOUT;
+    if (!process_) return false;
+    if (WaitForSingleObject(static_cast<HANDLE>(process_), 0) == WAIT_TIMEOUT) return true;
+    // Ended by itself: let go of, as waitpid lets go of it elsewhere - no
+    // process is named by ProcessId() any more, and its handle is not kept
+    // until the next start. The job goes with it, and with the job whatever
+    // of the tree was still in it.
+    CloseHandle(static_cast<HANDLE>(process_));
+    if (job_) CloseHandle(static_cast<HANDLE>(job_));
+    process_ = nullptr;
+    job_ = nullptr;
+    pid_ = 0;
+    return false;
 }
 
 int64_t SignalDaemon::ProcessId() const {

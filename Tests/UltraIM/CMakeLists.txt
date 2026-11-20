@@ -113,6 +113,21 @@ if(TARGET UltraIMSignalCore)
     set_tests_properties(SignalProviderTests PROPERTIES TIMEOUT 300)
 endif()
 
+# The Signal provider's daemon process on its own - started, given its
+# environment and arguments, logged, stopped with what it started: the one
+# part of the provider written per platform, and the only Signal test that
+# runs on Windows (the test is its own child program; no python).
+if(TARGET UltraIMSignalCore)
+    add_executable(SignalDaemonTests SignalDaemonTests.cpp)
+    target_compile_features(SignalDaemonTests PRIVATE cxx_std_20)
+    target_link_libraries(SignalDaemonTests PRIVATE UltraIMSignalCore)
+    if(WIN32)
+        target_link_libraries(SignalDaemonTests PRIVATE shell32)   # CommandLineToArgvW
+    endif()
+    add_test(NAME SignalDaemonTests COMMAND SignalDaemonTests)
+    set_tests_properties(SignalDaemonTests PROPERTIES TIMEOUT 120)
+endif()
+
 # XMPP: against xmpp_fake_server.py, a small XMPP server over WebSocket
 # (standard-library python3); skips without python3.
 if(TARGET UltraIMXmppCore)
@@ -155,7 +170,9 @@ if(TARGET UltraIMTelegramCore)
     target_compile_definitions(TelegramProviderTests PRIVATE ULTRAIM_TEST_FAKE_TDJSON="$<TARGET_FILE:FakeTdJson>")
     add_dependencies(TelegramProviderTests FakeTdJson)
     add_test(NAME TelegramProviderTests COMMAND TelegramProviderTests)
-    set_tests_properties(TelegramProviderTests PROPERTIES TIMEOUT 120)
+    # (300 as the other providers' suites: it runs on the macOS Intel row too,
+    # whose runner is several times slower than the rest.)
+    set_tests_properties(TelegramProviderTests PROPERTIES TIMEOUT 300)
 
     add_executable(TelegramTdlibTests TelegramTdlibTests.cpp)
     target_compile_features(TelegramTdlibTests PRIVATE cxx_std_20)
