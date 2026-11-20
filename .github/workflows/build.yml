@@ -1845,9 +1845,16 @@ jobs:
           test -f scaffold-smoke/main.cpp
           (cd scaffold-smoke && cmake --preset default && cmake --build --preset default --parallel 2)
 
+      # ULTRANET_TEST_NO_SKIP: the WebSocket tests run here or the step fails.
+      # They skip without python's `websockets` (installed above) - and until
+      # 2026-11 skipped where UltraNet could open no WebSocket at all, which
+      # is how a macOS without WebSockets went unseen. `-R UltraNet` takes
+      # UltraNetOwnWebSocket with it: the same tests on UltraNet's own client.
       - name: Run UltraNet tests
         if: runner.os != 'Windows'
         working-directory: build
+        env:
+          ULTRANET_TEST_NO_SKIP: ws_,own_ws_
         run: ctest --output-on-failure -R UltraNet
 
       # ULTRACANVAS_BUILD_ULTRAMAIL_TESTS likewise (UltraMailEngine): it was
@@ -2213,25 +2220,16 @@ jobs:
       # http.server's own start asks for the name of 127.0.0.1, a lookup that
       # stalls for fifteen seconds and more on a macOS runner, at every start.
       #
-      # WebSockets. UltraNet's WebSocket client is libcurl's (curl_ws_*), and
-      # on macOS the build links Apple's own libcurl. This step's second run
-      # found what that means on the macos-15 runner: UltraNet opened no
-      # WebSocket at all (XmppProviderTests' own UltraNet_WebSocketConnect
-      # returned no handle; MattermostProviderTests' provider never opened its
-      # event socket; a second attempt of the job, the same), and UltraNet's
-      # own WebSocket tests had been skipping there unseen ("libcurl built
-      # without --enable-websockets"). On such a macOS everything on
-      # UltraNet_WebSocketConnect is without a connection - ChatCube Direct's
-      # relay, Mattermost's events, XMPP over WebSocket. That is the product's
-      # to put right, in a change of its own (decided with the pull request
-      # that added this step, #1337); until it is, the step looks at the
-      # libcurl the build really links and at the protocols it lists, prints
-      # both, says so as a warning on the run where there is no ws, and leaves
-      # the two suites that cannot run without one - XmppProviderTests,
-      # MattermostProviderTests - unasked there. Only a libcurl known to be
-      # without WebSockets is let off: where it lists ws (a later macOS,
-      # another libcurl) the two are asked by themselves, with no python3 or
-      # openssl a failure, and whatever else is wrong shows as a failure.
+      # WebSockets. UltraNet's WebSocket client was libcurl's alone (curl_ws_*),
+      # and on macOS the build links Apple's own libcurl, which lists no ws
+      # through macOS 15: this step's second run found XmppProviderTests and
+      # MattermostProviderTests without a connection there - and with them
+      # ChatCube Direct's relay and everything else on a WebSocket - while
+      # UltraNet's own WebSocket tests had been skipping unseen. UltraNet has
+      # a client of its own for such a libcurl since
+      # (core/UltraNet/UltraNetWebSocketOwn.h), so the two suites are asked
+      # for like the others; the step still prints which libcurl the build
+      # links and what it lists, since that decides which client ran.
       - name: Run the chat-network tests (macOS/Windows)
         if: runner.os != 'Linux'
         working-directory: build
@@ -2246,9 +2244,8 @@ jobs:
           if [ "${{ runner.os }}" = "Windows" ]; then
             suites="$suites DirectProviderTests"
           fi
-          # Has this row's UltraNet WebSockets? Only a libcurl known to be
-          # without them says no; anything else is run and left to fail.
-          websockets=yes
+          # Which WebSocket client this row's UltraNet runs on: libcurl's
+          # where the libcurl it links lists ws, its own where not.
           if [ "${{ runner.os }}" = "macOS" ]; then
             core=$(ls lib/libUltraCanvas*.dylib 2>/dev/null | head -1 || true)
             linked=""
@@ -2256,30 +2253,15 @@ jobs:
               linked=$(otool -L "$core" | awk '/libcurl/ && !seen { print $1; seen = 1 }' || true)
             fi
             echo "UltraNet's libcurl: ${linked:-not found} (as ${core:-no core library} names it)"
-            # The system's curl is built with the system's libcurl: what it
-            # lists is what that library speaks. (Read whole, then looked at:
-            # no pipe is closed on a command that is still writing.)
             system_curl=$(/usr/bin/curl --version || true)
-            protocols=$(printf '%s\n' "$system_curl" | sed -n 's/^Protocols: *//p')
             printf '%s\n' "$system_curl" | sed -n '1p'
-            echo "The system libcurl's protocols: ${protocols:-none listed}"
-            case " $protocols " in
-              *" ws "*|*" wss "*) ;;
-              *)
-                if [ -n "$protocols" ] && [ "$linked" = "/usr/lib/libcurl.4.dylib" ]; then
-                  websockets=no
-                  echo "::warning::UltraNet has no WebSockets on ${{ matrix.os }}: the build links the system's libcurl, which lists neither ws nor wss. ChatCube Direct's relay, Mattermost's events and XMPP over WebSocket cannot connect on such a macOS. XmppProviderTests and MattermostProviderTests are not run here until it has."
-                fi ;;
-            esac
+            echo "The system libcurl's protocols: $(printf '%s\n' "$system_curl" | sed -n 's/^Protocols: *//p')"
           fi
           if [ "${{ matrix.os }}" = "macos-15" ]; then
-            export ULTRAIM_TEST_SIGNAL_REQUIRED=1 ULTRAIM_TEST_IRC_REQUIRED=1
-            export ULTRAIM_TEST_MASTODON_REQUIRED=1 ULTRAIM_TEST_ZULIP_REQUIRED=1
-            suites="$suites SignalProviderTests IrcProviderTests MastodonProviderTests ZulipProviderTests"
-            if [ "$websockets" = "yes" ]; then
-              export ULTRAIM_TEST_XMPP_REQUIRED=1 ULTRAIM_TEST_MATTERMOST_REQUIRED=1
-              suites="$suites XmppProviderTests MattermostProviderTests"
-            fi
+            export ULTRAIM_TEST_SIGNAL_REQUIRED=1 ULTRAIM_TEST_IRC_REQUIRED=1 ULTRAIM_TEST_XMPP_REQUIRED=1
+            export ULTRAIM_TEST_MASTODON_REQUIRED=1 ULTRAIM_TEST_MATTERMOST_REQUIRED=1 ULTRAIM_TEST_ZULIP_REQUIRED=1
+            suites="$suites SignalProviderTests IrcProviderTests XmppProviderTests"
+            suites="$suites MastodonProviderTests MattermostProviderTests ZulipProviderTests"
           fi
           failed=""
           for suite in $suites; do

@@ -261,6 +261,28 @@ assembled. Reconnecting is the owner's - a handle is one connection - on
 `onClose` / `onError`. Sends from any thread are safe while the
 receiver reads: one mutex covers every read and write of the connection.
 
+**Two clients behind the one API.** Where the libcurl in use has WebSockets,
+`UltraNet_WebSocket*` is libcurl's `curl_ws_*`. Where it has none, it is
+UltraNet's own client (`core/UltraNet/UltraNetWebSocketOwn.h`): RFC 6455 on
+`UltraNet_TcpOpen` - through the proxy setting, a SOCKS proxy or an HTTP
+proxy as a `CONNECT` tunnel - and on `UltraNet_TlsWrap` for `wss://`. A
+libcurl without WebSockets is not rare: **Apple's own libcurl, which the
+macOS build links, lists neither `ws` nor `wss` through macOS 15**, and
+several distributions build theirs without (Ubuntu 24.04's). Until 2026-11
+`UltraNet_WebSocketConnect` refused there, and with it everything on a
+WebSocket had no connection on such a system - ChatCube Direct's relay,
+Mattermost's events, XMPP over WebSocket. What a caller sees is the same on
+both: handles, callbacks, PINGs answered, the message limit. Two things
+differ, both for `wss://` - the certificate is verified by libcurl against
+libcurl's roots, and by the own client as `UltraNet_TlsWrap` verifies
+(the system's roots, `UltraNet_TlsSetCABundle`,
+`UltraNet_TlsAddTrustedCert`); and a proxy reached over TLS (`Https`) is one
+only libcurl's client goes through. The own client offers no extension (no
+`permessage-deflate`) and follows no redirect in the upgrade's answer.
+`ULTRANET_WEBSOCKET_CLIENT=own` in the environment takes the own client
+where libcurl would do too - the tests run their whole WebSocket suite on it
+that way (`ctest -R UltraNetOwnWebSocket`), on every platform.
+
 ```cpp
 #include <UltraNet/UltraNetDns.h>
 
@@ -755,7 +777,7 @@ architecture.
 |---|---|
 | Public API (master registry) | Locked at v1.0.0 |
 | Core implementation | Stage 2/3 on libcurl: sync + async HTTP, chunked streaming, SSE, WebSocket, sessions, TLS, DNS |
-| Linux / macOS / Windows backends | Working (system or vendored libcurl; WebSocket needs libcurl >= 7.86 with ws) |
+| Linux / macOS / Windows backends | Working (system or vendored libcurl; WebSocket on libcurl >= 7.86 with ws, and on UltraNet's own client where the libcurl has none - macOS through 15) |
 | ULTRA OS native backend | Planned |
 | Plugins (SMTP, MQTT, SSH, ...) | Tracked separately |
 

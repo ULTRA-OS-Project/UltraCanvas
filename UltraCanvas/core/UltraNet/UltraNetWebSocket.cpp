@@ -1,5 +1,20 @@
 // core/UltraNet/UltraNetWebSocket.cpp
-// WebSocket implementation on libcurl's curl_ws_* API (libcurl >= 7.86).
+// WebSocket implementation on libcurl's curl_ws_* API (libcurl >= 7.86) -
+// and, where the libcurl in use has no WebSockets, on UltraNet's own
+// (UltraNetWebSocketOwn.h: its own sockets and TLS).
+//
+// Which one. A libcurl lists "ws" among its protocols or it does not: Apple's
+// own, which the macOS build links, lists none through macOS 15, and several
+// distributions build theirs without. UltraNet_WebSocketConnect used to
+// refuse there - and with it everything on a WebSocket (ChatCube Direct's
+// relay, Mattermost's events, XMPP over WebSocket) had no connection on such
+// a system. It now connects by UltraNet's own client instead; what a caller
+// sees - handles, callbacks, PINGs answered, the message limit, the proxy
+// setting - is the same on both. ULTRANET_WEBSOCKET_CLIENT=own in the
+// environment takes the own client where libcurl would do too (the tests run
+// the whole suite on it that way; a diagnosis may want it).
+//
+// On libcurl:
 //
 // Each connection owns:
 //   - one CURL* easy handle, configured with CURLOPT_CONNECT_ONLY=2
@@ -25,6 +40,8 @@
 // A message is assembled from however many reads it takes, up to
 // options.maxMessageBytes (64 MB unless set): past it the connection ends
 // with close 1009 before the memory is spent. Reconnecting is the owner's.
+// Version: 0.5.0 - UltraNet's own client where libcurl has no WebSockets (macOS through 15, some
+//                  distributions), and with ULTRANET_WEBSOCKET_CLIENT=own
 // Version: 0.4.2 - through the proxy setting, as a CONNECT tunnel (UltraNetCurlProxy.h)
 // Version: 0.4.1 - options.maxMessageBytes: a message past it ends the connection (1009) before it is
 //                  assembled; the reconnect options, which nothing read, removed
@@ -35,8 +52,10 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNet/UltraNetWebSocket.h"
+#include "UltraCanvasPathUtf8.h"
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetCurlProxy.h"
+#include "UltraNetWebSocketOwn.h"
 
 #include <curl/curl.h>
 #include <curl/websockets.h>
@@ -44,6 +63,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -54,11 +74,16 @@
 
 namespace {
 
+using ultranet_internal::OwnWebSocket;
+
 struct WsConnection {
     UltraNetHandle handle = UltraNetInvalidHandle;
     CURL* easy = nullptr;
     curl_slist* slist = nullptr;
-    std::mutex ioMutex;                 // every curl_ws_recv and curl_ws_send
+    // UltraNet's own client, when this connection is not libcurl's (then
+    // `easy` is null). Declared before the receiver: closed after it stopped.
+    std::unique_ptr<OwnWebSocket> own;
+    std::mutex ioMutex;                 // every read and write of the one connection
     int pingIntervalMs = 0;             // 0: the client does not ping
     std::size_t maxMessageBytes = 0;    // 0: no limit
     std::atomic<UltraNetWebSocketState> state{UltraNetWebSocketState::Closed};
@@ -255,6 +280,158 @@ void ReceiverLoop(std::shared_ptr<WsConnection> c) {
     }
 }
 
+// One frame out on UltraNet's own client, under the I/O mutex.
+bool OwnSendLocked(WsConnection& c, uint8_t opcode, const void* data, std::size_t len) {
+    std::lock_guard<std::mutex> lk(c.ioMutex);
+    return c.own && c.own->Send(opcode, data, len);
+}
+
+// The receiver of a connection on UltraNet's own client: what ReceiverLoop
+// is for libcurl's - the same callbacks for the same things.
+void OwnReceiverLoop(std::shared_ptr<WsConnection> c) {
+    std::vector<uint8_t> message;       // a message's frames so far
+    uint8_t messageOpcode = 0;
+    bool inMessage = false;
+
+    using Clock = std::chrono::steady_clock;
+    Clock::time_point lastHeard = Clock::now();     // anything from the peer
+    Clock::time_point lastPing = lastHeard;
+    const auto interval = std::chrono::milliseconds(c->pingIntervalMs);
+
+    // The connection ends here for a reason of this side's: the other side
+    // is told with a close frame where there is still someone to tell.
+    const auto fail = [&](int closeCode, const std::string& closeReason, const std::string& why) {
+        if (closeCode > 0 && c->state.load(std::memory_order_acquire) == UltraNetWebSocketState::Open) {
+            std::vector<uint8_t> payload = {static_cast<uint8_t>(closeCode >> 8), static_cast<uint8_t>(closeCode)};
+            payload.insert(payload.end(), closeReason.begin(), closeReason.end());
+            OwnSendLocked(*c, OwnWebSocket::Close, payload.data(), payload.size());
+        }
+        const auto cbs = CallbacksSnapshot();
+        c->state.store(UltraNetWebSocketState::Closed, std::memory_order_release);
+        if (cbs.onError) cbs.onError(c->handle, why);
+    };
+
+    while (c->running.load(std::memory_order_acquire)) {
+        OwnWebSocket::Frame frame;
+        std::string error;
+        OwnWebSocket::Read read;
+        {
+            std::lock_guard<std::mutex> lk(c->ioMutex);
+            // What the message may still grow by; past it the frame is not kept.
+            std::size_t allowance = std::numeric_limits<std::size_t>::max();
+            if (c->maxMessageBytes > 0)
+                allowance = c->maxMessageBytes > message.size() ? c->maxMessageBytes - message.size() : 0;
+            // A short wait: a sender takes the same mutex.
+            read = c->own->Receive(10, allowance, frame, error);
+        }
+        if (read == OwnWebSocket::Read::Idle) {
+            if (c->pingIntervalMs > 0) {
+                const Clock::time_point now = Clock::now();
+                if (now - lastHeard > 2 * interval) {
+                    // Not even the PONG: the connection is gone without a
+                    // close (a network that dropped, a peer that died).
+                    fail(0, std::string(), "no answer from the other side for " +
+                                               std::to_string(2 * c->pingIntervalMs) + " ms");
+                    break;
+                }
+                if (now - lastPing >= interval &&
+                    c->state.load(std::memory_order_acquire) == UltraNetWebSocketState::Open) {
+                    lastPing = now;
+                    OwnSendLocked(*c, OwnWebSocket::Ping, "", 0);
+                }
+            }
+            // Out of the mutex for a moment, for whoever waits to send.
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        if (read == OwnWebSocket::Read::Partial) {
+            lastHeard = Clock::now();
+            std::this_thread::yield();
+            continue;
+        }
+        if (read == OwnWebSocket::Read::Closed) {
+            fail(0, std::string(), "the other side closed the connection without a close frame");
+            break;
+        }
+        if (read == OwnWebSocket::Read::Broken) {
+            fail(0, std::string(), error);
+            break;
+        }
+        if (read == OwnWebSocket::Read::Malformed) {
+            fail(1002, "protocol error", "not the WebSocket protocol: " + error);
+            break;
+        }
+        if (read == OwnWebSocket::Read::TooBig) {
+            // Not assembled: the connection ends (1009, message too big)
+            // before the memory is spent.
+            fail(1009, "message too big", "a message larger than " + std::to_string(c->maxMessageBytes) +
+                                              " bytes (UltraNetWebSocketOptions::maxMessageBytes)");
+            break;
+        }
+
+        lastHeard = Clock::now();
+        const auto cbs = CallbacksSnapshot();
+        if (frame.opcode == OwnWebSocket::Ping) {
+            // Answered at once, with the same payload (RFC 6455 5.5.3).
+            if (c->state.load(std::memory_order_acquire) == UltraNetWebSocketState::Open)
+                OwnSendLocked(*c, OwnWebSocket::Pong, frame.payload.data(), frame.payload.size());
+            if (cbs.onPing) cbs.onPing(c->handle, frame.payload);
+            continue;
+        }
+        if (frame.opcode == OwnWebSocket::Pong) {
+            if (cbs.onPong) cbs.onPong(c->handle, frame.payload);
+            continue;
+        }
+        if (frame.opcode == OwnWebSocket::Close) {
+            int code = 1005;
+            std::string reason;
+            if (frame.payload.size() >= 2) {
+                code = (frame.payload[0] << 8) | frame.payload[1];
+                reason.assign(frame.payload.begin() + 2, frame.payload.end());
+            }
+            // The close is answered with a close (5.5.1), its code back.
+            if (c->state.load(std::memory_order_acquire) == UltraNetWebSocketState::Open)
+                OwnSendLocked(*c, OwnWebSocket::Close, frame.payload.data(), std::min<std::size_t>(frame.payload.size(), 2));
+            c->state.store(UltraNetWebSocketState::Closed, std::memory_order_release);
+            if (cbs.onClose) cbs.onClose(c->handle, code, reason);
+            break;
+        }
+
+        // Data: a message is its first frame (text or binary) and whatever
+        // continuation frames follow, until one says it is the last.
+        if (frame.opcode == OwnWebSocket::Continuation) {
+            if (!inMessage) {
+                fail(1002, "protocol error", "not the WebSocket protocol: a continuation of no message");
+                break;
+            }
+        } else {
+            if (inMessage) {
+                fail(1002, "protocol error", "not the WebSocket protocol: a new message inside an unfinished one");
+                break;
+            }
+            inMessage = true;
+            messageOpcode = frame.opcode;
+            message.clear();
+        }
+        if (message.empty() && frame.fin) message.swap(frame.payload);
+        else message.insert(message.end(), frame.payload.begin(), frame.payload.end());
+        if (!frame.fin) continue;
+        inMessage = false;
+        if (messageOpcode == OwnWebSocket::Text) {
+            if (cbs.onText) cbs.onText(c->handle, std::string(message.begin(), message.end()));
+        } else {
+            if (cbs.onBinary) cbs.onBinary(c->handle, message);
+        }
+        message.clear();
+    }
+}
+
+// Whether the environment asks for UltraNet's own client where libcurl has
+// WebSockets too.
+bool OwnClientAskedFor() {
+    return UltraCanvas::GetEnvUtf8("ULTRANET_WEBSOCKET_CLIENT") == "own";
+}
+
 curl_slist* BuildSlist(const UltraNetHttpHeaders& headers) {
     curl_slist* head = nullptr;
     for (const auto& [name, value] : headers.Entries()) {
@@ -286,15 +463,32 @@ UltraNetHandle UltraNet_WebSocketConnect(
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
     if (url.empty()) return UltraNetInvalidHandle;
 
-    if (!LibcurlHasWebSockets()) {
-        const auto cbs = CallbacksSnapshot();
-        if (cbs.onError) {
-            cbs.onError(UltraNetInvalidHandle,
-                "libcurl was built without WebSocket support — rebuild with "
-                "--enable-websockets (curl >= 7.86), or install a libcurl "
-                "package whose Protocols list includes ws/wss");
+    // A libcurl without WebSockets (Apple's through macOS 15, some
+    // distributions'): UltraNet's own client, on its own sockets and TLS.
+    if (!LibcurlHasWebSockets() || OwnClientAskedFor()) {
+        auto c = std::make_shared<WsConnection>();
+        c->handle = g_nextHandle.fetch_add(1, std::memory_order_relaxed);
+        c->state.store(UltraNetWebSocketState::Connecting, std::memory_order_release);
+        c->pingIntervalMs = options.pingIntervalMs > 0 ? options.pingIntervalMs : 0;
+        c->maxMessageBytes = options.maxMessageBytes;
+        std::string error;
+        c->own = OwnWebSocket::Open(url, options, error);
+        if (!c->own) {
+            const auto cbs = CallbacksSnapshot();
+            c->state.store(UltraNetWebSocketState::Error, std::memory_order_release);
+            if (cbs.onError) cbs.onError(c->handle, error);
+            return UltraNetInvalidHandle;
         }
-        return UltraNetInvalidHandle;
+        c->state.store(UltraNetWebSocketState::Open, std::memory_order_release);
+        const UltraNetHandle h = c->handle;
+        {
+            std::lock_guard<std::mutex> lk(G().regMutex);
+            G().connections[h] = c;
+        }
+        const auto cbs = CallbacksSnapshot();
+        if (cbs.onOpen) cbs.onOpen(h);
+        c->Start([c]() { OwnReceiverLoop(c); });
+        return h;
     }
 
     auto c = std::make_shared<WsConnection>();
@@ -360,6 +554,18 @@ namespace {
         if (c.state.load(std::memory_order_acquire) != UltraNetWebSocketState::Open) {
             return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                          "WebSocket not open");
+        }
+        if (c.own) {
+            const uint8_t opcode = (flags & CURLWS_TEXT)    ? OwnWebSocket::Text
+                                   : (flags & CURLWS_BINARY) ? OwnWebSocket::Binary
+                                   : (flags & CURLWS_PING)   ? OwnWebSocket::Ping
+                                   : (flags & CURLWS_PONG)   ? OwnWebSocket::Pong
+                                                             : OwnWebSocket::Close;
+            if (!OwnSendLocked(c, opcode, data, len)) {
+                return UltraNetResult::Error(UltraNetResultCode::SendFailed,
+                                             "the connection did not take the frame");
+            }
+            return UltraNetResult::Ok();
         }
         CURLcode rc = SendLocked(c, data, len, flags);
         if (rc != CURLE_OK) {
