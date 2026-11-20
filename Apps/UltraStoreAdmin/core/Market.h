@@ -14,6 +14,7 @@
 // is), which is what the service checks. The HTTP call is a function the
 // caller hands in, so the tests use a fake and nothing here touches the
 // network in a test; the default is UltraNet.
+// Version: 0.3.0 - the packages uploaded with a submission into the operator's package store
 // Version: 0.2.0 - the application for a shop, the merchant's own profile and key rotation
 // Version: 0.1.1 - MarketCall speaks PUT as well (the operator's client shares it)
 // Version: 0.1.0
@@ -109,6 +110,17 @@ struct SubmissionReceipt {
     std::vector<std::pair<std::string, std::string>> checks;   // name -> ok / failed / not run / the standing
 };
 
+// One package sent into the operator's package store (POST
+// /v1/submissions/{id}/packages/{sha256}): the submission's packages check
+// afterwards ("waiting" until every package is there, then "ok") and its
+// state, which leaves failed_checks once the packages are all in.
+struct PackageUpload {
+    std::string sha256, fileName;   // <sha256>.<format>
+    uint64_t size = 0;
+    std::string packagesCheck, state;
+    bool skipped = false;           // the service had the bytes already
+};
+
 class MarketClient {
 public:
     MarketClient(MarketSettings settings, std::vector<uint8_t> seed, MarketCall call = UltraNetMarketCall());
@@ -130,6 +142,16 @@ public:
     // A component of this backend's database, signed and sent as a
     // submission; `answers` names the submission a resubmission answers.
     Result<SubmissionReceipt> Submit(const UltraStore::Component& component, const std::string& answers = {}) const;
+    // The file's bytes into the package store for a submission that names
+    // their hash; the request is signed over the bytes like every other.
+    Result<PackageUpload> UploadPackage(const std::string& submissionId, const std::string& sha256, const std::string& fileUtf8) const;
+    // Every package of the component whose file is in the local package
+    // store (packagesDirUtf8/<sha256>.<format>); one that is not there is
+    // reported, not an error - its URL stays the merchant's. `each` is told
+    // of every package as it goes (the window's lines).
+    Result<std::vector<PackageUpload>> UploadPackages(const std::string& submissionId, const UltraStore::Component& component,
+                                                      const std::string& packagesDirUtf8,
+                                                      const std::function<void(const PackageUpload&)>& each = nullptr) const;
     // The merchant's submissions, every decision in the JSON.
     Result<UltraCanvas::JSONValue> Submissions() const;
     Result<void> Withdraw(const std::string& submissionId) const;
@@ -155,8 +177,12 @@ private:
 };
 
 // The packages of a component as a submission names them: the file (the
-// path under the packages server) or the URL, the SHA-256 and the size.
+// path under the packages server) or the URL, the SHA-256, the size, the
+// format and the access (restricted: a paid app's without a trial), so the
+// operator's package store can lay the file out under the right folder.
 UltraCanvas::JSONValue SubmissionPackages(const UltraStore::Component& component);
+// The local file behind a package: <packagesDir>/<sha256>.<format>, empty when it is not there.
+std::string LocalPackageFile(const std::string& packagesDirUtf8, const UltraStore::Package& p);
 
 // The seed of one of this backend's keys, opened with the passphrase, for
 // the moment of signing: the key given, or the first active one when

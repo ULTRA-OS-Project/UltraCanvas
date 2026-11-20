@@ -165,7 +165,9 @@ finance report [<YYYY-MM>|<YYYY>]                        the statement by curren
 finance periods | statement [<period>] [-o <file.csv>]   the months with a sale; the report as CSV, for the books
 market standing                                          where this merchant stands at the marketplace: active, paused (terms), suspended; strikes
 market submit <app-id> [--key <id>] [--passphrase <p>] [--answers <submission>]
-                                                         the app as saved here, signed, to the operator's review
+                                                         the app as saved here, signed, to the operator's review; its packages from
+                                                         this store's packages folder into the operator's package store, when it keeps one
+market upload <submission> <app-id>                      the app's packages into the operator's package store again (after a failed upload)
 market submissions | withdraw <submission>               every submission with its last decision; one taken back
 market notices [--all] | ack <notice>                    the operator's notices (the unacknowledged, or all); one acknowledged
 market terms [accept <version> --by <name>]              the terms in force; an acceptance
@@ -352,5 +354,10 @@ store's README, *Packaging an application for the store*).
    asks the operator for a shop with this backend's key, `market
    application` sets the merchant id once approved, `market profile`
    edits the profile the catalog shows and rotates the key; the window's
-   page has the three states. Next: the packages uploaded into the
-   operator's package store with the submission.
+   page has the three states. The packages (2026-11-20): `market submit`
+   and the page's *Submit* send each package of the app from this store's
+   `packages/` folder into the operator's package store right after the
+   submission, when the operator keeps one (the `packages` check says
+   *waiting*); `market upload` sends them again. The operator's publish
+   then lays them out beside the public catalog, so no server of one's
+   own is needed for the marketplace. Next: the review pipeline.

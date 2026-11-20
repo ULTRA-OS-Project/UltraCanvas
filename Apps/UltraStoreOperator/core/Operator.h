@@ -13,6 +13,7 @@
 // the program's own file (settings.json under the data folder, readable by
 // the user alone), overridden by ULTRASTORE_OPERATOR_URL and _TOKEN; the
 // window and the command line read the same file.
+// Version: 0.5.0 - the second factor and the password reset by mail; the build downloaded from the package store
 // Version: 0.4.0 - the operator accounts with their roles: the sign-in, the session in the settings, the account service on the same session
 // Version: 0.3.0 - the applications for a shop, the merchant's website and description
 // Version: 0.2.0 - the users of the account service: the records, the calls with the account token
@@ -171,6 +172,8 @@ struct AuditPage {
 struct OperatorAccount {
     std::string id, email, name, role, createdAt, createdBy, disabledAt, lastSignin;
     bool active = true;
+    bool twoFactor = false;
+    int recoveryCodesLeft = 0;
     std::string Name() const { return name.empty() ? email : name; }
 };
 
@@ -188,6 +191,26 @@ struct OperatorSignIn {
     OperatorAccount account;
     int hours = 0;       // how long the session lasts
 };
+
+// The authenticator's setup: the secret to type, or the URL a QR code
+// carries (otpauth://totp/...), as UltraAuthenticator takes them.
+struct TwoFactorSetup {
+    std::string secret, otpauthUrl;
+};
+
+// A package the merchant uploaded, as the review downloads it.
+struct DownloadedPackage {
+    std::string sha256, fileUtf8;
+    uint64_t size = 0;
+};
+
+// A file transfer: GET `url` with `authorization` into the file at
+// destinationUtf8 (a .part beside it while it comes). The default is
+// UltraNet's streamed download; the tests use a fake.
+using DownloadCall = std::function<MarketReply(const std::string& url, const std::string& authorization, const std::string& destinationUtf8)>;
+DownloadCall UltraNetDownloadCall();
+// The name a submission's package is kept under: <sha256>.<format>.
+std::string PackageFileName(const UltraCanvas::JSONValue& package);
 
 inline const char* const kRoles[] = {"admin", "reviewer", "support", "auditor"};
 
@@ -283,14 +306,30 @@ std::string Age(const std::string& at, int64_t now = 0);
 // ===========================================================================
 class OperatorClient {
 public:
-    explicit OperatorClient(OperatorSettings settings, MarketCall call = UltraNetMarketCall());
+    explicit OperatorClient(OperatorSettings settings, MarketCall call = UltraNetMarketCall(), DownloadCall download = UltraNetDownloadCall());
 
     // ----- the service -----
     Result<std::string> Health() const;   // GET /healthz: "ok", or what is not configured
 
     // ----- the operator accounts -----
-    // The sign-in needs the URL only: the session it gives is the token from then on.
-    Result<OperatorSignIn> SignIn(const std::string& email, const std::string& password) const;
+    // The sign-in needs the URL only: the session it gives is the token from
+    // then on. `code` is the authenticator's six digits, or a recovery code,
+    // when the account has a second factor; without one the failure's
+    // detail is "two_factor_required".
+    Result<OperatorSignIn> SignIn(const std::string& email, const std::string& password, const std::string& code = {}) const;
+    // One's own second factor: the setup (the secret for the app), enabled
+    // with the app's first code (the recovery codes come back once),
+    // disabled with a code, a new set of recovery codes with a code.
+    Result<TwoFactorSetup> TwoFactorSetup() const;
+    Result<std::vector<std::string>> TwoFactorEnable(const std::string& code) const;
+    Result<void> TwoFactorDisable(const std::string& code) const;
+    Result<std::vector<std::string>> NewRecoveryCodes(const std::string& code) const;
+    // A forgotten password: a code mailed to the account (needs the URL only),
+    // then the reset with it; `code2` the second factor when the account has one.
+    Result<int> ForgotPassword(const std::string& email) const;   // the minutes the code lives
+    Result<void> ResetPassword(const std::string& email, const std::string& code, const std::string& newPassword, const std::string& code2 = {}) const;
+    // An admin resets another operator's second factor, after the identity was checked another way.
+    Result<OperatorAccount> ResetOperatorTwoFactor(const std::string& id) const;
     Result<WhoAmI> Me() const;
     Result<std::vector<OperatorAccount>> Operators() const;                                 // admin, and anyone reads
     Result<OperatorAccount> AddOperator(const std::string& email, const std::string& name, const std::string& role, const std::string& password) const;
@@ -321,6 +360,9 @@ public:
     Result<Submission> GetSubmission(const std::string& id) const;
     // action: start_review, release (sequence 0: the next), request_changes, reject.
     Result<Submission> Decide(const std::string& id, const std::string& action, const std::string& message, int sequence = 0) const;
+    // A package the merchant uploaded into the package store, into the
+    // folder, under <sha256>.<format> (the review's Download build).
+    Result<DownloadedPackage> DownloadPackage(const std::string& submissionId, const UltraCanvas::JSONValue& package, const std::string& folderUtf8) const;
     Result<Released> GetReleased() const;
     Result<PublishReport> Publish() const;
     Result<PublishKey> GetPublishKey() const;
@@ -373,10 +415,12 @@ public:
 
 private:
     Result<UltraCanvas::JSONValue> Ask(const std::string& method, const std::string& path, const std::string& jsonBody = {}) const;
+    Result<UltraCanvas::JSONValue> Open(const std::string& path, const std::string& jsonBody) const;   // a POST without a bearer
     Result<UltraCanvas::JSONValue> AskAccount(const std::string& method, const std::string& path, const std::string& jsonBody = {}) const;
 
     OperatorSettings settings_;
     MarketCall call_;
+    DownloadCall download_;
 };
 
 // The parsers, for the window's own reading of a service answer.

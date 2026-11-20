@@ -5,6 +5,7 @@
 // checks and decisions, a report with its reporter, a notice, the policy,
 // the audit rows), the publish report, the settings file round trip and
 // the environment over it, the age of a timestamp.
+// Version: 0.3.0 - the second factor at the sign-in, the password reset, the build downloaded
 // Version: 0.2.0 - the sign-in, the session as the token, the operator accounts, the account service on the session
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -16,6 +17,7 @@
 #include "UltraCanvasPathUtf8.h"
 
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <random>
 
@@ -506,5 +508,97 @@ TEST(an_operator_signs_in_and_the_session_is_the_token_at_both_services) {
     REQUIRE(back.Ok());
     REQUIRE_EQ(back.Value().role, std::string("admin"));
     REQUIRE_EQ(back.Value().token, std::string("op1.payload.mac"));
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
+}
+
+
+TEST(the_second_factor_the_password_reset_and_the_build_download) {
+    FakeService fake;
+    fake.answers["POST /v1/operators/signin"] = R"({"token":"op1.p.m","hours":12,"operator":{"id":"op-0001","email":"alex@ultra-os.example","name":"Alex","role":"admin","active":true,"two_factor":true,"recovery_codes_left":7}})";
+    fake.answers["POST /v1/operators/me/two-factor/setup"] = R"({"secret":"GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ","otpauth_url":"otpauth://totp/UltraStore%20operations:alex?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"})";
+    fake.answers["POST /v1/operators/me/two-factor/enable"] = R"({"two_factor":true,"recovery_codes":["abcd2345","efgh6789"]})";
+    fake.answers["POST /v1/operators/me/two-factor/disable"] = R"({"two_factor":false})";
+    fake.answers["POST /v1/operators/me/two-factor/recovery-codes"] = R"({"recovery_codes":["jkmn2345"]})";
+    fake.answers["POST /v1/operators/password/forgot"] = R"({"sent":true,"minutes":10})";
+    fake.answers["POST /v1/operators/password/reset"] = R"({"reset":true})";
+    fake.answers["PUT /v1/operators/op-0002"] = R"({"id":"op-0002","email":"sam@ultra-os.example","name":"Sam","role":"support","active":true,"two_factor":false,"recovery_codes_left":0})";
+    OperatorSettings s;
+    s.url = "https://market.example";
+    OperatorClient fresh(s, fake.Call());
+    // The code: six digits are the authenticator's, anything else a recovery code; the account's two-factor state comes back.
+    const auto in = fresh.SignIn("alex@ultra-os.example", "a long enough password", "123 456");
+    REQUIRE(in.Ok());
+    REQUIRE(in.Value().account.twoFactor);
+    REQUIRE_EQ(in.Value().account.recoveryCodesLeft, 7);
+    REQUIRE(fake.calls.back().find(R"("totp":"123456")") != std::string::npos);
+    REQUIRE(fresh.SignIn("alex@ultra-os.example", "a long enough password", "abcd2345").Ok());
+    REQUIRE(fake.calls.back().find(R"("recovery_code":"abcd2345")") != std::string::npos);
+    // Without the code, the service's refusal names what is missing in the detail.
+    fake.status = 401;
+    fake.answers["POST /v1/operators/signin"] = R"({"error":"two_factor_required","error_description":"The six-digit code"})";
+    const auto refused = fresh.SignIn("alex@ultra-os.example", "a long enough password");
+    REQUIRE(!refused.Ok());
+    REQUIRE_EQ(refused.error.detail, std::string("two_factor_required"));
+    fake.status = 200;
+    // One's own second factor, with the bearer.
+    s.token = "op1.p.m";
+    OperatorClient client(s, fake.Call());
+    const auto setup = client.TwoFactorSetup();
+    REQUIRE(setup.Ok());
+    REQUIRE_EQ(setup.Value().secret, std::string("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"));
+    REQUIRE(fake.calls.back().rfind("POST https://market.example/v1/operators/me/two-factor/setup | Bearer op1.p.m | ", 0) == 0);
+    const auto codes = client.TwoFactorEnable("654321");
+    REQUIRE(codes.Ok());
+    REQUIRE_EQ(codes.Value().size(), size_t(2));
+    REQUIRE(fake.calls.back().find(R"({"code":"654321"})") != std::string::npos);
+    REQUIRE(client.NewRecoveryCodes("654321").Ok());
+    REQUIRE(client.TwoFactorDisable("654321").Ok());
+    // A forgotten password needs no bearer; the reset carries the mailed code and the second factor.
+    const auto minutes = fresh.ForgotPassword("alex@ultra-os.example");
+    REQUIRE(minutes.Ok() && minutes.Value() == 10);
+    REQUIRE(fake.calls.back().find("/v1/operators/password/forgot |  | ") != std::string::npos);
+    REQUIRE(fresh.ResetPassword("alex@ultra-os.example", "111222", "a brand new password", "333444").Ok());
+    REQUIRE(fake.calls.back().find(R"({"email":"alex@ultra-os.example","code":"111222","new_password":"a brand new password","totp":"333444"})") != std::string::npos);
+    REQUIRE(!fresh.ResetPassword("alex@ultra-os.example", "111222", "short").Ok());
+    // An admin clears another's second factor.
+    const auto cleared = client.ResetOperatorTwoFactor("op-0002");
+    REQUIRE(cleared.Ok());
+    REQUIRE(!cleared.Value().twoFactor);
+    REQUIRE(fake.calls.back().find(R"(PUT https://market.example/v1/operators/op-0002 | Bearer op1.p.m | {"two_factor":false})") != std::string::npos);
+    // The build: the file name from the package, the bytes into the folder through the download call.
+    std::vector<std::string> downloads;
+    DownloadCall download = [&downloads](const std::string& url, const std::string& authorization, const std::string& destinationUtf8) {
+        downloads.push_back(url + " | " + authorization);
+        std::ofstream out(UltraCanvas::PathFromUtf8(destinationUtf8), std::ios::binary);
+        out << "PK the build";
+        MarketReply r;
+        r.status = 200;
+        return r;
+    };
+    OperatorClient reviewer(s, fake.Call(), download);
+    const std::string dir = TempDir();
+    JSONValue package = UltraCanvas::JSON::Parse(R"({"file":"restricted/abc.tar.zst","sha256":"ABCDEF","size":12,"uploaded":true})");
+    REQUIRE_EQ(PackageFileName(package), std::string("abcdef.tar.zst"));
+    REQUIRE_EQ(PackageFileName(UltraCanvas::JSON::Parse(R"({"sha256":"ff","format":"zip"})")), std::string("ff.zip"));
+    REQUIRE_EQ(PackageFileName(UltraCanvas::JSON::Parse(R"({"sha256":"ff","url":"https://x/y"})")), std::string("ff.bin"));
+    const auto got = reviewer.DownloadPackage("s-00000001", package, dir);
+    REQUIRE(got.Ok());
+    REQUIRE_EQ(got.Value().size, uint64_t(12));
+    REQUIRE(got.Value().fileUtf8.find("abcdef.tar.zst") != std::string::npos);
+    REQUIRE_EQ(downloads.size(), size_t(1));
+    REQUIRE_EQ(downloads[0], std::string("https://market.example/v1/submissions/s-00000001/packages/ABCDEF | Bearer op1.p.m"));
+    // A refusal leaves no file behind.
+    DownloadCall refusing = [](const std::string&, const std::string&, const std::string& destinationUtf8) {
+        std::ofstream out(UltraCanvas::PathFromUtf8(destinationUtf8), std::ios::binary);
+        out << "{}";
+        MarketReply r;
+        r.status = 404;
+        r.body = R"({"error":"not_uploaded","error_description":"The merchant has not uploaded that package"})";
+        return r;
+    };
+    const auto missing = OperatorClient(s, fake.Call(), refusing).DownloadPackage("s-00000001", package, dir + "/none");
+    REQUIRE(!missing.Ok());
+    REQUIRE(missing.error.code == UltraStore::ErrorCode::NotFound);
+    REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(dir + "/none/abcdef.tar.zst")));
     std::filesystem::remove_all(UltraCanvas::PathFromUtf8(dir));
 }

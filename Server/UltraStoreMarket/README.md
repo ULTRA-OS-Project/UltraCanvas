@@ -48,7 +48,31 @@ roles; `POST /v1/operators` `{email, name, role, password}` (admin; a
 password is 12 characters or more, kept as scrypt); `PUT /v1/operators/{id}`
 `{name?, role?, password?, disabled?}` - anyone their own name and password,
 an admin the rest, never their own switch or admin role (409 `own_account`).
-A disabled account's session is refused from the next call on.
+A disabled account's session is refused from the next call on. **The
+second factor** (schema 4): `POST /v1/operators/me/two-factor/setup` →
+`{secret, otpauth_url}`, `.../enable {code}` → `{recovery_codes}` (eight,
+shown once, kept hashed), `.../disable {code}`, `.../recovery-codes {code}`;
+the sign-in then takes `totp` (the app's six digits) or `recovery_code`
+(used up), else 401 `two_factor_required`. **A forgotten password**: `POST
+/v1/operators/password/forgot {email}` mails a six-digit code
+(`ULTRASTORE_MARKET_SMTP_URL`; the log without one) good for
+`ULTRASTORE_MARKET_CODE_MINUTES` (10), five tries; `POST
+/v1/operators/password/reset {email, code, new_password, totp?,
+recovery_code?}`. An admin's `PUT /v1/operators/{id} {two_factor: false}`
+clears another's second factor, never their own.
+
+**The package store** (`ULTRASTORE_MARKET_PACKAGE_DIR`): with one, a
+submission's `packages` check is `waiting` until the merchant has sent every
+package's bytes - `POST /v1/submissions/{id}/packages/{sha256}`, the body
+the bytes (at most `ULTRASTORE_MARKET_MAX_PACKAGE_MB`, 512), the request
+signed over them like every other; the service hashes them, checks the size
+the submission named, and keeps them under `<sha256>.<format>` (400
+`hash_mismatch` / `size_mismatch`, 404 `no_such_package`, 409
+`wrong_state` once decided). Bytes already in the store need no upload. A
+release is refused while a package is missing (409 `packages_missing`). The
+operator's `GET /v1/submissions/{id}/packages/{sha256}` downloads one (the
+review's *Download build*). Without a package store the check is `ok` on
+the shape alone and an upload is 503 `not_configured`, as before.
 
 **The operator**
 
@@ -120,9 +144,13 @@ last publish and the last release. The catalog and `catalog.json.sig`
 catalog base. The operator's signing key is `ULTRASTORE_MARKET_SIGNING_SEED`
 (32 bytes, hex), or one made on the first start and kept in the database;
 `GET /v1/publish/key` gives its public half for `Apps/UltraStore/keys/`
-and for a store's trusted keys. The packages stay on the merchants'
-servers until the operator's package store exists: the catalog carries
-the URLs the merchants named.
+and for a store's trusted keys. A package the merchant uploaded into the
+package store is laid out beside the catalog - `packages/<sha256>.<format>`,
+or `restricted/` for a paid app's without a trial, which the web server
+serves to nobody directly - and the catalog names it under
+`ULTRASTORE_MARKET_CATALOG_URL` (the public URL of the publish folder); the
+report says how many. A package not uploaded keeps the URL the merchant
+named, so a merchant with a server of its own loses nothing.
 
 ## Strikes, suspensions, standing
 
@@ -156,7 +184,8 @@ python3 -m venv .venv && .venv/bin/pip install -e ../UltraStoreDb -e '.[test,mys
 ULTRASTORE_MARKET_TEST_MYSQL_URL=mysql://ultrastore:ultrastore@127.0.0.1:3306/ultrastore_test \
 ULTRASTORE_MARKET_TEST_PG_URL=postgresql://... .venv/bin/python -m pytest -q           # and on MySQL and PostgreSQL
 ULTRASTORE_MARKET_DB=mysql://ultrastore_market:password@127.0.0.1:3306/ultrastore_market ULTRASTORE_MARKET_OPERATOR_TOKEN=... \
-ULTRASTORE_MARKET_OPERATOR_SESSION_SECRET=<the same value as the account service's> .venv/bin/ultrastore-market
+ULTRASTORE_MARKET_OPERATOR_SESSION_SECRET=<the same value as the account service's> \
+ULTRASTORE_MARKET_PACKAGE_DIR=/var/lib/ultrastore-market/packages ULTRASTORE_MARKET_CATALOG_URL=https://store.example/v1 .venv/bin/ultrastore-market
 ```
 
 The database and its user are made beforehand:
@@ -177,7 +206,7 @@ add alex@example.org admin --name Alex` (asked for the password), then
 
 ## What comes next
 
-The packages into the operator's package store with a submission; the
-review pipeline behind the checks marked *not run*. The operator's window
+The review pipeline behind the checks marked *not run* (the scans, the
+entry, the smoke run, the listing), on the packages the store now holds. The operator's window
 and command line on this API are `Apps/UltraStoreOperator`
 ([its README](../../Docs/UltraStoreOperator/README.md)).

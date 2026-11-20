@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ultrastore-market"
-version = "0.4.0"
+version = "0.5.0"
 description = "The UltraStore marketplace service: the operator tier's merchants, submissions, reports, notices, terms and the hash-chained audit log"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,7 +13,7 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "cryptography>=42",
-    "ultrastore-db>=0.3",
+    "ultrastore-db>=0.4",
 ]
 
 [project.optional-dependencies]
