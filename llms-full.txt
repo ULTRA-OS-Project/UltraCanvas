@@ -2441,7 +2441,9 @@ backing library is never visible in a public header.
   codes, ChatCube Direct's sign-in checks them (until 2026-11 in
   `Apps/UltraAuthenticator/otp/`)
 
-Streaming class: `UltraCryptHasher` (HMAC is the one call
+Streaming class: `UltraCryptHasher` (SHA-1 as a plain digest only with
+`UltraCryptHashOptions::allowLegacy`, as in `UltraCrypt_Hash` and
+`UltraCrypt_HashFile`; HMAC is the one call
 `UltraCrypt_Hmac`; a streaming `UltraCryptHmacHasher` was proposed and not
 built).
 
@@ -102168,7 +102170,7 @@ FILE: Docs/Modules/UltraCrypt/README.md
 progress (§8).
 **Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-11-18
+**Last Modified:** 2026-11-19
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
@@ -102775,14 +102777,19 @@ enum class UltraCryptHashAlgorithm : uint8_t {
 };
 
 struct UltraCryptHashOptions {
-    bool allowLegacy = false;    // UltraCrypt_Hash refuses SHA1 without it
+    // Every way to a plain digest refuses SHA1 without it: UltraCrypt_Hash,
+    // UltraCrypt_HashFile and UltraCryptHasher.
+    bool allowLegacy = false;
 };
 
 class UltraCryptHasher {          // streaming; for files and large payloads
 public:
-    // Takes the algorithm alone: no options, so - unlike UltraCrypt_Hash -
-    // nothing here asks for allowLegacy before SHA1. Neither copied nor moved.
-    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm);
+    // A constructor returns nothing, so a refusal shows in IsValid(): made
+    // for SHA1 without allowLegacy, the hasher takes no data and Final()
+    // returns an empty digest. Neither copied nor moved.
+    explicit UltraCryptHasher(UltraCryptHashAlgorithm algorithm,
+                              const UltraCryptHashOptions& options =
+                                  UltraCryptHashOptions());
     ~UltraCryptHasher();
     UltraCryptHasher(const UltraCryptHasher&) = delete;
 
@@ -102792,7 +102799,9 @@ public:
     void Reset();
 
     size_t GetDigestSize() const;
-    bool   IsValid() const;       // false when there is no backend to hash with
+    // False when there is no backend to hash with, and when SHA1 was asked
+    // for without allowLegacy.
+    bool   IsValid() const;
 };
 
 size_t UltraCrypt_GetDigestSize(UltraCryptHashAlgorithm algorithm);
@@ -102804,10 +102813,12 @@ UltraCryptResult UltraCrypt_Hash(
         std::vector<uint8_t>& outDigest,
         const UltraCryptHashOptions& options = UltraCryptHashOptions());
 
+// NotSupported for SHA1 without allowLegacy, before the file is opened.
 UltraCryptResult UltraCrypt_HashFile(
         UltraCryptHashAlgorithm algorithm,
         const std::string& filePath,
-        std::vector<uint8_t>& outDigest);
+        std::vector<uint8_t>& outDigest,
+        const UltraCryptHashOptions& options = UltraCryptHashOptions());
 
 std::string UltraCrypt_ToHex(const std::vector<uint8_t>& bytes);
 bool        UltraCrypt_FromHex(const std::string& hex,
@@ -105430,6 +105441,46 @@ proxy. Skips without python3 unless
 `ULTRAIM_TEST_SIGNAL_REQUIRED` is set. The real signal-cli is not part of
 the tests: that it takes its proxy from Java's properties is its own source
 (`Utils.getHttpsProxy`, `SignalDependencies.setSignalNetworkProxy`).
+
+`Tests/UltraIM/SignalDaemonTests.cpp` is `SignalDaemon` on its own - the one
+part of the provider written per platform - and the Signal test that runs
+on Windows: the fake daemon above is a shell script's child, so there the
+whole of `SignalProviderTests` is skipped. The test is its own child program
+(no python): started through `SignalDaemon::Start`, it reports the
+environment and arguments it was given. Checked on every platform: the
+variables handed to `Start` arrive exactly (Java options with spaces,
+quotes, `|`, `&`, Thai), one the environment already has is replaced and
+not doubled (on Windows whatever its spelling: names there have no case),
+the rest is kept; arguments arrive exactly (a folder with spaces and a
+trailing backslash, quotes, an empty one, Thai); standard output and error
+are appended to a log named in Thai; the same through a wrapper script as
+signal-cli is one (a `.bat` run by `cmd.exe` on Windows, a shell script
+elsewhere, in a folder with a space and Thai in its name); `Stop` ends the
+script *and* the program it started (the job object, the process group); a
+program that ends by itself is let go of (`ProcessId()` 0), one that is not
+there never shows as running; `FindSignalCli`, `JavaToolOptionsWith`,
+`JvmTookOptions`.
+
+CI runs the chat-network suites on Linux in the full pass, and since
+2026-11 on the other rows too ("Run the chat-network tests
+(macOS/Windows)" in `.github/workflows/build.yml`): `UltraIMTests`,
+`MatrixCryptoTests`, `SignalDaemonTests` and `TelegramProviderTests` on
+every Windows and macOS row; `TelegramTdlibTests` where the packages ship a
+TDLib (Windows x64, macOS arm64 - no library there is a failure);
+`DirectProviderTests`' envelopes and store on Windows; and the suites that
+sign in to a python stand-in (Signal, IRC, Mastodon, Zulip) on the Apple
+silicon row, where no python3 or openssl is a failure. `XmppProviderTests`
+and `MattermostProviderTests` belong with them and are asked for only where
+UltraNet has WebSockets: on the macOS 15 runner it has none (the build
+links Apple's libcurl, which lists no `ws` - so ChatCube Direct's relay,
+Mattermost's events and XMPP over WebSocket cannot connect on such a
+macOS), and the step says so as a warning on every run until that is put
+right.
+Windows cannot run those (they fork), and the Intel macOS runner is too
+slow for suites that wait on clocks. The stand-ins listen through
+`Tests/UltraIM/local_http_server.py`: Python's own `HTTPServer` looks up the
+name of `127.0.0.1` at every start, which stalls for fifteen seconds and
+more on a macOS runner.
 
 ## Provider: XMPP
 
