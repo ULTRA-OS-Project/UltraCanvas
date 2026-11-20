@@ -6,6 +6,8 @@
 // The model is deliberately UI-free: only std types, no framework headers.
 // FromHTML reads Word's list paragraphs as list items.
 // ConcatenateRunText counts the first run's line break.
+// Version: 1.18.0 - RichShape::ApplyPreset: connectors, double and notched arrows, more stars and polygons,
+//                   snipped and rounded rectangles, callouts, more flowchart shapes
 // Version: 1.17.0 - RichChart: Radar, Bubble and Stock; RichChartSeries::sizes, smooth; RichChart::filled
 // Version: 1.16.0 - UCRichDocument::ChartAsShapes; RichChart's stated axis ranges
 // Version: 1.15.0 - RichChart: a chart's data in its frame (RichTextFrame::chart)
@@ -696,8 +698,10 @@ struct RichShape {
     bool IsOpen() const;
     // Takes the outline of a DrawingML preset geometry (Word 97's shape types
     // map onto the same names): "rect", "roundRect", "ellipse", "line",
-    // "triangle", "diamond", "hexagon", "star5", "rightArrow", ... Returns
-    // false for a name it does not know, leaving a rectangle.
+    // "triangle", "diamond", "hexagon", "star5", "rightArrow", connectors
+    // ("bentConnector3", "curvedConnector3": open paths), "leftRightArrow",
+    // "star8", "decagon", "wedgeRectCallout", "flowChartDocument", ...
+    // Returns false for a name it does not know, leaving a rectangle.
     bool ApplyPreset(const std::string& preset);
 };
 

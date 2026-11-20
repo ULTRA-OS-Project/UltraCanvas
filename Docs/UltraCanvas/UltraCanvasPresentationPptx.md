@@ -10,9 +10,12 @@ password-protected deck is decrypted on the way in, through the same code as
 a protected `.xlsx` or `.docx` ([UltraCanvasOfficeEncryption](UltraCanvasOfficeEncryption.md)).
 
 For drawing a slide it also resolves what each shape takes from its layout,
-master and theme - place, text sizes, colours and alignment, anchor, fill,
-outline, the background - and `UltraCanvasPptxSlideRender.h` draws a slide
-from that as a picture (*Drawing a slide*, below). There is no writer.
+master and theme - place, the text's size, colour, font, alignment, spacing,
+indents and bullets, anchor and insets, fill, outline, outline shape, turn
+and mirroring, the background - and reads connectors, styled tables with
+merged cells, cropped pictures, charts and SmartArt.
+`UltraCanvasPptxSlideRender.h` draws a slide from that as a picture
+(*Drawing a slide*, below). There is no writer.
 
 An OpenDocument presentation (`.odp`, `.otp`, `.fodp`) is read into the same
 model by [UltraCanvasPresentationOdp](UltraCanvasPresentationOdp.md), so the
@@ -46,10 +49,13 @@ its header), a line `[Picture: <description>]` for each picture, and the
 speaker notes as a block quote opening "Notes:"; a rule between slides.
 
 UltraFiler's preview page (`UltraCanvasFilerWidget::TextPreviewLines`) shows
-the same outline: the first page of a deck's slide text on its tile and in
-the detail pane. A protected deck keeps its type glyph, since the preview has
-no password to ask for. UltraTexter opens a deck as the outline in its
-document editor, and refuses to save it back as a deck.
+the same outline in the detail pane; the file's thumbnail is its first slide
+as drawn. A protected deck keeps its type glyph, since the preview has no
+password to ask for. UltraTexter opens a deck as the outline in its document
+editor, and refuses to save it back as a deck. UltraViewer (MediaViewer)
+shows a deck as its slides, through
+[UltraCanvasPresentationPages](UltraCanvasPresentationPages.md), with a
+slide show.
 
 A file named `.pptx` (or `.odp`) that is no deck - damaged, or something else
 renamed - is refused by `LoadTextDocument` ("The file is not a valid
@@ -85,11 +91,16 @@ UCRichDocument outline = PptxPresentationToRichDocument(deck);
 
 | Type | Holds |
 |---|---|
-| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `pictures` (bytes by part, read `withPictures`) |
+| `PptxPresentation` | `slideWidth` / `slideHeight` (EMU: 914 400 per inch; 16:9 is 12 192 000 x 6 858 000), `slides` in presentation order, `themeColors` (`dk1`, `lt1`, `accent1` ... as `"RRGGBB"`), `majorFont` / `minorFont` (the theme's heading and body typefaces), `pictures` (bytes by part, read `withPictures`) |
 | `PptxSlide` | `number` (1-based), `hidden`, `title`, `shapes` back to front, `notes`, `background` and `textColor` (`"RRGGBB"`, empty: white / black) |
-| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `placeholder` (its type), `anchor`, `fontScale` (autofit), `fill`, `line` and `lineWidthPt`, `geometry`, `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`) and `altText` |
-| `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`, `align`; `Text()` joins the runs |
-| `PptxRun` | `text` (`"\n"` for a line break), `bold`, `italic`, `underline`, `sizePt` and `color` (resolved; 0 / empty when nothing says) |
+| `PptxShape` | `kind` (`Title`, `Subtitle`, `Body`, `Text`, `Table`, `Picture`, `Connector`, `Chart`), `name`, `x` / `y` / `width` / `height` in EMU (`placeInherited` when from the layout or master), `rotationDeg`, `flipH` / `flipV`, `placeholder` (its type), `anchor`, `fontScale` (autofit), the text's `insetLeft` ... `insetBottom` (EMU, -1: PowerPoint's own), `wrap`, `textRotation` (90 / 270 for vertical text), `fill` (and a gradient's `gradientStops`, `gradientAngleDeg`, `gradientRadial`), `line`, `lineWidthPt`, `dash`, `arrowStart` / `arrowEnd`, `geometry` (the preset) or `customPath` (a freeform's outline, 0..1 across the box), `paragraphs`; a table's `rows` (cells, each a list of paragraphs), `cellStyles` (`PptxCellStyle` each), `columnWidths` and `rowHeights`; a picture's `pictureTarget` (its part, e.g. `ppt/media/image1.png`), `altText` and crop (`cropLeft` ... `cropBottom`, a share of the picture); a chart's `chart` (`RichChart`) |
+| `PptxCellStyle` | a table cell's `fill`, `textColor` and `bold` (from the table style), its four borders (`color`, `widthPt`), `gridSpan` / `rowSpan`, `mergedAway` (covered by a merged cell), insets and `anchor` |
+| `PptxParagraph` | `runs`, `level` (0-based), `bullet`, `numbered`, `align`, `spaceBefore` / `spaceAfter` / `lineSpacing` (`PptxSpacing`: a share of a line or points), `marginLeft` and `indent` (EMU), `bulletChar`, `bulletFont`, `bulletColor`, `bulletSizePercent`, `numberScheme` (`a:buAutoNum`'s type) and `numberStartAt`; `Text()` joins the runs |
+| `PptxRun` | `text` (`"\n"` for a line break), `bold`, `italic`, `underline`, `strike`, `baseline` (per cent: > 0 superscript, < 0 subscript), `allCaps` / `smallCaps`, `highlight`, `hyperlink` (a URL, or `#slide3` for a jump within the deck), `sizePt`, `color` and `font` (resolved; 0 / empty when nothing says) |
+
+`PptxNumberLabel(scheme, n)` gives the label PowerPoint shows for item `n`
+of a numbering scheme: `"3."` (`arabicPeriod`), `"c)"` (`alphaLcParenR`),
+`"(iv)"` (`romanLcParenBoth`), `"BB."` for the 28th of `alphaUcPeriod`.
 
 `IsPptxPackage(path)` tells a deck by its content (a ZIP holding
 `ppt/presentation.xml`); a protected deck is a compound file instead, which
@@ -107,17 +118,48 @@ reads a package already in memory.
   or `buAutoNum`. The date, footer and slide-number placeholders are slide
   furniture and left out.
 - Groups are read through, their shapes in order and placed on the slide (the
-  group's offset and scaling applied). A placeholder that names no place
+  group's offset and scaling applied). Connectors (`p:cxnSp`) are read as
+  lines: their outline (`line`, a bent or curved connector's preset), dash
+  and arrowheads. A placeholder that names no place
   takes its layout's, then its master's (matched by `idx`, then by type; a
   centred title and a subtitle fall back to the master's title and body);
   `placeInherited` says so. One found nowhere keeps 0, 0, 0, 0.
-- A run's size, colour and its paragraph's alignment resolve from the run,
-  then the shape's list style, the layout's and master's placeholder, the
-  master's title or body text style (a text box: the deck's default text
-  style), the colour of a shape's style (`fontRef`) coming before the master's.
+- A run's size, colour, typeface, bold and italic, and its paragraph's
+  alignment, spacing, margin, indent and bullet (`buNone`, `buChar` with its
+  `buFont`, `buClr` and `buSzPct`, `buAutoNum` with its scheme and start)
+  resolve from the run and paragraph, then the shape's list style, the
+  layout's and master's placeholder, the master's title or body text style
+  (a text box: the deck's default text style), the colour of a shape's style
+  (`fontRef`) coming before the master's. `+mj-lt` and `+mn-lt` name the
+  theme's heading and body fonts; a run with no typeface anywhere takes the
+  body font.
   Theme colours (`schemeClr`) go through the master's colour map and the
   theme, with `lumMod`, `lumOff`, `tint` and `shade` applied. A shape with a
   fill or outline and no text is kept (a coloured bar, a circle).
+- A shape's turn and mirroring (`a:xfrm` `rot`, `flipH`, `flipV`), its
+  preset outline or its custom one (`a:custGeom`: lines, curves and arcs, as
+  one path), a gradient fill (`a:gradFill`: its stops, a linear angle or a
+  round one), its outline's dash (`a:prstDash`) and arrowheads (`headEnd`,
+  `tailEnd`), and its text's insets, `wrap="none"` and vertical text
+  (`vert`).
+- Tables: the table style the table names (`a:tableStyleId`, read from
+  `ppt/tableStyles.xml`; one the package does not define is PowerPoint's
+  built-in *Medium Style 2* in the accent its id names), its parts as the
+  table's flags (`firstRow`, `bandRow` ...) switch them on - whole table,
+  bands, edge columns, edge rows, the narrower over the wider - then each
+  cell's own fill, borders (`a:lnL` ...), margins and anchor; `gridSpan`,
+  `rowSpan`, `hMerge` and `vMerge` for merged cells.
+- Pictures: their crop (`a:srcRect`), outline and outline shape. A picture
+  in a placeholder, or the picture an embedded object (OLE) shows, too.
+- Charts (`c:chart` in a graphic frame): the chart part read by
+  [UltraCanvasDrawingML](UltraCanvasDrawingML.md), as the `.docx` reader
+  reads its charts - kind, series, categories, title, legend, axis ranges.
+- SmartArt: the drawing PowerPoint saves beside a diagram's data (the
+  `dsp:drawing` part the data model's `dsp:dataModelExt` names), read as
+  ordinary shapes placed in the diagram's frame. A diagram saved without
+  that drawing shows nothing.
+- Hyperlinks (`a:hlinkClick`): an external target as its URL, a jump to
+  another slide as `#slide<n>`.
 - Speaker notes: the body placeholder of the slide's notes slide.
 - `mc:AlternateContent` (Markup Compatibility, ECMA-376 Part 3), which
   PowerPoint wraps around what an older reader may not know - an equation,
@@ -125,23 +167,41 @@ reads a package already in memory.
   (or, inside a paragraph, text) is read, else the `mc:Fallback`; never both.
   An equation (`a14:m`) reads as the text of its `m:t` runs ("p=r−c"), a
   chart the reader cannot read as the picture its Fallback holds.
-- Not read: theme fonts, gradient, picture and pattern fills, effects,
-  charts, SmartArt, embedded objects, comments, animations and transitions.
-  Pictures are named; their bytes are kept with `withPictures`, not decoded.
+- Not read: picture and pattern fills, effects (shadows, glow, 3D), comments,
+  animations and transitions, embedded objects beyond the picture they show,
+  video and audio beyond the poster frame. Pictures are named; their bytes
+  are kept with `withPictures`, not decoded.
 
 ## Drawing a slide
 
 `RenderPptxSlide(deck, index, widthPx)` (`UltraCanvasPptxSlideRender.h`)
 draws a slide of a deck read `withPictures` as a `UCPixmap`, `widthPx` wide
 and as high as the deck's slide shape: the background, then the shapes back
-to front - rectangles, rounded rectangles and ellipses in their fill and
-outline, pictures stretched to their box (a grey box with the description
-when one cannot be decoded), tables in the theme's first accent (a header row
-and banded rows), and text in its box's insets at its sizes, colours and
-alignment, with bullets ("•", "–" on every second level) and numbers, at its
-anchor. Text in a placeholder too tall for its box is shrunk until it fits,
-down to 40 %. The text is set in the system font. UltraClipboard previews a
-copied deck's slides with it.
+to front, each turned and mirrored as it says:
+
+- outlines from `RichShape::ApplyPreset` (rectangles, rounded rectangles,
+  ellipses, triangles, arrows, stars, polygons, callouts, flowchart shapes,
+  bent and curved connectors) or the shape's custom path, in a solid or
+  gradient fill, outlined solid, dashed or dotted, with arrowheads on a
+  line's ends;
+- pictures cropped as the deck crops them, clipped to their outline (a grey
+  box with the description when one cannot be decoded);
+- tables in their cells' fills and borders, merged cells spanning;
+- charts drawn by the chart engine (`DrawRichDocumentChart`), laid out at
+  their size on the slide and scaled; a build without the engine draws a box
+  with the chart's title;
+- text in its box's insets at its sizes, colours and typefaces, aligned,
+  spaced and indented as its paragraphs say, the bullet in its character
+  (a Wingdings or Symbol code drawn as the Unicode character it shows), colour
+  and size hanging in the indent, numbers in their scheme; strike, super- and
+  subscript, capitals, highlight, and links in the theme's link colour,
+  underlined; vertical text turned, `wrap="none"` text on one line. Text in a
+  placeholder too tall for its box is shrunk until it fits, down to 40 %.
+
+A typeface the system does not have falls back as the text layout's font
+matching chooses. UltraClipboard previews a copied deck's slides with it,
+UltraViewer shows them, and the Filer's thumbnail of a deck is its first
+slide.
 
 <!-- doc-check: std::string path; void Show(std::shared_ptr<UltraCanvas::UCPixmap> slide); -->
 ```cpp
@@ -179,3 +239,16 @@ it is refused without the password, read with it, and opened by
 `UltraCanvasFileLoader::LoadTextDocument`. The same test checks UltraFiler's
 preview page: the plain deck's slides, titles first, and no page for the
 protected deck or a protected `.docx`.
+
+`Tests/PresentationPptxTest.cpp` reads `Tests/fixtures/pptx-features.pptx`,
+which python-pptx writes (`Tests/fixtures/make-pptx-features-fixture.py`):
+typefaces and the theme's body font, strike, superscript, capitals, a
+highlight, a hyperlink, a Wingdings bullet with its colour and size, an
+alphabetic numbering from 3, spacing, margins and hanging indents, insets,
+vertical text; a star turned, mirrored, filled with a gradient and outlined in
+dashes; a connector with an arrowhead and a bent one; a freeform outline; a
+table with merged cells, a filled cell with its own border and its style's
+header row; a chart; a cropped picture. A deck rebuilt in memory adds a
+SmartArt diagram with its drawing, a hyperlink to another slide and a table
+style from `ppt/tableStyles.xml`. Each slide is drawn and looked at where the
+shapes are (`UC_PPTX_TEST_DUMP=<dir>` writes the drawn slides out).

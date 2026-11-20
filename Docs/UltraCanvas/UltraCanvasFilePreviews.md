@@ -113,7 +113,7 @@ framework, once, on the first query:
 | `ebook-cover` | the cover the book declares | `epub`, `mobi`, `prc`, `azw`, `azw3` |
 | `video-poster` | a frame a short way into the clip | the containers the media codec registry decodes |
 | `word-processing` | a thumbnail: the first page as the document lays it out (`odt`, `docx`, `doc`); a preview document: the document, the first page's header and footer inline (those and `tex`) | `odt`, `docx`, `doc`, `tex` |
-| `powerpoint` | each slide's number and title, bullets, tables and notes | `pptx`, `pptm`, `ppsx`, `ppsm`, `potx`, `potm` |
+| `powerpoint` | a thumbnail: the first slide as drawn (`RenderPptxSlide`), as large as fits the tile at the slide's shape; a preview document: each slide's number and title, bullets, tables and notes | `pptx`, `pptm`, `ppsx`, `ppsm`, `potx`, `potm`, `odp`, `otp`, `fodp` |
 
 The Filer draws its own styling over these: an outline round a PDF page, a
 shaded edge on a book cover and on a document's page.

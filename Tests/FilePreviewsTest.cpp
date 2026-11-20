@@ -10,6 +10,7 @@
 // and a PowerPoint deck's text preview, an encrypted one refused; a
 // word-processing document's first page as its thumbnail. Headless.
 //
+// Version: 1.2.0 - a deck's thumbnail is its first slide drawn at the slide's shape; a protected one has none
 // Version: 1.1.1 - "the text is drawn": grey pixels darker than mid-grey, not darker than a fixed
 //                  dark grey - at 96 px a thin face (Liberation, unhinted) drew 10 such pixels
 //                  where DejaVu drew 36, and the check failed on the font, not the page
@@ -192,6 +193,27 @@ int main() {
         lines.clear();
         Check(!UltraCanvasFilerWidget::TextPreviewLines(fixtures + "/office-agile-encrypted.pptx", lines, tabular),
               "an encrypted .pptx has no preview");
+    }
+
+    std::printf("A deck's first slide\n");
+    {
+        Check(CanRenderFileThumbnail("pptx") && CanRenderFileThumbnail("odp") && CanRenderFileThumbnail("potx"),
+              "decks have a thumbnail");
+        FileThumbnailRequest request;
+        request.width = 160;
+        request.height = 160;
+        const auto slide = RenderFileThumbnailFromProvider(fixtures + "/office-pptx-sample.pptx", request);
+        Check(slide && slide->GetRawWidth() == 160 && slide->GetRawHeight() == 90,
+              "a .pptx: its first slide, 160 x 90 for a 16:9 deck in a 160 x 160 tile");
+        int dark = 0;
+        for (int y = 0; slide && y < slide->GetRawHeight(); ++y)
+            for (int x = 0; x < slide->GetRawWidth(); ++x)
+                if ((slide->GetPixel(x, y) & 0xFF) < 128) ++dark;
+        Check(dark > 20, "the slide's title is drawn on it");
+        const auto odp = RenderFileThumbnailFromProvider(fixtures + "/office-pptx-sample.odp", request);
+        Check(odp && odp->GetRawWidth() == 160, "an .odp: its first slide");
+        Check(!RenderFileThumbnailFromProvider(fixtures + "/office-agile-encrypted.pptx", request),
+              "a protected deck: no thumbnail (it keeps its type glyph)");
     }
 
     std::printf("A PDF's first page\n");
