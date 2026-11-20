@@ -1138,14 +1138,14 @@ CI runs the chat-network suites on Linux in the full pass, and since
 every Windows and macOS row; `TelegramTdlibTests` where the packages ship a
 TDLib (Windows x64, macOS arm64 - no library there is a failure);
 `DirectProviderTests`' envelopes and store on Windows; and the suites that
-sign in to a python stand-in (Signal, IRC, Mastodon, Zulip) on the Apple
-silicon row, where no python3 or openssl is a failure. `XmppProviderTests`
-and `MattermostProviderTests` belong with them and are asked for only where
-UltraNet has WebSockets: on the macOS 15 runner it has none (the build
-links Apple's libcurl, which lists no `ws` - so ChatCube Direct's relay,
-Mattermost's events and XMPP over WebSocket cannot connect on such a
-macOS), and the step says so as a warning on every run until that is put
-right.
+sign in to a python stand-in (Signal, IRC, XMPP, Mastodon, Mattermost,
+Zulip) on the Apple silicon row, where no python3 or openssl is a failure.
+`XmppProviderTests` and `MattermostProviderTests` were what showed, on their
+first run there, that UltraNet opened no WebSocket on the macOS 15 runner:
+the build links Apple's libcurl, which lists no `ws`. UltraNet has a
+WebSocket client of its own for such a libcurl since (see *Two clients
+behind the one API* in `UltraNet/README.md`), and on that row the two
+suites - and with them ChatCube Direct's relay connection - run on it.
 Windows cannot run those (they fork), and the Intel macOS runner is too
 slow for suites that wait on clocks. The stand-ins listen through
 `Tests/UltraIM/local_http_server.py`: Python's own `HTTPServer` looks up the

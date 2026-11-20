@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <exception>
 #include <functional>
+#include <cstdlib>
 #include <ostream>
 #include <sstream>
 #include <string>
@@ -85,9 +86,36 @@ std::string EqMessage(const char* expr, const A& a, const B& b) {
     return os.str();
 }
 
+// Two switches from the environment, for a run that is made for some of the
+// tests (CTest's UltraNetOwnWebSocket; CI):
+//   ULTRANET_TEST_FILTER   only the tests whose names begin with it are run;
+//   ULTRANET_TEST_NO_SKIP  a test whose name begins with it (or with one of
+//                          them, comma-separated) and that skips counts as
+//                          failed - where what it needs is known to be
+//                          there, "skipped" means it was not tested.
+inline std::string EnvironmentSwitch(const char* name) {
+    const char* value = std::getenv(name);   // path-string-ok: a test switch, ASCII
+    return value ? std::string(value) : std::string();
+}
+
+// Whether `name` begins with one of the comma-separated `prefixes`.
+inline bool BeginsWithOneOf(const std::string& name, const std::string& prefixes) {
+    std::size_t start = 0;
+    while (start < prefixes.size()) {
+        std::size_t end = prefixes.find(',', start);
+        if (end == std::string::npos) end = prefixes.size();
+        if (end > start && name.compare(0, end - start, prefixes, start, end - start) == 0) return true;
+        start = end + 1;
+    }
+    return false;
+}
+
 inline int RunAllTests() {
+    const std::string filter = EnvironmentSwitch("ULTRANET_TEST_FILTER");
+    const std::string noSkip = EnvironmentSwitch("ULTRANET_TEST_NO_SKIP");
     std::fprintf(stdout, "Running %zu UltraNet tests\n", Registry().size());
     for (auto& t : Registry()) {
+        if (!filter.empty() && t.name.rfind(filter, 0) != 0) continue;
         g_currentName    = t.name;
         g_currentFailed  = false;
         g_currentSkipped = false;
@@ -99,8 +127,12 @@ inline int RunAllTests() {
             g_currentFailed = true;
             std::fprintf(stderr, "\n    EXCEPTION: %s", e.what());
         }
-        if (g_currentSkipped)      { ++g_skipped; std::fprintf(stdout, "\n"); }
-        else if (g_currentFailed)  { ++g_failed;  std::fprintf(stdout, "\n  -> FAIL\n"); }
+        if (g_currentSkipped && !g_currentFailed && BeginsWithOneOf(t.name, noSkip)) {
+            g_currentFailed = true;
+            std::fprintf(stderr, "\n    FAIL: skipped, in a run that must not skip it (ULTRANET_TEST_NO_SKIP)");
+        }
+        if (g_currentFailed)       { ++g_failed;  std::fprintf(stdout, "\n  -> FAIL\n"); }
+        else if (g_currentSkipped) { ++g_skipped; std::fprintf(stdout, "\n"); }
         else                       { ++g_passed;  std::fprintf(stdout, "ok\n"); }
     }
     std::fprintf(stdout, "\n%d passed, %d failed, %d skipped\n",
