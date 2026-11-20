@@ -1207,6 +1207,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # ... and written (a PptxPresentation, or a document laid out as a deck)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationPptxWriter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPresentationOdpWriter.cpp
         # ... and a slide drawn as a picture from what it reads (previews)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPptxSlideRender.cpp
         # ... and the slides as a document's pages, for the page views (UltraViewer)
@@ -1222,6 +1223,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentChart.cpp
         # DrawingML charts and colours, read alike from .docx, .pptx and .xlsx
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDrawingML.cpp
+        # ... and OpenDocument's chart objects, alike from .odt and .odp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOdfChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextFormatBar.cpp
         # Its pages, for the printers that draw rather than take its PDF.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextPrint.cpp

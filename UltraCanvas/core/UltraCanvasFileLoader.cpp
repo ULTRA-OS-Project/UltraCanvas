@@ -941,7 +941,7 @@ namespace UltraCanvas {
         bool TextDocumentWrites(const MediaFormatInfo& format) {
             const WordDocumentFormat type = WordDocumentFormatFromExtension(format.extension);
             return format.canSave && (type == WordDocumentFormat::Odt || type == WordDocumentFormat::Docx ||
-                                      IsPptxExtension(format.extension));
+                                      IsPptxExtension(format.extension) || IsOdpExtension(format.extension));
         }
     } // namespace
 
@@ -961,7 +961,7 @@ namespace UltraCanvas {
                                                  std::string& outError, const std::string& password) {
         // A PowerPoint path: the document laid out as a deck, a slide per
         // first-level heading.
-        if (IsPptxExtension(filePath))
+        if (IsPptxExtension(filePath) || IsOdpExtension(filePath))
             return SavePresentation(PptxPresentationFromRichDocument(document), filePath, outError, password);
         return UCWordDocumentIO::Save(filePath, document, outError, password);
     }
@@ -969,8 +969,19 @@ namespace UltraCanvas {
     bool UltraCanvasFileLoader::SavePresentation(const PptxPresentation& deck, const std::string& filePath,
                                                  std::string& outError, const std::string& password) {
         outError.clear();
+        if (IsOdpExtension(filePath)) {
+            // ODF's encryption is read, not written: refused rather than
+            // saved unprotected.
+            if (!password.empty()) {
+                outError = "An OpenDocument presentation cannot be saved with a password; save it as .pptx to "
+                           "keep it protected: " + filePath;
+                return false;
+            }
+            return WriteOdpPresentation(deck, filePath, outError);
+        }
         if (!IsPptxExtension(filePath)) {
-            outError = "Presentations are saved as PowerPoint files (.pptx, .potx, .ppsx): " + filePath;
+            outError = "Presentations are saved as PowerPoint (.pptx, .potx, .ppsx) or OpenDocument (.odp, .otp, "
+                       ".fodp) files: " + filePath;
             return false;
         }
         return WritePptxPresentation(deck, filePath, outError, password);

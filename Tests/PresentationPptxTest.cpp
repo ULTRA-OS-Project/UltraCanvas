@@ -17,9 +17,12 @@
 //   * the writer: the fixture, the python-pptx sample and a protected copy
 //     written and read back, field by field and drawn side by side; the
 //     package kinds; a document laid out as a deck and a deck's outline read
-//     back as its slides; UltraCanvasFileLoader saving a document as .pptx.
+//     back as its slides; UltraCanvasFileLoader saving a document as .pptx;
+//   * the OpenDocument writer: the same decks as .odp, .fodp and .otp, read
+//     back by the .odp reader; a document saved as .odp; a password refused.
 // UC_PPTX_TEST_DUMP=<dir> writes the drawn slides there as .ppm, and the
 // written decks as .pptx, to look at (or open in PowerPoint / LibreOffice).
+// Version: 1.2.0 - the OpenDocument writer: .odp, .fodp and .otp read back, a document saved as .odp
 // Version: 1.1.0 - the writer: round trips, a password, the package kinds, a document as a deck
 // Version: 1.0.0
 // Last Modified: 2026-11-20
@@ -27,6 +30,7 @@
 
 #include "UltraCanvasPptxSlideRender.h"
 #include "UltraCanvasPresentationPptx.h"
+#include "UltraCanvasPresentationOdp.h"
 #include "UltraCanvasZipPackage.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasOfficeEncryption.h"
@@ -648,6 +652,126 @@ void TestDocumentAsDeck() {
           "LoadTextDocument opens it as its slides' outline");
 }
 
+void TestOdpWriter() {
+    std::cout << "\n=== The OpenDocument writer ===\n";
+    PptxPresentation features, sample;
+    std::string error;
+    if (!ReadPptxPresentation(Fixture("pptx-features.pptx"), features, error, "", true) ||
+        !ReadPptxPresentation(Fixture("office-pptx-sample.pptx"), sample, error, "", true)) {
+        Check(false, "the fixtures read (" + error + ")");
+        return;
+    }
+    // The features deck: what the .odp reader reads of it.
+    std::vector<uint8_t> bytes;
+    PptxPresentation back;
+    Check(WriteOdpPresentationToMemory(features, bytes, error) && ReadOdpPresentationFromMemory(bytes, back, error) &&
+              back.slides.size() == 3,
+          "the features deck written as .odp and read back (" + error + ")");
+    DumpDeck(bytes, "written-features.odp");
+    if (back.slides.size() == 3) {
+        Check(back.slideWidth == features.slideWidth && back.slideHeight == features.slideHeight, "the slide size");
+        Check(back.slides[0].title == "Text" && back.slides[1].title == "Shapes" && back.slides[2].title == "Table and chart",
+              "the titles");
+        const PptxShape* box = Named(back.slides[0], "TextBox 2");
+        Check(box && box->paragraphs.size() == 4 && box->paragraphs[0].Text() == "Serif struck 2 caps marked link" &&
+                  box->paragraphs[1].bullet && !box->paragraphs[1].numbered && box->paragraphs[2].numbered &&
+                  box->paragraphs[3].Text() == "Fourth",
+              "the text box: its runs' text with the spaces between them, a bullet, a numbered item");
+        const PptxShape* table = OfKind(back.slides[2], PptxShapeKind::Table);
+        Check(table && table->rows.size() == 3 && table->rows[0].size() == 3 && table->rows[2][2][0].Text() == "R3C3" &&
+                  table->rows[1][1].empty(),
+              "the table: its cells, a merged one covered");
+        const PptxShape* chart = OfKind(back.slides[2], PptxShapeKind::Chart);
+        Check(chart && chart->chart.kind == RichChart::Kind::Column && chart->chart.title == "Sales" &&
+                  chart->chart.series.size() == 2 && chart->chart.series[1].values.size() == 3 &&
+                  chart->chart.series[1].values[2] == 4.0,
+              "the chart, as a chart object read back");
+        const PptxShape* picture = OfKind(back.slides[2], PptxShapeKind::Picture);
+        UCZipPackageReader zip;
+        std::string mimetype, manifest;
+        Check(picture && zip.OpenFromMemory(bytes) && zip.ReadEntry("mimetype", mimetype) &&
+                  mimetype == "application/vnd.oasis.opendocument.presentation" &&
+                  zip.ReadEntry("META-INF/manifest.xml", manifest) && Contains(manifest, picture->pictureTarget) &&
+                  Contains(manifest, "Object 1/content.xml"),
+              "the package: its media type, the picture and the chart object in the manifest");
+    }
+
+    // The sample: titles, the hidden slide, the notes, the outline.
+    PptxPresentation sampleBack;
+    Check(WriteOdpPresentationToMemory(sample, bytes, error) && ReadOdpPresentationFromMemory(bytes, sampleBack, error) &&
+              sampleBack.slides.size() == sample.slides.size(),
+          "the python-pptx sample written as .odp and read back");
+    DumpDeck(bytes, "written-sample.odp");
+    if (sampleBack.slides.size() == sample.slides.size()) {
+        bool same = true;
+        for (size_t i = 0; i < sample.slides.size(); ++i)
+            same = same && sampleBack.slides[i].title == sample.slides[i].title &&
+                   sampleBack.slides[i].hidden == sample.slides[i].hidden &&
+                   sampleBack.slides[i].notes.size() == sample.slides[i].notes.size();
+        Check(same, "titles, the hidden slide and the speaker notes");
+        const std::string before = PptxPresentationToRichDocument(sample).ToPlainText();
+        const std::string after = PptxPresentationToRichDocument(sampleBack).ToPlainText();
+        Check(before == after, "the outline of the written deck is the original's");
+        if (before != after) std::cout << "--- before\n" << before << "\n--- after\n" << after << "\n";
+    }
+
+    // A mirrored shape: mirrored in its own outline (and its gradient), as
+    // PowerPoint mirrors it before turning it - not with ODF's mirror, which
+    // comes after the turn and leaves the fill alone.
+    {
+        PptxPresentation flipped;
+        PptxSlide slide;
+        PptxShape arrow;
+        arrow.geometry = "rightArrow";
+        arrow.x = arrow.y = 914400;
+        arrow.width = 1828800;
+        arrow.height = 914400;
+        arrow.rotationDeg = 30;
+        arrow.flipH = true;
+        arrow.fill = "FF0000";
+        arrow.gradientStops = {{0.0f, "FF0000"}, {1.0f, "0000FF"}};
+        arrow.gradientAngleDeg = 0;
+        slide.shapes.push_back(arrow);
+        flipped.slides.push_back(slide);
+        std::string content, common;
+        UCZipPackageReader package;
+        Check(WriteOdpPresentationToMemory(flipped, bytes, error) && package.OpenFromMemory(bytes) &&
+                  package.ReadEntry("content.xml", content) && package.ReadEntry("styles.xml", common) &&
+                  !Contains(content, "draw:mirror-horizontal") &&
+                  Contains(content, "draw:enhanced-path=\"M 21600 5400") && Contains(common, "draw:angle=\"270deg\"") &&
+                  Contains(content, "draw:transform=\"rotate (-0.523599)"),
+              "a mirrored arrow: its outline mirrored, its gradient turned the other way, then the shape turned");
+    }
+
+    // Flat, and a template.
+    Check(WriteOdpPresentationToMemory(features, bytes, error, "fodp") && bytes.size() > 5 && bytes[0] == '<' &&
+              ReadOdpPresentationFromMemory(bytes, back, error) && back.slides.size() == 3 &&
+              OfKind(back.slides[2], PptxShapeKind::Chart) != nullptr,
+          "a flat .fodp: one XML document, read back with its chart");
+    DumpDeck(bytes, "written-features.fodp");
+    UCZipPackageReader templ;
+    std::string mimetype;
+    Check(WriteOdpPresentationToMemory(sample, bytes, error, "otp") && templ.OpenFromMemory(bytes) &&
+              templ.ReadEntry("mimetype", mimetype) && mimetype == "application/vnd.oasis.opendocument.presentation-template",
+          "a template names itself one");
+
+    // Through the file loader.
+    const std::string dir = TempDir();
+    UCRichDocument document = UCRichDocument::FromMarkdown("# Agenda\n\n- First\n- Second\n\n# Numbers\n\n1. One\n2. Two\n");
+    Check(UltraCanvasFileLoader::SaveTextDocument(document, dir + "/document.odp", error),
+          "SaveTextDocument writes an .odp (" + error + ")");
+    auto opened = UltraCanvasFileLoader::LoadTextDocument(dir + "/document.odp", error);
+    Check(opened && Contains(opened->ToPlainText(), "1. Agenda") && Contains(opened->ToPlainText(), "Second") &&
+              Contains(opened->ToPlainText(), "2. Numbers"),
+          "LoadTextDocument opens it as its slides' outline");
+    Check(UltraCanvasFileLoader::SavePresentation(sample, dir + "/sample.fodp", error) &&
+              ReadOdpPresentation(dir + "/sample.fodp", back, error) && back.slides.size() == sample.slides.size(),
+          "SavePresentation writes a .fodp");
+    Check(!UltraCanvasFileLoader::SavePresentation(sample, dir + "/locked.odp", error, "secret") &&
+              Contains(error, "password"),
+          "an OpenDocument presentation with a password is refused, not saved unprotected");
+}
+
 } // namespace
 
 int main() {
@@ -657,6 +781,7 @@ int main() {
     TestWriterFeatures();
     TestWriterSample();
     TestDocumentAsDeck();
+    TestOdpWriter();
     std::cout << "\n" << (g_failures == 0 ? "All checks passed" : "FAILURES: " + std::to_string(g_failures)) << "\n";
     return g_failures == 0 ? 0 : 1;
 }
