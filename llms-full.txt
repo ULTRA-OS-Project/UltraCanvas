@@ -33908,6 +33908,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 - [Keyboard](#keyboard)
 - [Directory scanning](#directory-scanning)
 - [Folder modifications](#folder-modifications)
+  - [Operations in the background](#operations-in-the-background)
   - [Finished copies and moves](#finished-copies-and-moves)
 - [File list (search results)](#file-list-search-results)
   - [Growing a file list while it is produced](#growing-a-file-list-while-it-is-produced)
@@ -36946,6 +36947,29 @@ filer->onFolderModified      = [this](const std::string& f) { tree.Resync(f); hi
 filer->onFolderChangedOnDisk = [this](const std::string& f) { tree.Resync(f); };
 ```
 
+### Operations in the background
+
+A host that sets `onBackgroundProgress` gets a **Run in background** button in
+the progress window of a copy, move, delete, pack or unpack. Pressed, the
+window closes and the work goes on; from then on the widget calls
+`onBackgroundProgress(progress)` on every tick (ten times a second) with a
+`FilerBackgroundProgress`: `active`, `title` ("Copying", "Extracting"), the
+route `from` / `to`, `fraction` (0..1; negative when no total is known),
+`currentFile`, the `figures` (`ProgressFigures`) and `paused`. Once more with
+`active == false` when the operation ends or its window is brought back.
+`HasBackgroundOperation()` tells whether one is running there;
+`BringOperationToFront()` opens its window again (paused work opens paused).
+The next archives of an extract queue start in the background too, until the
+queue is through. Without `onBackgroundProgress` the button is not offered.
+
+```cpp
+filer->onBackgroundProgress = [this](const FilerBackgroundProgress& p) {
+    statusGauge->SetVisible(p.active);
+    if (p.active) statusGauge->SetValue(p.fraction < 0 ? 0 : 100.0 * p.fraction);
+};
+showButton->onClick = [this]() { filer->BringOperationToFront(); };
+```
+
 ### Finished copies and moves
 
 `onTransferFinished(result)` fires once a paste, a drop or a Move to / Copy to
@@ -37137,6 +37161,7 @@ reports what the system hides, not what the host asked for.
 | `onFolderChangedOnDisk(folderPath)` | The folder watch saw the shown folder change on disk and the display re-listed it: another program's change, an entry deleted here that Windows listed until a program let go, or the folder itself gone (the display has moved up) — see [Folder modifications](#folder-modifications) |
 | `onTransferFinished(result)` | A copy or move ended — what arrived where — see [Finished copies and moves](#finished-copies-and-moves) |
 | `onDeleteFinished(result)` | A delete ended — what went, to the trash or for good — see [Finished copies and moves](#finished-copies-and-moves) |
+| `onBackgroundProgress(progress)` | An operation sent to the background from its progress window: its progress on every tick, and once with `active == false` at its end - see [Operations in the background](#operations-in-the-background) |
 | `onViewTypeChanged(viewType)` | View switched (API or Display > Type) |
 | `onSortChanged(field, ascending)` | Sort changed (API, menu or header click) |
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
@@ -63446,10 +63471,11 @@ dlg->Close();
 | `SetProgress(double fraction)` | `0..1`, clamped. A **negative** value means the total is not known: the ring shows a busy sweep and the centre reads `...` instead of inventing a percentage. |
 | `SetCaption(text)` | The line above the ring. |
 | `SetDetail(text)` | What is being worked on now. Long text is ellipsized from the left, so the window keeps the height it opened with. |
-| `Show(parent, title, caption, onCancel, ProgressDialogOptions)` | The same with the transfer layout (below): `from` / `to` for the route chips, `figures` for the strip with an Items cell (`items`) and a Size cell (`bytes`), `onPause` for a Pause / Resume button. With a route the window's title is the headline. |
+| `Show(parent, title, caption, onCancel, ProgressDialogOptions)` | The same with the transfer layout (below): `from` / `to` for the route chips, `figures` for the strip with an Items cell (`items`) and a Size cell (`bytes`), `onPause` for a Pause / Resume button (`startPaused` when the work is paused already), `onBackground` for a "Run in background" button (below). With a route the window's title is the headline. |
 | `SetFigures(ProgressFigures)` | What is done (`doneItems`, `doneBytes`) and, where the work knows it, the total (`totalItems`, `totalBytes`; 0 = not known, and the cell shows what is done alone). Cheap on every tick. |
 | `IsCancelled()` | True once the user asked to cancel. |
 | `IsPaused()` | True while Pause is pressed. |
+| `IsInBackground()` | True once "Run in background" closed the window. |
 | `FormatDuration(seconds)`, `FormatBytes(bytes)` | "9 s", "2 min", "1 h 5 min"; "742 MB", "1.2 GB" - as the window shows them. |
 | `Close()` | Takes the window down. Safe to call twice, and safe after the user closed it. |
 
@@ -63457,6 +63483,23 @@ dlg->Close();
 Escape, the title bar. The dialog only *reports* the cancel; stopping the work
 is the caller's job, and so is deciding what a cancelled operation leaves
 behind.
+
+## Run in background
+
+With `ProgressDialogOptions::onBackground` set, a **Run in background** button
+sits beside Pause. It closes the window without cancelling: `onCancel` does not
+fire, `IsInBackground()` turns true, and `onBackground` is called once the
+window is gone. The work goes on; showing its progress elsewhere (a status
+bar) is the caller's job, and so is opening a new window when the user wants
+it back - with `startPaused = true` if the work was paused meanwhile, so the
+button reads Resume.
+
+```cpp
+ProgressDialogOptions options;
+options.onPause = [&](bool paused) { job.paused = paused; };
+options.onBackground = [&]() { job.inBackground = true; };   // the status bar takes over
+auto dlg = UltraCanvasProgressDialog::Show(window.get(), "Copying", "", onCancel, options);
+```
 
 ## The transfer layout
 
@@ -112598,14 +112641,6 @@ without the key. Image thumbnails are not
 encrypted. A program running as you can read the clipboard itself, so the
 encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
-
-==============================================================================
-FILE: Docs/UltraClipboard/changelog.d/slide-previews-as-drawn.md
-==============================================================================
-
-- **Copied slides preview as they look**: their fonts, spacing and bullets,
-  turned and freeform shapes, gradients, connectors and arrowheads, styled
-  tables with merged cells, cropped pictures, charts and SmartArt.
 
 ==============================================================================
 FILE: Docs/UltraNotifications/README.md
