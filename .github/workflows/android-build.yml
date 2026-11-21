@@ -21,6 +21,16 @@ name: Android build
 # library it built, so a run on a warm cache only builds the framework. A
 # manual dispatch from the Actions tab works against any branch.
 #
+# The chatcube job builds ChatCube for Android the same way: the sysroot with
+# its chatcube feature as well (UltraNet's OpenSSL, c-ares and curl, SQLite,
+# libsodium, Opus - android-bootstrap-sysroot.sh --with-chatcube), the core
+# with UltraNet and UltraDatabase on, libChatCube.so with the providers
+# linked in, packaged with ChatCube's own manifest and assets
+# (Apps/ChatCube/android/) into the ChatCube-<abi> artifact. It restores the
+# demo job's vcpkg cache when it has none of its own: a package's archive is
+# keyed by what it was built from, so only the libraries the demo lacks are
+# built again.
+#
 # Also once a week on main, to keep that cache warm for everyone. A cache a
 # pull request saves can be read by that pull request alone; only main's are
 # shared. Main otherwise builds this only when the Android build itself
@@ -39,6 +49,7 @@ on:
       - 'scripts/android-emulator-smoke.sh'
       - 'UltraCanvas/OS/Android/**'
       - 'Apps/DemoApp/**'
+      - 'Apps/ChatCube/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -51,6 +62,7 @@ on:
       - 'scripts/android-emulator-smoke.sh'
       - 'UltraCanvas/OS/Android/**'
       - 'Apps/DemoApp/**'
+      - 'Apps/ChatCube/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -331,6 +343,207 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: android-cmake-logs-${{ matrix.abi }}
+          path: |
+            build-android/CMakeFiles/CMakeOutput.log
+            build-android/CMakeFiles/CMakeError.log
+            build-android/CMakeFiles/CMakeConfigureLog.yaml
+          if-no-files-found: ignore
+
+  # ChatCube for Android: as the demo above, with the sysroot's chatcube
+  # feature and ChatCube's library, manifest and assets.
+  chatcube:
+    name: android chatcube (${{ matrix.abi }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            triplet: arm64-android
+          - abi: x86_64
+            triplet: x64-android
+    env:
+      ABI: ${{ matrix.abi }}
+      TRIPLET: ${{ matrix.triplet }}
+      VCPKG_CACHE: ${{ github.workspace }}/.vcpkg/binary-cache
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/.vcpkg/downloads
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Restore the apt package cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-android-host-ubuntu-24.04-
+          restore-keys: apt-debs-android-host-ubuntu-24.04-
+
+      - name: Put the cached packages in apt's cache
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
+      # As the demo job's, plus perl for OpenSSL's configure.
+      - name: Install host tools
+        timeout-minutes: 45
+        run: |
+          scripts/ci-apt.sh update
+          scripts/ci-apt.sh install --no-install-recommends \
+            autoconf autoconf-archive automake libtool gperf bison flex \
+            pkg-config python3 python3-venv curl zip unzip tar git imagemagick perl
+
+      # Its own cache, falling back to the demo job's (see the top).
+      - name: Restore vcpkg binary cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ env.VCPKG_CACHE }}
+          key: android-vcpkg-chatcube-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            android-vcpkg-chatcube-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-
+            android-vcpkg-chatcube-${{ env.TRIPLET }}-
+            android-vcpkg-${{ env.TRIPLET }}-
+
+      - name: Restore vcpkg downloads
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ env.VCPKG_DOWNLOADS }}
+            !${{ env.VCPKG_DOWNLOADS }}/tools
+            !${{ env.VCPKG_DOWNLOADS }}/temp
+          key: android-vcpkg-chatcube-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ env.TRIPLET }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            android-vcpkg-chatcube-downloads-
+            android-vcpkg-downloads-
+
+      - name: List the restored caches
+        id: caches-before
+        run: |
+          mkdir -p "$VCPKG_CACHE" "$VCPKG_DOWNLOADS"
+          echo "binary=$(find "$VCPKG_CACHE" -type f -printf '%P %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "downloads=$(find "$VCPKG_DOWNLOADS" -maxdepth 1 -type f -printf '%f %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Build the sysroot (with ChatCube's libraries)
+        timeout-minutes: 120
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          export UC_ANDROID_SYSROOT="$RUNNER_TEMP/android-sysroot"
+          mkdir -p "$VCPKG_CACHE"
+          export VCPKG_BINARY_SOURCES="clear;files,$VCPKG_CACHE,readwrite"
+          scripts/android-bootstrap-sysroot.sh --with-chatcube "$ABI"
+
+      - name: List the caches after the build
+        id: caches-after
+        if: always()
+        run: |
+          mkdir -p "$VCPKG_CACHE" "$VCPKG_DOWNLOADS"
+          echo "binary=$(find "$VCPKG_CACHE" -type f -printf '%P %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "downloads=$(find "$VCPKG_DOWNLOADS" -maxdepth 1 -type f -printf '%f %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Save vcpkg binary cache
+        if: always() && steps.caches-after.outputs.binary != steps.caches-before.outputs.binary
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ env.VCPKG_CACHE }}
+          key: android-vcpkg-chatcube-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save vcpkg downloads
+        if: always() && steps.caches-after.outputs.downloads != steps.caches-before.outputs.downloads
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ env.VCPKG_DOWNLOADS }}
+            !${{ env.VCPKG_DOWNLOADS }}/tools
+            !${{ env.VCPKG_DOWNLOADS }}/temp
+          key: android-vcpkg-chatcube-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ env.TRIPLET }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload vcpkg logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-chatcube-vcpkg-logs-${{ matrix.abi }}
+          path: |
+            .vcpkg/vcpkg/buildtrees/*/*.log
+          if-no-files-found: ignore
+
+      # The demo job's configure, with UltraNet and UltraDatabase on: what
+      # ChatCube and its providers are built on.
+      - name: Configure
+        run: |
+          sysroot="$RUNNER_TEMP/android-sysroot/$TRIPLET"
+          export PKG_CONFIG_LIBDIR="$sysroot/lib/pkgconfig:$sysroot/share/pkgconfig"
+          cmake -G Ninja -B build-android \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ABI" \
+            -DANDROID_PLATFORM=android-28 \
+            -DCMAKE_FIND_ROOT_PATH="$sysroot" \
+            -DPKG_CONFIG_ARGN=--static \
+            -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--error-limit=0 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DULTRACANVAS_ENABLE_NET=ON \
+            -DULTRACANVAS_ENABLE_DATABASE=ON
+
+      # -k 0: every failing source in one run.
+      - name: Build the ChatCube app library
+        run: |
+          sysroot="$RUNNER_TEMP/android-sysroot/$TRIPLET"
+          export PKG_CONFIG_LIBDIR="$sysroot/lib/pkgconfig:$sysroot/share/pkgconfig"
+          cmake --build build-android --target ChatCube --parallel "$(nproc)" -- -k 0
+
+      # As the demo's check, and ChatCube's providers must be in it: a
+      # provider the configure left out shows here, not on a phone.
+      - name: Check the ChatCube library
+        run: |
+          lib="$(find build-android -name libChatCube.so -print -quit)"
+          if [ -z "$lib" ]; then
+            echo "::error::libChatCube.so was not built"
+            exit 1
+          fi
+          bin="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          exported="$("$bin/llvm-readelf" --dyn-syms --wide "$lib" | awk '$7 != "UND" {print $8}')"
+          missing=0
+          for sym in ANativeActivity_onCreate $(grep -ho 'Java_org_ultraos_[A-Za-z0-9_]*(' UltraCanvas/OS/Android/*.cpp | tr -d '(' | sort -u); do
+            if grep -qx "$sym" <<<"$exported"; then
+              echo "exported: $sym"
+            else
+              echo "::error::$lib does not export $sym"
+              missing=1
+            fi
+          done
+          symbols="$("$bin/llvm-nm" -C --defined-only "$lib" 2>/dev/null || true)"
+          for provider in UltraIMDirect::DirectProvider UltraIMMatrix::MatrixProvider; do
+            if grep -q "$provider::" <<<"$symbols"; then
+              echo "linked in: $provider"
+            else
+              echo "::error::$lib has no $provider"
+              missing=1
+            fi
+          done
+          ls -l "$lib"
+          exit "$missing"
+
+      - name: Package the ChatCube APK
+        run: |
+          version="$(head -1 Docs/ChatCube/CHANGELOG.md | grep -o '\*[0-9][0-9.]*\*' | tr -d '*')"
+          scripts/android-package-apk.sh --abi "$ABI" \
+            --lib build-android/lib/libChatCube.so \
+            --out "apk/ChatCube-$ABI.apk" \
+            --ndk "$ANDROID_NDK_LATEST_HOME" \
+            --manifest Apps/ChatCube/android/AndroidManifest.xml \
+            --assets Apps/ChatCube/android/assets.txt \
+            --icon media/appicon/ChatCube.png \
+            --version-name "$version"
+
+      - name: Upload the ChatCube APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: ChatCube-${{ matrix.abi }}
+          path: apk/ChatCube-${{ matrix.abi }}.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload the CMake logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-chatcube-cmake-logs-${{ matrix.abi }}
           path: |
             build-android/CMakeFiles/CMakeOutput.log
             build-android/CMakeFiles/CMakeError.log

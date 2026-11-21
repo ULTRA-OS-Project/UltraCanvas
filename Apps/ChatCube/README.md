@@ -17,6 +17,13 @@ Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/
 The first ChatCube draft, which this replaces, is kept under
 [`Docs/ChatCube/v1-draft`](../../Docs/ChatCube/v1-draft/README.md).
 
+ChatCube also builds for Android, from the same code: the networks are
+linked into the app instead of loaded as modules, Telegram and Signal are
+left out, and on a narrow window - a phone, or a desktop window made
+narrower than 640 pixels - the chat list and the open chat take turns, with
+a back arrow. Building, packaging and what is not there yet:
+[`android/README.md`](android/README.md).
+
 ## Using it
 
 1. Start ChatCube, type your name, your e-mail address and your phone number

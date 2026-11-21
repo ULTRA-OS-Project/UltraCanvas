@@ -301,6 +301,15 @@ if(ANDROID)
     # UltraNet works on Android (Linux TLS/proxy sources + mandatory c-ares)
     # but needs curl/openssl/c-ares in the sysroot; opt in explicitly.
     set(ULTRACANVAS_ENABLE_NET OFF CACHE BOOL "Build the UltraNet networking library")
+    # ChatCube for Android (libChatCube.so, Apps/ChatCube/android/) is built
+    # once UltraNet and UltraDatabase are switched on, against the sysroot's
+    # chatcube feature (scripts/android-bootstrap-sysroot.sh --with-chatcube).
+    # Its providers are linked into the app library, not loaded as modules,
+    # and two of them cannot run there: Telegram's TDLib is a desktop library
+    # the configure would fetch, and Matrix's end-to-end encryption is a Rust
+    # crate with no Android cross-build yet (Matrix itself still builds).
+    set(ULTRAIM_FETCH_TDLIB OFF CACHE BOOL "Telegram provider: download TDLib's prebuilt libtdjson (the tdjson wheel) at configure time")
+    set(ULTRAIM_MATRIX_E2EE OFF CACHE BOOL "Matrix provider: end-to-end encryption through vodozemac (requires cargo)")
 endif()
 
 # ===== WEBASSEMBLY DEFAULTS (the core library and the demo as a web page) =====
