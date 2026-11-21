@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <title>UltraClipboard</title>
-  <desc>A teal clipboard with a dark clip and a white sheet carrying four lines of text, standing on its own with no tile behind it.</desc>
+  <desc>A teal clipboard with a dark gray clip and a white sheet carrying four lines of text, standing on its own with no tile behind it.</desc>
   <!-- board -->
   <rect x="36" y="30" width="184" height="218" rx="30" ry="30" fill="#0d9488"/>
   <!-- sheet -->
   <rect x="56" y="58" width="144" height="170" rx="14" ry="14" fill="#ffffff"/>
   <!-- clip: plate with a ring on top; the ring's hole is cut out -->
-  <path fill="#134e4a" fill-rule="evenodd" d="
+  <path fill="#4b5563" fill-rule="evenodd" d="
     M 128 8 a 22 22 0 0 1 22 22 v 4 h 12 a 14 14 0 0 1 14 14 v 18 a 14 14 0 0 1 -14 14 h -68 a 14 14 0 0 1 -14 -14 v -18 a 14 14 0 0 1 14 -14 h 12 v -4 a 22 22 0 0 1 22 -22 z
     M 128 21 a 9 9 0 1 0 0.01 0 z"/>
   <!-- text lines -->
