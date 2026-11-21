@@ -104,6 +104,8 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.58.0 - folderIconIsLineArt: a one-colour folder icon drawn in the view's text colour,
+//                  so a black line icon reads on a dark theme
 // Version: 1.57.0 - Run in background: onBackgroundProgress, HasBackgroundOperation,
 //                  BringOperationToFront - a long operation's window gives way to the host's status bar
 // Version: 1.56.0 - the progress window's figures: FileOperation and ArchiveJob count what is done
@@ -2103,6 +2105,14 @@ namespace UltraCanvas {
         // Music, Pictures, Videos) and with whatever the user set through
         // Extras > Set folder icon.
         std::function<std::string(const FilerEntry&)> folderIconProvider;
+
+        // Whether an icon folderIconProvider answered is one-colour line art
+        // (a black outline with no colours of its own, a cloud, a server),
+        // asked with the icon's path. True draws it as a mask in the view's
+        // text colour (FilerStyle::textColor, the theme's ink), so it reads
+        // on a dark theme, where drawn as it is it stays black. Unset, or
+        // false, draws the icon in its own colours.
+        std::function<bool(const std::string& iconPath)> folderIconIsLineArt;
 
         // The name an entry is drawn under, asked while the entry is drawn.
         // Return the name to show in place of the file name, or "" to keep it.

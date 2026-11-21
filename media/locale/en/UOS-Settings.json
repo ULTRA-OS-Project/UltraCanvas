@@ -57,6 +57,7 @@
   "Colour: Noto Color Emoji, the same pictures on every computer.": "Colour: Noto Color Emoji, the same pictures on every computer.",
   "Contrast:": "Contrast:",
   "Could not write {0}.": "Could not write {0}.",
+  "Could not write {0}: {1}": "Could not write {0}: {1}",
   "Dark": "Dark",
   "Desktop (as icons)": "Desktop (as icons)",
   "Dropped files": "Dropped files",
@@ -116,6 +117,7 @@
     "other": "Removed {n} registrations."
   },
   "Saved to {0}": "Saved to {0}",
+  "Saved to {0}. The look could not be saved to {1}: {2}": "Saved to {0}. The look could not be saved to {1}: {2}",
   "Saved.": "Saved.",
   "Saved. Applications started from now on draw emoji this way.": "Saved. Applications started from now on draw emoji this way.",
   "Saved. Applications started from now on use this language.": "Saved. Applications started from now on use this language.",

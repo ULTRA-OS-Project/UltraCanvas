@@ -344,6 +344,7 @@ three platforms wherever only the base directory differs:
 | `{STATE}` | `$XDG_STATE_HOME` or `~/.local/state` | `~/Library/Logs` | `%LOCALAPPDATA%` |
 | `{LOCALAPPDATA}` / `{APPDATA}` | — | — | `%LOCALAPPDATA%` / `%APPDATA%` |
 | `{WINDIR}` | — | — | `%SystemRoot%` |
+| `{PROGRAMDATA}` | — | — | `%ProgramData%` |
 | `{DOWNLOADS}` | `~/Downloads` | `~/Downloads` | `%USERPROFILE%\Downloads` |
 | `{TRASH}` | `~/.local/share/Trash` | `~/.Trash` | shell-managed |
 
@@ -360,7 +361,7 @@ accidentally point at `/Microsoft/Windows` on Linux.
 | Browser caches | Chrome, Chromium, Edge, Brave, Vivaldi, Opera, Firefox, Safari — cache directories only; logins, bookmarks and history are never named |
 | Thumbnail caches | The freedesktop thumbnail cache, Quick Look, Explorer's `thumbcache_*.db` / `iconcache_*.db` |
 | Log files | `~/Library/Logs`, `~/.local/state/**/*.log`, `.xsession-errors`, Windows CBS/DISM logs |
-| Crash reports | Diagnostic reports, `CrashReporter`, apport, core dumps, `CrashDumps`, Windows Error Reporting queues |
+| Crash reports | Diagnostic reports, `CrashReporter`, apport, core dumps, `CrashDumps`, Windows Error Reporting queues (per user, and machine-wide under `%ProgramData%`), blue-screen minidumps, `LiveKernelReports` dumps, `MEMORY.DMP` |
 | Package manager caches | npm, Yarn, pip, Gradle, Cargo, Go, Composer, Maven, NuGet |
 | Developer leftovers | Xcode derived data and archives, iOS Simulator caches, JetBrains caches, VS Code caches |
 | Installers and updates | Windows Update downloads, iOS software updates, old `.dmg`/`.pkg`/`.msi`/`.exe`/`.deb`/`.rpm`/AppImage files in Downloads |

@@ -146,10 +146,26 @@ struct TreeNodeIcon {
     int width = 16;        // Icon width
     int height = 16;       // Icon height
     bool visible = true;   // Visibility flag
+    bool drawnInTextColor = false;  // one-colour line icon: drawn in the row's text colour
 
     TreeNodeIcon() = default;
     TreeNodeIcon(const std::string& path, int w = 16, int h = 16);
 };
+```
+
+A black line icon (an outline with no colours of its own - a cloud, a
+server) drawn as it is stays black, which vanishes on a dark theme. Set
+`drawnInTextColor` and the tree draws it as a mask in the row's text colour:
+the theme's ink, the selection text colour on the selected row, a node's own
+`textColor` where it has one. Leave it off for a coloured icon - every colour
+in it would become the ink.
+
+```cpp
+TreeNodeData data;
+data.nodeId = "cloud";
+data.text = "Cloud Storage";
+data.leftIcon = TreeNodeIcon("media/icons/cloud.svg", 16, 16);
+data.leftIcon.drawnInTextColor = true;   // light on a dark theme, dark on a light one
 ```
 
 ### TreeNodeData Structure

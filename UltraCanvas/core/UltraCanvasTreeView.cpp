@@ -1552,10 +1552,9 @@ namespace UltraCanvas {
 
             // Draw left icon
             if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
-                ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
-                               Rect2Dd(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
-                                       node->data.leftIcon.width, node->data.leftIcon.height),
-                               ImageFitMode::Contain);
+                DrawNodeIcon(ctx, node, node->data.leftIcon,
+                             Rect2Dd(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
+                                     node->data.leftIcon.width, node->data.leftIcon.height));
                 textX += node->data.leftIcon.width + iconSpacing;
             }
 
@@ -1770,10 +1769,19 @@ namespace UltraCanvas {
         if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {
             int rightIconX = contentRect.Right() - node->data.rightIcon.width - textPadding - sbWidth;
 
-            ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
-                           Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
-                                   node->data.rightIcon.width, node->data.rightIcon.height),
-                           ImageFitMode::Contain);
+            DrawNodeIcon(ctx, node, node->data.rightIcon,
+                         Rect2Dd(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
+                                 node->data.rightIcon.width, node->data.rightIcon.height));
+        }
+    }
+
+    void UltraCanvasTreeView::DrawNodeIcon(IRenderContext *ctx, const TreeNode *node,
+                                           const TreeNodeIcon &icon, const Rect2Dd &rect) const {
+        if (!ctx || !node || icon.iconPath.empty()) return;
+        if (icon.drawnInTextColor) {
+            ctx->DrawMask(NodeTextColor(node), icon.iconPath, rect, ImageFitMode::Contain);
+        } else {
+            ctx->DrawImage(icon.iconPath, rect, ImageFitMode::Contain);
         }
     }
 

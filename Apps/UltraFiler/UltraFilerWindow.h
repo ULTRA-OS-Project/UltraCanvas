@@ -144,6 +144,7 @@
 #include "UltraCanvasPortableDevices.h" // phones and cameras over MTP / PTP
 #include "UltraCanvasNetworkPlaces.h"   // the network's computers and shares, WSL
 #include "Plugins/Charts/UltraCanvasPieChart.h"  // the drive cards' used / free pie
+#include "UltraCanvasImageElement.h"              // ... and the symbol for a drive with no size
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderIcons.h"
 #include "UltraFilerFolderViews.h"
@@ -1298,6 +1299,12 @@ private:
         // on the system drive): no volume is read for it - that would be the
         // system drive's - and the card says so instead.
         bool noOwnSize = false;
+        // An FTP server or a cloud account: UltraCloud says nothing of how
+        // full one is, so the card shows its symbol from the start.
+        bool neverSized = false;
+        // The picture in the ring's place when no size is known: a memory
+        // chip for a RAM disc, the server, the cloud, the phone.
+        std::shared_ptr<UltraCanvasImageElement> symbol;
     };
     std::shared_ptr<UltraCanvasContainer>       computerPane;
     std::shared_ptr<UltraCanvasFilerWidget>     computerFolders;  // Home + cloud folders

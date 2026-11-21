@@ -37,6 +37,7 @@ std::string RoamingAppDataDir();// Windows only
 std::string DownloadsDir();
 std::string TrashDir();         // ~/.local/share/Trash, ~/.Trash, "" on Windows
 std::string WindowsDir();       // %SystemRoot% ("C:/Windows"); "" elsewhere
+std::string ProgramDataDir();   // %ProgramData% ("C:/ProgramData"); "" elsewhere
 
 // ===== TOKEN EXPANSION =====
 // Replaces {TOKEN} occurrences in `pattern` and normalizes separators.
