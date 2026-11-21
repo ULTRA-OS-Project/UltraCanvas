@@ -65,6 +65,7 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.48.1 - the Computer page's drive cards follow a dark / light switch (ApplyLook rebuilds them)
 // Version: 1.48.0 - dark theme: the line-art icons (cloud, network, server, FTP, computer, phone)
 //                  in the tree and the file displays drawn in the theme's ink; any light
 //                  drive colour in the tree comes down to the ground's depth, not only the
@@ -1778,6 +1779,13 @@ void UltraFilerWindow::ApplyLook() {
     }
     ApplyTreeColors();   // the default drive rows have a light and a dark tint
     if (computerPane) computerPane->SetBackgroundColor(look.panel);
+    // The Computer page's drive cards take their colours when they are
+    // built: the ring's border and free slice, the percentage in its hole,
+    // the symbol's ink, the lines under it. A dark / light switch while the
+    // window is open left them in the old look - after dark to light the
+    // percentage was white on the white hole. Built again from the sizes
+    // already read (volumeSpaces), so nothing is measured again.
+    if (!computerDriveCards.empty()) RebuildComputerDriveCards(knownVolumes);
     ApplyTabStripStyle();   // the strips' colours are the theme's
     if (splitViewShown) StyleSplitHeaders();
     if (window) window->RequestRedraw();
