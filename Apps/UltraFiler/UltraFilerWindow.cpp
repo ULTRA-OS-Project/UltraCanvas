@@ -65,6 +65,9 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.48.0 - dark theme: any light drive colour in the tree comes down to the ground's
+//                  depth, not only the exact default; the Computer page shows a symbol (RAM
+//                  chip, server, cloud, phone) for a drive with no size, and why a phone has none
 // Version: 1.47.0 - Run in background: the operation on the status bar (words, bar, Show), its
 //                  bar's track in the theme's colour
 // Version: 1.46.1 - the Computer page's card of a RAM disc without a size of its own (Windows
@@ -5899,6 +5902,49 @@ void UltraFilerWindow::RunNextNetworkJob() {
     });
 }
 
+namespace {
+    // A light drive colour for a dark tree: the same hue, at the lightness a
+    // row tinted into the dark ground has (about 22 %), its saturation held
+    // to a quiet 45 % so a pastel does not turn into a loud blue. A colour
+    // already dark enough (luminance under 110) is returned as it is.
+    Color DarkVariantOfDriveColor(const Color& c, const Color& ground) {
+        const int luminance = (c.r * 299 + c.g * 587 + c.b * 114) / 1000;
+        if (luminance < 110) return c;
+        const float r = c.r / 255.0f, g = c.g / 255.0f, b = c.b / 255.0f;
+        const float maxC = std::max({r, g, b}), minC = std::min({r, g, b});
+        const float lightness = (maxC + minC) / 2.0f;
+        const float delta = maxC - minC;
+        if (delta < 0.02f) {
+            // Grey: a step above the ground, so the rows still stand out.
+            const auto up = [](uint8_t v) { return static_cast<uint8_t>(std::min(255, v + 22)); };
+            return Color(up(ground.r), up(ground.g), up(ground.b), 255);
+        }
+        float saturation = delta / (1.0f - std::fabs(2.0f * lightness - 1.0f));
+        float hue;
+        if (maxC == r)      hue = std::fmod((g - b) / delta, 6.0f);
+        else if (maxC == g) hue = (b - r) / delta + 2.0f;
+        else                hue = (r - g) / delta + 4.0f;
+        hue *= 60.0f;
+        if (hue < 0.0f) hue += 360.0f;
+        saturation = std::min(saturation, 0.45f);
+        const float l = 0.22f;
+        const float chroma = (1.0f - std::fabs(2.0f * l - 1.0f)) * saturation;
+        const float x = chroma * (1.0f - std::fabs(std::fmod(hue / 60.0f, 2.0f) - 1.0f));
+        const float m = l - chroma / 2.0f;
+        float rr = 0, gg = 0, bb = 0;
+        if (hue < 60)       { rr = chroma; gg = x; }
+        else if (hue < 120) { rr = x; gg = chroma; }
+        else if (hue < 180) { gg = chroma; bb = x; }
+        else if (hue < 240) { gg = x; bb = chroma; }
+        else if (hue < 300) { rr = x; bb = chroma; }
+        else                { rr = chroma; bb = x; }
+        const auto to8 = [m](float v) {
+            return static_cast<uint8_t>(std::clamp((v + m) * 255.0f + 0.5f, 0.0f, 255.0f));
+        };
+        return Color(to8(rr), to8(gg), to8(bb), 255);
+    }
+}
+
 void UltraFilerWindow::ApplyTreeColors() {
     if (!folderTree) return;
     folderTree->SetSelectionColor(settings.treeSelectedFolderColor);
@@ -5918,14 +5964,24 @@ void UltraFilerWindow::ApplyTreeColors() {
     // tree's default colour", which is the theme's ink).
     // The default drive colour is a light blue made for a light ground;
     // under a dark theme it is the accent tinted into the ground instead,
-    // so the drive rows stand out as quietly as they do in light. A colour
-    // the user chose is theirs, in either look.
+    // so the drive rows stand out as quietly as they do in light.
+    //
+    // Any other light colour drew the same light pastel band across a dark
+    // tree, with dark text on it - (228, 232, 250), a shade off the default,
+    // was reported from a settings file: every save writes the colour out,
+    // and the exact match above missed it. Under a dark theme a light colour keeps its
+    // hue and comes down to the ground's depth (DarkVariantOfDriveColor);
+    // a dark colour the user chose stays as it is, in either look.
     Color drive = settings.treeDriveBackgroundColor;
     const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
-    if (theme.dark && drive == UltraFilerSettings::kDefaultTreeDriveBackgroundColor) {
+    if (theme.dark) {
         const ThemeRoles& r = theme.roles;
-        const auto mix = [](uint8_t a, uint8_t b) { return static_cast<uint8_t>(a + (b - a) * 0.18); };
-        drive = Color(mix(r.ground.r, r.accent.r), mix(r.ground.g, r.accent.g), mix(r.ground.b, r.accent.b), 255);
+        if (drive == UltraFilerSettings::kDefaultTreeDriveBackgroundColor) {
+            const auto mix = [](uint8_t a, uint8_t b) { return static_cast<uint8_t>(a + (b - a) * 0.18); };
+            drive = Color(mix(r.ground.r, r.accent.r), mix(r.ground.g, r.accent.g), mix(r.ground.b, r.accent.b), 255);
+        } else {
+            drive = DarkVariantOfDriveColor(drive, r.ground);
+        }
     }
     const int luminance = (drive.r * 299 + drive.g * 587 + drive.b * 114) / 1000;
     const Color driveTextColor = luminance < 128 ? Colors::White : Color(32, 32, 36, 255);
@@ -8011,6 +8067,9 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         std::string under;   // the line at the foot of the card
         ComputerSection section = ComputerSection::All;   // the tree section it belongs to
         bool noOwnSize = false;   // a RAM disc that is a folder on the system drive
+        // The picture shown instead of the ring when no size is known.
+        std::string symbol;
+        bool neverSized = false;  // an FTP server or a cloud account
     };
     std::vector<CardSource> sources;
     // A RAM disc that is also a mounted volume (ImDisk's drive letter,
@@ -8020,7 +8079,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
     for (const MountedVolume& volume : volumes) {
         if (ramPaths.count(volume.path)) continue;
         sources.push_back({volume.path, DriveNodeLabel(volume), "drive.png", volume.path,
-                           ComputerSection::All});
+                           ComputerSection::All, false, "drive.png"});
     }
     if (remoteDrives) {
         for (const RemoteDrive& d : remoteDrives->Drives()) {
@@ -8030,7 +8089,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
             std::string under = DeviceKindWord(d.deviceKind);
             if (!d.serverUrl.empty()) under += " - " + d.serverUrl;   // the manufacturer
             sources.push_back({d.rootPath, d.displayName, DeviceIconFile(d.deviceKind), under,
-                               ComputerSection::All});
+                               ComputerSection::All, false, DeviceIconFile(d.deviceKind)});
         }
     }
     // The RAM discs, then the FTP servers and cloud accounts: in the
@@ -8042,16 +8101,18 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         std::string under = disc.mountPath;
         if (!disc.trueRam) under += " - " + Tr("on disk");
         sources.push_back({disc.mountPath, disc.name, "drive.png", under,
-                           ComputerSection::Ram, !disc.trueRam});
+                           ComputerSection::Ram, !disc.trueRam, "ram-chip.svg"});
     }
     if (remoteDrives) {
         // The server under the name, or for an account signed into through
         // the browser, the provider.
         for (const RemoteDrive& d : remoteDrives->Drives()) {
             if (d.isDevice) continue;
+            // An FTP / SFTP server by its server, the rest by the cloud.
+            const char* symbol = d.providerId == "ftp" ? "ftp.svg" : "cloud.svg";
             sources.push_back({d.rootPath, d.displayName, "cloud.svg",
                                d.serverUrl.empty() ? d.providerId : d.serverUrl,
-                               ComputerSection::Remote});
+                               ComputerSection::Remote, false, symbol, true});
         }
     }
 
@@ -8127,6 +8188,20 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         pie->onSliceClick = [this, path](size_t) { NavigateTo(path); };
         card->AddChild(pie);
 
+        // In the ring's place when no size is known (ApplyVolumeSpaceToCard
+        // swaps the two): what the drive is, drawn in the theme's muted ink
+        // so the black line icons read on a dark page too. Hidden is
+        // display: none, so the card keeps one picture's height.
+        auto symbol = CreateImageFromFile(id + "-symbol", 0, 0, kComputerPieSize, kComputerPieSize,
+                                          IconPath(source.symbol));
+        symbol->SetFitMode(ImageFitMode::Contain);
+        symbol->SetMaskColor(Look().inkMuted);
+        symbol->SetClickable(true);
+        symbol->onClick = [this, path]() { NavigateTo(path); };
+        symbol->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        symbol->SetVisible(false);
+        card->AddChild(symbol);
+
         // The drive's name is the button that opens it.
         card->AddChild(MakeToolButton(id + "-open", label, source.icon, 0,
                                       [this, path]() { NavigateTo(path); }));
@@ -8155,7 +8230,8 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         card->AddChild(mount);
 
         rowFor(source)->AddChild(card);
-        computerDriveCards.push_back({path, pie, usage, space, source.noOwnSize});
+        computerDriveCards.push_back({path, pie, usage, space, source.noOwnSize,
+                                      source.neverSized, symbol});
 
         // What is already known about the volume goes up at once; the fresh
         // reading replaces it when the worker answers. A volume never seen
@@ -8171,23 +8247,24 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
 }
 
 void UltraFilerWindow::ApplyVolumeSpaceToCard(const VolumeSpace& space) {
+    // Whether the worker has answered for this path: until it has, a drive
+    // shows a neutral ring rather than a symbol it may not keep.
+    const bool answered = volumeSpaces.count(space.path) != 0;
     for (ComputerDriveCard& card : computerDriveCards) {
         if (card.path != space.path || !card.pie) continue;
+        // A size to show: the ring. None to show - a RAM disc that is a
+        // folder on the system drive, an FTP server or cloud account, or a
+        // drive or phone that was asked and gave none - the symbol of what
+        // the drive is, in the ring's place: a grey ring reading "n/a" says
+        // nothing a picture of the drive does not say better.
+        const bool sized = !card.noOwnSize && space.known && space.totalBytes > 0;
+        const bool showSymbol = !sized && card.symbol &&
+                                (card.noOwnSize || card.neverSized || answered);
+        card.pie->SetVisible(!showSymbol);
+        if (card.symbol) card.symbol->SetVisible(showSymbol);
+
         std::vector<ChartDataPoint> slices;
-        if (card.noOwnSize) {
-            // A folder on the system drive: whatever its volume says is the
-            // system drive's, so the ring stays neutral and says why.
-            slices.emplace_back(1, 1.0, 0, "No size of its own", 1.0, Look().freeSlice);
-            card.pie->SetCenterKPI(Tr("n/a"), "");
-            auto data = std::make_shared<ChartDataVector>();
-            data->LoadFromArray(slices);
-            card.pie->SetDataSource(data);
-            if (card.usageLabel) card.usageLabel->SetText(Tr("Folder on the system drive"));
-            if (card.spaceLabel) card.spaceLabel->SetText(Tr("No size of its own"));
-            card.pie->RequestRedraw();
-            continue;
-        }
-        if (space.known && space.totalBytes > 0) {
+        if (sized) {
             const double used = static_cast<double>(VolumeUsedBytes(space));
             const double free = static_cast<double>(space.freeBytes);
             const double percent = VolumeUsedPercent(space);
@@ -8201,21 +8278,45 @@ void UltraFilerWindow::ApplyVolumeSpaceToCard(const VolumeSpace& space) {
             std::snprintf(kpi, sizeof kpi, "%.0f%%", percent);
             card.pie->SetCenterKPI(kpi, "used");
         } else {
-            // Nothing known (yet), or a drive that reports no size (an FTP
-            // server, a cloud account): a neutral full ring saying so in its
-            // hole, and "Size not available" under the name.
+            // Nothing known yet: a neutral full ring until the worker answers.
             slices.emplace_back(1, 1.0, 0, "Size not available", 1.0, Look().freeSlice);
             card.pie->SetCenterKPI(Tr("n/a"), "");
         }
         auto data = std::make_shared<ChartDataVector>();
         data->LoadFromArray(slices);
         card.pie->SetDataSource(data);
-        const bool sized = space.known && space.totalBytes > 0;
-        if (card.usageLabel) card.usageLabel->SetText(sized ? DescribeVolumeUsage(space) : std::string());
-        if (card.spaceLabel)
-            card.spaceLabel->SetText(sized ? DescribeVolumeSpace(space) : Tr("Size not available"));
+
+        std::string usage, spaceText;
+        if (card.noOwnSize) {
+            // A folder on the system drive: whatever its volume says is the
+            // system drive's, so the card says why there is no size.
+            usage = Tr("Folder on the system drive");
+            spaceText = Tr("No size of its own");
+        } else if (sized) {
+            usage = DescribeVolumeUsage(space);
+            spaceText = DescribeVolumeSpace(space);
+        } else if (!space.error.empty()) {
+            // A phone that was asked and gave none says why where the user
+            // can do something about it: one that shows no storage is locked,
+            // or was left on "charging only" when it was plugged in. Any
+            // other reason (the device's own words, English) goes to the
+            // debug output; the card keeps to what it can translate.
+            if (space.error.find("no storage") != std::string::npos) {
+                spaceText = Tr("Unlock the phone and allow file transfer");
+            } else {
+                spaceText = Tr("Size could not be read");
+                debugOutput << "UltraFiler: no size for " << space.path << ": " << space.error
+                            << std::endl;
+            }
+        } else {
+            spaceText = Tr("Size not available");
+        }
+        if (card.usageLabel) card.usageLabel->SetText(usage);
+        if (card.spaceLabel) card.spaceLabel->SetText(spaceText);
         card.pie->RequestRedraw();
+        if (card.symbol) card.symbol->RequestRedraw();
     }
+    if (computerPane) computerPane->InvalidateLayout();
 }
 
 void UltraFilerWindow::QueueVolumeSpaceQuery() {
@@ -8265,9 +8366,10 @@ void UltraFilerWindow::QueueVolumeSpaceQuery() {
             }
             VolumeSpace space;
             space.path = path;
-            std::string ignored;
+            std::string error;
             space.known = UltraCanvasPortableDevices::GetSpace(deviceId, space.totalBytes,
-                                                               space.freeBytes, ignored);
+                                                               space.freeBytes, error);
+            if (!space.known) space.error = error.empty() ? std::string("no answer") : error;
             spaces.push_back(space);
         }
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();

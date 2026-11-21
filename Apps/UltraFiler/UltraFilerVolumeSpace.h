@@ -32,6 +32,9 @@ struct VolumeSpace {
     uint64_t totalBytes = 0;   // capacity
     uint64_t freeBytes = 0;    // available to this user (not the root-reserved part)
     bool known = false;
+    // Why the size could not be read, where the source says (a phone that
+    // shows no storage while it is locked); empty otherwise.
+    std::string error;
 };
 
 // Reads the sizes of the volume mounted at `path`. Never throws: a failure
