@@ -1,5 +1,7 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.16.0 - 2026-11-21 - TreeNodeIcon::drawnInTextColor: a one-colour line icon drawn in
+//                   the row's text colour, so a black icon reads on a dark theme
 // Version: 1.15.0 - 2026-11-16 - TreeNodeData::dimmed: a row drawn in the tree's muted text colour
 //                   (dimmedTextColor, the theme's inkMuted) - for an entry the tree normally
 //                   leaves out, such as a hidden folder shown on demand
@@ -139,7 +141,13 @@ struct TreeNodeIcon {
     int width = 16;
     int height = 16;
     bool visible = true;
-    
+    // A one-colour line icon (a black outline with no colours of its own):
+    // drawn as a mask in the row's text colour (NodeTextColor), so it is the
+    // theme's ink on any ground - light on a dark theme, the selection text
+    // colour on the selected row - where drawn as it is it stays black. Leave
+    // it false for a coloured icon, whose colours would all become the ink.
+    bool drawnInTextColor = false;
+
     TreeNodeIcon() = default;
     TreeNodeIcon(const std::string& path, int w = 16, int h = 16) 
         : iconPath(path), width(w), height(h) {}
@@ -888,6 +896,10 @@ protected:
         if (node->data.dimmed) return dimmedTextColor;
         return textColor;
     }
+    // Draws a node's left or right icon into `rect`: as it is, or in the
+    // row's text colour when the icon says so (drawnInTextColor).
+    void DrawNodeIcon(IRenderContext* ctx, const TreeNode* node, const TreeNodeIcon& icon,
+                      const Rect2Dd& rect) const;
     Color GetExpandButtonColor() const { return expandButtonColor; }
     Color GetExpandButtonBorderColor() const { return expandButtonBorderColor; }
     Color GetExpandButtonSymbolColor() const { return expandButtonSymbolColor; }

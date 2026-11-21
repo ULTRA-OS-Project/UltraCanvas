@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A memory chip with "RAM" on it: the Computer page's card of a RAM disc
+     whose size cannot be read. Line art in one colour, drawn as a mask in the
+     theme's ink, so the letters are strokes, not text in a font. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <g fill="none" stroke="#000000" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="10" y="16" width="44" height="32" rx="4" stroke-width="3"/>
+    <path stroke-width="3" d="M17 16V9M24.5 16V9M32 16V9M39.5 16V9M47 16V9M17 48v7M24.5 48v7M32 48v7M39.5 48v7M47 48v7"/>
+    <path stroke-width="2.4" d="M17.5 39V25h4.5a3.5 3.5 0 0 1 0 7h-4.5M21.5 32l4 7"/>
+    <path stroke-width="2.4" d="M28 39l4-14 4 14M29.3 34.5h5.4"/>
+    <path stroke-width="2.4" d="M38.5 39V25l4 8 4-8v14"/>
+  </g>
+</svg>
