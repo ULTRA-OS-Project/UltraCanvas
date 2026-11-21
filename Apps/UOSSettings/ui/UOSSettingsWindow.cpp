@@ -812,6 +812,7 @@ void UOSSettingsWindow::SaveDesktopPage() {
                              : index == 2 ? UltraDesktop::TaskbarEdge::Bottom
                                           : UltraDesktop::TaskbarEdge::Left;
     }
+    std::string appearanceError;   // Appearance.conf refused, said after the desktop's file
     if (theme_) {
         // Appearance.conf, not the desktop's file: every application's look.
         AppearanceSettings appearance = AppearanceSettings::Load();
@@ -819,7 +820,8 @@ void UOSSettingsWindow::SaveDesktopPage() {
         const std::string look = index == 0 ? "dark" : index == 1 ? "light" : "system";
         if (appearance.look != look) {
             appearance.look = look;
-            appearance.Save();
+            if (!appearance.Save(&appearanceError) && appearanceError.empty())
+                appearanceError = "?";
         }
     }
     if (dropFiles_) settings.dropFilesOn = dropFiles_->GetSelectedIndex() == 1 ? "desktop" : "board";
@@ -844,7 +846,14 @@ void UOSSettingsWindow::SaveDesktopPage() {
         if (desktopStatus_) desktopStatus_->SetText(TrF("Not saved: {0}", error));
         return;
     }
-    if (desktopStatus_) desktopStatus_->SetText("Saved to " + path);
+    if (desktopStatus_) {
+        // The desktop's file was saved; the look, which lives in
+        // Appearance.conf, may not have been - said with the system's reason.
+        desktopStatus_->SetText(appearanceError.empty()
+                ? TrF("Saved to {0}", path)
+                : TrF("Saved to {0}. The look could not be saved to {1}: {2}", path,
+                      PathToUtf8(AppearanceSettings::FilePath()), appearanceError));
+    }
 }
 
 void UOSSettingsWindow::SetSystemDesktop(DesktopReplacement how) {
@@ -1364,10 +1373,14 @@ void UOSSettingsWindow::SaveLook() {
     const int contrast = contrast_->GetSelectedIndex();
     s.contrast = contrast == 1 ? "high" : contrast == 2 ? "normal" : "system";
     s.lightText = lightText_->GetSelectedIndex() == 1 ? "plain" : "firm";
+    // The system's reason goes with the path: "could not be written" alone
+    // left a report with nothing to go on (in use? access denied?).
+    std::string why;
+    const bool saved = s.Save(&why);
     if (lookStatus_) {
-        lookStatus_->SetText(s.Save()
+        lookStatus_->SetText(saved
                 ? Tr("Saved. Every application follows it now.")
-                : TrF("Could not write {0}.", PathToUtf8(AppearanceSettings::FilePath())));
+                : TrF("Could not write {0}: {1}", PathToUtf8(AppearanceSettings::FilePath()), why));
     }
     refreshing_ = true;
     accentHex_->SetText(s.accent == "system" ? std::string() : s.accent);

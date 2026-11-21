@@ -8,3 +8,7 @@
   application followed. The rename is now tried again for up to half a
   second, then the file is written in place. Running applications already
   follow a saved change at once (native folder watch on Windows and Linux).
+- **`AppearanceSettings::Save(std::string* error)`** says why a save failed, in
+  the system's words ("cannot replace it: Access is denied", "... being used by
+  another process"); the parameter is optional, existing callers are
+  unchanged.

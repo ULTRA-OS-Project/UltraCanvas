@@ -24,6 +24,7 @@
 // change of the desktop does. On ULTRA OS, where no host sits above the
 // desktop, the file is the host.
 //
+// Version: 1.2.0 - Save(error): the system's reason when the file cannot be written
 // Version: 1.1.1 - Save retries a refused replace, then writes in place
 // Version: 1.1.0 - lighttext=firm|plain
 // Version: 1.0.0
@@ -74,8 +75,10 @@ namespace UltraCanvas {
         // the rename is refused because another program has the file open
         // (Windows: the applications reading the last change, a virus
         // scanner) it is tried again for up to half a second, then the file
-        // is written in place. False only when it cannot be written at all.
-        bool Save() const;
+        // is written in place. False only when it cannot be written at all;
+        // `error`, when given, then says why in the system's words ("cannot
+        // replace it: Access is denied"), for the person to read.
+        bool Save(std::string* error = nullptr) const;
     };
 
 } // namespace UltraCanvas
