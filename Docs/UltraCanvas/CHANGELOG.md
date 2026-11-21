@@ -1,3 +1,92 @@
+#### 2026-11-21 *0.9.582*
+- **EmbeddedPreviewTest checks the Xara and CorelDRAW samples again.** It
+  looked for them in `media/xar` and `media/cdr`, which no longer exist - the
+  samples live in `media/vector/XAR` and `media/vector/CDR` - and a missing
+  folder was reported as a `[SKIP]`, so the test passed without checking
+  either format's embedded preview. It reads them from where they are (all
+  six carry a preview that decodes), and a missing sample folder now fails
+  the test instead of skipping it.
+- **Vector drawings draw their gradients' transforms and spread methods.**
+  `LinearGradientData::Transform` / `RadialGradientData::Transform` (SVG's
+  `gradientTransform`) and `SpreadMethod` were read and written by the
+  converters but dropped by the renderer, so an elliptical, rotated or
+  skewed gradient was drawn as a circle or an unrotated ramp, and a
+  repeating or reflecting one was padded. `VectorRenderer` now builds the
+  pattern in gradient space and places it with `IPaintPattern::SetMatrix`
+  (user = bounding box x Transform x point, in SVG's order) and its extend
+  with `SetExtend`. An `ObjectBoundingBox` radial gradient without a
+  Transform keeps its earlier reading, the circle of the box's longer side.
+  - SVG files with `gradientTransform` - and CorelDRAW files, which reach
+    the model as SVG - draw as authored.
+  - The ODG reader reads LibreOffice's ellipsoid gradient as the ellipse
+    its outline is, turned by its angle (it was a circle), and the writer
+    writes such a gradient back as an ellipsoid at that angle, which
+    LibreOffice renders as its own. LibreOffice narrows an ellipsoid's
+    middle to a line where a radial gradient's contours keep their shape;
+    that difference is reported.
+  - Checked by `VectorRasterTest` (an elliptical radial, a turned
+    bounding-box ramp, repeat and reflect - each failing on the old
+    renderer), `SVGConverterTest` and `ODGConverterTest` (LibreOffice's
+    gradient styles, `media/vector/ODG/gradients.odg`).
+- **OpenDocument presentation writer.** `WriteOdpPresentation`
+  (`UltraCanvasPresentationOdp.h`) writes a deck - read from an `.odp` or a
+  `.pptx`, or laid out from a document - as an Impress deck LibreOffice
+  opens: presentation frames, custom shapes turned and mirrored as PowerPoint
+  mirrors them, fills and gradients, dashes and arrowheads, connectors,
+  pictures, tables with merged and styled cells, charts as chart objects,
+  bullets and numbering as list styles, the runs' fonts and effects, speaker
+  notes, hidden slides and backgrounds. `.odp`, `.otp` and the flat `.fodp`.
+  `SaveTextDocument` and `SavePresentation` write it (a password is refused,
+  not saved unprotected), and the Save dialog's document types offer it.
+- **The `.odp` reader reads charts** - a package's chart objects and a flat
+  file's inline ones.
+- **`UltraCanvasOdfChart.h`**: the OpenDocument chart object writer and reader
+  moved out of the `.odt` plugin into core, shared with the `.odp` reader and
+  writer.
+- **SVG `fill-rule` is read and written.** The SVG reader dropped it, so an
+  icon, a ring or a letter converted to outlines with
+  `fill-rule="evenodd"` came in with its holes filled solid. It now sets
+  `VectorStyle::ShapeFillRule` (added for ODG), which the renderer draws:
+  from the attribute, `style=""` or the stylesheet, and inherited from a
+  group, as SVG inherits it - resolved per element on reading, since the
+  model does not inherit the rule. The writer puts it on shapes only, never
+  on a group whose children would then inherit what the model never gave
+  them. The PDF writer (and so AI) fills such a shape with `f*` / `B*`, the
+  EPS writer with `eofill`; the other writers follow in
+  `vector-fill-rule-writers.md`.
+  - Checked in `SVGConverterTest`: an even-odd ring reads, draws with its
+    hole open and round-trips; the rule inherits from a group and applies
+    from a stylesheet; it is written on the shape alone; PDF and EPS write
+    the even-odd operators (8 of the 10 checks fail without the change).
+- **Every vector writer keeps a shape's fill rule.** XAR, CorelDRAW, DXF,
+  DWG, EMF, WMF and ODG wrote every shape the same way whatever its
+  `VectorStyle::ShapeFillRule`, so one of the two rules always came out
+  wrong: EMF and WMF set WINDING for the whole file, and XAR, CorelDRAW,
+  DXF and ODG fill even-odd. Drawn after a round trip, a non-zero ring
+  wound one way lost its middle in CDR and ODG, and an even-odd one filled
+  solid in EMF, WMF, DXF and XAR.
+  - EMF and WMF set `SETPOLYFILLMODE` per shape (ALTERNATE, WINDING), and
+    their readers read it, starting in ALTERNATE as GDI does (they ignored
+    it).
+  - XAR, CDR, DXF (and so DWG) and ODG fill only even-odd. A non-zero shape
+    is written as the subpaths that bound its fill - new
+    `NonZeroAsEvenOdd` (`Plugins/Vector/UltraCanvasVectorFillRule.h`) keeps
+    a subpath when its two sides differ under non-zero, which filled
+    even-odd covers exactly the same while subpaths do not cross; crossing
+    ones are reported. An outlined shape that loses subpaths is written as
+    its fill and its full outline. EMF and WMF write non-zero shapes that
+    way too, beside WINDING, because LibreOffice ignores WINDING.
+  - The XAR reader carries Xara's winding rule into the model (even-odd by
+    default) - Midget.xar's letters, wound like their counters, read with
+    their counters open - and the DXF reader reads a hatch's odd parity as
+    even-odd (style 2, "ignore islands", stays non-zero).
+  - New `VectorFillRuleTest`: three rings through EMF, WMF, DXF, XAR, CDR,
+    ODG and SVG, written, read back and drawn (6 checks fail on the old
+    writers and readers), plus the subpath helper; the EMF, WMF and ODG
+    output was also rendered in LibreOffice 24.2, rings as drawn.
+  - `UltraCanvasXARExamples.md` listed the winding enum as `NonZero = 0`,
+    against the code and its own text; corrected.
+
 #### 2026-11-20 *0.9.581*
 - **CI: the chat-network (UltraIM) tests run on the macOS and Windows rows,
   and the Signal provider's daemon process has a test that runs on
