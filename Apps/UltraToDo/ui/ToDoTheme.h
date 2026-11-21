@@ -11,6 +11,7 @@
 // readable on it; under a dark theme the border is mixed into the panel
 // colour too; the inks, the lines and the sizes are the theme's roles
 // (UltraCanvasTheme.h) throughout.
+// Version: 0.6.0 - StylePrimary: the main buttons' text white and bold; the compact sizes
 // Version: 0.5.0 - UrgencyColor: the marker from green to orange to red
 // Version: 0.4.0 - MakeIconButton: a round button with an icon alone, following the theme
 // Version: 0.3.0 - the pastel is the panel's border; the fill a faint tint of it
@@ -126,6 +127,7 @@ constexpr float kPanelRadius   = 16.0f;
 constexpr float kPanelBorder   = 3.0f;    // wide enough for a pastel to read as a colour
 constexpr float kControlHeight = 28.0f;
 constexpr float kAddButtonSize = 48.0f;
+constexpr float kAddButtonFont = 26.0f;   // the "+" on it
 constexpr float kColumnMinWidth = 440.0f;   // a panel is never narrower than this in a second column
 constexpr int   kMaxColumns    = 4;
 constexpr float kListPaddingX  = 18.0f;    // the list's padding: 2 left, 16 right (the scrollbar)
@@ -133,6 +135,13 @@ constexpr float kMarkerSize    = 26.0f;    // the urgency ring in a panel's butt
 constexpr unsigned kBlinkMs    = 600;      // one half of a blink
 constexpr float kThumbWidth    = 96.0f;
 constexpr float kThumbHeight   = 68.0f;
+// The compact display: two lines per task.
+constexpr float kCompactMarkerSize = 16.0f;   // the urgency ring on the second line
+constexpr float kMiniThumbHeight   = 12.0f;   // an attached file's mini thumbnail
+constexpr float kMiniThumbWidth    = 17.0f;   // the thumbnails' shape (kThumbWidth : kThumbHeight)
+constexpr float kCompactLine       = 18.0f;   // the second line's height
+constexpr float kCompactRadius     = 10.0f;   // a compact panel's corners
+constexpr float kCompactGap        = 6.0f;    // between compact panels
 
 // A panel with round corners: the pastel as its border, a faint tint of it
 // as its fill. Any element - a container, the reminder line's label.
@@ -156,13 +165,40 @@ inline void MakeRound(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& but
     button->SetFollowTheme(true);
 }
 
+// A main button (Done, Reopen, Save, the round +): the theme's primary
+// colour with white, bold text on it - under every theme. Where the accent
+// is too light for white text to read (4.5:1), its fill is darkened until it
+// does. This is a style set by hand, so the button no longer follows the
+// theme on its own: the window calls this again when the look changes
+// (UltraToDoWindow::ApplyLook) or builds the button anew.
+inline void StylePrimary(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& button, float height) {
+    using UltraCanvas::Color;
+    using UltraCanvas::UltraCanvasTheme;
+    const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+    UltraCanvas::ButtonStyle style =
+        UltraCanvas::ButtonStyle::FromTheme(theme, button->GetStyle(), UltraCanvas::ButtonVariant::Primary);
+    const Color white(255, 255, 255);
+    auto readable = [&white](Color fill) {
+        for (int step = 0; step < 12 && UltraCanvasTheme::Contrast(fill, white) < 4.5; ++step)
+            fill = Mix(fill, Color(0, 0, 0), 0.12f);
+        return fill;
+    };
+    style.normalColor = readable(style.normalColor);
+    style.hoverColor = readable(style.hoverColor);
+    style.pressedColor = readable(style.pressedColor);
+    style.normalTextColor = style.hoverTextColor = style.pressedTextColor = white;
+    style.fontWeight = UltraCanvas::FontWeight::Bold;
+    style.cornerRadius = height / 2.0f;
+    button->SetStyle(style);
+}
+
 // The round button that adds a task: a circle with a plus, the theme's
 // primary colour. The framework centres a one-character label on its ink,
 // so the "+" sits in the middle of the circle.
 inline std::shared_ptr<UltraCanvas::UltraCanvasButton> MakeAddButton(const std::string& id) {
     auto button = UltraCanvas::CreateButton(id, 0, 0, kAddButtonSize, kAddButtonSize, "+");
-    MakeRound(button, kAddButtonSize, UltraCanvas::ButtonVariant::Primary);
-    button->SetFontSize(26.0f);   // kept through every change of theme
+    StylePrimary(button, kAddButtonSize);
+    button->SetFontSize(kAddButtonFont);   // again after every StylePrimary
     return button;
 }
 
@@ -176,7 +212,8 @@ MakePill(const std::string& id, const std::string& text, float minWidth = 64.0f,
     limits.minWidth = UltraCanvas::CSSLayout::Dimension::Px(minWidth);
     button->boxConstraints = limits;
     button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    MakeRound(button, kControlHeight, main ? UltraCanvas::ButtonVariant::Primary : UltraCanvas::ButtonVariant::Standard);
+    if (main) StylePrimary(button, kControlHeight);
+    else MakeRound(button, kControlHeight, UltraCanvas::ButtonVariant::Standard);
     return button;
 }
 

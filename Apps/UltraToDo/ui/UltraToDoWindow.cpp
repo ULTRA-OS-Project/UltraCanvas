@@ -1,5 +1,7 @@
 // Apps/UltraToDo/ui/UltraToDoWindow.cpp
 // See UltraToDoWindow.h.
+// Version: 0.9.0 - two displays, switched in the top bar: Full, or Compact (two lines a task, the
+//                  attached files as mini thumbnails); the main buttons white and bold (StylePrimary)
 // Version: 0.8.0 - the marker is a small ring gauge (compact CircularRing); the time left beside it
 // Version: 0.7.0 - the settings page (Ctrl+,): Simple, or with task supervision (Start, the blinking)
 // Version: 0.6.0 - the urgency marker and time left in the button line; blinking; Start / Pause
@@ -216,13 +218,34 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildTopBar() {
     titles->AddChild(summary_);
     bar->AddChild(titles);
 
-    // The open tasks, or the history of the finished ones; the counts are
-    // set by UpdateSummary.
+    // The display: every task as its full panel, or compact - two lines a
+    // task (Ctrl+L switches).
+    display_ = CreateSegmentedControl("todo.display", 0, 0, 72, Theme::kControlHeight);
+    display_->AddSegment("", NormalizePath(GetResourcesDir() + "media/icons/view-details.svg"));
+    display_->AddSegment("", NormalizePath(GetResourcesDir() + "media/icons/view-list.svg"));
+    display_->SetSegmentTooltip(0, Tr("Full display: every task with its details (Ctrl+L)"));
+    display_->SetSegmentTooltip(1, Tr("Compact display: two lines a task (Ctrl+L)"));
+    {
+        SegmentedControlStyle style = display_->GetStyle();
+        style.iconAsMask = true;   // the icons in the segments' text colour
+        display_->SetStyle(style);
+        display_->SetFollowTheme(true);
+    }
+    display_->SetSelectedIndex(settings_.Compact() ? 1 : 0);
+    display_->layoutItem.SetFlexShrink(0);
+    display_->onSegmentSelected = [this](int index) {
+        // The bar - with this control in it - stays; only the list is rebuilt.
+        SetDisplay(index == 1 ? DisplayMode::Compact : DisplayMode::Full);
+    };
+    bar->AddChild(display_);
+
     // The settings page (SettingsDialog).
     auto settings = Theme::MakeIconButton("todo.settings", "settings.svg", Tr("Settings (Ctrl+,)"));
     settings->onClick = [this]() { OpenSettings(); };
     bar->AddChild(settings);
 
+    // The open tasks, or the history of the finished ones; the counts are
+    // set by UpdateSummary.
     view_ = CreateSegmentedControl("todo.view", 0, 0, 240, Theme::kControlHeight);
     view_->AddSegment(Tr("To do"));
     view_->AddSegment(Tr("History"));
@@ -261,7 +284,6 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildPanel(const ToDoTask
 
     // ----- title, urgency -----
     auto head = MakeRow(id + ".head", 28);
-    const std::string taskId = task.id;
     auto title = Theme::MakeLine(id + ".title", task.title, 28, Theme::SizeHeading(),
                                  task.done ? Theme::InkMuted() : Theme::Ink(), FontWeight::Bold);
     title->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -297,91 +319,170 @@ std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildPanel(const ToDoTask
     auto foot = MakeRow(id + ".foot", Theme::kControlHeight);
     foot->size.height = CSSLayout::Dimension::Auto();
     if (!task.done) {
-        const double level = UrgencyLevel(task, now);
-        // The marker: a small ring gauge in the urgency colour (green,
-        // orange, red and the shades between), filling as the task grows
-        // urgent - a sliver with time to spare, half at the latest start,
-        // full at the planned end, empty without a date - in a round frame
-        // that blinks orange when the task should be started now. The time
-        // left is the text beside it.
-        auto ring = CreateContainer(id + ".ring", 0, 0, 0, 0);
-        ring->SetPadding(2);
-        ring->size.width = CSSLayout::Dimension::Auto();
-        ring->size.height = CSSLayout::Dimension::Auto();
-        ring->SetBorders(2.0f, Theme::PanelFill(pastel), Theme::kMarkerSize / 2.0f + 4.0f);
-        ring->layoutItem.SetFlexShrink(0);
-        auto marker = CreateGaugeDiagramElement(id + ".marker", 0, 0, Theme::kMarkerSize, Theme::kMarkerSize);
-        marker->SetMode(GaugeMode::CircularRing);
-        marker->SetRingCompact(true);
-        marker->SetRingValueText(false);
-        marker->SetRingThickness(4.5f);
-        marker->SetMinValue(0);
-        marker->SetMaxValue(100);
-        marker->SetValue(level < 0 ? 0.0 : std::max(8.0, level * 50.0));
-        marker->SetGaugeColor(Theme::UrgencyColor(level));
-        marker->SetTrackColor(Theme::Roles().line);
-        marker->SetBackgroundColor(Theme::PanelFill(pastel));
-        marker->SetTooltip(level < 0 ? Tr("No planned end") : UrgencyText(task, now));
-        ring->AddChild(marker);
-        foot->AddChild(ring);
+        AddMarker(foot, panel.get(), task, now, Theme::kMarkerSize);
         auto left = Theme::MakeRoleWrapped(id + ".left", MarkerText(task, now), Theme::SizeSmall(),
                                            LabelVariant::Muted);
-        if (level >= 2.0) left->SetTextColor(Theme::MarkerRed());
+        if (UrgencyLevel(task, now) >= 2.0) left->SetTextColor(Theme::MarkerRed());
         left->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
         foot->AddChild(left);
-
-        // The blinking warnings are task supervision's (Settings).
-        const ToDoUrgency urgency = UrgencyOf(task, now);
-        if (!settings_.Supervised()) {
-        } else if (urgency == ToDoUrgency::Overdue) {
-            blinking_.push_back({panel.get(), Theme::PanelBorder(pastel)});
-        } else if (urgency == ToDoUrgency::StartNow && task.started == 0) {
-            blinking_.push_back({ring.get(), Theme::PanelFill(pastel), true});
-        }
     } else {
         foot->AddStretchSpacer(1);
     }
+    AddButtons(foot, task);
+    panel->AddChild(foot);
+    return panel;
+}
+
+// The compact display: two lines a task. The first is the title, how urgent
+// it is and the buttons; the second the marker, the time left (or, in the
+// history, the schedule) and the attached files as mini thumbnails - a click
+// opens one. The description is the title's tooltip.
+std::shared_ptr<UltraCanvasContainer> UltraToDoWindow::BuildCompactPanel(const ToDoTask& task, int64_t now) {
+    const std::string id = "todo.task." + task.id;
+    const ToDoUrgency urgency = UrgencyOf(task, now);
+    const Color pastel = Theme::UrgencyPastel(urgency);
+
+    auto panel = CreateContainer(id, 0, 0, 0, 0);
+    Theme::ApplyPanel(panel, pastel, Theme::kCompactRadius);
+    if (task.id == markedTask_)
+        panel->SetBorders(Theme::kPanelBorder, Theme::PastelMark(Theme::Lavender()), Theme::kCompactRadius);
+    panel->SetPadding(6, 12, 6, 12);
+    panel->layout.SetFlexColumn().SetFlexGap(2).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    panel->size.height = CSSLayout::Dimension::Auto();
+    panel->layoutItem.SetFlexShrink(0);
+
+    // ----- the title, how urgent, the buttons -----
+    auto head = MakeRow(id + ".head", Theme::kControlHeight);
+    auto title = Theme::MakeLine(id + ".title", task.title, Theme::kControlHeight, Theme::SizeBody(),
+                                 task.done ? Theme::InkMuted() : Theme::Ink(), FontWeight::Bold);
+    title->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
+    if (!task.description.empty()) title->SetTooltip(task.description);
+    head->AddChild(title);
+    auto mark = CreateBadge(id + ".urgency", 0, 0, UrgencyText(task, now));
+    mark->SetColor(Theme::PastelMark(pastel));
+    mark->layoutItem.SetFlexShrink(0);
+    head->AddChild(mark);
+    AddButtons(head, task);
+    panel->AddChild(head);
+
+    // ----- the marker, the time left, the attached files -----
+    auto info = MakeRow(id + ".info", Theme::kCompactLine);
+    std::string text;
+    if (!task.done) {
+        AddMarker(info, panel.get(), task, now, Theme::kCompactMarkerSize);
+        text = MarkerText(task, now);
+    } else {
+        text = ScheduleText(task, now);
+        text = text.substr(0, text.find('\n'));
+    }
+    auto left = Theme::MakeRoleLine(id + ".left", text, Theme::kCompactLine, Theme::SizeSmall(), LabelVariant::Muted);
+    if (!task.done && UrgencyLevel(task, now) >= 2.0) left->SetTextColor(Theme::MarkerRed());
+    left->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
+    info->AddChild(left);
+    for (size_t i = 0; i < task.attachments.size(); ++i) {
+        const ToDoAttachment& attachment = task.attachments[i];
+        auto image = CreateImageElement(id + ".mini." + std::to_string(i), Theme::kMiniThumbWidth,
+                                        Theme::kMiniThumbHeight);
+        image->SetFitMode(ImageFitMode::Contain);
+        image->SetMouseCursor(UCMouseCursor::Hand);
+        image->SetTooltip(TrF("Open {0}", attachment.name));
+        image->layoutItem.SetFlexShrink(0);
+        const std::string taskId = task.id, file = attachment.file;
+        image->onClick = [this, taskId, file]() { OpenAttachment(taskId, file); };
+        RequestThumbnail(store_.AttachmentPath(task.id, attachment.file), image.get());
+        info->AddChild(image);
+    }
+    panel->AddChild(info);
+    return panel;
+}
+
+// The marker: a small ring gauge in the urgency colour (green, orange, red
+// and the shades between), filling as the task grows urgent - a sliver with
+// time to spare, half at the latest start, full at the planned end, empty
+// without a date - in a round frame that blinks orange when the task should
+// be started now; an overdue task's panel blinks red. Blinking is task
+// supervision's (Settings).
+void UltraToDoWindow::AddMarker(const std::shared_ptr<UltraCanvasContainer>& row, UltraCanvasContainer* panel,
+                                const ToDoTask& task, int64_t now, float size) {
+    const std::string id = "todo.task." + task.id;
+    const ToDoUrgency urgency = UrgencyOf(task, now);
+    const Color pastel = Theme::UrgencyPastel(urgency);
+    const double level = UrgencyLevel(task, now);
+    const float frame = size >= Theme::kMarkerSize ? 2.0f : 1.0f;   // the padding and the frame round it
+    const float radius = size / 2.0f + 2.0f * frame;
+    auto ring = CreateContainer(id + ".ring", 0, 0, 0, 0);
+    ring->SetPadding(frame);
+    ring->size.width = CSSLayout::Dimension::Auto();
+    ring->size.height = CSSLayout::Dimension::Auto();
+    ring->SetBorders(frame, Theme::PanelFill(pastel), radius);
+    ring->layoutItem.SetFlexShrink(0);
+    auto marker = CreateGaugeDiagramElement(id + ".marker", 0, 0, size, size);
+    marker->SetMode(GaugeMode::CircularRing);
+    marker->SetRingCompact(true);
+    marker->SetRingValueText(false);
+    marker->SetRingThickness(size * 4.5f / Theme::kMarkerSize);
+    marker->SetMinValue(0);
+    marker->SetMaxValue(100);
+    marker->SetValue(level < 0 ? 0.0 : std::max(8.0, level * 50.0));
+    marker->SetGaugeColor(Theme::UrgencyColor(level));
+    marker->SetTrackColor(Theme::Roles().line);
+    marker->SetBackgroundColor(Theme::PanelFill(pastel));
+    marker->SetTooltip(level < 0 ? Tr("No planned end") : UrgencyText(task, now));
+    ring->AddChild(marker);
+    row->AddChild(ring);
+
+    if (!settings_.Supervised()) {
+    } else if (urgency == ToDoUrgency::Overdue) {
+        blinking_.push_back({panel, Theme::PanelBorder(pastel), false,
+                             settings_.Compact() ? Theme::kCompactRadius : Theme::kPanelRadius});
+    } else if (urgency == ToDoUrgency::StartNow && task.started == 0) {
+        blinking_.push_back({ring.get(), Theme::PanelFill(pastel), true, radius, frame});
+    }
+}
+
+// Attach, Edit, Delete, Start, Done - or, in the history, Delete and Reopen.
+void UltraToDoWindow::AddButtons(const std::shared_ptr<UltraCanvasContainer>& row, const ToDoTask& task) {
+    const std::string id = "todo.task." + task.id;
+    const std::string taskId = task.id;
     if (!task.done) {
         auto attach = Theme::MakeIconButton(id + ".attach", "paperclip.svg",
                                             Tr("Attach documents or pictures to the task"));
         attach->onClick = [this, taskId]() { AttachTo(taskId); };
-        foot->AddChild(attach);
+        row->AddChild(attach);
         auto edit = Theme::MakeIconButton(id + ".edit", "edit.svg", Tr("Edit the task"));
         edit->onClick = [this, taskId]() { EditTask(taskId); };
-        foot->AddChild(edit);
+        row->AddChild(edit);
     }
     auto remove = Theme::MakeIconButton(id + ".delete", "delete.svg",
                                         Tr("Delete the task and the files attached to it"));
     remove->onClick = [this, taskId]() { ConfirmDelete(taskId); };
-    foot->AddChild(remove);
+    row->AddChild(remove);
     // The list - with this button in it - is rebuilt after the click.
     if (task.done) {
         auto reopen = Theme::MakePill(id + ".reopen", Tr("Reopen"), 72, /*main=*/true);
         reopen->SetTooltip(Tr("Move the task back to the list of tasks to do"));
         reopen->onClick = [this, taskId]() { app_.PostToUIThread([this, taskId]() { SetDone(taskId, false); }); };
-        foot->AddChild(reopen);
-    } else {
-        // Start / Pause: the work on it began, or stopped - with task
-        // supervision only (Settings).
-        if (settings_.Supervised()) {
-            auto start = task.started == 0 ? Theme::MakePill(id + ".start", Tr("Start"), 64)
-                                           : Theme::MakePill(id + ".pause", Tr("Pause"), 64);
-            start->SetTooltip(task.started == 0
-                                  ? Tr("I have started working on this task: no more reminders to start it")
-                                  : Tr("I am not working on this task now"));
-            const bool starting = task.started == 0;
-            start->onClick = [this, taskId, starting]() {
-                app_.PostToUIThread([this, taskId, starting]() { SetStarted(taskId, starting); });
-            };
-            foot->AddChild(start);
-        }
-        auto done = Theme::MakePill(id + ".done", Tr("Done"), 72, /*main=*/true);
-        done->SetTooltip(Tr("Mark the task done and move it to the history"));
-        done->onClick = [this, taskId]() { app_.PostToUIThread([this, taskId]() { SetDone(taskId, true); }); };
-        foot->AddChild(done);
+        row->AddChild(reopen);
+        return;
     }
-    panel->AddChild(foot);
-    return panel;
+    // Start / Pause: the work on it began, or stopped - with task
+    // supervision only (Settings).
+    if (settings_.Supervised()) {
+        auto start = task.started == 0 ? Theme::MakePill(id + ".start", Tr("Start"), 64)
+                                       : Theme::MakePill(id + ".pause", Tr("Pause"), 64);
+        start->SetTooltip(task.started == 0
+                              ? Tr("I have started working on this task: no more reminders to start it")
+                              : Tr("I am not working on this task now"));
+        const bool starting = task.started == 0;
+        start->onClick = [this, taskId, starting]() {
+            app_.PostToUIThread([this, taskId, starting]() { SetStarted(taskId, starting); });
+        };
+        row->AddChild(start);
+    }
+    auto done = Theme::MakePill(id + ".done", Tr("Done"), 72, /*main=*/true);
+    done->SetTooltip(Tr("Mark the task done and move it to the history"));
+    done->onClick = [this, taskId]() { app_.PostToUIThread([this, taskId]() { SetDone(taskId, true); }); };
+    row->AddChild(done);
 }
 
 // The attached files as thumbnails with their names under them, as a mail
@@ -433,7 +534,8 @@ void UltraToDoWindow::Rebuild() {
     std::vector<std::shared_ptr<UltraCanvasContainer>> panels;
     for (const ToDoTask& task : store_.Sorted(now)) {
         if (task.done != history_) continue;
-        panels.push_back(BuildPanel(Supervision(task), now));
+        panels.push_back(settings_.Compact() ? BuildCompactPanel(Supervision(task), now)
+                                             : BuildPanel(Supervision(task), now));
     }
     // Column by column: the first column is filled from the top with the
     // most urgent tasks, then the next, each holding the same number (the
@@ -448,7 +550,9 @@ void UltraToDoWindow::Rebuild() {
         columns->layoutItem.SetFlexShrink(0);
         for (int column = 0; column < columns_; ++column) {
             auto stack = CreateContainer("todo.column" + std::to_string(column), 0, 0, 0, 0);
-            stack->layout.SetFlexColumn().SetFlexGap(Theme::kGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            stack->layout.SetFlexColumn()
+                .SetFlexGap(settings_.Compact() ? Theme::kCompactGap : Theme::kGap)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
             stack->size.height = CSSLayout::Dimension::Auto();
             stack->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
             const size_t first = static_cast<size_t>(column) * perColumn;
@@ -525,6 +629,12 @@ void UltraToDoWindow::UpdateSummary(int64_t now) {
 
 void UltraToDoWindow::ApplyLook() {
     if (window_) window_->SetBackgroundColor(Theme::PageBackground());
+    if (addButton_) {
+        // Styled by hand (white, bold text), so it does not follow the theme
+        // by itself; the panels' buttons are made anew by Rebuild.
+        Theme::StylePrimary(addButton_, Theme::kAddButtonSize);
+        addButton_->SetFontSize(Theme::kAddButtonFont);
+    }
     if (heading_) heading_->SetTextColor(Theme::Ink());
     if (summary_) summary_->SetTextColor(Theme::InkMuted());
     if (notice_) {
@@ -550,6 +660,10 @@ bool UltraToDoWindow::OnKey(const UCEvent& event) {
     }
     if (is('h', UCKeys::H)) {
         ShowHistory(!history_);
+        return true;
+    }
+    if (is('l', UCKeys::L)) {
+        SetDisplay(settings_.Compact() ? DisplayMode::Full : DisplayMode::Compact);
         return true;
     }
     if (is('q', UCKeys::Q)) {
@@ -659,10 +773,9 @@ void UltraToDoWindow::Blink() {
     blinkOn_ = !blinkOn_;
     for (const BlinkItem& item : blinking_) {
         if (item.ring)
-            item.element->SetBorders(2.0f, blinkOn_ ? Theme::MarkerOrange() : item.off, 14.0f);
+            item.element->SetBorders(item.width, blinkOn_ ? Theme::MarkerOrange() : item.off, item.radius);
         else
-            item.element->SetBorders(Theme::kPanelBorder, blinkOn_ ? Theme::MarkerRed() : item.off,
-                                     Theme::kPanelRadius);
+            item.element->SetBorders(Theme::kPanelBorder, blinkOn_ ? Theme::MarkerRed() : item.off, item.radius);
     }
     if (window_ && !blinking_.empty()) window_->RequestRedraw();
 }
@@ -692,6 +805,16 @@ void UltraToDoWindow::ShowHistory(bool history) {
     history_ = history;
     if (view_ && view_->GetSelectedIndex() != (history ? 1 : 0)) view_->SetSelectedIndex(history ? 1 : 0);
     list_->ScrollToVertical(0);
+    Rebuild();
+}
+
+void UltraToDoWindow::SetDisplay(DisplayMode mode) {
+    if (settings_.display == mode) return;
+    settings_.display = mode;
+    if (display_ && display_->GetSelectedIndex() != (mode == DisplayMode::Compact ? 1 : 0))
+        display_->SetSelectedIndex(mode == DisplayMode::Compact ? 1 : 0);
+    std::string error;
+    if (!settings_.Save(store_.Folder(), error)) std::cerr << "UltraToDo: " << error << "\n";
     Rebuild();
 }
 

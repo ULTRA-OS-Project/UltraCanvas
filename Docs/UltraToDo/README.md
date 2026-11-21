@@ -27,6 +27,7 @@ says what it does.
 |---|---|
 | The round **+** (top left, Ctrl+N) | writes a new task |
 | *To do* / *History* (top right, Ctrl+H) | the tasks to do, or the history of the finished ones, with their counts |
+| The display switch (beside the gear, Ctrl+L) | *Full* - every task as its whole panel - or *Compact*: two lines a task (see below) |
 | The marker (left of the buttons) | a small ring that fills and changes colour as the task grows urgent: a green sliver with time to spare, half and orange at the latest start, full and red at the planned end, empty without a date; beside it the time left and when the task is due ("1 h 30 min left · Due Today, 11:46", "2 h late · Was due Today, 08:16") |
 | *Start* / *Pause* (with task supervision) | tells UltraToDo you have started working on the task: it says *In progress since ...*, stops the blinking ring and the reminder to start; *Pause* takes it back |
 | *Done* | marks the task done and moves it to the history |
@@ -41,6 +42,17 @@ list in columns - one below about 900 px, then two, three, up to four,
 sharing the width. The columns are filled one after the other: the most
 urgent tasks down the first column, then on at the top of the next, each
 column holding the same number (the last ones one fewer at most).
+
+**Compact display.** The second segment of the display switch (Ctrl+L)
+shows every task on two lines: the title, its urgency mark and the buttons
+on the first; the marker, the time left and the attached files as mini
+thumbnails 12 px high on the second - a click on one opens it, resting the
+pointer on it names it, and resting it on the title shows the description.
+The choice is kept in the settings file.
+
+*Done*, *Reopen* and the round **+** carry their text in white, bold, on
+the theme's accent - darkened where the accent is too light for white to
+read.
 
 The task dialog has the title, the description, the planned end (a day, and
 a time of day if it has one; a day alone means the end of that day), the
@@ -85,7 +97,8 @@ the **level of management**:
 | *Simple* (the default) | tasks with their planned end, the time they need, the marker, reminders and alarms |
 | *With task supervision* | as Simple, and UltraToDo follows the work: the *Start* / *Pause* button and the blinking warnings below |
 
-The choice is kept in `<data>/UltraToDo/settings.json`. A start recorded
+The choice is kept in `<data>/UltraToDo/settings.json`, with the display
+(`"display": "full"` or `"compact"`). A start recorded
 under supervision is kept, but means nothing under Simple: the task shows,
 and is reminded, as one not started.
 
