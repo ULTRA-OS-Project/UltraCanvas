@@ -1,5 +1,7 @@
 // core/UltraCanvasAppearanceSettings.cpp
 // Appearance.conf: the text and back, the choices over the host, the file.
+// Version: 1.1.1 - Save: the replace is tried again while another program holds the file
+//                  (Windows), then written in place - a quick second choice no longer fails
 // Version: 1.1.0 - lighttext=firm|plain
 // Version: 1.0.0
 // Last Modified: 2026-11-15
@@ -7,10 +9,12 @@
 #include "UltraCanvasAppearanceSettings.h"
 #include "UltraCanvasSettingsFolder.h"
 
+#include <chrono>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <system_error>
+#include <thread>
 
 namespace UltraCanvas {
 
@@ -116,20 +120,36 @@ namespace UltraCanvas {
         if (path.empty()) return false;
         std::error_code ec;
         std::filesystem::create_directories(path.parent_path(), ec);
+        const std::string text = Serialize();
         std::filesystem::path temp = path;
         temp += ".tmp";
         {
             std::ofstream out(temp, std::ios::trunc | std::ios::binary);
             if (!out) return false;
-            out << Serialize();
+            out << text;
             if (!out) return false;
         }
-        std::filesystem::rename(temp, path, ec);
-        if (ec) {
-            std::filesystem::remove(temp, ec);
-            return false;
+        // Into place in one step, so a reader never sees half a file. On
+        // Windows that replace fails while anyone has Appearance.conf open -
+        // and every running application opens it the moment it changes (the
+        // settings watcher), as do the virus scanner and the search indexer.
+        // A second choice made right after the first met those readers and
+        // the save failed ("could not be written"), so nothing followed it.
+        // They hold the file for milliseconds: the replace is tried again
+        // for up to half a second.
+        for (int attempt = 0; attempt < 20; ++attempt) {
+            std::filesystem::rename(temp, path, ec);
+            if (!ec) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
         }
-        return true;
+        // Still held: the text written over the file in place, which a
+        // reader's share mode allows. A reader that catches it half written
+        // reads it again on the change notice the finished write sends.
+        std::filesystem::remove(temp, ec);
+        std::ofstream out(path, std::ios::trunc | std::ios::binary);
+        if (!out) return false;
+        out << text;
+        return static_cast<bool>(out);
     }
 
 } // namespace UltraCanvas

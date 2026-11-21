@@ -24,6 +24,7 @@
 // change of the desktop does. On ULTRA OS, where no host sits above the
 // desktop, the file is the host.
 //
+// Version: 1.1.1 - Save retries a refused replace, then writes in place
 // Version: 1.1.0 - lighttext=firm|plain
 // Version: 1.0.0
 // Last Modified: 2026-11-15
@@ -69,7 +70,11 @@ namespace UltraCanvas {
         // A missing or unreadable file is the defaults.
         static AppearanceSettings Load();
         // Written beside the file and renamed over it, so an application
-        // reading at that moment sees the old setting or the new one.
+        // reading at that moment sees the old setting or the new one. Where
+        // the rename is refused because another program has the file open
+        // (Windows: the applications reading the last change, a virus
+        // scanner) it is tried again for up to half a second, then the file
+        // is written in place. False only when it cannot be written at all.
         bool Save() const;
     };
 
