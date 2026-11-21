@@ -1,3 +1,24 @@
+#### 2026-11-21 *0.27.0*
+- **Why the look could not be saved.** Appearance's "Could not write
+  ...\Appearance.conf." now gives the system's reason after the path (the file
+  in use, access denied). The Desktop page, which also saves the light / dark
+  choice, used to drop that failure silently and report "Saved"; it now says
+  the look could not be saved, with the reason.
+- **The settings tables follow a change of look.** The tables of Last used
+  folder, Notification registrations and Trusted certificates took their
+  background, header and rule colours once, when the page was built, while
+  the labels in them follow a theme change - so after a switch of look a
+  dark table stayed in a light window, its text turned dark on dark. The
+  tables, their headers, rows and scrollbars now take the theme's colours
+  again after every change (`FollowKitLook`).
+- **The tables and the certificate page are translated.** The column
+  headers (Application, Click starts, Opens in, Last used folder, Device,
+  Address, Key), the "Click starts" cells, the certificate page's notes and
+  status line, the Last used folder notes and "Saved to" went into the
+  window untranslated; they go through `Tr` now, translated in all thirty
+  languages (machine drafts). The activator's CLSID moved from the cell to
+  its tooltip. pt-BR also gets the eight older strings it lacked.
+
 #### 2026-11-16 *0.26.0*
 - **The Desktop page's captions and three switches can be translated.**
   The row captions (Taskbar, Theme, Dropped files ... At sign-in), the
