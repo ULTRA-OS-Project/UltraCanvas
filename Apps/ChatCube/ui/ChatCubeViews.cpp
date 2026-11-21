@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.11 - a wrapped message drawn whole: its text no longer cut to one line with an ellipsis
 // Version: 0.2.10 - a row says who is typing there, in the accent, in place of the last message
 // Version: 0.2.9 - a bar under a file on its way (going out or coming in) with its percent; a sound file
 //                  with a note and a play mark, played in its bubble; a file's name measured bold, as
@@ -20,7 +21,7 @@
 //                  rounded selection, bubbles without borders in the theme's colours, senders in
 //                  their avatar's colour
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-21
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeViews.h"
@@ -781,8 +782,13 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
         ctx->SetTextAlignment(TextAlignment::Left);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
         ctx->SetTextPaint(m.isOwn ? look.bubbleOwnInk : look.ink);
+        // A line's worth of slack below: in a rectangle exactly as tall as
+        // the measured text, a rounding difference between measuring and
+        // drawing made the renderer give up on the second line and end the
+        // first with an ellipsis - every wrapped message, on a phone nearly
+        // all of them. The text is top-aligned, so the slack draws nothing.
         ctx->DrawTextInRect(text, Rect2Dd(x + textInset, y + (bodyHeight - textSize.height) / 2.0, maxText,
-                                          textSize.height));
+                                          textSize.height + kBodyFont));
     }
     y += bodyHeight;
 

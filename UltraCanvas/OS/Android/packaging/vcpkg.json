@@ -59,6 +59,14 @@
           ]
         }
       ]
+    },
+    "chatcube": {
+      "description": "What ChatCube for Android needs besides UltraNet (scripts/android-bootstrap-sysroot.sh --with-chatcube, which turns on net too): SQLite for UltraDatabase (ChatCube Direct's message store), libsodium for UltraCrypt (the identity's keys, end-to-end encryption) and Opus for call audio. Video calls stay off: their VP8 codec is FFmpeg's, not in this sysroot.",
+      "dependencies": [
+        "sqlite3",
+        "libsodium",
+        "opus"
+      ]
     }
   }
 }

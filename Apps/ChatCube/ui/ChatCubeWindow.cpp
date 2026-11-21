@@ -1,5 +1,8 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.8 - the compact layout (a phone, a narrow window): the list and the conversation take
+//                  turns, a back arrow and Android's back key return to the list; network buttons only
+//                  for the networks this build reaches; the microphone and camera asked for on Android
 // Version: 0.3.7 - who is typing: per conversation, in the list's row and the header, named in a group
 // Version: 0.3.6 - a network's module loaded on demand, from its button; names of networks not loaded
 // Version: 0.3.5 - a Mastodon account (the server, then its sign-in page in the browser); the network
@@ -37,7 +40,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-21
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -87,6 +90,10 @@
 #include <system_error>
 #include <vector>
 
+#if defined(__ANDROID__)
+#include "OS/Android/UltraCanvasAndroidPermissions.h"
+#endif
+
 using namespace UltraCanvas;
 
 namespace ChatCube {
@@ -94,6 +101,11 @@ namespace ChatCube {
 namespace {
 
 constexpr int   kSidebarWidth = 320;
+// Narrower than this (logical pixels), the window is compact: the list and
+// the open conversation take turns instead of standing side by side. A
+// phone held upright is 360 to 430; the side-by-side window needs the
+// sidebar and a conversation of about as much again.
+constexpr int   kCompactWidth = 640;
 constexpr int   kInputHeight = 48;
 constexpr int   kTileSide = 64;         // a staged picture's tile in the composer
 constexpr int   kFileTileWidth = 180;   // a staged file's tile: its name and size
@@ -260,6 +272,20 @@ bool ChatCubeWindow::Create() {
     window_->AddChild(BuildConnectingPage());
     window_->AddChild(BuildChatView());
     ApplySettings();
+    // A phone, or a window made narrow: the compact layout (UpdateLayoutMode).
+    window_->onWindowResize = [this](int width, int) { UpdateLayoutMode(width); };
+    UpdateLayoutMode(window_->GetConfig().width);
+#if defined(__ANDROID__)
+    // Android's back key asks the window to close: from a conversation in
+    // the compact layout it goes back to the list instead, as every phone app.
+    window_->onWindowClosing = [this]() {
+        if (compact_ && compactShowsChat_ && chatView_ && chatView_->IsVisible()) {
+            ShowConversationList();
+            return false;
+        }
+        return true;
+    };
+#endif
     // A change of the look while ChatCube runs: the framework's elements
     // follow the theme by themselves, ApplyLook brings ChatCube's own.
     themeHandler_ = UltraCanvasTheme::AddChangeHandler([this](const UltraCanvasTheme&) { ApplyLook(); });
@@ -475,6 +501,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConnectingPage() {
 
 std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     auto sidebar = std::make_shared<UltraCanvasContainer>("cc-sidebar");
+    sidebar_ = sidebar;
     sidebar->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     sidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     sidebar->size.width = CSSLayout::Dimension::Px(kSidebarWidth);
@@ -580,6 +607,22 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     irc_.toggle->SetOnClick([this]() { ToggleAccountForm(irc_); });
     ircDoors->AddChild(irc_.toggle);
     sidebar->AddChild(ircDoors);
+    // Only the networks this build reaches: on Android, Telegram (TDLib) and
+    // Signal (signal-cli) are not there; the other button of a row then takes
+    // the row.
+    const std::pair<std::string, std::shared_ptr<UltraCanvasButton>> networkDoors[] = {
+        {matrixProviderId_, matrixToggle_}, {telegramProviderId_, telegramToggle_},
+        {mastodonProviderId_, mastodonToggle_}, {mattermost_.providerId, mattermost_.toggle},
+        {zulip_.providerId, zulip_.toggle}, {signalProviderId_, signalToggle_},
+        {xmpp_.providerId, xmpp_.toggle}, {irc_.providerId, irc_.toggle}};
+    for (const auto& door : networkDoors) {
+        if (door.second && !NetworkAvailable(door.first)) door.second->SetVisible(false);
+    }
+    for (const auto& row : {moreDoors, lastDoors, signalDoors, ircDoors}) {
+        bool anyShown = false;
+        for (const auto& child : row->GetChildren()) anyShown = anyShown || child->IsVisible();
+        if (!anyShown) row->SetVisible(false);
+    }
 
     // A Matrix account next to ChatCube Direct.
     matrixForm_ = std::make_shared<UltraCanvasContainer>("cc-matrix-form");
@@ -772,6 +815,15 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
         if (rows.front() >= 0 && rows.front() < static_cast<int>(list.size()))
             OpenConversation(list[static_cast<size_t>(rows.front())].conversationId);
     };
+    // Compact, back on the list: a tap on the conversation still selected
+    // changes no selection, and opens it again from here.
+    conversationList_->onItemClicked = [this](int row) {
+        if (!compact_ || compactShowsChat_) return;
+        const auto& list = conversations_->Conversations();
+        if (row >= 0 && row < static_cast<int>(list.size()) &&
+            list[static_cast<size_t>(row)].conversationId == activeConversation_)
+            OpenConversation(activeConversation_);
+    };
     // A right-click opens the conversation's menu, not the conversation:
     // selecting a row here opens it, so the press leaves the selection alone.
     conversationList_->SetSelectsOnContextMenu(false);
@@ -786,6 +838,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
 
 std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     auto pane = std::make_shared<UltraCanvasContainer>("cc-pane");
+    pane_ = pane;
     pane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     pane->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     OnLook(pane, [](UltraCanvasContainer& c) { c.SetBackgroundColor(L().ground); });
@@ -797,6 +850,12 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         c.SetBackgroundColor(L().panel);
         c.SetBorderBottom(1, L().line);
     });
+    // The compact layout's way back to the list (hidden side by side).
+    back_ = MakeIconButton("cc-back", "back", "", kIconButton, false, true);
+    back_->SetTooltip(Tr("Back to the chats"));
+    back_->SetOnClick([this]() { ShowConversationList(); });
+    back_->SetVisible(false);
+    header->AddChild(back_);
     // Its colours are the conversation's (UpdateHeader).
     headerAvatar_ = MakeLabel("cc-header-avatar", "", 12.0f);
     headerAvatar_->SetFontWeight(FontWeight::Bold);
@@ -1294,6 +1353,85 @@ void ChatCubeWindow::ShowChatView() {
     if (window_) window_->RequestRedraw();
 }
 
+void ChatCubeWindow::UpdateLayoutMode(int windowWidth) {
+    if (windowWidth <= 0) return;
+    const bool compact = windowWidth < kCompactWidth;
+    if (compact == compact_ && sidebar_) {
+        return;
+    }
+    compact_ = compact;
+    // Made compact with a conversation open: it stays in sight.
+    compactShowsChat_ = compact && !activeConversation_.empty();
+    ApplyCompactPanes();
+}
+
+void ChatCubeWindow::ApplyCompactPanes() {
+    if (!sidebar_ || !pane_) return;
+    if (!compact_) {
+        // Side by side: the sidebar at its width, the conversation beside it.
+        sidebar_->size.width = CSSLayout::Dimension::Px(kSidebarWidth);
+        sidebar_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        sidebar_->SetVisible(true);
+        pane_->SetVisible(true);
+        if (back_) back_->SetVisible(false);
+    } else {
+        // One at a time, the one shown across the whole window.
+        const bool chat = compactShowsChat_ && !activeConversation_.empty();
+        sidebar_->size.width = CSSLayout::Dimension::Auto();
+        sidebar_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        sidebar_->SetVisible(!chat);
+        pane_->SetVisible(chat);
+        if (back_) back_->SetVisible(true);
+    }
+    sidebar_->InvalidateLayout();
+    pane_->InvalidateLayout();
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::ShowConversationList() {
+    if (!compact_ || !compactShowsChat_) return;
+    // What the conversation had under way stays with it, as when another is
+    // opened; it is still the active one, shown again by a tap on its row.
+    FinishVoiceRecording(false);
+    CloseVideoRecorder(false);
+    CloseVideoPlayer();
+    compactShowsChat_ = false;
+    ApplyCompactPanes();
+}
+
+bool ChatCubeWindow::HaveMediaPermission(bool camera, std::function<void()> retry) {
+#if defined(__ANDROID__)
+    // Each permission the system's own way: the prompt the first time,
+    // remembered after (the manifest declares both, android/AndroidManifest.xml).
+    const char* needed = nullptr;
+    if (!AndroidPermissions::IsGranted(AndroidPermissions::RecordAudio)) needed = AndroidPermissions::RecordAudio;
+    else if (camera && !AndroidPermissions::IsGranted(AndroidPermissions::Camera)) needed = AndroidPermissions::Camera;
+    if (!needed) return true;
+    const bool asksCamera = needed == AndroidPermissions::Camera;
+    AndroidPermissions::Request(needed, [this, asksCamera, retry](bool granted) {
+        if (granted) {
+            if (retry) retry();    // asks for the next one, if there is one
+        } else {
+            SetStatus(asksCamera ? Tr("ChatCube may not use the camera: allow it in the system's settings for ChatCube.")
+                                 : Tr("ChatCube may not use the microphone: allow it in the system's settings for ChatCube."));
+        }
+    });
+    return false;
+#else
+    (void)camera;
+    (void)retry;
+    return true;
+#endif
+}
+
+bool ChatCubeWindow::NetworkAvailable(const std::string& providerId) const {
+    if (providerId.empty()) return false;
+    UltraIMProviderInfo info;
+    if (UltraIM_GetProviderInfo(providerId, info)) return true;     // registered (or loaded) already
+    const std::vector<std::string> modules = UltraIM_ListProviderModules();
+    return std::find(modules.begin(), modules.end(), providerId) != modules.end();
+}
+
 void ChatCubeWindow::SetStatus(const std::string& text) {
     actionStatus_ = text;
     RenderStatus();
@@ -1670,7 +1808,9 @@ void ChatCubeWindow::ShowConversationMenu(int row, int windowX, int windowY) {
 
     // ---- the conversation in the list
     std::vector<MenuItemData>& list = sections[0];
-    if (!active) list.push_back(MenuItemData::Action(Tr("Open"), [this, id]() { OpenConversation(id); }));
+    // (The open one too, from the list a compact window shows in its place.)
+    if (!active || (compact_ && !compactShowsChat_))
+        list.push_back(MenuItemData::Action(Tr("Open"), [this, id]() { OpenConversation(id); }));
     if (c.unreadCount > 0 || conversations_->IsMarkedUnread(c)) {
         list.push_back(MenuItemData::Action(Tr("Mark as read"), [this, id]() { MarkConversationRead(id); }));
     } else if (!active) {
@@ -2859,6 +2999,11 @@ void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
     }
     activeConversation_ = conversationId;
     activeProvider_ = ProviderOf(conversationId);
+    // Compact: the conversation takes the window.
+    if (compact_ && !compactShowsChat_) {
+        compactShowsChat_ = true;
+        ApplyCompactPanes();
+    }
     const UltraIMConversation* c = conversations_->Find(conversationId);
     if (c && conversations_->IsMarkedUnread(*c)) SetMarkedUnread(conversationId, false);   // read now
     c = conversations_->Find(conversationId);
@@ -3676,6 +3821,7 @@ void ChatCubeWindow::StartVoiceRecording() {
         SetStatus(Tr("This network does not take pictures or files yet."));
         return;
     }
+    if (!HaveMediaPermission(false, [this]() { StartVoiceRecording(); })) return;
     if (!editing_.clientMessageId.empty()) ClearComposerMode();
     StopVoicePlayback();
     CloseVideoRecorder(false);
@@ -3756,6 +3902,7 @@ void ChatCubeWindow::OpenVideoRecorder() {
         SetStatus(Tr("This network does not take pictures or files yet."));
         return;
     }
+    if (!HaveMediaPermission(true, [this]() { OpenVideoRecorder(); })) return;
     FinishVoiceRecording(false);
     StopVoicePlayback();
     // The camera opens as a preview; the red button records into ChatCube's
@@ -4140,6 +4287,7 @@ std::string ChatCubeWindow::ContactName(const std::string& contactId) const {
 
 void ChatCubeWindow::StartCall(bool video) {
     if (!callId_.empty() || activeConversation_.empty()) return;
+    if (!HaveMediaPermission(video, [this, video]() { StartCall(video); })) return;
     std::string callId;
     const UltraIMResult r = UltraIM_StartCall(activeProvider_, activeConversation_, video, callId);
     if (!r) {
@@ -4189,6 +4337,7 @@ void ChatCubeWindow::ToggleCamera() {
 
 void ChatCubeWindow::AcceptCall() {
     if (callId_.empty() || !callIncoming_ || callState_ != UltraIMCallState::Ringing) return;
+    if (!HaveMediaPermission(callVideo_, [this]() { AcceptCall(); })) return;
     const UltraIMResult r = UltraIM_AcceptCall(providerId_, callId_, callVideo_);
     if (!r) SetStatus(TrF("Could not answer: {0}", r.message));
 }
@@ -4498,7 +4647,9 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                     messages_->Upsert(e.message);
                 EnsureVideoPreview(e.message);
                 ScrollToEnd();
-                UltraIM_MarkRead(e.providerId, activeConversation_);
+                // Read only when it is in sight: not while a compact window
+                // shows the list (opening it again marks it read).
+                if (!compact_ || compactShowsChat_) UltraIM_MarkRead(e.providerId, activeConversation_);
                 UpdateHeader();
             }
             break;

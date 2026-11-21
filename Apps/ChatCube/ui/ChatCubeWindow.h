@@ -56,6 +56,17 @@
 // sidebar; their chats join the same list, and everything done in a
 // conversation goes to that conversation's provider.
 //
+// On a narrow window - a phone, ChatCube for Android, or a desktop window
+// made narrower than kCompactWidth - the two columns take turns: the list
+// fills the window, a conversation opened from it fills the window in its
+// place with a back arrow before the name, and the arrow (or Android's back
+// key) returns to the list:
+//
+//   | [My ID 3f2a 9c01] [Copy][Gear]  |        | [<] Bob   online  [Call][Video] |
+//   | [ Add: a ChatCube ID ...  ][+]  |  -->   |  ( hello )                      |
+//   | ● Bob              14:05        |  <--   |            ( hi, how are you )  |
+//   | # Team             13:40        |        | [+] [ Message...       ] [Send] |
+//
 // A call shows a bar across the top of the chat view:
 //
 //   | Incoming video call from Bob                        [Accept] [Decline] |
@@ -71,6 +82,10 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.14 - the compact layout: on a window narrower than kCompactWidth (a phone) the list and the
+//                  open conversation take turns, with a back arrow; the buttons of networks this build
+//                  cannot reach are hidden (Telegram and Signal on Android); the microphone and the camera
+//                  asked for on Android before a recording or a call
 // Version: 0.3.13 - who is typing, per conversation: in its row of the list and, named in a group, in the header
 // Version: 0.3.12 - a network's module loaded when its button is pressed (LoadNetwork); NetworkName
 // Version: 0.3.11 - an IRC account (server, nickname, the password of a registered nick); #channel goes to IRC
@@ -117,7 +132,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-17
+// Last Modified: 2026-11-21
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -187,6 +202,22 @@ private:
     // The Connecting page; `failed`: with the error and Try again / Settings.
     void ShowConnectingPage(bool failed = false);
     void ShowChatView();
+    // The compact layout (a phone): on below kCompactWidth logical pixels,
+    // off above it. Called with the window's width at the start and on every
+    // resize (a rotation, a desktop window dragged narrower).
+    void UpdateLayoutMode(int windowWidth);
+    // Which column a compact window shows: the list, or the open conversation.
+    void ApplyCompactPanes();
+    void ShowConversationList();
+    // Whether the microphone (and with `camera` the camera) may be used now.
+    // Always on the desktop, which asks by itself. On Android, false the
+    // first time: the system's prompt is shown, and `retry` runs once it is
+    // answered yes (a status line says so when it is answered no).
+    bool HaveMediaPermission(bool camera, std::function<void()> retry);
+    // Whether this build reaches `providerId`: its provider registered, or a
+    // module for it in the plug-in folder. A network it cannot reach has no
+    // button in the sidebar.
+    bool NetworkAvailable(const std::string& providerId) const;
 
     // ---- actions -------------------------------------------------------------
     void SignIn();
@@ -507,6 +538,11 @@ private:
     bool hasIdentity_ = false;
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> chatView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> sidebar_;         // the list's column
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> pane_;            // the conversation's column
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    back_;            // compact: back to the list
+    bool compact_ = false;              // the list and the conversation take turns
+    bool compactShowsChat_ = false;     // compact: the conversation is the one shown
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     myId_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> contactId_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> groupForm_;

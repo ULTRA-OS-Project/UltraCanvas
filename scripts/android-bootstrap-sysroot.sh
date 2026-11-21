@@ -7,8 +7,10 @@
 # against the sysroot it builds. The other ABIs and --with-net have not been
 # run yet; a port that has no support for their triplet is the likely failure.
 #
-# Usage: scripts/android-bootstrap-sysroot.sh [--with-net] [ABI]
+# Usage: scripts/android-bootstrap-sysroot.sh [--with-net] [--with-chatcube] [ABI]
 #   ABI defaults to arm64-v8a (vcpkg triplet arm64-android).
+#   --with-chatcube  what ChatCube for Android needs: --with-net, and SQLite,
+#                    libsodium and Opus (the manifest's chatcube feature)
 #
 # Requires:
 #   ANDROID_NDK_HOME (or ANDROID_NDK_ROOT) - an installed NDK, r25+.
@@ -29,10 +31,12 @@ repo="$(cd "$(dirname "$0")/.." && pwd)"
 manifest_dir="$repo/UltraCanvas/OS/Android/packaging"
 
 with_net=0
+with_chatcube=0
 abi="arm64-v8a"
 for arg in "$@"; do
     case "$arg" in
         --with-net) with_net=1 ;;
+        --with-chatcube) with_net=1; with_chatcube=1 ;;
         arm64-v8a|armeabi-v7a|x86_64|x86) abi="$arg" ;;
         *) echo "unknown argument: $arg" >&2; exit 2 ;;
     esac
@@ -90,6 +94,7 @@ install_args=(
     "--x-install-root=$sysroot"
 )
 [ "$with_net" -eq 1 ] && install_args+=(--x-feature=net)
+[ "$with_chatcube" -eq 1 ] && install_args+=(--x-feature=chatcube)
 
 echo "android-bootstrap-sysroot: NDK      $ndk"
 echo "android-bootstrap-sysroot: vcpkg    $vcpkg_root"
@@ -121,7 +126,8 @@ Configure the build against it with:
     -DANDROID_PLATFORM=android-28 \\
     -DCMAKE_FIND_ROOT_PATH=$installed \\
     -DPKG_CONFIG_ARGN=--static$([ "$with_net" -eq 1 ] && echo " \\
-    -DULTRACANVAS_ENABLE_NET=ON")
+    -DULTRACANVAS_ENABLE_NET=ON")$([ "$with_chatcube" -eq 1 ] && echo " \\
+    -DULTRACANVAS_ENABLE_DATABASE=ON")
 
 PKG_CONFIG_LIBDIR (not PKG_CONFIG_PATH) is what stops pkg-config falling back
 to the host's /usr/lib/pkgconfig and silently linking desktop libraries into
