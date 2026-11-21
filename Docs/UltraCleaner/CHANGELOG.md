@@ -1,3 +1,15 @@
+#### 2026-11-21 *0.69*
+- **System-wide crash dumps on Windows.** *Crash reports* covered only the
+  signed-in user's `CrashDumps` and Windows Error Reporting folders. Three
+  rules add the machine's own: the Error Reporting archive and queue under
+  `%ProgramData%\Microsoft\Windows\WER`, the `*.dmp` files in
+  `%SystemRoot%\Minidump` and `%SystemRoot%\LiveKernelReports` (the dump
+  files only - the per-component folders stay), and
+  `%SystemRoot%\MEMORY.DMP`, the full memory dump of the last blue screen and
+  often several gigabytes. All three need an administrator, skip anything
+  from the last day, and start unticked. Rules can name `{PROGRAMDATA}` now,
+  and that folder is protected like the Windows folder.
+
 #### 2026-11-15 *0.68*
 - **The registry findings list keeps its place.** Cleaning, restoring or
   rescanning lists the findings again, and the view fell back to the first row
