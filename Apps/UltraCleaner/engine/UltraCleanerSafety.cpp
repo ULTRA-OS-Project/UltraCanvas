@@ -84,6 +84,7 @@ std::vector<std::string> BuildProtectedPaths() {
     AddIfNotEmpty(paths, RoamingAppDataDir());
     AddIfNotEmpty(paths, DownloadsDir());
     AddIfNotEmpty(paths, WindowsDir());
+    AddIfNotEmpty(paths, ProgramDataDir());
     AddIfNotEmpty(paths, TrashDir());
 
     std::sort(paths.begin(), paths.end());
