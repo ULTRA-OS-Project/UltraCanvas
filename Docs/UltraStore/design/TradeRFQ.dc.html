@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Trade - Buyer desk (requests for quotation)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 20px; flex-wrap: wrap">
+<a href="TradeHome.dc.html" aria-label="UltraStore Trade home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Trade</span>
+</a>
+<form role="search" style="flex: 1 1 420px; display: flex; align-items: stretch; height: 46px; border-radius: 999px; border: 2px solid {{accent}}; overflow: hidden; background: #ffffff">
+<div role="group" aria-label="Search for" style="display: flex; border-right: 1px solid #e2e8f0; background: #f8fafc">
+<button type="button" onClick="{{modeProducts}}" aria-pressed="{{isProducts}}" style="{{productsStyle}}">Products</button>
+<button type="button" onClick="{{modeSuppliers}}" aria-pressed="{{isSuppliers}}" style="{{suppliersStyle}}">Suppliers</button>
+</div>
+<label for="search-trade" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search</label>
+<input id="search-trade" type="search" placeholder="{{placeholder}}" style="flex: 1 1 auto; min-width: 0; border: 0; padding: 0 16px; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+<button type="submit" aria-label="Search" style="width: 56px; border: 0; background: {{accent}}; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></button>
+</form>
+<nav aria-label="Account" style="display: flex; gap: 4px; align-items: center">
+<a href="TradeRFQ.dc.html" style="display: flex; flex-direction: column; justify-content: center; height: 44px; padding: 0 12px; border-radius: 12px; text-decoration: none; color: #0f172a; line-height: 1.2"><span style="font-size: 12px; color: #64748b">Nordlicht Handel GmbH</span><span style="font-weight: 700; font-size: 14px">Buyer desk</span></a>
+<a href="#messages" aria-label="Messages, 2 unread" style="position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 999px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4V5z"></path></svg><span style="position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #dc2626; color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">2</span></a>
+<a href="TradeRFQ.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; background: #0f172a; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px">Get quotes</a>
+</nav>
+</div>
+<nav aria-label="Trade" style="border-top: 1px solid #f1f5f9">
+<div style="max-width: 1280px; margin: 0 auto; padding: 0 32px; box-sizing: border-box; display: flex; gap: 2px; flex-wrap: wrap; align-items: center">
+<a href="TradeHome.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Categories</a><a href="TradeHome.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Ready to ship</a><a href="TradeRFQ.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #0f172a; font-weight: 700; font-size: 14px; border-bottom: 2px solid {{accent}}">Request for quotation</a><a href="TradeSupplier.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Verified suppliers</a><a href="#assurance" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Trade assurance</a><a href="#logistics" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Logistics</a>
+<a href="#sell" style="margin-left: auto; display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 600; font-size: 14px">Become a supplier</a>
+</div>
+</nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 24px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 32px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.02em">Buyer desk · Nordlicht Handel GmbH</h1>
+<span style="color: #64748b">Your requests for quotation, the quotes that came in, and the orders running through escrow.</span>
+</div>
+
+<nav aria-label="Buyer desk" style="display: flex; gap: 6px; flex-wrap: wrap">
+<a href="TradeRFQ.dc.html" aria-current="page" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 999px; background: #0f172a; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px">Requests for quotation <span style="min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #ffffff; color: #0f172a; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">3</span></a>
+<a href="#orders" style="display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Orders <span style="min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #f1f5f9; color: #0f172a; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">2</span></a>
+<a href="#inquiries" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Inquiries</a>
+<a href="#suppliers" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Your suppliers</a>
+<a href="#company" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none; font-weight: 600; font-size: 14px">Company and users</a>
+</nav>
+
+<section style="display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 24px; align-items: start">
+<aside aria-label="Your requests" style="display: flex; flex-direction: column; gap: 10px">
+<a href="TradeRFQ.dc.html" aria-current="true" style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 16px; border: 2px solid {{accent}}; text-decoration: none; color: #0f172a"><span style="display: flex; justify-content: space-between; gap: 8px"><span style="font-weight: 700">RFQ-2026-0418</span><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700; white-space: nowrap; ">4 quotes</span></span><span style="font-size: 13px">Industrial IoT gateway, 4G, RS-485 · 800 pieces</span><span style="font-size: 12px; color: #64748b">Target €42.00 · deliver to Hamburg by 15 Dec · closes in 2 days</span></a>
+<a href="#rfq-0417" style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><span style="display: flex; justify-content: space-between; gap: 8px"><span style="font-weight: 700">RFQ-2026-0417</span><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #fef3c7; color: #92400e; font-size: 12px; font-weight: 700; white-space: nowrap; ">1 quote</span></span><span style="font-size: 13px">Corrugated boxes FEFCO 0201, 400×300×300 · 5,000</span><span style="font-size: 12px; color: #64748b">Target €0.48 · deliver to Hamburg by 1 Dec · closes in 5 days</span></a>
+<a href="#rfq-0409" style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><span style="display: flex; justify-content: space-between; gap: 8px"><span style="font-weight: 700">RFQ-2026-0409</span><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 700; white-space: nowrap; ">awarded</span></span><span style="font-size: 13px">Hi-vis work jackets, class 3 · 300</span><span style="font-size: 12px; color: #64748b">Awarded to Textiel Vermeer BV · order TO-2026-1182</span></a>
+<a href="#new" style="display: inline-flex; align-items: center; justify-content: center; height: 48px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700">New request</a>
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 13px; color: #475569">
+<span style="font-weight: 700; color: #0f172a">How a request works</span>
+<span>The request goes to the verified suppliers in the category you chose, or to the ones you pick. Each quote names the unit price at your quantity, the minimum, the lead time, the sample and the terms. You compare, ask back, and award one; the award becomes an order in escrow.</span>
+</div>
+</aside>
+
+<section aria-labelledby="quotes-title" style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 20px; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap"><h2 id="quotes-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">RFQ-2026-0418 · Industrial IoT gateway, 4G, RS-485</h2><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700; white-space: nowrap; ">open · 4 quotes</span></div>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; font-size: 13px">
+<div><dt style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Quantity</dt><dd style="margin: 0; font-weight: 700">800 pieces, then 400 a quarter</dd></div>
+<div><dt style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Target price</dt><dd style="margin: 0; font-weight: 700">€42.00 / piece</dd></div>
+<div><dt style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Deliver to</dt><dd style="margin: 0; font-weight: 700">Hamburg, DE · DAP · by 15 Dec</dd></div>
+<div><dt style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Specification</dt><dd style="margin: 0; font-weight: 700">2 × RS-485, 4G Cat 4, −40 °C, DIN rail, CE</dd></div>
+<div><dt style="color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600">Sent to</dt><dd style="margin: 0; font-weight: 700">6 suppliers in Industrial IoT</dd></div>
+</dl>
+</div>
+
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap">
+<span style="font-size: 13px; color: #64748b">Sort by</span>
+<sc-for list="{{sorts}}" as="s" hint-placeholder-count="4"><button type="button" onClick="{{s.pick}}" aria-pressed="{{s.on}}" style="{{s.style}}">{{s.label}}</button></sc-for>
+<span style="margin-left: auto; font-size: 13px; color: #64748b">Landed cost = unit price × 800 + shipping, excl. VAT</span>
+</div>
+
+<div style="overflow-x: auto; border-radius: 20px; border: 1px solid #e2e8f0">
+<table style="border-collapse: collapse; width: 100%; font-size: 13px; min-width: 860px">
+<thead><tr style="color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; background: #f8fafc">
+<th scope="col" style="text-align: left; padding: 10px 12px; font-weight: 600">Supplier</th><th scope="col" style="text-align: right; padding: 10px 12px; font-weight: 600">Unit at 800</th><th scope="col" style="text-align: right; padding: 10px 12px; font-weight: 600">MOQ</th><th scope="col" style="text-align: right; padding: 10px 12px; font-weight: 600">Lead time</th><th scope="col" style="text-align: right; padding: 10px 12px; font-weight: 600">Shipping</th><th scope="col" style="text-align: right; padding: 10px 12px; font-weight: 600">Landed, 800</th><th scope="col" style="text-align: left; padding: 10px 12px; font-weight: 600">Sample · terms</th><th scope="col" style="text-align: right; padding: 10px 12px; font-weight: 600"></th>
+</tr></thead>
+<tbody>
+<sc-for list="{{quotes}}" as="q" hint-placeholder-count="4">
+<tr style="{{q.rowStyle}}">
+<td style="padding: 12px; border-top: 1px solid #f1f5f9"><div style="display: flex; align-items: center; gap: 10px"><span aria-hidden="true" style="{{q.avatarStyle}}"></span><span style="display: flex; flex-direction: column; line-height: 1.25"><span style="font-weight: 700">{{q.name}}</span><span style="color: #64748b; font-size: 12px">{{q.meta}}</span></span></div></td>
+<td style="padding: 12px; border-top: 1px solid #f1f5f9; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums">{{q.unit}}</td>
+<td style="padding: 12px; border-top: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums">{{q.moq}}</td>
+<td style="padding: 12px; border-top: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums">{{q.lead}} d</td>
+<td style="padding: 12px; border-top: 1px solid #f1f5f9; text-align: right; font-variant-numeric: tabular-nums">{{q.shipping}}</td>
+<td style="padding: 12px; border-top: 1px solid #f1f5f9; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums">{{q.landed}}</td>
+<td style="padding: 12px; border-top: 1px solid #f1f5f9; color: #334155">{{q.terms}}</td>
+<td style="padding: 12px; border-top: 1px solid #f1f5f9; text-align: right"><div style="display: inline-flex; gap: 6px"><button type="button" style="height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #cbd5e1; background: #ffffff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer">Ask back</button><button type="button" onClick="{{q.award}}" style="{{q.awardStyle}}">{{q.awardLabel}}</button></div></td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+
+<sc-if value="{{awarded}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 20px; background: #f0fdfa; border: 1px solid #99f6e4">
+<span style="font-weight: 700">Awarded to {{awardedName}}: the quote becomes order TO-2026-1197 in escrow</span>
+<ol style="margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; font-size: 13px">
+<li style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; background: #ffffff; border: 1px solid #99f6e4"><span style="font-weight: 700; color: #115e59">1 · Contract</span><span style="color: #475569">Both sides sign the order in the store: price, quantity, specification, inspection, lead time.</span></li>
+<li style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-weight: 700">2 · Deposit</span><span style="color: #475569">30 % to the payment service's escrow, {{depositText}}; production starts.</span></li>
+<li style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-weight: 700">3 · Inspection</span><span style="color: #475569">The pre-shipment report (photos, test log, carton count) goes into the order; you approve or claim.</span></li>
+<li style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-weight: 700">4 · Balance and shipping</span><span style="color: #475569">The balance into escrow, the goods ship DAP Hamburg with the documents in the order.</span></li>
+<li style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 12px; background: #ffffff; border: 1px solid #e2e8f0"><span style="font-weight: 700">5 · Release</span><span style="color: #475569">You confirm receipt, or 14 days pass without a claim; the escrow pays the supplier.</span></li>
+</ol>
+</div>
+</sc-if>
+
+<section id="orders" aria-labelledby="orders-title" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="orders-title" style="margin: 0; font-size: 18px; font-weight: 700">Orders in escrow</h2>
+<div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+<div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr auto; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1px solid #e2e8f0"><span><strong>TO-2026-1182</strong> · Hi-vis work jackets, class 3 · 300 · Textiel Vermeer BV</span><span style="color: #64748b">€4,620 · deposit paid</span><span style="color: #64748b">In production · ships 28 Nov</span><span><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 700; white-space: nowrap; ">step 2 of 5</span></span><a href="#to-1182" style="font-weight: 600; text-decoration: none">Open</a></div>
+<div style="display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr auto; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1px solid #e2e8f0"><span><strong>TO-2026-1140</strong> · Thermal label rolls · 1,000 · Kartonwerk Lindner</span><span style="color: #64748b">€1,550 · balance in escrow</span><span style="color: #64748b">Delivered 17 Nov · release on 1 Dec</span><span><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #dcfce7; color: #166534; font-size: 12px; font-weight: 700; white-space: nowrap; ">step 5 of 5</span></span><a href="#to-1140" style="font-weight: 600; text-decoration: none">Confirm receipt</a></div>
+</div>
+</section>
+</section>
+</section>
+</main>
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px">
+<span style="font-weight: 600; color: #0f172a">UltraStore Trade</span>
+<span>· manufacturers and bulk buyers, on the ULTRA OS marketplace</span>
+</div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="#sell" style="color: #475569; text-decoration: none; font-weight: 500">Become a supplier</a>
+<a href="#assurance" style="color: #475569; text-decoration: none; font-weight: 500">Trade assurance</a>
+<a href="#logistics" style="color: #475569; text-decoration: none; font-weight: 500">Logistics</a>
+<a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a>
+<a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a>
+<a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a>
+</nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#0f766e","options":["#0f766e","#2563eb","#0f172a","#b45309"]},"$preview":{"width":1440,"height":1600}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'products', sort: 'landed', awarded: '' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#0f766e';
+    const mode = this.state.mode;
+    const seg = (on) => 'border: 0; height: 100%; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; ' + (on ? 'background: #0f172a; color: #ffffff' : 'background: transparent; color: #334155');
+    const search = { isProducts: mode === 'products', isSuppliers: mode === 'suppliers', productsStyle: seg(mode === 'products'), suppliersStyle: seg(mode === 'suppliers'),
+      placeholder: mode === 'products' ? 'Search products, e.g. "IoT gateway RS-485", "corrugated boxes"' : 'Search suppliers by name, product or country',
+      modeProducts: () => this.setState({ mode: 'products' }), modeSuppliers: () => this.setState({ mode: 'suppliers' }) };
+    const sort = this.state.sort, awardedId = this.state.awarded;
+    const eur = (n) => '€' + n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const Q = [
+      { id: 'nord', name: 'Nordfertigung GmbH', meta: 'DE · verified · 97 % on time', unit: 44.5, moq: 100, lead: 12, shipping: 180, terms: 'Sample €62 credited · 30 % deposit · DAP', grad: 'linear-gradient(135deg, #0ea5e9, #1e3a8a)' },
+      { id: 'gw', name: 'Gateway Works Ltd', meta: 'UK · verified · 93 % on time', unit: 41.2, moq: 500, lead: 24, shipping: 420, terms: 'Sample £70 · 50 % deposit · DAP, customs by buyer', grad: 'linear-gradient(135deg, #64748b, #1e293b)' },
+      { id: 'ib', name: 'IoT Bohemia s.r.o.', meta: 'CZ · verified · 96 % on time', unit: 39.9, moq: 1000, lead: 30, terms: 'MOQ above request: 1,000 quoted · 30 % deposit', shipping: 240, grad: 'linear-gradient(135deg, #34d399, #065f46)' },
+      { id: 'rx', name: 'Rhein-Elektronik GmbH', meta: 'DE · verified · 99 % on time', unit: 46.8, moq: 50, lead: 9, shipping: 150, terms: 'Free sample · 20 % deposit · DAP · 36 months warranty', grad: 'linear-gradient(135deg, #f59e0b, #92400e)' }
+    ].map((q) => ({ ...q, landedN: q.unit * 800 + q.shipping }));
+    const keys = { price: (q) => q.unit, landed: (q) => q.landedN, lead: (q) => q.lead, moq: (q) => q.moq };
+    const sorted = [...Q].sort((a, b) => keys[sort](a) - keys[sort](b));
+    const chip = (on) => 'display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; border: 0; ' + (on ? 'background: #0f172a; color: #ffffff' : 'background: #f1f5f9; color: #0f172a');
+    const sorts = [['landed', 'Landed cost'], ['price', 'Unit price'], ['lead', 'Lead time'], ['moq', 'Minimum order']].map(([id, label]) => ({ label, on: id === sort, style: chip(id === sort), pick: () => this.setState({ sort: id }) }));
+    const quotes = sorted.map((q) => ({ ...q, unit: eur(q.unit), moq: q.moq.toLocaleString('en-GB'), shipping: eur(q.shipping), landed: eur(q.landedN),
+      avatarStyle: 'width: 36px; height: 36px; border-radius: 10px; flex: 0 0 auto; background: ' + q.grad,
+      rowStyle: awardedId === q.id ? 'background: #f0fdfa' : (q.moq > 800 ? 'opacity: 0.75' : ''),
+      awardLabel: awardedId === q.id ? 'Awarded' : 'Award', award: () => this.setState({ awarded: awardedId === q.id ? '' : q.id }),
+      awardStyle: 'height: 36px; padding: 0 14px; border-radius: 999px; border: 0; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; ' + (awardedId === q.id ? 'background: #0f172a; color: #ffffff' : 'background: ' + accent + '; color: #ffffff') }));
+    const won = Q.find((q) => q.id === awardedId);
+    const desk = { sorts, quotes, awarded: !!won, awardedName: won ? won.name : '', depositText: won ? eur(won.landedN * 0.3) + ' of ' + eur(won.landedN) : '' };
+    return { accent, ...search, ...desk };
+  }
+}
+</script>
+</body>
+</html>
