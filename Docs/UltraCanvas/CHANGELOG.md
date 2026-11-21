@@ -1,3 +1,61 @@
+#### 2026-11-21 *0.9.583*
+- **EMF+ is read: GDI+ drawings keep their transparency.** The EMF reader
+  read only the GDI records, so a GDI+ metafile drew from the copy a dual
+  file carries for older players: opaque, and sometimes offset from where
+  GDI+ put the shape (the sample files' circles came out solid and 14 px
+  up and left).
+  - New `EmfPlusPlayer` (`Plugins/Vector/UltraCanvasEMFPlus.h`) plays the
+    EMF+ records. It covers solid, hatch and linear-gradient brushes with
+    their alpha, pens, path objects, polygons, rectangles, ellipses, pies,
+    arcs, cardinal curves, Beziers and `DrawString`, through the world,
+    page and container transforms.
+  - In a dual file, a stretch of EMF+ drawing that was played skips its
+    GDI copy. A stretch with a record the reader cannot draw (an image, a
+    region fill, a driver string, a texture or path-gradient brush) is
+    drawn from that copy instead and reported. GDI drawing after an EMF+
+    `GetDC` is drawn.
+  - A WMF that carries its EMF in `META_ESCAPE_ENHANCED_METAFILE` records,
+    as GDI+ writes one, is read from that EMF, as LibreOffice reads it.
+  - Checked against LibreOffice 24.2 on three GDI+ EMF files and two WMF
+    files: same positions, same translucency.
+  - New `EMFPlusTest` builds a dual EMF record by record: alpha kept, the
+    GDI copy not drawn twice, the fallback, an EMF+-only file and the WMF
+    wrapper (7 of its 10 checks fail on the old reader).
+- **Drawings rasterized from a file have their size.** `InspectVectorFile`
+  reported 0 x 0 for every format the Vector plugin reads (EMF, WMF, DXF,
+  DWG, ODG and the rest): the plugin's `GetFileInfo` gave no size. So
+  `RasterizeVectorFile` made a square canvas, and the plugin's element
+  drew the drawing into it unscaled. This hit UltraPaint's import of those
+  formats.
+  - `RasterizeVectorFile` reads such a format once into its document and
+    draws it with `RasterizeVectorDocument`. The page is the natural size,
+    and the drawing is scaled to the pixels asked for.
+  - `InspectVectorFile` takes the page as the natural size when a plugin
+    reports none, and the Vector plugin's `GetFileInfo` reports it (in
+    points).
+  - New `VectorFileSizeTest`: a drawing written in each format the plugin
+    writes and reads, rasterized from the file - natural size, shape and
+    scale (all 24 per-format checks fail on the old code; DWG runs where
+    LibreDWG's dxf2dwg is installed).
+- **CI draws the vector writers' output in LibreOffice.** The writers were
+  tested only by reading their files back with our own readers, which can
+  agree with them and still both be wrong. Before the fill-rule fix every
+  EMF, WMF, CDR and ODG round trip passed, while LibreOffice drew the rings
+  wrong.
+  - New workflow `Vector output in LibreOffice`
+    (`.github/workflows/vector-libreoffice.yml`), on changes to the Vector
+    plugin or the vector model. New `VectorExportFixtures` writes fixture
+    drawings through every writer with a manifest of probe points. New
+    `scripts/check_libreoffice_render.py` has LibreOffice convert each file
+    to PNG, finds the drawing on the page and checks each probe.
+  - EMF, WMF, SVG, ODG, PDF, CDR and DXF are checked (22 files). Against
+    the writers from before the fill-rule fix, 8 of them fail: CDR, EMF,
+    WMF, the three ODG variants and both SVG variants.
+  - It found four files LibreOffice's own import draws wrong, now listed as
+    expected failures that must keep failing. Its PDF import fills every
+    shape even-odd (poppler draws our file right), and its DXF import drops
+    a hatch with curved boundary edges.
+
 #### 2026-11-21 *0.9.582*
 - **EmbeddedPreviewTest checks the Xara and CorelDRAW samples again.** It
   looked for them in `media/xar` and `media/cdr`, which no longer exist - the
