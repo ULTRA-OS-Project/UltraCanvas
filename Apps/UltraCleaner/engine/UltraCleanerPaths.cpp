@@ -1,6 +1,7 @@
 // Apps/UltraCleaner/engine/UltraCleanerPaths.cpp
 // The platform rules below are other programs' conventions, not the
 // framework's own data folder rule - UltraCleanerPaths.h says why.
+// Version: 0.69 - ProgramDataDir and the {PROGRAMDATA} token
 // Version: 0.65 - '\' is a separator on Windows only (IsSeparator, ToForwardSlashes)
 // Version: 0.1.1 - says why these are not the framework's data folder helpers
 // Version: 0.1.0
@@ -200,6 +201,16 @@ std::string WindowsDir() {
 #endif
 }
 
+std::string ProgramDataDir() {
+#if defined(_WIN32) || defined(_WIN64)
+    std::string data = EnvOrEmpty("ProgramData");
+    if (data.empty()) data = EnvOrEmpty("ALLUSERSPROFILE");
+    return ToForwardSlashes(data);
+#else
+    return {};
+#endif
+}
+
 std::string TrashDir() {
 #if defined(_WIN32) || defined(_WIN64)
     // The recycle bin is not a plain directory — it is reached through the
@@ -242,6 +253,7 @@ std::string ExpandTokens(const std::string& pattern) {
         else if (token == "DOWNLOADS")     value = DownloadsDir();
         else if (token == "TRASH")         value = TrashDir();
         else if (token == "WINDIR")        value = WindowsDir();
+        else if (token == "PROGRAMDATA")   value = ProgramDataDir();
         else return {};                            // unknown token
 
         if (value.empty()) return {};              // unresolved on this system

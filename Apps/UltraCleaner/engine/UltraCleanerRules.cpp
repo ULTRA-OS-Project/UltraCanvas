@@ -1,4 +1,5 @@
 // Apps/UltraCleaner/engine/UltraCleanerRules.cpp
+// Version: 0.69 - crash.windows.system / .kernel / .memorydump: machine-wide crash dumps
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCleanerRules.h"
@@ -261,6 +262,33 @@ std::vector<CleanRule> MakeRules() {
             "{LOCALAPPDATA}/Microsoft/Windows/WER/ReportQueue" },
           M::ClearDirectoryContents, {}, {},
           /*minAgeDays=*/1, /*maxDepth=*/1, /*safe=*/true, P::Windows });
+
+    // The machine-wide copies of the same things. They belong to the system,
+    // so without an elevated process most of them will refuse to go, and a
+    // kernel dump is the only record of a blue screen somebody may still be
+    // chasing: all three are offered but not pre-ticked.
+    Add({ "crash.windows.system", C::CrashReports,
+          "System error reports (needs administrator)",
+          { "{PROGRAMDATA}/Microsoft/Windows/WER/ReportArchive",
+            "{PROGRAMDATA}/Microsoft/Windows/WER/ReportQueue" },
+          M::ClearDirectoryContents, {}, {},
+          /*minAgeDays=*/1, /*maxDepth=*/1, /*safe=*/false, P::Windows });
+
+    // Only the dump files: LiveKernelReports keeps one folder per component
+    // (WATCHDOG, USBHUB3, ...) that Windows expects to find again.
+    Add({ "crash.windows.kernel", C::CrashReports,
+          "Blue-screen and kernel dumps (needs administrator)",
+          { "{WINDIR}/Minidump", "{WINDIR}/LiveKernelReports" },
+          M::RemoveMatchingFiles, { "*.dmp" }, {},
+          /*minAgeDays=*/1, /*maxDepth=*/2, /*safe=*/false, P::Windows });
+
+    // One file, by name, directly in the Windows folder - the walk never
+    // goes below it.
+    Add({ "crash.windows.memorydump", C::CrashReports,
+          "Full memory dump (needs administrator)",
+          { "{WINDIR}" },
+          M::RemoveMatchingFiles, { "MEMORY.DMP" }, {},
+          /*minAgeDays=*/1, /*maxDepth=*/1, /*safe=*/false, P::Windows });
 
     // ===================================================================
     // Package manager caches — re-downloadable, so safe, but the ones that
