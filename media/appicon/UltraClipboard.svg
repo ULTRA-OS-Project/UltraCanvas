@@ -1,13 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <title>UltraClipboard</title>
-  <desc>A white clipboard with three lines of text in front of an earlier copy, on a teal tile: the clipboard history mark.</desc>
-  <rect x="16" y="16" width="224" height="224" rx="48" ry="48" fill="#0d9488"/>
-  <rect x="92" y="58" width="112" height="140" rx="16" ry="16" fill="#99f6e4"/>
-  <rect x="58" y="78" width="120" height="146" rx="16" ry="16" fill="#ffffff"/>
-  <rect x="90" y="64" width="56" height="30" rx="10" ry="10" fill="#134e4a"/>
-  <rect x="104" y="58" width="28" height="14" rx="7" ry="7" fill="#134e4a"/>
-  <rect x="80" y="122" width="76" height="12" rx="6" fill="#0f766e"/>
-  <rect x="80" y="148" width="76" height="12" rx="6" fill="#5eead4"/>
-  <rect x="80" y="174" width="50" height="12" rx="6" fill="#5eead4"/>
+  <desc>A teal clipboard with a dark clip and a white sheet carrying four lines of text, standing on its own with no tile behind it.</desc>
+  <!-- board -->
+  <rect x="36" y="30" width="184" height="218" rx="30" ry="30" fill="#0d9488"/>
+  <!-- sheet -->
+  <rect x="56" y="58" width="144" height="170" rx="14" ry="14" fill="#ffffff"/>
+  <!-- clip: plate with a ring on top; the ring's hole is cut out -->
+  <path fill="#134e4a" fill-rule="evenodd" d="
+    M 128 8 a 22 22 0 0 1 22 22 v 4 h 12 a 14 14 0 0 1 14 14 v 18 a 14 14 0 0 1 -14 14 h -68 a 14 14 0 0 1 -14 -14 v -18 a 14 14 0 0 1 14 -14 h 12 v -4 a 22 22 0 0 1 22 -22 z
+    M 128 21 a 9 9 0 1 0 0.01 0 z"/>
+  <!-- text lines -->
+  <rect x="78" y="102" width="100" height="13" rx="6.5" fill="#0f766e"/>
+  <rect x="78" y="131" width="100" height="13" rx="6.5" fill="#5eead4"/>
+  <rect x="78" y="160" width="100" height="13" rx="6.5" fill="#5eead4"/>
+  <rect x="78" y="189" width="62" height="13" rx="6.5" fill="#5eead4"/>
 </svg>
