@@ -47,7 +47,11 @@ if(ANDROID)
     # (TDLib) and Signal (signal-cli, a Java program ChatCube starts) cannot
     # run on Android and are left out; their buttons are hidden.
     add_library(ChatCube SHARED ${CHATCUBE_SOURCES} android/ChatCubeAndroidProviders.cpp)
-    target_include_directories(ChatCube PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/android)
+    # android/ for the providers' registration; the framework's Android
+    # folder for UltraCanvasAndroidPermissions.h (the microphone and camera
+    # prompts), which the core does not publish among its headers.
+    target_include_directories(ChatCube PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/android
+                                                ${CMAKE_SOURCE_DIR}/UltraCanvas/OS/Android)
     foreach(_cc_provider Direct Matrix Mastodon Mattermost Zulip Xmpp Irc)
         if(TARGET UltraIM${_cc_provider}Core)
             target_link_libraries(ChatCube PRIVATE UltraIM${_cc_provider}Core)

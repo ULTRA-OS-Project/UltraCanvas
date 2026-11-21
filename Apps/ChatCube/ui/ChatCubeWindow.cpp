@@ -91,7 +91,7 @@
 #include <vector>
 
 #if defined(__ANDROID__)
-#include "OS/Android/UltraCanvasAndroidPermissions.h"
+#include "UltraCanvasAndroidPermissions.h"   // OS/Android, on the Android include path (CMakeLists.txt)
 #endif
 
 using namespace UltraCanvas;
