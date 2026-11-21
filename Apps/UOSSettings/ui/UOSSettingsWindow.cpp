@@ -232,6 +232,13 @@ namespace {
         table->size.height = CSSLayout::Dimension::Px(120);   // basis; it grows
         table->SetBorders(1.0f, RuleColor());
         table->SetBackgroundColor(PageBackground());
+        // The colours are read again after every theme change, as the labels
+        // in the table read theirs: kept from the theme the page was built in,
+        // a dark table stayed in a light window with its text turned dark.
+        SettingsPageKit::FollowKitLook(table, [](UltraCanvasUIElement& e) {
+            e.SetBorders(1.0f, RuleColor());
+            e.SetBackgroundColor(PageBackground());
+        });
 
         auto header = std::make_shared<UltraCanvasContainer>(id + "-header");
         header->layout.SetFlexRow().SetFlexGap(12)
@@ -241,6 +248,10 @@ namespace {
         header->SetPadding(0, kScrollbarRoom, 0, 10);
         header->SetBackgroundColor(HeaderBackground());
         header->SetBorderBottom(1, RuleColor());
+        SettingsPageKit::FollowKitLook(header, [](UltraCanvasUIElement& e) {
+            e.SetBackgroundColor(HeaderBackground());
+            e.SetBorderBottom(1, RuleColor());
+        });
         for (const TableColumn& column : columns) {
             auto l = MakeLabel(id + "-h-" + column.id, column.title);
             l->SetFontWeight(FontWeight::Bold);
@@ -271,6 +282,14 @@ namespace {
             cs.autoShowHorizontalScrollbar = false;
             rows->SetContainerStyle(cs);
         }
+        SettingsPageKit::FollowKitLook(rows, [](UltraCanvasUIElement& e) {
+            auto& c = static_cast<UltraCanvasContainer&>(e);
+            c.SetBackgroundColor(PageBackground());
+            ContainerStyle cs = ContainerStyle::FromTheme();
+            cs.autoShowScrollbars = true;
+            cs.autoShowHorizontalScrollbar = false;
+            c.SetContainerStyle(cs);
+        });
         // A scroll repaints the rows' own box; the strip of the table just
         // below it kept the pixels of the row that was there before the
         // scroll. The whole table is repainted instead.
@@ -288,6 +307,7 @@ namespace {
         row->size.height = CSSLayout::Dimension::Px(kRowHeight);
         row->SetPadding(0, kScrollbarRoom, 0, 10);
         row->SetBorderBottom(1, RuleColor());
+        SettingsPageKit::FollowKitLook(row, [](UltraCanvasUIElement& e) { e.SetBorderBottom(1, RuleColor()); });
         return row;
     }
 
@@ -844,7 +864,7 @@ void UOSSettingsWindow::SaveDesktopPage() {
         if (desktopStatus_) desktopStatus_->SetText(TrF("Not saved: {0}", error));
         return;
     }
-    if (desktopStatus_) desktopStatus_->SetText("Saved to " + path);
+    if (desktopStatus_) desktopStatus_->SetText(TrF("Saved to {0}", path));
 }
 
 void UOSSettingsWindow::SetSystemDesktop(DesktopReplacement how) {
@@ -946,20 +966,20 @@ void UOSSettingsWindow::BuildLastFolderPage() {
     page->AddChild(tableNote_);
 
     auto table = MakeTable("uos-lf-table",
-                           {{"app", "Application", kAppColumnWidth},
-                            {"folder", "Opens in", 0},
-                            {"scope", "Last used folder", kScopeColumnWidth}},
+                           {{"app", Tr("Application"), kAppColumnWidth},
+                            {"folder", Tr("Opens in"), 0},
+                            {"scope", Tr("Last used folder"), kScopeColumnWidth}},
                            tableRows_);
     page->AddChild(table);
 
     // ----- notes -----
     auto notes = MakeNotes("uos-lf-note", {
-            "One common folder: whichever application last used a file dialog, "
-            "the next one opens there.",
-            "Their own folders: each application set to Individual keeps its own "
-            "last folder, starting from the common one until it has used a folder "
-            "of its own; one set to Global still shares the common folder. "
-            "Changes are saved at once and apply the next time a file dialog opens."});
+            Tr("One common folder: whichever application last used a file dialog, "
+               "the next one opens there."),
+            Tr("Their own folders: each application set to Individual keeps its own "
+               "last folder, starting from the common one until it has used a folder "
+               "of its own; one set to Global still shares the common folder. "
+               "Changes are saved at once and apply the next time a file dialog opens.")});
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
@@ -1417,8 +1437,8 @@ void UOSSettingsWindow::BuildNotificationsPage() {
     page->AddChild(registrationNote_);
 
     page->AddChild(MakeTable("uos-nr-table",
-                             {{"app", "Application", kRegistrationAppColumnWidth},
-                              {"activator", "Click starts", 0}},
+                             {{"app", Tr("Application"), kRegistrationAppColumnWidth},
+                              {"activator", Tr("Click starts"), 0}},
                              registrationRows_));
 
     auto actions = std::make_shared<UltraCanvasContainer>("uos-nr-actions");
@@ -1461,8 +1481,8 @@ void UOSSettingsWindow::RefreshNotificationsPage() {
         app->SetTooltip(listed[i].appId);
         row->AddChild(app);
         auto activator = MakeLabel(id + "-activator",
-                listed[i].activatorClassId.empty() ? "(nothing: a click reaches it only while the bus runs)"
-                                                   : "the application itself, " + listed[i].activatorClassId,
+                listed[i].activatorClassId.empty() ? Tr("Nothing: a click reaches it only while the bus runs")
+                                                   : Tr("The application itself"),
                 TextFontSize(), listed[i].activatorClassId.empty() ? MutedTextColor() : TextColor());
         activator->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         activator->size.width = CSSLayout::Dimension::Px(0);
@@ -1677,9 +1697,9 @@ void UOSSettingsWindow::BuildCertificatesPage() {
     page->AddChild(certificateNote_);
 
     page->AddChild(MakeTable("uos-tc-table",
-                             {{"device", "Device", kDeviceColumnWidth},
-                              {"address", "Address", kAddressColumnWidth},
-                              {"key", "Key", 0},
+                             {{"device", Tr("Device"), kDeviceColumnWidth},
+                              {"address", Tr("Address"), kAddressColumnWidth},
+                              {"key", Tr("Key"), 0},
                               {"forget", "", kForgetColumnWidth}},
                              certificateRows_));
 
@@ -1688,12 +1708,12 @@ void UOSSettingsWindow::BuildCertificatesPage() {
     page->AddChild(certificateStatus_);
 
     auto notes = MakeNotes("uos-tc-note", {
-            "Forget a device only when you know it was reset or replaced and so "
-            "presents a new certificate - the connection to it is refused until "
-            "then. Its new key is trusted the next time it is reached, on the same "
-            "terms as the first time: whatever answers at that address then.",
-            "A device with a certificate a certificate authority vouches for is "
-            "never listed: it is checked the ordinary way."});
+            Tr("Forget a device only when you know it was reset or replaced and so "
+               "presents a new certificate - the connection to it is refused until "
+               "then. Its new key is trusted the next time it is reached, on the same "
+               "terms as the first time: whatever answers at that address then."),
+            Tr("A device with a certificate a certificate authority vouches for is "
+               "never listed: it is checked the ordinary way.")});
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
@@ -1760,16 +1780,16 @@ void UOSSettingsWindow::RefreshCertificatesPage() {
     }
     if (certificateNote_) {
         certificateNote_->SetText(trusted.empty()
-                ? "No device's certificate has been trusted yet. A scanner or printer "
-                  "is listed here once it has been reached over HTTPS with a "
-                  "certificate it signed itself."
-                : "Forget a device to have its key learned again the next time it is "
-                  "reached:");
+                ? Tr("No device's certificate has been trusted yet. A scanner or printer "
+                     "is listed here once it has been reached over HTTPS with a "
+                     "certificate it signed itself.")
+                : Tr("Forget a device to have its key learned again the next time it is "
+                     "reached:"));
     }
     if (certificateStatus_) {
         const std::string file = PathToUtf8(IODeviceTrustedCertificatesFile());
-        certificateStatus_->SetText(file.empty() ? "There is no settings folder to keep keys in."
-                                                 : "Kept in " + file);
+        certificateStatus_->SetText(file.empty() ? Tr("There is no settings folder to keep keys in.")
+                                                 : TrF("Kept in {0}", file));
     }
     if (window) window->RequestRedraw();
 }
