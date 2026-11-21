@@ -14435,7 +14435,10 @@ namespace UltraCanvas {
                 // look the host meant to replace.
                 auto img = icon.empty() ? nullptr : UCImage::Get(icon);
                 if (img && img->IsValid()) {
-                    ctx->DrawImage(*img, Rect2Dd(rect), ImageFitMode::Contain);
+                    if (folderIconIsLineArt && folderIconIsLineArt(icon))
+                        ctx->DrawMask(style.textColor, *img, Rect2Dd(rect), ImageFitMode::Contain);
+                    else
+                        ctx->DrawImage(*img, Rect2Dd(rect), ImageFitMode::Contain);
                     return;
                 }
             }

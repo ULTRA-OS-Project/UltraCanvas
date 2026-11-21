@@ -1952,6 +1952,19 @@ filer->folderIconProvider = [](const FilerEntry& e) -> std::string {
 };
 ```
 
+An icon that is one-colour line art - a black outline with no colours of its
+own, such as a cloud for a synced folder - would stay black on a dark theme.
+`folderIconIsLineArt(iconPath)`, asked with the path the provider returned,
+says which: `true` draws that icon as a mask in the view's text colour
+(`FilerStyle::textColor`, the theme's ink), unset or `false` in its own
+colours.
+
+```cpp
+filer->folderIconIsLineArt = [](const std::string& icon) {
+    return icon == "media/icons/cloud.svg";   // OneDrive / Dropbox in the ink
+};
+```
+
 It is asked while the folder is painted, so it must be a lookup, not a disk
 walk or a platform query — cache whatever answering it costs. The images
 themselves are not a concern: they go through the shared image cache, keyed by

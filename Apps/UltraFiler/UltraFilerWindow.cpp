@@ -65,8 +65,10 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
-// Version: 1.48.0 - dark theme: any light drive colour in the tree comes down to the ground's
-//                  depth, not only the exact default; the Computer page shows a symbol (RAM
+// Version: 1.48.0 - dark theme: the line-art icons (cloud, network, server, FTP, computer, phone)
+//                  in the tree and the file displays drawn in the theme's ink; any light
+//                  drive colour in the tree comes down to the ground's depth, not only the
+//                  exact default; the Computer page shows a symbol (RAM
 //                  chip, server, cloud, phone) for a drive with no size, and why a phone has none
 // Version: 1.47.0 - Run in background: the operation on the status bar (words, bar, Show), its
 //                  bar's track in the theme's colour
@@ -1053,12 +1055,37 @@ namespace {
         return s;
     }
 
+    // The icons of ours that are one-colour line art - a black outline with
+    // no colours of their own. Drawn as they are, they stay black on a dark
+    // theme; the tree and the file displays draw them in the theme's ink
+    // instead (TreeNodeIcon::drawnInTextColor, folderIconIsLineArt). An icon
+    // the user set on a folder is never one of these, so it keeps its colours.
+    bool IsLineArtIcon(const std::string& iconPath) {
+        // Resolved once: the file displays ask for every folder they paint.
+        static const std::vector<std::string> lineArt = [] {
+            std::vector<std::string> paths;
+            for (const char* file : {"cloud.svg", "network.svg", "server.svg", "ftp.svg",
+                                     "computer.svg", "menu/phone.svg", "ram-chip.svg"})
+                paths.push_back(IconPath(file));
+            return paths;
+        }();
+        return std::find(lineArt.begin(), lineArt.end(), iconPath) != lineArt.end();
+    }
+
+    // A tree row's 16 px icon, drawn in the row's text colour when it is
+    // line art.
+    TreeNodeIcon TreeIcon(const std::string& iconPath) {
+        TreeNodeIcon icon(iconPath, 16, 16);
+        icon.drawnInTextColor = IsLineArtIcon(iconPath);
+        return icon;
+    }
+
     TreeNodeData MakeFolderNodeData(const std::string& nodeId, const std::string& label,
                                     const std::string& iconFile) {
         TreeNodeData data;
         data.nodeId = nodeId;
         data.text = label;
-        data.leftIcon = TreeNodeIcon(IconPath(iconFile), 16, 16);
+        data.leftIcon = TreeIcon(IconPath(iconFile));
         return data;
     }
 
@@ -2649,6 +2676,7 @@ void UltraFilerWindow::WireFolderIconProvider(UltraCanvasFilerWidget* target) {
     target->folderIconProvider = [this](const FilerEntry& entry) {
         return FolderIconPath(entry.path);
     };
+    target->folderIconIsLineArt = [](const std::string& icon) { return IsLineArtIcon(icon); };
 }
 
 void UltraFilerWindow::WireFavoriteMarkProvider(UltraCanvasFilerWidget* target) {
@@ -2747,9 +2775,8 @@ void UltraFilerWindow::RefreshFolderIcons(const std::vector<std::string>& folder
             for (const std::string& nodeId : {folder, kPinnedChildPrefix + folder}) {
                 TreeNode* node = folderTree->FindNode(nodeId);
                 if (!node) continue;
-                node->data.leftIcon = TreeNodeIcon(
-                        icon.empty() ? IconPath(DefaultTreeIconFile(node)) : icon,
-                        16, 16);
+                node->data.leftIcon = TreeIcon(
+                        icon.empty() ? IconPath(DefaultTreeIconFile(node)) : icon);
             }
         }
         folderTree->RequestRedraw();
@@ -5434,7 +5461,7 @@ void UltraFilerWindow::AddTreeFolderNode(const std::string& parentId,
     // A folder with an icon of its own - one the user set, or a well-known
     // user folder - carries it in the tree too, not only in the file display.
     const std::string icon = FolderIconPath(path);
-    if (!icon.empty()) data.leftIcon = TreeNodeIcon(icon, 16, 16);
+    if (!icon.empty()) data.leftIcon = TreeIcon(icon);
     if (!folderTree->AddNode(parentId, data))
         return;
     // The placeholder child that gives the node its expand button is added
@@ -6520,7 +6547,7 @@ void UltraFilerWindow::RefreshPinnedTreeNodes() {
                                                "folder-brown.svg");
         // The bookmark shows the folder's own icon, like its regular row does.
         const std::string icon = FolderIconPath(path);
-        if (!icon.empty()) data.leftIcon = TreeNodeIcon(icon, 16, 16);
+        if (!icon.empty()) data.leftIcon = TreeIcon(icon);
         folderTree->AddNode(kPinnedNodeId, data);
     }
     // An empty section is just a header over nothing: hide it entirely while
@@ -7918,6 +7945,8 @@ void UltraFilerWindow::BuildComputerPage() {
         }
         return FolderIconPath(entry.path);
     };
+    // OneDrive's and Dropbox's cloud in the theme's ink, not black.
+    computerFolders->folderIconIsLineArt = [](const std::string& icon) { return IsLineArtIcon(icon); };
     computerPane->AddChild(computerFolders);
 
     // The card rows, wrapping into as many lines as they need;

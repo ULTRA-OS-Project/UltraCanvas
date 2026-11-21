@@ -15,3 +15,8 @@
   when it was plugged in - now says "Unlock the phone and allow file
   transfer"; any other failure says "Size could not be read" and writes the
   device's reason to the debug output.
+- **Black icons in a dark theme.** The cloud of OneDrive and Dropbox on the
+  Computer page and in the tree, and the tree's network, server, FTP,
+  computer and phone icons, were drawn black on the dark ground. They are
+  line art with no colours of their own, and are now drawn in the theme's
+  ink: light in a dark theme, dark in a light one, white on the selected row.
