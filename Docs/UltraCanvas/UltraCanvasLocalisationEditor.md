@@ -19,7 +19,7 @@ up). Phase L4 of
 - Source: `UltraCanvas/core/UltraCanvasLocalisationEditor.cpp`
 - Test: `Tests/LocalisationEditorTest.cpp` (target `LocalisationEditorTest`, headless)
 - Demo: `Apps/DemoApp/UltraCanvasLocalisationEditorExamples.cpp` (page *Localisation Editor*)
-- Hosts: UOS-Settings *Language > Translations*; `ShowLocalisationEditorDialog` for an application's own menu item
+- Hosts: UOS-Localisation, the translation editor (`Apps/UOSLocalisation`, the Window arrangement); `ShowLocalisationEditorDialog` for an application's own menu item
 
 ## Contents
 
@@ -27,6 +27,7 @@ up). Phase L4 of
 - [The element](#the-element)
   - [In a page](#in-a-page)
   - [In a dialog](#in-a-dialog)
+  - [In a window of its own](#in-a-window-of-its-own)
   - [The grid](#the-grid)
   - [Editing](#editing)
   - [Merging](#merging)
@@ -86,6 +87,31 @@ language it runs in, with a Close button - the "Help > Translate this
 application..." item of an application. The folders are the module's
 (`UltraLocalisation::ShippedFolder()`, `SettingsFolder()`), the translator's
 name comes from `Language.conf`.
+
+### In a window of its own
+
+```cpp
+auto editor = std::make_shared<UltraCanvasLocalisationEditor>("editor", LocalisationEditorLayout::Window);
+editor->SetFolders(GetResourcesDir() + "media/locale", PathToUtf8(UltraCanvasSettingsFolder()));
+editor->Open("", "de");
+editor->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+window->AddChild(editor);
+```
+
+The editor places the same parts in one of two arrangements, chosen when it
+is made (`LocalisationEditorLayout`):
+
+| Arrangement | For | Where the parts go |
+|---|---|---|
+| `Compact` (the default) | a page, a dialog - about 620 px and up | four rows of controls over the grid (what is edited; search, *Show*, *Compare with*; *Sets...* and the two switches; the actions on the right), the edit on one row under the grid, the status line |
+| `Window` | a window of its own (UOS-Localisation, 900 px and up) | two rows across the width - the application, the language, *Compare with* and the actions; the search, *Show*, *Sets...* and the switches - then the grid beside a 340 px panel, the status line under both |
+
+The `Window` arrangement's panel shows the selected row whole, wrapped
+rather than cut to a column: the key, its English (the category's form for
+a plural form), the comparison text, what the application shows with its
+status, and every set's text in lookup order. The edit is at the panel's
+foot - the set it writes to, the field, *Apply* and *Clear override*;
+Enter applies too, and so does leaving the field.
 
 ### The grid
 
@@ -254,5 +280,5 @@ operation back; `Dirty` and `DirtyFiles` say what a save would write.
 | `core/UltraCanvasLocalisationEditor.cpp` | both, the catalogue writer in the extraction's format, the PO export |
 | `Tests/LocalisationEditorTest.cpp` | the workspace and the element on a locale tree under the temp folder |
 | `Apps/DemoApp/UltraCanvasLocalisationEditorExamples.cpp` | the demo page, on a copy of the shipped catalogues |
-| `Apps/UOSSettings/ui/UOSSettingsWindow.cpp` | the *Language > Translations* page |
+| `Apps/UOSLocalisation/main.cpp` | UOS-Localisation: the editor in its Window arrangement, a window of its own |
 | `media/locale/<lang>/<App>.json`, `base/<Base>.json`, `Standard.json` | what it edits ([the catalogue file](../Modules/UltraLocalisation/README.md#the-catalogue-file)) |

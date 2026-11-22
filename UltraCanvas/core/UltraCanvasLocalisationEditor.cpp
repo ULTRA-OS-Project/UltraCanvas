@@ -1,12 +1,16 @@
 // core/UltraCanvasLocalisationEditor.cpp
 // See UltraCanvasLocalisationEditor.h.
+// Version: 1.3.0 - two arrangements (LocalisationEditorLayout): Compact, as before,
+//                 for a page or a dialog; Window, for UOS-Localisation - the choices
+//                 on two rows, the grid beside a panel with the selected row whole
+//                 and its edit. The parts are made once (MakeParts) and placed
 // Version: 1.2.0 - the actions (Undo, Draft, Export, Save, Close) on a row of their
 //                 own: in a narrow page they cut the two switches' labels short;
 //                 "Compare with" on the second row, beside Show
 // Version: 1.1.0 - MarkColors: the grid's marks and the status line in the
 //                 theme's colours in a dark look; ApplyTheme fills the rows again
 // Version: 1.0.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-22
 // Author: UltraCanvas Framework
 #include "UltraCanvasLocalisationEditor.h"
 #include "UltraCanvasConfig.h"           // GetResourcesDir
@@ -888,68 +892,52 @@ bool LocalisationWorkspace::ExportPo(const std::string& path, std::string& error
 
 // ===== THE ELEMENT =====
 
-UltraCanvasLocalisationEditor::UltraCanvasLocalisationEditor(const std::string& id, float x, float y, float w, float h)
-        : UltraCanvasContainer(id, x, y, w, h) {
+UltraCanvasLocalisationEditor::UltraCanvasLocalisationEditor(const std::string& id, float x, float y, float w, float h,
+                                                             LocalisationEditorLayout arrangement)
+        : UltraCanvasContainer(id, x, y, w, h), arrangement(arrangement) {
     BuildUi();
 }
 
+// The parts are made once, with what they do; the two arrangements only
+// place them (and add their own captions).
 void UltraCanvasLocalisationEditor::BuildUi() {
-    this->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    SetPadding(8.0f);
+    MakeParts();
+    if (arrangement == LocalisationEditorLayout::Window) ArrangeWindow();
+    else ArrangeCompact();
+    RebuildColumns();
+}
 
-    auto row = [&](const std::string& suffix) {
-        auto r = std::make_shared<UltraCanvasContainer>(GetIdentifier() + "_" + suffix);
-        r->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        r->layoutItem.SetFlexShrink(0);
-        r->size.height = CSSLayout::Dimension::Px(32);
-        AddChild(r);
-        return r;
-    };
-    auto caption = [&](std::shared_ptr<UltraCanvasContainer>& r, const std::string& suffix, const std::string& text) {
-        auto label = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_" + suffix, text);
-        label->layoutItem.SetFlexShrink(0);     // the search field gives way, never a caption
-        r->AddChild(label);
-    };
-    auto dropdown = [&](std::shared_ptr<UltraCanvasContainer>& r, const std::string& suffix, int width) {
+void UltraCanvasLocalisationEditor::MakeParts() {
+    auto dropdown = [&](const std::string& suffix, int width) {
         auto d = std::make_shared<UltraCanvasDropdown>(GetIdentifier() + "_" + suffix, 0, 0, width, 26);
         d->layoutItem.SetFlexShrink(0);
-        r->AddChild(d);
         return d;
     };
-    auto button = [&](std::shared_ptr<UltraCanvasContainer>& r, const std::string& suffix, const std::string& text,
-                      std::function<void()> cb, float width = 96.0f) {
+    auto button = [&](const std::string& suffix, const std::string& text, std::function<void()> cb, float width) {
         auto b = std::make_shared<UltraCanvasButton>(GetIdentifier() + "_" + suffix, 0.0f, 0.0f, width, 26.0f, text);
         b->SetOnClick(std::move(cb));
         b->layoutItem.SetFlexShrink(0);
-        r->AddChild(b);
         return b;
     };
 
-    // ----- row 1: what is edited -----
-    auto top = row("Top");
-    caption(top, "AppCaption", Tr("Application"));
-    applicationList = dropdown(top, "Application", 170);
+    // ----- what is edited -----
+    applicationList = dropdown("Application", 170);
     applicationList->onSelectionChanged = [this](int index, const DropdownItem&) {
         if (rebuilding || index < 0 || index >= static_cast<int>(applicationNames.size())) return;
         Open(applicationNames[static_cast<size_t>(index)], workspace.Language());
     };
-    caption(top, "LangCaption", Tr("Language"));
-    languageList = dropdown(top, "Language", 150);
+    languageList = dropdown("Language", 150);
     languageList->onSelectionChanged = [this](int index, const DropdownItem&) {
         if (rebuilding || index < 0 || index >= static_cast<int>(languageTags.size())) return;
         Open(workspace.Application(), languageTags[static_cast<size_t>(index)]);
     };
-    top->AddStretchSpacer(1);
 
-    // ----- row 2: what is shown -----
-    auto filter = row("Filter");
+    // ----- what is shown -----
     searchField = std::make_shared<UltraCanvasTextInput>(GetIdentifier() + "_Search", 0, 0, 180, 26);
     searchField->SetPlaceholder(Tr("Search"));
     searchField->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     searchField->onTextChanged = [this](const std::string& text) { SetSearch(text); };
-    filter->AddChild(searchField);
-    caption(filter, "ShowCaption", Tr("Show"));
-    statusList = dropdown(filter, "Status", 170);
+    statusList = dropdown("Status", 170);
     for (const auto& [value, text] : std::vector<std::pair<std::string, std::string>>{
             {"", Tr("All rows")}, {"untranslated", Tr("Untranslated")}, {"draft", Tr("Machine drafts")},
             {"override", Tr("Overrides")}, {"collision", Tr("Collisions between bases")}, {"changed", Tr("Changed since the shipped file")}}) {
@@ -957,41 +945,29 @@ void UltraCanvasLocalisationEditor::BuildUi() {
     }
     statusList->SetSelectedIndex(0, false);
     statusList->onSelectionChanged = [this](int, const DropdownItem& item) { if (!rebuilding) SetStatusFilter(item.value); };
-    // The compare language here, beside the other choices of what is shown,
-    // where the search field gives way to it: at the end of the first row
-    // it ran off a narrow page.
-    caption(filter, "CompareCaption", Tr("Compare with"));
-    compareList = dropdown(filter, "Compare", 120);
+    compareList = dropdown("Compare", 120);
     compareList->onSelectionChanged = [this](int index, const DropdownItem&) {
         if (rebuilding || index < 0 || index >= static_cast<int>(compareTags.size())) return;
         SetCompareLanguage(compareTags[static_cast<size_t>(index)]);
     };
 
-    // ----- row 3: the sets, the switches, the actions -----
-    auto tools = row("Tools");
-    setsButton = button(tools, "Sets", Tr("Sets..."), [this]() { OpenSetsMenu(); }, 90.0f);
+    // ----- the sets and the switches -----
+    setsButton = button("Sets", Tr("Sets..."), [this]() { OpenSetsMenu(); }, 90.0f);
     setsButton->SetTooltip(Tr("The base sets the application takes, in lookup order; tick one to take it"));
     wholeBox = std::make_shared<UltraCanvasCheckbox>(GetIdentifier() + "_Whole", Tr("Show the whole sets"));
     wholeBox->onStateChanged = [this](CheckedState, CheckedState now) { if (!rebuilding) SetShowWholeSets(now == CheckedState::Checked); };
-    tools->AddChild(wholeBox);
     sharedBox = std::make_shared<UltraCanvasCheckbox>(GetIdentifier() + "_Shared", Tr("Edit shared sets"));
     sharedBox->SetTooltip(Tr("A change in a base set or in Standard reaches every application that takes it"));
     sharedBox->onStateChanged = [this](CheckedState, CheckedState now) { if (!rebuilding) SetEditSharedSets(now == CheckedState::Checked); };
-    tools->AddChild(sharedBox);
-    // The switches keep their whole label: the row's stretch gives way first.
+    // The switches keep their whole label: a stretch beside them gives way first.
     wholeBox->layoutItem.SetFlexShrink(0);
     sharedBox->layoutItem.SetFlexShrink(0);
-    tools->AddStretchSpacer(1);
 
-    // ----- row 4: the actions, on a row of their own and to the right, so
-    // that the switches above never lose their labels to them in a narrow
-    // page (a settings page leaves the editor about 620 px) -----
-    auto actions = row("Actions");
-    actions->AddStretchSpacer(1);
-    undoButton = button(actions, "Undo", Tr("Undo"), [this]() { Undo(); }, 70.0f);
-    draftButton = button(actions, "Draft", Tr("Draft with UltraAI"), [this]() { Draft(selectedKey.empty()); }, 150.0f);
+    // ----- the actions -----
+    undoButton = button("Undo", Tr("Undo"), [this]() { Undo(); }, 70.0f);
+    draftButton = button("Draft", Tr("Draft with UltraAI"), [this]() { Draft(selectedKey.empty()); }, 150.0f);
     draftButton->SetTooltip(Tr("Fill the selected row, or every untranslated row, with a machine draft to review"));
-    exportButton = button(actions, "Export", Tr("Export..."), [this]() {
+    exportButton = button("Export", Tr("Export..."), [this]() {
         FileDialogOptions opts;
         opts.title = Tr("Export the merged catalogue");
         opts.defaultFileName = workspace.Application() + "." + workspace.Language() + ".json";
@@ -1005,8 +981,8 @@ void UltraCanvasLocalisationEditor::BuildUi() {
             if (result == DialogResult::OK && !path.empty()) ExportTo(path);
         });
     }, 90.0f);
-    saveButton = button(actions, "Save", Tr("Save"), [this]() { Save(); }, 80.0f);
-    closeButton = button(actions, "Close", Tr("Close"), [this]() { if (onClose) onClose(); }, 80.0f);
+    saveButton = button("Save", Tr("Save"), [this]() { Save(); }, 80.0f);
+    closeButton = button("Close", Tr("Close"), [this]() { if (onClose) onClose(); }, 80.0f);
     closeButton->SetVisible(false);
 
     // ----- the grid -----
@@ -1029,16 +1005,12 @@ void UltraCanvasLocalisationEditor::BuildUi() {
     };
     grid->onNodeDoubleClicked = [this](TreeNode*) { if (editField) editField->SetFocus(true); };
     grid->onNodeRightClicked = [this](TreeNode* n, const UCEvent& e) { OpenRowMenu(n, e); };
-    AddChild(grid);
 
-    // ----- the edit row -----
-    auto edit = row("Edit");
+    // ----- the edit -----
     keyLabel = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_Key", "");
     keyLabel->SetFontWeight(FontWeight::Bold);
     keyLabel->layoutItem.SetFlexShrink(0);
-    edit->AddChild(keyLabel);
-    caption(edit, "InCaption", Tr("in"));
-    editSetList = dropdown(edit, "EditSet", 150);
+    editSetList = dropdown("EditSet", 150);
     editSetList->onSelectionChanged = [this](int, const DropdownItem& item) { if (!rebuilding) SetEditSet(item.value); };
     editField = std::make_shared<UltraCanvasTextInput>(GetIdentifier() + "_Text", 0, 0, 300, 26);
     editField->SetPlaceholder(Tr("The translation"));
@@ -1048,17 +1020,241 @@ void UltraCanvasLocalisationEditor::BuildUi() {
         if (rebuilding || !editField || selectedKey.empty()) return;
         if (editField->GetText() != workspace.Text(editSet, selectedKey, selectedCategory)) SetSelectedTranslation(editField->GetText(), selectedCategory);
     };
-    edit->AddChild(editField);
-    clearButton = button(edit, "Clear", Tr("Clear override"), [this]() { ClearSelectedOverride(); }, 120.0f);
+    clearButton = button("Clear", Tr("Clear override"), [this]() { ClearSelectedOverride(); }, 120.0f);
     clearButton->SetTooltip(Tr("Remove the application's own text, so the row is inherited again"));
 
     // ----- the status line -----
     statusLabel = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_Status", "");
     statusLabel->SetTextColor(MarkColorsFor(UltraCanvasTheme::Current()).status);
     statusLabel->layoutItem.SetFlexShrink(0);
-    AddChild(statusLabel);
+}
 
-    RebuildColumns();
+std::shared_ptr<UltraCanvasContainer> UltraCanvasLocalisationEditor::MakeRow(UltraCanvasContainer& parent,
+                                                                            const std::string& suffix, float height) {
+    auto r = std::make_shared<UltraCanvasContainer>(GetIdentifier() + "_" + suffix);
+    r->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    r->layoutItem.SetFlexShrink(0);
+    r->size.height = CSSLayout::Dimension::Px(height);
+    parent.AddChild(r);
+    return r;
+}
+
+std::shared_ptr<UltraCanvasLabel> UltraCanvasLocalisationEditor::MakeCaption(UltraCanvasContainer& parent,
+                                                                            const std::string& suffix, const std::string& text) {
+    auto label = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_" + suffix, text);
+    label->layoutItem.SetFlexShrink(0);     // a field gives way, never a caption
+    parent.AddChild(label);
+    return label;
+}
+
+// A settings page or a dialog: about 620 px wide, so four rows of controls
+// over the grid, the edit on one row under it.
+void UltraCanvasLocalisationEditor::ArrangeCompact() {
+    this->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    SetPadding(8.0f);
+
+    // ----- row 1: what is edited -----
+    auto top = MakeRow(*this, "Top");
+    MakeCaption(*top, "AppCaption", Tr("Application"));
+    top->AddChild(applicationList);
+    MakeCaption(*top, "LangCaption", Tr("Language"));
+    top->AddChild(languageList);
+    top->AddStretchSpacer(1);
+
+    // ----- row 2: what is shown; the compare language beside the other
+    // choices of what is shown, where the search field gives way to it: at
+    // the end of the first row it ran off a narrow page -----
+    auto filter = MakeRow(*this, "Filter");
+    filter->AddChild(searchField);
+    MakeCaption(*filter, "ShowCaption", Tr("Show"));
+    filter->AddChild(statusList);
+    MakeCaption(*filter, "CompareCaption", Tr("Compare with"));
+    filter->AddChild(compareList);
+
+    // ----- row 3: the sets, the switches -----
+    auto tools = MakeRow(*this, "Tools");
+    tools->AddChild(setsButton);
+    tools->AddChild(wholeBox);
+    tools->AddChild(sharedBox);
+    tools->AddStretchSpacer(1);
+
+    // ----- row 4: the actions, on a row of their own and to the right, so
+    // that the switches above never lose their labels to them in a narrow
+    // page (a settings page leaves the editor about 620 px) -----
+    auto actions = MakeRow(*this, "Actions");
+    actions->AddStretchSpacer(1);
+    for (const auto& b : {undoButton, draftButton, exportButton, saveButton, closeButton}) actions->AddChild(b);
+
+    AddChild(grid);
+
+    auto edit = MakeRow(*this, "Edit");
+    edit->AddChild(keyLabel);
+    MakeCaption(*edit, "InCaption", Tr("in"));
+    edit->AddChild(editSetList);
+    edit->AddChild(editField);
+    edit->AddChild(clearButton);
+
+    AddChild(statusLabel);
+}
+
+// A window of its own (UOS-Localisation): the choices on two rows across the
+// whole width, the grid beside a panel that shows the selected row whole -
+// its English, the comparison, what is shown and where from, every set's
+// text - with the edit at its foot; at the window's foot the status line and,
+// on the right, the actions. The Draft button shows only with a drafter.
+void UltraCanvasLocalisationEditor::ArrangeWindow() {
+    this->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    SetPadding(12.0f);
+    applicationList->size.width = CSSLayout::Dimension::Px(220);
+    languageList->size.width = CSSLayout::Dimension::Px(190);
+    compareList->size.width = CSSLayout::Dimension::Px(190);
+    statusList->size.width = CSSLayout::Dimension::Px(230);
+    editSetList->size.width = CSSLayout::Dimension::Px(200);
+
+    // ----- row 1: what is edited, and what is done with it -----
+    auto top = MakeRow(*this, "Top", 34);
+    top->layout.SetFlexGap(10);
+    MakeCaption(*top, "AppCaption", Tr("Application"));
+    top->AddChild(applicationList);
+    MakeCaption(*top, "LangCaption", Tr("Language"));
+    top->AddChild(languageList);
+    MakeCaption(*top, "CompareCaption", Tr("Compare with"));
+    top->AddChild(compareList);
+    top->AddStretchSpacer(1);
+
+    // ----- row 2: what is shown -----
+    auto filter = MakeRow(*this, "Filter", 34);
+    filter->layout.SetFlexGap(10);
+    filter->AddChild(searchField);
+    MakeCaption(*filter, "ShowCaption", Tr("Show"));
+    filter->AddChild(statusList);
+    filter->AddChild(setsButton);
+    filter->AddChild(wholeBox);
+    filter->AddChild(sharedBox);
+
+    // ----- the grid and the row's panel -----
+    auto body = std::make_shared<UltraCanvasContainer>(GetIdentifier() + "_Body");
+    body->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    body->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
+    AddChild(body);
+    grid->size.width = CSSLayout::Dimension::Px(0);
+    body->AddChild(grid);
+
+    detailPanel = std::make_shared<UltraCanvasContainer>(GetIdentifier() + "_Detail");
+    detailPanel->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    detailPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    detailPanel->size.width = CSSLayout::Dimension::Px(kDetailWidth);
+    detailPanel->SetPadding(12.0f);
+    {
+        ContainerStyle cs = ContainerStyle::FromTheme();   // the theme's scrollbars
+        cs.autoShowScrollbars = true;
+        cs.autoShowHorizontalScrollbar = false;
+        detailPanel->SetContainerStyle(cs);
+    }
+    body->AddChild(detailPanel);
+
+    const float textWidth = kDetailWidth - 24.0f;
+    auto heading = [&](const std::string& suffix, const std::string& text) {
+        auto l = MakeCaption(*detailPanel, suffix, text);
+        l->SetFontWeight(FontWeight::Bold);
+        l->SetMargin(10, 0, 0, 0);
+        return l;
+    };
+    auto body_text = [&](const std::string& suffix) {
+        auto l = std::make_shared<UltraCanvasLabel>(GetIdentifier() + "_" + suffix, "");
+        l->SetWrap(TextWrap::WrapWord);
+        l->size.width = CSSLayout::Dimension::Px(textWidth);
+        l->size.height = CSSLayout::Dimension::Auto();
+        l->layoutItem.SetFlexShrink(0);
+        detailPanel->AddChild(l);
+        return l;
+    };
+    keyLabel->SetWrap(TextWrap::WrapWord);
+    keyLabel->size.width = CSSLayout::Dimension::Px(textWidth);
+    keyLabel->size.height = CSSLayout::Dimension::Auto();
+    detailPanel->AddChild(keyLabel);
+    heading("EnglishCaption", Tr("English"));
+    detailEnglish = body_text("English");
+    detailCompareCaption = heading("CompareTextCaption", "");
+    detailCompare = body_text("CompareText");
+    heading("ShownCaption", Tr("Shown"));
+    detailShown = body_text("Shown");
+    heading("SetsCaption", Tr("In every set"));
+    detailSets = body_text("Sets");
+
+    // The edit at the panel's foot: the set it writes to, the text, the
+    // buttons.
+    auto spacer = std::make_shared<UltraCanvasContainer>(GetIdentifier() + "_DetailSpacer");
+    spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    detailPanel->AddChild(spacer);
+    heading("EditCaption", Tr("Translation"));
+    auto inRow = MakeRow(*detailPanel, "EditIn", 30);
+    MakeCaption(*inRow, "InCaption", Tr("in"));
+    inRow->AddChild(editSetList);
+    editField->layoutItem.SetFlexGrow(0);
+    editField->size.height = CSSLayout::Dimension::Px(28);
+    detailPanel->AddChild(editField);
+    auto buttons = MakeRow(*detailPanel, "EditButtons", 32);
+    applyButton = std::make_shared<UltraCanvasButton>(GetIdentifier() + "_Apply", 0.0f, 0.0f, 90.0f, 26.0f, Tr("Apply"));
+    applyButton->SetOnClick([this]() { if (editField) SetSelectedTranslation(editField->GetText(), selectedCategory); });
+    applyButton->layoutItem.SetFlexShrink(0);
+    buttons->AddChild(applyButton);
+    buttons->AddChild(clearButton);
+
+    // ----- the foot: the status line, the actions on the right -----
+    auto foot = MakeRow(*this, "Foot", 34);
+    foot->layout.SetFlexGap(10);
+    statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    statusLabel->size.width = CSSLayout::Dimension::Px(0);
+    foot->AddChild(statusLabel);
+    draftButton->SetVisible(static_cast<bool>(drafter));
+    for (const auto& b : {undoButton, draftButton, exportButton, saveButton, closeButton}) foot->AddChild(b);
+    ApplyDetailLook(UltraCanvasTheme::Current());
+}
+
+void UltraCanvasLocalisationEditor::ApplyDetailLook(const UltraCanvasTheme& theme) {
+    if (!detailPanel) return;
+    detailPanel->SetBackgroundColor(theme.roles.well);
+    detailPanel->SetBorders(1.0f, theme.roles.line, 4.0f);
+    const Color muted = MarkColorsFor(theme).muted;
+    if (detailSets) detailSets->SetTextColor(muted);
+}
+
+void UltraCanvasLocalisationEditor::RefreshDetail() {
+    if (!detailPanel) return;
+    auto it = selectedKey.empty() ? rowIndex.end() : rowIndex.find(selectedKey);
+    const LocalisationRow* row = it == rowIndex.end() ? nullptr : &rows[it->second];
+    // English is shown above already: a comparison with it would repeat it.
+    const bool comparing = workspace.CompareLanguage() != workspace.Language() && workspace.CompareLanguage() != "en";
+    detailCompareCaption->SetVisible(comparing);
+    detailCompare->SetVisible(comparing);
+    detailCompareCaption->SetText(TrF("Compare ({0})", workspace.CompareLanguage()));
+    if (!row) {
+        for (const auto& l : {detailEnglish, detailCompare, detailShown, detailSets}) l->SetText("");
+        detailEnglish->SetText(Tr("Select a row to see it whole and to edit it."));
+        if (applyButton) applyButton->SetDisabled(true);
+        detailPanel->InvalidateLayout();
+        return;
+    }
+    const std::string& category = selectedCategory;
+    detailEnglish->SetText(category.empty() ? row->source : workspace.EnglishText(row->key, category));
+    detailCompare->SetText(row->compare.empty() ? Tr("(none)") : row->compare);
+    std::string shown = row->shown;
+    if (!category.empty()) {
+        auto f = row->forms.find(row->shownFrom);
+        shown.clear();
+        if (f != row->forms.end()) { auto c = f->second.find(category); if (c != f->second.end()) shown = c->second; }
+    }
+    detailShown->SetText((shown.empty() ? Tr("(untranslated)") : shown) + "\n" + StatusLabel(*row));
+    std::string sets;
+    for (const auto& s : workspace.Sets()) {
+        std::string text = workspace.Text(s.name, row->key, category);
+        if (!sets.empty()) sets += "\n";
+        sets += (s.isStandard ? Tr("Standard") : s.name) + ":  " + (text.empty() ? std::string("-") : text);
+    }
+    detailSets->SetText(sets);
+    if (applyButton) applyButton->SetDisabled(false);
+    detailPanel->InvalidateLayout();
 }
 
 // ===== WHAT IS EDITED =====
@@ -1347,6 +1543,7 @@ void UltraCanvasLocalisationEditor::RefreshEditRow() {
         editSet = workspace.Application();
     editField->SetText(selectedKey.empty() ? std::string() : workspace.Text(editSet, selectedKey, selectedCategory));
     rebuilding = false;
+    RefreshDetail();
 }
 
 void UltraCanvasLocalisationEditor::ApplyTheme(const UltraCanvasTheme& theme) {
@@ -1355,6 +1552,7 @@ void UltraCanvasLocalisationEditor::ApplyTheme(const UltraCanvasTheme& theme) {
     // they are filled again for the new look. The status line's colour is
     // set by hand, so it is set again too.
     if (statusLabel) statusLabel->SetTextColor(MarkColorsFor(theme).status);
+    ApplyDetailLook(theme);
     if (grid && !rebuilding) RebuildRows();
 }
 

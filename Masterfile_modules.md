@@ -3241,9 +3241,10 @@ on UltraAI's translator) drafts a language's catalogue, driven per set by
 languages under `media/locale/<lang>/`. The localisation editor
 `UltraCanvasLocalisationEditor` (`include/UltraCanvasLocalisationEditor.h`,
 in the core, with `LocalisationWorkspace` as its model) shows every set an
-application's texts come from in one grid and merges them; UOS-Settings
-hosts it under Language > Translations, `ShowLocalisationEditorDialog`
-opens it on the running application. The DemoApp page *ULTRA OS modules >
+application's texts come from in one grid and merges them, in a Compact
+arrangement for a page or a dialog and a Window one with a row panel;
+UOS-Localisation (`Apps/UOSLocalisation`) is it in a window of its own,
+`ShowLocalisationEditorDialog` opens it on the running application. The DemoApp page *ULTRA OS modules >
 Localisation* (`Apps/DemoApp/UltraCanvasLocalisationExamples.cpp`) shows
 the four calls live in a picked language, with the layer that answered
 each, and the catalogue files of the three layers. See

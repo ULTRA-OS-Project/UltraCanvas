@@ -47,6 +47,7 @@ first lines as of 2026-10-18.
 | [UltraStoreAdmin](#ultrastoreadmin) | The store's admin backend: apps and settings, packages, the signing key, translations, the signed catalog | 0.1.0 | UltraStore core, UltraDatabase, UltraCrypt, UltraAI |
 | [UltraStoreOperator](#ultrastoreoperator) | The marketplace operator's window and command line: merchants, the app review and the catalog publish, reports, notices, terms, the audit log | 0.1.0 | UltraStoreAdmin core, UltraNet |
 | [UOS-Settings](#uos-settings) | System settings | 0.5.0 | core |
+| [UOS-Localisation](#uos-localisation) | The translation editor: every set of an application's texts in one grid | 0.1.0 | core, UltraLocalisation |
 | [UltraClipboard](#ultraclipboard) | Clipboard history | 0.1.5 | ClipboardHistory |
 | [UltraCleaner](#ultracleaner) | Removes caches, temporary files and leftovers | 0.66 | core |
 | [UltraNetMonitor](#ultranetmonitor) | Which process holds which network connection | 0.17 | NetworkMonitor |
@@ -622,6 +623,26 @@ the system rather than to one app.
 
 **Built on:** the UltraCanvas core and UltraDesktop's settings code.
 **Version:** 0.5.0 (2026-10-15).
+
+### UOS-Localisation
+
+**Purpose:** the ULTRA OS translation editor, for translating any
+application into any language.
+
+**Capabilities:**
+- Every set an application's texts come from (its own, its base sets, the
+  standard set) in one grid, with where each shown text comes from.
+- A panel beside the grid with the selected row whole and its edit; a
+  comparison language; search and filters (untranslated, drafts,
+  overrides, collisions, changed).
+- Takes base sets, promotes and demotes rows between the application and a
+  base; saves into the source tree or the settings folder; exports JSON or
+  gettext PO.
+- Formerly UOS-Settings' Language > Translations page.
+
+**Built on:** the UltraCanvas core (UltraCanvasLocalisationEditor) and
+UltraLocalisation.
+**Version:** 0.1.0 (2026-11-22).
 
 ### UltraClipboard
 

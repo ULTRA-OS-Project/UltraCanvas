@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UOS-Localisation app icon: two speech bubbles - an "A" and a stroke-drawn
+     CJK-style character - on the ULTRA OS blue of UOS-Settings. Paths only,
+     so it renders the same without any font. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="#2e66bf"/>
+  <!-- the back bubble, outlined, with the character -->
+  <path d="M112 52 h82 a22 22 0 0 1 22 22 v52 a22 22 0 0 1 -22 22 h-6 v24 l-26 -24 h-50 a22 22 0 0 1 -22 -22 v-52 a22 22 0 0 1 22 -22 z"
+        fill="none" stroke="#ffffff" stroke-width="10" stroke-linejoin="round"/>
+  <g fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M136 80 h52"/>
+    <path d="M162 70 v52"/>
+    <path d="M140 100 h44 v20 h-44 z"/>
+  </g>
+  <!-- the front bubble, filled, with the "A" -->
+  <path d="M62 112 h82 a22 22 0 0 1 22 22 v52 a22 22 0 0 1 -22 22 h-50 l-26 24 v-24 h-6 a22 22 0 0 1 -22 -22 v-52 a22 22 0 0 1 22 -22 z"
+        fill="#ffffff" stroke="#2e66bf" stroke-width="8" stroke-linejoin="round"/>
+  <g fill="none" stroke="#2e66bf" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M80 194 L103 130 L126 194"/>
+    <path d="M89 172 h28"/>
+  </g>
+</svg>

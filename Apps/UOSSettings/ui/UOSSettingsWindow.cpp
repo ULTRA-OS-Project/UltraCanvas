@@ -1,6 +1,9 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.20.0 - Language > Translations is gone: the localisation editor is
+//                  UOS-Localisation, a program of its own, which the Language
+//                  page's "Translate applications..." button starts
 // Version: 0.18.1 - the scrolled pages and tables take the theme's scrollbars
 //                  (ContainerStyle::FromTheme), not the light default
 // Version: 0.18.0 - Desktop > Theme is the system look (Appearance.conf), the
@@ -137,7 +140,6 @@ namespace {
     constexpr const char* kPageEmoji          = "appearance/emoji";
     constexpr const char* kPageLook           = "appearance/look";
     constexpr const char* kPageLanguage       = "language";
-    constexpr const char* kPageTranslations   = "translations";
     constexpr const char* kSectionNotifications = "notifications";
     constexpr const char* kPageRegistrations  = "notifications/registrations";
     constexpr const char* kSectionDevices     = "devices";
@@ -351,7 +353,6 @@ bool UOSSettingsWindow::Create() {
     AddTreeNode("settings", kPageDesktop, Tr("Desktop"));
     AddTreeNode(kPageDesktop, kPageInfoBar, Tr("Info bar"));
     AddTreeNode("settings", kPageLanguage, Tr("Language"));
-    AddTreeNode(kPageLanguage, kPageTranslations, Tr("Translations"));
     AddTreeNode("settings", kSectionFileDialogs, Tr("File dialogs"));
     AddTreeNode(kSectionFileDialogs, kPageLastFolder, Tr("Last used folder"));
     AddTreeNode("settings", kSectionAppearance, Tr("Appearance"));
@@ -368,7 +369,6 @@ bool UOSSettingsWindow::Create() {
     BuildInfoBarPage();
     BuildLastFolderPage();
     BuildLanguagePage();
-    BuildTranslationsPage();
     BuildLookPage();
     BuildEmojiPage();
     BuildNotificationsPage();
@@ -385,7 +385,6 @@ bool UOSSettingsWindow::Create() {
         if (pageId == kPageLook) RefreshLookPage();
         if (pageId == kPageEmoji) RefreshEmojiPage();
         if (pageId == kPageLanguage) RefreshLanguagePage();
-        if (pageId == kPageTranslations) RefreshTranslationsPage();
         if (pageId == kPageRegistrations) RefreshNotificationsPage();
     };
     // Opens on the desktop's page - what the desktop's settings button is
@@ -1616,6 +1615,24 @@ void UOSSettingsWindow::BuildLanguagePage() {
     translatorRow->AddChild(translator_);
     page->AddChild(translatorRow);
 
+    // The translations themselves are edited in UOS-Localisation, a program
+    // of its own (until 0.20 the Translations page here): started in the
+    // language chosen above.
+    auto translateRow = std::make_shared<UltraCanvasContainer>("uos-lang-translate-row");
+    translateRow->layout.SetFlexRow().SetFlexGap(12)
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    translateRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    translateRow->size.height = CSSLayout::Dimension::Px(36);
+    translateRow->SetMargin(14, 0, 0, 0);
+    auto translate = std::make_shared<UltraCanvasButton>("uos-lang-translate", 0, 0, 220, 28,
+                                                         Tr("Translate applications..."));
+    translate->SetFontSize(TextFontSize());
+    translate->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    translate->SetTooltip(Tr("Opens UOS-Localisation, the translation editor"));
+    translate->SetOnClick([this]() { OpenTranslationEditor(); });
+    translateRow->AddChild(translate);
+    page->AddChild(translateRow);
+
     languageStatus_ = MakeLabel("uos-lang-status", "", TextFontSize(), MutedTextColor());
     languageStatus_->SetMargin(10, 0, 0, 0);
     page->AddChild(languageStatus_);
@@ -1631,8 +1648,8 @@ void UOSSettingsWindow::BuildLanguagePage() {
             Tr("An application uses a change the next time it starts. The command line "
                "(--lang) and the ULTRACANVAS_LANG variable override this setting for "
                "one start."),
-            Tr("The translator's name goes into the catalogues the localisation editor "
-               "saves, so a draft says who reviewed it.")});
+            Tr("The translator's name goes into the catalogues UOS-Localisation, the "
+               "translation editor, saves, so a draft says who reviewed it.")});
     notes->SetMargin(14, 0, 0, 0);
     page->AddChild(notes);
 
@@ -1640,47 +1657,18 @@ void UOSSettingsWindow::BuildLanguagePage() {
     pageArea->AddChild(page);
 }
 
-void UOSSettingsWindow::BuildTranslationsPage() {
-    auto page = std::make_shared<UltraCanvasContainer>("uos-page-translations");
-    page->layout.SetFlexColumn().SetFlexGap(0)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
-    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    auto title = MakeLabel("uos-translations-title", Tr("Translations"), TitleFontSize());
-    title->SetFontWeight(FontWeight::Bold);
-    page->AddChild(title);
-    auto caption = MakeText("uos-translations-caption",
-            Tr("Every set an application's texts come from in one grid - its own set, the base sets "
-               "it takes and the standard set - for any application and any language. A save goes "
-               "into the source tree when the catalogues are writable, else into the UltraCanvas "
-               "settings folder, where a running application picks it up; the status line says where."));
-    caption->SetMargin(6, 0, 0, 0);
-    page->AddChild(caption);
-
-    translations_ = std::make_shared<UltraCanvasLocalisationEditor>("uos-translations-editor");
-    translations_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
-                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    translations_->SetMargin(12, 0, 0, 0);
-    page->AddChild(translations_);
-
-    pages[kPageTranslations] = page;
-    pageArea->AddChild(page);
-}
-
-void UOSSettingsWindow::RefreshTranslationsPage() {
-    if (!translations_) return;
-    const std::string settingsFolder = PathToUtf8(UltraCanvasSettingsFolder());
-    const std::string shipped = UltraLocalisation::ShippedFolder().empty()
-            ? NormalizePath(GetResourcesDir() + "media/locale") : UltraLocalisation::ShippedFolder();
-    translations_->SetFolders(shipped, settingsFolder);
-    translations_->SetTranslatorName(LanguageSettings::Load(settingsFolder).translator);
-    if (translations_->GetWorkspace().Application().empty()) {
-        const LanguageSettings settings = LanguageSettings::Load(settingsFolder);
-        const std::string language = settings.language == "system" || settings.language.empty()
-                ? UltraLocalisation::CurrentLanguage() : settings.language;
-        translations_->Open("", language.empty() ? "en" : language);
+void UOSSettingsWindow::OpenTranslationEditor() {
+    // The language chosen here, unless that is "System": then the editor's own choice.
+    std::vector<std::string> arguments;
+    const LanguageSettings settings = LanguageSettings::Load(PathToUtf8(UltraCanvasSettingsFolder()));
+    if (!settings.language.empty() && settings.language != "system") arguments = {"--lang", settings.language};
+    std::string error;
+    if (UltraCanvasDesktopShell::LaunchProgram("UOS-Localisation", arguments, &error)) {
+        if (languageStatus_) languageStatus_->SetText(Tr("UOS-Localisation is starting."));
+        return;
+    }
+    if (languageStatus_) {
+        languageStatus_->SetText(TrF("UOS-Localisation, the translation editor, could not be started: {0}", error));
     }
 }
 
