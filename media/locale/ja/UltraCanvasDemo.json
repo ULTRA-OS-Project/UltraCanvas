@@ -720,6 +720,7 @@
   "Text Rendering": "テキストのレンダリング",
   "Text Spec (Mermaid)": "テキスト仕様 (Mermaid)",
   "The element": "要素",
+  "The localisation editor (Widgets > Localisation Editor, the UOS-Localisation application, Help > Translate ... in an application) edits the sets of an application in one grid.": "ローカリゼーション エディター (ウィジェット > ローカリゼーション エディター、UOS-Localisation アプリケーション、各アプリケーションの ヘルプ > … を翻訳) は、アプリケーションのセットを 1 つのグリッドで編集します。",
   "The navigation column of a window: sections of items with icon, label and badge; keyboard; compact mode": "ウィンドウのナビゲーション列: アイコン、ラベル、バッジを持つ項目のセクション。キーボード操作、コンパクト モード",
   "The shared chart engine on one minimal bar chart: projections, axis scales (linear / log / symlog), grid, limiters, legend, label plan, tooltips and animation, all switchable live": "1 つのシンプルな棒グラフで見る共有グラフ エンジン: 投影、軸の目盛り (線形 / 対数 / symlog)、グリッド、リミッター、凡例、ラベル配置、ツールチップ、アニメーション。すべてライブで切り替え可能",
   "The WYSIWYG editor on Chinese, Arabic and Myanmar text: Chinese lines break between any two characters, Arabic paragraphs run right to left, Myanmar syllables are shaped from stacked letters, and one line can mix both directions": "中国語、アラビア語、ミャンマー語のテキストでの WYSIWYG エディター: 中国語の行は任意の 2 文字の間で改行され、アラビア語の段落は右から左に流れ、ミャンマー語の音節は積み重なった文字から字形が作られ、1 行に両方向を混在させることも可能",

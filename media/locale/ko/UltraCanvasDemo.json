@@ -720,6 +720,7 @@
   "Text Rendering": "텍스트 렌더링",
   "Text Spec (Mermaid)": "텍스트 사양 (Mermaid)",
   "The element": "요소",
+  "The localisation editor (Widgets > Localisation Editor, the UOS-Localisation application, Help > Translate ... in an application) edits the sets of an application in one grid.": "지역화 편집기(위젯 > 지역화 편집기, UOS-Localisation 애플리케이션, 애플리케이션의 도움말 > ... 번역)는 애플리케이션의 세트를 하나의 그리드에서 편집합니다.",
   "The navigation column of a window: sections of items with icon, label and badge; keyboard; compact mode": "창의 탐색 열: 아이콘, 레이블, 배지가 있는 항목 섹션, 키보드, 간결 모드",
   "The shared chart engine on one minimal bar chart: projections, axis scales (linear / log / symlog), grid, limiters, legend, label plan, tooltips and animation, all switchable live": "하나의 최소 막대형 차트로 보는 공유 차트 엔진: 투영, 축 눈금(선형 / 로그 / symlog), 격자, 제한기, 범례, 레이블 배치, 도구 설명, 애니메이션을 모두 실시간 전환 가능",
   "The WYSIWYG editor on Chinese, Arabic and Myanmar text: Chinese lines break between any two characters, Arabic paragraphs run right to left, Myanmar syllables are shaped from stacked letters, and one line can mix both directions": "중국어, 아랍어, 미얀마어 텍스트에서의 WYSIWYG 편집기: 중국어 줄은 임의의 두 문자 사이에서 바뀌고, 아랍어 단락은 오른쪽에서 왼쪽으로 진행되며, 미얀마어 음절은 쌓인 글자로 조합되고, 한 줄에 두 방향을 섞을 수 있음",

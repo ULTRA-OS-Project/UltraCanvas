@@ -720,6 +720,7 @@
   "Text Rendering": "การเรนเดอร์ข้อความ",
   "Text Spec (Mermaid)": "ข้อกำหนดแบบข้อความ (Mermaid)",
   "The element": "ตัวองค์ประกอบ",
+  "The localisation editor (Widgets > Localisation Editor, the UOS-Localisation application, Help > Translate ... in an application) edits the sets of an application in one grid.": "ตัวแก้ไขการแปลภาษา (วิดเจ็ต > ตัวแก้ไขการแปลภาษา, แอปพลิเคชัน UOS-Localisation, วิธีใช้ > แปล ... ในแอปพลิเคชัน) แก้ไขชุดข้อความของแอปพลิเคชันในกริดเดียว",
   "The navigation column of a window: sections of items with icon, label and badge; keyboard; compact mode": "คอลัมน์นำทางของหน้าต่าง: ส่วนของรายการที่มีไอคอน ป้าย และแบดจ์; แป้นพิมพ์; โหมดกะทัดรัด",
   "The shared chart engine on one minimal bar chart: projections, axis scales (linear / log / symlog), grid, limiters, legend, label plan, tooltips and animation, all switchable live": "เอนจินแผนภูมิที่ใช้ร่วมกันบนแผนภูมิแท่งแบบมินิมอลหนึ่งรายการ: การฉาย สเกลแกน (เชิงเส้น / ลอการิทึม / symlog) กริด ตัวจำกัด คำอธิบายสัญลักษณ์ แผนการวางป้าย ทูลทิป และภาพเคลื่อนไหว ทั้งหมดสลับได้แบบสด",
   "The WYSIWYG editor on Chinese, Arabic and Myanmar text: Chinese lines break between any two characters, Arabic paragraphs run right to left, Myanmar syllables are shaped from stacked letters, and one line can mix both directions": "ตัวแก้ไข WYSIWYG กับข้อความภาษาจีน อาหรับ และเมียนมา: บรรทัดภาษาจีนตัดได้ระหว่างอักขระสองตัวใดก็ได้ ย่อหน้าภาษาอาหรับเรียงจากขวาไปซ้าย พยางค์ภาษาเมียนมาถูกขึ้นรูปจากตัวอักษรที่ซ้อนกัน และบรรทัดเดียวสามารถผสมทั้งสองทิศทางได้",

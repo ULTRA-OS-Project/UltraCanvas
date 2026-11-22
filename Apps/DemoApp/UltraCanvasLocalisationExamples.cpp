@@ -173,7 +173,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
         "scripts/check_locale_catalogues.py is the CI gate over every translation."),
         Tr("scripts/translate_catalogue.py drafts a language's sets through UltraAI (ultralocalisation-draft); "
         "a draft is marked \"@translated-by\" until a person reviews it."),
-        Tr("The localisation editor (Widgets > Localisation Editor, UOS-Settings > Language > Translations, "
+        Tr("The localisation editor (Widgets > Localisation Editor, the UOS-Localisation application, "
         "Help > Translate ... in an application) edits the sets of an application in one grid."),
         Tr("Docs/Modules/UltraLocalisation/README.md is the module's documentation, "
         "Docs/UltraCanvas/UltraCanvasLocalisationProposal.md its design."),
