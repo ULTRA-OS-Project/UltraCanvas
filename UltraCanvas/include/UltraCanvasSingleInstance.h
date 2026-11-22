@@ -35,6 +35,9 @@
 // the build has it. Without UltraMessage the lock still stops a second copy;
 // it just cannot bring the first one forward, and Claim() answers
 // AlreadyRunning.
+// Version: 1.4.0 - the listening copy rejoins the bus when it loses it (the
+//                  broker's host ended): a later start is handed over again
+//                  instead of saying "already running"
 // Version: 1.3.0 - Claim retakes the lock while it waits for an answer, so a
 //                  copy still ending does not make it say "already running"
 // Version: 1.2.0 - answered from the bus thread; Listen before the start-up
@@ -51,10 +54,13 @@
 #include "DataFormats/UltraCanvasJSON.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace UltraCanvas {
@@ -134,6 +140,13 @@ namespace UltraCanvas {
         // retaking the lock at `lockPath` between tries: HandedOff, First
         // when the lock came free, else AlreadyRunning.
         Start HandOff(const JSONValue& request, const std::string& lockPath);
+        // Connects (hosting the bus when nobody does) and subscribes to the
+        // show topic with `handler_`; false when the bus cannot be reached.
+        // Called with busMutex_ held.
+        bool JoinBus(bool quiet);
+        // The watch thread: every second, a listener whose endpoint lost the
+        // bus - the process hosting the broker ended - joins it again.
+        void WatchBus();
 
         std::string appId_;
         std::string displayName_;
@@ -143,6 +156,13 @@ namespace UltraCanvas {
         // Cleared by Close(): a request already queued for the UI thread is
         // then dropped instead of run.
         std::shared_ptr<std::atomic<bool>> live_;
+        // What Listen() was given, kept for rejoining the bus.
+        std::shared_ptr<Handler> handler_;
+        std::mutex busMutex_;                 // endpoint_, subscription_ once listening
+        std::thread watch_;
+        std::mutex watchMutex_;
+        std::condition_variable watchWake_;
+        bool watchStop_ = false;
     };
 
 } // namespace UltraCanvas

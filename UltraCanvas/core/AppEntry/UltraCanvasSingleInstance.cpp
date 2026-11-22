@@ -7,6 +7,11 @@
 // hand-off needs UltraMessage, a separate module the core does not link, and
 // the function defines ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE where
 // the build has it.
+// Version: 1.4.0 - a listening copy that lost the bus (the process hosting
+//                  the broker ended) joins it again within a second, hosting
+//                  it when nobody does; it stayed deaf until it was restarted,
+//                  and every later start said "already running" - a pinned
+//                  UltraSnip preloaded by the desktop, say
 // Version: 1.3.0 - a start that cannot hand over retries the lock while it
 //                  waits: a copy whose window has closed but whose process is
 //                  still ending no longer makes it say "already running"
@@ -124,11 +129,10 @@ namespace UltraCanvas {
         return Start::AlreadyRunning;
     }
 
-    void UltraCanvasSingleInstance::Listen(Handler handler) {
-        if (subscription_ != 0 || !lock_.IsHeld()) return;
+    bool UltraCanvasSingleInstance::JoinBus(bool quiet) {
         if (endpoint_ == 0) {
-            const UltraMsgHandle endpoint = Connect(appId_, displayName_, true, false);
-            if (endpoint == UltraMsgInvalidHandle) return;
+            const UltraMsgHandle endpoint = Connect(appId_, displayName_, true, quiet);
+            if (endpoint == UltraMsgInvalidHandle) return false;
             endpoint_ = endpoint;
         }
         // The answer goes out from the bus thread at once, and only the
@@ -137,8 +141,7 @@ namespace UltraCanvas {
         // other start waiting until it gave up and said "already running";
         // now it quits at once and the request is carried out when the window
         // is free again.
-        const auto run = std::make_shared<Handler>(std::move(handler));
-        live_ = std::make_shared<std::atomic<bool>>(true);
+        const auto run = handler_;
         const auto live = live_;
         const std::string name = displayName_;
         const UltraMsgHandle endpoint = endpoint_;
@@ -156,10 +159,57 @@ namespace UltraCanvas {
                 });
             },
             options);
-        if (subscription != UltraMsgInvalidHandle) subscription_ = subscription;
+        if (subscription == UltraMsgInvalidHandle) return false;
+        subscription_ = subscription;
+        return true;
+    }
+
+    void UltraCanvasSingleInstance::WatchBus() {
+        std::unique_lock<std::mutex> wait(watchMutex_);
+        while (!watchWake_.wait_for(wait, std::chrono::seconds(1), [this] { return watchStop_; })) {
+            wait.unlock();
+            {
+                std::lock_guard<std::mutex> bus(busMutex_);
+                const bool deaf = subscription_ == 0 || endpoint_ == 0 || !UltraMsg_IsConnected(endpoint_);
+                if (deaf) {
+                    // The broker went with the process that hosted it: this
+                    // copy hosts the next one, or joins whoever got there first.
+                    if (subscription_ != 0) UltraMsg_Unsubscribe(subscription_);
+                    subscription_ = 0;
+                    if (endpoint_ != 0) UltraMsg_Disconnect(endpoint_);
+                    endpoint_ = 0;
+                    if (JoinBus(true))
+                        debugOutput << displayName_ << ": single instance: rejoined the bus" << std::endl;
+                }
+            }
+            wait.lock();
+        }
+    }
+
+    void UltraCanvasSingleInstance::Listen(Handler handler) {
+        if (watch_.joinable() || !lock_.IsHeld()) return;
+        handler_ = std::make_shared<Handler>(std::move(handler));
+        live_ = std::make_shared<std::atomic<bool>>(true);
+        {
+            std::lock_guard<std::mutex> bus(busMutex_);
+            JoinBus(false);
+        }
+        // Even when the bus could not be reached now: the watch keeps trying.
+        {
+            std::lock_guard<std::mutex> wait(watchMutex_);
+            watchStop_ = false;
+        }
+        watch_ = std::thread([this] { WatchBus(); });
     }
 
     void UltraCanvasSingleInstance::Close() {
+        {
+            std::lock_guard<std::mutex> wait(watchMutex_);
+            watchStop_ = true;
+        }
+        watchWake_.notify_all();
+        if (watch_.joinable()) watch_.join();
+        std::lock_guard<std::mutex> bus(busMutex_);
         if (subscription_ != 0) UltraMsg_Unsubscribe(subscription_);
         subscription_ = 0;
         if (endpoint_ != 0) UltraMsg_Disconnect(endpoint_);
