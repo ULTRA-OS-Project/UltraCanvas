@@ -390,6 +390,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRAVIDEO OFF CACHE BOOL "Build the UltraVideo application")
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
     set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
+    set(BUILD_ULTRAACCOUNT OFF CACHE BOOL "Build the UltraAccount application")
     set(BUILD_ULTRAPASSWORD OFF CACHE BOOL "Build the UltraPassword application")
     set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
     set(BUILD_ULTRAWIN_MANAGER OFF CACHE BOOL "Build the UltraWin Manager application")
@@ -993,6 +994,16 @@ endif()
 #   ULTRACANVAS_PLUGIN_TARGETS - List of plugin targets
 
 #   ULTRACANVAS_INCLUDE_DIRS   - All include directories
+
+# ===== ULTRAACCOUNT =====
+# The one ULTRA OS account: registration, the email and phone verified, the
+# subscription, the recovery keys. Its core (the account service's client and
+# the shared session) is linked by UltraAuthenticator for the recovery from a
+# forgotten master password, so it comes first.
+option(BUILD_ULTRAACCOUNT "Build the UltraAccount application" ON)
+if(BUILD_ULTRAACCOUNT)
+    add_subdirectory(Apps/UltraAccount)
+endif()
 
 # ===== ULTRAAUTHENTICATOR =====
 # TOTP/HOTP authenticator. The core (OTP engine, otpauth:// parser, encrypted
@@ -2885,6 +2896,8 @@ if (BUILD_TESTS)
         Apps/UltraAuthenticator/AccountExport.cpp
         UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
+        # The printable recovery code of a vault's recovery key.
+        Apps/UltraAuthenticator/RecoveryCode.cpp
     )
     target_include_directories(UltraAuthenticatorAccountTests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator

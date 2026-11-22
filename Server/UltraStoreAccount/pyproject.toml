@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ultrastore-account"
-version = "0.2.0"
-description = "The UltraStore account service: the people with an account, their machines, two-factor sign-in, the licences that follow them, their notices, archive and deletion, and the operator's users page"
+version = "0.3.0"
+description = "The UltraStore account service - UltraAccount: the people with an account, their machines, two-factor sign-in, the phone and the subscription, the recovery-key escrow, the licences that follow them, their notices, archive and deletion, and the operator's users page"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

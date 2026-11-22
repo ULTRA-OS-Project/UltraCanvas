@@ -59,6 +59,11 @@ public:
     // The user chose to quit rather than unlock.
     std::function<void()> onQuit;
 
+    // "Forgot password": the owner opens the recovery (RecoverVaultDialog)
+    // over this screen, and calls CompleteUnlock() when it opened the vault.
+    std::function<void()> onForgot;
+    void CompleteUnlock();
+
     // Called about once a second by the owner while the dialog is up, so the
     // "try again in N s" countdown stays live without a timer of its own.
     void Tick();

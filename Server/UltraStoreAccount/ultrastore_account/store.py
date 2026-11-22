@@ -2,7 +2,11 @@
 MySQL or PostgreSQL in production, SQLite for tests and development only).
 
 The users with what the store needs to know of them, the codes sent by
-mail, the sessions - one per machine signed in, the device the design shows -
+mail or text message, the phone number (verified by a texted code, for a
+paid plan only), the subscription (the plan the account is on, which the
+other ULTRA OS services - UltraAccount, cloud storage, the paid AI services -
+read), the recovery keys an application escrows here (UltraAuthenticator's
+half of the key that opens a vault whose master password was forgotten), the sessions - one per machine signed in, the device the design shows -
 the sign-in history, the licences attached to an account and the machines
 each is installed on, the notices sent to a user, the data archives, and the
 audit log of every operator action - append-only, hash-chained, never
@@ -12,6 +16,7 @@ What is never here: the password (its scrypt hash only), a payment method
 (the payment service's), the listening and watch history (the machine's,
 unless the user turns it on later), a merchant's records.
 
+Version: 0.2.0 - the phone, the subscription, the recovery-key escrow
 Version: 0.1.0
 """
 
@@ -28,10 +33,10 @@ from ultrastore_db import Database
 
 from .auth import hash_code, hash_recovery, hash_token
 
-SCHEMA = 1
+SCHEMA = 2
 
 USER_STATES = ("active", "suspended", "deleting", "deleted")
-CODE_PURPOSES = ("verify_email", "change_email", "reset_password")
+CODE_PURPOSES = ("verify_email", "change_email", "reset_password", "verify_phone", "recover_escrow")
 NOTICE_KINDS = ("notice", "security", "warning", "suspension", "information_request")
 
 DEFAULT_SETTINGS: dict[str, Any] = {
@@ -41,6 +46,19 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "public_profile": True,
     "marketing": False,
 }
+
+
+# The plans an account can be on, and what each allows. "free" is every
+# account's; "plus" is paid - a payment-service licence for the
+# subscription app (Settings.subscription_app) or the operator's grant. A text
+# message costs money, so a phone number and every code sent to it need a
+# paid plan.
+PLANS: dict[str, dict[str, Any]] = {
+    "free": {"paid": False, "features": {"sms": False}},
+    "plus": {"paid": True, "features": {"sms": True}},
+}
+SUBSCRIPTION_SOURCES = ("licence", "operator")
+MAX_ESCROWS = 20
 
 
 def now_iso() -> str:
@@ -77,6 +95,11 @@ def mask_email(email: str) -> str:
     return (name[:2] + "***@" + domain) if domain else email
 
 
+def mask_phone(phone: str) -> str:
+    """+49 *** 67 - where a code is going, without the number."""
+    return (phone[:3] + " *** " + phone[-2:]) if len(phone) > 6 else "***"
+
+
 @dataclass
 class User:
     id: str
@@ -100,6 +123,8 @@ class User:
     delete_after: str
     suspended_reason: str
     suspended_until: str
+    phone: str = ""
+    phone_verified_at: str = ""
 
     @property
     def two_factor(self) -> bool:
@@ -111,14 +136,16 @@ class User:
                 "language": self.language, "country": self.country, "year_of_birth": self.year_of_birth, "about": self.about, "state": self.state,
                 "created_at": self.created_at, "password_changed_at": self.password_changed_at, "two_factor": self.two_factor,
                 "recovery_codes_left": len(self.recovery_codes), "settings": self.settings,
-                "deletion_requested_at": self.deletion_requested_at, "delete_after": self.delete_after}
+                "deletion_requested_at": self.deletion_requested_at, "delete_after": self.delete_after,
+                "phone": self.phone, "phone_verified": bool(self.phone and self.phone_verified_at)}
 
     def file(self) -> dict:
         """What the operator sees: no password, no year of birth, the email masked."""
         return {"id": self.id, "email": mask_email(self.email), "email_verified": self.email_verified, "display_name": self.display_name,
                 "handle": self.handle, "language": self.language, "country": self.country, "state": self.state, "created_at": self.created_at,
                 "two_factor": self.two_factor, "deletion_requested_at": self.deletion_requested_at, "delete_after": self.delete_after,
-                "suspended_reason": self.suspended_reason, "suspended_until": self.suspended_until}
+                "suspended_reason": self.suspended_reason, "suspended_until": self.suspended_until,
+                "phone": mask_phone(self.phone) if self.phone else ""}
 
 
 @dataclass
@@ -195,6 +222,48 @@ class Archive:
                 "released_by": self.released_by, "downloaded_at": self.downloaded_at, "state": state, "due": add_days(self.requested_at, 1)}
 
 
+@dataclass
+class Subscription:
+    id: str
+    user_id: str
+    plan: str
+    source: str
+    licence_id: str
+    started_at: str
+    valid_until: str
+    cancelled_at: str
+    created_by: str
+
+    def active(self, day: str) -> bool:
+        return not self.cancelled_at and (not self.valid_until or self.valid_until[:10] >= day)
+
+    def public(self) -> dict:
+        return {"id": self.id, "plan": self.plan, "source": self.source, "licence": self.licence_id, "started_at": self.started_at,
+                "valid_until": self.valid_until, "cancelled_at": self.cancelled_at}
+
+
+@dataclass
+class Escrow:
+    """A recovery key an application left with the account: the service's
+    half of what opens, say, an UltraAuthenticator vault whose master
+    password is forgotten. The other half never leaves the vault file, so
+    this one alone opens nothing; it is released only to whoever proves the
+    account's verified email or phone with a fresh code. Kept encrypted with
+    the service's escrow key (`sealed`, auth.seal_escrow)."""
+    id: str
+    user_id: str
+    app: str
+    label: str
+    sealed: str
+    created_at: str
+    released_at: str
+    releases: int
+
+    def public(self) -> dict:
+        return {"id": self.id, "app": self.app, "label": self.label, "created_at": self.created_at, "released_at": self.released_at,
+                "releases": self.releases}
+
+
 class AccountStore:
     def __init__(self, url: str) -> None:
         db = self._db = Database(url)
@@ -227,6 +296,12 @@ class AccountStore:
             f"CREATE TABLE IF NOT EXISTS archives (id {tk} PRIMARY KEY, user_id {tk} NOT NULL, requested_at TEXT NOT NULL,"
             " built_at TEXT NOT NULL DEFAULT '', released_at TEXT NOT NULL DEFAULT '', released_by TEXT NOT NULL DEFAULT '',"
             " downloaded_at TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '')",
+            f"CREATE TABLE IF NOT EXISTS subscriptions (id {tk} PRIMARY KEY, user_id {tk} NOT NULL, plan TEXT NOT NULL, source TEXT NOT NULL,"
+            " licence_id TEXT NOT NULL DEFAULT '', started_at TEXT NOT NULL, valid_until TEXT NOT NULL DEFAULT '', cancelled_at TEXT NOT NULL DEFAULT '',"
+            " created_by TEXT NOT NULL DEFAULT '')",
+            f"CREATE TABLE IF NOT EXISTS escrows (id {tk} PRIMARY KEY, user_id {tk} NOT NULL, app TEXT NOT NULL, label TEXT NOT NULL DEFAULT '',"
+            " sealed TEXT NOT NULL, created_at TEXT NOT NULL, released_at TEXT NOT NULL DEFAULT '', releases INTEGER NOT NULL DEFAULT 0,"
+            " deleted_at TEXT NOT NULL DEFAULT '')",
             f"CREATE TABLE IF NOT EXISTS audit (id {db.serial} PRIMARY KEY, at TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,"
             f" target_kind TEXT NOT NULL, target {tk} NOT NULL, clause TEXT NOT NULL DEFAULT '', state_before TEXT NOT NULL DEFAULT '',"
             " state_after TEXT NOT NULL DEFAULT '', acted_on TEXT NOT NULL DEFAULT '', prev_hash TEXT NOT NULL, hash TEXT NOT NULL)",
@@ -234,9 +309,15 @@ class AccountStore:
         for name, table, cols in (("users_email", "users", "email"), ("users_handle", "users", "handle"), ("codes_user", "codes", "user_id, purpose"),
                                   ("sessions_id", "sessions", "id"), ("sessions_user", "sessions", "user_id"), ("sessions_token", "sessions", "token_hash"), ("signins_user", "signins", "user_id"),
                                   ("licences_user", "licences", "user_id"), ("installs_licence", "installs", "licence_id, session_id"),
-                                  ("notices_user", "notices", "user_id"), ("archives_user", "archives", "user_id")):
+                                  ("notices_user", "notices", "user_id"), ("archives_user", "archives", "user_id"),
+                                  ("subscriptions_user", "subscriptions", "user_id"), ("escrows_user", "escrows", "user_id")):
             db.create_index(name, table, cols)
-        if not self.meta("schema"):
+        # Schema 2 (0.3.0): the phone, added to a users table schema 1 made.
+        have = set(db.columns("users"))
+        for column in ("phone", "phone_verified_at"):
+            if column not in have:
+                db.execute(f"ALTER TABLE users ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+        if self.meta("schema") != str(SCHEMA):
             self.set_meta("schema", str(SCHEMA))
 
     @property
@@ -310,7 +391,7 @@ class AccountStore:
                     password_changed_at=r["password_changed_at"], totp_secret=r["totp_secret"], totp_enabled_at=r["totp_enabled_at"],
                     recovery_codes=_json(r["recovery_codes"], []), settings={**DEFAULT_SETTINGS, **_json(r["settings"], {})},
                     deletion_requested_at=r["deletion_requested_at"], delete_after=r["delete_after"], suspended_reason=r["suspended_reason"],
-                    suspended_until=r["suspended_until"])
+                    suspended_until=r["suspended_until"], phone=r.get("phone") or "", phone_verified_at=r.get("phone_verified_at") or "")
 
     def get_user(self, user_id: str) -> User | None:
         r = self._db.fetchone("SELECT * FROM users WHERE id = ?", (user_id,))
@@ -339,7 +420,7 @@ class AccountStore:
     def update_user(self, user_id: str, **fields: Any) -> User:
         allowed = {"email", "email_verified", "password_hash", "display_name", "handle", "language", "country", "year_of_birth", "about", "state",
                    "password_changed_at", "totp_secret", "totp_enabled_at", "recovery_codes", "settings", "deletion_requested_at", "delete_after",
-                   "suspended_reason", "suspended_until"}
+                   "suspended_reason", "suspended_until", "phone", "phone_verified_at"}
         sets, values = [], []
         for key, value in fields.items():
             if key not in allowed:
@@ -553,7 +634,9 @@ class AccountStore:
     def build_archive(self, user: User) -> Archive:
         """Everything the account holds of the person, as one JSON document;
         built at once, released by the operator, downloaded once."""
-        data = {"profile": user.me(), "devices": [s.public() for s in self.sessions_of(user.id, active_only=False)],
+        data = {"profile": user.me(), "subscriptions": [s.public() for s in self.subscriptions_of(user.id)],
+                "recovery_keys": [e.public() for e in self.escrows_of(user.id)],
+                "devices": [s.public() for s in self.sessions_of(user.id, active_only=False)],
                 "licences": [l.public() for l in self.licences_of(user.id)], "notices": [n.public() for n in self.notices_of(user.id)],
                 "sign_ins": self.signins_of(user.id, limit=1000), "history": self.audit_of(user.id)}
         aid = "a-" + secrets.token_hex(6)
@@ -577,6 +660,103 @@ class AccountStore:
             return None
         self._db.execute("UPDATE archives SET downloaded_at = ?, data = '' WHERE id = ?", (now_iso(), aid))
         return r["data"]
+
+    # ----- the subscription -----
+    @staticmethod
+    def _subscription(r: dict) -> Subscription:
+        return Subscription(id=r["id"], user_id=r["user_id"], plan=r["plan"], source=r["source"], licence_id=r["licence_id"], started_at=r["started_at"],
+                            valid_until=r["valid_until"], cancelled_at=r["cancelled_at"], created_by=r["created_by"])
+
+    def subscriptions_of(self, user_id: str) -> list[Subscription]:
+        return [self._subscription(r) for r in self._db.fetchall("SELECT * FROM subscriptions WHERE user_id = ? ORDER BY started_at DESC, id DESC", (user_id,))]
+
+    def active_subscription(self, user_id: str) -> Subscription | None:
+        """The paid plan in force today, the one running longest when there
+        are several; None on the free plan."""
+        day = today()
+        live = [s for s in self.subscriptions_of(user_id) if s.active(day) and PLANS.get(s.plan, {}).get("paid")]
+        live.sort(key=lambda s: s.valid_until or "9999", reverse=True)
+        return live[0] if live else None
+
+    def plan_of(self, user_id: str) -> dict:
+        """What the account is on: the plan, whether it is paid, until when,
+        and what it allows - the one answer every service asks."""
+        sub = self.active_subscription(user_id)
+        name = sub.plan if sub else "free"
+        plan = PLANS.get(name, PLANS["free"])
+        return {"plan": name, "paid": bool(plan["paid"]), "valid_until": sub.valid_until if sub else "", "source": sub.source if sub else "",
+                "features": dict(plan["features"]), "subscription": sub.public() if sub else None}
+
+    def add_subscription(self, user_id: str, *, plan: str, source: str, valid_until: str, actor: str, licence_id: str = "") -> Subscription:
+        """A plan started; one from a licence already here is renewed in place."""
+        if plan not in PLANS or source not in SUBSCRIPTION_SOURCES:
+            raise ValueError("bad_plan")
+        if licence_id:
+            r = self._db.fetchone("SELECT * FROM subscriptions WHERE licence_id = ? AND user_id = ?", (licence_id, user_id))
+            if r:
+                self._db.execute("UPDATE subscriptions SET valid_until = ?, cancelled_at = '' WHERE id = ?", (valid_until, r["id"]))
+                self.audit(actor, "renew_subscription", "user", user_id, after={"plan": plan, "valid_until": valid_until, "licence": licence_id})
+                return self._subscription(self._db.fetchone("SELECT * FROM subscriptions WHERE id = ?", (r["id"],)))   # type: ignore[arg-type]
+        sid = "s-" + secrets.token_hex(6)
+        self._db.execute("INSERT INTO subscriptions (id, user_id, plan, source, licence_id, started_at, valid_until, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                         (sid, user_id, plan, source, licence_id, now_iso(), valid_until, actor))
+        self.audit(actor, "start_subscription", "user", user_id, after={"plan": plan, "source": source, "valid_until": valid_until, "licence": licence_id})
+        return self._subscription(self._db.fetchone("SELECT * FROM subscriptions WHERE id = ?", (sid,)))   # type: ignore[arg-type]
+
+    def cancel_subscriptions(self, user_id: str, *, actor: str, reason: str = "") -> int:
+        live = [s for s in self.subscriptions_of(user_id) if not s.cancelled_at]
+        for s in live:
+            self._db.execute("UPDATE subscriptions SET cancelled_at = ? WHERE id = ?", (now_iso(), s.id))
+        if live:
+            self.audit(actor, "cancel_subscription", "user", user_id, after={"count": len(live), "reason": reason})
+        return len(live)
+
+    # ----- the recovery-key escrow -----
+    @staticmethod
+    def _escrow(r: dict) -> Escrow:
+        return Escrow(id=r["id"], user_id=r["user_id"], app=r["app"], label=r["label"], sealed=r["sealed"], created_at=r["created_at"],
+                      released_at=r["released_at"], releases=int(r["releases"] or 0))
+
+    def escrows_of(self, user_id: str) -> list[Escrow]:
+        return [self._escrow(r) for r in self._db.fetchall("SELECT * FROM escrows WHERE user_id = ? AND deleted_at = '' ORDER BY created_at, id", (user_id,))]
+
+    def get_escrow(self, eid: str) -> Escrow | None:
+        r = self._db.fetchone("SELECT * FROM escrows WHERE id = ? AND deleted_at = ''", (eid,))
+        return self._escrow(r) if r else None
+
+    def new_escrow_id(self) -> str:
+        """Unguessable: the id is what a vault file names its escrow by, and
+        anyone holding it may ask for a code to be sent to the owner."""
+        return "e-" + secrets.token_hex(16)
+
+    def add_escrow(self, user_id: str, *, eid: str, app: str, label: str, sealed: str) -> Escrow:
+        if len(self.escrows_of(user_id)) >= MAX_ESCROWS:
+            raise ValueError("too_many")
+        self._db.execute("INSERT INTO escrows (id, user_id, app, label, sealed, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                         (eid, user_id, app, label, sealed, now_iso()))
+        self.audit(user_id, "add_escrow", "user", user_id, after={"escrow": eid, "app": app})
+        return self.get_escrow(eid)   # type: ignore[return-value]
+
+    def delete_escrow(self, eid: str, actor: str) -> None:
+        r = self._db.fetchone("SELECT user_id FROM escrows WHERE id = ?", (eid,))
+        self._db.execute("UPDATE escrows SET deleted_at = ?, sealed = '' WHERE id = ? AND deleted_at = ''", (now_iso(), eid))
+        if r:
+            self.audit(actor, "delete_escrow", "user", r["user_id"], acted_on=f"escrow:{eid}")
+
+    def mark_escrow_released(self, eid: str, *, channel: str) -> None:
+        r = self._db.fetchone("SELECT user_id FROM escrows WHERE id = ?", (eid,))
+        self._db.execute("UPDATE escrows SET released_at = ?, releases = releases + 1 WHERE id = ?", (now_iso(), eid))
+        if r:
+            self.audit(r["user_id"], "release_escrow", "user", r["user_id"], acted_on=f"escrow:{eid}", after={"channel": channel})
+
+    def code_sent_recently_for(self, user_id: str, purpose: str, payload: str, seconds: int = 60) -> bool:
+        r = self._db.fetchone("SELECT created_at FROM codes WHERE user_id = ? AND purpose = ? AND payload = ? ORDER BY id DESC LIMIT 1",
+                              (user_id, purpose, payload))
+        return bool(r) and r["created_at"] >= iso_after(-seconds)
+
+    def codes_sent_since(self, user_id: str, purpose: str, seconds: int) -> int:
+        r = self._db.fetchone("SELECT COUNT(*) AS n FROM codes WHERE user_id = ? AND purpose = ? AND created_at >= ?", (user_id, purpose, iso_after(-seconds)))
+        return int(r["n"]) if r else 0
 
     # ----- suspension and deletion -----
     def suspend_user(self, user_id: str, *, reason: str, days: int, actor: str) -> User:
@@ -618,8 +798,11 @@ class AccountStore:
         self._db.execute("DELETE FROM archives WHERE user_id = ?", (user_id,))
         self._db.execute("DELETE FROM signins WHERE user_id = ?", (user_id,))
         self._db.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        self._db.execute("DELETE FROM escrows WHERE user_id = ?", (user_id,))
+        self.cancel_subscriptions(user_id, actor=actor, reason="account deleted")
         self.update_user(user_id, email=f"deleted-{user_id}", email_verified=False, password_hash="", display_name="", handle="", about="",
-                         year_of_birth=0, totp_secret="", totp_enabled_at="", recovery_codes=[], settings={}, state="deleted")
+                         year_of_birth=0, totp_secret="", totp_enabled_at="", recovery_codes=[], settings={}, state="deleted",
+                         phone="", phone_verified_at="")
         self.audit(actor, "delete", "user", user_id, before={"state": user.state}, after={"reason": reason})
 
     def due_deletions(self) -> list[User]:

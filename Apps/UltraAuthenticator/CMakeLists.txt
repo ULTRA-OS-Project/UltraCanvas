@@ -25,6 +25,7 @@ set(ULTRAAUTHENTICATOR_CORE_SOURCES
     LockPolicy.cpp
     Preferences.cpp
     VaultLocation.cpp
+    RecoveryCode.cpp
     # The backup file is sealed with UCDCrypto::Seal, the framework's
     # password envelope. It is compiled here rather than linked because
     # nothing else builds it: the source lives under Plugins/Documents but the
@@ -66,6 +67,8 @@ add_executable(UltraAuthenticator
     LockScreenDialog.cpp
     SettingsDialog.cpp
     NewVaultDialog.cpp
+    RecoveryDialog.cpp
+    RecoverVaultDialog.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h).
 ultracanvas_single_instance(UltraAuthenticator)
@@ -81,6 +84,14 @@ target_include_directories(UltraAuthenticator PRIVATE
 target_link_libraries(UltraAuthenticator PRIVATE
     UltraAuthenticatorCore
     ${ULTRACANVAS_LIBRARY})
+
+# Recovery keeps its key with the person's UltraAccount when the account's
+# client is built (Apps/UltraAccount); without it, recovery is the printed
+# recovery code alone.
+if(TARGET UltraAccountCore)
+    target_link_libraries(UltraAuthenticator PRIVATE UltraAccountCore)
+    target_compile_definitions(UltraAuthenticator PRIVATE ULTRAAUTHENTICATOR_HAVE_ACCOUNT=1)
+endif()
 
 if(TARGET fmt::fmt)
     target_link_libraries(UltraAuthenticator PRIVATE fmt::fmt)

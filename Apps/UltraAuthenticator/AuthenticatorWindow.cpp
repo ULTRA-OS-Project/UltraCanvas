@@ -7,6 +7,8 @@
 #include "BackupDialog.h"
 #include "ChangePasswordDialog.h"
 #include "EditAccountDialog.h"
+#include "RecoverVaultDialog.h"
+#include "RecoveryDialog.h"
 #include "RevealSecretDialog.h"
 #include "ScanAccountDialog.h"
 #include "SettingsDialog.h"
@@ -18,6 +20,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCrypt/UltraCryptCore.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #include <cmath>
 #include <ctime>
@@ -272,6 +275,19 @@ bool AuthenticatorWindow::Create() {
     settingsBtn->onClick = [this]() { OpenSettingsDialog(); };
     band->AddChild(settingsBtn);
 
+    // Recovery from a forgotten master password, beside the settings: it is
+    // set up once, like them, and matters on the day the password is gone.
+    constexpr long kRecoveryWidth = 110;
+    auto recoveryBtn = std::make_shared<UltraCanvasButton>(
+        "auth-recovery",
+        kWindowWidth - margin - Theme::kButtonLock - 2 * Theme::kButtonGap - Theme::kIconButton - 4 - kRecoveryWidth,
+        bandButtonY, kRecoveryWidth, Theme::kButtonHeight);
+    recoveryBtn->SetText(Tr("Recovery"));
+    Theme::StyleButton(recoveryBtn, Theme::GhostButton());
+    recoveryBtn->SetTooltip(Tr("A way back in when the master password is forgotten"));
+    recoveryBtn->onClick = [this]() { OpenRecoveryDialog(); };
+    band->AddChild(recoveryBtn);
+
     // --- actions -------------------------------------------------------------
     // Adding an account at the left, scanning first: it is how an account is
     // normally added, and typing a 32-character key is the fallback, not the
@@ -509,6 +525,7 @@ void AuthenticatorWindow::ShowLockScreen() {
         store_.Close();
         app_.RequestExit();
     };
+    dialog->onForgot = [this]() { OpenRecoverVaultDialog(); };
     dialog->onResult = [this](DialogResult result) {
         lockDialog_.reset();
         if (result != DialogResult::OK) return;   // quit; the app is exiting
@@ -1215,6 +1232,29 @@ void AuthenticatorWindow::OpenRevealSecretDialog(const std::string& key) {
     };
     dialog->CreateRevealSecretDialog(DisplayName(*current));
     ShowTracked(dialog);
+}
+
+void AuthenticatorWindow::OpenRecoveryDialog() {
+    auto dialog = std::make_shared<RecoveryDialog>(store_);
+    dialog->onChanged = [this](const std::string& text) { SetStatus(text); };
+    dialog->CreateRecoveryDialog();
+    ShowTracked(dialog);
+}
+
+void AuthenticatorWindow::OpenRecoverVaultDialog() {
+    auto dialog = std::make_shared<RecoverVaultDialog>(store_, []() { return NowUnix(); });
+    // The lock screen is under this dialog: when the vault opens, it closes
+    // as if the password had been typed.
+    std::weak_ptr<LockScreenDialog> lock = lockDialog_;
+    dialog->onRecovered = [this, lock]() {
+        if (auto screen = lock.lock()) screen->CompleteUnlock();
+        SetStatus(Tr("Recovered, with the new master password. Turn Recovery on again."));
+    };
+    dialog->onResult = [this](DialogResult) { recoverDialog_.reset(); };
+    dialog->CreateRecoverVaultDialog();
+    recoverDialog_ = dialog;
+    if (lockDialog_) dialog->ShowModal(lockDialog_.get());
+    else dialog->ShowModal(window_.get());
 }
 
 void AuthenticatorWindow::OpenChangePasswordDialog() {

@@ -717,6 +717,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraAI/CHANGELOG.md` | UltraAI and its dashboard app |
 | `Docs/UltraAIServerAdmin/CHANGELOG.md` | UltraAI ServerAdmin — the model server's admin tool |
 | `Docs/UltraAuthenticator/CHANGELOG.md` | UltraAuthenticator |
+| `Docs/UltraAccount/CHANGELOG.md` | UltraAccount — the ULTRA OS account: sign-up, email and phone, subscription |
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraClaude/CHANGELOG.md` | UltraClaude — chat with Claude through the Claude Code CLI |
 | `Docs/UltraClipboard/CHANGELOG.md` | UltraClipboard — the clipboard history |
