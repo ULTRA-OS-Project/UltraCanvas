@@ -1,7 +1,8 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
 // Version: 1.10.1 - a re-styling (SetAppearance, ApplyTheme, SetOrientation) keeps each button's
-//                  useIconAsMask: an application's icon no longer turns into a black silhouette
+//                  useIconAsMask - an application's icon no longer turns into a black silhouette -
+//                  and an icon size the host set; buttons still at the toolbar's size follow it
 // Version: 1.12.0 - RefreshCommandStates presses a folded group of check commands on the checked one
 // Version: 1.11.0 - SetOnContextMenu (a right click, watched at the window)
 // Version: 1.10.0 - AddWidget, RefreshCommandStates
@@ -113,7 +114,7 @@ namespace UltraCanvas {
             CreateLayout(); // Recreate layout with new orientation
             // The separators' margins run along the bar, and the chevron
             // points the way the overflow menu opens.
-            ApplyAppearanceToChildren();
+            ApplyAppearanceToChildren(toolbarAppearance.IconPixelSize());
             UpdateOverflowButton();
             InvalidateLayout();
         }
@@ -128,6 +129,7 @@ namespace UltraCanvas {
 
     void UltraCanvasToolbar::SetAppearance(const ToolbarAppearance& app) {
         StyleSetByHand();
+        const Size2Di previousIconSize = toolbarAppearance.IconPixelSize();
         toolbarAppearance = app;
 
         // Update toolbar container appearance
@@ -145,7 +147,7 @@ namespace UltraCanvas {
         layout.SetFlexGap(toolbarAppearance.itemSpacing);
 
         // Re-style existing child widgets
-        ApplyAppearanceToChildren();
+        ApplyAppearanceToChildren(previousIconSize);
     }
 
     void UltraCanvasToolbar::SetOverflowMode(ToolbarOverflowMode mode) {
@@ -622,7 +624,8 @@ namespace UltraCanvas {
 
 // ===== APPEARANCE =====
 
-    void UltraCanvasToolbar::ApplyButtonAppearance(const std::shared_ptr<UltraCanvasButton>& button, bool added) {
+    void UltraCanvasToolbar::ApplyButtonAppearance(const std::shared_ptr<UltraCanvasButton>& button, bool added,
+                                                   Size2Di previousIconSize) {
         if (!button) return;
 
         ButtonStyle style = button->GetStyle();
@@ -652,15 +655,20 @@ namespace UltraCanvas {
         // whatever was set, and the line icons drawn on a 24 px grid (most of
         // media/icons) were scaled to 5/6 and blurred; a 16 px set was blown
         // up to 20 and blurred the other way.
+        // A re-styling moves a button still at the toolbar's earlier size
+        // and leaves one the host sized itself (UltraDesktop's bar icons):
+        // those used to snap to the toolbar's size at every theme refresh.
         const Size2Di icon = toolbarAppearance.IconPixelSize();
-        button->SetIconSize(icon.width, icon.height);
+        const bool atToolbarSize = button->GetIconWidth() == previousIconSize.width &&
+                                   button->GetIconHeight() == previousIconSize.height;
+        if (added || atToolbarSize) button->SetIconSize(icon.width, icon.height);
     }
 
-    void UltraCanvasToolbar::ApplyAppearanceToChildren() {
+    void UltraCanvasToolbar::ApplyAppearanceToChildren(Size2Di previousIconSize) {
         for (auto& c : Children()) {
             auto w = std::static_pointer_cast<UltraCanvasUIElement>(c);
             if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(w)) {
-                ApplyButtonAppearance(button);
+                ApplyButtonAppearance(button, false, previousIconSize);
             } else if (auto sep = std::dynamic_pointer_cast<UltraCanvasSeparator>(w)) {
                 sep->SetColor(toolbarAppearance.separatorColor);
                 ApplySeparatorSpacing(sep);

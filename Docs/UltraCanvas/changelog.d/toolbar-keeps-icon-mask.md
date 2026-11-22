@@ -10,3 +10,9 @@
   the look was refreshed, while they were right at start-up. A re-styling now
   keeps each button's choice; only a button just added gets the mask.
   `ToolbarOverflowMenuTest` checks it.
+- **A toolbar's re-styling keeps an icon size the host chose.** The same
+  re-application set every button's icon to the appearance's size, so a host
+  that sized its icons itself (UltraDesktop's 24 px bar icons) had them snap
+  back at each theme refresh. A re-styling now moves only the buttons still
+  at the toolbar's earlier size, which follow a new appearance as before;
+  `ToolbarOverflowMenuTest` checks both.

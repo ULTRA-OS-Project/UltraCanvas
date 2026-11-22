@@ -13,3 +13,8 @@
   copy that never got onto the bus. `UltraMessageTests` stops the broker
   under two endpoints and starts it again: they come back on their own and
   the subscription delivers.
+- **The UltraMessage module doc is compiled by the docs check.** Two of its
+  examples called functions of the reader's (`OpenPaths`, `Open`) without
+  declaring them; they are declared in `doc-check` comments now, and
+  `Docs/Modules/UltraMessage` is in `CHECKED_MODULE_DOCS`, so CI keeps it
+  compiling.

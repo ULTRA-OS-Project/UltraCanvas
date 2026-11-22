@@ -317,8 +317,32 @@ void TestIconMaskKept() {
     Check(!app->GetStyle().useIconAsMask, "and so does a new orientation");
 }
 
+// An icon size the host chose survives a re-styling; a button still at the
+// toolbar's size follows a new one.
+void TestIconSizeKept() {
+    std::printf("Icon size kept on re-styling\n");
+    auto toolbar = Bar(300);
+    auto plain = toolbar->AddButton("plain", "P", "", nullptr);
+    auto sized = toolbar->AddButton("sized", "S", "", nullptr);
+    const Size2Di start = toolbar->GetAppearance().IconPixelSize();
+    Check(plain->GetIconWidth() == start.width, "a new button has the toolbar's icon size");
+    sized->SetIconSize(30, 30);
+    ToolbarAppearance look = toolbar->GetAppearance();
+    look.itemSpacing += 2;
+    toolbar->SetAppearance(look);
+    Check(sized->GetIconWidth() == 30 && sized->GetIconHeight() == 30,
+          "SetAppearance keeps an icon size the host set");
+    look.iconSize = look.iconSize == ToolbarIconSize::Small ? ToolbarIconSize::Large : ToolbarIconSize::Small;
+    toolbar->SetAppearance(look);
+    const Size2Di now = toolbar->GetAppearance().IconPixelSize();
+    Check(now.width != start.width, "the appearance's icon size changed");
+    Check(plain->GetIconWidth() == now.width, "a button at the toolbar's size follows it");
+    Check(sized->GetIconWidth() == 30, "the host's size stays");
+}
+
 int main() {
     TestIconMaskKept();
+    TestIconSizeKept();
     TestGroupSpacing();
     TestOverflowCut();
     TestNoDanglingSeparator();

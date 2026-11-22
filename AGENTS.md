@@ -982,7 +982,7 @@ and never introduce a new literal copy of one:
    `*Examples.md` docs pass it. CI runs it over every doc under
    `Docs/UltraCanvas/` but the changelog, and over the module docs listed in
    `CHECKED_MODULE_DOCS` in the script (`Docs/Modules/` FileLoader,
-   UltraCrypt, UltraLocalisation, UltraNet and UltraSite so far)
+   UltraCrypt, UltraLocalisation, UltraMessage, UltraNet and UltraSite so far)
    (`--all --strict`, `doc-examples.yml`) whenever a doc or a public header
    changes, and fails on any finding a component doc has. A module doc
    joins that list once its examples compile, and is fixed, not baselined. The design documents (a Proposal,

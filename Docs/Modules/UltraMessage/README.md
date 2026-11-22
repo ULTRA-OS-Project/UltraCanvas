@@ -68,6 +68,7 @@ where the UI library cannot be built.
 
 ## 2. Ten-line tour
 
+<!-- doc-check: void OpenPaths(const UltraCanvas::JSONValue& request); -->
 ```cpp
 #include <UltraMessage/UltraMessageEndpoint.h>
 #include <UltraMessage/UltraMessageUltraCanvas.h>   // only in an UltraCanvas app
@@ -89,9 +90,11 @@ bus->RequestBlocking("org.ultraos.ultraviewer", "app.command.invoke",
 ```
 
 The first application to connect and find no broker hosts one in-process;
-every later one connects to it. When the hosting process exits, the next
-`Connect` elects a new host (a lock file beside the socket decides; no two
-processes ever both win). On ULTRA OS the shell will host it permanently.
+every later one connects to it. When the hosting process exits, the
+endpoints still connected reconnect by themselves and one of them hosts the
+next broker (a lock file beside the socket decides; no two processes ever
+both win) - see *When the broker goes* in §3.1. On ULTRA OS the shell will
+host it permanently.
 
 At exit the module stops what the process still has open - its endpoints, and
 the broker with its adapters when it hosts one - unless Windows is already
@@ -466,6 +469,7 @@ draws nothing.
 What an application gives a `system.notification` it wants on screen, and the
 one call that makes its clicks reach it however the notification was shown:
 
+<!-- doc-check: void Open(const std::string& launch); UltraMsgHandle endpoint; std::string iconPngPath; std::string exportedPath; -->
 ```cpp
 // Once, at the start (UltraCanvasNotificationActivation.h): on Windows, a click
 // on the toast after the broker host quit - or with the application closed,
