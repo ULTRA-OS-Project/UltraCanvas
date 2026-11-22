@@ -78,7 +78,9 @@ are read where Explorer keeps them (`VirtualDesktopIDs` and
 `CurrentVirtualDesktop` in the registry, as PowerToys reads them), a window's
 desktop through `IVirtualDesktopManager`. Switching sends Explorer's own
 Ctrl+Win+Left/Right, so it needs Explorer running; `SetVirtualDesktopCount`
-answers false (the count is the user's, in Task View), and
+only adds desktops - Explorer's Ctrl+Win+D, once per missing desktop, then
+back to the desktop that was current - and answers false for a smaller count
+(removing one is the user's, in Task View), and
 `MoveWindowToVirtualDesktop` moves only the calling program's own windows and
 never to "every desktop".
 

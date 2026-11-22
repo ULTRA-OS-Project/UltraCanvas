@@ -1,6 +1,7 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.18.2 - Desktop > Tool applications (toolAppsOnTaskbar)
 // Version: 0.18.1 - the scrolled pages and tables take the theme's scrollbars
 //                  (ContainerStyle::FromTheme), not the light default
 // Version: 0.18.0 - Desktop > Theme is the system look (Appearance.conf), the
@@ -623,6 +624,17 @@ void UOSSettingsWindow::BuildDesktopPage() {
     };
     addRow("uos-dt-desktops-row", Tr("Virtual desktops"), desktops_);
 
+    // UltraClipboard, UltraSnip and UltraToDo: only on the right bar's tool
+    // group, or listed on the taskbar as well.
+    toolApps_ = std::make_shared<UltraCanvasDropdown>("uos-dt-toolapps", 0, 0, 220, 28);
+    toolApps_->AddItem(Tr("Only on the tool group"), "group");
+    toolApps_->AddItem(Tr("On the taskbar too"), "taskbar");
+    toolApps_->SetTooltip(Tr("UltraClipboard, UltraSnip and UltraToDo have buttons on the right bar; their windows show on the taskbar only when chosen here."));
+    toolApps_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-toolapps-row", Tr("Tool applications"), toolApps_);
+
     // The Apps window: its view, when a category is split into its
     // sub-categories, and how many applications Recent shows.
     appsView_ = std::make_shared<UltraCanvasDropdown>("uos-dt-appsview", 0, 0, 200, 28);
@@ -792,6 +804,7 @@ void UOSSettingsWindow::RefreshDesktopPage() {
     if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
     if (filer_) filer_->SetText(settings.filerProgram);
     if (desktops_) desktops_->SetSelectedIndex(std::clamp(settings.virtualDesktops, 1, 9) - 1, false);
+    if (toolApps_) toolApps_->SetSelectedIndex(settings.toolAppsOnTaskbar ? 1 : 0, false);
     if (appsView_) appsView_->SetSelectedIndex(settings.appsView == "tree" ? 1 : 0, false);
     if (appsSplit_) appsSplit_->SetSelectedIndex(NearestChoice(kAppsSplitChoices, settings.appsSplitAbove), false);
     if (recentShown_) recentShown_->SetSelectedIndex(NearestChoice(kRecentShownChoices, settings.recentAppsShown), false);
@@ -850,6 +863,7 @@ void UOSSettingsWindow::SaveDesktopPage() {
     if (ramDisc_) settings.ramDiscPath = ramDisc_->GetText();   // "" = no RAM disc button
     if (filer_ && !filer_->GetText().empty()) settings.filerProgram = filer_->GetText();
     if (desktops_) settings.virtualDesktops = std::clamp(desktops_->GetSelectedIndex() + 1, 1, 9);
+    if (toolApps_) settings.toolAppsOnTaskbar = toolApps_->GetSelectedIndex() == 1;
     if (appsView_) settings.appsView = appsView_->GetSelectedIndex() == 1 ? "tree" : "tiles";
     if (appsSplit_) settings.appsSplitAbove = ChoiceAt(kAppsSplitChoices, appsSplit_->GetSelectedIndex(), 8);
     if (recentShown_) settings.recentAppsShown = ChoiceAt(kRecentShownChoices, recentShown_->GetSelectedIndex(), 8);

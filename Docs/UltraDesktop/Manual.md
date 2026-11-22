@@ -139,15 +139,18 @@ highlighted.
 
 The numbered buttons under the clock on the right bar are your virtual desktops.
 Click one to switch to it. The taskbar then shows that desktop's windows.
+Desktop **1** is the wallpaper's: click it while you are on it and its
+windows are minimised, so the wallpaper shows.
 
 - To change how many there are, use UOS-Settings → Desktop → **Virtual
-  desktops** (section 5). The window manager has the last word and may offer
-  a different number.
+  desktops** (section 5). The bar always shows at least that many; where
+  the window manager has more, it shows those too.
 - To put a window on another desktop, right-click its taskbar button →
   **Move to**.
 - On Windows, the buttons are Windows' own virtual desktops, which Explorer
-  provides: they switch while Explorer runs (beside Explorer). You add and
-  remove desktops in Task View (Win+Tab), and **Move to** moves only
+  provides: they switch while Explorer runs (beside Explorer). A button for
+  a desktop Windows does not have yet adds it in Task View when you click
+  it; you remove desktops in Task View (Win+Tab), and **Move to** moves only
   UltraDesktop's own windows.
 
 ### 4.4 Clipboard history
@@ -393,7 +396,8 @@ settings**.
 | **Wallpaper** | A picture file (**Browse...**). Empty: the framework's landscape picture. |
 | **RAM disc** | The folder the RAM disc button opens. Empty: no button. On Linux it is `/dev/shm` unless you change it; on Windows it is empty unless you set one. |
 | **File manager** | The program the folder buttons start (UltraFiler unless you change it). |
-| **Virtual desktops** | 1 to 9. The window manager may offer a different number. |
+| **Virtual desktops** | 1 to 9. The bar shows at least this many; on Windows a missing one is added when its button is clicked. |
+| **Tool applications** | *Only on the tool group* (the default): UltraClipboard, UltraSnip and UltraToDo keep their windows off the taskbar and show only on their buttons under the desktop numbers. *On the taskbar too*: their windows are listed on the taskbar as well. Also on the wallpaper's right-click menu. |
 | **At sign-in** (Windows only) | **The Windows desktop**, **UltraDesktop beside Explorer** or **UltraDesktop instead of Explorer**. See section 6. |
 
 Changes are saved at once: a choice when you make it, a text field when you
@@ -541,6 +545,7 @@ at sign-in.
 | Taskbar window button | click / right-click / drag / wheel | activate or minimise / window menu / reorder / scroll the row |
 | ⚙ button | click / right-click | UOS-Settings / desktop menu (switching, sign out …) |
 | Clipboard button | click / right-click | the panel / pause, open UltraClipboard, clear |
+| UltraToDo button | click | opens UltraToDo, the task list |
 | Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |

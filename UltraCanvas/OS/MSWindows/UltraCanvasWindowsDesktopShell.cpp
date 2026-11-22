@@ -1531,10 +1531,29 @@ bool SetCurrentVirtualDesktop(int index) {
     return true;
 }
 
-bool SetVirtualDesktopCount(int) {
-    // Windows offers no call that adds or removes a desktop; the count is
-    // the user's, in Task View.
-    return false;
+bool SetVirtualDesktopCount(int count) {
+    // Windows offers no call that adds or removes a desktop, only Explorer's
+    // shortcuts: Win+Ctrl+D adds one at the end and switches to it. So the
+    // count only grows - removing one would move its windows, which is the
+    // user's to do in Task View - and the desktop that was current is
+    // switched back to once Explorer has written the new layout.
+    count = std::clamp(count, 1, 32);
+    const VirtualDesktopLayout before = ReadVirtualDesktops();
+    if (count <= before.Count()) return count == before.Count();
+    if (!ExplorerTaskbarRunning()) return false;
+    for (int added = before.Count(); added < count; ++added) {
+        if (!SendShortcut({VK_LCONTROL, VK_LWIN}, 'D')) return false;
+    }
+    VirtualDesktopLayout after = ReadVirtualDesktops();
+    for (int wait = 0; wait < 40 && (after.Count() < count || after.current != after.Count() - 1); ++wait) {
+        Sleep(50);
+        after = ReadVirtualDesktops();
+    }
+    if (after.Count() < count) return false;
+    for (int step = after.current - before.current; step > 0; --step) {
+        if (!SendShortcut({VK_LCONTROL, VK_LWIN}, VK_LEFT)) return false;
+    }
+    return true;
 }
 
 bool MoveWindowToVirtualDesktop(uint64_t id, int index) {
