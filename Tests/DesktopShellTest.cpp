@@ -72,6 +72,8 @@
 // StatusNotifierItem the test exports itself over GDBus, with a pixmap, a
 // tooltip and a dbusmenu, is listed by UltraCanvasTrayHost with its PNG and
 // its menu as data, clicked, hidden and dropped when its connection closes.
+// Version: 1.11.1 - Windows: SetVirtualDesktopCount adds desktops now (Win+Ctrl+D); the test checks the
+//                  current count is accepted and a smaller one refused, and adds none
 // Version: 1.11.0 - the session lock, a popup and a panel placed by their parent,
 //                   a file drag and a GL surface on Wayland
 // Version: 1.10.0 - the portals (--portals, a fake portal of this test's own), the
@@ -2115,8 +2117,14 @@ int main(int argc, char** argv) {
         Check(desktops >= 1 && current >= 0 && current < desktops,
               "the virtual desktops are counted (" + std::to_string(current + 1) + " of " +
                   std::to_string(desktops) + ")");
-        Check(!UltraCanvasDesktopShell::SetVirtualDesktopCount(desktops + 1),
-              "adding a desktop has no Windows call, and says so");
+        // Adding one works through Explorer's Win+Ctrl+D, which would leave
+        // a desktop behind on the machine running the test: not tried here.
+        Check(UltraCanvasDesktopShell::SetVirtualDesktopCount(desktops),
+              "asking for the desktops there are is fine");
+        if (desktops > 1) {
+            Check(!UltraCanvasDesktopShell::SetVirtualDesktopCount(desktops - 1),
+                  "removing a desktop has no Windows call, and says so");
+        }
 
         UltraCanvasDesktopShellMonitor monitor;
         std::atomic<int> changes{0};
