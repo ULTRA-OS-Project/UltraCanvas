@@ -830,15 +830,22 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   See `Docs/UltraCanvas/UltraCanvasDrawingML.md`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
-  presentations (`.odp`, `.otp` templates, flat `.fodp`) read as text into
+  presentations (`.odp`, `.otp` templates, flat `.fodp`) read into
   UltraCanvasPresentationPptx's model (`PptxPresentation` and the rest), so
-  `PptxPresentationToRichDocument` outlines either kind of deck:
-  `ReadOdpPresentation`, `ReadOdpPresentationFromMemory` (a package or a flat
-  file's XML), `IsOdpPresentationFile` (by content), `IsOdpExtension`. Titles,
-  subtitles, outline and text-box paragraphs with list levels, bullets and
-  numbering from the list styles, bold / italic / underline through the style
-  parents, groups, tables (covered cells kept as empty cells), pictures,
-  speaker notes, hidden slides, the slide size from the master's page layout;
+  `PptxPresentationToRichDocument` outlines either kind of deck and
+  `RenderPptxSlide` draws it: `ReadOdpPresentation`,
+  `ReadOdpPresentationFromMemory` (a package or a flat file's XML; with
+  `withPictures` the pictures' bytes), `IsOdpPresentationFile` (by content),
+  `IsOdpExtension`. Titles, subtitles, outline and text-box paragraphs with
+  list levels, bullets and numbering from the list styles, groups, tables
+  (covered cells kept as empty cells), pictures, speaker notes, hidden slides,
+  the slide size from the master's page layout; the look as drawn, each style
+  through its parents and defaults: fills and gradients, outlines (dashes,
+  arrowheads), outlines' shapes (Office presets, ODF types, enhanced and SVG
+  paths, lines and connectors), turns and mirroring, text areas, runs' size,
+  colour, typeface and decoration, paragraphs' spacing and margins, list
+  labels, table cells' fills, borders and padding (table templates too),
+  backgrounds, the theme's colours;
   slide furniture, prompting placeholders, embedded objects and page comments
   left out. A password-protected deck opens with its password
   (UltraCanvasOdfEncryption). Charts are read as chart objects
