@@ -27774,7 +27774,9 @@ are read where Explorer keeps them (`VirtualDesktopIDs` and
 `CurrentVirtualDesktop` in the registry, as PowerToys reads them), a window's
 desktop through `IVirtualDesktopManager`. Switching sends Explorer's own
 Ctrl+Win+Left/Right, so it needs Explorer running; `SetVirtualDesktopCount`
-answers false (the count is the user's, in Task View), and
+only adds desktops - Explorer's Ctrl+Win+D, once per missing desktop, then
+back to the desktop that was current - and answers false for a smaller count
+(removing one is the user's, in Task View), and
 `MoveWindowToVirtualDesktop` moves only the calling program's own windows and
 never to "every desktop".
 
@@ -53549,7 +53551,8 @@ struct MenuStyle {
     Color textColor;          // Default text color
     Color shortcutColor;      // Shortcut text color
     Color disabledTextColor;  // Disabled item text
-    Color headerTextColor;    // Header item text
+    Color headerTextColor;    // Header item text (dark grey by default)
+    Color headerBackgroundColor;   // Header item band, darker than the panel; Transparent for none
 
     // Typography
     FontStyle font;           // Font family, size and weight
@@ -73442,6 +73445,14 @@ Windows a copy that never finishes ending is ended by the exit watchdog ten
 seconds after its main loop (see
 [UltraCanvasWindowsDiagnostics](UltraCanvasWindowsDiagnostics.md)), inside
 those fifteen.
+
+The bus is hosted by whichever program connected first - the desktop, a
+copy preloaded with it, any UltraMessage client - and goes when that program
+ends. A listening copy therefore **watches its connection**: once a second
+it checks it, and when the bus has gone it joins again, hosting the new one
+when nobody else does. Without that, a copy that outlived the bus's host
+answered nothing for the rest of its life, and every later start ended in
+"already running".
 
 The running copy **answers from the bus thread at once** and only then queues
 the request for its UI thread. A window that is busy - a native dialog that
@@ -106333,6 +106344,7 @@ where the UI library cannot be built.
 
 ## 2. Ten-line tour
 
+<!-- doc-check: void OpenPaths(const UltraCanvas::JSONValue& request); -->
 ```cpp
 #include <UltraMessage/UltraMessageEndpoint.h>
 #include <UltraMessage/UltraMessageUltraCanvas.h>   // only in an UltraCanvas app
@@ -106354,9 +106366,11 @@ bus->RequestBlocking("org.ultraos.ultraviewer", "app.command.invoke",
 ```
 
 The first application to connect and find no broker hosts one in-process;
-every later one connects to it. When the hosting process exits, the next
-`Connect` elects a new host (a lock file beside the socket decides; no two
-processes ever both win). On ULTRA OS the shell will host it permanently.
+every later one connects to it. When the hosting process exits, the
+endpoints still connected reconnect by themselves and one of them hosts the
+next broker (a lock file beside the socket decides; no two processes ever
+both win) - see *When the broker goes* in §3.1. On ULTRA OS the shell will
+host it permanently.
 
 At exit the module stops what the process still has open - its endpoints, and
 the broker with its adapters when it hosts one - unless Windows is already
@@ -106381,6 +106395,18 @@ endpoints and subscriptions are opaque `UltraMsgHandle`s.
 |---|---|
 | `UltraMsg_Connect(options, &error)` | Join the bus as `options.appId` (reverse DNS). Hosts a broker when none answers and `startBrokerIfAbsent` is set. `busPath` / `journalPath` override the platform defaults. |
 | `UltraMsg_Disconnect(endpoint)` | Leave; every subscription of the endpoint ends, including deliveries already queued for the UI thread. |
+
+**When the broker goes.** The broker lives in whichever program connected
+first, and goes when that program ends. An endpoint whose connection drops
+without `UltraMsg_Disconnect` reconnects by itself (`autoReconnect`, on by
+default): first after 200 ms, then at growing intervals up to five seconds.
+It hosts the next broker when `startBrokerIfAbsent` allows and nobody else
+has, gets a new instance id, and registers its subscriptions again under the
+same handles, so their callbacks keep coming; a subscription made with
+`replaySinceMs` gets what was journaled since the drop. Requests and control
+calls in flight fail with `NotConnected`, and so does what is sent until the
+endpoint is back - `UltraMsg_IsConnected` says when. Without this, a program
+that outlived the broker's host heard nothing for the rest of its life.
 | `UltraMsg_IsConnected`, `UltraMsg_GetEndpointInfo`, `UltraMsg_GetBrokerInfo` | State: instance id, verified process id, whether the broker is in this process, its bus and journal paths. |
 | `UltraMsg_ListEndpoints`, `UltraMsg_ResolveApp` | Who is on the bus; the instance ids of one application, first-connected first. |
 
@@ -106719,6 +106745,7 @@ draws nothing.
 What an application gives a `system.notification` it wants on screen, and the
 one call that makes its clicks reach it however the notification was shown:
 
+<!-- doc-check: void Open(const std::string& launch); UltraMsgHandle endpoint; std::string iconPngPath; std::string exportedPath; -->
 ```cpp
 // Once, at the start (UltraCanvasNotificationActivation.h): on Windows, a click
 // on the toast after the broker host quit - or with the application closed,
@@ -106799,6 +106826,9 @@ Windows `GetNamedPipeClientProcessId`).
 - A request gets exactly one reply or error — including when its target
   disconnects first.
 - Persistent topics are journaled before fan-out.
+- Nothing is queued across a reconnection: a notice posted while the
+  receiver was off the bus is not delivered to it (a persistent one is in the
+  journal, and a subscription with `replaySinceMs` gets it on its return).
 
 ## 8. Building and testing
 
@@ -114002,15 +114032,18 @@ highlighted.
 
 The numbered buttons under the clock on the right bar are your virtual desktops.
 Click one to switch to it. The taskbar then shows that desktop's windows.
+Desktop **1** is the wallpaper's: click it while you are on it and its
+windows are minimised, so the wallpaper shows.
 
 - To change how many there are, use UOS-Settings → Desktop → **Virtual
-  desktops** (section 5). The window manager has the last word and may offer
-  a different number.
+  desktops** (section 5). The bar always shows at least that many; where
+  the window manager has more, it shows those too.
 - To put a window on another desktop, right-click its taskbar button →
   **Move to**.
 - On Windows, the buttons are Windows' own virtual desktops, which Explorer
-  provides: they switch while Explorer runs (beside Explorer). You add and
-  remove desktops in Task View (Win+Tab), and **Move to** moves only
+  provides: they switch while Explorer runs (beside Explorer). A button for
+  a desktop Windows does not have yet adds it in Task View when you click
+  it; you remove desktops in Task View (Win+Tab), and **Move to** moves only
   UltraDesktop's own windows.
 
 ### 4.4 Clipboard history
@@ -114256,7 +114289,8 @@ settings**.
 | **Wallpaper** | A picture file (**Browse...**). Empty: the framework's landscape picture. |
 | **RAM disc** | The folder the RAM disc button opens. Empty: no button. On Linux it is `/dev/shm` unless you change it; on Windows it is empty unless you set one. |
 | **File manager** | The program the folder buttons start (UltraFiler unless you change it). |
-| **Virtual desktops** | 1 to 9. The window manager may offer a different number. |
+| **Virtual desktops** | 1 to 9. The bar shows at least this many; on Windows a missing one is added when its button is clicked. |
+| **Tool applications** | *Only on the tool group* (the default): UltraClipboard, UltraSnip and UltraToDo keep their windows off the taskbar and show only on their buttons under the desktop numbers. *On the taskbar too*: their windows are listed on the taskbar as well. Also on the wallpaper's right-click menu. |
 | **At sign-in** (Windows only) | **The Windows desktop**, **UltraDesktop beside Explorer** or **UltraDesktop instead of Explorer**. See section 6. |
 
 Changes are saved at once: a choice when you make it, a text field when you
@@ -114404,6 +114438,7 @@ at sign-in.
 | Taskbar window button | click / right-click / drag / wheel | activate or minimise / window menu / reorder / scroll the row |
 | ⚙ button | click / right-click | UOS-Settings / desktop menu (switching, sign out …) |
 | Clipboard button | click / right-click | the panel / pause, open UltraClipboard, clear |
+| UltraToDo button | click | opens UltraToDo, the task list |
 | Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |
@@ -114669,11 +114704,18 @@ the right-hand monitor the primary.
   bar: the time large as an analog face and in figures (the gauge's digital
   clock), today in words, and the month on the calendar view with today
   marked.
-- **Desktop organiser**: the virtual desktops as numbered toggles — as many
-  as the window manager has (read at start-up and followed when it changes),
-  the settings' count only where there is no window manager to ask; choosing
-  a count in the settings asks the window manager for that many — the
-  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot*. A click
+- **Desktop organiser**: the virtual desktops as numbered toggles — the
+  settings' count, or more where the window manager has more (read at
+  start-up and followed when it changes); choosing a count in the settings
+  asks the window manager for that many, and a button past the manager's
+  count asks for it when clicked. Desktop 1 is the wallpaper's: a click on
+  it while on it minimises its windows. Then the tool group: the
+  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard*,
+  *screenshot* and *UltraToDo* (which opens [UltraToDo](../UltraToDo/README.md)).
+  The windows of UltraClipboard, UltraSnip and UltraToDo stay off the
+  taskbar's running applications, since their buttons are here, unless
+  `toolAppsOnTaskbar` is set (UOS-Settings → Desktop → *Tool applications*,
+  or the wallpaper's right-click menu). A click
   on the screenshot button opens [UltraSnip](../UltraSnip/README.md) to snip
   an area; its right-click menu offers a window, the whole screen, a video
   recording of each, *Screenshot now, to Pictures* (the whole screen to
@@ -115219,13 +115261,54 @@ same.
 |---|---|
 | Running applications | every window Explorer's taskbar would show, with its program's icon; Microsoft Store apps by the program inside their frame |
 | Applications window | the Start menu's programs, named as the Start menu names them, and the Microsoft Store apps (Calculator, Photos, Settings …) with their tile icons; instead of Explorer the Win key opens it |
-| Virtual desktops | the organiser follows Windows' desktops and switches between them while Explorer runs; adding or removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
+| Virtual desktops | the organiser shows at least the settings' count of Windows' desktops and switches between them while Explorer runs; a button for a desktop Task View lacks adds it (Explorer's Ctrl+Win+D), removing one is done in Task View, and *Move to* moves only UltraDesktop's own windows |
 | Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
 | Other monitors | beside Explorer, Explorer's desktop shows there; instead of Explorer, UltraDesktop's wallpaper (the bars stay on the main monitor) |
 | RAM disc | UltraFiler's RAM disc - an ImDisk drive, or a folder in `%TEMP%` without ImDisk, which UltraFiler's dialog says |
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/settings-menu-title.md
+==============================================================================
+
+- **The settings button's menu has a title.** Its right-click menu opens
+  under an "UltraDesktop" header, drawn on the framework's new darker header
+  band, so the title is told apart from "ULTRA OS settings" below it.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/taskbar-icons-stay-coloured.md
+==============================================================================
+
+- **The taskbar's application icons no longer turn black.** The pinned and
+  running applications' icons, right at start-up, became black silhouettes
+  once the bar was re-styled - the running group tightening its spacing when
+  it filled up, or the look being refreshed. The cause was in the
+  framework's toolbar (see the framework changelog); nothing changes here.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/tool-group-and-desktops.md
+==============================================================================
+
+- **UltraToDo on the tool group.** The right bar's tool group (Sticker board,
+  notes, clipboard, screenshot) gains an UltraToDo button
+  (`media/icons/desktop/todo.svg`) that opens the task list.
+- **The tool applications stay off the taskbar.** The windows of
+  UltraClipboard, UltraSnip and UltraToDo are no longer listed among the
+  taskbar's running applications, since each has its button on the tool
+  group; `toolAppsOnTaskbar` in `desktop.json` (UOS-Settings → Desktop →
+  *Tool applications*, or *Tool applications on the taskbar too* on the
+  wallpaper's right-click menu) lists them there as well.
+- **The organiser showed one desktop when three were set.** The window
+  manager's count won over the settings', and Windows' Task View starts with
+  one desktop, so a setting of 3 showed a lone "1". The organiser now shows
+  at least the settings' count; clicking a desktop the manager lacks asks it
+  for more (on Windows through the framework's new
+  `SetVirtualDesktopCount`).
+- **Desktop 1 is the wallpaper's.** Clicking button 1 switches to desktop 1;
+  clicking it while already there minimises that desktop's windows so the
+  wallpaper shows.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
