@@ -2,8 +2,10 @@
 // OpenDocument presentation (.odp / .otp / .fodp) writer - see
 // UltraCanvasPresentationOdp.h: a PptxPresentation written as an Impress deck
 // LibreOffice and the reader open.
+// Version: 1.0.1 - a turned shape's gradient is turned with it (ODF's angle is on the page), and a
+//                  radial gradient starts at the edge, as ODF reads it
 // Version: 1.0.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-22
 // Author: UltraCanvas Framework
 #include "UltraCanvasOdfChart.h"
 #include "UltraCanvasPathUtf8.h"
@@ -539,9 +541,14 @@ private:
             double angle = shape.gradientAngleDeg;
             if (shape.flipH) angle = 180.0 - angle;
             if (shape.flipV) angle = -angle;
+            // ODF's angle is on the page: the shape's turn goes into it, as
+            // LibreOffice reads an Office deck.
+            if (!shape.gradientRadial) angle += shape.rotationDeg;
+            // A radial gradient starts at the edge in ODF, at the centre in the model.
             if (!from.empty() && !to.empty())
                 props += " draw:fill=\"gradient\" draw:fill-gradient-name=\"" +
-                         styles_.Gradient(from, to, angle, shape.gradientRadial) + "\"";
+                         (shape.gradientRadial ? styles_.Gradient(to, from, angle, true)
+                                               : styles_.Gradient(from, to, angle, false)) + "\"";
         } else if (const std::string fill = Colour(shape.fill); !fill.empty()) {
             props += " draw:fill=\"solid\" draw:fill-color=\"" + fill + "\"";
         } else {
