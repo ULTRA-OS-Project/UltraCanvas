@@ -808,7 +808,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
   UltraClipboard, UltraNotifications, UltraSnip, UltraToDo, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
-  UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
+  UltraAuthenticator, UltraAccount, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
   ArtCreator, UltraVideo, AnchorPoint). See
@@ -112035,7 +112035,7 @@ cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
 ## The window
 
 - **The band at the top** names the app and how many accounts it holds, with
-  *Settings* (the sliders) and **Lock** at its right.
+  *Recovery* (below), *Settings* (the sliders) and **Lock** at its right.
 - **Under it**, the ways to add an account — **Scan QR code**, then *Enter
   key* — and, to the right, what acts on the whole vault: *Password…*
   (change the master password), *Back up…* and *Restore…*.
@@ -112097,7 +112097,8 @@ below).
 decrypted vault is dropped from memory — when you press **Lock**, after a
 period without input to the window (5 minutes by default, or never; see
 *Settings*), and when the window is minimised. The lock screen accepts only
-the master password or *Quit*; it cannot be closed or escaped. After three
+the master password, *Forgot password* (*Recovery*, below) or *Quit*; it
+cannot be closed or escaped. After three
 wrong passwords each further attempt waits twice as long as the last, up to
 five minutes, and the wait is enforced by the vault code, not by the
 dialog. The same screen, with the same back-off, is what opens the app: a
@@ -112177,15 +112178,62 @@ own; each is stated here so the app is not credited with more than it does.
   to the real one in seconds. Time-based codes do not resist this; only
   phishing-resistant methods (hardware keys, passkeys) do. Check the address
   bar before you type a code.
-- **A lost master password.** It is not stored anywhere and cannot be
-  recovered. Without it, the vault is unreadable — by you and by everyone
-  else. Keep a backup (encrypted, with its own passphrase) somewhere safe.
+- **A lost master password, without Recovery.** The password is not stored
+  anywhere. Unless *Recovery* was turned on (below), without it the vault is
+  unreadable — by you and by everyone else. Keep a backup (encrypted, with
+  its own passphrase) somewhere safe.
+- **Someone with your vault file *and* your mailbox.** With Recovery kept
+  with your UltraAccount, the vault file plus a code mailed to the account's
+  address (or texted to its phone) opens the vault. That is the trade
+  Recovery makes; the account tells you by mail and notice every time a
+  recovery key is released, and *Remove* in UltraAccount, or *Turn off*
+  here, withdraws it. The same goes for the vault file plus the paper with
+  the recovery code.
 - **A wrong clock.** Time-based codes are computed from the system clock. If
   the clock is minutes off, every code is rejected by the service and the
   app cannot tell. Keep the system time synchronised.
 - **Text you type into a password field.** The framework's text field keeps
   its own copy of what was typed until it is cleared; the app clears its
   fields after every use, but that copy is the widget's, not the app's.
+
+## Recovery from a forgotten master password
+
+*Recovery*, in the top band, gives the vault a second way in for the day the
+master password is gone. Turning it on asks for the master password, then:
+
+- draws a random **recovery key** in two halves: one is kept in the vault
+  file's header, the other leaves the vault;
+- with *Keep the recovery key with my UltraAccount* (the default when
+  UltraAccount is signed in on this machine, or signed in from the dialog),
+  that other half is left with your
+  [UltraAccount](../UltraAccount/README.md), which releases it only for a
+  code sent to the account's verified email - or, with UltraAccount Plus, by
+  text message to its verified phone;
+- and shows that half once as a **recovery code** - thirteen groups of four
+  letters and digits - to write down and keep away from the computer. It
+  works without the account and without a network.
+
+On the lock screen, **Forgot password** opens the recovery: choose where the
+code goes (the masked address and number are shown), type the code - or the
+recovery code - and a new master password, twice. The vault opens with it.
+
+What holds it together: neither half opens anything alone. The account
+service never sees the vault file, and the file never holds the service's
+half, so a stolen file is no more use than before, and neither is a breach
+of the service. A recovery **spends** the key - the slot is removed from the
+vault and, when this machine is signed in to the account, the account's copy
+too - so turn Recovery on again afterwards. *Renew* replaces the key (and
+the recovery code); *Turn off* removes it. Changing the master password
+keeps Recovery as it is.
+
+How the vault carries it: since container version 2 the accounts are
+sealed with a random data key, and the header holds that key twice - sealed
+with the key derived from the master password, and sealed with the recovery
+key (HKDF-SHA-256 over both halves) - plus where the account half is kept:
+the service and the recovery key's id. Those two are readable without the
+password, because the person who forgot it needs them; every byte of the
+header is authenticated with the accounts. A version 1 vault (up to 0.2)
+still opens and becomes version 2 at its first write.
 
 ## Settings
 
@@ -112821,6 +112869,145 @@ The hardest *unfixable-in-app*
 issues are X11 screen/clipboard/ptrace exposure — they need to be documented
 honestly and ultimately solved by ULTRA OS's per-app isolation and a
 secure-window compositor hint, for which this app is an ideal first customer.
+
+==============================================================================
+FILE: Docs/UltraAuthenticator/changelog.d/recovery-forgotten-password.md
+==============================================================================
+
+- **Recovery from a forgotten master password.** *Recovery* in the top band
+  turns it on: the vault gets a second way in, a recovery key in two halves -
+  one kept in the vault file, the other left with your **UltraAccount**
+  (`Apps/UltraAccount`) and shown once as a **recovery code** to write down.
+  On the lock screen, **Forgot password** sends a code to the account's
+  verified email - or, with UltraAccount Plus, by text message to its
+  verified phone - and with it, or with the recovery code, opens the vault
+  and sets a new master password. Neither half opens anything alone: the
+  account service never sees the vault file. A recovery spends the key, and
+  the account's copy is removed; turn recovery on again afterwards.
+  - Turning recovery on or off asks for the master password, like *Show key*.
+  - Without an UltraAccount, the recovery code alone works, offline.
+- **The vault file is container version 2**: the accounts are sealed with a
+  random data key, which the master password - and the recovery key, when
+  on - each seal in a slot of the header. Changing the master password
+  rewrites only its slot. A version 1 vault still opens, and becomes version
+  2 the first time it is written; 0.2 cannot open a version 2 vault.
+
+==============================================================================
+FILE: Docs/UltraAccount/README.md
+==============================================================================
+
+# UltraAccount
+
+## Overview
+
+UltraAccount is the one account a person has across ULTRA OS: the store's
+purchases, UltraAuthenticator's recovery from a forgotten master password,
+and next cloud storage (UltraCloud) and the paid AI services (UltraAI). It
+ships as `Apps/UltraAccount`, a small window built from UltraCanvas
+elements, and as `UltraAccountCore`, the client every application that
+needs the account links.
+
+- Version: its own, from the first line of
+  [`Docs/UltraAccount/CHANGELOG.md`](CHANGELOG.md). `--version` prints it.
+- Service: [`Server/UltraStoreAccount`](../../Server/UltraStoreAccount/README.md),
+  the account service UltraStore already signs in to - one account, one
+  database. `--service URL` uses another (an `http://` address only on
+  `127.0.0.1` / `localhost`, for development); the default is
+  `https://store.ultraos.eu/account`.
+- Files: `session.json` in UltraAccount's data folder
+  (`%APPDATA%\UltraAccount\`, `~/Library/Application Support/UltraAccount/`,
+  `$XDG_DATA_HOME/UltraAccount/` or `~/.local/share/UltraAccount/`;
+  `UltraCanvasDataFolder.h`), written owner-only: the service, the session
+  token, the account's id and email, this machine's device id.
+
+## The window
+
+Before signing in, four small pages:
+
+- **Sign in** - the email and the password; when the account has
+  two-factor sign-in on, a field for the authenticator's code appears.
+- **Create an account** - the email, the password twice (at least 12
+  characters), the country. A six-digit code goes to the address.
+- **Verify your address** - the code; *Send the code again* at most once a
+  minute.
+- **Forgotten password** - a code to the address, then a new password (and
+  the authenticator code when two-factor sign-in is on). Every machine
+  signed in is signed out.
+
+Signed in, the account:
+
+- **The email** and whether it is verified.
+- **The plan** - *free*, or *plus* until a date. *Subscription* takes a
+  licence for **UltraAccount Plus** (the payment service's `ULIC1.…`
+  licence for the subscription app, `UltraAccountPlus`) and activates it; a
+  renewed licence moves the end date.
+- **The phone number** - typed with its country code, confirmed with the
+  account password, verified by a texted six-digit code. A text message
+  costs money to send, so a phone number needs UltraAccount Plus; *Remove
+  number* takes it off again.
+- **Recovery keys** - the applications that left a recovery key with the
+  account (UltraAuthenticator's, below), with *Remove*: a removed key can no
+  longer be released by a code.
+- **Sign out** - this machine.
+
+## One sign-in for every application
+
+The session is the machine's, not the window's: UltraAuthenticator (and
+next UltraCloud and UltraAI) read `session.json` and use the account
+without asking for the password again. Signing out here signs them out
+too. A session the service no longer knows - 90 days unused, signed out from
+another machine - is dropped the next time it is used.
+
+## Recovery keys
+
+An application whose data only the person can open - UltraAuthenticator's
+vault is encrypted with a key derived from the master password - cannot
+have a "forgot password" link of its own: nobody else holds the key. What
+it can do is split a **recovery key** in two:
+
+1. half of it stays in the application's own file;
+2. half of it is left with the account (`POST /v1/me/recovery-keys`), kept
+   there sealed with the service's escrow key.
+
+On the day the password is forgotten, the application asks the service to
+send a code to the account's verified email - or, on UltraAccount Plus, by
+text to its verified phone - and the service releases its half for that
+code. Neither half opens anything alone: the service never sees the file,
+and the file never holds the service's half. Every release is told to the
+person by mail and as a notice on the account, is limited to a few codes a
+day, and spends the key: the application turns recovery on again with a new
+one. UltraAuthenticator also shows its half once as a printed **recovery
+code**, which works without the account and without a network.
+
+## For an application: `UltraAccountCore`
+
+```cpp
+#include "UltraAccountClient.h"
+
+UltraAccount::Session session = UltraAccount::Session::Load();
+if (session.SignedIn()) {
+    UltraAccount::Client client(session.url);
+    auto me = client.GetMe(session.token);
+    if (me && me.Value().plan.paid) { /* the paid features */ }
+}
+```
+
+Every call returns `Result<T>`: the value, or an `Error` whose `code` is the
+service's (`two_factor_required`, `subscription_required`, `bad_code`,
+`code_sent`, `signed_out`, ...) or `network`, and whose `message` is for the
+person. `UltraAccount::Describe(error)` gives one either way. Link
+`UltraAccountCore` (`Apps/UltraAccount/CMakeLists.txt`); it brings the
+framework and UltraNet.
+
+## What comes next
+
+- Cloud storage and the AI services reading the plan (`Me::plan`,
+  `GET /v1/me/subscription`) to decide what a person may use.
+- The payment service telling the account at checkout, so a bought
+  subscription is active without pasting the licence.
+- The service calls off the window's thread, with a progress line.
+- The two-factor setup, the devices and the notices, which UltraStore's
+  account page has, here too.
 
 ==============================================================================
 FILE: Docs/UltraPassword/README.md
