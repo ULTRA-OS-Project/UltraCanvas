@@ -2,6 +2,7 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.3 - the settings button's menu has a title, "UltraDesktop"
 // Version: 0.8.2 - the tool group gains UltraToDo; the tool applications'
 //                  windows stay off the taskbar unless toolAppsOnTaskbar; the
 //                  organiser offers at least the desktops the settings ask
@@ -2959,6 +2960,7 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     if (!window_) return;
     popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 300, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("UltraDesktop"));
     popupMenu_->AddItem(MenuItemData::Action(Tr("ULTRA OS settings"), [this]() { OpenSystemSettings(); }));
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Taskbar position"), TaskbarEdgeItems()));
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));
