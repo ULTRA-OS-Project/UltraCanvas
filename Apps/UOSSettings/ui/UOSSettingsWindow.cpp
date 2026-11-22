@@ -1306,26 +1306,32 @@ void UOSSettingsWindow::BuildLookPage() {
     // The preview: a few elements styled from the theme the choices give,
     // on that theme's panel - the page shows the result by being it.
     lookPreview_ = std::make_shared<UltraCanvasContainer>("uos-look-preview");
-    lookPreview_->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    // The label on a line of its own, the controls in a row below it: on one
+    // line a long translated label pushed the dropdown past the panel's edge.
+    lookPreview_->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Start);
     lookPreview_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    lookPreview_->size.height = CSSLayout::Dimension::Px(56);
     lookPreview_->SetPadding(12, 12, 12, 12);
     lookPreview_->SetMargin(16, 0, 0, 0);
     previewLabel_ = std::make_shared<UltraCanvasLabel>("uos-look-preview-label", 0, 0, 160, 28, Tr("A label in the look"));
-    // As wide as its text: at a fixed 160 px a translated one was cut short
-    // ("Eine Beschriftung im Ausseh...").
-    previewLabel_->size.width = CSSLayout::Dimension::Auto();
-    previewButton_ = std::make_shared<UltraCanvasButton>("uos-look-preview-button", 0, 0, 90, 28, Tr("Button"));
+    previewLabel_->size.width = CSSLayout::Dimension::Auto();   // as wide as its text
+    previewLabel_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    lookPreview_->AddChild(previewLabel_);
+    auto previewControls = std::make_shared<UltraCanvasContainer>("uos-look-preview-controls");
+    previewControls->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    previewControls->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    previewControls->size.height = CSSLayout::Dimension::Px(28);
+    previewButton_ = std::make_shared<UltraCanvasButton>("uos-look-preview-button", 0, 0, 110, 28, Tr("Button"));
     previewInput_ = std::make_shared<UltraCanvasTextInput>("uos-look-preview-input", 0, 0, 160, 28);
     previewInput_->SetText(Tr("A field"));
-    previewPick_ = std::make_shared<UltraCanvasDropdown>("uos-look-preview-pick", 0, 0, 120, 28);
+    previewPick_ = std::make_shared<UltraCanvasDropdown>("uos-look-preview-pick", 0, 0, 140, 28);
     previewPick_->AddItem(DropdownItem(Tr("A choice")));
     previewPick_->SetSelectedIndex(0);
     for (const std::shared_ptr<UltraCanvasUIElement>& e :
-         std::initializer_list<std::shared_ptr<UltraCanvasUIElement>>{previewLabel_, previewButton_, previewInput_, previewPick_}) {
+         std::initializer_list<std::shared_ptr<UltraCanvasUIElement>>{previewButton_, previewInput_, previewPick_}) {
         e->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        lookPreview_->AddChild(e);
+        previewControls->AddChild(e);
     }
+    lookPreview_->AddChild(previewControls);
     page->AddChild(lookPreview_);
 
     lookStatus_ = MakeLabel("uos-look-status", "", TextFontSize(), MutedTextColor());
