@@ -144,8 +144,10 @@ namespace UltraCanvas {
         // show topic with `handler_`; false when the bus cannot be reached.
         // Called with busMutex_ held.
         bool JoinBus(bool quiet);
-        // The watch thread: every second, a listener whose endpoint lost the
-        // bus - the process hosting the broker ended - joins it again.
+        // The watch thread: every second, a listener not on the bus - it
+        // could not be reached at Listen(), or the subscription was refused -
+        // tries again. One that loses the bus later is brought back by its
+        // endpoint (UltraMsgConnectOptions::autoReconnect).
         void WatchBus();
 
         std::string appId_;

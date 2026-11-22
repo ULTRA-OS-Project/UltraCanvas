@@ -8,10 +8,12 @@
 // the function defines ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE where
 // the build has it.
 // Version: 1.4.0 - a listening copy that lost the bus (the process hosting
-//                  the broker ended) joins it again within a second, hosting
-//                  it when nobody does; it stayed deaf until it was restarted,
-//                  and every later start said "already running" - a pinned
-//                  UltraSnip preloaded by the desktop, say
+//                  the broker ended) is on it again within a second, hosting
+//                  it when nobody does - the endpoint reconnects by itself
+//                  (UltraMsgConnectOptions::autoReconnect) and the watch
+//                  joins a copy that never got on; it stayed deaf until it
+//                  was restarted, and every later start said "already
+//                  running" - a pinned UltraSnip preloaded by the desktop, say
 // Version: 1.3.0 - a start that cannot hand over retries the lock while it
 //                  waits: a copy whose window has closed but whose process is
 //                  still ending no longer makes it say "already running"
@@ -170,16 +172,18 @@ namespace UltraCanvas {
             wait.unlock();
             {
                 std::lock_guard<std::mutex> bus(busMutex_);
-                const bool deaf = subscription_ == 0 || endpoint_ == 0 || !UltraMsg_IsConnected(endpoint_);
-                if (deaf) {
-                    // The broker went with the process that hosted it: this
-                    // copy hosts the next one, or joins whoever got there first.
-                    if (subscription_ != 0) UltraMsg_Unsubscribe(subscription_);
-                    subscription_ = 0;
-                    if (endpoint_ != 0) UltraMsg_Disconnect(endpoint_);
-                    endpoint_ = 0;
+                // An endpoint that loses the bus - the process hosting the
+                // broker ended - reconnects by itself and keeps its
+                // subscription (UltraMsgConnectOptions::autoReconnect). What
+                // is left here is a copy that never got onto the bus, or
+                // whose subscription was refused: it tries again.
+                if (subscription_ == 0) {
+                    if (endpoint_ != 0 && !UltraMsg_IsConnected(endpoint_)) {
+                        UltraMsg_Disconnect(endpoint_);
+                        endpoint_ = 0;
+                    }
                     if (JoinBus(true))
-                        debugOutput << displayName_ << ": single instance: rejoined the bus" << std::endl;
+                        debugOutput << displayName_ << ": single instance: joined the bus" << std::endl;
                 }
             }
             wait.lock();
