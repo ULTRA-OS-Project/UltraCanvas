@@ -1,7 +1,6 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
-// Version: 0.18.2 - Desktop > Tool applications (toolAppsOnTaskbar)
 // Version: 0.18.1 - the scrolled pages and tables take the theme's scrollbars
 //                  (ContainerStyle::FromTheme), not the light default
 // Version: 0.18.0 - Desktop > Theme is the system look (Appearance.conf), the
