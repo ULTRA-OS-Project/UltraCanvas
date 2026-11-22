@@ -68,6 +68,7 @@ where the UI library cannot be built.
 
 ## 2. Ten-line tour
 
+<!-- doc-check: void OpenPaths(const UltraCanvas::JSONValue& request); -->
 ```cpp
 #include <UltraMessage/UltraMessageEndpoint.h>
 #include <UltraMessage/UltraMessageUltraCanvas.h>   // only in an UltraCanvas app
@@ -89,9 +90,11 @@ bus->RequestBlocking("org.ultraos.ultraviewer", "app.command.invoke",
 ```
 
 The first application to connect and find no broker hosts one in-process;
-every later one connects to it. When the hosting process exits, the next
-`Connect` elects a new host (a lock file beside the socket decides; no two
-processes ever both win). On ULTRA OS the shell will host it permanently.
+every later one connects to it. When the hosting process exits, the
+endpoints still connected reconnect by themselves and one of them hosts the
+next broker (a lock file beside the socket decides; no two processes ever
+both win) - see *When the broker goes* in §3.1. On ULTRA OS the shell will
+host it permanently.
 
 At exit the module stops what the process still has open - its endpoints, and
 the broker with its adapters when it hosts one - unless Windows is already
@@ -116,6 +119,18 @@ endpoints and subscriptions are opaque `UltraMsgHandle`s.
 |---|---|
 | `UltraMsg_Connect(options, &error)` | Join the bus as `options.appId` (reverse DNS). Hosts a broker when none answers and `startBrokerIfAbsent` is set. `busPath` / `journalPath` override the platform defaults. |
 | `UltraMsg_Disconnect(endpoint)` | Leave; every subscription of the endpoint ends, including deliveries already queued for the UI thread. |
+
+**When the broker goes.** The broker lives in whichever program connected
+first, and goes when that program ends. An endpoint whose connection drops
+without `UltraMsg_Disconnect` reconnects by itself (`autoReconnect`, on by
+default): first after 200 ms, then at growing intervals up to five seconds.
+It hosts the next broker when `startBrokerIfAbsent` allows and nobody else
+has, gets a new instance id, and registers its subscriptions again under the
+same handles, so their callbacks keep coming; a subscription made with
+`replaySinceMs` gets what was journaled since the drop. Requests and control
+calls in flight fail with `NotConnected`, and so does what is sent until the
+endpoint is back - `UltraMsg_IsConnected` says when. Without this, a program
+that outlived the broker's host heard nothing for the rest of its life.
 | `UltraMsg_IsConnected`, `UltraMsg_GetEndpointInfo`, `UltraMsg_GetBrokerInfo` | State: instance id, verified process id, whether the broker is in this process, its bus and journal paths. |
 | `UltraMsg_ListEndpoints`, `UltraMsg_ResolveApp` | Who is on the bus; the instance ids of one application, first-connected first. |
 
@@ -454,6 +469,7 @@ draws nothing.
 What an application gives a `system.notification` it wants on screen, and the
 one call that makes its clicks reach it however the notification was shown:
 
+<!-- doc-check: void Open(const std::string& launch); UltraMsgHandle endpoint; std::string iconPngPath; std::string exportedPath; -->
 ```cpp
 // Once, at the start (UltraCanvasNotificationActivation.h): on Windows, a click
 // on the toast after the broker host quit - or with the application closed,
@@ -534,6 +550,9 @@ Windows `GetNamedPipeClientProcessId`).
 - A request gets exactly one reply or error — including when its target
   disconnects first.
 - Persistent topics are journaled before fan-out.
+- Nothing is queued across a reconnection: a notice posted while the
+  receiver was off the bus is not delivered to it (a persistent one is in the
+  journal, and a subscription with `replaySinceMs` gets it on its return).
 
 ## 8. Building and testing
 

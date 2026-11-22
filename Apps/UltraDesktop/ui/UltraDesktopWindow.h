@@ -33,6 +33,7 @@
 // settings button offers sign out, restart and shut down, which Explorer's
 // Start menu would otherwise, and a tap of the Win key opens the
 // Applications window.
+// Version: 0.9.1 - OpenToDo, SetToolAppsOnTaskbar, OnDesktopButton
 // Version: 0.9.0 - files dropped on the wallpaper go to the Sticker board's
 //                  "Unsorted" category or into the Desktop folder, shown as
 //                  icons (DropFiles, SetDropTarget, UltraDesktopDesktopIcons)
@@ -164,6 +165,11 @@ public:
     // --video); the plain whole-screen capture (TakeScreenshot) when the
     // program is not installed
     void OpenSnip(const std::vector<std::string>& arguments);
+    // UltraToDo, from the tool group's button.
+    void OpenToDo();
+    // DesktopSettings::toolAppsOnTaskbar, from the desktop's menu: saved,
+    // and the running list re-read.
+    void SetToolAppsOnTaskbar(bool shown);
     void ShowScreenshotMenu(int windowX, int windowY);
     void StartSnipShortcut();
     void ToggleStickerboard(bool visible);
@@ -178,6 +184,9 @@ public:
     void StartStartupPrograms();
     void PlaceCategoryBoard();
     void SwitchToDesktop(int index);
+    // A desktop button of the organiser: desktop 1, clicked while on it,
+    // shows the wallpaper; any other click switches.
+    void OnDesktopButton(int index);
     // The clock's panel (a click on the clock) and the loudspeaker's (a
     // click on the speaker icon).
     void OpenClockPanel();

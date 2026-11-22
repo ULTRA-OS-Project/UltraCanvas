@@ -69,6 +69,14 @@ seconds after its main loop (see
 [UltraCanvasWindowsDiagnostics](UltraCanvasWindowsDiagnostics.md)), inside
 those fifteen.
 
+The bus is hosted by whichever program connected first - the desktop, a
+copy preloaded with it, any UltraMessage client - and goes when that program
+ends. A listening copy therefore **watches its connection**: once a second
+it checks it, and when the bus has gone it joins again, hosting the new one
+when nobody else does. Without that, a copy that outlived the bus's host
+answered nothing for the rest of its life, and every later start ended in
+"already running".
+
 The running copy **answers from the bus thread at once** and only then queues
 the request for its UI thread. A window that is busy - a native dialog that
 holds the event loop, a long load - therefore never makes the other start wait

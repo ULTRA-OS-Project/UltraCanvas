@@ -1,5 +1,8 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
+// Version: 1.9.0 - a popup in its own window: its outline keeps pixels from a quarter opaque, and they are
+//                  shown at full strength in their own colour (ShowPopupOpaque) - the border round a
+//                  menu's corners no longer breaks off, washed white on Windows or dark on X11
 // Version: 1.8.2 - a layout a frame invalidated while drawing is laid out and drawn at the next frame
 // Version: 1.8.1 - on macOS too
 // Version: 1.8.0 - every popup in a window of its own (WindowType::Popup), above every other
@@ -121,9 +124,17 @@ namespace UltraCanvas {
                             originY + static_cast<int>(std::lround(pos.y * scale)));
         }
 
-        // The rectangles that cover the opaque pixels (alpha at least half)
-        // of a width x height ARGB32 image: one per run of such pixels in a
-        // row, rows with the same runs one above the other joined into one.
+        // A pixel at least this opaque is inside a popup window's outline.
+        // A quarter, not a half: the outer half of an antialiased 1 px border
+        // on a rounded corner is fainter than half, and with a half the
+        // border broke off where each corner began. ShowPopupOpaque draws
+        // the pixels kept in their own colour at full strength.
+        constexpr uint32_t kOutlineAlpha = 64;
+
+        // The rectangles that cover the opaque pixels (alpha at least
+        // kOutlineAlpha) of a width x height ARGB32 image: one per run of
+        // such pixels in a row, rows with the same runs one above the other
+        // joined into one.
         std::vector<Rect2Di> OpaqueRects(const unsigned char* data, int stride, int width, int height) {
             std::vector<Rect2Di> rects;
             std::vector<std::pair<int, int>> previousRuns;
@@ -132,10 +143,10 @@ namespace UltraCanvas {
                 const uint32_t* row = reinterpret_cast<const uint32_t*>(data + static_cast<size_t>(y) * stride);
                 std::vector<std::pair<int, int>> runs;
                 for (int x = 0; x < width;) {
-                    while (x < width && (row[x] >> 24) < 128) ++x;
+                    while (x < width && (row[x] >> 24) < kOutlineAlpha) ++x;
                     if (x >= width) break;
                     const int start = x;
-                    while (x < width && (row[x] >> 24) >= 128) ++x;
+                    while (x < width && (row[x] >> 24) >= kOutlineAlpha) ++x;
                     runs.emplace_back(start, x - start);
                 }
                 std::vector<size_t> currentRects;
@@ -152,6 +163,55 @@ namespace UltraCanvas {
                 previousRects = std::move(currentRects);
             }
             return rects;
+        }
+    }
+
+    namespace {
+        // A popup onto its own window's surface, where the window's outline
+        // (SetNativeWindowShape) is all the transparency there is: every
+        // pixel at its own colour at full strength. Copied as it is, a half
+        // transparent pixel at the edge - the antialiased border round a
+        // corner - came out washed towards black or white, and the border
+        // looked broken at each corner. Pixels outside the outline are not
+        // shown, whatever they hold.
+        void ShowPopupOpaque(IRenderContext& popup, NativeSurfacePtr target, int physicalWidth,
+                             int physicalHeight, const Size2Di& logical) {
+            cairo_surface_t* image = nullptr;
+            if (physicalWidth > 0 && physicalHeight > 0 && logical.width > 0 && logical.height > 0)
+                image = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, physicalWidth, physicalHeight);
+            if (!image || cairo_surface_status(image) != CAIRO_STATUS_SUCCESS) {
+                if (image) cairo_surface_destroy(image);
+                popup.FlushToSurface(target, {0, 0});
+                return;
+            }
+            const double scaleX = static_cast<double>(physicalWidth) / logical.width;
+            const double scaleY = static_cast<double>(physicalHeight) / logical.height;
+            cairo_surface_set_device_scale(image, scaleX, scaleY);
+            popup.FlushToSurface(image, {0, 0});
+            cairo_surface_flush(image);
+            unsigned char* data = cairo_image_surface_get_data(image);
+            const int stride = cairo_image_surface_get_stride(image);
+            for (int y = 0; y < physicalHeight; ++y) {
+                uint32_t* row = reinterpret_cast<uint32_t*>(data + static_cast<size_t>(y) * stride);
+                for (int x = 0; x < physicalWidth; ++x) {
+                    const uint32_t pixel = row[x];
+                    const uint32_t alpha = pixel >> 24;
+                    if (alpha == 0 || alpha == 255) continue;
+                    // Premultiplied: the colour is channel * 255 / alpha
+                    auto channel = [&](int shift) {
+                        return std::min<uint32_t>(255, (((pixel >> shift) & 0xFF) * 255 + alpha / 2) / alpha);
+                    };
+                    row[x] = 0xFF000000u | (channel(16) << 16) | (channel(8) << 8) | channel(0);
+                }
+            }
+            cairo_surface_mark_dirty(image);
+            cairo_t* cr = cairo_create(static_cast<cairo_surface_t*>(target));
+            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+            cairo_set_source_surface(cr, image, 0, 0);
+            cairo_paint(cr);
+            cairo_destroy(cr);
+            cairo_surface_flush(static_cast<cairo_surface_t*>(target));
+            cairo_surface_destroy(image);
         }
     }
 
@@ -963,7 +1023,16 @@ namespace UltraCanvas {
         // the caret of a field in it; nothing of its own.
         if (_needsWindowComposition && hostedPopup) {
             if (hostedPopup->renderContext) {
+#if !defined(ULTRACANVAS_DISPLAY_WAYLAND) && !defined(__APPLE__)
+                // Cut to an outline (UpdatePopupHostShape): the edge pixels
+                // kept are shown opaque, in their own colour.
+                int physicalWidth = 0, physicalHeight = 0;
+                GetNativeWindowSize(physicalWidth, physicalHeight);
+                ShowPopupOpaque(*hostedPopup->renderContext, nativeSurface, physicalWidth, physicalHeight,
+                                hostedPopup->GetSize());
+#else
                 hostedPopup->renderContext->FlushToSurface(nativeSurface, {0, 0});
+#endif
             }
             if (hostedPopupOwner && caret.IsOnWindow(hostedPopupOwner) &&
                 caret.GetPopupLayer() == hostedPopup) {

@@ -121,6 +121,8 @@ message a doc repeats is listed as often), which a hand merge loses first.
 #                 all 66 of the UltraCrypt README's were reported as unknown);
 #                 a constructor listed `= delete` is checked to be absent,
 #                 not present; the UltraCrypt module docs are checked
+# Version: 1.10.2 - the UltraMessage module doc is checked (CHECKED_MODULE_DOCS): two of
+#                 its examples called functions of the reader's without declaring them
 # Version: 1.10.1 - the UltraNet module docs are checked (CHECKED_MODULE_DOCS):
 #                 its README's examples had six mistakes nothing compiled
 # Version: 1.10.0 - UltraAI/include is on the include path and in the
@@ -1775,7 +1777,7 @@ SIGNATURE_PREFIX = "# signature "
 # UltraCrypt's listed twelve functions and constructors as the headers do
 # not have them - a comparison with one size where there are two, a hasher
 # with options it does not take.
-CHECKED_MODULE_DOCS = ["FileLoader", "UltraCrypt", "UltraLocalisation", "UltraNet", "UltraSite"]
+CHECKED_MODULE_DOCS = ["FileLoader", "UltraCrypt", "UltraLocalisation", "UltraMessage", "UltraNet", "UltraSite"]
 
 
 def component_docs():

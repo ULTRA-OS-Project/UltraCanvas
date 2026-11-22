@@ -134,6 +134,15 @@ struct DesktopSettings {
     // the icon alone - the level is in the icon's fill either way, and in
     // its tooltip. Chosen on the battery's right-click menu or in UOS-Settings.
     bool batteryPercent = true;
+    // The tool applications that have a button of their own on the right
+    // bar's tool group (UltraClipboard, UltraSnip, UltraToDo): false (the
+    // default) keeps their windows off the taskbar's running applications,
+    // so they show only on that group; true lists them on the taskbar as
+    // well. Chosen in UOS-Settings and on the desktop's right-click menu.
+    bool toolAppsOnTaskbar = false;
+    // Whether a window of `appClass` (WM_CLASS, or the program's name on
+    // Windows) belongs to one of those tool applications.
+    static bool IsToolApplication(const std::string& appClass);
     // The info panel's icons switched off, by InfoItem::id; the others show.
     // An id the desktop does not know is kept, for a newer desktop.
     std::vector<std::string> hiddenInfoItems;

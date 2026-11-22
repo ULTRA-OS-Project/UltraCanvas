@@ -1,5 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.18.0 - a header row on a band darker than the panel (headerBackgroundColor), reaching the border
+//                  at the top; FromTheme: the header in the ink a shade lighter
 // Version: 1.17.2 - the scroll bar of a menu too long for the screen follows the theme (MenuStyle::FromTheme)
 // Version: 1.17.1 - the kept layout and width are one slot per entry, moved with the entries
 // Version: 1.17.0 - an entry's width is measured once and kept (CalculateItemWidth over MeasureItemWidth)
@@ -975,6 +977,23 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::RenderHeader(int index, const MenuItemData &item, const Rect2Di &bounds, IRenderContext *ctx) {
+        // The band, across the panel as a separator is; a title at the top
+        // takes the padding above it too, up to the border (the panel's
+        // rounded clip shapes its corners).
+        if (style.headerBackgroundColor.a > 0) {
+            const int startX = bounds.x - style.itemInset;
+            const int endX = bounds.x + bounds.width + style.itemInset;
+            bool first = true;
+            for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
+                if (items[i].visible) {
+                    first = false;
+                    break;
+                }
+            }
+            const int top = first ? std::min(bounds.y, std::max(0, style.borderWidth)) : bounds.y;
+            ctx->DrawFilledRectangle(Rect2Dd(startX, top, std::max(0, endX - startX), bounds.y + bounds.height - top),
+                                     style.headerBackgroundColor, 0, Colors::Transparent);
+        }
         FontStyle headerFont = item.font.value_or(style.font);
         headerFont.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(headerFont);
@@ -1739,7 +1758,10 @@ namespace UltraCanvas {
         s.textColor = r.ink;
         s.shortcutColor = r.inkMuted;
         s.disabledTextColor = r.inkFaint;
-        s.headerTextColor = r.inkMuted;
+        // The title: the ink a shade lighter - dark grey on a light menu,
+        // light grey on a dark one - on a band darker than the panel.
+        s.headerTextColor = Color(r.ink.r, r.ink.g, r.ink.b, 200);
+        s.headerBackgroundColor = Color(0, 0, 0, theme.dark ? 70 : 22);
         // and the bar of a menu too long for the screen: the light look's
         // grey bar stood out down the side of a dark menu
         s.scrollbarStyle = ScrollbarStyle::FromTheme(theme, base.scrollbarStyle);

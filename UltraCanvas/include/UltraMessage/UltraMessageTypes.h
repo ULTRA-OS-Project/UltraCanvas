@@ -2,6 +2,7 @@
 // Value types of the UltraMessage channel: results, handles, the envelope,
 // the message, connect / send / subscribe options, journal queries.
 // Design: Docs/Research/UltraMessageDesignProposal.md (§5, §6.1).
+// Version: 0.2.0 - UltraMsgConnectOptions::autoReconnect
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -149,6 +150,13 @@ struct UltraMsgConnectOptions {
     std::string busPath;
     // Where the hosting broker keeps its journal; empty = the platform default.
     std::string journalPath;
+    // When the connection drops without UltraMsg_Disconnect - the program
+    // hosting the broker ended - reconnect in the background (hosting the
+    // next broker when startBrokerIfAbsent allows) and register the
+    // subscriptions again, so their callbacks keep coming. Requests and
+    // control calls in flight when it dropped fail with NotConnected, and so
+    // does what is sent until it is back; UltraMsg_IsConnected says which.
+    bool autoReconnect = true;
 };
 
 struct UltraMsgSendOptions {

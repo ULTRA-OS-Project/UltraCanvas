@@ -11,6 +11,7 @@
 
 #include <UltraMessage/UltraMessage.h>
 #include <UltraMessage/UltraMessageEndpoint.h>
+#include "UltraMessageBroker.h"   // a broker of the test's own, to stop and start again
 
 #include <atomic>
 #include <chrono>
@@ -19,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <memory>
 #include <set>
 #include <string>
 #include <thread>
@@ -197,6 +199,96 @@ TEST(connect_rejects_bad_app_id_and_missing_broker) {
     REQUIRE(UltraMsg_Connect(options, &error) == UltraMsgInvalidHandle);
     REQUIRE(error.code == UltraMsgResultCode::BrokerUnavailable);
     REQUIRE(!UltraMsg_IsAvailable(options.busPath));
+}
+
+// ===========================================================================
+// Reconnection
+// ===========================================================================
+
+namespace {
+
+// A bus of its own, served by a broker the test stops and starts, as the
+// program that hosts the user's broker ends and another takes over.
+std::string ReconnectBusPath(const char* name) {
+#ifdef _WIN32
+    return "\\\\.\\pipe\\UltraMessageTest-" + std::string(name) + "-" + std::to_string(ULTRAMSG_TEST_GETPID());
+#else
+    return TestBusPath() + "." + name;
+#endif
+}
+
+std::unique_ptr<UltraMessage::Internal::Broker> StartBroker(const std::string& bus) {
+    auto broker = std::make_unique<UltraMessage::Internal::Broker>();
+    UltraMessage::Internal::Broker::Config config;
+    config.busPath = bus;
+    config.journalPath = ":memory:";
+    bool inUse = false;
+    if (!broker->Start(config, inUse).ok) throw ultramsg_test::Failure{"the test broker did not start on " + bus};
+    return broker;
+}
+
+UltraMsgHandle ConnectTo(const std::string& bus, const std::string& appId, bool autoReconnect = true) {
+    UltraMsgConnectOptions options;
+    options.appId = appId;
+    options.busPath = bus;
+    options.startBrokerIfAbsent = false;   // the test's broker, not this process's
+    options.autoReconnect = autoReconnect;
+    UltraMsgResult error;
+    const UltraMsgHandle handle = UltraMsg_Connect(options, &error);
+    if (handle == UltraMsgInvalidHandle) throw ultramsg_test::Failure{"connect " + appId + " failed: " + error.message};
+    return handle;
+}
+
+} // namespace
+
+TEST(endpoint_reconnects_and_keeps_its_subscriptions_when_the_broker_returns) {
+    const std::string bus = ReconnectBusPath("reconnect");
+    auto broker = StartBroker(bus);
+    Scoped listener{ConnectTo(bus, "org.test.listener")};
+    Scoped sender{ConnectTo(bus, "org.test.sender")};
+    std::atomic<int> got{0};
+    UltraMsgSubscribeOptions onWorker;
+    onWorker.onWorkerThread = true;
+    const UltraMsgHandle sub = UltraMsg_Subscribe(listener.handle, "mail.*",
+                                                  [&](const UltraMsgMessage&) { ++got; }, onWorker);
+    REQUIRE(sub != UltraMsgInvalidHandle);
+    REQUIRE(UltraMsg_Post(sender.handle, "mail.message", Mail("Before")).ok);
+    REQUIRE(WaitFor([&] { return got.load() == 1; }));
+
+    // The broker's host ends: both endpoints lose the bus...
+    broker->Stop();
+    broker.reset();
+    REQUIRE(WaitFor([&] { return !UltraMsg_IsConnected(listener.handle) && !UltraMsg_IsConnected(sender.handle); }));
+    REQUIRE(!UltraMsg_Post(sender.handle, "mail.message", Mail("Nobody")).ok);
+
+    // ...and are back on the next broker by themselves, the subscription with them.
+    broker = StartBroker(bus);
+    REQUIRE(WaitFor([&] { return UltraMsg_IsConnected(listener.handle) && UltraMsg_IsConnected(sender.handle); },
+                    std::chrono::milliseconds(8000)));
+    // The subscription is registered right after the handshake: post until it arrives.
+    REQUIRE(WaitFor([&] {
+        if (got.load() < 2) UltraMsg_Post(sender.handle, "mail.message", Mail("After"));
+        return got.load() >= 2;
+    }, std::chrono::milliseconds(5000)));
+
+    // Unsubscribing after the reconnection reaches the new broker: no more.
+    REQUIRE(UltraMsg_Unsubscribe(sub).ok);
+    const int before = got.load();
+    REQUIRE(UltraMsg_Post(sender.handle, "mail.message", Mail("Unsubscribed")).ok);
+    std::this_thread::sleep_for(200ms);
+    REQUIRE_EQ(got.load(), before);
+}
+
+TEST(endpoint_without_auto_reconnect_stays_off_the_bus) {
+    const std::string bus = ReconnectBusPath("noreconnect");
+    auto broker = StartBroker(bus);
+    Scoped endpoint{ConnectTo(bus, "org.test.once", false)};
+    broker->Stop();
+    broker.reset();
+    REQUIRE(WaitFor([&] { return !UltraMsg_IsConnected(endpoint.handle); }));
+    broker = StartBroker(bus);
+    std::this_thread::sleep_for(1500ms);
+    REQUIRE(!UltraMsg_IsConnected(endpoint.handle));
 }
 
 // ===========================================================================

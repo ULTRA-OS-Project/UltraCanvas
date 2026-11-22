@@ -2,6 +2,12 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.8.3 - the settings button's menu has a title, "UltraDesktop"
+// Version: 0.8.2 - the tool group gains UltraToDo; the tool applications'
+//                  windows stay off the taskbar unless toolAppsOnTaskbar; the
+//                  organiser offers at least the desktops the settings ask
+//                  for (Windows' Task View may have fewer); a click on the
+//                  current desktop 1 shows the wallpaper
 // Version: 0.8.1 - the clipboard button opens UltraClipboard (a running one, even
 //                  in the background, comes forward); Super+V and the button's
 //                  right-click menu keep the quick panel; without UltraClipboard
@@ -1361,8 +1367,10 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     desktopCount_ = std::clamp(DesiredDesktopCount(), 1, 9);
     for (int i = 0; i < desktopCount_; ++i) {
         const std::string id = "desktop" + std::to_string(i + 1);
-        AddBarToggle(organiser_, id, TrF("Desktop {0}", i + 1), "", std::to_string(i + 1),
-                     [this, i](bool) { SwitchToDesktop(i); });
+        AddBarToggle(organiser_, id,
+                     i == 0 ? Tr("Desktop 1: the wallpaper (a click while on it shows the wallpaper)")
+                            : TrF("Desktop {0}", i + 1),
+                     "", std::to_string(i + 1), [this, i](bool) { OnDesktopButton(i); });
     }
     organiser_->AddSeparator();
     // The pinboard is the Sticker board; the free-form notes keep a note
@@ -1399,6 +1407,8 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
                                    Tr("Snip: a picture or a video of the screen (Super+Shift+S)"),
                                    IconPath("screenshot.svg"), [this]() { OpenSnip({"--rectangle"}); });
     screenshot->onContextMenu = [this](int windowX, int windowY) { ShowScreenshotMenu(windowX, windowY); };
+    AddBarButton(organiser_, "todo", Tr("UltraToDo: the task list, with reminders and alarms"),
+                 IconPath("todo.svg"), [this]() { OpenToDo(); });
     bar->AddChild(organiser_);
 
     // As on the taskbar, the wave starts 4 px past the organiser's last
@@ -1610,6 +1620,9 @@ void UltraDesktopWindow::ShowDesktopMenu(int windowX, int windowY) {
             }
         }
     }));
+    popupMenu_->AddItem(MenuItemData::Checkbox(Tr("Tool applications on the taskbar too"),
+                                               settings_.toolAppsOnTaskbar,
+                                               [this](bool on) { SetToolAppsOnTaskbar(on); }));
     popupMenu_->AddItem(MenuItemData::Separator());
     if (UltraCanvasDesktopShell::CanOpenDisplaySettings()) {
         popupMenu_->AddItem(MenuItemData::Action(Tr("Display settings..."), [this]() { OpenDisplaySettings(); }));
@@ -1899,6 +1912,20 @@ void UltraDesktopWindow::OpenSnip(const std::vector<std::string>& arguments) {
     UltraCanvasAlert::Error(TrF("UltraSnip could not be started: {0}", error), Tr("Screenshot"), nullptr, window_.get());
 }
 
+void UltraDesktopWindow::OpenToDo() {
+    std::string error;
+    if (UltraCanvasDesktopShell::LaunchProgram("UltraToDo", {}, &error)) return;
+    debugOutput << "UltraDesktop: UltraToDo could not be started: " << error << std::endl;
+    UltraCanvasAlert::Error(TrF("UltraToDo could not be started: {0}", error), Tr("Tasks"), nullptr, window_.get());
+}
+
+void UltraDesktopWindow::SetToolAppsOnTaskbar(bool shown) {
+    if (settings_.toolAppsOnTaskbar == shown) return;
+    settings_.toolAppsOnTaskbar = shown;
+    SaveSettings();
+    windowsDirty_.store(true);
+}
+
 void UltraDesktopWindow::ShowScreenshotMenu(int windowX, int windowY) {
     if (!window_) return;
     popupMenu_ = std::make_shared<UltraCanvasMenu>("ScreenshotButtonMenu", 0, 0, 260, 0);
@@ -2043,10 +2070,29 @@ int UltraDesktopWindow::DesiredDesktopCount() const {
     // follows it (the manager answers the request asynchronously); otherwise
     // the window manager's own count, since it is the one that has the
     // desktops; the settings value only where there is no manager to ask.
+    // The organiser never offers fewer than the settings ask for: Windows'
+    // Task View starts with one desktop, and a button past the manager's
+    // count asks it for more when it is clicked (SwitchToDesktop).
     if (requestedDesktops_ > 0) return requestedDesktops_;
     const int managed = UltraCanvasDesktopShell::GetVirtualDesktopCount();
-    if (managed > 0) return managed;
-    return settings_.virtualDesktops;
+    return std::max(managed, settings_.virtualDesktops);
+}
+
+void UltraDesktopWindow::OnDesktopButton(int index) {
+    // Desktop 1 is the wallpaper's: a click on it while on it shows the
+    // wallpaper, the way Show desktop does, by minimising what is open there.
+    if (index == 0 && UltraCanvasDesktopShell::GetCurrentVirtualDesktop() <= 0) {
+        for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+            if (w.skipTaskbar || w.minimized || w.appClass == "UltraDesktop") continue;
+            if (w.virtualDesktop > 0) continue;
+            UltraCanvasDesktopShell::MinimizeWindow(w.id);
+        }
+        currentDesktop_ = 0;
+        RefreshDesktops();
+        windowsDirty_.store(true);
+        return;
+    }
+    SwitchToDesktop(index);
 }
 
 void UltraDesktopWindow::SwitchToDesktop(int index) {
@@ -2164,6 +2210,11 @@ void UltraDesktopWindow::CheckSettingsFile() {
                          written.virtualDesktops != settings_.virtualDesktops ||
                          written.dropFilesOn != settings_.dropFilesOn ||
                          written.hiddenInfoItems != settings_.hiddenInfoItems;
+    // The tool applications on the taskbar: the running list is re-read.
+    if (written.toolAppsOnTaskbar != settings_.toolAppsOnTaskbar) {
+        settings_.toolAppsOnTaskbar = written.toolAppsOnTaskbar;
+        windowsDirty_.store(true);
+    }
     // The battery's badge: shown or taken away, nothing to rebuild.
     if (written.batteryPercent != settings_.batteryPercent) SetBatteryPercentShown(written.batteryPercent);
     if (!changed) return;
@@ -2296,8 +2347,7 @@ void UltraDesktopWindow::OnTimer() {
 void UltraDesktopWindow::RefreshDesktops() {
     // The window manager added or removed a desktop (a keyboard shortcut,
     // another pager, its own settings): the organiser follows it.
-    const int managed = UltraCanvasDesktopShell::GetVirtualDesktopCount();
-    if (managed > 0 && std::clamp(managed, 1, 9) != desktopCount_ && organiser_) {
+    if (std::clamp(DesiredDesktopCount(), 1, 9) != desktopCount_ && organiser_) {
         BuildLayout();
     }
     const int current = UltraCanvasDesktopShell::GetCurrentVirtualDesktop();
@@ -2324,6 +2374,9 @@ void UltraDesktopWindow::RefreshWindows() {
         if (w.active && w.appClass != "UltraDesktop") lastPasteWindow_ = w.id;
         if (w.skipTaskbar) continue;
         if (w.appClass == "UltraDesktop") continue;   // ourselves, whatever the manager says
+        // UltraClipboard, UltraSnip and UltraToDo have their buttons on the
+        // tool group; the taskbar lists them only when asked to.
+        if (!settings_.toolAppsOnTaskbar && DesktopSettings::IsToolApplication(w.appClass)) continue;
         if (currentDesktop_ >= 0 && w.virtualDesktop >= 0 && w.virtualDesktop != currentDesktop_) continue;
         const std::string key = RunningGroupKey(w);
         auto& members = wanted[key];
@@ -2907,6 +2960,7 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     if (!window_) return;
     popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 300, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("UltraDesktop"));
     popupMenu_->AddItem(MenuItemData::Action(Tr("ULTRA OS settings"), [this]() { OpenSystemSettings(); }));
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Taskbar position"), TaskbarEdgeItems()));
     popupMenu_->AddItem(MenuItemData::Submenu(Tr("Theme"), ThemeItems()));

@@ -232,7 +232,8 @@ struct MenuStyle {
     Color textColor;          // Default text color
     Color shortcutColor;      // Shortcut text color
     Color disabledTextColor;  // Disabled item text
-    Color headerTextColor;    // Header item text
+    Color headerTextColor;    // Header item text (dark grey by default)
+    Color headerBackgroundColor;   // Header item band, darker than the panel; Transparent for none
 
     // Typography
     FontStyle font;           // Font family, size and weight

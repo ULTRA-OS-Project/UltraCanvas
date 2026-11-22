@@ -151,6 +151,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> ramDisc_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> filer_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> desktops_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> toolApps_;   // toolAppsOnTaskbar
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> appsView_;     // the Apps window: tiles or tree
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> appsSplit_;    // split a category above N
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> recentShown_;  // Recent's count
