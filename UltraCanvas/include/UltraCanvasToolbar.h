@@ -29,6 +29,7 @@
 // fills it from a ToolbarLayout - groups of command ids - and a command
 // registry, and RefreshCommandStates re-reads each command's enabled, checked
 // and label state into its button.
+// Version: 1.10.1 - re-applying the appearance keeps a button's useIconAsMask: an icon in its own colours stays so
 // Version: 1.15.1 - a dragged item is placed by where the items are drawn, not by where they
 //                  are in the list: a move changes the list at once and the rectangles only at
 //                  the next layout, so two drag steps inside one frame put the item back where
@@ -565,7 +566,12 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> RegisterWidget(
                 const std::string& id, std::shared_ptr<UltraCanvasUIElement> w);
         // Apply the toolbar appearance (style/colors/icon size) to one button.
-        void ApplyButtonAppearance(const std::shared_ptr<UltraCanvasButton>& button);
+        // `added`: the button is new to the toolbar, and its icon is drawn as
+        // a mask (the toolbar's monochrome glyphs, tinted); a re-application
+        // (SetAppearance, a theme, the orientation) keeps the choice the
+        // host made since - an application's own icon in its own colours
+        // used to turn into a black silhouette at the first re-styling.
+        void ApplyButtonAppearance(const std::shared_ptr<UltraCanvasButton>& button, bool added = false);
         // Re-apply the toolbar appearance across all current children.
         void ApplyAppearanceToChildren();
         void CreateOverflowMenu();

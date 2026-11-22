@@ -296,7 +296,29 @@ void TestMenuEntries() {
 
 }  // namespace
 
+// A button's icon drawn in its own colours stays so when the toolbar is
+// re-styled: SetAppearance (a theme, UltraDesktop's tighter spacing for a
+// full bar) used to set useIconAsMask on every button, and an application's
+// icon turned into a black silhouette.
+void TestIconMaskKept() {
+    std::printf("Icon mask kept on re-styling\n");
+    auto toolbar = Bar(300);
+    auto glyph = toolbar->AddButton("glyph", "G", "", nullptr);
+    auto app = toolbar->AddToggleButton("app", "A", "", nullptr);
+    Check(glyph->GetStyle().useIconAsMask && app->GetStyle().useIconAsMask,
+          "a new button's icon is a glyph tinted through its mask");
+    app->SetUseIconAsMask(false);
+    ToolbarAppearance look = toolbar->GetAppearance();
+    look.itemSpacing += 4;
+    toolbar->SetAppearance(look);
+    Check(!app->GetStyle().useIconAsMask, "SetAppearance leaves an icon in its own colours as it is");
+    Check(glyph->GetStyle().useIconAsMask, "and a glyph still tinted");
+    toolbar->SetOrientation(ToolbarOrientation::Vertical);
+    Check(!app->GetStyle().useIconAsMask, "and so does a new orientation");
+}
+
 int main() {
+    TestIconMaskKept();
     TestGroupSpacing();
     TestOverflowCut();
     TestNoDanglingSeparator();

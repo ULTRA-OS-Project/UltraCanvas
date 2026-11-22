@@ -1,5 +1,7 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.10.1 - a re-styling (SetAppearance, ApplyTheme, SetOrientation) keeps each button's
+//                  useIconAsMask: an application's icon no longer turns into a black silhouette
 // Version: 1.12.0 - RefreshCommandStates presses a folded group of check commands on the checked one
 // Version: 1.11.0 - SetOnContextMenu (a right click, watched at the window)
 // Version: 1.10.0 - AddWidget, RefreshCommandStates
@@ -447,7 +449,7 @@ namespace UltraCanvas {
         if (onClick) {
             button->onClick = onClick;
         }
-        ApplyButtonAppearance(button);
+        ApplyButtonAppearance(button, true);
         RegisterWidget(id, button);
         return button;
     }
@@ -464,7 +466,7 @@ namespace UltraCanvas {
         if (onToggle) {
             button->onToggle = std::move(onToggle);
         }
-        ApplyButtonAppearance(button);
+        ApplyButtonAppearance(button, true);
         RegisterWidget(id, button);
         return button;
     }
@@ -508,7 +510,7 @@ namespace UltraCanvas {
         // The toolbar's button look, which the fold-out bar's buttons copy.
         // ApplyButtonAppearance sets the icon size too, so the items' icons
         // come out at the toolbar's size like any other button's.
-        ApplyButtonAppearance(group);
+        ApplyButtonAppearance(group, true);
         RegisterWidget(id, group);
         return group;
     }
@@ -620,7 +622,7 @@ namespace UltraCanvas {
 
 // ===== APPEARANCE =====
 
-    void UltraCanvasToolbar::ApplyButtonAppearance(const std::shared_ptr<UltraCanvasButton>& button) {
+    void UltraCanvasToolbar::ApplyButtonAppearance(const std::shared_ptr<UltraCanvasButton>& button, bool added) {
         if (!button) return;
 
         ButtonStyle style = button->GetStyle();
@@ -635,7 +637,10 @@ namespace UltraCanvas {
         // background colour, so inactive icons read as greyed-out rather than
         // staying full-strength black.
         style.disabledTextColor = toolbarAppearance.disabledForegroundColor;
-        style.useIconAsMask = true;
+        // A new button's icon is a glyph tinted through its mask; after that
+        // the mask is the host's to switch off (SetUseIconAsMask(false) for
+        // an icon in its own colours), and a re-styling leaves it as it is.
+        if (added) style.useIconAsMask = true;
         if (toolbarAppearance.style == ToolbarStyle::Flat) {
             style.normalColor = Colors::Transparent;
             // Flat toolbars have no button box; keep disabled buttons flat too so
@@ -1388,7 +1393,7 @@ namespace UltraCanvas {
         const bool vertical = (toolbarOrientation == ToolbarOrientation::Vertical);
         overflowButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/menu/" +
                                               (vertical ? "chevron-right.svg" : "chevron-down.svg")));
-        ApplyButtonAppearance(overflowButton);
+        ApplyButtonAppearance(overflowButton, true);
     }
 
     void UltraCanvasToolbar::CalculateMagnification() {
