@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuilds the OpenDocument presentation fixture PresentationOdpTest reads.
+"""Rebuilds the OpenDocument presentation fixtures PresentationOdpTest reads.
 
     python3 Tests/fixtures/make-odp-fixtures.py
 
@@ -11,6 +11,14 @@
                              box, speaker notes, a table, a described picture,
                              a hidden slide and sixty bullets - written by an
                              ODF producer independent of UltraCanvas
+    pptx-features.odp        pptx-features.pptx (make-pptx-features-
+                             fixture.py) the same way: the look as drawn -
+                             typefaces, strike, superscript, capitals, a
+                             highlight, a link, a Wingdings bullet, numbering
+                             from c), vertical text, a turned and mirrored
+                             star with a gradient and a dashed outline, an
+                             arrowed connector, a freeform, a table with
+                             merged and coloured cells, a chart and a picture
 
 Needs LibreOffice (soffice) on the PATH; the checked-in file was written by
 LibreOffice 24.2. A rebuilt file differs in its timestamps and generated
@@ -33,16 +41,17 @@ def main() -> int:
     if not soffice:
         print("soffice (LibreOffice) is not on the PATH", file=sys.stderr)
         return 1
-    source = os.path.join(HERE, "office-pptx-sample.pptx")
-    with tempfile.TemporaryDirectory() as work:
-        subprocess.run([soffice, "--headless", "--convert-to", "odp", "--outdir", work, source],
-                       check=True, stdout=subprocess.DEVNULL)
-        made = os.path.join(work, "office-pptx-sample.odp")
-        if not os.path.exists(made):
-            print("LibreOffice wrote no .odp", file=sys.stderr)
-            return 1
-        shutil.copyfile(made, os.path.join(HERE, "office-pptx-sample.odp"))
-    print("wrote office-pptx-sample.odp")
+    for name in ("office-pptx-sample", "pptx-features"):
+        source = os.path.join(HERE, name + ".pptx")
+        with tempfile.TemporaryDirectory() as work:
+            subprocess.run([soffice, "--headless", "--convert-to", "odp", "--outdir", work, source],
+                           check=True, stdout=subprocess.DEVNULL)
+            made = os.path.join(work, name + ".odp")
+            if not os.path.exists(made):
+                print("LibreOffice wrote no .odp for " + name, file=sys.stderr)
+                return 1
+            shutil.copyfile(made, os.path.join(HERE, name + ".odp"))
+        print("wrote " + name + ".odp")
     return 0
 
 

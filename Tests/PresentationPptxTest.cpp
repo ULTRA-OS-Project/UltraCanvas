@@ -19,13 +19,19 @@
 //     package kinds; a document laid out as a deck and a deck's outline read
 //     back as its slides; UltraCanvasFileLoader saving a document as .pptx;
 //   * the OpenDocument writer: the same decks as .odp, .fodp and .otp, read
-//     back by the .odp reader; a document saved as .odp; a password refused.
+//     back by the .odp reader with their look and drawn as the originals; a
+//     document saved as .odp; a password refused;
+//   * the .odp reader's look: Tests/fixtures/pptx-features.odp, LibreOffice's
+//     conversion of the fixture (make-odp-fixtures.py), read field by field
+//     against the .pptx reader and drawn as the .pptx is.
 // UC_PPTX_TEST_DUMP=<dir> writes the drawn slides there as .ppm, and the
 // written decks as .pptx, to look at (or open in PowerPoint / LibreOffice).
+// Version: 1.3.0 - the .odp reader's look: LibreOffice's pptx-features.odp against the .pptx; the
+//                  writer's .odp read back with its look and drawn as the original
 // Version: 1.2.0 - the OpenDocument writer: .odp, .fodp and .otp read back, a document saved as .odp
 // Version: 1.1.0 - the writer: round trips, a password, the package kinds, a document as a deck
 // Version: 1.0.0
-// Last Modified: 2026-11-20
+// Last Modified: 2026-11-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasPptxSlideRender.h"
@@ -694,6 +700,28 @@ void TestOdpWriter() {
                   zip.ReadEntry("META-INF/manifest.xml", manifest) && Contains(manifest, picture->pictureTarget) &&
                   Contains(manifest, "Object 1/content.xml"),
               "the package: its media type, the picture and the chart object in the manifest");
+        // Read back with its look: drawn as the original.
+        PptxPresentation drawn;
+        Check(ReadOdpPresentationFromMemory(bytes, drawn, error, "", true) && drawn.pictures.size() == 1,
+              "read back withPictures: the picture's bytes");
+        const PptxShape* star = Named(back.slides[1], "5-Point Star 2");
+        Check(star && std::abs(star->rotationDeg - 30.0) < 0.01 && !star->customPath.empty() &&
+                  star->gradientStops.size() == 2 && star->line == "202020" && star->dash == RichShape::Dash::Dashed,
+              "the star: turned, its mirrored outline, its gradient and dashed outline");
+        const PptxShape* box2 = Named(back.slides[0], "TextBox 2");
+        Check(box2 && box2->paragraphs.size() == 4 && box2->paragraphs[0].runs.size() == 6 &&
+                  box2->paragraphs[0].runs[0].font == "DejaVu Serif" && box2->paragraphs[0].runs[1].strike &&
+                  box2->paragraphs[0].runs[2].baseline > 0 && box2->paragraphs[0].runs[5].hyperlink == "https://example.org/" &&
+                  box2->paragraphs[1].bulletColor == "00B050" &&
+                  PptxNumberLabel(box2->paragraphs[2].numberScheme, box2->paragraphs[2].numberStartAt) == "c)",
+              "the text: typefaces, strike, superscript, the link, the bullet's colour, numbering from c)");
+        for (size_t i = 0; i < 3 && drawn.slides.size() == 3; ++i) {
+            auto a = RenderPptxSlide(features, i, 640), b = RenderPptxSlide(drawn, i, 640);
+            const double difference = a && b ? Difference(*a, *b) : 255;
+            if (b) Dump(*b, "written-features-odp-" + std::to_string(i + 1));
+            Check(difference < 1.5, "written and read back, slide " + std::to_string(i + 1) +
+                                        " is drawn as the original (mean difference " + std::to_string(difference) + ")");
+        }
     }
 
     // The sample: titles, the hidden slide, the notes, the outline.
@@ -738,9 +766,10 @@ void TestOdpWriter() {
         Check(WriteOdpPresentationToMemory(flipped, bytes, error) && package.OpenFromMemory(bytes) &&
                   package.ReadEntry("content.xml", content) && package.ReadEntry("styles.xml", common) &&
                   !Contains(content, "draw:mirror-horizontal") &&
-                  Contains(content, "draw:enhanced-path=\"M 21600 5400") && Contains(common, "draw:angle=\"270deg\"") &&
+                  Contains(content, "draw:enhanced-path=\"M 21600 5400") && Contains(common, "draw:angle=\"240deg\"") &&
                   Contains(content, "draw:transform=\"rotate (-0.523599)"),
-              "a mirrored arrow: its outline mirrored, its gradient turned the other way, then the shape turned");
+              "a mirrored arrow: its outline mirrored, its gradient turned the other way and with the shape, "
+              "then the shape turned");
     }
 
     // Flat, and a template.
@@ -774,6 +803,109 @@ void TestOdpWriter() {
 
 } // namespace
 
+// The .odp reader's look: LibreOffice's conversion of the features deck read
+// as the .pptx reader reads the original, and drawn the same.
+void TestOdpLook() {
+    std::cout << "\n=== The .odp reader's look: pptx-features.odp (LibreOffice) ===\n";
+    PptxPresentation pptx, odp;
+    std::string error;
+    if (!ReadPptxPresentation(Fixture("pptx-features.pptx"), pptx, error, "", true) ||
+        !ReadOdpPresentation(Fixture("pptx-features.odp"), odp, error, "", true) || odp.slides.size() != 3) {
+        Check(false, "the fixtures read (" + error + ")");
+        return;
+    }
+    Check(odp.slideWidth == pptx.slideWidth && odp.slideHeight == pptx.slideHeight && odp.slides[0].background == "FFFFFF",
+          "the slide size, and the background from the master page's style");
+    Check(odp.themeColors.size() == 12 && odp.themeColors["accent1"] == "4F81BD" && odp.themeColors["hlink"] == "0000FF",
+          "the theme's colours (loext:theme)");
+
+    const PptxShape* title = OfKind(odp.slides[0], PptxShapeKind::Title);
+    Check(title && title->placeholder == "title" && title->anchor == PptxAnchor::Middle && !title->paragraphs.empty() &&
+              title->paragraphs[0].align == PptxAlign::Center && !title->paragraphs[0].runs.empty() &&
+              title->paragraphs[0].runs[0].sizePt == 44.0f && title->paragraphs[0].runs[0].font == "Calibri",
+          "the title: a placeholder, centred, anchored in the middle, 44 pt Calibri");
+
+    const PptxShape* box = Named(odp.slides[0], "TextBox 2");
+    if (!box || box->paragraphs.size() != 4 || box->paragraphs[0].runs.size() != 6) {
+        Check(false, "the text box: four paragraphs, six runs in the first");
+    } else {
+        const std::vector<PptxRun>& runs = box->paragraphs[0].runs;
+        Check(runs[0].font == "DejaVu Serif" && runs[0].sizePt == 18.0f && runs[1].strike && !runs[0].strike &&
+                  runs[2].baseline == 30 && runs[3].allCaps && runs[4].highlight == "FFFF00" &&
+                  runs[5].hyperlink == "https://example.org/" && runs[5].underline && runs[5].color == "0000FF",
+              "runs: a typeface by its font face, strike, superscript, capitals, a highlight, a link");
+        Check(box->insetLeft == 182880 && box->insetTop == 182880 && box->anchor == PptxAnchor::Top && box->wrap,
+              "the text area: its padding, anchor and wrap");
+        const PptxParagraph& square = box->paragraphs[1];
+        const PptxParagraph& expected = Named(pptx.slides[0], "TextBox 2")->paragraphs[1];
+        Check(square.bullet && !square.numbered && square.bulletChar == expected.bulletChar &&
+                  square.bulletFont == "Wingdings" && square.bulletColor == "00B050" && square.bulletSizePercent == 80.0f &&
+                  square.marginLeft == expected.marginLeft && square.indent == expected.indent &&
+                  std::abs(square.spaceBefore.points - 12.0f) < 0.1f && std::abs(square.lineSpacing.percent - 1.5f) < 0.01f,
+              "a Wingdings bullet: its code from the private-use character, colour, size, hanging indent, spacing");
+        const PptxParagraph& third = box->paragraphs[2];
+        const PptxParagraph& fourth = box->paragraphs[3];
+        Check(third.numbered && third.numberScheme == "alphaLcParenR" && fourth.numbered &&
+                  PptxNumberLabel(third.numberScheme, third.numberStartAt) == "c)" &&
+                  PptxNumberLabel(fourth.numberScheme, fourth.numberStartAt + 1) == "d)",
+              "numbering: the scheme, from c) on, counted on as the renderer counts");
+    }
+    const PptxShape* vertical = Named(odp.slides[0], "TextBox 3");
+    Check(vertical && vertical->textRotation == 270 && !vertical->wrap, "vertical text (bt-lr), not wrapped");
+
+    const PptxShape* star = Named(odp.slides[1], "5-Point Star 2");
+    const PptxShape* pptxStar = Named(pptx.slides[1], "5-Point Star 2");
+    Check(star && pptxStar && star->geometry == "star5" && std::abs(star->rotationDeg - 30.0) < 0.01 && star->flipH &&
+              !star->flipV && std::llabs(star->x - pptxStar->x) < 1000 && std::llabs(star->y - pptxStar->y) < 1000,
+          "the star: its Office preset, turned and mirrored (ODF's mirror after the turn undone), in place");
+    Check(star && star->gradientStops.size() == 2 && star->gradientStops[0].color == "FF0000" &&
+              star->gradientStops[1].color == "0000FF" && std::abs(star->gradientAngleDeg - pptxStar->gradientAngleDeg) < 0.5,
+          "... its gradient: the stops, the angle back in the shape (LibreOffice's turn taken out)");
+    Check(star && star->line == "202020" && std::abs(star->lineWidthPt - 2.0) < 0.05 &&
+              star->dash == RichShape::Dash::Dashed && star->anchor == PptxAnchor::Middle,
+          "... its outline: colour, width, a long dash");
+    const PptxShape* arrowed = Named(odp.slides[1], "Connector 3");
+    Check(arrowed && arrowed->kind == PptxShapeKind::Connector && arrowed->line == "0070C0" && arrowed->arrowEnd &&
+              !arrowed->arrowStart && arrowed->width == 2743200 && arrowed->height == 1828800,
+          "a straight connector: its ends, colour and arrowhead (a marker)");
+    const PptxShape* bent = Named(odp.slides[1], "Connector 4");
+    Check(bent && bent->geometry == "bentConnector3" && bent->line == "7030A0",
+          "a standard connector with only its ends: routed with elbows");
+    const PptxShape* freeform = Named(odp.slides[1], "Freeform 5");
+    Check(freeform && freeform->customPath.size() == 4 && freeform->fill == "00B050" &&
+              std::abs(freeform->customPath[1].x - 1.0f) < 0.01f && std::abs(freeform->customPath[1].y - 1.0f) < 0.01f,
+          "a freeform: its enhanced path in the sub-view's units, filled");
+
+    const PptxShape* table = OfKind(odp.slides[2], PptxShapeKind::Table);
+    Check(table && table->cellStyles.size() == 3 && table->columnWidths.size() == 3 &&
+              table->columnWidths[0] == 1371600 && table->rowHeights.size() == 3 && table->rowHeights[0] == 457200,
+          "the table: column widths and row heights from their styles");
+    if (table && table->cellStyles.size() == 3 && table->cellStyles[2].size() == 3) {
+        const PptxCellStyle& header = table->cellStyles[0][0];
+        const PptxCellStyle& red = table->cellStyles[2][2];
+        Check(header.fill == "4F81BD" && header.top.color == "FFFFFF" && header.top.widthPt > 0.4 &&
+                  table->rows[0][0][0].runs[0].color == "FFFFFF",
+              "a header cell: its fill (loext:graphic-properties), borders and white text");
+        Check(red.fill == "FF0000" && red.bottom.color == "0000FF" && red.bottom.widthPt > red.top.widthPt,
+              "a cell of its own: its fill and a heavier blue bottom border");
+        Check(table->cellStyles[1][0].gridSpan == 2 && table->cellStyles[1][1].mergedAway,
+              "a merged cell: its span, the cell it covers");
+    }
+    const PptxShape* picture = OfKind(odp.slides[2], PptxShapeKind::Picture);
+    Check(picture && odp.pictures.count(picture->pictureTarget) && !odp.pictures[picture->pictureTarget].empty(),
+          "the picture's bytes, read withPictures");
+
+    // Drawn: each slide as the .pptx's drawing of it.
+    for (size_t i = 0; i < 3; ++i) {
+        auto a = RenderPptxSlide(pptx, i, 640), b = RenderPptxSlide(odp, i, 640);
+        const double difference = a && b ? Difference(*a, *b) : 255;
+        if (b) Dump(*b, "pptx-features-odp-" + std::to_string(i + 1));
+        // The table's and the chart's colours are LibreOffice's own on slide 3.
+        Check(difference < (i == 2 ? 2.5 : 1.0), "slide " + std::to_string(i + 1) + " drawn as the .pptx's (mean difference " +
+                                                     std::to_string(difference) + ")");
+    }
+}
+
 int main() {
     TestNumberLabels();
     TestFixture();
@@ -782,6 +914,7 @@ int main() {
     TestWriterSample();
     TestDocumentAsDeck();
     TestOdpWriter();
+    TestOdpLook();
     std::cout << "\n" << (g_failures == 0 ? "All checks passed" : "FAILURES: " + std::to_string(g_failures)) << "\n";
     return g_failures == 0 ? 0 : 1;
 }

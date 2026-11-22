@@ -71,8 +71,11 @@ folder with a `Standard.json`). The choice is written to `Language.conf`
 in the UltraCanvas settings folder and read by every application when it
 starts; the command line (`--lang`) and the `ULTRACANVAS_LANG` variable
 override it for one start. The *Translator* field is the name the
-localisation editor writes into the catalogues it saves. See
-`Docs/Modules/UltraLocalisation/README.md`.
+translation editor writes into the catalogues it saves. **Translate
+applications...** starts that editor, UOS-Localisation
+([`Docs/UOSLocalisation/README.md`](../UOSLocalisation/README.md)), in the
+language chosen here; until 0.28 it was this program's *Language >
+Translations* page. See `Docs/Modules/UltraLocalisation/README.md`.
 
 ### File dialogs > Last used folder
 
@@ -193,8 +196,8 @@ Look page says - in the desktop's font and size: its colours and sizes are
 the settings page kit's ([`UltraCanvasSettingsPageKit.md`](../UltraCanvas/UltraCanvasSettingsPageKit.md)),
 which are the framework theme's roles. Every text the pages show goes
 through `Tr` (UltraLocalisation); the English set is
-`media/locale/en/UOS-Settings.json`, and the Language > Translations page
-edits every application's sets, this one's included.
+`media/locale/en/UOS-Settings.json`, and UOS-Localisation, the translation
+editor, edits every application's sets, this one's included.
 
 ## Where the settings live
 

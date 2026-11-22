@@ -491,8 +491,9 @@ catalogue), built from the elements the framework has - a toolbar, two
 dropdowns, a search field, a columns tree view with editable cells, a
 status label - and hosted in three places:
 
-- **UOS-Settings > Language > Translations**, the page a translator or an
-  administrator works in: any application, any language.
+- **UOS-Localisation** (until 2026-11-22 *UOS-Settings > Language >
+  Translations*), the window a translator or an administrator works in:
+  any application, any language.
 - **Help > Translate this application...** in an application, one menu
   item that opens the editor in a modal dialog on the application's own
   set and the current language (`UltraCanvasLocalisationEditor::OpenDialog`),

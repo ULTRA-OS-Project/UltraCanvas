@@ -830,15 +830,22 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   See `Docs/UltraCanvas/UltraCanvasDrawingML.md`.
 
 - **UltraCanvasPresentationOdp** (`UltraCanvasPresentationOdp.h`) — OpenDocument
-  presentations (`.odp`, `.otp` templates, flat `.fodp`) read as text into
+  presentations (`.odp`, `.otp` templates, flat `.fodp`) read into
   UltraCanvasPresentationPptx's model (`PptxPresentation` and the rest), so
-  `PptxPresentationToRichDocument` outlines either kind of deck:
-  `ReadOdpPresentation`, `ReadOdpPresentationFromMemory` (a package or a flat
-  file's XML), `IsOdpPresentationFile` (by content), `IsOdpExtension`. Titles,
-  subtitles, outline and text-box paragraphs with list levels, bullets and
-  numbering from the list styles, bold / italic / underline through the style
-  parents, groups, tables (covered cells kept as empty cells), pictures,
-  speaker notes, hidden slides, the slide size from the master's page layout;
+  `PptxPresentationToRichDocument` outlines either kind of deck and
+  `RenderPptxSlide` draws it: `ReadOdpPresentation`,
+  `ReadOdpPresentationFromMemory` (a package or a flat file's XML; with
+  `withPictures` the pictures' bytes), `IsOdpPresentationFile` (by content),
+  `IsOdpExtension`. Titles, subtitles, outline and text-box paragraphs with
+  list levels, bullets and numbering from the list styles, groups, tables
+  (covered cells kept as empty cells), pictures, speaker notes, hidden slides,
+  the slide size from the master's page layout; the look as drawn, each style
+  through its parents and defaults: fills and gradients, outlines (dashes,
+  arrowheads), outlines' shapes (Office presets, ODF types, enhanced and SVG
+  paths, lines and connectors), turns and mirroring, text areas, runs' size,
+  colour, typeface and decoration, paragraphs' spacing and margins, list
+  labels, table cells' fills, borders and padding (table templates too),
+  backgrounds, the theme's colours;
   slide furniture, prompting placeholders, embedded objects and page comments
   left out. A password-protected deck opens with its password
   (UltraCanvasOdfEncryption). Charts are read as chart objects
@@ -3241,9 +3248,10 @@ on UltraAI's translator) drafts a language's catalogue, driven per set by
 languages under `media/locale/<lang>/`. The localisation editor
 `UltraCanvasLocalisationEditor` (`include/UltraCanvasLocalisationEditor.h`,
 in the core, with `LocalisationWorkspace` as its model) shows every set an
-application's texts come from in one grid and merges them; UOS-Settings
-hosts it under Language > Translations, `ShowLocalisationEditorDialog`
-opens it on the running application. The DemoApp page *ULTRA OS modules >
+application's texts come from in one grid and merges them, in a Compact
+arrangement for a page or a dialog and a Window one with a row panel;
+UOS-Localisation (`Apps/UOSLocalisation`) is it in a window of its own,
+`ShowLocalisationEditorDialog` opens it on the running application. The DemoApp page *ULTRA OS modules >
 Localisation* (`Apps/DemoApp/UltraCanvasLocalisationExamples.cpp`) shows
 the four calls live in a picked language, with the layer that answered
 each, and the catalogue files of the three layers. See
