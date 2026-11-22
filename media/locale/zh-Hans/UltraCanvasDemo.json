@@ -720,6 +720,7 @@
   "Text Rendering": "文本渲染",
   "Text Spec (Mermaid)": "文本规格（Mermaid）",
   "The element": "元素本身",
+  "The localisation editor (Widgets > Localisation Editor, the UOS-Localisation application, Help > Translate ... in an application) edits the sets of an application in one grid.": "本地化编辑器（控件 > 本地化编辑器、UOS-Localisation 应用程序、应用程序中的 帮助 > 翻译 …）在一个网格中编辑应用程序的文本集。",
   "The navigation column of a window: sections of items with icon, label and badge; keyboard; compact mode": "窗口的导航栏：由带图标、标签和徽章的条目组成的分区；键盘；紧凑模式",
   "The shared chart engine on one minimal bar chart: projections, axis scales (linear / log / symlog), grid, limiters, legend, label plan, tooltips and animation, all switchable live": "在一个极简条形图上展示共享图表引擎：投影、轴刻度（线性 / 对数 / symlog）、网格、限制器、图例、标签布局、工具提示和动画，全部可实时切换",
   "The WYSIWYG editor on Chinese, Arabic and Myanmar text: Chinese lines break between any two characters, Arabic paragraphs run right to left, Myanmar syllables are shaped from stacked letters, and one line can mix both directions": "所见即所得编辑器处理中文、阿拉伯文和缅甸文文本：中文可在任意两个字符之间换行，阿拉伯文段落从右向左排列，缅甸文音节由叠加字母组合成形，同一行可混排两种方向",

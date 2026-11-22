@@ -19,15 +19,21 @@
 //   UltraCanvasLocalisationEditor - the element over it: a toolbar (the
 //   application, the language, the comparison language, the search, the
 //   status filter, the Sets picker, the switches, the buttons), the columns
-//   tree view, the edit row under it, the status line. Hosted by UOS-Settings
-//   (Language > Translations), by DemoApp, and by ShowLocalisationEditorDialog
-//   for an application's own "Translate this application..." item.
+//   tree view, the edit, the status line - in one of two arrangements
+//   (LocalisationEditorLayout): Compact, four rows of controls over the grid
+//   and the edit on one row under it, for DemoApp and for
+//   ShowLocalisationEditorDialog (an application's own "Translate this
+//   application..." item); Window, for UOS-Localisation, a window of its
+//   own: the controls on two rows, the grid beside a panel that shows the
+//   selected row whole and edits it.
 //
 //   auto editor = std::make_shared<UltraCanvasLocalisationEditor>("editor");
 //   editor->SetFolders(GetResourcesDir() + "media/locale", PathToUtf8(UltraCanvasSettingsFolder()));
 //   editor->Open("UltraVideo", "de");
 //   editor->SetDrafter(...);                // UltraAI, where the host links it
 //
+// Version: 1.3.0 - LocalisationEditorLayout: the Window arrangement for
+//                 UOS-Localisation beside the Compact one (unchanged)
 // Version: 1.2.0 - the action buttons on a row of their own, under the
 //                 Sets button and the two switches, which keep their labels;
 //                 "Compare with" beside "Show"
@@ -36,7 +42,7 @@
 //                 their colours from the theme in a dark look, and follow a
 //                 change of look (ApplyTheme); the light look keeps its colours
 // Version: 1.0.0
-// Last Modified: 2026-11-15
+// Last Modified: 2026-11-22
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -261,11 +267,20 @@ namespace UltraCanvas {
                                                    const std::vector<std::string>& texts,
                                                    std::vector<std::string>& out, std::string& error)>;
 
+    // How the editor places its parts, chosen when it is made.
+    enum class LocalisationEditorLayout {
+        Compact,   // a page or a dialog (about 620 px and up): four rows of controls, the grid, the edit row
+        Window     // a window of its own: two rows of controls, the grid beside the selected row's panel
+    };
+
     class UltraCanvasLocalisationEditor : public UltraCanvasContainer {
     public:
-        UltraCanvasLocalisationEditor(const std::string& id, float x, float y, float w, float h);
-        explicit UltraCanvasLocalisationEditor(const std::string& id)
-                : UltraCanvasLocalisationEditor(id, -1, -1, -1, -1) {}
+        UltraCanvasLocalisationEditor(const std::string& id, float x, float y, float w, float h,
+                                      LocalisationEditorLayout arrangement = LocalisationEditorLayout::Compact);
+        explicit UltraCanvasLocalisationEditor(const std::string& id,
+                                               LocalisationEditorLayout arrangement = LocalisationEditorLayout::Compact)
+                : UltraCanvasLocalisationEditor(id, -1, -1, -1, -1, arrangement) {}
+        LocalisationEditorLayout GetArrangement() const { return arrangement; }
 
         // ----- what is edited -----
         void SetFolders(const std::string& shippedLocaleDir, const std::string& settingsFolder);
@@ -335,7 +350,18 @@ namespace UltraCanvas {
         std::function<void()> onClose;    // the Close button of a dialog host
 
     private:
+        static constexpr float kDetailWidth = 380.0f;   // the Window arrangement's row panel
+
         void BuildUi();
+        void MakeParts();
+        void ArrangeCompact();
+        void ArrangeWindow();
+        std::shared_ptr<UltraCanvasContainer> MakeRow(UltraCanvasContainer& parent, const std::string& suffix,
+                                                      float height = 32.0f);
+        std::shared_ptr<UltraCanvasLabel> MakeCaption(UltraCanvasContainer& parent, const std::string& suffix,
+                                                      const std::string& text);
+        void RefreshDetail();                              // the Window arrangement's panel
+        void ApplyDetailLook(const UltraCanvasTheme& theme);
         void FillPickers();
         void RebuildColumns();
         void RebuildRows();
@@ -347,6 +373,7 @@ namespace UltraCanvas {
         std::string NodeIdOf(const std::string& key, const std::string& category = "") const;
         std::string StatusLabel(const LocalisationRow& row) const;
 
+        LocalisationEditorLayout arrangement = LocalisationEditorLayout::Compact;
         LocalisationWorkspace workspace;
         LocalisationDrafter drafter;
         std::vector<LocalisationRow> rows;          // the rows shown
@@ -365,6 +392,10 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasButton> setsButton, undoButton, draftButton, saveButton, exportButton, clearButton, closeButton;
         std::shared_ptr<UltraCanvasColumnsTreeView> grid;
         std::shared_ptr<UltraCanvasLabel> keyLabel, statusLabel;
+        // The Window arrangement's panel; null in the Compact one.
+        std::shared_ptr<UltraCanvasContainer> detailPanel;
+        std::shared_ptr<UltraCanvasLabel> detailEnglish, detailCompareCaption, detailCompare, detailShown, detailSets;
+        std::shared_ptr<UltraCanvasButton> applyButton;
         std::shared_ptr<UltraCanvasMenu> openMenu;
     };
 

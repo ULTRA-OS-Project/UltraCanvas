@@ -10,8 +10,10 @@ tables, the pictures' parts and descriptions, speaker notes, and which slides
 are hidden. One model means one outline, one preview and one text extractor
 for both kinds of deck.
 
-It reads text, tables, pictures and charts; `RenderPptxSlide` draws what it
-reads. `WriteOdpPresentation` writes the model back as an Impress deck -
+It reads text, tables, pictures and charts with the look they are drawn
+with - fills, gradients, outlines, shapes' outlines, turns, fonts, spacing,
+bullets, cell looks and backgrounds (*The look as drawn*, below) - and
+`RenderPptxSlide` draws what it reads, as it draws a `.pptx`. `WriteOdpPresentation` writes the model back as an Impress deck -
 whether it was read from an `.odp`, from a `.pptx`, or laid out from a
 document (*Writing a deck*, below). A
 password-protected `.odp` opens with its password
@@ -55,6 +57,7 @@ document editor.
 <!-- doc-check: std::string path; std::vector<uint8_t> bytes; void ShowError(const std::string& message); -->
 ```cpp
 #include "UltraCanvasPresentationOdp.h"
+#include "UltraCanvasPptxSlideRender.h"
 
 using namespace UltraCanvas;
 
@@ -77,14 +80,19 @@ if (!IsOdpPresentationFile(path)) {
 PptxPresentation fromMemory;
 ReadOdpPresentationFromMemory(bytes, fromMemory, error);
 UCRichDocument outline = PptxPresentationToRichDocument(deck);
+// For drawing the slides: with the pictures' bytes too.
+PptxPresentation drawn;
+if (ReadOdpPresentation(path, drawn, error, "", /*withPictures*/ true)) {
+    auto first = RenderPptxSlide(drawn, 0, 1280);   // UltraCanvasPptxSlideRender.h
+}
 ```
 
 | Function | Does |
 |---|---|
 | `IsOdpPresentationFile(path)` | true for a ZIP package whose `mimetype` (or manifest) says `application/vnd.oasis.opendocument.presentation` or `-template`, or a flat XML document whose `office:mimetype` says so |
 | `IsOdpExtension(extOrPath)` | `odp`, `otp`, `fodp`, with or without a dot, any case |
-| `ReadOdpPresentation(path, out, error, password)` | the deck; `path` is UTF-8, `password` (optional) opens a protected one. False with a sentence in `error` |
-| `ReadOdpPresentationFromMemory(bytes, out, error, password)` | the same for bytes: a package, or a flat file's XML |
+| `ReadOdpPresentation(path, out, error, password, withPictures)` | the deck; `path` is UTF-8, `password` (optional) opens a protected one, `withPictures` (default false) also keeps the pictures' bytes in `out.pictures`. False with a sentence in `error` |
+| `ReadOdpPresentationFromMemory(bytes, out, error, password, withPictures)` | the same for bytes: a package, or a flat file's XML |
 
 The model's types are described in
 [UltraCanvasPresentationPptx](UltraCanvasPresentationPptx.md#reading-the-model).
@@ -98,18 +106,51 @@ For an `.odp` they hold:
 | `PptxSlide::notes` | the `presentation:class="notes"` frame of the slide's `presentation:notes` |
 | `PptxShape::kind` | `title` → `Title`, `subtitle` → `Subtitle`, `outline` → `Body`; any other text frame or shape with text → `Text`; a frame holding a `table:table` → `Table`, a `draw:image` → `Picture` |
 | `PptxShape::x` / `y` / `width` / `height` | `svg:x` / `svg:y` / `svg:width` / `svg:height` (cm, mm, in, pt, pc, px) in EMU - on the page, also inside a group, since ODF places a grouped shape on the page |
-| `PptxShape::pictureTarget` | the picture's part (`Pictures/...png`); empty for a flat file's inline picture |
+| `PptxShape::pictureTarget` | the picture's part (`Pictures/...png`); for a flat file's inline picture `Pictures/inlineN` when read `withPictures`, else empty |
 | `PptxShape::altText` | the frame's `svg:desc`, else its `svg:title` |
 | `PptxParagraph::level` | how deep the paragraph's `text:list` is nested (0-based) |
 | `PptxParagraph::bullet` / `numbered` | the list style at that level: a bullet or a number format; a `text:list-header`, a level with no number format or bullet character, and a paragraph outside a list have none |
-| `PptxRun::bold` / `italic` / `underline` | `fo:font-weight` (bold, or 600 and more), `fo:font-style`, `style:text-underline-style` of the span's style, its parent styles and the paragraph's |
+| `PptxRun::bold` / `italic` / `underline` | `fo:font-weight` (bold, or 600 and more), `fo:font-style`, `style:text-underline-style` of the span's style, its parent styles, the paragraph's and the shape's |
+
+## The look as drawn
+
+Every property is looked up the way ODF inherits it: the span's text style,
+the paragraph's style, the shape's text style (`draw:text-style-name`), the
+shape's own style (`draw:style-name`, or `presentation:style-name` for a
+presentation frame) - each through its `style:parent-style-name` chain - and
+last the family's `style:default-style`. A slide sees the common styles and
+`content.xml`'s automatic styles; a master page sees the common styles and
+`styles.xml`'s own. An outline's paragraph at level *n* takes the
+presentation style for its level (`...-outline<n+1>`) in place of the first
+level's.
+
+| Field | From |
+|---|---|
+| `PptxSlide::background` | the page's `draw:fill` / `draw:fill-color` (a gradient's start colour), else its master page's drawing-page style |
+| `PptxPresentation::themeColors` | LibreOffice's `loext:theme` colours on the master page, by Office's names (`dk1`, `lt1`, `accent1` ... `hlink`) |
+| `PptxShape::x` / `y` / `rotationDeg` | `draw:transform`'s `rotate` (radians, counter-clockwise about the top-left corner) and `translate` (that corner), turned back about the centre; `matrix` too |
+| `PptxShape::flipH` / `flipV` | `draw:mirror-horizontal` / `-vertical` of a custom shape; ODF mirrors after the turn, the model before, so a mirror in one direction turns the other way. A line's direction |
+| `PptxShape::geometry` | a custom shape's `draw:type`: an Office preset LibreOffice writes as `ooxml-<preset>`, or ODF's own type as the preset it draws (`rectangle`, `round-rectangle`, `ellipse`, `diamond`, `isosceles-triangle`, `right-triangle`, `parallelogram`, `trapezoid`, `hexagon`, `octagon`, `cross`, `star4` ... `star24`, the arrows, `pentagon-right`, `chevron`, `can`, `cube`, the callouts, the flowchart shapes); `draw:rect` with a corner radius, `draw:ellipse` / `draw:circle`; a standard connector stored with only its ends as `bentConnector3` |
+| `PptxShape::customPath` | an enhanced path in plain numbers (`M`, `L`, `C`, `Q`, `Z`; `F` leaves it unfilled) over the `svg:viewBox`, or LibreOffice's `drawooo:sub-view-size`; `draw:polygon` / `draw:polyline` points and `draw:path`'s SVG path over their view box; a `draw:regular-polygon`'s corners (concave: a star). An open one is a line (`Connector`) |
+| `PptxShape::fill` / `gradientStops` / `gradientAngleDeg` / `gradientRadial` | `draw:fill` solid (`draw:fill-color`), gradient (`draw:fill-gradient-name`: `loext:gradient-stop`s, else the start and end colours at their intensities; axial mirrored; radial, ellipsoid, square and rectangular from the centre, ODF's end colour; the angle - degrees, radians, grads or LibreOffice's bare tenths - back in the shape, its turn and mirroring taken out), a hatch on a solid ground its ground |
+| `PptxShape::line` / `lineWidthPt` / `dash` / `arrowStart` / `arrowEnd` | `draw:stroke` solid or dash, `svg:stroke-color`, `svg:stroke-width`, the `draw:stroke-dash` (dots up to 100 % or a millimetre: dotted, else dashed), `draw:marker-start` / `-end` |
+| `PptxShape::anchor` / `inset*` / `wrap` / `textRotation` / `fontScale` | `draw:textarea-vertical-align`, `fo:padding(-side)`, `fo:wrap-option="no-wrap"`, `writing-mode` (`tb-rl`: 90, `bt-lr`: 270) or the enhanced geometry's `draw:text-rotate-angle`, `style:shrink-to-fit` (a scale just under 1, so the renderer shrinks it where it does not fit) |
+| `PptxShape::placeholder` | `title`, `subTitle`, `body` for the title, subtitle and outline frames (which the renderer shrinks to fit) |
+| `PptxRun::sizePt` / `color` / `font` | `fo:font-size` (points, or a share of the size under it), `fo:color` (`style:use-window-font-color`: none of its own), `style:font-name` through the font-face declarations, else `fo:font-family` |
+| `PptxRun::strike` / `baseline` / `allCaps` / `smallCaps` / `highlight` / `hyperlink` | `style:text-line-through-style`, `style:text-position` (`super`, `sub`, or the raise in per cent), `fo:text-transform="uppercase"`, `fo:font-variant="small-caps"`, `fo:background-color`, a `text:a`'s `xlink:href` (`#name` of a page: `#slideN`) |
+| `PptxParagraph::align` / `spaceBefore` / `spaceAfter` / `lineSpacing` / `marginLeft` / `indent` | `fo:text-align`, `fo:margin-top` / `-bottom`, `fo:line-height` (per cent or a length; `style:line-height-at-least`), `fo:margin-left`, `fo:text-indent` - a list label hanging by `text:space-before` + `text:min-label-width`, or `style:list-level-label-alignment`'s margin and indent |
+| `PptxParagraph::bulletChar` / `bulletFont` / `bulletColor` / `bulletSizePercent` | the list level's `text:bullet-char` (a symbol font's private-use character U+F0xx as its code, as PowerPoint keeps it), its text properties' font, colour and share of the size |
+| `PptxParagraph::numberScheme` / `numberStartAt` | the level's `style:num-format`, `num-prefix` and `num-suffix` (`alphaLcParenR` ...); the number each item shows - the level's `text:start-value`, an item's own, counted on through the list and a list that continues another - set so that the renderer, counting on, shows it |
+| `PptxShape::columnWidths` / `rowHeights` | the columns' and rows' styles (`style:column-width`, `style:row-height` or `min-row-height`) |
+| `PptxShape::cellStyles` | each cell's style (else its row's or column's default cell style) over the table template's (`table:template-name`, with the first and last row and column and banding flags): `draw:fill-color` in its graphic properties or `fo:background-color`, `fo:border(-side)` in its table-cell or paragraph properties, padding, `draw:textarea-vertical-align` or `style:vertical-align`, `table:number-columns-spanned` / `-rows-spanned`; a covered cell `mergedAway`. The cell's text properties reach its runs |
 
 ## What is read, and what is not
 
 - Slides in document order; every `draw:page` is one, the hidden ones marked.
-- Text frames, the drawing shapes that carry text (custom shapes, rectangles,
-  ellipses, ...), groups (`draw:g`) and shapes behind a hyperlink (`draw:a`)
-  are read through. A shape without text is no shape of the outline.
+- Text frames, drawing shapes (custom shapes, rectangles, ellipses, polygons,
+  paths, ...), lines and connectors, groups (`draw:g`) and shapes behind a
+  hyperlink (`draw:a`) are read through. A shape with neither text, fill nor
+  outline is left out.
 - White space as ODF has it: a run of spaces, tabs and line ends is one
   space, none at a paragraph's start or end; `text:s`, `text:tab` and
   `text:line-break` stay. A field (page number, date, ...) gives the text it
@@ -123,9 +164,12 @@ For an `.odp` they hold:
   [UltraCanvasOdfChart](UltraCanvasOdfChart.md) - the package's
   `Object N/content.xml`, or a flat file's chart document inline - into the
   shape's `chart`.
-- Not read: master pages and styles as drawn (fonts, sizes, colours, fills)
-  beyond bold, italic and underline, animations and transitions. Pictures are
-  named, not decoded.
+- Not read: master pages' own shapes (a logo on every slide), shadows and
+  other effects, bitmap and hatch fills (a hatch on a solid ground keeps the
+  ground), outlines built from formulas (an Office preset still draws by its
+  name; an ODF type the list above does not name draws as a box), picture
+  crops, animations and transitions. Pictures are kept as bytes
+  (`withPictures`), not decoded.
 - A password-protected deck (`manifest:encryption-data` in the manifest) is
   decrypted with the password `ReadOdpPresentation` and
   `ReadOdpPresentationFromMemory` take (and `LoadTextDocument`'s, which
@@ -197,7 +241,7 @@ transitions, comments.
 
 ## Test
 
-`Tests/PresentationOdpTest.cpp` reads two fixtures:
+`Tests/PresentationOdpTest.cpp` reads two fixtures and a deck of its own:
 
 - `Tests/fixtures/office-pptx-sample.odp` - the PowerPoint test deck as
   LibreOffice Impress converts it (`Tests/fixtures/make-odp-fixtures.py`), an
@@ -213,6 +257,14 @@ transitions, comments.
   hyperlinked frame, the footer and a prompting placeholder left out, a hidden
   slide, a table with header rows and a covered cell, an embedded chart left
   out, an inline picture, a field, and a page comment left out.
+- a flat deck written in the test for the look as drawn: a style through its
+  parent and the family default, a share of the default's size, a font face,
+  ODF's own shape types, a turn about the corner, a mirrored enhanced path, a
+  rounded rectangle, an ellipse, a line drawn right to left with a marker, a
+  polyline, an SVG path with a quadratic curve, a regular polygon, a dotted
+  outline, radial and linear gradients (bare tenths of a degree), numbering
+  placed by label alignment and continued across lists, a link to a page by
+  its name, a table template, backgrounds from the page and the master page.
 
 It also checks the refusals (a protected package, an `.odt`, a broken
 package, a missing file), that a template is read, and that
@@ -225,7 +277,19 @@ deck and the python-pptx sample written as `.odp` and read back (titles,
 text and its spaces, bullets and numbers, the table and its covered cell,
 the chart object, the hidden slide, the notes, the same outline), the
 package's media type and manifest, a flat `.fodp` with its chart inline, a
-template's media type, a mirrored arrow's outline and gradient, a document
-saved as `.odp` through `SaveTextDocument`, and a password refused. The
-decks it writes open in LibreOffice and draw as the originals
-(`UC_PPTX_TEST_DUMP=<dir>` keeps them).
+template's media type, a mirrored arrow's outline and gradient (turned with
+it), a document saved as `.odp` through `SaveTextDocument`, and a password
+refused; the feature deck read back with its look (the star's turn, outline,
+gradient and dashes; typefaces, strike, superscript, the link, the bullet's
+colour, numbering from c)) and drawn as the original. The decks it writes
+open in LibreOffice and draw as the originals (`UC_PPTX_TEST_DUMP=<dir>`
+keeps them).
+
+It also reads `Tests/fixtures/pptx-features.odp` - LibreOffice's own
+conversion of the PowerPoint feature deck (`make-odp-fixtures.py`) - against
+what the `.pptx` reader makes of the original, field by field (the title's
+size and font, runs' typefaces, strike, superscript, capitals, highlight and
+link, the Wingdings bullet, numbering from c), vertical text, the star's
+preset, turn, mirroring, gradient and dash, the arrowed and the bent
+connector, the freeform, the table's widths, fills, borders and merge, the
+picture's bytes, the theme's colours) and slide by slide as drawn.

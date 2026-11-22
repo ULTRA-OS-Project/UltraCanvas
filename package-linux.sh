@@ -63,7 +63,7 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # WordPress import - and, given a site folder, the editor window. Outputs
 # to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
-      UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
+      UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UOS-Localisation UltraClaude
       UltraAuthenticator UltraAccount UltraPassword UltraClipboard UltraNotifications UltraToDo UltraWeb UltraCanvasStart UltraPress
       SmartHomeCenter UltraDBAdmin)
 
