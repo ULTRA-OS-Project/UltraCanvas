@@ -1782,6 +1782,16 @@ package_if_built "UltraToDo" build_app_bundle \
     "public.app-category.productivity" \
     ""
 
+# Package UltraAccount, the ULTRA OS account: sign-up, the email and phone
+# verified, the subscription, the recovery keys
+package_if_built "UltraAccount" build_app_bundle \
+    "UltraAccount" \
+    "UltraAccount" \
+    "com.cloverleaf.UltraAccount" \
+    "media/appicon/UltraAccount.png" \
+    "public.app-category.utilities" \
+    ""
+
 # Package UltraSnip, the screenshot and screen-recording tool (libVideoFX and
 # FFmpeg go to the shared Frameworks/ with the rest)
 package_if_built "UltraSnip" build_app_bundle \

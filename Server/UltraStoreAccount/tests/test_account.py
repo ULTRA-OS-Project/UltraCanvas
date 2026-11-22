@@ -25,7 +25,7 @@ from ultrastore_account.config import Settings
 from ultrastore_account.store import AccountStore, add_days, today
 
 OP = {"Authorization": "Bearer op-token"}
-TABLES = ["audit", "archives", "notices", "installs", "licences", "signins", "sessions", "codes", "users", "meta"]
+TABLES = ["escrows", "subscriptions", "audit", "archives", "notices", "installs", "licences", "signins", "sessions", "codes", "users", "meta"]
 PASSWORD = "correct horse battery staple 7"
 
 
@@ -58,8 +58,16 @@ class Outbox:
     def __call__(self, to: str, subject: str, text: str) -> None:
         self.mails.append((to, subject, text))
 
+    def text(self, to: str, text: str) -> None:
+        """The texter: a text message is kept as a mail with no subject."""
+        self.mails.append((to, "", text))
+
     def code(self, to: str) -> str:
         for mail_to, _subject, text in reversed(self.mails):
+            if mail_to == to and _subject == "" and "code:" in text:
+                return text.split("code:")[1].split()[0].rstrip(".")
+            if mail_to == to and _subject == "" and "UltraAccount: " in text:
+                return text.split("UltraAccount: ")[1].split()[0]
             if mail_to == to and "Your code:" in text:
                 return text.split("Your code:")[1].split()[0]
         raise AssertionError(f"no code mailed to {to}")
@@ -84,8 +92,8 @@ def service(request, tmp_path):
     issuer = LicenceIssuer()
     outbox = Outbox()
     settings = Settings(database=database_url(request.param, tmp_path), operator_token="op-token", operator_session_secret="shared-secret",
-                        licence_key=issuer.public_hex, default_seats=2)
-    with TestClient(create_app(settings, mailer=outbox)) as client:
+                        licence_key=issuer.public_hex, default_seats=2, escrow_key="11" * 32)
+    with TestClient(create_app(settings, mailer=outbox, texter=outbox.text)) as client:
         client.outbox = outbox          # type: ignore[attr-defined]
         client.issuer = issuer          # type: ignore[attr-defined]
         yield client
@@ -375,3 +383,145 @@ def test_an_operator_session_from_the_marketplace_is_known_here_with_its_role(se
     assert service.get("/v1/audit/verify", headers=auditor).json()["ok"] is True
     assert service.post(f"/v1/users/{uid}/notice", json={"kind": "notice", "subject": "x", "text": "y"}, headers=auditor).status_code == 403
     assert service.post("/v1/maintenance", headers=support).status_code == 403
+
+
+# ----- UltraAccount: the subscription, the phone, the recovery-key escrow -----
+def test_subscription_from_a_licence_and_the_operators_grant(service):
+    token = signup(service)["token"]
+    plan = service.get("/v1/me/subscription", headers=bearer(token)).json()
+    assert plan["plan"] == "free" and not plan["paid"] and not plan["features"]["sms"]
+    assert service.get("/v1/plans").json()["subscription_app"] == "UltraAccountPlus"
+    # A licence for another app is not a subscription.
+    other = service.issuer.issue("L-APP", "UltraPaint")   # type: ignore[attr-defined]
+    r = service.post("/v1/me/subscription", json={"licence": other}, headers=bearer(token))
+    assert r.status_code == 400 and r.json()["error"] == "not_a_subscription"
+    # One that ran out is refused; a live one puts the account on plus.
+    old = service.issuer.issue("L-OLD", "UltraAccountPlus", valid_until="2020-01-01")   # type: ignore[attr-defined]
+    assert service.post("/v1/me/subscription", json={"licence": old}, headers=bearer(token)).json()["error"] == "expired"
+    until = add_days(today(), 30)
+    lic = service.issuer.issue("L-SUB", "UltraAccountPlus", valid_until=until)   # type: ignore[attr-defined]
+    r = service.post("/v1/me/subscription", json={"licence": lic}, headers=bearer(token))
+    assert r.status_code == 200, r.text
+    assert r.json()["plan"] == "plus" and r.json()["paid"] and r.json()["valid_until"] == until and r.json()["features"]["sms"]
+    me = service.get("/v1/me", headers=bearer(token)).json()
+    assert me["subscription"]["plan"] == "plus" and me["recovery_keys"] == 0
+    # The renewal moves the end, not a second subscription.
+    later = add_days(today(), 400)
+    renewed = service.issuer.issue("L-SUB", "UltraAccountPlus", valid_until=later)   # type: ignore[attr-defined]
+    r = service.post("/v1/me/subscription", json={"licence": renewed}, headers=bearer(token)).json()
+    assert r["valid_until"] == later and len(r["history"]) == 1
+    # The operator cancels it, and grants one.
+    uid = me["id"]
+    assert service.post(f"/v1/users/{uid}/subscription/cancel", json={"reason": "refund"}, headers=OP).json()["subscription"]["plan"] == "free"
+    r = service.post(f"/v1/users/{uid}/subscription", json={"plan": "plus", "days": 7, "reason": "beta tester"}, headers=OP)
+    assert r.status_code == 200 and r.json()["subscription"]["valid_until"] == add_days(today(), 7)
+    assert service.post(f"/v1/users/{uid}/subscription", json={"plan": "free"}, headers=OP).json()["error"] == "bad_plan"
+    assert service.get(f"/v1/users/{uid}", headers=OP).json()["subscription"]["source"] == "operator"
+
+
+def test_phone_needs_a_paid_plan_and_a_texted_code(service):
+    first = signup(service)
+    token, uid = first["token"], first["user"]["id"]
+    r = service.post("/v1/me/phone", json={"phone": "+49 151 2345 6789", "password": PASSWORD}, headers=bearer(token))
+    assert r.status_code == 402 and r.json()["error"] == "subscription_required"
+    service.post(f"/v1/users/{uid}/subscription", json={"plan": "plus"}, headers=OP)
+    assert service.post("/v1/me/phone", json={"phone": "+49 151", "password": PASSWORD}, headers=bearer(token)).json()["error"] == "bad_phone"
+    assert service.post("/v1/me/phone", json={"phone": "+4915123456789", "password": "wrong"}, headers=bearer(token)).status_code == 401
+    r = service.post("/v1/me/phone", json={"phone": "+49 151 2345-6789", "password": PASSWORD}, headers=bearer(token))
+    assert r.status_code == 200 and r.json() == {"verify": "sms_code", "phone": "+49 *** 89"}
+    assert service.post("/v1/me/phone/verify", json={"code": "000000"}, headers=bearer(token)).json()["error"] == "bad_code"
+    code = service.outbox.code("+4915123456789")   # type: ignore[attr-defined]
+    me = service.post("/v1/me/phone/verify", json={"code": code}, headers=bearer(token)).json()
+    assert me["phone"] == "+4915123456789" and me["phone_verified"]
+    assert any("phone number was added" in m[1] for m in service.outbox.mails)   # type: ignore[attr-defined]
+    # The operator sees it masked only.
+    assert service.get(f"/v1/users/{uid}", headers=OP).json()["phone"] == "+49 *** 89"
+    me = service.post("/v1/me/phone/remove", json={"password": PASSWORD}, headers=bearer(token)).json()
+    assert me["phone"] == "" and not me["phone_verified"]
+
+
+def test_recovery_key_escrow_released_by_a_code(service):
+    first = signup(service)
+    token, uid = first["token"], first["user"]["id"]
+    secret = "ab" * 32
+    r = service.post("/v1/me/recovery-keys", json={"app": "UltraAuthenticator", "label": "Anna's laptop", "secret": secret}, headers=bearer(token))
+    assert r.status_code == 200, r.text
+    eid = r.json()["recovery_key"]["id"]
+    assert eid.startswith("e-") and len(eid) == 34 and "secret" not in r.json()["recovery_key"]
+    assert r.json()["channels"] == [{"channel": "email", "to": "an***@example.org"}]
+    # Not readable from the database: sealed with the escrow key.
+    row = service.app.state.store._db.fetchone("SELECT sealed FROM escrows WHERE id = ?", (eid,))
+    assert secret not in row["sealed"] and row["sealed"].startswith("g1$")
+    # Anyone with the id sees where a code can go, masked; SMS only on a paid plan with a phone.
+    info = service.get(f"/v1/recovery-keys/{eid}").json()
+    assert info["app"] == "UltraAuthenticator" and [c["channel"] for c in info["channels"]] == ["email"]
+    assert service.post(f"/v1/recovery-keys/{eid}/code", json={"channel": "sms"}).json()["error"] == "subscription_required"
+    r = service.post(f"/v1/recovery-keys/{eid}/code", json={"channel": "email"})
+    assert r.status_code == 200 and r.json()["to"] == "an***@example.org"
+    assert service.post(f"/v1/recovery-keys/{eid}/code", json={"channel": "email"}).json()["error"] == "code_sent"
+    assert service.post(f"/v1/recovery-keys/{eid}/release", json={"code": "000000"}).json()["error"] == "bad_code"
+    code = service.outbox.code("anna@example.org")   # type: ignore[attr-defined]
+    r = service.post(f"/v1/recovery-keys/{eid}/release", json={"code": code})
+    assert r.status_code == 200 and r.json() == {"secret": secret, "app": "UltraAuthenticator"}
+    # Spent; the owner told; the release on the record.
+    assert service.post(f"/v1/recovery-keys/{eid}/release", json={"code": code}).status_code == 400
+    assert any("was released" in m[1] for m in service.outbox.mails)   # type: ignore[attr-defined]
+    keys = service.get("/v1/me/recovery-keys", headers=bearer(token)).json()["recovery_keys"]
+    assert keys[0]["releases"] == 1 and keys[0]["released_at"]
+    # By text message once the account is on plus with a verified phone.
+    service.post(f"/v1/users/{uid}/subscription", json={"plan": "plus"}, headers=OP)
+    service.post("/v1/me/phone", json={"phone": "+4915123456789", "password": PASSWORD}, headers=bearer(token))
+    service.post("/v1/me/phone/verify", json={"code": service.outbox.code("+4915123456789")}, headers=bearer(token))   # type: ignore[attr-defined]
+    assert [c["channel"] for c in service.get(f"/v1/recovery-keys/{eid}").json()["channels"]] == ["email", "sms"]
+    store = service.app.state.store
+    store._db.execute("UPDATE codes SET created_at = '2000-01-01T00:00:00Z' WHERE purpose = 'recover_escrow'")
+    assert service.post(f"/v1/recovery-keys/{eid}/code", json={"channel": "sms"}).status_code == 200
+    r = service.post(f"/v1/recovery-keys/{eid}/release", json={"code": service.outbox.code("+4915123456789")})   # type: ignore[attr-defined]
+    assert r.status_code == 200 and r.json()["secret"] == secret
+    # A code for one key does not release another.
+    other = service.post("/v1/me/recovery-keys", json={"app": "UltraAuthenticator", "secret": "cd" * 32}, headers=bearer(token)).json()["recovery_key"]["id"]
+    store._db.execute("UPDATE codes SET created_at = '2000-01-01T00:00:00Z' WHERE purpose = 'recover_escrow'")
+    service.post(f"/v1/recovery-keys/{eid}/code", json={"channel": "email"})
+    assert service.post(f"/v1/recovery-keys/{other}/release", json={"code": service.outbox.code("anna@example.org")}).status_code == 400   # type: ignore[attr-defined]
+    # Removed: gone for everyone.
+    assert service.delete(f"/v1/me/recovery-keys/{eid}", headers=bearer(token)).json() == {"deleted": True}
+    assert service.get(f"/v1/recovery-keys/{eid}").status_code == 404
+
+
+def test_recovery_codes_are_rationed_and_need_the_escrow_key(service, tmp_path):
+    token = signup(service)["token"]
+    eid = service.post("/v1/me/recovery-keys", json={"app": "UltraAuthenticator", "secret": "ab" * 32}, headers=bearer(token)).json()["recovery_key"]["id"]
+    store = service.app.state.store
+    from ultrastore_account.store import iso_after
+    for sent in range(5):
+        assert service.post(f"/v1/recovery-keys/{eid}/code", json={"channel": "email"}).status_code == 200, sent
+        store._db.execute("UPDATE codes SET created_at = ? WHERE purpose = 'recover_escrow'", (iso_after(-120),))   # past the minute between codes
+    r = service.post(f"/v1/recovery-keys/{eid}/code", json={"channel": "email"})
+    assert r.status_code == 429 and r.json()["error"] == "too_many_codes"
+    # Without an escrow key the service keeps none.
+    settings = Settings(database="sqlite:///" + str(tmp_path / "plain.sqlite3"), operator_token="op-token")
+    outbox = Outbox()
+    with TestClient(create_app(settings, mailer=outbox)) as plain:
+        plain.outbox = outbox   # type: ignore[attr-defined]
+        plain_token = signup(plain)["token"]
+        r = plain.post("/v1/me/recovery-keys", json={"app": "UltraAuthenticator", "secret": "ab" * 32}, headers=bearer(plain_token))
+        assert r.status_code == 503 and r.json()["error"] == "not_configured"
+
+
+def test_schema_1_database_gains_the_phone(tmp_path):
+    from ultrastore_db import Database
+    url = "sqlite:///" + str(tmp_path / "old.sqlite3")
+    db = Database(url)
+    db.script(["CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL, email_verified INTEGER NOT NULL DEFAULT 0,"
+               " password_hash TEXT NOT NULL DEFAULT '', display_name TEXT NOT NULL DEFAULT '', handle TEXT NOT NULL DEFAULT '',"
+               " language TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '', year_of_birth INTEGER NOT NULL DEFAULT 0,"
+               " about TEXT NOT NULL DEFAULT '', state TEXT NOT NULL, created_at TEXT NOT NULL, password_changed_at TEXT NOT NULL DEFAULT '',"
+               " totp_secret TEXT NOT NULL DEFAULT '', totp_enabled_at TEXT NOT NULL DEFAULT '', recovery_codes TEXT NOT NULL DEFAULT '[]',"
+               " settings TEXT NOT NULL DEFAULT '{}', deletion_requested_at TEXT NOT NULL DEFAULT '', delete_after TEXT NOT NULL DEFAULT '',"
+               " suspended_reason TEXT NOT NULL DEFAULT '', suspended_until TEXT NOT NULL DEFAULT '')",
+               "INSERT INTO users (id, email, state, created_at) VALUES ('u-1', 'old@example.org', 'active', '2026-01-01T00:00:00Z')"])
+    db.close()
+    store = AccountStore(url)
+    assert store.get_user("u-1").phone == "" and store.meta("schema") == "2"
+    assert store.plan_of("u-1")["plan"] == "free"
+    store.close()

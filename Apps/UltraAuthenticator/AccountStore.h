@@ -31,6 +31,7 @@
 //    grep for "who can see a seed" stays a one-line answer.
 //  - Nothing else in the app calls it. The reveal dialog is its sole caller.
 //
+// Version: 0.2.0 - recovery from a forgotten master password
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -140,6 +141,37 @@ public:
     // launch, which is not the same as the person asking to change it now.
     StoreResult ChangePassword(const UltraCryptSecureBuffer& currentPassword,
                                const UltraCryptSecureBuffer& newPassword);
+
+    // --- Recovery from a forgotten master password ----------------------
+    // The vault can carry a second way in (EncryptedFileStore.h, container
+    // version 2): a recovery key made of a share in the file and a share the
+    // person keeps elsewhere - their UltraAccount, a printed recovery code,
+    // or both. Turning it on or off is gated on the master password, as
+    // Reveal is: it adds a way in, and the person at the screen now may not
+    // be the one who unlocked the vault.
+    StoreResult EnableRecovery(const UltraCryptSecureBuffer& masterPassword,
+                               const UltraCryptSecureBuffer& serverShare,
+                               const std::string& escrowId,
+                               const std::string& serviceUrl);
+    StoreResult DisableRecovery(const UltraCryptSecureBuffer& masterPassword);
+    VaultRecoveryInfo GetRecoveryInfo() const { return vault_.GetRecoveryInfo(); }
+
+    // Opens the file afresh with `password`: the gate Reveal, ChangePassword
+    // and the recovery switches share, and the check the recovery dialog
+    // makes before a recovery key leaves the machine.
+    StoreResult VerifyPassword(const UltraCryptSecureBuffer& password) const;
+
+    // What the locked vault's header says about recovery - which account
+    // service and which recovery key to ask - read without a password.
+    VaultRecoveryInfo LockedRecoveryInfo() const;
+
+    // Unlocks the locked vault with the server share in place of the
+    // password, and sets `newPassword`. The recovery slot is spent by this:
+    // the caller tells the person to turn recovery on again. Throttled like
+    // Unlock; the share is 256 random bits, so the throttle is a courtesy.
+    StoreResult Recover(const UltraCryptSecureBuffer& serverShare,
+                        const UltraCryptSecureBuffer& newPassword,
+                        int64_t nowUnix);
 
     // Hands back the account's otpauth:// URI, which carries the seed. Gated
     // on `password` matching the vault's. See the exception note at the top of

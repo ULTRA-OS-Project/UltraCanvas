@@ -34,6 +34,23 @@ class Settings:
     # How long a session lives without being used, in days; a code in minutes;
     # the grace before a requested deletion is carried out, in days; how many
     # machines a licence may be installed on when the licence names no number.
+    # The SMS gateway the phone codes go out by (sms.py): an https:// URL and
+    # its bearer token, or empty to print them to the log (a development
+    # machine); the sender name or number the texts carry.
+    sms_url: str = ""
+    sms_token: str = ""
+    sms_from: str = "UltraAccount"
+    # The key the escrowed recovery keys are sealed with at rest, 32 bytes
+    # hex (auth.seal_escrow); empty refuses every escrow.
+    escrow_key: str = ""
+    # The payment service's app id whose licence is the paid plan: a licence
+    # for it attached with POST /v1/me/subscription puts the account on
+    # "plus" until the licence's valid_until.
+    subscription_app: str = "UltraAccountPlus"
+    # How many recovery codes an account may be sent in a day, over every
+    # recovery key it holds: the brake on someone with a vault file asking
+    # again and again.
+    recovery_codes_per_day: int = 5
     session_idle_days: int = 90
     code_minutes: int = 10
     deletion_grace_days: int = 30
@@ -52,6 +69,12 @@ class Settings:
         s.licence_key = env("ULTRASTORE_ACCOUNT_LICENCE_KEY", "").strip()
         s.smtp_url = env("ULTRASTORE_ACCOUNT_SMTP_URL", "").strip()
         s.mail_from = env("ULTRASTORE_ACCOUNT_MAIL_FROM", s.mail_from)
+        s.sms_url = env("ULTRASTORE_ACCOUNT_SMS_URL", "").strip()
+        s.sms_token = env("ULTRASTORE_ACCOUNT_SMS_TOKEN", "").strip()
+        s.sms_from = env("ULTRASTORE_ACCOUNT_SMS_FROM", s.sms_from)
+        s.escrow_key = env("ULTRASTORE_ACCOUNT_ESCROW_KEY", "").strip()
+        s.subscription_app = env("ULTRASTORE_ACCOUNT_SUBSCRIPTION_APP", s.subscription_app).strip()
+        s.recovery_codes_per_day = int(env("ULTRASTORE_ACCOUNT_RECOVERY_CODES_PER_DAY", s.recovery_codes_per_day))
         s.session_idle_days = int(env("ULTRASTORE_ACCOUNT_SESSION_IDLE_DAYS", s.session_idle_days))
         s.code_minutes = int(env("ULTRASTORE_ACCOUNT_CODE_MINUTES", s.code_minutes))
         s.deletion_grace_days = int(env("ULTRASTORE_ACCOUNT_DELETION_GRACE_DAYS", s.deletion_grace_days))

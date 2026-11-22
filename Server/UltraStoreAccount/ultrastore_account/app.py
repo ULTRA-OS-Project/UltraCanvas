@@ -23,6 +23,13 @@ A signed-in store (Authorization: Bearer <session token>):
   GET  /v1/me/notices; POST /v1/me/notices/{id}/read
   POST /v1/me/archive                   the data archive requested and built; GET /v1/me/archive; GET /v1/me/archive/{id}/download (once, when released)
   POST /v1/me/delete                    {password}: deletion requested, carried out after the grace; POST /v1/me/delete/cancel
+  GET  /v1/me/subscription              the plan, paid or not, until when, what it allows; POST /v1/me/subscription {licence}: the paid plan
+  POST /v1/me/phone                     {phone, password}: a texted code (a paid plan only); POST /v1/me/phone/verify {code}; POST /v1/me/phone/remove {password}
+  GET  /v1/me/recovery-keys; POST /v1/me/recovery-keys {app, label, secret} -> {recovery_key}; DELETE /v1/me/recovery-keys/{id}
+The recovery of an escrowed key (anyone holding the id - it is in the vault file):
+  GET  /v1/recovery-keys/{id}           {app, label, channels: [{channel, to}]}: where a code can be sent, masked
+  POST /v1/recovery-keys/{id}/code      {channel: email|sms}: a code sent there; POST /v1/recovery-keys/{id}/release {code} -> {secret}
+  GET  /v1/plans                        the plans and what each allows
 The operator (Authorization: Bearer <operator token or session>; the static token is the bootstrap admin, a session from the marketplace
 service's sign-in names the person and the role - a support role reads and sends notices, an admin suspends and deletes):
   GET  /v1/operators/me                 who the bearer is
@@ -31,12 +38,14 @@ service's sign-in names the person and the role - a support role reads and sends
   POST /v1/users/{id}/signout-all; POST /v1/users/{id}/two-factor/reset {reason}
   POST /v1/users/{id}/suspend           {reason, days}; POST /v1/users/{id}/reinstate {reason}
   POST /v1/users/{id}/delete            {reason}: a requested deletion carried out now
+  POST /v1/users/{id}/subscription      {plan, days, reason}: a plan granted; POST /v1/users/{id}/subscription/cancel {reason}
   POST /v1/archives/{id}/release
   POST /v1/maintenance                  deletions past their grace carried out, suspensions past their end lifted
   GET  /v1/stats; GET /v1/audit?since=N&limit=; GET /v1/audit/verify
 
 Errors are {"error", "error_description"} with a 4xx status.
 
+Version: 0.3.0 - UltraAccount: the phone verified by a texted code, the subscription, the recovery-key escrow
 Version: 0.2.0 - the operator sessions with their roles, verified with the shared secret
 Version: 0.1.0
 """
@@ -54,12 +63,13 @@ from ultrastore_db.operator_session import allowed, verify as verify_session
 
 from . import __version__
 
-from .auth import (hash_password, hash_recovery, new_code, new_recovery_codes, new_token, new_totp_secret, otpauth_url, password_problems,
-                   verify_password, verify_totp)
+from .auth import (ESCROW_SECRET_BYTES, escrow_key_problem, hash_password, hash_recovery, new_code, new_recovery_codes, new_token, new_totp_secret,
+                   normalise_phone, open_escrow, otpauth_url, password_problems, seal_escrow, verify_password, verify_totp)
 from .config import Settings
 from .licence import verify as verify_licence
 from .mail import Mailer, mailer_from_settings
-from .store import NOTICE_KINDS, AccountStore, Licence, Session, User, today
+from .sms import Texter, texter_from_settings
+from .store import NOTICE_KINDS, PLANS, AccountStore, Escrow, Licence, Session, User, add_days, mask_email, mask_phone, today
 
 
 class Device(BaseModel):
@@ -161,10 +171,36 @@ class SuspendBody(BaseModel):
     days: int = 0
 
 
-def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -> FastAPI:
+class SubscriptionBody(BaseModel):
+    licence: str = Field(min_length=10, max_length=4000)
+
+
+class GrantBody(BaseModel):
+    plan: str = "plus"
+    days: int = 0          # 0: until cancelled
+    reason: str = ""
+
+
+class PhoneBody(BaseModel):
+    phone: str = Field(min_length=4, max_length=32)
+    password: str
+
+
+class EscrowBody(BaseModel):
+    app: str = Field(min_length=1, max_length=64)
+    label: str = Field(default="", max_length=120)
+    secret: str = Field(min_length=2 * ESCROW_SECRET_BYTES, max_length=2 * ESCROW_SECRET_BYTES)   # hex
+
+
+class ChannelBody(BaseModel):
+    channel: str = "email"
+
+
+def create_app(settings: Settings | None = None, mailer: Mailer | None = None, texter: Texter | None = None) -> FastAPI:
     settings = settings or Settings.from_environment()
     store = AccountStore(settings.database)
     send_mail = mailer or mailer_from_settings(settings.smtp_url, settings.mail_from)
+    send_text = texter or texter_from_settings(settings.sms_url, settings.sms_token, settings.sms_from)
 
     app = FastAPI(title="UltraStore account service", version=__version__)
     app.state.store = store
@@ -263,7 +299,8 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
 
     def me(user: User, session: Session) -> dict[str, Any]:
         archive = store.open_archive(user.id)
-        return {**user.me(), "device": session.public(session.id), "devices": [s.public(session.id) for s in store.sessions_of(user.id)],
+        return {**user.me(), "subscription": store.plan_of(user.id), "recovery_keys": len(store.escrows_of(user.id)),
+                "device": session.public(session.id), "devices": [s.public(session.id) for s in store.sessions_of(user.id)],
                 "licences": [l.public() for l in store.licences_of(user.id)],
                 "unread_notices": len([n for n in store.notices_of(user.id) if not n.read_at]),
                 "archive": archive.public() if archive else None}
@@ -626,9 +663,203 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
             return me(user, session)
         return me(store.cancel_deletion(user.id), session)
 
+    # ----- the subscription -----
+    def may_text(user: User) -> bool:
+        """A text message costs money: only an account on a paid plan is sent one."""
+        return bool(store.plan_of(user.id)["features"].get("sms"))
+
+    @app.get("/v1/plans")
+    async def plans() -> dict[str, Any]:
+        return {"plans": [{"plan": name, "paid": bool(p["paid"]), "features": p["features"]} for name, p in PLANS.items()],
+                "subscription_app": settings.subscription_app}
+
+    @app.get("/v1/me/subscription")
+    async def my_subscription(request: Request) -> dict[str, Any]:
+        user, _ = signed_in(request)
+        return {**store.plan_of(user.id), "history": [s.public() for s in store.subscriptions_of(user.id)]}
+
+    @app.post("/v1/me/subscription")
+    async def subscribe(body: SubscriptionBody, request: Request) -> dict[str, Any]:
+        """The paid plan, from a payment-service licence for the subscription
+        app; a renewal of the same licence moves the end date."""
+        user, _ = signed_in(request)
+        if not settings.licence_key:
+            raise error(503, "not_configured", "The service has no licence key to verify a licence with")
+        payload = verify_licence(body.licence, settings.licence_key)
+        if not payload:
+            raise error(400, "bad_licence", "The licence is not one the payment service signed")
+        if str(payload.get("app", "")) != settings.subscription_app:
+            raise error(400, "not_a_subscription", f"That licence is for {payload.get('app', '')}, not for the {settings.subscription_app} subscription")
+        valid_until = str(payload.get("valid_until", ""))
+        if valid_until and valid_until[:10] < today():
+            raise error(400, "expired", f"That subscription ran out on {valid_until[:10]}")
+        try:
+            lic = store.attach_licence(user.id, licence_id=str(payload.get("licence", "")), app=settings.subscription_app, order_id=str(payload.get("order", "")),
+                                       token=body.licence, issued=str(payload.get("issued", "")), updates=str(payload.get("updates", "")),
+                                       updates_until=str(payload.get("updates_until", "")), valid_until=valid_until, seats=0)
+        except ValueError:
+            raise error(409, "licence_taken", "That licence is attached to another account") from None
+        store.add_subscription(user.id, plan="plus", source="licence", valid_until=valid_until, actor=user.id, licence_id=lic.id)
+        store.add_notice(user.id, kind="notice", subject="Your UltraAccount Plus subscription is active",
+                         text=("It runs until " + valid_until[:10] + "." if valid_until else "It runs until cancelled."), actor="service")
+        return {**store.plan_of(user.id), "history": [s.public() for s in store.subscriptions_of(user.id)]}
+
+    # ----- the phone -----
+    @app.post("/v1/me/phone")
+    async def add_phone(body: PhoneBody, request: Request) -> dict[str, Any]:
+        user, _ = signed_in(request)
+        if not verify_password(body.password, user.password_hash):
+            raise error(401, "bad_credentials", "The password is wrong")
+        if not may_text(user):
+            raise error(402, "subscription_required", "A phone number needs a paid plan: a text message costs money to send")
+        phone = normalise_phone(body.phone)
+        if not phone:
+            raise error(400, "bad_phone", "An international number with the country code, such as +49 151 23456789")
+        if store.code_sent_recently(user.id, "verify_phone"):
+            raise error(429, "code_sent", "A code went out a moment ago: wait a minute before asking for another")
+        code = new_code()
+        store.add_code(user.id, "verify_phone", code, minutes=settings.code_minutes, payload=phone)
+        send_text(phone, f"Your UltraAccount code: {code}. It is good for {settings.code_minutes} minutes.")
+        return {"verify": "sms_code", "phone": mask_phone(phone)}
+
+    @app.post("/v1/me/phone/verify")
+    async def verify_phone(body: CodeBody, request: Request) -> dict[str, Any]:
+        user, session = signed_in(request)
+        row = store.take_code(user.id, "verify_phone", body.code)
+        if not row:
+            raise error(400, "bad_code", "The code is wrong or has run out: ask for a new one")
+        old = user.phone
+        user = store.update_user(user.id, phone=row["payload"], phone_verified_at=today())
+        store.audit(user.id, "verify_phone", "user", user.id, after={"phone": mask_phone(user.phone)})
+        store.add_notice(user.id, kind="security", subject="A phone number was added to your account",
+                         text=f"Codes can now be sent to {mask_phone(user.phone)}" + (f" instead of {mask_phone(old)}." if old and old != user.phone else "."),
+                         actor="service")
+        send_mail(user.email, "A phone number was added to your UltraAccount",
+                  f"Your account now has the phone number {mask_phone(user.phone)}. If this was not you, change your password and remove it at once.")
+        return me(user, session)
+
+    @app.post("/v1/me/phone/remove")
+    async def remove_phone(body: DeleteBody, request: Request) -> dict[str, Any]:
+        user, session = signed_in(request)
+        if not verify_password(body.password, user.password_hash):
+            raise error(401, "bad_credentials", "The password is wrong")
+        if user.phone:
+            store.audit(user.id, "remove_phone", "user", user.id)
+            user = store.update_user(user.id, phone="", phone_verified_at="")
+            store.add_notice(user.id, kind="security", subject="The phone number was removed from your account", text="", actor="service")
+        return me(user, session)
+
+    # ----- the recovery-key escrow -----
+    def escrow_key() -> str:
+        if not settings.escrow_key or escrow_key_problem(settings.escrow_key):
+            raise error(503, "not_configured", "The service has no escrow key: recovery keys cannot be kept")
+        return settings.escrow_key
+
+    def escrow_owner(eid: str) -> tuple[Escrow, User]:
+        escrow = store.get_escrow(eid)
+        owner = store.get_user(escrow.user_id) if escrow else None
+        if not escrow or not owner or owner.state == "deleted":
+            raise error(404, "no_such_key", "No such recovery key: it was removed, or the account is gone")
+        if owner.state == "suspended":
+            raise error(403, "suspended", "The account is suspended")
+        return escrow, owner
+
+    def channels(owner: User) -> list[dict[str, str]]:
+        out = []
+        if owner.email_verified:
+            out.append({"channel": "email", "to": mask_email(owner.email)})
+        if owner.phone and owner.phone_verified_at and may_text(owner):
+            out.append({"channel": "sms", "to": mask_phone(owner.phone)})
+        return out
+
+    @app.get("/v1/me/recovery-keys")
+    async def my_escrows(request: Request) -> dict[str, Any]:
+        user, _ = signed_in(request)
+        return {"recovery_keys": [e.public() for e in store.escrows_of(user.id)], "channels": channels(user)}
+
+    @app.post("/v1/me/recovery-keys")
+    async def add_escrow(body: EscrowBody, request: Request) -> dict[str, Any]:
+        """An application's recovery key left with the account. The key is the
+        service's half only; the application keeps the other half itself."""
+        user, _ = signed_in(request)
+        key = escrow_key()
+        try:
+            secret = bytes.fromhex(body.secret)
+        except ValueError:
+            raise error(400, "bad_secret", "The recovery key is 32 bytes, hex") from None
+        eid = store.new_escrow_id()
+        try:
+            escrow = store.add_escrow(user.id, eid=eid, app=body.app.strip(), label=body.label.strip(), sealed=seal_escrow(key, eid, user.id, secret))
+        except ValueError:
+            raise error(409, "too_many", "This account holds as many recovery keys as it may: remove one first") from None
+        store.add_notice(user.id, kind="security", subject=f"A recovery key was stored for {escrow.app}",
+                         text=(escrow.label + ": " if escrow.label else "") + "a code to your email or phone will release it. Remove it from "
+                              "Recovery keys if this was not you.", actor="service")
+        return {"recovery_key": escrow.public(), "channels": channels(user)}
+
+    @app.delete("/v1/me/recovery-keys/{escrow_id}")
+    async def delete_escrow(escrow_id: str, request: Request) -> dict[str, Any]:
+        user, _ = signed_in(request)
+        escrow = store.get_escrow(escrow_id)
+        if not escrow or escrow.user_id != user.id:
+            raise error(404, "no_such_key", "No such recovery key on this account")
+        store.delete_escrow(escrow_id, user.id)
+        return {"deleted": True}
+
+    @app.get("/v1/recovery-keys/{escrow_id}")
+    async def escrow_info(escrow_id: str) -> dict[str, Any]:
+        escrow, owner = escrow_owner(escrow_id)
+        return {"id": escrow.id, "app": escrow.app, "label": escrow.label, "channels": channels(owner)}
+
+    @app.post("/v1/recovery-keys/{escrow_id}/code")
+    async def escrow_code(escrow_id: str, body: ChannelBody) -> dict[str, Any]:
+        escrow, owner = escrow_owner(escrow_id)
+        offered = {c["channel"]: c["to"] for c in channels(owner)}
+        if body.channel not in offered:
+            if body.channel == "sms":
+                raise error(402, "subscription_required", "Codes by text message need a verified phone number and a paid plan")
+            raise error(400, "bad_channel", "A code goes to the account's email or, on a paid plan, its phone")
+        if store.code_sent_recently(owner.id, "recover_escrow"):
+            raise error(429, "code_sent", "A code went out a moment ago: wait a minute before asking for another")
+        if store.codes_sent_since(owner.id, "recover_escrow", 86400) >= settings.recovery_codes_per_day:
+            raise error(429, "too_many_codes", "Too many recovery codes today: try again tomorrow")
+        code = new_code()
+        store.add_code(owner.id, "recover_escrow", code, minutes=settings.code_minutes, payload=escrow.id + "|" + body.channel)
+        what = f"the recovery key of {escrow.app}" + (f" ({escrow.label})" if escrow.label else "")
+        if body.channel == "sms":
+            send_text(owner.phone, f"UltraAccount: {code} releases {what}. Good for {settings.code_minutes} minutes. Not you? Ignore it.")
+        else:
+            send_mail(owner.email, f"Your code to recover {escrow.app}",
+                      f"Someone - hopefully you - asked to recover {what}, for a forgotten password.\n\nYour code: {code}\n\n"
+                      f"It is good for {settings.code_minutes} minutes. If this was not you, ignore this mail: without the code nothing is released, "
+                      "and without the vault file the key opens nothing.")
+        return {"sent": True, "channel": body.channel, "to": offered[body.channel]}
+
+    @app.post("/v1/recovery-keys/{escrow_id}/release")
+    async def escrow_release(escrow_id: str, body: CodeBody) -> dict[str, Any]:
+        escrow, owner = escrow_owner(escrow_id)
+        key = escrow_key()
+        row = store.take_code(owner.id, "recover_escrow", body.code)
+        if not row or not row["payload"].startswith(escrow.id + "|"):
+            raise error(400, "bad_code", "The code is wrong or has run out: ask for a new one")
+        channel = row["payload"].split("|", 1)[1]
+        secret = open_escrow(key, escrow.id, owner.id, escrow.sealed)
+        if secret is None:
+            raise error(500, "unreadable", "The recovery key could not be opened with the service's escrow key")
+        store.mark_escrow_released(escrow.id, channel=channel)
+        store.add_notice(owner.id, kind="security", subject=f"The recovery key of {escrow.app} was released",
+                         text=f"A code sent by {'text message' if channel == 'sms' else 'mail'} released it. If this was not you, "
+                              "change your password and the master password of that app at once.", actor="service")
+        send_mail(owner.email, f"The recovery key of {escrow.app} was released",
+                  f"The recovery key of {escrow.app}" + (f" ({escrow.label})" if escrow.label else "") +
+                  " was released with a code just now. If this was not you, change your passwords at once.")
+        return {"secret": secret.hex(), "app": escrow.app}
+
     # ----- the operator -----
     def user_file(u: User) -> dict[str, Any]:
-        return {**u.file(), "devices": [s.public() for s in store.sessions_of(u.id)],
+        return {**u.file(), "subscription": store.plan_of(u.id), "subscriptions": [s.public() for s in store.subscriptions_of(u.id)],
+                "recovery_keys": [e.public() for e in store.escrows_of(u.id)],
+                "devices": [s.public() for s in store.sessions_of(u.id)],
                 "licences": [l.public(with_token=False) for l in store.licences_of(u.id)], "notices": [n.public() for n in store.notices_of(u.id)],
                 "archives": [a.public() for a in store.archives_of(u.id)], "history": store.audit_of(u.id),
                 "sign_ins": store.signins_of(u.id, limit=20)}
@@ -721,6 +952,26 @@ def create_app(settings: Settings | None = None, mailer: Mailer | None = None) -
             raise error(409, "not_requested", "The person has not asked for the deletion: only a requested deletion is carried out")
         store.delete_user(u.id, actor=actor, reason=body.reason or "requested")
         return {"deleted": True}
+
+    @app.post("/v1/users/{user_id}/subscription")
+    async def op_grant(user_id: str, body: GrantBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        actor = operator(authorization, "users.manage")
+        u = user_or_404(user_id)
+        if body.plan not in PLANS or not PLANS[body.plan]["paid"]:
+            raise error(400, "bad_plan", "A plan granted is one of " + ", ".join(p for p, v in PLANS.items() if v["paid"]))
+        until = add_days(today(), body.days) if body.days > 0 else ""
+        store.add_subscription(u.id, plan=body.plan, source="operator", valid_until=until, actor=actor)
+        store.add_notice(u.id, kind="notice", subject=f"Your account is on {body.plan}", text=body.reason + (f"\nUntil {until}." if until else ""), actor=actor)
+        return {"subscription": store.plan_of(u.id)}
+
+    @app.post("/v1/users/{user_id}/subscription/cancel")
+    async def op_cancel(user_id: str, body: ReasonBody, authorization: str | None = Header(default=None)) -> dict[str, Any]:
+        actor = operator(authorization, "users.manage")
+        u = user_or_404(user_id)
+        count = store.cancel_subscriptions(u.id, actor=actor, reason=body.reason)
+        if count:
+            store.add_notice(u.id, kind="notice", subject="Your subscription was cancelled", text=body.reason, actor=actor)
+        return {"cancelled": count, "subscription": store.plan_of(u.id)}
 
     @app.post("/v1/archives/{archive_id}/release")
     async def op_release_archive(archive_id: str, authorization: str | None = Header(default=None)) -> dict[str, Any]:
