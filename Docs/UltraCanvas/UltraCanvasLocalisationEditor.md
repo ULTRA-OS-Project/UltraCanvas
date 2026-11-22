@@ -104,7 +104,7 @@ is made (`LocalisationEditorLayout`):
 | Arrangement | For | Where the parts go |
 |---|---|---|
 | `Compact` (the default) | a page, a dialog - about 620 px and up | four rows of controls over the grid (what is edited; search, *Show*, *Compare with*; *Sets...* and the two switches; the actions on the right), the edit on one row under the grid, the status line |
-| `Window` | a window of its own (UOS-Localisation, 900 px and up) | two rows across the width - the application, the language, *Compare with* and the actions; the search, *Show*, *Sets...* and the switches - then the grid beside a 340 px panel, the status line under both |
+| `Window` | a window of its own (UOS-Localisation, 900 px and up) | two rows across the width - the application, the language, *Compare with* and the actions; the search, *Show*, *Sets...* and the switches - then the grid beside a 380 px panel, the status line under both |
 
 The `Window` arrangement's panel shows the selected row whole, wrapped
 rather than cut to a column: the key, its English (the category's form for

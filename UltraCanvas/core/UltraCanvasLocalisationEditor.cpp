@@ -1192,6 +1192,7 @@ void UltraCanvasLocalisationEditor::ArrangeWindow() {
     MakeCaption(*inRow, "InCaption", Tr("in"));
     inRow->AddChild(editSetList);
     editField->layoutItem.SetFlexGrow(0);
+    editField->size.width = CSSLayout::Dimension::Px(textWidth);
     editField->size.height = CSSLayout::Dimension::Px(28);
     detailPanel->AddChild(editField);
     auto buttons = MakeRow(*detailPanel, "EditButtons", 32);
@@ -1199,6 +1200,9 @@ void UltraCanvasLocalisationEditor::ArrangeWindow() {
     applyButton->SetOnClick([this]() { if (editField) SetSelectedTranslation(editField->GetText(), selectedCategory); });
     applyButton->layoutItem.SetFlexShrink(0);
     buttons->AddChild(applyButton);
+    // The rest of the row: "Clear override" is long in some languages
+    // ("Сбросить переопределение").
+    clearButton->size.width = CSSLayout::Dimension::Px(kDetailWidth - 24.0f - 90.0f - 8.0f);
     buttons->AddChild(clearButton);
 
     // ----- the foot: the status line, the actions on the right -----

@@ -350,7 +350,7 @@ namespace UltraCanvas {
         std::function<void()> onClose;    // the Close button of a dialog host
 
     private:
-        static constexpr float kDetailWidth = 340.0f;   // the Window arrangement's row panel
+        static constexpr float kDetailWidth = 380.0f;   // the Window arrangement's row panel
 
         void BuildUi();
         void MakeParts();

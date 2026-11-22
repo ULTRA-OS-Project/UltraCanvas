@@ -1575,7 +1575,9 @@ void UOSSettingsWindow::BuildLanguagePage() {
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     row->size.height = CSSLayout::Dimension::Px(32);
     row->SetMargin(14, 0, 0, 0);
-    row->AddChild(MakeLabel("uos-lang-label", Tr("Language:")));
+    // The two captions in one column, so the two fields start at one x.
+    auto languageCaption = MakeLabel("uos-lang-label", Tr("Language:"));
+    row->AddChild(languageCaption);
     language_ = std::make_shared<UltraCanvasDropdown>("uos-lang-dropdown", 0, 0, 300, 28);
     language_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     language_->onSelectionChanged = [this](int index, const DropdownItem&) {
@@ -1597,7 +1599,9 @@ void UOSSettingsWindow::BuildLanguagePage() {
     translatorRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     translatorRow->size.height = CSSLayout::Dimension::Px(32);
     translatorRow->SetMargin(10, 0, 0, 0);
-    translatorRow->AddChild(MakeLabel("uos-lang-translator-label", Tr("Translator:")));
+    auto translatorCaption = MakeLabel("uos-lang-translator-label", Tr("Translator:"));
+    translatorRow->AddChild(translatorCaption);
+    FitCaptionColumn({languageCaption, translatorCaption});
     translator_ = std::make_shared<UltraCanvasTextInput>("uos-lang-translator", 0, 0, 300, 28);
     translator_->SetPlaceholder(Tr("Your name, for the catalogues you edit"));
     translator_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
