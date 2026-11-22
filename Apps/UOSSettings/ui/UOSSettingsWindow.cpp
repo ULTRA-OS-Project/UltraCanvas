@@ -1200,6 +1200,14 @@ void UOSSettingsWindow::BuildLookPage() {
     page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
     page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    {
+        // Its rows, preview and notes outgrow the window at a large font,
+        // so it scrolls rather than cutting the notes off at the bottom.
+        ContainerStyle cs = ContainerStyle::FromTheme();   // the theme's scrollbars
+        cs.autoShowScrollbars = true;
+        cs.autoShowHorizontalScrollbar = false;
+        page->SetContainerStyle(cs);
+    }
 
     auto title = MakeLabel("uos-look-title", Tr("Look"), TitleFontSize());
     title->SetFontWeight(FontWeight::Bold);
@@ -1212,6 +1220,10 @@ void UOSSettingsWindow::BuildLookPage() {
     caption->SetMargin(6, 0, 0, 0);
     page->AddChild(caption);
 
+    // Every row's caption in one column, as wide as the widest caption
+    // (FitCaptionColumn, below): the controls all start at one x, in every
+    // language, instead of each just after its own caption.
+    std::vector<std::shared_ptr<UltraCanvasLabel>> captions;
     auto row = [&](const std::string& id, const std::string& label, int topMargin) {
         auto r = std::make_shared<UltraCanvasContainer>(id);
         r->layout.SetFlexRow().SetFlexGap(12).SetFlexAlignItems(CSSLayout::AlignItems::Center);
@@ -1219,7 +1231,7 @@ void UOSSettingsWindow::BuildLookPage() {
         r->size.height = CSSLayout::Dimension::Px(32);
         r->SetMargin(static_cast<float>(topMargin), 0, 0, 0);
         auto l = MakeLabel(id + "-label", label);
-        l->SetWidth(90);
+        captions.push_back(l);
         r->AddChild(l);
         page->AddChild(r);
         return r;
@@ -1289,6 +1301,7 @@ void UOSSettingsWindow::BuildLookPage() {
 
     lightText_ = segmented("uos-look-lighttext", {Tr("Firm"), Tr("Plain")}, 200);
     row("uos-look-lighttext-row", Tr("Light text:"), 10)->AddChild(lightText_);
+    FitCaptionColumn(captions);
 
     // The preview: a few elements styled from the theme the choices give,
     // on that theme's panel - the page shows the result by being it.
@@ -1299,6 +1312,9 @@ void UOSSettingsWindow::BuildLookPage() {
     lookPreview_->SetPadding(12, 12, 12, 12);
     lookPreview_->SetMargin(16, 0, 0, 0);
     previewLabel_ = std::make_shared<UltraCanvasLabel>("uos-look-preview-label", 0, 0, 160, 28, Tr("A label in the look"));
+    // As wide as its text: at a fixed 160 px a translated one was cut short
+    // ("Eine Beschriftung im Ausseh...").
+    previewLabel_->size.width = CSSLayout::Dimension::Auto();
     previewButton_ = std::make_shared<UltraCanvasButton>("uos-look-preview-button", 0, 0, 90, 28, Tr("Button"));
     previewInput_ = std::make_shared<UltraCanvasTextInput>("uos-look-preview-input", 0, 0, 160, 28);
     previewInput_->SetText(Tr("A field"));
