@@ -1,3 +1,122 @@
+#### 2026-11-22 *0.9.585*
+- **The localisation editor has a Window arrangement.**
+  `UltraCanvasLocalisationEditor` takes a `LocalisationEditorLayout` when it
+  is made: `Compact` (the default, as before) for a page or a dialog, and
+  `Window` for a window of its own - the choices on two rows across the
+  width, the grid beside a 380 px panel that shows the selected row whole
+  (its key, its English, the comparison, what is shown and its status,
+  every set's text, wrapped rather than cut to a column) with the edit at
+  its foot (*Apply*, *Clear override*), the status line and the actions at
+  the window's foot. The Draft button shows there only when a drafter is
+  set. The parts are made once (`MakeParts`) and each arrangement places
+  them. UOS-Localisation, the new translation editor program, uses it.
+- **A menu's border no longer breaks off at its rounded corners.** A popup
+  in a window of its own is cut to an outline of its opaque pixels, and only
+  pixels at least half opaque were kept and copied as they were: the outer,
+  fainter half of the 1 px border round each corner was cut away and the
+  rest came out washed white on Windows (dark on X11), so the corners looked
+  open and square against a light window behind. The outline now keeps
+  pixels from a quarter opaque, and the popup's window shows every pixel it
+  keeps at full strength in its own colour, so the border runs round the
+  corner unbroken.
+- **A menu's title stands apart.** A header row (`MenuItemData::Header`)
+  sits on a band darker than the panel - the new
+  `MenuStyle::headerBackgroundColor`, reaching up to the border when the
+  title is the first row - and its text is dark grey (the theme's ink a
+  shade lighter with `FromTheme`) instead of the light grey that read as a
+  disabled entry.
+- **The `.odp` reader reads the look as drawn, so UltraViewer, MediaViewer's
+  slide view and UltraFiler's thumbnails draw an Impress deck as fully as a
+  PowerPoint one.** It used to read text with bold, italic and underline
+  only; now every style is resolved through its parents and the family
+  defaults (common styles, the content's automatic styles, the master pages'
+  own):
+  - shapes: their fill (solid, or a gradient's stops - linear, axial, radial;
+    LibreOffice's bare tenths of a degree too), outline (colour, width,
+    dashes and dots, arrowheads from markers), text area (anchor, padding,
+    wrap, vertical writing, shrink to fit), turn (`draw:transform`) and
+    mirroring; their outline - an Office preset LibreOffice names
+    `ooxml-...`, ODF's own shape types (rectangles, ellipses, diamonds,
+    triangles, arrows, stars, flowchart shapes ...), an enhanced path in
+    plain numbers, `draw:rect` / `ellipse` / `polygon` / `polyline` / `path`
+    / `regular-polygon`, lines and connectors (a standard connector routed
+    with elbows);
+  - text: each run's size (points or a share of the size under it), colour,
+    typeface (through the font-face declarations), strike, super- and
+    subscript, capitals, highlight and links (`#name` of a page as a jump to
+    its slide); each paragraph's alignment, spacing, line height and
+    margins; list labels - the bullet character (a symbol font's private-use
+    code), its font, colour and size, the numbering scheme and the number
+    each item shows (start values, continued lists), where the label hangs;
+    an outline's levels from their own presentation styles;
+  - tables: column widths, row heights, each cell's fill, borders, padding,
+    anchor and span, a table template applied;
+  - each slide's background (its page style, else its master page's), the
+    theme's colours (LibreOffice's `loext:theme`), and with the new
+    `withPictures` argument of `ReadOdpPresentation` /
+    `ReadOdpPresentationFromMemory` the pictures' bytes (inline ones of a
+    flat `.fodp` too).
+  - Tested on LibreOffice's own conversion of the PowerPoint feature deck
+    (`Tests/fixtures/pptx-features.odp`), read field by field against the
+    `.pptx` reader and drawn the same, and on a flat deck written in the test.
+- **The `.odp` writer turns a turned shape's gradient with it, and starts a
+  radial gradient at the edge.** ODF's gradient angle is on the page, so a
+  turned shape's fill came out turned against the shape in LibreOffice; and a
+  radial gradient's colours were the wrong way round.
+- **A running copy no longer goes deaf when the message bus's host ends.**
+  `UltraCanvasSingleInstance` hands a second start to the running copy over
+  UltraMessage, and the bus lives in whichever program connected first. When
+  that program ended - the desktop restarting, an application that happened
+  to host it closing - the running copy's endpoint lost the bus and never
+  reconnected, so every later start waited fifteen seconds and said "*App* is
+  already running" instead of bringing it forward: clicking a pinned UltraSnip
+  that the desktop had preloaded, for one. A listening copy now checks its
+  connection once a second and joins again (hosting the new bus when nobody
+  does); a start made meanwhile keeps asking and is handed over.
+- **A toolbar's re-styling no longer turns coloured icons into black
+  silhouettes.** `UltraCanvasToolbar` drew every new button's icon through its
+  mask (a monochrome glyph, tinted), which is right for its own glyphs; a host
+  that shows a picture in its own colours switches that off with
+  `SetUseIconAsMask(false)`. But each re-application of the appearance -
+  `SetAppearance`, a theme (`ApplyTheme`), `SetOrientation` - set the mask on
+  every button again, so the icons became black shapes the first time
+  anything re-styled the bar: UltraDesktop's pinned and running applications
+  went black once the running group tightened its spacing for a full bar or
+  the look was refreshed, while they were right at start-up. A re-styling now
+  keeps each button's choice; only a button just added gets the mask.
+  `ToolbarOverflowMenuTest` checks it.
+- **A toolbar's re-styling keeps an icon size the host chose.** The same
+  re-application set every button's icon to the appearance's size, so a host
+  that sized its icons itself (UltraDesktop's 24 px bar icons) had them snap
+  back at each theme refresh. A re-styling now moves only the buttons still
+  at the toolbar's earlier size, which follow a new appearance as before;
+  `ToolbarOverflowMenuTest` checks both.
+- **UltraMessage endpoints reconnect when the broker goes.** The message bus's
+  broker runs inside whichever program connected first, and when that program
+  ended every other program's endpoint lost the bus for good: the
+  notification toasts, UltraNotifications, the Message Centre, a feed
+  publisher and the single-instance hand-off all went quiet until each was
+  restarted. An endpoint whose connection drops without
+  `UltraMsg_Disconnect` now reconnects by itself (`UltraMsgConnectOptions::autoReconnect`,
+  on by default): after 200 ms, then at growing intervals up to five seconds,
+  hosting the next broker when `startBrokerIfAbsent` allows, and registering
+  its subscriptions again under the same handles, so their callbacks keep
+  coming; one made with `replaySinceMs` gets what was journaled meanwhile.
+  `UltraCanvasSingleInstance` relies on it and keeps its watch only for a
+  copy that never got onto the bus. `UltraMessageTests` stops the broker
+  under two endpoints and starts it again: they come back on their own and
+  the subscription delivers.
+- **The UltraMessage module doc is compiled by the docs check.** Two of its
+  examples called functions of the reader's (`OpenPaths`, `Open`) without
+  declaring them; they are declared in `doc-check` comments now, and
+  `Docs/Modules/UltraMessage` is in `CHECKED_MODULE_DOCS`, so CI keeps it
+  compiling.
+- **`UltraCanvasDesktopShell::SetVirtualDesktopCount` adds desktops on
+  Windows.** It answered false; it now sends Explorer's Ctrl+Win+D once per
+  missing desktop, waits for Explorer to record them, and switches back to
+  the desktop that was current. A smaller count still answers false -
+  removing a desktop moves its windows and stays the user's, in Task View.
+
 #### 2026-11-21 *0.9.584*
 - **A second Android app: ChatCube.** The Android build no longer
   packages the demo alone. `scripts/android-package-apk.sh` takes
