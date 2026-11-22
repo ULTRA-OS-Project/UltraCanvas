@@ -3451,9 +3451,10 @@ on UltraAI's translator) drafts a language's catalogue, driven per set by
 languages under `media/locale/<lang>/`. The localisation editor
 `UltraCanvasLocalisationEditor` (`include/UltraCanvasLocalisationEditor.h`,
 in the core, with `LocalisationWorkspace` as its model) shows every set an
-application's texts come from in one grid and merges them; UOS-Settings
-hosts it under Language > Translations, `ShowLocalisationEditorDialog`
-opens it on the running application. The DemoApp page *ULTRA OS modules >
+application's texts come from in one grid and merges them, in a Compact
+arrangement for a page or a dialog and a Window one with a row panel;
+UOS-Localisation (`Apps/UOSLocalisation`) is it in a window of its own,
+`ShowLocalisationEditorDialog` opens it on the running application. The DemoApp page *ULTRA OS modules >
 Localisation* (`Apps/DemoApp/UltraCanvasLocalisationExamples.cpp`) shows
 the four calls live in a picked language, with the layer that answered
 each, and the catalogue files of the three layers. See
@@ -6396,6 +6397,7 @@ first lines as of 2026-10-18.
 | [UltraStoreAdmin](#ultrastoreadmin) | The store's admin backend: apps and settings, packages, the signing key, translations, the signed catalog | 0.1.0 | UltraStore core, UltraDatabase, UltraCrypt, UltraAI |
 | [UltraStoreOperator](#ultrastoreoperator) | The marketplace operator's window and command line: merchants, the app review and the catalog publish, reports, notices, terms, the audit log | 0.1.0 | UltraStoreAdmin core, UltraNet |
 | [UOS-Settings](#uos-settings) | System settings | 0.5.0 | core |
+| [UOS-Localisation](#uos-localisation) | The translation editor: every set of an application's texts in one grid | 0.1.0 | core, UltraLocalisation |
 | [UltraClipboard](#ultraclipboard) | Clipboard history | 0.1.5 | ClipboardHistory |
 | [UltraCleaner](#ultracleaner) | Removes caches, temporary files and leftovers | 0.66 | core |
 | [UltraNetMonitor](#ultranetmonitor) | Which process holds which network connection | 0.17 | NetworkMonitor |
@@ -6971,6 +6973,26 @@ the system rather than to one app.
 
 **Built on:** the UltraCanvas core and UltraDesktop's settings code.
 **Version:** 0.5.0 (2026-10-15).
+
+### UOS-Localisation
+
+**Purpose:** the ULTRA OS translation editor, for translating any
+application into any language.
+
+**Capabilities:**
+- Every set an application's texts come from (its own, its base sets, the
+  standard set) in one grid, with where each shown text comes from.
+- A panel beside the grid with the selected row whole and its edit; a
+  comparison language; search and filters (untranslated, drafts,
+  overrides, collisions, changed).
+- Takes base sets, promotes and demotes rows between the application and a
+  base; saves into the source tree or the settings folder; exports JSON or
+  gettext PO.
+- Formerly UOS-Settings' Language > Translations page.
+
+**Built on:** the UltraCanvas core (UltraCanvasLocalisationEditor) and
+UltraLocalisation.
+**Version:** 0.1.0 (2026-11-22).
 
 ### UltraClipboard
 
@@ -50543,7 +50565,7 @@ up). Phase L4 of
 - Source: `UltraCanvas/core/UltraCanvasLocalisationEditor.cpp`
 - Test: `Tests/LocalisationEditorTest.cpp` (target `LocalisationEditorTest`, headless)
 - Demo: `Apps/DemoApp/UltraCanvasLocalisationEditorExamples.cpp` (page *Localisation Editor*)
-- Hosts: UOS-Settings *Language > Translations*; `ShowLocalisationEditorDialog` for an application's own menu item
+- Hosts: UOS-Localisation, the translation editor (`Apps/UOSLocalisation`, the Window arrangement); `ShowLocalisationEditorDialog` for an application's own menu item
 
 ## Contents
 
@@ -50551,6 +50573,7 @@ up). Phase L4 of
 - [The element](#the-element)
   - [In a page](#in-a-page)
   - [In a dialog](#in-a-dialog)
+  - [In a window of its own](#in-a-window-of-its-own)
   - [The grid](#the-grid)
   - [Editing](#editing)
   - [Merging](#merging)
@@ -50610,6 +50633,31 @@ language it runs in, with a Close button - the "Help > Translate this
 application..." item of an application. The folders are the module's
 (`UltraLocalisation::ShippedFolder()`, `SettingsFolder()`), the translator's
 name comes from `Language.conf`.
+
+### In a window of its own
+
+```cpp
+auto editor = std::make_shared<UltraCanvasLocalisationEditor>("editor", LocalisationEditorLayout::Window);
+editor->SetFolders(GetResourcesDir() + "media/locale", PathToUtf8(UltraCanvasSettingsFolder()));
+editor->Open("", "de");
+editor->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+window->AddChild(editor);
+```
+
+The editor places the same parts in one of two arrangements, chosen when it
+is made (`LocalisationEditorLayout`):
+
+| Arrangement | For | Where the parts go |
+|---|---|---|
+| `Compact` (the default) | a page, a dialog - about 620 px and up | four rows of controls over the grid (what is edited; search, *Show*, *Compare with*; *Sets...* and the two switches; the actions on the right), the edit on one row under the grid, the status line |
+| `Window` | a window of its own (UOS-Localisation, 900 px and up) | two rows across the width - the application, the language, *Compare with* and the actions; the search, *Show*, *Sets...* and the switches - then the grid beside a 380 px panel, the status line under both |
+
+The `Window` arrangement's panel shows the selected row whole, wrapped
+rather than cut to a column: the key, its English (the category's form for
+a plural form), the comparison text, what the application shows with its
+status, and every set's text in lookup order. The edit is at the panel's
+foot - the set it writes to, the field, *Apply* and *Clear override*;
+Enter applies too, and so does leaving the field.
 
 ### The grid
 
@@ -50778,7 +50826,7 @@ operation back; `Dirty` and `DirtyFiles` say what a save would write.
 | `core/UltraCanvasLocalisationEditor.cpp` | both, the catalogue writer in the extraction's format, the PO export |
 | `Tests/LocalisationEditorTest.cpp` | the workspace and the element on a locale tree under the temp folder |
 | `Apps/DemoApp/UltraCanvasLocalisationEditorExamples.cpp` | the demo page, on a copy of the shipped catalogues |
-| `Apps/UOSSettings/ui/UOSSettingsWindow.cpp` | the *Language > Translations* page |
+| `Apps/UOSLocalisation/main.cpp` | UOS-Localisation: the editor in its Window arrangement, a window of its own |
 | `media/locale/<lang>/<App>.json`, `base/<Base>.json`, `Standard.json` | what it edits ([the catalogue file](../Modules/UltraLocalisation/README.md#the-catalogue-file)) |
 
 ==============================================================================
