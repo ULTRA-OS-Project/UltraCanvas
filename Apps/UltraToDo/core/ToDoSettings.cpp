@@ -1,5 +1,6 @@
 // Apps/UltraToDo/core/ToDoSettings.cpp
 // See ToDoSettings.h.
+// Version: 0.2.0 - display: "full" or "compact"
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ToDoSettings.h"
@@ -33,6 +34,7 @@ ToDoSettings ToDoSettings::Load(const std::string& folder) {
     const JSONValue root = UltraCanvas::JSON::ParseFile(PathToUtf8(file));
     if (!root.IsObject()) return settings;
     if (root.Get("management").GetString() == "supervised") settings.management = ManagementLevel::Supervised;
+    if (root.Get("display").GetString() == "compact") settings.display = DisplayMode::Compact;
     return settings;
 }
 
@@ -42,6 +44,7 @@ bool ToDoSettings::Save(const std::string& folder, std::string& error) const {
     fs::create_directories(PathFromUtf8(folder), ec);
     JSONValue root = JSONValue::MakeObject();
     root.Set("management", LevelName(management));
+    root.Set("display", display == DisplayMode::Compact ? "compact" : "full");
     UltraCanvas::JSONSerializeOptions options;
     options.pretty = true;
     options.indentWidth = 2;

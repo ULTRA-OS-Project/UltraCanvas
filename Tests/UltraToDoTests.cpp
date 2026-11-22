@@ -203,6 +203,11 @@ static void TestStore() {
     settings.management = ManagementLevel::Supervised;
     Check(settings.Save(folder, error), "settings saved: " + error);
     Check(ToDoSettings::Load(folder).Supervised(), "settings: With task supervision read back");
+    Check(!ToDoSettings::Load(folder).Compact(), "settings: the full display by default");
+    settings.display = DisplayMode::Compact;
+    Check(settings.Save(folder, error), "settings saved: " + error);
+    Check(ToDoSettings::Load(folder).Compact() && ToDoSettings::Load(folder).Supervised(),
+          "settings: the compact display read back, the level kept");
 
     if (read && !read->attachments.empty()) {
         const std::string file = read->attachments[0].file;

@@ -22,6 +22,11 @@
 // Ctrl+,) sets the level of management, Simple (the default) or With task
 // supervision.
 //
+// Two displays, switched in the top bar (or Ctrl+L) and kept in the
+// settings: Full, the panel described above; or Compact, two lines a task -
+// the title with how urgent it is and the buttons, then the marker, the time
+// left and the attached files as mini thumbnails 12 px high.
+//
 // Done on a panel moves the task to the history (To do | History at the
 // top), where Reopen brings it back.
 //
@@ -35,6 +40,7 @@
 // Started with --background the window can be closed: the program stays,
 // keeps the reminders going, and comes forward at the next start; Quit ends
 // it.
+// Version: 0.7.0 - two displays: Full or Compact (two lines a task), switched in the top bar
 // Version: 0.6.0 - the marker is a small ring gauge
 // Version: 0.5.0 - the settings page: Simple, or with task supervision
 // Version: 0.4.0 - the urgency marker and time left in the button line, blinking, Start / Pause
@@ -89,7 +95,15 @@ public:
 private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildTopBar();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildPanel(const ToDoTask& task, int64_t now);
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildCompactPanel(const ToDoTask& task, int64_t now);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildAttachments(const ToDoTask& task);
+    // A panel's parts in either display: the urgency ring (`size` across) -
+    // and what of it blinks - and the buttons.
+    void AddMarker(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>& row,
+                   UltraCanvas::UltraCanvasContainer* panel, const ToDoTask& task, int64_t now, float size);
+    void AddButtons(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>& row, const ToDoTask& task);
+    // Full or Compact: the list built again, the choice kept in the settings.
+    void SetDisplay(DisplayMode mode);
     void Rebuild();
     // The columns (see the top of this file): how many fit in `width`, the
     // window's client width; the list is built again when that changes.
@@ -143,6 +157,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> summary_;
     // To do | History: the open tasks, or the finished ones.
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> view_;
+    // Full | Compact (settings_.display).
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> display_;
     bool history_ = false;
     int columns_ = 1;             // the panels side by side in the list now
 
@@ -152,6 +168,8 @@ private:
         UltraCanvas::UltraCanvasContainer* element = nullptr;   // the panel (overdue), or the marker's ring
         UltraCanvas::Color off;                                  // its border between blinks
         bool ring = false;                                       // the marker's ring: orange; else the panel: red
+        float radius = 0;                                        // its corners
+        float width = 2.0f;                                      // the ring's frame
     };
     std::vector<BlinkItem> blinking_;
     bool blinkOn_ = false;

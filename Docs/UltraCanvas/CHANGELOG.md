@@ -1,3 +1,37 @@
+#### 2026-11-21 *0.9.584*
+- **A second Android app: ChatCube.** The Android build no longer
+  packages the demo alone. `scripts/android-package-apk.sh` takes
+  `--manifest` and `--assets` (a list of repository paths for `assets/`),
+  so an app brings its own manifest and asset set; without them it packages
+  the demo as before. `scripts/android-bootstrap-sysroot.sh --with-chatcube`
+  builds the sysroot with the manifest's new `chatcube` feature - UltraNet's
+  OpenSSL, c-ares and curl, plus SQLite, libsodium and Opus - and the
+  Android build workflow has a `chatcube` job that builds `libChatCube.so`
+  with UltraNet and UltraDatabase on and uploads `ChatCube-<abi>` APKs. The
+  root CMake's Android defaults turn off the TDLib download and Matrix's
+  Rust end-to-end encryption, which have no Android build.
+- **Appearance.conf: a second choice made quickly no longer fails to save
+  (Windows).** `AppearanceSettings::Save` writes a temporary file and renames
+  it over Appearance.conf. Windows refuses that rename while another program
+  has the file open, and every running application opens it the moment it
+  changes (the settings watcher), as do the virus scanner and the search
+  indexer. So switching light / dark a second time soon after the first could
+  end in UOS-Settings' "Could not write ...\Appearance.conf." and no
+  application followed. The rename is now tried again for up to half a
+  second, then the file is written in place. Running applications already
+  follow a saved change at once (native folder watch on Windows and Linux).
+- **`AppearanceSettings::Save(std::string* error)`** says why a save failed, in
+  the system's words ("cannot replace it: Access is denied", "... being used by
+  another process"); the parameter is optional, existing callers are
+  unchanged.
+- **TreeView, FilerWidget: one-colour line icons in the theme's ink.** A
+  black outline icon with no colours of its own (a cloud, a server) stayed
+  black on a dark theme. `TreeNodeIcon::drawnInTextColor` draws a tree row's
+  icon as a mask in the row's text colour (the selection text colour on the
+  selected row), and `UltraCanvasFilerWidget::folderIconIsLineArt` does the
+  same for an icon `folderIconProvider` returned, in `FilerStyle::textColor`.
+  Both are off by default: a coloured icon keeps its colours.
+
 #### 2026-11-21 *0.9.583*
 - **EMF+ is read: GDI+ drawings keep their transparency.** The EMF reader
   read only the GDI records, so a GDI+ metafile drew from the copy a dual
