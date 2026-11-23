@@ -689,4 +689,58 @@ void UltraPaintColourToAlphaDialog::EmitPreview() {
     if (previewEnabled && onPreview) onPreview(params, true);
 }
 
+// ===========================================================================
+// IMAGE PICKER
+// ===========================================================================
+
+UltraPaintImagePickerDialog::UltraPaintImagePickerDialog(const std::string& title,
+                                                         const std::vector<UltraPaintPickerItem>& items,
+                                                         const std::string& fallbackIcon)
+    : UltraCanvasWindow() {
+    constexpr int kTile = 116, kGap = 8, kColumns = 5;
+    const int count = static_cast<int>(items.size());
+    const int rows = std::max(1, (count + kColumns - 1) / kColumns);
+    config_.title = title;
+    config_.width = kColumns * kTile + (kColumns - 1) * kGap + 24;
+    config_.height = std::min(rows, 4) * (kTile + kGap) + 24 + 34 + 6;
+    config_.minWidth = kTile + 24; config_.minHeight = kTile + 70;
+    config_.resizable = true;
+    config_.deleteOnClose = true;
+    SetPadding(12);
+    layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+    auto grid = std::make_shared<UltraCanvasContainer>("upk-grid", 0, 0, 0, 0);
+    grid->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap).SetFlexGap(kGap)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Start);
+    grid->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    AddChild(grid);
+
+    for (int i = 0; i < count; ++i) {
+        const auto& item = items[i];
+        auto tile = std::make_shared<UltraCanvasButton>("upk-item-" + std::to_string(i), 0, 0, kTile, kTile, item.caption);
+        tile->SetIcon(item.thumbnailPath.empty() ? fallbackIcon : item.thumbnailPath);
+        tile->SetIconPosition(ButtonIconPosition::Top);
+        tile->SetIconSize(item.thumbnailPath.empty() ? 48 : 80, item.thumbnailPath.empty() ? 48 : 80);
+        tile->SetFontSize(11.0f);
+        tile->SetTooltip(item.tooltip);
+        tile->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        tile->onClick = [this, i]() {
+            auto pick = onPick;   // Close may free this window
+            Close();
+            if (pick) pick(i);
+        };
+        grid->AddChild(tile);
+    }
+
+    auto row = std::make_shared<UltraCanvasContainer>("upk-buttons", 0, 0, 0, 34);
+    row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center)
+                .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexEnd);
+    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto cancel = std::make_shared<UltraCanvasButton>("upk-cancel", 0, 0, 84, 28, Tr("Cancel"));
+    cancel->onClick = [this]() { Close(); };
+    SizeButtonToText(cancel);
+    row->AddChild(cancel);
+    AddChild(row);
+}
+
 } // namespace UltraCanvas

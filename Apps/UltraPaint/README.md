@@ -33,14 +33,33 @@ has its own paint surface, so it keeps its zoom and scroll; the panels, the
 title and the tools follow the tab on show. *File ▸ New*, *Open*, *Paste as
 New Image*, the **+** at the end of the strip and *Open in new tab* on a
 dropped image each add a tab - nothing open is replaced, so none of them asks
-to discard changes. The one exception is the blank canvas a window starts
-with: while nobody has touched it, the first image opened takes its place.
+to discard changes.
+
+### The start page
+
+While no image is open - when a window starts without files, and once its
+last tab has closed - the canvas area shows the start page instead of a blank
+canvas: three buttons, one under the other in the middle, each in a pastel of
+its own.
+
+- **Create new bitmap** - the *New Image* dialog (size, background).
+- **Paste image** - the picture on the clipboard (or an image file copied in a
+  file manager) as a new image; with nothing to paste it offers the image
+  copied last. `Ctrl+V` does the same while the start page shows.
+- **Clipboard history** - the 20 images copied last, from the ULTRA OS
+  clipboard history (`UltraCanvasClipboardHistory`, kept by UltraDesktop and
+  UltraClipboard), as thumbnails with their size; the tooltip says when each
+  was copied. A click opens that image as a new image. Builds without the
+  clipboard history have no such button.
+
+The first image made, pasted or opened takes the start page's place; the
+commands that work on an image do nothing until then.
 
 A dot on a tab marks unsaved changes. Its **×**, or *File ▸ Close Tab*
 (`Ctrl+W`), closes it, asking first when it has unsaved changes. A tab that
 is not on show is brought to the front before it closes, and asked about
-("Close *name*?"), so you see the image going; the last tab closing leaves a
-blank canvas. `Ctrl+Tab` / `Ctrl+Shift+Tab` go to the
+("Close *name*?"), so you see the image going; the last tab closing brings
+back the start page. `Ctrl+Tab` / `Ctrl+Shift+Tab` go to the
 next and previous tab, and a tab can be dragged to another place in the
 strip. Closing the window asks once about all its unsaved images.
 
@@ -377,7 +396,7 @@ binary.
 ## Usage
 
 ```
-UltraPaint                 # blank canvas
+UltraPaint                 # the start page
 UltraPaint photo.jpg       # open an image
 UltraPaint work.ucraster   # open a layered project
 UltraPaint work.ucd        # open an UltraCanvas layered image

@@ -4,6 +4,7 @@
 // import question a dropped file asks and the password a *.ucd is saved with. Each is an UltraCanvasWindow built
 // out of framework elements (spinners, dropdowns, text input, colour picker,
 // buttons) and reports through callbacks.
+// Version: 1.8.0 - UltraPaintImagePickerDialog: a grid of thumbnails to pick an image from
 // Version: 1.7.0 - every text in the person's language; BlendModeDisplayName for the blend-mode lists
 // Version: 1.6.0 - Scale Image: the resampling method and Sharpen after scaling
 // Version: 1.5.0 - the import question offers "Open in new tab" (Action::NewTab) in place of a new window
@@ -28,6 +29,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -197,6 +199,24 @@ private:
     std::shared_ptr<UltraCanvasColorPicker> picker;
     std::shared_ptr<UltraCanvasContainer> sliders;
     std::shared_ptr<UltraCanvasCheckbox> previewBox;
+};
+
+// ===== IMAGE PICKER =====
+// A grid of image thumbnails to choose one from: the start page's
+// "Clipboard history" lists the images copied last. A click picks the
+// image and closes the window.
+struct UltraPaintPickerItem {
+    std::string thumbnailPath;   // a PNG; "" shows a generic picture icon
+    std::string caption;         // under the thumbnail: "1920 x 1080"
+    std::string tooltip;         // "Copied 5 minutes ago"
+};
+
+class UltraPaintImagePickerDialog : public UltraCanvasWindow {
+public:
+    // `fallbackIcon`: what an item without a thumbnail shows.
+    UltraPaintImagePickerDialog(const std::string& title, const std::vector<UltraPaintPickerItem>& items,
+                                const std::string& fallbackIcon);
+    std::function<void(int index)> onPick;
 };
 
 // ===== SHARED BUILDING BLOCKS =====

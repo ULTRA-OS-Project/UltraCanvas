@@ -11,6 +11,8 @@
 // second start hands over add a tab rather than a window. The class also
 // holds the registry of open windows - File > New Window still opens one -
 // and the application exits with the last of them.
+// Version: 2.3.0 - the start page (Create new bitmap, Paste image, Clipboard history) in place of
+//                  a blank canvas while no image is open; CmdClipboardHistory
 // Version: 2.2.0 - PastedFrom / PastedText: a paste's status line as one translatable sentence per source
 // Version: 2.1.0 - lastScaleOptions: Scale Image offers the resampling method and sharpening chosen last
 // Version: 2.0.0 - images in tabs: DocumentTab (document + its own surface), the tab strip
@@ -161,14 +163,23 @@ private:
     // A new tab on `doc`, made the active one.
     void AddDocumentTab(std::shared_ptr<UCRasterDocument> doc);
     // `doc` in a tab: in place of the active tab's when that is a blank
-    // canvas nobody has touched (what the window starts with), else a new one.
+    // canvas nobody has touched, else a new one.
     void ShowInTab(std::shared_ptr<UCRasterDocument> doc);
+    // The start page: what the window shows while no image is open (at the
+    // start, and once the last tab has closed) - Create new bitmap, Paste
+    // image and Clipboard history, one under the other in the middle of the
+    // canvas area. `document` and `surface` are null while it shows.
+    void BuildStartPage();
+    void ShowStartPage(bool show);
+    // The images copied last (the clipboard history's 20 newest), as
+    // thumbnails to pick one from: it opens as a new image.
+    void CmdClipboardHistory();
     // Makes tab `index` the active one: the panels, the title, the tools and
     // the glass follow its document.
     void SwitchToTab(int index);
     // Closes tab `index`. A tab that is not on show is brought to the front
     // and the close asked about first; so is one with unsaved changes.
-    // The last tab closing leaves a blank canvas in its place.
+    // The last tab closing leaves the start page in its place.
     void CloseTab(int index);
     void RemoveTabNow(int index);
     // The surfaces' callbacks to the tools, the status line and the glass.
@@ -468,6 +479,7 @@ private:
     std::shared_ptr<UltraCanvasContainer>      canvasColumn;  // the tab strip over the pages
     std::shared_ptr<UltraCanvasTabbedContainer> tabStrip;
     std::shared_ptr<UltraCanvasContainer>      tabPages;      // the tabs' surfaces, the glass, the text editor
+    std::shared_ptr<UltraCanvasContainer>      startPage;     // in place of the strip and pages while no image is open
     std::vector<std::shared_ptr<DocumentTab>>  documentTabs;  // in the strip's order
     int activeTab = -1;
     int surfaceSerial = 0;                                    // names each tab's surface
