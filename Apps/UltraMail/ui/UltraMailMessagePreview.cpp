@@ -544,7 +544,7 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
         if (onAddContact && hasMessage_ && !curEnv_.fromAddr.empty()) onAddContact(curEnv_);
     };
     warning_->AddChild(warningAddContact_);
-    warningAddContact_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::FlexStart).SetFlexShrink(0);
+    warningAddContact_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start).SetFlexShrink(0);
     warningAddContact_->SetVisible(false);
     root_->AddChild(warning_);
     warning_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
