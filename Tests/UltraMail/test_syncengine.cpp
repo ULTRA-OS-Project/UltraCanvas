@@ -827,11 +827,17 @@ TEST(a_downloaded_body_is_scanned_once_and_its_verdict_stored) {
     REQUIRE(sec.level == ThreatLevel::Scam);
     REQUIRE(sec.reason.find("198.51.100.7") != std::string::npos);
 
-    // An ordinary message in the same batch is scanned too, and comes out clean.
+    // An ordinary message in the same batch is scanned too, and comes out clean
+    // but for its "Re:" to nothing - which only counts from a stranger: the
+    // badge spares Ann once she is in the address book (FindingOnlyFromStrangers).
     MessageSecurity ordinary;
     REQUIRE(fx.store.GetSecurity("erika", "INBOX", 2, ordinary).success);
     REQUIRE(ordinary.Scanned());
-    REQUIRE(ordinary.level == ThreatLevel::Clean);
+    REQUIRE(ordinary.findings == "unsolicited-reply");
+    MessageSecurity plain;
+    REQUIRE(fx.store.GetSecurity("erika", "INBOX", 3, plain).success);
+    REQUIRE(plain.Scanned());
+    REQUIRE(plain.level == ThreatLevel::Clean);
 }
 
 TEST(set_flag_updates_server_and_local) {

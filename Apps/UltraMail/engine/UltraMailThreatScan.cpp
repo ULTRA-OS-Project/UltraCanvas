@@ -1954,8 +1954,10 @@ ThreatReport ScanMessage(const ScanInput& input) {
                 senderInThread = senderInThread || RegistrableDomain(d) == senderReg;
             if (!senderInThread) otherCompany = thread.front();
         }
-        int weight = 25;
+        int weight = 30;
         if (noThread || !otherCompany.empty()) weight += 10;
+        // A "reply" with an unsubscribe link: a mailing tool's sequence, not a person.
+        if (report.bulk) weight += 5;
         // An invoice forwarded by a stranger: the classic fake ("please pay by
         // the 15th") with the payment details or a "document" changed.
         const std::string text = StraightQuotes(Lower(input.subject) + "\n" + bodyLower);
@@ -1977,6 +1979,7 @@ ThreatReport ScanMessage(const ScanInput& input) {
             why += ", in a conversation of " + otherCompany + " that " +
                    (senderDomain.empty() ? std::string("the sender") : senderDomain) +
                    " was never part of";
+        if (report.bulk) why += ", sent by a mailing tool (it has an unsubscribe link)";
         if (bill) {
             std::string word = *bill;
             if (word.back() == '*') word.pop_back();
