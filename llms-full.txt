@@ -1316,6 +1316,33 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   zoom and pan over a dark lightbox; this is the general one.
   See `Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md`.
 
+- **UltraCanvasScreenAreaPicker** (`UltraCanvasScreenAreaPicker.h`) — an
+  area of the screen chosen over a frozen capture: dimmed, a rectangle
+  dragged or a window clicked, Enter for the window under the pointer or the
+  whole screen, Escape to give up; the answer in screen pixels, cropped out
+  of the capture with `ScreenArea::CropToRgba`. Moved from UltraSnip, which
+  takes its snips with it; ChatCube's screenshot button puts the area into
+  the message being written. On macOS placed in points above the menu bar
+  (`WindowType::Overlay`). Core in `core/UltraCanvasScreenAreaPicker.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasScreenAreaPicker.md`.
+
+- **UltraCanvasMapView** (`UltraCanvasMapView.h`) — a map of the world from
+  OpenStreetMap's tiles (or another slippy-map server): the element (drag,
+  wheel zoom, a pin by a click), `DrawMap` into any rectangle (a map card in
+  a list's row) and `RenderMapToRgba` (a map picture); one tile cache for
+  the program, fetched through UltraNet within OpenStreetMap's usage policy.
+  Moved from ChatCube's location window. Core in `core/UltraCanvasMapView.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasMapView.md`.
+
+- **UltraCanvasGeolocation** (`UltraCanvasGeolocation.h`) — where this device
+  is: one position from the system's location service, answered on the UI
+  thread with its accuracy. GeoClue 2 over D-Bus on Linux
+  (`OS/Linux/UltraCanvasLinuxGeolocation.cpp`), CoreLocation on macOS
+  (`OS/MacOS/UltraCanvasMacOSGeolocation.mm`), Windows.Devices.Geolocation
+  through C++/WinRT on Windows (`OS/MSWindows/UltraCanvasWindowsGeolocation.cpp`,
+  where the projection headers are); none elsewhere. Core in
+  `core/UltraCanvasGeolocation.cpp`. See `Docs/UltraCanvas/UltraCanvasGeolocation.md`.
+
 - **UltraCanvasDesktopShell** (`UltraCanvasDesktopShell.h`) — the running
   desktop as a shell sees it: the windows other applications have open and
   which is active, the virtual desktops, the installed applications a launcher
@@ -1346,7 +1373,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   lock (logind), loudspeaker (libpulse) and tray (StatusNotifierItem) in
   `OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`,
   `UltraCanvasLinuxDesktopShellAudio.cpp` and `UltraCanvasLinuxTrayHost.cpp`;
-  a null backend elsewhere. On
+  a null backend elsewhere - except the screen capture on macOS
+  (ScreenCaptureKit, the main display) in
+  `OS/MacOS/UltraCanvasMacOSScreenCapture.mm`; `CanCaptureScreen` says
+  whether a build captures at all. On
   Windows also the standalone **UltraCanvasShellGuard** program
   (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
   instead of Explorer. Public surface:
@@ -27787,6 +27817,7 @@ never to "every desktop".
 | `GetScreenSize(w, h)` | The default screen's size in pixels; on Windows the primary monitor's, the one at 0,0 that a desktop window covers. |
 | `ListScreens()` | Every monitor as a `DesktopScreenInfo` — `x`, `y`, `width`, `height` in physical pixels, `primary`, and `number` - the system's own number for the monitor where it gives one (Windows: n of `\\.\DISPLAYn`, as its display settings number them; 0 on X11) — the primary first, the rest left to right. On Windows `EnumDisplayMonitors`, the primary at 0,0 and a monitor left of or above it at negative coordinates; on X11 RandR's monitors in root-window coordinates, and while nobody chose a primary the one at the origin. Where the platform tells no monitors apart, the one screen `GetScreenSize` reports; a monitor that spans others (a server's automatic whole-screen monitor listed beside ones set with `xrandr --setmonitor`) is left out. A desktop puts its own window on the primary monitor through `WindowConfig::desktopArea` and covers the others with windows of `WindowType::Desktop` placed the same way — UltraDesktop puts its wallpaper there, so a monitor is not left black. |
 | `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On X11 a strut is measured from the root window's edge whatever monitor the window is on, so a window that covers one monitor of several reserves an edge only where its monitor lies on that edge of the root (a strip from the root's edge across another monitor would push that monitor's windows aside) and its strips run the window's own extent, not the root's: a desktop on the right monitor reserves its right bar along its own height and nothing on the left. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
+| `CanCaptureScreen()` | Whether this build can capture the screen at all: Linux (X11, and Wayland through the desktop portal), the BSDs, Windows and macOS; false on Android and WebAssembly, where a screenshot button is better not shown (ChatCube hides its). True does not promise a capture - it can still fail, with its reason (macOS before the person allows it). To let the person choose an area of the capture, see [UltraCanvasScreenAreaPicker](UltraCanvasScreenAreaPicker.md). |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
 | `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
 | `CaptureWindowImage(id, maxWidth, maxHeight, image, &error)` | A small picture of one window of `ListWindows`, for a taskbar's previews: no larger than `maxWidth` x `maxHeight` (the window's proportions kept, never enlarged, shrunk by averaging so text thins out rather than breaking up), in the same `DesktopScreenImage` layout. On Windows the window draws itself into the picture (`PrintWindow` with `PW_RENDERFULLCONTENT`), so a window that others cover shows its own content; on Wayland the compositor copies the window (`ext-image-copy-capture-v1` of the window's `ext-foreign-toplevel-image-capture-source`, the window found on `ext-foreign-toplevel-list-v1` by its app id and title; wlroots 0.19 and later - sway 1.11, labwc, river - niri and others offer it, and elsewhere the answer is false with the reason), with the same result; on X11 it is the window's rectangle of the screen, which shows whatever lies on top of it; macOS has none yet. A minimized window has no picture. False with the reason, and `image` empty. Any thread: UltraDesktop takes its previews on a worker. |
@@ -28121,8 +28152,9 @@ the shell they are free.
 | Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
 | Linux on Wayland (`-DULTRACANVAS_WAYLAND=ON`) | `wayland` (`OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`), phase 1 of `WaylandDesktopShellProposal.md`: the monitors from the compositor's `wl_output`s (position, mode and scale; the first announced is the primary, Wayland naming none), the devices from the same procfs and sysfs probes as X11, the keyboard layout from the seat's xkb keymap; the session's end and lock, the loudspeaker and the notification area are the shared Linux files above, a tray click reported at the last pointer position in the shell's own window (a Wayland client knows no screen position). The window list, the virtual desktops, `ReserveScreenEdges`, the screenshot, the monitor and the global shortcuts answer false with "not available on Wayland yet" until the layer-shell and foreign-toplevel protocols and the Screenshot and GlobalShortcuts portals are in. `CaptureWindowImage` is the compositor's copy of the window through `ext-image-copy-capture-v1` (with `ext-image-capture-source-v1` and `ext-foreign-toplevel-list-v1`, the three XML files carried under `OS/Linux/Wayland/protocols/`), into a `wl_shm` buffer, each step given a second and a half. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, an exclusive one (`StartExclusive`) and the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
-| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
+| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` (except on macOS, below), `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
 | macOS: the applications | `OS/MacOS/UltraCanvasMacOSApplications.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS`): the application list from the bundles and their `Info.plist`, icons drawn from `NSWorkspace iconForFile:` into PNG files in the disk cache's `desktop-icons` folder (`~/Library/Caches/UltraCanvas`, swept by its rule), launch through `NSWorkspace`; on any thread. The rest of the backend is the `null` one above. |
+| macOS: the screen capture | `OS/MacOS/UltraCanvasMacOSScreenCapture.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE`): `CaptureScreen`, `CaptureScreenImage` and `CaptureScreenArea` through ScreenCaptureKit's `SCScreenshotManager` (macOS 14; `CGDisplayCreateImage` is obsolete from the macOS 15 SDK on). The main display - the one with the menu bar - whole, at its own pixels (a Retina display at twice its points), without the pointer, its top-left corner 0,0; other displays are not captured yet. macOS asks the person once for *Screen & System Audio Recording* (Privacy & Security): until it is allowed the capture fails with that reason, the first try opens the system's request, and the program needs starting again once it is granted. The call waits for ScreenCaptureKit (ten seconds at most), so it may be made from the UI thread. `ListScreens` stays empty on macOS. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -41052,6 +41084,79 @@ slider->onValueChanged = [gaugePtr](float v) {
 - `include/Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` — complete header.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasGeolocation.md
+==============================================================================
+
+# UltraCanvas Geolocation Documentation
+
+## Overview
+
+**UltraCanvasGeolocation** asks the system's location service where this
+device is, once, and answers on the UI thread: latitude, longitude and how
+far off it may be. ChatCube's *My position* is built on it.
+
+**File Location**: `include/UltraCanvasGeolocation.h`, `core/UltraCanvasGeolocation.cpp`,
+`OS/Linux/UltraCanvasLinuxGeolocation.cpp`, `OS/MacOS/UltraCanvasMacOSGeolocation.mm`,
+`OS/MSWindows/UltraCanvasWindowsGeolocation.cpp`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasGeolocation.h"
+
+#include <cstdio>
+
+using namespace UltraCanvas;
+
+void WhereAmI() {
+    if (!UltraCanvasGeolocation::IsAvailable()) return;   // hide the button instead
+    UltraCanvasGeolocation::RequestPosition([](const GeoPositionResult& r) {
+        if (r.ok) {
+            std::printf("%f, %f (%s)\n", r.latitude, r.longitude,
+                        UltraCanvasGeolocation::AccuracyText(r.accuracyMeters).c_str());
+        } else {
+            std::printf("not known: %s\n", r.error.c_str());
+        }
+    });
+}
+```
+
+## Key API
+
+| Call | Meaning |
+|---|---|
+| `IsAvailable()` | Whether this build has a location backend. True does not promise a position. |
+| `BackendName()` | "GeoClue", "CoreLocation", "Windows" or "none". |
+| `RequestPosition(done, timeoutMs)` | One position; `done` runs on the UI thread exactly once - with the position, or with the reason there is none (`error`), at the latest after `timeoutMs` (20 s by default). |
+| `AccuracyText(metres)` | "about 30 m", "about 2 km"; empty when not known. |
+
+`GeoPositionResult`: `ok`, `latitude`, `longitude` (WGS 84 degrees),
+`accuracyMeters` (-1 when not said), `error`.
+
+## The backends
+
+| Platform | How |
+|---|---|
+| Linux | GeoClue 2 on the system D-Bus: a client of the manager, `DesktopId` the executable's name (its `.desktop` file's), accuracy "exact", `Start`, the first `LocationUpdated`, the Location object's `Latitude`, `Longitude`, `Accuracy`, `Stop`. On a thread of its own with its own GLib main context. GeoClue asks the person through the desktop's agent (GNOME Shell, KDE, ...) - without an agent it gives no client. Its sources are Wi-Fi, a GPS or modem, a static file (`/etc/geolocation`) and the network's address. |
+| macOS | CoreLocation: a `CLLocationManager` on the main thread, "when in use" permission asked the first time, `requestLocation`. The bundle's `Info.plist` must carry `NSLocationWhenInUseUsageDescription`, or macOS refuses without asking: `package-macos.sh` writes it for the apps in its `location_usage` list (ChatCube, UltraDesktop). |
+| Windows | `Windows.Devices.Geolocation` through C++/WinRT (`Geolocator::RequestAccessAsync`, `GetGeopositionAsync`), built where CMake finds `winrt/Windows.Devices.Geolocation.h` (the MSYS2 `cppwinrt` package, the Windows SDK) - `ULTRACANVAS_HAVE_WINRT_GEOLOCATION`. Windows decides by *Location services* and *Let desktop apps access your location*. |
+| BSD, Android, WebAssembly | None yet: `IsAvailable()` false. |
+
+## Notes
+
+- A position from Wi-Fi or the network's address can be off by a kilometre
+  or more: show `AccuracyText`, or zoom a map out to match.
+- `Tests/MapGeolocationTest` asks the backend where one answers and skips
+  where none does. To try GeoClue without a desktop: a static
+  `/etc/geolocation` (latitude, longitude, altitude, accuracy - one a line),
+  `[static-source] enable=true` and a section for the program in
+  `/etc/geoclue/geoclue.conf`, and GeoClue's demo agent
+  (`/usr/libexec/geoclue-2.0/demos/agent`) running.
+- A map to show it on: [UltraCanvasMapView](UltraCanvasMapView.md).
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasGitGraphExamples.md
 ==============================================================================
 
@@ -50921,6 +51026,111 @@ executable, an icon), a web location and an alias-shaped file in a temp
 folder and reads them back — including the fallbacks for a bundle that names
 no icon and no display name, and the directories that only look like bundles.
 It runs on every platform, because the reading has to work on every platform.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMapView.md
+==============================================================================
+
+# UltraCanvas Map View Documentation
+
+## Overview
+
+**UltraCanvasMapView** shows a map of the world from a slippy-map tile
+server - OpenStreetMap's by default. It comes three ways:
+
+- **The element** `UltraCanvasMapView`: dragged to move, the wheel to zoom,
+  a click to put the pin.
+- **A map drawn into any rectangle** `DrawMap`: a map card in a list's row,
+  a thumbnail in a delegate.
+- **A map as pixels** `RenderMapToRgba`: a picture to save, copy or send.
+
+The tiles are fetched in the background through UltraNet, kept in memory and
+shared by every map of the program. ChatCube's location window and its map
+cards in the chat are built on it.
+
+**File Location**: `include/UltraCanvasMapView.h`, `core/UltraCanvasMapView.cpp`
+**Version**: 1.0.0 - from ChatCube's location window, made a framework element
+**Author**: UltraCanvas Framework
+
+## Features
+
+- ✅ Web Mercator, the projection every slippy-map server draws, there and back
+  (`WebMercator::ToWorld`, `FromWorld`)
+- ✅ Drag to move, wheel to zoom, click to put the pin (`onPinMoved`), or pin
+  only from code (`SetPinOnClick(false)`)
+- ✅ One tile cache for the whole program: a tile fetched once is drawn
+  everywhere and never fetched again while the program runs
+- ✅ OpenStreetMap's tile usage policy kept: the program's User-Agent, two
+  requests at a time, the attribution on every map
+- ✅ Another tile server with its own attribution (`MapTiles::SetServer`)
+
+## Quick Start
+
+```cpp
+#include "UltraCanvasMapView.h"
+
+#include <memory>
+
+using namespace UltraCanvas;
+
+std::shared_ptr<UltraCanvasMapView> MakeMap() {
+    // OpenStreetMap's policy asks every program to name itself
+    MapTiles::SetUserAgent("MyApp/1.0 (ULTRA OS)");
+    auto map = std::make_shared<UltraCanvasMapView>("map", 0, 0, 480, 320);
+    const GeoPoint gate{52.516275, 13.377704};
+    map->CentreOn(gate, 16);
+    map->SetPin(gate);
+    map->onPinMoved = [](const GeoPoint& at) {
+        // the person clicked here: at.latitude, at.longitude
+        (void)at;
+    };
+    return map;
+}
+
+// A map card in a delegate's row; MapTiles::AddListener tells when the
+// tiles that were missing have come, to draw the row again
+void PaintCard(IRenderContext* ctx, const Rect2Dd& box, const GeoPoint& place) {
+    DrawMap(ctx, box, place, 15, &place, true);
+}
+```
+
+## Key API
+
+### `UltraCanvasMapView`
+
+| Call | Meaning |
+|---|---|
+| `CentreOn(point, zoom)` / `GetCentre()` / `GetZoom()` | The view: the point in the middle, the zoom (1 the world, 19 a house). |
+| `Zoom(by)` | One step in (+1) or out (-1), about the centre. |
+| `SetPin(point)` / `ClearPin()` / `HasPin()` / `GetPin()` | The red pin. |
+| `SetPinOnClick(on)` | Whether a click puts the pin where it lands (true by default). |
+| `onPinMoved(point)` | A click put the pin there. |
+| `onViewChanged()` | The centre or the zoom changed. |
+
+### Drawing without the element
+
+| Call | Meaning |
+|---|---|
+| `DrawMap(ctx, rect, centre, zoom, pin, attribution)` | The map into `rect`; tiles not here yet are asked for and drawn grey. |
+| `RenderMapToRgba(centre, zoom, width, height, pin, out)` | The same as straight RGBA from the tiles here now (`ClipboardDib::EncodePng` makes a PNG of it). |
+| `DrawMapPin(ctx, at)` | The pin alone. |
+
+### `MapTiles`
+
+| Call | Meaning |
+|---|---|
+| `SetUserAgent(text)` | The program's name for the tile server. |
+| `SetServer(urlTemplate, attribution)` | Another server: a URL with `{z}`, `{x}`, `{y}`, and the credit it asks for. |
+| `Attribution()` | The credit the maps show. |
+| `AddListener(fn)` / `RemoveListener(id)` | Told on the UI thread whenever a tile arrives. |
+
+## Notes
+
+- Coordinates are WGS 84 degrees; `WebMercator` clips latitude to ±85.05°,
+  as the tiles do.
+- The tiles are fetched only while an application runs
+  (`UltraCanvasApplicationBase::GetCurrent()`); without one a map draws grey.
+- Where the person is: [UltraCanvasGeolocation](UltraCanvasGeolocation.md).
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMathEngine.md
@@ -71533,6 +71743,152 @@ Integrates with the UltraCanvas event system:
   - Integration with chart framework
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasScreenAreaPicker.md
+==============================================================================
+
+# UltraCanvas Screen Area Picker Documentation
+
+## Overview
+
+**UltraCanvasScreenAreaPicker** lets a person choose an area of the screen:
+the screen, captured a moment before, is shown frozen in a borderless window
+that covers it, dimmed, and the person drags a rectangle over it or clicks a
+window. The answer is a rectangle in screen pixels; the pixels of it come
+from the same capture (`ScreenArea::CropToRgba`). UltraSnip takes its
+screenshots and recordings with it, and ChatCube's screenshot button puts the
+chosen area into the message being written.
+
+**File Location**: `include/UltraCanvasScreenAreaPicker.h`, `core/UltraCanvasScreenAreaPicker.cpp`
+**Version**: 1.0.0 - moved here from UltraSnip (its overlay and capture helpers)
+**Author**: UltraCanvas Framework
+
+## Features
+
+- ✅ The frozen screen, dimmed, with the dragged rectangle in full colour and
+  its size in pixels beside it; a crosshair under the pointer
+- ✅ **Window** mode: the window under the pointer is lit (the rest darker
+  still) with its title and size; a click takes it, a drag still takes a
+  rectangle
+- ✅ Keys: **Enter** or **Space** takes the window under the pointer (Window
+  mode) or the whole screen; **Escape** or a right click gives up
+- ✅ The pure arithmetic in `ScreenArea` - the rectangle between two drag
+  corners, a clip, the crop into straight RGBA, the topmost window under a
+  point - usable and testable without a window
+- ✅ macOS: placed in points (the capture is in pixels), above the menu bar
+  and the Dock, with the keyboard (`WindowType::Overlay`)
+
+## Quick Start
+
+Hide your own window first if it is not to be in the picture, and give the
+window system a moment to take it off the screen (UltraSnip and ChatCube
+wait 350 ms). Then capture, open the picker on the capture, and crop:
+
+```cpp
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasClipboardDib.h"
+#include "UltraCanvasDesktopShell.h"
+#include "UltraCanvasScreenAreaPicker.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
+using namespace UltraCanvas;
+
+class ScreenshotTaker {
+public:
+    // Call when the program's own window has left the screen
+    bool Start(std::string& error) {
+        if (!UltraCanvasDesktopShell::CanCaptureScreen()) {
+            error = "This system cannot capture the screen.";
+            return false;
+        }
+        if (!UltraCanvasDesktopShell::CaptureScreenImage(shot_, &error)) return false;
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        std::vector<ScreenAreaWindow> windows = ScreenArea::ListPickableWindows();
+        picker_ = std::make_unique<UltraCanvasScreenAreaPicker>();
+        picker_->SetTitle("My program");
+        // Called once the picker has closed; the picker is let go of from
+        // the UI thread's queue, never from inside its own callback
+        picker_->onSelected = [this, app](const Rect2Di& area) {
+            app->PostToUIThread([this, area]() {
+                picker_.reset();
+                ClipboardDib::RgbaImage image;
+                std::vector<uint8_t> png;
+                if (ScreenArea::CropToRgba(shot_, area, image) && ClipboardDib::EncodePng(image, png)) {
+                    // ... write png to a file, put it on the clipboard, ...
+                }
+                shot_ = DesktopScreenImage();
+            });
+        };
+        picker_->onCancelled = [this, app]() {
+            app->PostToUIThread([this]() {
+                picker_.reset();
+                shot_ = DesktopScreenImage();
+            });
+        };
+        const ScreenAreaMode mode = windows.empty() ? ScreenAreaMode::Rectangle : ScreenAreaMode::Window;
+        return picker_->Open(shot_, mode, windows, &error);
+    }
+
+private:
+    DesktopScreenImage shot_;
+    std::unique_ptr<UltraCanvasScreenAreaPicker> picker_;
+};
+```
+
+## Key API
+
+### `UltraCanvasScreenAreaPicker`
+
+| Call | Meaning |
+|---|---|
+| `SetTitle(title)` | The picker window's title where the window system shows one (a task switcher): the program's name. Before `Open`. |
+| `Open(shot, mode, windows, &error)` | Show `shot` (a `DesktopScreenImage` from `UltraCanvasDesktopShell::CaptureScreenImage`) over the screen and let the person choose. `windows` (screen pixels, bottom first) is what Window mode offers; empty, a click takes nothing and only rectangles are chosen. False with the reason when the picture could not be shown. |
+| `Close()` | Take the picker down without calling either callback. |
+| `SetMode(mode)` | The shape while it is open: `ScreenAreaMode::Rectangle` or `ScreenAreaMode::Window` (`FullScreen` is for the caller, which then takes the whole capture without the picker). |
+| `SetHintTop(top)` | Where the hint line starts from the top, in logical pixels - lower while something of the caller's sits over the top of the screen (UltraSnip's bar). |
+| `IsOpen()` | Whether it is on the screen. |
+| `onSelected(area)` | The chosen rectangle in screen pixels, as `ListScreens` and the capture count them. Called after the picker window has closed. |
+| `onCancelled()` | Escape, a right click, or the window closed. |
+| `onReleased()` | A button went up over the picker while it is still open: a window kept above it (UltraSnip's bar) raises itself again. |
+
+### `ScreenArea`
+
+| Call | Meaning |
+|---|---|
+| `RectBetween(a, b)` | The rectangle between two drag corners, either way round, both corners inside it (a click is 1 x 1). |
+| `ClipRect(rect, bounds)` | `rect` cut down to `bounds`; width or height 0 when they do not meet. |
+| `CropToRgba(shot, area, out, &taken)` | `area` (screen pixels) out of `shot` as straight, opaque RGBA - what `ClipboardDib::EncodePng`, the clipboard and the image element take. Clipped to the shot; `taken` says what was taken. False when nothing of it is in the shot. |
+| `TopmostWindowAt(windows, point)` | The index of the topmost window under `point` (the list bottom first); -1 for none. |
+| `ListPickableWindows()` | The windows Window mode offers: `UltraCanvasDesktopShell::ListWindows` without the minimized ones and those kept out of the taskbar, with their bounds, bottom first. Empty where the platform lists no windows (Wayland, macOS). |
+
+### `UltraCanvasScreenAreaSelection`
+
+The marquee element the picker lays over the frozen screen: the dimming, the
+dragged rectangle and its size, the crosshair, the lit window and the hint.
+The picker builds it; it is public for a caller that shows a capture in a
+window of its own.
+
+## Platforms
+
+| Platform | Placement |
+|---|---|
+| Linux (X11), BSD, Windows | A `WindowType::Borderless` window at the capture's position and size, in physical pixels. |
+| Linux (Wayland) | The same; the capture comes from the desktop portal and there is no window list, so rectangles only. |
+| macOS | A `WindowType::Overlay` window - borderless, above the menu bar and the Dock, on every Space, given the keyboard - placed and sized in points: the capture's pixels over the window's backing scale. The capture is the main display ([UltraCanvasDesktopShell](UltraCanvasDesktopShell.md)). |
+| Android, WebAssembly | No capture (`CanCaptureScreen()` false). |
+
+## Notes
+
+- Hide your windows before the capture and show them again in both
+  callbacks: the picker shows only what was captured.
+- The capture can be large (a 4K screen is 33 MB): let go of it
+  (`shot = DesktopScreenImage()`) once the area is cropped.
+- The hint texts go through `Tr` and are in the standard catalogue
+  (`media/locale/en/Standard.json`).
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasScrollbarExamples.md
 ==============================================================================
 
@@ -88498,6 +88854,8 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog`, `ShowMetadataDialog()` — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
 | Turn a 3D model into a bitmap, letting the user frame the view first | `UltraCanvasModelViewDialog`, `ShowModelViewDialog()` ([doc](UltraCanvasModelViewDialog.md)) | `dialogs/UltraCanvasModelViewDialog.h` |
 | A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
+| Let the person choose an area of the screen - a rectangle dragged or a window clicked over the frozen, dimmed screen - for a screenshot or a recording; `UltraCanvasScreenAreaSelection` is its marquee ([doc](UltraCanvasScreenAreaPicker.md)) | `UltraCanvasScreenAreaPicker`, `UltraCanvasScreenAreaSelection` | `UltraCanvasScreenAreaPicker.h` |
+| A map of a place - OpenStreetMap's tiles, dragged, zoomed, a pin put by a click; `DrawMap` draws one into any rectangle (a card in a list's row) ([doc](UltraCanvasMapView.md)) | `UltraCanvasMapView`, `DrawMap` | `UltraCanvasMapView.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
 | Startup splash (logo, version, "GUI by" attribution, timeout) | `UltraCanvasSplashScreen` | `UltraCanvasSplashScreen.h` |
 | A notification on screen (a toast: app, summary, body, action buttons, close) - and `UltraCanvasNotificationToastHost`, which draws the UltraMessage notifications nothing else draws, stacked in a screen corner. For the desktop shell only: an application posts a `system.notification` instead ([doc](UltraCanvasNotificationToast.md)) | `UltraCanvasNotificationToast` | `Plugins/UltraMessage/UltraCanvasNotificationToast.h` |
@@ -113529,14 +113887,25 @@ change is kept in the settings folder and shows at the next start.
 | Path | What is in it |
 |---|---|
 | `ui/UltraSnipTypes.h` | The request: shape, kind, delay, as JSON between starts |
-| `ui/UltraSnipCapture.*` | No UI: the rectangle from a drag, the crop of a capture into RGBA, the topmost window under a point, where the recording bar goes, files written and copied |
+| `ui/UltraSnipCapture.*` | No UI: where the recording bar goes, files written and copied; the rectangle from a drag, the crop of a capture into RGBA and the topmost window under a point are the framework's `ScreenArea` (`UltraCanvasScreenAreaPicker.h`), named here as before |
 | `ui/UltraSnipSettings.*` | The settings file, through `UltraCanvasAppSettings`: the picture and video types and folders, the frame rate, the after-snip behaviour; the paths of a new snip |
 | `ui/UltraSnipSettingsDialog.*` | The settings window: `UltraCanvasTreeView` of pages on the left, a page of `UltraCanvasRadio` / `UltraCanvasCheckbox` / `UltraCanvasSlider` / `UltraCanvasDropdown` controls on the right, the notes block at the foot - UltraFiler's settings window's skeleton |
-| `ui/UltraSnipOverlay.*` | The selection: a borderless window the size of the screen showing the frozen capture (`UltraCanvasImageElement`) under the marquee element (the dimming, the rectangle and its size, the crosshair, the outlined window, the hint) |
+| *(framework)* `UltraCanvasScreenAreaPicker` | The selection: a borderless window the size of the screen showing the frozen capture (`UltraCanvasImageElement`) under the marquee element (the dimming, the rectangle and its size, the crosshair, the outlined window, the hint). It was `ui/UltraSnipOverlay.*`; it moved to the framework so ChatCube's screenshot button uses the same one - `Docs/UltraCanvas/UltraCanvasScreenAreaPicker.md` |
 | `ui/UltraSnipRecorder.*` | The recording thread: `CaptureScreenArea` at the frame rate into `VideoFXFrameRecorder`; the clock that leaves pauses out |
 | `ui/UltraSnipRecordingBar.*` | The floating bar: a notification-type window (above everything, never taking the keyboard) with the time, Pause / Resume and Stop |
 | `ui/UltraSnipWindow.*` | The window: the bar (`UltraCanvasButton`, two `UltraCanvasSegmentedControl`s, an `UltraCanvasDropdown`), the result (`UltraCanvasImageElement` / `UltraCanvasMediaViewer`), the actions and the Settings button, and the capture step by step |
 | `main.cpp` | The command line and the single instance |
+
+==============================================================================
+FILE: Docs/UltraSnip/changelog.d/picker-in-framework.md
+==============================================================================
+
+- **The selection over the screen is the framework's now.** UltraSnip's
+  overlay - the frozen, dimmed screen with the rectangle or the lit window -
+  moved into UltraCanvas (`UltraCanvasScreenAreaPicker`), so ChatCube's
+  screenshot button uses the same one. Nothing changes in how a snip is
+  taken. On a Mac the selection now opens, above the menu bar, now that the
+  framework captures the screen there.
 
 ==============================================================================
 FILE: Docs/UltraToDo/README.md
