@@ -7,15 +7,18 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import shutil
 import tempfile
 import zipfile
 from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from PIL import Image
 
@@ -156,6 +159,33 @@ class AccountTests(PortalCase):
         User.objects.create_user("dana@example.org", PASSWORD, email_verified=True)
         self.client.post("/account/password/reset/", {"email": "dana@example.org"})
         self.assertIn(ROOT + "/account/password/reset/", mail.outbox[0].body)
+
+
+class StaticFilesTests(PortalCase):
+    def test_a_page_names_its_static_files_by_their_content(self):
+        """As the portal runs in production: collectstatic lays every static
+        file out under a name with its content's hash, and the pages link
+        those - never the bare name, which a browser may hold from the
+        release before (a new page drawn with the old portal.css)."""
+        static_root = self.folder / "static"
+        hashed = {**settings.STORAGES, "staticfiles": {"BACKEND": settings.HASHED_STATIC_FILES}}
+        with override_settings(STATIC_ROOT=static_root, STORAGES=hashed):
+            call_command("collectstatic", interactive=False, verbosity=0)   # refuses a file that names one it cannot find
+            self.make_publisher()
+            self.sign_in("dev@example.org")
+            self.post("/console/apps/new/", {"name": "MyApp", "app_id": "org.acme.myapp", "kind": "app", "category": "utilities"})
+            page = self.client.get("/console/apps/org.acme.myapp/listing/").content.decode()
+            for name, ending in (("portal/portal", "css"), ("portal/portal", "js"), ("portal/vendor/bootstrap/bootstrap.min", "css"),
+                                 ("portal/vendor/bootstrap/bootstrap.bundle.min", "js"), ("portal/vendor/dropzone/dropzone.min", "js")):
+                self.assertNotIn(f"/static/{name}.{ending}", page)
+                linked = re.search(rf"/static/({re.escape(name)}\.[0-9a-f]{{12}}\.{ending})\"", page)
+                self.assertIsNotNone(linked, name)
+                source = Path(settings.STATICFILES_DIRS[0]) / f"{name}.{ending}"
+                self.assertEqual((static_root / linked.group(1)).read_bytes(), source.read_bytes())
+
+    def test_a_developers_machine_and_the_tests_need_no_manifest(self):
+        self.assertEqual(settings.STORAGES["staticfiles"]["BACKEND"], settings.PLAIN_STATIC_FILES)
+        self.assertContains(self.client.get("/"), "/static/portal/portal.css")
 
 
 class PublisherTests(PortalCase):

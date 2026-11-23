@@ -310,7 +310,7 @@ Under `ULTRASTORE_PORTAL_DATA_DIR` (`./var` on a developer's machine):
 | `media/apps/<app id>/` | icons and screenshots; public |
 | `packages/<sha256>.<format>` | every uploaded package; **never served** |
 | `public/v1/` | the publish folder: `catalog.json`, `catalog.json.sig`, `packages/` (hard links into the package store), `restricted/` (a paid app's packages without a trial - served to a signed link only) |
-| `static/` | `collectstatic`'s output |
+| `static/` | `collectstatic`'s output: every static file, and a copy of each under a name with its content's hash (`portal/portal.3f2a9c1b7d4e.css`), which is the one the pages link |
 
 ## Running
 
@@ -345,6 +345,16 @@ ultrastore-portal migrate
 ultrastore-portal createsuperuser           # the first operator
 systemctl enable --now ultrastore-portal
 ```
+
+**Updating** is the new code installed and the service restarted
+(`pip install` again, `systemctl restart ultrastore-portal`): the unit runs
+`migrate` and `collectstatic` before the portal starts. Outside `DEBUG` the
+pages link every stylesheet and script under a name that carries a hash of
+its content (`ManifestStaticFilesStorage`; `collectstatic` writes the files
+and their manifest), so no browser draws an update's pages with the files it
+kept from the release before. Run by hand without the unit, `collectstatic`
+comes before the first page: a page whose static file is not in the manifest
+is an error, not a page without its stylesheet.
 
 The first operator makes the others in the admin site (`/admin/`, *Users*:
 *Operator* ticked), writes the first publisher terms there (*Terms

@@ -1,6 +1,7 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.3.1 - static files under names that carry their content's hash
 Version: 0.3.0 - the portal_ui template library, messages as Bootstrap alerts;
                  a password is 8 to 64 characters
 Version: 0.1.0
@@ -178,6 +179,21 @@ PUBLISH_DIR = DATA_DIR / "public"
 STATIC_ROOT = DATA_DIR / "static"
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [PACKAGE_DIR_ / "static"]
+# A static file is served under a name that carries a hash of its content
+# (portal/portal.3f2a9c1b7d4e.css): collectstatic writes it and a manifest,
+# and {% static %} names it. So the stylesheet and the script of an update
+# have addresses no browser has seen, and a page is never drawn with the
+# files of the release before it - which is what happened when the pages
+# moved to Bootstrap and browsers kept the old portal.css for the day the
+# web server lets them (deploy/nginx.conf). The manifest is made by
+# collectstatic, which the service runs on every start; a developer's
+# machine and the tests have none and serve the files under their own names.
+HASHED_STATIC_FILES = "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+PLAIN_STATIC_FILES = "django.contrib.staticfiles.storage.StaticFilesStorage"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": PLAIN_STATIC_FILES if (DEBUG or RUNNING_TESTS) else HASHED_STATIC_FILES},
+}
 
 MAX_PACKAGE_MB = int(env("MAX_PACKAGE_MB", "512"))
 MAX_IMAGE_MB = int(env("MAX_IMAGE_MB", "8"))
