@@ -354,6 +354,19 @@ namespace UltraCanvas {
         // False with the reason; `out` is then empty.
         static bool CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
                                        std::string* error = nullptr);
+        // A live picture of window `sourceId` drawn by the compositor into
+        // window `destinationId` - one of this program's own - inside the
+        // rectangle x, y, width, height of its client area (physical
+        // pixels), the source's proportions kept and centred, kept up to
+        // date as the source changes. Unlike CaptureWindowImage it shows a
+        // minimized window too, as it last looked: a window minimized
+        // before this program started has a picture all the same. Windows
+        // only (DWM, as Explorer's taskbar thumbnails); 0 elsewhere and on
+        // failure, and the caller captures instead. The handle ends with
+        // HideWindowThumbnail, or with the destination window.
+        static uint64_t ShowWindowThumbnail(uint64_t destinationId, uint64_t sourceId, int x, int y, int width,
+                                            int height);
+        static void HideWindowThumbnail(uint64_t thumbnail);
         // "<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png" - the
         // user's Pictures folder through GetWellKnownUserFolders, the home
         // directory when there is none. Only names the file; CaptureScreen

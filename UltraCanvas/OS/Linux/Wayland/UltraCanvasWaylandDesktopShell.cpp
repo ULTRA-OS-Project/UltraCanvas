@@ -949,6 +949,10 @@ bool GetWindowBounds(uint64_t, int&, int&, int&, int&) {
 
 bool MoveWindowTo(uint64_t, int, int) { return false; }
 
+// No compositor thumbnails here: the caller captures the window instead.
+uint64_t ShowWindowThumbnail(uint64_t, uint64_t, int, int, int, int) { return 0; }
+void HideWindowThumbnail(uint64_t) {}
+
 bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error) {
     out = DesktopScreenImage();
     std::lock_guard<std::mutex> lock(g_shellMutex);

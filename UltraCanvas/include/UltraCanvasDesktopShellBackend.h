@@ -82,6 +82,10 @@ namespace DesktopShellBackend {
     // One window at its own size (the core scales it down); false (with the
     // reason) for a minimized or vanished window.
     bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error);
+    // A compositor-drawn live picture of `sourceId` in `destinationId`
+    // (UltraCanvasDesktopShell::ShowWindowThumbnail); 0 where there is none.
+    uint64_t ShowWindowThumbnail(uint64_t destinationId, uint64_t sourceId, int x, int y, int width, int height);
+    void HideWindowThumbnail(uint64_t thumbnail);
 
     // The installed applications, where the platform keeps them somewhere
     // other than freedesktop desktop entries: the Start menu's shortcuts on

@@ -56,6 +56,7 @@
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
 //   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.10.0 - ShowWindowThumbnail / HideWindowThumbnail: DWM live thumbnails (DwmRegisterThumbnail)
 // Version: 1.9.0 - the exclusive global shortcut: a low-level hook that swallows the key (StartExclusive)
 // Version: 1.8.0 - OpenDisplaySettings: Settings > Display (ms-settings:display)
 // Version: 1.7.0 - CaptureWindowImage (PrintWindow with the full content);
@@ -1745,6 +1746,45 @@ bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
 bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out, std::string& error) {
     const int area[4] = {x, y, width, height};
     return CaptureScreenPixels(out, error, area);
+}
+
+// DWM draws the source into the destination itself, live: what Explorer's
+// taskbar thumbnails are. A minimized window shows as it last looked, which
+// PrintWindow cannot give - it draws nothing for a minimized window.
+uint64_t ShowWindowThumbnail(uint64_t destinationId, uint64_t sourceId, int x, int y, int width, int height) {
+    const HWND destination = ToHwnd(destinationId);
+    const HWND source = ToHwnd(sourceId);
+    if (!IsWindow(destination) || !IsWindow(source) || destination == source) return 0;
+    HTHUMBNAIL thumbnail = nullptr;
+    if (FAILED(DwmRegisterThumbnail(destination, source, &thumbnail)) || !thumbnail) return 0;
+    // The source's proportions, centred in the rectangle.
+    RECT target = {x, y, x + width, y + height};
+    SIZE size = {};
+    if (SUCCEEDED(DwmQueryThumbnailSourceSize(thumbnail, &size)) && size.cx > 0 && size.cy > 0) {
+        const double scale = std::min({1.0, static_cast<double>(width) / size.cx,
+                                       static_cast<double>(height) / size.cy});
+        const int w = std::max(1, static_cast<int>(size.cx * scale + 0.5));
+        const int h = std::max(1, static_cast<int>(size.cy * scale + 0.5));
+        target.left = x + (width - w) / 2;
+        target.top = y + (height - h) / 2;
+        target.right = target.left + w;
+        target.bottom = target.top + h;
+    }
+    DWM_THUMBNAIL_PROPERTIES properties = {};
+    properties.dwFlags = DWM_TNP_RECTDESTINATION | DWM_TNP_VISIBLE | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY;
+    properties.rcDestination = target;
+    properties.fVisible = TRUE;
+    properties.opacity = 255;
+    properties.fSourceClientAreaOnly = FALSE;
+    if (FAILED(DwmUpdateThumbnailProperties(thumbnail, &properties))) {
+        DwmUnregisterThumbnail(thumbnail);
+        return 0;
+    }
+    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(thumbnail));
+}
+
+void HideWindowThumbnail(uint64_t thumbnail) {
+    DwmUnregisterThumbnail(reinterpret_cast<HTHUMBNAIL>(static_cast<uintptr_t>(thumbnail)));
 }
 
 bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error) {

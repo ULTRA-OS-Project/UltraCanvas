@@ -131,6 +131,11 @@ highlighted.
   window's button to minimise it.
 - **Right-click** for **Activate**, **Minimize**, **Move to** (a desktop, or
   **Every desktop**), **Pin to taskbar** (section 4.1) and **Close window**.
+- **Rest the pointer** on a button and pictures of that program's windows
+  open beside it; click one to bring that window forward, or its **×** to
+  close it. On Windows the pictures are live and a minimized window shows
+  as it last looked. On Linux a minimized window shows the last picture
+  taken of it, or its program's icon until it has been shown once.
 - **Drag** a button to put it somewhere else in the row. A new window joins
   its program's other windows.
 - When the row is full, scroll it with the mouse wheel.
