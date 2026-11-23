@@ -61,6 +61,11 @@ over these.
 | `BooksBrowse.dc.html` | browse: the format (audiobooks, e-books, both editions), genre, language and *Included with Plus* filters work over a sample catalogue (state in the script), the cover grid with length and price | page |
 | `BooksLibrary.dc.html` | your library: the sections rail (in progress, finished, on this machine, borrowed from Plus) with collections and the download folder, the titles in progress with the device the place was last kept on, bookmarks, highlights and the files, the table of all titles, this year's hours, pages and the authors' share | page |
 | `BooksPhoneListen.dc.html` | listening on a phone: the cover, the chapter picker, the position in the chapter and what is left in the book, 30-second skips, previous and next chapter, speed, the sleep timer, bookmark, *read here* in the e-book, downloaded and the place kept with the laptop | 390 × 844 |
+| `TradeHome.dc.html` | the B2B trade variant's home: the products / suppliers search switch works in the script, the request-for-quotation box, the categories, ready-to-ship products priced by quantity tier with the minimum order and a working category filter, verified suppliers with their record, how trade assurance works | page |
+| `TradeProduct.dc.html` | a product (an industrial IoT gateway): the three quantity price tiers, a quantity field that picks the tier and computes the goods, the pallet shipping, the total and the 30 % deposit (state in the script), samples, lead time, the specification, buyers' reports, the order in escrow, the supplier's record | page |
+| `TradeSupplier.dc.html` | a supplier's profile (a verified manufacturer): the record (response time, on-time delivery, orders, escrow volume, disputes), what the operator verified (register, VAT id, factory visit, ISO certificates), main products, capabilities, recent orders through the store, an inquiry form | page |
+| `TradeRFQ.dc.html` | the buyer desk: the requests for quotation, one request's quotes compared in a table sorted by landed cost, unit price, lead time or minimum order (the sort works in the script), *Ask back* and *Award*, the award turning into an order with the five escrow steps, the orders in escrow | page |
+| `TradePhoneHome.dc.html` | sourcing on a phone: search, the categories, the request-for-quotation card with the quotes in, ready-to-ship products with the price band and the minimum order, the bottom tab bar (source, quotes, orders, messages) | 390 × 844 |
 
 Each `.dc.html` is one self-contained HTML page. Every colour, size,
 radius and font is inline on the element, so read the file next to the
@@ -264,6 +269,22 @@ M4B without DRM, so UltraViewer and any other reader open them. The shop
 is UltraStore's own business, not UltraPress's. Every book, author,
 narrator, review, count and figure is invented sample data; the covers are
 drawn `[COVER]` placeholders.
+
+The `Trade*` pages are the **B2B trade variant**: a sourcing marketplace
+in the manner of Alibaba, where verified manufacturers sell to companies at
+quantity prices, a buyer asks several suppliers for quotations and the
+money of an order sits in escrow until the goods are in. The accent is teal
+`#0f766e` (the `accent` prop). What exists in the repository: merchants
+and their verification by the operator (the `Super*` pages and the
+marketplace service's applications), the store's payment service with
+subscriptions and refunds, the marketplace service with submissions and
+their review. What does not exist: company buyer accounts, products priced
+by quantity tier, requests for quotation and quotes, orders with escrow
+milestones, inspection reports and disputes - every order on these pages
+is a contract the store would have to hold between two companies, which is
+a different business from selling software. Every supplier, product,
+price, count and figure is invented sample data; the photos are gradient
+placeholders.
 
 The `Super*` pages are a **proposal** for a third tier, later: the operator
 of UltraStore running a marketplace in which other publishers (merchants)

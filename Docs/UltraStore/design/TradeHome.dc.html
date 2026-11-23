@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UltraStore Trade - Home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700;800&amp;display=swap">
+<style>
+body{margin:0;background:#ffffff}
+a{color:#0f766e}a:hover{color:#115e59}
+</style>
+</helmet>
+<div style="min-height: 100%; background: #ffffff; color: #0f172a; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased">
+<header style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+<div style="max-width: 1280px; margin: 0 auto; padding: 12px 32px; min-height: 72px; box-sizing: border-box; display: flex; align-items: center; gap: 20px; flex-wrap: wrap">
+<a href="TradeHome.dc.html" aria-label="UltraStore Trade home" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #0f172a">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 36px; height: 36px; border-radius: 10px">
+<span style="font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 21px; letter-spacing: -0.02em">UltraStore</span>
+<span style="display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 999px; background: {{accent}}; color: #ffffff; font-family: Manrope, Inter, sans-serif; font-weight: 800; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase">Trade</span>
+</a>
+<form role="search" style="flex: 1 1 420px; display: flex; align-items: stretch; height: 46px; border-radius: 999px; border: 2px solid {{accent}}; overflow: hidden; background: #ffffff">
+<div role="group" aria-label="Search for" style="display: flex; border-right: 1px solid #e2e8f0; background: #f8fafc">
+<button type="button" onClick="{{modeProducts}}" aria-pressed="{{isProducts}}" style="{{productsStyle}}">Products</button>
+<button type="button" onClick="{{modeSuppliers}}" aria-pressed="{{isSuppliers}}" style="{{suppliersStyle}}">Suppliers</button>
+</div>
+<label for="search-trade" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search</label>
+<input id="search-trade" type="search" placeholder="{{placeholder}}" style="flex: 1 1 auto; min-width: 0; border: 0; padding: 0 16px; font: inherit; font-size: 15px; color: #0f172a; outline: none">
+<button type="submit" aria-label="Search" style="width: 56px; border: 0; background: {{accent}}; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></button>
+</form>
+<nav aria-label="Account" style="display: flex; gap: 4px; align-items: center">
+<a href="TradeRFQ.dc.html" style="display: flex; flex-direction: column; justify-content: center; height: 44px; padding: 0 12px; border-radius: 12px; text-decoration: none; color: #0f172a; line-height: 1.2"><span style="font-size: 12px; color: #64748b">Nordlicht Handel GmbH</span><span style="font-weight: 700; font-size: 14px">Buyer desk</span></a>
+<a href="#messages" aria-label="Messages, 2 unread" style="position: relative; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 999px; border: 1px solid #e2e8f0; color: #0f172a; text-decoration: none"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4V5z"></path></svg><span style="position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #dc2626; color: #ffffff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center">2</span></a>
+<a href="TradeRFQ.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; background: #0f172a; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px">Get quotes</a>
+</nav>
+</div>
+<nav aria-label="Trade" style="border-top: 1px solid #f1f5f9">
+<div style="max-width: 1280px; margin: 0 auto; padding: 0 32px; box-sizing: border-box; display: flex; gap: 2px; flex-wrap: wrap; align-items: center">
+<a href="TradeHome.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #0f172a; font-weight: 700; font-size: 14px; border-bottom: 2px solid {{accent}}">Categories</a><a href="TradeHome.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Ready to ship</a><a href="TradeRFQ.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Request for quotation</a><a href="TradeSupplier.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Verified suppliers</a><a href="#assurance" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Trade assurance</a><a href="#logistics" style="display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 500; font-size: 14px; ">Logistics</a>
+<a href="#sell" style="margin-left: auto; display: inline-flex; align-items: center; height: 44px; padding: 0 12px; text-decoration: none; color: #334155; font-weight: 600; font-size: 14px">Become a supplier</a>
+</div>
+</nav>
+</header>
+
+<main style="max-width: 1280px; margin: 0 auto; padding: 32px 32px 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 56px">
+
+<section aria-label="Source from verified manufacturers" style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 24px; align-items: stretch">
+<div style="display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 40px; box-sizing: border-box; border-radius: 24px; background: #0f172a; color: #ffffff">
+<span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #5eead4">Business to business</span>
+<h1 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; text-wrap: balance">Source from verified manufacturers, at quantity prices, with the payment held until the goods arrive.</h1>
+<p style="margin: 0; color: #cbd5e1; max-width: 56ch">Every supplier on UltraStore Trade is a merchant the operator has verified: the company register, the VAT id, the factory. Prices step down with quantity, orders run through escrow, and a dispute is decided on the documents.</p>
+<div style="display: flex; gap: 24px; flex-wrap: wrap; font-size: 13px; color: #cbd5e1"><span><strong style="color: #ffffff; font-size: 18px">1,240</strong> verified suppliers</span><span><strong style="color: #ffffff; font-size: 18px">126,000</strong> products</span><span><strong style="color: #ffffff; font-size: 18px">€48 M</strong> paid through escrow this year</span><span><strong style="color: #ffffff; font-size: 18px">27</strong> countries</span></div>
+</div>
+<form aria-labelledby="rfq-title" style="display: flex; flex-direction: column; gap: 12px; padding: 28px; box-sizing: border-box; border-radius: 24px; background: #f0fdfa; border: 1px solid #99f6e4">
+<h2 id="rfq-title" style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.02em">Request a quotation</h2>
+<span style="font-size: 13px; color: #475569">One request, quotes from several suppliers within two working days.</span>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #64748b">What do you need<input type="text" value="Industrial IoT gateway, 4G, RS-485, DIN rail" style="height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a; background: #ffffff"></label>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #64748b">Quantity<input type="number" value="800" style="height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a; background: #ffffff"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #64748b">Unit<select style="height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a; background: #ffffff"><option>pieces</option><option>sets</option><option>kg</option><option>metres</option><option>pallets</option></select></label>
+</div>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #64748b">Target unit price<input type="text" value="€ 42.00" style="height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a; background: #ffffff"></label>
+<label style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #64748b">Deliver to<select style="height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid #cbd5e1; font: inherit; font-size: 14px; color: #0f172a; background: #ffffff"><option>Hamburg, DE</option><option>Rotterdam, NL</option><option>Gdańsk, PL</option><option>Milan, IT</option></select></label>
+</div>
+<a href="TradeRFQ.dc.html" style="display: inline-flex; align-items: center; justify-content: center; height: 52px; border-radius: 999px; background: {{accent}}; color: #ffffff; text-decoration: none; font-weight: 700; font-size: 16px">Get quotes</a>
+<span style="font-size: 12px; color: #64748b">Free. Your company's details reach the suppliers you accept a quote from, no one else.</span>
+</form>
+</section>
+
+<section aria-labelledby="cats-title" style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Source by category</h2><span style="color: #64748b">The categories the verified suppliers list in</span></div>
+<a href="TradeHome.dc.html" style="font-weight: 600; font-size: 14px; text-decoration: none">All categories</a>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px"><a href="TradeHome.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 96px; border-radius: 12px; background: linear-gradient(135deg, #475569, #1e293b); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 700">Industrial machinery</span><span style="font-size: 13px; color: #64748b">12,400 products</span></a><a href="TradeHome.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 96px; border-radius: 12px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 700">Electronics & components</span><span style="font-size: 13px; color: #64748b">48,900 products</span></a><a href="TradeHome.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 96px; border-radius: 12px; background: linear-gradient(135deg, #f59e0b, #92400e); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 700">Packaging & printing</span><span style="font-size: 13px; color: #64748b">9,800 products</span></a><a href="TradeHome.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 96px; border-radius: 12px; background: linear-gradient(135deg, #78716c, #292524); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 700">Raw materials</span><span style="font-size: 13px; color: #64748b">6,100 products</span></a><a href="TradeHome.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 96px; border-radius: 12px; background: linear-gradient(135deg, #a78bfa, #4c1d95); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 700">Textiles & workwear</span><span style="font-size: 13px; color: #64748b">15,200 products</span></a><a href="TradeHome.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 96px; border-radius: 12px; background: linear-gradient(135deg, #34d399, #065f46); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 700">Office & facility</span><span style="font-size: 13px; color: #64748b">7,300 products</span></a><a href="TradeHome.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 96px; border-radius: 12px; background: linear-gradient(135deg, #fb7185, #881337); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 700">Tools & hardware</span><span style="font-size: 13px; color: #64748b">21,000 products</span></a><a href="TradeHome.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; border-radius: 16px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a"><div aria-hidden="true" style="height: 96px; border-radius: 12px; background: linear-gradient(135deg, #facc15, #854d0e); display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.85); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase"></div><span style="font-weight: 700">Energy & electrical</span><span style="font-size: 13px; color: #64748b">5,600 products</span></a></div>
+</section>
+
+<section aria-labelledby="rts-title" style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Ready to ship</h2><span style="color: #64748b">In stock at the supplier, the quantity price shown per tier; the minimum order is the first tier</span></div>
+<a href="TradeHome.dc.html" style="font-weight: 600; font-size: 14px; text-decoration: none">More ready to ship</a>
+</div>
+<div role="group" aria-label="Category" style="display: flex; gap: 8px; flex-wrap: wrap">
+<sc-for list="{{filters}}" as="f" hint-placeholder-count="6"><button type="button" onClick="{{f.pick}}" aria-pressed="{{f.on}}" style="{{f.style}}">{{f.label}}</button></sc-for>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+<sc-for list="{{products}}" as="p" hint-placeholder-count="8">
+<a href="TradeProduct.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a">
+<div aria-hidden="true" style="{{p.photoStyle}}"></div>
+<span style="font-weight: 600; font-size: 14px; line-height: 1.3; min-height: 36px">{{p.name}}</span>
+<span style="display: flex; align-items: baseline; gap: 6px"><span style="font-family: Manrope, Inter, sans-serif; font-size: 18px; font-weight: 800">{{p.price}}</span><span style="font-size: 12px; color: #64748b">/ piece, by quantity</span></span>
+<span style="font-size: 12px; color: #64748b">MOQ {{p.moq}} · ships in {{p.lead}}</span>
+<span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #334155"><span aria-hidden="true" style="width: 16px; height: 16px; border-radius: 4px; background: {{p.grad}}"></span>{{p.supplier}} · {{p.country}}</span>
+<span style="display: flex; gap: 6px; flex-wrap: wrap"><span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #ccfbf1; color: #115e59; font-size: 12px; font-weight: 700; white-space: nowrap; "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path></svg> Verified manufacturer</span></span>
+</a>
+</sc-for>
+</div>
+</section>
+
+<section aria-labelledby="sup-title" style="display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">Verified suppliers</h2><span style="color: #64748b">Merchants whose company, VAT id and factory the operator has checked</span></div>
+<a href="TradeSupplier.dc.html" style="font-weight: 600; font-size: 14px; text-decoration: none">All suppliers</a>
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px"><a href="TradeSupplier.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 18px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a">
+<div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #0ea5e9, #1e3a8a); flex: 0 0 auto"></span><span style="display: flex; flex-direction: column; line-height: 1.25; min-width: 0"><span style="font-weight: 700">Nordfertigung GmbH</span><span style="font-size: 13px; color: #64748b">DE · Bremen</span></span></div>
+<span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #ccfbf1; color: #115e59; font-size: 12px; font-weight: 700; white-space: nowrap; "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path></svg> Verified manufacturer</span>
+<span style="font-size: 13px; color: #334155">Industrial electronics, battery systems</span>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 12px"><div><dt style="color: #64748b">On the store</dt><dd style="margin: 0; font-weight: 700">14 yrs</dd></div><div><dt style="color: #64748b">Responds in</dt><dd style="margin: 0; font-weight: 700">≤ 4 h</dd></div><div><dt style="color: #64748b">On-time delivery</dt><dd style="margin: 0; font-weight: 700">97 %</dd></div></dl>
+</a><a href="TradeSupplier.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 18px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a">
+<div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #f59e0b, #92400e); flex: 0 0 auto"></span><span style="display: flex; flex-direction: column; line-height: 1.25; min-width: 0"><span style="font-weight: 700">Kartonwerk Lindner</span><span style="font-size: 13px; color: #64748b">AT · Linz</span></span></div>
+<span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #ccfbf1; color: #115e59; font-size: 12px; font-weight: 700; white-space: nowrap; "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path></svg> Verified manufacturer</span>
+<span style="font-size: 13px; color: #334155">Corrugated packaging, labels</span>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 12px"><div><dt style="color: #64748b">On the store</dt><dd style="margin: 0; font-weight: 700">31 yrs</dd></div><div><dt style="color: #64748b">Responds in</dt><dd style="margin: 0; font-weight: 700">≤ 2 h</dd></div><div><dt style="color: #64748b">On-time delivery</dt><dd style="margin: 0; font-weight: 700">99 %</dd></div></dl>
+</a><a href="TradeSupplier.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 18px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a">
+<div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #94a3b8, #334155); flex: 0 0 auto"></span><span style="display: flex; flex-direction: column; line-height: 1.25; min-width: 0"><span style="font-weight: 700">Vis & Fils SAS</span><span style="font-size: 13px; color: #64748b">FR · Lyon</span></span></div>
+<span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #ccfbf1; color: #115e59; font-size: 12px; font-weight: 700; white-space: nowrap; "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path></svg> Verified manufacturer</span>
+<span style="font-size: 13px; color: #334155">Fasteners, stainless hardware</span>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 12px"><div><dt style="color: #64748b">On the store</dt><dd style="margin: 0; font-weight: 700">22 yrs</dd></div><div><dt style="color: #64748b">Responds in</dt><dd style="margin: 0; font-weight: 700">≤ 8 h</dd></div><div><dt style="color: #64748b">On-time delivery</dt><dd style="margin: 0; font-weight: 700">95 %</dd></div></dl>
+</a><a href="TradeSupplier.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 18px; box-sizing: border-box; border-radius: 20px; border: 1px solid #e2e8f0; text-decoration: none; color: #0f172a">
+<div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #facc15, #854d0e); flex: 0 0 auto"></span><span style="display: flex; flex-direction: column; line-height: 1.25; min-width: 0"><span style="font-weight: 700">Textiel Vermeer BV</span><span style="font-size: 13px; color: #64748b">NL · Tilburg</span></span></div>
+<span style="display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 6px; background: #ccfbf1; color: #115e59; font-size: 12px; font-weight: 700; white-space: nowrap; "><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V6l8-3z"></path><path d="M9 12l2 2 4-4"></path></svg> Verified manufacturer</span>
+<span style="font-size: 13px; color: #334155">Workwear, PPE</span>
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 12px"><div><dt style="color: #64748b">On the store</dt><dd style="margin: 0; font-weight: 700">9 yrs</dd></div><div><dt style="color: #64748b">Responds in</dt><dd style="margin: 0; font-weight: 700">≤ 6 h</dd></div><div><dt style="color: #64748b">On-time delivery</dt><dd style="margin: 0; font-weight: 700">94 %</dd></div></dl>
+</a></div>
+</section>
+
+<section id="assurance" aria-labelledby="ta-title" style="display: flex; flex-direction: column; gap: 20px; padding: 32px; box-sizing: border-box; border-radius: 24px; background: #f8fafc; border: 1px solid #e2e8f0">
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; flex-direction: column; gap: 4px"><h2 style="margin: 0; font-family: Manrope, Inter, sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em">How trade assurance works</h2><span style="color: #64748b">The order is a contract both sides sign in the store, and the money sits with the store&#8217;s payment service until the goods are in</span></div>
+
+</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px"><div style="display: flex; flex-direction: column; gap: 8px; padding: 18px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="width: 32px; height: 32px; border-radius: 999px; background: {{accent}}; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-weight: 800">1</span><span style="font-weight: 700">Agree the order</span><span style="font-size: 13px; color: #475569">Price, quantity, specification, lead time and the inspection terms are written into the order; both sides sign it in the store.</span></div><div style="display: flex; flex-direction: column; gap: 8px; padding: 18px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="width: 32px; height: 32px; border-radius: 999px; background: {{accent}}; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-weight: 800">2</span><span style="font-weight: 700">Pay into escrow</span><span style="font-size: 13px; color: #475569">The buyer pays the deposit, then the balance, to the store's payment service; the supplier sees it secured and starts production.</span></div><div style="display: flex; flex-direction: column; gap: 8px; padding: 18px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="width: 32px; height: 32px; border-radius: 999px; background: {{accent}}; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-weight: 800">3</span><span style="font-weight: 700">Inspect and ship</span><span style="font-size: 13px; color: #475569">A pre-shipment inspection report and the shipping documents go into the order; the buyer releases the balance on receipt.</span></div><div style="display: flex; flex-direction: column; gap: 8px; padding: 18px; box-sizing: border-box; border-radius: 16px; background: #ffffff; border: 1px solid #e2e8f0"><span style="width: 32px; height: 32px; border-radius: 999px; background: {{accent}}; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-weight: 800">4</span><span style="font-weight: 700">Disputes</span><span style="font-size: 13px; color: #475569">Late, short or off-spec deliveries are claimed against the escrow within 30 days; the operator decides on the documents.</span></div></div>
+</section>
+
+</main>
+<footer style="margin-top: 72px; border-top: 1px solid #e2e8f0; background: #f8fafc">
+<div style="max-width: 1280px; margin: 0 auto; padding: 32px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: space-between; color: #64748b; font-size: 13px">
+<div style="display: flex; align-items: center; gap: 10px">
+<img src="/_blob/9b931f0bda5f6ee1d30304d2295e0e4a" alt="" style="width: 28px; height: 28px; border-radius: 8px">
+<span style="font-weight: 600; color: #0f172a">UltraStore Trade</span>
+<span>· manufacturers and bulk buyers, on the ULTRA OS marketplace</span>
+</div>
+<nav aria-label="Footer" style="display: flex; flex-wrap: wrap; gap: 20px">
+<a href="#sell" style="color: #475569; text-decoration: none; font-weight: 500">Become a supplier</a>
+<a href="#assurance" style="color: #475569; text-decoration: none; font-weight: 500">Trade assurance</a>
+<a href="#logistics" style="color: #475569; text-decoration: none; font-weight: 500">Logistics</a>
+<a href="#help" style="color: #475569; text-decoration: none; font-weight: 500">Help</a>
+<a href="#privacy" style="color: #475569; text-decoration: none; font-weight: 500">Privacy</a>
+<a href="#terms" style="color: #475569; text-decoration: none; font-weight: 500">Terms</a>
+</nav>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#0f766e","options":["#0f766e","#2563eb","#0f172a","#b45309"]},"$preview":{"width":1440,"height":3080}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'products', cat: 'all' };
+  }
+  renderVals() {
+    const accent = this.props.accent ?? '#0f766e';
+    const mode = this.state.mode;
+    const seg = (on) => 'border: 0; height: 100%; padding: 0 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; ' + (on ? 'background: #0f172a; color: #ffffff' : 'background: transparent; color: #334155');
+    const search = { isProducts: mode === 'products', isSuppliers: mode === 'suppliers', productsStyle: seg(mode === 'products'), suppliersStyle: seg(mode === 'suppliers'),
+      placeholder: mode === 'products' ? 'Search products, e.g. "IoT gateway RS-485", "corrugated boxes"' : 'Search suppliers by name, product or country',
+      modeProducts: () => this.setState({ mode: 'products' }), modeSuppliers: () => this.setState({ mode: 'suppliers' }) };
+    const cat = this.state.cat;
+    const chip = (on) => 'display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid ' + (on ? '#0f172a; background: #0f172a; color: #ffffff' : '#e2e8f0; background: #ffffff; color: #0f172a');
+    const CATS = [['all', 'All'], ['electronics', 'Electronics'], ['packaging', 'Packaging'], ['hardware', 'Hardware'], ['textiles', 'Workwear'], ['machinery', 'Machinery'], ['materials', 'Raw materials']];
+    const filters = CATS.map(([id, label]) => ({ label, on: id === cat, style: chip(id === cat), pick: () => this.setState({ cat: id }) }));
+    const ALL = [{"name": "Industrial IoT gateway, 4G, RS-485, DIN rail", "hi": "48.00", "lo": "41.00", "moq": 100, "supplier": "Nordfertigung GmbH", "country": "DE", "cat": "electronics", "grad": "linear-gradient(135deg, #0ea5e9, #1e3a8a)", "lead": "12 days"}, {"name": "Corrugated shipping boxes, FEFCO 0201, 400×300×300", "hi": "0.62", "lo": "0.44", "moq": 1000, "supplier": "Kartonwerk Lindner", "country": "AT", "cat": "packaging", "grad": "linear-gradient(135deg, #f59e0b, #92400e)", "lead": "5 days"}, {"name": "Stainless hex bolts M8×40, A2-70, DIN 933", "hi": "0.085", "lo": "0.061", "moq": 5000, "supplier": "Vis & Fils SAS", "country": "FR", "cat": "hardware", "grad": "linear-gradient(135deg, #94a3b8, #334155)", "lead": "7 days"}, {"name": "Hi-vis work jacket, EN ISO 20471 class 3", "hi": "19.90", "lo": "15.40", "moq": 200, "supplier": "Textiel Vermeer BV", "country": "NL", "cat": "textiles", "grad": "linear-gradient(135deg, #facc15, #854d0e)", "lead": "18 days"}, {"name": "Brushless 48 V servo motor, 750 W", "hi": "112.00", "lo": "96.00", "moq": 50, "supplier": "Elettromeccanica Rossi", "country": "IT", "cat": "machinery", "grad": "linear-gradient(135deg, #475569, #1e293b)", "lead": "21 days"}, {"name": "Thermal label rolls 100×150 mm, 500/roll", "hi": "2.10", "lo": "1.55", "moq": 500, "supplier": "Kartonwerk Lindner", "country": "AT", "cat": "packaging", "grad": "linear-gradient(135deg, #fb7185, #881337)", "lead": "4 days"}, {"name": "LiFePO4 battery module 48 V 100 Ah", "hi": "640.00", "lo": "575.00", "moq": 10, "supplier": "Nordfertigung GmbH", "country": "DE", "cat": "electronics", "grad": "linear-gradient(135deg, #34d399, #065f46)", "lead": "30 days"}, {"name": "Polypropylene pellets, injection grade, 25 kg", "hi": "1.38", "lo": "1.21", "moq": 1000, "supplier": "Polimer Kraków Sp. z o.o.", "country": "PL", "cat": "materials", "grad": "linear-gradient(135deg, #78716c, #292524)", "lead": "9 days"}];
+    const products = ALL.filter((p) => cat === 'all' || p.cat === cat).map((p) => ({ ...p, price: '€' + p.lo + ' – ' + p.hi, moq: p.moq.toLocaleString('en-GB'),
+      photoStyle: 'height: 150px; border-radius: 12px; background: ' + p.grad }));
+    const body = { filters, products };
+    return { accent, ...search, ...body };
+  }
+}
+</script>
+</body>
+</html>
