@@ -1277,12 +1277,18 @@ void UltraPaintWindow::CloseTab(int index) {
     if (index < 0 || index >= static_cast<int>(documentTabs.size())) return;
     if (index == activeTab) CommitTextEdit();
     auto doc = documentTabs[index]->document;
-    if (!doc || !doc->IsModified()) { RemoveTabNow(index); return; }
+    const bool modified = doc && doc->IsModified();
+    // The image on show, unchanged, goes at once. Any other image is brought
+    // to the front first, so the person sees what they are closing, and the
+    // close waits for their yes.
+    if (!doc || (!modified && index == activeTab)) { RemoveTabNow(index); return; }
     if (index != activeTab && tabStrip) tabStrip->SetActiveTab(index);   // the image the question is about
     const std::string name = tabStrip ? tabStrip->GetTabTitle(index) : std::string();
     std::weak_ptr<bool> alive = lifeToken;
     std::weak_ptr<UCRasterDocument> weakDoc = doc;
-    ConfirmDiscard(TrF("{0} has unsaved changes. Close it anyway?", name), [this, alive, weakDoc]() {
+    const std::string question = modified ? TrF("{0} has unsaved changes. Close it anyway?", name)
+                                          : TrF("Close {0}?", name);
+    ConfirmDiscard(question, [this, alive, weakDoc]() {
         if (alive.expired()) return;
         auto d = weakDoc.lock();
         const int at = d ? TabIndexOf(d.get()) : -1;   // the tabs may have moved meanwhile

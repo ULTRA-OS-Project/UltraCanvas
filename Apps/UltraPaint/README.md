@@ -37,8 +37,10 @@ to discard changes. The one exception is the blank canvas a window starts
 with: while nobody has touched it, the first image opened takes its place.
 
 A dot on a tab marks unsaved changes. Its **×**, or *File ▸ Close Tab*
-(`Ctrl+W`), closes it, asking first when it has unsaved changes; the last
-tab closing leaves a blank canvas. `Ctrl+Tab` / `Ctrl+Shift+Tab` go to the
+(`Ctrl+W`), closes it, asking first when it has unsaved changes. A tab that
+is not on show is brought to the front before it closes, and asked about
+("Close *name*?"), so you see the image going; the last tab closing leaves a
+blank canvas. `Ctrl+Tab` / `Ctrl+Shift+Tab` go to the
 next and previous tab, and a tab can be dragged to another place in the
 strip. Closing the window asks once about all its unsaved images.
 

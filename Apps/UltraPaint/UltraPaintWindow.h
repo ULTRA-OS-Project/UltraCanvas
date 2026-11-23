@@ -166,7 +166,8 @@ private:
     // Makes tab `index` the active one: the panels, the title, the tools and
     // the glass follow its document.
     void SwitchToTab(int index);
-    // Closes tab `index`, asking first when its image has unsaved changes.
+    // Closes tab `index`. A tab that is not on show is brought to the front
+    // and the close asked about first; so is one with unsaved changes.
     // The last tab closing leaves a blank canvas in its place.
     void CloseTab(int index);
     void RemoveTabNow(int index);
