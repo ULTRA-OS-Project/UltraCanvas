@@ -6318,6 +6318,22 @@ endif()
 
 message(STATUS "")
 
+# ===== MAP AND GEOLOCATION TEST =====
+# UltraCanvasMapView's Web Mercator and map pixels, and UltraCanvasGeolocation's
+# backend where a location service answers (skipped where none does). No display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MapGeolocationTest...")
+    add_executable(MapGeolocationTest ${CMAKE_CURRENT_SOURCE_DIR}/MapGeolocationTest.cpp)
+    target_include_directories(MapGeolocationTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MapGeolocationTest PRIVATE cxx_std_20)
+    target_link_libraries(MapGeolocationTest PRIVATE UltraCanvas)
+    set_target_properties(MapGeolocationTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME MapGeolocationTest COMMAND MapGeolocationTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MapGeolocationTest")
+endif()
+
+message(STATUS "")
+
 # ===== DESKTOP SHELL TEST =====
 # Kept in its own file so the Windows CI row can build it without the full
 # suite (ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS in the top-level CMakeLists.txt).

@@ -180,12 +180,16 @@ a back arrow. Building, packaging and what is not there yet:
    strip as a 256 x 256 picture - and the arrow beside it lists the sets,
    each by one example (Smileys, Hands, Hearts, Animals, Food & drink,
    Celebrations & things, and the example sticker set *Cubes*). Location
-   opens a window with an OpenStreetMap map: search a place by name or
-   address (Nominatim), or click the map to put the pin there (it is named
-   by what is there); the wheel and +/- zoom, a drag moves the map. Insert
-   writes "📍 the place" and its openstreetmap.org link into the message,
-   and puts a 640 x 400 picture of the map around the pin in the strip
-   (unless unticked), crediting OpenStreetMap's contributors under the link.
+   opens a window with an OpenStreetMap map (UltraCanvasMapView): search a
+   place by name or address (Nominatim), click the map to put the pin there
+   (it is named by what is there), or press *My position* - where the
+   system's location service says this computer is (UltraCanvasGeolocation:
+   GeoClue, Location Services, Windows' location; hidden where there is
+   none); the wheel and +/- zoom, a drag moves the map. Insert writes
+   "📍 the place" and its openstreetmap.org link into the message. In the
+   chat any message holding an openstreetmap.org link with a marker shows
+   as a map card - the map, its pin and the place's name - and a click on
+   the card opens the place in the browser; other programs show the text.
    The map and the search need tile.openstreetmap.org and
    nominatim.openstreetmap.org.
 6. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
@@ -198,7 +202,7 @@ a back arrow. Building, packaging and what is not there yet:
    the clipboard (a screenshot, a copy from a browser or a drawing program)
    or a file copied in a file manager, the Screenshot feature (the window
    hides, a window is clicked or an area dragged on the frozen screen), a
-   sticker, a map picture of a location, and files dropped on the
+   sticker, and files dropped on the
    window (on a chat in the list, that chat opens and takes them; anywhere
    else, the open chat does) - each with a × to take it out again;
    Enter or the send button sends them to the open chat (every network but
@@ -414,7 +418,7 @@ card or the sidebar moves them; the pictures then show where they landed.
 | `ui/ChatCubeSettingsWindow.*` | the Settings window: the tree of pages, each page, Restore defaults |
 | `ui/ChatCubeFeatures.*` | the feature icons around the message field and where each one is (the field, behind the +, off) |
 | `ui/ChatCubeEmoji.*` | the smiley button's sets and picker: the emoji grids, the sticker grid, the list of sets by example |
-| `ui/ChatCubeLocationWindow.*` | Insert a location: Nominatim search, the OpenStreetMap map with its pin, the map picture |
+| `ui/ChatCubeLocationWindow.*` | Insert a location: Nominatim search, the map with its pin (UltraCanvasMapView), My position (UltraCanvasGeolocation); the location text and its parsing for the map cards |
 | `ui/ChatCubeTheme.*` | the look: the light and the dark theme, avatars, icons, the colours the views paint with |
 | `peer/main.cpp` | `chatcube-peer` |
 | `tools/screenshot.sh`, `tools/xinput.c` | screenshots of the app under Xvfb, driven through XTest |

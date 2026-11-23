@@ -702,6 +702,12 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopShell.cpp
         # Choosing an area of the screen over a frozen capture (UltraSnip, ChatCube)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScreenAreaPicker.cpp
+        # A slippy map from OpenStreetMap's tiles: the element, a map drawn
+        # into any rectangle, a map picture (ChatCube's locations)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMapView.cpp
+        # Where this device is; the backends are OS/<Platform>/UltraCanvas*Geolocation.*,
+        # picked up by the platform glob, and this is the fallback
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGeolocation.cpp
         # Wi-Fi and Bluetooth operated from a panel (join, pair, connect).
         # The backends are OS/<Platform>/UltraCanvas*Wireless.*, picked up by
         # the platform glob below; this is the shared half and the fallback.
@@ -2984,6 +2990,36 @@ endif()
 # framework and takes its C++ runtime in statically, leaving only Windows'
 # own DLLs. Built beside the applications (the build root), where
 # ReplaceSystemDesktop looks for it and package-win.sh picks it up.
+# Where this device is, on Windows (OS/MSWindows/UltraCanvasWindowsGeolocation.cpp):
+# Windows.Devices.Geolocation through C++/WinRT, where its projection header
+# is there (the MSYS2 cppwinrt package, the Windows SDK); without it
+# UltraCanvasGeolocation says the system cannot tell where it is.
+if(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    include(CheckIncludeFileCXX)
+    set(_uc_geo_saved_flags "${CMAKE_REQUIRED_FLAGS}")
+    if(MSVC)
+        set(CMAKE_REQUIRED_FLAGS "/std:c++20 /EHsc")
+    else()
+        set(CMAKE_REQUIRED_FLAGS "-std=c++20")
+    endif()
+    check_include_file_cxx("winrt/Windows.Devices.Geolocation.h" ULTRACANVAS_HAVE_WINRT_GEOLOCATION)
+    set(CMAKE_REQUIRED_FLAGS "${_uc_geo_saved_flags}")
+    if(ULTRACANVAS_HAVE_WINRT_GEOLOCATION)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAVE_WINRT_GEOLOCATION=1)
+        if(MSVC)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC windowsapp)
+        else()
+            # C++/WinRT under GCC/Clang: activation and strings in
+            # runtimeobject, COM in ole32, BSTRs in oleaut32
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC runtimeobject ole32 oleaut32)
+        endif()
+        message(STATUS "  Geolocation: Windows.Devices.Geolocation (C++/WinRT)")
+    else()
+        message(STATUS "  Geolocation: none (no C++/WinRT projection headers)")
+    endif()
+    unset(_uc_geo_saved_flags)
+endif()
+
 if(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     add_executable(UltraCanvasShellGuard WIN32
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/ShellGuard/UltraCanvasShellGuard.cpp)

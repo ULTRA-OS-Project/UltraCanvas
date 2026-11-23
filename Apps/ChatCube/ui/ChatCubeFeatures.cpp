@@ -53,7 +53,7 @@ std::string FeatureDescription(Feature feature) {
         case Feature::Attach: return Tr("The paperclip: a picture, a video or any file from this computer");
         case Feature::Emoji: return Tr("A smiley into the text, or a sticker as a picture; the arrow beside it chooses the set");
         case Feature::Screenshot: return Tr("A window or an area of the screen, as a picture");
-        case Feature::Location: return Tr("A place found on OpenStreetMap, as a link and a map picture");
+        case Feature::Location: return Tr("A place on OpenStreetMap - found, clicked or your own position - shown as a map");
         case Feature::VoiceMessage: return Tr("The microphone: a voice message");
         case Feature::VideoMessage: return Tr("The camera: a short video message");
     }

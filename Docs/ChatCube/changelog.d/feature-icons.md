@@ -14,8 +14,12 @@
   things - and *Cubes*, an example sticker set drawn for ChatCube. A
   sticker goes with the message as a picture. The button opens the set
   chosen last.
-- **A location from OpenStreetMap.** Location opens a window with a map:
-  search a place by its name or address, or click the map to put the pin
-  there; the wheel or + and - zoom, a drag moves the map. Insert writes the
-  place and its openstreetmap.org link into the message and adds a picture
-  of the map around the pin (untick it to send the link alone).
+- **A location from OpenStreetMap, shown as a map.** Location opens a
+  window with a map: search a place by its name or address, click the map
+  to put the pin there, or press *My position* to put it where this
+  computer is (it asks the system's location service - macOS and Windows
+  ask you once whether ChatCube may). The wheel or + and - zoom, a drag
+  moves the map. Insert writes the place and its openstreetmap.org link
+  into the message. In the chat a location shows as a card - the map with
+  its pin and the place's name - and a click on it opens the place on
+  openstreetmap.org; other programs show the name and the link.

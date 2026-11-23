@@ -82,6 +82,8 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.17 - a location shows as a map card (its click opens openstreetmap.org); My position
+//                   in the location window
 // Version: 0.3.16 - the feature icons: a + button with a menu of the features put behind it, the
 //                   smileys & stickers (a grid, and an arrow listing the sets by an example of
 //                   each), a location from OpenStreetMap; Settings > Display > Feature icons
@@ -357,7 +359,7 @@ private:
     void StageSticker(const std::string& svgPath);
     // The location window; its place into the message
     void OpenLocation();
-    void InsertLocation(const MapPlace& place, const std::string& picturePath);
+    void InsertLocation(const MapPlace& place);
     // Where an element is in the window, for a menu or popup beside it
     UltraCanvas::Rect2Di WindowRectOf(UltraCanvas::UltraCanvasUIElement& element) const;
     // Files dropped on the window (an event filter on it): onto a chat in
@@ -662,6 +664,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasMenu>      featureMenu_;
     EmojiPicker                                        emojiPicker_;
     std::unique_ptr<ChatCubeLocationWindow>            locationWindow_;   // made when first opened
+    int                                                mapTilesListener_ = 0;   // map cards redrawn as tiles come
     // A screenshot in flight: the wait for the window to leave the screen,
     // the frozen screen, and the picker over it
     uint64_t screenshotTimer_ = 0;

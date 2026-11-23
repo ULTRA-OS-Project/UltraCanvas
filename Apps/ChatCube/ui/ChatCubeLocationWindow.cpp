@@ -12,16 +12,14 @@
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasDebug.h"
 #include "UltraCanvasCheckbox.h"
-#include "UltraCanvasClipboardDib.h"
+#include "UltraCanvasGeolocation.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasImage.h"
+#include "UltraCanvasMapView.h"
 #include "UltraCanvasLabel.h"
-#include "UltraCanvasPathUtf8.h"
-#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTextUtils.h"
-#include "UltraCanvasUIElement.h"
 #include "UltraCanvasWindow.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 #include "UltraNet/UltraNetHttp.h"
@@ -29,12 +27,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
-#include <ctime>
-#include <deque>
-#include <filesystem>
-#include <map>
-#include <set>
 #include <vector>
 
 using namespace UltraCanvas;
@@ -43,315 +35,11 @@ namespace ChatCube {
 
 namespace {
 
-constexpr int kTileSize = 256;
-constexpr int kMinZoom = 2;
-constexpr int kMaxZoom = 19;
-constexpr int kMaxTileRequests = 2;           // OpenStreetMap's tile policy: two connections at most
 constexpr int kWindowWidth = 680;
 constexpr int kWindowHeight = 620;
 constexpr int kMapHeight = 340;
 constexpr int kMaxResults = 5;
-constexpr int kPictureWidth = 640;            // the map picture sent with the message
-constexpr int kPictureHeight = 400;
-constexpr double kPi = 3.14159265358979323846;
-const char* const kTileServer = "https://tile.openstreetmap.org/";
 const char* const kSearchServer = "https://nominatim.openstreetmap.org/";
-
-// ----- Web Mercator: degrees to world pixels at a zoom and back -----
-
-double WorldSize(int zoom) {
-    return static_cast<double>(kTileSize) * std::pow(2.0, zoom);
-}
-
-Point2Dd ToWorld(double latitude, double longitude, int zoom) {
-    const double size = WorldSize(zoom);
-    const double lat = std::clamp(latitude, -85.05112878, 85.05112878) * kPi / 180.0;
-    const double x = (longitude + 180.0) / 360.0 * size;
-    const double y = (1.0 - std::log(std::tan(lat) + 1.0 / std::cos(lat)) / kPi) / 2.0 * size;
-    return Point2Dd(x, y);
-}
-
-void FromWorld(const Point2Dd& world, int zoom, double& latitude, double& longitude) {
-    const double size = WorldSize(zoom);
-    longitude = world.x / size * 360.0 - 180.0;
-    const double n = kPi - 2.0 * kPi * world.y / size;
-    latitude = 180.0 / kPi * std::atan(0.5 * (std::exp(n) - std::exp(-n)));
-    while (longitude < -180.0) longitude += 360.0;
-    while (longitude >= 180.0) longitude -= 360.0;
-}
-
-std::string TileKey(int zoom, int x, int y) {
-    return std::to_string(zoom) + "/" + std::to_string(x) + "/" + std::to_string(y);
-}
-
-// ----- the tiles: fetched two at a time, kept while ChatCube runs -----
-
-// Shared with the requests in flight, which may finish after the window has
-// closed: they hold it weakly.
-struct TileStore {
-    std::string userAgent;
-    std::map<std::string, std::vector<uint8_t>> bytes;     // the PNGs as they came
-    std::map<std::string, UCImagePtr> images;              // ... decoded, for drawing
-    std::set<std::string> failed;
-    std::deque<std::string> queue;
-    std::set<std::string> queued;
-    int active = 0;
-    std::function<void()> changed;                         // a tile arrived: redraw
-
-    void Request(const std::string& key, const std::shared_ptr<TileStore>& self) {
-        if (bytes.count(key) || failed.count(key) || queued.count(key)) return;
-        queued.insert(key);
-        queue.push_back(key);
-        Pump(self);
-    }
-
-    void Pump(const std::shared_ptr<TileStore>& self) {
-        auto* app = UltraCanvasApplicationBase::GetCurrent();
-        while (active < kMaxTileRequests && !queue.empty() && app) {
-            const std::string key = queue.front();
-            queue.pop_front();
-            ++active;
-            UltraNetHttpRequest request;
-            request.url = std::string(kTileServer) + key + ".png";
-            request.headers.Set("User-Agent", userAgent);
-            std::weak_ptr<TileStore> weak = self;
-            UltraNet_HttpRequestAsync(request, [weak, key, app](const UltraNetResponse& response) {
-                const bool ok = response.IsComplete() && response.IsSuccess() && !response.body.empty();
-                std::vector<uint8_t> body = ok ? response.body : std::vector<uint8_t>();
-                app->PostToUIThread([weak, key, ok, body = std::move(body)]() mutable {
-                    auto store = weak.lock();
-                    if (!store) return;
-                    --store->active;
-                    store->queued.erase(key);
-                    if (ok) {
-                        store->images[key] = UCImage::LoadFromMemory(body);
-                        store->bytes[key] = std::move(body);
-                    } else {
-                        store->failed.insert(key);
-                    }
-                    store->Pump(store);
-                    if (store->changed) store->changed();
-                });
-            });
-        }
-    }
-};
-
-// ===== THE MAP =====
-
-// ui-reuse-exempt: a slippy map of OpenStreetMap's tiles with a pin - the
-// framework has no map element; the tiles are pictures from the network,
-// drawn where Web Mercator puts them.
-class MapView : public UltraCanvasUIElement {
-public:
-    MapView(const std::string& id, std::shared_ptr<TileStore> tiles)
-        : UltraCanvasUIElement(id, 0, 0, 0, 0), tiles_(std::move(tiles)) {}
-
-    // The pin moved by a click (the caller names the spot)
-    std::function<void(double latitude, double longitude)> onPinMoved;
-
-    void CentreOn(double latitude, double longitude, int zoom) {
-        zoom_ = std::clamp(zoom, kMinZoom, kMaxZoom);
-        centre_ = ToWorld(latitude, longitude, zoom_);
-        RequestRedraw();
-    }
-    void SetPin(double latitude, double longitude) {
-        pinLatitude_ = latitude;
-        pinLongitude_ = longitude;
-        hasPin_ = true;
-        RequestRedraw();
-    }
-    void Zoom(int by) {
-        double lat = 0, lon = 0;
-        FromWorld(centre_, zoom_, lat, lon);
-        CentreOn(lat, lon, zoom_ + by);
-    }
-    int GetZoom() const { return zoom_; }
-    bool HasPin() const { return hasPin_; }
-
-    // The map around the pin as straight RGBA, from the tiles loaded so far
-    // (those not loaded yet are grey), the pin drawn in the middle
-    bool PictureAroundPin(int width, int height, ClipboardDib::RgbaImage& out) const {
-        if (!hasPin_) return false;
-        out.width = width;
-        out.height = height;
-        out.pixels.assign(static_cast<size_t>(width) * height * 4, 0);
-        for (size_t i = 0; i < out.pixels.size(); i += 4) {
-            out.pixels[i] = out.pixels[i + 1] = out.pixels[i + 2] = 224;
-            out.pixels[i + 3] = 255;
-        }
-        const Point2Dd pin = ToWorld(pinLatitude_, pinLongitude_, zoom_);
-        const double left = pin.x - width / 2.0, top = pin.y - height / 2.0;
-        const int tiles = 1 << zoom_;
-        const int firstX = static_cast<int>(std::floor(left / kTileSize));
-        const int firstY = static_cast<int>(std::floor(top / kTileSize));
-        const int lastX = static_cast<int>(std::floor((left + width) / kTileSize));
-        const int lastY = static_cast<int>(std::floor((top + height) / kTileSize));
-        for (int ty = firstY; ty <= lastY; ++ty) {
-            if (ty < 0 || ty >= tiles) continue;
-            for (int tx = firstX; tx <= lastX; ++tx) {
-                const int wrapped = ((tx % tiles) + tiles) % tiles;
-                auto it = tiles_->bytes.find(TileKey(zoom_, wrapped, ty));
-                if (it == tiles_->bytes.end()) continue;
-                ClipboardDib::RgbaImage tile;
-                if (!ClipboardDib::DecodePng(it->second.data(), it->second.size(), tile)) continue;
-                const int ox = static_cast<int>(std::lround(tx * kTileSize - left));
-                const int oy = static_cast<int>(std::lround(ty * kTileSize - top));
-                for (int row = 0; row < tile.height; ++row) {
-                    const int y = oy + row;
-                    if (y < 0 || y >= height) continue;
-                    for (int col = 0; col < tile.width; ++col) {
-                        const int x = ox + col;
-                        if (x < 0 || x >= width) continue;
-                        const uint8_t* s = &tile.pixels[(static_cast<size_t>(row) * tile.width + col) * 4];
-                        uint8_t* d = &out.pixels[(static_cast<size_t>(y) * width + x) * 4];
-                        d[0] = s[0];
-                        d[1] = s[1];
-                        d[2] = s[2];
-                        d[3] = 255;
-                    }
-                }
-            }
-        }
-        DrawPinPixels(out, width / 2, height / 2);
-        return true;
-    }
-
-    void Render(IRenderContext* ctx, const Rect2Df&) override {
-        const float w = GetWidth(), h = GetHeight();
-        if (w <= 0 || h <= 0) return;
-        ctx->PushState();
-        ctx->ClipRect(Rect2Dd(0, 0, w, h));
-        ctx->SetFillPaint(Color(224, 224, 224, 255));
-        ctx->FillRectangle(Rect2Dd(0, 0, w, h));
-        const double left = centre_.x - w / 2.0, top = centre_.y - h / 2.0;
-        const int tiles = 1 << zoom_;
-        const int firstX = static_cast<int>(std::floor(left / kTileSize));
-        const int firstY = static_cast<int>(std::floor(top / kTileSize));
-        const int lastX = static_cast<int>(std::floor((left + w) / kTileSize));
-        const int lastY = static_cast<int>(std::floor((top + h) / kTileSize));
-        for (int ty = firstY; ty <= lastY; ++ty) {
-            if (ty < 0 || ty >= tiles) continue;
-            for (int tx = firstX; tx <= lastX; ++tx) {
-                const int wrapped = ((tx % tiles) + tiles) % tiles;
-                const std::string key = TileKey(zoom_, wrapped, ty);
-                const Rect2Dd cell(tx * kTileSize - left, ty * kTileSize - top, kTileSize, kTileSize);
-                auto it = tiles_->images.find(key);
-                if (it != tiles_->images.end() && it->second && it->second->IsValid()) {
-                    ctx->DrawImage(*it->second, cell, ImageFitMode::Fill);
-                } else {
-                    tiles_->Request(key, tiles_);
-                }
-            }
-        }
-        if (hasPin_) {
-            const Point2Dd pin = ToWorld(pinLatitude_, pinLongitude_, zoom_);
-            DrawPin(ctx, pin.x - left, pin.y - top);
-        }
-        // The attribution OpenStreetMap asks for, on the map itself
-        const std::string credit = "\xC2\xA9 OpenStreetMap contributors";
-        ctx->SetFontSize(8.5);
-        const Point2Di size = ctx->GetTextDimension(credit);
-        const Rect2Dd box(w - size.x - 12, h - size.y - 6, size.x + 10, size.y + 4);
-        ctx->SetFillPaint(Color(255, 255, 255, 200));
-        ctx->FillRectangle(box);
-        ctx->SetTextPaint(Color(40, 40, 40, 255));
-        ctx->DrawText(credit, Point2Dd(box.x + 5, box.y + 2));
-        ctx->PopState();
-    }
-
-    bool OnEvent(const UCEvent& event) override {
-        switch (event.type) {
-            case UCEventType::MouseDown:
-                if (event.button != UCMouseButton::Left) return false;
-                pressed_ = true;
-                dragged_ = false;
-                pressAt_ = lastAt_ = event.pointer;
-                return true;
-            case UCEventType::MouseMove:
-                if (!pressed_) return false;
-                if (std::abs(event.pointer.x - pressAt_.x) + std::abs(event.pointer.y - pressAt_.y) > 4) dragged_ = true;
-                if (dragged_) {
-                    centre_.x -= event.pointer.x - lastAt_.x;
-                    centre_.y -= event.pointer.y - lastAt_.y;
-                    centre_.y = std::clamp(centre_.y, 0.0, WorldSize(zoom_));
-                    RequestRedraw();
-                }
-                lastAt_ = event.pointer;
-                return true;
-            case UCEventType::MouseUp: {
-                if (!pressed_ || event.button != UCMouseButton::Left) return false;
-                pressed_ = false;
-                if (dragged_) return true;
-                // A click: the pin goes there
-                const Point2Dd world(centre_.x - GetWidth() / 2.0 + event.pointer.x,
-                                     centre_.y - GetHeight() / 2.0 + event.pointer.y);
-                double lat = 0, lon = 0;
-                FromWorld(world, zoom_, lat, lon);
-                SetPin(lat, lon);
-                if (onPinMoved) onPinMoved(lat, lon);
-                return true;
-            }
-            case UCEventType::MouseWheel:
-                if (event.wheelDelta == 0) return false;
-                Zoom(event.wheelDelta > 0 ? 1 : -1);
-                return true;
-            default:
-                return false;
-        }
-    }
-
-private:
-    static void DrawPin(IRenderContext* ctx, double x, double y) {
-        ctx->SetFillPaint(Color(0, 0, 0, 70));
-        ctx->FillCircle(Point2Dd(x, y + 2), 11);
-        ctx->SetFillPaint(Color(220, 50, 47, 255));
-        ctx->FillCircle(Point2Dd(x, y), 10);
-        ctx->SetStrokePaint(Color(255, 255, 255, 255));
-        ctx->SetStrokeWidth(2.5);
-        ctx->DrawCircle(Point2Dd(x, y), 10);
-        ctx->SetFillPaint(Color(255, 255, 255, 255));
-        ctx->FillCircle(Point2Dd(x, y), 3.5);
-    }
-
-    // The same pin into RGBA pixels: a red disc with a white ring and a
-    // white dot, edges softened by coverage
-    static void DrawPinPixels(ClipboardDib::RgbaImage& image, int cx, int cy) {
-        for (int y = cy - 13; y <= cy + 13; ++y) {
-            if (y < 0 || y >= image.height) continue;
-            for (int x = cx - 13; x <= cx + 13; ++x) {
-                if (x < 0 || x >= image.width) continue;
-                const double d = std::hypot(x - cx, y - cy);
-                int r = -1, g = 0, b = 0;
-                double cover = 1.0;
-                if (d <= 3.5) { r = 255; g = 255; b = 255; }
-                else if (d <= 9.0) { r = 220; g = 50; b = 47; }
-                else if (d <= 11.5) { r = 255; g = 255; b = 255; cover = std::clamp(11.5 - d + 0.5, 0.0, 1.0); }
-                if (r < 0) continue;
-                uint8_t* p = &image.pixels[(static_cast<size_t>(y) * image.width + x) * 4];
-                p[0] = static_cast<uint8_t>(std::lround(p[0] * (1 - cover) + r * cover));
-                p[1] = static_cast<uint8_t>(std::lround(p[1] * (1 - cover) + g * cover));
-                p[2] = static_cast<uint8_t>(std::lround(p[2] * (1 - cover) + b * cover));
-            }
-        }
-    }
-
-    std::shared_ptr<TileStore> tiles_;
-    Point2Dd centre_ = ToWorld(30.0, 10.0, 3);
-    int zoom_ = 3;
-    bool hasPin_ = false;
-    double pinLatitude_ = 0, pinLongitude_ = 0;
-    bool pressed_ = false, dragged_ = false;
-    Point2Di pressAt_, lastAt_;
-};
-
-// The tile store outlives every window: a tile loaded once is not asked
-// for again while ChatCube runs
-std::shared_ptr<TileStore> SharedTiles(const std::string& userAgent) {
-    static std::shared_ptr<TileStore> store = std::make_shared<TileStore>();
-    store->userAgent = userAgent;
-    return store;
-}
 
 std::string Coordinates(double latitude, double longitude) {
     return FormatFixedClassic(latitude, 6) + ", " + FormatFixedClassic(longitude, 6);
@@ -359,31 +47,78 @@ std::string Coordinates(double latitude, double longitude) {
 
 } // namespace
 
-std::string LocationText(const MapPlace& place, bool attribution) {
+std::string LocationText(const MapPlace& place) {
     const std::string lat = FormatFixedClassic(place.latitude, 6);
     const std::string lon = FormatFixedClassic(place.longitude, 6);
     std::string text = "\xF0\x9F\x93\x8D " + (place.name.empty() ? Coordinates(place.latitude, place.longitude)
                                                                   : place.name);
     text += "\nhttps://www.openstreetmap.org/?mlat=" + lat + "&mlon=" + lon + "#map=" +
             std::to_string(place.zoom) + "/" + lat + "/" + lon;
-    if (attribution) text += "\n" + Tr("Map: \xC2\xA9 OpenStreetMap contributors");
     return text;
+}
+
+namespace {
+
+// The number after `key` in `text` up to the next & or # or end; false
+// when there is none or it is no number
+bool NumberAfter(const std::string& text, const std::string& key, size_t from, double& out) {
+    const size_t at = text.find(key, from);
+    if (at == std::string::npos) return false;
+    const size_t begin = at + key.size();
+    size_t end = begin;
+    while (end < text.size() && (std::isdigit(static_cast<unsigned char>(text[end])) || text[end] == '.' ||
+                                 text[end] == '-' || text[end] == '+'))
+        ++end;
+    return end > begin && TryParseFloat(text.substr(begin, end - begin), out);
+}
+
+} // namespace
+
+bool ParseLocationText(const std::string& text, MapPlace& place) {
+    // An openstreetmap.org link with its marker - what LocationText writes,
+    // and what openstreetmap.org's own Share gives
+    const size_t link = text.find("openstreetmap.org/");
+    if (link == std::string::npos) return false;
+    double lat = 0, lon = 0;
+    if (!NumberAfter(text, "mlat=", link, lat) || !NumberAfter(text, "mlon=", link, lon)) return false;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
+    place.latitude = lat;
+    place.longitude = lon;
+    place.zoom = 16;
+    const size_t map = text.find("#map=", link);
+    if (map != std::string::npos) {
+        double zoom = 0;
+        if (NumberAfter(text, "#map=", map, zoom) && zoom >= 1 && zoom <= 19) place.zoom = static_cast<int>(zoom);
+    }
+    // The name: the text before the link, without the pin and the line breaks
+    std::string name = text.substr(0, text.rfind("http", link) == std::string::npos ? link : text.rfind("http", link));
+    // The pin goes wherever it is ("You said: 📍 Alexanderplatz"): the card has its own
+    const std::string pin = "\xF0\x9F\x93\x8D ";
+    for (size_t at = name.find(pin); at != std::string::npos; at = name.find(pin)) name.erase(at, pin.size());
+    const std::string bare = "\xF0\x9F\x93\x8D";
+    for (size_t at = name.find(bare); at != std::string::npos; at = name.find(bare)) name.erase(at, bare.size());
+    while (!name.empty() && std::isspace(static_cast<unsigned char>(name.back()))) name.pop_back();
+    size_t first = 0;
+    while (first < name.size() && std::isspace(static_cast<unsigned char>(name[first]))) ++first;
+    place.name = name.substr(first);
+    place.url = text.substr(text.rfind("http", link) == std::string::npos ? link : text.rfind("http", link));
+    const size_t stop = place.url.find_first_of(" \n\t");
+    if (stop != std::string::npos) place.url = place.url.substr(0, stop);
+    return true;
 }
 
 // ===== THE WINDOW =====
 
 struct ChatCubeLocationWindow::State : public std::enable_shared_from_this<State> {
     std::string version;
-    std::string cacheFolder;
     InsertHandler onInsert;
-    std::shared_ptr<TileStore> tiles;
 
     std::shared_ptr<UltraCanvasWindow> window;
     std::shared_ptr<UltraCanvasTextInput> search;
     std::shared_ptr<UltraCanvasContainer> results;
-    std::shared_ptr<MapView> map;
+    std::shared_ptr<UltraCanvasMapView> map;
     std::shared_ptr<UltraCanvasLabel> chosen;
-    std::shared_ptr<UltraCanvasCheckbox> withPicture;
+    std::shared_ptr<UltraCanvasButton> myPosition;
     std::shared_ptr<UltraCanvasButton> insert;
     MapPlace place;
     bool hasPlace = false;
@@ -397,7 +132,8 @@ struct ChatCubeLocationWindow::State : public std::enable_shared_from_this<State
         place = p;
         hasPlace = true;
         chosen->SetText((p.name.empty() ? Tr("A place on the map") : p.name) + "  -  " +
-                        Coordinates(p.latitude, p.longitude));
+                        Coordinates(p.latitude, p.longitude) +
+                        (accuracy.empty() ? std::string() : "  (" + accuracy + ")"));
         insert->SetDisabled(false);
     }
 
@@ -432,8 +168,9 @@ struct ChatCubeLocationWindow::State : public std::enable_shared_from_this<State
                     if (!d) return;
                     MapPlace q = p;
                     q.zoom = 16;
-                    d->map->CentreOn(q.latitude, q.longitude, q.zoom);
-                    d->map->SetPin(q.latitude, q.longitude);
+                    d->accuracy.clear();
+                    d->map->CentreOn(GeoPoint{q.latitude, q.longitude}, q.zoom);
+                    d->map->SetPin(GeoPoint{q.latitude, q.longitude});
                     d->SetPlace(q);
                 });
                 results->AddChild(b);
@@ -459,6 +196,10 @@ struct ChatCubeLocationWindow::State : public std::enable_shared_from_this<State
         std::weak_ptr<State> weak = weak_from_this();
         UltraNet_HttpRequestAsync(request, [weak, serial, app, answered](const UltraNetResponse& response) {
             const bool ok = response.IsComplete() && response.IsSuccess();
+            if (!ok) {
+                debugOutput << "ChatCube: Nominatim answered " << response.statusCode
+                            << (response.transferError.empty() ? "" : " (" + response.transferError + ")") << std::endl;
+            }
             std::string body = ok ? response.GetBodyAsString() : std::string();
             app->PostToUIThread([weak, serial, ok, body = std::move(body), answered]() {
                 auto d = weak.lock();
@@ -509,40 +250,43 @@ struct ChatCubeLocationWindow::State : public std::enable_shared_from_this<State
     void Insert() {
         if (!hasPlace || !onInsert) return;
         place.zoom = map->GetZoom();
-        std::string picture;
-        if (withPicture->IsChecked()) {
-            ClipboardDib::RgbaImage image;
-            std::vector<uint8_t> png;
-            if (map->PictureAroundPin(kPictureWidth, kPictureHeight, image) && ClipboardDib::EncodePng(image, png)) {
-                std::error_code ec;
-                std::filesystem::create_directories(PathFromUtf8(cacheFolder), ec);
-                char stamp[32];
-                const std::time_t now = std::time(nullptr);
-                std::tm local{};
-#if defined(_WIN32) || defined(_WIN64)
-                localtime_s(&local, &now);
-#else
-                localtime_r(&now, &local);
-#endif
-                std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
-                const std::string path = PathToUtf8(PathFromUtf8(cacheFolder) / PathFromUtf8(std::string("Map-") + stamp + ".png"));
-                std::FILE* f = OpenFileUtf8(path, "wb");
-                const bool written = f && std::fwrite(png.data(), 1, png.size(), f) == png.size();
-                if (f) std::fclose(f);
-                if (written) picture = path;
-            }
-        }
         const MapPlace chosenPlace = place;
         InsertHandler handler = onInsert;
         if (window) window->Close();
-        handler(chosenPlace, picture);
+        handler(chosenPlace);
     }
+
+    // My position: the system's location service asked, the map centred
+    // on the answer with the pin there, named like a click
+    void LocateMe() {
+        myPosition->SetDisabled(true);
+        chosen->SetText(Tr("Finding where this computer is\xE2\x80\xA6"));
+        if (window) window->RequestRedraw();
+        std::weak_ptr<State> weak = weak_from_this();
+        UltraCanvasGeolocation::RequestPosition([weak](const GeoPositionResult& r) {
+            auto d = weak.lock();
+            if (!d || !d->window) return;
+            d->myPosition->SetDisabled(false);
+            if (!r.ok) {
+                d->chosen->SetText(TrF("Your position is not known: {0}", r.error));
+                d->window->RequestRedraw();
+                return;
+            }
+            // The zoom by how sure the answer is: a street for a GPS fix,
+            // the town for a guess from the network
+            const int zoom = r.accuracyMeters < 0 ? 15 : r.accuracyMeters < 150 ? 17 : r.accuracyMeters < 2000 ? 14 : 11;
+            d->map->CentreOn(GeoPoint{r.latitude, r.longitude}, zoom);
+            d->map->SetPin(GeoPoint{r.latitude, r.longitude});
+            d->accuracy = UltraCanvasGeolocation::AccuracyText(r.accuracyMeters);
+            d->PinMoved(r.latitude, r.longitude);
+        });
+    }
+    std::string accuracy;   // "about 30 m": said beside the place found by My position
 };
 
-ChatCubeLocationWindow::ChatCubeLocationWindow(std::string version, std::string cacheFolder, InsertHandler onInsert) {
+ChatCubeLocationWindow::ChatCubeLocationWindow(std::string version, InsertHandler onInsert) {
     state_ = std::make_shared<State>();
     state_->version = std::move(version);
-    state_->cacheFolder = std::move(cacheFolder);
     state_->onInsert = std::move(onInsert);
 }
 
@@ -564,7 +308,8 @@ void ChatCubeLocationWindow::Show(UltraCanvasWindowBase* parent) {
         d->window->RaiseAndFocus();
         return;
     }
-    d->tiles = SharedTiles(d->UserAgent());
+    MapTiles::SetUserAgent(d->UserAgent());
+    d->accuracy.clear();
     d->hasPlace = false;
 
     WindowConfig wc;
@@ -584,10 +329,7 @@ void ChatCubeLocationWindow::Show(UltraCanvasWindowBase* parent) {
     d->window->SetBackgroundColor(L().panel);
     std::weak_ptr<State> weak = state_;
     d->window->onWindowClosed = [weak]() {
-        if (auto s = weak.lock()) {
-            s->window.reset();
-            if (s->tiles) s->tiles->changed = nullptr;
-        }
+        if (auto s = weak.lock()) s->window.reset();
     };
 
     // ----- the search -----
@@ -619,12 +361,15 @@ void ChatCubeLocationWindow::Show(UltraCanvasWindowBase* parent) {
     mapBox->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     mapBox->size.height = CSSLayout::Dimension::Px(static_cast<float>(kMapHeight));
     mapBox->SetBorders(1.0f, L().line, 10.0f);
-    d->map = std::make_shared<MapView>("cc-loc-map", d->tiles);
+    d->map = std::make_shared<UltraCanvasMapView>("cc-loc-map");
     const CSSLayout::Position fill{CSSLayout::Dimension::Px(0), CSSLayout::Dimension::Px(0),
                                    CSSLayout::Dimension::Px(0), CSSLayout::Dimension::Px(0)};
     d->map->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute).SetPositionInsets(fill);
-    d->map->onPinMoved = [weak](double lat, double lon) {
-        if (auto s = weak.lock()) s->PinMoved(lat, lon);
+    d->map->onPinMoved = [weak](const GeoPoint& at) {
+        if (auto s = weak.lock()) {
+            s->accuracy.clear();
+            s->PinMoved(at.latitude, at.longitude);
+        }
     };
     mapBox->AddChild(d->map);
     auto zoomBox = std::make_shared<UltraCanvasContainer>("cc-loc-zoom");
@@ -646,9 +391,6 @@ void ChatCubeLocationWindow::Show(UltraCanvasWindowBase* parent) {
     zoomBox->AddChild(zoomOut);
     mapBox->AddChild(zoomBox);
     d->window->AddChild(mapBox);
-    d->tiles->changed = [weak]() {
-        if (auto s = weak.lock(); s && s->map) s->map->RequestRedraw();
-    };
 
     // ----- the place chosen, and the buttons -----
     d->chosen = MakeLabel("cc-loc-chosen", Tr("No place chosen yet."), 10.0f);
@@ -657,10 +399,18 @@ void ChatCubeLocationWindow::Show(UltraCanvasWindowBase* parent) {
     d->chosen->size.width = CSSLayout::Dimension::Px(static_cast<float>(kWindowWidth - 32));
     d->window->AddChild(d->chosen);
     auto bottom = MakeRow("cc-loc-bottom", 8);
-    d->withPicture = UltraCanvasCheckbox::CreateCheckbox("cc-loc-picture", 0, 0, 300, 24,
-                                                          Tr("With a picture of the map"), true);
-    d->withPicture->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    bottom->AddChild(d->withPicture);
+    // My position: where the system's location service says this computer
+    // is (hidden where the framework has no location backend)
+    d->myPosition = MakeIconButton("cc-loc-me", "my-position", Tr("My position"), 140);
+    d->myPosition->SetTooltip(Tr("Put the pin where this computer is"));
+    d->myPosition->SetVisible(UltraCanvasGeolocation::IsAvailable());
+    d->myPosition->SetOnClick([weak]() {
+        if (auto s = weak.lock()) s->LocateMe();
+    });
+    bottom->AddChild(d->myPosition);
+    auto spacer = std::make_shared<UltraCanvasContainer>("cc-loc-spacer");
+    spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    bottom->AddChild(spacer);
     auto cancel = MakeIconButton("cc-loc-cancel", "close", Tr("Cancel"), 104);
     cancel->SetOnClick([weak]() {
         if (auto s = weak.lock(); s && s->window) s->window->Close();

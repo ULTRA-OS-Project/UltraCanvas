@@ -74,6 +74,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListSelection.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasMapView.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
@@ -292,6 +293,7 @@ ChatCubeWindow::~ChatCubeWindow() {
         if (publicTimer_) app->StopTimer(publicTimer_);
         if (screenshotTimer_) app->StopTimer(screenshotTimer_);
     }
+    if (mapTilesListener_) MapTiles::RemoveListener(mapTilesListener_);
     // A recording under way goes with the window, nothing sent.
     if (voiceRecorder_) {
         voiceRecorder_->Stop();
@@ -1055,6 +1057,12 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         // Sound plays in its bubble, a video in the chat; anything else opens.
         if (row < 0 || row >= static_cast<int>(rows.size())) return;
         const UltraIMMessage& clicked = rows[static_cast<size_t>(row)].message;
+        // A location's card: the place on openstreetmap.org, in the browser
+        MapPlace place;
+        if (LocationOf(clicked, place)) {
+            if (!place.url.empty()) OpenURL(place.url);
+            return;
+        }
         if (IsAudioMessage(clicked)) ToggleVoicePlayback(row);
         else if (clicked.type == UltraIMMessageType::Video) PlayVideoInChat(row);
         else OpenAttachment(row);
@@ -1071,6 +1079,10 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         ShowMessageMenu(row, event.pointerWindow.x, event.pointerWindow.y);
     };
     pane->AddChild(messageList_);
+    // A location's map card draws again as its tiles come in
+    mapTilesListener_ = MapTiles::AddListener([this]() {
+        if (messageList_ && messageList_->IsVisible()) messageList_->RequestRedraw();
+    });
 
     // ----- a video played in the chat: a player over the field, and a x -----
     videoPlayerPanel_ = std::make_shared<UltraCanvasContainer>("cc-video-player-panel");
@@ -3414,7 +3426,7 @@ bool ChatCubeWindow::FeatureUsable(Feature feature) const {
     switch (feature) {
         case Feature::Emoji:
         case Feature::Location:
-            return true;        // text; a sticker or a map picture only where pictures go
+            return true;        // text (a location is its link); a sticker only where pictures go
         case Feature::Screenshot:
             return UltraCanvasDesktopShell::CanCaptureScreen() && AttachmentsPossible();
         case Feature::Attach:
@@ -3555,18 +3567,17 @@ void ChatCubeWindow::StageSticker(const std::string& svgPath) {
 void ChatCubeWindow::OpenLocation() {
     if (!window_ || activeConversation_.empty()) return;
     if (!locationWindow_) {
-        const std::string cache = PathToUtf8(UltraCanvasDataFolder("ChatCube") / "cache" / "pasted");
         locationWindow_ = std::make_unique<ChatCubeLocationWindow>(
-            version_, cache, [this](const MapPlace& place, const std::string& picture) { InsertLocation(place, picture); });
+            version_, [this](const MapPlace& place) { InsertLocation(place); });
     }
     locationWindow_->Show(window_.get());
 }
 
-void ChatCubeWindow::InsertLocation(const MapPlace& place, const std::string& picturePath) {
+void ChatCubeWindow::InsertLocation(const MapPlace& place) {
     if (activeConversation_.empty() || !input_) return;
-    bool picture = !picturePath.empty() && AttachmentsPossible();
-    if (picture) StageAttachment(picturePath, true);
-    std::string text = LocationText(place, picture);
+    // The text alone: ChatCube shows it as a map card, every other program
+    // as the place's name and its link
+    std::string text = LocationText(place);
     // On a line of its own after what is written already
     const std::string written = input_->GetText();
     if (!written.empty() && written.back() != '\n') text = "\n" + text;
