@@ -379,7 +379,6 @@
     "other": "{0} и ещё {n} файла"
   },
   "{0} could not be applied": "Не удалось применить {0}",
-  "{0} has unsaved changes. Close it anyway?": "В {0} есть несохранённые изменения. Всё равно закрыть?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

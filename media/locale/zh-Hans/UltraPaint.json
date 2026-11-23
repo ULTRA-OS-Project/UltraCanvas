@@ -373,7 +373,6 @@
     "other": "{0} 及另外 {n} 个文件"
   },
   "{0} could not be applied": "无法应用 {0}",
-  "{0} has unsaved changes. Close it anyway?": "{0} 有未保存的更改。仍要关闭吗？",
   "{0} x {1} px, {2}": "{0} x {1} px，{2}",
   "{0}: {1}": "{0}：{1}",
   "{n} image has unsaved changes. Quit anyway?": {

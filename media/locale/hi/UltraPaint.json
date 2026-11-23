@@ -375,7 +375,6 @@
     "other": "{0} और {n} अन्य फ़ाइलें"
   },
   "{0} could not be applied": "{0} लागू नहीं किया जा सका",
-  "{0} has unsaved changes. Close it anyway?": "{0} में न सहेजे गए परिवर्तन हैं। फिर भी बंद करें?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

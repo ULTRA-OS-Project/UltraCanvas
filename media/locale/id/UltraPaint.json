@@ -373,7 +373,6 @@
     "other": "{0} dan {n} file lainnya"
   },
   "{0} could not be applied": "{0} tidak dapat diterapkan",
-  "{0} has unsaved changes. Close it anyway?": "{0} memiliki perubahan yang belum disimpan. Tetap tutup?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

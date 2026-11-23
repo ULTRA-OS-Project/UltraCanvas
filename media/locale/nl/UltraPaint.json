@@ -375,7 +375,6 @@
     "other": "{0} en nog {n} bestanden"
   },
   "{0} could not be applied": "{0} kon niet worden toegepast",
-  "{0} has unsaved changes. Close it anyway?": "{0} heeft niet-opgeslagen wijzigingen. Toch sluiten?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

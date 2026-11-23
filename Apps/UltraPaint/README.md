@@ -56,9 +56,12 @@ The first image made, pasted or opened takes the start page's place; the
 commands that work on an image do nothing until then.
 
 A dot on a tab marks unsaved changes. Its **×**, or *File ▸ Close Tab*
-(`Ctrl+W`), closes it, asking first when it has unsaved changes. A tab that
-is not on show is brought to the front before it closes, and asked about
-("Close *name*?"), so you see the image going; the last tab closing brings
+(`Ctrl+W`), closes it. With unsaved changes it asks **Save**, **Don't save**
+or **Cancel**: Save writes the image first (to its file, or through *Save
+As* for an untitled one) and closes the tab once it is saved - a save
+cancelled or failed keeps the tab. A tab that is not on show is brought to
+the front before it closes, and one without changes asked about ("Close
+*name*?"), so you see the image going; the last tab closing brings
 back the start page. `Ctrl+Tab` / `Ctrl+Shift+Tab` go to the
 next and previous tab, and a tab can be dragged to another place in the
 strip. Closing the window asks once about all its unsaved images.

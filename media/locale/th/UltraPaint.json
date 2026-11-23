@@ -373,7 +373,6 @@
     "other": "{0} และอีก {n} ไฟล์"
   },
   "{0} could not be applied": "ใช้ {0} ไม่ได้",
-  "{0} has unsaved changes. Close it anyway?": "{0} มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก ปิดเลยหรือไม่",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

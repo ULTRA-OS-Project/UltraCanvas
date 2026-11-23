@@ -3,6 +3,8 @@
 // toolbars, paint surface, colour picker, option / layer panels, status
 // bar) and every command the menus and shortcuts run, plus the open-window
 // registry and the import path a dropped or opened file takes.
+// Version: 2.5.0 - closing a tab with unsaved changes asks Save / Don't save / Cancel; Save
+//                  closes the tab once the image is written (Save As for an untitled one)
 // Version: 2.4.0 - the start page in place of a blank canvas while no image is open: Create new
 //                  bitmap, Paste image and Clipboard history (the 20 images copied last, as
 //                  thumbnails to pick from); the window runs with no image, the commands
@@ -1434,14 +1436,50 @@ void UltraPaintWindow::CloseTab(int index) {
     const std::string name = tabStrip ? tabStrip->GetTabTitle(index) : std::string();
     std::weak_ptr<bool> alive = lifeToken;
     std::weak_ptr<UCRasterDocument> weakDoc = doc;
-    const std::string question = modified ? TrF("{0} has unsaved changes. Close it anyway?", name)
-                                          : TrF("Close {0}?", name);
-    ConfirmDiscard(question, [this, alive, weakDoc]() {
+    auto removeIt = [this, alive, weakDoc]() {
         if (alive.expired()) return;
         auto d = weakDoc.lock();
         const int at = d ? TabIndexOf(d.get()) : -1;   // the tabs may have moved meanwhile
         if (at >= 0) RemoveTabNow(at);
+    };
+    if (!modified) {
+        ConfirmDiscard(TrF("Close {0}?", name), removeIt);
+        return;
+    }
+    // Unsaved: Save (then close, once it is saved), Don't save, or Cancel.
+    AskSaveBeforeClosing(name, [this, alive, weakDoc, removeIt](SaveAnswer answer) {
+        if (alive.expired()) return;
+        if (answer == SaveAnswer::Discard) { removeIt(); return; }
+        if (answer != SaveAnswer::Save) return;
+        auto d = weakDoc.lock();
+        const int at = d ? TabIndexOf(d.get()) : -1;
+        if (at < 0) return;
+        // Saving works on the image on show: this one, brought to the front
+        // above (or back to it, should another tab have been picked since).
+        if (at != activeTab && tabStrip) tabStrip->SetActiveTab(at);
+        CmdSave(removeIt);   // Save As for an untitled image; a cancelled save keeps the tab
     });
+}
+
+void UltraPaintWindow::AskSaveBeforeClosing(const std::string& name, const std::function<void(SaveAnswer)>& onAnswer) {
+    DialogConfig config;
+    config.title = "UltraPaint";
+    config.message = TrF("Save the changes to {0} before closing it?", name);
+    config.dialogType = DialogType::Question;
+    config.buttons = DialogButtons::NoButtons;
+    config.width = 460;
+    config.height = 170;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    dialog->AddCustomButton(Tr("Cancel"), DialogResult::Cancel, DialogButtonRole::Cancel);
+    dialog->AddCustomButton(Tr("Don't save"), DialogResult::No, DialogButtonRole::Destructive);
+    dialog->AddCustomButton(Tr("Save"), DialogResult::Yes, DialogButtonRole::Default);
+    dialog->SetFollowTheme(true);
+    UltraCanvasDialogManager::ShowDialog(dialog, [onAnswer](DialogResult result) {
+        if (!onAnswer) return;
+        if (result == DialogResult::Yes) onAnswer(SaveAnswer::Save);
+        else if (result == DialogResult::No) onAnswer(SaveAnswer::Discard);
+        else onAnswer(SaveAnswer::Cancel);
+    }, window.get());
 }
 
 void UltraPaintWindow::RemoveTabNow(int index) {
@@ -3076,20 +3114,22 @@ std::string UltraPaintWindow::SaveLossQuestion(const std::string& path, bool lay
     return std::string();
 }
 
-void UltraPaintWindow::CmdSave() {
+void UltraPaintWindow::CmdSave(const std::function<void()>& afterSaved) {
     CommitTextEdit();
     if (!document) return;
-    if (document->GetFilePath().empty()) { CmdSaveAs(); return; }
+    if (document->GetFilePath().empty()) { CmdSaveAs(afterSaved); return; }
     // What the file would lose, said once.
     const std::string question = SaveLossQuestion(document->GetFilePath(), true);
     if (!question.empty()) {
-        ConfirmDiscard(question, [this]() { SaveToPath(document->GetFilePath()); });
+        ConfirmDiscard(question, [this, afterSaved]() {
+            if (SaveToPath(document->GetFilePath()) && afterSaved) afterSaved();
+        });
         return;
     }
-    SaveToPath(document->GetFilePath());
+    if (SaveToPath(document->GetFilePath()) && afterSaved) afterSaved();
 }
 
-void UltraPaintWindow::CmdSaveAs() {
+void UltraPaintWindow::CmdSaveAs(const std::function<void()>& afterSaved) {
     CommitTextEdit();
     if (!document) return;
     FileDialogOptions opts;
@@ -3105,18 +3145,20 @@ void UltraPaintWindow::CmdSaveAs() {
         // it at another size.
         .SetImageSize(document->GetWidth(), document->GetHeight())
         .SetParentWindow(window.get());
-    UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path,
-                                                       const FileSaveImageSize& size) {
+    UltraCanvasFileLoader::SaveFileDialog(opts, [this, afterSaved](DialogResult r, const std::string& path,
+                                                                   const FileSaveImageSize& size) {
         // The dialog hands back the name with the chosen type's extension.
         if (r != DialogResult::OK || path.empty()) return;
         // The type was picked here, so its layers go without a word; a
         // password going is not something a file type says.
         const std::string question = SaveLossQuestion(path, false);
         if (!question.empty()) {
-            ConfirmDiscard(question, [this, path, size]() { SaveToPath(path, size); });
+            ConfirmDiscard(question, [this, path, size, afterSaved]() {
+                if (SaveToPath(path, size) && afterSaved) afterSaved();
+            });
             return;
         }
-        SaveToPath(path, size);
+        if (SaveToPath(path, size) && afterSaved) afterSaved();
     });
 }
 

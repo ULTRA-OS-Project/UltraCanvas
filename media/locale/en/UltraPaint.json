@@ -217,6 +217,7 @@
   "Difference": "Difference",
   "Dilate (Grow)...": "Dilate (Grow)...",
   "Dodge": "Dodge",
+  "Don't save": "Don't save",
   "Double-click to rename": "Double-click to rename",
   "Drag a free-hand outline. Shift adds, Alt subtracts": "Drag a free-hand outline. Shift adds, Alt subtracts",
   "Drag a line, then drag or click twice to bend it; Enter keeps it as it is, Escape cancels (Shift constrains the line's angle)": "Drag a line, then drag or click twice to bend it; Enter keeps it as it is, Escape cancels (Shift constrains the line's angle)",
@@ -406,6 +407,7 @@
   "Sample": "Sample",
   "Sample merged": "Sample merged",
   "Save (Ctrl+S)": "Save (Ctrl+S)",
+  "Save the changes to {0} before closing it?": "Save the changes to {0} before closing it?",
   "Saved as an UltraCanvas layered image (.ucd), the image is encrypted with this password. Without it the file cannot be opened - a forgotten password cannot be recovered.": "Saved as an UltraCanvas layered image (.ucd), the image is encrypted with this password. Without it the file cannot be opened - a forgotten password cannot be recovered.",
   "Saved {0} (password-protected)": "Saved {0} (password-protected)",
   "Saved {0} at {1} x {2} px": "Saved {0} at {1} x {2} px",
@@ -508,7 +510,6 @@
     "other": "{0} and {n} more files"
   },
   "{0} could not be applied": "{0} could not be applied",
-  "{0} has unsaved changes. Close it anyway?": "{0} has unsaved changes. Close it anyway?",
   "{0} x {1}": "{0} x {1}",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",

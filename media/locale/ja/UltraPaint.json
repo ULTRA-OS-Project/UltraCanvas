@@ -373,7 +373,6 @@
     "other": "{0} ほか {n} 個のファイル"
   },
   "{0} could not be applied": "{0} を適用できませんでした",
-  "{0} has unsaved changes. Close it anyway?": "{0} には未保存の変更があります。閉じますか？",
   "{0} x {1} px, {2}": "{0} x {1} px、{2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

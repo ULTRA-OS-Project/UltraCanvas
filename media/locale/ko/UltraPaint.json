@@ -373,7 +373,6 @@
     "other": "{0} 외 파일 {n}개"
   },
   "{0} could not be applied": "{0}을(를) 적용할 수 없습니다",
-  "{0} has unsaved changes. Close it anyway?": "{0}에 저장되지 않은 변경 내용이 있습니다. 그래도 닫을까요?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

@@ -11,6 +11,8 @@
 // second start hands over add a tab rather than a window. The class also
 // holds the registry of open windows - File > New Window still opens one -
 // and the application exits with the last of them.
+// Version: 2.4.0 - closing a tab with unsaved changes asks Save / Don't save / Cancel
+//                  (AskSaveBeforeClosing); CmdSave / CmdSaveAs take what to do once saved
 // Version: 2.3.0 - the start page (Create new bitmap, Paste image, Clipboard history) in place of
 //                  a blank canvas while no image is open; CmdClipboardHistory
 // Version: 2.2.0 - PastedFrom / PastedText: a paste's status line as one translatable sentence per source
@@ -178,7 +180,8 @@ private:
     // the glass follow its document.
     void SwitchToTab(int index);
     // Closes tab `index`. A tab that is not on show is brought to the front
-    // and the close asked about first; so is one with unsaved changes.
+    // and the close asked about first; one with unsaved changes asks Save,
+    // Don't save or Cancel, and closes after a save only once it is saved.
     // The last tab closing leaves the start page in its place.
     void CloseTab(int index);
     void RemoveTabNow(int index);
@@ -311,6 +314,9 @@ private:
     // The resampling method and sharpening last chosen in Scale Image, offered again
     UCScaleImageOptions lastScaleOptions;
     void ConfirmDiscard(const std::string& question, const std::function<void()>& proceed);
+    // Closing an image with unsaved changes: Save, Don't save or Cancel.
+    enum class SaveAnswer { Save, Discard, Cancel };
+    void AskSaveBeforeClosing(const std::string& name, const std::function<void(SaveAnswer)>& onAnswer);
     // What saving the open image to `path` would lose - its layers (a flat
     // format, when `layers` is asked), its password (anything but a *.ucd) -
     // as the question to confirm first; empty when nothing is lost.
@@ -325,8 +331,10 @@ private:
     void CmdNewWindow();
     void CmdOpen();
     void CmdImport();
-    void CmdSave();
-    void CmdSaveAs();
+    // `afterSaved` runs once the image has been written - not when the save
+    // was cancelled or failed (closing a tab saves first with it).
+    void CmdSave(const std::function<void()>& afterSaved = nullptr);
+    void CmdSaveAs(const std::function<void()>& afterSaved = nullptr);
     void CmdExport();
     void CmdPassword();
     void CmdUndo();
