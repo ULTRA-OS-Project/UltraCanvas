@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailSenderBadge.cpp
+// Version: 0.5.1 - a contact's website icon also on a verdict only strangers are flagged for
 // Version: 0.5.0 - the verdict's finding codes reach ClassifySender (SenderIdentity::findings)
 // Version: 0.4.0 - the reading pane's badge follows a change of the look
 // Version: 0.3.0 - the interface texts go through Tr / TrF / TrN (UltraLocalisation); the colours and sizes are the theme's (UltraMailTheme.h)
@@ -112,7 +113,9 @@ SenderBadge SenderBadgeResolver::Resolve(const MessageEnvelope& message,
             const SenderBrand* brand = BrandById(status.brandId);
             fetchable = brand && !brand->iconUrl.empty();
         } else if (!junkFolder && security.Scanned() &&
-                   security.level <= ThreatLevel::Advertisement) {
+                   (security.level <= ThreatLevel::Advertisement || status.inAddressBook)) {
+            // (a contact's verdict may hold what only counts from strangers -
+            // a "Re:" - and the badge is not dangerous here)
             const std::string domain = DomainOfAddress(message.fromAddr);
             // A friend's Gmail address is not Google's mail.
             if (!IsPersonalMailboxDomain(domain)) key = SiteIconKey(domain);

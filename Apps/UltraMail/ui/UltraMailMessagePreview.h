@@ -3,6 +3,8 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.18.0 - onAddContact (the warning strip's "Add to contacts"); SetContacts
+//                  shows the message again when its sender joined the address book
 // Version: 0.17.0 - SetWarningStrip: the warning strip's kinds (Settings > Display >
 //                   Email warnings)
 // Version: 0.16.0 - signed and encrypted mail: decrypted and its signatures checked
@@ -92,7 +94,10 @@ public:
     // back to when it scans a body for the first time.
     void SetStore(LocalStore* store) { store_ = store; }
     // The address book and the icon cache behind the sender badge.
-    void SetContacts(ContactIndex contacts) { badges_.SetContacts(std::move(contacts)); }
+    // The address book, for the sender badge. When the shown message's sender
+    // joined it (or left it), the message is shown again: its badge and its
+    // warning strip depend on it.
+    void SetContacts(ContactIndex contacts);
     void SetIconCache(const SenderIconCache* cache) { icons_ = cache; badges_.SetIconCache(cache); }
     // Asked for the icon the shown sender's badge lacks; IconCached shows it
     // once it has arrived.
@@ -144,6 +149,10 @@ public:
                        const std::string& selfAddr)> onForward;
     // Delegated to the app: move the shown message to Trash (server + local).
     std::function<void(const MessageEnvelope&)> onDelete;
+    // The warning strip's "Add to contacts", for a "Re:" / "Fw:" from a sender
+    // the reader never wrote to (unsolicited-reply): the reader knows them.
+    // Without it the button is not shown.
+    std::function<void(const MessageEnvelope&)> onAddContact;
     // Delegated to the app: move the shown message to the Junk mailbox.
     std::function<void(const MessageEnvelope&)> onJunk;
     // Delegated to the app: clear \Seen on the shown message (server + local).
@@ -293,6 +302,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> warning_;     // scam / spam strip
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    warningAddContact_;   // "Add to contacts"
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyHost_;
     // The body and, with the attachments at the right, their column.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyRow_;

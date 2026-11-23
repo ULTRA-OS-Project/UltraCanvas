@@ -1987,3 +1987,208 @@ TEST(seo_offers) {
     off.options.seoOffers = false;
     REQUIRE(!ScanMessage(off).Has("seo-solicitation"));
 }
+
+// ---------------------------------------------------------------------------
+// Replies and forwards from strangers (unsolicited-reply)
+// ---------------------------------------------------------------------------
+namespace {
+
+// A forwarded "invoice" (WG: = Weitergeleitet) from a stranger, in a thread of
+// another company's messages, with the virus scanner's tag in front.
+const char* kForwardedInvoiceMail =
+    "Return-Path: <no-reply@automobielbeheersing.com>\r\n"
+    "Received: from automobielbeheersing.com (unknown [105.98.12.169])\r\n"
+    "\tby mail.reader.example (Postfix) with ESMTP id 6EC09C112BE\r\n"
+    "In-Reply-To: <wwc046ac96-c1d5-41db-a34e-c3aa58e9a741@kemink-fleisch.de>\r\n"
+    "References: <wwc046ac96-c1d5-41db-a34e-c3aa58e9a741@kemink-fleisch.de>\r\n"
+    "Message-ID: <865e44bab25d$accaf298$d0187ce3$@automobielbeheersing.com>\r\n"
+    "Date: Fri, 20 Nov 2026 12:14:06 +0000\r\n"
+    "To: Info <info@reader.example>\r\n"
+    "From: no-reply@automobielbeheersing.com\r\n"
+    "Subject: *** VIRUS ***WG: Rechnung 373115 vom  31.05.2026 | Kurt Heinrich Kemink GmbH & Co. KG\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: text/plain; charset=\"utf-8\"\r\n"
+    "\r\n"
+    "Bitte bis 15.06 26 bez.\r\n"
+    "\r\n"
+    "Mit freundlichen Gruessen\r\n"
+    "\r\n"
+    "Von: Kemink-Fleisch | Rechnungsstellung ausgangsrechnung@\r\n"
+    "Betreff: Rechnung 373115 vom 31.05.2026\r\n"
+    "\r\n"
+    "Sehr geehrte Damen und Herren,\r\n"
+    "anbei erhalten Sie Ihre aktuelle Rechnung.\r\n";
+
+// A sales "Re:" to a cold mail the reader never answered, DKIM-signed by the
+// sender's own domain.
+const char* kSalesFollowUpMail =
+    "Authentication-Results: mail.reader.example;\r\n"
+    "\tdkim=pass (2048-bit key; unprotected) header.d=suppliesrevenue.com header.i=@suppliesrevenue.com\r\n"
+    "Message-ID: <01a20303-5b90-74ed-bc7a-0488d11f72bc@suppliesrevenue.com>\r\n"
+    "List-Unsubscribe: <https://link.inproxalberta1.net/unsub/1/660353df>\r\n"
+    "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n"
+    "In-Reply-To: <01a1f8b5-6bc4-757c-9c79-93040fcbba76@suppliesrevenue.com>\r\n"
+    "References: <01a1f8b5-6bc4-757c-9c79-93040fcbba76@suppliesrevenue.com>\r\n"
+    "From: Dale Phillips <d_phillips@suppliesrevenue.com>\r\n"
+    "To: info@reader.example\r\n"
+    "Subject: Re: Riscos Cloverleaf sales\r\n"
+    "Date: Sun, 22 Nov 2026 11:28:01 +0000\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: text/plain; charset=utf-8\r\n"
+    "\r\n"
+    "Worth a chat?\r\n"
+    "\r\n"
+    "> Hello,\r\n"
+    "> I came across your website and read about your operating systems.\r\n"
+    "> Do you have 10 minutes to see how we can get similar results?\r\n";
+
+} // namespace
+
+TEST(a_forwarded_invoice_from_a_stranger_is_flagged) {
+    const ThreatReport r = ScanRawMessage(kForwardedInvoiceMail);
+    REQUIRE(r.Has("unsolicited-reply"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+    // It names the thread the sender was never part of, and the bill.
+    REQUIRE(r.Summary().find("kemink-fleisch.de") != std::string::npos);
+    REQUIRE(r.Summary().find("rechnung") != std::string::npos);
+}
+
+TEST(a_sales_follow_up_from_a_stranger_is_flagged) {
+    const ThreatReport r = ScanRawMessage(kSalesFollowUpMail);
+    REQUIRE(r.Has("unsolicited-reply"));
+    REQUIRE(r.verifiedDomain == "suppliesrevenue.com");   // genuine - and still flagged
+    REQUIRE(r.level == ThreatLevel::Suspicious);          // spam, not a scam
+}
+
+TEST(reply_prefixes) {
+    auto scan = [](const std::string& subject) {
+        ScanInput in;
+        in.fromAddr = "someone@company.example";
+        in.subject  = subject;
+        in.body     = "See below.";
+        return ScanMessage(in);
+    };
+    for (const char* s : {"Re: offer", "RE: offer", "Fw: offer", "FWD: offer", "WG: Rechnung",
+                          "AW: Angebot", "Re[2]: offer", "[SPAM] Re: offer", "*** VIRUS ***WG: x",
+                          "TR: facture", "SV: tilbud"})
+        REQUIRE(scan(s).Has("unsolicited-reply"));
+    for (const char* s : {"Offer", "Regarding: offer", "Fwiw the meeting", "Rechnung 123",
+                          "Re-launch: our new site", "Ref: 123"})
+        REQUIRE(!scan(s).Has("unsolicited-reply"));
+    // Nothing it replies to says more than a thread of the sender's own.
+    ScanInput own;
+    own.fromAddr = "someone@company.example";
+    own.subject = "Re: offer";
+    own.inReplyTo = "<abc@company.example>";
+    const int ownThread = ScanMessage(own).score;
+    REQUIRE(scan("Re: offer").score > ownThread);
+}
+
+TEST(replies_that_are_not_unsolicited) {
+    // A mailing list's post: strangers answer each other there.
+    ScanInput list;
+    list.fromAddr = "dev@people.example";
+    list.subject  = "Re: [dev] build broken";
+    list.listId   = "<dev.lists.project.example>";
+    REQUIRE(!ScanMessage(list).Has("unsolicited-reply"));
+    // Its own switch.
+    ScanInput off;
+    off.fromAddr = "someone@company.example";
+    off.subject  = "Fw: invoice";
+    REQUIRE(ScanMessage(off).Has("unsolicited-reply"));
+    off.options.strangerReplies = false;
+    REQUIRE(!ScanMessage(off).Has("unsolicited-reply"));
+    // A sender the reader trusts: the reader's own call.
+    ScanInput trusted;
+    trusted.fromAddr = "someone@company.example";
+    trusted.subject  = "Re: invoice";
+    trusted.senderTrusted = true;
+    REQUIRE(!ScanMessage(trusted).Has("unsolicited-reply"));
+    REQUIRE(FindingOnlyFromStrangers("unsolicited-reply"));
+}
+
+// ---------------------------------------------------------------------------
+// A no-reply address with a code per message is one sender
+// ---------------------------------------------------------------------------
+TEST(a_no_reply_address_with_a_code_is_one_sender) {
+    REQUIRE_EQ(SenderLists::Normalize("Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>"),
+               std::string("no-reply@mail.anthropic.com"));
+    REQUIRE_EQ(SenderLists::StableAddress("noreply+7f3a@shop.example"),
+               std::string("noreply@shop.example"));
+    REQUIRE_EQ(SenderLists::StableAddress("do-not-reply.4411@bank.example"),
+               std::string("do-not-reply@bank.example"));
+    // Anything else stays as it is.
+    for (const char* a : {"no-reply@mail.anthropic.com", "noreplyx@shop.example",
+                          "erika-mustermann@example.com", "no-reply-@x.example", "reply-1@x.example"})
+        REQUIRE_EQ(SenderLists::StableAddress(a), std::string(a));
+    // A "+tag" on the mailbox: the mailbox alone.
+    REQUIRE_EQ(SenderLists::Normalize("Shop <Orders+Q7x2Lm@Shop.Example>"),
+               std::string("orders@shop.example"));
+    REQUIRE_EQ(SenderLists::StableAddress("+abc@x.example"), std::string("+abc@x.example"));
+    SenderLists tagged;
+    tagged.trusted.insert(SenderLists::Entry("orders+111@shop.example", false));
+    REQUIRE(tagged.Trusts("orders+222@shop.example"));
+    REQUIRE(tagged.Trusts("orders@shop.example"));
+    REQUIRE(!tagged.Trusts("billing+111@shop.example"));
+    REQUIRE_EQ(SenderLists::Bare("Anthropic <No-Reply-AB@Mail.Anthropic.com>"),
+               std::string("no-reply-ab@mail.anthropic.com"));
+
+    // Trusted once, from one message: the next message's new code is trusted too.
+    SenderLists lists;
+    lists.trusted.insert(SenderLists::Entry("no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com", false));
+    REQUIRE(lists.Trusts("Anthropic <no-reply-Xy12Zw9QpL@mail.anthropic.com>"));
+    REQUIRE(!lists.Trusts("no-reply-Xy12Zw9QpL@other.example"));
+    // An entry kept with its code (before) still matches its own message.
+    SenderLists old;
+    old.trusted.insert("no-reply-abc123@mail.example");
+    REQUIRE(old.Trusts("no-reply-abc123@mail.example"));
+    // Blocking works the same way.
+    SenderLists block;
+    block.blocked.insert(SenderLists::Entry("noreply-9f8e@spam.example", true));
+    REQUIRE_EQ(block.BlockedBy("noreply-0000@spam.example"), std::string("noreply@spam.example"));
+}
+
+namespace {
+
+// Claude's sign-in link: a no-reply address with a code, signed by
+// mail.anthropic.com, its links through the mail service's click tracker.
+const char* kClaudeSignInMail =
+    "Authentication-Results: mail.reader.example;\r\n"
+    "\tdkim=pass (2048-bit key; unprotected) header.d=mail.anthropic.com header.i=@mail.anthropic.com header.a=rsa-sha256 header.s=s1;\r\n"
+    "\tdkim-atps=neutral\r\n"
+    "Content-Transfer-Encoding: quoted-printable\r\n"
+    "Content-Type: text/html; charset=us-ascii\r\n"
+    "Date: Mon, 23 Nov 2026 15:32:04 +0000 (UTC)\r\n"
+    "From: Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>\r\n"
+    "Mime-Version: 1.0\r\n"
+    "Message-ID: <wQUx5eonRfCXjydxKPVDhg@geopod-ismtpd-58>\r\n"
+    "Subject: Your secure link to Claude is here | 2026-11-23 16:32:04\r\n"
+    "Reply-To: Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>\r\n"
+    "To: info@reader.example\r\n"
+    "\r\n"
+    "<html><body><img alt=3D\"Claude\" src=3D\"https://claude.ai/images/email/claude_logo_chip.png\">\r\n"
+    "<div>Sign in to Claude</div><div>Click the button below to finish signing in. This link expires in 10 minutes.</div>\r\n"
+    "<a clicktracking=3D\"off\" href=3D\"https://claude.ai/magic-link/android#617c13cecf9998950aa62b390e9f5c74:aW5mb0ByZWFkZXIuZXhhbXBsZQ=3D=3D\">Sign in</a>\r\n"
+    "If you didn't request this email, you can safely ignore it. Need a hand? Contact\r\n"
+    "<a href=3D\"https://url8792.mail.anthropic.com/ls/click?upn=3Du001.abc\">Anthropic Support</a>.\r\n"
+    "<a href=3D\"https://url8792.mail.anthropic.com/ls/click?upn=3Du001.help\">Help</a>\r\n"
+    "<img src=3D\"https://url8792.mail.anthropic.com/wf/open?upn=3Du001.tr\" width=3D\"1\" height=3D\"1\"></body></html>\r\n";
+
+} // namespace
+
+TEST(claudes_sign_in_mail_is_genuine_and_trusted_once_for_good) {
+    const ThreatReport r = ScanRawMessage(kClaudeSignInMail);
+    REQUIRE(r.level == ThreatLevel::Clean);
+    REQUIRE(r.verifiedDomain == "mail.anthropic.com");
+    // Trusting it from this message trusts the next one, under its new code.
+    SenderLists lists;
+    lists.trusted.insert(SenderLists::Normalize("Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>"));
+    SetSenderLists(lists);
+    std::string next = kClaudeSignInMail;
+    for (std::size_t p; (p = next.find("REjD6rPynU0gNGG4w2exEQ")) != std::string::npos;)
+        next.replace(p, 22, "Qm7Tx0Lk2PaVb9");
+    const bool trusted = GetSenderLists().Trusts("no-reply-Qm7Tx0Lk2PaVb9@mail.anthropic.com");
+    SetSenderLists(SenderLists{});
+    REQUIRE(trusted);
+    REQUIRE(ScanRawMessage(next).level == ThreatLevel::Clean);
+}

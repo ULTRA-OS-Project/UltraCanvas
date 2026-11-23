@@ -778,3 +778,30 @@ TEST(an_offer_of_services_is_spam_from_a_stranger_only) {
     who.findings = "";   // a verdict stored before the codes were
     REQUIRE(ClassifySender(who, index).cls == SenderClass::Spam);
 }
+
+TEST(a_reply_from_a_stranger_is_spam_and_from_a_contact_not) {
+    ContactIndex index;
+    index.Build({ MakeContact("Supplier", ContactSection::Work, "billing@supplier.example") });
+
+    SenderIdentity who;
+    who.level    = ThreatLevel::Suspicious;
+    who.findings = "unsolicited-reply";
+    who.address  = "no-reply@stranger.example";
+    REQUIRE(ClassifySender(who, index).cls == SenderClass::Spam);
+
+    // "Add to contacts": the supplier's forwarded invoice is a contact's mail.
+    who.address = "billing@supplier.example";
+    REQUIRE(ClassifySender(who, index).cls == SenderClass::Business);
+}
+
+TEST(claudes_no_reply_address_with_a_code_is_the_known_service) {
+    SenderIdentity who;
+    who.address     = "no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com";
+    who.displayName = "Anthropic";
+    who.subject     = "Your secure link to Claude is here";
+    who.level       = ThreatLevel::Clean;
+    const SenderStatus s = ClassifySender(who, ContactIndex{});
+    REQUIRE(s.cls == SenderClass::Business);
+    REQUIRE(s.knownService);
+    REQUIRE_EQ(s.brandName, std::string("Claude"));
+}

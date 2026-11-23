@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.11.1 - "Always from this sender" (pictures) keeps a no-reply address with a
+//                   code per message as one sender (SenderLists::Normalize)
 // Version: 0.11.0 - the look follows a change of the theme while UltraMail is open: a theme
 //                   change handler (ApplyLook) styles every open window again
 // Version: 0.10.1 - Settings > Display > Email warnings reach the reading pane's warning strip
@@ -804,7 +806,11 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
             case RemoteImagePolicy::LoadTrusted: break;
         }
         const std::string a = lowerAddr(addr);
-        if (prefs_.remoteImageSenders.count(a) || prefs_.senderLists.Trusts(a)) return true;
+        // "no-reply-<code>@...": allowed once, for every message of the sender
+        if (prefs_.remoteImageSenders.count(a) ||
+            prefs_.remoteImageSenders.count(SenderLists::Normalize(a)) ||
+            prefs_.senderLists.Trusts(a))
+            return true;
         if (const auto at = a.rfind('@'); at != std::string::npos &&
             prefs_.IsTrustedDomain(a.substr(at + 1)))
             return true;
@@ -817,7 +823,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         return prefs_.remoteImages == RemoteImagePolicy::LoadTrusted && prefs_.IsTrustedDomain(url);
     };
     mailView_.onAlwaysAllowRemoteImages = [this, lowerAddr](const std::string& addr) {
-        if (prefs_.remoteImageSenders.insert(lowerAddr(addr)).second) {
+        if (prefs_.remoteImageSenders.insert(SenderLists::Normalize(lowerAddr(addr))).second) {
             prefs_.Save(prefsPath_);
             SettingsDialog::SyncWithPreferences();
         }
