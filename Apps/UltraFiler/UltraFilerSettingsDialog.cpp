@@ -46,6 +46,8 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.23.0 - Display > Path bar: the colours of the parent folders and of the current folder
+//                  (colour boxes that open the colour picker), and Restore defaults
 // Version: 1.22.0 - Display > Display mode: UltraFiler light, dark, or as the desktop says;
 //                  the window's own switches follow a theme change (FollowKitLook)
 // Version: 1.21.2 - Display > Thumbnails / Detail view name the file kinds in the reader's
@@ -187,6 +189,9 @@ namespace {
         std::shared_ptr<UltraCanvasCheckbox> lockMarkingBox;
         // Display > Path bar: the "drive's volume name" checkbox.
         std::shared_ptr<UltraCanvasCheckbox> pathBarVolumeNamesBox;
+        // ... and its two colours.
+        std::shared_ptr<UltraCanvasButton> pathBarFolderColorBox;
+        std::shared_ptr<UltraCanvasButton> pathBarCurrentColorBox;
         // Display > Thumbnails: the "pictures inside a folder on its icon"
         // checkbox above the kind list.
         std::shared_ptr<UltraCanvasCheckbox> folderPreviewsBox;
@@ -1246,6 +1251,55 @@ namespace {
         AddNote(parts, "ufl-set-pathbar-note2",
                 Tr("Off, the path bar is shorter: the letter alone, which "
                    "leaves more room for the folders of a deep path."));
+
+        // The colours: the segments of the folders leading to the one shown,
+        // and the segment of the folder shown. A click opens the colour
+        // picker; the bar follows while a colour is being picked.
+        auto pathBarColorBox = [d](const char* id, Color UltraFilerSettings::* field,
+                                   std::shared_ptr<UltraCanvasButton> DialogState::* box,
+                                   const std::string& tooltip, const std::string& title) {
+            d->*box = MakeColorBox(id, d->settings->*field, tooltip, [d, field, box, title]() {
+                ShowColorPickerPopup(d, title, d->settings->*field,
+                        [d, field, box](const Color& c) {       // live preview
+                    d->settings->*field = c;
+                    SetColorBoxColor(d->*box, c);
+                    if (d->onChanged) d->onChanged();
+                },
+                        [d, field, box](const Color& c) {       // kept
+                    d->settings->*field = c;
+                    SetColorBoxColor(d->*box, c);
+                    ApplyAndSave(d);
+                });
+            });
+        };
+        pathBarColorBox("ufl-set-pathbar-folders-color", &UltraFilerSettings::pathBarFolderColor,
+                        &DialogState::pathBarFolderColorBox,
+                        Tr("Background of the folders leading to the one shown"),
+                        Tr("Parent folders colour"));
+        parts.body->AddChild(MakeColorRow("ufl-set-pathbar-folders-row",
+                Tr("Parent folders colour:"), d->pathBarFolderColorBox));
+        pathBarColorBox("ufl-set-pathbar-current-color", &UltraFilerSettings::pathBarCurrentColor,
+                        &DialogState::pathBarCurrentColorBox,
+                        Tr("Background of the folder shown"),
+                        Tr("Current folder colour"));
+        parts.body->AddChild(MakeColorRow("ufl-set-pathbar-current-row",
+                Tr("Current folder colour:"), d->pathBarCurrentColorBox));
+        AddNote(parts, "ufl-set-pathbar-note3",
+                Tr("The text on each segment is white or dark, whichever reads on "
+                   "its colour. Under a dark theme the default light grey of the "
+                   "parent folders becomes the theme's dark grey; a colour you "
+                   "choose is kept in either look."));
+
+        d->resets[kPagePathBar] = PageReset{Tr("Restore defaults"), 170, [d]() {
+            if (!d->settings) return;
+            d->settings->pathBarVolumeNames = true;
+            d->settings->pathBarFolderColor = UltraFilerSettings::kDefaultPathBarFolderColor;
+            d->settings->pathBarCurrentColor = UltraFilerSettings::kDefaultPathBarCurrentColor;
+            if (d->pathBarVolumeNamesBox) d->pathBarVolumeNamesBox->SetChecked(true);
+            SetColorBoxColor(d->pathBarFolderColorBox, d->settings->pathBarFolderColor);
+            SetColorBoxColor(d->pathBarCurrentColorBox, d->settings->pathBarCurrentColor);
+            ApplyAndSave(d);
+        }};
         return parts.page;
     }
 

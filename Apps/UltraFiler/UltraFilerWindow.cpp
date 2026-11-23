@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.49.0 - the path bar in the colours of Settings > Display > Path bar: #E4E6E9 for the
+//                  folders on the way and #0078D7 for the folder shown, by default, as before
 // Version: 1.48.1 - the Computer page's drive cards follow a dark / light switch (ApplyLook rebuilds them)
 // Version: 1.48.0 - dark theme: the line-art icons (cloud, network, server, FTP, computer, phone)
 //                  in the tree and the file displays drawn in the theme's ink; any light
@@ -1029,21 +1031,33 @@ namespace {
     // goes to rather than steps through, wear it.
     void StyleFlatToolButton(const std::shared_ptr<UltraCanvasButton>& b) { StyleToggleButton(b, false); }
 
-    BreadcrumbStyle MakePathBreadcrumbStyle() {
-        // The arrow shape with the theme's colours (Arrow() alone is the
-        // light look: light grey segments, which glare on a dark row).
-        // ApplyLook sets it again on a theme change - the bar does not
-        // follow the theme by itself, which would put the theme's soft
-        // accent back on the current segment.
+    // White or a near-black, whichever reads better on `ground`.
+    Color InkOn(const Color& ground) {
+        const Color dark(32, 32, 36, 255);
+        return UltraCanvasTheme::Contrast(ground, Colors::White) >= UltraCanvasTheme::Contrast(ground, dark)
+                   ? Colors::White : dark;
+    }
+
+    // The path bar: the arrow shape in the colours of Settings > Display >
+    // Path bar - the folders on the way (#E4E6E9 by default) and the folder
+    // shown (#0078D7, white on it), as the arrow bar was before it took the
+    // theme's grey and soft accent. The text on each is white or dark,
+    // whichever reads. Under a dark theme the default light grey would glare
+    // on the dark row, so the folders keep the theme's raised grey there
+    // unless a colour of the user's own was chosen; the seam between two
+    // segments is the row's ground in either look. ApplyLook sets it again on
+    // a theme change - the bar does not follow the theme by itself.
+    BreadcrumbStyle MakePathBreadcrumbStyle(const Color& folderColor, const Color& currentColor) {
         const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
         BreadcrumbStyle s = BreadcrumbStyle::FromTheme(theme, BreadcrumbStyle::Arrow());
-        if (theme.dark && !theme.highContrast) {
-            // Under Dark the folder you are in keeps the arrow's strong blue
-            // with white on it (4.6:1), the segments before it the raised
-            // dark grey, and the seam between two segments is the row's
-            // ground rather than a light grey line.
-            s.currentItemBackgroundColor = Color(0, 120, 215, 255);
-            s.currentItemTextColor = Colors::White;
+        if (!theme.highContrast) {
+            const bool themedFolders = theme.dark && folderColor == UltraFilerSettings::kDefaultPathBarFolderColor;
+            if (!themedFolders) {
+                s.itemBackgroundColor = folderColor;
+                s.itemTextColor = InkOn(folderColor);
+            }
+            s.currentItemBackgroundColor = currentColor;
+            s.currentItemTextColor = InkOn(currentColor);
             s.separatorColor = theme.roles.ground;
         }
         s.overflowMode = BreadcrumbOverflowMode::Collapse;
@@ -1768,7 +1782,7 @@ void UltraFilerWindow::ApplyLook() {
     // The path bars: the window's, and the split view's two (styled while
     // the right one is out of the window too)
     for (const auto& crumb : {breadcrumb, leftPaneBreadcrumb, rightPaneBreadcrumb})
-        if (crumb) crumb->SetStyle(MakePathBreadcrumbStyle());
+        if (crumb) crumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor, settings.pathBarCurrentColor));
     if (statusInfoLabel) statusInfoLabel->SetTextColor(look.inkMuted);
     if (statusSelectionLabel) statusSelectionLabel->SetTextColor(look.inkFaint);
     if (statusLabel) statusLabel->SetTextColor(statusNoteIsError ? look.danger : look.inkMuted);
@@ -2232,7 +2246,12 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (curatedHomeActive.exchange(curatedHome) != curatedHome)
         RefreshHomeTreeChildren();
-    // Display > Path bar: the strips are rebuilt only when the choice moved.
+    // Display > Path bar: its colours, on the window's strip and the split
+    // view's two (a restyle, no rebuild)...
+    for (const auto& crumb : {breadcrumb, leftPaneBreadcrumb, rightPaneBreadcrumb})
+        if (crumb) crumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor,
+                                                           settings.pathBarCurrentColor));
+    // ... and the strips are rebuilt only when the drive-name choice moved.
     if (pathBarVolumeNamesApplied != settings.pathBarVolumeNames) {
         pathBarVolumeNamesApplied = settings.pathBarVolumeNames;
         RefreshPathBars();
@@ -2931,7 +2950,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     row->AddChild(favoritesButton);
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
-    breadcrumb->SetStyle(MakePathBreadcrumbStyle());
+    breadcrumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor, settings.pathBarCurrentColor));
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Center);
     row->AddChild(breadcrumb);
@@ -9904,7 +9923,7 @@ void UltraFilerWindow::BuildSplitViewPanes() {
         header->AddChild(button);
         crumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-pane-breadcrumb-" + suffix,
                                                         0, 0, 0, 28);
-        crumb->SetStyle(MakePathBreadcrumbStyle());
+        crumb->SetStyle(MakePathBreadcrumbStyle(settings.pathBarFolderColor, settings.pathBarCurrentColor));
         crumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                          .SetAlignSelf(CSSLayout::AlignSelf::Center);
         header->AddChild(crumb);
