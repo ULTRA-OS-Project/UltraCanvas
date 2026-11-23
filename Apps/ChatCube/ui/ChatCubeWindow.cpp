@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.9 - the composer's text one row high, growing with its text to four rows, then scrolling
 // Version: 0.3.8 - the compact layout (a phone, a narrow window): the list and the conversation take
 //                  turns, a back arrow and Android's back key return to the list; network buttons only
 //                  for the networks this build reaches; the microphone and camera asked for on Android
@@ -40,7 +41,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-21
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -83,6 +84,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
@@ -106,7 +108,8 @@ constexpr int   kSidebarWidth = 320;
 // phone held upright is 360 to 430; the side-by-side window needs the
 // sidebar and a conversation of about as much again.
 constexpr int   kCompactWidth = 640;
-constexpr int   kInputHeight = 48;
+constexpr int   kInputHeight = 28;     // the composer's text before its first fit: one row
+constexpr int   kInputMaxRows = 4;     // the composer grows to this many rows, then scrolls
 constexpr int   kTileSide = 64;         // a staged picture's tile in the composer
 constexpr int   kFileTileWidth = 180;   // a staged file's tile: its name and size
 constexpr int   kTileClose = 20;        // the x on a tile
@@ -118,6 +121,44 @@ int64_t NowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::system_clock::now().time_since_epoch()).count();
 }
+
+// The composer's text: one row high while the message is one line, growing
+// with every row the words wrap or break into up to kInputMaxRows, and
+// scrolling past that with the text area's own scrollbar. It fits itself
+// when its text changes and when the layout gives it a new width (a wider
+// window wraps fewer rows).
+class ComposerTextArea : public UltraCanvasTextArea {
+public:
+    using UltraCanvasTextArea::UltraCanvasTextArea;
+
+    void FitToText() {
+        if (GetWidth() <= 0.0f) return;
+        auto ctx = GetRenderContext();
+        if (!ctx) return;
+        const TextAreaStyle& st = GetStyle();
+        ctx->PushState();
+        ctx->SetFontStyle(st.fontStyle);
+        ctx->SetFontWeight(FontWeight::Normal);
+        const float row = std::max(1.0f, std::floor(static_cast<float>(ctx->GetTextLineHeight("M")) * st.lineHeight));
+        ctx->PopState();
+        const float content = MeasureContentHeight();
+        const float text = std::clamp(content, row, row * static_cast<float>(kInputMaxRows));
+        // textPadding above and below, and a pixel of slack so the last row
+        // clears the padding (GetTextLineHeight rounds down).
+        const float height = std::ceil(text + st.textPadding * 2.0f + 2.0f);
+        fittedWidth_ = GetWidth();
+        if (std::abs(height - GetHeight()) < 0.5f) return;
+        SetElementSize(size.width, CSSLayout::Dimension::Px(height));
+    }
+
+    void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override {
+        UltraCanvasTextArea::Arrange(finalRect, ctx);
+        if (std::abs(GetWidth() - fittedWidth_) >= 0.5f) FitToText();
+    }
+
+private:
+    float fittedWidth_ = -1.0f;
+};
 
 // A network's button in the sidebar (Matrix, Telegram): always the network's
 // name, which is what fits the third of the sidebar it has - where the
@@ -1181,12 +1222,15 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     attach_->SetDisabled(true);
     attach_->SetOnClick([this]() { AttachFile(); });
     composerRow->AddChild(attach_);
-    input_ = std::make_shared<UltraCanvasTextArea>("cc-input", 0, 0, 300, kInputHeight);
+    auto composerText = std::make_shared<ComposerTextArea>("cc-input", 0, 0, 300, kInputHeight);
+    input_ = composerText;
     input_->SetEditingMode(TextAreaEditingMode::PlainText);
     input_->SetWordWrap(true);
     input_->SetShowLineNumbers(false);
     input_->SetFontSize(11.0f);
-    input_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    // Centred on the buttons while it is one row; taller, it sets the row's
+    // height and the buttons stay at the bottom, by the last line.
+    input_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Center);
     OnLook(input_, [](UltraCanvasTextArea& area) {
         TextAreaStyle st = area.GetStyle();
         st.backgroundColor = L().well;
@@ -1221,7 +1265,9 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
                            (e.virtualKey == UCKeys::Insert && e.shift && !e.ctrl && !e.alt);
         return paste && PasteAttachment();
     };
-    input_->SetOnTextChanged([this](const std::string& text) {
+    std::weak_ptr<ComposerTextArea> fitText = composerText;
+    input_->SetOnTextChanged([this, fitText](const std::string& text) {
+        if (auto area = fitText.lock()) area->FitToText();
         if (activeConversation_.empty() || text.empty() || !settings_.sendTyping) return;
         const int64_t now = NowMs();
         if (now - lastTypingSentMs_ < kTypingResendMs) return;
