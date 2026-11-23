@@ -14,6 +14,7 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.14.1 - SenderLists::StableAddress / Bare: "no-reply-<code>@..." is one sender
 // Version: 0.14.0 - replies and forwards from strangers ("Re:", "Fw:", "WG:" ... from a
 //                   sender the reader never wrote to; unsolicited-reply, only from
 //                   strangers; its own switch, strangerReplies); a mailing list's post
@@ -140,8 +141,17 @@ struct SenderLists {
     // The entry that blocks `address` ("x@example.com" or "@example.com"),
     // or "" when none does.
     std::string BlockedBy(const std::string& address) const;
-    // "Erika <ERIKA@Example.com> " -> "erika@example.com".
+    // "Erika <ERIKA@Example.com> " -> "erika@example.com", and a no-reply
+    // address with a code of its own in every message as one sender:
+    // "no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com" ->
+    // "no-reply@mail.anthropic.com" (StableAddress).
     static std::string Normalize(const std::string& address);
+    // Normalize without StableAddress: the address as the message gives it.
+    static std::string Bare(const std::string& address);
+    // A lowercased bare address with a no-reply word ("no-reply", "noreply",
+    // "do-not-reply" ...) followed by "-", "_", "." or "+" and a code: the
+    // word and the domain alone. Any other address unchanged.
+    static std::string StableAddress(const std::string& bareAddress);
     // What a typed entry is kept as, or "" when it is none: an address for
     // either list; for the blocked one also a domain, "@example.com" (typed
     // "example.com" or "@Example.com").

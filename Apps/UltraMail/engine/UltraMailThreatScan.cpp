@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.12.1 - SenderLists: a no-reply address with a code per message
+//                   ("no-reply-<code>@mail.anthropic.com") is one sender (StableAddress)
 // Version: 0.12.0 - unsolicited-reply: "Re:" / "Fw:" / "WG:" from a stranger, a mailing
 //                   list's post (List-Id) excepted
 // Version: 0.11.3 - a proven sender's links to its own organisation under another suffix
@@ -1261,12 +1263,35 @@ SenderLists g_lists;
 } // namespace
 
 std::string SenderLists::Normalize(const std::string& address) {
+    return StableAddress(Bare(address));
+}
+
+std::string SenderLists::Bare(const std::string& address) {
     std::string a = address;
     if (const std::size_t lt = a.find('<'); lt != std::string::npos) {
         const std::size_t gt = a.find('>', lt);
         a = a.substr(lt + 1, gt == std::string::npos ? std::string::npos : gt - lt - 1);
     }
     return Lower(Trim(a));
+}
+
+std::string SenderLists::StableAddress(const std::string& bareAddress) {
+    // "no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com": a new code in
+    // every message, the same sender. The no-reply word as written, its
+    // separator and code dropped: "no-reply@mail.anthropic.com".
+    const std::size_t at = bareAddress.rfind('@');
+    if (at == std::string::npos || at == 0) return bareAddress;
+    const std::string local = bareAddress.substr(0, at);
+    static const char* const words[] = {
+        "do-not-reply", "do_not_reply", "donotreply", "no-reply", "no_reply", "noreply",
+    };
+    for (const char* w : words) {
+        const std::size_t n = std::strlen(w);
+        if (local.size() > n + 1 && local.compare(0, n, w) == 0 &&
+            std::strchr("-_.+", local[n]) != nullptr)
+            return local.substr(0, n) + bareAddress.substr(at);
+    }
+    return bareAddress;
 }
 
 std::string SenderLists::Entry(const std::string& typed, bool blockList) {
@@ -1284,13 +1309,15 @@ std::string SenderLists::Entry(const std::string& typed, bool blockList) {
 
 bool SenderLists::Trusts(const std::string& address) const {
     const std::string a = Normalize(address);
-    return !a.empty() && trusted.count(a) > 0;
+    // (or an entry made with a message's own code, before StableAddress)
+    return !a.empty() && (trusted.count(a) > 0 || trusted.count(Bare(address)) > 0);
 }
 
 std::string SenderLists::BlockedBy(const std::string& address) const {
     const std::string a = Normalize(address);
     if (a.empty()) return std::string();
     if (blocked.count(a)) return a;
+    if (const std::string bare = Bare(address); blocked.count(bare)) return bare;
     // The domain, and each domain above it: mail.shop.example, shop.example.
     const std::size_t at = a.rfind('@');
     std::string domain = at == std::string::npos ? std::string() : a.substr(at + 1);

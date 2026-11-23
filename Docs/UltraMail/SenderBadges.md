@@ -476,6 +476,16 @@ The lists are `SenderLists` (`UltraMailThreatScan.h`), kept in
 address unblocks it, and blocking a trusted one stops trusting it. A trusted
 address under a blocked domain stays trusted — the exception to the block.
 
+A no-reply address that carries a code of its own in every message —
+`no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com`, the next one with
+another — is one sender: the lists keep it, and look it up, as the no-reply
+word and the domain alone (`no-reply@mail.anthropic.com`,
+`SenderLists::StableAddress`; `no-reply`, `noreply`, `no_reply`,
+`do-not-reply`, `donotreply` followed by `-`, `_`, `.` or `+` and a code).
+Trusting or blocking it from one message covers all of them, and so does
+*Show images – Always from this sender*. An entry kept with its code before
+this still matches its own message.
+
 * **Blocked:** the scan adds `blocked-sender` (30, so at least
   **Suspicious**): the orange frame, and the strip above the message says
   *"You blocked this sender"* with how to undo it. The mail stays where it

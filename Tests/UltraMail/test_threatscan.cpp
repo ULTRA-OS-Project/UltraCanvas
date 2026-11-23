@@ -2106,3 +2106,80 @@ TEST(replies_that_are_not_unsolicited) {
     REQUIRE(!ScanMessage(trusted).Has("unsolicited-reply"));
     REQUIRE(FindingOnlyFromStrangers("unsolicited-reply"));
 }
+
+// ---------------------------------------------------------------------------
+// A no-reply address with a code per message is one sender
+// ---------------------------------------------------------------------------
+TEST(a_no_reply_address_with_a_code_is_one_sender) {
+    REQUIRE_EQ(SenderLists::Normalize("Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>"),
+               std::string("no-reply@mail.anthropic.com"));
+    REQUIRE_EQ(SenderLists::StableAddress("noreply+7f3a@shop.example"),
+               std::string("noreply@shop.example"));
+    REQUIRE_EQ(SenderLists::StableAddress("do-not-reply.4411@bank.example"),
+               std::string("do-not-reply@bank.example"));
+    // Anything else stays as it is.
+    for (const char* a : {"no-reply@mail.anthropic.com", "noreplyx@shop.example",
+                          "erika-mustermann@example.com", "no-reply-@x.example", "reply-1@x.example"})
+        REQUIRE_EQ(SenderLists::StableAddress(a), std::string(a));
+    REQUIRE_EQ(SenderLists::Bare("Anthropic <No-Reply-AB@Mail.Anthropic.com>"),
+               std::string("no-reply-ab@mail.anthropic.com"));
+
+    // Trusted once, from one message: the next message's new code is trusted too.
+    SenderLists lists;
+    lists.trusted.insert(SenderLists::Entry("no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com", false));
+    REQUIRE(lists.Trusts("Anthropic <no-reply-Xy12Zw9QpL@mail.anthropic.com>"));
+    REQUIRE(!lists.Trusts("no-reply-Xy12Zw9QpL@other.example"));
+    // An entry kept with its code (before) still matches its own message.
+    SenderLists old;
+    old.trusted.insert("no-reply-abc123@mail.example");
+    REQUIRE(old.Trusts("no-reply-abc123@mail.example"));
+    // Blocking works the same way.
+    SenderLists block;
+    block.blocked.insert(SenderLists::Entry("noreply-9f8e@spam.example", true));
+    REQUIRE_EQ(block.BlockedBy("noreply-0000@spam.example"), std::string("noreply@spam.example"));
+}
+
+namespace {
+
+// Claude's sign-in link: a no-reply address with a code, signed by
+// mail.anthropic.com, its links through the mail service's click tracker.
+const char* kClaudeSignInMail =
+    "Authentication-Results: mail.reader.example;\r\n"
+    "\tdkim=pass (2048-bit key; unprotected) header.d=mail.anthropic.com header.i=@mail.anthropic.com header.a=rsa-sha256 header.s=s1;\r\n"
+    "\tdkim-atps=neutral\r\n"
+    "Content-Transfer-Encoding: quoted-printable\r\n"
+    "Content-Type: text/html; charset=us-ascii\r\n"
+    "Date: Mon, 23 Nov 2026 15:32:04 +0000 (UTC)\r\n"
+    "From: Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>\r\n"
+    "Mime-Version: 1.0\r\n"
+    "Message-ID: <wQUx5eonRfCXjydxKPVDhg@geopod-ismtpd-58>\r\n"
+    "Subject: Your secure link to Claude is here | 2026-11-23 16:32:04\r\n"
+    "Reply-To: Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>\r\n"
+    "To: info@reader.example\r\n"
+    "\r\n"
+    "<html><body><img alt=3D\"Claude\" src=3D\"https://claude.ai/images/email/claude_logo_chip.png\">\r\n"
+    "<div>Sign in to Claude</div><div>Click the button below to finish signing in. This link expires in 10 minutes.</div>\r\n"
+    "<a clicktracking=3D\"off\" href=3D\"https://claude.ai/magic-link/android#617c13cecf9998950aa62b390e9f5c74:aW5mb0ByZWFkZXIuZXhhbXBsZQ=3D=3D\">Sign in</a>\r\n"
+    "If you didn't request this email, you can safely ignore it. Need a hand? Contact\r\n"
+    "<a href=3D\"https://url8792.mail.anthropic.com/ls/click?upn=3Du001.abc\">Anthropic Support</a>.\r\n"
+    "<a href=3D\"https://url8792.mail.anthropic.com/ls/click?upn=3Du001.help\">Help</a>\r\n"
+    "<img src=3D\"https://url8792.mail.anthropic.com/wf/open?upn=3Du001.tr\" width=3D\"1\" height=3D\"1\"></body></html>\r\n";
+
+} // namespace
+
+TEST(claudes_sign_in_mail_is_genuine_and_trusted_once_for_good) {
+    const ThreatReport r = ScanRawMessage(kClaudeSignInMail);
+    REQUIRE(r.level == ThreatLevel::Clean);
+    REQUIRE(r.verifiedDomain == "mail.anthropic.com");
+    // Trusting it from this message trusts the next one, under its new code.
+    SenderLists lists;
+    lists.trusted.insert(SenderLists::Normalize("Anthropic <no-reply-REjD6rPynU0gNGG4w2exEQ@mail.anthropic.com>"));
+    SetSenderLists(lists);
+    std::string next = kClaudeSignInMail;
+    for (std::size_t p; (p = next.find("REjD6rPynU0gNGG4w2exEQ")) != std::string::npos;)
+        next.replace(p, 22, "Qm7Tx0Lk2PaVb9");
+    const bool trusted = GetSenderLists().Trusts("no-reply-Qm7Tx0Lk2PaVb9@mail.anthropic.com");
+    SetSenderLists(SenderLists{});
+    REQUIRE(trusted);
+    REQUIRE(ScanRawMessage(next).level == ThreatLevel::Clean);
+}

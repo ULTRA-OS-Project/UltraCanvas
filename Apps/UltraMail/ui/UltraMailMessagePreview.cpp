@@ -1093,7 +1093,7 @@ void MessagePreview::UpdateRemoteBar() {
     // Never offer to trust a sender whose message looks like spam or a scam.
     remoteAlways_->SetVisible(!remoteDangerous_ && !curEnv_.fromAddr.empty());
     if (!remoteDangerous_ && !curEnv_.fromAddr.empty())
-        remoteAlways_->SetText("Always from " + curEnv_.fromAddr);
+        remoteAlways_->SetText("Always from " + SenderLists::Normalize(curEnv_.fromAddr));
 }
 
 void MessagePreview::FetchTrustedHostImages() {
