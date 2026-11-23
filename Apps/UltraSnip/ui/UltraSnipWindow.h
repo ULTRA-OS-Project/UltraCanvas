@@ -6,6 +6,7 @@
 // UltraCanvasZoomPanImage, a recording in the media viewer). Until there is
 // a snip the window is the bar alone. The window hides itself while a snip
 // is taken, so it is never in the picture, and comes back with the result.
+// Version: 0.5.1 - the overlay is the framework's UltraCanvasScreenAreaPicker
 // Version: 0.5.0 - the picture zooms (the wheel, about the cursor) and moves
 //                  while zoomed (drag); a double-click fits it again
 // Version: 0.4.0 - ApplyLook: the bar, the ground and the status line from the theme, again on a change
@@ -17,7 +18,6 @@
 #pragma once
 
 #include "UltraSnipCapture.h"
-#include "UltraSnipOverlay.h"
 #include "UltraSnipRecorder.h"
 #include "UltraSnipRecordingBar.h"
 #include "UltraSnipSettings.h"
@@ -25,6 +25,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDesktopShell.h"
+#include "UltraCanvasScreenAreaPicker.h"
 #include "UltraCanvasWindow.h"
 
 #include <cstdint>
@@ -149,7 +150,7 @@ private:
     UltraCanvas::TimerId delayTimer_ = 0;
     UltraCanvas::DesktopScreenImage shot_;              // the frozen screen
     UltraCanvas::Rect2Di screenBounds_;                 // where the shot lies
-    std::unique_ptr<UltraSnipOverlay> overlay_;
+    std::unique_ptr<UltraCanvas::UltraCanvasScreenAreaPicker> overlay_;   // the dimmed screen
     std::unique_ptr<UltraSnipRecorder> recorder_;
     std::unique_ptr<UltraSnipRecordingBar> recordingBar_;
     UltraCanvas::TimerId recordingTimer_ = 0;

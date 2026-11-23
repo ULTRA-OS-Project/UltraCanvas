@@ -6,6 +6,8 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.13.0 - CanCaptureScreen; macOS takes its screen capture from
+//                  OS/MacOS/UltraCanvasMacOSScreenCapture.mm (ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
 // Version: 1.12.0 - OpenDisplaySettings, CanOpenDisplaySettings
 // Version: 1.11.0 - CaptureWindowImage (scaled down here); MatchApplication
 //                  matches Windows' AppUserModelID first
@@ -21,7 +23,7 @@
 // Version: 1.4.0 - Microsoft Store applications launch (appUserModelId), ListScreens
 // Version: 1.3.0 - DesktopReplacement::Instead, the tray host's thread, EndSession
 // Version: 1.2.0 - the platform's own application list; shortcut entries launch
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -339,6 +341,14 @@ std::vector<DesktopScreenInfo> UltraCanvasDesktopShell::ListScreens() {
 bool UltraCanvasDesktopShell::ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom) {
     if (windowId == 0 || left < 0 || right < 0 || top < 0 || bottom < 0) return false;
     return DesktopShellBackend::ReserveScreenEdges(windowId, left, right, top, bottom);
+}
+
+bool UltraCanvasDesktopShell::CanCaptureScreen() {
+#if defined(ULTRACANVAS_DESKTOPSHELL_NATIVE) || defined(ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
+    return true;
+#else
+    return false;
+#endif
 }
 
 bool UltraCanvasDesktopShell::CaptureScreen(const std::string& pngPath, std::string* error) {
@@ -1120,6 +1130,7 @@ namespace DesktopShellBackend {
     bool GetScreenSize(int&, int&) { return false; }
     std::vector<DesktopScreenInfo> ListScreens() { return {}; }
     bool ReserveScreenEdges(uint64_t, int, int, int, int) { return false; }
+#ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE
     bool CaptureScreen(const std::string&, std::string& error) {
         error = "Screenshots are not available on this platform yet.";
         return false;
@@ -1134,6 +1145,7 @@ namespace DesktopShellBackend {
         error = "Screenshots are not available on this platform yet.";
         return false;
     }
+#endif // !ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE
     bool CaptureWindowImage(uint64_t, DesktopScreenImage& out, std::string& error) {
         out = DesktopScreenImage();
         error = "Window pictures are not available on this platform yet.";

@@ -127,10 +127,10 @@ change is kept in the settings folder and shows at the next start.
 | Path | What is in it |
 |---|---|
 | `ui/UltraSnipTypes.h` | The request: shape, kind, delay, as JSON between starts |
-| `ui/UltraSnipCapture.*` | No UI: the rectangle from a drag, the crop of a capture into RGBA, the topmost window under a point, where the recording bar goes, files written and copied |
+| `ui/UltraSnipCapture.*` | No UI: where the recording bar goes, files written and copied; the rectangle from a drag, the crop of a capture into RGBA and the topmost window under a point are the framework's `ScreenArea` (`UltraCanvasScreenAreaPicker.h`), named here as before |
 | `ui/UltraSnipSettings.*` | The settings file, through `UltraCanvasAppSettings`: the picture and video types and folders, the frame rate, the after-snip behaviour; the paths of a new snip |
 | `ui/UltraSnipSettingsDialog.*` | The settings window: `UltraCanvasTreeView` of pages on the left, a page of `UltraCanvasRadio` / `UltraCanvasCheckbox` / `UltraCanvasSlider` / `UltraCanvasDropdown` controls on the right, the notes block at the foot - UltraFiler's settings window's skeleton |
-| `ui/UltraSnipOverlay.*` | The selection: a borderless window the size of the screen showing the frozen capture (`UltraCanvasImageElement`) under the marquee element (the dimming, the rectangle and its size, the crosshair, the outlined window, the hint) |
+| *(framework)* `UltraCanvasScreenAreaPicker` | The selection: a borderless window the size of the screen showing the frozen capture (`UltraCanvasImageElement`) under the marquee element (the dimming, the rectangle and its size, the crosshair, the outlined window, the hint). It was `ui/UltraSnipOverlay.*`; it moved to the framework so ChatCube's screenshot button uses the same one - `Docs/UltraCanvas/UltraCanvasScreenAreaPicker.md` |
 | `ui/UltraSnipRecorder.*` | The recording thread: `CaptureScreenArea` at the frame rate into `VideoFXFrameRecorder`; the clock that leaves pauses out |
 | `ui/UltraSnipRecordingBar.*` | The floating bar: a notification-type window (above everything, never taking the keyboard) with the time, Pause / Resume and Stop |
 | `ui/UltraSnipWindow.*` | The window: the bar (`UltraCanvasButton`, two `UltraCanvasSegmentedControl`s, an `UltraCanvasDropdown`), the result (`UltraCanvasImageElement` / `UltraCanvasMediaViewer`), the actions and the Settings button, and the capture step by step |

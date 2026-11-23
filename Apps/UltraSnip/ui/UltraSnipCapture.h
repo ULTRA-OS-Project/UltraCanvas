@@ -1,10 +1,9 @@
 // Apps/UltraSnip/ui/UltraSnipCapture.h
-// The arithmetic and the pixels of a snip, with no window in sight so a test
-// can run it: a rectangle from two drag corners, the crop of a screen
-// capture into straight RGBA (what the PNG writer, the clipboard and the
-// image element take), the topmost window under a point, where the
-// recording bar goes so it stays out of the recording, and a file written
-// whole under its UTF-8 name.
+// The arithmetic of a snip, with no window in sight so a test can run it:
+// where the recording bar goes so it stays out of the recording, the file a
+// snip goes to, and a file written whole under its UTF-8 name.
+// Version: 0.2.0 - RectBetween, ClipRect, CropToRgba, TopmostWindowAt and SnipWindowBounds moved to
+//                  the framework (UltraCanvasScreenAreaPicker.h), named here as before
 // Version: 0.1.1 - SnipFilePath
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -13,6 +12,7 @@
 #include "UltraCanvasClipboardDib.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasDesktopShell.h"
+#include "UltraCanvasScreenAreaPicker.h"
 
 #include <cstdint>
 #include <string>
@@ -20,29 +20,14 @@
 
 namespace UltraSnip {
 
-// A window the overlay can pick: its outer rectangle in screen pixels
-struct SnipWindowBounds {
-    uint64_t id = 0;
-    std::string title;
-    UltraCanvas::Rect2Di bounds;
-};
-
-// The rectangle between two corners of a drag, either way round, both
-// corners inside it (a click without a drag is a 1 x 1 rectangle)
-UltraCanvas::Rect2Di RectBetween(const UltraCanvas::Point2Di& a, const UltraCanvas::Point2Di& b);
-
-// `rect` cut down to `bounds`; empty (width or height 0) when they do not meet
-UltraCanvas::Rect2Di ClipRect(const UltraCanvas::Rect2Di& rect, const UltraCanvas::Rect2Di& bounds);
-
-// The screen area `area` (screen pixels, as ListScreens counts them) out of
-// `shot` - whose own x / y say where it lies - as straight RGBA, opaque.
-// The area is clipped to the shot; false when nothing of it is in the shot.
-bool CropToRgba(const UltraCanvas::DesktopScreenImage& shot, const UltraCanvas::Rect2Di& area,
-                UltraCanvas::ClipboardDib::RgbaImage& out, UltraCanvas::Rect2Di* taken = nullptr);
-
-// The index in `windows` (bottom first, as ListWindows lists them) of the
-// topmost window under `point`; -1 when none is
-int TopmostWindowAt(const std::vector<SnipWindowBounds>& windows, const UltraCanvas::Point2Di& point);
+// The rectangle arithmetic, the crop and the window under a point are the
+// framework's (UltraCanvasScreenAreaPicker.h, ScreenArea), where they moved
+// with the overlay
+using SnipWindowBounds = UltraCanvas::ScreenAreaWindow;
+using UltraCanvas::ScreenArea::RectBetween;
+using UltraCanvas::ScreenArea::ClipRect;
+using UltraCanvas::ScreenArea::CropToRgba;
+using UltraCanvas::ScreenArea::TopmostWindowAt;
 
 // Where a bar of barWidth x barHeight goes so it does not lie over
 // `region`: centred above it with `gap` between, else below it, else at the

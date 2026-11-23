@@ -3,6 +3,8 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.11.0 - macOS: the screen's capture native
+//                  (ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
 // Version: 1.10.0 - CanOpenDisplaySettings, OpenDisplaySettings
 // Version: 1.9.0 - CaptureWindowImage
 // Version: 1.8.0 - macOS: ListNativeApplications and LaunchShortcut native
@@ -14,7 +16,7 @@
 // Version: 1.4.0 - DesktopReplacement::Instead, the tray host, EndSession
 // Version: 1.3.0 - the Windows backend; ListNativeApplications;
 //                  in place of the system's desktop
-// Last Modified: 2026-11-01
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASDESKTOPSHELLBACKEND_H
@@ -37,6 +39,11 @@
     #include <TargetConditionals.h>
     #if TARGET_OS_OSX
         #define ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS 1
+        // ...and its screen is captured natively (ScreenCaptureKit, macOS
+        // 14+): CaptureScreen, CaptureScreenImage and CaptureScreenArea come
+        // from
+        // OS/MacOS/UltraCanvasMacOSScreenCapture.mm
+        #define ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE 1
     #endif
 #endif
 

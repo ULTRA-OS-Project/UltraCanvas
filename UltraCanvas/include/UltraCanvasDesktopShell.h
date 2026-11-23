@@ -45,6 +45,8 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.16.0 - CanCaptureScreen; macOS captures the screen (ScreenCaptureKit, the main
+//                   display, in its pixels with 0,0 at its top-left corner)
 // Version: 1.15.0 - UltraCanvasGlobalShortcut::StartExclusive: the key reaches nothing else
 //                  (Windows: a low-level hook that swallows it - Print Screen past the Snipping Tool)
 // Version: 1.14.0 - CaptureWindowImage (a taskbar's window previews);
@@ -72,7 +74,7 @@
 // Version: 1.4.0 - instead of the system's desktop (DesktopReplacement::Instead),
 //                  the notification area (UltraCanvasTrayHost), EndSession
 // Version: 1.3.0 - in place of the system's desktop (ReplaceSystemDesktop)
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -324,6 +326,13 @@ namespace UltraCanvas {
         // whole length of its edge. Call it again to change or, with four
         // zeros, to release. `windowId` is the window's native handle.
         static bool ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom);
+        // Whether this build can capture the screen at all: Linux (X11, and
+        // Wayland through the desktop portal), the BSDs, Windows and macOS
+        // 14 and later (the main display; the first capture asks for the
+        // Screen Recording permission). False on Android and in a browser,
+        // where a screenshot button is better not shown. True does not
+        // promise a capture: it can still fail, with its reason.
+        static bool CanCaptureScreen();
         // The whole screen, written as PNG to `pngPath`. The directory is
         // created. False with the reason in `error`.
         static bool CaptureScreen(const std::string& pngPath, std::string* error = nullptr);

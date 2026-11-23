@@ -1113,6 +1113,33 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   zoom and pan over a dark lightbox; this is the general one.
   See `Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md`.
 
+- **UltraCanvasScreenAreaPicker** (`UltraCanvasScreenAreaPicker.h`) — an
+  area of the screen chosen over a frozen capture: dimmed, a rectangle
+  dragged or a window clicked, Enter for the window under the pointer or the
+  whole screen, Escape to give up; the answer in screen pixels, cropped out
+  of the capture with `ScreenArea::CropToRgba`. Moved from UltraSnip, which
+  takes its snips with it; ChatCube's screenshot button puts the area into
+  the message being written. On macOS placed in points above the menu bar
+  (`WindowType::Overlay`). Core in `core/UltraCanvasScreenAreaPicker.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasScreenAreaPicker.md`.
+
+- **UltraCanvasMapView** (`UltraCanvasMapView.h`) — a map of the world from
+  OpenStreetMap's tiles (or another slippy-map server): the element (drag,
+  wheel zoom, a pin by a click), `DrawMap` into any rectangle (a map card in
+  a list's row) and `RenderMapToRgba` (a map picture); one tile cache for
+  the program, fetched through UltraNet within OpenStreetMap's usage policy.
+  Moved from ChatCube's location window. Core in `core/UltraCanvasMapView.cpp`.
+  See `Docs/UltraCanvas/UltraCanvasMapView.md`.
+
+- **UltraCanvasGeolocation** (`UltraCanvasGeolocation.h`) — where this device
+  is: one position from the system's location service, answered on the UI
+  thread with its accuracy. GeoClue 2 over D-Bus on Linux
+  (`OS/Linux/UltraCanvasLinuxGeolocation.cpp`), CoreLocation on macOS
+  (`OS/MacOS/UltraCanvasMacOSGeolocation.mm`), Windows.Devices.Geolocation
+  through C++/WinRT on Windows (`OS/MSWindows/UltraCanvasWindowsGeolocation.cpp`,
+  where the projection headers are); none elsewhere. Core in
+  `core/UltraCanvasGeolocation.cpp`. See `Docs/UltraCanvas/UltraCanvasGeolocation.md`.
+
 - **UltraCanvasDesktopShell** (`UltraCanvasDesktopShell.h`) — the running
   desktop as a shell sees it: the windows other applications have open and
   which is active, the virtual desktops, the installed applications a launcher
@@ -1143,7 +1170,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   lock (logind), loudspeaker (libpulse) and tray (StatusNotifierItem) in
   `OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`,
   `UltraCanvasLinuxDesktopShellAudio.cpp` and `UltraCanvasLinuxTrayHost.cpp`;
-  a null backend elsewhere. On
+  a null backend elsewhere - except the screen capture on macOS
+  (ScreenCaptureKit, the main display) in
+  `OS/MacOS/UltraCanvasMacOSScreenCapture.mm`; `CanCaptureScreen` says
+  whether a build captures at all. On
   Windows also the standalone **UltraCanvasShellGuard** program
   (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
   instead of Explorer. Public surface:

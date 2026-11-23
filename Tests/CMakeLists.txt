@@ -6293,7 +6293,8 @@ endif()
 message(STATUS "")
 
 # ===== ULTRASNIP CAPTURE TEST =====
-# UltraSnip's pure helpers (Apps/UltraSnip/ui/UltraSnipCapture.cpp): the
+# UltraSnip's pure helpers (Apps/UltraSnip/ui/UltraSnipCapture.cpp and the
+# framework's ScreenArea in core/UltraCanvasScreenAreaPicker.cpp): the
 # rectangle from a drag, the crop of a BGRx capture into RGBA, the window
 # under a point, the recording bar's place. No display.
 if(TARGET UltraCanvas)
@@ -6313,6 +6314,22 @@ if(TARGET UltraCanvas)
     add_test(NAME UltraSnipCaptureTest COMMAND UltraSnipCaptureTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraSnipCaptureTest")
+endif()
+
+message(STATUS "")
+
+# ===== MAP AND GEOLOCATION TEST =====
+# UltraCanvasMapView's Web Mercator and map pixels, and UltraCanvasGeolocation's
+# backend where a location service answers (skipped where none does). No display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MapGeolocationTest...")
+    add_executable(MapGeolocationTest ${CMAKE_CURRENT_SOURCE_DIR}/MapGeolocationTest.cpp)
+    target_include_directories(MapGeolocationTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MapGeolocationTest PRIVATE cxx_std_20)
+    target_link_libraries(MapGeolocationTest PRIVATE UltraCanvas)
+    set_target_properties(MapGeolocationTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME MapGeolocationTest COMMAND MapGeolocationTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MapGeolocationTest")
 endif()
 
 message(STATUS "")
