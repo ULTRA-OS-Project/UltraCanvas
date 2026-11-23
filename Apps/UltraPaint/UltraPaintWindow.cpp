@@ -1260,7 +1260,7 @@ void UltraPaintWindow::BuildStartPage() {
         [this]() { CmdPasteAsNew(); });
 #ifdef ULTRAPAINT_HAVE_CLIPBOARD_HISTORY
     add("up-start-history", Tr("Clipboard history"), MenuIconPath("paste-last.svg"),
-        Color(221, 213, 246, 255), Color(203, 192, 240, 255),
+        Color(206, 226, 250, 255), Color(184, 212, 246, 255),
         Tr("The last 20 images copied, to pick one from"),
         [this]() { CmdClipboardHistory(); });
 #endif
