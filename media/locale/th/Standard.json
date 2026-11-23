@@ -360,6 +360,7 @@
   "Extraction incomplete": "แตกไฟล์ไม่สมบูรณ์",
   "Extras": "ส่วนเสริม",
   "Failed": "ล้มเหลว",
+  "Failed to open document: {0} ({1})": "ไม่สามารถเปิดเอกสาร: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "ไม่สามารถเปิดงานนำเสนอ: {0} ({1})",
   "File": "ไฟล์",
   "File exists already": "มีไฟล์นี้อยู่แล้ว",

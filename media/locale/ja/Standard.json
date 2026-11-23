@@ -360,6 +360,7 @@
   "Extraction incomplete": "展開が完了していません",
   "Extras": "その他",
   "Failed": "失敗",
+  "Failed to open document: {0} ({1})": "ドキュメントを開けませんでした: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "プレゼンテーションを開けませんでした: {0} ({1})",
   "File": "ファイル",
   "File exists already": "ファイルは既に存在します",

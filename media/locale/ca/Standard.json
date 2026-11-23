@@ -370,6 +370,7 @@
   "Extraction incomplete": "Extracció incompleta",
   "Extras": "Extres",
   "Failed": "Ha fallat",
+  "Failed to open document: {0} ({1})": "No s'ha pogut obrir el document: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "No s'ha pogut obrir la presentació: {0} ({1})",
   "File": "Fitxer",
   "File exists already": "El fitxer ja existeix",

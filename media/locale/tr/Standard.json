@@ -370,6 +370,7 @@
   "Extraction incomplete": "Ayıklama tamamlanmadı",
   "Extras": "Ekstralar",
   "Failed": "Başarısız",
+  "Failed to open document: {0} ({1})": "Belge açılamadı: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Sunu açılamadı: {0} ({1})",
   "File": "Dosya",
   "File exists already": "Dosya zaten var",

@@ -1,6 +1,10 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.30.0 - a word-processing document (.odt, .docx, .doc) opens in the document view as its
+//                   pages: read by UCWordDocumentIO, laid out by UltraCanvasRichTextEdit as its print
+//                   and PDF export are, shown by the PDF view (zoom, page strip, search); a protected
+//                   .docx / .odt waits for Unlock (MediaLock::WordDocument)
 // Version: 1.29.0 - a presentation opens as its slides in the document view (UltraCanvasPresentationPages):
 //                  zoom, thumbnails, page keys, search, its speaker notes on the info bar; the O key
 //                  toggles the outline; F5 / Shift+F5 start the slide show (whole screen, Escape ends it)
@@ -138,6 +142,7 @@
 #include "UltraCanvasPresentationPptx.h"   // IsPptxExtension: a deck → its outline → markdown
 #include "UltraCanvasPresentationOdp.h"    // IsOdpExtension
 #include "UltraCanvasPresentationPages.h"  // a deck's slides as the document view's pages
+#include "UltraCanvasRichTextEdit.h"        // a word-processing document laid out as its printed pages
 #include "UltraCanvasOfficeEncryption.h"   // CheckOfficePassword: a protected deck waits for Unlock
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
@@ -2497,6 +2502,71 @@ bool UltraCanvasMediaViewer::IsDocumentFile(const std::string& path) {
 #endif
 }
 
+bool UltraCanvasMediaViewer::IsWordProcessingFile(const std::string& path) {
+    // Shown through the PDF view, so only where it is built in. The .tex the
+    // same reader takes stays a text file: it is shown as the document it
+    // describes, in the text view's Markdown mode.
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    const std::string e = LowerExt(path);
+    return e == "odt" || e == "docx" || e == "doc";
+#else
+    (void)path;
+    return false;
+#endif
+}
+
+#ifdef ULTRACANVAS_PLUGIN_PDF
+namespace {
+    // A word-processing document as the pages its print would be: read by
+    // UCWordDocumentIO, laid out by the rich-text element - the document's
+    // page size and margins, fonts, pictures, tables, header and footer, on
+    // white paper in either theme - exported as a PDF in memory and opened
+    // by the PDF engine, so the document view shows it as it shows any PDF:
+    // zoom, the page strip, page keys, search over its real text.
+    enum class WordPagesResult { Opened, NeedsPassword, WrongPassword, Failed };
+
+    WordPagesResult OpenWordDocumentPages(const std::string& path, const std::string& password,
+                                          std::unique_ptr<IPDFDocument>& out, std::string& error) {
+        auto document = std::make_shared<UCRichDocument>();
+        if (!UCWordDocumentIO::Load(path, *document, error, password)) {
+            // A protected .docx or .odt says so, so the viewer asks for
+            // (another) password rather than showing the reader's words.
+            std::string unused;
+            switch (CheckOfficePassword(path, password, unused)) {
+                case OfficeDecryptStatus::PasswordRequired:
+                case OfficeDecryptStatus::WrongPassword:
+                    return password.empty() ? WordPagesResult::NeedsPassword : WordPagesResult::WrongPassword;
+                default:
+                    return WordPagesResult::Failed;
+            }
+        }
+        auto layout = std::make_shared<UltraCanvasRichTextEdit>("MV_WordPages", 0, 0, 1, 1);
+        layout->SetShowFontNotice(false);
+        layout->SetDocument(document);
+        std::vector<uint8_t> bytes;
+        if (!layout->ExportToPdf(bytes, error)) return WordPagesResult::Failed;
+        auto pages = PDFEngineFactory::Create();
+        if (!pages || !pages->OpenFromBytes(bytes)) {
+            error = "its pages could not be shown";
+            return WordPagesResult::Failed;
+        }
+        out = std::move(pages);
+        return WordPagesResult::Opened;
+    }
+}
+#endif
+
+namespace {
+    // What the details panel calls a file the document view shows.
+    std::string DocumentTypeName(const std::string& path) {
+        if (!UltraCanvasMediaViewer::IsWordProcessingFile(path)) return "PDF document";
+        std::string ext = LowerExt(path);
+        std::transform(ext.begin(), ext.end(), ext.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        return "Word-processing document (" + ext + ")";
+    }
+}
+
 bool UltraCanvasMediaViewer::IsSpreadsheetFile(const std::string& path) {
     // Spreadsheets open in UltraCanvasSpreadsheet (ODS / XLSX / XLS / CSV / TSV)
     // - every format its LoadFromFile reads. The engine is always compiled into
@@ -2794,6 +2864,8 @@ MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     // picture - no pages, no page inventory, no password - where the PDF view
     // (built in) shows the document.
     if (IsDocumentFile(path))    return MediaKind::Document;
+    // A word-processing document: its pages, in the same view.
+    if (IsWordProcessingFile(path)) return MediaKind::Document;
     // Before the text check: an EPS is PostScript source, and its own drawing
     // is the more useful answer to "what is in this file".
     if (IsVectorDocumentFile(path)) return MediaKind::Vector;
@@ -2822,7 +2894,7 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     if (IsImageFile(path)) return true;
     // Documents / spreadsheets / 3D models / e-books / UCD containers / text /
     // video / audio (video & audio gated by their backend being present).
-    return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
+    return IsDocumentFile(path) || IsWordProcessingFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
            IsEBookFile(path) || IsUCDFile(path) || IsVectorDocumentFile(path) ||
            IsFontFile(path) || IsPresentationFile(path) ||
            IsVideoFile(path) || IsAudioFile(path) || IsTextFile(path);
@@ -3662,7 +3734,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     unlocked = false;
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (kind == MediaKind::Document && pdfView) {
+    if (kind == MediaKind::Document && pdfView && !IsWordProcessingFile(path)) {
         // Render the document through the dedicated PDF element (MuPDF), not the
         // image/libvips path. Drop the now-hidden image so it frees memory.
         ShowView(MediaKind::Document);
@@ -3683,6 +3755,33 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     }
 #endif
 #ifdef ULTRACANVAS_PLUGIN_PDF
+    if (!handled && IsWordProcessingFile(path) && pdfView) {
+        // A .odt / .docx / .doc: its pages as print lays them out, page width
+        // filling the view (a preview pane is narrow). A protected one waits
+        // for Unlock; a damaged one says why.
+        ShowView(MediaKind::Document);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        std::unique_ptr<IPDFDocument> pages;
+        std::string error;
+        switch (OpenWordDocumentPages(path, std::string(), pages, error)) {
+            case WordPagesResult::Opened:
+                pv->SetDocument(std::move(pages));
+                pv->SetZoomMode(UltraCanvasPDFView::ZoomMode::FitWidth);
+                break;
+            case WordPagesResult::NeedsPassword:
+            case WordPagesResult::WrongPassword:
+                pv->SetDocument(nullptr);
+                locked = MediaLock::WordDocument;
+                ShowLockedPDFNote(path);
+                break;
+            case WordPagesResult::Failed:
+                pv->SetDocument(nullptr);
+                if (infoLabel) infoLabel->SetText(TrF("Failed to open document: {0} ({1})", BaseName(path), error));
+                break;
+        }
+        handled = true;
+    }
     if (!handled && IsPresentationFile(path) && pdfView && !presentationOutline) {
         // A deck: its slides as pages, shown as a PDF's are - zoom, the
         // thumbnail strip, the page keys, search. A protected one waits for
@@ -4264,6 +4363,29 @@ MediaUnlockResult UltraCanvasMediaViewer::UnlockWithPassword(const std::string& 
         ShowOutlineInTextView(deck->ToMarkdown());
     }
 #ifdef ULTRACANVAS_PLUGIN_PDF
+    else if (locked == MediaLock::WordDocument && pdfView) {
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        std::unique_ptr<IPDFDocument> pages;
+        switch (OpenWordDocumentPages(path, password, pages, error)) {
+            case WordPagesResult::Opened: break;
+            case WordPagesResult::NeedsPassword:
+            case WordPagesResult::WrongPassword:
+                error = "That password is not right.";
+                return MediaUnlockResult::WrongPassword;
+            case WordPagesResult::Failed:
+                if (error.empty()) error = "the document would not open";
+                return MediaUnlockResult::Failed;
+        }
+        locked = MediaLock::NotLocked;
+        if (noteView) {
+            static_cast<UltraCanvasTextArea*>(noteView.get())->SetText("");
+            noteView->SetVisible(false);
+        }
+        noteShown = false;
+        pv->SetDocument(std::move(pages));
+        pv->SetZoomMode(UltraCanvasPDFView::ZoomMode::FitWidth);
+        ShowView(MediaKind::Document);
+    }
     else if (locked == MediaLock::PDF && pdfView) {
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
         if (!pv->LoadFromPath(path, password)) {
@@ -4946,7 +5068,7 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     if (activeKind == MediaKind::Document && pdfView) {
         auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
         std::ostringstream os;
-        os << BaseName(path) << "   \xC2\xB7   PDF";
+        os << BaseName(path) << "   \xC2\xB7   " << (IsWordProcessingFile(path) ? "DOCUMENT" : "PDF");
         // Opened with its password: protected, though it looks like any other.
         if (unlocked) os << "   \xC2\xB7   unlocked";
         if (pv->HasDocument()) {
@@ -5225,7 +5347,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
     }
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
-    if (locked == MediaLock::PDF) {
+    if (locked == MediaLock::PDF || locked == MediaLock::WordDocument) {
         std::ostringstream dos;
         dos << "Document information\n\n";
         dos << "File: " << BaseName(path) << "\n";
@@ -5233,7 +5355,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         std::error_code dec;
         auto dsz = fs::file_size(UltraCanvas::PathFromUtf8(path), dec);
         if (!dec) dos << "Size: " << HumanSize(dsz) << "\n";
-        dos << "Type: PDF document\n";
+        dos << "Type: " << DocumentTypeName(path) << "\n";
         dos << "Encryption: password-protected\n";
         dos << "Shown: nothing until it is unlocked - Unlock (in the bar below, or Enter) opens it\n";
         ShowDetailsText(dos.str());
@@ -5249,7 +5371,7 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         std::error_code dec;
         auto dsz = fs::file_size(UltraCanvas::PathFromUtf8(path), dec);
         if (!dec) dos << "Size: " << HumanSize(dsz) << "\n";
-        dos << "Type: PDF document\n";
+        dos << "Type: " << DocumentTypeName(path) << "\n";
         if (unlocked) dos << "Encryption: password-protected - unlocked with its password\n";
         if (pv->HasDocument()) dos << "Pages: " << pv->GetPageCount() << "\n";
         ShowDetailsText(dos.str());

@@ -369,6 +369,7 @@
   "Extraction incomplete": "Extraction incomplete",
   "Extras": "Extras",
   "Failed": "Failed",
+  "Failed to open document: {0} ({1})": "Failed to open document: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Failed to open presentation: {0} ({1})",
   "File": "File",
   "File exists already": "File exists already",

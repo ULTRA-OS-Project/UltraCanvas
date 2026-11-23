@@ -360,6 +360,7 @@
   "Extraction incomplete": "解壓縮未完成",
   "Extras": "其他",
   "Failed": "失敗",
+  "Failed to open document: {0} ({1})": "無法開啟文件：{0}（{1}）",
   "Failed to open presentation: {0} ({1})": "無法開啟簡報：{0}（{1}）",
   "File": "檔案",
   "File exists already": "檔案已存在",

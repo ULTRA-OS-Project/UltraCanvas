@@ -370,6 +370,7 @@
   "Extraction incomplete": "Ofullständig extrahering",
   "Extras": "Extra",
   "Failed": "Misslyckades",
+  "Failed to open document: {0} ({1})": "Det gick inte att öppna dokumentet: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Det gick inte att öppna presentationen: {0} ({1})",
   "File": "Fil",
   "File exists already": "Filen finns redan",

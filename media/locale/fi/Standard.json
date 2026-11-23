@@ -370,6 +370,7 @@
   "Extraction incomplete": "Purku keskeneräinen",
   "Extras": "Lisätoiminnot",
   "Failed": "Epäonnistui",
+  "Failed to open document: {0} ({1})": "Asiakirjaa ei voitu avata: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Esitystä ei voitu avata: {0} ({1})",
   "File": "Tiedosto",
   "File exists already": "Tiedosto on jo olemassa",

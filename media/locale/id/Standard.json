@@ -360,6 +360,7 @@
   "Extraction incomplete": "Ekstraksi tidak lengkap",
   "Extras": "Tambahan",
   "Failed": "Gagal",
+  "Failed to open document: {0} ({1})": "Gagal membuka dokumen: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Gagal membuka presentasi: {0} ({1})",
   "File": "File",
   "File exists already": "Berkas sudah ada",

@@ -380,6 +380,7 @@
   "Extraction incomplete": "Видобування не завершено",
   "Extras": "Додатково",
   "Failed": "Помилка",
+  "Failed to open document: {0} ({1})": "Не вдалося відкрити документ: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Не вдалося відкрити презентацію: {0} ({1})",
   "File": "Файл",
   "File exists already": "Файл уже існує",

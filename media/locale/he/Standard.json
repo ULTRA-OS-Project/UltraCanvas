@@ -390,6 +390,7 @@
   "Extraction incomplete": "החילוץ לא הושלם",
   "Extras": "תוספות",
   "Failed": "נכשל",
+  "Failed to open document: {0} ({1})": "לא ניתן לפתוח את המסמך: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "לא ניתן לפתוח את המצגת: {0} ({1})",
   "File": "קובץ",
   "File exists already": "הקובץ כבר קיים",

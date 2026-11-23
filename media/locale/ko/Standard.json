@@ -360,6 +360,7 @@
   "Extraction incomplete": "압축 풀기 미완료",
   "Extras": "기타",
   "Failed": "실패",
+  "Failed to open document: {0} ({1})": "문서를 열지 못했습니다: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "프레젠테이션을 열지 못했습니다: {0} ({1})",
   "File": "파일",
   "File exists already": "파일이 이미 있습니다",

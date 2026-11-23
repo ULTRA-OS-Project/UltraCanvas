@@ -380,6 +380,7 @@
   "Extraction incomplete": "Rozpakowywanie niekompletne",
   "Extras": "Dodatki",
   "Failed": "Niepowodzenie",
+  "Failed to open document: {0} ({1})": "Nie można otworzyć dokumentu: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Nie można otworzyć prezentacji: {0} ({1})",
   "File": "Plik",
   "File exists already": "Plik już istnieje",

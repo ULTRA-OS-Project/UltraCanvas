@@ -7708,6 +7708,30 @@ else()
     message(STATUS "  MediaViewerLoadingTest skipped (UltraCanvas target not present, or MediaViewer not compiled in)")
 endif()
 
+# MediaViewerWordDocumentTest - a .odt / .docx / .doc opens in the document
+# view as its pages; a password-protected .odt waits for Unlock. Xvfb. Uses
+# UltraCanvasMediaViewer's classes: only with MediaViewer compiled into the
+# core (ULTRACANVAS_WIDGETS).
+if(TARGET UltraCanvas AND "MediaViewer" IN_LIST uc_widgets_in)
+    message(STATUS "  Building MediaViewerWordDocumentTest...")
+    add_executable(MediaViewerWordDocumentTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MediaViewerWordDocumentTest.cpp
+    )
+    target_include_directories(MediaViewerWordDocumentTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MediaViewerWordDocumentTest PRIVATE cxx_std_20)
+    target_compile_definitions(MediaViewerWordDocumentTest PRIVATE
+        WORDVIEW_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+    target_link_libraries(MediaViewerWordDocumentTest PRIVATE UltraCanvas)
+    set_target_properties(MediaViewerWordDocumentTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MediaViewerWordDocumentTest COMMAND MediaViewerWordDocumentTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MediaViewerWordDocumentTest")
+else()
+    message(STATUS "  MediaViewerWordDocumentTest skipped (UltraCanvas target not present, or MediaViewer not compiled in)")
+endif()
+
 # OutlookMessageTest - the Outlook .msg reader (UltraCanvasOutlookMessage.h):
 # messages built with UCCompoundFileWriter as Outlook lays them out, the
 # compressed RTF body and the HTML it encapsulates, attachments; the compound

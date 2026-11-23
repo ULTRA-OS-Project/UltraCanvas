@@ -370,6 +370,7 @@
   "Extraction incomplete": "Utpakkingen er ufullstendig",
   "Extras": "Ekstra",
   "Failed": "Mislyktes",
+  "Failed to open document: {0} ({1})": "Kunne ikke åpne dokumentet: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Kunne ikke åpne presentasjonen: {0} ({1})",
   "File": "Fil",
   "File exists already": "Filen finnes allerede",
