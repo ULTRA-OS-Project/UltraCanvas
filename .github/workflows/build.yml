@@ -2593,7 +2593,8 @@ jobs:
             ColorPickerModelDropdownTest DialogCloseAllTest DialogEscapeTest
             DialogStackingTest ElementPressTakenTest ExitDuringWarmUpTest FilerPaneDragTest
             ImageFileWatchDisplayTest LabelNaturalTextWidthTest
-            LabelSelectionTest MediaViewerLoadingTest MouseClickBubblingTest
+            LabelSelectionTest MediaViewerLoadingTest
+            MediaViewerWordDocumentTest MouseClickBubblingTest
             PopupOwnWindowTest RichTextEditElementTest SessionLockTest
             TabPillStyleScreenshotTest TagInputGrowTest
             TextAreaAutoCompleteTest TextAreaDetachedTest
