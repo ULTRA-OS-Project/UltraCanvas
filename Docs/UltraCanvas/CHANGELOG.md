@@ -1,3 +1,102 @@
+#### 2026-11-23 *0.9.586*
+- **CI: a build job GitHub never started is re-run, not reported red.** The
+  macos-15 leg of a pull request sat queued and ended "cancelled" with no
+  runner and no step, twice, while other pull requests' macOS legs got
+  runners in the same hour. Each time the Build run ended "failure" and the
+  pull request read red with nothing of it wrong. `build-result.yml` now
+  re-runs the failed jobs when every unsuccessful job of the run is such a
+  dropped job, up to attempt 3, and keeps "Build result" pending until the
+  new attempt ends. A job that started and then failed, timed out or was
+  cancelled still turns it red.
+- **`UltraCanvasDesktopShell::ShowWindowThumbnail` / `HideWindowThumbnail`:
+  live window pictures drawn by the compositor.** A taskbar's preview of a
+  minimized window had nothing to show: `CaptureWindowImage` asks the window
+  to draw itself (`PrintWindow` on Windows), which a minimized window does
+  not. On Windows the new call registers a DWM thumbnail
+  (`DwmRegisterThumbnail`), as Explorer's taskbar does: the source drawn
+  live into a rectangle of one of the program's own windows, its proportions
+  kept, and a minimized window as it last looked - also one minimized before
+  the program started. Elsewhere it answers 0 and the caller captures.
+  `DesktopShellTest` checks a minimized window's thumbnail on Windows.
+- **Alerts, confirmations and input dialogs have a new look.** Before, the
+  internal `UltraCanvasModalDialog` showed a bright square with a letter, its
+  buttons centred and alike, and the button row on the message's white. Now:
+  - the type badge is a 40 px disc tinted with the type colour, with a drawn
+    glyph (`media/icons/dialog/*.svg`) in the full colour; the letter stands
+    in when the glyph is not shipped;
+  - the type colours follow the theme: Information the accent, Error the
+    danger colour, Successful green, Question violet, Warning amber, lighter in
+    a dark theme, and a theme can change any with the `dialog.*` roles;
+  - an optional bold heading above the message: `DialogConfig::heading`,
+    `UltraCanvasModalDialog::SetHeading` / `GetHeading`, and
+    `AlertOptions::heading`;
+  - the buttons sit at the trailing edge with the affirmative answer last
+    (*Cancel OK*, *No Cancel Yes*), the default answer in the accent colour
+    even while it is disabled, 32 px high with 7 px corners;
+  - the button band is the theme's ground under a hairline.
+  - `ModalDialogStyle` gains `iconGlyphSize`, `headingFontSize`,
+    `headingTextColor`, `buttonCornerRadius`, `footerColor` and
+    `footerLineColor`; its padding, icon, gap and button sizes change to the
+    new design (`FromTheme` fills the new colours and the heading size).
+  - The DemoApp's Rich alert shows a heading.
+- **UltraCanvasMapView: a map in any application.** A map of the world
+  from OpenStreetMap's tiles (or another slippy-map server) as an element -
+  dragged to move, the wheel to zoom, a click to put the pin - and as a
+  map drawn into any rectangle (`DrawMap`, for a card in a list's row) or
+  into pixels (`RenderMapToRgba`). The tiles are fetched in the background,
+  shared by every map of the program, within OpenStreetMap's usage policy.
+  `Docs/UltraCanvas/UltraCanvasMapView.md`.
+- **UltraCanvasGeolocation: where this device is.** One position from the
+  system's location service, with how far off it may be: GeoClue on Linux,
+  Location Services on macOS (the app's Info.plist says why it asks),
+  Windows' location service where the build has its WinRT headers.
+  `Docs/UltraCanvas/UltraCanvasGeolocation.md`.
+- **MediaViewer: word-processing documents show as their pages.** A `.odt`,
+  `.docx` or `.doc` was not a file the viewer could show - UltraFiler's preview
+  pane stayed closed on one, and UltraViewer passed it by. It now opens in the
+  document view as its pages, laid out as print and PDF export lay them out
+  (`UltraCanvasRichTextEdit`: page size and margins, fonts, pictures, tables,
+  header and footer, on white paper in either theme), with the PDF view's zoom,
+  page strip, page keys and search over the real text, fitted to the page
+  width. A password-protected `.docx` or `.odt` waits for Unlock, as a PDF
+  does. `UltraCanvasMediaViewer::IsWordProcessingFile`; builds without the PDF
+  view do not list them. `Tests/MediaViewerWordDocumentTest.cpp` opens a
+  `.docx`, a two-page `.odt` and a Word 97 `.doc`, and unlocks a protected
+  `.odt`.
+- **UltraCanvasScreenAreaPicker: choosing an area of the screen is part of
+  the framework.** UltraSnip's selection - the screen frozen and dimmed, a
+  rectangle dragged or a window clicked, Enter for the window under the
+  pointer or the whole screen, Escape to give up - moved out of UltraSnip
+  into `UltraCanvasScreenAreaPicker.h`, with the arithmetic beside it
+  (`ScreenArea`: the rectangle of a drag, the crop of a capture into RGBA,
+  the window under a point, the windows to offer). UltraSnip and ChatCube's
+  new screenshot button use the same one.
+  `Docs/UltraCanvas/UltraCanvasScreenAreaPicker.md`.
+- **macOS captures the screen.** `CaptureScreen`, `CaptureScreenImage` and
+  `CaptureScreenArea` said "Screenshots are not available on this platform
+  yet" on a Mac. They now capture the main display at its own pixels
+  through ScreenCaptureKit (macOS 14 and later). macOS asks once for the
+  Screen Recording permission (Privacy & Security); until it is given the
+  capture fails with that reason. Other displays are not captured yet.
+- **`UltraCanvasDesktopShell::CanCaptureScreen()`** says whether a build
+  can capture the screen at all - false on Android and WebAssembly - so a
+  screenshot button can stay hidden where it would only fail.
+- **`WindowType::Overlay` on macOS** is a borderless window above the menu
+  bar and the Dock, on every Space, that takes the keyboard (a borderless
+  window on macOS otherwise never does). The screen-area picker opens in
+  one there, placed in points.
+- **Text sits on the pixel grid: no more blurred first letters.** A file name
+  in UltraFiler's icon grid starting with R, I, B or l often looked blurred
+  and lighter than the rest of the word, on Windows and Linux alike. Glyphs
+  are hinted only vertically and advance by fractional widths, so a label
+  centred over an odd leftover width - or a letter whose side bearing is a
+  fraction of a pixel - drew its first vertical stem as two grey columns
+  instead of one dark one. `RenderContextCairo::DrawTextLayout` now moves the
+  text by less than a pixel so the left edge of its ink and its baseline fall
+  on whole device pixels. It does so only where text becomes pixels (not in a
+  PDF, PostScript or SVG export) and only without rotation or skew, so every
+  label, button and tab benefits, not just the Filer.
+
 #### 2026-11-22 *0.9.585*
 - **The localisation editor has a Window arrangement.**
   `UltraCanvasLocalisationEditor` takes a `LocalisationEditorLayout` when it

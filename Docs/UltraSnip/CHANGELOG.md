@@ -1,3 +1,11 @@
+#### 2026-11-23 *0.1.11*
+- **The selection over the screen is the framework's now.** UltraSnip's
+  overlay - the frozen, dimmed screen with the rectangle or the lit window -
+  moved into UltraCanvas (`UltraCanvasScreenAreaPicker`), so ChatCube's
+  screenshot button uses the same one. Nothing changes in how a snip is
+  taken. On a Mac the selection now opens, above the menu bar, now that the
+  framework captures the screen there.
+
 #### 2026-11-19 *0.1.10*
 - **The picture zooms and moves.** The mouse wheel zooms the snip shown in
   the window about the cursor, up to forty times; once it is larger than the
