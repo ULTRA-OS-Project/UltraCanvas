@@ -152,8 +152,6 @@
   "Again:": "Again:",
   "Airbrush": "Airbrush",
   "Amount": "Amount",
-  "An image has unsaved changes. Quit anyway?": "An image has unsaved changes. Quit anyway?",
-  "An image in this window has unsaved changes. Close anyway?": "An image in this window has unsaved changes. Close anyway?",
   "An unsharp mask after the scale, to win back some of the crispness an enlargement loses": "An unsharp mask after the scale, to win back some of the crispness an enlargement loses",
   "Anchor:": "Anchor:",
   "Anti-aliased": "Anti-aliased",
@@ -513,14 +511,6 @@
   "{0} x {1}": "{0} x {1}",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
-  "{n} image has unsaved changes. Quit anyway?": {
-    "one": "{n} image has unsaved changes. Quit anyway?",
-    "other": "{n} images have unsaved changes. Quit anyway?"
-  },
-  "{n} image in this window has unsaved changes. Close anyway?": {
-    "one": "{n} image in this window has unsaved changes. Close anyway?",
-    "other": "{n} images in this window have unsaved changes. Close anyway?"
-  },
   "{n} layer": {
     "one": "{n} layer",
     "other": "{n} layers"

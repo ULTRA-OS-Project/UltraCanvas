@@ -53,7 +53,8 @@ its own.
   clipboard history have no such button.
 
 The first image made, pasted or opened takes the start page's place; the
-commands that work on an image do nothing until then.
+commands that work on an image do nothing until then. Files dropped anywhere
+on the window while the start page shows open as a drop on the canvas does.
 
 A dot on a tab marks unsaved changes. Its **×**, or *File ▸ Close Tab*
 (`Ctrl+W`), closes it. With unsaved changes it asks **Save**, **Don't save**
@@ -64,7 +65,10 @@ the front before it closes, and one without changes asked about ("Close
 *name*?"), so you see the image going; the last tab closing brings
 back the start page. `Ctrl+Tab` / `Ctrl+Shift+Tab` go to the
 next and previous tab, and a tab can be dragged to another place in the
-strip. Closing the window asks once about all its unsaved images.
+strip. Closing the window - or *File ▸ Quit* (`Ctrl+Q`), for every window -
+brings each image with unsaved changes to the front in turn and asks
+**Save**, **Don't save** or **Cancel** about it; Cancel, or a save that is
+cancelled or fails, keeps everything open and as it was.
 
 The colour picker has a list of designs in its corner - colour circle,
 slider and square, colour rectangle, or colour and brightness sliders - and
