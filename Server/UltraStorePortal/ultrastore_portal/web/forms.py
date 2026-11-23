@@ -93,7 +93,7 @@ class DependentFieldsMixin:
 class SignUpForm(forms.Form):
     name = forms.CharField(max_length=120, label="Your name")
     email = forms.EmailField(label="Email", help_text="Your sign-in name. A link is mailed to it to prove it is yours.")
-    password = forms.CharField(widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}), help_text="Twelve characters or more.")
+    password = forms.CharField(widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}), help_text=f"{settings.PASSWORD_MIN_LENGTH} to {settings.PASSWORD_MAX_LENGTH} characters.")
     password_again = forms.CharField(widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}), label="The password again")
 
     def clean_email(self):

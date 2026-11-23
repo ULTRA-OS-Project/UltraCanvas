@@ -123,8 +123,10 @@ root.
 
 ## From an account to the store
 
-1. **Sign up** (`/account/signup/`): name, email, a password of twelve
-   characters or more. A link mailed to the address proves it (two days);
+1. **Sign up** (`/account/signup/`): name, email, a password of 8 to 64
+   characters (characters of Unicode text, not bytes; `PASSWORD_MIN_LENGTH`
+   and `PASSWORD_MAX_LENGTH` in `settings.py`, checked wherever a password is
+   chosen, never at a sign-in). A link mailed to the address proves it (two days);
    there is no sign-in before. An address that already has an account gets
    the same answer on the page and a mail to its owner.
 2. **Apply for a publisher** (`/console/`): the name buyers see, the

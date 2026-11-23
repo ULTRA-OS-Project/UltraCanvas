@@ -128,6 +128,30 @@ class AccountTests(PortalCase):
         self.assertContains(response, "too short")
         self.assertEqual(self.client.get("/account/verify/not-a-token/").status_code, 400)
 
+    def test_a_password_is_eight_to_sixty_four_characters(self):
+        def sign_up(name, password):
+            return self.client.post("/account/signup/", {"name": "X", "email": f"{name}@example.org", "password": password, "password_again": password})
+
+        self.assertContains(self.client.get("/account/signup/"), "8 to 64 characters.")
+        self.assertContains(sign_up("seven", "kq7#Wz!"), "too short")
+        self.assertContains(sign_up("eight", "kq7#Wz!p"), "Check your mail")
+        # Characters, not bytes: 64 of them are a password although they are 133 bytes of UTF-8.
+        longest = "kq7#Wz!p-" + "ä€" * 23 + "-Zr4$mLx9"
+        self.assertEqual((len(longest), len(longest.encode())), (64, 133))
+        self.assertContains(sign_up("longest", longest), "Check your mail")
+        self.assertTrue(User.objects.get(email="longest@example.org").check_password(longest))
+        self.assertContains(sign_up("longer", longest + "x"), "at most 64 characters")
+        self.assertFalse(User.objects.filter(email="longer@example.org").exists())
+        # The rule is for choosing a password: one older than the rule still signs in, and is changed under it.
+        old = "an-older-and-much-longer-passphrase-" * 3
+        User.objects.create_user("old@example.org", old, email_verified=True)
+        self.assertRedirects(self.client.post("/account/signin/", {"username": "old@example.org", "password": old}), "/console/", fetch_redirect_response=False)
+        change = {"old_password": old, "new_password1": longest + "x", "new_password2": longest + "x"}
+        self.assertContains(self.client.post("/account/password/", change), "at most 64 characters")
+        self.assertContains(self.client.get("/account/password/"), "at most 64 characters")   # said before it is refused
+        self.client.post("/account/password/", {**change, "new_password1": longest, "new_password2": longest})
+        self.assertTrue(User.objects.get(email="old@example.org").check_password(longest))
+
     def test_password_reset_mails_a_link_under_the_root(self):
         User.objects.create_user("dana@example.org", PASSWORD, email_verified=True)
         self.client.post("/account/password/reset/", {"email": "dana@example.org"})
