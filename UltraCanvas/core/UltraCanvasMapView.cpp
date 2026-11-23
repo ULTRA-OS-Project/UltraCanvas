@@ -1,5 +1,6 @@
 // core/UltraCanvasMapView.cpp
 // See the header.
+// Version: 1.0.1 - builds without UltraNet (WebAssembly): no tiles fetched, the maps grey
 // Version: 1.0.0 - from ChatCube's location window, made a framework element
 // Last Modified: 2026-11-23
 // Author: UltraCanvas Framework
@@ -9,7 +10,9 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasRenderContext.h"
+#ifdef ULTRACANVAS_HAS_NET
 #include "UltraNet/UltraNetHttp.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -92,6 +95,16 @@ TileStore& Store() {
 }
 
 void TileStore::Pump() {
+#ifndef ULTRACANVAS_HAS_NET
+    // A build without UltraNet (WebAssembly) fetches nothing: the maps stay
+    // grey, and each tile is asked for once
+    for (const auto& [key, url] : queue) {
+        queued.erase(key);
+        failed.insert(key);
+    }
+    queue.clear();
+    return;
+#else
     auto* app = UltraCanvasApplicationBase::GetCurrent();
     while (app && active < kMaxRequests && !queue.empty()) {
         auto [key, url] = queue.front();
@@ -109,6 +122,7 @@ void TileStore::Pump() {
             });
         });
     }
+#endif
 }
 
 // The tiles a rectangle of world pixels covers, the visit given each

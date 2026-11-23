@@ -16,9 +16,12 @@
 // slippy-map server draws it. OpenStreetMap's tile usage policy is kept by
 // default: requests carry the program's User-Agent, at most two tiles load
 // at once, a tile fetched once is not fetched again while the program runs,
-// and the map shows the attribution the server asks for.
+// and the map shows the attribution the server asks for. A build without
+// UltraNet (ULTRACANVAS_HAS_NET unset: WebAssembly) fetches no tiles and
+// draws the maps grey.
 //
 // Docs: Docs/UltraCanvas/UltraCanvasMapView.md
+// Version: 1.0.1 - no tiles without UltraNet (WebAssembly)
 // Version: 1.0.0 - from ChatCube's location window, made a framework element
 // Last Modified: 2026-11-23
 // Author: UltraCanvas Framework
