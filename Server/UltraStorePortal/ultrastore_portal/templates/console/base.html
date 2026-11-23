@@ -1,27 +1,35 @@
 {% extends "base.html" %}
 {% block body_class %}admin{% endblock %}
 {% block shell %}
-<div class="shell">
-  <aside class="side">
-    <div class="who"><span class="small muted">Developer console</span><b>{{ my_publisher.name|default:"No publisher yet" }}</b></div>
-    <a href="{% url 'console:home' %}"{% if not app and request.resolver_match.url_name == 'home' %} class="on"{% endif %}>All apps</a>
-    {% if my_publisher.approved %}
-      <a href="{% url 'console:app_new' %}"{% if request.resolver_match.url_name == 'app_new' %} class="on"{% endif %}>Create an app</a>
-      <a href="{% url 'console:sales' %}"{% if request.resolver_match.url_name == 'sales' %} class="on"{% endif %}>Sales</a>
-      <a href="{% url 'console:publisher' %}"{% if request.resolver_match.url_name == 'publisher' %} class="on"{% endif %}>Publisher profile</a>
-    {% endif %}
-    {% if app %}
-      <div class="sub">{{ app.name }}</div>
-      <a href="{% url 'console:app' app.app_id %}"{% if request.resolver_match.url_name == 'app' %} class="on"{% endif %}>Overview and releases</a>
-      <a href="{% url 'console:listing' app.app_id %}"{% if request.resolver_match.url_name == 'listing' %} class="on"{% endif %}>Store listing</a>
-      {% if app.is_public %}<a href="{{ app.get_absolute_url }}">View in the store</a>{% endif %}
-    {% endif %}
-    <div class="sub">Help</div>
-    <a href="{% url 'store:terms' %}">Publisher terms</a>
-  </aside>
-  <div>
-    {% include "_messages.html" %}
-    {% block content %}{% endblock %}
+<div class="container-fluid shell">
+  <div class="row g-4">
+    <aside class="col-lg-auto">
+      <div class="card side"><div class="card-body p-3">
+        <div class="who px-2 pb-3 mb-2 border-bottom"><span class="small text-secondary">Developer console</span><b>{{ my_publisher.name|default:"No publisher yet" }}</b></div>
+        {% with name=request.resolver_match.url_name %}
+        <nav class="nav nav-pills flex-column" aria-label="Developer console">
+          <a class="nav-link{% if not app and name == 'home' %} active{% endif %}" href="{% url 'console:home' %}">All apps</a>
+          {% if my_publisher.approved %}
+            <a class="nav-link{% if name == 'app_new' %} active{% endif %}" href="{% url 'console:app_new' %}">Create an app</a>
+            <a class="nav-link{% if name == 'sales' %} active{% endif %}" href="{% url 'console:sales' %}">Sales</a>
+            <a class="nav-link{% if name == 'publisher' %} active{% endif %}" href="{% url 'console:publisher' %}">Publisher profile</a>
+          {% endif %}
+          {% if app %}
+            <div class="sub">{{ app.name }}</div>
+            <a class="nav-link{% if name == 'app' or name == 'release' or name == 'release_new' or name == 'package_edit' %} active{% endif %}" href="{% url 'console:app' app.app_id %}">Overview and releases</a>
+            <a class="nav-link{% if name == 'listing' %} active{% endif %}" href="{% url 'console:listing' app.app_id %}">Store listing</a>
+            {% if app.is_public %}<a class="nav-link" href="{{ app.get_absolute_url }}">View in the store</a>{% endif %}
+          {% endif %}
+          <div class="sub">Help</div>
+          <a class="nav-link" href="{% url 'store:terms' %}">Publisher terms</a>
+        </nav>
+        {% endwith %}
+      </div></div>
+    </aside>
+    <div class="col min-w-0">
+      {% include "_messages.html" %}
+      {% block content %}{% endblock %}
+    </div>
   </div>
 </div>
 {% endblock %}

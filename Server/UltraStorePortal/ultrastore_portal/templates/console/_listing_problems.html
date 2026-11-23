@@ -1,0 +1,11 @@
+{% if problems %}
+<div class="alert alert-warning mb-0"><b>Before a release can be made, the listing needs:</b>
+  <ul>{% for problem in problems %}<li>{{ problem }}</li>{% endfor %}</ul>
+  <p class="small mt-2 mb-0">Pictures count as soon as they are uploaded, the texts once the listing is saved.</p>
+</div>
+{% elif not has_releases %}
+<div class="alert alert-success mb-0 d-flex flex-wrap align-items-center gap-3">
+  <span>The listing has what a review needs.</span>
+  <a class="btn btn-primary btn-sm" href="{% url 'console:release_new' app.app_id %}">Create the first release</a>
+</div>
+{% endif %}

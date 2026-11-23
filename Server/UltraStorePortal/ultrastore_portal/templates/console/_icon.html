@@ -1,0 +1,1 @@
+{% if app.icon %}<img class="app-icon s96" src="{{ app.icon.url }}" alt="The current icon" width="96" height="96">{% else %}<span class="app-icon s96">{{ app.name|slice:":1" }}</span>{% endif %}

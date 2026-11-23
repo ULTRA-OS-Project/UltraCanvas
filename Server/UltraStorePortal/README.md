@@ -33,7 +33,7 @@ a publisher, publish an app, show and serve the catalog; 0.2.0 sells;
 | How many stores, how many catalogs? | **One.** One store, one public catalog, generated from what the review published. There is no private or per-publisher catalog, and a publisher holds no signing key: a publisher is an account, the operator's key signs the catalog (decided 2026-11-20). |
 | Which addresses? | **Everything under one root**, `https://store.ultraos.eu` (`ULTRASTORE_PORTAL_BASE_URL`): the pages, the console, the JSON service under `/v1`, the pictures, the packages. No URL the portal writes names a second host (decided 2026-11-20). |
 | Compatibility with the earlier services? | **None kept** - they were not in use (decided 2026-11-20). The portal names no payment, account or marketplace service in the catalog. What is kept is the **catalog's format** (`catalog.json`, schema 2, the Ed25519 signature beside it), because it is the buyer client's, not a service's: the native UltraStore reads the portal's catalog with the parser and the verifier it has. |
-| Which stack? | **Django 5.2 LTS**, with its own accounts, forms, admin site and migrations, and three dependencies in all: Django, `cryptography` (the catalog's Ed25519 signature) and Pillow (checking uploaded pictures). No front-end build: server-rendered pages and one stylesheet. The JSON service is plain Django views - ten read-only endpoints do not need a REST framework. |
+| Which stack? | **Django 5.2 LTS**, with its own accounts, forms, admin site and migrations, and three dependencies in all: Django, `cryptography` (the catalog's Ed25519 signature) and Pillow (checking uploaded pictures). No front-end build: server-rendered pages on **Bootstrap 5.3**, with Dropzone for the upload areas - both copied into `static/portal/vendor/` as published, nothing fetched from another host - a theme stylesheet and one script of the portal's own (*The pages*). The JSON service is plain Django views - ten read-only endpoints do not need a REST framework. |
 | Which database? | **MySQL in production** (decided 2026-11-20; MySQL 8.0 is what the tests run on, MariaDB speaks the same driver), SQLite for tests and development only. PostgreSQL works as well; the tests run on all three in CI. |
 | Who sells? | **The store, through Skrill Quick Checkout** (Paysafe) - the provider the store's design had settled on. The buyer pays on Skrill's page, the store never sees a card, and only Skrill's signed server-to-server report pays an order. The buyer client's protocol is kept like the catalog's format: `POST /v1/checkout`, the order polled with its secret, the `ULIC1` licence, the signed link (`Apps/UltraStore/core/Purchase.cpp`). |
 | Where do packages live? | **Private until published.** An upload goes into the package store under its SHA-256, which no web server serves; the publish lays the packages of *published* releases out beside the catalog. A build in review is reachable by the reviewer alone. |
@@ -134,19 +134,29 @@ root.
 3. **The operator decides** (`/operator/`): approve, or reject with the
    reason; the publisher is mailed either way. Later: suspend and reinstate.
 4. **Create an app**: its name, its reverse-DNS id (`org.acme.myapp`, fixed),
-   its kind (an app, or a runtime / library other apps depend on), a
-   category.
+   its kind (an app, or a runtime / library other apps depend on), and for
+   an app a category.
 5. **The store listing**: summary, description, category, tags, the icon
    (square, 128 px or more), screenshots (up to eight), licence, links, age
    rating, price (free, one-time, monthly, yearly; a trial), visibility,
-   lifecycle.
+   lifecycle. The icon and the screenshots are **saved as soon as they are
+   chosen or dropped** on their areas, each by a request of its own, so a
+   picture never costs what was typed into the rest of the form. A field
+   shows only while it applies (*The pages*). **No release before the
+   listing has what a review needs** - a summary, and for an app a
+   description, a category, an icon and a screenshot: until then the app's
+   page offers *Edit the store listing* where *New release* will be.
 6. **A release**: a version, the channel (stable, beta), what's new, the
    exact components it depends on (`org.ultraos.runtime@0.9.410`), and **a
    package per system and processor** - a zip, 7z, tar.* archive or an
    AppImage, with what the store starts inside it (`entry`), the minimum
    system version and the variants (`glibc-2.31`). The upload is hashed as
    it is written, kept under its SHA-256, checked to be the archive its name
-   says, and the entry looked up in it.
+   says, and the entry looked up in it. While the release is a draft or has
+   changes requested, a package's system, processor, needs and entry are
+   **edited in place** (*Edit* in the packages table): the archive stays as
+   uploaded, the entry is looked up in it again. Only another file means
+   removing the package and uploading again.
 7. **Send for review.** Refused while the listing or the release lacks
    something (the page lists it), or new terms are not accepted. The release
    is closed to edits while the review runs; *Withdraw from review* reopens
@@ -161,6 +171,55 @@ root.
    takes one out.
 
 Every step is a row in the audit log (`/operator/audit/`), with who did it.
+
+## The pages
+
+Server-rendered Django templates on **Bootstrap 5.3** - its grid, forms,
+buttons, cards, tables, alerts, navigation and dialog - with
+`static/portal/portal.css` giving them the values of
+[the design](../../Docs/UltraStore/design/README.md) (*The look*) and adding
+the few things Bootstrap has no component for (an app's icon, the hero, the
+screenshot strip, the upload areas). A form's fields get Bootstrap's classes
+from one template filter (`{{ field|bs }}`, `web/ui.py`), so no form knows how
+the pages look. Bootstrap and Dropzone are in `static/portal/vendor/` as
+published (its `README.md` says which versions and how to update them).
+
+`static/portal/portal.js` is the portal's own script, and everything it does
+is an addition to a page that works without it:
+
+- **Fields that depend on another field.** A form lists them
+  (`DependentFieldsMixin`, `web/forms.py`), the page hides them, and the
+  server does not trust the page: a hidden field's value is replaced by its
+  value when hidden, and its errors keep nothing from saving.
+
+  | Shown | Only while |
+  |---|---|
+  | Category (creating an app) | the kind is *Application* |
+  | Price, currency, trial days, free updates | the pricing model is not *Free* |
+  | Updates until | free updates are *Until a date* |
+  | Source url | *Open source* is ticked |
+  | Successor | the lifecycle is *Deprecated* |
+  | Processor: *universal* | the system is macOS |
+  | Processor: *wasm32* | the system is WebAssembly, which takes only *wasm32* and *any* |
+
+- **Forms sent in place.** A picture uploaded or removed, a package added,
+  edited or removed: the script sends the form with
+  `X-Requested-With: XMLHttpRequest` and the view answers
+  `{"ok": true, "fragments": {selector: html}}` - the parts of the page to
+  draw again - or `{"ok": false, "error", "errors": {field: [...]}}`, shown at
+  the fields while the chosen file stays chosen. A package's upload shows its
+  progress. The same addresses answer a browser without the script with a
+  redirect and a message.
+- **The upload areas** (Dropzone): the icon and the screenshots, dropped or
+  picked, each uploaded at once.
+
+| Console address | |
+|---|---|
+| `POST /console/apps/<id>/icon/` | the icon alone |
+| `POST /console/apps/<id>/screenshots/`, `.../screenshots/<n>/delete/` | a screenshot added, removed |
+| `POST /console/apps/<id>/releases/<n>/packages/` | a package uploaded |
+| `GET, POST .../packages/<n>/edit/` | a package's fields: the dialog's form for the script, a page of its own without it |
+| `POST .../packages/<n>/delete/` | a package and its archive removed |
 
 ## Buying
 
@@ -331,9 +390,12 @@ ultrastore_portal/
     services.py    an order opened, the provider's report believed or not, the licence, renewals, refunds, the signed link
     licence.py     the ULIC1 token
     skrill.py      Quick Checkout's form and signature, the refund and recurring API
-  web/             the pages: storefront.py, account.py, console.py, operator.py, pay.py, forms.py
+  web/             the pages: storefront.py, account.py, console.py, operator.py, pay.py, forms.py,
+                   ui.py (a form's field with Bootstrap's classes)
   api/             the JSON service: views.py (the catalog, the apps), billing.py (the checkout)
-  templates/, static/portal/portal.css   the look of Docs/UltraStore/design/README.md
+  templates/       the pages; console/_*.html are the parts a page draws again in place
+  static/portal/   portal.css (the look of Docs/UltraStore/design/README.md, on Bootstrap),
+                   portal.js (dependent fields, forms sent in place, uploads), vendor/ (Bootstrap, Dropzone)
 tests/             the portal end to end, through its pages and its JSON service
 deploy/            the environment file, the systemd unit, the nginx server
 ```

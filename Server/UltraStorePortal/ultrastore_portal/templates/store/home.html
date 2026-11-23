@@ -2,59 +2,61 @@
 {% block content %}
 {% if hero %}
 <section class="hero">
-  <div>
-    <span class="badge blue">{% if hero.featured %}Editor's pick{% else %}New in the store{% endif %}</span>
-    <h1>{{ hero.name }}</h1>
-    <p>{{ hero.summary }}</p>
-    <div class="row" style="margin-top:22px">
-      <a class="button big" href="{{ hero.get_absolute_url }}">{% if hero.is_free %}Get it free{% else %}{{ hero.price_label }}{% endif %}</a>
-      <span class="muted">by {{ hero.publisher.name }}</span>
+  <div class="row align-items-center g-4">
+    <div class="col-lg">
+      <span class="badge bg-primary-subtle text-primary-emphasis">{% if hero.featured %}Editor's pick{% else %}New in the store{% endif %}</span>
+      <h1>{{ hero.name }}</h1>
+      <p>{{ hero.summary }}</p>
+      <div class="d-flex flex-wrap align-items-center gap-3 mt-4">
+        <a class="btn btn-primary btn-lg" href="{{ hero.get_absolute_url }}">{% if hero.is_free %}Get it free{% else %}{{ hero.price_label }}{% endif %}</a>
+        <span class="text-secondary">by {{ hero.publisher.name }}</span>
+      </div>
     </div>
+    {% with shot=hero.screenshots.first %}
+      {% if shot %}<div class="col-lg"><img class="shot" src="{{ shot.image.url }}" alt="{{ hero.name }}"></div>
+      {% elif hero.icon %}<div class="col-lg"><img class="shot icon" src="{{ hero.icon.url }}" alt="{{ hero.name }}"></div>{% endif %}
+    {% endwith %}
   </div>
-  {% with shot=hero.screenshots.first %}
-    {% if shot %}<img class="shot" src="{{ shot.image.url }}" alt="{{ hero.name }}">
-    {% elif hero.icon %}<img class="shot icon" src="{{ hero.icon.url }}" alt="{{ hero.name }}">{% endif %}
-  {% endwith %}
 </section>
 {% else %}
 <section class="empty">
   <h2>The store is open, the shelves are still empty</h2>
-  <p style="margin-top:10px">No app is published yet. <a href="{% url 'console:home' %}">Publish the first one</a>.</p>
+  <p class="mt-2 mb-0">No app is published yet. <a href="{% url 'console:home' %}">Publish the first one</a>.</p>
 </section>
 {% endif %}
 
 {% if categories_in_use %}
 <section>
-  <div class="section-head"><h2>Browse by category</h2><a href="{% url 'store:browse' %}">All apps</a></div>
-  <div class="chips">{% for id, name in categories_in_use %}<a class="chip" href="{% url 'store:category' id %}">{{ name }}</a>{% endfor %}</div>
+  <div class="d-flex align-items-baseline gap-3 mb-3"><h2>Browse by category</h2><a class="ms-auto fw-semibold" href="{% url 'store:browse' %}">All apps</a></div>
+  <nav class="nav nav-pills chips gap-2" aria-label="Categories">{% for id, name in categories_in_use %}<a class="nav-link" href="{% url 'store:category' id %}">{{ name }}</a>{% endfor %}</nav>
 </section>
 {% endif %}
 
 {% if featured %}
 <section>
-  <div class="section-head"><h2>Editor's picks</h2></div>
-  <div class="cards">{% for app in featured %}{% include "_app_card.html" %}{% endfor %}</div>
+  <div class="d-flex align-items-baseline gap-3 mb-3"><h2>Editor's picks</h2></div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">{% for app in featured %}<div class="col">{% include "_app_card.html" %}</div>{% endfor %}</div>
 </section>
 {% endif %}
 
 {% if latest %}
 <section>
-  <div class="section-head"><h2>New and updated</h2><a href="{% url 'store:browse' %}?sort=updated">See all</a></div>
-  <div class="cards">{% for app in latest %}{% include "_app_card.html" %}{% endfor %}</div>
+  <div class="d-flex align-items-baseline gap-3 mb-3"><h2>New and updated</h2><a class="ms-auto fw-semibold" href="{% url 'store:browse' %}?sort=updated">See all</a></div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">{% for app in latest %}<div class="col">{% include "_app_card.html" %}</div>{% endfor %}</div>
 </section>
 {% endif %}
 
 {% if free %}
 <section>
-  <div class="section-head"><h2>Free essentials</h2><a href="{% url 'store:browse' %}?price=free">See all</a></div>
-  <div class="cards">{% for app in free %}{% include "_app_card.html" %}{% endfor %}</div>
+  <div class="d-flex align-items-baseline gap-3 mb-3"><h2>Free essentials</h2><a class="ms-auto fw-semibold" href="{% url 'store:browse' %}?price=free">See all</a></div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">{% for app in free %}<div class="col">{% include "_app_card.html" %}</div>{% endfor %}</div>
 </section>
 {% endif %}
 
 {% for id, name, row in by_category %}
 <section>
-  <div class="section-head"><h2>{{ name }}</h2><a href="{% url 'store:category' id %}">See all</a></div>
-  <div class="cards">{% for app in row %}{% include "_app_card.html" %}{% endfor %}</div>
+  <div class="d-flex align-items-baseline gap-3 mb-3"><h2>{{ name }}</h2><a class="ms-auto fw-semibold" href="{% url 'store:category' id %}">See all</a></div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">{% for app in row %}<div class="col">{% include "_app_card.html" %}</div>{% endfor %}</div>
 </section>
 {% endfor %}
 {% endblock %}

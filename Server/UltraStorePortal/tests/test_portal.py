@@ -25,6 +25,8 @@ from ultrastore_portal.store.models import App, AuditEntry, CatalogSnapshot, Pac
 User = get_user_model()
 PASSWORD = "a-long-enough-passphrase"
 ROOT = "https://store.ultraos.eu"
+# What the page's script sends with a form it draws the answer of itself (static/portal/portal.js).
+IN_PLACE = {"X-Requested-With": "XMLHttpRequest"}
 
 
 def picture(width: int = 256, height: int = 256, fmt: str = "PNG", name: str = "icon.png") -> SimpleUploadedFile:
@@ -178,10 +180,14 @@ class PublishingTests(PortalCase):
         listing = {"name": "MyApp", "summary": "A fine app", "description": "It does things.", "source_language": "en", "category": "utilities",
                    "tags": "tools, fine", "pricing_model": "free", "currency": "EUR", "trial_days": "0", "updates_period": "always",
                    "visibility": "listed", "lifecycle": "active", "age_rating": ""}
-        self.assertContains(self.client.post("/console/apps/org.acme.myapp/listing/", {**listing, "icon": picture(300, 200)}), "An icon is square")
-        self.assertRedirects(self.post("/console/apps/org.acme.myapp/listing/", {**listing, "icon": picture()}), "/console/apps/org.acme.myapp/listing/")
+        self.assertRedirects(self.post("/console/apps/org.acme.myapp/listing/", listing), "/console/apps/org.acme.myapp/listing/")
+        # The pictures have addresses of their own; without the page's script each answers with the listing page.
+        response = self.post("/console/apps/org.acme.myapp/icon/", {"icon": picture(300, 200)}, follow=True)
+        self.assertContains(response, "An icon is square")
+        self.assertRedirects(self.post("/console/apps/org.acme.myapp/icon/", {"icon": picture()}), "/console/apps/org.acme.myapp/listing/")
         self.post("/console/apps/org.acme.myapp/screenshots/", {"image": picture(640, 400, name="shot.png")})
         app = App.objects.get(app_id="org.acme.myapp")
+        self.assertTrue(app.icon.name.endswith(".png"))
         self.assertEqual(app.screenshots.count(), 1)
 
         response = self.client.post("/console/apps/org.acme.myapp/releases/new/", {"version": "1.0.0", "channel": "stable", "notes": "First.", "depends_text": ""})
@@ -303,6 +309,246 @@ class PublishingTests(PortalCase):
         self.assertContains(self.client.get("/console/"), "Accept the terms")
         self.post("/console/terms/accept/")
         services.submit_release(Release.objects.get(pk=release.pk), owner)
+
+
+class ConsoleTests(PortalCase):
+    """The console's pages as a publisher works on them: nothing to release
+    before the listing is filled in, pictures and packages changed in place,
+    fields that apply only now and then."""
+
+    def setUp(self):
+        super().setUp()
+        self.publisher = self.make_publisher()
+        self.sign_in("dev@example.org")
+
+    def in_place(self, url, data=None):
+        return self.post(url, data, headers=IN_PLACE)
+
+    def test_no_release_before_the_listing_has_what_a_review_needs(self):
+        self.post("/console/apps/new/", {"name": "MyApp", "app_id": "org.acme.myapp", "kind": "app", "category": "utilities"})
+        new_release = "/console/apps/org.acme.myapp/releases/new/"
+        overview = self.client.get("/console/apps/org.acme.myapp/")
+        self.assertNotContains(overview, new_release)
+        self.assertContains(overview, "The listing has no summary.")
+        self.assertContains(overview, "/console/apps/org.acme.myapp/listing/")
+        # The address itself sends back to the listing, and makes nothing.
+        self.assertRedirects(self.client.get(new_release), "/console/apps/org.acme.myapp/listing/")
+        self.assertRedirects(self.client.post(new_release, {"version": "1.0.0", "channel": "stable"}), "/console/apps/org.acme.myapp/listing/")
+        self.assertEqual(Release.objects.count(), 0)
+
+        app = App.objects.get(app_id="org.acme.myapp")
+        app.summary, app.description = "A fine app", "It does things."
+        app.icon.save("icon.png", picture(), save=True)
+        self.assertContains(self.client.get("/console/apps/org.acme.myapp/listing/"), "The listing has no screenshot.")
+        self.assertNotContains(self.client.get("/console/apps/org.acme.myapp/"), new_release)   # one thing missing is enough
+        shot = app.screenshots.create(position=1)
+        shot.image.save("shot.png", picture(640, 400), save=True)
+        self.assertContains(self.client.get("/console/apps/org.acme.myapp/"), new_release)
+        self.assertContains(self.client.get("/console/apps/org.acme.myapp/listing/"), "Create the first release")
+        self.assertEqual(self.client.get(new_release).status_code, 200)
+
+    def test_a_runtime_needs_only_its_summary_and_no_category(self):
+        self.post("/console/apps/new/", {"name": "Runtime", "app_id": "org.acme.runtime", "kind": "runtime", "category": "games"})
+        runtime = App.objects.get(app_id="org.acme.runtime")
+        self.assertEqual(runtime.category, "")   # asked of an app only
+        self.assertNotContains(self.client.get("/console/apps/org.acme.runtime/"), "releases/new/")
+        runtime.summary = "What the apps run on"
+        runtime.save()
+        self.assertContains(self.client.get("/console/apps/org.acme.runtime/"), "releases/new/")
+
+    def test_pictures_are_saved_where_they_are_chosen(self):
+        self.post("/console/apps/new/", {"name": "MyApp", "app_id": "org.acme.myapp", "kind": "app", "category": "utilities"})
+        base = "/console/apps/org.acme.myapp/"
+        page = self.client.get(base + "listing/")
+        self.assertContains(page, f'data-upload="{base}icon/"')
+        self.assertContains(page, f'data-upload="{base}screenshots/"')
+
+        # The icon: refused with the reason, saved with the page's parts to draw again.
+        refused = self.in_place(base + "icon/", {"icon": picture(300, 200)})
+        self.assertEqual((refused.status_code, refused.json()["ok"]), (400, False))
+        self.assertIn("An icon is square", refused.json()["error"])
+        self.assertIn("PNG, a JPEG or a WebP", self.in_place(base + "icon/", {"icon": picture(256, 256, "GIF", "icon.gif")}).json()["error"])
+        self.assertFalse(App.objects.get(app_id="org.acme.myapp").icon)
+        saved = self.in_place(base + "icon/", {"icon": picture()})
+        self.assertEqual((saved.status_code, saved.json()["ok"]), (200, True))
+        app = App.objects.get(app_id="org.acme.myapp")
+        self.assertIn(app.icon.url, saved.json()["fragments"]["#icon"])
+        self.assertNotIn("no icon", saved.json()["fragments"]["#listing-problems"])
+        self.assertIn("no screenshot", saved.json()["fragments"]["#listing-problems"])
+        self.assertTrue(AuditEntry.objects.filter(action="app.edit", target="org.acme.myapp", detail__fields=["icon"]).exists())
+        self.assertIn("Choose a picture", self.in_place(base + "icon/", {}).json()["error"])   # the icon it has is no upload
+
+        # Screenshots: each its own request, up to the limit, removed the same way.
+        with override_settings(MAX_SCREENSHOTS=2):
+            self.assertEqual(self.in_place(base + "screenshots/", {"image": picture(200, 200)}).status_code, 400)   # too small
+            first = self.in_place(base + "screenshots/", {"image": picture(640, 400)})
+            shot = app.screenshots.get()
+            self.assertIn(shot.image.url, first.json()["fragments"]["#shots"])
+            self.assertIn('data-count="1" data-max="2"', first.json()["fragments"]["#shots"])
+            self.assertNotIn("no screenshot", first.json()["fragments"]["#listing-problems"])
+            self.in_place(base + "screenshots/", {"image": picture(800, 500, "JPEG", "two.jpg")})
+            third = self.in_place(base + "screenshots/", {"image": picture(640, 400)})
+            self.assertEqual(third.status_code, 400)
+            self.assertIn("at most 2", third.json()["error"])
+            self.assertEqual([s.position for s in app.screenshots.all()], [1, 2])
+            removed = self.in_place(f"{base}screenshots/{shot.pk}/delete/")
+            self.assertNotIn(shot.image.url, removed.json()["fragments"]["#shots"])
+            self.assertEqual(app.screenshots.count(), 1)
+        # Nothing of this left a message for the next page.
+        self.assertNotContains(self.client.get(base + "listing/"), "The icon is saved.")
+
+    def test_a_picture_change_of_a_public_app_is_in_the_next_catalog(self):
+        app = self.make_app(self.publisher)
+        self.make_release(app)
+        before = self.catalog()["apps"][0]["icon"]
+        self.in_place(f"/console/apps/{app.app_id}/icon/", {"icon": picture(512, 512)})
+        self.assertNotEqual(self.catalog()["apps"][0]["icon"], before)
+
+    LISTING = {"name": "MyApp", "summary": "A fine app", "description": "It does things.", "source_language": "en", "category": "utilities",
+               "tags": "", "license": "", "age_rating": "", "pricing_model": "free", "currency": "EUR", "trial_days": "0",
+               "updates_period": "always", "visibility": "listed", "lifecycle": "active"}
+
+    def test_a_field_that_does_not_apply_is_neither_checked_nor_kept(self):
+        app = self.make_app(self.publisher, pricing_model="one-time", price="19.90", currency="USD", trial_days=14,
+                            updates_period="until", updates_until="2030-01-01", open_source=True, source_url="https://acme.example/src",
+                            lifecycle="deprecated", successor="org.acme.next")
+        url = f"/console/apps/{app.app_id}/listing/"
+        page = self.client.get(url)
+        for field, controller in (("price", "pricing_model"), ("currency", "pricing_model"), ("trial_days", "pricing_model"),
+                                  ("updates_period", "pricing_model"), ("updates_until", "updates_period"),
+                                  ("source_url", "open_source"), ("successor", "lifecycle")):
+            self.assertContains(page, f"&quot;field&quot;: &quot;{field}&quot;, &quot;on&quot;: &quot;{controller}&quot;")
+            self.assertContains(page, f'data-field="{field}"')
+        # Free: whatever the hidden price fields still hold - nonsense included - does not matter.
+        response = self.post(url, {**self.LISTING, "price": "not a number", "currency": "dollars", "trial_days": "-3",
+                                   "updates_period": "until", "updates_until": "soon", "source_url": "not a link", "successor": "org.acme.next"})
+        self.assertRedirects(response, url)
+        app.refresh_from_db()
+        self.assertEqual((app.pricing_model, app.price, app.currency, app.trial_days, app.updates_period, app.updates_until),
+                         ("free", None, "EUR", 0, "always", None))
+        self.assertEqual((app.open_source, app.source_url, app.lifecycle, app.successor), (False, "", "active", ""))
+
+        # Paid: the fields are back and are checked.
+        paid = {**self.LISTING, "pricing_model": "monthly", "updates_period": "until"}
+        response = self.post(url, {**paid, "price": "", "updates_until": ""})
+        self.assertContains(response, "A paid app needs a price.")
+        self.assertContains(response, "Name the date the free updates end.")
+        response = self.post(url, {**paid, "price": "4.00", "currency": "usd", "trial_days": "7", "updates_until": "2031-05-01",
+                                   "open_source": "on", "source_url": "https://acme.example/src", "lifecycle": "deprecated", "successor": "org.acme.next"})
+        self.assertRedirects(response, url)
+        app.refresh_from_db()
+        self.assertEqual((app.pricing_model, str(app.price), app.currency, app.trial_days, app.updates_period, str(app.updates_until)),
+                         ("monthly", "4.00", "USD", 7, "until", "2031-05-01"))
+        self.assertEqual((app.source_url, app.successor), ("https://acme.example/src", "org.acme.next"))
+        # The date goes with "until a date" alone.
+        self.post(url, {**paid, "price": "4.00", "updates_period": "never", "updates_until": "2031-05-01"})
+        app.refresh_from_db()
+        self.assertEqual((app.updates_period, app.updates_until), ("never", None))
+
+    def test_a_package_is_added_and_removed_in_place(self):
+        app = self.make_app(self.publisher)
+        release = Release.objects.create(app=app, version="1.0.0")
+        base = f"/console/apps/{app.app_id}/releases/{release.pk}/"
+        page = self.client.get(base)
+        self.assertContains(page, "The release has no package.")
+        self.assertContains(page, "disabled")   # Send for review
+        # What is wrong is named at its field, so the page can leave the chosen file where it is.
+        wrong = self.in_place(base + "packages/", {"file": archive(), "os": "linux", "arch": "x86_64", "entry": "Other/Thing"})
+        self.assertEqual((wrong.status_code, list(wrong.json()["errors"])), (400, ["entry"]))
+        wrong = self.in_place(base + "packages/", {"file": SimpleUploadedFile("myapp.zip", b"not a zip"), "os": "linux", "arch": "x86_64"})
+        self.assertEqual(list(wrong.json()["errors"]), ["file"])
+        wrong = self.in_place(base + "packages/", {"file": archive(), "os": "", "arch": "x86_64"})
+        self.assertEqual(list(wrong.json()["errors"]), ["os"])
+        wrong = self.in_place(base + "packages/", {"file": archive(), "os": "linux", "arch": "universal"})
+        self.assertEqual(list(wrong.json()["errors"]), ["arch"])   # a macOS fat binary
+        self.assertEqual(self.in_place(base + "packages/", {"file": archive(), "os": "wasm", "arch": "x86_64"}).status_code, 400)
+        self.assertEqual(release.packages.count(), 0)
+        self.assertEqual(list((self.folder / "packages").glob("*")), [])
+
+        added = self.in_place(base + "packages/", {"file": archive(), "os": "linux", "arch": "x86_64", "entry": "MyApp/MyApp"})
+        body = added.json()
+        self.assertEqual((added.status_code, body["ok"], body["reset"]), (200, True, True))
+        package = release.packages.get()
+        self.assertIn(package.sha256, body["fragments"]["#packages"])
+        self.assertIn(f"{base}packages/{package.pk}/edit/", body["fragments"]["#packages"])
+        self.assertEqual(body["fragments"]["#release-problems"].strip(), "")
+        self.assertNotIn("disabled", body["fragments"]["#release-actions"])
+        again = self.in_place(base + "packages/", {"file": archive(salt="b"), "os": "linux", "arch": "x86_64", "entry": "MyApp/MyApp"})
+        self.assertIn("already has a package", again.json()["errors"][""][0])
+
+        removed = self.in_place(f"{base}packages/{package.pk}/delete/")
+        self.assertIn("No package yet", removed.json()["fragments"]["#packages"])
+        self.assertIn("The release has no package.", removed.json()["fragments"]["#release-problems"])
+        self.assertIn("disabled", removed.json()["fragments"]["#release-actions"])
+        self.assertFalse((self.folder / "packages" / package.file_name).exists())
+
+    def test_a_package_is_corrected_until_the_release_is_in_review(self):
+        app = self.make_app(self.publisher)
+        release = self.make_release(app, publish=False)
+        package = release.packages.get()
+        before = (package.sha256, package.size, package.format)
+        base = f"/console/apps/{app.app_id}/releases/{release.pk}/"
+        edit = f"{base}packages/{package.pk}/edit/"
+        self.assertContains(self.client.get(base), edit)
+        # The dialog's form alone for the page's script, a page of its own without it.
+        form = self.client.get(edit, headers=IN_PLACE)
+        self.assertContains(form, 'value="MyApp/MyApp"')
+        self.assertNotContains(form, "<html")
+        self.assertContains(self.client.get(edit), "<html")
+
+        fields = {"os": "windows", "arch": "arm64", "entry": "MyApp/MyApp", "min_os": "10.0.17763", "variant": " vc-redist , avx2 "}
+        saved = self.in_place(edit, fields)
+        self.assertEqual((saved.status_code, saved.json()["ok"], saved.json()["close"]), (200, True, True))
+        self.assertIn("10.0.17763+", saved.json()["fragments"]["#packages"])
+        package.refresh_from_db()
+        self.assertEqual((package.os, package.arch, package.min_os, package.variant), ("windows", "arm64", "10.0.17763", "vc-redist,avx2"))
+        self.assertEqual((package.sha256, package.size, package.format), before)   # the archive is not touched
+        self.assertTrue((self.folder / "packages" / package.file_name).is_file())
+        entry = AuditEntry.objects.filter(action="package.edit").get()
+        self.assertEqual(sorted(entry.detail["fields"]), ["arch", "min_os", "os", "variant"])
+
+        # The entry is looked up in the stored archive again; nothing is saved when it is not there.
+        wrong = self.in_place(edit, {**fields, "entry": "Other/Thing"})
+        self.assertEqual((wrong.status_code, list(wrong.json()["errors"])), (400, ["entry"]))
+        self.assertContains(self.client.post(edit, {**fields, "entry": "Other/Thing"}), "The archive has no")
+        self.assertEqual(self.in_place(edit, {**fields, "min_os": "ten"}).json()["errors"]["min_os"], ["A version of digits and dots: 14.0, 10.0.17763"])
+        self.assertEqual(list(self.in_place(edit, {**fields, "arch": "wasm32"}).json()["errors"]), ["arch"])
+        package.refresh_from_db()
+        self.assertEqual(package.entry, "MyApp/MyApp")
+        # An entry taken away is what keeps the release from review, and is said so at once.
+        cleared = self.in_place(edit, {**fields, "entry": ""})
+        self.assertIn("names no entry", cleared.json()["fragments"]["#release-problems"])
+        self.assertIn("disabled", cleared.json()["fragments"]["#release-actions"])
+        self.assertRedirects(self.post(edit, fields), base)   # without the script: back to the release
+
+        # Two packages of one release are never for the same machine.
+        from ultrastore_portal.store.packages import store_upload
+        stored = store_upload(archive(salt="linux"))
+        other = services.add_package(release, Package(os="linux", arch="x86_64", entry="MyApp/MyApp", sha256=stored.sha256, size=stored.size,
+                                                      format=stored.format), stored.names, self.publisher.members.first().user)
+        clash = self.in_place(f"{base}packages/{other.pk}/edit/", fields)
+        self.assertIn("already has a package", clash.json()["errors"][""][0])
+        self.assertEqual(self.in_place(f"{base}packages/{other.pk}/edit/", {"os": "linux", "arch": "x86_64", "entry": "MyApp"}).status_code, 200)   # itself, unchanged target
+
+        # In review the packages are closed, as the release is; changes requested open them again.
+        owner = self.publisher.members.first().user
+        services.submit_release(release, owner)
+        self.assertNotContains(self.client.get(base), edit)
+        closed = self.in_place(edit, {**fields, "arch": "x86_64"})
+        self.assertEqual(closed.status_code, 400)
+        self.assertRedirects(self.client.get(edit), base)
+        package.refresh_from_db()
+        self.assertEqual(package.arch, "arm64")
+        services.decide_release(release, self.operator, "request_changes", "Wrong processor.")
+        self.assertEqual(self.in_place(edit, {**fields, "arch": "x86_64"}).status_code, 200)
+        package.refresh_from_db()
+        self.assertEqual(package.arch, "x86_64")
+
+        # Never another publisher's.
+        self.make_publisher("other@example.org", "other")
+        self.sign_in("other@example.org")
+        self.assertEqual(self.client.get(edit).status_code, 404)
+        self.assertEqual(self.in_place(edit, fields).status_code, 404)
 
 
 class CatalogTests(PortalCase):

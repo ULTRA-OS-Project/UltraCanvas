@@ -2,34 +2,34 @@
 {% block title %}{% if q %}"{{ q }}"{% elif category_name %}{{ category_name }}{% else %}All apps{% endif %} - UltraStore{% endblock %}
 {% block content %}
 <h1>{% if q %}Results for "{{ q }}"{% elif category_name %}{{ category_name }}{% else %}All apps{% endif %}</h1>
-<p class="muted" style="margin-top:6px">{{ page.paginator.count }} app{{ page.paginator.count|pluralize }}</p>
+<p class="text-secondary mt-1">{{ page.paginator.count }} app{{ page.paginator.count|pluralize }}</p>
 
-<div class="chips" style="margin:22px 0 14px">
-  <a class="chip{% if not category %} on{% endif %}" href="{% url 'store:browse' %}{% if q %}?q={{ q|urlencode }}{% endif %}">All</a>
-  {% for id, name in store_categories %}<a class="chip{% if category == id %} on{% endif %}" href="{% url 'store:category' id %}{% if q %}?q={{ q|urlencode }}{% endif %}">{{ name }}</a>{% endfor %}
-</div>
-<form method="get" class="row" style="margin-bottom:26px">
+<nav class="nav nav-pills chips gap-2 mt-4 mb-3" aria-label="Categories">
+  <a class="nav-link{% if not category %} active{% endif %}" href="{% url 'store:browse' %}{% if q %}?q={{ q|urlencode }}{% endif %}">All</a>
+  {% for id, name in store_categories %}<a class="nav-link{% if category == id %} active{% endif %}" href="{% url 'store:category' id %}{% if q %}?q={{ q|urlencode }}{% endif %}">{{ name }}</a>{% endfor %}
+</nav>
+<form method="get" class="d-flex flex-wrap align-items-center gap-3 mb-4">
   {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
-  <div class="field" style="margin:0"><label for="price" hidden>Price</label>
-    <select id="price" name="price" onchange="this.form.submit()" aria-label="Price">
+  <div><label for="price" hidden>Price</label>
+    <select class="form-select" id="price" name="price" onchange="this.form.submit()" aria-label="Price">
       <option value="">Any price</option><option value="free"{% if price == "free" %} selected{% endif %}>Free</option><option value="paid"{% if price == "paid" %} selected{% endif %}>Paid</option>
     </select></div>
-  <div class="field" style="margin:0"><label for="sort" hidden>Sort</label>
-    <select id="sort" name="sort" onchange="this.form.submit()" aria-label="Sort">
+  <div><label for="sort" hidden>Sort</label>
+    <select class="form-select" id="sort" name="sort" onchange="this.form.submit()" aria-label="Sort">
       <option value="updated"{% if sort == "updated" %} selected{% endif %}>Recently updated</option>
       <option value="new"{% if sort == "new" %} selected{% endif %}>Newest</option>
       <option value="name"{% if sort == "name" %} selected{% endif %}>Name</option>
     </select></div>
-  <noscript><button class="button small">Apply</button></noscript>
+  <noscript><button class="btn btn-primary btn-sm">Apply</button></noscript>
 </form>
 
 {% if page.object_list %}
-  <div class="cards">{% for app in page %}{% include "_app_card.html" %}{% endfor %}</div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">{% for app in page %}<div class="col">{% include "_app_card.html" %}</div>{% endfor %}</div>
   {% if page.has_other_pages %}
-  <div class="row" style="margin-top:28px;justify-content:center">
-    {% if page.has_previous %}<a class="button plain small" href="?{{ query }}{% if query %}&amp;{% endif %}page={{ page.previous_page_number }}">Previous</a>{% endif %}
-    <span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
-    {% if page.has_next %}<a class="button plain small" href="?{{ query }}{% if query %}&amp;{% endif %}page={{ page.next_page_number }}">Next</a>{% endif %}
+  <div class="d-flex flex-wrap align-items-center justify-content-center gap-3 mt-4">
+    {% if page.has_previous %}<a class="btn btn-outline-secondary btn-sm" href="?{{ query }}{% if query %}&amp;{% endif %}page={{ page.previous_page_number }}">Previous</a>{% endif %}
+    <span class="text-secondary">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a class="btn btn-outline-secondary btn-sm" href="?{{ query }}{% if query %}&amp;{% endif %}page={{ page.next_page_number }}">Next</a>{% endif %}
   </div>
   {% endif %}
 {% else %}

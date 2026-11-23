@@ -1,45 +1,49 @@
 {% extends "console/base.html" %}
 {% block title %}Developer console - UltraStore{% endblock %}
 {% block content %}
-<div class="page-head"><h1>All apps</h1><a class="button right" href="{% url 'console:app_new' %}">Create an app</a></div>
+<div class="page-head"><h1>All apps</h1><a class="btn btn-primary ms-auto" href="{% url 'console:app_new' %}">Create an app</a></div>
 {% if terms_due %}
-<div class="note warning">
+<div class="alert alert-warning">
   The publisher terms changed (version {{ terms_due.version }}, in force from {{ terms_due.in_force_from|date:"j F Y" }}). <a href="{% url 'store:terms' %}">Read them</a>, then accept them to send releases for review.
-  <form class="inline" method="post" action="{% url 'console:accept_terms' %}">{% csrf_token %}<button class="button small" style="margin-left:10px">Accept the terms</button></form>
+  <form class="d-inline" method="post" action="{% url 'console:accept_terms' %}">{% csrf_token %}<button class="btn btn-primary btn-sm ms-2">Accept the terms</button></form>
 </div>
 {% endif %}
-<div class="panel">
+<div class="card"><div class="card-body">
 {% if rows %}
-<table>
-  <tr><th>App</th><th>Kind</th><th>In the store</th><th>Releases</th><th class="num">Downloads</th><th></th></tr>
+<div class="table-responsive">
+<table class="table align-middle">
+  <thead><tr><th>App</th><th>Kind</th><th>In the store</th><th>Releases</th><th class="text-end">Downloads</th><th></th></tr></thead>
+  <tbody>
   {% for row in rows %}
   <tr>
-    <td><div class="row">
-      {% if row.app.icon %}<img class="icon s48" src="{{ row.app.icon.url }}" alt="" width="48" height="48">{% else %}<span class="icon s48">{{ row.app.name|slice:":1" }}</span>{% endif %}
-      <div><a href="{% url 'console:app' row.app.app_id %}"><b>{{ row.app.name }}</b></a><div class="mono muted">{{ row.app.app_id }}</div></div>
+    <td><div class="d-flex align-items-center gap-3">
+      {% if row.app.icon %}<img class="app-icon s48" src="{{ row.app.icon.url }}" alt="" width="48" height="48">{% else %}<span class="app-icon s48">{{ row.app.name|slice:":1" }}</span>{% endif %}
+      <div><a href="{% url 'console:app' row.app.app_id %}"><b>{{ row.app.name }}</b></a><div class="font-monospace text-secondary">{{ row.app.app_id }}</div></div>
     </div></td>
     <td>{{ row.app.get_kind_display }}</td>
     <td>
-      {% if row.app.suspended %}<span class="badge red">Suspended</span>
-      {% elif row.live %}<span class="badge green">Published {{ row.live.version }}</span>
+      {% if row.app.suspended %}<span class="badge bg-danger-subtle text-danger-emphasis">Suspended</span>
+      {% elif row.live %}<span class="badge bg-success-subtle text-success-emphasis">Published {{ row.live.version }}</span>
       {% else %}<span class="badge">Not published</span>{% endif %}
     </td>
     <td>
-      {% for r in row.in_review %}<span class="badge amber">{{ r.version }} in review</span> {% endfor %}
-      {% for r in row.attention %}<span class="badge red">{{ r.version }} {{ r.get_state_display|lower }}</span> {% endfor %}
-      {% for r in row.drafts %}<span class="badge blue">{{ r.version }} draft</span> {% endfor %}
+      {% for r in row.in_review %}<span class="badge bg-warning-subtle text-warning-emphasis">{{ r.version }} in review</span> {% endfor %}
+      {% for r in row.attention %}<span class="badge bg-danger-subtle text-danger-emphasis">{{ r.version }} {{ r.get_state_display|lower }}</span> {% endfor %}
+      {% for r in row.drafts %}<span class="badge bg-primary-subtle text-primary-emphasis">{{ r.version }} draft</span> {% endfor %}
     </td>
-    <td class="num">{{ row.app.downloads }}</td>
-    <td class="num"><a class="button plain small" href="{% url 'console:app' row.app.app_id %}">Open</a></td>
+    <td class="text-end">{{ row.app.downloads }}</td>
+    <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'console:app' row.app.app_id %}">Open</a></td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
+</div>
 {% else %}
 <div class="empty">
   <h2>Publish your first app</h2>
-  <p style="margin-top:8px">Create the app, fill in its store listing, add a release with a package per system, and send it for review.</p>
-  <p><a class="button" href="{% url 'console:app_new' %}">Create an app</a></p>
+  <p class="mt-2">Create the app, fill in its store listing, add a release with a package per system, and send it for review.</p>
+  <p class="mb-0"><a class="btn btn-primary" href="{% url 'console:app_new' %}">Create an app</a></p>
 </div>
 {% endif %}
-</div>
+</div></div>
 {% endblock %}
