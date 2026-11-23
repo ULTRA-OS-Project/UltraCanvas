@@ -36,6 +36,7 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.16 - the messages a row higher (the kinds moved into the search row)
 # Version: 0.1.15 - feature-menu.png: the + menu; Screenshot is behind the + by default
 # Version: 0.1.14 - screenshot-picker.png and screenshot-staged.png: the screenshot button (xinput drag)
 # Version: 0.1.13 - the composer clicked at its centre, y 623 (one row high now, y 601 to 646)
@@ -155,17 +156,17 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     "$XINPUT" type "It has avatars and a dark theme now." key Return sleep 3500
     import -window root "$OUT/chat.png"
     # A message of ours right-clicked: its menu (Escape closes it).
-    "$XINPUT" rclick 800 188 sleep 1200
+    "$XINPUT" rclick 800 160 sleep 1200
     import -window root "$OUT/message-menu.png"
     "$XINPUT" key Escape sleep 600
     # The first answer from Bob replied to: Reply in its menu, the bar over the
     # field, then the reply with its quote.
-    "$XINPUT" rclick 500 243 sleep 1200 click 540 262 sleep 800 type "Yes, it looks great here."
+    "$XINPUT" rclick 500 214 sleep 1200 click 540 233 sleep 800 type "Yes, it looks great here."
     import -window root "$OUT/reply-bar.png"
     "$XINPUT" key Return sleep 3500
     import -window root "$OUT/reply.png"
     # Our second message double-clicked: its words back in the field to change.
-    "$XINPUT" click 850 296 click 850 296 sleep 900
+    "$XINPUT" click 850 268 click 850 268 sleep 900
     import -window root "$OUT/edit.png"
     "$XINPUT" type " Really." key Return sleep 2500
     import -window root "$OUT/edited.png"

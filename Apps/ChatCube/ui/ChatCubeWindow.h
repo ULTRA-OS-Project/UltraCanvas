@@ -82,6 +82,7 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.18 - the search's kinds a segmented control in the search row (filterControl_); no filter row
 // Version: 0.3.17 - a location shows as a map card (its click opens openstreetmap.org); My position
 //                   in the location window
 // Version: 0.3.16 - the feature icons: a + button with a menu of the features put behind it, the
@@ -178,6 +179,7 @@ class UltraCanvasImageElement;
 class UltraCanvasLabel;
 class UltraCanvasListView;
 class UltraCanvasMenu;
+class UltraCanvasSegmentedControl;
 class UltraCanvasQRCode;
 class UltraCanvasTextArea;
 class UltraCanvasTextInput;
@@ -689,11 +691,12 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> searchRow_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     searchInfo_;
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> filterRow_;
     std::string searchText_;            // what the list shows the matches of ("" all)
     UltraIMSearchKind searchKind_ = UltraIMSearchKind::AnyKind;
     UltraIMSearchKind shownKind_ = UltraIMSearchKind::AnyKind;   // what the list shows now
-    std::vector<std::pair<UltraIMSearchKind, std::shared_ptr<UltraCanvas::UltraCanvasButton>>> filterChips_;
+    // The kinds of the search (All, pictures, ...), in the search row
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> filterControl_;
+    std::vector<UltraIMSearchKind> filterKinds_;   // the control's segments, in order
     uint64_t    searchTimer_ = 0;
     int         searchSerial_ = 0;      // the answer of an older search is dropped
     bool        settingSearch_ = false; // the field set by hand, not typed
