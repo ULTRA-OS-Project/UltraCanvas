@@ -1,5 +1,7 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.9.2 - the overlay and the pickable windows are the framework's
+//                  (UltraCanvasScreenAreaPicker), the same as before
 // Version: 0.9.1 - zoomed to 200 % or more, the picture's pixels are hard-edged squares
 // Version: 0.9.0 - the picture in an UltraCanvasZoomPanImage: the wheel zooms it about the
 //                  cursor, a drag moves it while it is larger than the pane (never off it),
@@ -477,7 +479,8 @@ void UltraSnipWindow::ArmNow() {
         return;
     }
     screenBounds_ = Rect2Di(shot_.x, shot_.y, shot_.width, shot_.height);
-    overlay_ = std::make_unique<UltraSnipOverlay>();
+    overlay_ = std::make_unique<UltraCanvasScreenAreaPicker>();
+    overlay_->SetTitle("UltraSnip");
     overlay_->onSelected = [this](const Rect2Di& area) {
         app_.PostToUIThread([this, area]() {
             overlay_.reset();
@@ -555,17 +558,7 @@ void UltraSnipWindow::PlaceBarTopCentre() {
 }
 
 std::vector<SnipWindowBounds> UltraSnipWindow::ListPickableWindows() const {
-    std::vector<SnipWindowBounds> windows;
-    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
-        if (w.minimized || w.skipTaskbar) continue;
-        SnipWindowBounds b;
-        if (!UltraCanvasDesktopShell::GetWindowBounds(w.id, b.bounds.x, b.bounds.y, b.bounds.width, b.bounds.height))
-            continue;
-        b.id = w.id;
-        b.title = w.title;
-        windows.push_back(b);
-    }
-    return windows;
+    return ScreenArea::ListPickableWindows();
 }
 
 // ===== THE CAPTURE =====
@@ -612,7 +605,8 @@ void UltraSnipWindow::TakeScreen() {
     }
     std::vector<SnipWindowBounds> windows;
     if (pending_.mode == SnipMode::Window) windows = ListPickableWindows();
-    overlay_ = std::make_unique<UltraSnipOverlay>();
+    overlay_ = std::make_unique<UltraCanvasScreenAreaPicker>();
+    overlay_->SetTitle("UltraSnip");
     overlay_->onSelected = [this](const Rect2Di& area) {
         app_.PostToUIThread([this, area]() {
             overlay_.reset();

@@ -536,6 +536,11 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # (OS/MacOS/UltraCanvasMacOSRemovableDrives.mm); without it each volume
     # is an entry of its own.
     find_library(DISKARBITRATION_FRAMEWORK DiskArbitration)
+    # ScreenCaptureKit (macOS 12.3+, its screenshots 14+) captures the screen
+    # (OS/MacOS/UltraCanvasMacOSScreenCapture.mm): UltraSnip, ChatCube's
+    # screenshot button. Not REQUIRED: without it the capture is compiled
+    # out (__has_include) and says why.
+    find_library(SCREENCAPTUREKIT_FRAMEWORK ScreenCaptureKit)
     # OpenGL (CGL) backs only the GL surface. Apple has deprecated it since
     # macOS 10.14, so it is looked up only when that surface is wanted, and an
     # SDK without it turns the surface off instead of failing the configure -
@@ -695,6 +700,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveSeparator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopShell.cpp
+        # Choosing an area of the screen over a frozen capture (UltraSnip, ChatCube)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScreenAreaPicker.cpp
         # Wi-Fi and Bluetooth operated from a panel (join, pair, connect).
         # The backends are OS/<Platform>/UltraCanvas*Wireless.*, picked up by
         # the platform glob below; this is the shared half and the fallback.
@@ -2930,7 +2937,8 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
                 ${UNIFORMTYPEIDENTIFIERS_FRAMEWORK})
     endif()
-    foreach(_uc_wireless_fw COREWLAN_FRAMEWORK IOBLUETOOTH_FRAMEWORK CORELOCATION_FRAMEWORK DISKARBITRATION_FRAMEWORK)
+    foreach(_uc_wireless_fw COREWLAN_FRAMEWORK IOBLUETOOTH_FRAMEWORK CORELOCATION_FRAMEWORK DISKARBITRATION_FRAMEWORK
+                            SCREENCAPTUREKIT_FRAMEWORK)
         if(${_uc_wireless_fw})
             target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${${_uc_wireless_fw}})
         endif()

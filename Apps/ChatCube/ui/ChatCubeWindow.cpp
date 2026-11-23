@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.10 - the screenshot button beside the paperclip: an area of the screen into the
+//                   composer (UltraCanvasScreenAreaPicker); hidden where the screen is not captured
 // Version: 0.3.9 - the composer's text one row high, growing with its text to four rows, then scrolling
 // Version: 0.3.8 - the compact layout (a phone, a narrow window): the list and the conversation take
 //                  turns, a back arrow and Android's back key return to the list; network buttons only
@@ -116,6 +118,7 @@ constexpr int   kTileClose = 20;        // the x on a tile
 constexpr size_t  kMenuMembers = 40;     // members listed in a group's menu before "and N more"
 constexpr int64_t kTypingShownMs = 5000;
 constexpr int64_t kTypingResendMs = 3000;
+constexpr unsigned kScreenshotSettleMs = 350;   // the hidden window has left the screen by then
 
 int64_t NowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -284,6 +287,7 @@ ChatCubeWindow::~ChatCubeWindow() {
         if (recordTimer_) app->StopTimer(recordTimer_);
         if (searchTimer_) app->StopTimer(searchTimer_);
         if (publicTimer_) app->StopTimer(publicTimer_);
+        if (screenshotTimer_) app->StopTimer(screenshotTimer_);
     }
     // A recording under way goes with the window, nothing sent.
     if (voiceRecorder_) {
@@ -1222,6 +1226,12 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     attach_->SetDisabled(true);
     attach_->SetOnClick([this]() { AttachFile(); });
     composerRow->AddChild(attach_);
+    screenshot_ = MakeIconButton("cc-screenshot", "screenshot", "", kIconButton);
+    screenshot_->SetTooltip(Tr("Insert a screenshot: choose a window or drag an area"));
+    screenshot_->SetDisabled(true);
+    screenshot_->SetOnClick([this]() { TakeScreenshot(); });
+    screenshot_->SetVisible(UltraCanvasDesktopShell::CanCaptureScreen());
+    composerRow->AddChild(screenshot_);
     auto composerText = std::make_shared<ComposerTextArea>("cc-input", 0, 0, 300, kInputHeight);
     input_ = composerText;
     input_->SetEditingMode(TextAreaEditingMode::PlainText);
@@ -3094,6 +3104,7 @@ void ChatCubeWindow::UpdateHeader() {
         headerAvatar_->SetVisible(false);
         headerPhoto_->SetVisible(false);
         attach_->SetDisabled(true);
+        screenshot_->SetDisabled(true);
         recordVoice_->SetDisabled(true);
         recordVideo_->SetDisabled(true);
         return;
@@ -3122,6 +3133,9 @@ void ChatCubeWindow::UpdateHeader() {
     attach_->SetDisabled(!attachments);
     attach_->SetTooltip(attachments ? Tr("Send a picture, a video or a file")
                                     : Tr("This network does not take pictures or files yet"));
+    screenshot_->SetDisabled(!attachments);
+    screenshot_->SetTooltip(attachments ? Tr("Insert a screenshot: choose a window or drag an area")
+                                        : Tr("This network does not take pictures or files yet"));
     recordVoice_->SetDisabled(!attachments);
     recordVideo_->SetDisabled(!attachments);
     if (const std::string typing = TypingText(*c); !typing.empty()) {
@@ -3320,25 +3334,12 @@ bool ChatCubeWindow::PasteAttachment() {
     // Into a file of ChatCube's own, in its cache: the provider reads the
     // file, and the bubble shows it from there. PNG and JPEG as they came;
     // anything else (a bitmap, say) decoded and written as PNG.
-    std::error_code ec;
-    const std::filesystem::path folder = UltraCanvasDataFolder("ChatCube") / "cache" / "pasted";
-    std::filesystem::create_directories(folder, ec);
-    const std::time_t now = std::time(nullptr);
-    std::tm local{};
-#if defined(_WIN32) || defined(_WIN64)
-    localtime_s(&local, &now);
-#else
-    localtime_r(&now, &local);
-#endif
-    char stamp[32];
-    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
-    std::string name = std::string("Pasted-") + stamp;
-    for (int n = 1; std::filesystem::exists(folder / PathFromUtf8(name + ".png"), ec) ||
-                    std::filesystem::exists(folder / PathFromUtf8(name + ".jpg"), ec); ++n)
-        name = std::string("Pasted-") + stamp + "-" + std::to_string(n);
+    const std::string base = NewCachedPicturePath("Pasted");
     std::string path;
-    if (format == "image/png" || format == "image/jpeg") {
-        path = PathToUtf8(folder / PathFromUtf8(name + (format == "image/png" ? ".png" : ".jpg")));
+    if (base.empty()) {
+        // no cache folder: reported below as unreadable
+    } else if (format == "image/png" || format == "image/jpeg") {
+        path = base + (format == "image/png" ? ".png" : ".jpg");
         std::FILE* out = OpenFileUtf8(path, "wb");
         const bool written = out && std::fwrite(bytes.data(), 1, bytes.size(), out) == bytes.size();
         if (out) std::fclose(out);
@@ -3346,7 +3347,7 @@ bool ChatCubeWindow::PasteAttachment() {
     } else {
         UCImagePtr image = UCImage::LoadFromMemory(bytes);
         if (image && image->IsValid()) {
-            path = PathToUtf8(folder / PathFromUtf8(name + ".png"));
+            path = base + ".png";
             UCImageSave::ImageExportOptions options;
             options.format = UCImageSaveFormat::PNG;
             if (!image->Save(path, options).empty()) path.clear();
@@ -3358,6 +3359,116 @@ bool ChatCubeWindow::PasteAttachment() {
     }
     StageAttachment(path, true);
     return true;
+}
+
+std::string ChatCubeWindow::NewCachedPicturePath(const std::string& prefix) const {
+    std::error_code ec;
+    const std::filesystem::path folder = UltraCanvasDataFolder("ChatCube") / "cache" / "pasted";
+    std::filesystem::create_directories(folder, ec);
+    if (!std::filesystem::is_directory(folder, ec)) return {};
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#if defined(_WIN32) || defined(_WIN64)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
+    std::string name = prefix + "-" + stamp;
+    for (int n = 1; std::filesystem::exists(folder / PathFromUtf8(name + ".png"), ec) ||
+                    std::filesystem::exists(folder / PathFromUtf8(name + ".jpg"), ec); ++n)
+        name = prefix + "-" + stamp + "-" + std::to_string(n);
+    return PathToUtf8(folder / PathFromUtf8(name));
+}
+
+// ===== A SCREENSHOT INTO THE COMPOSER =====
+
+void ChatCubeWindow::TakeScreenshot() {
+    if (activeConversation_.empty() || screenshotRunning_ || !window_) return;
+    if (!AttachmentsPossible()) {
+        SetStatus(Tr("This network does not take pictures yet."));
+        return;
+    }
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return;
+    // Out of the picture: hidden, and given a moment to leave the screen
+    // (the window system takes it off after the call returns)
+    screenshotRunning_ = true;
+    window_->Hide();
+    screenshotTimer_ = app->StartTimer(kScreenshotSettleMs, false, [this](TimerId) {
+        screenshotTimer_ = 0;
+        PickScreenArea();
+    });
+}
+
+void ChatCubeWindow::PickScreenArea() {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    std::string error;
+    if (!app || !UltraCanvasDesktopShell::CaptureScreenImage(screenShot_, &error)) {
+        EndScreenshot();
+        SetStatus(TrF("The screen could not be captured: {0}", error));
+        return;
+    }
+    // A window clicked or an area dragged; where the platform lists no
+    // windows (Wayland, macOS), an area, Enter taking the whole screen
+    std::vector<ScreenAreaWindow> windows = ScreenArea::ListPickableWindows();
+    const ScreenAreaMode mode = windows.empty() ? ScreenAreaMode::Rectangle : ScreenAreaMode::Window;
+    screenPicker_ = std::make_unique<UltraCanvasScreenAreaPicker>();
+    screenPicker_->SetTitle("ChatCube");
+    // The picker is let go of from the UI thread's queue, not from inside
+    // its own callback
+    std::weak_ptr<bool> alive = alive_;
+    screenPicker_->onSelected = [this, app, alive](const Rect2Di& area) {
+        app->PostToUIThread([this, area, alive]() {
+            if (auto a = alive.lock(); !a || !*a) return;
+            screenPicker_.reset();
+            StageScreenshot(area);
+            EndScreenshot();
+        });
+    };
+    screenPicker_->onCancelled = [this, app, alive]() {
+        app->PostToUIThread([this, alive]() {
+            if (auto a = alive.lock(); !a || !*a) return;
+            screenPicker_.reset();
+            EndScreenshot();
+        });
+    };
+    if (!screenPicker_->Open(screenShot_, mode, windows, &error)) {
+        screenPicker_.reset();
+        EndScreenshot();
+        SetStatus(error);
+    }
+}
+
+void ChatCubeWindow::StageScreenshot(const Rect2Di& area) {
+    ClipboardDib::RgbaImage image;
+    std::vector<uint8_t> png;
+    const std::string base = NewCachedPicturePath("Screenshot");
+    if (base.empty() || !ScreenArea::CropToRgba(screenShot_, area, image) || !ClipboardDib::EncodePng(image, png)) {
+        SetStatus(Tr("The screenshot could not be kept."));
+        return;
+    }
+    const std::string path = base + ".png";
+    std::FILE* out = OpenFileUtf8(path, "wb");
+    const bool written = out && std::fwrite(png.data(), 1, png.size(), out) == png.size();
+    const bool closed = out && std::fclose(out) == 0;
+    if (!written || !closed) {
+        std::error_code ec;
+        std::filesystem::remove(PathFromUtf8(path), ec);
+        SetStatus(Tr("The screenshot could not be kept."));
+        return;
+    }
+    StageAttachment(path, true);
+}
+
+void ChatCubeWindow::EndScreenshot() {
+    screenShot_ = DesktopScreenImage();     // the whole screen's pixels, let go of
+    screenshotRunning_ = false;
+    if (!window_) return;
+    window_->Show();
+    window_->RaiseAndFocus();
+    if (input_) input_->SetFocus(true);
 }
 
 void ChatCubeWindow::StageAttachment(const std::string& path, bool ownFile) {

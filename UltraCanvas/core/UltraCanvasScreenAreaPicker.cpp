@@ -1,14 +1,11 @@
-// Apps/UltraSnip/ui/UltraSnipOverlay.cpp
+// core/UltraCanvasScreenAreaPicker.cpp
 // See the header.
-// Version: 0.4.0 - Window mode: the desktop darkened, the window under the pointer in full
-//                  colour (no tint), lit as soon as the overlay opens under the pointer
-// Version: 0.3.0 - SetMode while open; onReleased, for the bar kept above it
-// Version: 0.2.0 - the texts go through Tr (UltraLocalisation)
-// Version: 0.1.1 - the frozen screen shown from its pixels (UCImage::FromBgra), no PNG round trip
-// Version: 0.1.0
-// Author: UltraCanvas Framework / ULTRA OS
+// Version: 1.0.0 - from UltraSnip's overlay 0.4.0 and its capture helpers;
+//                  on macOS placed in points, above the menu bar (WindowType::Overlay)
+// Last Modified: 2026-11-23
+// Author: UltraCanvas Framework
 
-#include "UltraSnipOverlay.h"
+#include "UltraCanvasScreenAreaPicker.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasEvent.h"
@@ -20,9 +17,77 @@
 #include <algorithm>
 #include <cmath>
 
-using namespace UltraCanvas;
+namespace UltraCanvas {
 
-namespace UltraSnip {
+// ===== THE ARITHMETIC =====
+
+namespace ScreenArea {
+
+Rect2Di RectBetween(const Point2Di& a, const Point2Di& b) {
+    const int left = std::min(a.x, b.x);
+    const int top = std::min(a.y, b.y);
+    const int right = std::max(a.x, b.x);
+    const int bottom = std::max(a.y, b.y);
+    return Rect2Di(left, top, right - left + 1, bottom - top + 1);
+}
+
+Rect2Di ClipRect(const Rect2Di& rect, const Rect2Di& bounds) {
+    const int left = std::max(rect.x, bounds.x);
+    const int top = std::max(rect.y, bounds.y);
+    const int right = std::min(rect.x + rect.width, bounds.x + bounds.width);
+    const int bottom = std::min(rect.y + rect.height, bounds.y + bounds.height);
+    if (right <= left || bottom <= top) return Rect2Di(left, top, 0, 0);
+    return Rect2Di(left, top, right - left, bottom - top);
+}
+
+bool CropToRgba(const DesktopScreenImage& shot, const Rect2Di& area, ClipboardDib::RgbaImage& out, Rect2Di* taken) {
+    out = ClipboardDib::RgbaImage();
+    if (!shot.IsValid()) return false;
+    const Rect2Di inside = ClipRect(area, Rect2Di(shot.x, shot.y, shot.width, shot.height));
+    if (inside.width <= 0 || inside.height <= 0) return false;
+    out.width = inside.width;
+    out.height = inside.height;
+    out.pixels.resize(static_cast<size_t>(inside.width) * inside.height * 4);
+    for (int row = 0; row < inside.height; ++row) {
+        const uint8_t* src = shot.pixels.data() +
+                             static_cast<size_t>(inside.y - shot.y + row) * static_cast<size_t>(shot.stride) +
+                             static_cast<size_t>(inside.x - shot.x) * 4;
+        uint8_t* dst = out.pixels.data() + static_cast<size_t>(row) * inside.width * 4;
+        for (int col = 0; col < inside.width; ++col, src += 4, dst += 4) {
+            dst[0] = src[2];    // the capture is B G R x
+            dst[1] = src[1];
+            dst[2] = src[0];
+            dst[3] = 255;
+        }
+    }
+    if (taken) *taken = inside;
+    return true;
+}
+
+int TopmostWindowAt(const std::vector<ScreenAreaWindow>& windows, const Point2Di& point) {
+    for (int i = static_cast<int>(windows.size()) - 1; i >= 0; --i) {
+        const Rect2Di& r = windows[static_cast<size_t>(i)].bounds;
+        if (r.width <= 0 || r.height <= 0) continue;
+        if (point.x >= r.x && point.x < r.x + r.width && point.y >= r.y && point.y < r.y + r.height) return i;
+    }
+    return -1;
+}
+
+std::vector<ScreenAreaWindow> ListPickableWindows() {
+    std::vector<ScreenAreaWindow> windows;
+    for (const DesktopWindowInfo& w : UltraCanvasDesktopShell::ListWindows()) {
+        if (w.minimized || w.skipTaskbar) continue;
+        ScreenAreaWindow b;
+        if (!UltraCanvasDesktopShell::GetWindowBounds(w.id, b.bounds.x, b.bounds.y, b.bounds.width, b.bounds.height))
+            continue;
+        b.id = w.id;
+        b.title = w.title;
+        windows.push_back(b);
+    }
+    return windows;
+}
+
+} // namespace ScreenArea
 
 namespace {
 const Color kDim(0, 0, 0, 110);
@@ -42,10 +107,10 @@ constexpr float kPillRadius = 6.0f;
 
 // ===== THE MARQUEE =====
 
-UltraSnipSelectionElement::UltraSnipSelectionElement(const std::string& identifier)
+UltraCanvasScreenAreaSelection::UltraCanvasScreenAreaSelection(const std::string& identifier)
     : UltraCanvasUIElement(identifier, 0, 0, 0, 0) {}
 
-int UltraSnipSelectionElement::WindowUnder(const Point2Di& point) const {
+int UltraCanvasScreenAreaSelection::WindowUnder(const Point2Di& point) const {
     for (int i = static_cast<int>(windows_.size()) - 1; i >= 0; --i) {
         const Rect2Df& r = windows_[static_cast<size_t>(i)].bounds;
         if (r.width <= 0 || r.height <= 0) continue;
@@ -54,42 +119,42 @@ int UltraSnipSelectionElement::WindowUnder(const Point2Di& point) const {
     return -1;
 }
 
-bool UltraSnipSelectionElement::Finish(const Rect2Df& rect) {
+bool UltraCanvasScreenAreaSelection::Finish(const Rect2Df& rect) {
     if (done_ || rect.width <= 0 || rect.height <= 0) return false;
     done_ = true;
     if (onSelected) onSelected(rect);
     return true;
 }
 
-void UltraSnipSelectionElement::SelectCurrent() {
+void UltraCanvasScreenAreaSelection::SelectCurrent() {
     if (done_) return;
     if (dragging_) {
-        const Rect2Di r = RectBetween(anchor_, current_);
+        const Rect2Di r = ScreenArea::RectBetween(anchor_, current_);
         Finish(Rect2Df(r));
         return;
     }
-    if (mode_ == SnipMode::Window && hoverWindow_ >= 0) {
+    if (mode_ == ScreenAreaMode::Window && hoverWindow_ >= 0) {
         Finish(windows_[static_cast<size_t>(hoverWindow_)].bounds);
         return;
     }
     Finish(Rect2Df(0, 0, GetWidth(), GetHeight()));
 }
 
-void UltraSnipSelectionElement::SetMode(SnipMode mode) {
+void UltraCanvasScreenAreaSelection::SetMode(ScreenAreaMode mode) {
     mode_ = mode;
-    hoverWindow_ = mode_ == SnipMode::Window && pointerKnown_ && !dragging_ ? WindowUnder(current_) : -1;
+    hoverWindow_ = mode_ == ScreenAreaMode::Window && pointerKnown_ && !dragging_ ? WindowUnder(current_) : -1;
     RequestRedraw();
 }
 
-void UltraSnipSelectionElement::SetPointer(const Point2Di& point) {
+void UltraCanvasScreenAreaSelection::SetPointer(const Point2Di& point) {
     if (done_ || dragging_ || pointerKnown_) return;   // a real movement already said where it is
     pointerKnown_ = true;
     current_ = point;
-    if (mode_ == SnipMode::Window) hoverWindow_ = WindowUnder(current_);
+    if (mode_ == ScreenAreaMode::Window) hoverWindow_ = WindowUnder(current_);
     RequestRedraw();
 }
 
-bool UltraSnipSelectionElement::OnEvent(const UCEvent& event) {
+bool UltraCanvasScreenAreaSelection::OnEvent(const UCEvent& event) {
     if (done_) return false;
     switch (event.type) {
         case UCEventType::MouseDown:
@@ -107,7 +172,7 @@ bool UltraSnipSelectionElement::OnEvent(const UCEvent& event) {
         case UCEventType::MouseMove:
             pointerKnown_ = true;
             current_ = event.pointer;
-            if (mode_ == SnipMode::Window && !dragging_) hoverWindow_ = WindowUnder(current_);
+            if (mode_ == ScreenAreaMode::Window && !dragging_) hoverWindow_ = WindowUnder(current_);
             RequestRedraw();
             return true;
         case UCEventType::MouseLeave:
@@ -119,11 +184,11 @@ bool UltraSnipSelectionElement::OnEvent(const UCEvent& event) {
             if (event.button != UCMouseButton::Left || !dragging_) return false;
             dragging_ = false;
             current_ = event.pointer;
-            const Rect2Di r = RectBetween(anchor_, current_);
+            const Rect2Di r = ScreenArea::RectBetween(anchor_, current_);
             // A click (no drag to speak of): the window under it in Window
             // mode, nothing in Rectangle mode
             if (r.width < 4 && r.height < 4) {
-                if (mode_ == SnipMode::Window) {
+                if (mode_ == ScreenAreaMode::Window) {
                     const int under = WindowUnder(current_);
                     if (under >= 0) Finish(windows_[static_cast<size_t>(under)].bounds);
                 }
@@ -138,9 +203,9 @@ bool UltraSnipSelectionElement::OnEvent(const UCEvent& event) {
     }
 }
 
-void UltraSnipSelectionElement::DrawDim(IRenderContext* ctx, const Rect2Df& hole) {
+void UltraCanvasScreenAreaSelection::DrawDim(IRenderContext* ctx, const Rect2Df& hole) {
     const float w = GetWidth(), h = GetHeight();
-    ctx->SetFillPaint(mode_ == SnipMode::Window ? kWindowDim : kDim);
+    ctx->SetFillPaint(mode_ == ScreenAreaMode::Window ? kWindowDim : kDim);
     if (hole.width <= 0 || hole.height <= 0) {
         ctx->FillRectangle(Rect2Dd(0, 0, w, h));
         return;
@@ -153,7 +218,7 @@ void UltraSnipSelectionElement::DrawDim(IRenderContext* ctx, const Rect2Df& hole
     if (right < w) ctx->FillRectangle(Rect2Dd(right, top, w - right, bottom - top));
 }
 
-void UltraSnipSelectionElement::DrawPill(IRenderContext* ctx, const std::string& text, float centreX, float y,
+void UltraCanvasScreenAreaSelection::DrawPill(IRenderContext* ctx, const std::string& text, float centreX, float y,
                                          bool below) {
     ctx->SetFontSize(13.0);
     const Point2Di size = ctx->GetTextDimension(text);
@@ -169,15 +234,15 @@ void UltraSnipSelectionElement::DrawPill(IRenderContext* ctx, const std::string&
     ctx->DrawTextInRect(text, Rect2Dd(px, py, pw, ph));
 }
 
-void UltraSnipSelectionElement::Render(IRenderContext* ctx, const Rect2Df&) {
+void UltraCanvasScreenAreaSelection::Render(IRenderContext* ctx, const Rect2Df&) {
     const float w = GetWidth(), h = GetHeight();
     if (w <= 0 || h <= 0) return;
     ctx->PushState();
 
     Rect2Df hole(0, 0, 0, 0);
     if (dragging_) {
-        hole = Rect2Df(RectBetween(anchor_, current_));
-    } else if (mode_ == SnipMode::Window && hoverWindow_ >= 0) {
+        hole = Rect2Df(ScreenArea::RectBetween(anchor_, current_));
+    } else if (mode_ == ScreenAreaMode::Window && hoverWindow_ >= 0) {
         hole = windows_[static_cast<size_t>(hoverWindow_)].bounds;
     }
     DrawDim(ctx, hole);
@@ -199,14 +264,14 @@ void UltraSnipSelectionElement::Render(IRenderContext* ctx, const Rect2Df&) {
         }
         const bool below = hole.y + hole.height + 30 < h;
         DrawPill(ctx, label, hole.x + hole.width / 2, below ? hole.y + hole.height + 6 : hole.y - 6, below);
-    } else if (pointerKnown_ && mode_ == SnipMode::Rectangle) {
+    } else if (pointerKnown_ && mode_ == ScreenAreaMode::Rectangle) {
         ctx->SetStrokeWidth(1.0);
         ctx->SetStrokePaint(kCrosshair);
         ctx->DrawLine(Point2Dd(current_.x + 0.5, 0), Point2Dd(current_.x + 0.5, h));
         ctx->DrawLine(Point2Dd(0, current_.y + 0.5), Point2Dd(w, current_.y + 0.5));
     }
 
-    const std::string hint = mode_ == SnipMode::Window
+    const std::string hint = mode_ == ScreenAreaMode::Window
                            ? Tr("Click a window, or drag an area  \xC2\xB7  Enter: the window under the pointer  \xC2\xB7  Esc: cancel")
                            : Tr("Drag an area  \xC2\xB7  Enter: the whole screen  \xC2\xB7  Esc: cancel");
     DrawPill(ctx, hint, w / 2, hintTop_, true);
@@ -215,16 +280,16 @@ void UltraSnipSelectionElement::Render(IRenderContext* ctx, const Rect2Df&) {
 
 // ===== THE OVERLAY WINDOW =====
 
-UltraSnipOverlay::UltraSnipOverlay() = default;
+UltraCanvasScreenAreaPicker::UltraCanvasScreenAreaPicker() = default;
 
-UltraSnipOverlay::~UltraSnipOverlay() {
+UltraCanvasScreenAreaPicker::~UltraCanvasScreenAreaPicker() {
     if (window_) {
         window_->onWindowClosed = nullptr;
         if (open_) window_->Close();
     }
 }
 
-bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const std::vector<SnipWindowBounds>& windows,
+bool UltraCanvasScreenAreaPicker::Open(const DesktopScreenImage& shot, ScreenAreaMode mode, const std::vector<ScreenAreaWindow>& windows,
                             std::string* error) {
     Close();
     if (!shot.IsValid()) {
@@ -241,8 +306,15 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
     }
 
     WindowConfig config;
-    config.title = "UltraSnip";
+    config.title = title_;
+#if defined(__APPLE__)
+    // Cocoa keeps a borderless window under the menu bar and the Dock and
+    // never makes it key (no Escape); an Overlay is above both and takes
+    // the keyboard
+    config.type = WindowType::Overlay;
+#else
     config.type = WindowType::Borderless;
+#endif
     config.width = shot.width;
     config.height = shot.height;
     config.x = shot.x;
@@ -263,25 +335,34 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
     scale_ = window_->GetDeviceScale() > 0.0f ? window_->GetDeviceScale() : 1.0f;
     // The window covers the capture's pixels exactly (SetWindowSize takes
     // physical pixels, as the capture is)
+#if defined(__APPLE__)
+    // ...except on macOS, where a window is placed and sized in points: the
+    // capture's pixels over the backing scale
+    window_->SetWindowPosition(static_cast<int>(std::lround(shot.x / scale_)),
+                               static_cast<int>(std::lround(shot.y / scale_)));
+    window_->SetWindowSize(static_cast<int>(std::lround(shot.width / scale_)),
+                           static_cast<int>(std::lround(shot.height / scale_)));
+#else
     window_->SetWindowPosition(shot.x, shot.y);
     window_->SetWindowSize(shot.width, shot.height);
+#endif
 
     const CSSLayout::Position fill{CSSLayout::Dimension::Px(0), CSSLayout::Dimension::Px(0),
                                                CSSLayout::Dimension::Px(0), CSSLayout::Dimension::Px(0)};
-    picture_ = CreateImageElement("snip.overlay.picture", 0, 0, static_cast<float>(shot.width),
+    picture_ = CreateImageElement("screen-area.picture", 0, 0, static_cast<float>(shot.width),
                                   static_cast<float>(shot.height));
     picture_->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute).SetPositionInsets(fill);
     picture_->SetFitMode(ImageFitMode::Fill);
     picture_->LoadFromImage(picture);
     window_->AddChild(picture_);
 
-    marquee_ = std::make_shared<UltraSnipSelectionElement>("snip.overlay.marquee");
+    marquee_ = std::make_shared<UltraCanvasScreenAreaSelection>("screen-area.marquee");
     marquee_->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute).SetPositionInsets(fill);
     marquee_->SetMode(mode);
     marquee_->SetScale(scale_);
-    std::vector<OverlayWindow> logical;
-    for (const SnipWindowBounds& w : windows) {
-        OverlayWindow ow;
+    std::vector<UltraCanvasScreenAreaSelection::Window> logical;
+    for (const ScreenAreaWindow& w : windows) {
+        UltraCanvasScreenAreaSelection::Window ow;
         ow.title = w.title;
         ow.bounds = Rect2Df((w.bounds.x - shot.x) / scale_, (w.bounds.y - shot.y) / scale_, w.bounds.width / scale_,
                             w.bounds.height / scale_);
@@ -307,7 +388,7 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
         marquee_.reset();
         if (wasOpen && onCancelled) onCancelled();
     };
-    window_->InstallEventFilter("snip-overlay-keys", [this](const UCEvent& event) {
+    window_->InstallEventFilter("screen-area-keys", [this](const UCEvent& event) {
         if (event.type != UCEventType::KeyDown || !marquee_) return false;
         if (event.virtualKey == UCKeys::Escape) {
             Finish(false, Rect2Di());
@@ -320,14 +401,14 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
         return false;
     }, {UCEventType::KeyDown});
     // Ahead of the marquee, which then has the release as well
-    window_->InstallEventFilter("snip-overlay-release", [this](const UCEvent&) {
+    window_->InstallEventFilter("screen-area-release", [this](const UCEvent&) {
         if (open_ && onReleased) onReleased();
         return false;
     }, {UCEventType::MouseUp});
     // The overlay opens under the pointer, which has not moved: the window
     // is told where it is when it appears (its enter event), and the
     // marquee lights the window under it from that
-    window_->InstallEventFilter("snip-overlay-enter", [this](const UCEvent& event) {
+    window_->InstallEventFilter("screen-area-enter", [this](const UCEvent& event) {
         if (event.type == UCEventType::MouseEnter && marquee_) marquee_->SetPointer(event.pointerWindow);
         return false;
     }, {UCEventType::MouseEnter});
@@ -336,7 +417,7 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
     return true;
 }
 
-void UltraSnipOverlay::Finish(bool selected, const Rect2Di& area) {
+void UltraCanvasScreenAreaPicker::Finish(bool selected, const Rect2Di& area) {
     if (!open_) return;
     open_ = false;
     if (window_) {
@@ -353,15 +434,15 @@ void UltraSnipOverlay::Finish(bool selected, const Rect2Di& area) {
     }
 }
 
-void UltraSnipOverlay::SetMode(SnipMode mode) {
+void UltraCanvasScreenAreaPicker::SetMode(ScreenAreaMode mode) {
     if (marquee_) marquee_->SetMode(mode);
 }
 
-void UltraSnipOverlay::SetHintTop(float top) {
+void UltraCanvasScreenAreaPicker::SetHintTop(float top) {
     if (marquee_) marquee_->SetHintTop(top);
 }
 
-void UltraSnipOverlay::Close() {
+void UltraCanvasScreenAreaPicker::Close() {
     if (!window_) return;
     open_ = false;
     window_->onWindowClosed = nullptr;
@@ -371,4 +452,4 @@ void UltraSnipOverlay::Close() {
     marquee_.reset();
 }
 
-} // namespace UltraSnip
+} // namespace UltraCanvas

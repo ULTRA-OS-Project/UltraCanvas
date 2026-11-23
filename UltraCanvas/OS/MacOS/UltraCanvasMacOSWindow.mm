@@ -1,5 +1,8 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
+// Version: 2.11.0 - WindowType::Overlay: borderless and above the menu bar and the Dock (the
+//                   screen saver's level), on every Space, and it takes the keyboard (a
+//                   borderless NSWindow is never key otherwise) - the screen-area picker
 // Version: 2.10.0 - the destructor releases the native half, so a window never closed
 //                   does not leave its NSWindow and delegate behind
 // Version: 2.9.0 - a dialog is a child window of its parent's NSWindow while both are shown
@@ -18,7 +21,7 @@
 //   draws compositions gets the input method's pre-edit as TextComposition
 //   events, its candidate window at the caret
 // Version: 2.4.0 - the content view hands VoiceOver the window's elements (children, hit test, focus)
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -274,6 +277,19 @@ static int UCTopLeftY(NSRect rect) {
 @end
 
 
+// ===== A BORDERLESS WINDOW THAT TAKES THE KEYBOARD =====
+// NSWindow answers NO to canBecomeKeyWindow for a window without a title
+// bar, so a borderless window never has the keys. WindowType::Overlay - the
+// screen-area picker over the whole screen - needs them (Escape, Enter).
+@interface UltraCanvasKeyableWindow : NSWindow
+@end
+
+@implementation UltraCanvasKeyableWindow
+- (BOOL)canBecomeKeyWindow { return YES; }
+- (BOOL)canBecomeMainWindow { return YES; }
+@end
+
+
 // ===== WINDOW DELEGATE =====
 @interface UltraCanvasWindowDelegate : NSObject <NSWindowDelegate> {
     UltraCanvas::UltraCanvasMacOSWindow* ultraCanvasWindow;
@@ -496,8 +512,10 @@ namespace UltraCanvas {
 
             // Window style mask
             NSWindowStyleMask styleMask;
+            // Over the whole screen, the menu bar and the Dock included, with the keys
+            const bool screenOverlay = config_.type == WindowType::Overlay;
             if (config_.type == WindowType::Borderless || config_.type == WindowType::Notification ||
-                config_.type == WindowType::SessionLock || overlay) {
+                config_.type == WindowType::SessionLock || overlay || screenOverlay) {
                 styleMask = NSWindowStyleMaskBorderless;
             } else {
                 styleMask = NSWindowStyleMaskTitled |
@@ -509,7 +527,8 @@ namespace UltraCanvas {
             }
 
             // Create window
-            nsWindow = [[NSWindow alloc] initWithContentRect:windowFrame
+            Class windowClass = screenOverlay ? [UltraCanvasKeyableWindow class] : [NSWindow class];
+            nsWindow = [[windowClass alloc] initWithContentRect:windowFrame
                                                    styleMask:styleMask
                                                      backing:NSBackingStoreBuffered
                                                        defer:NO];
@@ -553,6 +572,17 @@ namespace UltraCanvas {
                                                 NSWindowCollectionBehaviorIgnoresCycle |
                                                 NSWindowCollectionBehaviorFullScreenAuxiliary];
                 if (config_.type == WindowType::Tooltip) [nsWindow setIgnoresMouseEvents:YES];
+            }
+
+            // The screen-area picker: above the menu bar and the Dock (the
+            // level screenshot tools use), on the Space in front even when it
+            // is a full-screen application's, out of the window cycle
+            if (screenOverlay) {
+                [nsWindow setLevel:NSScreenSaverWindowLevel];
+                [nsWindow setHasShadow:NO];
+                [nsWindow setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
+                                                NSWindowCollectionBehaviorIgnoresCycle |
+                                                NSWindowCollectionBehaviorFullScreenAuxiliary];
             }
 
             if (placed) {

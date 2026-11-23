@@ -23,7 +23,9 @@
 # kept, "edited" beside the time), search.png (the search field over the
 # chat, its matches), menu.png (Bob's chat right-clicked
 # in the list), group-menu.png (a group's menu, its Members and Bob's own
-# items open) and profile.png (Edit profile). Needs: a built ChatCube and
+# items open), screenshot-picker.png and screenshot-staged.png (the
+# screenshot button: the screen to choose an area from, then the picture in
+# the composer) and profile.png (Edit profile). Needs: a built ChatCube and
 # chatcube-peer, the relay's virtual environment
 # (Server/ChatCubeRelay/.venv, see Apps/ChatCube/README.md), xvfb-run,
 # ImageMagick's `import`, and a C compiler with libX11 and libXtst
@@ -33,6 +35,7 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.14 - screenshot-picker.png and screenshot-staged.png: the screenshot button (xinput drag)
 # Version: 0.1.13 - the composer clicked at its centre, y 623 (one row high now, y 601 to 646)
 # Version: 0.1.12 - the chat list a row lower again (a fifth row: IRC)
 # Version: 0.1.11 - the chat list a row lower again (a fourth row: Signal)
@@ -179,10 +182,17 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     "$XINPUT" rclick 160 402 sleep 1200 move 230 513 sleep 1200 move 420 513 move 470 541 sleep 1200
     import -window root "$OUT/group-menu.png"
     "$XINPUT" key Escape sleep 300 key Escape sleep 300 key Escape sleep 600
+    # The screenshot button beside the paperclip: ChatCube hides, the frozen
+    # screen to choose from (screenshot-picker.png), an area dragged, and the
+    # picture waiting in the composer (screenshot-staged.png).
+    "$XINPUT" click 397 623 sleep 2000
+    import -window root "$OUT/screenshot-picker.png"
+    "$XINPUT" drag 120 90 620 430 sleep 2000
+    import -window root "$OUT/screenshot-staged.png"
     # The person button beside the ID: the Edit profile window.
     "$XINPUT" click 292 25 sleep 2500
     import -window root "$OUT/profile.png"
     kill $app
     sleep 1
 '
-echo "screenshot.sh: $out/signin.png, empty.png, chat.png, message-menu.png, reply-bar.png, reply.png, edit.png, edited.png, search.png, menu.png, group-menu.png, profile.png (logs in $work)"
+echo "screenshot.sh: $out/signin.png, empty.png, chat.png, message-menu.png, reply-bar.png, reply.png, edit.png, edited.png, search.png, menu.png, group-menu.png, screenshot-picker.png, screenshot-staged.png, profile.png (logs in $work)"

@@ -6293,7 +6293,8 @@ endif()
 message(STATUS "")
 
 # ===== ULTRASNIP CAPTURE TEST =====
-# UltraSnip's pure helpers (Apps/UltraSnip/ui/UltraSnipCapture.cpp): the
+# UltraSnip's pure helpers (Apps/UltraSnip/ui/UltraSnipCapture.cpp and the
+# framework's ScreenArea in core/UltraCanvasScreenAreaPicker.cpp): the
 # rectangle from a drag, the crop of a BGRx capture into RGBA, the window
 # under a point, the recording bar's place. No display.
 if(TARGET UltraCanvas)

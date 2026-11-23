@@ -1,5 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.12.3 - WindowType::Overlay documented: the screen-area picker's window, keyable above the
+//                   menu bar on macOS
 // Version: 2.12.2 - alwaysOnTop and SetTransientParent say what each is for: a dialog is
 //                  kept above its parent, not above every application (on macOS too, as
 //                  the parent's child window)
@@ -77,7 +79,13 @@ namespace UltraCanvas {
         // window.
         Popup,
         Tool,
-        Fullscreen, Borderless, Overlay,
+        Fullscreen, Borderless,
+        // Over everything, the screen-area picker's window: on macOS
+        // borderless above the menu bar and the Dock, on every Space, and
+        // given the keyboard, which a borderless NSWindow otherwise never is;
+        // on Wayland undecorated. UltraCanvasScreenAreaPicker uses it on
+        // macOS only (Borderless elsewhere).
+        Overlay,
         // The desktop itself: undecorated, the size of the screen, kept below
         // every other window, on every virtual desktop and out of taskbars
         // (_NET_WM_WINDOW_TYPE_DESKTOP on X11). The window a desktop shell

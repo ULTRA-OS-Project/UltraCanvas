@@ -3,18 +3,21 @@
 // whole screen), the kind (a picture, a video) and the delay before it. A
 // request travels from the command line, from UltraDesktop's button and
 // from a second start of the program (UltraCanvasSingleInstance) as JSON.
+// Version: 0.3.0 - SnipMode is the framework's ScreenAreaMode (UltraCanvasScreenAreaPicker.h)
 // Version: 0.2.0 - background: started by the desktop to wait, nothing shown
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "DataFormats/UltraCanvasJSON.h"
+#include "UltraCanvasScreenAreaPicker.h"
 
 #include <string>
 
 namespace UltraSnip {
 
-enum class SnipMode { Rectangle, Window, FullScreen };
+// The shape: the picker's own (a rectangle, a window, the whole screen)
+using SnipMode = UltraCanvas::ScreenAreaMode;
 enum class SnipKind { Picture, Video };
 
 struct SnipRequest {

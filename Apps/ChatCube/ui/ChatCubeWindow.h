@@ -82,6 +82,9 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.15 - a screenshot into the composer: the button beside the paperclip hides the
+//                   window, an area of the screen is chosen (UltraCanvasScreenAreaPicker) and
+//                   the picture waits in the strip like a pasted one; the field grows with its text
 // Version: 0.3.14 - the compact layout: on a window narrower than kCompactWidth (a phone) the list and the
 //                  open conversation take turns, with a back arrow; the buttons of networks this build
 //                  cannot reach are hidden (Telegram and Signal on Android); the microphone and the camera
@@ -132,7 +135,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-11-21
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -143,6 +146,7 @@
 #include "ChatCubeViews.h"
 
 #include "UltraCanvasMediaViewerWindow.h"
+#include "UltraCanvasScreenAreaPicker.h"
 #include "UltraCanvasWindow.h"
 #include "UltraIM/UltraIMTypes.h"
 
@@ -318,6 +322,18 @@ private:
     // the file, or the picture written to a file of ChatCube's own, into the
     // strip. False when the clipboard holds neither (text pastes as text).
     bool PasteAttachment();
+    // The screenshot button: the window hides, the screen is captured once
+    // it has gone, an area of it chosen (a window clicked, or a rectangle
+    // dragged; Esc gives up), and the picture goes into the strip like a
+    // pasted one. The window comes back either way.
+    void TakeScreenshot();
+    void PickScreenArea();
+    void StageScreenshot(const UltraCanvas::Rect2Di& area);
+    void EndScreenshot();
+    // A new file in ChatCube's cache for a picture of its own (pasted, a
+    // screenshot): "<prefix>-<date>-<time>[-n]" with no extension yet, free
+    // as .png and .jpg; "" when the folder cannot be made.
+    std::string NewCachedPicturePath(const std::string& prefix) const;
     // Files dropped on the window (an event filter on it): onto a chat in
     // the list, that chat opens and they wait in its strip; anywhere else,
     // they wait in the open chat's. False when the drop carries no file.
@@ -612,6 +628,13 @@ private:
     std::shared_ptr<MessageBubbleDelegate>             bubbles_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    attach_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    screenshot_;    // hidden where the screen is not captured
+    // A screenshot in flight: the wait for the window to leave the screen,
+    // the frozen screen, and the picker over it
+    uint64_t screenshotTimer_ = 0;
+    bool     screenshotRunning_ = false;
+    UltraCanvas::DesktopScreenImage screenShot_;
+    std::unique_ptr<UltraCanvas::UltraCanvasScreenAreaPicker> screenPicker_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    send_;
     // What goes with the next message, in the strip above the field.
     struct StagedAttachment {
