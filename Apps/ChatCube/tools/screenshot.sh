@@ -33,6 +33,7 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.13 - the composer clicked at its centre, y 623 (one row high now, y 601 to 646)
 # Version: 0.1.12 - the chat list a row lower again (a fifth row: IRC)
 # Version: 0.1.11 - the chat list a row lower again (a fourth row: Signal)
 # Version: 0.1.10 - the chat list a row lower again (a third row of network buttons: Mattermost, Zulip)
@@ -50,7 +51,7 @@
 # Version: 0.1.2 - the card's fields 21 pixels higher ("Recover my ChatCube ID" under the button)
 # Version: 0.1.1 - the e-mail and phone on the sign-in card; profile.png, the Edit profile window
 # Version: 0.1.0
-# Last Modified: 2026-11-15
+# Last Modified: 2026-11-23
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -141,10 +142,11 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
         click 499 338 type "+49 151 2345 6789" click 499 471 sleep 4000
     import -window root "$OUT/empty.png"
     # The sidebar: the add-a-contact pill, then the first conversation row,
-    # then the composer at the bottom of the window.
+    # then the composer at the bottom of the window (one row high while
+    # empty: y 601 to 646, clicked at its centre).
     "$XINPUT" click 120 69 type "$BOB" key Return sleep 3000
     "$XINPUT" click 160 342 sleep 1500
-    "$XINPUT" click 600 625 type "Hi Bob, is the new look on your side too?" key Return sleep 3500
+    "$XINPUT" click 600 623 type "Hi Bob, is the new look on your side too?" key Return sleep 3500
     "$XINPUT" type "It has avatars and a dark theme now." key Return sleep 3500
     import -window root "$OUT/chat.png"
     # A message of ours right-clicked: its menu (Escape closes it).
