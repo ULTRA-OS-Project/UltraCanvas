@@ -145,7 +145,7 @@ int main() {
              field && footer && field->GetHeight() >= 20.0f && Bottom(field) <= footer->GetBoundsInWindow().y + 0.5f);
         TEST("and below the prompt", field && area && field->GetBoundsInWindow().y + 0.5f >= Bottom(area));
         TEST("The buttons are inside the window", footer && Bottom(footer) <= dialog->GetHeight() + 0.5f);
-        TEST("The icon is not squeezed", icon && icon->GetWidth() >= 47.5f);
+        TEST("The icon is not squeezed", icon && icon->GetWidth() >= ModalDialogStyle().iconSize - 0.5f);
         dialog->CloseDialog(DialogResult::Cancel);
     }
 

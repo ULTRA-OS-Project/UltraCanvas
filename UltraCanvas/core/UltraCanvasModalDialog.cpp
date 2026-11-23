@@ -117,25 +117,41 @@ namespace UltraCanvas {
                               .SetFlexGap(style.iconMessageSpacing)
                               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        // ===== ICON CONTAINER =====
+        // ===== ICON BADGE =====
+        // A disc of the type colour's tint with the type's glyph drawn in the
+        // type colour on it (UpdateIconAppearance).
         iconContainer = std::make_shared<UltraCanvasContainer>(
                 "IconContainer", 0, 0,
                 style.iconSize, style.iconSize);
-        iconContainer->SetBackgroundColor(GetTypeColor());
+        {
+            ContainerStyle badgeStyle = iconContainer->GetContainerStyle();
+            badgeStyle.autoShowScrollbars = false;
+            badgeStyle.forceShowVerticalScrollbar = false;
+            badgeStyle.forceShowHorizontalScrollbar = false;
+            iconContainer->SetContainerStyle(badgeStyle);
+        }
+        iconContainer->layoutItem.SetFlexShrink(0);
 
-        // Center the icon label inside.
+        // Center the glyph inside.
         iconContainer->layout.SetFlexColumn()
                 .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                              .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
+        iconImage = std::make_shared<UltraCanvasImageElement>(
+                "IconGlyph", 0, 0, style.iconGlyphSize, style.iconGlyphSize);
+        iconImage->size.width = CSSLayout::Dimension::Px(style.iconGlyphSize);
+        iconImage->size.height = CSSLayout::Dimension::Px(style.iconGlyphSize);
+        iconImage->layoutItem.SetFlexShrink(0);
+        iconImage->SetFitMode(ImageFitMode::Contain);
+
+        // The letter, for a glyph whose file is missing
         iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel");
-        SetTypeIconMark(*iconLabel, GetTypeIcon(), style.iconFontSize);
         iconLabel->SetFontSize(style.iconFontSize);
         iconLabel->SetFontWeight(FontWeight::Bold);
-        iconLabel->SetTextColor(Colors::White);
         iconLabel->SetAlignment(TextAlignment::Center);
         iconLabel->SetSize(style.iconSize, style.iconSize);
 
+        iconContainer->AddChild(iconImage);
         iconContainer->AddChild(iconLabel);
         contentSection->AddChild(iconContainer);
         iconContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
@@ -162,6 +178,16 @@ namespace UltraCanvas {
                                 .SetFlexGap(style.sectionSpacing / 2)
                                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
+        // The heading over the message: one short line in bold, wrapped when
+        // it is longer than the column. Hidden (no room, no gap) while empty.
+        headingLabel = std::make_shared<UltraCanvasLabel>("DialogHeading");
+        headingLabel->SetFontWeight(FontWeight::Bold);
+        headingLabel->SetWrap(TextWrap::WrapWord);
+        headingLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
+        headingLabel->layoutItem.SetFlexShrink(0);
+        messageContainer->AddChild(headingLabel);
+        UpdateHeading();
+
         // Read-only, word-wrapping Markdown message area. It fills the content
         // box (flex-grow) so that when the dialog is capped to the monitor the
         // text taller than the box scrolls inside the area itself.
@@ -177,6 +203,12 @@ namespace UltraCanvas {
         messageArea->SetText(ComposeMessageMarkdown(), false);
         messageContainer->AddChild(messageArea);
         messageArea->layoutItem.SetFlexGrow(1);
+        // The heading's text starts where the message's does: the area keeps
+        // its text a padding in from its edge.
+        {
+            const float inset = messageArea->GetStyle().textPadding;
+            headingLabel->SetPadding(0.0f, inset, 0.0f, inset);
+        }
 
         contentSection->AddChild(messageContainer);
         messageContainer->layoutItem.SetFlexGrow(1);
@@ -199,14 +231,16 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::CreateFooterSection() {
         footerSection = std::make_shared<UltraCanvasContainer>(
                 "FooterSection", 0, 0, 0, style.buttonAreaHeight);
-        footerSection->SetBackgroundColor(dialogConfig.backgroundColor);
+        // A band of its own under a hairline (UpdateFooterLook colours it)
+        footerSection->SetBackgroundColor(style.footerColor);
+        footerSection->SetBorderTop(1.0f, style.footerLineColor);
         // SetPadding(vertical, horizontal): the button row is only
         // buttonAreaHeight (50px) tall, so vertical padding must be the SMALL
         // value — the taller value belongs on the horizontal axis. Passing the
         // large value as vertical padding left <buttonHeight of content height,
         // pushing the button out of the footer's content box and triggering a
         // spurious vertical scrollbar in the button area.
-        footerSection->SetPadding(static_cast<int>(style.padding / 2),
+        footerSection->SetPadding(static_cast<int>(std::max(4.0f, (style.buttonAreaHeight - style.buttonHeight) / 2.0f)),
                                   static_cast<int>(style.padding));
 
         // The footer is a fixed button bar, never a scroll region: keep its
@@ -218,9 +252,10 @@ namespace UltraCanvas {
         footerStyle.forceShowHorizontalScrollbar = false;
         footerSection->SetContainerStyle(footerStyle);
 
+        // The buttons at the trailing edge, the default answer last
         footerSection->layout.SetFlexRow()
                 .SetFlexGap(style.buttonSpacing)
-                .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexEnd)
                              .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
         CreateDialogButtons();
@@ -228,6 +263,7 @@ namespace UltraCanvas {
             footerSection->AddChild(entry.button);
         }
         AddChild(footerSection);
+        UpdateFooterLook();
     }
 
     // A footer button is as wide as its label needs, never narrower than the
@@ -266,26 +302,30 @@ namespace UltraCanvas {
             dialogButtons.push_back(DialogButtonEntry{button, btn, ButtonToResult(btn)});
         };
 
-        if (buttonMask & static_cast<int>(DialogButton::OK)) {
-            addButton(DialogButton::OK, Tr("OK"));
-        }
-        if (buttonMask & static_cast<int>(DialogButton::Cancel)) {
-            addButton(DialogButton::Cancel, Tr("Cancel"));
-        }
-        if (buttonMask & static_cast<int>(DialogButton::Yes)) {
-            addButton(DialogButton::Yes, Tr("Yes"));
-        }
+        // Left to right: the answers that back out, then the ones that go
+        // ahead, the affirmative one last at the trailing edge, where the
+        // eye ends and the default answer sits ("No  Cancel  Yes",
+        // "Cancel  OK").
         if (buttonMask & static_cast<int>(DialogButton::No)) {
             addButton(DialogButton::No, Tr("No"));
-        }
-        if (buttonMask & static_cast<int>(DialogButton::Retry)) {
-            addButton(DialogButton::Retry, Tr("Retry"));
         }
         if (buttonMask & static_cast<int>(DialogButton::Abort)) {
             addButton(DialogButton::Abort, Tr("Abort"));
         }
         if (buttonMask & static_cast<int>(DialogButton::Ignore)) {
             addButton(DialogButton::Ignore, Tr("Ignore"));
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Cancel)) {
+            addButton(DialogButton::Cancel, Tr("Cancel"));
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Retry)) {
+            addButton(DialogButton::Retry, Tr("Retry"));
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Yes)) {
+            addButton(DialogButton::Yes, Tr("Yes"));
+        }
+        if (buttonMask & static_cast<int>(DialogButton::OK)) {
+            addButton(DialogButton::OK, Tr("OK"));
         }
 
         AssignButtonMnemonics();
@@ -457,6 +497,24 @@ namespace UltraCanvas {
         SetWindowTitle(title);
     }
 
+    void UltraCanvasModalDialog::SetHeading(const std::string& heading) {
+        dialogConfig.heading = heading;
+        UpdateHeading();
+        InvalidateLayout();
+    }
+
+    std::string UltraCanvasModalDialog::GetHeading() const {
+        return dialogConfig.heading;
+    }
+
+    void UltraCanvasModalDialog::UpdateHeading() {
+        if (!headingLabel) return;
+        headingLabel->SetText(dialogConfig.heading);
+        headingLabel->SetFontSize(style.headingFontSize);
+        headingLabel->SetTextColor(style.headingTextColor);
+        headingLabel->SetVisible(!dialogConfig.heading.empty());
+    }
+
     void UltraCanvasModalDialog::SetMessage(const std::string& message) {
         dialogConfig.message = message;
         if (messageArea) {
@@ -524,10 +582,12 @@ namespace UltraCanvas {
         }
 
         WireButtonCallbacks();
+        UpdateFooterLook();
     }
 
     void UltraCanvasModalDialog::SetDefaultButton(DialogButton button) {
         dialogConfig.defaultButton = button;
+        UpdateFooterLook();
     }
 
     void UltraCanvasModalDialog::SetStyle(const ModalDialogStyle& dialogStyle) {
@@ -554,6 +614,7 @@ namespace UltraCanvas {
         }
         for (auto& entry : dialogButtons) ApplyButtonFont(entry.button);
 
+        UpdateHeading();
         UpdateIconAppearance();
     }
 
@@ -939,6 +1000,7 @@ namespace UltraCanvas {
             messageContainer->layout.SetFlexColumn()
                                     .SetFlexGap(style.sectionSpacing / 2)
                                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+            if (headingLabel) messageContainer->AddChild(headingLabel);
             messageContainer->AddChild(messageArea);
             messageArea->layoutItem.SetFlexGrow(1);
         }
@@ -971,13 +1033,32 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::UpdateIconAppearance() {
+        const Color ink = GetTypeColor();
         if (iconContainer) {
-            iconContainer->SetBackgroundColor(GetTypeColor());
+            iconContainer->SetBackgroundColor(GetTypeTint());
+            iconContainer->SetBorderRadius(style.iconSize / 2.0f);
             iconContainer->SetVisible(dialogConfig.showIcon &&
                                       dialogConfig.dialogType != DialogType::Custom);
         }
+        // The glyph, drawn as a mask in the type colour; the letter instead
+        // while its file cannot be read (an application that ships only
+        // some of media/icons).
+        bool glyphShown = false;
+        if (iconImage) {
+            const std::string path = GetTypeIconPath();
+            if (path != iconImagePath) {
+                iconImagePath = path;
+                iconImage->SetVisible(!path.empty() && iconImage->LoadFromFile(path));
+            }
+            glyphShown = iconImage->IsVisible();
+            iconImage->SetMaskColor(ink);
+            iconImage->SetAccessibleName(dialogConfig.title);
+        }
         if (iconLabel) {
             SetTypeIconMark(*iconLabel, GetTypeIcon(), style.iconFontSize);
+            iconLabel->SetFontSize(style.iconFontSize);
+            iconLabel->SetTextColor(ink);
+            iconLabel->SetVisible(!glyphShown);
         }
     }
 
@@ -1004,13 +1085,120 @@ namespace UltraCanvas {
     }
 
     Color UltraCanvasModalDialog::GetTypeColor() const {
+        // Each pair is the light look's and the dark look's: the dark one
+        // lighter, so the glyph reads on a dark tint. Light values for a
+        // dialog that does not follow the theme.
+        const UltraCanvasTheme* theme = GetFollowTheme() ? &UltraCanvasTheme::Current() : nullptr;
+        const bool dark = theme && theme->dark;
+        const char* role = nullptr;
+        Color fallback = Colors::Gray;
         switch (dialogConfig.dialogType) {
-            case DialogType::Information: return Color(70, 130, 180);   // Steel Blue
-            case DialogType::Successful:     return Color(40, 167, 69);    // Green
-            case DialogType::Question:    return Color(70, 130, 180);   // Steel Blue
-            case DialogType::Warning:     return Color(255, 193, 7);    // Amber
-            case DialogType::Error:       return Color(220, 53, 69);    // Red
-            default:                      return Colors::Gray;
+            case DialogType::Information:
+                role = "dialog.information";
+                fallback = theme ? theme->roles.accent : Color(47, 111, 235);
+                break;
+            case DialogType::Successful:
+                role = "dialog.success";
+                fallback = dark ? Color(76, 195, 138) : Color(31, 138, 76);
+                break;
+            case DialogType::Question:
+                role = "dialog.question";
+                fallback = dark ? Color(160, 140, 240) : Color(91, 68, 201);
+                break;
+            case DialogType::Warning:
+                role = "dialog.warning";
+                fallback = dark ? Color(240, 179, 87) : Color(168, 98, 0);
+                break;
+            case DialogType::Error:
+                role = "dialog.error";
+                fallback = theme ? theme->roles.danger : Color(201, 48, 59);
+                break;
+            default:
+                if (theme) fallback = theme->roles.inkMuted;
+                break;
+        }
+        return (theme && role) ? theme->Role(role, fallback) : fallback;
+    }
+
+    Color UltraCanvasModalDialog::GetTypeTint() const {
+        const bool dark = GetFollowTheme() && UltraCanvasTheme::Current().dark;
+        const Color ink = GetTypeColor();
+        const Color panel = dialogConfig.backgroundColor;
+        const float amount = dark ? 0.16f : 0.12f;
+        auto mix = [amount](uint8_t over, uint8_t under) {
+            return static_cast<uint8_t>(std::lround(under + (over - under) * amount));
+        };
+        return Color(mix(ink.r, panel.r), mix(ink.g, panel.g), mix(ink.b, panel.b), 255);
+    }
+
+    std::string UltraCanvasModalDialog::GetTypeIconPath() const {
+        const char* name = nullptr;
+        switch (dialogConfig.dialogType) {
+            case DialogType::Information: name = "information"; break;
+            case DialogType::Successful:  name = "success"; break;
+            case DialogType::Question:    name = "question"; break;
+            case DialogType::Warning:     name = "warning"; break;
+            case DialogType::Error:       name = "error"; break;
+            default:                      return "";
+        }
+        return NormalizePath(GetResourcesDir() + "media/icons/dialog/" + name + ".svg");
+    }
+
+    void UltraCanvasModalDialog::UpdateFooterLook(const UltraCanvasTheme* applied) {
+        const bool themed = applied || GetFollowTheme();
+        const UltraCanvasTheme& theme = applied ? *applied : UltraCanvasTheme::Current();
+        if (footerSection) {
+            footerSection->SetBackgroundColor(themed ? theme.roles.ground : style.footerColor);
+            footerSection->SetBorderTop(1.0f, themed ? theme.roles.line : style.footerLineColor);
+        }
+
+        // The answer Return gives, whether or not it can be pressed now: an
+        // OK greyed out until the input is valid stays the accented one.
+        const DialogButtonEntry* defaultEntry = nullptr;
+        for (const auto& entry : dialogButtons) {
+            if (entry.role == DialogButtonRole::Default ||
+                entry.role == DialogButtonRole::DestructiveDefault) { defaultEntry = &entry; break; }
+        }
+        if (!defaultEntry) defaultEntry = FindButtonEntry(dialogConfig.defaultButton);
+        if (!defaultEntry) {
+            for (DialogButton candidate : {DialogButton::OK, DialogButton::Yes,
+                                           DialogButton::Retry, DialogButton::Apply,
+                                           DialogButton::Close}) {
+                if ((defaultEntry = FindButtonEntry(candidate))) break;
+            }
+        }
+
+        for (auto& entry : dialogButtons) {
+            if (!entry.button) continue;
+            ButtonStyle look;
+            if (entry.role == DialogButtonRole::DestructiveDefault) {
+                look = ButtonStyles::DangerStyle();
+            } else if (entry.role == DialogButtonRole::Destructive) {
+                if (themed) {
+                    look = DestructiveOutlineStyle(theme, ButtonStyles::Default());
+                } else {
+                    look.borderColor      = Color(201, 48, 59, 255);
+                    look.borderWidth      = 1.5f;
+                    look.normalTextColor  = Color(180, 38, 47, 255);
+                    look.hoverTextColor   = Color(180, 38, 47, 255);
+                    look.pressedTextColor = Colors::White;
+                    look.hoverColor       = Color(251, 229, 230, 255);
+                    look.pressedColor     = Color(201, 48, 59, 255);
+                }
+            } else {
+                const bool primary = &entry == defaultEntry;
+                if (themed) {
+                    look = ButtonStyle::FromTheme(theme, ButtonStyles::Default(),
+                                                  primary ? ButtonVariant::Primary : ButtonVariant::Standard);
+                } else {
+                    look = primary ? ButtonStyles::PrimaryStyle() : ButtonStyles::Default();
+                }
+            }
+            look.cornerRadius = style.buttonCornerRadius;
+            entry.button->SetStyle(look);
+            // ButtonStyle::FromTheme and the presets carry a size of their
+            // own: the dialog's button size (buttonFontSize) goes back on.
+            ApplyButtonFont(entry.button);
         }
     }
 
@@ -1061,39 +1249,6 @@ namespace UltraCanvas {
                 static_cast<long>(style.buttonWidth), static_cast<long>(style.buttonHeight));
         button->SetText(text);
         SizeButtonToLabel(button);
-        // The role's look: the default answer in the accent colour, a
-        // destructive one in red - filled when it is also the default, an
-        // outline when it merely sits beside the default.
-        switch (role) {
-            case DialogButtonRole::Default:
-                button->SetStyle(ButtonStyles::PrimaryStyle());
-                break;
-            case DialogButtonRole::DestructiveDefault:
-                button->SetStyle(ButtonStyles::DangerStyle());
-                break;
-            case DialogButtonRole::Destructive:
-                // The theme's button surface with a red outline and red ink:
-                // a fixed light-look pink fill and dark red text before,
-                // which glared from a dark dialog.
-                if (GetFollowTheme()) {
-                    button->SetStyle(DestructiveOutlineStyle(UltraCanvasTheme::Current(),
-                                                             button->GetStyle()));
-                } else {
-                    ButtonStyle red;
-                    red.borderColor      = Color(163, 38, 31, 255);
-                    red.borderWidth      = 1.5f;
-                    red.normalTextColor  = Color(143, 31, 25, 255);
-                    red.hoverTextColor   = Color(143, 31, 25, 255);
-                    red.pressedTextColor = Colors::White;
-                    red.hoverColor       = Color(250, 232, 230, 255);
-                    red.pressedColor     = Color(163, 38, 31, 255);
-                    button->SetStyle(red);
-                }
-                break;
-            default:
-                break;
-        }
-        ApplyButtonFont(button);   // after the role style: it sets a size too
         button->onClick = [this, buttonResult, callback]() {
             if (callback) callback();
             CloseDialog(buttonResult);
@@ -1109,6 +1264,11 @@ namespace UltraCanvas {
         if (footerSection) {
             footerSection->AddChild(button);
         }
+        // The role's look - the default answer in the accent colour, a
+        // destructive one in red, filled when it is also the default, an
+        // outline beside the default - and the default moves to this button
+        // when it is one.
+        UpdateFooterLook();
     }
 
     void UltraCanvasModalDialog::AddFooterElement(std::shared_ptr<UltraCanvasUIElement> element) {
@@ -1143,7 +1303,10 @@ namespace UltraCanvas {
     }
     void UltraCanvasInputDialog::CreateInputDialog(const InputDialogConfig &config) {
         inputConfig = config;
-        CreateDialog(config);
+        // The configured height is the floor AutoSizeToContent grows from
+        DialogConfig sized = config;
+        sized.minHeight = std::max(sized.minHeight, sized.height);
+        CreateDialog(sized);
 
         // The prompt is the message area's: it wraps, and the dialog is as
         // tall as the prompt and the field under it need (AutoSizeToContent
@@ -3415,8 +3578,12 @@ namespace UltraCanvas {
 
     ModalDialogStyle ModalDialogStyle::FromTheme(const UltraCanvasTheme& theme, const ModalDialogStyle& base) {
         ModalDialogStyle s = base;
+        s.headingTextColor = theme.roles.ink;
         s.messageTextColor = theme.roles.ink;
         s.detailsTextColor = theme.roles.inkMuted;
+        s.footerColor = theme.roles.ground;
+        s.footerLineColor = theme.roles.line;
+        s.headingFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Heading));
         // the message at the body size, the details at the caption size;
         // the buttons' size stays the style's (0: the button's own)
         s.messageFontSize = static_cast<float>(theme.FontSize(ThemeTextRole::Body));
@@ -3428,32 +3595,15 @@ namespace UltraCanvas {
         const Color panel = theme.roles.panel;
         dialogConfig.backgroundColor = panel;
         SetBackgroundColor(panel);
-        for (auto& section : {contentSection, footerSection, messageContainer}) if (section) section->SetBackgroundColor(panel);
+        for (auto& section : {contentSection, messageContainer}) if (section) section->SetBackgroundColor(panel);
         if (messageArea) messageArea->SetBackgroundColor(panel);
         ModalDialogStyle themed = ModalDialogStyle::FromTheme(theme, style);
         if (messageFontSizeByHand) themed.messageFontSize = style.messageFontSize;
         if (detailsFontSizeByHand) themed.detailsFontSize = style.detailsFontSize;
         SetStyle(themed);
-        for (auto& entry : dialogButtons) {
-            if (!entry.button) continue;
-            switch (entry.role) {
-                case DialogButtonRole::Default:
-                    entry.button->SetStyle(ButtonStyle::FromTheme(theme, entry.button->GetStyle(), ButtonVariant::Primary));
-                    break;
-                case DialogButtonRole::Cancel:
-                case DialogButtonRole::Normal:
-                    entry.button->SetStyle(ButtonStyle::FromTheme(theme, entry.button->GetStyle(), ButtonVariant::Standard));
-                    break;
-                case DialogButtonRole::Destructive:
-                    entry.button->SetStyle(DestructiveOutlineStyle(theme, entry.button->GetStyle()));
-                    break;
-                default:
-                    break;   // a destructive default keeps its red fill and white text
-            }
-            // ButtonStyle::FromTheme sets the theme's body size: the
-            // dialog's own button size (buttonFontSize) goes back on.
-            ApplyButtonFont(entry.button);
-        }
+        // The button band on the ground under a hairline, the default answer
+        // Primary, the others Standard, a destructive one red
+        UpdateFooterLook(&theme);
         RequestRedraw();
     }
 

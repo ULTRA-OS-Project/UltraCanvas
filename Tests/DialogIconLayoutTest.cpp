@@ -46,12 +46,12 @@ static void CheckNear(float actual, float expected, const char* what, float tol 
 
 // ===== THE DIALOG'S CONTENT ROW =====
 // The numbers are ModalDialogStyle's defaults and UltraCanvasProgressDialog's
-// window width: padding 16, icon 48 square, icon/message gap 12, ring 132
+// window width: padding 20, icon 40 round, icon/message gap 16, ring 132
 // square, window 460 wide.
 static constexpr float kWindowWidth = 460.0f;
-static constexpr float kPadding     = 16.0f;
-static constexpr float kIconSize    = 48.0f;
-static constexpr float kIconGap     = 12.0f;
+static constexpr float kPadding     = 20.0f;
+static constexpr float kIconSize    = 40.0f;
+static constexpr float kIconGap     = 16.0f;
 static constexpr float kRingSize    = 132.0f;
 static constexpr float kMessageHeight = 40.0f;
 
