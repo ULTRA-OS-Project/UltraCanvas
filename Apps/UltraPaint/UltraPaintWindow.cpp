@@ -395,13 +395,10 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
             if (auto dlg = settingsDialog.lock()) dlg->Close();
             return true;
         }
-        // One image has a sentence of its own; TrN's forms all carry the count
-        ConfirmDiscard(unsaved == 1
-                           ? Tr("An image in this window has unsaved changes. Close anyway?")
-                           : TrN("{n} image in this window has unsaved changes. Close anyway?",
-                                 "{n} images in this window have unsaved changes. Close anyway?", unsaved),
-                       [this]() {
-            for (const auto& tab : documentTabs) if (tab->document) tab->document->SetModified(false);
+        // Each unsaved image asks in turn: Save, Don't save or Cancel.
+        std::weak_ptr<bool> alive = lifeToken;
+        ReviewUnsavedTabs([this, alive]() {
+            if (alive.expired()) return;
             window->Close();   // comes back through here, and closes the settings window
         });
         return false;
@@ -1230,6 +1227,15 @@ void UltraPaintWindow::BuildStartPage() {
     startPage->SetVisible(false);
     canvasColumn->AddChild(startPage);
 
+    // Files dropped anywhere on the window while the start page shows open
+    // the way a drop on the canvas does (there is no canvas to drop on).
+    window->InstallEventFilter("up-start-drop", [this](const UCEvent& e) -> bool {
+        if (e.type != UCEventType::Drop || e.droppedFiles.empty()) return false;
+        if (!startPage || !startPage->IsVisible()) return false;
+        HandleDroppedFiles(e.droppedFiles);
+        return true;
+    }, { UCEventType::Drop });
+
     // Each a pastel of its own, with dark ink: they read the same under a
     // light and a dark theme.
     auto add = [this](const std::string& id, const std::string& text, const std::string& icon,
@@ -1480,6 +1486,55 @@ void UltraPaintWindow::AskSaveBeforeClosing(const std::string& name, const std::
         else if (result == DialogResult::No) onAnswer(SaveAnswer::Discard);
         else onAnswer(SaveAnswer::Cancel);
     }, window.get());
+}
+
+void UltraPaintWindow::ReviewUnsavedTabs(const std::function<void()>& done) {
+    CommitTextEdit();
+    ReviewUnsavedFrom(std::make_shared<std::vector<const UCRasterDocument*>>(), done);
+}
+
+void UltraPaintWindow::ReviewUnsavedFrom(std::shared_ptr<std::vector<const UCRasterDocument*>> letGo,
+                                         const std::function<void()>& done) {
+    // The first image, in the strip's order, with changes nobody has
+    // answered for yet.
+    int index = -1;
+    for (size_t i = 0; i < documentTabs.size(); ++i) {
+        const auto& d = documentTabs[i]->document;
+        if (d && d->IsModified() && std::find(letGo->begin(), letGo->end(), d.get()) == letGo->end()) {
+            index = static_cast<int>(i);
+            break;
+        }
+    }
+    if (index < 0) {
+        // Every one answered: the ones let go of lose their mark now, so
+        // closing does not ask about them again.
+        for (const auto& tab : documentTabs)
+            if (tab->document && std::find(letGo->begin(), letGo->end(), tab->document.get()) != letGo->end())
+                tab->document->SetModified(false);
+        if (done) done();
+        return;
+    }
+    if (index != activeTab && tabStrip) tabStrip->SetActiveTab(index);   // the image the question is about
+    const std::string name = tabStrip ? tabStrip->GetTabTitle(index) : std::string();
+    std::weak_ptr<bool> alive = lifeToken;
+    std::weak_ptr<UCRasterDocument> weakDoc = documentTabs[index]->document;
+    AskSaveBeforeClosing(name, [this, alive, weakDoc, letGo, done](SaveAnswer answer) {
+        if (alive.expired() || answer == SaveAnswer::Cancel) return;
+        auto d = weakDoc.lock();
+        if (!d) { ReviewUnsavedFrom(letGo, done); return; }   // closed meanwhile
+        if (answer == SaveAnswer::Discard) {
+            letGo->push_back(d.get());
+            ReviewUnsavedFrom(letGo, done);
+            return;
+        }
+        const int at = TabIndexOf(d.get());
+        if (at < 0) { ReviewUnsavedFrom(letGo, done); return; }
+        if (at != activeTab && tabStrip) tabStrip->SetActiveTab(at);
+        // Saved, it has no changes left; a save cancelled or failed stops here.
+        CmdSave([this, alive, letGo, done]() {
+            if (!alive.expired()) ReviewUnsavedFrom(letGo, done);
+        });
+    });
 }
 
 void UltraPaintWindow::RemoveTabNow(int index) {
@@ -3237,12 +3292,23 @@ void UltraPaintWindow::CmdQuit() {
     }
     auto go = []() { if (auto* app = UltraCanvasApplication::GetInstance()) app->RequestExit(); };
     if (unsaved == 0) { go(); return; }
-    // One image has a sentence of its own; TrN's forms all carry the count
-    ConfirmDiscard(unsaved == 1
-                       ? Tr("An image has unsaved changes. Quit anyway?")
-                       : TrN("{n} image has unsaved changes. Quit anyway?",
-                             "{n} images have unsaved changes. Quit anyway?", unsaved),
-                   go);
+    // Window by window, each unsaved image asks Save, Don't save or Cancel;
+    // a Cancel anywhere keeps the application running.
+    std::vector<std::weak_ptr<UltraPaintWindow>> windows;
+    for (const auto& editor : OpenWindows()) if (editor) windows.push_back(editor);
+    auto next = std::make_shared<std::function<void(size_t)>>();
+    *next = [windows, go, weakNext = std::weak_ptr<std::function<void(size_t)>>(next)](size_t i) {
+        while (i < windows.size() && !windows[i].lock()) ++i;
+        if (i >= windows.size()) { go(); return; }
+        auto editor = windows[i].lock();
+        auto self = weakNext.lock();
+        if (!self) return;
+        if (editor->window) editor->window->RaiseAndFocus();
+        editor->ReviewUnsavedTabs([self, i]() { (*self)(i + 1); });
+    };
+    // While a question is open, its callback holds the chain; once the last
+    // window has answered (or one cancels) it goes with it.
+    (*next)(0);
 }
 
 // ===========================================================================

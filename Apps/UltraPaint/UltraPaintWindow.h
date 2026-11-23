@@ -11,6 +11,8 @@
 // second start hands over add a tab rather than a window. The class also
 // holds the registry of open windows - File > New Window still opens one -
 // and the application exits with the last of them.
+// Version: 2.5.0 - closing the window and Quit ask Save / Don't save / Cancel for each unsaved
+//                  image in turn (ReviewUnsavedTabs); files dropped on the start page open
 // Version: 2.4.0 - closing a tab with unsaved changes asks Save / Don't save / Cancel
 //                  (AskSaveBeforeClosing); CmdSave / CmdSaveAs take what to do once saved
 // Version: 2.3.0 - the start page (Create new bitmap, Paste image, Clipboard history) in place of
@@ -317,6 +319,14 @@ private:
     // Closing an image with unsaved changes: Save, Don't save or Cancel.
     enum class SaveAnswer { Save, Discard, Cancel };
     void AskSaveBeforeClosing(const std::string& name, const std::function<void(SaveAnswer)>& onAnswer);
+    // Before the window closes or the application quits: each image with
+    // unsaved changes is brought to the front in turn and asks Save, Don't
+    // save or Cancel. `done` runs once every one has been saved or let go;
+    // Cancel (or a save cancelled or failed) stops there and changes nothing
+    // - the images let go of so far keep their changes and their mark.
+    void ReviewUnsavedTabs(const std::function<void()>& done);
+    void ReviewUnsavedFrom(std::shared_ptr<std::vector<const UCRasterDocument*>> letGo,
+                           const std::function<void()>& done);
     // What saving the open image to `path` would lose - its layers (a flat
     // format, when `layers` is asked), its password (anything but a *.ucd) -
     // as the question to confirm first; empty when nothing is lost.
