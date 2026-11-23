@@ -45,8 +45,6 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
-// Version: 1.16.0 - ShowWindowThumbnail / HideWindowThumbnail: a live window picture drawn by the
-//                  compositor (Windows' DWM), minimized windows included
 // Version: 1.15.0 - UltraCanvasGlobalShortcut::StartExclusive: the key reaches nothing else
 //                  (Windows: a low-level hook that swallows it - Print Screen past the Snipping Tool)
 // Version: 1.14.0 - CaptureWindowImage (a taskbar's window previews);

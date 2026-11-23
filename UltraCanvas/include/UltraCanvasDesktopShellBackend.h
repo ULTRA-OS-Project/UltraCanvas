@@ -3,7 +3,6 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
-// Version: 1.11.0 - ShowWindowThumbnail, HideWindowThumbnail
 // Version: 1.10.0 - CanOpenDisplaySettings, OpenDisplaySettings
 // Version: 1.9.0 - CaptureWindowImage
 // Version: 1.8.0 - macOS: ListNativeApplications and LaunchShortcut native
