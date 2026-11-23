@@ -370,6 +370,7 @@
   "Extraction incomplete": "एक्सट्रैक्शन अधूरा रहा",
   "Extras": "अतिरिक्त",
   "Failed": "विफल",
+  "Failed to open document: {0} ({1})": "दस्तावेज़ नहीं खोला जा सका: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "प्रस्तुति नहीं खोली जा सकी: {0} ({1})",
   "File": "फ़ाइल",
   "File exists already": "फ़ाइल पहले से मौजूद है",

@@ -370,6 +370,7 @@
   "Extraction incomplete": "Uitpakken onvolledig",
   "Extras": "Extra's",
   "Failed": "Mislukt",
+  "Failed to open document: {0} ({1})": "Document kan niet worden geopend: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Presentatie kan niet worden geopend: {0} ({1})",
   "File": "Bestand",
   "File exists already": "Bestand bestaat al",

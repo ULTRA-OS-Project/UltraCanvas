@@ -380,6 +380,7 @@
   "Extraction incomplete": "Rozbalení neúplné",
   "Extras": "Doplňky",
   "Failed": "Selhalo",
+  "Failed to open document: {0} ({1})": "Dokument nelze otevřít: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Prezentaci nelze otevřít: {0} ({1})",
   "File": "Soubor",
   "File exists already": "Soubor už existuje",

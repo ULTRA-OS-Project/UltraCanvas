@@ -360,6 +360,7 @@
   "Extraction incomplete": "Giải nén chưa hoàn tất",
   "Extras": "Bổ sung",
   "Failed": "Thất bại",
+  "Failed to open document: {0} ({1})": "Không thể mở tài liệu: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Không thể mở bản trình bày: {0} ({1})",
   "File": "Tệp",
   "File exists already": "Tệp đã tồn tại",

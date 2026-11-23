@@ -370,6 +370,7 @@
   "Extraction incomplete": "A kibontás nem teljes",
   "Extras": "Extrák",
   "Failed": "Sikertelen",
+  "Failed to open document: {0} ({1})": "A dokumentum nem nyitható meg: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "A bemutató nem nyitható meg: {0} ({1})",
   "File": "Fájl",
   "File exists already": "A fájl már létezik",

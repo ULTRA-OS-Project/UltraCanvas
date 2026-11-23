@@ -410,6 +410,7 @@
   "Extraction incomplete": "الاستخراج غير مكتمل",
   "Extras": "إضافات",
   "Failed": "فشل",
+  "Failed to open document: {0} ({1})": "تعذّر فتح المستند: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "تعذّر فتح العرض التقديمي: {0} ({1})",
   "File": "ملف",
   "File exists already": "الملف موجود مسبقًا",

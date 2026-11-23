@@ -370,6 +370,7 @@
   "Extraction incomplete": "Extração incompleta",
   "Extras": "Extras",
   "Failed": "Falhou",
+  "Failed to open document: {0} ({1})": "Não foi possível abrir o documento: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Não foi possível abrir a apresentação: {0} ({1})",
   "File": "Ficheiro",
   "File exists already": "O ficheiro já existe",

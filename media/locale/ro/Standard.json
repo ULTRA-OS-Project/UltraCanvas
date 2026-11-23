@@ -380,6 +380,7 @@
   "Extraction incomplete": "Extragere incompletă",
   "Extras": "Suplimente",
   "Failed": "Eșuat",
+  "Failed to open document: {0} ({1})": "Documentul nu a putut fi deschis: {0} ({1})",
   "Failed to open presentation: {0} ({1})": "Prezentarea nu a putut fi deschisă: {0} ({1})",
   "File": "Fișier",
   "File exists already": "Fișierul există deja",
