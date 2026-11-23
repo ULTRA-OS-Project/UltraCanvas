@@ -7,6 +7,9 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.25.0 - Display > Path bar: pathBarFolderColor / pathBarCurrentColor, the segments'
+//                  colours (#E4E6E9 and #0078D7 by default, as the arrow bar was before it took
+//                  the theme's)
 // Version: 1.24.0 - Display > Display mode: displayMode, the filer light or dark
 //                  whatever the desktop says, or following it (the default)
 // Version: 1.23.0 - Display > Path bar: pathBarVolumeNames, a drive named by its
@@ -76,6 +79,10 @@ public:
     // offer "Restore defaults" without repeating the literals.
     static inline const Color kDefaultTreeDriveBackgroundColor{226, 236, 248, 255};
     static inline const Color kDefaultTreeSelectedFolderColor{0, 120, 215, 255};
+    // The path bar's segments: the folders on the way (a light grey) and the
+    // folder shown (the strong blue, with white on it).
+    static inline const Color kDefaultPathBarFolderColor{228, 230, 233, 255};    // #E4E6E9
+    static inline const Color kDefaultPathBarCurrentColor{0, 120, 215, 255};     // #0078D7
 
     // Display > Treeview: the folder tree's width - the narrowest the tree
     // pane goes (the divider stops there too; low enough that a tree of a few
@@ -170,6 +177,11 @@ public:
     // strip never waits on a disk for them. A drive whose volume has no name,
     // and a network drive, keep the letter either way.
     bool pathBarVolumeNames = true;
+    // ... and its colours: the segments of the folders on the way to the one
+    // shown, and the segment of the folder shown. The text on each is white
+    // or dark, whichever reads on it.
+    Color pathBarFolderColor  = kDefaultPathBarFolderColor;
+    Color pathBarCurrentColor = kDefaultPathBarCurrentColor;
 
     // Display > Thumbnails and Display > Detail view: which file kinds may
     // show a thumbnail in the file display, and which ones the detail pane
@@ -542,6 +554,10 @@ public:
         if (it != kv.end()) homeShowPredefinedOnly = (it->second == "predefined");
         it = kv.find("display.pathbar.volume.names");
         if (it != kv.end()) pathBarVolumeNames = ParseFlag(it->second);
+        it = kv.find("display.pathbar.folders.color");
+        if (it != kv.end()) ParseColor(it->second, pathBarFolderColor);
+        it = kv.find("display.pathbar.current.color");
+        if (it != kv.end()) ParseColor(it->second, pathBarCurrentColor);
         it = kv.find("display.thumbnails.kinds.off");
         if (it != kv.end()) thumbnailKinds = ParseEnabledKinds(it->second);
         it = kv.find("display.thumbnails.formats.off");
@@ -730,6 +746,10 @@ public:
              << (homeShowPredefinedOnly ? "predefined" : "all") << "\n";
         file << "display.pathbar.volume.names = "
              << (pathBarVolumeNames ? "true" : "false") << "\n";
+        file << "display.pathbar.folders.color = "
+             << FormatColor(pathBarFolderColor) << "\n";
+        file << "display.pathbar.current.color = "
+             << FormatColor(pathBarCurrentColor) << "\n";
         file << "display.thumbnails.kinds.off = "
              << FormatDisabledKinds(thumbnailKinds) << "\n";
         file << "display.thumbnails.formats.off = "

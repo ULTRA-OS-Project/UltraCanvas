@@ -1,5 +1,9 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
+// Version: 1.0.18 - text sits on the pixel grid (SnapTextOrigin): the left edge of its ink and its
+//                   baseline on whole device pixels. A label centred at a half pixel, or a letter
+//                   with a fractional side bearing, drew its first stem as two grey columns - an R
+//                   or I at the start of a file name looked blurred and lighter than the rest
 // Version: 1.0.17 - the text-layout cache key holds the whole text: two texts that
 //                  matched in their first 300 characters shared one layout; an
 //                  entry's size counts its text
@@ -1036,11 +1040,39 @@ namespace UltraCanvas {
     }
 
 
+    // Text sits on the pixel grid. Glyphs are hinted only vertically
+    // (HINT_STYLE_SLIGHT) and advance by fractional widths (HINT_METRICS_OFF),
+    // so nothing else puts a glyph's stem on a pixel: a label centred over an
+    // odd leftover width - half the file names in a grid of tiles - or a
+    // letter whose side bearing is a fraction of a pixel drew the vertical
+    // stem of its first letter as two grey columns, half as dark as the rest.
+    // An R, I, B or l at the start of a name looked blurred and lighter; an
+    // "o" hid it. So the origin is moved, by less than a pixel, to put the
+    // left edge of the text's ink (the first letter's stem) and its baseline
+    // (what the vertical hinting is relative to) on whole device pixels.
+    // Only where the text becomes pixels here, and only under a transform
+    // with no rotation or skew: a PDF, PostScript or SVG page keeps its text
+    // where it was put.
+    static Point2Dd SnapTextOrigin(cairo_t* cairo, double x, double y, double inkLeft, double baseline) {
+        if (!IsPixelTarget(cairo)) return {x, y};
+        cairo_matrix_t m;
+        cairo_get_matrix(cairo, &m);
+        if (m.xy != 0.0 || m.yx != 0.0) return {x, y};
+        double edgeX = x + inkLeft, baseY = y + baseline;
+        cairo_user_to_device(cairo, &edgeX, &baseY);
+        double snappedX = std::round(edgeX), snappedY = std::round(baseY);
+        cairo_device_to_user(cairo, &snappedX, &snappedY);
+        cairo_device_to_user(cairo, &edgeX, &baseY);
+        return {x + (snappedX - edgeX), y + (snappedY - baseY)};
+    }
+
     void RenderContextCairo::DrawTextLayout(ITextLayout &layout, const Point2Dd &pos) {
         auto extents = layout.GetLayoutExtents();
 //        debugOutput << "RenderContextCairo::DrawTextLayout txt=" << layout.GetText() << " pos=" << pos.x << "," << pos.y << " offset=" << layout.GetLayoutVerticalOffset() <<  " extents=" << extents.logical.x << "," << extents.logical.y << " " << extents.logical.width << "x" << extents.logical.height << " ink=" << extents.ink.x << "," << extents.ink.y << " " << extents.ink.width << "x" << extents.ink.height << std::endl;
         const bool group = BeginAlphaGroup(currentState.textSourceColor, currentState.textSourcePattern);
-        cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
+        const Point2Dd at = SnapTextOrigin(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset(),
+                                           extents.ink.x, layout.GetBaseline());
+        cairo_move_to(cairo, at.x, at.y);
         ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern,
                            currentState.globalAlpha);
         pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
@@ -1055,7 +1087,7 @@ namespace UltraCanvas {
                                       currentState.textSourceColor.g / 255.0,
                                       currentState.textSourceColor.b / 255.0,
                                       boost);
-                cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
+                cairo_move_to(cairo, at.x, at.y);
                 pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
             }
         }
