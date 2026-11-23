@@ -31,6 +31,8 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.23.0 - Spam/scam warnings: "Re:" or "Fw:" from a sender never written to
+//                   (strangerReplies)
 // Version: 1.22.0 - Spam/scam warnings: fake designer goods (counterfeits), SEO offers
 //                   from strangers (seoOffers); that page's switches and every page's
 //                   "Restore default" button go through Tr
@@ -1346,6 +1348,9 @@ namespace {
             { "um-set-warn-seo-offers",
               Tr("SEO offers from strangers - \"an issue on your website\""),
               &ThreatScanOptions::seoOffers },
+            { "um-set-warn-stranger-replies",
+              Tr("\"Re:\" or \"Fw:\" from a sender you never wrote to"),
+              &ThreatScanOptions::strangerReplies },
             { "um-set-warn-attachments",
               Tr("A dangerous attachment - a program, or one dressed as a document"),
               &ThreatScanOptions::attachments },

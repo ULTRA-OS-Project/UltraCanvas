@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.12.0 - unsolicited-reply: "Re:" / "Fw:" / "WG:" from a stranger, a mailing
+//                   list's post (List-Id) excepted
 // Version: 0.11.3 - a proven sender's links to its own organisation under another suffix
 //   (paypal.de -> paypal.com: .com/.net/.org or a country's) are its own (SameOrganisation):
 //   not foreign domains, not the warning's "button domain", not a link-target mismatch
@@ -1107,6 +1109,68 @@ const std::vector<std::string>& PitchPhrases() {
     return v;
 }
 
+// ---------------------------------------------------------------------------
+// Replies and forwards from strangers
+// ---------------------------------------------------------------------------
+// The reply or forward prefix a subject starts with ("re", "fw", "wg" ...),
+// lowercased, or "" when it starts with none. The tags a mail server or a
+// virus scanner puts in front ("*** VIRUS ***", "[SPAM]", "[EXTERNAL]") are
+// read past: "*** VIRUS ***WG: Rechnung" is a forward.
+std::string ReplyPrefixOf(const std::string& subject) {
+    static const std::vector<std::string> prefixes = {
+        // reply: English, German, Dutch / Scandinavian, Polish, Italian, French
+        // and Finnish
+        "re", "aw", "antw", "sv", "odp", "rif", "vs",
+        // forward: English, German, French, Spanish / Portuguese, Dutch, Finnish
+        "fw", "fwd", "wg", "tr", "rv", "enc", "doorst", "vl",
+    };
+    std::string s = Trim(subject);
+    for (bool skipped = true; skipped && !s.empty();) {
+        skipped = false;
+        if (s.compare(0, 3, "***") == 0) {   // "*** VIRUS ***", "***SPAM***"
+            const std::size_t end = s.find("***", 3);
+            if (end == std::string::npos) break;
+            s = Trim(s.substr(end + 3));
+            skipped = true;
+        } else if (s.front() == '[') {       // "[SPAM]", "[EXTERNAL]"
+            const std::size_t end = s.find(']');
+            if (end == std::string::npos || end > 40) break;
+            s = Trim(s.substr(end + 1));
+            skipped = true;
+        }
+    }
+    const std::size_t colon = s.find(':');
+    if (colon == std::string::npos || colon == 0 || colon > 8) return std::string();
+    std::string word = Lower(s.substr(0, colon));
+    // "Re[2]:", "RE (3):" - a count of replies.
+    if (const std::size_t open = word.find_first_of("[( "); open != std::string::npos)
+        word = Trim(word.substr(0, open));
+    for (const std::string& p : prefixes)
+        if (word == p) return p;
+    return std::string();
+}
+
+bool IsForwardPrefix(const std::string& prefix) {
+    return prefix == "fw" || prefix == "fwd" || prefix == "wg" || prefix == "tr" ||
+           prefix == "rv" || prefix == "enc" || prefix == "doorst" || prefix == "vl";
+}
+
+// The domains of the Message-IDs an In-Reply-To or References header names
+// ("<abc@kemink-fleisch.de>" -> "kemink-fleisch.de"), lowercased.
+std::vector<std::string> MessageIdDomains(const std::string& header) {
+    std::vector<std::string> out;
+    std::size_t pos = 0;
+    while ((pos = header.find('<', pos)) != std::string::npos) {
+        const std::size_t end = header.find('>', pos);
+        if (end == std::string::npos) break;
+        const std::string id = header.substr(pos + 1, end - pos - 1);
+        const std::size_t at = id.rfind('@');
+        if (at != std::string::npos && at + 1 < id.size()) out.push_back(Lower(Trim(id.substr(at + 1))));
+        pos = end + 1;
+    }
+    return out;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -1167,6 +1231,7 @@ bool FindingEnabled(const ThreatScanOptions& o, const std::string& code) {
     if (code == "spam-flag")                return o.spamFlag;
     if (code == "counterfeit-goods")        return o.counterfeits;
     if (code == "seo-solicitation")         return o.seoOffers;
+    if (code == "unsolicited-reply")        return o.strangerReplies;
     static const std::set<std::string> phishing = {
         "auth-failure", "brand-impersonation", "sender-domain-lookalike",
         "borrowed-brand-pictures", "link-userinfo", "link-ip-host", "link-punycode",
@@ -1263,7 +1328,7 @@ ThreatScanOptions GetThreatScanOptions() {
 }
 
 bool FindingOnlyFromStrangers(const std::string& code) {
-    return code == "seo-solicitation";
+    return code == "seo-solicitation" || code == "unsolicited-reply";
 }
 
 bool HasFindingCode(const std::string& codes, const std::string& code) {
@@ -1862,6 +1927,66 @@ ThreatReport ScanMessage(const ScanInput& input) {
         }
     }
 
+    // ---- Replies and forwards from strangers ------------------------------
+    // "WG: Rechnung 373115", "Re: Riscos Cloverleaf sales": a forward of an
+    // invoice from someone the reader never wrote to, a "reply" to a sales
+    // mail the reader never answered. A genuine reply comes from someone the
+    // reader wrote to - who is in the address book, since UltraMail adds the
+    // people the reader writes to - so this counts only for strangers: the
+    // badge spares a contact (FindingOnlyFromStrangers), and "Add to contacts"
+    // in the warning strip says the reader knows the sender. Not for a
+    // mailing list's post (List-Id), nor a proven registry brand's (a help
+    // desk answering a ticket). Stronger when the "reply" names no message it
+    // answers, or a thread of another company's: the sender was never in it.
+    if (const std::string prefix = ReplyPrefixOf(input.subject);
+        !prefix.empty() && Trim(input.listId).empty() && !verifiedBrand &&
+        // an SEO pitch's fake "Re:" is counted there already
+        !(input.options.seoOffers && report.Has("seo-solicitation"))) {
+        const bool forward = IsForwardPrefix(prefix);
+        std::vector<std::string> thread = MessageIdDomains(input.inReplyTo);
+        for (std::string& d : MessageIdDomains(input.references))
+            if (std::find(thread.begin(), thread.end(), d) == thread.end()) thread.push_back(std::move(d));
+        const bool noThread = Trim(input.inReplyTo).empty() && Trim(input.references).empty();
+        std::string otherCompany;   // a thread only of another domain's messages
+        if (!thread.empty() && !senderReg.empty()) {
+            bool senderInThread = false;
+            for (const std::string& d : thread)
+                senderInThread = senderInThread || RegistrableDomain(d) == senderReg;
+            if (!senderInThread) otherCompany = thread.front();
+        }
+        int weight = 25;
+        if (noThread || !otherCompany.empty()) weight += 10;
+        // An invoice forwarded by a stranger: the classic fake ("please pay by
+        // the 15th") with the payment details or a "document" changed.
+        const std::string text = StraightQuotes(Lower(input.subject) + "\n" + bodyLower);
+        static const std::vector<std::string> invoice = {
+            "invoice*", "rechnung*", "facture*", "factura*", "fattura*", "factuur*",
+            "payment due", "zahlung*", "overdue", "remittance",
+        };
+        const std::string* bill = FirstWordPhraseIn(text, invoice);
+        if (bill) weight += 5;
+        weight = std::min(weight, 40);   // alone, below a scam's 45
+        const std::string subject = Trim(input.subject);
+        std::string why = forward
+            ? "The message is a forward (\"" + subject + "\") from a sender you have never written to"
+            : "The message calls itself a reply (\"" + subject + "\") from a sender you have never written to";
+        if (noThread)
+            why += forward ? ", and names no message it forwards"
+                           : ", to a message that was never sent";
+        else if (!otherCompany.empty())
+            why += ", in a conversation of " + otherCompany + " that " +
+                   (senderDomain.empty() ? std::string("the sender") : senderDomain) +
+                   " was never part of";
+        if (bill) {
+            std::string word = *bill;
+            if (word.back() == '*') word.pop_back();
+            why += "; it is about a bill (\"" + word + "\")";
+        }
+        why += ". A \"Re:\" or \"Fw:\" from a stranger is a common trick to look like an "
+               "ongoing conversation. If you know the sender, add them to your contacts.";
+        Add(report, weight, "unsolicited-reply", why);
+    }
+
     // ---- Government agencies and international organisations -------------
     // A letter in the FBI's, Interpol's or the IMF's name from an address that
     // is not theirs. In the sender's name or domain it is a claim on its own
@@ -2257,6 +2382,7 @@ bool BuildScanInput(const std::string& rawMessage, ScanInput& in) {
     in.autoSubmitted   = Header(msg.root.headers, "Auto-Submitted");
     in.inReplyTo       = Header(msg.root.headers, "In-Reply-To");
     in.references      = Header(msg.root.headers, "References");
+    in.listId          = Header(msg.root.headers, "List-Id");
     in.spamFlag        = Header(msg.root.headers, "X-Spam-Flag");
     in.spamStatus      = Header(msg.root.headers, "X-Spam-Status");
     // The topmost: the parsed headers keep the last of a repeated header,

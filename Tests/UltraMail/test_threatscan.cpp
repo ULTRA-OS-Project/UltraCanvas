@@ -1987,3 +1987,122 @@ TEST(seo_offers) {
     off.options.seoOffers = false;
     REQUIRE(!ScanMessage(off).Has("seo-solicitation"));
 }
+
+// ---------------------------------------------------------------------------
+// Replies and forwards from strangers (unsolicited-reply)
+// ---------------------------------------------------------------------------
+namespace {
+
+// A forwarded "invoice" (WG: = Weitergeleitet) from a stranger, in a thread of
+// another company's messages, with the virus scanner's tag in front.
+const char* kForwardedInvoiceMail =
+    "Return-Path: <no-reply@automobielbeheersing.com>\r\n"
+    "Received: from automobielbeheersing.com (unknown [105.98.12.169])\r\n"
+    "\tby mail.reader.example (Postfix) with ESMTP id 6EC09C112BE\r\n"
+    "In-Reply-To: <wwc046ac96-c1d5-41db-a34e-c3aa58e9a741@kemink-fleisch.de>\r\n"
+    "References: <wwc046ac96-c1d5-41db-a34e-c3aa58e9a741@kemink-fleisch.de>\r\n"
+    "Message-ID: <865e44bab25d$accaf298$d0187ce3$@automobielbeheersing.com>\r\n"
+    "Date: Fri, 20 Nov 2026 12:14:06 +0000\r\n"
+    "To: Info <info@reader.example>\r\n"
+    "From: no-reply@automobielbeheersing.com\r\n"
+    "Subject: *** VIRUS ***WG: Rechnung 373115 vom  31.05.2026 | Kurt Heinrich Kemink GmbH & Co. KG\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: text/plain; charset=\"utf-8\"\r\n"
+    "\r\n"
+    "Bitte bis 15.06 26 bez.\r\n"
+    "\r\n"
+    "Mit freundlichen Gruessen\r\n"
+    "\r\n"
+    "Von: Kemink-Fleisch | Rechnungsstellung ausgangsrechnung@\r\n"
+    "Betreff: Rechnung 373115 vom 31.05.2026\r\n"
+    "\r\n"
+    "Sehr geehrte Damen und Herren,\r\n"
+    "anbei erhalten Sie Ihre aktuelle Rechnung.\r\n";
+
+// A sales "Re:" to a cold mail the reader never answered, DKIM-signed by the
+// sender's own domain.
+const char* kSalesFollowUpMail =
+    "Authentication-Results: mail.reader.example;\r\n"
+    "\tdkim=pass (2048-bit key; unprotected) header.d=suppliesrevenue.com header.i=@suppliesrevenue.com\r\n"
+    "Message-ID: <01a20303-5b90-74ed-bc7a-0488d11f72bc@suppliesrevenue.com>\r\n"
+    "List-Unsubscribe: <https://link.inproxalberta1.net/unsub/1/660353df>\r\n"
+    "List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n"
+    "In-Reply-To: <01a1f8b5-6bc4-757c-9c79-93040fcbba76@suppliesrevenue.com>\r\n"
+    "References: <01a1f8b5-6bc4-757c-9c79-93040fcbba76@suppliesrevenue.com>\r\n"
+    "From: Dale Phillips <d_phillips@suppliesrevenue.com>\r\n"
+    "To: info@reader.example\r\n"
+    "Subject: Re: Riscos Cloverleaf sales\r\n"
+    "Date: Sun, 22 Nov 2026 11:28:01 +0000\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: text/plain; charset=utf-8\r\n"
+    "\r\n"
+    "Worth a chat?\r\n"
+    "\r\n"
+    "> Hello,\r\n"
+    "> I came across your website and read about your operating systems.\r\n"
+    "> Do you have 10 minutes to see how we can get similar results?\r\n";
+
+} // namespace
+
+TEST(a_forwarded_invoice_from_a_stranger_is_flagged) {
+    const ThreatReport r = ScanRawMessage(kForwardedInvoiceMail);
+    REQUIRE(r.Has("unsolicited-reply"));
+    REQUIRE(r.level >= ThreatLevel::Suspicious);
+    // It names the thread the sender was never part of, and the bill.
+    REQUIRE(r.Summary().find("kemink-fleisch.de") != std::string::npos);
+    REQUIRE(r.Summary().find("rechnung") != std::string::npos);
+}
+
+TEST(a_sales_follow_up_from_a_stranger_is_flagged) {
+    const ThreatReport r = ScanRawMessage(kSalesFollowUpMail);
+    REQUIRE(r.Has("unsolicited-reply"));
+    REQUIRE(r.verifiedDomain == "suppliesrevenue.com");   // genuine - and still flagged
+    REQUIRE(r.level == ThreatLevel::Suspicious);          // spam, not a scam
+}
+
+TEST(reply_prefixes) {
+    auto scan = [](const std::string& subject) {
+        ScanInput in;
+        in.fromAddr = "someone@company.example";
+        in.subject  = subject;
+        in.body     = "See below.";
+        return ScanMessage(in);
+    };
+    for (const char* s : {"Re: offer", "RE: offer", "Fw: offer", "FWD: offer", "WG: Rechnung",
+                          "AW: Angebot", "Re[2]: offer", "[SPAM] Re: offer", "*** VIRUS ***WG: x",
+                          "TR: facture", "SV: tilbud"})
+        REQUIRE(scan(s).Has("unsolicited-reply"));
+    for (const char* s : {"Offer", "Regarding: offer", "Fwiw the meeting", "Rechnung 123",
+                          "Re-launch: our new site", "Ref: 123"})
+        REQUIRE(!scan(s).Has("unsolicited-reply"));
+    // Nothing it replies to says more than a thread of the sender's own.
+    ScanInput own;
+    own.fromAddr = "someone@company.example";
+    own.subject = "Re: offer";
+    own.inReplyTo = "<abc@company.example>";
+    const int ownThread = ScanMessage(own).score;
+    REQUIRE(scan("Re: offer").score > ownThread);
+}
+
+TEST(replies_that_are_not_unsolicited) {
+    // A mailing list's post: strangers answer each other there.
+    ScanInput list;
+    list.fromAddr = "dev@people.example";
+    list.subject  = "Re: [dev] build broken";
+    list.listId   = "<dev.lists.project.example>";
+    REQUIRE(!ScanMessage(list).Has("unsolicited-reply"));
+    // Its own switch.
+    ScanInput off;
+    off.fromAddr = "someone@company.example";
+    off.subject  = "Fw: invoice";
+    REQUIRE(ScanMessage(off).Has("unsolicited-reply"));
+    off.options.strangerReplies = false;
+    REQUIRE(!ScanMessage(off).Has("unsolicited-reply"));
+    // A sender the reader trusts: the reader's own call.
+    ScanInput trusted;
+    trusted.fromAddr = "someone@company.example";
+    trusted.subject  = "Re: invoice";
+    trusted.senderTrusted = true;
+    REQUIRE(!ScanMessage(trusted).Has("unsolicited-reply"));
+    REQUIRE(FindingOnlyFromStrangers("unsolicited-reply"));
+}
