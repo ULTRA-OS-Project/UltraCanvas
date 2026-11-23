@@ -1250,7 +1250,7 @@ void UltraPaintWindow::BuildStartPage() {
         b->onClick = std::move(action);
         startPage->AddChild(b);
     };
-    add("up-start-new", Tr("Create new bitmap"), ToolIconPath("new.svg"),
+    add("up-start-new", Tr("Create new bitmap"), IconPath("new.svg"),
         Color(205, 239, 217, 255), Color(184, 229, 199, 255),
         Tr("A new, empty image: its size and background are asked first (Ctrl+N)"),
         [this]() { CmdNew(); });
