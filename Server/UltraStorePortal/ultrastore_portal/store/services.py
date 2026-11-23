@@ -5,6 +5,7 @@ handled. Every one of them is a row in the audit log, and every one that
 can change what is public asks for the catalog again (catalog.py, which
 publishes only when the content changed).
 
+Version: 0.3.0 - edit_package: a package corrected while its release is the publisher's
 Version: 0.1.0
 """
 
@@ -19,7 +20,7 @@ from django.utils import timezone
 
 from . import catalog
 from .models import App, AuditEntry, Package, Publisher, PublisherMember, Release, Report, TermsVersion
-from .packages import entry_in_archive, remove_if_unused
+from .packages import entry_in_archive, remove_if_unused, stored_names
 
 log = logging.getLogger(__name__)
 
@@ -271,6 +272,20 @@ def add_package(release: Release, package: Package, names: list[str] | None, use
     package.release = release
     package.save()
     audit(user, "package.add", "release", str(release), sha256=package.sha256, os=package.os, arch=package.arch, size=package.size)
+    return package
+
+
+def edit_package(package: Package, user, fields: list[str]) -> Package:
+    """What a package says about its archive, corrected while the release is
+    still the publisher's: the system, the processor, what the machine must
+    satisfy, the entry - looked up in the stored archive again. The bytes and
+    their hash stay as uploaded."""
+    if not package.release.editable:
+        raise Refused("A release in review or published keeps its packages as they are.")
+    if not entry_in_archive(package.entry, stored_names(package.sha256, package.format)):
+        raise Refused(f"The archive has no \"{package.entry}\" to start.")
+    package.save()
+    audit(user, "package.edit", "release", str(package.release), sha256=package.sha256, os=package.os, arch=package.arch, fields=fields)
     return package
 
 

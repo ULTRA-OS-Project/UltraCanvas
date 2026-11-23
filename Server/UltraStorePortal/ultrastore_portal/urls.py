@@ -1,5 +1,6 @@
 """Every address of the store, all under the one root.
 
+Version: 0.3.0 - console: icon/, packages/<n>/edit/
 Version: 0.1.0
 """
 
@@ -73,11 +74,13 @@ console_patterns = ([
     path("apps/new/", console.app_new, name="app_new"),
     path("apps/<appid:app_id>/", console.app_overview, name="app"),
     path("apps/<appid:app_id>/listing/", console.app_listing, name="listing"),
+    path("apps/<appid:app_id>/icon/", console.icon_upload, name="icon_upload"),
     path("apps/<appid:app_id>/screenshots/", console.screenshot_add, name="screenshot_add"),
     path("apps/<appid:app_id>/screenshots/<int:pk>/delete/", console.screenshot_delete, name="screenshot_delete"),
     path("apps/<appid:app_id>/releases/new/", console.release_new, name="release_new"),
     path("apps/<appid:app_id>/releases/<int:pk>/", console.release_detail, name="release"),
     path("apps/<appid:app_id>/releases/<int:pk>/packages/", console.package_add, name="package_add"),
+    path("apps/<appid:app_id>/releases/<int:pk>/packages/<int:package_pk>/edit/", console.package_edit, name="package_edit"),
     path("apps/<appid:app_id>/releases/<int:pk>/packages/<int:package_pk>/delete/", console.package_delete, name="package_delete"),
     path("apps/<appid:app_id>/releases/<int:pk>/<slug:action>/", console.release_action, name="release_action"),
 ], "console")

@@ -4,25 +4,29 @@
 <div class="page-head"><h1>Sales</h1></div>
 <div class="panels">
 {% if totals %}
-<div class="tiles">
+<div><div class="row row-cols-1 row-cols-md-2 row-cols-xl-4 g-3">
   {% for row in totals %}
-  <div class="tile"><span class="muted">Net, {{ row.currency }}</span><b>{{ row.net }}</b><span class="small muted">{{ row.sales }} payment{{ row.sales|pluralize }}, {{ row.sold }} sold, {{ row.reversed }} given back</span></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Net, {{ row.currency }}</span><b>{{ row.net }}</b><span class="small text-secondary">{{ row.sales }} payment{{ row.sales|pluralize }}, {{ row.sold }} sold, {{ row.reversed }} given back</span></div></div></div>
   {% endfor %}
-</div>
+</div></div>
 {% endif %}
-<div class="panel">
+<div class="card"><div class="card-body">
   <h2>Payments</h2>
   {% if payments %}
-  <table>
-    <tr><th>Date</th><th>App</th><th>What</th><th class="num">Amount</th><th class="num">Receipt</th></tr>
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>Date</th><th>App</th><th>What</th><th class="text-end">Amount</th><th class="text-end">Receipt</th></tr></thead>
+    <tbody>
     {% for payment in payments %}
     <tr><td>{{ payment.at|date:"j M Y, H:i" }}</td><td><a href="{% url 'console:app' payment.order.app.app_id %}">{{ payment.order.app_name }}</a></td>
       <td>{{ payment.get_kind_display }}{% if payment.order.cycle and payment.kind == "sale" %} <span class="badge">subscription</span>{% endif %}</td>
-      <td class="num">{{ payment.signed_amount }} {{ payment.currency }}</td><td class="num">{{ payment.receipt_no|default:"" }}</td></tr>
+      <td class="text-end">{{ payment.signed_amount }} {{ payment.currency }}</td><td class="text-end">{{ payment.receipt_no|default:"" }}</td></tr>
     {% endfor %}
+    </tbody>
   </table>
-  {% else %}<p class="muted">Nothing sold yet. A paid app's sales, its renewals and anything given back appear here.</p>{% endif %}
-  <p class="small muted" style="margin-top:14px">What buyers paid, before the payment provider's fees and the store's share. Who bought is the store's to know, not shown here.</p>
-</div>
+  </div>
+  {% else %}<p class="text-secondary">Nothing sold yet. A paid app's sales, its renewals and anything given back appear here.</p>{% endif %}
+  <p class="small text-secondary mt-3 mb-0">What buyers paid, before the payment provider's fees and the store's share. Who bought is the store's to know, not shown here.</p>
+</div></div>
 </div>
 {% endblock %}

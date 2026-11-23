@@ -1,6 +1,8 @@
 """The portal's settings, every one of them from the environment
 (ULTRASTORE_PORTAL_<NAME>, deploy/ultrastore-portal.env.example).
 
+Version: 0.3.0 - the portal_ui template library, messages as Bootstrap alerts;
+                 a password is 8 to 64 characters
 Version: 0.1.0
 """
 
@@ -124,6 +126,8 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "ultrastore_portal.web.context.portal",
             ],
+            # {% load portal_ui %}: a form's field drawn with Bootstrap's classes (web/ui.py).
+            "libraries": {"portal_ui": "ultrastore_portal.web.ui"},
         },
     },
 ]
@@ -139,9 +143,15 @@ AUTH_USER_MODEL = "accounts.User"
 LOGIN_URL = "account:signin"
 LOGIN_REDIRECT_URL = "console:home"
 LOGOUT_REDIRECT_URL = "store:home"
+# A password is 8 to 64 characters - characters of Unicode text, not bytes
+# (accounts/validators.py). The two numbers are named once, here: the forms
+# say them and the validators check them.
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 64
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 8}},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": PASSWORD_MIN_LENGTH}},
+    {"NAME": "ultrastore_portal.accounts.validators.MaximumLengthValidator", "OPTIONS": {"max_length": PASSWORD_MAX_LENGTH}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
@@ -256,6 +266,9 @@ elif RUNNING_TESTS:
     EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# A message's level as the Bootstrap alert that shows it (templates/_messages.html).
+MESSAGE_TAGS = {10: "secondary", 20: "primary", 25: "success", 30: "warning", 40: "danger"}
 
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 

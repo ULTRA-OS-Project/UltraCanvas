@@ -4,6 +4,6 @@
 <div class="narrow">
   <h1>Check your mail</h1>
   <p>We sent a link to <b>{{ email }}</b>. Follow it to confirm the address; it is good for two days.</p>
-  <p class="muted">Nothing arrived? Look in the spam folder, or <a href="{% url 'account:resend' %}">send it again</a>.</p>
+  <p class="text-secondary">Nothing arrived? Look in the spam folder, or <a href="{% url 'account:resend' %}">send it again</a>.</p>
 </div>
 {% endblock %}

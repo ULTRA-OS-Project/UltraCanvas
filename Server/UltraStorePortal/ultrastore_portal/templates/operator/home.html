@@ -3,85 +3,101 @@
 {% block content %}
 <div class="page-head"><h1>Review queue</h1></div>
 <div class="panels">
-{% if selling_missing %}<div class="note warning"><b>The store is not selling:</b> paid apps show their price and nothing can be bought. Missing: {{ selling_missing|join:", " }}</div>{% endif %}
-<div class="tiles">
-  <div class="tile"><span class="muted">Releases in review</span><b>{{ queue|length }}</b></div>
-  <div class="tile"><span class="muted">Publisher applications</span><b>{{ applications|length }}</b></div>
-  <div class="tile"><span class="muted">Open reports</span><b>{{ reports|length }}</b></div>
-  <div class="tile"><span class="muted">Apps in the store</span><b>{{ counts.apps }}</b></div>
-  <div class="tile"><span class="muted">Publishers</span><b>{{ counts.publishers }}</b></div>
-  <div class="tile"><span class="muted">Suspended</span><b>{{ counts.suspended }}</b></div>
-</div>
+{% if selling_missing %}<div class="alert alert-warning"><b>The store is not selling:</b> paid apps show their price and nothing can be bought. Missing: {{ selling_missing|join:", " }}</div>{% endif %}
+<div><div class="row row-cols-2 row-cols-md-3 row-cols-xl-6 g-3">
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Releases in review</span><b>{{ queue|length }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Publisher applications</span><b>{{ applications|length }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Open reports</span><b>{{ reports|length }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Apps in the store</span><b>{{ counts.apps }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Publishers</span><b>{{ counts.publishers }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Suspended</span><b>{{ counts.suspended }}</b></div></div></div>
+</div></div>
 
-<div class="panel">
+<div class="card"><div class="card-body">
   <h2>Releases waiting for review</h2>
   {% if queue %}
-  <table>
-    <tr><th>App</th><th>Version</th><th>Publisher</th><th>Sent</th><th></th></tr>
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>App</th><th>Version</th><th>Publisher</th><th>Sent</th><th></th></tr></thead>
+    <tbody>
     {% for release in queue %}
     <tr>
-      <td><b>{{ release.app.name }}</b><div class="mono muted">{{ release.app.app_id }}</div></td>
+      <td><b>{{ release.app.name }}</b><div class="font-monospace text-secondary">{{ release.app.app_id }}</div></td>
       <td>{{ release.version }} <span class="badge">{{ release.channel }}</span></td>
       <td><a href="{% url 'operator:publisher' release.app.publisher.slug %}">{{ release.app.publisher.name }}</a></td>
       <td>{{ release.submitted_at|timesince }} ago</td>
-      <td class="num"><a class="button small" href="{% url 'operator:release' release.pk %}">Review</a></td>
+      <td class="text-end"><a class="btn btn-primary btn-sm" href="{% url 'operator:release' release.pk %}">Review</a></td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
-  {% else %}<p class="muted">Nothing is waiting.</p>{% endif %}
-</div>
+  </div>
+  {% else %}<p class="text-secondary mb-0">Nothing is waiting.</p>{% endif %}
+</div></div>
 
-<div class="panel">
+<div class="card"><div class="card-body">
   <h2>Publisher applications</h2>
   {% if applications %}
-  <table>
-    <tr><th>Publisher</th><th>Contact</th><th>Applied</th><th></th></tr>
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>Publisher</th><th>Contact</th><th>Applied</th><th></th></tr></thead>
+    <tbody>
     {% for publisher in applications %}
     <tr>
-      <td><b>{{ publisher.name }}</b><div class="mono muted">{{ publisher.slug }}</div></td>
+      <td><b>{{ publisher.name }}</b><div class="font-monospace text-secondary">{{ publisher.slug }}</div></td>
       <td>{{ publisher.support_email }}</td>
       <td>{{ publisher.created|timesince }} ago</td>
-      <td class="num"><a class="button small" href="{% url 'operator:publisher' publisher.slug %}">Decide</a></td>
+      <td class="text-end"><a class="btn btn-primary btn-sm" href="{% url 'operator:publisher' publisher.slug %}">Decide</a></td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
-  {% else %}<p class="muted">Nothing is waiting.</p>{% endif %}
-</div>
+  </div>
+  {% else %}<p class="text-secondary mb-0">Nothing is waiting.</p>{% endif %}
+</div></div>
 
-<div class="panel">
+<div class="card"><div class="card-body">
   <h2>Open reports</h2>
   {% if reports %}
-  <table>
-    <tr><th>About</th><th>Kind</th><th>Text</th><th>Sent</th><th></th></tr>
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>About</th><th>Kind</th><th>Text</th><th>Sent</th><th></th></tr></thead>
+    <tbody>
     {% for report in reports %}
-    <tr><td class="mono">{{ report.target }}</td><td>{{ report.kind }}</td><td>{{ report.text|truncatechars:80 }}</td><td>{{ report.created|timesince }} ago</td>
-      <td class="num"><a class="button small" href="{% url 'operator:report' report.pk %}">Open</a></td></tr>
+    <tr><td class="font-monospace">{{ report.target }}</td><td>{{ report.kind }}</td><td>{{ report.text|truncatechars:80 }}</td><td>{{ report.created|timesince }} ago</td>
+      <td class="text-end"><a class="btn btn-primary btn-sm" href="{% url 'operator:report' report.pk %}">Open</a></td></tr>
     {% endfor %}
+    </tbody>
   </table>
-  {% else %}<p class="muted">No open report.</p>{% endif %}
-</div>
+  </div>
+  {% else %}<p class="text-secondary mb-0">No open report.</p>{% endif %}
+</div></div>
 
-<div class="panel">
+<div class="card"><div class="card-body">
   <h2>The catalog</h2>
   {% if snapshot %}
   <dl class="facts">
     <dt>Sequence</dt><dd>{{ snapshot.sequence }}</dd>
     <dt>Published</dt><dd>{{ snapshot.created|date:"j F Y, H:i" }} UTC</dd>
     <dt>Carries</dt><dd>{{ snapshot.apps }} app{{ snapshot.apps|pluralize }}, {{ snapshot.components }} component{{ snapshot.components|pluralize }}</dd>
-    <dt>Signed with</dt><dd class="mono">{{ snapshot.public_key }}</dd>
+    <dt>Signed with</dt><dd class="font-monospace">{{ snapshot.public_key }}</dd>
     <dt>Address</dt><dd><a href="{% url 'api:catalog' %}">{{ base_url }}{% url 'api:catalog' %}</a></dd>
   </dl>
-  {% else %}<p class="muted">No catalog was published yet.</p>{% endif %}
-  <p class="small muted" style="margin-top:14px">The catalog is published by itself whenever a decision changes what is public. Publishing by hand makes a new one only if something changed.</p>
-  <form method="post" action="{% url 'operator:publish' %}">{% csrf_token %}<button class="button soft">Publish the catalog now</button></form>
-</div>
+  {% else %}<p class="text-secondary">No catalog was published yet.</p>{% endif %}
+  <p class="small text-secondary mt-3">The catalog is published by itself whenever a decision changes what is public. Publishing by hand makes a new one only if something changed.</p>
+  <form method="post" action="{% url 'operator:publish' %}">{% csrf_token %}<button class="btn btn-soft-primary">Publish the catalog now</button></form>
+</div></div>
 
-<div class="panel">
+<div class="card"><div class="card-body">
   <h2>Latest actions</h2>
-  <table>
-    {% for entry in recent %}<tr><td class="muted">{{ entry.created|date:"j M, H:i" }}</td><td>{{ entry.actor_name }}</td><td class="mono">{{ entry.action }}</td><td class="mono">{{ entry.target }}</td></tr>{% endfor %}
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <tbody>
+    {% for entry in recent %}<tr><td class="text-secondary">{{ entry.created|date:"j M, H:i" }}</td><td>{{ entry.actor_name }}</td><td class="font-monospace">{{ entry.action }}</td><td class="font-monospace">{{ entry.target }}</td></tr>{% endfor %}
+    </tbody>
   </table>
-  <p style="margin:12px 0 0"><a href="{% url 'operator:audit' %}">The whole audit log</a></p>
-</div>
+  </div>
+  <p class="mt-3 mb-0"><a href="{% url 'operator:audit' %}">The whole audit log</a></p>
+</div></div>
 </div>
 {% endblock %}

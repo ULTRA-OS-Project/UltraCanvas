@@ -3,12 +3,12 @@
 {% block content %}
 <div class="narrow">
   <h1>Your account</h1>
-  <p class="muted">Signed in as {{ user.email }}.</p>
-  <form method="post" class="stack" style="margin-top:20px">
+  <p class="text-secondary">Signed in as {{ user.email }}.</p>
+  <form method="post" class="mt-4">
     {% csrf_token %}{% include "_form.html" %}
-    <button class="button">Save</button>
+    <button class="btn btn-primary">Save</button>
   </form>
-  <div class="below">
+  <div class="mt-4 d-grid gap-1 small">
     <div><a href="{% url 'account:password_change' %}">Change the password</a></div>
     <div><a href="{% url 'console:home' %}">Developer console</a></div>
   </div>

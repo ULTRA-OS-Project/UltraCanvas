@@ -1,0 +1,7 @@
+<div class="thumbs" data-count="{{ shots|length }}" data-max="{{ max_screenshots }}">
+  {% for shot in shots %}
+  <figure><img src="{{ shot.image.url }}" alt="Screenshot {{ forloop.counter }}">
+    <form method="post" action="{% url 'console:screenshot_delete' app.app_id shot.pk %}" data-in-place>{% csrf_token %}<button class="btn btn-link btn-sm">Remove</button></form></figure>
+  {% empty %}<p class="text-secondary mb-0">None yet. An app needs at least one to go to review.</p>
+  {% endfor %}
+</div>

@@ -1,27 +1,31 @@
 {% extends "operator/base.html" %}
 {% block title %}Orders - Operator{% endblock %}
 {% block content %}
-<div class="page-head"><h1>Orders</h1><span class="muted">{{ page.paginator.count }}</span></div>
-{% if missing %}<div class="note warning"><b>The store is not selling.</b> Missing: {{ missing|join:", " }}</div>{% endif %}
-<div class="tabs">
-  <a href="?"{% if not state %} class="on"{% endif %}>Where money moved</a>
-  {% for value, label in states %}<a href="?state={{ value }}"{% if state == value %} class="on"{% endif %}>{{ label }}</a>{% endfor %}
-</div>
-<div class="panel">
-  <table>
-    <tr><th>Opened</th><th>App</th><th>Publisher</th><th class="num">Amount</th><th>State</th><th class="num">Receipt</th><th>Buyer</th><th></th></tr>
+<div class="page-head"><h1>Orders</h1><span class="text-secondary">{{ page.paginator.count }}</span></div>
+{% if missing %}<div class="alert alert-warning"><b>The store is not selling.</b> Missing: {{ missing|join:", " }}</div>{% endif %}
+<nav class="nav nav-pills gap-1 mb-3" aria-label="Orders by state">
+  <a class="nav-link{% if not state %} active{% endif %}" href="?">Where money moved</a>
+  {% for value, label in states %}<a class="nav-link{% if state == value %} active{% endif %}" href="?state={{ value }}">{{ label }}</a>{% endfor %}
+</nav>
+<div class="card"><div class="card-body">
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>Opened</th><th>App</th><th>Publisher</th><th class="text-end">Amount</th><th>State</th><th class="text-end">Receipt</th><th>Buyer</th><th></th></tr></thead>
+    <tbody>
     {% for order in page %}
     <tr><td>{{ order.created|date:"j M Y, H:i" }}</td><td><b>{{ order.app_name }}</b>{% if order.cycle %} <span class="badge">every {{ order.cycle }}</span>{% endif %}</td>
-      <td>{{ order.app.publisher.name }}</td><td class="num">{{ order.amount }} {{ order.currency }}</td>
-      <td>{% include "_state.html" with state=order.status label=order.get_status_display %}</td><td class="num">{{ order.receipt_no|default:"" }}</td>
-      <td>{{ order.payer_email }}</td><td class="num"><a class="button plain small" href="{% url 'operator:order' order.pk %}">Open</a></td></tr>
-    {% empty %}<tr><td colspan="8" class="muted">No order here.</td></tr>
+      <td>{{ order.app.publisher.name }}</td><td class="text-end">{{ order.amount }} {{ order.currency }}</td>
+      <td>{% include "_state.html" with state=order.status label=order.get_status_display %}</td><td class="text-end">{{ order.receipt_no|default:"" }}</td>
+      <td>{{ order.payer_email }}</td><td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'operator:order' order.pk %}">Open</a></td></tr>
+    {% empty %}<tr><td colspan="8" class="text-secondary">No order here.</td></tr>
     {% endfor %}
+    </tbody>
   </table>
-  <div class="row" style="margin-top:16px">
-    {% if page.has_previous %}<a class="button plain small" href="?state={{ state }}&amp;page={{ page.previous_page_number }}">Newer</a>{% endif %}
-    {% if page.has_other_pages %}<span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% endif %}
-    {% if page.has_next %}<a class="button plain small" href="?state={{ state }}&amp;page={{ page.next_page_number }}">Older</a>{% endif %}
   </div>
-</div>
+  <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+    {% if page.has_previous %}<a class="btn btn-outline-secondary btn-sm" href="?state={{ state }}&amp;page={{ page.previous_page_number }}">Newer</a>{% endif %}
+    {% if page.has_other_pages %}<span class="text-secondary">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% endif %}
+    {% if page.has_next %}<a class="btn btn-outline-secondary btn-sm" href="?state={{ state }}&amp;page={{ page.next_page_number }}">Older</a>{% endif %}
+  </div>
+</div></div>
 {% endblock %}

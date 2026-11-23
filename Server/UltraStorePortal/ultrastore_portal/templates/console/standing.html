@@ -2,18 +2,18 @@
 {% block title %}Developer console - UltraStore{% endblock %}
 {% block content %}
 <div class="page-head"><h1>{{ publisher.name }}</h1>{% include "_state.html" with state=publisher.state label=publisher.get_state_display %}</div>
-<div class="panel">
+<div class="card"><div class="card-body">
   {% if publisher.state == "applied" %}
     <h2>Your application is with the operator</h2>
-    <p>Sent {{ publisher.created|date:"j F Y" }}. We mail the decision to {{ publisher.support_email }}; once it is approved you create your first app here.</p>
+    <p class="mb-0">Sent {{ publisher.created|date:"j F Y" }}. We mail the decision to {{ publisher.support_email }}; once it is approved you create your first app here.</p>
   {% elif publisher.state == "rejected" %}
     <h2>The application was not accepted</h2>
     <p>{{ publisher.decision_message|linebreaksbr }}</p>
-    <p class="muted">Write to the store's operator if something here is wrong.</p>
+    <p class="text-secondary mb-0">Write to the store's operator if something here is wrong.</p>
   {% else %}
     <h2>This publisher account is suspended</h2>
     <p>{{ publisher.decision_message|linebreaksbr }}</p>
-    <p class="muted">Its apps are out of the store until the operator reinstates it.</p>
+    <p class="text-secondary mb-0">Its apps are out of the store until the operator reinstates it.</p>
   {% endif %}
-</div>
+</div></div>
 {% endblock %}

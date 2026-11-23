@@ -3,6 +3,7 @@ Apps/UltraStore/core/Catalog.cpp reads (Docs/UltraStore/README.md, *The
 admin backend's settings*). A word added here that the native store does
 not know is refused or ignored there, so the lists move together.
 
+Version: 0.3.0 - which processors go with which system (ARCHITECTURES_OF)
 Version: 0.1.0
 """
 
@@ -52,6 +53,17 @@ ARCHITECTURES = [
     ("universal", "universal (a macOS fat binary)"),
     ("any", "any (no native code)"),
 ]
+
+# Which processors go with which system, where it is not "any of them": a
+# universal binary is a macOS fat binary, wasm32 is WebAssembly's and its only
+# one (UltraStoreTypes.h). The package form offers and accepts only these.
+ARCHITECTURES_OF = {"wasm": ("wasm32", "any")}
+ARCHITECTURE_ONLY_FOR = {"universal": ("macos",), "wasm32": ("wasm",)}
+
+
+def architecture_fits(system: str, arch: str) -> bool:
+    return arch in ARCHITECTURES_OF.get(system, (arch,)) and system in ARCHITECTURE_ONLY_FOR.get(arch, (system,))
+
 
 # The archive formats the native installer unpacks (Installer.cpp), by the
 # file name's ending - the longest first, so .tar.gz is not read as .gz.
