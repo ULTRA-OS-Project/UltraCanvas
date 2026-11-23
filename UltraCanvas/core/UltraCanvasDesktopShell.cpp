@@ -421,6 +421,16 @@ DesktopScreenImage ShrinkImage(const DesktopScreenImage& source, int width, int 
 
 } // namespace
 
+uint64_t UltraCanvasDesktopShell::ShowWindowThumbnail(uint64_t destinationId, uint64_t sourceId, int x, int y,
+                                                      int width, int height) {
+    if (destinationId == 0 || sourceId == 0 || width <= 0 || height <= 0) return 0;
+    return DesktopShellBackend::ShowWindowThumbnail(destinationId, sourceId, x, y, width, height);
+}
+
+void UltraCanvasDesktopShell::HideWindowThumbnail(uint64_t thumbnail) {
+    if (thumbnail != 0) DesktopShellBackend::HideWindowThumbnail(thumbnail);
+}
+
 bool UltraCanvasDesktopShell::CaptureWindowImage(uint64_t id, int maxWidth, int maxHeight, DesktopScreenImage& out,
                                                  std::string* error) {
     std::string reason;
@@ -1129,6 +1139,8 @@ namespace DesktopShellBackend {
         error = "Window pictures are not available on this platform yet.";
         return false;
     }
+    uint64_t ShowWindowThumbnail(uint64_t, uint64_t, int, int, int, int) { return 0; }
+    void HideWindowThumbnail(uint64_t) {}
 
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS
     bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }

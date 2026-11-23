@@ -72,6 +72,7 @@
 // StatusNotifierItem the test exports itself over GDBus, with a pixmap, a
 // tooltip and a dbusmenu, is listed by UltraCanvasTrayHost with its PNG and
 // its menu as data, clicked, hidden and dropped when its connection closes.
+// Version: 1.12.0 - ShowWindowThumbnail: a minimized window's live thumbnail (Windows), none elsewhere
 // Version: 1.11.1 - Windows: SetVirtualDesktopCount adds desktops now (Win+Ctrl+D); the test checks the
 //                  current count is accepted and a smaller one refused, and adds none
 // Version: 1.11.0 - the session lock, a popup and a panel placed by their parent,
@@ -2173,6 +2174,18 @@ int main(int argc, char** argv) {
             const auto minimizedList = UltraCanvasDesktopShell::ListWindows();
             const DesktopWindowInfo* minimized = FindListed(minimizedList, hwnd);
             Check(minimized && minimized->minimized, "and is listed as minimized");
+
+            // A live thumbnail (DWM) of the minimized window in another
+            // window of the test's: what a taskbar preview shows when
+            // PrintWindow has nothing to draw.
+            Check(UltraCanvasDesktopShell::ShowWindowThumbnail(id, id, 0, 0, 200, 120) == 0,
+                  "a window is not given a thumbnail of itself");
+            if (HWND strip = OpenTestWindow("Desktop shell test previews")) {
+                const uint64_t thumbnail = UltraCanvasDesktopShell::ShowWindowThumbnail(IdOf(strip), id, 4, 4, 200, 120);
+                Check(thumbnail != 0, "a minimized window gets a live thumbnail in another window");
+                UltraCanvasDesktopShell::HideWindowThumbnail(thumbnail);
+                DestroyWindow(strip);
+            }
 
             Check(UltraCanvasDesktopShell::CloseWindow(id), "CloseWindow asks it to close");
             Check(PumpUntil([hwnd]() { return IsWindow(hwnd) == FALSE; }, 5000), "the window closes");

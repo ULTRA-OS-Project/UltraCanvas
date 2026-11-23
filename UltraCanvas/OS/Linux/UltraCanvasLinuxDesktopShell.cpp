@@ -703,6 +703,10 @@ bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& 
     return CaptureScreenLocked(out, error, area);
 }
 
+// No compositor thumbnails here: the caller captures the window instead.
+uint64_t ShowWindowThumbnail(uint64_t, uint64_t, int, int, int, int) { return 0; }
+void HideWindowThumbnail(uint64_t) {}
+
 bool CaptureWindowImage(uint64_t id, DesktopScreenImage& out, std::string& error) {
     // X11 keeps no picture of a covered window without a compositor, so the
     // window's rectangle of the screen it is: what lies on top shows too.
