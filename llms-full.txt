@@ -11698,6 +11698,7 @@ FILE: Docs/UltraCanvas/UltraCanvasAlert.md
 - [Overview](#overview)
 - [Why it lives in the dialog system](#why-it-lives-in-the-dialog-system)
 - [Severities](#severities)
+- [The look](#the-look)
 - [Quick Start](#quick-start)
 - [Alerts without the severity icon](#alerts-without-the-severity-icon)
 - [Rich form](#rich-form)
@@ -11717,7 +11718,7 @@ Alerts are **non-blocking**: they show immediately and deliver the user's choice
 through a callback, so the application main loop keeps running underneath.
 
 **File Location**: `include/UltraCanvasAlert.h`
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Author**: UltraCanvas Framework
 
 ## Why it lives in the dialog system
@@ -11730,13 +11731,16 @@ severity-first API on top.
 
 ## Severities
 
-| `AlertSeverity` | `DialogType` | Icon | Accent colour |
-|-----------------|--------------|------|---------------|
-| `Info`          | Information  | `i`  | Steel blue |
-| `Successful`*   | Successful*  | ✓    | Green |
-| `Warning`       | Warning      | `!`  | Amber |
-| `Error`         | Error        | `X`  | Red |
-| `Question`      | Question     | `?`  | Steel blue |
+| `AlertSeverity` | `DialogType` | Glyph (`media/icons/dialog/`) | Colour, light / dark | Theme role |
+|-----------------|--------------|------------------|----------------------|------------|
+| `Info`          | Information  | `information.svg` — circled *i* | the theme's accent | `dialog.information` |
+| `Successful`*   | Successful*  | `success.svg` — check | `#1F8A4C` / `#4CC38A` | `dialog.success` |
+| `Warning`       | Warning      | `warning.svg` — triangle *!* | `#A86200` / `#F0B357` | `dialog.warning` |
+| `Error`         | Error        | `error.svg` — circled cross | the theme's danger | `dialog.error` |
+| `Question`      | Question     | `question.svg` — circled *?* | `#5B44C9` / `#A08CF0` | `dialog.question` |
+
+A theme changes any of them with `theme.SetRole("dialog.warning", ...)`; a
+dialog that does not follow the theme takes the light column.
 
 \* Spelled `Successful` (not `Success`) because `Success` is an X11 macro
 (`#define Success 0`); the framework follows the same rename convention used for
@@ -11744,6 +11748,33 @@ severity-first API on top.
 
 The **Successful** severity is new — it was added to `DialogType` (with a green
 check icon) so success acknowledgements read differently from plain information.
+
+## The look
+
+Every internal alert, confirmation and input dialog is drawn the same way
+(`UltraCanvasModalDialog`, from 3.15.0):
+
+- **The badge** — a 40 px disc filled with the severity colour at 12 % over the
+  panel (16 % in a dark theme), the glyph drawn 22 px in the full colour. When
+  the glyph's file is not shipped, the letter (i ! X ?) stands in.
+- **The heading** — an optional bold line above the message
+  (`AlertOptions::heading`, `DialogConfig::heading`,
+  `UltraCanvasModalDialog::SetHeading`) at the theme's Heading size. It says
+  the point ("Delete 12 items permanently?"); the message under it says the
+  rest. The window's title stays in the title bar.
+- **The buttons** — at the trailing edge, the answers that back out first and
+  the affirmative one last: *Cancel OK*, *No Cancel Yes*. The default answer
+  (Return) is drawn in the accent colour, a destructive one red; every button
+  is 32 px high, at least 84 wide, with 7 px corners.
+- **The button band** — the theme's ground under a hairline of its line
+  colour, so the answers read apart from the message. Anything
+  `AddFooterElement` adds ("Don't ask again", "Apply to all") sits at its
+  leading edge.
+
+The sizes are `ModalDialogStyle`'s (`iconSize`, `iconGlyphSize`,
+`headingFontSize`, `buttonHeight`, `buttonCornerRadius`, `buttonAreaHeight`,
+`footerColor`, `footerLineColor`); `ModalDialogStyle::FromTheme` fills the
+colours and the heading size from the theme.
 
 ## Quick Start
 
@@ -11809,7 +11840,8 @@ horizontally centred.
 ```cpp
 AlertOptions opts;
 opts.severity      = AlertSeverity::Warning;
-opts.title         = "Update available";
+opts.title         = "Updates";
+opts.heading       = "Update available";     // bold, above the message
 opts.message       = "A new version is ready to install.";
 opts.details       = "Version 4.2.0 - the app will restart to finish.";
 opts.buttons       = DialogButtons::OKCancel;
@@ -11827,6 +11859,7 @@ enum class AlertSeverity { Info, Successful, Warning, Error, Question };
 struct AlertOptions {
     std::string message;
     std::string title;        // empty => derived from severity
+    std::string heading;      // optional bold line above the message
     std::string details;      // optional secondary line
     AlertSeverity severity = AlertSeverity::Info;
     bool showIcon = true;     // false => no severity badge, content full width
