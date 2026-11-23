@@ -373,7 +373,6 @@
     "other": "{0} và {n} tệp khác"
   },
   "{0} could not be applied": "Không thể áp dụng {0}",
-  "{0} has unsaved changes. Close it anyway?": "{0} có thay đổi chưa lưu. Vẫn đóng?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

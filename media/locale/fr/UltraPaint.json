@@ -375,7 +375,6 @@
     "other": "{0} et {n} autres fichiers"
   },
   "{0} could not be applied": "{0} n'a pas pu être appliqué",
-  "{0} has unsaved changes. Close it anyway?": "{0} contient des modifications non enregistrées. Le fermer quand même ?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0} : {1}",
   "{n} image has unsaved changes. Quit anyway?": {

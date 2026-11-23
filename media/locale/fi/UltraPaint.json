@@ -375,7 +375,6 @@
     "other": "{0} ja {n} muuta tiedostoa"
   },
   "{0} could not be applied": "Käyttö epäonnistui: {0}",
-  "{0} has unsaved changes. Close it anyway?": "Kohteessa {0} on tallentamattomia muutoksia. Suljetaanko silti?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

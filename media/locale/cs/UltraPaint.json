@@ -379,7 +379,6 @@
     "other": "{0} a ještě {n} souborů"
   },
   "{0} could not be applied": "{0} nelze použít",
-  "{0} has unsaved changes. Close it anyway?": "{0} má neuložené změny. Přesto zavřít?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

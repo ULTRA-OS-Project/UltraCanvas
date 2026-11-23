@@ -375,7 +375,6 @@
     "other": "{0} και {n} ακόμη αρχεία"
   },
   "{0} could not be applied": "Δεν ήταν δυνατή η εφαρμογή: {0}",
-  "{0} has unsaved changes. Close it anyway?": "Το {0} έχει μη αποθηκευμένες αλλαγές. Κλείσιμο παρ' όλα αυτά;",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

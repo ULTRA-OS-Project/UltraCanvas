@@ -375,7 +375,6 @@
     "other": "{0} og {n} filer til"
   },
   "{0} could not be applied": "{0} kunne ikke brukes",
-  "{0} has unsaved changes. Close it anyway?": "{0} har ulagrede endringer. Lukk likevel?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

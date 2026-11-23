@@ -375,7 +375,6 @@
     "other": "{0} i {n} fitxers més"
   },
   "{0} could not be applied": "No s'ha pogut aplicar {0}",
-  "{0} has unsaved changes. Close it anyway?": "{0} té canvis no desats. Voleu tancar-lo igualment?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {

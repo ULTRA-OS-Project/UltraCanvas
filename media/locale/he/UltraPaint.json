@@ -379,7 +379,6 @@
     "other": "{0} ועוד {n} קבצים"
   },
   "{0} could not be applied": "לא ניתן היה להחיל את {0}",
-  "{0} has unsaved changes. Close it anyway?": "ב-{0} יש שינויים שלא נשמרו. לסגור בכל זאת?",
   "{0} x {1} px, {2}": "{0} x {1} px, {2}",
   "{0}: {1}": "{0}: {1}",
   "{n} image has unsaved changes. Quit anyway?": {
