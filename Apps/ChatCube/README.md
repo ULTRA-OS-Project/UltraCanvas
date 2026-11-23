@@ -242,9 +242,10 @@ a back arrow. Building, packaging and what is not there yet:
 
    The field over the messages searches the chat: what you type finds the
    messages with those words in all of its history, and the list shows only
-   them (with how many) until the × shows the whole chat again. The chips
-   under it - *All*, *Pictures*, *Videos*, *Audio*, *Files*, *Links* - show
-   only that kind of message, with or without words.
+   them (with how many) until the × shows the whole chat again. Beside it,
+   in the same row, a segmented control - *All*, then pictures, videos,
+   audio, files and links as icons that name themselves in a tooltip -
+   shows only that kind of message, with or without words.
 
    The microphone beside the field records a **voice message** - the bar in
    its place shows how long, × throws it away, the send button sends it -

@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.12 - the search and the kinds in one row: the kinds a segmented control (All, then
+//                   pictures, videos, audio, files and links as icons with tooltips), the field narrower
 // Version: 0.3.11 - the feature icons (ApplyFeatureIcons): the + menu, smileys & stickers with
 //                   the list of sets, a location from OpenStreetMap, each placed by
 //                   Settings > Display > Feature icons
@@ -77,6 +79,7 @@
 #include "UltraCanvasMapView.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasTextArea.h"
@@ -946,14 +949,17 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     header->AddChild(videoCall_);
     pane->AddChild(header);
 
-    // ----- search: a field over the chat, the list showing what matches -----
+    // ----- search: one row over the chat - the field, how many match, the
+    // kinds (All, then pictures, videos, sound, files and links as icons, each
+    // naming itself in its tooltip) and the x - the list showing what matches -----
     searchRow_ = MakeRow("cc-search-row", 8);
     searchRow_->SetPadding(6, 14, 6, 14);
+    searchRow_->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
     OnLook(searchRow_, [](UltraCanvasContainer& c) {
         c.SetBackgroundColor(L().panel);
         c.SetBorderBottom(1, L().line);
     });
-    searchInput_ = MakeInput("cc-search", Tr("Search in this chat"), 260, true);
+    searchInput_ = MakeInput("cc-search", Tr("Search in this chat"), 160, true);
     searchInput_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     searchInput_->onTextChanged = [this](const std::string&) {
         if (!settingSearch_) ScheduleSearch();
@@ -966,36 +972,56 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     searchInfo_ = MakeLabel("cc-search-info", "", 9.0f, &Look::inkMuted);
     searchInfo_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     searchRow_->AddChild(searchInfo_);
+    // The kinds: the list shows only pictures, videos, sound, files or
+    // messages with a link (with the words, when some are typed)
+    struct KindSegment { UltraIMSearchKind kind; const char* icon; std::string tooltip; };
+    const KindSegment kinds[] = {
+        {UltraIMSearchKind::AnyKind, "", Tr("Everything in this chat")},
+        {UltraIMSearchKind::Images, "filter-pictures", Tr("Pictures")},
+        {UltraIMSearchKind::Videos, "filter-videos", Tr("Videos")},
+        {UltraIMSearchKind::Audio, "filter-audio", Tr("Audio")},
+        {UltraIMSearchKind::Files, "filter-files", Tr("Files")},
+        {UltraIMSearchKind::Links, "filter-links", Tr("Links")}};
+    filterControl_ = CreateSegmentedControl("cc-filter", 0, 0, 0, 30);
+    filterControl_->SetWidthMode(SegmentWidthMode::FitContent);
+    filterKinds_.clear();
+    for (const KindSegment& k : kinds) {
+        const int index = k.icon[0] ? filterControl_->AddSegment("", IconPath(k.icon))
+                                    : filterControl_->AddSegment(Tr("All"));
+        filterControl_->SetSegmentTooltip(index, k.tooltip);
+        filterKinds_.push_back(k.kind);
+    }
+    filterControl_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    OnLook(filterControl_, [](UltraCanvasSegmentedControl& control) {
+        SegmentedControlStyle st = control.GetStyle();
+        st.fontSize = 9.5f;
+        st.iconSize = 16;
+        st.iconAsMask = true;
+        st.paddingHorizontal = 10;
+        st.paddingVertical = 4;
+        st.cornerRadius = 8.0f;
+        st.normalColor = L().panel;
+        st.hoverColor = L().hover;
+        st.selectedColor = L().accent;
+        st.normalTextColor = st.hoverTextColor = L().ink;
+        st.selectedTextColor = L().onAccent;
+        st.disabledTextColor = L().inkFaint;
+        st.borderColor = L().line;
+        st.separatorColor = L().line;
+        control.SetStyle(st);
+    });
+    filterControl_->SetSelectedIndex(0);
+    filterControl_->onSegmentSelected = [this](int index) {
+        if (settingSearch_ || index < 0 || index >= static_cast<int>(filterKinds_.size())) return;
+        SetSearchKind(filterKinds_[static_cast<size_t>(index)]);
+    };
+    searchRow_->AddChild(filterControl_);
     auto searchClear = MakeIconButton("cc-search-clear", "close", "", kIconButton, false, true);
     searchClear->SetTooltip(Tr("Show the whole chat again"));
     searchClear->SetOnClick([this]() { ClearSearch(true); });
     searchRow_->AddChild(searchClear);
     searchRow_->SetVisible(false);
     pane->AddChild(searchRow_);
-    // Under it, the kinds: the list shows only pictures, videos, sound,
-    // files or messages with a link (with the words, when some are typed).
-    auto filterRow = MakeRow("cc-filter-row", 6);
-    filterRow->SetPadding(0, 14, 6, 14);
-    OnLook(filterRow, [](UltraCanvasContainer& c) {
-        c.SetBackgroundColor(L().panel);
-        c.SetBorderBottom(1, L().line);
-    });
-    const std::pair<UltraIMSearchKind, std::string> kinds[] = {
-        {UltraIMSearchKind::AnyKind, Tr("All")},      {UltraIMSearchKind::Images, Tr("Pictures")},
-        {UltraIMSearchKind::Videos, Tr("Videos")},    {UltraIMSearchKind::Audio, Tr("Audio")},
-        {UltraIMSearchKind::Files, Tr("Files")},      {UltraIMSearchKind::Links, Tr("Links")}};
-    for (const auto& [kind, words] : kinds) {
-        auto chip = MakeButton("cc-filter-" + std::to_string(static_cast<int>(kind)), words, 82,
-                               kind == UltraIMSearchKind::AnyKind);
-        chip->size.height = CSSLayout::Dimension::Px(26);
-        chip->SetOnClick([this, k = kind]() { SetSearchKind(k); });
-        filterRow->AddChild(chip);
-        filterChips_.push_back({kind, chip});
-    }
-    // Shown with the search row (OpenConversation / CloseConversationView).
-    filterRow->SetVisible(false);
-    filterRow_ = filterRow;
-    pane->AddChild(filterRow);
 
     // ----- messages -----
     auto empty = std::make_shared<UltraCanvasContainer>("cc-empty-box");
@@ -2316,7 +2342,6 @@ void ChatCubeWindow::CloseConversationView() {
     ClearComposerMode();
     ClearSearch(false);
     searchRow_->SetVisible(false);
-    filterRow_->SetVisible(false);
     activeConversation_.clear();
     messages_->Clear();
     messageList_->SetVisible(false);
@@ -3111,7 +3136,6 @@ void ChatCubeWindow::OpenConversation(const std::string& conversationId) {
     emptyHint_->SetVisible(false);
     messageList_->SetVisible(true);
     searchRow_->SetVisible(true);
-    filterRow_->SetVisible(true);
     fillingList_ = true;
     const int row = conversations_->FindRow(conversationId);
     if (row >= 0) conversationList_->GetSelection()->Select(row);
@@ -4123,12 +4147,10 @@ void ChatCubeWindow::ClearSearch(bool reload) {
     const bool searched = !searchText_.empty() || shownKind_ != UltraIMSearchKind::AnyKind;
     searchText_.clear();
     searchKind_ = shownKind_ = UltraIMSearchKind::AnyKind;
-    for (const auto& [kind, chip] : filterChips_) StyleButton(chip, kind == UltraIMSearchKind::AnyKind);
-    if (searchInput_) {
-        settingSearch_ = true;
-        searchInput_->SetText("");
-        settingSearch_ = false;
-    }
+    settingSearch_ = true;
+    if (filterControl_) filterControl_->SetSelectedIndex(0);    // All
+    if (searchInput_) searchInput_->SetText("");
+    settingSearch_ = false;
     if (searchInfo_) searchInfo_->SetText("");
     if (reload && searched) LoadMessages();
 }
@@ -4380,7 +4402,6 @@ void ChatCubeWindow::StopVoicePlayback() {
 
 void ChatCubeWindow::SetSearchKind(UltraIMSearchKind kind) {
     searchKind_ = kind;
-    for (const auto& [k, chip] : filterChips_) StyleButton(chip, k == kind);
     RunSearch();
     if (window_) window_->RequestRedraw();
 }
