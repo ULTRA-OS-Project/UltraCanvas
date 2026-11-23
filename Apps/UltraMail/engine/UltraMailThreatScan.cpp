@@ -1,6 +1,7 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
 // Version: 0.12.1 - SenderLists: a no-reply address with a code per message
-//                   ("no-reply-<code>@mail.anthropic.com") is one sender (StableAddress)
+//                   ("no-reply-<code>@mail.anthropic.com") is one sender (StableAddress),
+//                   and so is "name+tag@..." (the tag dropped)
 // Version: 0.12.0 - unsolicited-reply: "Re:" / "Fw:" / "WG:" from a stranger, a mailing
 //                   list's post (List-Id) excepted
 // Version: 0.11.3 - a proven sender's links to its own organisation under another suffix
@@ -1281,7 +1282,11 @@ std::string SenderLists::StableAddress(const std::string& bareAddress) {
     // separator and code dropped: "no-reply@mail.anthropic.com".
     const std::size_t at = bareAddress.rfind('@');
     if (at == std::string::npos || at == 0) return bareAddress;
-    const std::string local = bareAddress.substr(0, at);
+    std::string local = bareAddress.substr(0, at);
+    // "name+code@shop.example": a tag on the mailbox (sub-addressing), the
+    // same sender whatever follows the "+".
+    if (const std::size_t plus = local.find('+'); plus != std::string::npos && plus > 0)
+        return local.substr(0, plus) + bareAddress.substr(at);
     static const char* const words[] = {
         "do-not-reply", "do_not_reply", "donotreply", "no-reply", "no_reply", "noreply",
     };

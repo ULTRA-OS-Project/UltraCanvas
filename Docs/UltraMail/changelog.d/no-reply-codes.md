@@ -5,3 +5,5 @@
   *Show images – Always from this sender* only ever applied to the one
   message they were chosen on. Such an address is now one sender
   (`no-reply@mail.anthropic.com`): chosen once, it holds for all its mail.
+  The same goes for a "+tag" on a mailbox: `orders+Q7x2Lm@shop.example` is
+  `orders@shop.example`.

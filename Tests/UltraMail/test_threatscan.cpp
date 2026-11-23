@@ -2121,6 +2121,15 @@ TEST(a_no_reply_address_with_a_code_is_one_sender) {
     for (const char* a : {"no-reply@mail.anthropic.com", "noreplyx@shop.example",
                           "erika-mustermann@example.com", "no-reply-@x.example", "reply-1@x.example"})
         REQUIRE_EQ(SenderLists::StableAddress(a), std::string(a));
+    // A "+tag" on the mailbox: the mailbox alone.
+    REQUIRE_EQ(SenderLists::Normalize("Shop <Orders+Q7x2Lm@Shop.Example>"),
+               std::string("orders@shop.example"));
+    REQUIRE_EQ(SenderLists::StableAddress("+abc@x.example"), std::string("+abc@x.example"));
+    SenderLists tagged;
+    tagged.trusted.insert(SenderLists::Entry("orders+111@shop.example", false));
+    REQUIRE(tagged.Trusts("orders+222@shop.example"));
+    REQUIRE(tagged.Trusts("orders@shop.example"));
+    REQUIRE(!tagged.Trusts("billing+111@shop.example"));
     REQUIRE_EQ(SenderLists::Bare("Anthropic <No-Reply-AB@Mail.Anthropic.com>"),
                std::string("no-reply-ab@mail.anthropic.com"));
 

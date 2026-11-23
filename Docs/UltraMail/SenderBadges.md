@@ -483,8 +483,9 @@ word and the domain alone (`no-reply@mail.anthropic.com`,
 `SenderLists::StableAddress`; `no-reply`, `noreply`, `no_reply`,
 `do-not-reply`, `donotreply` followed by `-`, `_`, `.` or `+` and a code).
 Trusting or blocking it from one message covers all of them, and so does
-*Show images – Always from this sender*. An entry kept with its code before
-this still matches its own message.
+*Show images – Always from this sender*. A "+tag" on any mailbox is dropped
+the same way (`orders+Q7x2Lm@shop.example` is `orders@shop.example`). An
+entry kept with its code or tag before this still matches its own message.
 
 * **Blocked:** the scan adds `blocked-sender` (30, so at least
   **Suspicious**): the orange frame, and the strip above the message says
