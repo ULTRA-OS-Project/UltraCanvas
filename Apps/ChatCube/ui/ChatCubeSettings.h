@@ -6,14 +6,18 @@
 // Everything but the look applies at once; the look is read when ChatCube
 // starts, since every element of the window takes its colours as it is built.
 //
+// Version: 0.4.0 - features: where each feature icon around the message field is (Display > Feature
+//                  icons); emojiSet: the smileys or stickers shown last
 // Version: 0.3.2 - the look applies at once (ChatCube::SetLookChoice / DarkLook replace DarkFor)
 // Version: 0.3.1 - ChatMarks: the conversations pinned to the top and marked unread, kept with the settings
 // Version: 0.3.0 - the relay server is a setting (Networks > Relay), ULTRA OS's own relay by default
 // Version: 0.2.0 - the look is system, light or dark; system follows the desktop
 // Version: 0.1.0
-// Last Modified: 2026-11-14
+// Last Modified: 2026-11-23
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include "ChatCubeFeatures.h"
 
 #include <set>
 #include <string>
@@ -30,6 +34,12 @@ struct Settings {
     std::string look = "system";
     bool      clock24 = true;                       // 14:05; else 2:05 PM
     DateStyle dateStyle = DateStyle::DayMonthYear;
+    // Display: where each feature icon around the message field is - in
+    // the field's row, behind the + button, or not shown
+    FeaturePlaces features;
+    // The set of smileys or stickers the smiley button opens on (its key,
+    // ChatCubeEmoji.h); the one chosen last with the arrow beside it
+    std::string emojiSet = "smileys";
     // Messages
     bool      ctrlEnterSends = false;               // Ctrl+Enter sends and Enter breaks the line
     bool      sendTyping = true;                    // tell the other side while I type

@@ -1,5 +1,8 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.3.11 - the feature icons (ApplyFeatureIcons): the + menu, smileys & stickers with
+//                   the list of sets, a location from OpenStreetMap, each placed by
+//                   Settings > Display > Feature icons
 // Version: 0.3.10 - the screenshot button beside the paperclip: an area of the screen into the
 //                   composer (UltraCanvasScreenAreaPicker); hidden where the screen is not captured
 // Version: 0.3.9 - the composer's text one row high, growing with its text to four rows, then scrolling
@@ -1221,6 +1224,12 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     composerRow_ = composerRow;
     composerRow->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::End);
     composerRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // The + first: the features put behind it (Settings > Display >
+    // Feature icons), then those in the field.
+    plus_ = MakeIconButton("cc-plus", "plus", "", kIconButton);
+    plus_->SetTooltip(Tr("More: pictures, screenshots, places and more"));
+    plus_->SetOnClick([this]() { OpenFeatureMenu(); });
+    composerRow->AddChild(plus_);
     attach_ = MakeIconButton("cc-attach", "attach", "", kIconButton);
     attach_->SetTooltip(Tr("Send a picture, a video or a file"));
     attach_->SetDisabled(true);
@@ -1230,8 +1239,29 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     screenshot_->SetTooltip(Tr("Insert a screenshot: choose a window or drag an area"));
     screenshot_->SetDisabled(true);
     screenshot_->SetOnClick([this]() { TakeScreenshot(); });
-    screenshot_->SetVisible(UltraCanvasDesktopShell::CanCaptureScreen());
     composerRow->AddChild(screenshot_);
+    // Smileys & stickers: the face opens the set chosen last, the narrow
+    // arrow beside it lists the sets
+    emoji_ = MakeIconButton("cc-emoji", "smile", "", kIconButton);
+    emoji_->SetTooltip(Tr("Smileys & stickers"));
+    emoji_->SetOnClick([this]() { OpenEmojiGrid(); });
+    composerRow->AddChild(emoji_);
+    emojiSets_ = MakeIconButton("cc-emoji-sets", "chevron-down", "", 16);
+    emojiSets_->SetIconSize(12, 12);
+    emojiSets_->GetStyle().cornerRadius = 6.0f;
+    emojiSets_->SetTooltip(Tr("Choose the smileys or stickers"));
+    emojiSets_->SetOnClick([this]() { OpenEmojiSets(); });
+    composerRow->AddChild(emojiSets_);
+    emojiPicker_.onEmoji = [this](const std::string& emoji) { InsertIntoMessage(emoji); };
+    emojiPicker_.onSticker = [this](const std::string& path) { StageSticker(path); };
+    emojiPicker_.onSetChosen = [this](const std::string& key) {
+        settings_.emojiSet = key;
+        settings_.Save();
+    };
+    location_ = MakeIconButton("cc-location", "location", "", kIconButton);
+    location_->SetTooltip(Tr("Insert a location (OpenStreetMap)"));
+    location_->SetOnClick([this]() { OpenLocation(); });
+    composerRow->AddChild(location_);
     auto composerText = std::make_shared<ComposerTextArea>("cc-input", 0, 0, 300, kInputHeight);
     input_ = composerText;
     input_->SetEditingMode(TextAreaEditingMode::PlainText);
@@ -1300,6 +1330,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     composerRow->AddChild(send_);
     composer->AddChild(composerRow);
     inputRow->AddChild(composer);
+    ApplyFeatureIcons();
     pane->AddChild(inputRow);
     return pane;
 }
@@ -3103,10 +3134,7 @@ void ChatCubeWindow::UpdateHeader() {
         subtitle_->SetText("");
         headerAvatar_->SetVisible(false);
         headerPhoto_->SetVisible(false);
-        attach_->SetDisabled(true);
-        screenshot_->SetDisabled(true);
-        recordVoice_->SetDisabled(true);
-        recordVideo_->SetDisabled(true);
+        ApplyFeatureIcons();
         return;
     }
     title_->SetText(c->title);
@@ -3130,14 +3158,11 @@ void ChatCubeWindow::UpdateHeader() {
     headerPhoto_->SetVisible(photo);
     // The paperclip, for a network that takes pictures or files.
     const bool attachments = AttachmentsPossible();
-    attach_->SetDisabled(!attachments);
     attach_->SetTooltip(attachments ? Tr("Send a picture, a video or a file")
                                     : Tr("This network does not take pictures or files yet"));
-    screenshot_->SetDisabled(!attachments);
     screenshot_->SetTooltip(attachments ? Tr("Insert a screenshot: choose a window or drag an area")
                                         : Tr("This network does not take pictures or files yet"));
-    recordVoice_->SetDisabled(!attachments);
-    recordVideo_->SetDisabled(!attachments);
+    ApplyFeatureIcons();
     if (const std::string typing = TypingText(*c); !typing.empty()) {
         subtitle_->SetText(typing);
     } else if (c->isGroup) {
@@ -3380,6 +3405,174 @@ std::string ChatCubeWindow::NewCachedPicturePath(const std::string& prefix) cons
                     std::filesystem::exists(folder / PathFromUtf8(name + ".jpg"), ec); ++n)
         name = prefix + "-" + stamp + "-" + std::to_string(n);
     return PathToUtf8(folder / PathFromUtf8(name));
+}
+
+// ===== THE FEATURE ICONS =====
+
+bool ChatCubeWindow::FeatureUsable(Feature feature) const {
+    if (activeConversation_.empty()) return false;
+    switch (feature) {
+        case Feature::Emoji:
+        case Feature::Location:
+            return true;        // text; a sticker or a map picture only where pictures go
+        case Feature::Screenshot:
+            return UltraCanvasDesktopShell::CanCaptureScreen() && AttachmentsPossible();
+        case Feature::Attach:
+        case Feature::VoiceMessage:
+        case Feature::VideoMessage:
+            break;
+    }
+    return AttachmentsPossible();
+}
+
+void ChatCubeWindow::ApplyFeatureIcons() {
+    if (!plus_) return;
+    const auto button = [this](Feature f) -> std::shared_ptr<UltraCanvasButton> {
+        switch (f) {
+            case Feature::Attach: return attach_;
+            case Feature::Emoji: return emoji_;
+            case Feature::Screenshot: return screenshot_;
+            case Feature::Location: return location_;
+            case Feature::VoiceMessage: return recordVoice_;
+            case Feature::VideoMessage: return recordVideo_;
+        }
+        return nullptr;
+    };
+    bool anyBehindPlus = false;
+    for (Feature f : kAllFeatures) {
+        auto b = button(f);
+        if (!b) continue;
+        FeaturePlace place = settings_.features.Get(f);
+        // A screenshot where this system takes none: not offered anywhere
+        if (f == Feature::Screenshot && !UltraCanvasDesktopShell::CanCaptureScreen()) place = FeaturePlace::Off;
+        b->SetVisible(place == FeaturePlace::Field);
+        b->SetDisabled(!FeatureUsable(f));
+        if (f == Feature::Emoji && emojiSets_) {
+            emojiSets_->SetVisible(place == FeaturePlace::Field);
+            emojiSets_->SetDisabled(!FeatureUsable(f));
+        }
+        if (place == FeaturePlace::Menu) anyBehindPlus = true;
+    }
+    plus_->SetVisible(anyBehindPlus);
+    plus_->SetDisabled(activeConversation_.empty());
+    if (composerRow_) composerRow_->InvalidateLayout();
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::RunFeature(Feature feature) {
+    if (!FeatureUsable(feature)) return;
+    switch (feature) {
+        case Feature::Attach: AttachFile(); break;
+        case Feature::Emoji: OpenEmojiGrid(); break;
+        case Feature::Screenshot: TakeScreenshot(); break;
+        case Feature::Location: OpenLocation(); break;
+        case Feature::VoiceMessage: StartVoiceRecording(); break;
+        case Feature::VideoMessage: OpenVideoRecorder(); break;
+    }
+}
+
+Rect2Di ChatCubeWindow::WindowRectOf(UltraCanvasUIElement& element) const {
+    const Point2Df at = element.GetPositionInWindow();
+    return Rect2Di(static_cast<int>(at.x), static_cast<int>(at.y), static_cast<int>(element.GetWidth()),
+                   static_cast<int>(element.GetHeight()));
+}
+
+void ChatCubeWindow::OpenFeatureMenu() {
+    if (!window_ || !plus_) return;
+    featureMenu_ = std::make_shared<UltraCanvasMenu>("cc-feature-menu", 0, 0, 260, 0);
+    featureMenu_->SetMenuType(MenuType::PopupMenu);
+    int items = 0;
+    for (Feature f : kAllFeatures) {
+        if (settings_.features.Get(f) != FeaturePlace::Menu) continue;
+        if (f == Feature::Screenshot && !UltraCanvasDesktopShell::CanCaptureScreen()) continue;
+        // After the menu has gone: a feature may open a window or a popup
+        MenuItemData item = MenuItemData::Action(FeatureName(f), IconPath(FeatureIcon(f)), [this, f]() {
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+                app->PostToUIThread([this, f, alive = std::weak_ptr<bool>(alive_)]() {
+                    if (auto a = alive.lock(); a && *a) RunFeature(f);
+                });
+            }
+        });
+        item.enabled = FeatureUsable(f);
+        featureMenu_->AddItem(item);
+        ++items;
+    }
+    if (items == 0) return;
+    featureMenu_->OpenMenuAnchored(WindowRectOf(*plus_), *window_, PopupElementSettings());
+}
+
+void ChatCubeWindow::OpenEmojiGrid() {
+    if (!window_ || activeConversation_.empty()) return;
+    // From its own button when that is shown, else from the + it is behind
+    UltraCanvasUIElement* anchor = emoji_ && emoji_->IsVisible() ? static_cast<UltraCanvasUIElement*>(emoji_.get())
+                                                                 : static_cast<UltraCanvasUIElement*>(plus_.get());
+    if (!anchor) return;
+    emojiPicker_.OpenGrid(*window_, WindowRectOf(*anchor), settings_.emojiSet);
+}
+
+void ChatCubeWindow::OpenEmojiSets() {
+    if (!window_ || !emojiSets_ || activeConversation_.empty()) return;
+    emojiPicker_.OpenSetList(*window_, WindowRectOf(*emoji_));
+}
+
+void ChatCubeWindow::InsertIntoMessage(const std::string& text) {
+    if (!input_ || text.empty()) return;
+    input_->SetFocus(true);
+    input_->InsertText(text);
+}
+
+void ChatCubeWindow::StageSticker(const std::string& svgPath) {
+    if (!AttachmentsPossible()) {
+        SetStatus(Tr("This network does not take pictures yet."));
+        return;
+    }
+    // As a PNG, which every network shows; the drawing itself if that
+    // cannot be made
+    const std::string base = NewCachedPicturePath("Sticker");
+    if (!base.empty()) {
+        UCImagePtr drawing = UCImage::Get(svgPath);
+        if (drawing && drawing->IsValid()) {
+            const std::string path = base + ".png";
+            UCImageSave::ImageExportOptions options;
+            options.format = UCImageSaveFormat::PNG;
+            options.targetWidth = 256;
+            options.targetHeight = 256;
+            if (drawing->Save(path, options).empty()) {
+                StageAttachment(path, true);
+                return;
+            }
+        }
+    }
+    std::error_code ec;
+    const std::string copy = base.empty() ? std::string() : base + ".svg";
+    if (!copy.empty() && std::filesystem::copy_file(PathFromUtf8(svgPath), PathFromUtf8(copy), ec)) {
+        StageAttachment(copy, true);
+    } else {
+        SetStatus(Tr("The sticker could not be prepared."));
+    }
+}
+
+void ChatCubeWindow::OpenLocation() {
+    if (!window_ || activeConversation_.empty()) return;
+    if (!locationWindow_) {
+        const std::string cache = PathToUtf8(UltraCanvasDataFolder("ChatCube") / "cache" / "pasted");
+        locationWindow_ = std::make_unique<ChatCubeLocationWindow>(
+            version_, cache, [this](const MapPlace& place, const std::string& picture) { InsertLocation(place, picture); });
+    }
+    locationWindow_->Show(window_.get());
+}
+
+void ChatCubeWindow::InsertLocation(const MapPlace& place, const std::string& picturePath) {
+    if (activeConversation_.empty() || !input_) return;
+    bool picture = !picturePath.empty() && AttachmentsPossible();
+    if (picture) StageAttachment(picturePath, true);
+    std::string text = LocationText(place, picture);
+    // On a line of its own after what is written already
+    const std::string written = input_->GetText();
+    if (!written.empty() && written.back() != '\n') text = "\n" + text;
+    input_->MoveCursorToEnd();
+    InsertIntoMessage(text);
+    if (window_) window_->RaiseAndFocus();
 }
 
 // ===== A SCREENSHOT INTO THE COMPOSER =====
@@ -4664,6 +4857,7 @@ void ChatCubeWindow::ApplySettings() {
                                    : Tr("Message\xE2\x80\xA6  (Enter sends, Shift+Enter for a new line)"));
     }
     if (send_) UpdateAttachmentStrip();     // the button's tooltip names the key
+    ApplyFeatureIcons();                    // Display > Feature icons
     // Typing: nothing more goes out, and what was shown goes.
     if (!settings_.sendTyping && !activeConversation_.empty() && lastTypingSentMs_ != 0) {
         lastTypingSentMs_ = 0;

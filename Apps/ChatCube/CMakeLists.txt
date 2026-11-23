@@ -4,6 +4,7 @@
 # Matrix and Telegram: UltraCanvas/Plugins/UltraIM/direct, matrix and
 # telegram, built into <build>/Plugins/UltraIM).
 #
+# Version: 0.1.8 - ChatCubeFeatures.cpp, ChatCubeEmoji.cpp, ChatCubeLocationWindow.cpp: the feature icons
 # Version: 0.1.7 - Android: libChatCube.so with the providers linked in (android/)
 # Version: 0.1.6 - ChatCubeGroupWindow.cpp (the group editor)
 # Version: 0.1.5 - the Mastodon module built with ChatCube
@@ -27,6 +28,9 @@ set(CHATCUBE_SOURCES
     main.cpp
     ui/ChatCubeSettings.cpp
     ui/ChatCubeSettingsWindow.cpp
+    ui/ChatCubeFeatures.cpp
+    ui/ChatCubeEmoji.cpp
+    ui/ChatCubeLocationWindow.cpp
     ui/ChatCubeControls.cpp
     ui/ChatCubeProfileWindow.cpp
     ui/ChatCubeGroupWindow.cpp

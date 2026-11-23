@@ -82,6 +82,10 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.3.16 - the feature icons: a + button with a menu of the features put behind it, the
+//                   smileys & stickers (a grid, and an arrow listing the sets by an example of
+//                   each), a location from OpenStreetMap; Settings > Display > Feature icons
+//                   says which are in the field, behind the +, or not shown
 // Version: 0.3.15 - a screenshot into the composer: the button beside the paperclip hides the
 //                   window, an area of the screen is chosen (UltraCanvasScreenAreaPicker) and
 //                   the picture waits in the strip like a pasted one; the field grows with its text
@@ -143,6 +147,8 @@
 #include "ChatCubeProfileWindow.h"
 #include "ChatCubeSettings.h"
 #include "ChatCubeSettingsWindow.h"
+#include "ChatCubeEmoji.h"
+#include "ChatCubeLocationWindow.h"
 #include "ChatCubeViews.h"
 
 #include "UltraCanvasMediaViewerWindow.h"
@@ -334,6 +340,26 @@ private:
     // screenshot): "<prefix>-<date>-<time>[-n]" with no extension yet, free
     // as .png and .jpg; "" when the folder cannot be made.
     std::string NewCachedPicturePath(const std::string& prefix) const;
+    // The feature icons as Settings > Display > Feature icons places them:
+    // shown in the field's row, behind the + (its menu), or not at all; a
+    // feature the open conversation cannot use is greyed out
+    void ApplyFeatureIcons();
+    // Whether a feature can be used in the open conversation now
+    bool FeatureUsable(Feature feature) const;
+    // A feature started, from its icon or from the + menu
+    void RunFeature(Feature feature);
+    void OpenFeatureMenu();
+    // Smileys & stickers: the grid of the set chosen last, or the list of
+    // sets (the arrow beside it)
+    void OpenEmojiGrid();
+    void OpenEmojiSets();
+    void InsertIntoMessage(const std::string& text);
+    void StageSticker(const std::string& svgPath);
+    // The location window; its place into the message
+    void OpenLocation();
+    void InsertLocation(const MapPlace& place, const std::string& picturePath);
+    // Where an element is in the window, for a menu or popup beside it
+    UltraCanvas::Rect2Di WindowRectOf(UltraCanvas::UltraCanvasUIElement& element) const;
     // Files dropped on the window (an event filter on it): onto a chat in
     // the list, that chat opens and they wait in its strip; anywhere else,
     // they wait in the open chat's. False when the drop carries no file.
@@ -629,6 +655,13 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    attach_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    screenshot_;    // hidden where the screen is not captured
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    plus_;          // the menu of the features behind it
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    emoji_;         // smileys & stickers ...
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    emojiSets_;     // ... and the arrow listing the sets
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    location_;
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu>      featureMenu_;
+    EmojiPicker                                        emojiPicker_;
+    std::unique_ptr<ChatCubeLocationWindow>            locationWindow_;   // made when first opened
     // A screenshot in flight: the wait for the window to leave the screen,
     // the frozen screen, and the picker over it
     uint64_t screenshotTimer_ = 0;

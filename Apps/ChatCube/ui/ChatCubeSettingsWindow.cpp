@@ -20,6 +20,8 @@
 // Version: 0.4.5 - a note on the Signal account (signal-cli)
 // Version: 0.4.4 - a note on the Mattermost and Zulip accounts
 // Version: 0.4.3 - Mastodon in the notes on accounts, the data folder and the networks
+// Version: 0.5.0 - Display > Feature icons: where each icon around the message field is - in the
+//                  field, behind the + button, or not shown
 // Version: 0.4.2 - the look follows a change while open (OnLook): a choice on the Look page shows at once
 // Version: 0.4.1 - every text a person reads through Tr (UltraLocalisation)
 // Version: 0.4.0 - Networks > Relay: the relay server, no longer asked on the sign-in page
@@ -38,6 +40,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
@@ -84,6 +87,8 @@ constexpr const char* kPageStart       = "start";
 constexpr const char* kPageAppearance  = "appearance";
 constexpr const char* kPageLook        = "appearance/look";
 constexpr const char* kPageTime        = "appearance/time";
+constexpr const char* kPageDisplay     = "display";
+constexpr const char* kPageFeatures    = "display/features";
 constexpr const char* kPageMessages    = "messages";
 constexpr const char* kPageSending     = "messages/sending";
 constexpr const char* kPageTyping      = "messages/typing";
@@ -126,6 +131,8 @@ struct ChatCubeSettingsWindow::State {
     UltraCanvasRadioGroup             clockGroup;
     std::vector<std::pair<DateStyle, std::shared_ptr<UltraCanvasRadio>>> dateRadios;
     UltraCanvasRadioGroup             dateGroup;
+    // Display > Feature icons: one dropdown a feature, kAllFeatures' order
+    std::vector<std::shared_ptr<UltraCanvasDropdown>> featureDrops;
     // Messages > Sending
     std::shared_ptr<UltraCanvasRadio> enterRadio, ctrlEnterRadio;
     UltraCanvasRadioGroup             sendKeyGroup;
@@ -417,6 +424,68 @@ std::shared_ptr<UltraCanvasContainer> BuildTimePage(State* d) {
 
     AddNote(parts, "cc-set-time-note1",
             Tr("Times are this computer's local time. A change shows at once, in the open conversation too."));
+    return parts.page;
+}
+
+// ===== DISPLAY > FEATURE ICONS =====
+
+std::shared_ptr<UltraCanvasContainer> BuildFeaturesPage(State* d) {
+    PageParts parts = MakePage("cc-set-page-features", Tr("Feature icons"),
+                               Tr("Where each icon beside the message field is:"));
+    const FeaturePlace places[] = {FeaturePlace::Field, FeaturePlace::Menu, FeaturePlace::Off};
+    d->featureDrops.clear();
+    for (Feature feature : kAllFeatures) {
+        const std::string key = FeatureKey(feature);
+        auto row = std::make_shared<UltraCanvasContainer>("cc-set-feature-" + key);
+        row->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->size.width = CSSLayout::Dimension::Px(kTextWidth);
+        row->SetPadding(4, 0, 4, 0);
+        auto icon = std::make_shared<UltraCanvasImageElement>("cc-set-feature-icon-" + key, 0, 0, 20, 20);
+        icon->LoadFromFile(IconPath(FeatureIcon(feature)));
+        icon->SetFitMode(ImageFitMode::Contain);
+        icon->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->AddChild(icon);
+        auto words = std::make_shared<UltraCanvasContainer>("cc-set-feature-words-" + key);
+        words->layout.SetFlexColumn().SetFlexGap(1);
+        words->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        words->AddChild(MakeLabel("cc-set-feature-name-" + key, FeatureName(feature)));
+        words->AddChild(MakeText("cc-set-feature-text-" + key, FeatureDescription(feature), 230, kNoteFontSize,
+                                 &Look::inkMuted));
+        row->AddChild(words);
+        auto drop = std::make_shared<UltraCanvasDropdown>("cc-set-feature-place-" + key, 0, 0, 180, kControlHeight);
+        drop->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        OnLook(drop, [](UltraCanvasDropdown& dd) {
+            DropdownStyle st = DropdownStyle::FromTheme(UltraCanvasTheme::Current(), dd.GetStyle());
+            st.fontSize = kTextFontSize;
+            st.cornerRadius = 6.0f;
+            dd.SetStyle(st);
+        });
+        int selected = 0;
+        for (int i = 0; i < 3; ++i) {
+            drop->AddItem(PlaceName(places[i]), PlaceKey(places[i]));
+            if (d->settings->features.Get(feature) == places[i]) selected = i;
+        }
+        drop->SetSelectedIndex(selected, false);
+        drop->onSelectionChanged = [d, feature](int, const DropdownItem& item) {
+            d->settings->features.Set(feature, PlaceFromKey(item.value, DefaultPlace(feature)));
+            ApplyAndSave(d);
+        };
+        d->featureDrops.push_back(drop);
+        row->AddChild(drop);
+        parts.body->AddChild(row);
+    }
+    d->resets[kPageFeatures] = [d]() {
+        d->settings->features = FeaturePlaces();
+        size_t i = 0;
+        for (Feature feature : kAllFeatures) {
+            const FeaturePlace p = d->settings->features.Get(feature);
+            d->featureDrops[i++]->SetSelectedIndex(p == FeaturePlace::Field ? 0 : p == FeaturePlace::Menu ? 1 : 2, false);
+        }
+    };
+    AddNote(parts, "cc-set-features-note1",
+            Tr("Behind the + button: the + beside the field opens a menu of these; it is shown only while "
+               "something is behind it. A change shows at once."));
     return parts.page;
 }
 
@@ -714,6 +783,8 @@ std::shared_ptr<UltraCanvasContainer> BuildStartPage() {
     PageParts parts = MakePage("cc-set-page-start", Tr("Settings"), Tr("Open a section on the left and choose the page to set:"));
     AddNote(parts, "cc-set-start-note1",
             Tr("Appearance - the light or the dark look, and how times and dates are written."));
+    AddNote(parts, "cc-set-start-note-display",
+            Tr("Display - which feature icons are beside the message field and which behind its + button."));
     AddNote(parts, "cc-set-start-note2",
             Tr("Messages - the key that sends, and whether typing is shown, to the other side and to you."));
     AddNote(parts, "cc-set-start-note3",
@@ -811,6 +882,8 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     AddTreeNode(d, "settings", kPageAppearance, Tr("Appearance"));
     AddTreeNode(d, kPageAppearance, kPageLook, Tr("Look"));
     AddTreeNode(d, kPageAppearance, kPageTime, Tr("Time & date"));
+    AddTreeNode(d, "settings", kPageDisplay, Tr("Display"));
+    AddTreeNode(d, kPageDisplay, kPageFeatures, Tr("Feature icons"));
     AddTreeNode(d, "settings", kPageMessages, Tr("Messages"));
     AddTreeNode(d, kPageMessages, kPageSending, Tr("Sending"));
     AddTreeNode(d, kPageMessages, kPageTyping, Tr("Typing"));
@@ -834,6 +907,7 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
 
     AddPage(d, kPageLook, BuildLookPage(d));
     AddPage(d, kPageTime, BuildTimePage(d));
+    AddPage(d, kPageFeatures, BuildFeaturesPage(d));
     AddPage(d, kPageSending, BuildSendingPage(d));
     AddPage(d, kPageTyping, BuildTypingPage(d));
     AddPage(d, kPageAccounts, BuildAccountsPage(d));
