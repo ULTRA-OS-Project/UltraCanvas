@@ -1,6 +1,11 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.15.0 - The redesigned alert: a round badge tinted in the type colour with a drawn
+//                  glyph (media/icons/dialog/), an optional heading above the message
+//                  (DialogConfig::heading, SetHeading), the buttons at the trailing edge with
+//                  the default answer last and in the accent, the footer on a band of its own
+//                  under a hairline; type colours for light and dark (GetTypeColor, "dialog.*" roles)
 // Version: 3.14.0 - InputDialogConfig::iconAboveInput: a picture centred above the input field (the
 //                  Unlock dialog's lock), in the dialog's text colour; ShowInputDialog(config, ...)
 // Version: 3.13.0 - SetStyle: a change of type sizes only keeps the dialog following the theme, and
@@ -95,16 +100,22 @@ namespace UltraCanvas {
 // ===== DIALOG STYLE =====
     struct ModalDialogStyle {
         // Spacing
-        float padding = 16.0f;
+        float padding = 20.0f;
         float sectionSpacing = 12.0f;
-        float buttonSpacing = 10.0f;
-        float iconMessageSpacing = 12.0f;
+        float buttonSpacing = 8.0f;
+        float iconMessageSpacing = 16.0f;
 
-        // Icon
-        float iconSize = 48.0f;
-        float iconFontSize = 20.0f;
+        // Icon: a round badge iconSize across, filled with a tint of the type
+        // colour, the type's glyph (media/icons/dialog/<type>.svg) drawn
+        // iconGlyphSize across in the type colour. iconFontSize is the letter
+        // shown instead when the glyph's file is missing.
+        float iconSize = 40.0f;
+        float iconGlyphSize = 22.0f;
+        float iconFontSize = 18.0f;
 
         // Typography
+        // The heading (DialogConfig::heading) above the message, semibold.
+        float headingFontSize = 15.0f;
         float messageFontSize = 12.0f;
         float detailsFontSize = 11.0f;
         // The footer buttons' label size; 0 keeps UltraCanvasButton's own
@@ -113,17 +124,23 @@ namespace UltraCanvas {
         float buttonFontSize = 0.0f;
 
         // Buttons
-        float buttonWidth = 80.0f;
-        float buttonHeight = 28.0f;
-        float buttonAreaHeight = 50.0f;
+        float buttonWidth = 84.0f;
+        float buttonHeight = 32.0f;
+        float buttonAreaHeight = 56.0f;
+        float buttonCornerRadius = 7.0f;
 
         // Colors
+        Color headingTextColor = Color(27, 31, 36);
         Color messageTextColor = Colors::Black;
         Color detailsTextColor = Colors::DarkGray;
+        // The button band: its fill and the hairline above it
+        Color footerColor = Color(247, 248, 250);
+        Color footerLineColor = Color(227, 230, 235);
 
         static ModalDialogStyle Default() { return ModalDialogStyle(); }
-        // The theme's ink for the message and muted ink for the details,
-        // over a base's own sizes (or the default)
+        // The theme's ink for the heading and the message, muted ink for the
+        // details, the ground and hairline for the button band; the heading
+        // at the theme's Heading size; over a base's own sizes (or the default)
         static ModalDialogStyle FromTheme(const UltraCanvasTheme& theme, const ModalDialogStyle& base);
         static ModalDialogStyle FromTheme(const UltraCanvasTheme& theme) { return FromTheme(theme, ModalDialogStyle()); }
         static ModalDialogStyle FromTheme() { return FromTheme(UltraCanvasTheme::Current()); }
@@ -133,6 +150,11 @@ namespace UltraCanvas {
 // DialogConfig extends WindowConfig with dialog-specific properties
     struct DialogConfig : public WindowConfig {
         // Dialog content
+        // A short line in bold above the message ("Save changes to
+        // “Chapter 3.md”?"), the message then says the rest. Empty: no
+        // heading, the message stands alone. The window's title stays the
+        // title bar's.
+        std::string heading;
         std::string message;
         std::string details;
         DialogType dialogType = DialogType::Information;
@@ -235,7 +257,8 @@ namespace UltraCanvas {
         InputDialogConfig() : DialogConfig() {
             buttons = DialogButtons::OKCancel;
             width = 400;
-            height = 150;
+            // a one-line prompt, its field and the button band
+            height = 160;
         }
     };
 
@@ -344,8 +367,13 @@ namespace UltraCanvas {
 
         // ===== CONTENT COMPONENTS =====
         std::shared_ptr<UltraCanvasContainer> iconContainer;
+        // The type's glyph; the letter in iconLabel when its file is missing
+        std::shared_ptr<UltraCanvasImageElement> iconImage;
+        std::string iconImagePath;   // the file iconImage holds
         std::shared_ptr<UltraCanvasLabel> iconLabel;
         std::shared_ptr<UltraCanvasContainer> messageContainer;
+        // DialogConfig::heading above the message; hidden while it is empty
+        std::shared_ptr<UltraCanvasLabel> headingLabel;
         // The message (and optional details) are rendered by a read-only,
         // word-wrapping Markdown text area. It supplies its own vertical
         // scrollbar when the text is taller than the (capped) dialog.
@@ -395,6 +423,8 @@ namespace UltraCanvas {
 
         // ===== PROPERTIES =====
         void SetDialogTitle(const std::string& title);
+        void SetHeading(const std::string& heading);
+        std::string GetHeading() const;
         void SetMessage(const std::string& message);
         void SetDetails(const std::string& details);
         void SetDialogType(DialogType type);
@@ -409,6 +439,7 @@ namespace UltraCanvas {
         void SetMessageVisible(bool visible);
         bool IsMessageVisible() const;
         void SetDialogButtons(DialogButtons buttons);
+        // The answer Return gives; it is drawn in the accent colour.
         void SetDefaultButton(DialogButton button);
         // The dialog's sizes and colours. A style that changes the colours
         // stops the dialog following the theme, as any element's SetStyle
@@ -513,8 +544,24 @@ namespace UltraCanvas {
         // ===== TYPE-SPECIFIC =====
         void UpdateIconAppearance();
         void UpdateMessageContent();
+        // The type's colour: the theme's accent (Information) and danger
+        // (Error), and a green, violet and amber for Successful, Question and
+        // Warning, lighter in a dark theme. A theme overrides any with the
+        // roles "dialog.information", "dialog.success", "dialog.question",
+        // "dialog.warning", "dialog.error". Light values while the dialog
+        // does not follow the theme.
         Color GetTypeColor() const;
+        // The badge's fill: the type colour, 12 % over the panel (16 % dark)
+        Color GetTypeTint() const;
         std::string GetTypeIcon() const;
+        // media/icons/dialog/<type>.svg, "" for Custom
+        std::string GetTypeIconPath() const;
+        // The footer's band and its buttons' looks: the default answer
+        // Primary, the others Standard, a destructive one red; rounded by
+        // style.buttonCornerRadius. From `theme` (none: the current one)
+        // while following the theme, the style's own colours otherwise.
+        void UpdateFooterLook(const UltraCanvasTheme* theme = nullptr);
+        void UpdateHeading();
         void ApplyTypeDefaults();
 
         // ===== AUTO-SIZING =====
