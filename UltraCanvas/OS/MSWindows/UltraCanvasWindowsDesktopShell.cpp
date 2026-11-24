@@ -1614,6 +1614,44 @@ std::vector<DesktopScreenInfo> ListScreens() {
 
 // Call it from the thread the window belongs to (the UI thread): the appbar
 // windows are made there.
+// ===== MINIMIZED WINDOWS WITHOUT EXPLORER =====
+
+namespace {
+    // A minimized window shown as a title bar on the screen (Windows parks
+    // them along the bottom edge when ARW_HIDE is off): moved off the
+    // screen, where Explorer keeps minimized windows, still minimized.
+    BOOL CALLBACK UnparkMinimizedWindow(HWND hwnd, LPARAM) {
+        if (!IsWindowVisible(hwnd) || !IsIconic(hwnd)) return TRUE;
+        RECT rect = {};
+        if (!GetWindowRect(hwnd, &rect) || (rect.left <= -30000 && rect.top <= -30000)) return TRUE;
+        WINDOWPLACEMENT placement = {};
+        placement.length = sizeof(placement);
+        if (!GetWindowPlacement(hwnd, &placement)) return TRUE;
+        placement.flags |= WPF_SETMINPOSITION;
+        placement.ptMinPosition.x = -32000;
+        placement.ptMinPosition.y = -32000;
+        placement.showCmd = SW_SHOWMINNOACTIVE;
+        SetWindowPlacement(hwnd, &placement);
+        return TRUE;
+    }
+}
+
+bool KeepMinimizedWindowsHidden() {
+    // Explorer's taskbar looks after them while it runs.
+    if (ExplorerTaskbarRunning()) return false;
+    MINIMIZEDMETRICS metrics = {};
+    metrics.cbSize = sizeof(metrics);
+    // The shell guard sets it at sign-in; an Explorer started and ended
+    // later in the session puts it back as it ends.
+    if (SystemParametersInfoW(SPI_GETMINIMIZEDMETRICS, sizeof(metrics), &metrics, 0) &&
+        (metrics.iArrange & ARW_HIDE) == 0) {
+        metrics.iArrange |= ARW_HIDE;
+        SystemParametersInfoW(SPI_SETMINIMIZEDMETRICS, sizeof(metrics), &metrics, 0);
+    }
+    EnumWindows(UnparkMinimizedWindow, 0);
+    return true;
+}
+
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     const HWND owner = ToHwnd(id);
     if (id == 0 || !IsWindow(owner)) return false;

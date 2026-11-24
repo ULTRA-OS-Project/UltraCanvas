@@ -474,6 +474,8 @@ From then on, UltraDesktop is the whole desktop:
 - **Win+V** opens UltraDesktop's clipboard history;
 - the **wallpaper** covers every monitor, and a monitor you plug in is covered
   within a few seconds;
+- **minimized windows** go to their taskbar buttons only, as with Explorer,
+  never to small title bars along the bottom of the screen;
 - the **⚙ right-click menu** offers **Sign out...**, **Restart...** and **Shut
   down...**. Each asks first, and open programs are asked to close.
 

@@ -2336,6 +2336,12 @@ void UltraDesktopWindow::OnTimer() {
         ticksSinceNotices_ = 0;
         ApplyNotices();
     }
+    // As the session's shell on Windows, minimized windows stay out of
+    // sight - not parked as title bars along the bottom of the screen.
+    if (++ticksSinceMinimized_ >= kMinimizedTicks) {
+        ticksSinceMinimized_ = 0;
+        UltraCanvasDesktopShell::KeepMinimizedWindowsHidden();
+    }
 
     if (screenshotBadgeTicks_ > 0 && --screenshotBadgeTicks_ == 0 && organiser_) {
         organiser_->ClearItemBadge("screenshot");
