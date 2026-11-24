@@ -182,6 +182,24 @@ void UltraCanvasSpreadsheet::RemoveSheetAt(int index, SpreadsheetUndoAction* rec
         sheets_[i]->SetIndex(i);
     }
 
+    // The workbook's names scoped to it go with it; those covering it stay
+    // and stand for #REF!, as in Excel. What they were is kept for undo.
+    if (record) record->workbookNames.clear();
+    const std::string removedLower = LowerName(removedName);
+    for (auto it = namedRanges_.begin(); it != namedRanges_.end();) {
+        NamedRange& named = it->second;
+        const bool scopedHere = LowerName(named.sheetScope) == removedLower;
+        const bool coversIt = LowerName(named.range.start.sheetName) == removedLower;
+        if (!scopedHere && !coversIt) { ++it; continue; }
+        if (record) record->workbookNames[it->first] = named;
+        if (scopedHere) {
+            it = namedRanges_.erase(it);
+            continue;
+        }
+        named.range = NoNamedRange();   // ResolveNamedRange: invalid; the formula: #REF!
+        ++it;
+    }
+
     if (onSheetRemove) onSheetRemove(index);
     RecalculateAll();   // the #REF! formulas show it
 
@@ -211,6 +229,18 @@ void UltraCanvasSpreadsheet::RestoreDeletedSheet(const SpreadsheetUndoAction& ac
     sheets_.insert(sheets_.begin() + index, std::move(sheet));
     for (int i = 0; i < (int)sheets_.size(); ++i) {
         sheets_[i]->SetIndex(i);
+    }
+
+    // The workbook's names it took away or broke come back - under the
+    // sheet's new name, if it had to take one.
+    const std::string originalLower = LowerName(action.sheetName);
+    for (auto [key, named] : action.workbookNames) {
+        if (ptr->GetName() != action.sheetName) {
+            if (LowerName(named.sheetScope) == originalLower) named.sheetScope = ptr->GetName();
+            if (LowerName(named.range.start.sheetName) == originalLower) named.range.start.sheetName = ptr->GetName();
+            if (LowerName(named.range.end.sheetName) == originalLower) named.range.end.sheetName = ptr->GetName();
+        }
+        namedRanges_[NamedRangeKey(named.sheetScope, named.name)] = named;
     }
 
     // The references the delete turned to #REF! name the sheet again.
@@ -1385,6 +1415,11 @@ CellRange UltraCanvasSpreadsheet::GetNamedRange(const std::string& name, const s
     auto it = namedRanges_.find(NamedRangeKey(sheetScope, name));
     if (it != namedRanges_.end()) return NamedRangeWithSheet(it->second);
     return NoNamedRange();
+}
+
+bool UltraCanvasSpreadsheet::IsNamedRangeVisible(const std::string& name, const std::string& fromSheet) const {
+    return (!fromSheet.empty() && namedRanges_.count(NamedRangeKey(fromSheet, name)) > 0) ||
+           namedRanges_.count(NamedRangeKey("", name)) > 0;
 }
 
 CellRange UltraCanvasSpreadsheet::ResolveNamedRange(const std::string& name, const std::string& fromSheet) const {

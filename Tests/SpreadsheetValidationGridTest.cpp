@@ -82,6 +82,10 @@ int main() {
     TypeInto(*grid, 0, 1, "45%");
     Check(grid->GetCellNumber(0, 1) == 0.45 && grid->GetCellDisplayValue(0, 1) == "45%",
           "a typed 45% is the percentage 0.45 [" + grid->GetCellDisplayValue(0, 1) + "]");
+    TypeInto(*grid, 0, 1, "nan");
+    Check(grid->GetCellText(0, 1) == "nan" && grid->GetCellNumber(0, 1) == 0.0, "a typed nan is the word, not a NaN");
+    TypeInto(*grid, 0, 1, "0x10");
+    Check(grid->GetCellText(0, 1) == "0x10", "a typed 0x10 is text, not 16 [" + grid->GetCellDisplayValue(0, 1) + "]");
     grid->ClearCell(0, 1);
 
     std::printf("\n-- Stop: Cancel puts the old value back --\n");

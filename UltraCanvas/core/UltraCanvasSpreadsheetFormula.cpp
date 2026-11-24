@@ -965,7 +965,7 @@ FormulaValue FormulaEvaluator::Evaluate(const FormulaNode* node) {
             return EvaluateFunction(node);
         case FormulaNodeType::NamedRef: {
             CellRange range = GetNamedRange(node->namedRef);
-            if (!range.IsValid()) return FormulaValue::Error(CellErrorType::NameError);
+            if (!range.IsValid()) return FormulaValue::Error(NamedRangeError(node->namedRef));
             auto values = FlattenRange(range);
             return values.empty() ? FormulaValue::Empty() : values[0];
         }
@@ -1043,7 +1043,7 @@ FormulaValue FormulaEvaluator::EvaluateFunction(const FormulaNode* node) {
             rangeArgs.push_back(FlattenRange(a.range));
         } else if (child->nodeType == FormulaNodeType::NamedRef) {
             a.index = args.size();
-            args.push_back(FormulaValue::Error(CellErrorType::NameError));
+            args.push_back(FormulaValue::Error(NamedRangeError(child->namedRef)));
         } else {
             a.index = args.size();
             args.push_back(Evaluate(child.get()));
@@ -1186,6 +1186,15 @@ std::vector<FormulaValue> FormulaEvaluator::FlattenRange(const CellRange& range)
         }
     }
     return result;
+}
+
+CellErrorType FormulaEvaluator::NamedRangeError(const std::string& name) const {
+    // A name the formula sees whose sheet was deleted: #REF!; no such name: #NAME?.
+    if (spreadsheet_ &&
+        spreadsheet_->IsNamedRangeVisible(name, currentSheet_ ? currentSheet_->GetName() : std::string())) {
+        return CellErrorType::ReferenceError;
+    }
+    return CellErrorType::NameError;
 }
 
 CellRange FormulaEvaluator::GetNamedRange(const std::string& name) const {

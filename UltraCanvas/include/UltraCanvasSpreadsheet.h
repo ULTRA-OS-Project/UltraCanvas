@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.9.0 - deleting a sheet removes the names scoped to it and makes those covering it #REF!
+//                  (IsNamedRangeVisible); undo brings them back
 // Version: 1.8.0 - named ranges: one per scope and name, a scoped one visible only from its sheet and
 //                  covering it, following renames (ResolveNamedRange)
 // Version: 1.7.0 - inserting / deleting rows and columns is undone and redone (it was a placeholder step
@@ -69,6 +71,8 @@ struct SpreadsheetUndoAction {
     int sheetIndex = -1;
     int toIndex = -1;
     std::vector<FormulaText> rewrittenFormulas;
+    // SheetDelete (and SheetInsert undone): workbookNames holds the names
+    // removing the sheet took away or turned to #REF!, as they were.
     // RowInsert / RowDelete / ColumnInsert / ColumnDelete: the sheet as it
     // was on the other side of the step (removedSheet, same id), the other
     // sheets' formulas it rewrote (rewrittenFormulas) and the workbook's
@@ -633,6 +637,11 @@ public:
     // that sheet, else the workbook's - never another sheet's. An invalid
     // range when neither exists (the formula shows #NAME?).
     CellRange ResolveNamedRange(const std::string& name, const std::string& fromSheet) const;
+    // Whether a formula on `fromSheet` sees a name `name` at all. A name it
+    // sees whose range is invalid covered a sheet since deleted: #REF!, not
+    // #NAME?. Deleting a sheet removes the names scoped to it and breaks
+    // those covering it; undoing the delete brings both back.
+    bool IsNamedRangeVisible(const std::string& name, const std::string& fromSheet) const;
     std::vector<std::string> GetNamedRangeNames() const;
     
     // ===== FORMULA ENGINE =====

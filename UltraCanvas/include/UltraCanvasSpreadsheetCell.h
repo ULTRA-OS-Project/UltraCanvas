@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetCell.h
 // Spreadsheet cell data structure with value, formatting, and formula support
+// Version: 1.4.0 - a typed "nan", "inf" or "0x10" is text, not a number
 // Version: 1.3.0 - a typed "45%" is the percentage 0.45 (it was text); a percentage under General shows as one
 // Version: 1.2.0 - DataValidationListItems
 // Version: 1.1.0 - ValidateValue checks the cell's rule (it accepted everything); CheckDataValidation
@@ -18,6 +19,7 @@
 #include <cstring>
 #include <cstdio>
 #include <cctype>
+#include <cmath>
 
 namespace UltraCanvas {
 
@@ -614,11 +616,22 @@ inline void SpreadsheetCell::SetValueFromString(const std::string& input) {
         number.pop_back();
         while (!number.empty() && std::isspace(static_cast<unsigned char>(number.back()))) number.pop_back();
     }
-    if (!number.empty()) {
+    // Only what a person writes a number with: digits, a sign, the decimal
+    // point or comma, an exponent ("1.5e3"). std::stod also reads "nan",
+    // "inf", "infinity" and hexadecimal ("0x10", "0x1p3"), which typed into
+    // a cell are words, not numbers - "nan" became a NaN, "0x10" became 16.
+    const size_t first = number.find_first_not_of(" \t");
+    bool plain = first != std::string::npos;
+    for (size_t k = plain ? first : 0; plain && k < number.size(); ++k) {
+        const char ch = number[k];
+        plain = std::isdigit(static_cast<unsigned char>(ch)) || ch == '+' || ch == '-' ||
+                ch == '.' || ch == ',' || ch == 'e' || ch == 'E';
+    }
+    if (plain) {
         try {
             size_t pos;
             double num = std::stod(number, &pos);   // locale-ok: cell entry - what the user typed, in their locale
-            if (pos == number.length()) {
+            if (pos == number.length() && std::isfinite(num)) {
                 if (percent) SetPercentage(num / 100.0);
                 else SetNumber(num);
                 return;

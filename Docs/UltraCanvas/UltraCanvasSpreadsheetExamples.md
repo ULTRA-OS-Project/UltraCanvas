@@ -748,6 +748,9 @@ grid->RemoveNamedRange("Total", "Jan");                       // that one only
 - **Following the sheet.** Renaming a sheet renames the scope and the covered
   sheet of its names. Inserting or deleting rows or columns moves the names
   covering that sheet.
+- **Deleting a sheet.** The names scoped to it go with it. Workbook names
+  covering it stay, and a formula using one shows `#REF!` (`#NAME?` is for a
+  name that does not exist). Undoing the delete brings both back.
 
 ## Formula language and functions
 

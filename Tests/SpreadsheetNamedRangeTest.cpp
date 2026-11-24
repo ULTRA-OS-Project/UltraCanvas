@@ -7,7 +7,9 @@
 //  - the same name scoped to two sheets ("Total" on each month) kept only the
 //    last one;
 //  - a name that did not exist read A1 instead of giving #NAME?;
-//  - renaming a sheet left the names scoped to it or covering it behind.
+//  - renaming a sheet left the names scoped to it or covering it behind;
+//  - deleting a sheet kept its names, broken; Excel drops those scoped to it
+//    and shows #REF! for those covering it.
 // Driven on the grid with no window.
 //
 // Usage: SpreadsheetNamedRangeTest
@@ -114,6 +116,35 @@ int main() {
     Check(book->HasNamedRange("Rate", "") && !book->HasNamedRange("Rate", "Data"), "only Data's Rate is gone");
     book->Recalculate();
     Check(Number(*book, 1, 3, 1) == 60.0, "Data now sees the workbook's Rate [" + Shown(*book, 1, 3, 1) + "]");
+
+    std::printf("\n-- deleting the sheet a name belongs to --\n");
+    {
+        auto wb = std::make_shared<UltraCanvasSpreadsheet>("wb", 0, 0, 900, 600);
+        wb->AddSheet("Gone");                          // sheet 1
+        Value(*wb, 1, 0, 0, 5.0);                      // Gone.A1
+        CellRange onGone(0, 0, 0, 0);
+        onGone.start.sheetName = onGone.end.sheetName = "Gone";
+        wb->AddNamedRange("Price", onGone);            // workbook name covering Gone
+        wb->AddNamedRange("Local", CellRange(0, 0, 0, 0), "Gone");   // scoped to Gone
+        Formula(*wb, 0, 0, 0, "=Price*2");             // Sheet1.A1
+        Check(Number(*wb, 0, 0, 0) == 10.0, "Price*2 = 10 before");
+        wb->RemoveSheet(1);
+        Check(Shown(*wb, 0, 0, 0) == "#REF!", "a name covering the deleted sheet is #REF! [" + Shown(*wb, 0, 0, 0) + "]");
+        Check(wb->HasNamedRange("Price", "") && !wb->GetNamedRange("Price").IsValid(), "and stays, broken");
+        Check(!wb->HasNamedRange("Local"), "a name scoped to it is gone with it");
+        Formula(*wb, 0, 1, 0, "=SUM(Price)");          // as a function's argument
+        Check(Shown(*wb, 0, 1, 0) == "#REF!", "SUM(Price) is #REF! too [" + Shown(*wb, 0, 1, 0) + "]");
+        wb->SetCellValue(0, 1, 0.0);                   // clear that formula again
+        wb->ClearCell(0, 1);
+        wb->Undo();                                    // the clear
+        wb->Undo();                                    // the value
+        wb->Undo();                                    // the SUM formula
+        wb->Undo();                                    // the delete
+        Check(wb->GetSheetCount() == 2, "undo brings the sheet back");
+        Check(wb->GetNamedRange("Price").start.sheetName == "Gone" && wb->HasNamedRange("Local", "Gone"),
+              "and both names");
+        Check(Number(*wb, 0, 0, 0) == 10.0, "Price*2 = 10 again [" + Shown(*wb, 0, 0, 0) + "]");
+    }
 
     std::printf("\n%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
     return failures;

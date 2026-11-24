@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetFormula.h
 // Formula parser and evaluation engine (OpenFormula compatible)
+// Version: 1.4.0 - NamedRangeError: a name whose sheet was deleted is #REF!, not #NAME?
 // Version: 1.3.0 - AdjustReferences / GetAdjustedText removed (unused; shifted every reference by a
 //                  fixed offset whatever was inserted, and rebuilt the text in parentheses)
 // Version: 1.2.0 - Recalculate follows a change to every formula that reads it (directly or through
@@ -541,6 +542,9 @@ public:
     
     // Get named range
     CellRange GetNamedRange(const std::string& name) const;
+    // The error a name that gives no range stands for: #REF! when it names a
+    // range on a sheet since deleted, #NAME? when there is no such name.
+    CellErrorType NamedRangeError(const std::string& name) const;
 
     // The arguments of the function call whose implementation is running,
     // in the order written (empty outside a call).

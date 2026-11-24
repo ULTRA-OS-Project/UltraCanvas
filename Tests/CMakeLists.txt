@@ -476,7 +476,9 @@ message(STATUS "    Test registered: ArchiveRunTest")
 # and UltraDBAdmin's streamed one), and a record read back by CSVParse.
 # Header-only, no UI.
 message(STATUS "  Building CSVFormatRecordTest...")
-add_executable(CSVFormatRecordTest ${CMAKE_CURRENT_SOURCE_DIR}/CSVFormatRecordTest.cpp)
+# CSVTryParseNumber reads numbers with ParseFloatClassic (UltraCanvasTextUtils.cpp).
+add_executable(CSVFormatRecordTest ${CMAKE_CURRENT_SOURCE_DIR}/CSVFormatRecordTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp)
 target_include_directories(CSVFormatRecordTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(CSVFormatRecordTest PRIVATE cxx_std_20)
 set_target_properties(CSVFormatRecordTest PROPERTIES

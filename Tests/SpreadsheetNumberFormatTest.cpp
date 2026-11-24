@@ -121,6 +121,18 @@ static void TestTypedPercentage() {
         CHECK(c.GetValueType() == CellValueType::Text);
         CHECK_EQ(c.GetDisplayValue(), std::string(text));
     }
+    // Words std::stod reads as numbers, and hexadecimal, stay text.
+    for (const char* text : { "nan", "NaN", "inf", "-Infinity", "0x10", "0X1p3", "nan%", "inf%", "1e400" }) {
+        SpreadsheetCell c;
+        c.SetValueFromString(text);
+        CHECK(c.GetValueType() == CellValueType::Text);
+        CHECK_EQ(c.GetDisplayValue(), std::string(text));
+    }
+    for (const char* text : { "1e5", "-2.5E-3", "+7", " 12" }) {
+        SpreadsheetCell c;
+        c.SetValueFromString(text);
+        CHECK(c.GetValueType() == CellValueType::Number);
+    }
     SpreadsheetCell plain;
     plain.SetValueFromString("45");
     CHECK(plain.GetValueType() == CellValueType::Number);
