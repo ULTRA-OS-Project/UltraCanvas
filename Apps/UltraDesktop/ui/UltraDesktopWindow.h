@@ -448,7 +448,11 @@ private:
     UltraCanvas::Rect2Di boardRect_;    // where PlaceCategoryBoard last put it
     std::shared_ptr<UltraDesktopAppStarter> appStarter_;
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
+    // Only with the message centre: without it the host's type is never
+    // complete here (a build for Android, MobilePC's).
     std::unique_ptr<UltraCanvas::UltraCanvasNotificationToastHost> toasts_;
+#endif
 
     // The clock: the analog face or the digital time, and the date under it
     // (as DesktopSettings::clockStyle says), refreshed when the time shown

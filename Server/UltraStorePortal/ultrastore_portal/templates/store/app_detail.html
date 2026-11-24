@@ -108,6 +108,12 @@
   <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">{% for app in more %}<div class="col">{% include "_app_card.html" %}</div>{% endfor %}</div>
 </section>
 {% endif %}
+{% if ads %}
+<section class="ad-row">
+  <div class="d-flex align-items-baseline gap-3 mb-3"><h2>Sponsored - similar apps</h2></div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">{% for ad in ads %}<div class="col">{% include "_ad_card.html" %}</div>{% endfor %}</div>
+</section>
+{% endif %}
 {% if similar %}
 <section>
   <div class="d-flex align-items-baseline gap-3 mb-3"><h2>Similar apps</h2></div>

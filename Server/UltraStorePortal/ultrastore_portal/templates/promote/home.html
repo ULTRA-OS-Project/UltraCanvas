@@ -1,0 +1,39 @@
+{% extends "console/base.html" %}
+{% block title %}Advertising - Developer console{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Advertising</h1><a class="btn btn-outline-secondary ms-auto" href="{% url 'promote:balance' %}">Balance: {{ balance.amount }} {{ currency }}</a></div>
+<div class="panels">
+{% if balance.amount <= 0 %}<div class="alert alert-warning"><b>Your advertising balance is empty.</b> Campaigns wait until there is one. <a href="{% url 'promote:balance' %}">The balance</a></div>{% endif %}
+<div><div class="row row-cols-2 row-cols-lg-4 g-3">
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Shown, {{ report.days }} days</span><b>{{ report.total.shown }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Clicks</span><b>{{ report.total.clicks }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Spent, {{ currency }}</span><b>{{ report.total.spent|floatformat:2 }}</b></div></div></div>
+  <div class="col"><div class="card tile h-100"><div class="card-body"><span class="text-secondary">Installs and orders</span><b>{{ report.total.installs }} / {{ report.total.orders }}</b></div></div></div>
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>Campaigns</h2>
+  {% if rows %}
+  <div class="table-responsive">
+  <table class="table align-middle">
+    <thead><tr><th>App</th><th>State</th><th class="text-end">A day</th><th class="text-end">Shown</th><th class="text-end">Clicks</th><th class="text-end">Spent</th><th class="text-end">Orders</th><th></th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+    <tr><td><a href="{% url 'promote:campaign' row.campaign.pk %}"><b>{{ row.campaign.app.name }}</b></a></td>
+      <td><span class="badge" title="{{ row.sentence }}">{{ row.word }}</span>{% if row.word != "running" %} <span class="small text-secondary">{{ row.sentence }}</span>{% endif %}</td>
+      <td class="text-end">{{ row.campaign.daily_budget }}</td><td class="text-end">{{ row.total.shown }}</td><td class="text-end">{{ row.total.clicks }}</td>
+      <td class="text-end">{{ row.total.spent|floatformat:2 }}</td><td class="text-end">{{ row.total.orders }}</td>
+      <td class="text-end"><a class="btn btn-outline-secondary btn-sm" href="{% url 'promote:campaign' row.campaign.pk %}">Open</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<div class="empty">No campaign yet. Promote an app and its card is shown, marked <i>Sponsored</i>, in the store's search, its lists and beside similar apps. You pay when someone clicks.</div>{% endif %}
+</div></div>
+<div class="card"><div class="card-body">
+  <h2>Promote an app</h2>
+  {% if apps %}<div class="d-flex flex-wrap gap-2">{% for app in apps %}<a class="btn btn-soft-primary" href="{% url 'console:promote' app.app_id %}">Promote {{ app.name }}</a>{% endfor %}</div>
+  {% else %}<p class="text-secondary mb-0">Create an app first.</p>{% endif %}
+</div></div>
+{% if report.by_day %}<div class="card"><div class="card-body"><h2>By day</h2>{% include "promote/_report.html" with rows=report.by_day head="Day" %}</div></div>{% endif %}
+</div>
+{% endblock %}

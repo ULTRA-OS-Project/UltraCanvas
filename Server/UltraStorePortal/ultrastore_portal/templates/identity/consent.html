@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Sign in to {{ client.name }} - {{ brand }}{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Sign in to {{ client.name }}?</h1>
+  <p class="text-secondary"><b>{{ client.name }}</b> ({{ host }}) asks to sign you in with your account, {{ user.email }}.</p>
+  {% if scopes %}
+  <p class="mb-1">It will be told:</p>
+  <ul>{% for scope, label in scopes %}<li>{{ label }}</li>{% endfor %}</ul>
+  {% else %}
+  <p>It will be told that it is you, and nothing about you.</p>
+  {% endif %}
+  <p class="small text-secondary">It never sees your password, and it knows you by a number made for it alone. You can take the access back on your account's page.</p>
+  <form method="post" action="{% url 'oidc:decide' %}" class="mt-4 d-flex gap-2">
+    {% csrf_token %}<input type="hidden" name="request" value="{{ key }}">
+    <button class="btn btn-primary btn-lg" name="decision" value="allow">Allow</button>
+    <button class="btn btn-outline-secondary btn-lg" name="decision" value="deny">Cancel</button>
+  </form>
+</div>
+{% endblock %}

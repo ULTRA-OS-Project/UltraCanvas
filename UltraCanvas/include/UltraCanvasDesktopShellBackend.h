@@ -3,6 +3,8 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.12.0 - EmbeddedHost: an in-program window manager answers where
+//                  no native backend does (Android's desktop mode)
 // Version: 1.11.0 - macOS: the screen's capture native
 //                  (ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
 // Version: 1.10.0 - CanOpenDisplaySettings, OpenDisplaySettings
@@ -16,7 +18,7 @@
 // Version: 1.4.0 - DesktopReplacement::Instead, the tray host, EndSession
 // Version: 1.3.0 - the Windows backend; ListNativeApplications;
 //                  in place of the system's desktop
-// Last Modified: 2026-11-23
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASDESKTOPSHELLBACKEND_H
@@ -49,6 +51,36 @@
 
 namespace UltraCanvas {
 namespace DesktopShellBackend {
+
+    // Where there is no native backend, a window manager running inside the
+    // program (UltraCanvasEmbeddedWindowManager, through the Android desktop
+    // mode) can answer the window, screen and application calls instead:
+    // the fallback forwards them to the host installed here. Every call
+    // comes on the UI thread, except none - the shell monitor's thread only
+    // waits for NotifyEmbeddedChange.
+    class EmbeddedHost {
+    public:
+        virtual ~EmbeddedHost() = default;
+        virtual std::string Name() = 0;
+        virtual std::vector<DesktopWindowInfo> ListWindows() = 0;
+        virtual uint64_t GetActiveWindow() = 0;
+        virtual bool ActivateWindow(uint64_t id) = 0;
+        virtual bool MinimizeWindow(uint64_t id) = 0;
+        virtual bool CloseWindow(uint64_t id) = 0;
+        virtual bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height) = 0;
+        virtual bool MoveWindowTo(uint64_t id, int x, int y) = 0;
+        virtual bool GetScreenSize(int& width, int& height) = 0;
+        virtual std::vector<DesktopScreenInfo> ListScreens() = 0;
+        virtual bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) = 0;
+        virtual bool ListApplications(int iconSize, std::vector<UCDesktopEntry>& out) = 0;
+        virtual bool LaunchShortcut(const std::string& shortcutPath, std::string& error) = 0;
+    };
+    // Null removes it. The host outlives every call that may reach it.
+    void SetEmbeddedHost(EmbeddedHost* host);
+    EmbeddedHost* GetEmbeddedHost();
+    // The windows changed: a window opened or closed, the active one or a
+    // title changed. Wakes the shell monitors (UltraCanvasDesktopShellMonitor).
+    void NotifyEmbeddedChange();
 
     std::string BackendName();
     bool        IsAvailable();

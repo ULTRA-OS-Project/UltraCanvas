@@ -1,12 +1,13 @@
 // OS/Android/UltraCanvasAndroidWindow.cpp
 // Android window implementation for UltraCanvas Framework.
+// Version: 1.5.0 - desktop mode: a window of the embedded window manager
 // Version: 1.4.0 - the destructor releases the native half (the drawing surface)
 // Version: 1.3.0 - in-place rotation: re-read the window's own size, log each new frame size,
 //                 and no blank frame on resize
 // Version: 1.2.0 - surface at the window's real pixel size, not logical x scale
 // Version: 1.1.0 - logs the first frame it presents, for the emulator smoke test
 // Version: 1.0.0
-// Last Modified: 2026-11-03
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -15,6 +16,8 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasAndroidWindow.h"
 #include "UltraCanvasAndroidApplication.h"
+#include "UltraCanvasAndroidDesktop.h"
+#include "UltraCanvasEmbeddedWindowFrame.h"
 #include "UltraCanvasDebug.h"
 
 #include <android/configuration.h>
@@ -52,6 +55,28 @@ namespace UltraCanvas {
             return false;
         }
 
+        UltraCanvasAndroidDesktop& desktop = UltraCanvasAndroidDesktop::Get();
+        if (desktop.TakesNewWindow()) {
+            // One of the desktop's windows: placed by the window manager, its
+            // surface at its own size, composited onto the desktop's output.
+            desktopClient = true;
+            desktopFrame = UltraCanvasEmbeddedWindowFrame::IsCreatingFrame();
+            RefreshDeviceScale();
+            const Rect2Di placed = desktop.WindowCreated(this);
+            config_.x = LogicalToPhysical(placed.x);
+            config_.y = LogicalToPhysical(placed.y);
+            config_.width = placed.width;
+            config_.height = placed.height;
+            SetBounds(Rect2Di(0, 0, config_.width, config_.height));
+            if (!CreateDesktopSurface()) {
+                desktop.WindowDestroyed(this);
+                desktopClient = false;
+                return false;
+            }
+            return true;
+        }
+        if (desktop.IsEnabled()) desktop.SetPhoneWindow(this);
+
         nativeWindow = application->GetNativeWindow();
         if (!nativeWindow) {
             debugOutput << "UltraCanvas Android: no ANativeWindow yet - windows must "
@@ -85,8 +110,28 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAndroidWindow::DestroyNative() {
+        UltraCanvasAndroidDesktop& desktop = UltraCanvasAndroidDesktop::Get();
+        if (desktopClient || desktop.IsPhoneWindow(this)) desktop.WindowDestroyed(this);
         DestroyNativeCairoSurface();
         nativeWindow = nullptr;   // borrowed from the activity, never released here
+    }
+
+    bool UltraCanvasAndroidWindow::CreateDesktopSurface() {
+        const int pixW = std::max(1, LogicalToPhysical(config_.width));
+        const int pixH = std::max(1, LogicalToPhysical(config_.height));
+        nativeSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, pixW, pixH);
+        if (!nativeSurface ||
+            cairo_surface_status(static_cast<cairo_surface_t*>(nativeSurface)) != CAIRO_STATUS_SUCCESS) {
+            debugOutput << "UltraCanvas Android: desktop window surface failed (" << pixW << "x"
+                        << pixH << ")" << std::endl;
+            if (nativeSurface) cairo_surface_destroy(static_cast<cairo_surface_t*>(nativeSurface));
+            nativeSurface = nullptr;
+            return false;
+        }
+        cairo_surface_set_device_scale(static_cast<cairo_surface_t*>(nativeSurface), deviceScale, deviceScale);
+        cairo_surface_set_fallback_resolution(static_cast<cairo_surface_t*>(nativeSurface),
+                                              96.0 * deviceScale, 96.0 * deviceScale);
+        return true;
     }
 
     // ===== SURFACE MANAGEMENT =====
@@ -139,6 +184,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasAndroidWindow::RecreateNativeSurface() {
         DestroyNativeCairoSurface();
+        if (desktopClient) return CreateDesktopSurface();
         if (!CreateNativeCairoSurface()) {
             debugOutput << "UltraCanvas Android: failed to recreate Cairo surface"
                         << std::endl;
@@ -158,6 +204,7 @@ namespace UltraCanvas {
     }
 
     float UltraCanvasAndroidWindow::QueryNativeDeviceScale() const {
+        if (desktopClient) return UltraCanvasAndroidDesktop::Get().GetOutputScale();
         android_app* app = UltraCanvasAndroidApplication::GetAndroidApp();
         if (app && app->config) {
             const int32_t density = AConfiguration_getDensity(app->config);
@@ -172,11 +219,18 @@ namespace UltraCanvas {
     // ===== PRESENTATION =====
 
     void UltraCanvasAndroidWindow::InvalidateWindowNative() {
+        if (desktopClient) {
+            UltraCanvasAndroidDesktop::Get().WindowPresented(this);
+            return;
+        }
         PresentSurface();
     }
 
     void UltraCanvasAndroidWindow::PresentSurface() {
         if (!nativeSurface || !nativeWindow) return;
+        // The desktop is drawn on the phone's screen: the phone's own window
+        // waits until it moves to an external display.
+        if (UltraCanvasAndroidDesktop::Get().DesktopOnPhone()) return;
 
         auto* surface = static_cast<cairo_surface_t*>(nativeSurface);
         cairo_surface_flush(surface);
@@ -246,6 +300,7 @@ namespace UltraCanvas {
     // ===== SURFACE LIFECYCLE (activity commands) =====
 
     void UltraCanvasAndroidWindow::HandleNativeSurfaceCreated(ANativeWindow* window) {
+        if (desktopClient) return;
         nativeWindow = window;
         if (!_created) return;   // CreateNative will pick it up
 
@@ -274,6 +329,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAndroidWindow::HandleNativeSurfaceDestroyed() {
+        if (desktopClient) return;
         // The buffer queue dies with the surface; every reference must be gone
         // before the command handler returns. The offscreen render context
         // survives, so the next INIT_WINDOW only recomposites.
@@ -291,7 +347,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAndroidWindow::HandleNativeSurfaceResized() {
-        if (!nativeWindow) return;
+        if (desktopClient || !nativeWindow) return;
+        if (UltraCanvasAndroidDesktop::Get().DesktopOnPhone()) return;   // the desktop's geometry
         RefreshDeviceScale();
 
         // Once ANativeWindow_setBuffersGeometry has set a size, the window
@@ -335,30 +392,129 @@ namespace UltraCanvas {
         if (onWindowShow) onWindowShow();
         AddDirtyRectangle(Rect2Di(0, 0, config_.width, config_.height));
         RequestWindowComposition();
+        if (desktopClient) UltraCanvasAndroidDesktop::Get().WindowShown(this);
     }
 
     void UltraCanvasAndroidWindow::Hide() {
         if (!_created || !_windowVisible) return;
         _windowVisible = false;
+        if (desktopClient) UltraCanvasAndroidDesktop::Get().WindowHidden(this);
         HandleWindowHidden();
         if (onWindowHide) onWindowHide();
     }
 
-    void UltraCanvasAndroidWindow::RaiseAndFocus() {}
-    void UltraCanvasAndroidWindow::SetWindowTitle(const std::string& title) {
-        config_.title = title;   // no title bar; kept for GetWindowTitle()
+    void UltraCanvasAndroidWindow::RaiseAndFocus() {
+        if (desktopClient) {
+            UltraCanvasAndroidDesktop::Get().GetWindowManager().Activate(UltraCanvasAndroidDesktop::IdOf(this));
+        }
     }
+
+    void UltraCanvasAndroidWindow::SetWindowTitle(const std::string& title) {
+        config_.title = title;   // phone: no title bar; kept for GetWindowTitle()
+        if (desktopClient) UltraCanvasAndroidDesktop::Get().WindowTitleChanged(this);
+    }
+
     void UltraCanvasAndroidWindow::SetWindowIcon(const std::string&) {}
-    void UltraCanvasAndroidWindow::SetWindowPosition(int, int) {}
-    void UltraCanvasAndroidWindow::SetWindowSize(int, int) {}
-    void UltraCanvasAndroidWindow::Minimize() {}
-    void UltraCanvasAndroidWindow::Maximize() {}
-    void UltraCanvasAndroidWindow::Restore() {}
-    void UltraCanvasAndroidWindow::SetFullscreen(bool) {}
-    void UltraCanvasAndroidWindow::SetResizable(bool) {}
+
+    void UltraCanvasAndroidWindow::SetWindowPosition(int x, int y) {
+        if (!desktopClient) return;
+        config_.x = x;
+        config_.y = y;
+        if (!_created) return;
+        auto& wm = UltraCanvasAndroidDesktop::Get().GetWindowManager();
+        const uint64_t id = UltraCanvasAndroidDesktop::IdOf(this);
+        wm.SetRect(id, Rect2Di(PhysicalToLogical(x), PhysicalToLogical(y), config_.width, config_.height));
+        EmbeddedWindowInfo info;
+        if (wm.GetInfo(id, info)) {
+            config_.x = LogicalToPhysical(info.rect.x);
+            config_.y = LogicalToPhysical(info.rect.y);
+        }
+    }
+
+    void UltraCanvasAndroidWindow::SetWindowSize(int width, int height) {
+        if (!desktopClient) return;
+        if (!_created) {
+            config_.width = width;
+            config_.height = height;
+            return;
+        }
+        auto& wm = UltraCanvasAndroidDesktop::Get().GetWindowManager();
+        const uint64_t id = UltraCanvasAndroidDesktop::IdOf(this);
+        EmbeddedWindowInfo info;
+        if (!wm.GetInfo(id, info)) return;
+        wm.SetRect(id, Rect2Di(info.rect.x, info.rect.y, width, height));
+        wm.GetInfo(id, info);
+        if (info.rect.width != config_.width || info.rect.height != config_.height) {
+            _expectProgrammaticResize = true;
+            HandleResizeEvent(info.rect.width, info.rect.height);
+            _expectProgrammaticResize = false;
+        }
+    }
+
+    void UltraCanvasAndroidWindow::Minimize() {
+        if (desktopClient) UltraCanvasAndroidDesktop::Get().GetWindowManager().Minimize(UltraCanvasAndroidDesktop::IdOf(this));
+    }
+
+    void UltraCanvasAndroidWindow::Maximize() {
+        if (desktopClient) UltraCanvasAndroidDesktop::Get().GetWindowManager().Maximize(UltraCanvasAndroidDesktop::IdOf(this));
+    }
+
+    void UltraCanvasAndroidWindow::Restore() {
+        if (desktopClient) UltraCanvasAndroidDesktop::Get().GetWindowManager().Restore(UltraCanvasAndroidDesktop::IdOf(this));
+    }
+
+    void UltraCanvasAndroidWindow::SetFullscreen(bool fullscreen) {
+        // The desktop has no full screen of its own: the work area.
+        if (!desktopClient) return;
+        if (fullscreen) Maximize();
+        else Restore();
+    }
+
+    void UltraCanvasAndroidWindow::SetResizable(bool resizable) {
+        config_.resizable = resizable;
+    }
+
+    // ===== DESKTOP MODE =====
+
+    void UltraCanvasAndroidWindow::DesktopGeometryChanged(const Rect2Di& rect) {
+        config_.x = LogicalToPhysical(rect.x);
+        config_.y = LogicalToPhysical(rect.y);
+        if (rect.width != config_.width || rect.height != config_.height) {
+            HandleResizeEvent(rect.width, rect.height);
+        }
+    }
+
+    void UltraCanvasAndroidWindow::DesktopScaleChanged() {
+        if (!desktopClient || !_created) return;
+        if (RefreshDeviceScale()) HandleDeviceScaleChange();
+    }
+
+    void UltraCanvasAndroidWindow::SetDesktopState(WindowState state) {
+        if (_state == state) return;
+        const WindowState was = _state;
+        _state = state;
+        if (state == WindowState::Minimized) {
+            if (onWindowMinimize) onWindowMinimize();
+        } else if (state == WindowState::Maximized) {
+            if (onWindowMaximize) onWindowMaximize();
+        } else if (was == WindowState::Minimized || was == WindowState::Maximized) {
+            if (onWindowRestore) onWindowRestore();
+        }
+    }
+
+    void UltraCanvasAndroidWindow::GetWindowPosition(int& x, int& y) const {
+        x = desktopClient ? config_.x : 0;
+        y = desktopClient ? config_.y : 0;
+    }
 
     void UltraCanvasAndroidWindow::GetScreenSize(int& width, int& height) const {
         // Physical px, matching the desktop backends' convention.
+        if (desktopClient) {
+            const Size2Di size = UltraCanvasAndroidDesktop::Get().GetOutputPhysicalSize();
+            width = size.width;
+            height = size.height;
+            return;
+        }
         if (nativeWindow) {
             width = ANativeWindow_getWidth(nativeWindow);
             height = ANativeWindow_getHeight(nativeWindow);
@@ -369,6 +525,9 @@ namespace UltraCanvas {
     }
 
     NativeWindowHandle UltraCanvasAndroidWindow::GetNativeHandle() const {
+        // A desktop window has no ANativeWindow of its own: the window itself
+        // is its handle, unique and never 0.
+        if (desktopClient) return const_cast<UltraCanvasAndroidWindow*>(this);
         return static_cast<NativeWindowHandle>(nativeWindow);
     }
 

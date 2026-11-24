@@ -4,6 +4,6 @@ confirm that this address is yours by opening this link. It is good for two days
 
 {{ link }}
 
-If you did not create an UltraStore account, ignore this mail: nothing happens without the link.
+If you did not create an account, ignore this mail: nothing happens without the link.
 
-UltraStore
+{{ brand|default:"UltraStore" }}

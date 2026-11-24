@@ -137,8 +137,12 @@ namespace UltraCanvas {
 
     private:
         // The single top-level window the activity surface backs (the first
-        // registered window); popups/dialogs render in-process on top of it.
+        // registered window; in desktop mode the phone's own window, or
+        // none); popups/dialogs render in-process on top of it.
         UltraCanvasAndroidWindow* GetPrimaryWindow();
+        // Where keys and the IME's text go: the desktop's focused window in
+        // desktop mode, else the primary window.
+        UltraCanvasAndroidWindow* GetKeyboardWindow();
 
         // android_native_app_glue callbacks (userData carries `this`).
         static void HandleAppCmdThunk(android_app* app, int32_t cmd);

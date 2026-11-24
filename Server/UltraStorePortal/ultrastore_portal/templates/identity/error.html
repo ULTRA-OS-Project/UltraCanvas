@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Sign-in not possible - {{ brand }}{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>This sign-in cannot go on</h1>
+  <p>{{ message }}</p>
+  <p class="text-secondary">Nothing was passed on to anyone. If you came here from a service, tell its owner what this page says.</p>
+</div>
+{% endblock %}
