@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopClipboardPanel.cpp
 // The clipboard quick panel. See UltraDesktopClipboardPanel.h.
+// Version: 0.2.1 - 420 px wide: the footer fits in every language
 // Version: 0.2.0 - SetParentWindow (the desktop window places the panel on Wayland)
 // Version: 0.1.2 - SetScreenArea
 // Version: 0.1.1 - the row's icons follow the history's iconSide (left or right of the text)
@@ -30,7 +31,10 @@ using namespace UltraCanvas;
 namespace UltraDesktop {
 namespace {
 
-constexpr int kPanelWidth = 386;
+// Wide enough for the recording switch and "Open UltraClipboard" side by
+// side in every language (Greek needs 411 px; at 386 the button ran past
+// the edge in Czech, Greek, Hungarian and Romanian).
+constexpr int kPanelWidth = 420;
 constexpr int kPanelHeight = 484;
 constexpr size_t kRecentShown = 10;   // unpinned entries when nothing is searched
 constexpr size_t kFoundShown = 40;
