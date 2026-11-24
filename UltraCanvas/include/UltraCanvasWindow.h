@@ -1,6 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
-// Version: 2.12.4 - iOS: an #error naming the missing backend, not an include of OS/iOS/
+// Version: 2.12.4 - iOS: an #error naming the missing backend, not an include of OS/iOS/;
+//                   iOS left out of the supported-platforms #error
 // Version: 2.12.3 - WindowType::Overlay documented: the screen-area picker's window, keyable above the
 //                   menu bar on macOS
 // Version: 2.12.2 - alwaysOnTop and SetTransientParent say what each is for: a dialog is
@@ -812,7 +813,7 @@ namespace UltraCanvas {
         #error "Unsupported Apple platform"
     #endif
 #else
-#error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
+#error "No supported platform defined. Supported platforms: Linux, Windows, macOS, Android, Web/WASM, Unix"
 #endif
 
 namespace UltraCanvas {

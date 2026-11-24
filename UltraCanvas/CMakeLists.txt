@@ -1,6 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.5.1 - an iOS configure stops with a message naming the missing backend
+# Version: 1.5.1 - an iOS, tvOS, visionOS or watchOS configure stops with a message naming the
+#                  missing backend
 # Version: 1.5.0 - ultracanvas-module-link-probes: every module archive linked on its
 #                  own, whole, with no core, so an undeclared dependency fails here
 # Version: 1.4.9 - uc-net links UltraCanvasTextUtils, so a program that links UltraNet
@@ -176,15 +177,16 @@ option(ULTRACANVAS_PLUGIN_RTP    "Build the UltraNet RTP receiver plug-in (UDP-n
 if(WIN32)
     set(ULTRACANVAS_PLATFORM "Windows")
     set(ULTRACANVAS_PLATFORM_DIR "OS/MSWindows")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    # Must be tested before APPLE: an iOS toolchain sets APPLE too, and the
+elseif(CMAKE_SYSTEM_NAME MATCHES "^(iOS|tvOS|visionOS|watchOS)$")
+    # Must be tested before APPLE: these toolchains set APPLE too, and the
     # branch below would quietly pick the AppKit backend (OS/MacOS) and fail
-    # much later on Cocoa, IOKit or CoreWLAN, none of which iOS has. There is
-    # no OS/iOS backend yet; the headers stop an iOS compile the same way
-    # (UltraCanvasWindow.h, UltraCanvasApplication.h).
+    # much later on Cocoa, IOKit or CoreWLAN, none of which they have. There
+    # is no backend for Apple's UIKit platforms yet; the headers stop such a
+    # compile the same way (UltraCanvasWindow.h, UltraCanvasApplication.h:
+    # TARGET_OS_IPHONE is set on all four).
     message(FATAL_ERROR
-        "UltraCanvas has no iOS backend yet (CMAKE_SYSTEM_NAME=iOS).\n"
-        "  The macOS backend (OS/MacOS) is AppKit-only and cannot be used on iOS.\n"
+        "UltraCanvas has no ${CMAKE_SYSTEM_NAME} backend yet (CMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}).\n"
+        "  The macOS backend (OS/MacOS) is AppKit-only and cannot be used there.\n"
         "  What an iOS port needs - backend, dependencies, GL, CMake: "
         "Docs/UltraCanvas/iOSPortInvestigation.md")
 elseif(APPLE)

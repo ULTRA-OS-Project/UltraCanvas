@@ -1,6 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.19.1 - iOS: an #error naming the missing backend, not an include of OS/iOS/
+// Version: 1.19.1 - iOS: an #error naming the missing backend, not an include of OS/iOS/;
+//                  iOS left out of the supported-platforms #error
 // Version: 1.19.0 - Appearance.conf over the host, the settings watcher (a change reaches a running application)
 // Version: 1.18.0 - under FollowHost, Light and Dark the elements follow the theme by default
 // Version: 1.17.0 - the theme policy (SetThemePolicy / SetThemeProvider): the theme built
@@ -737,7 +738,7 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWindowsApplica
         #error "Unsupported Apple platform"
     #endif
 #else
-    #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
+    #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, Android, Web/WASM, Unix"
 #endif
 
 #endif

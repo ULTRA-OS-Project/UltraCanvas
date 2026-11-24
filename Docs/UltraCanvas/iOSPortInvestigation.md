@@ -5,7 +5,8 @@ exists: there is no `UltraCanvas/OS/iOS/`, no iOS CMake branch beyond the one
 that stops the configure, no dependency build and no CI job. An iOS compile
 stops at `#error "iOS backend not implemented yet"` in
 `include/UltraCanvasWindow.h` and `include/UltraCanvasApplication.h`, and an
-iOS configure (`-DCMAKE_SYSTEM_NAME=iOS`) stops in the platform detection of
+iOS configure (`-DCMAKE_SYSTEM_NAME=iOS`, and tvOS, visionOS and watchOS too)
+stops in the platform detection of
 `UltraCanvas/CMakeLists.txt` with a message pointing here.
 **Goal:** Bring UltraCanvas to iPhone and iPad with the support the Android
 backend has: one full-screen surface, touch and gestures, the on-screen
@@ -89,8 +90,8 @@ Platform selection is at compile time, by alias, exactly as described in
 
 | Site | Today | iOS needs |
 |---|---|---|
-| `include/UltraCanvasWindow.h:806` | `#elif TARGET_OS_IPHONE` → `#error` | include `../OS/iOS/UltraCanvasiOSWindow.h`, `using UltraCanvasWindow = UltraCanvasiOSWindow;` |
-| `include/UltraCanvasApplication.h:731` | `#elif TARGET_OS_IPHONE` → `#error` | include `../OS/iOS/UltraCanvasiOSApplication.h`, `using UltraCanvasApplication = UltraCanvasiOSApplication;` |
+| `include/UltraCanvasWindow.h:807` | `#elif TARGET_OS_IPHONE` → `#error` | include `../OS/iOS/UltraCanvasiOSWindow.h`, `using UltraCanvasWindow = UltraCanvasiOSWindow;` |
+| `include/UltraCanvasApplication.h:732` | `#elif TARGET_OS_IPHONE` → `#error` | include `../OS/iOS/UltraCanvasiOSApplication.h`, `using UltraCanvasApplication = UltraCanvasiOSApplication;` |
 | `include/UltraCanvasMenu.h:48` | macOS shortcut format excluded on iOS | nothing: the pass-through format is right for a hardware keyboard on iPad |
 | `include/UltraCanvasNativeHandle.h:24` | `__APPLE__` → opaque `void*` | nothing: a `UIView*` (or `UIWindow*`) fits the same opaque handle |
 | `include/UltraCanvasEvent.h:372` | `__APPLE__` native-handle arm | check it holds for a `UIView*` |
@@ -184,7 +185,7 @@ way for years (an outside reference; nothing in this repository depends on
 it). This is the closest analogue to Android's `android_main` thread.
 
 **B. Tick from the display (later, when frame pacing matters).**
-`RunBeforeMainLoop()` (`include/UltraCanvasApplication.h:648`) is the hook
+`RunBeforeMainLoop()` (`include/UltraCanvasApplication.h:649`) is the hook
 the WebAssembly backend uses: `Run()` calls it just before its loop, and
 `emscripten_set_main_loop` takes the loop over
 (`OS/WASM/UltraCanvasWASMApplication.cpp:288-296`). On iOS it would start a
@@ -350,9 +351,9 @@ The element, chart and UltraNet plug-ins are `MODULE` libraries `dlopen`ed at
 run time. iOS allows loading only the signed frameworks inside the app
 bundle, and App Review rejects downloaded code. So:
 - `ULTRACANVAS_BUILD_SHARED` defaults to OFF on iOS, as on Android and
-  WebAssembly (`UltraCanvas/CMakeLists.txt:72`).
+  WebAssembly (`UltraCanvas/CMakeLists.txt:73`).
 - `ULTRACANVAS_CHART_RUNTIME_MODULES` is forced OFF
-  (`UltraCanvas/CMakeLists.txt:1289` does it for WebAssembly and Android;
+  (`UltraCanvas/CMakeLists.txt:1291` does it for WebAssembly and Android;
   add iOS to that condition).
 - Every format plug-in an iOS app wants is compiled in; UltraNet protocol
   plug-ins likewise.
@@ -392,10 +393,12 @@ later if profiling asks for it. It is not a reason to start with Metal.
 
 ### 6.1 What is there now
 
-`UltraCanvas/CMakeLists.txt:179` tests `CMAKE_SYSTEM_NAME STREQUAL "iOS"`
-before `APPLE`, which an iOS toolchain also sets, and stops with a
-`FATAL_ERROR` that names this document. Without it, an iOS configure picks
-`OS/MacOS` and fails much later on Cocoa, IOKit or CoreWLAN. The root
+`UltraCanvas/CMakeLists.txt:180` tests
+`CMAKE_SYSTEM_NAME MATCHES "^(iOS|tvOS|visionOS|watchOS)$"` before `APPLE`,
+which those toolchains also set, and stops with a `FATAL_ERROR` that names
+this document. Without it, such a configure picks `OS/MacOS` and fails much
+later on Cocoa, IOKit or CoreWLAN. The header `#error` catches the same four,
+since `TARGET_OS_IPHONE` is set on each of them. The root
 `CMakeLists.txt` already skips UltraStore when `IOS` is set (`:1038`).
 
 ### 6.2 What the branch becomes
@@ -412,7 +415,7 @@ and these follow:
 
 1. **Objective-C++ sources.** The `*.mm` glob and the
    `LANGUAGE OBJCXX` / `-fobjc-arc` properties at
-   `UltraCanvas/CMakeLists.txt:1829` are inside
+   `UltraCanvas/CMakeLists.txt:1831` are inside
    `if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")`; that becomes
    `MacOS OR iOS`. `enable_language(OBJCXX)` already runs for any `APPLE`.
 2. **Frameworks.** A new `elseif(ULTRACANVAS_PLATFORM STREQUAL "iOS")` arm
@@ -495,17 +498,17 @@ iOS or a week's.
 
 | What | Where |
 |---|---|
-| iOS stops in the headers | `UltraCanvas/include/UltraCanvasWindow.h:806`, `UltraCanvas/include/UltraCanvasApplication.h:731` |
-| iOS stops in CMake | `UltraCanvas/CMakeLists.txt:179` |
+| iOS stops in the headers | `UltraCanvas/include/UltraCanvasWindow.h:807`, `UltraCanvas/include/UltraCanvasApplication.h:732` |
+| iOS stops in CMake | `UltraCanvas/CMakeLists.txt:180` |
 | macOS backend (Objective-C++ template) | `UltraCanvas/OS/MacOS/` |
 | macOS run-loop wait and wakeup | `UltraCanvas/OS/MacOS/UltraCanvasMacOSApplication.mm:271-358` |
 | macOS view presentation | `UltraCanvas/OS/MacOS/UltraCanvasMacOSWindow.mm:106-121`, `:644` |
 | Android backend (mobile template) | `UltraCanvas/OS/Android/`, its `README.md` |
 | Android entry and `ultracanvas_app_main` | `UltraCanvas/OS/Android/UltraCanvasAndroidMain.cpp` |
 | Android lifecycle | `UltraCanvas/OS/Android/UltraCanvasAndroidApplication.cpp:394-434` |
-| WebAssembly's loop takeover (`RunBeforeMainLoop`) | `UltraCanvas/OS/WASM/UltraCanvasWASMApplication.cpp:288-296`, `include/UltraCanvasApplication.h:648` |
+| WebAssembly's loop takeover (`RunBeforeMainLoop`) | `UltraCanvas/OS/WASM/UltraCanvasWASMApplication.cpp:288-296`, `include/UltraCanvasApplication.h:649` |
 | Service fallbacks | `include/UltraCanvas*Backend.h` (`ULTRACANVAS_<X>_NATIVE`), e.g. `UltraCanvasHardwareInfoBackend.h:20` |
 | macOS dependencies | `cmake/UltraCanvasMacOSDeps.cmake`, `scripts/macos-deps.sh`, `MacOS/deps/` |
 | Android dependencies | `scripts/android-bootstrap-sysroot.sh`, `UltraCanvas/OS/Android/packaging/vcpkg.json` |
-| Shared-core and chart-module defaults | `UltraCanvas/CMakeLists.txt:72`, `:1289` |
+| Shared-core and chart-module defaults | `UltraCanvas/CMakeLists.txt:73`, `:1291` |
 | Framework comparison (says "No iOS") | `Docs/UltraCanvasComparison.md:73`, `:210` |
