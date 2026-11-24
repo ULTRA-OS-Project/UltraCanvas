@@ -7,11 +7,10 @@
 // loop until a button was tapped. Opening a file is the document picker
 // (UIDocumentPickerViewController), the same way: the picked documents are
 // copied into the app's sandbox (asCopy), so the caller gets plain paths it
-// can read, as Android's SAF copies do. Saving through the picker's export
-// mode, and choosing a folder, are still to come (iOSPortInvestigation.md
-// phase 3); they return Cancel and say so. SaveContent is the shared
-// definition in core/UltraCanvasFileLoader.cpp (SaveFile, then the bytes),
-// so it fails the same way for now.
+// can read, as Android's SAF copies do. Saving is SaveContent through the
+// picker's export mode (the path-returning SaveFile stays a stub, below), and
+// SelectFolder opens a folder with security-scoped access.
+// Version: 1.2.0 - SaveContent (export) and SelectFolder through the document picker
 // Version: 1.1.0 - OpenFile and OpenMultipleFiles through the document picker
 // Version: 1.0.0
 // Last Modified: 2026-11-24
@@ -147,40 +146,65 @@ namespace UltraCanvas {
             return types;
         }
 
-        // Show the document picker and wait for its answer: the copied
-        // documents' paths (UTF-8), none when cancelled.
+        // Present `picker` and wait for its answer: the URLs picked (or
+        // exported to), none when cancelled or when there is nothing to
+        // present it from.
+        NSArray<NSURL*>* RunPicker(UIDocumentPickerViewController* picker) {
+            UIViewController* presenter = PresentingController();
+            if (!presenter) {
+                debugOutput << "UltraCanvas iOS: no view controller to present the "
+                               "document picker from" << std::endl;
+                return @[];
+            }
+            UltraCanvasiOSPickerDelegate* delegate = [[UltraCanvasiOSPickerDelegate alloc] init];
+            picker.delegate = delegate;   // weak: `delegate` lives to the end of this scope
+            [presenter presentViewController:picker animated:YES completion:nil];
+            while (!delegate.done) {
+                @autoreleasepool {
+                    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, true);
+                }
+            }
+            return delegate.urls ? delegate.urls : @[];
+        }
+
+        std::string PathOf(NSURL* url) {
+            const char* path = url.isFileURL ? url.path.fileSystemRepresentation : nullptr;
+            return (path && *path) ? std::string(path) : std::string();
+        }
+
+        // Show the document picker for opening and wait for its answer: the
+        // copied documents' paths (UTF-8), none when cancelled.
         std::vector<std::string> PickDocuments(const std::vector<FileFilter>& filters, bool multiple) {
             std::vector<std::string> paths;
             @autoreleasepool {
-                UIViewController* presenter = PresentingController();
-                if (!presenter) {
-                    debugOutput << "UltraCanvas iOS: no view controller to present the "
-                                   "document picker from" << std::endl;
-                    return paths;
-                }
                 UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc]
                         initForOpeningContentTypes:ContentTypesFor(filters) asCopy:YES];
                 picker.allowsMultipleSelection = multiple;
-                UltraCanvasiOSPickerDelegate* delegate = [[UltraCanvasiOSPickerDelegate alloc] init];
-                picker.delegate = delegate;   // weak: `delegate` lives to the end of this scope
-                [presenter presentViewController:picker animated:YES completion:nil];
-                while (!delegate.done) {
-                    @autoreleasepool {
-                        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, true);
-                    }
-                }
-                for (NSURL* url in delegate.urls) {
-                    const char* path = url.isFileURL ? url.path.fileSystemRepresentation : nullptr;
-                    if (path && *path) paths.emplace_back(path);
+                for (NSURL* url in RunPicker(picker)) {
+                    const std::string path = PathOf(url);
+                    if (!path.empty()) paths.push_back(path);
                 }
             }
             return paths;
         }
 
+        // The name a saved document gets: the suggested one, else
+        // "Untitled", with the default extension when it has none.
+        std::string ExportName(const FileDialogOptions& options) {
+            std::string name = options.defaultFileName;
+            const size_t slash = name.find_last_of('/');
+            if (slash != std::string::npos) name = name.substr(slash + 1);
+            if (name.empty()) name = "Untitled";
+            if (name.find('.') == std::string::npos && !options.defaultExtension.empty()) {
+                name += "." + options.defaultExtension;
+            }
+            return name;
+        }
+
         std::string NotYet(const char* what) {
             debugOutput << "UltraCanvas iOS: native dialog '" << what
-                        << "' is not available yet (the document picker is phase 3 of "
-                           "iOSPortInvestigation.md) - returning Cancel" << std::endl;
+                        << "' cannot return a path outside the sandbox - returning Cancel "
+                           "(save through UltraCanvasNativeDialogs::SaveContent)" << std::endl;
             return {};
         }
 
@@ -281,9 +305,57 @@ namespace UltraCanvas {
         return NotYet("SaveFile");
     }
 
+    // A path-returning save cannot reach outside the sandbox on iOS: the
+    // document picker takes a file that already exists and exports it, and
+    // nothing tells this function when its caller has finished writing the
+    // path it returned. Callers save through SaveContent, which has the
+    // bytes up front (the reason Android's SaveFile is a stub too).
+    // SaveContent: the bytes into a file of the suggested name in the app's
+    // temporary folder, which the picker's export mode copies to where the
+    // user chooses (Files, iCloud Drive, another app's folder). True when it
+    // was exported, false when cancelled or the file could not be written.
+    bool UltraCanvasNativeDialogs::SaveContent(const void* data, std::size_t size,
+                                               const FileDialogOptions& options) {
+        if (!data && size > 0) return false;
+        @autoreleasepool {
+            NSString* folder = [NSTemporaryDirectory() stringByAppendingPathComponent:
+                    [NSString stringWithFormat:@"UltraCanvasExport-%@", [NSUUID UUID].UUIDString]];
+            NSFileManager* files = [NSFileManager defaultManager];
+            if (![files createDirectoryAtPath:folder withIntermediateDirectories:YES
+                                   attributes:nil error:nil]) {
+                return false;
+            }
+            NSURL* url = [NSURL fileURLWithPath:[folder stringByAppendingPathComponent:
+                    ToNS(ExportName(options))]];
+            NSData* bytes = [NSData dataWithBytes:data length:size];
+            bool exported = false;
+            if ([bytes writeToURL:url atomically:YES]) {
+                UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc]
+                        initForExportingURLs:@[ url ] asCopy:YES];
+                exported = RunPicker(picker).count > 0;
+            }
+            [files removeItemAtPath:folder error:nil];
+            return exported;
+        }
+    }
+
+    // A folder the user picks, outside the sandbox: its path, readable and
+    // writable for as long as the app runs (the security-scoped access is
+    // started and kept - the API returns a path, and nothing tells it when
+    // the caller is done with it).
     std::string UltraCanvasNativeDialogs::SelectFolder(
             const std::string&, const std::string&, UltraCanvasWindowBase*) {
-        return NotYet("SelectFolder");
+        @autoreleasepool {
+            UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc]
+                    initForOpeningContentTypes:@[ UTTypeFolder ]];
+            NSURL* url = RunPicker(picker).firstObject;
+            if (!url) return {};
+            if (![url startAccessingSecurityScopedResource]) {
+                debugOutput << "UltraCanvas iOS: SelectFolder: no access to the folder picked"
+                            << std::endl;
+            }
+            return PathOf(url);
+        }
     }
 
 // ===== INPUT DIALOGS =====

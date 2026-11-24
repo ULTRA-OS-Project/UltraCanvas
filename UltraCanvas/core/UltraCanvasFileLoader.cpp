@@ -1,6 +1,7 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.12.2 - SaveContent: iOS defines its own (the document picker), as Android and WASM do
 // Version: 1.12.1 - RequestDocumentPassword's prompt shows a lock centred above the field
 // Version: 1.12.0 - LoadTextDocument / OpenTextDocument read an OpenDocument presentation
 //                  (.odp, .otp, .fodp) as an outline, like a .pptx
@@ -1111,7 +1112,7 @@ namespace UltraCanvas {
         }
     }
 
-#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__) && !defined(ULTRACANVAS_IOS)
     // The shared desktop definition of a UltraCanvasNativeDialogs static.
     //
     // It lives here rather than being copied into each OS/<platform> dialogs
@@ -1122,7 +1123,9 @@ namespace UltraCanvas {
     // OS/Android/UltraCanvasAndroidNativeDialogs.cpp and this one is compiled
     // out. WebAssembly likewise: a page cannot write to the user's disk, so
     // OS/WASM/UltraCanvasWASMNativeDialogs.cpp hands the bytes to the
-    // browser's download manager instead.
+    // browser's download manager instead. And iOS, whose sandbox has no path
+    // outside the app to write to: OS/iOS/UltraCanvasiOSNativeDialogs.mm
+    // exports the bytes through the document picker.
     bool UltraCanvasNativeDialogs::SaveContent(const void* data, std::size_t size,
                                                const FileDialogOptions& options) {
         if (!data && size > 0) return false;
