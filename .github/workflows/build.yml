@@ -264,7 +264,11 @@ jobs:
     # The macOS legs get longer: the first run after MacOS/deps changes
     # builds every bundled library from source before the apps (the vcpkg
     # binary cache makes later runs restore them in a minute or two).
-    timeout-minutes: ${{ startsWith(matrix.os, 'macos') && 300 || 120 }}
+    # Windows on ARM gets 180: a pull request starts without a saved ccache,
+    # and one that touches a header most targets include rebuilds nearly
+    # everything - 65 minutes of compiling there, then the tests and a
+    # 30-minute packaging step ran past 120 (#1380, its build and tests green).
+    timeout-minutes: ${{ startsWith(matrix.os, 'macos') && 300 || (matrix.os == 'windows-11-arm' && 180 || 120) }}
 
     defaults:
       run:
