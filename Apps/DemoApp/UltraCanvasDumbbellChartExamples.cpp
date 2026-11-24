@@ -118,7 +118,7 @@ std::shared_ptr<UltraCanvasLabel> AddNote(const std::shared_ptr<UltraCanvasConta
                                           const Color& color = Color(70, 70, 70, 255)) {
     auto label = DemoKit::AddText(parent, id, text);
     label->SetFontSize(10.5f);
-    label->SetTextColor(color);
+    label->SetTextColor(DemoKit::ThemedInk(color));
     return label;
 }
 
@@ -133,7 +133,7 @@ std::shared_ptr<UltraCanvasLabel> AddNoteBullets(const std::shared_ptr<UltraCanv
                                                  const std::string& id, const std::vector<std::string>& items) {
     auto label = DemoKit::CreateBullets(id, items);
     label->SetFontSize(10.5f);
-    label->SetTextColor(Color(70, 70, 70, 255));
+    label->SetTextColor(DemoKit::Themed(Color(70, 70, 70, 255)));
     DemoKit::Add(parent, label);
     return label;
 }

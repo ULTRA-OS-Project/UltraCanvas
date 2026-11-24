@@ -14,6 +14,7 @@
 #include <sstream>
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasDemoPageKit.h"   // DemoKit::Themed
 
 namespace UltraCanvas {
 
@@ -137,14 +138,14 @@ namespace UltraCanvas {
         titleLabel->SetFontSize(16);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetAlignment(TextAlignment::Center);
-        titleLabel->SetTextColor(Color(0, 60, 120, 255));
+        titleLabel->SetTextColor(DemoKit::Themed(Color(0, 60, 120, 255)));
         titleLabel->SetMargin(10);
         titleLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
         AddChild(titleLabel);
 
         // Create divider line 1
         auto divider = std::make_shared<UltraCanvasUIElement>("Divider", 600, 2);
-        divider->SetBackgroundColor(Color(200, 200, 200, 255));
+        divider->SetBackgroundColor(DemoKit::Themed(Color(200, 200, 200, 255)));
         divider->SetMargin(0,10,0,10);
         divider->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         AddChild(divider);
@@ -156,13 +157,13 @@ namespace UltraCanvas {
                                "UltraCanvas will be available for both desktop and mobile platforms."));
         infoLabel1->SetFontSize(11);
         infoLabel1->SetAlignment(TextAlignment::Center);
-        infoLabel1->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel1->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
         infoLabel1->SetMargin(10,20,10,20);
         AddChild(infoLabel1);
 
         // Create divider line 2
         auto divider2 = std::make_shared<UltraCanvasUIElement>("Divider", 600, 2);
-        divider2->SetBackgroundColor(Color(200, 200, 200, 255));
+        divider2->SetBackgroundColor(DemoKit::Themed(Color(200, 200, 200, 255)));
         divider2->SetMargin(0,10,0,10);
         divider2->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         AddChild(divider2);
@@ -170,7 +171,7 @@ namespace UltraCanvas {
 
         infoLabel1_4 = CreateLabel("InfoIconsIntro", Tr("On the right side of the title of each UC element you can find these icons:"));
         infoLabel1_4->SetFontSize(12);
-        infoLabel1_4->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel1_4->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
         infoLabel1_4->SetMargin(12,20,5,20);
         AddChild(infoLabel1_4);
 
@@ -190,7 +191,7 @@ namespace UltraCanvas {
         infoLabel2->SetFontSize(12);
         infoLabel2->SetFontWeight(FontWeight::Bold);
         infoLabel2->SetAlignment(TextAlignment::Left);
-        infoLabel2->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel2->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
         infoLabel2->SetMargin(3,0,0,10);
         infoLabel2->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
         doccontainer->AddChild(infoLabel2);
@@ -210,7 +211,7 @@ namespace UltraCanvas {
         infoLabel3->SetFontSize(12);
         infoLabel3->SetFontWeight(FontWeight::Bold);
         infoLabel3->SetAlignment(TextAlignment::Left);
-        infoLabel3->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel3->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
         infoLabel3->SetMargin(3,0,0,10);
         infoLabel2->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
         codeContainer->AddChild(infoLabel3);
@@ -221,7 +222,7 @@ namespace UltraCanvas {
         additionalInfo->SetText(Tr("These icons provide quick access to documentation and source code."));
         additionalInfo->SetFontSize(10);
         additionalInfo->SetAlignment(TextAlignment::Center);
-        additionalInfo->SetTextColor(Color(100, 100, 100, 255));
+        additionalInfo->SetTextColor(DemoKit::Themed(Color(100, 100, 100, 255)));
         additionalInfo->SetWrap(TextWrap::WrapWord);
         additionalInfo->SetMargin(10,20);
         AddChild(additionalInfo);
@@ -233,7 +234,7 @@ namespace UltraCanvas {
         infoLabel1_1 = std::make_shared<UltraCanvasLabel>();
         infoLabel1_1->SetText(TrF("URL {0}", "<span color=\"blue\">www.ultraos.eu</span>"));
         infoLabel1_1->SetFontSize(10);
-        infoLabel1_1->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel1_1->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
         infoLabel1_1->SetTextIsMarkup(true);
         infoLabel1_1->SetMargin(2,20);
         infoLabel1_1->onClick = openUltraosCallback;
@@ -243,7 +244,7 @@ namespace UltraCanvas {
         infoLabel1_2 = std::make_shared<UltraCanvasLabel>();
         infoLabel1_2->SetText(TrF("Github: {0}", "<span color=\"blue\">github.com/ULTRA-OS-Project/UltraCanvas</span>"));
         infoLabel1_2->SetFontSize(10);
-        infoLabel1_2->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel1_2->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
         infoLabel1_2->SetMargin(2,20);
         infoLabel1_2->SetTextIsMarkup(true);
         auto openGitHubCallback = []() {
@@ -256,7 +257,7 @@ namespace UltraCanvas {
         infoLabel1_3 = std::make_shared<UltraCanvasLabel>();
         infoLabel1_3->SetText(TrF("Changelog: {0}", "<span color=\"blue\">" + Tr("view what's new in this version") + "</span>"));
         infoLabel1_3->SetFontSize(10);
-        infoLabel1_3->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel1_3->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
         infoLabel1_3->SetMargin(2,20);
         infoLabel1_3->SetTextIsMarkup(true);
         auto openChangelogCallback = [this]() {
@@ -289,7 +290,7 @@ namespace UltraCanvas {
         auto verLabel = CreateLabel("VerText", TrF("UltraCanvas version {0}", versionString));
         verLabel->SetFontSize(10);
         verLabel->SetAlignment(TextAlignment::Center);
-        verLabel->SetTextColor(Color(60, 60, 60, 255));
+        verLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
         verLabel->SetMargin(3);
         //verLabel->SetBorders(1);
         AddChild(verLabel);

@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemoPageKit.cpp
 // The shared demo page look (UltraCanvasDemoPageKit.h).
+// Version: 1.3.0 - Themed
 // Version: 1.2.0 - ColourOf, KitContainer, KitLabel: the kit follows a dark theme
 // Version: 1.1.0 - ApplyContentMinWidth
 // Version: 1.0.0
@@ -42,6 +43,63 @@ namespace DemoKit {
             case KitColour::Link:       return r.accent;
         }
         return r.ink;
+    }
+
+    Color Themed(const Color& light, const UltraCanvasTheme& theme) {
+        if (!theme.dark) return light;
+        // RGB -> HSL
+        const double r = light.r / 255.0, g = light.g / 255.0, b = light.b / 255.0;
+        const double maxc = std::max({r, g, b}), minc = std::min({r, g, b});
+        const double l = (maxc + minc) / 2.0;
+        double h = 0.0, s = 0.0;
+        const double d = maxc - minc;
+        if (d > 1e-9) {
+            s = l > 0.5 ? d / (2.0 - maxc - minc) : d / (maxc + minc);
+            if (maxc == r) h = (g - b) / d + (g < b ? 6.0 : 0.0);
+            else if (maxc == g) h = (b - r) / d + 2.0;
+            else h = (r - g) / d + 4.0;
+            h /= 6.0;
+        }
+        // Lightness turned over into the dark look's range: white lands on
+        // the panel's darkness (~0.12), black on near-white text (~0.92),
+        // mid tones stay mid; a strong pastel keeps some of its colour.
+        const double l2 = 0.12 + (1.0 - l) * 0.80;
+        const double s2 = std::min(1.0, s * (l > 0.8 ? 0.6 : 0.9));
+        // HSL -> RGB
+        auto hueToRgb = [](double p, double q, double t) {
+            if (t < 0.0) t += 1.0;
+            if (t > 1.0) t -= 1.0;
+            if (t < 1.0 / 6.0) return p + (q - p) * 6.0 * t;
+            if (t < 1.0 / 2.0) return q;
+            if (t < 2.0 / 3.0) return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+            return p;
+        };
+        double r2 = l2, g2 = l2, b2 = l2;
+        if (s2 > 1e-9) {
+            const double q = l2 < 0.5 ? l2 * (1.0 + s2) : l2 + s2 - l2 * s2;
+            const double p = 2.0 * l2 - q;
+            r2 = hueToRgb(p, q, h + 1.0 / 3.0);
+            g2 = hueToRgb(p, q, h);
+            b2 = hueToRgb(p, q, h - 1.0 / 3.0);
+        }
+        auto byte = [](double v) { return static_cast<uint8_t>(std::lround(std::clamp(v, 0.0, 1.0) * 255.0)); };
+        return Color(byte(r2), byte(g2), byte(b2), light.a);
+    }
+
+    namespace {
+        double Lightness(const Color& c) {
+            const int maxc = std::max({(int)c.r, (int)c.g, (int)c.b});
+            const int minc = std::min({(int)c.r, (int)c.g, (int)c.b});
+            return (maxc + minc) / 510.0;
+        }
+    }
+
+    Color ThemedFill(const Color& fill) {
+        return Lightness(fill) >= 0.75 ? Themed(fill) : fill;
+    }
+
+    Color ThemedInk(const Color& text) {
+        return Lightness(text) <= 0.45 ? Themed(text) : text;
     }
 
     void KitContainer::SetKitBackground(KitColour part, bool cardBorder) {

@@ -53,7 +53,7 @@ namespace UltraCanvas {
             auto title = DemoKit::CreateText(id, text);
             title->SetFontSize(11);
             title->SetFontWeight(FontWeight::Bold);
-            title->SetTextColor(Color(73, 80, 87, 255));
+            title->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
             return title;
         };
 
@@ -171,7 +171,7 @@ namespace UltraCanvas {
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     std::string(spec.id) + "Tab", 0, 0, 790, 516);
-            tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+            tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tabContent->AddChild(diagram);
             tabbedContainer->AddTab(spec.tabTitle, tabContent);
             allDiagrams->push_back(diagram);
@@ -194,11 +194,11 @@ namespace UltraCanvas {
         auto readoutText = DemoKit::CreateText("matrixReadoutText",
                 Tr("Click a cell to read its relationship, a row or column header for its total, "
                 "or a legend entry to filter the marks."));
-        readoutText->SetTextColor(Color(73, 80, 87, 255));
+        readoutText->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
         DemoKit::Add(readoutPanel, readoutText);
 
         auto rankingText = DemoKit::CreateText("matrixRanking", "");
-        rankingText->SetTextColor(Color(33, 37, 41, 255));
+        rankingText->SetTextColor(DemoKit::Themed(Color(33, 37, 41, 255)));
         DemoKit::Add(readoutPanel, rankingText);
 
         // A file button: as wide as its text, at least the old 145 px.
@@ -434,7 +434,7 @@ namespace UltraCanvas {
 
                 auto tabContent = std::make_shared<UltraCanvasContainer>(
                         "matrixImportedTab", 0, 0, 790, 516);
-                tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+                tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
                 tabContent->AddChild(target);
                 tabbedContainer->AddTab(Tr("Imported"), tabContent);
                 allDiagrams->push_back(target);

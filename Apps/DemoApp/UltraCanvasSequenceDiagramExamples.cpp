@@ -39,7 +39,7 @@ namespace UltraCanvas {
         auto controlsTitle = DemoKit::AddText(leftSidebar, "seqControlsTitle", Tr("CONTROLS"));
         controlsTitle->SetFontSize(11);
         controlsTitle->SetFontWeight(FontWeight::Bold);
-        controlsTitle->SetTextColor(Color(73, 80, 87, 255));
+        controlsTitle->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
 
         // A bold caption over a dropdown that takes the sidebar's width.
         auto addCaption = [&](const std::string& id, const std::string& text) {
@@ -117,13 +117,13 @@ namespace UltraCanvas {
 
         auto statusBar = DemoKit::CreateText("seqStatus", Tr("Click a message or lifeline to inspect it"));
         statusBar->SetFontSize(11);
-        statusBar->SetTextColor(Color(90, 98, 106, 255));
+        statusBar->SetTextColor(DemoKit::Themed(Color(90, 98, 106, 255)));
 
         std::vector<std::shared_ptr<UltraCanvasSequenceDiagram>> allDiagrams;
         for (auto& sample : samples) {
             auto tab = std::make_shared<UltraCanvasContainer>(
                 std::string(sample.tabId) + "Tab", 0, 0, 876, 560);
-            tab->SetBackgroundColor(Color(252, 252, 253, 255));
+            tab->SetBackgroundColor(DemoKit::Themed(Color(252, 252, 253, 255)));
 
             auto diagram = CreateSequenceDiagramWithModel(sample.tabId, 0, 0, 876, 560,
                                                           sample.model);

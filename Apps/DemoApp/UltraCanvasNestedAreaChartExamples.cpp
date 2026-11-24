@@ -194,7 +194,7 @@ namespace {
         auto statusLabel = DemoKit::AddText(controlsCard, "nestedStatusLabel",
                 Tr("Click a shape to select it, hover for tooltips."));
         statusLabel->SetFontSize(11);
-        statusLabel->SetTextColor(Color(60, 60, 60, 255));
+        statusLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
 
         // =============================================================================
         // EVENT HANDLERS

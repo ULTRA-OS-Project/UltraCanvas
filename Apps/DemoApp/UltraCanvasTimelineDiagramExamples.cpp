@@ -144,7 +144,7 @@ namespace UltraCanvas {
                 "- Hover for the full text\n"
                 "- Double-click an item"));
         helpBox->SetTextColor(DemoKit::BodyText());
-        helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
+        helpBox->SetBackgroundColor(DemoKit::Themed(Color(255, 243, 205, 255)));
         helpBox->SetPadding(10);
 
         // ===== TABS =====
@@ -156,23 +156,23 @@ namespace UltraCanvas {
         auto statusBar = DemoKit::AddText(diagramCard, "tlStatusBar",
                 Tr("Ready - click items to select them, hover for tooltips"));
         statusBar->SetFontSize(11);
-        statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
+        statusBar->SetBackgroundColor(DemoKit::Themed(Color(233, 236, 239, 255)));
         statusBar->SetPadding(15);
-        statusBar->SetTextColor(Color(73, 80, 87, 255));
+        statusBar->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
 
         // ===== RIGHT SIDEBAR (stats + about) =====
         auto rightSidebar = AddTimelineDiagramSideCard(contentContainer, "tlRightSidebar", "tlStatsTitle", Tr("STATISTICS"));
 
         auto statsPanel = DemoKit::AddText(rightSidebar, "tlStatsPanel", "");
         statsPanel->SetFontSize(10);
-        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        statsPanel->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         statsPanel->SetPadding(12);
 
         DemoKit::AddHeading(rightSidebar, "tlAboutTitle", Tr("ABOUT THIS DESIGN"));
 
         auto aboutPanel = DemoKit::AddText(rightSidebar, "tlAboutPanel", "");
         aboutPanel->SetFontSize(9);
-        aboutPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        aboutPanel->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         aboutPanel->SetPadding(12);
 
         // Diagram geometry inside each tab
@@ -241,7 +241,7 @@ namespace UltraCanvas {
 
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     diagram->GetIdentifier() + "Tab", 0, 0, 660, 542);
-            tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+            tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tabContent->AddChild(diagram);
             tabbedContainer->AddTab(spec.tabTitle, tabContent);
             allDiagrams.push_back(diagram);

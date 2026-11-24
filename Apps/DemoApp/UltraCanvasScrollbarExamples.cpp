@@ -82,7 +82,7 @@ namespace UltraCanvas {
 
         auto cap = DemoKit::CreateText(id + "_cap", caption);
         cap->SetFontSize(11);
-        cap->SetTextColor(Color(90, 90, 90, 255));
+        cap->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
         DemoKit::Add(cell, cap);
     }
 
@@ -106,7 +106,7 @@ namespace UltraCanvas {
         auto status = DemoKit::AddText(root, "ScrollbarStatus",
                 Tr("Interact with any scrollbar below to see its live position here."));
         status->SetFontSize(11);
-        status->SetBackgroundColor(Color(245, 245, 245, 255));
+        status->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
         status->SetBorders(1.0f, Color(220, 220, 220, 255));
         status->SetPadding(6.0f);
 

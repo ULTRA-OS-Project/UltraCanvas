@@ -95,7 +95,7 @@ namespace UltraCanvas {
         DemoKit::Add(toolbar, openBtn);
 
         auto status = DemoKit::CreateText("odtStatus", Tr("Supported formats: .odt, .docx, .doc, .tex, .md"));
-        status->SetTextColor(Color(90, 90, 90, 255));
+        status->SetTextColor(DemoKit::Themed(Color(90, 90, 90, 255)));
         DemoKit::Add(toolbar, status, 1);
 
         // ===== DOCUMENT VIEW =====

@@ -164,7 +164,7 @@ namespace UltraCanvas {
         // Status line for feedback; it goes in at the bottom of the page.
         auto statusLabel = DemoKit::CreateText("CDRStatus", Tr("Ready."));
         statusLabel->SetFontSize(11);
-        statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(230, 230, 230, 255)));
         statusLabel->SetPadding(6);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("CDRTabs", 0, 0, 0, 0);
@@ -184,7 +184,7 @@ namespace UltraCanvas {
 
             auto tabPage = DemoKit::CreateColumn(id + "Page", 8);
             tabPage->SetPadding(10, 12, 10, 12);
-            tabPage->SetBackgroundColor(Colors::White);
+            tabPage->SetBackgroundColor(DemoKit::Themed(Colors::White));
 
             // ----- the controls, above the drawing -----
             auto controls = DemoKit::CreateRow(id + "Controls", 4);
@@ -248,7 +248,7 @@ namespace UltraCanvas {
 
             // ----- the drawing, or what stands in for it while it is read -----
             auto view = DemoKit::CreateColumn(id + "View", 0);
-            view->SetBackgroundColor(Color(246, 246, 248, 255));
+            view->SetBackgroundColor(DemoKit::Themed(Color(246, 246, 248, 255)));
             view->SetBorders(1, DemoKit::CardBorder());
             DemoKit::Add(tabPage, view, 1);
             view->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
@@ -298,7 +298,7 @@ namespace UltraCanvas {
             element->onLoadError = [ring, waiting, statusLabel](const std::string& error) {
                 ring->Stop();
                 waiting->SetText(error);
-                waiting->SetTextColor(Color(170, 40, 40, 255));
+                waiting->SetTextColor(DemoKit::Themed(Color(170, 40, 40, 255)));
                 statusLabel->SetText(TrF("Failed: {0}", error));
             };
             element->SetEventCallback([statusLabel, path](const UCEvent& event) {
@@ -325,7 +325,7 @@ namespace UltraCanvas {
         {
             auto about = DemoKit::CreateColumn("CDRAboutPage", 10);
             about->SetPadding(10, 12, 10, 12);
-            about->SetBackgroundColor(Colors::White);
+            about->SetBackgroundColor(DemoKit::Themed(Colors::White));
             DemoKit::AddHeading(about, "CDRAboutHeading", Tr("CDR Plugin Features"));
             DemoKit::Add(about, DemoKit::CreateBullets("CDRAboutText", {
                     Tr("CorelDRAW CDR format"),

@@ -33,7 +33,7 @@ namespace UltraCanvas {
 
         // Status readout, updated from the alert callbacks.
         auto status = DemoKit::CreateText("AlertStatus", Tr("Result: (press a button)"));
-        status->SetBackgroundColor(Color(240, 240, 240));
+        status->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
         status->SetPadding(4);
         DemoKit::Add(buttonsCard, status);
 

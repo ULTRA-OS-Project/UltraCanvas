@@ -60,7 +60,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
 
     // Tinted red: the feature is missing from this build.
     auto card = DemoKit::AddCard(page, "GLSurfacePlaceholder", Tr("OpenGL Surface Support - NOT AVAILABLE"));
-    card->SetBackgroundColor(Color(255, 200, 200, 100));
+    card->SetBackgroundColor(DemoKit::Themed(Color(255, 200, 200, 100)));
     DemoKit::AddText(card, "GLSurfacePlaceholderText", Tr("This build was compiled without OpenGL support."));
     DemoKit::AddText(card, "GLSurfacePlaceholderHow", Tr("To enable OpenGL surface support:"));
     DemoKit::Add(card, DemoKit::CreateBullets("GLSurfacePlaceholderSteps", {

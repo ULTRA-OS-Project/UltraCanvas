@@ -296,7 +296,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
     // The preview frame keeps its size; the image sits inside it.
     auto inputFrame = std::make_shared<UltraCanvasContainer>(
         "VecInputFrame", 0, 0, inputFrameW, frameH);
-    inputFrame->SetBackgroundColor(kFrameBg);
+    inputFrame->SetBackgroundColor(DemoKit::ThemedFill(kFrameBg));
     inputFrame->SetBorders(1, kFrameBorder);
     DemoKit::AddFixed(inputCard, inputFrame);
 
@@ -310,10 +310,10 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     auto inputPathLabel = DemoKit::AddCaption(inputCard, "VecInputPath", BaseName(defaultPath));
     inputPathLabel->SetTooltip(defaultPath);
-    inputPathLabel->SetTextColor(kTextMuted);
+    inputPathLabel->SetTextColor(DemoKit::ThemedInk(kTextMuted));
 
     auto inputSizeLabel = DemoKit::AddCaption(inputCard, "VecInputSize", "");
-    inputSizeLabel->SetTextColor(kTextFaded);
+    inputSizeLabel->SetTextColor(DemoKit::ThemedInk(kTextFaded));
 
     // Open and Vectorize, built with their callbacks below.
     auto inputActions = DemoKit::AddRow(inputCard, "VecInputActions", 8);
@@ -347,7 +347,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
         auto row = DemoKit::AddRow(paramCard, "VecRow" + id, 6);
         auto lbl = DemoKit::CreateText("VecLbl" + id, caption);
         lbl->SetFontSize(11);
-        lbl->SetTextColor(kTextStrong);
+        lbl->SetTextColor(DemoKit::ThemedInk(kTextStrong));
         lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
         CSSLayout::BoxConstraints limits;
         limits.minWidth = CSSLayout::Dimension::Px(112);
@@ -379,7 +379,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
                                    IndexOfPathMode(cfg->pathMode));
 
     auto presetHelp = DemoKit::AddCaption(paramCard, "VecPresetHelp", Presets().front().help);
-    presetHelp->SetTextColor(kTextMuted);
+    presetHelp->SetTextColor(DemoKit::ThemedInk(kTextMuted));
 
     // ===== Numeric parameters =====
     auto sliders = std::make_shared<std::vector<ParamSlider>>();
@@ -393,7 +393,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
         auto caption = DemoKit::AddText(paramCard, "VecCap" + id,
                                         CaptionText(title, get(*cfg), decimals, unit));
         caption->SetFontSize(11);
-        caption->SetTextColor(kTextStrong);
+        caption->SetTextColor(DemoKit::ThemedInk(kTextStrong));
 
         auto slider = std::make_shared<UltraCanvasSlider>(
             "VecSld" + id, 0, 0, 332, 20);
@@ -465,7 +465,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     auto paramNote = DemoKit::AddCaption(paramCard, "VecParamNote",
         Tr("Greyed-out controls have no effect in the selected colour / path mode."));
-    paramNote->SetTextColor(kTextFaded);
+    paramNote->SetTextColor(DemoKit::ThemedInk(kTextFaded));
 
     // ===== RIGHT: SVG output + status =====
     auto outputCard = DemoKit::AddCard(columns, "VecOutputCard", "", "", outputFrameW + cardChrome);
@@ -473,7 +473,7 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     auto outputFrame = std::make_shared<UltraCanvasContainer>(
         "VecOutputFrame", 0, 0, outputFrameW, frameH);
-    outputFrame->SetBackgroundColor(kOutputBg);
+    outputFrame->SetBackgroundColor(DemoKit::ThemedFill(kOutputBg));
     outputFrame->SetBorders(1, kFrameBorder);
     DemoKit::AddFixed(outputCard, outputFrame);
 
@@ -484,10 +484,10 @@ UltraCanvasDemoApplication::CreateVectorizerExamples() {
 
     auto statusLabel = DemoKit::AddCaption(outputCard, "VecStatus",
                                            Tr("(press \"Vectorize\" to trace the input)"));
-    statusLabel->SetTextColor(kTextMuted);
+    statusLabel->SetTextColor(DemoKit::ThemedInk(kTextMuted));
 
     auto detailLabel = DemoKit::AddCaption(outputCard, "VecDetail", "");
-    detailLabel->SetTextColor(kTextFaded);
+    detailLabel->SetTextColor(DemoKit::ThemedInk(kTextFaded));
 
     // Across the card, as the frame above it.
     auto saveBtn = std::make_shared<UltraCanvasButton>(

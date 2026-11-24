@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.15 - pageRebuildPending: the page shown is rebuilt on a theme switch
 // Version: 1.0.14 - the header and the legend follow the theme (OnThemeChanged)
 // Version: 1.0.13 - CreateRidgelineChartExamples
 // Version: 1.0.12 - CreateThemeExamples (Modules > Theme)
@@ -226,6 +227,8 @@ namespace UltraCanvas {
 
         // Current display state
         std::string currentSelectedId;
+        // A rebuild of the page shown is posted (a theme switch)
+        bool pageRebuildPending = false;
         std::shared_ptr<UltraCanvasUIElement> currentDisplayElement;
         bool infoWindowShown = false;
 

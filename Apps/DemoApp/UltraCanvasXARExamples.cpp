@@ -31,8 +31,8 @@ namespace UltraCanvas {
         // and it sits under the panels.
         auto statusLabel = DemoKit::CreateText("XARStatus", Tr("Ready. Click on a XAR file to view."));
         statusLabel->SetFontSize(11);
-        statusLabel->SetTextColor(Color(60, 60, 60, 255));
-        statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
+        statusLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(230, 230, 230, 255)));
         statusLabel->SetPadding(8);
 
         // One tile per sample drawing in media/vector/XAR/, side by side
@@ -42,7 +42,7 @@ namespace UltraCanvas {
             // The drawing over its file name; the border lights up on hover.
             auto tile = DemoKit::CreateColumn(id, 8);
             tile->SetPadding(10);
-            tile->SetBackgroundColor(Colors::White);
+            tile->SetBackgroundColor(DemoKit::Themed(Colors::White));
             tile->SetBorders(2, Color(180, 180, 180, 255));
 
             auto element = std::make_shared<UltraCanvasXARElement>(id + "El", 0, 0, 280, 220);

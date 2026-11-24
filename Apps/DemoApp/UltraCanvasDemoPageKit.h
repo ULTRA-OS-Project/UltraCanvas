@@ -24,6 +24,8 @@
 //                     {"UltraCanvasToolbarBuilder builds it fluently", "..."});
 //   return page;
 //
+// Version: 1.3.0 - Themed: a page's own decorative colour, as it is in the light look and with its
+//                  lightness turned over (hue kept) in a dark one
 // Version: 1.2.0 - the colours follow the theme: the light look as it was, the theme's roles in a
 //                  dark or high-contrast one; KitContainer / KitLabel re-colour on a theme change
 // Version: 1.1.0 - ApplyContentMinWidth: nothing narrower than its fixed content
@@ -61,6 +63,23 @@ namespace DemoKit {
     inline Color SubtitleText()   { return ColourOf(KitColour::Subtitle); }
     inline Color CaptionText()    { return ColourOf(KitColour::Caption); }
     inline Color LinkText()       { return ColourOf(KitColour::Link); }
+
+    // A colour a page chose for the light look - a pastel panel, a grey
+    // caption, a tinted readout - in the current theme: unchanged in the
+    // light look; in a dark one its lightness is turned over and its hue
+    // and saturation kept, so a pale green panel becomes a dark green one
+    // and dark grey text light grey. For decoration only: a chart's palette,
+    // a colour swatch or a chart drawn on its own white paper keep their
+    // colours. The demo rebuilds the page shown when the theme switches,
+    // so a colour chosen when the page was built follows the switch.
+    Color Themed(const Color& lightLookColour, const UltraCanvasTheme& theme);
+    inline Color Themed(const Color& lightLookColour) { return Themed(lightLookColour, UltraCanvasTheme::Current()); }
+    // For a colour known only when the page runs (a helper's parameter):
+    // a pale fill (a panel, a pane) is Themed, a coloured or dark one - a
+    // button, a badge, a deliberately dark panel - is kept; dark text is
+    // Themed, light or coloured text (on a coloured fill) is kept.
+    Color ThemedFill(const Color& lightLookFill);
+    Color ThemedInk(const Color& lightLookText);
 
     // A container painted in a kit colour (a page, a card: with the card's
     // border), painted again when the theme changes while it is shown.

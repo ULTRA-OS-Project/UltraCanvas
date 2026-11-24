@@ -54,3 +54,15 @@
   own fixed colours still do.
 - The demo's slider page is translated: its 65 texts in every language of
   the demo catalogue, as machine drafts awaiting review.
+- **DemoApp: the example pages follow a dark theme too.** About 90 example
+  files painted their own light panels, readouts and grey captions with fixed
+  colours, so with a dark theme they stayed light, or showed the theme's
+  white text on a light panel. `DemoKit::Themed(colour)` keeps a colour as it
+  is in the light look and, in a dark one, turns its lightness over while
+  keeping its hue (a pale green panel becomes a dark green one, dark grey
+  text light grey); `ThemedFill` / `ThemedInk` do it for a colour known only
+  at run time, and only for a pale fill or dark text. The pages' decorative
+  colours - about 400 calls on labels, panels, panes, dividers and toolbars -
+  go through them; charts and diagrams drawn on their own white paper,
+  colour swatches, coloured buttons and status pills keep their colours. The
+  page shown is rebuilt when the theme switches, so its colours follow.

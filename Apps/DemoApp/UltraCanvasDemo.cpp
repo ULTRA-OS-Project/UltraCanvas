@@ -94,7 +94,11 @@ namespace UltraCanvas {
             void OnThemeChanged(const UltraCanvasTheme& theme) override {
                 UltraCanvasContainer::OnThemeChanged(theme);
                 PaintThemeColours(theme);
+                if (onThemeChanged) onThemeChanged();
             }
+            // The page shown is built again (its own colours are chosen
+            // when it is built: DemoKit::Themed)
+            std::function<void()> onThemeChanged;
         private:
             void PaintThemeColours(const UltraCanvasTheme& theme) {
                 SetBackgroundColor(DemoKit::ColourOf(DemoKit::KitColour::Page, theme));
@@ -122,7 +126,7 @@ namespace UltraCanvas {
         legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", Tr("Component Status Legend"));
         legendTitle->SetFontSize(12);
         legendTitle->SetFontWeight(FontWeight::Bold);
-        legendTitle->SetTextColor(Color(80, 80, 80, 255));
+        legendTitle->SetTextColor(DemoKit::Themed(Color(80, 80, 80, 255)));
         legendTitle->SetWrap(TextWrap::WrapWord);
         AddChild(legendTitle);
 
@@ -525,7 +529,21 @@ namespace UltraCanvas {
         // Create display container (below header)
         // displayContainer is the demo's main scroll region, with the shared
         // slim, round-ended demo scrollbars, in the theme's colours
-        displayContainer = std::make_shared<DemoDisplayArea>("DisplayArea");
+        auto displayArea = std::make_shared<DemoDisplayArea>("DisplayArea");
+        // A theme switch rebuilds the page shown, once the switch has reached
+        // every element (the page may be the one that asked for it: the
+        // Theme page's own picker)
+        displayArea->onThemeChanged = [this]() {
+            if (pageRebuildPending || currentSelectedId.empty()) return;
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (!app) return;
+            pageRebuildPending = true;
+            app->PostToUIThread([this]() {
+                pageRebuildPending = false;
+                if (!currentSelectedId.empty()) DisplayDemoItem(currentSelectedId);
+            });
+        };
+        displayContainer = displayArea;
 
         // Register all demo items
         RegisterAllDemoItems();
@@ -2802,7 +2820,7 @@ namespace UltraCanvas {
             auto placeholder = std::make_shared<UltraCanvasLabel>("placeholder", 20, 20, 600, 200);
             placeholder->SetText(Tr("This component is not yet implemented.\nPlanned for future release."));
             placeholder->SetAlignment(TextAlignment::Center);
-            placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
+            placeholder->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 200, 100)));
             placeholder->SetBorders(2.0f);
             placeholder->SetBordersColor(Color(200, 200, 0, 255));
             placeholder->SetPadding(10);

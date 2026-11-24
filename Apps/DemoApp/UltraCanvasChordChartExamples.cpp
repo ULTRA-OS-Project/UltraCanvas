@@ -157,7 +157,7 @@ namespace UltraCanvas {
     {
         auto panel = std::make_shared<UltraCanvasContainer>(idPrefix + "Panel",
                                                            kChordPanelWidth, 0);
-        panel->SetBackgroundColor(Color(247, 247, 250, 255));
+        panel->SetBackgroundColor(DemoKit::Themed(Color(247, 247, 250, 255)));
         panel->SetPadding(8, 10);
         panel->layout.SetFlexColumn().SetFlexGap(4)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
