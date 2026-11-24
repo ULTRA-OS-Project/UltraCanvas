@@ -200,7 +200,7 @@ namespace {
         auto statsContainer = DemoKit::AddCard(infoColumn, "STLStatsPanel", Tr("What the parser found"));
         auto statsText = DemoKit::AddText(statsContainer, "STLStatsText", "");
         statsText->SetFontSize(11);
-        statsText->SetTextColor(Color(50, 50, 50, 255));
+        statsText->SetTextColor(DemoKit::Themed(Color(50, 50, 50, 255)));
 
         // ===== INFO PANEL =====
         auto infoContainer = DemoKit::AddCard(infoColumn, "STLInfoPanel", Tr("STL support"));
@@ -222,7 +222,7 @@ namespace {
         auto nameLabel = DemoKit::AddText(viewerPanel, "STLName", "");
         nameLabel->SetFontSize(11);
         nameLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
-        nameLabel->SetTextColor(Color(60, 60, 60, 255));
+        nameLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
 
         // ===== HOW IT WORKS =====
         auto howContainer = DemoKit::AddCard(container, "STLHowPanel");
@@ -234,12 +234,12 @@ namespace {
                 "Mesh3D mesh; UltraCanvasSTLLoader::Load(\"model.stl\", mesh);\n"
                 "UltraCanvasSTLLoader::Save(\"copy.stl\", mesh, STLFormat::Binary);"));
         howText->SetFontSize(11);
-        howText->SetTextColor(Color(50, 50, 50, 255));
+        howText->SetTextColor(DemoKit::Themed(Color(50, 50, 50, 255)));
 
         auto statusLabel = DemoKit::AddText(container, "STLStatus", "");
         statusLabel->SetFontSize(11);
-        statusLabel->SetTextColor(Color(60, 60, 60, 255));
-        statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
+        statusLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60, 255)));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(230, 230, 230, 255)));
         statusLabel->SetPadding(4.0f);
 
         if (files.empty()) {

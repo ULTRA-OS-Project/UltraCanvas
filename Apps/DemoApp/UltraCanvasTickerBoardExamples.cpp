@@ -90,7 +90,7 @@ namespace UltraCanvas {
         // Added under the controls below.
         auto statusLabel = DemoKit::CreateText("TbStatusLabel",
             Tr("Click an item on any board to see it here. Hover a quote for its company name."));
-        statusLabel->SetTextColor(Color(70, 70, 90, 255));
+        statusLabel->SetTextColor(DemoKit::Themed(Color(70, 70, 90, 255)));
         auto reportClick = [status = statusLabel.get()](const std::string& boardName, const TickerItem& item) {
             std::string text = boardName + ": " + item.label;
             if (!item.value.empty())  text += " " + item.value;
@@ -286,8 +286,8 @@ namespace UltraCanvas {
             "fontFamily / fontSize / weights and gaps for Text, dotPitch / dotFill / offDotColor and column gaps for DotMatrix.")
         );
         usageLabel->SetFont("Monospace", 11);
-        usageLabel->SetTextColor(Color(50, 50, 70, 255));
-        usageLabel->SetBackgroundColor(Color(248, 248, 252, 255));
+        usageLabel->SetTextColor(DemoKit::Themed(Color(50, 50, 70, 255)));
+        usageLabel->SetBackgroundColor(DemoKit::Themed(Color(248, 248, 252, 255)));
         usageLabel->SetPadding(8);
 
         return container;

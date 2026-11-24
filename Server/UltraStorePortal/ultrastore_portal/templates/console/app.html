@@ -6,8 +6,11 @@
   <div><h1>{{ app.name }}</h1><span class="font-monospace text-secondary">{{ app.app_id }}</span></div>
   {% if app.suspended %}<span class="badge bg-danger-subtle text-danger-emphasis">Suspended</span>{% elif live %}<span class="badge bg-success-subtle text-success-emphasis">Published {{ live.version }}</span>{% else %}<span class="badge">Not published</span>{% endif %}
   {# A release goes to review with the listing: no new one before the listing has what a review needs. #}
-  {% if problems %}<a class="btn btn-primary ms-auto" href="{% url 'console:listing' app.app_id %}">Edit the store listing</a>
-  {% else %}<a class="btn btn-primary ms-auto" href="{% url 'console:release_new' app.app_id %}">New release</a>{% endif %}
+  <div class="ms-auto d-flex flex-wrap gap-2">
+  {% if promote_on and app.kind == "app" and live %}<a class="btn btn-soft-primary" href="{% url 'console:promote' app.app_id %}">Promote</a>{% endif %}
+  {% if problems %}<a class="btn btn-primary" href="{% url 'console:listing' app.app_id %}">Edit the store listing</a>
+  {% else %}<a class="btn btn-primary" href="{% url 'console:release_new' app.app_id %}">New release</a>{% endif %}
+  </div>
 </div>
 <div class="panels">
 {% if app.suspended %}<div class="alert alert-danger"><b>The operator suspended this app.</b> {{ app.suspend_reason }}</div>{% endif %}

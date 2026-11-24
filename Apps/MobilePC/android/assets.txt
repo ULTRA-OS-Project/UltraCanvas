@@ -1,0 +1,25 @@
+# Apps/MobilePC/android/assets.txt
+# What MobilePC opens by path at run time, relative to the repository:
+# scripts/android-package-apk.sh --assets copies each into the APK's assets/,
+# which the framework unpacks to $HOME/share on the first launch after an
+# install (GetResourcesDir() on Android). One path a line; '#' starts a
+# comment.
+
+# The fonts the theme names, and the icons: UltraDesktop's bars, its Apps
+# window and panels, the title bars' buttons (media/icons/desktop), and
+# UltraPaint's and ArtCreator's tools.
+media/fonts
+media/icons
+# Every application's icon: the Apps window and the taskbar show them.
+media/appicon
+# The cursor images the framework names.
+media/lib
+# The desktop's wallpapers as JPEG - Android's libvips reads no AVIF, and
+# UltraDesktop takes the JPEG beside a missing AVIF - and the picture it
+# falls back to.
+media/images/desktop/ULTRA OS A.jpg
+media/images/desktop/ULTRA OS H.jpg
+media/images/desktop/ULTRA OS K.jpg
+media/images/landscape.jpg
+# Every language's texts (Tr): the applications' catalogues and the standard set.
+media/locale

@@ -463,7 +463,7 @@ namespace UltraCanvas {
 
         auto statusLabel = DemoKit::CreateCaption("AdjDiagStatus",
                 Tr("Click a room to inspect.\nDrag rooms to reposition — pan with empty-space drag."));
-        statusLabel->SetBackgroundColor(Color(245, 245, 245));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245)));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(6.0f);
         statusLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);

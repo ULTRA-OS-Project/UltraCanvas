@@ -3,6 +3,7 @@
 // the current theme, and the styles the timeline and the timecode field
 // take from a theme - shared roles mapped, element roles honoured, the
 // palette's colour where a theme is silent.
+// Version: 1.17.0 - ForDarkLook / ForThisLook; the gauge's dark look
 // Version: 1.16.0 - the dialog's destructive outline answer and the Filer's operation list under a
 //                  dark theme; a dialog given type sizes keeps following the theme and its sizes
 // Version: 1.15.0 - the dark split pane handle, section card, clipboard rows and scrollbar thumb; the button's
@@ -103,6 +104,7 @@
 #endif
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTooltipTypes.h"
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
 #include "UltraCanvasVideoTimeline.h"
 
 #include <cstdio>
@@ -1132,6 +1134,39 @@ int main() {
         CHECK(Same(styledCells->GetTextColor(), Color(1, 2, 3)) && Near(styledCells->GetFontSize(), 11.0, 1e-6)
               && Same(styledCells->GetSelectedTextColor(), light.roles.onAccent), "what the application set on it stays, the rest follows");
         UltraCanvasTheme::SetCurrent(light);
+    }
+
+    {
+        std::printf("\nForDarkLook\n");
+        const Color white = UltraCanvasTheme::ForDarkLook(Colors::White);
+        const Color black = UltraCanvasTheme::ForDarkLook(Colors::Black);
+        CHECK(white.r < 40 && white.r == white.g && white.g == white.b, "white turns into a dark panel grey");
+        CHECK(black.r > 220, "black turns into near-white ink");
+        const Color paleGreen = UltraCanvasTheme::ForDarkLook(Color(220, 255, 220, 255));
+        CHECK(paleGreen.g > paleGreen.r && paleGreen.g > paleGreen.b && paleGreen.g < 90, "a pale green panel turns into a dark green one");
+        const Color greyText = UltraCanvasTheme::ForDarkLook(Color(110, 110, 110, 255));
+        CHECK(Contrast(greyText, dark.roles.panel) > 4.5, "grey text reads on the dark panel");
+        CHECK(UltraCanvasTheme::ForDarkLook(Color(200, 200, 200, 120)).a == 120, "alpha is kept");
+        CHECK(Same(light.ForThisLook(Color(12, 34, 56, 255)), Color(12, 34, 56, 255)), "the light look keeps the colour");
+        CHECK(Same(dark.ForThisLook(Colors::White), white), "the dark look converts it");
+
+        std::printf("\nthe gauge\n");
+        // Following is the application's default under a theme policy; here
+        // it is switched on for these gauges
+        const bool followed = UltraCanvasUIElement::FollowThemeByDefault();
+        UltraCanvasUIElement::SetFollowThemeByDefault(true);
+        UltraCanvasTheme::SetCurrent(light);
+        auto gauge = std::make_shared<UltraCanvasGaugeDiagramElement>("ThemeGauge", 0, 0, 120, 120);
+        CHECK(!gauge->IsDarkLook(), "light under the light theme");
+        UltraCanvasTheme::SetCurrent(dark);
+        gauge->OnThemeChanged(dark);
+        CHECK(gauge->IsDarkLook(), "dark once the theme turns dark");
+        auto darkBorn = std::make_shared<UltraCanvasGaugeDiagramElement>("DarkGauge", 0, 0, 120, 120);
+        CHECK(darkBorn->IsDarkLook(), "a gauge made under a dark theme is dark");
+        UltraCanvasTheme::SetCurrent(light);
+        gauge->OnThemeChanged(light);
+        CHECK(!gauge->IsDarkLook(), "light again after the switch back");
+        UltraCanvasUIElement::SetFollowThemeByDefault(followed);
     }
 
     UltraCanvasTheme::SetCurrent(light);

@@ -1454,6 +1454,28 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
+- **UltraCanvasEmbeddedWindowManager** (`UltraCanvasEmbeddedWindowManager.h`)
+  — a window manager inside the program, for a backend that draws many
+  windows onto one surface: stacking bands, focus, placement, title bars kept
+  with their windows (`AttachFrame`; the bar itself is
+  `UltraCanvasEmbeddedWindowFrame`, a borderless window of an
+  `UltraCanvasLabel` and three `UltraCanvasButton`s), moving and resizing,
+  maximize into the work area reserved edges leave, pointer routing with the
+  button grab, damage, and compositing with a drawn pointer. Platform-neutral;
+  the Android backend's desktop mode (`OS/Android/UltraCanvasAndroidDesktop`,
+  MobilePC) runs on it, and through it answers `UltraCanvasDesktopShell` as
+  its embedded host. Core in `core/UltraCanvasEmbeddedWindowManager.cpp` and
+  `core/UltraCanvasEmbeddedWindowFrame.cpp`; tested by
+  `Tests/EmbeddedWindowManagerTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md`.
+
+- **UltraCanvasHostedApps** (`UltraCanvasHostedApps.h`) — applications that
+  run inside their host program (MobilePC's): registered with an entry
+  point, listed by `UltraCanvasDesktopShell::ListApplications` where the
+  platform has none of its own, started in the process by
+  `LaunchApplication`. Core in `core/UltraCanvasHostedApps.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasHostedApps.md`.
+
 - **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
   operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
   Core in `core/UltraCanvasWireless.cpp` (argument checks, the lists' order,
@@ -8192,7 +8214,17 @@ keyboard, full IME, multi-touch with pinch/rotate, message dialogs, SAF file
 opening and saving, APK asset extraction). The dependency sysroot builds in
 CI, and DemoApp links against it into `libUltraCanvasDemo.so`, the app library
 an APK carries, and CI packages that into a debug-signed APK for `arm64-v8a`
-and `x86_64`; nothing has installed one yet, so none of it has run on a device — `UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding and states exactly what the sysroot must provide.
+and `x86_64`. The x86_64 APK is installed and run on an emulator in CI
+(`scripts/android-emulator-smoke.sh`, at 160 and 420 dpi): the first frame
+with content, a tap landing on the element under it, typed text reaching the
+focused field, and an in-place rotation are observed there; ChatCube builds
+the same way, and MobilePC's desktop mode is run on the emulator with a
+simulated second display (`scripts/android-mobilepc-smoke.sh`). Dialogs, the
+IME's composing path and gestures are still designed and reviewed rather than
+seen working, and nothing has run on a physical device yet. The backend's
+[README](../../UltraCanvas/OS/Android/README.md) keeps the current state;
+`UltraCanvas/OS/Android/packaging/` holds the manifest and Gradle scaffolding
+and states exactly what the sysroot must provide.
 **Goal:** Bring UltraCanvas to Google Android with the same OS-level support the
 framework has on Linux (windowing, rendering, input, clipboard, dialogs,
 networking, fonts, audio/video, GL).
@@ -28185,13 +28217,35 @@ the shell they are free.
 | Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
 | Linux on Wayland (`-DULTRACANVAS_WAYLAND=ON`) | `wayland` (`OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`), phase 1 of `WaylandDesktopShellProposal.md`: the monitors from the compositor's `wl_output`s (position, mode and scale; the first announced is the primary, Wayland naming none), the devices from the same procfs and sysfs probes as X11, the keyboard layout from the seat's xkb keymap; the session's end and lock, the loudspeaker and the notification area are the shared Linux files above, a tray click reported at the last pointer position in the shell's own window (a Wayland client knows no screen position). The window list, the virtual desktops, `ReserveScreenEdges`, the screenshot, the monitor and the global shortcuts answer false with "not available on Wayland yet" until the layer-shell and foreign-toplevel protocols and the Screenshot and GlobalShortcuts portals are in. `CaptureWindowImage` is the compositor's copy of the window through `ext-image-copy-capture-v1` (with `ext-image-capture-source-v1` and `ext-foreign-toplevel-list-v1`, the three XML files carried under `OS/Linux/Wayland/protocols/`), into a `wl_shm` buffer, each step given a second and a half. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, an exclusive one (`StartExclusive`) and the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
-| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` (except on macOS, below), `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
+| macOS, Android, WebAssembly | `null` (on Android in desktop mode the embedded host below answers the windows, the screen and the applications): `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage` (except on macOS, below), `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
 | macOS: the applications | `OS/MacOS/UltraCanvasMacOSApplications.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS`): the application list from the bundles and their `Info.plist`, icons drawn from `NSWorkspace iconForFile:` into PNG files in the disk cache's `desktop-icons` folder (`~/Library/Caches/UltraCanvas`, swept by its rule), launch through `NSWorkspace`; on any thread. The rest of the backend is the `null` one above. |
 | macOS: the screen capture | `OS/MacOS/UltraCanvasMacOSScreenCapture.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE`): `CaptureScreen`, `CaptureScreenImage` and `CaptureScreenArea` through ScreenCaptureKit's `SCScreenshotManager` (macOS 14; `CGDisplayCreateImage` is obsolete from the macOS 15 SDK on). The main display - the one with the menu bar - whole, at its own pixels (a Retina display at twice its points), without the pointer, its top-left corner 0,0; other displays are not captured yet. macOS asks the person once for *Screen & System Audio Recording* (Privacy & Security): until it is allowed the capture fails with that reason, the first try opens the system's request, and the program needs starting again once it is granted. The call waits for ScreenCaptureKit (ten seconds at most), so it may be made from the UI thread. `ListScreens` stays empty on macOS. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
 fallback when it is absent.
+
+### Inside one program
+
+Where there is no native backend, the fallback can still answer: a window
+manager running inside the program installs itself as the
+`DesktopShellBackend::EmbeddedHost` (`SetEmbeddedHost`, in the internal
+`UltraCanvasDesktopShellBackend.h`), and the fallback forwards the window
+list, `GetActiveWindow`, `ActivateWindow`, `MinimizeWindow`, `CloseWindow`,
+`GetWindowBounds`, `MoveWindow`, `GetScreenSize`, `ListScreens`,
+`ReserveScreenEdges`, the application list and `LaunchApplication` of a
+`hosted:` entry to it. Its `NotifyEmbeddedChange()` wakes the shell monitor,
+so a taskbar follows windows opening, closing and taking the focus as it does
+on X11. `BackendName()` is the host's name then, and `IsAvailable()` true.
+
+The Android backend's desktop mode is that host (`UltraCanvasAndroidDesktop`,
+on [UltraCanvasEmbeddedWindowManager](UltraCanvasEmbeddedWindowManager.md)):
+its windows are the window manager's, the one screen is the desktop's output
+(an external display, else the phone's), and the applications are the ones
+the program carries ([UltraCanvasHostedApps](UltraCanvasHostedApps.md)) - so
+UltraDesktop runs there unchanged, as MobilePC shows it on a TV. The screen
+capture, the virtual desktops, the devices, the session's end and the
+loudspeaker stay the `null` backend's.
 
 ## See also
 
@@ -32129,6 +32183,180 @@ one known way for that to happen - a DLL in the package carrying a Windows
 system DLL's name, which the loader then answers imports of that name with -
 is kept out of the package by `package-win.sh`; see [*"Entry point not found"
 in a Windows DLL*](UltraCanvasWindowsDiagnostics.md#entry-point-not-found-in-a-windows-dll).
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md
+==============================================================================
+
+# UltraCanvasEmbeddedWindowManager — a window manager inside the program
+
+<!-- doc-check: cairo_surface_t* output; cairo_surface_t* SurfaceOf(uint64_t id); float scale; void ResizeWindow(uint64_t id, int width, int height); void DeliverMouseMove(uint64_t id, UltraCanvas::Point2Di local); -->
+
+Where a platform gives a program one surface and no window manager - an
+Android app drawing on a TV through a `Presentation`, a web page's canvas -
+the windows of that program still need stacking, focus, title bars, moving,
+resizing and a pointer. `UltraCanvasEmbeddedWindowManager` is that window
+manager: it keeps the windows of one output and composites their surfaces
+into it.
+
+```cpp
+#include "UltraCanvasEmbeddedWindowManager.h"
+using namespace UltraCanvas;
+
+UltraCanvasEmbeddedWindowManager wm;
+wm.SetOutputSize(1920, 1080);                       // logical px
+
+EmbeddedWindowSpec desktop;
+desktop.layer = EmbeddedWindowLayer::Desktop;
+desktop.fillsOutput = true;                         // always the whole output
+wm.AddWindow(1, desktop);
+wm.Show(1);
+
+EmbeddedWindowSpec editor;
+editor.rect = Rect2Di(-1, -1, 900, 640);            // -1: the manager places it
+editor.title = "Texter";
+wm.AddWindow(2, editor);
+wm.Show(2);                                         // shown, raised, focused
+
+wm.onGeometryChanged = [](uint64_t id, const Rect2Di& r) { ResizeWindow(id, r.width, r.height); };
+wm.Compose(output, scale, [](uint64_t id) { return SurfaceOf(id); }, wm.TakeDamage());
+```
+
+It is the Android backend's desktop mode underneath
+([`OS/Android/README.md`](../../UltraCanvas/OS/Android/README.md#desktop-mode-a-tv-or-monitor),
+`UltraCanvasAndroidDesktop`), which MobilePC uses to put UltraDesktop on a TV.
+It knows nothing of the platform and nothing of elements: windows are ids, a
+rectangle each, and a cairo image surface the caller hands it when it
+composites. `Tests/EmbeddedWindowManagerTest` exercises all of it with no
+display.
+
+## Contents
+
+- [What it keeps](#what-it-keeps)
+- [Bands](#bands)
+- [Title bars](#title-bars)
+- [The pointer](#the-pointer)
+- [Compositing](#compositing)
+- [API](#api)
+- [Related](#related)
+
+## What it keeps
+
+Every rectangle is the window's **content** in the output's logical pixels.
+
+- **Placement.** A window whose `rect` has `x` or `y` below 0 is placed: a
+  dialog (`transientFor`) centred over its window, anything else cascaded from
+  the work area's top left - centred when it is too big to step. Nothing is
+  larger than the work area, and part of every window stays on the output.
+- **The work area** is the output less the strips windows reserve with
+  `ReserveEdges` - a desktop's bars. Maximize fills it (title bar included).
+- **Focus.** Showing a window focuses it; a press in a window raises and
+  focuses it; minimizing, hiding or removing the focused window passes the
+  focus to the window a dialog belongs to, else the topmost one.
+  `onFocusChanged` reports each change. A frame, a popup, a tooltip and a
+  notification never take it (`focusable` false).
+- **State.** `Minimize`, `Maximize`, `Restore`, `ToggleMaximize`; a dialog is
+  raised with its window. `onStateChanged` reports a change the manager made.
+
+## Bands
+
+The stack is ordered by band, bottom first, and `Raise` moves a window to the
+top of its own band only - a click on the desktop never brings it above the
+windows, a dialog never covers a menu:
+
+| `EmbeddedWindowLayer` | For |
+|---|---|
+| `Desktop` | the desktop's window (wallpaper, bars) |
+| `Normal` | application windows and their dialogs |
+| `AlwaysOnTop` | a recording bar, a floating palette |
+| `Notification` | toasts |
+| `Popup` | a menu's or a list's own window |
+| `Tooltip` | tooltips |
+| `Lock` | a lock screen, over everything |
+
+`ListApplicationWindows()` is what a taskbar lists: the focusable windows of
+the `Normal` and `AlwaysOnTop` bands, without frames.
+
+## Title bars
+
+A decorated window gets its title bar as a **window of its own**, attached with
+`AttachFrame(clientId, frameId)`: the manager keeps it just above the window,
+as wide as it, and moves, raises, shows, hides and minimizes it with it. The
+backend draws it like any window; the framework's is
+`UltraCanvasEmbeddedWindowFrame` - an `UltraCanvasLabel` and three
+`UltraCanvasButton`s in a borderless window, so it behaves and looks like
+every other control (hover, theme, scale). A press on its title calls
+`BeginMove(clientId)`; a double click there maximizes or restores.
+
+Resizing needs no window: the edges and corners just **outside** a decorated,
+resizable, unmaximized window take the pointer (`resizeGrip`, 6 px), with the
+resize pointer shapes.
+
+## The pointer
+
+The pointer is the manager's, drawn by `Compose`. A backend feeds it either
+absolute positions (`PointerMove`, `PointerButton`) or relative motion
+(`MovePointerBy`, from a touchpad or a captured mouse). Each call returns an
+`EmbeddedPointerRoute`: the window to deliver the event to, the point in that
+window's own coordinates, and the window the pointer just left (to send it a
+`MouseLeave`). A button pressed in a window keeps the pointer there until the
+last button is released, as on a desktop. During a move or a resize the
+manager uses the events itself and routes nothing.
+
+```cpp
+EmbeddedPointerRoute route = wm.PointerMove(Point2Di(640, 400));
+if (route.windowId) DeliverMouseMove(route.windowId, route.local);
+```
+
+The shape is the window's own choice (`SetWindowCursor`, which a backend calls
+from `SelectMouseCursorNative`) over its content, and the manager's over an
+edge it resizes by. The shapes are drawn as vectors (`DrawPointer`), white
+with a dark outline, at the output's scale.
+
+## Compositing
+
+Every change adds **damage** - a window presented (`WindowPresented`), moved,
+raised, shown or hidden, the pointer moved - in logical pixels, merged as it
+comes. `Compose` draws only the damaged rectangles of the output: the
+background (`backgroundRgb`), every shown window bottom first with a soft
+shadow under the decorated ones, and the pointer. Each window's surface is
+copied pixel for pixel: a surface with a device scale (the framework's
+windows have one) is drawn at that scale, so a window rendered at the
+output's scale is never resampled. `Compose` returns the physical rectangle
+it drew, which is what a backend copies to the screen.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `SetOutputSize(w, h)` / `GetOutputSize()` | the output, logical px; windows that fill it follow, maximized ones re-maximize, the rest are kept on it |
+| `ReserveEdges(id, l, r, t, b)` / `GetWorkArea()` | strips kept free for a window; four zeros release them |
+| `AddWindow(id, spec)` → `Rect2Di` | joins hidden; the rectangle it was placed at |
+| `RemoveWindow(id)`, `HasWindow(id)`, `GetInfo(id, out)` | |
+| `AttachFrame(clientId, frameId)` | a title bar window for a window |
+| `ListWindows()` / `ListApplicationWindows()` | stacking order, bottom first |
+| `Show`, `Hide`, `SetTitle`, `SetRect`, `Raise`, `Activate` | `SetRect` is the window's own request: kept on the output and in its limits |
+| `Minimize`, `Maximize`, `Restore`, `ToggleMaximize` | |
+| `GetFocused()`, `GetKeyboardTarget()`, `TopmostFocusable(except)` | |
+| `SetPointerPosition`, `MovePointerBy`, `SetPointerVisible`, `SetWindowCursor` | |
+| `HitTest(point, &id)` → `EmbeddedWindowPart` | `Content`, a resize edge, or `Nothing` |
+| `PointerMove(point)`, `PointerButton(point, down)` → `EmbeddedPointerRoute` | |
+| `BeginMove(clientId)`, `IsMovingOrResizing()` | |
+| `AddDamage`, `DamageAll`, `WindowPresented`, `HasDamage`, `TakeDamage` | |
+| `Compose(output, scale, surfaceOf, damage)` → `Rect2Di` | |
+| `onGeometryChanged`, `onFocusChanged`, `onStateChanged` | callbacks to the backend |
+| `titleBarHeight` (32), `resizeGrip` (6), `keepVisible` (48), `backgroundRgb` | logical px; the colour as `0xRRGGBB` |
+
+Single-threaded: every call on the thread that owns the windows.
+
+## Related
+
+- [UltraCanvasDesktopShell](UltraCanvasDesktopShell.md) - a desktop's window
+  list, screens and applications, answered from this manager where the
+  platform has no window manager of its own (*Inside one program*).
+- [UltraCanvasHostedApps](UltraCanvasHostedApps.md) - applications that run
+  inside their host program, as MobilePC's do.
+- [MobilePC](../MobilePC/README.md) - UltraDesktop on a TV, on this manager.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasEmojiSettings.md
@@ -40625,6 +40853,19 @@ void SetClockHandColor(const Color& c);   // AnalogClock: hour and minute hands,
 void SetClockTickColor(const Color& c);   // AnalogClock: ticks, rim, hour numbers
 ```
 
+The gauge follows the theme. Under a dark one its own greys - captions,
+ticks, unlit segments, the face - and the default text, background, track,
+ring border and clock colours are drawn in the dark look
+(`UltraCanvasTheme::ForDarkLook`); a colour given with its setter is drawn
+as given, and the value colours (the gauge colour, ranges, warnings) are
+kept in either look. The speedometer's face is dark in both looks, so its
+value is light unless `SetTextColor` chose otherwise.
+
+```cpp
+void ApplyTheme(const UltraCanvasTheme& theme); // called for it when the theme changes
+bool IsDarkLook() const;
+```
+
 ### Round-Gauge (CircularRing) Styling
 
 ```cpp
@@ -44847,6 +45088,79 @@ never blocks on a lookup.
 [`UltraCanvasFilerWidget.md`](UltraCanvasFilerWidget.md)). The widget holds
 its own cache keyed by `HostFileIconKey` plus the icon size, resolved on one
 background thread, and draws its simple icons until an answer lands.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasHostedApps.md
+==============================================================================
+
+# UltraCanvasHostedApps — applications inside their host program
+
+<!-- doc-check: bool OpenViewer(const std::vector<std::string>& files); -->
+
+On a desktop every application is a program of its own, started by the
+desktop as a process. On Android one app carries everything - MobilePC is
+UltraDesktop *and* the applications its Apps window starts, in one process -
+so "start an application" has to mean "call its entry point". This registry
+is where such applications are listed, and what a desktop's Apps window
+starts them through.
+
+```cpp
+#include "UltraCanvasHostedApps.h"
+using namespace UltraCanvas;
+
+UltraCanvasHostedApps::Register({
+    "ultraviewer", "UltraViewer", "Pictures, videos, music and documents",
+    "media/appicon/UltraViewer.png", {"Graphics", "Viewer"},
+    [](const std::vector<std::string>& files) { return OpenViewer(files); }});
+
+std::string error;
+UltraCanvasHostedApps::Launch("ultraviewer", {}, &error);
+```
+
+## Contents
+
+- [Registering an application](#registering-an-application)
+- [How a desktop sees them](#how-a-desktop-sees-them)
+- [API](#api)
+
+## Registering an application
+
+A `HostedAppInfo` is an id (stable, lower case), the name a launcher shows, a
+comment, an icon file, freedesktop categories (UltraDesktop's Apps window
+groups by them) and `launch`: the code an application's own `main()` runs
+between `app.Initialize(...)` and `app.Run()` - make the main window, open the
+files. It must not run a loop of its own and must not end the process: the
+host runs one loop for all its applications, and closing an application's
+windows is how it quits. An application whose window class opens its own
+windows (UltraPaint's and ArtCreator's `OpenWindow`) needs nothing else; one
+that keeps its windows in `main()` moves that into a class first.
+
+`Launching()` names the application whose `launch` is running, so the windows
+it makes can be told apart from the host's (the Android desktop mode files
+each window under it, and a taskbar groups them).
+
+## How a desktop sees them
+
+Where the platform keeps no applications of its own to list (Android),
+`UltraCanvasDesktopShell::ListApplications` lists the registered ones - through
+the desktop shell's embedded host, see
+[UltraCanvasDesktopShell](UltraCanvasDesktopShell.md#inside-one-program) - each
+as a `UCDesktopEntry` whose `shortcutPath` is `hosted:<id>`, and
+`LaunchApplication` with that entry calls `Launch`. A desktop written for
+desktop platforms, like UltraDesktop, therefore lists and starts them
+unchanged.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `Register(info)` | adds it, or replaces the one with that id |
+| `List()`, `Has(id)` | |
+| `Launch(id, files, &error)` | runs its entry point on the calling (UI) thread; false with the reason |
+| `Launching()` | the id whose `Launch` is running, `""` outside one |
+| `PathFor(id)` / `IdFromPath(path)` | `"hosted:<id>"` and back |
+
+Header: `UltraCanvasHostedApps.h`; core in `core/UltraCanvasHostedApps.cpp`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasIconResource.md
@@ -73922,7 +74236,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
 
 # UltraCanvas Slider Control Documentation
 
-<!-- doc-check: void updateProgressBar(float value); void rotateObject(float angle); -->
+<!-- doc-check: void updateProgressBar(float value); void rotateObject(float angle); std::string FormatTime(float seconds); float bufferedSeconds; std::vector<float> bucketCounts; Color amber; Color red; -->
 
 ## Contents
 
@@ -73936,12 +74250,18 @@ FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
   - [SliderOrientation](#sliderorientation)
   - [SliderState](#sliderstate)
   - [SliderHandleShape](#sliderhandleshape)
+  - [SliderTickPosition and SliderTickStyle](#slidertickposition-and-slidertickstyle)
+  - [SliderColorZone](#slidercolorzone)
 - [Visual Style Structure](#visual-style-structure)
 - [Constructor](#constructor)
 - [Key Methods](#key-methods)
   - [Value Management](#value-management)
   - [Style Configuration](#style-configuration)
   - [Appearance Customization](#appearance-customization)
+  - [Tick Marks and Labels](#tick-marks-and-labels)
+  - [Fill Origin, Reset and Colour Zones](#fill-origin-reset-and-colour-zones)
+  - [Rotary, Seek, Histogram, Segments, Ruler](#rotary-seek-histogram-segments-ruler)
+  - [Size](#size)
   - [Range Mode (two handles)](#range-mode-two-handles)
 - [Event Callbacks](#event-callbacks)
 - [Factory Functions](#factory-functions)
@@ -73951,6 +74271,7 @@ FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
   - [Vertical Slider with Percentage](#vertical-slider-with-percentage)
   - [Circular Knob Control](#circular-knob-control)
   - [Custom Styled Slider](#custom-styled-slider)
+  - [Slider Designs](#slider-designs)
   - [Progress Bar Style](#progress-bar-style)
 - [Rendering Details](#rendering-details)
 - [Advanced Features](#advanced-features)
@@ -73967,18 +74288,26 @@ FILE: Docs/UltraCanvas/UltraCanvasSliderExamples.md
 The **UltraCanvasSlider** is a versatile and feature-rich interactive slider control component for the UltraCanvas Framework. It provides multiple styles, value display options, and comprehensive customization capabilities for creating intuitive range selection interfaces.
 
 **File Location**: `include/UltraCanvasSlider.h`  
-**Version**: 2.0.2  
-**Last Modified**: 2026-10-07  
+**Version**: 3.10.0  
+**Last Modified**: 2026-11-24  
 **Author**: UltraCanvas Framework
 
 ## Features
 
 ### Core Functionality
-- ✅ **Multiple Slider Styles**: Horizontal, Vertical, Circular, Progress, Range (two handles)
+- ✅ **Multiple Slider Styles**: Horizontal, Vertical, Circular, Progress, Range (two handles),
+  Knob, Field, Seek, Ruler, Segmented
+- ✅ **Tick Marks and Scales**: before, after or on the track; lines, a ramp or dots; major and
+  minor intervals or chosen values; labels with a formatter; named stops
+- ✅ **Handle Shapes**: Circle, Square, Triangle, Diamond, Pointer, Bar, Block, FaderCap, or none,
+  with an optional shadow
+- ✅ **Value Bubble**: the value in a balloon over the handle, always or while dragging
+- ✅ **Fill Origin and Reset**: fill outward from a neutral value; double-click returns to it
 - ✅ **Value Management**: Min/max range, current value, percentage calculations
 - ✅ **Step Control**: Configurable increment/decrement step values
-- ✅ **Value Display Options**: Number, Percentage, Tooltip, Always Visible
-- ✅ **Mouse Interaction**: Click-to-set, drag-to-adjust
+- ✅ **Value Display Options**: Number, Percentage, Tooltip, Always Visible, Bubble
+- ✅ **Mouse Interaction**: Click-to-set, drag-to-adjust; knobs and the ruler turn by dragging
+  and take the wheel
 - ✅ **Keyboard Navigation**: Arrow keys, Home, End, Page Up/Down
 - ✅ **Visual Feedback**: Hover, pressed, focused, disabled states
 - ✅ **Custom Styling**: Configurable colors, sizes, fonts
@@ -74005,8 +74334,19 @@ enum class SliderStyle {
     Circular,       // Circular/knob style
     Progress,       // Progress bar style
     Range,          // Range slider with two handles
+    Knob,           // Rotary cap with a pointer line inside a ring of dots
+    Field,          // A field that fills with the value: a name on the left, the number on the right
+    Seek,           // Media timeline: thin line, buffered part, thumb shown on hover
+    Ruler,          // Fixed centre marker; the scale slides under it
+    Segmented       // A row (or column) of blocks lit up to the value, like a level meter
 };
 ```
+
+`Circular` and `Knob` are turned, not slid: dragging up raises the value
+(the whole range over 200 pixels), and the mouse wheel steps it. `Ruler` is
+dragged sideways - the scale follows the pointer, so the value moves the
+other way - and takes the wheel too. A linear slider ignores the wheel, so it
+does not catch a scrolling page.
 
 ### SliderValueDisplay
 Controls how the value is displayed:
@@ -74016,7 +74356,9 @@ enum class SliderValueDisplay {
     Number,          // Numeric value
     Percentage,      // Percentage display
     Tooltip,         // Show on hover
-    AlwaysVisible    // Always visible
+    AlwaysVisible,   // Always visible
+    Bubble,          // In a balloon over the handle, always
+    BubbleWhileDragging // In a balloon over the handle while it is dragged
 };
 ```
 
@@ -74055,7 +74397,42 @@ enum class SliderHandleShape {
     Circle,     // the default
     Square,
     Triangle,
-    Diamond
+    Diamond,
+    Pointer,    // Five-sided thumb that points at the ticks
+    Bar,        // Slim bar across the track, in the active colour (see handleGap)
+    Block,      // Small upright block, as on a compact desktop trackbar
+    FaderCap,   // Ribbed rectangular cap of a mixing-desk fader
+    NoHandle    // No handle at all (a meter, or a Seek bar at rest)
+};
+```
+
+A `Pointer` points at the ticks: up (or left) with `SliderTickPosition::Before`,
+down (or right) otherwise.
+
+### SliderTickPosition and SliderTickStyle
+Where tick marks go and how they look (`SetTickPosition`, `SetTickStyle`):
+```cpp
+enum class SliderTickPosition {
+    NoTicks,    // the default
+    Before,     // above a horizontal track, left of a vertical one
+    After,      // below / right
+    BothSides,
+    OnTrack     // inside the track itself
+};
+
+enum class SliderTickStyle {
+    Line,       // straight marks; major ones longer than minor ones
+    Ramp,       // marks that grow from the minimum to the maximum
+    Dot         // round dots
+};
+```
+
+### SliderColorZone
+A colour from a fraction of the range upward, for `SetColorZones`:
+```cpp
+struct SliderColorZone {
+    float fromFraction = 0.0f;
+    Color color;
 };
 ```
 
@@ -74081,17 +74458,41 @@ struct SliderVisualStyle {
     Color textColor = Colors::Black;
     Color disabledTextColor = Color(150, 150, 150);
 
+    // Ticks, labels, the value bubble, the tooltip, a Seek bar's buffered
+    // part and the histogram
+    Color tickColor = Color(110, 110, 110);
+    Color tickLabelColor = Color(90, 90, 90);
+    Color bubbleColor = Color(40, 40, 40);
+    Color bubbleTextColor = Colors::White;
+    Color tooltipColor = Color(255, 255, 220, 230);
+    Color tooltipBorderColor = Color(128, 128, 128);
+    Color secondaryTrackColor = Color(160, 160, 160);
+    Color histogramColor = Color(205, 205, 210);
+    Color histogramActiveColor = Color(0, 120, 215, 200);
+
     // Dimensions
     float trackHeight = 6.0f;
     float handleSize = 16.0f;
-    float borderWidth = 1.0f;
-    float cornerRadius = 3.0f;
-    SliderHandleShape handleShape = SliderHandleShape::Circle;  // Circle, Square, Triangle, Diamond
+    float borderWidth = 1.0f;           // the track's outline and the handle's border; 0 for none
+    float cornerRadius = 3.0f;          // rounds the track, its fill and the bar (at most half its thickness)
+    SliderHandleShape handleShape = SliderHandleShape::Circle;
+    bool handleShadow = false;          // a soft shadow under the handle
+    float handleGap = 0.0f;             // space clear of the track either side of a Bar handle
+    bool trackInset = false;            // a sunken, bevelled track
+    float tickLength = 6.0f;            // major ticks; a Ramp grows up to this
+    float minorTickLength = 3.0f;
+    float tickGap = 3.0f;               // between the handle's band and the ticks
 
     // Font
     FontStyle fontStyle;
 };
 ```
+
+`SliderVisualStyle::FromTheme` fills the colours from the theme's roles (ticks
+and their labels in muted ink, the bubble in ink with the ground's colour for
+its text, the histogram in the line colour) and keeps every size and flag of
+the style it is given, so a slider shaped by hand keeps its shape when the
+theme changes.
 
 ## Constructor
 
@@ -74203,6 +74604,102 @@ const SliderVisualStyle& GetStyle() const;
 void SetStyle(const SliderVisualStyle& st);
 ```
 
+### Tick Marks and Labels
+
+```cpp
+void SetTickPosition(SliderTickPosition position);   // NoTicks by default
+void SetTickStyle(SliderTickStyle tickStyle);        // Line, Ramp, Dot
+void SetTickInterval(float major, float minor = 0.0f);
+void SetTickMarks(const std::vector<float>& values); // ticks at these values only
+void SetTickLabels(bool show);                       // a label at each major tick
+void SetStopLabels(const std::vector<std::string>& labels);
+std::string GetTickLabel(float value) const;
+std::vector<std::pair<float, bool>> GetTickValues() const;  // value, is major
+
+std::function<std::string(float)> tickLabelFormatter;       // the label of a tick
+```
+
+With no interval set, the major ticks fall on every step when that gives at
+most 20 of them, and on every tenth of the range otherwise. Minor ticks are
+drawn only with a minor interval, and the major interval should be a multiple
+of it. `SetTickMarks` replaces the intervals with chosen values (all major):
+the 0 dB mark of a fader, or -100 / 0 / +100 of a balance control.
+
+`SetStopLabels` names each step from the minimum (`SetRange(0, 6)`,
+`SetStep(1)` and seven names): every stop gets a tick and its name, the name
+of the current stop is drawn in the text colour, and the value display shows
+the name instead of the number.
+
+Ticks and labels take room across the bar, and a label wider than the handle
+pulls both ends of the travel in so the end labels are not cut off: give the
+slider the height (or width) they need.
+
+### Fill Origin, Reset and Colour Zones
+
+```cpp
+void SetFillOrigin(float value);   // fill from this value to the handle
+void ClearFillOrigin();
+void SetResetValue(float value);   // a double-click returns here
+void ClearResetValue();
+void SetColorZones(const std::vector<SliderColorZone>& zones);
+```
+
+A fill origin makes a bipolar control: on a -100..100 balance slider,
+`SetFillOrigin(0)` fills outward from the middle and marks it. Colour zones
+colour the fill (and a `Segmented` slider's blocks) by how far up the range
+it reaches.
+
+### Rotary, Seek, Histogram, Segments, Ruler
+
+```cpp
+void SetArcAngles(float startDegrees, float sweepDegrees);  // Circular, Knob: 135, 270 by default
+
+void SetSecondaryValue(float value);   // Seek: what has loaded
+void ClearSecondaryValue();
+void SetHoverPreview(bool enabled);    // the value under the pointer, in a bubble
+std::function<std::string(float)> hoverText;
+
+void SetHistogram(const std::vector<float>& bucketCounts);  // bars behind a horizontal track
+void ClearHistogram();
+
+void SetSegmentCount(int count);       // Segmented
+void SetPixelsPerUnit(float pixels);   // Ruler
+```
+
+Angles are in degrees clockwise from 3 o'clock; the default arc starts at 135
+and sweeps 270, leaving a gap at the bottom. The histogram's buckets spread
+evenly across the range, in the free space above the track; the bars under
+the selection (or the fill) take `histogramActiveColor`.
+
+### Size
+
+```cpp
+Size2Df GetMinimumSize() const;   // the smallest box nothing is cut off in
+float GetPreferredLength() const; // the length when nothing sizes it: 160 px (96 for a knob, 200 for a ruler)
+void SetGrowToFit(bool grow);     // on by default
+bool GetGrowToFit() const;
+```
+
+A slider sizes itself in a layout: built without a size
+(`UltraCanvasSlider("Volume")`) it takes its preferred length and, across
+the bar, what it shows needs - the handle, the ticks and their labels, the
+value text, a bubble or a histogram. The labels are measured with the
+window's text engine once there is one, and estimated from the font before.
+
+A size given explicitly is kept along the bar. Across it, a size too small
+for the ticks, labels or value grows: the slider sets its own `min-height`
+(`min-width` when vertical) and the layout makes room. A plain slider
+(nothing beyond its bar) keeps whatever size it was given, as before; a
+`min-height` the application set itself is left alone; and
+`SetGrowToFit(false)` keeps the given size whatever is cut off.
+
+```cpp
+auto delay = CreateSlider("Delay", 0, 0, 300, 20);   // 20 px is too short for labels
+delay->SetTickPosition(SliderTickPosition::After);
+delay->SetTickLabels(true);                          // the layout now gives it ~44 px
+Size2Df needed = delay->GetMinimumSize();
+```
+
 ### Range Mode (two handles)
 
 ```cpp
@@ -74285,6 +74782,8 @@ The slider supports comprehensive keyboard navigation:
 | **Page Up** | Increase by 10 × step |
 | **Page Down** | Decrease by 10 × step |
 
+A double-click puts a slider with a reset value (`SetResetValue`) back to it.
+
 With a continuous slider (step 0) one key step is 1% of the range.
 
 ## Usage Examples
@@ -74364,6 +74863,134 @@ customSlider->SetValueFormat("%.1f dB");
 container->AddChild(customSlider);
 ```
 
+### Slider Designs
+
+Each of these is on the demo app's slider page. The first is a compact
+trackbar with ticks that grow towards the maximum:
+
+```cpp
+auto size = CreateSlider("BrushSize", 0, 0, 300, 40);
+size->SetStep(25.0f);
+size->SetTickPosition(SliderTickPosition::Before);
+size->SetTickStyle(SliderTickStyle::Ramp);
+size->SetTickInterval(25.0f);
+size->SetHandleShape(SliderHandleShape::Block);
+size->SetHandleSize(12.0f);
+size->GetStyle().trackInset = true;
+size->GetStyle().tickLength = 12.0f;
+```
+
+A pointer thumb over a row of ticks, and a labelled scale with a unit:
+
+```cpp
+auto pointer = CreateSlider("Pointer", 0, 0, 300, 40);
+pointer->SetStep(10.0f);
+pointer->SetTickPosition(SliderTickPosition::After);
+pointer->SetTickInterval(10.0f);
+pointer->SetHandleShape(SliderHandleShape::Pointer);
+
+auto delay = CreateSlider("Delay", 0, 0, 300, 56);
+delay->SetTickPosition(SliderTickPosition::After);
+delay->SetTickInterval(25.0f, 5.0f);
+delay->SetTickLabels(true);
+delay->tickLabelFormatter = [](float v) { return std::to_string(int(v)) + " ms"; };
+```
+
+Named stops, the value in a bubble, and a centre-origin balance control:
+
+```cpp
+auto sizes = CreateSlider("Size", 0, 0, 300, 56);
+sizes->SetRange(0, 6);
+sizes->SetStep(1);
+sizes->SetTickPosition(SliderTickPosition::OnTrack);
+sizes->SetTickStyle(SliderTickStyle::Dot);
+sizes->SetStopLabels({"Off", "XS", "S", "M", "L", "XL", "XXL"});
+sizes->SetTrackHeight(10.0f);
+
+auto opacity = CreateSlider("Opacity", 0, 0, 300, 56);
+opacity->SetValueDisplay(SliderValueDisplay::Bubble);
+opacity->SetValueFormat("%.0f%%");
+
+auto balance = CreateSlider("Balance", 0, 0, 300, 50);
+balance->SetRange(-100, 100);
+balance->SetFillOrigin(0);
+balance->SetResetValue(0);
+balance->SetTickPosition(SliderTickPosition::After);
+balance->SetTickMarks({-100, 0, 100});
+```
+
+A pill track split by a bar, and a soft thick track for touch:
+
+```cpp
+auto pill = CreateSlider("Pill", 0, 0, 300, 40);
+pill->SetTrackHeight(16.0f);
+pill->SetHandleShape(SliderHandleShape::Bar);
+pill->GetStyle().cornerRadius = 8.0f;
+pill->GetStyle().handleGap = 4.0f;
+pill->GetStyle().borderWidth = 0.0f;
+
+auto touch = CreateSlider("Touch", 0, 0, 300, 40);
+touch->SetTrackHeight(8.0f);
+touch->SetHandleSize(28.0f);
+touch->GetStyle().handleShadow = true;
+touch->GetStyle().borderWidth = 0.0f;
+```
+
+An inline field for a property panel, a media seek bar and a range with the
+data's spread behind it:
+
+```cpp
+auto roughness = CreateSlider("Roughness", 0, 0, 300, 28);
+roughness->SetSliderStyle(SliderStyle::Field);
+roughness->SetRange(0.0f, 1.0f);
+roughness->SetValueFormat("%.2f");
+roughness->SetCustomText("Roughness");   // the name; the number is drawn beside it
+
+auto timeline = CreateSlider("Timeline", 0, 0, 300, 50);
+timeline->SetSliderStyle(SliderStyle::Seek);
+timeline->SetSecondaryValue(bufferedSeconds);
+timeline->SetHoverPreview(true);
+timeline->hoverText = [](float v) { return FormatTime(v); };
+
+auto price = CreateRangeSlider("Price", 0, 0, 300, 110, 0.0f, 500.0f, 140.0f, 350.0f);
+price->SetHistogram(bucketCounts);
+price->SetValueDisplay(SliderValueDisplay::BubbleWhileDragging);
+```
+
+A ruler dial, the two knobs, a console fader and a level meter:
+
+```cpp
+auto straighten = CreateSlider("Straighten", 0, 0, 300, 64);
+straighten->SetSliderStyle(SliderStyle::Ruler);
+straighten->SetRange(-45.0f, 45.0f);
+straighten->SetStep(0.5f);
+straighten->SetTickInterval(10.0f, 2.0f);
+straighten->SetTickLabels(true);
+straighten->SetValueDisplay(SliderValueDisplay::Number);
+straighten->SetPixelsPerUnit(6.0f);
+
+auto gain = CreateCircularSlider("Gain", 0, 0, 120);
+gain->SetValueDisplay(SliderValueDisplay::Number);
+gain->SetArcAngles(135.0f, 270.0f);
+
+auto drive = CreateSlider("Drive", 0, 0, 120, 120);
+drive->SetSliderStyle(SliderStyle::Knob);
+drive->SetRange(0.0f, 10.0f);
+
+auto channel = CreateVerticalSlider("Channel", 0, 0, 100, 220);
+channel->SetHandleShape(SliderHandleShape::FaderCap);
+channel->SetTickPosition(SliderTickPosition::Before);
+channel->SetTickMarks({0.0f, 25.0f, 50.0f, 75.0f, 100.0f});
+channel->SetTickLabels(true);
+
+auto level = CreateVerticalSlider("Level", 0, 0, 60, 220);
+level->SetSliderStyle(SliderStyle::Segmented);
+level->SetSegmentCount(16);
+level->SetColorZones({{0.7f, amber}, {0.875f, red}});
+level->SetTrackHeight(26.0f);
+level->SetHandleShape(SliderHandleShape::NoHandle);
+```
+
 ### Progress Bar Style
 
 ```cpp
@@ -74388,16 +75015,23 @@ container->AddChild(progressBar);
 
 The slider uses the UltraCanvas rendering system to draw:
 
-1. **Track Rectangle**: Background track for the slider
-2. **Active Track**: Filled portion showing current value
-3. **Handle**: Draggable control element
-4. **Value Display**: Optional text showing current value
+1. **Histogram**: Optional bars behind the track
+2. **Track Rectangle**: Background track, rounded by `cornerRadius`
+3. **Active Track**: Filled portion from the minimum (or the fill origin) to the value
+4. **Ticks and Labels**: Optional, either side of the track or on it
+5. **Handle**: Draggable control element, in one of the handle shapes
+6. **Value Display**: Optional text, tooltip or bubble showing the value
 
 Different styles render with variations:
 - **Linear**: Traditional bar with handle
-- **Circular**: Arc track with rotating handle
+- **Circular**: An arc (135° to 405° by default) filled up to the value, the handle at its end
+- **Knob**: A raised cap with a pointer line inside a ring of dots
 - **Progress**: Bar without handle
 - **Range**: Bar with two handles and the range between them highlighted
+- **Field**: The whole element as a field that fills with the value
+- **Seek**: A thin line with the buffered part; the thumb shows on hover
+- **Ruler**: A moving scale under a fixed marker, fading at both ends
+- **Segmented**: Blocks lit up to the value, in the colour zones
 
 ## Advanced Features
 
@@ -82937,6 +83571,7 @@ those elements, the tabbed container and the text area
   - [Readability](#readability)
 - [Using it](#using-it)
   - [Following the theme](#following-the-theme)
+  - [Colours chosen for the light look](#colours-chosen-for-the-light-look)
 - [Fonts and text roles](#fonts-and-text-roles)
 - [The theme from the host](#the-theme-from-the-host)
 - [The policy](#the-policy)
@@ -83213,6 +83848,25 @@ brand.SetRole("rating.on", Color(242, 165, 58));                 // the brand's 
 brand.SetRole("calendar.weekend", brand.roles.inkMuted);         // weekends quiet, not red
 CheckboxVisualStyle box = CheckboxVisualStyle::FromTheme(brand); // the accent for the mark: not named
 RatingStyle stars = RatingStyle::FromTheme(brand, RatingStyle());
+```
+
+### Colours chosen for the light look
+
+An element (or a page) that draws with colours of its own - a caption's
+grey, a pale panel, an unlit segment - can carry them into a dark theme
+without a second palette: `ForDarkLook` turns a colour's lightness over
+into the dark look's range and keeps its hue, so white lands near the
+panel, black near white ink, a pale green panel becomes a dark green one
+and grey text light grey. Alpha is kept. `ForThisLook` does it under a dark
+theme and returns the colour unchanged under a light one. The gauge draws
+its greys through it (`UltraCanvasGaugeDiagramElement`), and the demo app's
+pages through `DemoKit::Themed`. Value colours - an accent, a warning red,
+a chart's palette - are better left as they are.
+
+```cpp
+const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+Color caption = theme.ForThisLook(Color(110, 110, 120));     // grey text, light grey in the dark
+Color panel = UltraCanvasTheme::ForDarkLook(Color(232, 245, 233)); // a pale green panel, dark green
 ```
 
 ## Fonts and text roles
@@ -115683,9 +116337,11 @@ earlier versions kept under `~/.config` is moved on the first start):
 }
 ```
 
-An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
-(the framework's `media/images/landscape.jpg` where a package lacks it or
-cannot read AVIF). An
+An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`.
+Each of ULTRA OS's pictures there has a JPEG beside it (`ULTRA OS A.jpg`):
+a build that cannot read AVIF (no libheif - Android's, whose APK carries only
+the JPEGs) shows that, and the framework's `media/images/landscape.jpg` only
+where neither can be read. An
 empty `ramDiscPath` leaves the RAM disc button out; `"ultrafiler"`, the
 default, asks UltraFiler for its RAM disc (with another `filerProgram` the
 button just opens it), and a folder opens that folder. A file holding the
@@ -115859,6 +116515,15 @@ same.
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/builds-without-the-message-centre.md
+==============================================================================
+
+- **UltraDesktop builds without the message centre.** Its window kept the
+  notification toasts' host as a member whatever the build had, so a build
+  without UltraMessage (Android's, MobilePC's) did not compile; the member is
+  now there only when the toasts are.
+
+==============================================================================
 FILE: Docs/UltraDesktop/changelog.d/panel-switches-fit-translations.md
 ==============================================================================
 
@@ -115876,6 +116541,16 @@ FILE: Docs/UltraDesktop/changelog.d/panel-switches-fit-translations.md
 - **The clipboard panel's "Open UltraClipboard" ran past the edge** in
   Czech, Greek, Hungarian and Romanian, beside the recording switch. The
   panel is 420 px wide instead of 386.
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/wallpaper-jpeg-beside-avif.md
+==============================================================================
+
+- **ULTRA OS's wallpapers as JPEG too.** A build that cannot read AVIF -
+  Android's (MobilePC), or a desktop build without libheif - showed the
+  framework's landscape instead of ULTRA OS's picture. Each picture in
+  `media/images/desktop` now has a JPEG beside it, which the desktop shows
+  when the AVIF cannot be read or is not there.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md

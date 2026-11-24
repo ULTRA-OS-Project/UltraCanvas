@@ -2,6 +2,11 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.6.4 - an item's cross margins come off the cross extent it is measured at:
+//                 a wrapping label with side margins in a column was measured at the
+//                 column's full width, reported one line, and was then arranged
+//                 its margins narrower, where it needed two (the Group Box page in
+//                 German)
 // Version: 1.6.3 - a row narrower than an AtMost main extent grows toward it by
 //                 the content of the items that grow from a set basis (flex: 1 1 0),
 //                 so a wrapping text among them is not measured zero wide
@@ -557,9 +562,16 @@ namespace UltraCanvas {
                         it.maxMain = resolveMinMax(maxD, mainBasis, ctx, INFINITY);
                     }
 
-                    // Flex base size & hypothetical main size.
+                    // Flex base size & hypothetical main size. The item is
+                    // measured at the cross extent it will be given: the
+                    // container's, less its own cross margins (a stretched
+                    // item is arranged that much narrower).
+                    std::optional<float> itemCrossBound;
+                    if (crossMeasureBound) {
+                        itemCrossBound = std::max(0.f, *crossMeasureBound - it.marginCrossStart - it.marginCrossEnd);
+                    }
                     it.baseSize = computeBaseSize(*it.el, it.fi, s.axis,
-                                                  mainBasis, crossMeasureBound, ctx);
+                                                  mainBasis, itemCrossBound, ctx);
                     it.hypoMain = std::clamp(it.baseSize, it.minMain, it.maxMain);
                 }
 
@@ -658,12 +670,15 @@ namespace UltraCanvas {
 
                     float lineCross = 0.f;
                     for (auto* it : line.items) {
-                        // Measure with main=Exact, cross=Unbounded (or AtMost cross-available).
+                        // Measure with main=Exact, cross=Unbounded (or AtMost
+                        // cross-available, less the item's cross margins).
                         MeasureConstraints mc = s.axis.constraints(
                             ConstraintMode::Exact, std::max(0.f, it->mainSize),
                             std::isfinite(s.availableCross) ? ConstraintMode::AtMost
                                                             : ConstraintMode::Unbounded,
-                            s.availableCross);
+                            std::isfinite(s.availableCross)
+                                ? std::max(0.f, s.availableCross - it->marginCrossStart - it->marginCrossEnd)
+                                : s.availableCross);
                         it->el->Measure(mc, ctx);
                         float meas = s.axis.isRow
                             ? it->el->measured.measuredHeight

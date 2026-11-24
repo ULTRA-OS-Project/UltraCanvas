@@ -84,7 +84,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLocalisa
     auto code = [&](const std::shared_ptr<UltraCanvasContainer>& parent, const std::string& id, const std::string& text) {
         auto label = DemoKit::AddText(parent, id, text);
         label->SetFont(mono, 12.0f);
-        label->SetTextColor(Color(80, 60, 140, 255));
+        label->SetTextColor(DemoKit::Themed(Color(80, 60, 140, 255)));
         return label;
     };
     // What the call gives, large, and under it which layer answered.

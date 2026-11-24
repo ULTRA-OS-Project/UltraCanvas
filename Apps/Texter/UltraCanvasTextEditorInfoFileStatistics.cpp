@@ -1,9 +1,10 @@
 // Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
 // File statistics dialog for the text editor.
+// Version: 1.3.2 - Android (MobilePC) builds: no statx there, the creation time is "Not available"
 // Version: 1.3.1 - a column is as wide as its translated header; the cells fill their columns
 // Version: 1.3.0 - the dialog's texts go through Tr / TrF / TrN
 // Version: 1.2.0
-// Last Modified: 2026-06-07
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 // V1.2.0: Migrated from the removed legacy layout-manager API (CreateVBoxLayout /
 //   CreateGridLayout / GridRowColumnDefinition) to the CSS layout API — the dialog
@@ -96,7 +97,8 @@ static void CountWordsAndChars(const std::string &text, int &wordCount, int &cha
 
 // Helper: get creation time string for a file (platform-specific).
 static std::string GetFileCreatedTimeString(const std::string &filePath) {
-#if defined(__linux__)
+// Not on Android: bionic has statx only from API 30, the APKs start at 28.
+#if defined(__linux__) && !defined(__ANDROID__)
     struct statx stx;
     if (statx(AT_FDCWD, filePath.c_str(), 0, STATX_BTIME, &stx) == 0 &&
         (stx.stx_mask & STATX_BTIME)) {

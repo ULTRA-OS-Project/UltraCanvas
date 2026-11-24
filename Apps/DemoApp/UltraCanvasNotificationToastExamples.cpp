@@ -211,7 +211,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNotifica
     // The state lives as long as the page: the buttons above hold it.
 
     status->SetText(Tr("Status: (press a button, then click a toast, its buttons or its close box)"));
-    status->SetBackgroundColor(Color(240, 240, 240));
+    status->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 240)));
     status->SetPadding(4);
     status->SetMargin(4, 0, 0, 0);
     DemoKit::Add(screenCard, status);

@@ -62,7 +62,7 @@ namespace {
                                                                const std::string& titleId,
                                                                const std::string& title) {
         auto tab = std::make_shared<UltraCanvasContainer>(id);
-        tab->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab->SetPadding(15, 10, 6, 10);
         tab->layout.SetFlexColumn().SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -100,7 +100,7 @@ namespace {
         auto heading = DemoKit::AddText(parent, id, text);
         heading->SetFontSize(11);
         heading->SetFontWeight(FontWeight::Bold);
-        heading->SetTextColor(Color(73, 80, 87, 255));
+        heading->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
         return heading;
     }
 
@@ -111,7 +111,7 @@ namespace {
                                                             int padding) {
         auto panel = DemoKit::AddText(parent, id, text);
         panel->SetFontSize(fontSize);
-        panel->SetBackgroundColor(background);
+        panel->SetBackgroundColor(DemoKit::ThemedFill(background));
         panel->SetPadding(padding);
         return panel;
     }
@@ -274,7 +274,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWordClou
     auto statusBar = AddWordCloudPanelText(tabsCard, "wcStatusBar",
             Tr("Ready - hover words for tooltips, click a word to inspect it"),
             11, Color(233, 236, 239, 255), 15);
-    statusBar->SetTextColor(Color(73, 80, 87, 255));
+    statusBar->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
 
     // ===== RIGHT SIDEBAR (info) =====
     auto rightSidebar = DemoKit::AddCard(contentContainer, "wcRightSidebar", "", "", 200);

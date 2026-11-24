@@ -106,7 +106,7 @@ namespace UltraCanvas {
                 "- Hover for details\n"
                 "- Double-click a point"));
         helpBox->SetFontSize(9);
-        helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
+        helpBox->SetBackgroundColor(DemoKit::Themed(Color(255, 243, 205, 255)));
         helpBox->SetPadding(10);
         helpBox->SetMargin(10, 0, 0, 0);
         DemoKit::Add(leftSidebar, helpBox);
@@ -120,9 +120,9 @@ namespace UltraCanvas {
         auto statusBar = DemoKit::CreateText("quadrantStatusBar",
                 Tr("Ready - click data points to select them, hover for tooltips"));
         statusBar->SetFontSize(11);
-        statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
+        statusBar->SetBackgroundColor(DemoKit::Themed(Color(233, 236, 239, 255)));
         statusBar->SetPadding(15);
-        statusBar->SetTextColor(Color(73, 80, 87, 255));
+        statusBar->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
         DemoKit::Add(tabsCard, statusBar);
 
         // ===== RIGHT SIDEBAR (stats) =====
@@ -131,7 +131,7 @@ namespace UltraCanvas {
         // Filled by updateStats / updateAbout below.
         auto statsPanel = DemoKit::CreateText("quadrantStatsPanel", "");
         statsPanel->SetFontSize(10);
-        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        statsPanel->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         statsPanel->SetPadding(12);
         DemoKit::Add(rightSidebar, statsPanel);
 
@@ -140,7 +140,7 @@ namespace UltraCanvas {
 
         auto legendPanel = DemoKit::CreateText("quadrantLegendPanel", "");
         legendPanel->SetFontSize(9);
-        legendPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        legendPanel->SetBackgroundColor(DemoKit::Themed(Color(248, 249, 250, 255)));
         legendPanel->SetPadding(12);
         DemoKit::Add(rightSidebar, legendPanel);
 
@@ -239,7 +239,7 @@ namespace UltraCanvas {
         for (auto& spec : tabs) {
             auto tabContent = std::make_shared<UltraCanvasContainer>(
                     spec.chart->GetIdentifier() + "Tab", 0, 0, 660, 542);
-            tabContent->SetBackgroundColor(Color(255, 255, 255, 255));
+            tabContent->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
             tabContent->AddChild(spec.chart);
             tabbedContainer->AddTab(spec.tabTitle, tabContent);
             allCharts.push_back(spec.chart);

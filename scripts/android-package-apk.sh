@@ -122,8 +122,23 @@ mkdir -p "$work/classes" "$work/dex"
 javac -nowarn -Xlint:-options -bootclasspath "$android_jar" -source 8 -target 8 \
       -d "$work/classes" "${sources[@]}"
 mapfile -t class_files < <(find "$work/classes" -name '*.class')
-"$build_tools/d8" --release --min-api "$min_sdk" --lib "$android_jar" \
-      --output "$work/dex" "${class_files[@]}"
+dex() {
+    rm -rf "$work/dex" && mkdir -p "$work/dex"
+    "$build_tools/d8" --release --min-api "$min_sdk" --lib "$android_jar" \
+          --output "$work/dex" "${class_files[@]}"
+}
+# JDK 21's javac writes a MethodParameters attribute with unnamed entries for
+# the parameters of an anonymous class's constructor, and the d8 of
+# build-tools 34 (R8 8.2) dies on them with a NullPointerException
+# (build-tools 35's d8 reads them). The attribute only names parameters for
+# reflection, which nothing here uses: when d8 refuses the classes, it is
+# taken out of them and d8 runs once more.
+if ! dex 2> "$work/d8.log"; then
+    grep -v '^Picked up' "$work/d8.log" | grep -v '^[[:space:]]*at ' | head -3 >&2
+    echo "android-package-apk: d8 ($(basename "$build_tools")) refused the classes; again without their MethodParameters" >&2
+    python3 "$repo/scripts/strip_method_parameters.py" "${class_files[@]}"
+    dex
+fi
 
 # ---- 2. Assets, laid out as $HOME/share expects them: the list given, or
 # the demo's.

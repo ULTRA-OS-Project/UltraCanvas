@@ -700,6 +700,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveSeparator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopShell.cpp
+        # A window manager inside the program, for a backend that draws one
+        # output for many windows (Android's desktop mode, MobilePC), and the
+        # title bar it puts above a window
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedWindowManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedWindowFrame.cpp
+        # Applications that run inside their host program (MobilePC's)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHostedApps.cpp
         # Choosing an area of the screen over a frozen capture (UltraSnip, ChatCube)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScreenAreaPicker.cpp
         # A slippy map from OpenStreetMap's tiles: the element, a map drawn

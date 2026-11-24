@@ -682,7 +682,7 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
     for (const auto& spec : specs) {
         auto tab = std::make_shared<UltraCanvasContainer>(
                 std::string("erTab_") + spec.key, 0, 0, INNER_W, INNER_H);
-        tab->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab->AddChild(spec.diagram);
         tabs->AddTab(spec.title, tab);
         diagrams.push_back(spec.diagram);

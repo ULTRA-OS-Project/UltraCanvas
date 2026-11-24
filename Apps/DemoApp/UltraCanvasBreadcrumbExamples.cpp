@@ -27,7 +27,7 @@ namespace UltraCanvas {
         auto statusLabel = DemoKit::AddText(page, "BreadcrumbStatus",
                                             Tr("Click on the elements to see callback results"));
         statusLabel->SetFontSize(11);
-        statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
+        statusLabel->SetBackgroundColor(DemoKit::Themed(Color(245, 245, 245, 255)));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(8.0f);
 

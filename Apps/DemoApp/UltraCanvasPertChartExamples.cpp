@@ -174,7 +174,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePertChar
     DemoKit::Add(card, chart, 1);
 
     auto status = DemoKit::AddText(card, "PertStatus", "");
-    status->SetTextColor(Color(70, 76, 88, 255));
+    status->SetTextColor(DemoKit::Themed(Color(70, 76, 88, 255)));
 
     // Keep the status line in sync with every schedule recomputation.
     chart->onScheduleComputed = [chart = chart.get(), statusWeak = std::weak_ptr<UltraCanvasLabel>(status)](double) {

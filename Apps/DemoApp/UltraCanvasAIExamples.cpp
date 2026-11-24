@@ -177,11 +177,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
     // The status turns red when a sample fails to load.
     auto statusLabel = DemoKit::CreateCaption("AIStatusLabel", "");
     statusLabel->SetFontSize(11);
-    statusLabel->SetTextColor(Color(110, 110, 110, 255));
+    statusLabel->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
 
     auto routeLabel = DemoKit::CreateCaption("AIRouteLabel", "");
     routeLabel->SetFontSize(11);
-    routeLabel->SetTextColor(Color(110, 110, 110, 255));
+    routeLabel->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
 
     // Loads one of the shipped samples: the Vector plugin first, the PDF
     // engine only for a file whose artwork really is in its PDF page.
@@ -196,7 +196,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
             viewers->ShowVector();
             vector->ZoomToFit();
             routeLabel->SetText(Tr("Vector plugin - AIConverter"));
-            statusLabel->SetTextColor(Color(110, 110, 110, 255));
+            statusLabel->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
             statusLabel->SetText(TrF("{0} - {1}  -  drag to pan, wheel to zoom.",
                                      sample.caption, DescribeDocument(*loaded.document)));
             return;
@@ -210,7 +210,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
             if (pdf->LoadFromPath(path)) {
                 pdf->ZoomToFit();
                 routeLabel->SetText(Tr("PDF engine - MuPDF"));
-                statusLabel->SetTextColor(Color(110, 110, 110, 255));
+                statusLabel->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
                 statusLabel->SetText(TrF("{0} - the artwork is in the PDF page  -  "
                                          "mouse-wheel scrolls, Ctrl+wheel zooms.", sample.caption));
                 return;

@@ -72,12 +72,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
                          "to select text, right-click to copy/export or extract "
                          "an image."));
     statusLabel->SetFontSize(11);
-    statusLabel->SetTextColor(Color(110, 110, 110, 255));
+    statusLabel->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
 
     // Zoom level read-out, shown below the view at the right edge.
     auto zoomLabel = DemoKit::CreateText("PDFZoomLabel", Tr("100%"));
     zoomLabel->SetFontSize(11);
-    zoomLabel->SetTextColor(Color(110, 110, 110, 255));
+    zoomLabel->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
     zoomLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
 
     // Wire callbacks before loading so the initial page is reflected immediately.
@@ -85,13 +85,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
         pageLabel->SetText(TrF("Page {0} / {1}", cur, total));
     };
     view->onSearchResults = [statusLabel](int hits) {
-        statusLabel->SetTextColor(Color(110, 110, 110, 255));
+        statusLabel->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
         statusLabel->SetText(hits > 0 ? TrN("{n} match found", "{n} matches found", hits)
                                       : Tr("No matches found"));
     };
     view->onActiveHitChanged = [statusLabel](int active, int total) {
         if (total > 0) {
-            statusLabel->SetTextColor(Color(110, 110, 110, 255));
+            statusLabel->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
             statusLabel->SetText(TrF("Match {0} of {1}", active, total));
         }
     };
@@ -106,7 +106,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamp
     };
     view->onSelectionChanged = [statusLabel](int chars) {
         if (chars > 0) {
-            statusLabel->SetTextColor(Color(110, 110, 110, 255));
+            statusLabel->SetTextColor(DemoKit::Themed(Color(110, 110, 110, 255)));
             statusLabel->SetText(TrN("{n} character selected — Ctrl+C to copy, right-click to export",
                                      "{n} characters selected — Ctrl+C to copy, right-click to export", chars));
         }

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Sign out - {{ brand }}{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Sign out of your account?</h1>
+  <p class="text-secondary">{% if client %}{{ client.name }} asks to sign you out.{% endif %} You are signed in as {{ user.email }}. Signing out here signs you out of the services that follow this sign-in.</p>
+  <form method="post" action="{% url 'oidc:logout_confirm' %}" class="mt-4">
+    {% csrf_token %}<input type="hidden" name="request" value="{{ key }}">
+    <button class="btn btn-primary btn-lg">Sign out</button>
+  </form>
+</div>
+{% endblock %}

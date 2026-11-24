@@ -174,11 +174,11 @@ namespace {
                 const std::string url = urlInput->GetText();
                 if (url.empty()) {
                     status->SetText(Tr("Status: please enter a URL."));
-                    status->SetTextColor(Color(180, 100, 0, 255));
+                    status->SetTextColor(DemoKit::Themed(Color(180, 100, 0, 255)));
                     return;
                 }
                 status->SetText(TrF("Status: loading {0} ...", url));
-                status->SetTextColor(Color(80, 80, 80, 255));
+                status->SetTextColor(DemoKit::Themed(Color(80, 80, 80, 255)));
 
 #ifdef ULTRACANVAS_HAS_NET
                 const auto t0 = std::chrono::steady_clock::now();
@@ -204,19 +204,19 @@ namespace {
                                         r->statusMessage.empty()
                                             ? Tr("transport error")
                                             : r->statusMessage));
-                                    status->SetTextColor(Color(180, 0, 0, 255));
+                                    status->SetTextColor(DemoKit::Themed(Color(180, 0, 0, 255)));
                                     return;
                                 }
                                 if (r->statusCode >= 400) {
                                     status->SetText(TrF("Status: HTTP {0}", r->statusCode));
-                                    status->SetTextColor(Color(180, 0, 0, 255));
+                                    status->SetTextColor(DemoKit::Themed(Color(180, 0, 0, 255)));
                                     return;
                                 }
                                 auto img = UCImageRaster::LoadFromMemory(r->body);
                                 if (!img || !img->IsValid()) {
                                     status->SetText(
                                         Tr("Status: download OK but image decode failed"));
-                                    status->SetTextColor(Color(180, 100, 0, 255));
+                                    status->SetTextColor(DemoKit::Themed(Color(180, 100, 0, 255)));
                                     return;
                                 }
                                 preview->LoadFromImage(img);
@@ -228,13 +228,13 @@ namespace {
                                      r->contentType.empty() ? Tr("(unknown)") : r->contentType,
                                      std::to_string(img->GetWidth()),
                                      std::to_string(img->GetHeight())}));
-                                status->SetTextColor(Color(0, 130, 0, 255));
+                                status->SetTextColor(DemoKit::Themed(Color(0, 130, 0, 255)));
                             });
                     });
 #else
                 status->SetText(Tr("Status: UltraNet not compiled in "
                                 "(rebuild with -DULTRACANVAS_ENABLE_NET=ON)"));
-                status->SetTextColor(Color(180, 100, 0, 255));
+                status->SetTextColor(DemoKit::Themed(Color(180, 100, 0, 255)));
 #endif
             };
         loadButton->SetOnClick(doLoad);

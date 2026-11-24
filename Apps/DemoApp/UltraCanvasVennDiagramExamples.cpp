@@ -24,7 +24,7 @@ namespace UltraCanvas {
                                                                  const std::string& titleId,
                                                                  const std::string& title) {
         auto tab = std::make_shared<UltraCanvasContainer>(id);
-        tab->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab->SetBackgroundColor(DemoKit::Themed(Color(255, 255, 255, 255)));
         tab->SetPadding(20, 20, 12, 20);
         tab->layout.SetFlexColumn().SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -62,7 +62,7 @@ namespace UltraCanvas {
         auto heading = DemoKit::AddText(parent, id, text);
         heading->SetFontSize(11);
         heading->SetFontWeight(FontWeight::Bold);
-        heading->SetTextColor(Color(73, 80, 87, 255));
+        heading->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
     }
 
     // A grey or tinted text panel in a sidebar: wraps and grows with its text.
@@ -72,7 +72,7 @@ namespace UltraCanvas {
                                                               int padding) {
         auto panel = DemoKit::AddText(parent, id, text);
         panel->SetFontSize(fontSize);
-        panel->SetBackgroundColor(background);
+        panel->SetBackgroundColor(DemoKit::ThemedFill(background));
         panel->SetPadding(padding);
         return panel;
     }
@@ -156,7 +156,7 @@ namespace UltraCanvas {
         auto statusBar = AddVennPanelText(tabsCard, "statusBar",
                 Tr("Ready - Select a tab to explore different Venn diagram examples"),
                 11, Color(233, 236, 239, 255), 15);
-        statusBar->SetTextColor(Color(73, 80, 87, 255));
+        statusBar->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
 
         // ===== RIGHT SIDEBAR (stats/legend) =====
         auto rightSidebar = DemoKit::AddCard(contentContainer, "rightSidebar", "", "", 200);
@@ -168,7 +168,7 @@ namespace UltraCanvas {
         auto legendTitle = DemoKit::CreateText("legendTitle", Tr("INTERACTIVE LEGEND"));
         legendTitle->SetFontSize(11);
         legendTitle->SetFontWeight(FontWeight::Bold);
-        legendTitle->SetTextColor(Color(73, 80, 87, 255));
+        legendTitle->SetTextColor(DemoKit::Themed(Color(73, 80, 87, 255)));
         legendTitle->SetMargin(12, 0, 0, 0);
         DemoKit::Add(rightSidebar, legendTitle);
         AddVennPanelText(rightSidebar, "legendPanel",

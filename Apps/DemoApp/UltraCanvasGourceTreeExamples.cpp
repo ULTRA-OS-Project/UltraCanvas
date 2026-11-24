@@ -82,7 +82,7 @@ std::shared_ptr<UltraCanvasButton> MakeToolButton(const std::string& id, const s
 std::shared_ptr<UltraCanvasContainer> MakeToolBar(const std::string& id) {
     auto bar = DemoKit::CreateRow(id, 8, true);
     bar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    bar->SetBackgroundColor(Color(248, 248, 252));
+    bar->SetBackgroundColor(DemoKit::Themed(Color(248, 248, 252)));
     bar->SetPadding(6);
     return bar;
 }
@@ -341,8 +341,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     auto statusLabel = DemoKit::AddText(card, "GourceStatus",
         Tr("Ready - Click on nodes to select, double-click to expand/collapse directories"));
     statusLabel->SetFontSize(11);
-    statusLabel->SetTextColor(Color(60, 60, 60));
-    statusLabel->SetBackgroundColor(Color(240, 240, 245));
+    statusLabel->SetTextColor(DemoKit::Themed(Color(60, 60, 60)));
+    statusLabel->SetBackgroundColor(DemoKit::Themed(Color(240, 240, 245)));
     statusLabel->SetPadding(5);
 
     // ========================================

@@ -3,6 +3,7 @@
 // One copy per user: a second start hands its files to the running copy,
 // which opens them as File > Open does, and quits
 // (UltraCanvasSingleInstance.h).
+// Version: 2.4.0 - the window manager is TexterWindowManager.h, which MobilePC starts Texter with
 // Version: 2.3.0 - the look is the theme's: --dark is ThemePolicy::Dark for the run; no theme sync across windows
 // Version: 2.2.0 - the start-up messages go through Tr; the application's name
 //                  is given to Initialize as a literal, the name of its catalogue
@@ -10,7 +11,7 @@
 //                  the running copy; every file named on the command line
 //                  opens, not only the last
 // Version: 2.0.3
-// Last Modified: 2026-11-11
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include <iostream>
@@ -26,6 +27,7 @@
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasTextEditor.h"
 #include "UltraCanvasSplashScreen.h"
+#include "TexterWindowManager.h"
 
 // OS-specific includes
 #ifdef _WIN32
@@ -42,160 +44,8 @@
 
 using namespace UltraCanvas;
 
-// ===== FORWARD DECLARATIONS =====
-class TexterWindowManager;
-
 // ===== GLOBAL APPLICATION STATE =====
 static TexterWindowManager* g_windowManager = nullptr;
-
-// ===== WINDOW MANAGER =====
-class TexterWindowManager {
-private:
-    UltraCanvasApplication* app;
-    std::vector<std::shared_ptr<UltraCanvasTextEditor>> editors;
-    TextEditorConfig baseConfig;
-    // The window the user worked in last: where handed-over files go.
-    std::weak_ptr<UltraCanvasTextEditor> lastActiveEditor;
-
-    void WireEditorCallbacks(std::shared_ptr<UltraCanvasTextEditor> editor) {
-        auto* editorPtr = editor.get();
-        std::weak_ptr<UltraCanvasTextEditor> weakEditor = editor;
-
-        // Allow auto-close when last document is closed and other windows exist
-        editorPtr->canCloseEmptyWindow = [this]() {
-            return static_cast<int>(editors.size()) > 1;
-        };
-
-        // New Window menu item
-        editorPtr->onNewWindowRequest = [this]() {
-            CreateNewWindow();
-        };
-
-        // Tab dragged out: move to target window or create a new one
-        editorPtr->onTabDraggedOut = [this, editorPtr](std::shared_ptr<DocumentTab> doc, int screenX, int screenY) {
-            auto target = FindEditorAtScreenPoint(screenX, screenY, editorPtr);
-            if (target) {
-                target->AcceptDocument(doc);
-            } else {
-                CreateWindowWithDocument(doc, screenX, screenY);
-            }
-
-            if (editorPtr->GetDocumentCount() == 0) {
-                editorPtr->PerformClose();
-            }
-        };
-
-        // View > Theme writes Appearance.conf and the theme follows: every
-        // window takes it from the theme itself, so there is nothing to sync.
-
-        // Focus: remember the window the user works in
-        editorPtr->onWindowFocus = [this, weakEditor]() {
-            lastActiveEditor = weakEditor;
-        };
-
-        // File saved
-        editorPtr->onFileSaved = [](const std::string& path, int tabIndex) {
-            debugOutput << "File saved: " << path << std::endl;
-        };
-
-        // Window close: remove from manager
-        editorPtr->onWindowClosed = [this, weakEditor]() {
-            auto ed = weakEditor.lock();
-            if (!ed) return;
-
-            auto it = std::find(editors.begin(), editors.end(), ed);
-            if (it != editors.end()) {
-                editors.erase(it);
-            }
-        };
-    }
-
-    // Find which editor window (if any) is at the given screen coordinates,
-    // excluding the source editor.
-    std::shared_ptr<UltraCanvasTextEditor> FindEditorAtScreenPoint(int screenX, int screenY,
-                                                                    UltraCanvasTextEditor* exclude) {
-        for (auto& ed : editors) {
-            if (ed.get() == exclude) continue;
-
-            int wx, wy;
-            ed->GetWindowPosition(wx, wy);
-            int ww = ed->GetWidth();
-            int wh = ed->GetHeight();
-
-            if (screenX >= wx && screenX < wx + ww &&
-                screenY >= wy && screenY < wy + wh) {
-                return ed;
-            }
-        }
-        return nullptr;
-    }
-
-public:
-    TexterWindowManager(UltraCanvasApplication* appPtr, const TextEditorConfig& config)
-        : app(appPtr), baseConfig(config) {}
-
-    std::shared_ptr<UltraCanvasTextEditor> CreateNewWindow(int screenX = -1, int screenY = -1) {
-        auto editor = CreateTextEditor(baseConfig);
-
-        if (!editor) {
-            debugOutput << "Failed to create text editor window" << std::endl;
-            return nullptr;
-        }
-
-        // Wire callbacks
-        WireEditorCallbacks(editor);
-
-        editors.push_back(editor);
-        return editor;
-    }
-
-    std::shared_ptr<UltraCanvasTextEditor> CreateWindowWithDocument(
-            std::shared_ptr<DocumentTab> doc, int screenX, int screenY) {
-        auto editor = CreateNewWindow(screenX, screenY);
-        if (!editor) return nullptr;
-
-        // The constructor created an empty "Untitled" tab — extract it
-        // so only the transferred document remains
-        auto emptyDoc = editor->ExtractDocument(0);
-
-        // Accept the transferred document
-        editor->AcceptDocument(doc);
-
-        return editor;
-    }
-
-    int GetWindowCount() const { return static_cast<int>(editors.size()); }
-
-    // Files a later start handed over (UltraCanvasSingleInstance::ListenOpen),
-    // absolute and UTF-8: opened as File > Open opens several - each in a tab
-    // of the window the user worked in last - except that a file already open
-    // in any window is switched to there instead of opened a second time. The
-    // window that shows the last of them comes forward.
-    void OpenHandedOverFiles(const std::vector<std::string>& paths) {
-        std::shared_ptr<UltraCanvasTextEditor> target = lastActiveEditor.lock();
-        if (!target || std::find(editors.begin(), editors.end(), target) == editors.end()) {
-            target = editors.empty() ? nullptr : editors.front();
-        }
-        if (!target) target = CreateNewWindow();
-        if (!target) return;
-
-        std::shared_ptr<UltraCanvasTextEditor> shown;
-        for (const auto& path : paths) {
-            std::shared_ptr<UltraCanvasTextEditor> editor = target;
-            for (const auto& ed : editors) {
-                if (ed->HasOpenFile(path)) {
-                    editor = ed;
-                    break;
-                }
-            }
-            debugOutput << "Opening handed-over file: " << path << std::endl;
-            if (editor->OpenFile(path) >= 0) shown = editor;
-        }
-        if (!shown) shown = target;
-        if (shown->IsMinimized()) shown->Restore();
-        shown->RaiseAndFocus();
-    }
-};
 
 // ===== ERROR HANDLING =====
 void HandleFatalError(const std::string& error) {

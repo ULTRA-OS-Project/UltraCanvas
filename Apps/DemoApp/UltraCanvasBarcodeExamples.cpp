@@ -176,7 +176,7 @@ namespace UltraCanvas {
 
         // Error label below the preview (shown when the encoder rejects the data).
         auto liveError = DemoKit::AddCaption(playground, "LiveErr", "");
-        liveError->SetTextColor(Color(180, 30, 30, 255));
+        liveError->SetTextColor(DemoKit::Themed(Color(180, 30, 30, 255)));
 
         liveBarcode->onError = [liveError](const std::string& msg) {
             liveError->SetText(msg);
