@@ -24,12 +24,22 @@ set(VCPKG_MESON_CROSS_FILE "${CMAKE_CURRENT_LIST_DIR}/ios-meson-cross.txt")
 # The static libintl (gettext) reads the user's languages through
 # CoreFoundation, and vcpkg adds the framework to its link for macOS only:
 # glib's tools failed to link with undefined _CFLocaleCopyPreferredLanguages
-# and friends. Every link of every port gets it here.
-set(VCPKG_LINKER_FLAGS "-framework CoreFoundation")
+# and friends. Every link of every port gets it here, as one linker word:
+# libtool drops a bare "-framework CoreFoundation" pair from its links (it did
+# for libcroco's csslint), and passes -Wl,... through.
+set(VCPKG_LINKER_FLAGS "-Wl,-framework,CoreFoundation")
 
 # libcroco's configure insists on GNU ld's -Bsymbolic, which Apple's linker
 # lacks; vcpkg turns it off for macOS only ("-Bsymbolic requested but not
 # supported by ld"). PORT is set while vcpkg reads a triplet for a port.
 if(PORT STREQUAL "libcroco")
     set(VCPKG_MAKE_CONFIGURE_OPTIONS "--disable-Bsymbolic")
+endif()
+
+# libtiff builds Apple frameworks by default on iOS (its tiff-framework
+# option), and a static tiff.framework is not what pkg-config's -ltiff finds:
+# gdk-pixbuf's tools failed with "library 'tiff' not found". A plain
+# libtiff.a, like every other library here.
+if(PORT STREQUAL "tiff")
+    set(VCPKG_CMAKE_CONFIGURE_OPTIONS "-Dtiff-framework=OFF")
 endif()

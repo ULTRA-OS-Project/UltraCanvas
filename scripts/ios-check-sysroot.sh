@@ -37,6 +37,15 @@ if [ -n "$dylibs" ]; then
     status=1
 fi
 
+# Nor frameworks: a port that builds one on iOS (libtiff did) leaves no
+# lib<name>.a for pkg-config's -l<name> to find.
+frameworks=$(find "$prefix/lib" -maxdepth 1 -name '*.framework' -print)
+if [ -n "$frameworks" ]; then
+    echo "::error::frameworks in the sysroot, where a static archive was wanted:"
+    echo "$frameworks"
+    status=1
+fi
+
 archives=$(find "$prefix/lib" -maxdepth 1 -name '*.a' | sort)
 if [ -z "$archives" ]; then
     echo "::error::no static archives under $prefix/lib"
