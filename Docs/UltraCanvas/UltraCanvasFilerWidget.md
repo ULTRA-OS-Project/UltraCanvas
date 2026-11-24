@@ -3034,6 +3034,20 @@ auto-scrolls at the viewport edge, Escape abandons it (the previous
 selection returns), and a press-and-release without movement keeps its old
 meaning — a plain click on empty space clears the selection (a Ctrl click
 leaves it alone).
+While the band is drawn, `onSelectionChanged` fires with every entry it takes
+in or lets go. A host that follows the selection with something that opens,
+closes or reflows - a preview pane beside the list - waits for the drag to
+end: `IsDragInProgress()` is true while a band is drawn or entries are
+dragged, and letting the band go fires `onSelectionChanged` once more with it
+false, so the host sees where the band ended.
+
+```cpp
+std::function<void(const std::vector<FilerEntry>&)> showInPreview;   // the host's preview
+filer->onSelectionChanged = [&](const std::vector<FilerEntry>& selected) {
+    if (filer->IsDragInProgress()) return;   // the band's last state comes on release
+    showInPreview(selected);
+};
+```
 Double-clicking an entry with the **left** button opens/activates it (folders
 and archives are entered, files fire `onFileActivated`); the right and middle
 buttons do not, although Windows reports a double-click for those too — a

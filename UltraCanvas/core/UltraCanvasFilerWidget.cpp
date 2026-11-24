@@ -51,6 +51,7 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.59.0 - letting a selection rectangle go fires onSelectionChanged once more (IsDragInProgress)
 // Version: 1.57.0 - Run in background: the progress window's button, onBackgroundProgress on every
 //                  tick, BringOperationToFront; queued archive jobs stay in the background
 // Version: 1.56.0 - the progress window's figures, route and Pause: copies, moves and deletes count the
@@ -17624,6 +17625,11 @@ namespace UltraCanvas {
             // which keeps its old meaning — clear the selection (a Ctrl
             // click on empty space leaves it alone).
             if (!marqueeAdditive) HandleItemClick(-1, false, false);
+        } else {
+            // The rectangle is let go: the selection it leaves, once more,
+            // now that IsDragInProgress() is false - a host that waited for
+            // the drag to end (a preview pane) follows it from here.
+            FireSelectionChanged();
         }
         marqueeBaseSelection.clear();
         RequestRedraw();

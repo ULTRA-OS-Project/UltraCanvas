@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.49.1 - the preview pane is left as it is while a selection rectangle is drawn in the
+//                  folder display, and follows the selection once it is let go
 // Version: 1.49.0 - the path bar in the colours of Settings > Display > Path bar: #E4E6E9 for the
 //                  folders on the way and #0078D7 for the folder shown, by default, as before
 // Version: 1.48.1 - the Computer page's drive cards follow a dark / light switch (ApplyLook rebuilds them)
@@ -7035,6 +7037,12 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // second file and opening again when one is left. The next selection
         // made without Ctrl brings it back in step.
         if (SelectionChangedWithCtrl()) return;
+        // A drag in the folder display - a selection rectangle being drawn -
+        // changes the selection with every file it crosses: the preview
+        // would open on one file, fold away on the second and open again,
+        // moving the files under the pointer. It waits for the drag to end;
+        // letting the rectangle go reports the selection once more.
+        if (tab->filer && tab->filer->IsDragInProgress()) return;
         UpdatePreviewPane();
     };
     // A drive's folder being fetched, or fetched again: what it waits for is
