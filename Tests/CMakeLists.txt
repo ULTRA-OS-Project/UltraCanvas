@@ -1231,6 +1231,29 @@ else()
     message(STATUS "  KanbanFileDropTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== EMBEDDED WINDOW MANAGER TEST =====
+# The in-program window manager (Android's desktop mode, MobilePC):
+# placement, stacking bands, focus, title bars kept with their windows,
+# maximize into the work area, pointer routing with the button grab, moving
+# and resizing, damage, and the composited pixels. Needs no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building EmbeddedWindowManagerTest...")
+    add_executable(EmbeddedWindowManagerTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedWindowManagerTest.cpp
+    )
+    target_include_directories(EmbeddedWindowManagerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(EmbeddedWindowManagerTest PRIVATE cxx_std_20)
+    target_link_libraries(EmbeddedWindowManagerTest PRIVATE UltraCanvas)
+    set_target_properties(EmbeddedWindowManagerTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EmbeddedWindowManagerTest COMMAND EmbeddedWindowManagerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: EmbeddedWindowManagerTest")
+else()
+    message(STATUS "  EmbeddedWindowManagerTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== ULTRADESKTOP APP CATEGORIES TEST =====
 # Where UltraDesktop's Apps window puts an application: freedesktop
 # Categories=, Windows shortcuts by name and folder (English and German), the

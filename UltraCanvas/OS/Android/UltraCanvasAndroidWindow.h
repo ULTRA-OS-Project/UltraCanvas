@@ -3,6 +3,10 @@
 // ANativeWindow (lock → row copy → unlockAndPost), following the Windows
 // backend's image-surface + blit model. The "window" always covers the whole
 // surface; desktop window-management calls are accepted no-ops.
+// In desktop mode (UltraCanvasAndroidDesktop) a window is instead one of the
+// embedded window manager's: an image surface of its own size, composited
+// onto the desktop's output, which it moves, resizes, stacks and decorates.
+// Version: 1.5.0 - desktop mode: a window of the embedded window manager
 // Version: 1.3.0 - a destructor, which releases the native half
 // Version: 1.2.0 - an in-place rotation resizes: the window's own size is re-read
 // Version: 1.1.0 - the surface is the window's real pixel size at any density
@@ -89,7 +93,25 @@ namespace UltraCanvas {
         // APP_CMD_WINDOW_RESIZED / APP_CMD_CONFIG_CHANGED.
         void HandleNativeSurfaceResized();
 
+        // ===== DESKTOP MODE (UltraCanvasAndroidDesktop) =====
+        // One of the desktop's windows rather than the phone's surface.
+        bool IsDesktopClient() const { return desktopClient; }
+        // The title bar of another of them (UltraCanvasEmbeddedWindowFrame).
+        bool IsDesktopFrame() const { return desktopFrame; }
+        // The window manager moved or resized it (logical px of the output).
+        void DesktopGeometryChanged(const Rect2Di& rect);
+        // The output's scale changed: its surface is rebuilt at the new one.
+        void DesktopScaleChanged();
+        // The window manager minimized, maximized or restored it.
+        void SetDesktopState(WindowState state);
+        // Physical px of the output, as SetWindowPosition takes them.
+        void GetWindowPosition(int& x, int& y) const override;
+
     private:
+        bool desktopClient = false;
+        bool desktopFrame = false;
+        bool CreateDesktopSurface();
+
         // Set when TERM_WINDOW hides the window (backgrounding), so the next
         // INIT_WINDOW knows to Show() it again. Stays false when the app hid
         // the window itself.
