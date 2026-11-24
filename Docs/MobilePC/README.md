@@ -77,13 +77,14 @@ The desktop's scale on a TV or monitor follows its resolution: 100 % up to
 
 | Application | Started from |
 |---|---|
+| UltraTexter | the Apps window (Office) - its windows kept by `TexterWindowManager.h`, as its own `main()` keeps them; a file's creation time shows as *Not available* (no `statx` before API 30) |
 | UltraViewer | the Apps window (Graphics) |
 | UltraPaint | the Apps window (Graphics) |
 | ArtCreator | the Apps window (Graphics) - drawing; opening and saving files need the Vector plug-in, not built for Android yet |
 
 Each is the application's own window code, unchanged, started by the entry
 its desktop `main()` uses. Their texts come from their own catalogues
-(`UltraLocalisation::AddSet`). Texter and UltraFiler are next.
+(`UltraLocalisation::AddSet`). UltraFiler is next.
 
 ## Starting it
 
@@ -96,13 +97,12 @@ adb shell am start -n org.ultraos.mobilepc/org.ultraos.ultracanvas.UltraCanvasAc
 
 | Argument | Does |
 |---|---|
-| `--launch <id>` | starts that application once the desktop is up: `ultraviewer`, `ultrapaint`, `artcreator` |
+| `--launch <id>` | starts that application once the desktop is up: `texter`, `ultraviewer`, `ultrapaint`, `artcreator` |
 | `--debug` | the framework's diagnostics to logcat |
 
 ## Not yet
 
-- Texter (its window manager lives in its `main.cpp`; bionic lacks `statx`
-  at API 28) and UltraFiler (storage permissions, volumes, trash).
+- UltraFiler (storage permissions, volumes, trash).
 - Keeping the session alive while the phone is locked (a foreground service).
 - The wireless stream for phones without a second-screen display, and the TV
   and browser receivers.

@@ -1,5 +1,5 @@
 // Apps/MobilePC/MobilePCHostedApps.cpp
-// UltraViewer, UltraPaint and ArtCreator as hosted applications: each one's
+// Texter, UltraViewer, UltraPaint and ArtCreator as hosted applications: each one's
 // window classes, compiled into libMobilePC.so, started by the entry point its
 // own main() calls after the application is initialised - without main()'s
 // single-instance lock, its signal handlers or a loop of its own, which the
@@ -10,11 +10,16 @@
 
 #include "MobilePCHostedApps.h"
 
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasHostedApps.h"
 #include "UltraCanvasUtils.h"
 #include "UltraLocalisation/UltraLocalisation.h"
 
+#ifdef MOBILEPC_WITH_TEXTER
+#include "TexterWindowManager.h"
+#include "UltraCanvasTextEditor.h"
+#endif
 #ifdef MOBILEPC_WITH_ULTRAVIEWER
 #include "UltraViewerWindow.h"
 #endif
@@ -38,6 +43,24 @@ namespace MobilePC {
             return NormalizePath(GetResourcesDir() + "media/appicon/" + name);
         }
 
+#ifdef MOBILEPC_WITH_TEXTER
+        // Texter's windows, kept as its main() keeps them (one manager for the
+        // program), made at the first start.
+        TexterWindowManager* Texter() {
+            static std::unique_ptr<TexterWindowManager> manager;
+            if (!manager) {
+                TextEditorConfig config;
+                config.title = "UltraTexter " + UltraCanvasTextEditor::version;
+                config.showMenuBar = true;
+                config.showToolbar = true;
+                config.showStatusBar = true;
+                config.showLineNumbers = true;
+                manager = std::make_unique<TexterWindowManager>(UltraCanvasApplication::GetInstance(), config);
+            }
+            return manager.get();
+        }
+#endif
+
 #ifdef MOBILEPC_WITH_ULTRAVIEWER
         // UltraViewer has no list of its windows of its own: each launch is
         // one more viewer, kept for the session (a closed viewer's object is
@@ -50,6 +73,28 @@ namespace MobilePC {
     }
 
     void RegisterHostedApps() {
+#ifdef MOBILEPC_WITH_TEXTER
+        UltraCanvasHostedApps::Register({
+            "texter", "UltraTexter", Tr("Write and edit texts and code"),
+            AppIcon("Texter.png"), {"Office", "TextEditor", "Development"},
+            [](const std::vector<std::string>& files) {
+                TexterWindowManager* texter = Texter();
+                if (texter->GetWindowCount() == 0) {
+                    // As main() starts it, without the splash: the last
+                    // session's tabs, then the crash-recovery question.
+                    auto window = texter->CreateNewWindow();
+                    if (!window) return false;
+                    window->RestoreSessionDocuments();
+                    window->PromptCrashRecovery();
+                    for (const std::string& file : files) window->OpenFile(file);
+                    return true;
+                }
+                // Running already: as a second start of the program - its
+                // files open in the window worked in last, which comes forward.
+                texter->OpenHandedOverFiles(files);
+                return true;
+            }});
+#endif
 #ifdef MOBILEPC_WITH_ULTRAVIEWER
         UltraCanvasHostedApps::Register({
             "ultraviewer", "UltraViewer", Tr("Pictures, videos, music and documents"),

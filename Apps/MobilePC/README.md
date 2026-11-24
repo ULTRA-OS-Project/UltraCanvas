@@ -13,12 +13,15 @@ An Android app only: `libMobilePC.so`, loaded by `UltraCanvasActivity`.
 |---|---|
 | `main.cpp` | `ultracanvas_app_main()`: the application, the catalogue sets of the desktop and the hosted applications, `UltraCanvasAndroidDesktop::Enable()`, the control pad, UltraDesktop's window, `--launch` |
 | `MobilePCControlPad.*` | The phone's window while the desktop is on the TV (`CreatePhoneWindow`): status line, Keyboard and Apps buttons, the touchpad (`MobilePCTouchpad`, a container passing the fingers to `UltraCanvasAndroidDesktop::TouchpadInput`), Left and Right click |
-| `MobilePCHostedApps.*` | UltraViewer, UltraPaint and ArtCreator registered with `UltraCanvasHostedApps`, each started through the entry its own `main()` uses |
+| `MobilePCHostedApps.*` | UltraTexter, UltraViewer, UltraPaint and ArtCreator registered with `UltraCanvasHostedApps`, each started through the entry its own `main()` uses |
 | `CMakeLists.txt` | The library: these files, UltraDesktop's `ui/` sources and the hosted applications' window sources, each application only when the core has its widgets |
 | `android/AndroidManifest.xml`, `android/assets.txt` | What `scripts/android-package-apk.sh` packages: the manifest (`org.ultraos.mobilepc`, `UltraCanvasActivity`, `android.app.lib_name` MobilePC) and the media the app opens by path |
 
-Nothing of UltraDesktop or the hosted applications is copied or changed for
-MobilePC: their sources are compiled in from their own folders.
+Nothing of UltraDesktop or the hosted applications is copied: their sources
+are compiled in from their own folders. Two changes made that possible -
+UltraDesktop's toast host member exists only in a build with the message
+centre, and Texter's window manager moved from its `main.cpp` into
+`TexterWindowManager.h`.
 
 ## Adding an application
 

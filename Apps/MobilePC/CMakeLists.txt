@@ -6,8 +6,9 @@
 # framework's desktop mode (UltraCanvas/OS/Android/UltraCanvasAndroidDesktop.h).
 #
 # The applications are compiled in from their own folders, each one when the
-# core has the widgets it needs; none of them is changed for it - each window
-# class is started by the entry its own main() uses (MobilePCHostedApps.cpp).
+# core has the widgets it needs, and started by the entry its own main() uses
+# (MobilePCHostedApps.cpp); Texter's window manager is in TexterWindowManager.h
+# for that.
 #
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
@@ -81,6 +82,23 @@ target_compile_definitions(MobilePC PRIVATE
 # ===== THE HOSTED APPLICATIONS =====
 get_property(_mpc_widgets GLOBAL PROPERTY ULTRACANVAS_WIDGETS_COMPILED_IN)
 set(_mpc_apps "")
+
+# Texter: every source but its main.cpp; its windows are kept by
+# TexterWindowManager.h, as its main() keeps them.
+target_sources(MobilePC PRIVATE
+    ${_mpc_root}/Texter/UltraCanvasTextEditorTranslate.cpp
+    ${_mpc_root}/Texter/UltraCanvasTextEditor.cpp
+    ${_mpc_root}/Texter/UltraCanvasTextEditorHelpers.cpp
+    ${_mpc_root}/Texter/UltraCanvasTextEditorDialogs.cpp
+    ${_mpc_root}/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
+    ${_mpc_root}/Texter/UltraCanvasTextEditorSpellCheck.cpp
+    ${_mpc_root}/Texter/UltraCanvasMarkdownSpellRanges.cpp
+    ${_mpc_root}/Texter/UltraCanvasEncoding.cpp
+    ${_mpc_root}/Texter/UltraCanvasSearchBar.cpp)
+target_include_directories(MobilePC PRIVATE ${_mpc_root}/Texter)
+target_compile_definitions(MobilePC PRIVATE MOBILEPC_WITH_TEXTER=1
+                           ULTRATEXTER_VERSION="${ULTRATEXTER_VERSION}")
+list(APPEND _mpc_apps Texter)
 
 if("MediaViewer" IN_LIST _mpc_widgets)
     target_sources(MobilePC PRIVATE ${_mpc_root}/UltraViewer/UltraViewerWindow.cpp)

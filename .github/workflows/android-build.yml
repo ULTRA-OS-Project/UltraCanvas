@@ -61,6 +61,10 @@ on:
       - 'Apps/ChatCube/**'
       - 'Apps/MobilePC/**'
       - 'Apps/UltraDesktop/**'
+      - 'Apps/Texter/**'
+      - 'Apps/UltraViewer/**'
+      - 'Apps/UltraPaint/**'
+      - 'Apps/ArtCreator/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -80,6 +84,10 @@ on:
       - 'Apps/ChatCube/**'
       - 'Apps/MobilePC/**'
       - 'Apps/UltraDesktop/**'
+      - 'Apps/Texter/**'
+      - 'Apps/UltraViewer/**'
+      - 'Apps/UltraPaint/**'
+      - 'Apps/ArtCreator/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -355,7 +363,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      # MobilePC: UltraDesktop, UltraViewer, UltraPaint and ArtCreator in one
+      # MobilePC: UltraDesktop, Texter, UltraViewer, UltraPaint and ArtCreator in one
       # app library on the desktop mode, against the same sysroot.
       - name: Build the MobilePC app library
         run: |

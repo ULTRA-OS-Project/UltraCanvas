@@ -6,8 +6,8 @@ title bar (§5.1, Cairo compositor), the Android desktop mode with the
 presentation-display output, the phone's-screen output and the captured
 pointer (§5.2), the hosted-application registry and the desktop shell's
 embedded host (§5.3 in part, §5.4), and `Apps/MobilePC` with UltraDesktop,
-UltraViewer, UltraPaint and ArtCreator, with a CI job that builds the APK
-and runs it on an emulator with a simulated second display. Not yet: Texter, UltraFiler, per-app
+Texter, UltraViewer, UltraPaint and ArtCreator, with a CI job that builds the APK
+and runs it on an emulator with a simulated second display. Not yet: UltraFiler, per-app
 identity beyond the catalogues, the GLES compositor, popup layers, the
 foreground service, wireless streaming (§4 mode 2). See
 [`Docs/MobilePC/README.md`](../MobilePC/README.md).

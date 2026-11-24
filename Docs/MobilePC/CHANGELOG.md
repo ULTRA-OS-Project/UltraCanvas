@@ -10,6 +10,6 @@
   that brings up the phone's keyboard to type into the window in front. A
   Bluetooth or USB mouse and keyboard work too. With no display connected the
   desktop is on the phone's own screen.
-- **The applications it carries:** UltraViewer, UltraPaint and ArtCreator,
-  started from UltraDesktop's Apps window, all in the one program. The others
-  follow (Texter and UltraFiler next).
+- **The applications it carries:** UltraTexter, UltraViewer, UltraPaint and
+  ArtCreator, started from UltraDesktop's Apps window, all in the one program.
+  UltraFiler follows.
