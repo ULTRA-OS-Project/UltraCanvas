@@ -20,3 +20,9 @@ set(VCPKG_OSX_DEPLOYMENT_TARGET 16.0)
 # Meson must not run the test programs it builds for iOS on the Mac
 # (ios-meson-cross.txt says why).
 set(VCPKG_MESON_CROSS_FILE "${CMAKE_CURRENT_LIST_DIR}/ios-meson-cross.txt")
+
+# The static libintl (gettext) reads the user's languages through
+# CoreFoundation, and vcpkg adds the framework to its link for macOS only:
+# glib's tools failed to link with undefined _CFLocaleCopyPreferredLanguages
+# and friends. Every link of every port gets it here.
+set(VCPKG_LINKER_FLAGS "-framework CoreFoundation")
