@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetCell.h
 // Spreadsheet cell data structure with value, formatting, and formula support
+// Version: 1.3.0 - a typed "45%" is the percentage 0.45 (it was text); a percentage under General shows as one
 // Version: 1.2.0 - DataValidationListItems
 // Version: 1.1.0 - ValidateValue checks the cell's rule (it accepted everything); CheckDataValidation
 // Version: 1.0.1 - default bodies mark unused parameters (void): no -Wunused-parameter
@@ -16,6 +17,7 @@
 #include <functional>
 #include <cstring>
 #include <cstdio>
+#include <cctype>
 
 namespace UltraCanvas {
 
@@ -601,20 +603,28 @@ inline void SpreadsheetCell::SetValueFromString(const std::string& input) {
         return;
     }
     
-    // Try to parse as number
-    try {
-        size_t pos;
-        double num = std::stod(input, &pos);   // locale-ok: cell entry - what the user typed, in their locale
-        if (pos == input.length()) {
-            // Check if it looks like a percentage
-            if (input.back() == '%') {
-                SetPercentage(num / 100.0);
-            } else {
-                SetNumber(num);
+    // A number, or a percentage: "45%", "12.5 %", "-3%" is the number with
+    // the sign taken off and divided by 100. The number must be all of what
+    // is left - std::stod stops at the '%', which is why "45%" used to be
+    // stored as text.
+    std::string number = input;
+    while (!number.empty() && std::isspace(static_cast<unsigned char>(number.back()))) number.pop_back();
+    const bool percent = !number.empty() && number.back() == '%';
+    if (percent) {
+        number.pop_back();
+        while (!number.empty() && std::isspace(static_cast<unsigned char>(number.back()))) number.pop_back();
+    }
+    if (!number.empty()) {
+        try {
+            size_t pos;
+            double num = std::stod(number, &pos);   // locale-ok: cell entry - what the user typed, in their locale
+            if (pos == number.length()) {
+                if (percent) SetPercentage(num / 100.0);
+                else SetNumber(num);
+                return;
             }
-            return;
-        }
-    } catch (...) {}
+        } catch (...) {}
+    }
     
     // Default to text
     SetText(input);
@@ -905,9 +915,18 @@ inline void SpreadsheetCell::UpdateDisplayValue() const {
             break;
             
         case CellValueType::Number:
-        case CellValueType::Percentage:
             if (auto* num = std::get_if<double>(&value_)) {
                 displayValue_ = FormatNumber(*num);
+            }
+            break;
+
+        case CellValueType::Percentage:
+            // Under General a percentage shows as one ("45%", "12.5%");
+            // a format the cell was given decides otherwise.
+            if (auto* num = std::get_if<double>(&value_)) {
+                displayValue_ = GetStyle().numberFormat.category == NumberFormatCategory::General
+                                    ? FormatNumber(*num * 100.0) + "%"
+                                    : FormatNumber(*num);
             }
             break;
             

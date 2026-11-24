@@ -11,6 +11,7 @@
 // with no UI stack (see Tests/CMakeLists.txt).
 #include "UltraCanvasSpreadsheetCell.h"
 
+#include <cmath>
 #include <iostream>
 #include <string>
 
@@ -92,6 +93,40 @@ static void TestPercentage() {
     CHECK_EQ(c.GetDisplayValue(), std::string("9.36%"));
 }
 
+// What a person types: "45%" is the percentage 0.45 and shows as 45%. Until
+// 2026-11 std::stod stopped at the '%' and the entry was kept as text.
+static void TestTypedPercentage() {
+    struct Typed { const char* text; double value; const char* shown; };
+    const Typed cases[] = {
+        { "45%", 0.45, "45%" },
+        { "12.5%", 0.125, "12.5%" },
+        { "-3%", -0.03, "-3%" },
+        { "45 %", 0.45, "45%" },
+        { " 100% ", 1.0, "100%" },
+    };
+    for (const auto& t : cases) {
+        SpreadsheetCell c;
+        c.SetValueFromString(t.text);
+        CHECK(c.GetValueType() == CellValueType::Percentage);
+        CHECK(std::abs(c.GetNumber() - t.value) < 1e-12);
+        CHECK_EQ(c.GetDisplayValue(), std::string(t.shown));
+        // What the editor shows is what typing it again gives.
+        SpreadsheetCell again;
+        again.SetValueFromString(c.GetDisplayValue());
+        CHECK(std::abs(again.GetNumber() - t.value) < 1e-12);
+    }
+    for (const char* text : { "%", "abc%", "45%%", "4 5%" }) {
+        SpreadsheetCell c;
+        c.SetValueFromString(text);
+        CHECK(c.GetValueType() == CellValueType::Text);
+        CHECK_EQ(c.GetDisplayValue(), std::string(text));
+    }
+    SpreadsheetCell plain;
+    plain.SetValueFromString("45");
+    CHECK(plain.GetValueType() == CellValueType::Number);
+    CHECK_EQ(plain.GetDisplayValue(), std::string("45"));
+}
+
 // ---------------------------------------------------------------------------
 // Date: honour the format code parsed from number:date-style
 // ---------------------------------------------------------------------------
@@ -134,6 +169,7 @@ int main() {
     std::cout << "SpreadsheetNumberFormatTest\n";
     TestCurrency();
     TestPercentage();
+    TestTypedPercentage();
     TestDateFormat();
     TestDateRoundTrip();
 

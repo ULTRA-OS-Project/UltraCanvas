@@ -79,6 +79,10 @@ int main() {
     Check(!grid->GetUndoDescription().empty(), "and it is an undo step");
     grid->Undo();
     Check(grid->GetCellText(0, 1).empty(), "Undo takes the typed value back");
+    TypeInto(*grid, 0, 1, "45%");
+    Check(grid->GetCellNumber(0, 1) == 0.45 && grid->GetCellDisplayValue(0, 1) == "45%",
+          "a typed 45% is the percentage 0.45 [" + grid->GetCellDisplayValue(0, 1) + "]");
+    grid->ClearCell(0, 1);
 
     std::printf("\n-- Stop: Cancel puts the old value back --\n");
     sheet->SetValidation(CellRange(0, 0, 9, 0), WholeNumber(1, 10, ValidationAlertStyle::Stop));   // A1:A10
