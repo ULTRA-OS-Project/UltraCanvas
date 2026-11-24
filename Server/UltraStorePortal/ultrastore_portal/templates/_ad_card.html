@@ -1,0 +1,14 @@
+{# An advertisement: the listing's own card, marked where the eye starts, with who paid and why one click away. #}
+<div class="ad h-100">
+  <div class="ad-mark"><span class="mark">Sponsored</span><a href="{% url 'promote:why' ad.token %}" rel="nofollow">Why this ad?</a></div>
+  {% with app=ad.app %}
+  <a class="card app-card" href="{% url 'promote:go' ad.token %}" rel="nofollow sponsored">
+    {% if app.icon %}<img class="app-icon" src="{{ app.icon.url }}" alt="" width="64" height="64" loading="lazy">{% else %}<span class="app-icon">{{ app.name|slice:":1" }}</span>{% endif %}
+    <span class="min-w-0">
+      <span class="name d-block">{{ app.name }}</span>
+      <span class="line">{{ app.summary }}</span>
+      <span class="d-flex flex-wrap gap-2 align-items-center small text-secondary"><span>{{ app.publisher.name }}</span><span class="price">{{ app.price_label }}</span></span>
+    </span>
+  </a>
+  {% endwith %}
+</div>

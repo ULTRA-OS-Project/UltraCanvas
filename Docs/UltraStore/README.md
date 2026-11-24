@@ -792,8 +792,13 @@ marketplace, account and payment services, `ultrastoreadmin` and
 `ultrastoreop` - and it changes three of their decisions: there is **one
 store and one catalog**, with no private or per-merchant catalog and no
 merchant key (a publisher is an account, the operator's key signs); **every
-URL sits under the one root**; and nothing of the earlier services' APIs is
-kept, since none was in use. What stays is this page's *Catalog*: the
+URL of the store sits under the one root**; and nothing of the earlier
+services' APIs is kept, since none was in use. Since its 0.4.0 (2026-11-24)
+the portal is also **the account every ULTRA OS service signs in with**: an
+OpenID Connect provider, at an address of its own when one is set
+(`https://account.ultraos.eu`), through which the store itself, and next
+cloud storage, the chat and advertising, sign a person in (its README, *One
+sign-in for every service*). What stays is this page's *Catalog*: the
 portal publishes the same signed `catalog.json`, so the store's core reads
 it unchanged - and *Payment*: the portal sells with the protocol and the
 licence that section describes (its 0.2.0), on MySQL. Until the portal has

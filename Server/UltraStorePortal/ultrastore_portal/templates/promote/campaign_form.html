@@ -1,0 +1,45 @@
+{% extends "console/base.html" %}
+{% load portal_ui %}
+{% block title %}{% if campaign %}Change the campaign{% else %}Promote {{ app.name }}{% endif %} - Developer console{% endblock %}
+{% block content %}
+<div class="page-head">
+  {% if app.icon %}<img class="app-icon" src="{{ app.icon.url }}" alt="" width="64" height="64">{% else %}<span class="app-icon">{{ app.name|slice:":1" }}</span>{% endif %}
+  <div><h1>{% if campaign %}Change the campaign{% else %}Promote {{ app.name }}{% endif %}</h1><span class="text-secondary">Its card is shown, marked <i>Sponsored</i>, where you tick below. You pay when someone clicks it.</span></div>
+</div>
+<div class="panels">
+{% if not public %}<div class="alert alert-warning"><b>This listing is not public in the store yet.</b> A campaign for it waits until it is: nothing is shown and nothing is charged before.</div>{% endif %}
+{% if balance.amount <= 0 %}<div class="alert alert-warning"><b>Your advertising balance is empty.</b> A campaign waits until there is one. <a href="{% url 'promote:balance' %}">The balance</a></div>{% endif %}
+<form method="post" class="card"><div class="card-body">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
+  <h2>Where</h2>
+  <p class="text-secondary">Every shop and marketplace, with the places an advertisement can appear in. This shop's are ticked; tick any other to appear there too.</p>
+  {% for group in groups %}
+  <fieldset class="where{% if not group.open %} is-closed{% endif %}">
+    <legend>{{ group.name }}{% if group.home %} <span class="badge">this shop</span>{% endif %}</legend>
+    {% for row in group.rows %}
+    <div class="form-check where-row">
+      <input class="form-check-input" type="checkbox" name="places" value="{{ row.placement.key }}" id="place-{{ row.placement.key }}"{% if row.ticked %} checked{% endif %}{% if row.reason %} disabled{% endif %}>
+      <label class="form-check-label" for="place-{{ row.placement.key }}">
+        <b>{{ row.placement.name }}</b>
+        <span class="d-block small text-secondary">{{ row.placement.shows }}</span>
+      </label>
+      <span class="where-price small">{% if row.reason %}<span class="text-secondary">{{ row.reason }}</span>{% else %}from {{ row.placement.floor }} {{ currency }} a click{% endif %}</span>
+    </div>
+    {% endfor %}
+  </fieldset>
+  {% endfor %}
+
+  <h2 class="mt-4">How much</h2>
+  {% if is_new %}<p class="text-secondary">In your first {{ new_days }} days of advertising a campaign spends at most {{ new_cap }} {{ currency }} a day.</p>{% endif %}
+  <div class="row"><div class="col-md-6">{% include "_field.html" with field=form.daily_budget %}</div><div class="col-md-6">{% include "_field.html" with field=form.max_click %}</div></div>
+
+  <h2 class="mt-4">How long</h2>
+  <div class="row"><div class="col-md-6">{% include "_field.html" with field=form.ends %}</div><div class="col-md-6">{% include "_field.html" with field=form.total_budget %}</div></div>
+
+  <button class="btn btn-primary btn-lg" type="submit">{% if campaign %}Save{% else %}Start promoting{% endif %}</button>
+  <a class="btn btn-outline-secondary btn-lg ms-2" href="{% if campaign %}{% url 'promote:campaign' campaign.pk %}{% else %}{% url 'console:app' app.app_id %}{% endif %}">Cancel</a>
+  <p class="small text-secondary mt-3 mb-0">An advertisement is chosen from what is on the page - the search, the category, the app beside it - and never from who is looking. It is always marked, and anyone can see that you paid for it.</p>
+</div></form>
+</div>
+{% endblock %}

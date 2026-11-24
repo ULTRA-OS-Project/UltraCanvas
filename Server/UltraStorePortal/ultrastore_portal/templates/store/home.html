@@ -39,6 +39,14 @@
 </section>
 {% endif %}
 
+{% if ads %}
+{# Paid, and said so: its own row below the editor's picks, which are never for sale. #}
+<section class="ad-row">
+  <div class="d-flex align-items-baseline gap-3 mb-3"><h2>Sponsored</h2></div>
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">{% for ad in ads %}<div class="col">{% include "_ad_card.html" %}</div>{% endfor %}</div>
+</section>
+{% endif %}
+
 {% if latest %}
 <section>
   <div class="d-flex align-items-baseline gap-3 mb-3"><h2>New and updated</h2><a class="ms-auto fw-semibold" href="{% url 'store:browse' %}?sort=updated">See all</a></div>

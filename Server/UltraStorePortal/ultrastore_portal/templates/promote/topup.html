@@ -1,0 +1,15 @@
+{% extends "pay/base.html" %}
+{% block title %}Paying into your advertising balance - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1>Advertising balance</h1>
+  <p class="font-title fs-2 my-3">{{ amount }} {{ topup.currency }}</p>
+  <p>You are being taken to Skrill to pay. The store never sees your card.</p>
+  <form id="pay" method="post" action="{{ pay_url }}">
+    {% for name, value in fields.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">
+    {% endfor %}
+    <button class="btn btn-primary btn-lg" type="submit">Continue to Skrill</button>
+  </form>
+  <script>document.getElementById('pay').submit();</script>
+</div>
+{% endblock %}

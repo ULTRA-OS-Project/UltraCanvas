@@ -1,0 +1,15 @@
+{% extends "pay/base.html" %}
+{% block title %}Paying into your advertising balance - UltraStore{% endblock %}
+{% block content %}
+<div class="narrow">
+  <div class="alert alert-warning"><b>The test payment provider.</b> No money moves: this page stands where the payment provider's does on a developer's machine.</div>
+  <h1>Advertising balance</h1>
+  <p class="font-title fs-2 my-3">{{ amount }} {{ topup.currency }}</p>
+  <form method="post" action="{% url 'promote:topup_test' topup.public_id %}" class="d-flex flex-wrap align-items-center gap-2">
+    {% csrf_token %}
+    <button class="btn btn-primary btn-lg" name="outcome" value="paid">Pay {{ amount }} {{ topup.currency }}</button>
+    <button class="btn btn-outline-secondary" name="outcome" value="failed">Let the payment fail</button>
+    <a class="btn btn-outline-secondary" href="{% url 'promote:topup_cancel' topup.public_id %}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

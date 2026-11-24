@@ -1,6 +1,8 @@
 """The store's public pages: the front page, browsing and searching, an
 app's page, a publisher's page.
 
+Version: 0.5.0 - the marked advertisements of a page (promote/): the Discover
+                 row, a search and a category list, beside a listing
 Version: 0.1.0
 """
 
@@ -15,6 +17,8 @@ from django.urls import reverse
 from django.utils import timezone
 
 from ..billing import services as billing
+from ..promote import services as advertising
+from ..promote.decide import for_page as ads_for
 from ..store import constants
 from ..store.models import App, Package, Publisher, Release, Report, TermsVersion
 from ..store.queries import listed_apps, search_apps
@@ -39,6 +43,7 @@ def home(request):
         "free": [a for a in apps if a.is_free][:8],
         "by_category": by_category,
         "categories_in_use": [(c, n) for c, n, _ in by_category],
+        "ads": ads_for("store-home") if apps else [],
     })
 
 
@@ -53,8 +58,21 @@ def browse(request, category: str = ""):
     query.pop("page", None)
     if category:
         query.pop("category", None)
+    # The advertisements of this page, chosen from the search or the
+    # category and never from who is asking; the results above are made
+    # first and stay as they are.
+    q, ads = (params.get("q") or "").strip(), []
+    if page.number == 1:
+        # A short list shows every result at a glance: the same app again
+        # above it, marked, would tell nobody anything.
+        found = page.paginator.count
+        skip = tuple(app.app_id for app in page) if found < int(advertising.number("results_per_ad")) else ()
+        if q:
+            ads = ads_for("store-search", q=q, results=found, skip=skip)
+        elif params.get("category"):
+            ads = ads_for("store-category", category=params["category"], results=found, skip=skip)
     return render(request, "store/browse.html", {
-        "page": page, "q": (params.get("q") or "").strip(), "category": params.get("category", ""),
+        "ads": ads, "page": page, "q": (params.get("q") or "").strip(), "category": params.get("category", ""),
         "category_name": constants.CATEGORY_NAMES.get(params.get("category", ""), ""),
         "price": params.get("price", ""), "sort": params.get("sort", "updated"), "query": query.urlencode(),
     })
@@ -78,7 +96,7 @@ def app_detail(request, app_id: str):
         "app": app, "release": release, "packages": packages,
         "systems": sorted({p.os_name for p in packages}),
         "direct_download": not app.restricted_packages,
-        "more": more, "similar": similar,
+        "more": more, "similar": similar, "ads": ads_for("store-detail", listing=app.app_id),
         "can_buy": not app.is_free and billing.selling(),
         "deep_link": f"ultrastore://app/{app.app_id}",
     })
@@ -93,6 +111,9 @@ def download(request, app_id: str, pk: int):
         raise Http404
     Package.objects.filter(pk=package.pk).update(downloads=F("downloads") + 1)
     App.objects.filter(pk=app.pk).update(downloads=F("downloads") + 1)
+    from . import promote   # a download that followed a click on this listing's advertisement counts for it
+    if promote.clicked_token(request, app):
+        promote.services.installed(promote.clicked_token(request, app))
     return redirect(f"/v1/packages/{package.file_name}")
 
 
@@ -128,7 +149,7 @@ def terms(request):
 
 
 def robots(request):
-    lines = ["User-agent: *", "Disallow: /console/", "Disallow: /operator/", "Disallow: /admin/", "Disallow: /account/",
+    lines = ["User-agent: *", "Disallow: /console/", "Disallow: /operator/", "Disallow: /admin/", "Disallow: /account/", "Disallow: /promote/",
              f"Sitemap: {settings.BASE_URL}/sitemap.xml", ""]
     return HttpResponse("\n".join(lines), content_type="text/plain")
 

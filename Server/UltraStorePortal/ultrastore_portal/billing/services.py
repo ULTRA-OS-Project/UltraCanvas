@@ -171,7 +171,7 @@ def sellable_app(app_id: str) -> App:
     return app
 
 
-def create_order(app_id: str, *, source: str = "store", email: str = "", language: str = "", code: str = "") -> Order:
+def create_order(app_id: str, *, source: str = "store", email: str = "", language: str = "", code: str = "", promote: str = "") -> Order:
     missing = missing_settings()
     if missing:
         raise BillingError(503, "not_configured", "The store is not set up to sell: " + ", ".join(missing))
@@ -181,6 +181,9 @@ def create_order(app_id: str, *, source: str = "store", email: str = "", languag
         code=code[:40], code_applied=False,   # discount codes are not built: the code is kept, the price is the list price
         cycle=CYCLES.get(app.pricing_model, ""), provider=settings.PAYMENT_PROVIDER, source=source, payer_email=email, language=language[:8])
     audit(None, "order.open", "order", order.public_id, app=app.app_id, amount=money(order.amount), currency=order.currency, source=source)
+    if promote:   # the token of the advertisement the buyer last clicked, kept by their store
+        from ..promote import services as advertising
+        advertising.order_opened(order, promote)
     return order
 
 
@@ -328,6 +331,8 @@ def process_status(fields: dict[str, str]) -> Order:
                                provider_transaction=transaction_id, receipt_no=order.receipt_no)
         audit(None, "order.paid", "order", order.public_id, app=order.app.app_id, amount=money(order.amount), currency=order.currency,
               receipt=order.receipt_no)
+        from ..promote import services as advertising
+        advertising.order_paid(order)
         transaction.on_commit(lambda: send_receipt(order))
         return order
     if status == skrill.STATUS_CHARGEBACK and order.paid_at:

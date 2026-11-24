@@ -24,7 +24,8 @@
 </form>
 
 {% if page.object_list %}
-  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">{% for app in page %}<div class="col">{% include "_app_card.html" %}</div>{% endfor %}</div>
+  {# The advertisements first, each marked; then the results, in the order the store gives them to everyone. #}
+  <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-3">{% for ad in ads %}<div class="col">{% include "_ad_card.html" %}</div>{% endfor %}{% for app in page %}<div class="col">{% include "_app_card.html" %}</div>{% endfor %}</div>
   {% if page.has_other_pages %}
   <div class="d-flex flex-wrap align-items-center justify-content-center gap-3 mt-4">
     {% if page.has_previous %}<a class="btn btn-outline-secondary btn-sm" href="?{{ query }}{% if query %}&amp;{% endif %}page={{ page.previous_page_number }}">Previous</a>{% endif %}
