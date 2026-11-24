@@ -1251,6 +1251,28 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
+- **UltraCanvasEmbeddedWindowManager** (`UltraCanvasEmbeddedWindowManager.h`)
+  — a window manager inside the program, for a backend that draws many
+  windows onto one surface: stacking bands, focus, placement, title bars kept
+  with their windows (`AttachFrame`; the bar itself is
+  `UltraCanvasEmbeddedWindowFrame`, a borderless window of an
+  `UltraCanvasLabel` and three `UltraCanvasButton`s), moving and resizing,
+  maximize into the work area reserved edges leave, pointer routing with the
+  button grab, damage, and compositing with a drawn pointer. Platform-neutral;
+  the Android backend's desktop mode (`OS/Android/UltraCanvasAndroidDesktop`,
+  MobilePC) runs on it, and through it answers `UltraCanvasDesktopShell` as
+  its embedded host. Core in `core/UltraCanvasEmbeddedWindowManager.cpp` and
+  `core/UltraCanvasEmbeddedWindowFrame.cpp`; tested by
+  `Tests/EmbeddedWindowManagerTest.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md`.
+
+- **UltraCanvasHostedApps** (`UltraCanvasHostedApps.h`) — applications that
+  run inside their host program (MobilePC's): registered with an entry
+  point, listed by `UltraCanvasDesktopShell::ListApplications` where the
+  platform has none of its own, started in the process by
+  `LaunchApplication`. Core in `core/UltraCanvasHostedApps.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasHostedApps.md`.
+
 - **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
   operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
   Core in `core/UltraCanvasWireless.cpp` (argument checks, the lists' order,

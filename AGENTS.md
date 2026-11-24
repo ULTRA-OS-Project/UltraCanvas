@@ -711,6 +711,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/DeviceExplorer/CHANGELOG.md` | DeviceExplorer |
 | `Docs/SmartHomeCenter/CHANGELOG.md` | SmartHome Center — the home control window |
 | `Docs/UltraDesktop/CHANGELOG.md` | UltraDesktop — the ULTRA OS desktop |
+| `Docs/MobilePC/CHANGELOG.md` | MobilePC — UltraDesktop on a TV or monitor, run by an Android phone |
 | `Docs/EmailCleaner/CHANGELOG.md` | EmailCleaner |
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
 | `Docs/Texter/CHANGELOG.md` | UltraTexter |

@@ -202,7 +202,7 @@ namespace UltraCanvas {
         // A frame window's title was taken with the button down: the window
         // it decorates follows the pointer until the button goes up.
         void BeginMove(uint64_t clientId);
-        bool IsMovingOrResizing() const { return interaction != Interaction::None; }
+        bool IsMovingOrResizing() const { return interaction != Interaction::Idle; }
 
         // ===== COMPOSITING =====
         // What needs drawing again, in output logical pixels. Windows that
@@ -232,7 +232,7 @@ namespace UltraCanvas {
         static void DrawPointer(cairo_t* cr, UCMouseCursor cursor, double x, double y, double size);
 
     private:
-        enum class Interaction { None, Moving, Resizing };
+        enum class Interaction { Idle, Moving, Resizing };
 
         struct Window {
             EmbeddedWindowInfo info;
@@ -256,7 +256,7 @@ namespace UltraCanvas {
         uint64_t grabId = 0;
         int buttonsDown = 0;
 
-        Interaction interaction = Interaction::None;
+        Interaction interaction = Interaction::Idle;
         uint64_t interactionId = 0;
         EmbeddedWindowPart resizePart = EmbeddedWindowPart::Nothing;
         Point2Di interactionAnchor;

@@ -308,7 +308,9 @@ UltraDesktopWindow::UltraDesktopWindow() = default;
 
 UltraDesktopWindow::~UltraDesktopWindow() {
     if (lookHandler_ != 0) UltraCanvasTheme::RemoveChangeHandler(lookHandler_);
+#ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
     toasts_.reset();   // its windows, its bus connection
+#endif
     // The poll thread, the shell monitor and the shortcut's thread all hand
     // over through members of this object: stop them before anything else goes.
     StopDevicePoll();

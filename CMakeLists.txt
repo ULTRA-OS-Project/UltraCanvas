@@ -802,6 +802,17 @@ if(BUILD_CHATCUBE)
     add_subdirectory(Apps/ChatCube)
 endif()
 
+# ===== MOBILEPC =====
+# UltraDesktop on a TV or monitor, run by an Android phone: libMobilePC.so
+# with UltraDesktop and the applications it starts, on the framework's
+# desktop mode (Apps/MobilePC). Android only; elsewhere it says so and stops.
+option(BUILD_MOBILEPC "Build MobilePC (Android: UltraDesktop on a TV or monitor)" ON)
+if(BUILD_MOBILEPC AND ANDROID)
+    message(STATUS "")
+    message(STATUS "── Building MobilePC ──")
+    add_subdirectory(Apps/MobilePC)
+endif()
+
 # ===== ULTRANETMONITOR =====
 # Shows which processes hold which network connections, live, from the
 # operating system's socket table (the NetworkMonitor module). Headless

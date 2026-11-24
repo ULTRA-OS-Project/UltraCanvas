@@ -47,7 +47,7 @@ namespace UltraCanvas {
 
     class UltraCanvasAndroidDesktop {
     public:
-        enum class Output { None, Phone, External };
+        enum class Output { Nowhere, Phone, External };
 
         static UltraCanvasAndroidDesktop& Get();
 
@@ -99,7 +99,7 @@ namespace UltraCanvas {
         // ===== FOR THE BACKEND (glue thread) =====
         // Whether this window, about to be made, is one of the desktop's.
         bool TakesNewWindow() const;
-        bool IsPhoneWindow(const UltraCanvasWindowBase* window) const { return window && window == phoneWindow; }
+        bool IsPhoneWindow(const UltraCanvasWindowBase* window) const;
         UltraCanvasAndroidWindow* GetPhoneWindow() const { return phoneWindow; }
         void SetPhoneWindow(UltraCanvasAndroidWindow* window) { phoneWindow = window; }
 
@@ -138,6 +138,7 @@ namespace UltraCanvas {
 
     private:
         UltraCanvasAndroidDesktop();
+        ~UltraCanvasAndroidDesktop();
 
         struct OutputSurface {
             ANativeWindow* window = nullptr;   // a reference held (external) or borrowed (phone)
@@ -164,7 +165,7 @@ namespace UltraCanvas {
 
         OutputSurface phone;
         OutputSurface external;
-        Output desktopOutput = Output::None;
+        Output desktopOutput = Output::Nowhere;
         float outputScale = 1.0f;
         float externalScaleSetting = 0.0f;
         cairo_surface_t* composed = nullptr;   // the output's pixels, kept between frames
@@ -195,6 +196,16 @@ namespace UltraCanvas {
 
         std::mutex pendingMutex;
         std::vector<PendingOp> pending;
+
+        // UltraCanvasDesktopShell's answers (a desktop's taskbar, its Apps
+        // window) from the window manager and the hosted applications.
+        class ShellHost;
+        friend class ShellHost;
+        std::unique_ptr<ShellHost> shellHost;
+        // The hosted application each window belongs to (its id, "" for the
+        // host program's own).
+        std::map<uint64_t, std::string> appOf;
+        void WindowsChanged();
 
         void ChooseOutput();
         float ScaleFor(const OutputSurface& surface, bool isPhone) const;

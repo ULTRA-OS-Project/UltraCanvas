@@ -35,8 +35,11 @@
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -1104,19 +1107,74 @@ bool UltraCanvasTrayHost::ActivateMenuItem(const std::string& id, int32_t itemId
 
 // ===== FALLBACK BACKEND =====
 
+// ===== EMBEDDED HOST =====
+// An in-program window manager answering for the fallback (see the header).
+
+namespace DesktopShellBackend {
+
+    namespace {
+        std::atomic<EmbeddedHost*> g_embeddedHost{nullptr};
+
+        // What a shell monitor waits on: a count of changes.
+        std::mutex g_embeddedChangeMutex;
+        std::condition_variable g_embeddedChanged;
+        uint64_t g_embeddedChanges = 0;
+    }
+
+    void SetEmbeddedHost(EmbeddedHost* host) {
+        g_embeddedHost.store(host);
+        NotifyEmbeddedChange();
+    }
+
+    EmbeddedHost* GetEmbeddedHost() { return g_embeddedHost.load(); }
+
+    void NotifyEmbeddedChange() {
+        {
+            std::lock_guard<std::mutex> lock(g_embeddedChangeMutex);
+            ++g_embeddedChanges;
+        }
+        g_embeddedChanged.notify_all();
+    }
+
+} // namespace DesktopShellBackend
+
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE
 namespace DesktopShellBackend {
 
-    std::string BackendName() { return "null"; }
-    bool IsAvailable() { return false; }
+    std::string BackendName() {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->Name();
+        return "null";
+    }
+    bool IsAvailable() { return GetEmbeddedHost() != nullptr; }
 
-    std::vector<DesktopWindowInfo> ListWindows() { return {}; }
-    uint64_t GetActiveWindow() { return 0; }
-    bool ActivateWindow(uint64_t) { return false; }
-    bool MinimizeWindow(uint64_t) { return false; }
-    bool CloseWindow(uint64_t) { return false; }
-    bool GetWindowBounds(uint64_t, int&, int&, int&, int&) { return false; }
-    bool MoveWindowTo(uint64_t, int, int) { return false; }
+    std::vector<DesktopWindowInfo> ListWindows() {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->ListWindows();
+        return {};
+    }
+    uint64_t GetActiveWindow() {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->GetActiveWindow();
+        return 0;
+    }
+    bool ActivateWindow(uint64_t id) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->ActivateWindow(id);
+        return false;
+    }
+    bool MinimizeWindow(uint64_t id) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->MinimizeWindow(id);
+        return false;
+    }
+    bool CloseWindow(uint64_t id) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->CloseWindow(id);
+        return false;
+    }
+    bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->GetWindowBounds(id, x, y, width, height);
+        return false;
+    }
+    bool MoveWindowTo(uint64_t id, int x, int y) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->MoveWindowTo(id, x, y);
+        return false;
+    }
     bool KillProcess(int, std::string& error) {
         error = "Programs are not ended from here on this platform yet.";
         return false;
@@ -1127,9 +1185,18 @@ namespace DesktopShellBackend {
     bool SetVirtualDesktopCount(int) { return false; }
     bool MoveWindowToVirtualDesktop(uint64_t, int) { return false; }
 
-    bool GetScreenSize(int&, int&) { return false; }
-    std::vector<DesktopScreenInfo> ListScreens() { return {}; }
-    bool ReserveScreenEdges(uint64_t, int, int, int, int) { return false; }
+    bool GetScreenSize(int& width, int& height) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->GetScreenSize(width, height);
+        return false;
+    }
+    std::vector<DesktopScreenInfo> ListScreens() {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->ListScreens();
+        return {};
+    }
+    bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->ReserveScreenEdges(id, left, right, top, bottom);
+        return false;
+    }
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE
     bool CaptureScreen(const std::string&, std::string& error) {
         error = "Screenshots are not available on this platform yet.";
@@ -1155,8 +1222,15 @@ namespace DesktopShellBackend {
     void HideWindowThumbnail(uint64_t) {}
 
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS
-    bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
+    bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) return host->ListApplications(iconSize, out);
+        return false;
+    }
     bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
+        if (EmbeddedHost* host = GetEmbeddedHost()) {
+            if (host->LaunchShortcut(shortcutPath, error)) return true;
+            if (!error.empty()) return false;
+        }
         return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
     }
 #endif
@@ -1226,11 +1300,36 @@ namespace DesktopShellBackend {
             "Camera, microphone, speaker, battery and keyboard state are not read on this platform yet.");
     }
 
-    struct MonitorState {};
-    MonitorState* MonitorOpen() { return nullptr; }
-    bool MonitorWait(MonitorState*) { return false; }
-    void MonitorWake(MonitorState*) {}
-    void MonitorClose(MonitorState*) {}
+    // With an embedded host a monitor wakes on each change it reports;
+    // without one there is nothing to watch.
+    struct MonitorState {
+        uint64_t seen = 0;
+        bool stop = false;
+    };
+    MonitorState* MonitorOpen() {
+        if (!GetEmbeddedHost()) return nullptr;
+        auto* state = new MonitorState();
+        std::lock_guard<std::mutex> lock(g_embeddedChangeMutex);
+        state->seen = g_embeddedChanges;
+        return state;
+    }
+    bool MonitorWait(MonitorState* state) {
+        if (!state) return false;
+        std::unique_lock<std::mutex> lock(g_embeddedChangeMutex);
+        g_embeddedChanged.wait(lock, [state]() { return state->stop || g_embeddedChanges != state->seen; });
+        if (state->stop) return false;
+        state->seen = g_embeddedChanges;
+        return true;
+    }
+    void MonitorWake(MonitorState* state) {
+        if (!state) return;
+        {
+            std::lock_guard<std::mutex> lock(g_embeddedChangeMutex);
+            state->stop = true;
+        }
+        g_embeddedChanged.notify_all();
+    }
+    void MonitorClose(MonitorState* state) { delete state; }
 
     struct ShortcutState {};
     ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error, bool /*exclusive*/) {

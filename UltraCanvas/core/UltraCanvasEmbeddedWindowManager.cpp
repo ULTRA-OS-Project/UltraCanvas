@@ -299,7 +299,7 @@ namespace UltraCanvas {
         stack.erase(std::remove(stack.begin(), stack.end(), id), stack.end());
         if (hoverId == id) hoverId = 0;
         if (grabId == id) { grabId = 0; buttonsDown = 0; }
-        if (interactionId == id) interaction = Interaction::None;
+        if (interactionId == id) interaction = Interaction::Idle;
         if (frameId) {
             if (Window* f = Find(frameId)) f->info.frameOf = 0;   // the backend removes it
         }
@@ -668,8 +668,8 @@ namespace UltraCanvas {
         EmbeddedPointerRoute route;
 
         if (!down) {
-            if (interaction != Interaction::None) {
-                interaction = Interaction::None;
+            if (interaction != Interaction::Idle) {
+                interaction = Interaction::Idle;
                 interactionId = 0;
                 // The button that ended the move or resize may have pressed in
                 // a frame window, which hears its release.

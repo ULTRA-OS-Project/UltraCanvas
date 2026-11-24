@@ -13,6 +13,8 @@
 #include "UltraCanvasAndroidWindow.h"
 #include "UltraCanvasAndroidJni.h"
 #include "UltraCanvasEmbeddedWindowFrame.h"
+#include "UltraCanvasDesktopShellBackend.h"
+#include "UltraCanvasHostedApps.h"
 #include "UltraCanvasDebug.h"
 
 #include <android/configuration.h>
@@ -27,6 +29,7 @@
 #include <cairo/cairo.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -82,6 +85,142 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== THE SHELL'S ANSWERS =====
+
+    class UltraCanvasAndroidDesktop::ShellHost : public DesktopShellBackend::EmbeddedHost {
+    public:
+        explicit ShellHost(UltraCanvasAndroidDesktop& d) : desktop(d) {}
+
+        std::string Name() override { return "embedded (Android desktop mode)"; }
+
+        std::vector<DesktopWindowInfo> ListWindows() override {
+            std::vector<DesktopWindowInfo> out;
+            const std::vector<HostedAppInfo> apps = UltraCanvasHostedApps::List();
+            const uint64_t focused = desktop.wm.GetFocused();
+            for (const EmbeddedWindowInfo& w : desktop.wm.ListWindows()) {
+                if (w.frameOf) continue;   // a title bar is part of its window
+                DesktopWindowInfo info;
+                info.id = w.id;
+                info.title = w.title;
+                const auto app = desktop.appOf.find(w.id);
+                const std::string appId = app != desktop.appOf.end() ? app->second : std::string();
+                for (const HostedAppInfo& a : apps) {
+                    if (a.id == appId) {
+                        info.appClass = a.name;
+                        info.iconFile = a.iconFile;
+                        break;
+                    }
+                }
+                if (info.appClass.empty()) info.appClass = appId.empty() ? w.title : appId;
+                info.appName = info.appClass;
+                std::transform(info.appName.begin(), info.appName.end(), info.appName.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                info.virtualDesktop = 0;
+                info.active = w.id == focused;
+                info.minimized = w.minimized;
+                info.maximized = w.maximized;
+                info.skipTaskbar = !w.focusable || (w.layer != EmbeddedWindowLayer::Normal &&
+                                                     w.layer != EmbeddedWindowLayer::AlwaysOnTop);
+                out.push_back(info);
+            }
+            return out;
+        }
+
+        uint64_t GetActiveWindow() override { return desktop.wm.GetFocused(); }
+
+        bool ActivateWindow(uint64_t id) override {
+            if (!desktop.wm.HasWindow(id)) return false;
+            desktop.wm.Activate(id);
+            return true;
+        }
+
+        bool MinimizeWindow(uint64_t id) override {
+            if (!desktop.wm.HasWindow(id)) return false;
+            desktop.wm.Minimize(id);
+            return true;
+        }
+
+        bool CloseWindow(uint64_t id) override {
+            UltraCanvasAndroidWindow* window = desktop.WindowOf(id);
+            if (!window) return false;
+            // In front first: a "Save the changes?" must be seen.
+            desktop.wm.Activate(id);
+            desktop.PushSimpleEvent(window, static_cast<int>(UCEventType::WindowCloseRequest));
+            return true;
+        }
+
+        bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height) override {
+            EmbeddedWindowInfo info;
+            if (!desktop.wm.GetInfo(id, info)) return false;
+            const float s = desktop.outputScale;
+            x = static_cast<int>(std::lround(info.rect.x * s));
+            y = static_cast<int>(std::lround(info.rect.y * s));
+            width = static_cast<int>(std::lround(info.rect.width * s));
+            height = static_cast<int>(std::lround(info.rect.height * s));
+            return true;
+        }
+
+        bool MoveWindowTo(uint64_t id, int x, int y) override {
+            UltraCanvasAndroidWindow* window = desktop.WindowOf(id);
+            if (!window) return false;
+            window->SetWindowPosition(x, y);
+            return true;
+        }
+
+        bool GetScreenSize(int& width, int& height) override {
+            const Size2Di size = desktop.GetOutputPhysicalSize();
+            width = size.width;
+            height = size.height;
+            return width > 0 && height > 0;
+        }
+
+        std::vector<DesktopScreenInfo> ListScreens() override {
+            DesktopScreenInfo screen;
+            const Size2Di size = desktop.GetOutputPhysicalSize();
+            screen.width = size.width;
+            screen.height = size.height;
+            screen.primary = true;
+            screen.number = 1;
+            return {screen};
+        }
+
+        bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) override {
+            const float s = desktop.outputScale > 0 ? desktop.outputScale : 1.0f;
+            auto toLogical = [s](int v) { return static_cast<int>(std::ceil(v / s)); };
+            desktop.wm.ReserveEdges(id, toLogical(left), toLogical(right), toLogical(top), toLogical(bottom));
+            return true;
+        }
+
+        bool ListApplications(int, std::vector<UCDesktopEntry>& out) override {
+            for (const HostedAppInfo& app : UltraCanvasHostedApps::List()) {
+                UCDesktopEntry entry;
+                entry.kind = UCDesktopEntry::Kind::Application;
+                entry.name = app.name;
+                entry.comment = app.comment;
+                entry.iconName = app.iconFile;
+                entry.iconFile = app.iconFile;
+                entry.categories = app.categories;
+                entry.startupWMClass = app.name;
+                entry.shortcutPath = UltraCanvasHostedApps::PathFor(app.id);
+                out.push_back(entry);
+            }
+            return true;
+        }
+
+        bool LaunchShortcut(const std::string& shortcutPath, std::string& error) override {
+            const std::string id = UltraCanvasHostedApps::IdFromPath(shortcutPath);
+            if (id.empty()) return false;   // not ours: the default application's
+            return UltraCanvasHostedApps::Launch(id, {}, &error);
+        }
+
+    private:
+        UltraCanvasAndroidDesktop& desktop;
+    };
+
+    void UltraCanvasAndroidDesktop::WindowsChanged() {
+        DesktopShellBackend::NotifyEmbeddedChange();
+    }
+
     UltraCanvasAndroidDesktop& UltraCanvasAndroidDesktop::Get() {
         static UltraCanvasAndroidDesktop desktop;
         return desktop;
@@ -93,11 +232,19 @@ namespace UltraCanvas {
         wm.onStateChanged = [this](uint64_t id) { OnStateChanged(id); };
     }
 
+    UltraCanvasAndroidDesktop::~UltraCanvasAndroidDesktop() {
+        if (shellHost && DesktopShellBackend::GetEmbeddedHost() == shellHost.get()) {
+            DesktopShellBackend::SetEmbeddedHost(nullptr);
+        }
+    }
+
     // ===== THE APPLICATION'S CALLS =====
 
     void UltraCanvasAndroidDesktop::Enable() {
         if (enabled) return;
         enabled = true;
+        shellHost = std::make_unique<ShellHost>(*this);
+        DesktopShellBackend::SetEmbeddedHost(shellHost.get());
         auto* app = UltraCanvasAndroidApplication::GetInstance();
         phone.window = app ? app->GetNativeWindow() : nullptr;
         ChooseOutput();
@@ -118,6 +265,10 @@ namespace UltraCanvas {
         return window;
     }
 
+    bool UltraCanvasAndroidDesktop::IsPhoneWindow(const UltraCanvasWindowBase* window) const {
+        return window && phoneWindow && window == static_cast<const UltraCanvasWindowBase*>(phoneWindow);
+    }
+
     bool UltraCanvasAndroidDesktop::TakesNewWindow() const {
         return enabled && !creatingPhoneWindow;
     }
@@ -125,7 +276,7 @@ namespace UltraCanvas {
     void UltraCanvasAndroidDesktop::SetExternalScale(float scale) {
         externalScaleSetting = scale > 0.0f ? scale : 0.0f;
         if (desktopOutput == Output::External) {
-            desktopOutput = Output::None;   // forces the rebuild
+            desktopOutput = Output::Nowhere;   // forces the rebuild
             ChooseOutput();
         }
     }
@@ -167,7 +318,7 @@ namespace UltraCanvas {
         }
         if (!enabled) return;
         if (desktopOutput == Output::Phone || !window) {
-            desktopOutput = Output::None;   // re-measure the phone's surface
+            desktopOutput = Output::Nowhere;   // re-measure the phone's surface
         }
         ChooseOutput();
     }
@@ -175,7 +326,7 @@ namespace UltraCanvas {
     void UltraCanvasAndroidDesktop::ChooseOutput() {
         if (!enabled) return;
         const Output wanted = external.window ? Output::External
-                                              : (phone.window ? Output::Phone : Output::None);
+                                              : (phone.window ? Output::Phone : Output::Nowhere);
         if (wanted == Output::Phone) {
             // The phone's own size: a buffer geometry set on the window hides
             // it (the phone backend's note on rotation).
@@ -185,10 +336,10 @@ namespace UltraCanvas {
         }
         const Output previous = desktopOutput;
         OutputSurface& out = wanted == Output::External ? external : phone;
-        const float scale = wanted == Output::None ? outputScale : ScaleFor(out, wanted == Output::Phone);
+        const float scale = wanted == Output::Nowhere ? outputScale : ScaleFor(out, wanted == Output::Phone);
         const bool sameSize = composed && out.width == cairo_image_surface_get_width(composed) &&
                               out.height == cairo_image_surface_get_height(composed);
-        if (wanted == previous && scale == outputScale && (wanted == Output::None || sameSize)) {
+        if (wanted == previous && scale == outputScale && (wanted == Output::Nowhere || sameSize)) {
             if (wanted == Output::Phone) {
                 ANativeWindow_setBuffersGeometry(phone.window, phone.width, phone.height,
                                                  WINDOW_FORMAT_RGBX_8888);
@@ -199,7 +350,7 @@ namespace UltraCanvas {
         const bool scaleChanged = scale != outputScale;
         outputScale = scale;
 
-        if (wanted != Output::None && out.width > 0 && out.height > 0) {
+        if (wanted != Output::Nowhere && out.width > 0 && out.height > 0) {
             wm.SetOutputSize(std::max(1, static_cast<int>(std::floor(out.width / scale))),
                              std::max(1, static_cast<int>(std::floor(out.height / scale))));
         }
@@ -235,7 +386,7 @@ namespace UltraCanvas {
             composed = nullptr;
         }
         const OutputSurface& out = desktopOutput == Output::External ? external : phone;
-        if (desktopOutput == Output::None || !out.window || out.width <= 0 || out.height <= 0) return;
+        if (desktopOutput == Output::Nowhere || !out.window || out.width <= 0 || out.height <= 0) return;
         ANativeWindow_setBuffersGeometry(out.window, out.width, out.height, WINDOW_FORMAT_RGBX_8888);
         composed = cairo_image_surface_create(CAIRO_FORMAT_RGB24, out.width, out.height);
         if (cairo_surface_status(composed) != CAIRO_STATUS_SUCCESS) {
@@ -245,7 +396,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAndroidDesktop::ComposeAndPresent() {
-        if (desktopOutput == Output::None || !composed || !wm.HasDamage()) return;
+        if (desktopOutput == Output::Nowhere || !composed || !wm.HasDamage()) return;
         const OutputSurface& out = desktopOutput == Output::External ? external : phone;
         if (!out.window) return;
 
@@ -386,7 +537,7 @@ namespace UltraCanvas {
                 external.height = op.height;
                 external.densityDpi = op.densityDpi;
                 external.owned = true;
-                if (desktopOutput == Output::External) desktopOutput = Output::None;   // rebuild at the new size
+                if (desktopOutput == Output::External) desktopOutput = Output::Nowhere;   // rebuild at the new size
                 ChooseOutput();
                 break;
             }
@@ -494,6 +645,14 @@ namespace UltraCanvas {
         const uint64_t id = IdOf(window);
         const EmbeddedWindowSpec spec = SpecFor(window);
         windows[id] = window;
+        // Whose window: the application being started, else that of the
+        // window it belongs to.
+        std::string app = UltraCanvasHostedApps::Launching();
+        if (app.empty() && spec.transientFor) {
+            auto parent = appOf.find(spec.transientFor);
+            if (parent != appOf.end()) app = parent->second;
+        }
+        appOf[id] = app;
         return wm.AddWindow(id, spec);
     }
 
@@ -524,6 +683,8 @@ namespace UltraCanvas {
         wm.RemoveWindow(id);
         destroyingId = 0;
         windows.erase(id);
+        appOf.erase(id);
+        WindowsChanged();
     }
 
     void UltraCanvasAndroidDesktop::MakeFrame(UltraCanvasAndroidWindow* window) {
@@ -560,6 +721,7 @@ namespace UltraCanvas {
         if (frameIt != frames.end() && frameIt->second && frameIt->second->GetWindow()) {
             frameIt->second->GetWindow()->Show();
         }
+        WindowsChanged();
     }
 
     void UltraCanvasAndroidDesktop::WindowHidden(UltraCanvasAndroidWindow* window) {
@@ -570,6 +732,7 @@ namespace UltraCanvas {
         if (frameIt != frames.end() && frameIt->second && frameIt->second->GetWindow()) {
             frameIt->second->GetWindow()->Hide();
         }
+        WindowsChanged();
     }
 
     void UltraCanvasAndroidDesktop::WindowPresented(UltraCanvasAndroidWindow* window) {
@@ -581,6 +744,7 @@ namespace UltraCanvas {
         wm.SetTitle(id, window->GetConfig().title);
         auto frameIt = frames.find(id);
         if (frameIt != frames.end() && frameIt->second) frameIt->second->SetTitle(window->GetConfig().title);
+        WindowsChanged();
     }
 
     void UltraCanvasAndroidDesktop::WindowCursorChanged(UltraCanvasAndroidWindow* window, UCMouseCursor cursor) {
@@ -606,6 +770,7 @@ namespace UltraCanvas {
             auto it = frames.find(gainedId);
             if (it != frames.end() && it->second) it->second->SetActive(true);
         }
+        WindowsChanged();
     }
 
     void UltraCanvasAndroidDesktop::OnStateChanged(uint64_t id) {
@@ -617,6 +782,7 @@ namespace UltraCanvas {
         }
         auto it = frames.find(id);
         if (it != frames.end() && it->second) it->second->SetMaximized(info.maximized);
+        WindowsChanged();
     }
 
     UltraCanvasAndroidWindow* UltraCanvasAndroidDesktop::GetKeyboardWindow() const {
@@ -865,6 +1031,9 @@ namespace UltraCanvas {
             }
             case TouchPhase::Up:
                 pad.fingers = fingers;
+                // The centre of the fingers still down moved: no motion.
+                pad.lastX = x;
+                pad.lastY = y;
                 if (fingers > 0) break;
                 if (pad.dragging) {
                     PointerButton(UCMouseButton::Left, false);

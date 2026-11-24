@@ -1,7 +1,16 @@
 # MobilePC — UltraDesktop on a TV or monitor, driven by an Android phone (Design Proposal)
 
 **Date:** 2026-11-24
-**Status:** Proposal — for review; no implementation yet
+**Status:** Being implemented. Done: the embedded window manager and its
+title bar (§5.1, Cairo compositor), the Android desktop mode with the
+presentation-display output, the phone's-screen output and the captured
+pointer (§5.2), the hosted-application registry and the desktop shell's
+embedded host (§5.3 in part, §5.4), and `Apps/MobilePC` with UltraDesktop,
+UltraViewer, UltraPaint and ArtCreator, with a CI job that builds the APK
+and runs it on an emulator with a simulated second display. Not yet: Texter, UltraFiler, per-app
+identity beyond the catalogues, the GLES compositor, popup layers, the
+foreground service, wireless streaming (§4 mode 2). See
+[`Docs/MobilePC/README.md`](../MobilePC/README.md).
 **Builds on:** the Android backend in [`UltraCanvas/OS/Android/`](../../UltraCanvas/OS/Android/README.md)
 and its investigation, [`Docs/UltraCanvas/AndroidPortInvestigation.md`](../UltraCanvas/AndroidPortInvestigation.md);
 [UltraDesktop](../UltraDesktop/README.md) and the

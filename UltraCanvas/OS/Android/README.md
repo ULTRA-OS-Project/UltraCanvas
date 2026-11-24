@@ -33,6 +33,7 @@ Android).
 | `UltraCanvasAndroidJni.{h,cpp}` | Shared JNI plumbing: lazy `AttachCurrentThread` for the glue thread (detached once at shutdown), activity handle, exception clear+log, UTF-8 ↔ jstring both ways (`ToStdString` / `ToJString`: real UTF-8, not JNI's modified UTF-8, so emoji survive and malformed bytes become U+FFFD instead of aborting under CheckJNI). Never use `NewStringUTF` for anything but a literal. |
 | `UltraCanvasAndroidClipboard.{h,cpp}` | `UltraCanvasClipboardBackend` over JNI `ClipboardManager`. Text both ways; images and files can be **pasted** (the clip's `content://` items are copied into the app cache through `UltraCanvasActivity`, as the file picker does) but not **copied** — see Clipboard below. `GetAvailableFormats` reports what the clip actually advertises, in the same MIME spelling the Linux backend uses. Change detection via `ClipDescription.getTimestamp()` (API 26+). Android 10+ denies reads while the app lacks input focus; callers just see "nothing there" then. |
 | `UltraCanvasAndroidWindow.{h,cpp}` | All `UltraCanvasWindowBase` pure virtuals. Cairo **image** surface at physical px (the Windows backend's model), presented via `ANativeWindow_lock` → xRGB→RGBX row copy → `unlockAndPost`. `QueryNativeDeviceScale()` = `AConfiguration_getDensity`/160. Handles `APP_CMD_INIT_WINDOW`/`TERM_WINDOW`/`WINDOW_RESIZED` surface lifecycle (see Lifecycle below); desktop window-management calls are no-ops. |
+| `UltraCanvasAndroidDesktop.{h,cpp}` | **Desktop mode** (below): every window after `Enable()` one of [`UltraCanvasEmbeddedWindowManager`](../../../Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md)'s, composited onto an external display's `Presentation` surface or the phone's own; the captured mouse, an uncaptured one and a touchpad driving its pointer; the desktop shell's embedded host (window list, screen, hosted applications). JNI entry points for the external surface and the captured pointer. |
 | `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name; its arguments after `argv[0]` are the launching intent's `ultracanvas.args` string extra split on whitespace (`am start -e ultracanvas.args "--no-about" ...`), none from the launcher (`Apps/DemoApp/main.cpp` is the worked example; [`packaging/`](packaging/README.md#the-app-library) has the CMake side). |
 | `UltraCanvasAndroidLog.{h,cpp}` | stdout/stderr → logcat pump, installed by `android_main` before anything can log. A native app's stdio goes to `/dev/null`, so without it every warning from cairo/Pango/fontconfig and every `std::cout`/`std::cerr` call site in shared framework code is discarded. The framework's own `debugOutput` does **not** come through here — it reaches logcat directly (see Diagnostics below). |
 | `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics. Message dialogs, input dialogs and file *opening* are real (AlertDialog / SAF through the bridge below); `SaveFile` and `SelectFolder` stay logged "Cancel" stubs — **Dialogs** below explains why those two are blocked on an API decision rather than unfinished. |
@@ -67,6 +68,63 @@ a different name, finds nothing, and reports no error — the exact silent-empty
 failure this replaces. If the store still ends up empty and the caller asked
 for verification, `Wrap()` fails with a message naming that cause instead of
 letting the handshake fail obscurely; verification is never quietly disabled.
+
+## Desktop mode: a TV or monitor
+
+`UltraCanvasAndroidDesktop::Get().Enable()` turns the one-window phone backend
+into a desktop: every window made afterwards is a window of
+[`UltraCanvasEmbeddedWindowManager`](../../../Docs/UltraCanvas/UltraCanvasEmbeddedWindowManager.md)
+- placed, stacked, focused, moved by a title bar
+(`UltraCanvasEmbeddedWindowFrame`, a window of its own made at its first
+`Show`) and resized by its edges - and they are composited onto one output.
+MobilePC (`Apps/MobilePC`) is built on it. Without `Enable()` none of it runs.
+
+- **The output** is the external display when there is one, else the phone's
+  screen. `UltraCanvasActivity` (`setDesktopMode`) puts a `Presentation` on
+  the first display `DisplayManager` lists under
+  `DISPLAY_CATEGORY_PRESENTATION` - a monitor on a USB-C cable or dock, an OEM
+  wireless display, the emulator's *Simulate secondary displays* - and hands
+  its `SurfaceView`'s surface over (`nativeOnExternalSurface`, through
+  `ANativeWindow_fromSurface`); displays coming and going are followed through
+  the display listener. The Presentation is `FLAG_NOT_FOCUSABLE`, so keys and
+  the keyboard's text stay with the activity. Changing the output rescales and
+  re-lays every window and moves nothing else; `onOutputChanged` tells the
+  application.
+- **The scale** on an external display goes by its number of lines, not its
+  density (a 55-inch TV has a low one): 1 up to 1080 lines, then in quarter
+  steps (1.25 at 1440, 2 at 2160), or what `SetExternalScale` says. On the
+  phone's screen it is the density's, as in phone mode.
+- **The phone's own window** is the one made with `CreatePhoneWindow`: it is
+  the classic full-surface window, shown while the desktop is on the external
+  display (MobilePC's control pad) and not presented while the desktop is on
+  the phone. Without one the phone's screen is a touchpad for the desktop.
+- **The pointer** is drawn by the window manager. On an external display a
+  mouse is captured (`setPointerCaptureWanted`, the input view's
+  `requestPointerCapture`), and its relative motion, buttons and wheel arrive
+  through `nativeOnCapturedPointer` - whichever display Android would have put
+  its own pointer on; a mouse that is not captured moves it by its motion on
+  the phone. `TouchpadInput` is a touchpad's gestures: one finger moves, a tap
+  clicks, two fingers' tap right-clicks, two fingers scroll, tap-and-press
+  drags. On the phone's screen a finger or a mouse points where it is.
+- **Keys** and the IME's text go to the window manager's focused window
+  (`GetKeyboardWindow`); the back button is Escape there.
+- **Compositing** happens once a turn of the event loop, before it waits:
+  only the damaged rectangles, into a full-size image surface kept between
+  frames, then the rectangle `ANativeWindow_lock` hands back is copied. The
+  first frame on each output is logged (`desktop frame presented on ...`) for
+  `scripts/android-mobilepc-smoke.sh`, which the `emulator-mobilepc` job runs
+  with a simulated second display.
+- **The desktop shell** (`UltraCanvasDesktopShell`) is answered from here
+  through its embedded host: the window list, activating, minimising and
+  closing, window bounds, the one screen, reserved bar strips, the shell
+  monitor and the applications of
+  [`UltraCanvasHostedApps`](../../../Docs/UltraCanvas/UltraCanvasHostedApps.md).
+
+Open: a foreground service and the behaviour while the phone is locked, the
+popups of a window drawn beyond its edges (they are cut at it, as in phone
+mode), screen capture of the desktop, the GLES compositor that 4K wants, and
+the wireless stream for phones without a presentation display - see
+[`Docs/Research/MobilePCDesignProposal.md`](../../../Docs/Research/MobilePCDesignProposal.md).
 
 ## System bars
 
