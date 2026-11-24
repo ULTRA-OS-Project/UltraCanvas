@@ -1,3 +1,10 @@
+#### 2026-11-24 *0.1.12*
+- **The recording bar cut its time in every language.** At 280 px, an hour's
+  paused recording read "1:02:05 …" in English and "1:02:…" in German, and
+  the red dot shrank to "..". The bar is now as wide as its content at its
+  widest - the time with "paused", the longer of Pause and Resume - and is
+  placed with that width.
+
 #### 2026-11-23 *0.1.11*
 - **The selection over the screen is the framework's now.** UltraSnip's
   overlay - the frozen, dimmed screen with the rectangle or the lit window -

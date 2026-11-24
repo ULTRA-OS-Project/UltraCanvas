@@ -1,3 +1,188 @@
+#### 2026-11-24 *0.9.587*
+- **The Android sysroot survives GNU's download hosts being down.** vcpkg
+  fetches gperf, libiconv and gettext only from ftpmirror.gnu.org and
+  ftp.gnu.org; when both timed out the whole arm64 sysroot failed after half
+  an hour. `scripts/android-bootstrap-sysroot.sh` now has
+  `scripts/vcpkg_seed_gnu_sources.py` put the GNU archives the manifest needs
+  into vcpkg's download cache first, from other GNU mirrors, each checked
+  against the port's SHA512; vcpkg takes them from there.
+- **`scripts/android-package-apk.sh` packages with build-tools 34 on JDK 21.**
+  JDK 21's javac writes unnamed `MethodParameters` entries for anonymous
+  classes, on which build-tools 34's d8 stopped with a NullPointerException.
+  When d8 refuses the classes, `scripts/strip_method_parameters.py` takes that
+  attribute out of them (it only names parameters for reflection) and d8 runs
+  again.
+- **The Android documents say what has run.** `AndroidPortInvestigation.md`
+  and the backend's README still said no APK had been installed; the
+  emulator jobs install and run the demo and MobilePC, and only a physical
+  device is still to come.
+- **CI: the Windows-on-ARM build job may run for 180 minutes, not 120.** A pull
+  request starts without a saved ccache, and one that changes a header most
+  targets include rebuilds nearly everything: on Windows ARM that is about 65
+  minutes of compiling before the tests and the packaging, which ran past the
+  old limit with its build and tests already green.
+- **A window manager inside the program: `UltraCanvasEmbeddedWindowManager`.**
+  For a backend that draws many windows onto one surface it keeps them
+  stacked (desktop, windows, always-on-top, notifications, popups, tooltips,
+  each band above the last), focused, placed (cascaded, a dialog centred over
+  its window), moved by their title bars, resized by their edges, maximised
+  into the work area a desktop's bars leave and minimised, and composites
+  them - only what changed - with a shadow under each and the pointer on top.
+  Platform-neutral; `Tests/EmbeddedWindowManagerTest` covers it with no
+  display. Its title bar, `UltraCanvasEmbeddedWindowFrame`, is a window of its
+  own built from an `UltraCanvasLabel` and three `UltraCanvasButton`s.
+- **Android: desktop mode** (`UltraCanvasAndroidDesktop`). After `Enable()`
+  every window is one of the embedded window manager's, drawn on an external
+  display when one is connected (a `Presentation` that `UltraCanvasActivity`
+  puts on the first presentation display - a USB-C cable or dock, a wireless
+  display, the emulator's simulated second display) and on the phone's own
+  screen otherwise. `CreatePhoneWindow` makes the window the phone shows
+  meanwhile. A mouse is captured while the desktop is on the external display
+  (`requestPointerCapture`), so it moves the desktop's pointer whichever
+  display Android would have put its own on; the phone's screen can be a
+  touchpad (`TouchpadInput`). Keys and the keyboard's text go to the focused
+  window of the desktop, and the back button is Escape there. Without
+  `Enable()` the Android backend is the one-window backend it was.
+- **`UltraCanvasDesktopShell` answers from an in-program window manager.**
+  Where no platform backend does (Android), the window list, activating,
+  minimising and closing a window, the screen, the strips a desktop's bars
+  reserve, the shell monitor and the applications come from the
+  `EmbeddedHost` the desktop mode installs - so UltraDesktop's taskbar and
+  Apps window work there.
+- **`UltraCanvasHostedApps`: applications that run inside their host
+  program.** Registered with an entry point, they are listed by
+  `UltraCanvasDesktopShell::ListApplications` where the platform has none of
+  its own, and `LaunchApplication` starts them in the process.
+- **FilerWidget: `IsDragInProgress()`.** True while a selection rectangle is
+  drawn or entries are dragged. Letting the rectangle go now fires
+  `onSelectionChanged` once more, so a host that waits for the drag to end
+  (UltraFiler's preview pane) sees the final selection.
+- **FilerWidget: a rescan keeps the thumbnails of unchanged files.** Every
+  `Refresh()` - the one after a delete, a rename, a paste, the folder watch's -
+  used to drop the whole thumbnail cache, so the folder was drawn with type
+  glyphs until the thumbnails were decoded again. A rescan of the folder
+  already shown now keeps the thumbnails, text pages, folder peeks and picture
+  proportions of every file whose path, size and modification time are
+  unchanged (`PruneThumbnailCache`). A changed file is decoded again in the
+  background while its tile keeps the old picture (`ThumbSlot::stalePixmap`).
+  Opening another folder or changing the view still drops everything.
+  `Tests/FilerRescanKeepsThumbnailsTest.cpp` covers a delete, a change and a
+  folder switch.
+- **CSSLayout: a flex item is measured at the cross extent it is given.** A
+  column measured each child's height at the column's whole width, but then
+  arranged a stretched child narrower by its own side margins. A wrapping
+  label that just fitted on one line at the full width needed two at the
+  narrower one, got one line's height and lost its second line - the Group
+  Box page in German. The item's cross margins now come off the extent it is
+  measured at, for its base size and for its line's cross size (a row's
+  items likewise against their top and bottom margins).
+  `Tests/CSSLayoutCrossMarginTest` holds it.
+- **`UltraCanvasGaugeDiagramElement` follows the theme.** It drew its value
+  text, captions, ticks, unlit segments and faces in fixed light-look greys,
+  so under a dark theme the value in the middle of a ring was dark grey on a
+  dark card. Under a dark theme those greys and the default text,
+  background, track, ring border and clock colours now take the dark look;
+  a colour set with its setter is drawn as given, and the value colours
+  (gauge colour, ranges, warnings) are kept. The speedometer, whose face is
+  dark in both looks, draws its value light unless the application chose a
+  text colour.
+- **`UltraCanvasTheme::ForDarkLook` / `ForThisLook`**: a colour chosen for
+  the light look, its lightness turned over into the dark look's range with
+  its hue kept - what the gauge draws its greys through, and the demo app's
+  `DemoKit::Themed` now calls.
+- **`UltraCanvasSlider`: tick marks, scales and new designs.** The
+  slider had no ticks at all (the demo page carried a commented-out
+  `SetShowTicks` that was never written), its circular style drew a ring with
+  no value arc, and `SliderVisualStyle::cornerRadius` was declared but never
+  drawn. Now:
+  - **Ticks and labels**: `SetTickPosition` (`Before`, `After`, `BothSides`,
+    `OnTrack`), `SetTickStyle` (`Line`, `Ramp` - marks that grow towards the
+    maximum - and `Dot`), `SetTickInterval(major, minor)`, `SetTickMarks` for
+    chosen values, `SetTickLabels` with a `tickLabelFormatter`, and
+    `SetStopLabels` to name each step. The layout leaves the ticks and labels
+    room and pulls the travel in so the end labels are not cut off.
+  - **Handle shapes**: `Pointer` (points at the ticks), `Bar` (with
+    `handleGap`), `Block`, `FaderCap` and `NoHandle`, and `handleShadow`.
+  - **Styles**: `Knob` (a cap in a ring of dots), `Field` (a property-panel
+    field that fills with the value), `Seek` (a media timeline with
+    `SetSecondaryValue` for what has loaded and `SetHoverPreview`), `Ruler`
+    (the scale slides under a fixed marker; `SetPixelsPerUnit`) and
+    `Segmented` (blocks lit up to the value, `SetSegmentCount`).
+  - **Values**: `SliderValueDisplay::Bubble` and `BubbleWhileDragging`;
+    `SetFillOrigin` for a bipolar control that fills from zero; `SetResetValue`
+    for a double-click reset; `SetColorZones`; `SetHistogram` draws the
+    data's spread behind a (range) slider.
+  - **Circular** draws its value arc now, over `SetArcAngles` (135° and 270°
+    by default, a gap at the bottom), and the value in its centre. Circular,
+    Knob and Ruler are turned by dragging from where they are, not set by
+    where the press lands, and take the mouse wheel.
+  - The track, its fill and the Progress bar are rounded by `cornerRadius`
+    (at most half the thickness, so the default 3 on a 6 px track gives round
+    ends); set it to 0 for the square look. The tooltip's colours are style
+    fields from the theme rather than a fixed pale yellow.
+  - The demo app's slider page has a **Slider Designs** section with each of
+    them live, and its first slider shows ticks.
+  - `Tests/SliderDesignsTest` covers where the ticks fall (a ruler's on round
+    numbers), their labels and named stops, the double-click reset, and the
+    relative drag of a knob and a ruler.
+- **`UltraCanvasSlider` sizes itself.** Its `MeasureOwnContent` was a TODO,
+  so a slider had to be given a size, and one given too little for its ticks
+  and labels had them cut off. It now reports its size to the layout - a
+  preferred length, and across the bar what the handle, ticks, labels, value
+  text, bubble or histogram need (`GetMinimumSize`, `GetPreferredLength`) -
+  and when a size given explicitly is too small across the bar for what it
+  shows, it sets its own `min-height` (`min-width` when vertical) so the
+  layout grows it. A plain slider keeps its given size exactly; a minimum the
+  application set is left alone; `SetGrowToFit(false)` turns it off.
+- **DemoApp follows a dark theme.** The page kit (`UltraCanvasDemoPageKit`)
+  and the demo's own frame - the header, the status legend, the page area and
+  its scrollbars - had fixed light colours, so with a dark theme the tree and
+  the controls turned dark while the pages, cards and header stayed light,
+  and theme-coloured text on them (the header's title, a slider's value, the
+  range sliders' labels) was white on white. They now take the theme's roles
+  in a dark or high-contrast theme (the light look is unchanged) and change
+  with it when the theme switches while a page is shown
+  (`DemoKit::ColourOf`, `KitContainer`, `KitLabel`). Pages that paint their
+  own fixed colours still do.
+- **DemoApp: the example pages follow a dark theme too.** About 90 example
+  files painted their own light panels, readouts and grey captions with fixed
+  colours, so with a dark theme they stayed light, or showed the theme's
+  white text on a light panel. `DemoKit::Themed(colour)` keeps a colour as it
+  is in the light look and, in a dark one, turns its lightness over while
+  keeping its hue (a pale green panel becomes a dark green one, dark grey
+  text light grey); `ThemedFill` / `ThemedInk` do it for a colour known only
+  at run time, and only for a pale fill or dark text. The pages' decorative
+  colours - about 400 calls on labels, panels, panes, dividers and toolbars -
+  go through them; charts and diagrams drawn on their own white paper,
+  colour swatches, coloured buttons and status pills keep their colours. The
+  page shown is rebuilt when the theme switches, so its colours follow.
+- DemoApp: the Performance Matrix page's title is 40 px tall, room for a
+  Japanese or Chinese line (it had 35 and needed 37).
+- **The Save dialog's "Drag to Folder" caption was cut in sixteen
+  languages.** It was one line in the 96 px block under the file icon
+  (Ukrainian needs 139 px); it now wraps onto two lines.
+- **UltraCloud's account dialog cut "Use as the default cloud account"** in
+  fourteen languages (Russian needs 487 px of its 300); the checkbox's label
+  now wraps.
+- **New design proposal: UltraAds, the advertising service of the ULTRA OS
+  shops and services** (`Docs/Research/UltraAdsDesignProposal.md`). Nothing
+  for advertising existed beyond one *Sponsored* mark drawn in the
+  marketplace's search page. The proposal answers whether a shop sells
+  advertising for itself or for every area - both, from one form: a *Promote*
+  button on each listing whose page lists every shop and marketplace with its
+  placements (search, lists, detail pages, the home row), this shop's ticked
+  and the others to tick, with one console, one balance and one review behind
+  every shop - and what one registration for all shops and services takes:
+  the ULTRA account as an OpenID Connect provider (built in the store portal,
+  its own entry), with advertising a capability of the publisher a merchant
+  already is. An advertisement promotes a listing, is chosen from what is on
+  the page and never from who is looking (decided: context only, for good),
+  and is always marked; the editor's picks are not for sale and nothing is
+  shown in the system or its applications. With the placements per area, the
+  functions in three priorities, the data model as an app of the store
+  portal, the roadmap, and the questions for the owner with those already
+  decided. No code.
+
 #### 2026-11-23 *0.9.586*
 - **CI: a build job GitHub never started is re-run, not reported red.** The
   macos-15 leg of a pull request sat queued and ended "cancelled" with no
