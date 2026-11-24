@@ -1,5 +1,5 @@
-"""UltraAds, phase 1: sponsored listings in the app store
-(Docs/Research/UltraAdsDesignProposal.md).
+"""UltraAds: sponsored listings in the app store, and the console around
+them (Docs/Research/UltraAdsDesignProposal.md, phases 1 and 2).
 
     Placement   a named position on a page that may hold advertisements:
                 which shop, which page, how many, the least a click costs
@@ -13,10 +13,18 @@
     Click       one click, for the invoice and for finding the ones that do
                 not count. No account, no address. Deleted after a month
     Attribution an order and the click it came from
+    Keyword     a search word of a campaign's own choosing, or one it
+                excludes
+    PlacementBid the most a campaign pays for a click in one place
+    TermCount   what people searched when a campaign was shown, as numbers
+                per day; kept a month, shown above a threshold
+    PolicyVersion, PolicyAcceptance  the advertising policy and who is on it
 
 There is no record of who saw or clicked what: an advertisement is chosen
 from what is on the page (decide.py), and counted as a number.
 
+Version: 0.6.0 - Keyword, PlacementBid, TermCount, PolicyVersion,
+                 PolicyAcceptance; Campaign.ended_at
 Version: 0.5.0
 """
 
@@ -91,6 +99,7 @@ class Campaign(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-id"]
@@ -219,3 +228,85 @@ class Attribution(models.Model):
     click = models.ForeignKey(Click, null=True, blank=True, on_delete=models.SET_NULL, related_name="attributions")
     counted = models.BooleanField(default=False)
     created = models.DateTimeField(auto_now_add=True)
+
+
+class Keyword(models.Model):
+    """A search word a campaign chose - shown for the searches it matches
+    instead of for every search the listing answers - or one it excludes."""
+
+    EXACT, PHRASE, BROAD = "exact", "phrase", "broad"
+    MATCHES = [(BROAD, "Every word, in any order"), (PHRASE, "The words together, in this order"), (EXACT, "Exactly this search")]
+
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="keywords")
+    text = models.CharField(max_length=80)
+    match = models.CharField(max_length=8, choices=MATCHES, default=BROAD)
+    negative = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["negative", "text"]
+        constraints = [models.UniqueConstraint(fields=["campaign", "text", "match", "negative"], name="one_keyword_per_campaign")]
+
+    def __str__(self) -> str:
+        return ("-" if self.negative else "") + self.text
+
+    def matches(self, words: list[str]) -> bool:
+        mine = self.text.split()
+        if self.match == self.EXACT:
+            return words == mine
+        if self.match == self.PHRASE:
+            return any(words[i:i + len(mine)] == mine for i in range(len(words) - len(mine) + 1))
+        return set(mine) <= set(words)
+
+
+class PlacementBid(models.Model):
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="bids")
+    placement = models.ForeignKey(Placement, on_delete=models.CASCADE, related_name="+")
+    max_click = models.DecimalField(max_digits=6, decimal_places=2)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["campaign", "placement"], name="one_bid_per_place")]
+
+
+class TermCount(models.Model):
+    """What was searched when a campaign's advertisement was shown: the
+    words and two numbers, per day. Nothing says who searched."""
+
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="terms")
+    day = models.DateField(db_index=True)
+    term = models.CharField(max_length=80)
+    shown = models.PositiveIntegerField(default=0)
+    clicks = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["campaign", "day", "term"], name="one_term_per_day")]
+
+
+class PolicyVersion(models.Model):
+    """One version of the advertising policy. A publisher advertises once
+    it has accepted the version in force; the operator writes it."""
+
+    version = models.PositiveIntegerField(unique=True)
+    text = models.TextField()
+    changes = models.TextField(blank=True, help_text="What changed against the version before.")
+    in_force_from = models.DateField(default=timezone.localdate)
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-version"]
+
+    def __str__(self) -> str:
+        return f"Advertising policy {self.version}"
+
+    @classmethod
+    def current(cls) -> "PolicyVersion | None":
+        return cls.objects.filter(in_force_from__lte=timezone.localdate()).order_by("-version").first()
+
+
+class PolicyAcceptance(models.Model):
+    publisher = models.ForeignKey(Publisher, on_delete=models.CASCADE, related_name="policy_acceptances")
+    version = models.PositiveIntegerField()
+    accepted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    accepted_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["publisher", "version"], name="one_acceptance_per_version")]

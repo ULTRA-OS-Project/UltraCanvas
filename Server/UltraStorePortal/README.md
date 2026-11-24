@@ -35,8 +35,8 @@ It is built to replace the store's small services (`Server/UltraStoreMarket`,
 `UltraStoreAccount`, `UltraStorePay`) and the two desktop tools on them
 (`ultrastoreadmin`, `ultrastoreop`). 0.1.0 was the essential path - register
 a publisher, publish an app, show and serve the catalog; 0.2.0 sells; 0.4.0
-is the account for every service; 0.5.0 is advertising's first phase; *What
-comes next* names the rest.
+is the account for every service; 0.5.0 is advertising's first phase and
+0.6.0 the first half of its second; *What comes next* names the rest.
 
 ## Decisions
 
@@ -439,10 +439,11 @@ signed out (back-channel logout), a service registering itself.
 ## Advertising
 
 UltraAds, phase 1 of
-[its design](../../Docs/Research/UltraAdsDesignProposal.md): **sponsored
-listings in the app store**. A publisher promotes one of its apps; the
-app's own card then appears, marked *Sponsored*, where the page calls for
-it; the publisher pays when someone clicks.
+[its design](../../Docs/Research/UltraAdsDesignProposal.md) - **sponsored
+listings in the app store** - and the first half of phase 2, **the
+console** around them (*The console*, below). A publisher promotes one of
+its apps; the app's own card then appears, marked *Sponsored*, where the
+page calls for it; the publisher pays when someone clicks.
 
 **Switched off unless switched on.** `ULTRASTORE_PORTAL_PROMOTE=1` turns
 advertising on. Without it there is no *Promote* button, none of its pages
@@ -501,11 +502,59 @@ country, with *Change*, *Pause* and *End*; `/promote/balance/` the balance,
 what went in and what was spent by day. A publisher new to advertising has
 a ceiling per day for its first weeks.
 
+**The console** (0.6.0) is what a campaign's own page adds to the three
+fields of *Promote*:
+
+- **Search words.** Without any, a campaign is shown for every search its
+  listing answers. With its own - each matching *every word in any order*,
+  *the words together in this order*, or *exactly this search* - it is shown
+  for the searches that match one of them, and no others. **The relevance
+  floor still holds**: the listing itself must hold half of what was
+  searched (a setting), so a photo editor that bids on "spreadsheet" is not
+  shown for it at any price. A word marked *never for this* keeps the
+  campaign out of every search it matches.
+- **What people searched** when it was shown, with how often and the click
+  rate. A search is named only once it was shown often enough to be many
+  people's (the same threshold a country has in a report); a rare one could
+  be one person's and is counted under *other searches*. The rows are kept
+  a month, like the click rows.
+- **An offer per place**: the most to pay for a click in the search, in a
+  category list, on the front page, beside similar apps - each its own
+  figure, or empty for the campaign's.
+- **What the numbers suggest**: the budget ran out on several days; it is
+  seen and seldom clicked; people click and do not install; the balance
+  covers less than three days; its own words were never searched. A
+  sentence each; nothing is changed for the publisher.
+- **The report as a file** (CSV: by day, by place, what was searched). A
+  search is whatever someone typed: one that a spreadsheet would run as a
+  formula is written as plain text.
+- **Who may do what.** Of a publisher's people an *Owner* does everything;
+  **Marketing** runs the campaigns; **Billing** pays into the balance;
+  **Analyst** reads, the file included, and changes nothing; a *Developer*
+  reads advertising and keeps the apps. Marketing, Billing and Analyst do
+  not reach the apps, their listings or releases. (There is still no page
+  to invite a person: a membership with a role is made in the admin site.)
+- **The advertising policy.** A document with versions, written by the
+  operator in the admin site (*Policy versions*) and shown at
+  `/promote/policy/`. Once one is in force a publisher accepts it where it
+  starts or changes a campaign, and a new version makes every campaign wait
+  until its publisher accepts that one. **None is seeded**: what the store
+  refuses to advertise is the owner's to write, not the code's.
+- **The library** (`/promote/library/`, `GET /v1/promote/library`, linked
+  from every page's foot): every advertisement that runs or ran in the last
+  twelve months, for anyone - what is promoted, who pays, from when to when,
+  where, and for which searches. What a campaign excludes is its own
+  business and is not listed.
+- **Not this one again** on every advertisement: remembered in the browser
+  (`localStorage`) and nowhere else. The store is not told, so it cannot
+  know who hid what; the page leaves the card out.
+
 **The operator's page** (`/operator/promote/`): the placements with how
 many advertisements each holds, the least a click costs there and open or
 switched off; every campaign with *Stop* (the reason is the publisher's to
 read) and *Let it run*; a voucher into a publisher's balance; the recent
-clicks with *Did not count - credit*; revenue by place; and the settings
+clicks with *Did not count - credit*; revenue by place and by day; the
+advertising policy in force; and the settings
 (one advertisement per so many results, the days an order counts back, the
 burst rule, the ceiling for a new publisher, the threshold under which a
 country is folded into "other" in a report). Every action is a row in the
@@ -525,11 +574,12 @@ web store - neither uses it yet):
 Placements: `store-search`, `store-category`, `store-home`, `store-detail`.
 The pages the portal draws itself ask the same function in the same request.
 
-**Not in this phase.** The native store and the web store showing
+**Not built yet.** The native store and the web store showing
 advertisements (the catalog names no `promote_url` until one of them reads
-it); search words of the publisher's choosing, several listings in a
-campaign, banners and fixed slots, invoices, the public library of
-advertisements; every shop but the app store - their placements are listed
+it). Of the console: several listings in one campaign (ad groups), brand
+and display banners with their review queue, fixed slots booked from a
+calendar, invoices (they wait for the store's tax invoices), a monthly
+summary by mail, how full each placement is. Every shop but the app store - their placements are listed
 and cannot be opened; an order refunded later is not taken out of a report;
 the page a browser is on is not kept from showing the same advertisement
 often (only a client that sends `seen` is).
@@ -626,7 +676,8 @@ ultrastore_portal/
     sso.py         the store signing in through the account
     management/commands/oidc.py   clients, keys, cleanup
   promote/         advertising: UltraAds, phase 1
-    models.py      Placement, Campaign, Balance, LedgerEntry, TopUp, DayCount, Click, Attribution
+    models.py      Placement, Campaign, Balance, LedgerEntry, TopUp, DayCount, Click, Attribution,
+                   Keyword, PlacementBid, TermCount, PolicyVersion, PolicyAcceptance
     decide.py      which advertisement goes where: from the page, never from the person
     services.py    campaigns, the balance, counting and charging a click, an order counted back, reports
     management/commands/promote.py   cleanup, voucher, placements
@@ -674,16 +725,18 @@ In the order the store needs it:
    live at once; only releases are reviewed.
 5. **Advertising, its next steps**: the native store and the web store
    showing advertisements (and `promote_url` in the catalog); a daily timer
-   for `promote cleanup`; search words, banners and the public library
-   (the design's phase 2). Paying into a balance waits for step 2.
+   for `promote cleanup`; the rest of the console - ad groups, banners with
+   their review, fixed slots. Paying into a balance and invoices wait for
+   step 2.
 6. **The provider, proven**: the OpenID Foundation's conformance suite and
    an outside review before a service that is not ours is registered;
    back-channel logout; a daily timer for `oidc cleanup`.
 7. **Two-factor sign-in** for operators and publishers, and operator
    **roles** (reviewer, support, auditor) - Django's groups and permissions
    are there, the pages check only *staff* today.
-8. **More people per publisher** - the membership table has the roles, the
-   console has no page to invite anyone.
+8. **More people per publisher** - the membership table has the roles
+   (Owner, Developer, and advertising's Marketing, Billing, Analyst, which
+   the pages hold to), the console has no page to invite anyone.
 9. **Automatic checks on a build**: a malware scan and a smoke run; today
    the reviewer downloads the build and checks by hand.
 10. **Translations** of listings (the catalog carries a text per language;

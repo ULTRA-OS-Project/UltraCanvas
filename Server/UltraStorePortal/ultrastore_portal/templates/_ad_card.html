@@ -1,6 +1,6 @@
 {# An advertisement: the listing's own card, marked where the eye starts, with who paid and why one click away. #}
-<div class="ad h-100">
-  <div class="ad-mark"><span class="mark">Sponsored</span><a href="{% url 'promote:why' ad.token %}" rel="nofollow">Why this ad?</a></div>
+<div class="ad h-100" data-ad="{{ ad.campaign.pk }}">
+  <div class="ad-mark"><span class="mark">Sponsored</span><a href="{% url 'promote:why' ad.token %}" rel="nofollow">Why this ad?</a><button type="button" class="ad-hide" data-ad-hide hidden>Not this one again</button></div>
   {% with app=ad.app %}
   <a class="card app-card" href="{% url 'promote:go' ad.token %}" rel="nofollow sponsored">
     {% if app.icon %}<img class="app-icon" src="{{ app.icon.url }}" alt="" width="64" height="64" loading="lazy">{% else %}<span class="app-icon">{{ app.name|slice:":1" }}</span>{% endif %}

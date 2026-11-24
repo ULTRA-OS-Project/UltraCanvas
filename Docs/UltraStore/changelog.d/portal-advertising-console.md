@@ -1,0 +1,9 @@
+- **Advertising: the console around a campaign** (`Server/UltraStorePortal` 0.6.0, its README's *Advertising*, *The console*; the first half of phase 2 of `Docs/Research/UltraAdsDesignProposal.md`).
+  - **Search words of the publisher's choosing**, each matching every word in any order, the words together, or exactly the search - and words a campaign is *never* shown for. A campaign with its own words is shown for those searches and no others. The relevance floor still holds: the listing itself must hold half of what was searched, so a word bought for a listing that has nothing to do with it shows nothing at any price.
+  - **What people searched** when a campaign was shown, with the click rate. A search is named only once it was shown often enough to be many people's; a rare one is counted under *other searches*. Kept a month.
+  - **An offer per place**, suggestions read from a campaign's numbers, and **the report as a CSV file** (a search that a spreadsheet would run as a formula is written as plain text).
+  - **Roles**: of a publisher's people Marketing runs the campaigns, Billing pays into the balance, Analyst reads; the apps, listings and releases stay an owner's and a developer's.
+  - **The advertising policy** as a document with versions, accepted where a campaign is started or changed; a new version makes every campaign wait until its publisher accepts it. None is seeded: the operator writes it.
+  - **The library** (`/promote/library/`, `GET /v1/promote/library`): every advertisement that runs or ran in the last twelve months, for anyone - what, who pays, when, where, for which searches.
+  - ***Not this one again*** on every advertisement, remembered in the browser alone: the store is not told who hid what.
+  - The operator's page gains revenue by day and the policy in force. Not built yet: several listings in one campaign, banners with their review queue, fixed slots, invoices.

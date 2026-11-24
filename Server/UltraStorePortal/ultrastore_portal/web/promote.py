@@ -6,28 +6,39 @@
       /promote/campaigns/<n>/       one campaign: its report, its settings, pause and end
       /promote/balance/             the balance, what went in, what was spent by day, paying in
       /promote/topup/<id>/...       the hand-off to the payment provider, and back
+      /promote/campaigns/<n>/words/, bids/, report.csv   its search words, its offer per place, its report as a file
+
+    Of a publisher's people an owner does everything here, Marketing runs
+    the campaigns, Billing pays into the balance, and everyone else reads.
 
     Everyone's
       /promote/go/<token>/          a click on an advertisement: counted, then the listing
       /promote/why/<token>/         who paid for it and what it matched
       /promote/report/<token>/      Report this advertisement
+      /promote/library/             every advertisement that runs or ran in the last year
+      /promote/policy/              the advertising policy in force
 
     The operator's
       /operator/promote/            the placements and their prices, the settings, every
                                     campaign with its stop, clicks to credit, vouchers
 
+Version: 0.6.0 - search words, offers by place, the policy, roles,
+                 suggestions, the library, the report as CSV
 Version: 0.5.0
 """
 
 from __future__ import annotations
 
+import csv
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 
 from django import forms
 from django.conf import settings
 from django.contrib import messages
-from django.http import Http404
+from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -36,7 +47,7 @@ from django.views.decorators.http import require_POST
 from ..billing import services as billing
 from ..billing import skrill
 from ..promote import decide, services
-from ..promote.models import AREAS, HOME_AREA, Campaign, Click, LedgerEntry, Placement, TopUp
+from ..promote.models import AREAS, HOME_AREA, Campaign, Click, Keyword, LedgerEntry, Placement, PolicyVersion, TopUp
 from ..store.models import App, Publisher, Report
 from .forms import ReportForm
 from .utils import client_address, operator_required, publisher_required, too_many
@@ -51,6 +62,15 @@ def promote_on(view):
             raise Http404
         return view(request, *args, **kwargs)
     return wrapper
+
+
+member = publisher_required(roles=None)   # every member of a publisher reads advertising's pages
+
+
+def needs(request, what: str) -> None:
+    """Changing something here is for the roles it belongs to."""
+    if not services.may(request.publisher_role, what):
+        raise PermissionDenied
 
 
 # ------------------------------------------------------------------- the form
@@ -88,6 +108,8 @@ class CampaignForm(forms.Form):
                 raise forms.ValidationError(str(refused)) from None
         if data.get("total_budget") and data.get("daily_budget") and data["total_budget"] < data["daily_budget"]:
             self.add_error("total_budget", "At least one day's budget.")
+        if services.policy_due(self.publisher) is not None and self.data.get("accept_policy") != "on":
+            raise forms.ValidationError("Accept the advertising policy to go on.")
         return data
 
 
@@ -125,6 +147,7 @@ def _campaign_page(request, app: App, campaign: Campaign | None):
         initial = {"daily_budget": campaign.daily_budget, "max_click": campaign.max_click, "ends": campaign.ends, "total_budget": campaign.total_budget}
     form = CampaignForm(request.POST or None, initial=initial, publisher=request.publisher, campaign=campaign)
     if request.method == "POST":
+        needs(request, services.CAMPAIGNS)
         ticked = set(request.POST.getlist("places"))
     elif campaign is not None:
         ticked = set(campaign.placements.values_list("key", flat=True))
@@ -136,6 +159,7 @@ def _campaign_page(request, app: App, campaign: Campaign | None):
             setattr(target, name, form.cleaned_data[name])
         try:
             services.save_campaign(target, form.places, request.user)
+            services.accept_policy(request.publisher, request.user)
         except services.Refused as refused:
             form.add_error(None, str(refused))
         else:
@@ -145,43 +169,107 @@ def _campaign_page(request, app: App, campaign: Campaign | None):
     return render(request, "promote/campaign_form.html", {
         "app": app, "campaign": campaign, "form": form, "groups": where_list(ticked), "balance": balance,
         "currency": settings.PROMOTE_CURRENCY, "public": app.is_public and app.visibility == "listed" and app.kind == "app",
+        "policy_due": services.policy_due(request.publisher), "may_change": services.may(request.publisher_role, services.CAMPAIGNS),
         "is_new": services.is_new(request.publisher), "new_cap": services.number("new_daily_cap"), "new_days": services.setting("new_days")})
 
 
 @promote_on
-@publisher_required
+@member
 def promote_app(request, app_id: str):
     """The shop's door: Promote on a listing."""
     return _campaign_page(request, _own_app(request, app_id), None)
 
 
 @promote_on
-@publisher_required
+@member
 def home(request):
     balance = services.balance_of(request.publisher)
     campaigns = list(Campaign.objects.filter(publisher=request.publisher).select_related("app"))
     rows = []
     for campaign in campaigns:
-        word, sentence = campaign.standing(balance.amount)
+        word, sentence = services.standing(campaign, balance.amount)
         rows.append({"campaign": campaign, "word": word, "sentence": sentence, "total": services.report([campaign])["total"]})
     return render(request, "promote/home.html", {
         "rows": rows, "balance": balance, "currency": settings.PROMOTE_CURRENCY, "report": services.report(campaigns),
+        "policy_due": services.policy_due(request.publisher), "may_change": services.may(request.publisher_role, services.CAMPAIGNS),
         "apps": request.publisher.apps.filter(kind="app").order_by("name")})
 
 
 @promote_on
-@publisher_required
+@member
 def campaign(request, pk: int):
     subject = _own_campaign(request, pk)
     balance = services.balance_of(request.publisher)
-    word, sentence = subject.standing(balance.amount)
+    word, sentence = services.standing(subject, balance.amount)
+    bids = {bid.placement_id: bid.max_click for bid in subject.bids.all()}
+    places = [{"place": place, "bid": bids.get(place.pk)} for place in subject.placements.all()]
+    words = list(subject.keywords.all())
     return render(request, "promote/campaign.html", {
         "campaign": subject, "app": subject.app, "word": word, "sentence": sentence, "report": services.report([subject]),
-        "places": subject.placements.all(), "balance": balance, "currency": settings.PROMOTE_CURRENCY})
+        "places": places, "balance": balance, "currency": settings.PROMOTE_CURRENCY, "may_change": services.may(request.publisher_role, services.CAMPAIGNS),
+        "words": [w for w in words if not w.negative], "excluded": [w for w in words if w.negative], "matches": Keyword.MATCHES,
+        "terms": services.terms_report(subject), "suggestions": services.suggestions(subject, balance.amount),
+        "open_for_words": subject.placements.filter(page=Placement.SEARCH).exists()})
 
 
 @promote_on
-@publisher_required
+@require_POST
+@member
+def campaign_words(request, pk: int):
+    """A search word added, or taken away."""
+    needs(request, services.CAMPAIGNS)
+    subject = _own_campaign(request, pk)
+    try:
+        if request.POST.get("remove"):
+            services.remove_keyword(subject, request.POST["remove"], request.user)
+        else:
+            services.add_keyword(subject, request.POST.get("text", ""), request.POST.get("match", Keyword.BROAD), request.POST.get("negative") == "1", request.user)
+    except services.Refused as refused:
+        messages.error(request, str(refused))
+    return redirect("promote:campaign", subject.pk)
+
+
+@promote_on
+@require_POST
+@member
+def campaign_bids(request, pk: int):
+    """The most to pay for a click, place by place."""
+    needs(request, services.CAMPAIGNS)
+    subject = _own_campaign(request, pk)
+    offers = {}
+    for place in subject.placements.all():
+        text = request.POST.get("bid-" + place.key, "").strip()
+        amount = _decimal(text) if text else None
+        if text and (amount is None or amount <= 0):
+            messages.error(request, f"\"{text}\" is not an amount.")
+            return redirect("promote:campaign", subject.pk)
+        offers[place.key] = amount
+    try:
+        services.set_bids(subject, offers, request.user)
+        messages.success(request, "Saved.")
+    except services.Refused as refused:
+        messages.error(request, str(refused))
+    return redirect("promote:campaign", subject.pk)
+
+
+@promote_on
+@member
+def campaign_csv(request, pk: int):
+    """A campaign's report as a file a spreadsheet opens: by day, by place,
+    or what was searched."""
+    subject = _own_campaign(request, pk)
+    what = request.GET.get("what", "days")
+    if what not in ("days", "places", "terms"):
+        raise Http404
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="campaign-{subject.pk}-{what}.csv"'
+    response.write("\ufeff")   # so that a spreadsheet reads the file as UTF-8
+    csv.writer(response).writerows(services.report_csv(subject, what))
+    return response
+
+
+@promote_on
+@member
 def campaign_edit(request, pk: int):
     subject = _own_campaign(request, pk)
     if subject.state == Campaign.ENDED:
@@ -192,8 +280,9 @@ def campaign_edit(request, pk: int):
 
 @promote_on
 @require_POST
-@publisher_required
+@member
 def campaign_state(request, pk: int, state: str):
+    needs(request, services.CAMPAIGNS)
     subject = _own_campaign(request, pk)
     try:
         services.set_state(subject, {"pause": Campaign.PAUSED, "resume": Campaign.ACTIVE, "end": Campaign.ENDED}.get(state, ""), request.user)
@@ -209,10 +298,12 @@ class TopUpForm(forms.Form):
 
 
 @promote_on
-@publisher_required
+@member
 def balance(request):
     possible, why_not = services.topups_open()
     form = TopUpForm(request.POST or None, initial={"amount": services.number("min_topup")})
+    if request.method == "POST":
+        needs(request, services.MONEY)
     if request.method == "POST" and form.is_valid():
         try:
             made = services.open_topup(request.publisher, form.cleaned_data["amount"], request.user)
@@ -223,6 +314,7 @@ def balance(request):
     return render(request, "promote/balance.html", {
         "balance": services.balance_of(request.publisher), "currency": settings.PROMOTE_CURRENCY, "form": form, "possible": possible, "why_not": why_not,
         "entries": LedgerEntry.objects.filter(publisher=request.publisher)[:50], "spent": services.spent_by_day(request.publisher),
+        "may_pay": services.may(request.publisher_role, services.MONEY),
         "min_topup": services.number("min_topup")})
 
 
@@ -231,9 +323,10 @@ def _own_topup(request, public_id: str) -> TopUp:
 
 
 @promote_on
-@publisher_required
+@member
 def topup(request, public_id: str):
     """The page that sends the publisher on to the payment provider."""
+    needs(request, services.MONEY)
     made = _own_topup(request, public_id)
     if made.status == TopUp.PAID:
         return redirect("promote:balance")
@@ -253,12 +346,13 @@ def topup(request, public_id: str):
 
 @promote_on
 @require_POST
-@publisher_required
+@member
 def topup_test(request, public_id: str):
     """The test provider's button: the provider's report, signed with the
     test secret, through the code the provider's own goes through."""
     if settings.PAYMENT_PROVIDER != "test":
         raise Http404
+    needs(request, services.MONEY)
     made = _own_topup(request, public_id)
     outcome = request.POST.get("outcome", "paid")
     status = {"paid": skrill.STATUS_PROCESSED, "failed": skrill.STATUS_FAILED}.get(outcome, skrill.STATUS_CANCELLED)
@@ -270,7 +364,7 @@ def topup_test(request, public_id: str):
 
 
 @promote_on
-@publisher_required
+@member
 def topup_return(request, public_id: str):
     """Where the provider sends the publisher back. It proves nothing: the
     balance grew when the provider's own report said so."""
@@ -285,7 +379,7 @@ def topup_return(request, public_id: str):
 
 
 @promote_on
-@publisher_required
+@member
 def topup_cancel(request, public_id: str):
     made = _own_topup(request, public_id)
     if made.status == TopUp.OPEN:
@@ -353,6 +447,22 @@ def report_ad(request, token: str):
         "lead": "The report goes to the store's operator. The advertiser sees the report, never who sent it."})
 
 
+@promote_on
+def library(request):
+    """Every advertisement that runs or ran in the last year, for anyone:
+    what was promoted, who paid, when, where and for which searches."""
+    rows = services.library()
+    q = (request.GET.get("q") or "").strip().lower()
+    if q:
+        rows = [row for row in rows if q in row["app"].name.lower() or q in row["publisher"].name.lower()]
+    return render(request, "promote/library.html", {"page": Paginator(rows, 50).get_page(request.GET.get("page")), "q": q, "count": len(rows)})
+
+
+@promote_on
+def policy(request):
+    return render(request, "promote/policy.html", {"policy": PolicyVersion.current()})
+
+
 # ---------------------------------------------------------------- the operator's
 
 def _decimal(text: str) -> Decimal | None:
@@ -375,7 +485,7 @@ def operator_home(request):
         "enabled": services.enabled(), "topups": services.topups_open(), "currency": settings.PROMOTE_CURRENCY,
         "placements": Placement.objects.all(), "settings_rows": [(name, services.setting(name), default) for name, default in services.DEFAULTS.items()],
         "campaigns": Campaign.objects.select_related("app", "publisher")[:200], "clicks": Click.objects.select_related("campaign__publisher", "placement")[:50],
-        "revenue": services.revenue(), "publishers": Publisher.objects.filter(state=Publisher.APPROVED)})
+        "revenue": services.revenue(), "publishers": Publisher.objects.filter(state=Publisher.APPROVED), "policy": PolicyVersion.current()})
 
 
 def _operator_action(request) -> None:

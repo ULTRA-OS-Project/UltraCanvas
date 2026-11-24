@@ -21,7 +21,7 @@ from __future__ import annotations
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -63,11 +63,16 @@ def first_error(form) -> str:
 
 @login_required
 def home(request):
-    publisher = services.publisher_of(request.user)
-    if publisher is None:
+    membership = services.membership_of(request.user)
+    if membership is None:
         return redirect("console:apply")
+    publisher = membership.publisher
     if not publisher.approved:
         return render(request, "console/standing.html", {"publisher": publisher})
+    if membership.role not in membership.APPS:   # Marketing, Billing, Analyst: advertising is what they are here for
+        if settings.PROMOTE:
+            return redirect("promote:home")
+        raise PermissionDenied
     apps = publisher.apps.prefetch_related("releases").order_by("name")
     rows = []
     for app in apps:
