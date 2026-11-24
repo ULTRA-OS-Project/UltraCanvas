@@ -251,7 +251,9 @@ Deleting rows moves the references below them up and shrinks the ranges
 across them. A reference wholly inside the deleted rows becomes `#REF!`, so
 `=A2*2` becomes `=#REF!*2`. Text in quotes, and everything else in the
 formula, is kept as it was written. Workbook names on the sheet
-(`AddNamedRange` with a `range.start.sheetName`) move with it. For a formula
+(`AddNamedRange` with a `range.start.sheetName`) move with it. Each insert or delete is one undo step: undo puts back the
+cells, row and column sizes, merges and the formulas on every sheet as they
+were, deleted cells included, and redo does it again. For a formula
 string of your own, the same rewrite is
 `MoveFormulaReferencesForRowsColumns(formula, sheetName, onThatSheet, columns, at, count)`
 (`UltraCanvasSpreadsheetSheet.h`).

@@ -5353,6 +5353,23 @@ add_test(NAME SpreadsheetRecalcTest COMMAND SpreadsheetRecalcTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetRecalcTest")
 
+# ===== SPREADSHEET ROW UNDO TEST =====
+# Inserting and deleting rows and columns undo and redo exactly: cells, row
+# heights, merges, the formulas on the sheet and on others naming it. No window.
+message(STATUS "  Building SpreadsheetRowUndoTest...")
+add_executable(SpreadsheetRowUndoTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetRowUndoTest.cpp
+)
+target_include_directories(SpreadsheetRowUndoTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetRowUndoTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetRowUndoTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetRowUndoTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetRowUndoTest COMMAND SpreadsheetRowUndoTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetRowUndoTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own

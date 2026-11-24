@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.7.0 - inserting / deleting rows and columns is undone and redone (it was a placeholder step
+//                  whose undo cleared the sheet)
 // Version: 1.6.0 - inserting / deleting rows and columns moves the references in every sheet's formulas
 // Version: 1.5.0 - data validation enforced on a typed entry (onValidationFailed, Retry / Cancel / Accept),
 //                  a list rule's dropdown (ShowValidationListAt, Alt+Down); a typed value is an undo step
@@ -21,6 +23,7 @@
 #include <memory>
 #include <functional>
 #include <stack>
+#include <map>
 #include <cstdint>
 
 namespace UltraCanvas {
@@ -64,6 +67,12 @@ struct SpreadsheetUndoAction {
     int sheetIndex = -1;
     int toIndex = -1;
     std::vector<FormulaText> rewrittenFormulas;
+    // RowInsert / RowDelete / ColumnInsert / ColumnDelete: the sheet as it
+    // was on the other side of the step (removedSheet, same id), the other
+    // sheets' formulas it rewrote (rewrittenFormulas) and the workbook's
+    // names. Undo and redo each swap them with what is there now, so the
+    // step always holds the state it leads back to.
+    std::map<std::string, NamedRange> workbookNames;
 };
 
 // A text measurer backed by a live render context: it selects each cell's own
@@ -758,7 +767,6 @@ private:
     void BeginUndoGroup(UndoActionType type, const std::string& description);
     void RecordCellChange(int row, int col);
     void RecordRangeChange(const CellRange& range);
-    void RecordStructureChange();
     void CommitUndoGroup();
     void CancelUndoGroup();
     void PushUndo(const SpreadsheetUndoAction& action);
@@ -799,7 +807,14 @@ private:
     // After rows or columns were inserted (count > 0) or deleted (count < 0)
     // on `changed`: the other sheets' formulas that name it, and the
     // workbook's names on it, move with its cells.
-    void MoveReferencesToSheet(const SpreadsheetSheet& changed, bool columns, int at, int count);
+    // `step` (optional) records the other sheets' formulas it rewrote.
+    void MoveReferencesToSheet(const SpreadsheetSheet& changed, bool columns, int at, int count,
+                               SpreadsheetUndoAction* step = nullptr);
+    // Inserts (count > 0) or deletes (count < 0) rows or columns of the
+    // active sheet at `at`, as one undo step (InsertRowsAt and the others).
+    void ChangeRowsOrColumns(bool columns, int at, int count);
+    static bool IsStructureStep(UndoActionType type);
+    void ApplyStructureStep(SpreadsheetUndoAction& action);
     // A typed plain value into a cell of the active sheet: an undo step,
     // onCellChange, and the formulas that read it recalculated.
     void SetCellFromEntry(int row, int col, const std::string& text);

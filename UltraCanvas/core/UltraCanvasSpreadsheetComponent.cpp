@@ -882,12 +882,97 @@ void UltraCanvasSpreadsheet::InsertColumns(int count) {
     InsertColumnsAt(GetSelection().start.col, count);
 }
 
-void UltraCanvasSpreadsheet::MoveReferencesToSheet(const SpreadsheetSheet& changed, bool columns, int at, int count) {
+void UltraCanvasSpreadsheet::ChangeRowsOrColumns(bool columns, int at, int count) {
+    auto* sheet = GetActiveSheet();
+    if (!sheet || count == 0) return;
+    const int n = count > 0 ? count : -count;
+
+    SpreadsheetUndoAction step;
+    const bool record = recordingUndo_;
+    if (record) {
+        step.type = columns ? (count > 0 ? UndoActionType::ColumnInsert : UndoActionType::ColumnDelete)
+                            : (count > 0 ? UndoActionType::RowInsert : UndoActionType::RowDelete);
+        const std::string what = columns ? (n == 1 ? "column" : "columns") : (n == 1 ? "row" : "rows");
+        step.description = std::string(count > 0 ? "Insert " : "Delete ") + std::to_string(n) + " " + what;
+        step.sheetName = sheet->GetName();
+        step.sheetId = sheet->GetId();
+        step.removedSheet = std::shared_ptr<SpreadsheetSheet>(sheet->CloneKeepingId());
+        step.workbookNames = namedRanges_;
+    }
+
+    if (columns) {
+        if (count > 0) sheet->InsertColumns(at, n);
+        else           sheet->DeleteColumns(at, n);
+    } else {
+        if (count > 0) sheet->InsertRows(at, n);
+        else           sheet->DeleteRows(at, n);
+    }
+    MoveReferencesToSheet(*sheet, columns, at, count, record ? &step : nullptr);
+    if (record) PushUndo(step);
+    Recalculate();
+    UpdateFormulaBar();
+    Invalidate();
+}
+
+bool UltraCanvasSpreadsheet::IsStructureStep(UndoActionType type) {
+    return type == UndoActionType::RowInsert || type == UndoActionType::RowDelete ||
+           type == UndoActionType::ColumnInsert || type == UndoActionType::ColumnDelete;
+}
+
+void UltraCanvasSpreadsheet::ApplyStructureStep(SpreadsheetUndoAction& action) {
+    // Undo and redo are the same swap: the sheet, the other sheets' rewritten
+    // formulas and the workbook's names go back to what the step holds, and
+    // the step takes what was there, ready for the way back.
+    int index = -1;
+    for (int i = 0; i < (int)sheets_.size(); ++i) {
+        if (sheets_[i]->GetId() == action.sheetId) { index = i; break; }
+    }
+    if (index < 0 || !action.removedSheet) return;
+    if (IsEditing()) StopEditing(false);
+
+    std::shared_ptr<SpreadsheetSheet> now(sheets_[(size_t)index]->CloneKeepingId());
+    auto restored = action.removedSheet->CloneKeepingId();
+    restored->SetParent(this);
+    restored->SetIndex(index);
+    SetupSheetCallbacks(restored.get());
+    sheets_[(size_t)index] = std::move(restored);
+    action.removedSheet = std::move(now);
+
+    for (auto& f : action.rewrittenFormulas) {
+        for (auto& other : sheets_) {
+            if (other->GetId() != f.sheetId) continue;
+            SpreadsheetCell* cell = other->GetCellIfExists(f.row, f.col);
+            if (!cell) break;
+            std::string current = cell->GetFormulaText();
+            cell->SetFormula(f.formula);
+            f.formula = std::move(current);
+            break;
+        }
+    }
+    std::swap(namedRanges_, action.workbookNames);
+
+    RecalculateAll();
+    if (index == activeSheetIndex_) UpdateFormulaBar();
+    if (onStructureChange) onStructureChange();
+    Invalidate();
+}
+
+void UltraCanvasSpreadsheet::MoveReferencesToSheet(const SpreadsheetSheet& changed, bool columns, int at, int count,
+                                                   SpreadsheetUndoAction* step) {
     // The sheet rewrote its own formulas; the others' that name it, and the
     // workbook's names on it, follow here.
     const std::string& name = changed.GetName();
     for (auto& other : sheets_) {
-        if (other && other.get() != &changed) other->MoveFormulaReferences(name, columns, at, count);
+        if (!other || other.get() == &changed) continue;
+        const uint64_t otherId = other->GetId();
+        other->ForEachCell([&](int row, int col, SpreadsheetCell& cell) {
+            if (!cell.HasFormula()) return;
+            const std::string text = cell.GetFormulaText();
+            std::string moved = MoveFormulaReferencesForRowsColumns(text, name, false, columns, at, count);
+            if (moved == text) return;
+            if (step) step->rewrittenFormulas.push_back({ otherId, row, col, text });
+            cell.SetFormula(moved);
+        });
     }
     const int deleted = count < 0 ? -count : 0;
     auto move = [&](int& index, bool isEnd) {
@@ -909,12 +994,7 @@ void UltraCanvasSpreadsheet::MoveReferencesToSheet(const SpreadsheetSheet& chang
 }
 
 void UltraCanvasSpreadsheet::InsertColumnsAt(int col, int count) {
-    auto* sheet = GetActiveSheet();
-    if (!sheet) return;
-    if (recordingUndo_) RecordStructureChange();
-    sheet->InsertColumns(col, count);
-    MoveReferencesToSheet(*sheet, true, col, count);
-    Recalculate();
+    ChangeRowsOrColumns(true, col, count);
 }
 
 void UltraCanvasSpreadsheet::DeleteColumns(int count) {
@@ -922,12 +1002,7 @@ void UltraCanvasSpreadsheet::DeleteColumns(int count) {
 }
 
 void UltraCanvasSpreadsheet::DeleteColumnsAt(int col, int count) {
-    auto* sheet = GetActiveSheet();
-    if (!sheet) return;
-    if (recordingUndo_) RecordStructureChange();
-    sheet->DeleteColumns(col, count);
-    MoveReferencesToSheet(*sheet, true, col, -count);
-    Recalculate();
+    ChangeRowsOrColumns(true, col, -count);
 }
 
 void UltraCanvasSpreadsheet::AutoFitSelectedRows() {
@@ -961,12 +1036,7 @@ void UltraCanvasSpreadsheet::InsertRows(int count) {
 }
 
 void UltraCanvasSpreadsheet::InsertRowsAt(int row, int count) {
-    auto* sheet = GetActiveSheet();
-    if (!sheet) return;
-    if (recordingUndo_) RecordStructureChange();
-    sheet->InsertRows(row, count);
-    MoveReferencesToSheet(*sheet, false, row, count);
-    Recalculate();
+    ChangeRowsOrColumns(false, row, count);
 }
 
 void UltraCanvasSpreadsheet::DeleteRows(int count) {
@@ -974,12 +1044,7 @@ void UltraCanvasSpreadsheet::DeleteRows(int count) {
 }
 
 void UltraCanvasSpreadsheet::DeleteRowsAt(int row, int count) {
-    auto* sheet = GetActiveSheet();
-    if (!sheet) return;
-    if (recordingUndo_) RecordStructureChange();
-    sheet->DeleteRows(row, count);
-    MoveReferencesToSheet(*sheet, false, row, -count);
-    Recalculate();
+    ChangeRowsOrColumns(false, row, -count);
 }
 
 // ============================================================================
@@ -1499,7 +1564,7 @@ void UltraCanvasSpreadsheet::ApplyUndo(const SpreadsheetUndoAction& action) {
         case UndoActionType::RowDelete:
         case UndoActionType::ColumnInsert:
         case UndoActionType::ColumnDelete:
-            // Structural restore is best-effort and not reconstructed here.
+            // Swapped whole by ApplyStructureStep; never a cell snapshot.
             break;
         default: {
             // Restore the captured snapshot into the stored range.
@@ -1538,6 +1603,13 @@ void UltraCanvasSpreadsheet::Undo() {
         if (onUndoStackChange) onUndoStackChange();
         return;
     }
+    if (IsStructureStep(action.type)) {
+        undoStack_.pop();
+        ApplyStructureStep(action);
+        redoStack_.push(std::move(action));
+        if (onUndoStackChange) onUndoStackChange();
+        return;
+    }
 
     // Snapshot the current state of the action's range as the redo entry.
     SpreadsheetSheet* sheet = FindUndoSheet(action);
@@ -1567,6 +1639,13 @@ void UltraCanvasSpreadsheet::Redo() {
         redoStack_.pop();
         ApplySheetStep(action, false);
         undoStack_.push(action);
+        if (onUndoStackChange) onUndoStackChange();
+        return;
+    }
+    if (IsStructureStep(action.type)) {
+        redoStack_.pop();
+        ApplyStructureStep(action);
+        undoStack_.push(std::move(action));
         if (onUndoStackChange) onUndoStackChange();
         return;
     }
@@ -1631,24 +1710,6 @@ void UltraCanvasSpreadsheet::RecordRangeChange(const CellRange& range) {
     action.range = range;
     action.cellData = sheet->CopyCells(range);  // pre-change snapshot
     action.description = "Edit " + range.ToString();
-
-    PushUndo(action);
-}
-
-void UltraCanvasSpreadsheet::RecordStructureChange() {
-    if (!recordingUndo_) return;
-    SpreadsheetSheet* sheet = GetActiveSheet();
-    if (!sheet) return;
-
-    // Structural changes are recorded best-effort: capture the used range so a
-    // stack slot is consumed and a description is available. Exact structural
-    // reconstruction is not performed by ApplyUndo.
-    SpreadsheetUndoAction action;
-    action.type = UndoActionType::Composite;
-    action.sheetName = sheet->GetName();
-    action.sheetId = sheet->GetId();
-    action.range = sheet->GetUsedRange();
-    action.description = "Structure change";
 
     PushUndo(action);
 }
