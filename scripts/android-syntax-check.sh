@@ -109,6 +109,11 @@ check "$repo/UltraCanvas/libspecific/GL/GLFramebuffer.cpp"
 check "$repo/UltraCanvas/libspecific/GL/ICompositeStrategy.cpp"
 check "$repo/UltraCanvas/core/UltraCanvasGLSurface.cpp"
 
+# The embedded window manager and its title bar: core code that only the
+# Android desktop mode (MobilePC) runs, so this is where it must compile.
+check "$repo/UltraCanvas/core/UltraCanvasEmbeddedWindowManager.cpp"
+check "$repo/UltraCanvas/core/UltraCanvasEmbeddedWindowFrame.cpp"
+
 # The audio backend is ON for Android (miniaudio is vendored, so it does not
 # wait on the sysroot, and it reaches AAudio/OpenSL ES natively), which makes
 # this TU part of an Android build - and checking it compiles the whole
