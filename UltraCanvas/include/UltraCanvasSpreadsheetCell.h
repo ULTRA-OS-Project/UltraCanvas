@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetCell.h
 // Spreadsheet cell data structure with value, formatting, and formula support
+// Version: 1.2.0 - DataValidationListItems
 // Version: 1.1.0 - ValidateValue checks the cell's rule (it accepted everything); CheckDataValidation
 // Version: 1.0.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.0.0
@@ -9,6 +10,7 @@
 
 #include "UltraCanvasSpreadsheetTypes.h"
 #include <string>
+#include <vector>
 #include <memory>
 #include <optional>
 #include <functional>
@@ -314,6 +316,10 @@ private:
 // On false, `errorMessage` gets the rule's errorMessage, or a default one.
 bool CheckDataValidation(const DataValidation& validation, const SpreadsheetCell* cell,
                          std::string* errorMessage = nullptr);
+
+// The items of a List rule's formula1, in order, as CheckDataValidation reads
+// them (empty items dropped); empty for any other rule.
+std::vector<std::string> DataValidationListItems(const DataValidation& validation);
 
 // ============================================================================
 // IMPLEMENTATION

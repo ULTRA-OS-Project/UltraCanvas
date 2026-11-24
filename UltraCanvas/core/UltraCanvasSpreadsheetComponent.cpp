@@ -1341,6 +1341,7 @@ CellAddress UltraCanvasSpreadsheet::GetCellAtPosition(int x, int y) const {
 
 void UltraCanvasSpreadsheet::PushUndo(const SpreadsheetUndoAction& action) {
     undoStack_.push(action);
+    ++undoPushSerial_;
     // A fresh user action invalidates the redo history.
     while (!redoStack_.empty()) redoStack_.pop();
 

@@ -1,5 +1,6 @@
 // include/UltraCanvasSpreadsheetSheet.h
 // Individual worksheet within a spreadsheet workbook
+// Version: 1.1.0 - GetEffectiveValidation; SetCellValueFromString (a typed entry, notified)
 // Version: 1.0.1 - ValidateCell falls back to the cell's own rule
 // Version: 1.0.0
 // Last Modified: 2026-01-09
@@ -251,6 +252,9 @@ public:
     // ===== CELL VALUES (CONVENIENCE) =====
     
     void SetCellValue(int row, int col, const std::string& text);
+    // What a person typed: "12.5" a number, "45%" a percentage, "TRUE" a truth
+    // value, anything else text (SpreadsheetCell::SetValueFromString).
+    void SetCellValueFromString(int row, int col, const std::string& text);
     void SetCellValue(int row, int col, double number);
     void SetCellValue(int row, int col, bool boolean);
     void SetCellFormula(int row, int col, const std::string& formula);
@@ -416,6 +420,9 @@ public:
     void RemoveValidation(const CellRange& range);
     void ClearAllValidations();
     const DataValidation* GetValidation(int row, int col) const;
+    // The rule that applies to a cell: the one set on a range over it, else
+    // the cell's own (SpreadsheetCell::SetValidation); null when neither.
+    const DataValidation* GetEffectiveValidation(int row, int col) const;
     // True when the cell's value passes the rule set on its range, or, with
     // none, the cell's own rule (CheckDataValidation, UltraCanvasSpreadsheetCell.h).
     bool ValidateCell(int row, int col, std::string* errorMessage = nullptr) const;
@@ -676,6 +683,11 @@ inline std::vector<const SpreadsheetCell*> SpreadsheetSheet::GetCellsInRange(con
 
 inline void SpreadsheetSheet::SetCellValue(int row, int col, const std::string& text) {
     GetOrCreateCell(row, col).SetText(text);
+    NotifyCellChange(row, col);
+}
+
+inline void SpreadsheetSheet::SetCellValueFromString(int row, int col, const std::string& text) {
+    GetOrCreateCell(row, col).SetValueFromString(text);
     NotifyCellChange(row, col);
 }
 

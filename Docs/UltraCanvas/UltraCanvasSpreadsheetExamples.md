@@ -41,6 +41,7 @@
 - [Pointing at cells in a formula](#pointing-at-cells-in-a-formula)
 - [Sheet tab menu](#sheet-tab-menu)
 - [Sorting a selection from the header](#sorting-a-selection-from-the-header)
+- [Data validation](#data-validation)
 - [Best Practices](#best-practices)
 - [See Also](#see-also)
 
@@ -1077,6 +1078,68 @@ Turn the warning off with `SetSortFormulaWarningEnabled(false)`.
 `SortSelectionByColumn` itself never asks — code that calls it has decided —
 and `SpreadsheetSheet::CountFormulaCells(range)` gives the count if you want
 to warn in your own way.
+
+## Data validation
+
+A rule says what a cell may hold. It is set on a range of the sheet, or on one
+cell, and is checked when someone **types** into the cell and commits the
+entry (Enter, Tab, a click elsewhere). Values set from code, pasted or filled
+are not checked; `SpreadsheetSheet::ValidateCell` checks any cell on demand.
+
+```cpp
+DataValidation quantity;
+quantity.type = ValidationType::WholeNumber;     // also Decimal, Date, Time, TextLength, List
+quantity.op = ValidationOperator::Between;
+quantity.formula1 = "1";                         // dot-decimal; a Date bound may be "2026-01-31",
+quantity.formula2 = "99";                        // a Time bound "17:30"
+quantity.alertStyle = ValidationAlertStyle::Stop;
+quantity.errorTitle = "Quantity";
+quantity.errorMessage = "Order between 1 and 99 pieces.";
+grid->GetActiveSheet()->SetValidation(CellRange(1, 2, 50, 2), quantity);   // C2:C51
+
+DataValidation status;
+status.type = ValidationType::List;
+status.formula1 = "Open, In progress, Done";     // or ODF's "\"Open\";\"Done\""
+grid->GetActiveSheet()->SetValidation(CellRange(1, 3, 50, 3), status);     // D2:D51
+```
+
+An entry that breaks its rule is answered as the rule's `alertStyle` says,
+in a dialog titled with `errorTitle` that shows `errorMessage` (or a default):
+
+| Alert style | Buttons | What they do |
+|---|---|---|
+| `Stop` | Retry, Cancel | Retry opens the entry again on its cell, all of it selected; Cancel puts the old value back. A Stop rule never keeps the entry. |
+| `Warning` | Yes, No, Cancel | Yes keeps it; No edits it again; Cancel puts the old value back. |
+| `Information` | OK, Cancel | OK keeps it; Cancel puts the old value back. |
+
+A refused entry leaves no undo step. A rule with `showErrorAlert = false`
+keeps whatever is typed, and blanks pass while `allowBlank` is true (the
+default). Custom (formula) rules are not evaluated yet and always pass.
+
+To ask in your own way, set `onValidationFailed`. It replaces the dialog, and
+`answer` may be called at once or later, exactly once:
+
+```cpp
+grid->onValidationFailed = [statusLabel](const UltraCanvasSpreadsheet::ValidationFailure& failure,
+                                         std::function<void(UltraCanvasSpreadsheet::ValidationAnswer)> answer) {
+    statusLabel->SetText(failure.message);       // also failure.row, col, enteredText, rule
+    answer(UltraCanvasSpreadsheet::ValidationAnswer::Retry);   // or Accept, Cancel
+};
+```
+
+A `List` rule with `showDropdown` (the default) puts a small arrow just right
+of the active cell. A click on it, or Alt+Down, opens the rule's items with
+the cell's current value ticked; the one picked is entered as if typed, as one
+undo step. From code:
+
+```cpp
+std::vector<std::string> items = grid->GetValidationListItems(1, 3);   // {"Open", "In progress", "Done"}
+grid->ChooseValidationListItem(1, 3, "Done");                          // false for an item not offered
+```
+
+The list's items are the rule's own text; a list taken from a range of cells
+(`$F$1:$F$5`) is not read yet. Neither ODS nor XLSX reads or writes rules yet,
+so they are set from code.
 
 ## Best Practices
 

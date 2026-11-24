@@ -142,12 +142,13 @@ Gaps, each checked in the source:
 
   A grep of the two files finds none of them. XLS import is the only path
   that reads hidden rows and columns, and names.
-- **Data validation is checked but not enforced.** The rules are checked in
-  the model (`CheckDataValidation`, `include/UltraCanvasSpreadsheetCell.h`).
-  Until 2026-11, `SpreadsheetCell::ValidateValue` was a stub that accepted
-  everything. But nothing in the grid calls the check: an entry that fails
-  its rule is accepted, a list rule shows no dropdown, and neither ODS nor
-  XLSX reads or writes rules.
+- **Data validation is enforced on typed entries only.** Since 2026-11 the
+  grid checks a typed entry against its rule (`CheckDataValidation`) and
+  answers as the rule's alert style says: Stop, Warning or Information. A
+  list rule gets a dropdown arrow. Still missing:
+  - ODS and XLSX do not read or write rules;
+  - Custom (formula) rules are not evaluated;
+  - a list taken from a range of cells is not read.
 - **Conditional formats** are stored on the sheet
   (`core/UltraCanvasSpreadsheetSheet.cpp:472-493`), but the renderer and the
   readers and writers never refer to them.
@@ -412,11 +413,10 @@ how quickly a user meets it:
    - read and write them in ODS (`calcext:conditional-formats`) and XLSX
      (`conditionalFormatting`);
    - add a rules dialog.
-5. **Data validation:**
-   - refuse, or warn about, an entry that fails its rule when it is
-     committed (`CommitEdit`), as the rule's `alertStyle` says;
-   - show list validation as an `UltraCanvasDropdown` in the cell;
-   - add read and write.
+5. **Data validation:** read and write rules in ODS
+   (`table:content-validation`) and XLSX (`dataValidations`); evaluate Custom
+   rules; read a list taken from a range of cells. (Checking a typed entry and
+   the list dropdown are done.)
 6. **Comments and hyperlinks:**
    - draw comments, read and write them, and show them in a tooltip or popover;
    - make hyperlinks clickable.
@@ -556,7 +556,7 @@ what was built). They are not commitments.
 | **2. Spreadsheet fidelity** | §5.2 items 1–3: system clipboard, saving what the sheet holds, print/PDF, with round-trip tests | ~2,000 | ~200 |
 | **3. Slide editor core** | §5.3.1 masters/layouts and transitions in the model, readers and writers; `SlidePainter` on `IRenderContext`; `UltraCanvasSlideEdit` with selection, move, resize, rotate, snapping, undo, slide sorter, notes, new slide from layout; `PresentationHost`; deck PDF/print | ~4,500 | ~800 |
 | **4. Slide text, tables, show** | 4a: in-place text editing through `UltraCanvasRichTextEdit` and the paragraph conversion. 4b: tables. 4c: `UltraCanvasSlideShowPlayer` with transitions; presenter view | ~2,500 | ~400 |
-| **5. Spreadsheet depth** | §5.2 items 4–7: conditional formatting, validation, comments, hyperlinks, charts | ~3,000 | ~400 |
+| **5. Spreadsheet depth** | §5.2 items 4–7: conditional formatting, validation in files, comments, hyperlinks, charts | ~3,000 | ~400 |
 | **6. Shared polish** | Templates, autosave and recovery, cross-kind paste, accessibility roles for grid and slides, dialogs of §5.1.2 not yet built | ~1,000 | ~1,500 |
 
 **Total, roughly 20,000 lines**, about two thirds of it in the framework. That

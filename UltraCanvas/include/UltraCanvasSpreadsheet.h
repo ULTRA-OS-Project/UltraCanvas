@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.5.0 - data validation enforced on a typed entry (onValidationFailed, Retry / Cancel / Accept),
+//                  a list rule's dropdown (ShowValidationListAt, Alt+Down); a typed value is an undo step
 // Version: 1.4.0 - LoadFromFile / LoadODS open a password-protected .ods with its password
 // Version: 1.3.0
 // Last Modified: 2026-11-18
@@ -18,6 +20,7 @@
 #include <memory>
 #include <functional>
 #include <stack>
+#include <cstdint>
 
 namespace UltraCanvas {
 class UltraCanvasTextInput;
@@ -207,6 +210,16 @@ private:
     // The formula bar's function menu and its "fx" button.
     std::shared_ptr<UltraCanvasMenu> functionMenu_;
     bool functionMenuEnabled_ = true;
+    // The items of the active cell's list rule (ShowValidationListAt).
+    std::shared_ptr<UltraCanvasMenu> validationListMenu_;
+    // StopEditing runs the commit and then takes the editor down: an answer to
+    // a refused entry that arrives while it runs is held until it is done, so
+    // Retry's new editor is not the one taken down (see RunAfterEditEnds).
+    int stopEditingDepth_ = 0;
+    std::vector<std::function<void()>> afterEditEnds_;
+    // Counts PushUndo calls, so a refused entry takes back its own undo step
+    // and no other.
+    uint64_t undoPushSerial_ = 0;
     // The caret the function hint was last drawn for: the editor moves its
     // caret (arrow keys) without telling us, and repaints only itself.
     size_t functionHintCaret_ = static_cast<size_t>(-1);
@@ -350,6 +363,40 @@ public:
     void SetEditBuffer(const std::string& text);
     void InsertTextAtCursor(const std::string& text);
     
+    // ===== DATA VALIDATION =====
+    // A rule is set on the sheet (GetActiveSheet()->SetValidation(range,
+    // rule)) or on one cell (GetCell(row, col)->SetValidation(rule)). A value
+    // typed into a cell is checked when the edit is committed: an entry that
+    // breaks the rule is answered as the rule's alertStyle says -
+    //   Stop         Retry (edit the entry again) or Cancel (the old value back)
+    //   Warning      Yes (keep it), No (edit it again) or Cancel
+    //   Information  OK (keep it) or Cancel
+    // A rule with showErrorAlert false keeps whatever is typed. Values set
+    // from code, pasted or filled are not checked; SpreadsheetSheet::ValidateCell
+    // checks any cell.
+    enum class ValidationAnswer { Accept, Retry, Cancel };
+    struct ValidationFailure {
+        int row = 0;
+        int col = 0;
+        std::string enteredText;   // what was typed
+        DataValidation rule;
+        std::string message;       // the rule's errorMessage, or a default one
+    };
+    // Asked instead of the grid's own dialog when it is set; call `answer`
+    // once, now or later. Accept on a Stop rule counts as Cancel.
+    std::function<void(const ValidationFailure&, std::function<void(ValidationAnswer)> answer)> onValidationFailed;
+
+    // A List rule with showDropdown puts an arrow beside the active cell; a
+    // click on it or Alt+Down opens the rule's items, and the one picked is
+    // entered as if typed (one undo step). Window coordinates.
+    void ShowValidationListAt(int row, int col, int windowX, int windowY);
+    // The items the arrow offers for a cell; empty when it has no List rule
+    // with a dropdown.
+    std::vector<std::string> GetValidationListItems(int row, int col) const;
+    // Enters `item` into the cell as typed, as picking it from the list does.
+    // False (nothing changes) when it is not one of the cell's items.
+    bool ChooseValidationListItem(int row, int col, const std::string& item);
+
     // ===== FORMATTING =====
     // The range the SetSelection* / AdjustSelection* calls actually write to.
     // Identical to GetSelection() for an ordinary range; a whole-column or
@@ -687,7 +734,7 @@ private:
     enum class HitArea { Nowhere, FormulaBar, ColumnHeader, RowHeader, CornerHeader, 
                          Cell, ColumnResizer, RowResizer, SheetTab, 
                          HorizontalScrollbar, VerticalScrollbar, AutoFillHandle,
-                         ColumnSortButton };
+                         ColumnSortButton, ValidationListButton };
     struct HitTestResult { HitArea area = HitArea::Nowhere; int row = -1; int col = -1; int tabIndex = -1;
                            bool addSheetButton = false; int tabScroll = 0;
                            bool functionMenuButton = false; };
@@ -748,6 +795,21 @@ private:
     std::string GenerateUniqueSheetName() const;
     void UpdateFormulaBar();
     void CommitEdit();
+    // A typed plain value into a cell of the active sheet: an undo step,
+    // onCellChange, and the formulas that read it recalculated.
+    void SetCellFromEntry(int row, int col, const std::string& text);
+    // After a commit: checks the entry against the cell's rule and, when it
+    // breaks it, asks (onValidationFailed or the dialog) and acts on the answer.
+    void CheckEnteredValue(int row, int col, const std::string& entered, SpreadsheetEditMode mode,
+                           const SpreadsheetUndoAction& before, uint64_t serialBefore);
+    void AskValidationFailure(const ValidationFailure& failure, std::function<void(ValidationAnswer)> answer);
+    void ResolveValidationFailure(ValidationAnswer answer, const ValidationFailure& failure,
+                                  SpreadsheetEditMode mode, const SpreadsheetUndoAction& before,
+                                  bool tookUndoStep, uint64_t serialAfter);
+    void RunAfterEditEnds(std::function<void()> action);
+    // The list arrow beside the active cell; an empty rect when there is none.
+    Rect2Di ValidationListButtonRect() const;
+    void RenderValidationListButton(IRenderContext* ctx);
     Point2Di CellToScreen(int row, int col) const;
     Rect2Df CellAreaRect() const;   // the scrolling cell area, below/right of the headers
     CellAddress ScreenToCell(int x, int y) const;

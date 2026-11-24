@@ -5291,6 +5291,24 @@ add_test(NAME SpreadsheetPointModeTest COMMAND SpreadsheetPointModeTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetPointModeTest")
 
+# ===== SPREADSHEET VALIDATION GRID TEST =====
+# The grid enforcing data validation on a typed entry: Stop / Warning answers
+# (Retry, Cancel, Accept, late answers), the list rule's items, and a typed
+# value being an undo step. No window.
+message(STATUS "  Building SpreadsheetValidationGridTest...")
+add_executable(SpreadsheetValidationGridTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetValidationGridTest.cpp
+)
+target_include_directories(SpreadsheetValidationGridTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetValidationGridTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetValidationGridTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetValidationGridTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetValidationGridTest COMMAND SpreadsheetValidationGridTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetValidationGridTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own

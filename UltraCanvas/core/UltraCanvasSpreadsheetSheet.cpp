@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheetSheet.cpp
 // Spreadsheet worksheet implementation (non-inline members)
+// Version: 1.2.0 - GetEffectiveValidation, DataValidationListItems
 // Version: 1.1.0 - data validation: one checker (CheckDataValidation) for range and cell rules; text is
 //                  not a number, unreadable bounds fail, Date/Time bounds as YYYY-MM-DD / HH:MM
 // Version: 1.0.0
@@ -738,19 +739,31 @@ bool CheckDataValidation(const DataValidation& validation, const SpreadsheetCell
     return CompareByOperator(subject, validation.op, *v1, *v2) ? true : fail(invalid);
 }
 
+std::vector<std::string> DataValidationListItems(const DataValidation& validation) {
+    std::vector<std::string> items;
+    if (validation.type != ValidationType::List) return items;
+    for (auto& item : ReadValidationList(validation.formula1)) {
+        if (!item.empty()) items.push_back(std::move(item));
+    }
+    return items;
+}
+
 bool SpreadsheetCell::ValidateValue(std::string* errorMessage) const {
     if (!validation_) return true;
     return CheckDataValidation(*validation_, this, errorMessage);
 }
 
-bool SpreadsheetSheet::ValidateCell(int row, int col, std::string* errorMessage) const {
+const DataValidation* SpreadsheetSheet::GetEffectiveValidation(int row, int col) const {
     // A rule set on the range (SetValidation) comes first; a rule a cell
     // carries itself (SpreadsheetCell::SetValidation) applies otherwise.
+    if (const DataValidation* validation = GetValidation(row, col)) return validation;
     const SpreadsheetCell* cell = GetCellIfExists(row, col);
-    if (const DataValidation* validation = GetValidation(row, col)) {
-        return CheckDataValidation(*validation, cell, errorMessage);
-    }
-    return cell ? cell->ValidateValue(errorMessage) : true;
+    return cell ? cell->GetValidation() : nullptr;
+}
+
+bool SpreadsheetSheet::ValidateCell(int row, int col, std::string* errorMessage) const {
+    const DataValidation* validation = GetEffectiveValidation(row, col);
+    return validation ? CheckDataValidation(*validation, GetCellIfExists(row, col), errorMessage) : true;
 }
 
 // ============================================================================
