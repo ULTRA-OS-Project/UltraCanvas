@@ -38,6 +38,9 @@ public:
     std::function<void()> onStop;
 
 private:
+    // The width that holds the bar's content at its widest, in this language.
+    int BarWidth() const;
+
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> mark_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> time_;

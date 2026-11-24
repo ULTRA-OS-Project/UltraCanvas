@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
 // File statistics dialog for the text editor.
+// Version: 1.3.1 - a column is as wide as its translated header; the cells fill their columns
 // Version: 1.3.0 - the dialog's texts go through Tr / TrF / TrN
 // Version: 1.2.0
 // Last Modified: 2026-06-07
@@ -225,15 +226,32 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     const int rowCount = static_cast<int>(stats.size());
     const int gridRowCount = std::max(1, rowCount) + 1;  // +1 for header
 
+    // A column is at least as wide as its header: the widths below are the
+    // English ones, and a translation can be longer (German "Zeichensatz"
+    // needs 85 px in the 70 px Charset column). The header's font is a
+    // label's, bold at 11 pt, with 8 px padding on each side.
+    FontStyle headerFont = UltraCanvasLabel("StatHdrProbe", 0, 0, 1, 1).GetStyle().fontStyle;
+    headerFont.fontWeight = FontWeight::Bold;
+    headerFont.fontSize = 11;
+    auto fitHeader = [this, &headerFont](int width, const std::string& title) {
+        IRenderContext* rc = GetRenderContext();
+        if (!rc || title.empty()) return width;
+        rc->PushState();
+        rc->SetFontStyle(headerFont);
+        const int needed = rc->GetTextLineWidth(title) + 2 * 8 + 2;
+        rc->PopState();
+        return std::max(width, needed);
+    };
+
     // Column widths: marker, name, size, charset, words, chars, modified, status
     const int colMarker   = 26;
-    const int colName     = 240;
-    const int colSize     = 90;
-    const int colCharset  = 70;
-    const int colWords    = 65;
-    const int colChars    = 70;
-    const int colModified = 150;
-    const int colStatus   = 90;
+    const int colName     = fitHeader(240, Tr("File Name"));
+    const int colSize     = fitHeader(90, Tr("Size"));
+    const int colCharset  = fitHeader(70, Tr("Charset"));
+    const int colWords    = fitHeader(65, Tr("Words"));
+    const int colChars    = fitHeader(70, Tr("Chars"));
+    const int colModified = fitHeader(150, Tr("Modified"));
+    const int colStatus   = fitHeader(90, Tr("Status"));
     const int gridWidth   = colMarker + colName + colSize + colCharset +
                             colWords + colChars + colModified + colStatus;
 
@@ -322,6 +340,9 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         label->SetBackgroundColor(Color(235, 235, 240));
         label->SetAlignment(align, VerticalAlignment::Middle);
         label->SetPadding(0, 8, 0, 8);
+        // As wide as its column (the grid stretches it): the 80 px it is
+        // made with would otherwise cut a longer header in a wider column.
+        label->size.width = Dimension::Auto();
         gridContainer->AddChild(label);
         label->layoutItem.SetGridRowColSimplified(0, col);
         label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -372,6 +393,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
                 label->SetAlignment(align, VerticalAlignment::Middle);
                 label->SetPadding(0, 6, 0, 6);
                 if (!tooltip.empty()) label->SetTooltip(tooltip);
+                label->size.width = Dimension::Auto();   // fills its column, as the header does
                 gridContainer->AddChild(label);
                 label->layoutItem.SetGridRowColSimplified(rowIdx, col);
                 label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);

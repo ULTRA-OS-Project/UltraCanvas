@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopDevicePanel.cpp
 // The device panel. See the header.
+// Version: 0.3.1 - the buttons grow to their text (the width guessed from bytes was too wide)
 // Version: 0.3.0 - SetLiveRefresh
 // Version: 0.2.0 - an entry's own button, headings, the message line
 // Version: 0.1.0

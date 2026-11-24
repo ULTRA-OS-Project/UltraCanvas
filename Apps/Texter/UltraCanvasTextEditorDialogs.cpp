@@ -1,5 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditorDialogs.cpp
 // Implementation of custom dialogs for Find and Replace
+// Version: 1.3.1 - Go to Line: the caption is as wide as its text
 // Version: 1.3.0 - the dialogs' texts go through Tr / TrF
 // Version: 1.2.0
 // Last Modified: 2026-06-01
@@ -706,6 +707,10 @@ namespace UltraCanvas {
         lineLabel = std::make_shared<UltraCanvasLabel>("LineLabel", 0, 0, 100, 25);
         lineLabel->SetText(Tr("Line number:"));
         lineLabel->SetFontSize(11);
+        // As wide as its text (100 px cut "Αριθμός γραμμής:" and nine other
+        // translations); the field beside it takes what is left.
+        lineLabel->size.width = CSSLayout::Dimension::Auto();
+        lineLabel->layoutItem.SetFlexShrink(0.0f);
         // lineLabel->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
 
         lineInput = std::make_shared<UltraCanvasTextInput>("LineInput", 0, 0, 180, 25);
