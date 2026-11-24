@@ -45,6 +45,7 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.17.0 - GetPointerPosition: where the mouse pointer is on the screen
 // Version: 1.16.0 - CanCaptureScreen; macOS captures the screen (ScreenCaptureKit, the main
 //                   display, in its pixels with 0,0 at its top-left corner)
 // Version: 1.15.0 - UltraCanvasGlobalShortcut::StartExclusive: the key reaches nothing else
@@ -74,7 +75,7 @@
 // Version: 1.4.0 - instead of the system's desktop (DesktopReplacement::Instead),
 //                  the notification area (UltraCanvasTrayHost), EndSession
 // Version: 1.3.0 - in place of the system's desktop (ReplaceSystemDesktop)
-// Last Modified: 2026-11-23
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -318,6 +319,11 @@ namespace UltraCanvas {
         // A desktop covers the ones its own window does not with windows of
         // WindowType::Desktop and WindowConfig::desktopArea.
         static std::vector<DesktopScreenInfo> ListScreens();
+        // Where the mouse pointer is, in the pixels of ListScreens - to open
+        // a window on the monitor the person is working on. X11 and Windows
+        // say; false (with 0,0) on Wayland, which tells a client the pointer
+        // only over its own windows, and on macOS.
+        static bool GetPointerPosition(int& x, int& y);
         // Reserve strips along the screen's edges for `windowId` - a desktop's
         // bars, a dock - so that maximised and tiled windows stop short of
         // them (EWMH _NET_WM_STRUT_PARTIAL on X11, an appbar per edge on

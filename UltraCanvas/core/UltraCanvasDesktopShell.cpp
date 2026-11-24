@@ -6,6 +6,7 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.14.0 - GetPointerPosition
 // Version: 1.13.0 - CanCaptureScreen; macOS takes its screen capture from
 //                  OS/MacOS/UltraCanvasMacOSScreenCapture.mm (ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
 // Version: 1.12.0 - OpenDisplaySettings, CanOpenDisplaySettings
@@ -23,7 +24,7 @@
 // Version: 1.4.0 - Microsoft Store applications launch (appUserModelId), ListScreens
 // Version: 1.3.0 - DesktopReplacement::Instead, the tray host's thread, EndSession
 // Version: 1.2.0 - the platform's own application list; shortcut entries launch
-// Last Modified: 2026-11-23
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -336,6 +337,10 @@ std::vector<DesktopScreenInfo> UltraCanvasDesktopShell::ListScreens() {
         std::rotate(screens.begin(), origin, origin + 1);
     }
     return screens;
+}
+
+bool UltraCanvasDesktopShell::GetPointerPosition(int& x, int& y) {
+    return DesktopShellBackend::GetPointerPosition(x, y);
 }
 
 bool UltraCanvasDesktopShell::ReserveScreenEdges(uint64_t windowId, int left, int right, int top, int bottom) {
@@ -1129,6 +1134,10 @@ namespace DesktopShellBackend {
 
     bool GetScreenSize(int&, int&) { return false; }
     std::vector<DesktopScreenInfo> ListScreens() { return {}; }
+    bool GetPointerPosition(int& x, int& y) {
+        x = y = 0;
+        return false;
+    }
     bool ReserveScreenEdges(uint64_t, int, int, int, int) { return false; }
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE
     bool CaptureScreen(const std::string&, std::string& error) {

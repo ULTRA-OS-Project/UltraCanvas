@@ -32,10 +32,16 @@ the desktop (ticked by default in its *Start with the desktop* menu): no
 window, the Print Screen key held, and the screenshot button and
 Super+Shift+S answered at once by the copy that runs. Its window, once a
 snip has shown it, hides when closed instead of ending UltraSnip. A second
-`--background` start reaches the running copy and changes nothing.
+`--background` start reaches the running copy and changes nothing. Starting
+UltraSnip from the applications while it runs in the background brings its
+bar up at once, over the dimmed screen; should the running copy not answer
+(a build without the UltraMessage bus), the new start opens a window of its
+own instead of saying that UltraSnip is already running.
 
-**From the window.** Start UltraSnip from the applications: until there is
-a snip its window is just its bar. Choose the shape and the kind (icons;
+**From the window.** Start UltraSnip from the applications: its bar opens
+at the top centre of the screen the mouse pointer is on (on Wayland and macOS,
+which do not say where the pointer is, the primary screen), over the screen
+already dimmed. Until there is a snip its window is just its bar. Choose the shape and the kind (icons;
 each names itself in its tooltip) and the delay, and click *Start*
 (Ctrl+N):
 

@@ -3,6 +3,7 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.12.0 - GetPointerPosition
 // Version: 1.11.0 - macOS: the screen's capture native
 //                  (ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
 // Version: 1.10.0 - CanOpenDisplaySettings, OpenDisplaySettings
@@ -16,7 +17,7 @@
 // Version: 1.4.0 - DesktopReplacement::Instead, the tray host, EndSession
 // Version: 1.3.0 - the Windows backend; ListNativeApplications;
 //                  in place of the system's desktop
-// Last Modified: 2026-11-23
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASDESKTOPSHELLBACKEND_H
@@ -79,6 +80,9 @@ namespace DesktopShellBackend {
     bool GetScreenSize(int& width, int& height);
     // Every monitor, any order; empty when the platform tells none apart.
     std::vector<DesktopScreenInfo> ListScreens();
+    // Where the mouse pointer is, in the pixels of ListScreens; false (with
+    // 0,0) where the platform does not say.
+    bool GetPointerPosition(int& x, int& y);
     bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom);
     bool CaptureScreen(const std::string& pngPath, std::string& error);
     bool CaptureScreenImage(DesktopScreenImage& out, std::string& error);
