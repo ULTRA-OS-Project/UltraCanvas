@@ -12,7 +12,7 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasPathUtf8.h"
 
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
 #include <fontconfig/fontconfig.h>
 #endif
 
@@ -142,7 +142,7 @@ namespace UltraCanvas {
     }
 
     void ApplyEmojiSettings() {
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) || defined(ULTRACANVAS_IOS)
         static std::mutex mutex;
         std::lock_guard<std::mutex> lock(mutex);
         FcConfig* config = FcConfigGetCurrent();

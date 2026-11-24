@@ -1,0 +1,5 @@
+{
+  "$comment": "No registry or baseline: the ports are those of the vcpkg commit scripts/ios-bootstrap-sysroot.sh checks out (the one scripts/macos-deps.sh pins), plus libvips from the macOS overlay (it names the built-in GIF and PPM loaders vcpkg's own port turns off), and the triplets here.",
+  "overlay-ports": [ "../../../../MacOS/deps/ports/libvips" ],
+  "overlay-triplets": [ "./triplets" ]
+}

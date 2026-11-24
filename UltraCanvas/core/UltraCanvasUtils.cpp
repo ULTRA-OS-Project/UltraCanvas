@@ -502,6 +502,10 @@ namespace UltraCanvas {
     void OpenURL(const std::string& url) {
 #if defined(_WIN32) || defined(_WIN64)
         ShellExecuteW(nullptr, L"open", Utf8ToWide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+#elif defined(ULTRACANVAS_IOS)
+        // system() does not exist on iOS: UIApplication opens it
+        // (OS/iOS/UltraCanvasiOSApplication.mm).
+        OpenURLiOS(url);
 #elif defined(__APPLE__)
         system(("open \"" + url + "\"").c_str());
 #elif defined(__ANDROID__)

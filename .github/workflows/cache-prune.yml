@@ -22,7 +22,7 @@ on:
   # below skips the completions of pull-request runs without taking a
   # runner.
   workflow_run:
-    workflows: [Build, Wayland build, Element modules, Android build, UltraAI llama.cpp adapter]
+    workflows: [Build, Wayland build, Element modules, Android build, iOS build, UltraAI llama.cpp adapter]
     types: [completed]
   # And every six hours whatever ran, for the caches of pull requests closed
   # meanwhile and for a run the trigger above missed.

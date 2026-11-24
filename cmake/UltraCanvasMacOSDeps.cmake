@@ -17,7 +17,10 @@
 
 include_guard(GLOBAL)
 
-if(NOT APPLE)
+# Not for iOS (nor tvOS, visionOS, watchOS): `brew --prefix` answers with
+# macOS libraries, which an iOS build must never link. Its libraries come from
+# scripts/ios-bootstrap-sysroot.sh (Docs/UltraCanvas/iOSPortInvestigation.md).
+if(NOT APPLE OR CMAKE_SYSTEM_NAME MATCHES "^(iOS|tvOS|visionOS|watchOS)$")
     return()
 endif()
 
