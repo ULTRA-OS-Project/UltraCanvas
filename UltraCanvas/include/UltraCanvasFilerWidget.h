@@ -104,6 +104,8 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.59.0 - IsDragInProgress; letting a selection rectangle go fires onSelectionChanged once
+//                  more, so a host that waited for the drag to end sees the final selection
 // Version: 1.58.0 - folderIconIsLineArt: a one-colour folder icon drawn in the view's text colour,
 //                  so a black line icon reads on a dark theme
 // Version: 1.57.0 - Run in background: onBackgroundProgress, HasBackgroundOperation,
@@ -1770,6 +1772,15 @@ namespace UltraCanvas {
             return renamingIndex >= 0 || draggingItems || marqueeActive ||
                    compressDlg.active;
         }
+        // True while the pointer is dragging in the widget: a selection
+        // rectangle being drawn, or entries being dragged. While a rectangle
+        // is drawn, onSelectionChanged fires on every file it takes in or
+        // lets go; a host that follows the selection with something that
+        // opens, closes or reflows (a preview pane) waits until this is
+        // false. Letting the rectangle go fires onSelectionChanged once more,
+        // with this false, so a host that waited sees where it ended. (An
+        // entry drag never changes the selection.)
+        bool IsDragInProgress() const { return draggingItems || marqueeActive; }
 
         // ===== FILE OPERATIONS (also wired to the context / icon menus) =====
         // Copy / Cut mirror the selection to the OS clipboard (file-manager
