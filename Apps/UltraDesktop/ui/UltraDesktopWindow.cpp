@@ -2,8 +2,6 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
-// Version: 0.8.4 - a tray icon's or running application's picture that comes after its button
-//                  replaces the initial instead of sitting beside it
 // Version: 0.8.3 - the settings button's menu has a title, "UltraDesktop"
 // Version: 0.8.2 - the tool group gains UltraToDo; the tool applications'
 //                  windows stay off the taskbar unless toolAppsOnTaskbar; the
