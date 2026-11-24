@@ -1,5 +1,8 @@
 // include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles, value display options, and dual-handle range support
+// Version: 3.10.0 - sizes itself: MeasureOwnContent / ComputeIntrinsicSizes, GetMinimumSize, and a
+//                   size given too small across the bar for its ticks, labels or value grows to fit
+//                   (SetGrowToFit)
 // Version: 3.9.0 - tick marks and tick labels, stop labels, more handle shapes (Pointer, Bar,
 //                  Block, FaderCap, NoHandle), a value bubble, a fill origin, a reset value,
 //                  the Knob / Field / Seek / Ruler / Segmented styles, a buffered (secondary)
@@ -23,6 +26,7 @@
 #include <functional>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace UltraCanvas {
@@ -227,6 +231,13 @@ namespace UltraCanvas {
         mutable int labelWidth = 0;
         mutable int labelHeight = 0;
 
+        // ===== SIZE =====
+        bool growToFit = true;
+        // The min-width / min-height this slider set itself (-1: none), so
+        // it can tell its own from one the application set
+        float autoMinCross = -1.0f;
+        bool autoMinOnWidth = false;
+
         // ===== FILL ORIGIN, RESET =====
         bool hasFillOrigin = false;
         float fillOrigin = 0.0f;
@@ -335,7 +346,7 @@ namespace UltraCanvas {
 
         SliderStyle GetSliderStyle() const { return sliderStyle; }
 
-        void SetValueDisplay(SliderValueDisplay mode) { valueDisplay = mode; }
+        void SetValueDisplay(SliderValueDisplay mode) { valueDisplay = mode; SizeMayHaveChanged(); }
         SliderValueDisplay GetValueDisplay() const { return valueDisplay; }
 
         void SetOrientation(SliderOrientation orient);
@@ -347,22 +358,25 @@ namespace UltraCanvas {
 
         void SetTrackHeight(float height) {
             style.trackHeight = std::max(1.0f, height);
+            SizeMayHaveChanged();
         }
 
         void SetHandleSize(float size) {
             style.handleSize = std::max(8.0f, size);
+            SizeMayHaveChanged();
         }
 
         void SetHandleShape(SliderHandleShape shape) {
             style.handleShape = shape;
+            SizeMayHaveChanged();
         }
 
-        void SetValueFormat(const std::string& format) { valueFormat = format; }
-        void SetCustomText(const std::string& text) { customText = text; }
+        void SetValueFormat(const std::string& format) { valueFormat = format; SizeMayHaveChanged(); }
+        void SetCustomText(const std::string& text) { customText = text; SizeMayHaveChanged(); }
 
         // ===== TICK MARKS =====
         // Where ticks go (NoTicks by default) and how they look.
-        void SetTickPosition(SliderTickPosition position) { tickPosition = position; RequestRedraw(); }
+        void SetTickPosition(SliderTickPosition position) { tickPosition = position; SizeMayHaveChanged(); }
         SliderTickPosition GetTickPosition() const { return tickPosition; }
         void SetTickStyle(SliderTickStyle tickStyleValue) { tickStyle = tickStyleValue; RequestRedraw(); }
         SliderTickStyle GetTickStyle() const { return tickStyle; }
@@ -372,22 +386,22 @@ namespace UltraCanvas {
         void SetTickInterval(float major, float minor = 0.0f) {
             majorTickInterval = std::max(0.0f, major);
             minorTickInterval = std::max(0.0f, minor);
-            RequestRedraw();
+            SizeMayHaveChanged();
         }
         float GetMajorTickInterval() const { return majorTickInterval; }
         float GetMinorTickInterval() const { return minorTickInterval; }
         // Ticks at these values only (all major), instead of an interval: the
         // 0 dB mark of a fader, or -100 / 0 / +100 of a balance control.
-        void SetTickMarks(const std::vector<float>& values) { customTickValues = values; RequestRedraw(); }
+        void SetTickMarks(const std::vector<float>& values) { customTickValues = values; SizeMayHaveChanged(); }
         const std::vector<float>& GetTickMarks() const { return customTickValues; }
         // A label under (or beside) each major tick: the number, or what
         // tickLabelFormatter makes of it.
-        void SetTickLabels(bool show) { showTickLabels = show; RequestRedraw(); }
+        void SetTickLabels(bool show) { showTickLabels = show; SizeMayHaveChanged(); }
         bool GetTickLabels() const { return showTickLabels; }
         // One name per step (min, min + step, ...): a tick and a label each,
         // and the value text names the stop. SetRange(0, 6) with SetStep(1)
         // and seven names makes a size picker.
-        void SetStopLabels(const std::vector<std::string>& labels) { stopLabels = labels; RequestRedraw(); }
+        void SetStopLabels(const std::vector<std::string>& labels) { stopLabels = labels; SizeMayHaveChanged(); }
         const std::vector<std::string>& GetStopLabels() const { return stopLabels; }
         // The value a tick at `value` is labelled with: the formatter, the
         // stop's name, or the number.
@@ -427,15 +441,15 @@ namespace UltraCanvas {
         float GetSecondaryValue() const { return secondaryValue; }
         // While the pointer is over the slider, a bubble shows the value
         // under it (hoverText, or the formatted value) and a hairline marks it.
-        void SetHoverPreview(bool enabled) { hoverPreview = enabled; RequestRedraw(); }
+        void SetHoverPreview(bool enabled) { hoverPreview = enabled; SizeMayHaveChanged(); }
         bool GetHoverPreview() const { return hoverPreview; }
 
         // ===== HISTOGRAM =====
         // Bars drawn behind the track, one per bucket across the range, in
         // the free space above a horizontal slider: where the data bunches up.
         // The bars under the selection (or the fill) take histogramActiveColor.
-        void SetHistogram(const std::vector<float>& bucketCounts) { histogram = bucketCounts; RequestRedraw(); }
-        void ClearHistogram() { histogram.clear(); RequestRedraw(); }
+        void SetHistogram(const std::vector<float>& bucketCounts) { histogram = bucketCounts; SizeMayHaveChanged(); }
+        void ClearHistogram() { histogram.clear(); SizeMayHaveChanged(); }
         const std::vector<float>& GetHistogram() const { return histogram; }
 
         // ===== SEGMENTED =====
@@ -467,7 +481,32 @@ namespace UltraCanvas {
         void SetStyle(const SliderVisualStyle& st) {
             StyleSetByHand();
             style = st;
+            SizeMayHaveChanged();
         }
+
+        // ===== SIZE =====
+        // The smallest box the slider draws in without cutting anything off:
+        // across the bar, the handle, the ticks and their labels, and the
+        // room the value text, bubble or histogram takes; along it, the
+        // handle and the labels side by side. Measured with the window's
+        // text engine once there is one, estimated from the font before.
+        Size2Df GetMinimumSize() const;
+        // The length a slider takes when nothing sizes it (160 px, or the
+        // minimum when that is longer).
+        float GetPreferredLength() const;
+        // On (the default): when ticks, labels, a value or a histogram need
+        // more room across the bar than the size given (a horizontal slider
+        // 20 px tall with labels under it), the slider sets its own
+        // min-height (min-width when vertical) and the layout grows it. A
+        // min-height (min-width) the application set is left alone. Off: the
+        // given size stays, whatever is cut off.
+        void SetGrowToFit(bool grow);
+        bool GetGrowToFit() const { return growToFit; }
+
+        // ===== LAYOUT =====
+        Size2Df MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                  const CSSLayout::LayoutContext& ctx) override;
+        void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
 
         // ===== RENDERING (REQUIRED OVERRIDE) =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
@@ -510,6 +549,20 @@ namespace UltraCanvas {
         bool IsRotary() const { return sliderStyle == SliderStyle::Circular || sliderStyle == SliderStyle::Knob; }
         bool UsesRelativeDrag() const { return IsRotary() || sliderStyle == SliderStyle::Ruler; }
         float ValueAtPosition(const Point2Di& pos) const;
+        // How far the bar's band reaches across: the handle or the bar
+        int CoreThickness() const;
+        // The height of a line of the value's font, and the width of the
+        // widest value text
+        int TextLineHeight(IRenderContext* ctx) const;
+        int ValueTextWidth(IRenderContext* ctx) const;
+        Size2Df ComputeMinimumSize(IRenderContext* ctx) const;
+        // Sets (or clears) the slider's own cross-axis minimum; true when it
+        // changed
+        bool ApplyMinimumSizeConstraint(IRenderContext* ctx);
+        // A setting that changes what the slider needs room for changed: the
+        // minimum is set again before the next layout reads it (during the
+        // layout is too late), and the slider is drawn again
+        void SizeMayHaveChanged();
         Color ZoneColor(float fraction) const;
         std::string FormatNumber(float value) const;
 

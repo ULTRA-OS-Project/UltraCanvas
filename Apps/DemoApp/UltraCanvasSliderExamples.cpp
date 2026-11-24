@@ -271,11 +271,14 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSliderExamples() {
         auto container = DemoKit::CreatePage("SliderExamples", Tr("Simple Slider Examples"), "");
 
-        // A live readout on a coloured background, as wide as its text.
+        // A live readout on a coloured background, as wide as its text. The
+        // pastel backgrounds are for the light look; in a dark one the
+        // readout sits on the theme's accent tint, under the theme's ink.
         auto addReadout = [](const std::shared_ptr<UltraCanvasContainer>& row, const std::string& id,
                              const std::string& text, const Color& background) {
             auto label = DemoKit::CreateText(id, text);
-            label->SetBackgroundColor(background);
+            const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+            label->SetBackgroundColor((theme.dark || theme.highContrast) ? theme.roles.accentSoft : background);
             label->SetPadding(3);
             label->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
             DemoKit::Add(row, label);

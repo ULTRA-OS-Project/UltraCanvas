@@ -1,5 +1,7 @@
 // core/UltraCanvasSlider.cpp
 // Platform-independent slider component implementation
+// Version: 1.7.0 - the slider sizes itself: its minimum and preferred size for the layout, and a
+//                  cross-axis minimum of its own when the given size is too small for what it shows
 // Version: 1.6.0 - ticks and labels, the new handle shapes and styles, the bubble, the
 //                  fill origin, rounded track ends, the circular value arc, relative drag
 //                  and the wheel for knobs and the ruler, double-click reset
@@ -224,6 +226,7 @@ namespace UltraCanvas {
         } else if (newStyle == SliderStyle::Horizontal) {
             orientation = SliderOrientation::Horizontal;
         }
+        SizeMayHaveChanged();
     }
 
     void UltraCanvasSlider::SetOrientation(SliderOrientation orient) {
@@ -234,6 +237,7 @@ namespace UltraCanvas {
         } else if (orient == SliderOrientation::Horizontal && sliderStyle == SliderStyle::Vertical) {
             sliderStyle = SliderStyle::Horizontal;
         }
+        SizeMayHaveChanged();
     }
 
     void UltraCanvasSlider::SetColors(const Color &track, const Color &activeTrack, const Color &handle) {
@@ -250,8 +254,10 @@ namespace UltraCanvas {
         Rect2Di bounds = GetLocalBounds();
 
         // The labels' size decides how much room the layout leaves them, so
-        // measure them before anything is placed.
+        // measure them before anything is placed - and if the size given is
+        // too small for them, ask the layout for more (next frame).
         MeasureTickLabels(ctx);
+        if (ApplyMinimumSizeConstraint(ctx)) InvalidateLayout();
 
         // ===== RENDER BASED ON STYLE =====
         bool drawsOwnValue = false;
@@ -505,12 +511,7 @@ namespace UltraCanvas {
         // The ticks and their labels are laid out either side of that band
         // (the band itself is what this returns), and a label wider than the
         // handle pulls both ends in so the end labels are not cut off.
-        // How far the handle reaches across the bar (see RenderHandle's shapes)
-        float handleCross = style.handleSize;
-        if (style.handleShape == SliderHandleShape::FaderCap) handleCross = style.handleSize * 2.0f;
-        else if (style.handleShape == SliderHandleShape::Bar) handleCross = style.handleSize * 1.6f;
-        else if (style.handleShape == SliderHandleShape::Pointer) handleCross = style.handleSize * 1.2f;
-        int core = (int)std::ceil(std::max(handleCross, style.trackHeight + 2.0f * style.borderWidth));
+        int core = CoreThickness();
         int before = TickExtent(true);
         int after = TickExtent(false);
         int thickness = core + before + after;
@@ -523,6 +524,232 @@ namespace UltraCanvas {
             int y = centred ? bounds.y + (bounds.height - thickness) / 2
                             : bounds.y + bounds.height - thickness;
             return Rect2Di(bounds.x + inset, y + before, std::max(0, bounds.width - 2 * inset), core);
+        }
+    }
+
+    int UltraCanvasSlider::CoreThickness() const {
+        // How far the handle reaches across the bar (see RenderHandle's shapes)
+        float handleCross = style.handleSize;
+        if (style.handleShape == SliderHandleShape::FaderCap) handleCross = style.handleSize * 2.0f;
+        else if (style.handleShape == SliderHandleShape::Bar) handleCross = style.handleSize * 1.6f;
+        else if (style.handleShape == SliderHandleShape::Pointer) handleCross = style.handleSize * 1.2f;
+        else if (style.handleShape == SliderHandleShape::NoHandle) handleCross = 0.0f;
+        return (int)std::ceil(std::max(handleCross, style.trackHeight + 2.0f * style.borderWidth));
+    }
+
+    // ===== SIZE =====
+
+    int UltraCanvasSlider::TextLineHeight(IRenderContext *ctx) const {
+        if (ctx) {
+            ctx->PushState();
+            ctx->SetFontStyle(style.fontStyle);
+            int height = ctx->GetTextDimension("0").y;
+            ctx->PopState();
+            if (height > 0) return height;
+        }
+        float size = style.fontStyle.fontSize > 0 ? style.fontStyle.fontSize : 12.0f;
+        return (int)std::ceil(size * 1.4f);
+    }
+
+    int UltraCanvasSlider::ValueTextWidth(IRenderContext *ctx) const {
+        // The widest of the texts the ends of the range show
+        std::string texts[2] = { FormatValue(minValue), FormatValue(maxValue) };
+        int widest = 0;
+        if (ctx) {
+            ctx->PushState();
+            ctx->SetFontStyle(style.fontStyle);
+            for (const auto& text : texts) widest = std::max(widest, ctx->GetTextDimension(text).x);
+            ctx->PopState();
+            return widest;
+        }
+        float size = style.fontStyle.fontSize > 0 ? style.fontStyle.fontSize : 12.0f;
+        for (const auto& text : texts) widest = std::max(widest, (int)std::ceil(text.size() * size * 0.6f));
+        return widest;
+    }
+
+    Size2Df UltraCanvasSlider::ComputeMinimumSize(IRenderContext *ctx) const {
+        if (ctx) {
+            ctx->PushState();
+            MeasureTickLabels(ctx);
+            ctx->PopState();
+        }
+        const bool isVertical = (orientation == SliderOrientation::Vertical);
+        const int textHeight = TextLineHeight(ctx);
+        const float handle = style.handleSize;
+
+        if (!isRangeMode && IsRotary()) {
+            // Room for the ring, the handle on it and the value in the middle
+            float ring = 2.0f * (std::max(style.trackHeight, handle) + 8.0f);
+            float text = ShouldShowValueText() ? ValueTextWidth(ctx) + 8.0f : 0.0f;
+            float side = std::max(48.0f, ring + text);
+            if (sliderStyle == SliderStyle::Knob) side = std::max(side, 64.0f);
+            return Size2Df(side, side);
+        }
+        if (!isRangeMode && sliderStyle == SliderStyle::Field) {
+            float name = 0.0f;
+            if (!customText.empty()) {
+                if (ctx) {
+                    ctx->PushState();
+                    ctx->SetFontStyle(style.fontStyle);
+                    name = (float)ctx->GetTextDimension(customText).x;
+                    ctx->PopState();
+                } else {
+                    name = customText.size() * (style.fontStyle.fontSize > 0 ? style.fontStyle.fontSize : 12.0f) * 0.6f;
+                }
+            }
+            return Size2Df(name + ValueTextWidth(ctx) + 3 * 8.0f, textHeight + 8.0f);
+        }
+        if (!isRangeMode && sliderStyle == SliderStyle::Ruler) {
+            float height = (valueDisplay != SliderValueDisplay::NoDisplay ? textHeight + 4.0f : 2.0f) + 7.0f +
+                           std::max(style.tickLength, style.minorTickLength) +
+                           (showTickLabels ? 3.0f + textHeight : 0.0f) + 2.0f;
+            return Size2Df(100.0f, height);
+        }
+
+        // A bar: the band, the ticks and labels either side, and the room
+        // the value takes above (beside) it
+        float cross = (float)(CoreThickness() + TickExtent(true) + TickExtent(false));
+        float valueRoom = 0.0f;
+        const bool bubble = valueDisplay == SliderValueDisplay::Bubble ||
+                            valueDisplay == SliderValueDisplay::BubbleWhileDragging || hoverPreview;
+        const int valueExtent = isVertical ? ValueTextWidth(ctx) : textHeight;
+        if (bubble) valueRoom = valueExtent + 6.0f + 5.0f + (isVertical ? 6.0f : 0.0f);
+        else if (valueDisplay == SliderValueDisplay::Tooltip) valueRoom = valueExtent + 6.0f + (isVertical ? 8.0f : 0.0f);
+        else if (valueDisplay != SliderValueDisplay::NoDisplay) valueRoom = valueExtent + 2.0f;
+        if (!histogram.empty() && !isVertical) valueRoom = std::max(valueRoom, 28.0f);
+        cross += valueRoom;
+
+        // Along the bar: the handle's travel, and the labels side by side
+        float length = handle * 4.0f;
+        if (tickPosition != SliderTickPosition::NoTicks && (showTickLabels || !stopLabels.empty())) {
+            int labels = 0;
+            size_t longest = 0;
+            for (const auto& tick : GetTickValues()) {
+                if (!tick.second) continue;
+                labels++;
+                if (labelWidth <= 0) longest = std::max(longest, GetTickLabel(tick.first).size());
+            }
+            // Measured once there is a context; estimated from the text before
+            float fontSize = style.fontStyle.fontSize > 0 ? style.fontStyle.fontSize : 12.0f;
+            float width = labelWidth > 0 ? (float)labelWidth : longest * fontSize * 0.6f;
+            float each = isVertical ? (labelHeight > 0 ? labelHeight : textHeight) + 2.0f : width + 4.0f;
+            length = std::max(length, labels * each);
+        }
+        length += 2.0f * LabelOverhang();
+        return isVertical ? Size2Df(cross, length) : Size2Df(length, cross);
+    }
+
+    Size2Df UltraCanvasSlider::GetMinimumSize() const {
+        return ComputeMinimumSize(GetRenderContext());
+    }
+
+    float UltraCanvasSlider::GetPreferredLength() const {
+        Size2Df minimum = GetMinimumSize();
+        float length = (!isRangeMode && IsRotary()) ? 96.0f : (sliderStyle == SliderStyle::Ruler ? 200.0f : 160.0f);
+        bool isVertical = (orientation == SliderOrientation::Vertical) && !(!isRangeMode && IsRotary());
+        return std::max(length, isVertical ? minimum.height : minimum.width);
+    }
+
+    void UltraCanvasSlider::SetGrowToFit(bool grow) {
+        growToFit = grow;
+        SizeMayHaveChanged();
+    }
+
+    void UltraCanvasSlider::SizeMayHaveChanged() {
+        if (ApplyMinimumSizeConstraint(GetRenderContext())) InvalidateLayout();
+        RequestRedraw();
+    }
+
+    bool UltraCanvasSlider::ApplyMinimumSizeConstraint(IRenderContext *ctx) {
+        // A rotary slider has no "across": its explicit size is its size.
+        const bool rotary = !isRangeMode && IsRotary();
+        const bool onWidth = (orientation == SliderOrientation::Vertical) && !rotary;
+        bool changed = false;
+
+        // Drop the minimum this slider set earlier on the other axis (the
+        // orientation changed) or when it should no longer set one.
+        auto release = [&](bool width) {
+            if (autoMinCross < 0.0f || autoMinOnWidth != width || !boxConstraints) return;
+            CSSLayout::Dimension& d = width ? boxConstraints->minWidth : boxConstraints->minHeight;
+            if (d.unit == CSSLayout::DimensionUnit::Pixels && std::abs(d.value - autoMinCross) < 0.5f) {
+                d = CSSLayout::Dimension::Auto();
+                changed = true;
+            }
+            autoMinCross = -1.0f;
+        };
+
+        if (!growToFit || rotary) {
+            release(autoMinOnWidth);
+            return changed;
+        }
+        if (autoMinCross >= 0.0f && autoMinOnWidth != onWidth) release(autoMinOnWidth);
+
+        Size2Df minimum = ComputeMinimumSize(ctx);
+        float needed = std::ceil(onWidth ? minimum.width : minimum.height);
+        // Only what the slider shows beyond its bar makes it grow: a plain
+        // slider keeps whatever size it was given, as it always did.
+        const bool decorated = needed > CoreThickness() + 0.5f;
+
+        if (!boxConstraints) {
+            if (!decorated) return changed;
+            boxConstraints.emplace();
+        }
+        CSSLayout::Dimension& d = onWidth ? boxConstraints->minWidth : boxConstraints->minHeight;
+        const bool ours = d.unit == CSSLayout::DimensionUnit::Auto ||
+                          (autoMinCross >= 0.0f && d.unit == CSSLayout::DimensionUnit::Pixels &&
+                           std::abs(d.value - autoMinCross) < 0.5f);
+        if (!ours) return changed;   // the application's own minimum
+        if (!decorated) {
+            release(onWidth);
+            return changed;
+        }
+        if (d.unit == CSSLayout::DimensionUnit::Pixels && std::abs(d.value - needed) < 0.5f) return changed;
+        d = CSSLayout::Dimension::Px(needed);
+        autoMinCross = needed;
+        autoMinOnWidth = onWidth;
+        return true;
+    }
+
+    Size2Df UltraCanvasSlider::MeasureOwnContent(std::optional<float> definiteContentWidth,
+                                                 const CSSLayout::LayoutContext& ctx) {
+        (void)ctx;
+        // A slider has no natural length: it takes the preferred one, or the
+        // width it is given; across the bar, what it shows needs.
+        Size2Df minimum = GetMinimumSize();
+        const bool rotary = !isRangeMode && IsRotary();
+        if (rotary) {
+            float side = GetPreferredLength();
+            return Size2Df(definiteContentWidth ? std::max(0.0f, *definiteContentWidth) : side, side);
+        }
+        if (orientation == SliderOrientation::Vertical) {
+            return Size2Df(minimum.width, GetPreferredLength());
+        }
+        return Size2Df(definiteContentWidth ? std::max(0.0f, *definiteContentWidth) : GetPreferredLength(),
+                       minimum.height);
+    }
+
+    void UltraCanvasSlider::ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) {
+        (void)ctx;
+        ApplyMinimumSizeConstraint(GetRenderContext());
+        const float padH = GetTotalPaddingHorizontal() + GetTotalBorderHorizontal();
+        const float padV = GetTotalPaddingVertical() + GetTotalBorderVertical();
+        Size2Df minimum = GetMinimumSize();
+        const float preferred = GetPreferredLength();
+        const bool rotary = !isRangeMode && IsRotary();
+        intrinsic.valid = true;
+        if (rotary) {
+            intrinsic.minContentWidth = minimum.width + padH;
+            intrinsic.maxContentWidth = preferred + padH;
+            intrinsic.minContentHeight = minimum.height + padV;
+            intrinsic.maxContentHeight = preferred + padV;
+        } else if (orientation == SliderOrientation::Vertical) {
+            intrinsic.minContentWidth = intrinsic.maxContentWidth = minimum.width + padH;
+            intrinsic.minContentHeight = minimum.height + padV;
+            intrinsic.maxContentHeight = preferred + padV;
+        } else {
+            intrinsic.minContentWidth = minimum.width + padH;
+            intrinsic.maxContentWidth = preferred + padH;
+            intrinsic.minContentHeight = intrinsic.maxContentHeight = minimum.height + padV;
         }
     }
 

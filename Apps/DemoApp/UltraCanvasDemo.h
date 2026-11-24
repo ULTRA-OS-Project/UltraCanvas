@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
+// Version: 1.0.14 - the header and the legend follow the theme (OnThemeChanged)
 // Version: 1.0.13 - CreateRidgelineChartExamples
 // Version: 1.0.12 - CreateThemeExamples (Modules > Theme)
 // Version: 1.0.11 - CreateHistogramChartExamples
@@ -156,6 +157,12 @@ namespace UltraCanvas {
         void SetupLegend(const std::string& implementedIconPath,
                          const std::string& partialIconPath,
                          const std::string& notImplementedIconPath);
+        // Light, as it was designed, or the theme's panel and inks
+        void PaintThemeColours(const UltraCanvasTheme& theme);
+        void OnThemeChanged(const UltraCanvasTheme& theme) override {
+            UltraCanvasContainer::OnThemeChanged(theme);
+            PaintThemeColours(theme);
+        }
 
     };
 
@@ -179,6 +186,12 @@ namespace UltraCanvas {
 
         void ShowSourceWindow();
         void ShowDocumentationWindow();
+
+        void PaintThemeColours(const UltraCanvasTheme& theme);
+        void OnThemeChanged(const UltraCanvasTheme& theme) override {
+            UltraCanvasContainer::OnThemeChanged(theme);
+            PaintThemeColours(theme);
+        }
 
     private:
         std::string LoadFileContent(const std::string& filePath);

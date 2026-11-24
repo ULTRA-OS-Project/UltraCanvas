@@ -1,8 +1,9 @@
 // Apps/DemoApp/UltraCanvasDemoPageKit.cpp
 // The shared demo page look (UltraCanvasDemoPageKit.h).
+// Version: 1.2.0 - ColourOf, KitContainer, KitLabel: the kit follows a dark theme
 // Version: 1.1.0 - ApplyContentMinWidth
 // Version: 1.0.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemoPageKit.h"
@@ -15,6 +16,53 @@
 namespace UltraCanvas {
 namespace DemoKit {
 
+    Color ColourOf(KitColour part, const UltraCanvasTheme& theme) {
+        const ThemeRoles& r = theme.roles;
+        if (!theme.dark && !theme.highContrast) {
+            // The light look the pages were designed in
+            switch (part) {
+                case KitColour::Page:       return Color(248, 249, 252, 255);
+                case KitColour::Card:       return Color(255, 255, 255, 255);
+                case KitColour::CardBorder: return Color(224, 227, 235, 255);
+                case KitColour::Title:      return Color(30, 41, 59, 255);
+                case KitColour::Body:       return Color(51, 65, 85, 255);
+                case KitColour::Subtitle:   return Color(100, 110, 125, 255);
+                case KitColour::Caption:    return Color(130, 138, 152, 255);
+                case KitColour::Link:       return Color(37, 99, 235, 255);
+            }
+        }
+        switch (part) {
+            case KitColour::Page:       return r.ground;
+            case KitColour::Card:       return r.panel;
+            case KitColour::CardBorder: return r.line;
+            case KitColour::Title:      return r.ink;
+            case KitColour::Body:       return r.ink;
+            case KitColour::Subtitle:   return r.inkMuted;
+            case KitColour::Caption:    return r.inkFaint;
+            case KitColour::Link:       return r.accent;
+        }
+        return r.ink;
+    }
+
+    void KitContainer::SetKitBackground(KitColour part, bool cardBorder) {
+        hasKitBackground = true;
+        background = part;
+        hasCardBorder = cardBorder;
+        PaintKitColours(UltraCanvasTheme::Current());
+    }
+
+    void KitContainer::PaintKitColours(const UltraCanvasTheme& theme) {
+        if (!hasKitBackground) return;
+        SetBackgroundColor(ColourOf(background, theme));
+        if (hasCardBorder) SetBorders(1.0f, ColourOf(KitColour::CardBorder, theme), kCardRadius);
+    }
+
+    void KitContainer::OnThemeChanged(const UltraCanvasTheme& theme) {
+        UltraCanvasContainer::OnThemeChanged(theme);
+        PaintKitColours(theme);
+        RequestRedraw();
+    }
+
     namespace {
 
         ContainerStyle PlainStyle() {
@@ -24,11 +72,10 @@ namespace DemoKit {
         }
 
         std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text,
-                                                    float size, FontWeight weight, const Color& color) {
-            auto label = std::make_shared<UltraCanvasLabel>(id, text);
+                                                    float size, FontWeight weight, KitColour part) {
+            auto label = std::make_shared<KitLabel>(id, text, part);
             label->SetFontSize(size);
             label->SetFontWeight(weight);
-            label->SetTextColor(color);
             // Between words, and inside one only when it is longer than the
             // line (a code sample in a caption) - never cut off.
             label->SetWrap(TextWrap::WrapWordChar);
@@ -47,7 +94,7 @@ namespace DemoKit {
     std::shared_ptr<DemoPage> CreatePage(const std::string& id, const std::string& title,
                                          const std::string& subtitle) {
         auto page = std::make_shared<DemoPage>(id);
-        page->SetBackgroundColor(PageBackground());
+        page->SetKitBackground(KitColour::Page);
         page->SetPadding(kPagePadding);
         page->SetContainerStyle(PlainStyle());
         page->layout.SetFlexColumn().SetFlexGap(kPageGap)
@@ -58,23 +105,23 @@ namespace DemoKit {
     }
 
     std::shared_ptr<UltraCanvasLabel> CreateTitle(const std::string& id, const std::string& text) {
-        return MakeLabel(id, text, 18, FontWeight::Bold, TitleText());
+        return MakeLabel(id, text, 18, FontWeight::Bold, KitColour::Title);
     }
 
     std::shared_ptr<UltraCanvasLabel> CreateSubtitle(const std::string& id, const std::string& text) {
-        return MakeLabel(id, text, 11, FontWeight::Normal, SubtitleText());
+        return MakeLabel(id, text, 11, FontWeight::Normal, KitColour::Subtitle);
     }
 
     std::shared_ptr<UltraCanvasLabel> CreateHeading(const std::string& id, const std::string& text) {
-        return MakeLabel(id, text, 13, FontWeight::Bold, TitleText());
+        return MakeLabel(id, text, 13, FontWeight::Bold, KitColour::Title);
     }
 
     std::shared_ptr<UltraCanvasLabel> CreateText(const std::string& id, const std::string& text) {
-        return MakeLabel(id, text, 12, FontWeight::Normal, BodyText());
+        return MakeLabel(id, text, 12, FontWeight::Normal, KitColour::Body);
     }
 
     std::shared_ptr<UltraCanvasLabel> CreateCaption(const std::string& id, const std::string& text) {
-        return MakeLabel(id, text, 10, FontWeight::Normal, CaptionText());
+        return MakeLabel(id, text, 10, FontWeight::Normal, KitColour::Caption);
     }
 
     std::shared_ptr<UltraCanvasLabel> CreateBullets(const std::string& id, const std::vector<std::string>& items) {
@@ -83,14 +130,13 @@ namespace DemoKit {
             if (!text.empty()) text += "\n";
             text += "• " + item;
         }
-        return MakeLabel(id, text, 11, FontWeight::Normal, BodyText());
+        return MakeLabel(id, text, 11, FontWeight::Normal, KitColour::Body);
     }
 
     std::shared_ptr<UltraCanvasContainer> CreateCard(const std::string& id, const std::string& title,
                                                      const std::string& description) {
-        auto card = std::make_shared<UltraCanvasContainer>(id);
-        card->SetBackgroundColor(CardBackground());
-        card->SetBorders(1.0f, CardBorder(), kCardRadius);
+        auto card = std::make_shared<KitContainer>(id);
+        card->SetKitBackground(KitColour::Card, true);
         card->SetPadding(kCardPadding);
         card->SetContainerStyle(PlainStyle());
         card->layout.SetFlexColumn().SetFlexGap(kCardGap)

@@ -25,6 +25,7 @@
   - [Tick Marks and Labels](#tick-marks-and-labels)
   - [Fill Origin, Reset and Colour Zones](#fill-origin-reset-and-colour-zones)
   - [Rotary, Seek, Histogram, Segments, Ruler](#rotary-seek-histogram-segments-ruler)
+  - [Size](#size)
   - [Range Mode (two handles)](#range-mode-two-handles)
 - [Event Callbacks](#event-callbacks)
 - [Factory Functions](#factory-functions)
@@ -51,7 +52,7 @@
 The **UltraCanvasSlider** is a versatile and feature-rich interactive slider control component for the UltraCanvas Framework. It provides multiple styles, value display options, and comprehensive customization capabilities for creating intuitive range selection interfaces.
 
 **File Location**: `include/UltraCanvasSlider.h`  
-**Version**: 3.9.0  
+**Version**: 3.10.0  
 **Last Modified**: 2026-11-24  
 **Author**: UltraCanvas Framework
 
@@ -433,6 +434,35 @@ Angles are in degrees clockwise from 3 o'clock; the default arc starts at 135
 and sweeps 270, leaving a gap at the bottom. The histogram's buckets spread
 evenly across the range, in the free space above the track; the bars under
 the selection (or the fill) take `histogramActiveColor`.
+
+### Size
+
+```cpp
+Size2Df GetMinimumSize() const;   // the smallest box nothing is cut off in
+float GetPreferredLength() const; // the length when nothing sizes it: 160 px (96 for a knob, 200 for a ruler)
+void SetGrowToFit(bool grow);     // on by default
+bool GetGrowToFit() const;
+```
+
+A slider sizes itself in a layout: built without a size
+(`UltraCanvasSlider("Volume")`) it takes its preferred length and, across
+the bar, what it shows needs - the handle, the ticks and their labels, the
+value text, a bubble or a histogram. The labels are measured with the
+window's text engine once there is one, and estimated from the font before.
+
+A size given explicitly is kept along the bar. Across it, a size too small
+for the ticks, labels or value grows: the slider sets its own `min-height`
+(`min-width` when vertical) and the layout makes room. A plain slider
+(nothing beyond its bar) keeps whatever size it was given, as before; a
+`min-height` the application set itself is left alone; and
+`SetGrowToFit(false)` keeps the given size whatever is cut off.
+
+```cpp
+auto delay = CreateSlider("Delay", 0, 0, 300, 20);   // 20 px is too short for labels
+delay->SetTickPosition(SliderTickPosition::After);
+delay->SetTickLabels(true);                          // the layout now gives it ~44 px
+Size2Df needed = delay->GetMinimumSize();
+```
 
 ### Range Mode (two handles)
 

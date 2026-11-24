@@ -1,7 +1,9 @@
 // Apps/DemoApp/UltraCanvasDemoPageKit.h
 // The one look every demo page shares - the Level Meter page's: a light page
 // with a bold title and a grey description, the examples in white rounded
-// cards with a heading, captions and notes in grey.
+// cards with a heading, captions and notes in grey. In a dark (or a
+// high-contrast) theme the same parts take the theme's roles: the ground for
+// the page, the panel for the cards, ink and muted ink for the text.
 //
 // Everything here sizes to its text. No label gets a fixed width or height:
 // a column stretches it across and it is as tall as its wrapped lines, so a
@@ -22,14 +24,17 @@
 //                     {"UltraCanvasToolbarBuilder builds it fluently", "..."});
 //   return page;
 //
+// Version: 1.2.0 - the colours follow the theme: the light look as it was, the theme's roles in a
+//                  dark or high-contrast one; KitContainer / KitLabel re-colour on a theme change
 // Version: 1.1.0 - ApplyContentMinWidth: nothing narrower than its fixed content
 // Version: 1.0.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasTheme.h"
 #include "UltraLocalisation/UltraLocalisation.h"   // Tr for the pages' texts
 
 #include <memory>
@@ -40,14 +45,50 @@ namespace UltraCanvas {
 namespace DemoKit {
 
     // ===== COLOURS =====
-    inline Color PageBackground() { return Color(248, 249, 252, 255); }
-    inline Color CardBackground() { return Color(255, 255, 255, 255); }
-    inline Color CardBorder()     { return Color(224, 227, 235, 255); }
-    inline Color TitleText()      { return Color(30, 41, 59, 255); }
-    inline Color BodyText()       { return Color(51, 65, 85, 255); }
-    inline Color SubtitleText()   { return Color(100, 110, 125, 255); }
-    inline Color CaptionText()    { return Color(130, 138, 152, 255); }
-    inline Color LinkText()       { return Color(37, 99, 235, 255); }
+    // The kit's colours by part. In the plain light theme they are the kit's
+    // own (the light look the pages were designed in); in a dark or a
+    // high-contrast theme they are the current theme's roles, so a page is
+    // dark when the application is.
+    enum class KitColour { Page, Card, CardBorder, Title, Body, Subtitle, Caption, Link };
+    Color ColourOf(KitColour part, const UltraCanvasTheme& theme);
+    inline Color ColourOf(KitColour part) { return ColourOf(part, UltraCanvasTheme::Current()); }
+
+    inline Color PageBackground() { return ColourOf(KitColour::Page); }
+    inline Color CardBackground() { return ColourOf(KitColour::Card); }
+    inline Color CardBorder()     { return ColourOf(KitColour::CardBorder); }
+    inline Color TitleText()      { return ColourOf(KitColour::Title); }
+    inline Color BodyText()       { return ColourOf(KitColour::Body); }
+    inline Color SubtitleText()   { return ColourOf(KitColour::Subtitle); }
+    inline Color CaptionText()    { return ColourOf(KitColour::Caption); }
+    inline Color LinkText()       { return ColourOf(KitColour::Link); }
+
+    // A container painted in a kit colour (a page, a card: with the card's
+    // border), painted again when the theme changes while it is shown.
+    class KitContainer : public UltraCanvasContainer {
+    public:
+        explicit KitContainer(const std::string& identifier) : UltraCanvasContainer(identifier) {}
+        // The background part, and whether it has the card's rounded border
+        void SetKitBackground(KitColour part, bool cardBorder = false);
+        void OnThemeChanged(const UltraCanvasTheme& theme) override;
+    private:
+        void PaintKitColours(const UltraCanvasTheme& theme);
+        bool hasKitBackground = false;
+        KitColour background = KitColour::Page;
+        bool hasCardBorder = false;
+    };
+
+    // A label whose text is in a kit colour, again when the theme changes.
+    class KitLabel : public UltraCanvasLabel {
+    public:
+        KitLabel(const std::string& identifier, const std::string& text, KitColour part)
+            : UltraCanvasLabel(identifier, text), textPart(part) { SetTextColor(ColourOf(part)); }
+        void OnThemeChanged(const UltraCanvasTheme& theme) override {
+            UltraCanvasLabel::OnThemeChanged(theme);
+            SetTextColor(ColourOf(textPart, theme));
+        }
+    private:
+        KitColour textPart;
+    };
 
     // ===== SPACING =====
     constexpr float kPagePadding = 16.0f;
@@ -63,9 +104,9 @@ namespace DemoKit {
     // A demo page. DisplayDemoItem recognises it: as tall as its content and
     // scrolled by the page area, or - SetFillsArea(true) - exactly as tall as
     // the area, for a page whose content scrolls itself (an editor, a list).
-    class DemoPage : public UltraCanvasContainer {
+    class DemoPage : public KitContainer {
     public:
-        explicit DemoPage(const std::string& identifier) : UltraCanvasContainer(identifier) {}
+        explicit DemoPage(const std::string& identifier) : KitContainer(identifier) {}
         void SetFillsArea(bool fills) { fillsArea = fills; }
         bool FillsArea() const { return fillsArea; }
 

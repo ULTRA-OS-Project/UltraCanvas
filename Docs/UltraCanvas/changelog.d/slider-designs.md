@@ -33,3 +33,24 @@
   - `Tests/SliderDesignsTest` covers where the ticks fall (a ruler's on round
     numbers), their labels and named stops, the double-click reset, and the
     relative drag of a knob and a ruler.
+- **`UltraCanvasSlider` sizes itself.** Its `MeasureOwnContent` was a TODO,
+  so a slider had to be given a size, and one given too little for its ticks
+  and labels had them cut off. It now reports its size to the layout - a
+  preferred length, and across the bar what the handle, ticks, labels, value
+  text, bubble or histogram need (`GetMinimumSize`, `GetPreferredLength`) -
+  and when a size given explicitly is too small across the bar for what it
+  shows, it sets its own `min-height` (`min-width` when vertical) so the
+  layout grows it. A plain slider keeps its given size exactly; a minimum the
+  application set is left alone; `SetGrowToFit(false)` turns it off.
+- **DemoApp follows a dark theme.** The page kit (`UltraCanvasDemoPageKit`)
+  and the demo's own frame - the header, the status legend, the page area and
+  its scrollbars - had fixed light colours, so with a dark theme the tree and
+  the controls turned dark while the pages, cards and header stayed light,
+  and theme-coloured text on them (the header's title, a slider's value, the
+  range sliders' labels) was white on white. They now take the theme's roles
+  in a dark or high-contrast theme (the light look is unchanged) and change
+  with it when the theme switches while a page is shown
+  (`DemoKit::ColourOf`, `KitContainer`, `KitLabel`). Pages that paint their
+  own fixed colours still do.
+- The demo's slider page is translated: its 65 texts in every language of
+  the demo catalogue, as machine drafts awaiting review.

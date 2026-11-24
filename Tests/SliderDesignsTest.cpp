@@ -4,12 +4,19 @@
 // that a knob or a ruler moves by dragging from where it is instead of
 // jumping to where the press lands.
 //
-// Runs headless: the slider is driven with events, no window.
+// Also how the slider sizes itself: a minimum across the bar for what it
+// shows, a size given too small for that growing to it in a layout, and a
+// plain slider or an application's own minimum left as they were.
+//
+// Runs headless: the slider is driven with events and laid out in a
+// container, no window.
+// Version: 1.1.0 - sizing: GetMinimumSize, grow to fit, intrinsic size
 // Version: 1.0.0
 // Last Modified: 2026-11-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlider.h"
+#include "UltraCanvasContainer.h"
 #include "UltraCanvasEvent.h"
 
 #include <cmath>
@@ -151,11 +158,91 @@ static void TestRelativeDrag() {
     ruler->OnEvent(Mouse(UCEventType::MouseUp, 120, 30));
 }
 
+// Lays a column out at w x h, the slider in it, and returns the slider's
+// bounds after the layout.
+static Rect2Df LayOut(const std::shared_ptr<UltraCanvasSlider>& slider, float w, float h) {
+    using namespace CSSLayout;
+    auto column = std::make_shared<UltraCanvasContainer>("Column", 0, 0, w, h);
+    column->layout.SetFlexColumn().SetFlexAlignItems(AlignItems::Start);
+    column->AddChild(slider);
+    LayoutContext ctx;
+    MeasureConstraints mc{ { ConstraintMode::Exact, w }, { ConstraintMode::Exact, h } };
+    column->Measure(mc, ctx);
+    column->Arrange(Rect2Df{ 0, 0, w, h }, ctx);
+    // The slider keeps a pointer to its parent: the column stays alive
+    static std::vector<std::shared_ptr<UltraCanvasContainer>> columns;
+    columns.push_back(column);
+    return slider->GetBounds();
+}
+
+static void TestSizing() {
+    // A plain slider: its band is its minimum, and a given size is kept
+    auto plain = CreateSlider("PlainSize", 0, 0, 300, 20);
+    TEST("plain slider: minimum across is the handle", Near(plain->GetMinimumSize().height, 16.0f));
+    Rect2Df plainBox = LayOut(plain, 400, 200);
+    TEST("plain slider: the given 300 x 20 stays", Near(plainBox.width, 300.0f) && Near(plainBox.height, 20.0f));
+    TEST("plain slider: no constraint of its own", !plain->boxConstraints.has_value());
+
+    // Ticks and labels need more than the 20 px given: it grows to them
+    auto labelled = CreateSlider("LabelledSize", 0, 0, 300, 20);
+    labelled->SetTickPosition(SliderTickPosition::After);
+    labelled->SetTickInterval(25.0f);
+    labelled->SetTickLabels(true);
+    float needed = labelled->GetMinimumSize().height;
+    TEST("labelled slider: needs more than its band", needed > 16.0f + 6.0f);
+    Rect2Df labelledBox = LayOut(labelled, 400, 200);
+    TEST("labelled slider: grows from 20 to what its labels need",
+         labelledBox.height >= needed - 0.5f && Near(labelledBox.width, 300.0f));
+
+    // Switched off, the given size stays
+    auto fixed = CreateSlider("FixedSize", 0, 0, 300, 20);
+    fixed->SetTickPosition(SliderTickPosition::After);
+    fixed->SetTickLabels(true);
+    fixed->SetGrowToFit(false);
+    TEST("grow to fit off: the given height stays", Near(LayOut(fixed, 400, 200).height, 20.0f));
+
+    // An application's own min-height is left alone
+    auto own = CreateSlider("OwnMinimum", 0, 0, 300, 20);
+    own->SetTickPosition(SliderTickPosition::After);
+    own->SetTickLabels(true);
+    CSSLayout::BoxConstraints limits;
+    limits.minHeight = CSSLayout::Dimension::Px(70.0f);
+    own->boxConstraints = limits;
+    LayOut(own, 400, 200);
+    TEST("an application's min-height is kept", Near(own->boxConstraints->minHeight.value, 70.0f));
+
+    // Labels off again: the slider drops the minimum it set
+    labelled->SetTickPosition(SliderTickPosition::NoTicks);
+    labelled->SetTickLabels(false);
+    LayOut(labelled, 400, 200);
+    TEST("decorations gone: its own minimum is released",
+         labelled->boxConstraints->minHeight.unit == CSSLayout::DimensionUnit::Auto);
+
+    // A vertical slider grows across too: in width
+    auto vertical = CreateSlider("VerticalSize", 0, 0, 20, 200);
+    vertical->SetOrientation(SliderOrientation::Vertical);
+    vertical->SetTickPosition(SliderTickPosition::Before);
+    vertical->SetTickLabels(true);
+    float neededWide = vertical->GetMinimumSize().width;
+    Rect2Df verticalBox = LayOut(vertical, 400, 300);
+    TEST("vertical slider: grows in width, keeps its height",
+         verticalBox.width >= neededWide - 0.5f && neededWide > 20.0f && Near(verticalBox.height, 200.0f));
+
+    // No size given: the layout sizes it from its own measure
+    auto sized = std::make_shared<UltraCanvasSlider>("Unsized");
+    sized->SetTickPosition(SliderTickPosition::After);
+    sized->SetTickLabels(true);
+    Rect2Df sizedBox = LayOut(sized, 400, 200);
+    TEST("no size given: preferred length, the height its labels need",
+         Near(sizedBox.width, sized->GetPreferredLength()) && sizedBox.height >= sized->GetMinimumSize().height - 0.5f);
+}
+
 int main() {
     TestTickValues();
     TestLabels();
     TestResetAndOrigin();
     TestRelativeDrag();
+    TestSizing();
     std::cerr << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     return failCount == 0 ? 0 : 1;
 }
