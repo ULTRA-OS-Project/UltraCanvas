@@ -67,6 +67,12 @@ jobs:
             triplet: arm64-ios-simulator-ultracanvas
           - kind: device
             triplet: arm64-ios-ultracanvas
+    # bash -eo pipefail (GitHub's `shell: bash`), not the default bash -e: a
+    # step that pipes the sysroot script into `tail` must fail when the
+    # script does - without it a failed build passed with an empty prefix.
+    defaults:
+      run:
+        shell: bash
     env:
       KIND: ${{ matrix.kind }}
       TRIPLET: ${{ matrix.triplet }}

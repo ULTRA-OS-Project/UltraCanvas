@@ -1,0 +1,11 @@
+# Meson cross-file additions for the iOS triplets (VCPKG_MESON_CROSS_FILE).
+#
+# The host is an arm64 Mac and the target arm64 iOS, so Meson takes a test
+# program it builds for the iOS SDK to be runnable here, runs it, and believes
+# what fails. glib's gnulib checks did exactly that: frexpl's run-test failed
+# on the Mac and the configure stopped with "frexpl() is missing or broken
+# beyond repair". An iOS program does not run on macOS (an iOS-simulator one
+# only inside a simulator), so the checks must take their cross-compile
+# answers instead.
+[properties]
+needs_exe_wrapper = true

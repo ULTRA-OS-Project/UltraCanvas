@@ -19,3 +19,7 @@ set(VCPKG_OSX_DEPLOYMENT_TARGET 16.0)
 # The simulator SDK: the same arm64, a different platform in every object
 # (LC_BUILD_VERSION), so a device library does not link into a simulator app.
 set(VCPKG_OSX_SYSROOT iphonesimulator)
+
+# Meson must not run the test programs it builds for iOS on the Mac
+# (ios-meson-cross.txt says why).
+set(VCPKG_MESON_CROSS_FILE "${CMAKE_CURRENT_LIST_DIR}/ios-meson-cross.txt")

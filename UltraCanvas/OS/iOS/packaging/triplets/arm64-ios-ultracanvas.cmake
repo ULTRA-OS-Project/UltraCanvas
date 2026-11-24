@@ -16,3 +16,7 @@ set(VCPKG_OSX_ARCHITECTURES arm64)
 # The oldest iOS the apps would run on: a placeholder until packaging decides
 # (iOSPortInvestigation.md 4.1). Keep the two triplets in step.
 set(VCPKG_OSX_DEPLOYMENT_TARGET 16.0)
+
+# Meson must not run the test programs it builds for iOS on the Mac
+# (ios-meson-cross.txt says why).
+set(VCPKG_MESON_CROSS_FILE "${CMAKE_CURRENT_LIST_DIR}/ios-meson-cross.txt")
