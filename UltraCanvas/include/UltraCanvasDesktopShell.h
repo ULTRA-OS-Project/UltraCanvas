@@ -45,8 +45,6 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
-// Version: 1.17.0 - LaunchProgram starts an application hosted in this
-//                   program (UltraCanvasHostedApps) that stands in for it
 // Version: 1.16.0 - CanCaptureScreen; macOS captures the screen (ScreenCaptureKit, the main
 //                   display, in its pixels with 0,0 at its top-left corner)
 // Version: 1.15.0 - UltraCanvasGlobalShortcut::StartExclusive: the key reaches nothing else

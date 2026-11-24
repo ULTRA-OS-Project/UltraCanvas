@@ -6,9 +6,6 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
-// Version: 1.14.0 - LaunchProgram starts an application hosted in this
-//                  program (UltraCanvasHostedApps::IdForProgram) before
-//                  looking for an executable
 // Version: 1.13.0 - CanCaptureScreen; macOS takes its screen capture from
 //                  OS/MacOS/UltraCanvasMacOSScreenCapture.mm (ULTRACANVAS_DESKTOPSHELL_NATIVE_CAPTURE)
 // Version: 1.12.0 - OpenDisplaySettings, CanOpenDisplaySettings
