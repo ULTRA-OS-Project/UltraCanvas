@@ -5370,6 +5370,24 @@ add_test(NAME SpreadsheetRowUndoTest COMMAND SpreadsheetRowUndoTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: SpreadsheetRowUndoTest")
 
+# ===== SPREADSHEET NAMED RANGE TEST =====
+# Workbook names and their scope: a scoped name is seen only from its sheet
+# and covers it, one name per scope, #NAME? for none, renames and inserted
+# rows followed. No window.
+message(STATUS "  Building SpreadsheetNamedRangeTest...")
+add_executable(SpreadsheetNamedRangeTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetNamedRangeTest.cpp
+)
+target_include_directories(SpreadsheetNamedRangeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpreadsheetNamedRangeTest PRIVATE cxx_std_20)
+target_link_libraries(SpreadsheetNamedRangeTest PRIVATE UltraCanvas)
+set_target_properties(SpreadsheetNamedRangeTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpreadsheetNamedRangeTest COMMAND SpreadsheetNamedRangeTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpreadsheetNamedRangeTest")
+
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # VectorFormatsPluginTest and CDRWriterTest are defined in
 # VectorFormatsTests.cmake, which the top level also includes on its own

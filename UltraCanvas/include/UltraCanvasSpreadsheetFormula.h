@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheetFormula.h
 // Formula parser and evaluation engine (OpenFormula compatible)
+// Version: 1.3.0 - AdjustReferences / GetAdjustedText removed (unused; shifted every reference by a
+//                  fixed offset whatever was inserted, and rebuilt the text in parentheses)
 // Version: 1.2.0 - Recalculate follows a change to every formula that reads it (directly or through
 //                  others): MarkRangeDirty, MarkAllDirty, HasPendingChanges; GetFunctionNames,
 //                  ReadsNamedRanges
@@ -380,11 +382,9 @@ public:
     // Get AST (for evaluation)
     const FormulaNode* GetAST() const { return ast_.get(); }
     
-    // Adjust references when rows/columns are inserted/deleted
-    void AdjustReferences(int startRow, int startCol, int rowDelta, int colDelta);
-    
-    // Get formula with adjusted references
-    std::string GetAdjustedText(int rowOffset, int colOffset) const;
+    // A formula's text is moved by ShiftFormulaReferences (copied or filled)
+    // and MoveFormulaReferencesForRowsColumns (rows or columns inserted or
+    // deleted), both in UltraCanvasSpreadsheetSheet.h, and parsed again.
     
 private:
     void CollectDependencies(const FormulaNode* node);

@@ -14,6 +14,38 @@
 
 namespace UltraCanvas {
 
+namespace {
+
+std::string LowerName(const std::string& text) {
+    std::string out = text;
+    for (auto& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return out;
+}
+
+// One entry per scope and name, matched without regard to case.
+std::string NamedRangeKey(const std::string& sheetScope, const std::string& name) {
+    return LowerName(sheetScope) + '\x1f' + LowerName(name);
+}
+
+// The range a name covers, with the sheet it covers filled in when the name
+// is scoped to a sheet and its range names none.
+CellRange NamedRangeWithSheet(const NamedRange& named) {
+    CellRange range = named.range;
+    if (range.start.sheetName.empty() && !named.sheetScope.empty()) {
+        range.start.sheetName = named.sheetScope;
+        range.end.sheetName = named.sheetScope;
+    }
+    return range;
+}
+
+// No such name: an invalid range, so a formula using it shows #NAME?
+// (a default CellRange is A1:A1, which is valid).
+CellRange NoNamedRange() {
+    return CellRange(CellAddress(-1, -1));
+}
+
+} // namespace
+
 // ============================================================================
 // SHEET MANAGEMENT
 // ============================================================================
@@ -248,7 +280,20 @@ bool UltraCanvasSpreadsheet::RenameSheet(int index, const std::string& newName) 
             rewritten = true;
         });
     }
-    if (rewritten) RecalculateAll();
+    // So do the workbook's names scoped to it or covering it.
+    auto renameInNames = [&](std::map<std::string, NamedRange>& names) {
+        const std::string oldLower = LowerName(oldName);
+        std::map<std::string, NamedRange> renamed;
+        for (auto& [key, named] : names) {
+            if (LowerName(named.sheetScope) == oldLower) named.sheetScope = newName;
+            if (LowerName(named.range.start.sheetName) == oldLower) named.range.start.sheetName = newName;
+            if (LowerName(named.range.end.sheetName) == oldLower) named.range.end.sheetName = newName;
+            renamed[NamedRangeKey(named.sheetScope, named.name)] = named;
+        }
+        names = std::move(renamed);
+    };
+    renameInNames(namedRanges_);
+    if (rewritten || !namedRanges_.empty()) RecalculateAll();
 
     // The undo history follows too: the formulas its steps would put back
     // name the new name (the steps find the sheet itself by its id).
@@ -257,6 +302,7 @@ bool UltraCanvasSpreadsheet::RenameSheet(int index, const std::string& newName) 
         if (action.sheetId == renamedId || (action.sheetId == 0 && action.sheetName == oldName)) {
             action.sheetName = newName;
         }
+        renameInNames(action.workbookNames);
         RewriteSnapshotFormulas(action, [&](const std::string& f) { return RenameSheetInFormula(f, oldName, newName); });
         return true;
     });
@@ -983,7 +1029,9 @@ void UltraCanvasSpreadsheet::MoveReferencesToSheet(const SpreadsheetSheet& chang
     };
     for (auto& [key, named] : namedRanges_) {
         CellRange& range = named.range;
-        if (range.start.sheetName.empty() || GetSheetByName(range.start.sheetName) != &changed) continue;
+        // The sheet it covers: its range's, else the one it is scoped to.
+        const std::string& covers = range.start.sheetName.empty() ? named.sheetScope : range.start.sheetName;
+        if (covers.empty() || GetSheetByName(covers) != &changed) continue;
         CellRange moved = range;
         int& lo = columns ? moved.start.col : moved.start.row;
         int& hi = columns ? moved.end.col : moved.end.row;
@@ -1303,28 +1351,55 @@ void UltraCanvasSpreadsheet::ClearAllFilters() {
 void UltraCanvasSpreadsheet::AddNamedRange(const std::string& name, const CellRange& range,
                                            const std::string& sheetScope) {
     if (name.empty()) return;
-    namedRanges_[name] = NamedRange(name, range, sheetScope);
+    namedRanges_[NamedRangeKey(sheetScope, name)] = NamedRange(name, range, sheetScope);
+    if (formulaEngine_) formulaEngine_->MarkAllDirty();   // formulas using it read other cells now
 }
 
 void UltraCanvasSpreadsheet::RemoveNamedRange(const std::string& name) {
-    namedRanges_.erase(name);
+    const std::string lower = LowerName(name);
+    for (auto it = namedRanges_.begin(); it != namedRanges_.end();) {
+        if (LowerName(it->second.name) == lower) it = namedRanges_.erase(it);
+        else ++it;
+    }
+    if (formulaEngine_) formulaEngine_->MarkAllDirty();
+}
+
+void UltraCanvasSpreadsheet::RemoveNamedRange(const std::string& name, const std::string& sheetScope) {
+    namedRanges_.erase(NamedRangeKey(sheetScope, name));
+    if (formulaEngine_) formulaEngine_->MarkAllDirty();
 }
 
 bool UltraCanvasSpreadsheet::HasNamedRange(const std::string& name) const {
-    return namedRanges_.find(name) != namedRanges_.end();
+    const std::string lower = LowerName(name);
+    for (const auto& [key, named] : namedRanges_) {
+        if (LowerName(named.name) == lower) return true;
+    }
+    return false;
 }
 
-CellRange UltraCanvasSpreadsheet::GetNamedRange(const std::string& name) const {
-    auto it = namedRanges_.find(name);
-    if (it != namedRanges_.end()) return it->second.range;
-    return CellRange();
+bool UltraCanvasSpreadsheet::HasNamedRange(const std::string& name, const std::string& sheetScope) const {
+    return namedRanges_.count(NamedRangeKey(sheetScope, name)) > 0;
+}
+
+CellRange UltraCanvasSpreadsheet::GetNamedRange(const std::string& name, const std::string& sheetScope) const {
+    auto it = namedRanges_.find(NamedRangeKey(sheetScope, name));
+    if (it != namedRanges_.end()) return NamedRangeWithSheet(it->second);
+    return NoNamedRange();
+}
+
+CellRange UltraCanvasSpreadsheet::ResolveNamedRange(const std::string& name, const std::string& fromSheet) const {
+    if (!fromSheet.empty()) {
+        auto it = namedRanges_.find(NamedRangeKey(fromSheet, name));
+        if (it != namedRanges_.end()) return NamedRangeWithSheet(it->second);
+    }
+    return GetNamedRange(name, "");
 }
 
 std::vector<std::string> UltraCanvasSpreadsheet::GetNamedRangeNames() const {
     std::vector<std::string> names;
     names.reserve(namedRanges_.size());
-    for (const auto& [name, range] : namedRanges_) {
-        names.push_back(name);
+    for (const auto& [key, named] : namedRanges_) {
+        names.push_back(named.name);
     }
     return names;
 }

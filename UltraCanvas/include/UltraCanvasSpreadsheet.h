@@ -1,5 +1,7 @@
 // include/UltraCanvasSpreadsheet.h
 // Main spreadsheet UI component with multi-sheet support
+// Version: 1.8.0 - named ranges: one per scope and name, a scoped one visible only from its sheet and
+//                  covering it, following renames (ResolveNamedRange)
 // Version: 1.7.0 - inserting / deleting rows and columns is undone and redone (it was a placeholder step
 //                  whose undo cleared the sheet)
 // Version: 1.6.0 - inserting / deleting rows and columns moves the references in every sheet's formulas
@@ -134,7 +136,7 @@ private:
     int activeSheetIndex_ = 0;
     int firstVisibleTab_ = 0;   // first sheet tab shown in the tab strip
     std::unique_ptr<SpreadsheetFormulaEngine> formulaEngine_;
-    std::map<std::string, NamedRange> namedRanges_;
+    std::map<std::string, NamedRange> namedRanges_;   // by NamedRangeKey(scope, name)
     
     SpreadsheetEditMode editMode_ = SpreadsheetEditMode::Normal;
     // The live text, mirrored from the editor child so the formula preview and
@@ -610,11 +612,27 @@ public:
     void ClearAllFilters();
     
     // ===== NAMED RANGES =====
-    void AddNamedRange(const std::string& name, const CellRange& range, 
+    // A workbook name is visible from every sheet (sheetScope "") or only
+    // from the sheet it is scoped to; the same name may stand once for the
+    // workbook and once per sheet ("Total" on each month's sheet). Names are
+    // matched without regard to case. The range says which sheet it covers
+    // (range.start.sheetName); a scoped name that says none covers its own
+    // sheet, an unscoped one the sheet of the formula using it.
+    void AddNamedRange(const std::string& name, const CellRange& range,
                        const std::string& sheetScope = "");
+    // Without a scope: the name under any scope. With one: only there
+    // ("" is the workbook's).
     void RemoveNamedRange(const std::string& name);
+    void RemoveNamedRange(const std::string& name, const std::string& sheetScope);
     bool HasNamedRange(const std::string& name) const;
-    CellRange GetNamedRange(const std::string& name) const;
+    bool HasNamedRange(const std::string& name, const std::string& sheetScope) const;
+    // The range of the name under exactly that scope, its sheet filled in as
+    // above; an invalid range when there is none.
+    CellRange GetNamedRange(const std::string& name, const std::string& sheetScope = "") const;
+    // What `name` means in a formula on sheet `fromSheet`: the name scoped to
+    // that sheet, else the workbook's - never another sheet's. An invalid
+    // range when neither exists (the formula shows #NAME?).
+    CellRange ResolveNamedRange(const std::string& name, const std::string& fromSheet) const;
     std::vector<std::string> GetNamedRangeNames() const;
     
     // ===== FORMULA ENGINE =====

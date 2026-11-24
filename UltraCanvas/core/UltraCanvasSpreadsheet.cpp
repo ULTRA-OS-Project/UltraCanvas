@@ -2948,8 +2948,8 @@ size_t UltraCanvasSpreadsheet::GetMemorySize() const {
         size += sheet->GetMemorySize();
     }
     
-    for (const auto& [name, range] : namedRanges_) {
-        size += name.capacity() + sizeof(NamedRange);
+    for (const auto& [key, named] : namedRanges_) {
+        size += key.capacity() + named.name.capacity() + sizeof(NamedRange);
     }
     
     return size;

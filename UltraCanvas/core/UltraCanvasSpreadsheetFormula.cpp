@@ -304,88 +304,6 @@ std::unique_ptr<FormulaNode> FormulaParser::ParseFunctionCall(const std::string&
 }
 
 // ============================================================================
-// SPREADSHEET FORMULA - non-inline methods
-// ============================================================================
-
-void SpreadsheetFormula::AdjustReferences(int startRow, int startCol, int rowDelta, int colDelta) {
-    // Re-tokenize/re-parse against the adjusted text so the AST and
-    // dependency lists stay consistent.
-    originalText_ = GetAdjustedText(rowDelta, colDelta);
-    // startRow/startCol describe the insertion/deletion point; the simple
-    // model here shifts all relative references uniformly (see GetAdjustedText).
-    (void)startRow;
-    (void)startCol;
-    Parse();
-}
-
-std::string SpreadsheetFormula::GetAdjustedText(int rowOffset, int colOffset) const {
-    // Rebuild the dependency references shifted by the given offsets. Only
-    // relative components move; absolute ($) components stay fixed.
-    if (!ast_) return originalText_;
-
-    // Helper to shift a single address according to its reference types.
-    auto shiftAddr = [rowOffset, colOffset](CellAddress addr) -> CellAddress {
-        bool rowAbs = (addr.rowRef == ReferenceType::Absolute ||
-                       addr.rowRef == ReferenceType::MixedRowAbs);
-        bool colAbs = (addr.colRef == ReferenceType::Absolute ||
-                       addr.colRef == ReferenceType::MixedColAbs);
-        if (!rowAbs) addr.row += rowOffset;
-        if (!colAbs) addr.col += colOffset;
-        return addr;
-    };
-
-    // Walk the AST and emit a textual representation with adjusted refs.
-    std::function<std::string(const FormulaNode*)> emit =
-        [&](const FormulaNode* node) -> std::string {
-        if (!node) return "";
-        switch (node->nodeType) {
-            case FormulaNodeType::Literal: {
-                const FormulaValue& v = node->literalValue;
-                if (v.IsText()) return "\"" + v.GetText() + "\"";
-                if (v.IsBoolean()) return v.GetBoolean() ? "TRUE" : "FALSE";
-                if (v.IsError()) return CellErrorToString(v.GetError());
-                std::ostringstream ss;
-                ss << v.GetNumber();
-                return ss.str();
-            }
-            case FormulaNodeType::CellRef:
-                return shiftAddr(node->cellRef).ToString();
-            case FormulaNodeType::RangeRef: {
-                CellRange r(shiftAddr(node->rangeRef.start), shiftAddr(node->rangeRef.end));
-                return r.ToString();
-            }
-            case FormulaNodeType::NamedRef:
-                return node->namedRef;
-            case FormulaNodeType::BinaryOp:
-                if (node->children.size() == 2) {
-                    return "(" + emit(node->children[0].get()) + node->op +
-                           emit(node->children[1].get()) + ")";
-                }
-                return "";
-            case FormulaNodeType::UnaryOp:
-                if (node->children.size() == 1) {
-                    if (node->op == "%") return "(" + emit(node->children[0].get()) + "%)";
-                    return "(" + node->op + emit(node->children[0].get()) + ")";
-                }
-                return "";
-            case FormulaNodeType::FunctionCall: {
-                std::string out = node->functionName + "(";
-                for (size_t i = 0; i < node->children.size(); ++i) {
-                    if (i) out += ",";
-                    out += emit(node->children[i].get());
-                }
-                out += ")";
-                return out;
-            }
-            default:
-                return "";
-        }
-    };
-
-    return "=" + emit(ast_.get());
-}
-
-// ============================================================================
 // FORMULA FUNCTION LIBRARY
 // ============================================================================
 
@@ -1276,10 +1194,12 @@ CellRange FormulaEvaluator::GetNamedRange(const std::string& name) const {
             return nr->range;
         }
     }
+    // The workbook's names: the one scoped to the formula's sheet, else the
+    // workbook-wide one - never one scoped to another sheet.
     if (spreadsheet_) {
-        return spreadsheet_->GetNamedRange(name);
+        return spreadsheet_->ResolveNamedRange(name, currentSheet_ ? currentSheet_->GetName() : std::string());
     }
-    return CellRange();
+    return CellRange(CellAddress(-1, -1));   // no such name: #NAME?
 }
 
 // ============================================================================

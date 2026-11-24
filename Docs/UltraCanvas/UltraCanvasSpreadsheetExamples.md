@@ -32,6 +32,7 @@
   - [6. Save: ODS Directly, CSV via Export Dialog](#6-save-ods-directly-csv-via-export-dialog)
   - [7. Working with Multiple Sheets](#7-working-with-multiple-sheets)
   - [8. Reading Cell Values Back](#8-reading-cell-values-back)
+- [Named ranges](#named-ranges)
 - [Formula language and functions](#formula-language-and-functions)
 - [Column widths](#column-widths)
 - [Cell formatting menu](#cell-formatting-menu)
@@ -250,8 +251,8 @@ above row 2:
 Deleting rows moves the references below them up and shrinks the ranges
 across them. A reference wholly inside the deleted rows becomes `#REF!`, so
 `=A2*2` becomes `=#REF!*2`. Text in quotes, and everything else in the
-formula, is kept as it was written. Workbook names on the sheet
-(`AddNamedRange` with a `range.start.sheetName`) move with it. Each insert or delete is one undo step: undo puts back the
+formula, is kept as it was written. Workbook names covering the sheet move
+with it (see [Named ranges](#named-ranges)). Each insert or delete is one undo step: undo puts back the
 cells, row and column sizes, merges and the formulas on every sheet as they
 were, deleted cells included, and redo does it again. For a formula
 string of your own, the same rewrite is
@@ -714,6 +715,39 @@ std::string shown = sheet->GetCellDisplayValue(2, 2); // formatted, e.g. "30,913
 std::string text  = sheet->GetCellText(0, 0);         // "Month"
 std::string fx    = sheet->GetCellFormula(9, 2);      // "=SUM(C2:C8)"
 ```
+
+## Named ranges
+
+A workbook name stands for a range in formulas (`=SUM(Amounts)`). It is
+visible from every sheet, or, given a `sheetScope`, only from that sheet:
+
+```cpp
+CellRange rates(0, 0, 0, 0);                         // A1
+rates.start.sheetName = rates.end.sheetName = "Settings";
+grid->AddNamedRange("Rate", rates);                  // every sheet: Settings.A1
+
+grid->AddNamedRange("Total", CellRange(9, 1, 9, 1), "Jan");   // on Jan: Jan.B10
+grid->AddNamedRange("Total", CellRange(9, 1, 9, 1), "Feb");   // on Feb: Feb.B10
+
+CellRange r = grid->ResolveNamedRange("Total", "Feb");        // what =Total means on Feb
+bool both = grid->HasNamedRange("Total", "Jan") && grid->HasNamedRange("Total", "Feb");
+grid->RemoveNamedRange("Total", "Jan");                       // that one only
+```
+
+- **One name per scope.** The same name can exist once for the workbook and
+  once for each sheet, as Excel files often have ("Total" on each month's
+  sheet).
+- **Lookup from a formula.** A formula looks for the name scoped to its own
+  sheet first, then for the workbook's. It never sees a name scoped to
+  another sheet; that gives `#NAME?`, as a name that does not exist does.
+- **Case.** Names are matched without regard to case.
+- **Which sheet a name covers.** It covers the sheet its range names
+  (`range.start.sheetName`). A scoped name whose range names none covers its
+  own sheet. A workbook name whose range names none covers the sheet of the
+  formula using it.
+- **Following the sheet.** Renaming a sheet renames the scope and the covered
+  sheet of its names. Inserting or deleting rows or columns moves the names
+  covering that sheet.
 
 ## Formula language and functions
 
